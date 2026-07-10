@@ -23,10 +23,15 @@ Small Zig 2D engine experiment.
 zig build test
 zig build run-bounce
 zig build run-bounce-sdl
+zig build dev-bounce
+zig build run-minimal
+zig build test-scenes
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
 `run-bounce-sdl` opens an SDL_GPU window.
+`dev-bounce` opens a PNG/text live-reload demo.
+`test-scenes` runs deterministic headless scene hashing.
 
 ## Current API
 
@@ -35,14 +40,17 @@ zig build run-bounce-sdl
 - `Input`, `Key`
 - `StepClock`
 - `Canvas`, `Sprite`
+- `Canvas.drawImage`
 - `Canvas.drawText`
 - `AssetFile`
+- `AssetStore`
+- `Image`
 - `unpolished_sdl3.run`
 
 ## Next build targets
 
 1. Audio.
-2. PNG/WAV loading and texture atlas.
+2. Texture atlas + sprite animation.
 3. Shader API with strict examples.
-4. Hot reload loop for assets and optional game DLL reload.
+4. Optional game-code hot reload.
 5. Web export.
