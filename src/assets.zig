@@ -140,27 +140,38 @@ pub const AssetStore = struct {
         self.events.clearRetainingCapacity();
 
         for (self.texts.items) |*asset| {
-            if (asset.file.reloadIfChanged() catch |err| {
+            if (asset.file.reloadIfChanged() catch {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
-                return err;
+                continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
             }
         }
 
         for (self.images.items) |*asset| {
-            if (asset.file.reloadIfChanged() catch |err| {
+            const stat = asset.file.dir.statFile(asset.file.path) catch {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
-                return err;
-            }) {
-                const next = Image.decodePng(self.allocator, asset.file.bytes) catch |err| {
-                    try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
-                    return err;
-                };
-                asset.image.deinit();
-                asset.image = next;
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
-            }
+                continue;
+            };
+            if (stat.mtime == asset.file.mtime) continue;
+
+            const bytes = asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes) catch {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                continue;
+            };
+
+            const next = Image.decodePng(self.allocator, bytes) catch {
+                self.allocator.free(bytes);
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                continue;
+            };
+
+            asset.image.deinit();
+            self.allocator.free(asset.file.bytes);
+            asset.file.bytes = bytes;
+            asset.file.mtime = stat.mtime;
+            asset.image = next;
+            try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
         }
 
         return self.events.items;

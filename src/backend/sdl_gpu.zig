@@ -17,6 +17,7 @@ pub const Config = struct {
 pub const Frame = struct {
     canvas: *up.Canvas,
     input: *up.Input,
+    assets: *up.AssetStore,
     dt: f32,
 };
 
@@ -44,6 +45,9 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     var canvas = try up.Canvas.init(allocator, config.width, config.height);
     defer canvas.deinit();
 
+    var assets = up.AssetStore.init(allocator, std.fs.cwd());
+    defer assets.deinit();
+
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
     var game = try Game.init(allocator);
@@ -59,6 +63,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     while (running) {
         input.beginFrame();
         running = pollInput(&input);
+        const reload_events = try assets.reloadChanged();
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -67,11 +72,12 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         const steps = clock.push(dt);
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
-            try game.update(.{ .canvas = &canvas, .input = &input, .dt = clock.step_seconds });
+            try game.update(.{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = clock.step_seconds });
         }
 
         canvas.clear(config.clear_color);
-        try game.render(.{ .canvas = &canvas, .input = &input, .dt = dt });
+        try game.render(.{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = dt });
+        drawReloadOverlay(&canvas, reload_events);
         try presenter.present(device, window, canvas);
 
         frame_count += 1;
@@ -81,6 +87,25 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     }
 
     _ = c.SDL_WaitForGPUIdle(device);
+}
+
+fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
+    if (events.len == 0) return;
+
+    var y: i32 = 4;
+    for (events[0..@min(events.len, 4)]) |event| {
+        const label = switch (event.status) {
+            .changed => "reload",
+            .failed => "reload failed",
+        };
+        const color = switch (event.status) {
+            .changed => up.Color.rgb(113, 232, 162),
+            .failed => up.Color.rgb(255, 112, 112),
+        };
+        canvas.drawText(label, 4, y, color);
+        canvas.drawText(event.path, 4, y + 8, color);
+        y += 17;
+    }
 }
 
 const Presenter = struct {
