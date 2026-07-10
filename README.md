@@ -11,6 +11,24 @@ Unpolished should feel as simple to start with as raylib, LÖVE, and Ebitengine:
 - make the simple path obvious, while preserving explicit Zig control flow.
 - treat long examples as temporary scaffolding until the public API supports shorter ones.
 
+## Tiny Start
+
+```zig
+const up = @import("unpolished");
+const sdl = @import("unpolished_sdl3");
+
+const Game = struct {
+    pub fn draw(_: *Game, ctx: *sdl.Context) void {
+        ctx.rect(18, 18, 28, 28, up.Color.rgb(255, 198, 74));
+        ctx.text("HELLO", 8, 8, up.Color.white);
+    }
+};
+
+pub fn main() !void {
+    try sdl.play(.{ .width = 80, .height = 60, .scale = 6 }, Game);
+}
+```
+
 ## Positioning
 
 - Not blank space: Mach, zig-gamedev, jok, Delve, and several small engines exist.
@@ -54,12 +72,13 @@ zig build test-scenes
 - `AssetFile`
 - `AssetStore`
 - `Image`
-- `unpolished_sdl3.run`
+- `unpolished_sdl3.play`, `unpolished_sdl3.Context`
+- `unpolished_sdl3.run` for lower-level control
 
 ## Next build targets
 
-1. Shrink examples toward raylib/LÖVE/Ebitengine-level terseness.
-2. Audio.
-3. Texture atlas + sprite animation.
-4. Shader API with strict examples.
-5. Web export.
+1. Minimal audio: `loadWav`, `playSound`, looping music, volume.
+2. Sprite ergonomics: centered draw helpers, texture atlas, frame animation.
+3. Starter template: one command to copy a tiny playable project.
+4. Shader API with one strict pixel-effect example.
+5. Web export after desktop loop, assets, and audio feel solid.

@@ -21,6 +21,63 @@ pub const Frame = struct {
     dt: f32,
 };
 
+pub const Context = struct {
+    canvas: *up.Canvas,
+    input: *up.Input,
+    assets: *up.AssetStore,
+    dt: f32,
+    frame: u64,
+
+    pub fn clear(self: *Context, color: up.Color) void {
+        self.canvas.clear(color);
+    }
+
+    pub fn rect(self: *Context, x: i32, y: i32, w: i32, h: i32, color: up.Color) void {
+        self.canvas.fillRect(x, y, w, h, color);
+    }
+
+    pub fn circle(self: *Context, x: i32, y: i32, radius: i32, color: up.Color) void {
+        self.canvas.fillCircle(x, y, radius, color);
+    }
+
+    pub fn line(self: *Context, x0: i32, y0: i32, x1: i32, y1: i32, color: up.Color) void {
+        self.canvas.line(x0, y0, x1, y1, color);
+    }
+
+    pub fn text(self: *Context, value: []const u8, x: i32, y: i32, color: up.Color) void {
+        self.canvas.drawText(value, x, y, color);
+    }
+
+    pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
+        self.canvas.drawImage(self.assets.image(handle), x, y);
+    }
+
+    pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
+        return self.assets.loadPng(path);
+    }
+
+    pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
+        return self.assets.loadText(path);
+    }
+
+    pub fn textAsset(self: *Context, handle: up.TextHandle) []const u8 {
+        return self.assets.text(handle);
+    }
+
+    pub fn down(self: *Context, key: up.Key) bool {
+        return self.input.isDown(key);
+    }
+};
+
+pub fn play(config: Config, comptime Game: type) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer _ = gpa.deinit();
+
+    const allocator = gpa.allocator();
+    const parsed_config = try configFromArgs(allocator, config);
+    try playWithAllocator(allocator, parsed_config, Game);
+}
+
 pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
@@ -87,6 +144,116 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     }
 
     _ = c.SDL_WaitForGPUIdle(device);
+}
+
+fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
+    if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
+    defer c.SDL_Quit();
+
+    const window_w = try scaledInt(config.width, config.scale);
+    const window_h = try scaledInt(config.height, config.scale);
+    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, 0) orelse return sdlFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(window);
+
+    const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL;
+    const device = c.SDL_CreateGPUDevice(shader_formats, true, null) orelse return sdlFail("SDL_CreateGPUDevice");
+    defer c.SDL_DestroyGPUDevice(device);
+
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlFail("SDL_ClaimWindowForGPUDevice");
+    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
+
+    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
+        return sdlFail("SDL_SetGPUSwapchainParameters");
+    }
+
+    var canvas = try up.Canvas.init(allocator, config.width, config.height);
+    defer canvas.deinit();
+
+    var assets = up.AssetStore.init(allocator, std.fs.cwd());
+    defer assets.deinit();
+
+    var input = up.Input{};
+    var clock = up.StepClock.init(config.fixed_hz);
+    var presenter = try Presenter.init(device, config.width, config.height);
+    defer presenter.deinit(device);
+
+    var ctx = Context{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = 0, .frame = 0 };
+    var game = try initGame(Game, &ctx);
+    defer deinitGame(Game, &game, &ctx);
+
+    var running = true;
+    var last_ticks = c.SDL_GetTicksNS();
+
+    while (running) {
+        input.beginFrame();
+        running = pollInput(&input);
+        const reload_events = try assets.reloadChanged();
+
+        const now = c.SDL_GetTicksNS();
+        const dt = ticksToSeconds(now - last_ticks);
+        last_ticks = now;
+
+        const steps = clock.push(dt);
+        var step: u32 = 0;
+        while (step < steps) : (step += 1) {
+            ctx.dt = clock.step_seconds;
+            try callUpdate(Game, &game, &ctx);
+        }
+
+        canvas.clear(config.clear_color);
+        ctx.dt = dt;
+        try callDraw(Game, &game, &ctx);
+        drawReloadOverlay(&canvas, reload_events);
+        try presenter.present(device, window, canvas);
+
+        ctx.frame += 1;
+        if (config.max_frames) |max_frames| {
+            if (ctx.frame >= max_frames) running = false;
+        }
+    }
+
+    _ = c.SDL_WaitForGPUIdle(device);
+}
+
+fn initGame(comptime Game: type, ctx: *Context) !Game {
+    if (@hasDecl(Game, "init")) {
+        return try unwrap(Game, Game.init(ctx));
+    }
+    return .{};
+}
+
+fn deinitGame(comptime Game: type, game: *Game, ctx: *Context) void {
+    if (@hasDecl(Game, "deinit")) {
+        game.deinit(ctx);
+    }
+}
+
+fn callUpdate(comptime Game: type, game: *Game, ctx: *Context) !void {
+    if (@hasDecl(Game, "update")) {
+        try maybeError(game.update(ctx));
+    }
+}
+
+fn callDraw(comptime Game: type, game: *Game, ctx: *Context) !void {
+    if (@hasDecl(Game, "draw")) {
+        try maybeError(game.draw(ctx));
+    }
+}
+
+fn unwrap(comptime T: type, value: anytype) !T {
+    return switch (@typeInfo(@TypeOf(value))) {
+        .error_union => try value,
+        else => value,
+    };
+}
+
+fn maybeError(value: anytype) !void {
+    switch (@typeInfo(@TypeOf(value))) {
+        .error_union => try value,
+        .void => {},
+        else => @compileError("game callbacks must return void or !void"),
+    }
 }
 
 fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
@@ -276,6 +443,21 @@ fn checkedByteLen(width: u32, height: u32) !u32 {
 fn scaledInt(value: u32, scale: u32) !c_int {
     const scaled = std.math.mul(u32, value, scale) catch return error.InvalidConfig;
     return std.math.cast(c_int, scaled) orelse error.InvalidConfig;
+}
+
+fn configFromArgs(allocator: std.mem.Allocator, config: Config) !Config {
+    var parsed = config;
+    var args = try std.process.argsWithAllocator(allocator);
+    defer args.deinit();
+
+    _ = args.next();
+    while (args.next()) |arg| {
+        if (std.mem.eql(u8, arg, "--frames")) {
+            const value = args.next() orelse return error.MissingFrameCount;
+            parsed.max_frames = try std.fmt.parseInt(u32, value, 10);
+        }
+    }
+    return parsed;
 }
 
 fn ticksToSeconds(ns: u64) f32 {
