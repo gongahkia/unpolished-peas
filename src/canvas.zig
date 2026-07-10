@@ -1,5 +1,6 @@
 const std = @import("std");
 const Color = @import("color.zig").Color;
+const Image = @import("image.zig").Image;
 const font = @import("font.zig");
 
 pub const Sprite = struct {
@@ -120,6 +121,10 @@ pub const Canvas = struct {
         }
     }
 
+    pub fn drawImage(self: *Canvas, image: Image, dst_x: i32, dst_y: i32) void {
+        self.drawSprite(image.sprite(), dst_x, dst_y);
+    }
+
     pub fn drawText(self: *Canvas, text: []const u8, x: i32, y: i32, color: Color) void {
         var pen_x = x;
         var pen_y = y;
@@ -192,6 +197,20 @@ test "sprite draw honors alpha" {
     canvas.clear(Color.black);
     canvas.drawSprite(.{ .width = 2, .height = 1, .pixels = &pixels }, 0, 0);
     try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
+}
+
+test "image draw uses sprite path" {
+    var canvas = try Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+
+    const pixels = try std.testing.allocator.dupe(Color, &.{ Color.white, Color.transparent });
+    var image = Image{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = pixels };
+    defer image.deinit();
+
+    canvas.clear(Color.black);
+    canvas.drawImage(image, 0, 0);
+    try std.testing.expectEqual(Color.white, canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
 }
 

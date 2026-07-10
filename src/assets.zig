@@ -1,4 +1,5 @@
 const std = @import("std");
+const Image = @import("image.zig").Image;
 
 pub const AssetFile = struct {
     allocator: std.mem.Allocator,
@@ -43,6 +44,126 @@ pub const AssetFile = struct {
 
     pub fn text(self: AssetFile) []const u8 {
         return self.bytes;
+    }
+};
+
+pub const TextHandle = struct { index: usize };
+pub const ImageHandle = struct { index: usize };
+
+pub const ReloadStatus = enum {
+    changed,
+    failed,
+};
+
+pub const ReloadEvent = struct {
+    path: []const u8,
+    status: ReloadStatus,
+};
+
+const TextAsset = struct {
+    file: AssetFile,
+
+    fn deinit(self: *TextAsset) void {
+        self.file.deinit();
+    }
+};
+
+const ImageAsset = struct {
+    file: AssetFile,
+    image: Image,
+
+    fn deinit(self: *ImageAsset) void {
+        self.image.deinit();
+        self.file.deinit();
+    }
+};
+
+pub const AssetStore = struct {
+    allocator: std.mem.Allocator,
+    dir: std.fs.Dir,
+    texts: std.ArrayListUnmanaged(TextAsset) = .{},
+    images: std.ArrayListUnmanaged(ImageAsset) = .{},
+    events: std.ArrayListUnmanaged(ReloadEvent) = .{},
+
+    pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
+        return .{ .allocator = allocator, .dir = dir };
+    }
+
+    pub fn deinit(self: *AssetStore) void {
+        for (self.texts.items) |*asset| asset.deinit();
+        for (self.images.items) |*asset| asset.deinit();
+        self.texts.deinit(self.allocator);
+        self.images.deinit(self.allocator);
+        self.events.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn loadText(self: *AssetStore, path: []const u8) !TextHandle {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 1024 * 1024);
+        errdefer {
+            var cleanup = file;
+            cleanup.deinit();
+        }
+
+        const index = self.texts.items.len;
+        try self.texts.append(self.allocator, .{ .file = file });
+        return .{ .index = index };
+    }
+
+    pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
+        errdefer {
+            var cleanup = file;
+            cleanup.deinit();
+        }
+
+        const image = try Image.decodePng(self.allocator, file.bytes);
+        errdefer {
+            var cleanup = image;
+            cleanup.deinit();
+        }
+
+        const index = self.images.items.len;
+        try self.images.append(self.allocator, .{ .file = file, .image = image });
+        return .{ .index = index };
+    }
+
+    pub fn text(self: AssetStore, handle: TextHandle) []const u8 {
+        return self.texts.items[handle.index].file.text();
+    }
+
+    pub fn image(self: AssetStore, handle: ImageHandle) Image {
+        return self.images.items[handle.index].image;
+    }
+
+    pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
+        self.events.clearRetainingCapacity();
+
+        for (self.texts.items) |*asset| {
+            if (asset.file.reloadIfChanged() catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                return err;
+            }) {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
+            }
+        }
+
+        for (self.images.items) |*asset| {
+            if (asset.file.reloadIfChanged() catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                return err;
+            }) {
+                const next = Image.decodePng(self.allocator, asset.file.bytes) catch |err| {
+                    try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                    return err;
+                };
+                asset.image.deinit();
+                asset.image = next;
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
+            }
+        }
+
+        return self.events.items;
     }
 };
 
