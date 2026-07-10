@@ -117,14 +117,14 @@ pub const AssetStore = struct {
             cleanup.deinit();
         }
 
-        const image = try Image.decodePng(self.allocator, file.bytes);
+        const decoded = try Image.decodePng(self.allocator, file.bytes);
         errdefer {
-            var cleanup = image;
+            var cleanup = decoded;
             cleanup.deinit();
         }
 
         const index = self.images.items.len;
-        try self.images.append(self.allocator, .{ .file = file, .image = image });
+        try self.images.append(self.allocator, .{ .file = file, .image = decoded });
         return .{ .index = index };
     }
 
