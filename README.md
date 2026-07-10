@@ -1,71 +1,48 @@
-[![](https://img.shields.io/badge/shack_1.0.0-passing-green)](https://github.com/gongahkia/shack/releases/tag/1.0.0)
-[![](https://github.com/gongahkia/shack/actions/workflows/ci.yml/badge.svg)](https://github.com/gongahkia/shack/actions/workflows/ci.yml)
+# unpolished
 
-# `Shack` - a SHiok Atomweight Cli worKstation
+Small Zig 2D engine experiment.
 
-Shack is an [atomweight](https://en.wikipedia.org/wiki/Atomweight) terminal IDE with [sensible day 1 defaults](https://martinfowler.com/bliki/SensibleDefault.html).
+## Positioning
 
-<div align="center">
-    <img src="./assets/logo/shack.png" width="35%">
-</div>
+- Not blank space: Mach, zig-gamedev, jok, Delve, and several small engines exist.
+- Gap: no obvious widely adopted Zig equivalent of LÖVE/raylib/Ebitengine with a 2D-first API and tiny first-win path.
+- Bet: win by being the fastest path from `zig build run` to a visible 2D game, with headless tests and explicit control flow.
+- Non-goal: compete with Mach on broad WebGPU/full-engine scope or with zig-gamedev as a toolbox.
 
-## Stack
+## Differentiators
 
-* *Scripting*: [Go 1.27+](https://go.dev/dl/)
-* *CLI*: [tcell](https://github.com/gdamore/tcell)
-* *Highlighting*: [Chroma](https://github.com/alecthomas/chroma)
+- 2D-only first; no editor and no 3D surface until the 2D loop is excellent.
+- Headless renderer for CI screenshots, examples, and deterministic tests.
+- Reloadable file assets via polling `mtime`, so iteration works before native file watchers.
+- Built-in debug text with no font dependency.
+- Public API stays explicit: user code owns update/render order.
 
-## Features
+## Commands
 
-* Familiar keyboard shortcuts and mouse selection
-* Multiple buffers, split panes, a project file tree and an optional minimap
-* Literal and regex search, multiple selections and reviewed multi-file replacements
-* Bundled syntax highlighting, with optional language servers for completion, diagnostics, navigation and formatting
-* Markdown and Org reading views, live previews and code folding
-* Integrated terminals, build/test tasks, Git tools and optional source-level debugging
-* Unsaved-buffer recovery, project sessions and [JSON configuration](./docs/USAGE.md#configuration)
-
-## Video of `Shack` editing its own source code
-
-<div align="center">
-  <video width="85%" src="https://github.com/user-attachments/assets/476227ec-3b7f-450d-bb92-a81e1fc7e3da" controls muted playsinline preload="metadata"></video>
-</div>
-
-## Usage
-
-> [!IMPORTANT]
-> Building from source requires Go 1.27 or newer and `make`. 
-
-### Building `Shack` yourself
-
-1. Clone the repository.
-
-```console
-$ git clone https://github.com/gongahkia/shack && cd shack
+```sh
+zig build test
+zig build run-bounce
+zig build run-bounce-sdl
 ```
 
-2. Build and open the project in your terminal.
+`run-bounce` renders `zig-out/bounce.ppm`.
+`run-bounce-sdl` opens an SDL_GPU window.
 
-```console
-$ GOTOOLCHAIN=auto make build
-$ ./build/shack .
-```
+## Current API
 
-3. Then run the below to open a specific file
+- `Vec2`, `Rect`
+- `Color`
+- `Input`, `Key`
+- `StepClock`
+- `Canvas`, `Sprite`
+- `Canvas.drawText`
+- `AssetFile`
+- `unpolished_sdl3.run`
 
-```console
-$ ./build/shack docs/USAGE.md
-```
+## Next build targets
 
-
-4. Optionally edit a file without a language server using the below.
-
-```console
-$ ./build/shack --no-lsp .
-```
-
-5. See the [usage guide](./docs/USAGE.md) for the full list of controls, configuration, and [language-server workflows](./docs/LANGUAGE_SERVERS.md).
-
-## Reference
-
-Also see [`Shed`](https://github.com/gongahkia/shed).
+1. Audio.
+2. PNG/WAV loading and texture atlas.
+3. Shader API with strict examples.
+4. Hot reload loop for assets and optional game DLL reload.
+5. Web export.

@@ -1,6 +1,2 @@
-/build/
-/dist/
-*.test
-coverage.out
-.DS_Store
-AGENTS.md
+.zig-cache/
+zig-out/
