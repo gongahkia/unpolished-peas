@@ -27,7 +27,9 @@ const Game = struct {
 
         if (self.sprite) |handle| {
             const image = frame.assets.image(handle);
-            frame.canvas.drawImage(image, @intFromFloat(self.ball.pos.x) - @as(i32, @intCast(image.width / 2)), @intFromFloat(self.ball.pos.y) - @as(i32, @intCast(image.height / 2)));
+            const x: i32 = @intFromFloat(self.ball.pos.x);
+            const y: i32 = @intFromFloat(self.ball.pos.y);
+            frame.canvas.drawImage(image, x - @as(i32, @intCast(image.width / 2)), y - @as(i32, @intCast(image.height / 2)));
         }
 
         if (self.message) |handle| {
