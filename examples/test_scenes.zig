@@ -1,7 +1,7 @@
 const std = @import("std");
 const up = @import("unpolished");
 
-const expected_hash: u64 = 0;
+const expected_hash: u64 = 0xe011c59da9c4ec07;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
