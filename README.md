@@ -2,6 +2,15 @@
 
 Small Zig 2D engine experiment.
 
+## API Goal
+
+Unpolished should feel as simple to start with as raylib, LÖVE, and Ebitengine:
+
+- draw a sprite, play a sound, read input, and reload an asset with minimal setup.
+- keep tiny games in one readable file without framework ceremony.
+- make the simple path obvious, while preserving explicit Zig control flow.
+- treat long examples as temporary scaffolding until the public API supports shorter ones.
+
 ## Positioning
 
 - Not blank space: Mach, zig-gamedev, jok, Delve, and several small engines exist.
@@ -49,8 +58,8 @@ zig build test-scenes
 
 ## Next build targets
 
-1. Audio.
-2. Texture atlas + sprite animation.
-3. Shader API with strict examples.
-4. Optional game-code hot reload.
+1. Shrink examples toward raylib/LÖVE/Ebitengine-level terseness.
+2. Audio.
+3. Texture atlas + sprite animation.
+4. Shader API with strict examples.
 5. Web export.
