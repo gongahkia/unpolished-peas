@@ -9,9 +9,11 @@ pub const Key = enum(u8) {
     cancel,
     start,
     select,
+    debug,
+    screenshot,
 };
 
-const key_count = 8;
+const key_count = @typeInfo(Key).@"enum".fields.len;
 
 pub const Input = struct {
     down: [key_count]bool = .{false} ** key_count,

@@ -1,5 +1,5 @@
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
@@ -10,7 +10,7 @@ const Game = struct {
 
 pub fn main() !void {
     try sdl.play(.{
-        .title = "minimal",
+        .title = "unpolished-peas minimal",
         .width = 80,
         .height = 60,
         .scale = 6,

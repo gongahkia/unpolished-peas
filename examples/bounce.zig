@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished");
+const up = @import("unpolished-peas");
 
 const Ball = struct {
     pos: up.Vec2 = .{ .x = 30, .y = 30 },

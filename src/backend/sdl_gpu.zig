@@ -1,11 +1,14 @@
 const std = @import("std");
-const up = @import("unpolished");
+const builtin = @import("builtin");
+const up = @import("unpolished-peas");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
 
 pub const Config = struct {
-    title: [:0]const u8 = "unpolished",
+    title: [:0]const u8 = "unpolished-peas",
+    organization: [:0]const u8 = "gongahkia",
+    application: [:0]const u8 = "unpolished-peas",
     width: u32 = 320,
     height: u32 = 180,
     scale: u32 = 3,
@@ -13,6 +16,7 @@ pub const Config = struct {
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
     strict_audio: bool = false,
+    developer_tools: bool = builtin.mode == .Debug,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
 };
@@ -23,6 +27,7 @@ pub const Frame = struct {
     input: *up.Input,
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
+    app_data_path: []const u8,
     dt: f32,
 };
 
@@ -32,6 +37,7 @@ pub const Context = struct {
     input: *up.Input,
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
+    app_data_path: []const u8,
     dt: f32,
     frame: u64,
 
@@ -94,7 +100,17 @@ pub const Context = struct {
     pub fn down(self: *Context, key: up.Key) bool {
         return self.input.isDown(key);
     }
+
+    pub fn appDataPath(self: *Context) []const u8 {
+        return self.app_data_path;
+    }
 };
+
+pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, application: [:0]const u8) ![]u8 {
+    const raw = c.SDL_GetPrefPath(organization.ptr, application.ptr) orelse return sdlFail("SDL_GetPrefPath");
+    defer c.SDL_free(raw);
+    return allocator.dupe(u8, std.mem.span(raw));
+}
 
 pub fn play(config: Config, comptime Game: type) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -140,20 +156,43 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
-    var game = try Game.init(allocator);
-    defer game.deinit();
+    const data_path = try appDataPath(allocator, config.organization, config.application);
+    defer allocator.free(data_path);
+    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
+    defer dev.deinit();
 
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
+    var failure: ?Failure = null;
+    var game: ?Game = Game.init(allocator) catch |err| blk: {
+        dev.failure("init", err);
+        failure = .{ .phase = "init", .err = err };
+        break :blk null;
+    };
+    defer if (game) |*value| value.deinit();
+
     var running = true;
     var last_ticks = c.SDL_GetTicksNS();
-    var frame_count: u32 = 0;
+    var frame_count: u64 = 0;
 
     while (running) {
         input.beginFrame();
         running = pollInput(&input);
-        const reload_events = try assets.reloadChanged();
+        if (input.wasPressed(.debug)) dev.toggleOverlay();
+
+        if (failure) |current| {
+            drawFailure(&canvas, current);
+            try presenter.present(device, window, canvas);
+            running = advanceFrame(&frame_count, config.max_frames) and running;
+            continue;
+        }
+
+        const reload_events = assets.reloadChanged() catch |err| {
+            dev.failure("asset reload", err);
+            failure = .{ .phase = "asset reload", .err = err };
+            continue;
+        };
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -162,19 +201,31 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         const steps = clock.push(dt);
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
-            try game.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = clock.step_seconds });
+            if (game) |*value| {
+                value.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = clock.step_seconds }) catch |err| {
+                    dev.failure("update", err);
+                    failure = .{ .phase = "update", .err = err };
+                    break;
+                };
+            }
         }
+        if (failure != null) continue;
 
         canvas.clear(config.clear_color);
-        try game.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = dt });
+        if (game) |*value| {
+            value.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = dt }) catch |err| {
+                dev.failure("render", err);
+                failure = .{ .phase = "render", .err = err };
+                continue;
+            };
+        }
         drawReloadOverlay(&canvas, reload_events);
+        dev.drawOverlay(&canvas, dt, frame_count);
+        if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, frame_count);
         if (audio_output) |*output| try output.queue(&audio);
         try presenter.present(device, window, canvas);
 
-        frame_count += 1;
-        if (config.max_frames) |max_frames| {
-            if (frame_count >= max_frames) running = false;
-        }
+        running = advanceFrame(&frame_count, config.max_frames) and running;
     }
 
     _ = c.SDL_WaitForGPUIdle(device);
@@ -215,12 +266,21 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
+    const data_path = try appDataPath(allocator, config.organization, config.application);
+    defer allocator.free(data_path);
+    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
+    defer dev.deinit();
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = 0, .frame = 0 };
-    var game = try initGame(Game, &ctx);
-    defer deinitGame(Game, &game, &ctx);
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = 0, .frame = 0 };
+    var failure: ?Failure = null;
+    var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
+        dev.failure("init", err);
+        failure = .{ .phase = "init", .err = err };
+        break :blk null;
+    };
+    defer if (game) |*value| deinitGame(Game, value, &ctx);
 
     var running = true;
     var last_ticks = c.SDL_GetTicksNS();
@@ -228,7 +288,20 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     while (running) {
         input.beginFrame();
         running = pollInput(&input);
-        const reload_events = try assets.reloadChanged();
+        if (input.wasPressed(.debug)) dev.toggleOverlay();
+
+        if (failure) |current| {
+            drawFailure(&canvas, current);
+            try presenter.present(device, window, canvas);
+            running = advanceFrame(&ctx.frame, config.max_frames) and running;
+            continue;
+        }
+
+        const reload_events = assets.reloadChanged() catch |err| {
+            dev.failure("asset reload", err);
+            failure = .{ .phase = "asset reload", .err = err };
+            continue;
+        };
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -238,20 +311,32 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
             ctx.dt = clock.step_seconds;
-            try callUpdate(Game, &game, &ctx);
+            if (game) |*value| {
+                callUpdate(Game, value, &ctx) catch |err| {
+                    dev.failure("update", err);
+                    failure = .{ .phase = "update", .err = err };
+                    break;
+                };
+            }
         }
+        if (failure != null) continue;
 
         canvas.clear(config.clear_color);
         ctx.dt = dt;
-        try callDraw(Game, &game, &ctx);
+        if (game) |*value| {
+            callDraw(Game, value, &ctx) catch |err| {
+                dev.failure("draw", err);
+                failure = .{ .phase = "draw", .err = err };
+                continue;
+            };
+        }
         drawReloadOverlay(&canvas, reload_events);
+        dev.drawOverlay(&canvas, dt, ctx.frame);
+        if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
         if (audio_output) |*output| try output.queue(&audio);
         try presenter.present(device, window, canvas);
 
-        ctx.frame += 1;
-        if (config.max_frames) |max_frames| {
-            if (ctx.frame >= max_frames) running = false;
-        }
+        running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
 
     _ = c.SDL_WaitForGPUIdle(device);
@@ -314,6 +399,101 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
         canvas.drawText(event.path, 4, y + 8, color);
         y += 17;
     }
+}
+
+const Failure = struct {
+    phase: []const u8,
+    err: anyerror,
+};
+
+const DeveloperTools = struct {
+    allocator: std.mem.Allocator,
+    app_data_path: []const u8,
+    enabled: bool,
+    overlay: bool,
+    log_file: ?std.fs.File = null,
+
+    fn init(allocator: std.mem.Allocator, enabled: bool, app_data_path: []const u8) !DeveloperTools {
+        var tools = DeveloperTools{
+            .allocator = allocator,
+            .app_data_path = app_data_path,
+            .enabled = enabled,
+            .overlay = enabled,
+        };
+        if (!enabled) return tools;
+
+        const log_path = try std.fmt.allocPrint(allocator, "{s}unpolished-peas.log", .{app_data_path});
+        defer allocator.free(log_path);
+        tools.log_file = std.fs.cwd().createFile(log_path, .{ .truncate = false }) catch |err| {
+            std.debug.print("unpolished-peas log disabled: {s}\n", .{@errorName(err)});
+            return tools;
+        };
+        if (tools.log_file) |file| file.seekFromEnd(0) catch {};
+        tools.note("unpolished-peas: started\n");
+        std.debug.print("unpolished-peas app data: {s}\n", .{app_data_path});
+        return tools;
+    }
+
+    fn deinit(self: *DeveloperTools) void {
+        if (self.log_file) |file| file.close();
+        self.* = undefined;
+    }
+
+    fn toggleOverlay(self: *DeveloperTools) void {
+        if (self.enabled) self.overlay = !self.overlay;
+    }
+
+    fn failure(self: *DeveloperTools, phase: []const u8, err: anyerror) void {
+        var buffer: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas {s} failed: {s}\n", .{ phase, @errorName(err) }) catch return;
+        std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
+    fn writeScreenshot(self: *DeveloperTools, canvas: up.Canvas, frame: u64) void {
+        if (!self.enabled) return;
+        const path = std.fmt.allocPrint(self.allocator, "{s}screenshot-{d}-{d}.ppm", .{ self.app_data_path, c.SDL_GetTicksNS(), frame }) catch |err| {
+            self.failure("screenshot path", err);
+            return;
+        };
+        defer self.allocator.free(path);
+        canvas.writePpmFile(path) catch |err| {
+            self.failure("screenshot", err);
+            return;
+        };
+        var buffer: [512]u8 = undefined;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas screenshot: {s}\n", .{path}) catch return;
+        std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
+    fn drawOverlay(self: DeveloperTools, canvas: *up.Canvas, dt: f32, frame: u64) void {
+        if (!self.enabled or !self.overlay) return;
+        const fps = if (dt > 0) 1.0 / dt else 0;
+        var buffer: [96]u8 = undefined;
+        const text = std.fmt.bufPrint(&buffer, "fps {d:.1} ms {d:.2} f{d}", .{ fps, dt * 1000, frame }) catch return;
+        canvas.fillRect(0, 0, @intCast(canvas.width), 10, up.Color.rgba(0, 0, 0, 192));
+        canvas.drawText(text, 2, 2, up.Color.rgb(225, 232, 240));
+    }
+
+    fn note(self: *DeveloperTools, line: []const u8) void {
+        if (self.log_file) |file| file.writeAll(line) catch {};
+    }
+};
+
+fn drawFailure(canvas: *up.Canvas, failure: Failure) void {
+    canvas.clear(up.Color.rgb(41, 18, 24));
+    canvas.fillRect(2, 2, @intCast(canvas.width -| 4), @intCast(canvas.height -| 4), up.Color.rgb(88, 31, 40));
+    canvas.drawText("ERROR", 6, 6, up.Color.rgb(255, 225, 225));
+    canvas.drawText(failure.phase, 6, 18, up.Color.rgb(255, 198, 74));
+    canvas.drawText(@errorName(failure.err), 6, 30, up.Color.rgb(255, 225, 225));
+    canvas.drawText("ESC TO QUIT", 6, 48, up.Color.rgb(225, 232, 240));
+}
+
+fn advanceFrame(frame: *u64, max_frames: ?u32) bool {
+    frame.* +%= 1;
+    if (max_frames) |max| return frame.* < max;
+    return true;
 }
 
 const AudioOutput = struct {
@@ -533,6 +713,8 @@ fn mapKey(key: c.SDL_Keycode) ?up.Key {
         c.SDLK_ESCAPE => .cancel,
         c.SDLK_RETURN => .start,
         c.SDLK_TAB => .select,
+        c.SDLK_F3 => .debug,
+        c.SDLK_F12 => .screenshot,
         else => null,
     };
 }

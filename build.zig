@@ -4,186 +4,99 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
-    const mod = b.addModule("unpolished", .{
-        .root_source_file = b.path("src/unpolished.zig"),
+    const peas = b.addModule("unpolished-peas", .{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
         .target = target,
         .optimize = optimize,
     });
-    addStb(mod);
+    addStb(peas);
 
-    const sdl_mod = b.addModule("unpolished_sdl3", .{
+    const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "unpolished", .module = mod },
+            .{ .name = "unpolished-peas", .module = peas },
         },
     });
-    addSdl3(sdl_mod);
+    addSdl3(sdl);
 
     const lib = b.addLibrary(.{
-        .name = "unpolished",
+        .name = "unpolished-peas",
         .linkage = .static,
-        .root_module = mod,
+        .root_module = peas,
     });
     b.installArtifact(lib);
 
-    const demo = b.addExecutable(.{
-        .name = "bounce",
+    const demo = addExample(b, "unpolished-peas-bounce", "examples/bounce.zig", target, optimize, peas, null);
+    const sdl_demo = addExample(b, "unpolished-peas-bounce-sdl", "examples/bounce_sdl.zig", target, optimize, peas, sdl);
+    const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
+    const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
+    const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
+    const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
+    const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
+    const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
+
+    const starter = b.addExecutable(.{
+        .name = "unpolished-peas-new",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/bounce.zig"),
-            .target = target,
+            .root_source_file = b.path("src/starter.zig"),
+            .target = b.graph.host,
             .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-            },
         }),
     });
-    b.installArtifact(demo);
+    const run_starter = b.addRunArtifact(starter);
+    run_starter.addArg(b.pathFromRoot("."));
+    run_starter.addArg(b.pathFromRoot("templates/bounce"));
+    if (b.args) |args| run_starter.addArgs(args);
+    const new_step = b.step("new", "Create an unpolished-peas bouncing-square project");
+    new_step.dependOn(&run_starter.step);
 
-    const sdl_demo = b.addExecutable(.{
-        .name = "bounce-sdl",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/bounce_sdl.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-    b.installArtifact(sdl_demo);
+    addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
+    addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
+    addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
+    addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
+    addRunStep(b, "run-audio", "Run the unpolished-peas audio demo", audio_demo);
+    addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
+    addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
+    addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
 
-    const dev_demo = b.addExecutable(.{
-        .name = "dev-bounce",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/dev_bounce.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-    b.installArtifact(dev_demo);
-
-    const minimal_demo = b.addExecutable(.{
-        .name = "minimal",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/minimal.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-    b.installArtifact(minimal_demo);
-
-    const audio_demo = b.addExecutable(.{
-        .name = "audio",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/audio.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-    b.installArtifact(audio_demo);
-
-    const atlas_demo = b.addExecutable(.{
-        .name = "atlas",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/atlas.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-    b.installArtifact(atlas_demo);
-
-    const audio_stress = b.addExecutable(.{
-        .name = "stress-audio-sdl",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/stress_audio_sdl.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-                .{ .name = "unpolished_sdl3", .module = sdl_mod },
-            },
-        }),
-    });
-
-    const scene_tests = b.addExecutable(.{
-        .name = "test-scenes",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("examples/test_scenes.zig"),
-            .target = target,
-            .optimize = optimize,
-            .imports = &.{
-                .{ .name = "unpolished", .module = mod },
-            },
-        }),
-    });
-
-    const run_demo = b.addRunArtifact(demo);
-
-    const run_step = b.step("run-bounce", "Render the bounce demo to zig-out/bounce.ppm");
-    run_step.dependOn(&run_demo.step);
-
-    const run_sdl_demo = b.addRunArtifact(sdl_demo);
-    if (b.args) |args| run_sdl_demo.addArgs(args);
-
-    const run_sdl_step = b.step("run-bounce-sdl", "Run the SDL_GPU bounce demo");
-    run_sdl_step.dependOn(&run_sdl_demo.step);
-
-    const run_dev_demo = b.addRunArtifact(dev_demo);
-    if (b.args) |args| run_dev_demo.addArgs(args);
-
-    const run_dev_step = b.step("dev-bounce", "Run the live-reload SDL_GPU bounce demo");
-    run_dev_step.dependOn(&run_dev_demo.step);
-
-    const run_minimal_demo = b.addRunArtifact(minimal_demo);
-    if (b.args) |args| run_minimal_demo.addArgs(args);
-
-    const run_minimal_step = b.step("run-minimal", "Run the minimal SDL_GPU demo");
-    run_minimal_step.dependOn(&run_minimal_demo.step);
-
-    const run_audio_demo = b.addRunArtifact(audio_demo);
-    if (b.args) |args| run_audio_demo.addArgs(args);
-
-    const run_audio_step = b.step("run-audio", "Run the SDL audio demo");
-    run_audio_step.dependOn(&run_audio_demo.step);
-
-    const run_atlas_demo = b.addRunArtifact(atlas_demo);
-    if (b.args) |args| run_atlas_demo.addArgs(args);
-
-    const run_atlas_step = b.step("run-atlas", "Run the atlas sprite demo");
-    run_atlas_step.dependOn(&run_atlas_demo.step);
-
-    const run_audio_stress = b.addRunArtifact(audio_stress);
-    const audio_stress_step = b.step("stress-audio-sdl", "Run local SDL audio stress smoke");
-    audio_stress_step.dependOn(&run_audio_stress.step);
-
-    const run_scene_tests = b.addRunArtifact(scene_tests);
-    const scene_step = b.step("test-scenes", "Run deterministic scene hash tests");
-    scene_step.dependOn(&run_scene_tests.step);
-
-    const tests = b.addTest(.{ .root_module = mod });
+    const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);
-
-    const test_step = b.step("test", "Run tests");
+    const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+}
+
+fn addExample(
+    b: *std.Build,
+    name: []const u8,
+    path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    peas: *std.Build.Module,
+    sdl: ?*std.Build.Module,
+) *std.Build.Step.Compile {
+    var imports = std.ArrayList(std.Build.Module.Import).empty;
+    imports.append(b.allocator, .{ .name = "unpolished-peas", .module = peas }) catch @panic("OOM");
+    if (sdl) |module| imports.append(b.allocator, .{ .name = "unpolished-peas-sdl3", .module = module }) catch @panic("OOM");
+    const exe = b.addExecutable(.{
+        .name = name,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path(path),
+            .target = target,
+            .optimize = optimize,
+            .imports = imports.items,
+        }),
+    });
+    b.installArtifact(exe);
+    return exe;
+}
+
+fn addRunStep(b: *std.Build, name: []const u8, description: []const u8, exe: *std.Build.Step.Compile) void {
+    const run = b.addRunArtifact(exe);
+    if (b.args) |args| run.addArgs(args);
+    const step = b.step(name, description);
+    step.dependOn(&run.step);
 }
 
 fn addStb(mod: *std.Build.Module) void {
@@ -201,8 +114,5 @@ fn addStb(mod: *std.Build.Module) void {
 
 fn addSdl3(mod: *std.Build.Module) void {
     mod.link_libc = true;
-    mod.addIncludePath(.{ .cwd_relative = "/opt/homebrew/include" });
-    mod.addLibraryPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-    mod.addRPath(.{ .cwd_relative = "/opt/homebrew/lib" });
-    mod.linkSystemLibrary("SDL3", .{});
+    mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
 }
