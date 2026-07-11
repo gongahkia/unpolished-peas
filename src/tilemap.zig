@@ -25,6 +25,30 @@ pub const Tile = struct {
     tileset: u16,
     id: u32,
     flags: TileFlags = .{},
+    opacity: f32 = 1,
+};
+
+pub const TileAnimationFrame = struct {
+    tile_id: u32,
+    duration: f32,
+};
+
+pub const TileAnimation = struct {
+    tile_id: u32,
+    frames: []TileAnimationFrame,
+};
+
+pub const TileMapLoadOptions = struct {
+    overlay_path: ?[]const u8 = null,
+};
+
+pub const TileStack = struct {
+    items: std.ArrayListUnmanaged(Tile) = .{},
+
+    fn deinit(self: *TileStack, allocator: std.mem.Allocator) void {
+        self.items.deinit(allocator);
+        self.* = undefined;
+    }
 };
 
 pub const ChunkCoord = struct { x: i32, y: i32 };
@@ -38,22 +62,26 @@ pub const TileSet = struct {
     spacing: u32 = 0,
     source_id: ?u32 = null,
     atlas_frames: [][]u8 = &.{},
+    animations: []TileAnimation = &.{},
 
     fn deinit(self: *TileSet, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
         allocator.free(self.path);
         for (self.atlas_frames) |frame| allocator.free(frame);
         allocator.free(self.atlas_frames);
+        for (self.animations) |animation| allocator.free(animation.frames);
+        allocator.free(self.animations);
         self.* = undefined;
     }
 };
 
 pub const Chunk = struct {
     coord: ChunkCoord,
-    tiles: []?Tile,
+    tiles: []TileStack,
     int_grid: []i32,
 
     fn deinit(self: *Chunk, allocator: std.mem.Allocator) void {
+        for (self.tiles) |*stack| stack.deinit(allocator);
         allocator.free(self.tiles);
         allocator.free(self.int_grid);
         self.* = undefined;
@@ -152,7 +180,9 @@ pub const TileMap = struct {
         if (tile) |value| if (value.tileset >= self.tilesets.items.len) return error.InvalidTileSet;
         const chunk_coord = chunkFor(cell, self.chunk_size);
         const chunk = try self.ensureChunk(target, chunk_coord);
-        chunk.tiles[cellIndex(cell, self.chunk_size)] = tile;
+        var stack = &chunk.tiles[cellIndex(cell, self.chunk_size)];
+        stack.items.clearRetainingCapacity();
+        if (tile) |value| try stack.items.append(self.allocator, value);
     }
 
     pub fn tileAt(self: TileMap, layer_index: u32, cell: ChunkCoord) ?Tile {
@@ -160,7 +190,47 @@ pub const TileMap = struct {
         const target = &self.layers.items[layer_index];
         if (target.kind != .tiles) return null;
         const chunk = findChunk(target, chunkFor(cell, self.chunk_size)) orelse return null;
-        return chunk.tiles[cellIndex(cell, self.chunk_size)];
+        const stack = &chunk.tiles[cellIndex(cell, self.chunk_size)];
+        if (stack.items.items.len == 0) return null;
+        return stack.items.items[stack.items.items.len - 1];
+    }
+
+    pub fn tileStackAt(self: *const TileMap, layer_index: u32, cell: ChunkCoord) []const Tile {
+        if (layer_index >= self.layers.items.len) return &.{};
+        const target = &self.layers.items[layer_index];
+        if (target.kind != .tiles) return &.{};
+        const chunk = findChunkConst(target, chunkFor(cell, self.chunk_size)) orelse return &.{};
+        return chunk.tiles[cellIndex(cell, self.chunk_size)].items.items;
+    }
+
+    pub fn replaceTileStack(self: *TileMap, layer_index: u32, cell: ChunkCoord, tiles: []const Tile) !void {
+        if (!self.editable) return error.ReadOnlyMap;
+        const target = self.findLayer(layer_index) orelse return error.InvalidLayer;
+        if (target.kind != .tiles) return error.InvalidLayerKind;
+        for (tiles) |tile| if (tile.tileset >= self.tilesets.items.len) return error.InvalidTileSet;
+        const chunk = try self.ensureChunk(target, chunkFor(cell, self.chunk_size));
+        var stack = &chunk.tiles[cellIndex(cell, self.chunk_size)];
+        stack.items.clearRetainingCapacity();
+        try stack.items.appendSlice(self.allocator, tiles);
+    }
+
+    pub fn pushTile(self: *TileMap, layer_index: u32, cell: ChunkCoord, tile: Tile) !void {
+        if (!self.editable) return error.ReadOnlyMap;
+        if (tile.tileset >= self.tilesets.items.len) return error.InvalidTileSet;
+        const target = self.findLayer(layer_index) orelse return error.InvalidLayer;
+        if (target.kind != .tiles) return error.InvalidLayerKind;
+        const chunk = try self.ensureChunk(target, chunkFor(cell, self.chunk_size));
+        try chunk.tiles[cellIndex(cell, self.chunk_size)].items.append(self.allocator, tile);
+    }
+
+    pub fn removeTile(self: *TileMap, layer_index: u32, cell: ChunkCoord, stack_index: usize) !Tile {
+        if (!self.editable) return error.ReadOnlyMap;
+        const target = self.findLayer(layer_index) orelse return error.InvalidLayer;
+        if (target.kind != .tiles) return error.InvalidLayerKind;
+        const chunk = findChunk(target, chunkFor(cell, self.chunk_size)) orelse return error.TileNotFound;
+        var stack = &chunk.tiles[cellIndex(cell, self.chunk_size)];
+        if (stack_index >= stack.items.items.len) return error.TileNotFound;
+        return stack.items.orderedRemove(stack_index);
     }
 
     pub fn setIntGrid(self: *TileMap, layer_index: u32, cell: ChunkCoord, value: i32) !void {
@@ -201,43 +271,56 @@ pub const TileMap = struct {
 
     pub fn drawDebug(self: TileMap, world: CameraCanvas) void {
         for (self.layers.items, 0..) |layer, layer_index| {
-            if (layer.kind != .tiles or !layer.visible) continue;
+            const state = self.layerState(@intCast(layer_index));
+            if (layer.kind != .tiles or !state.visible) continue;
+            const camera = world.camera.parallax(state.parallax);
+            const canvas = CameraCanvas.init(world.canvas, &camera);
             for (layer.chunks.items) |chunk| {
-                for (chunk.tiles, 0..) |tile, index| {
-                    const value = tile orelse continue;
+                for (chunk.tiles, 0..) |stack, index| {
                     const size: i32 = @intCast(self.chunk_size);
                     const local_x: i32 = @intCast(index % self.chunk_size);
                     const local_y: i32 = @intCast(index / self.chunk_size);
                     const cell = ChunkCoord{ .x = chunk.coord.x * size + local_x, .y = chunk.coord.y * size + local_y };
-                    const position = self.cellToWorld(cell).add(layer.offset);
-                    const color = debugTileColor(value, @intCast(layer_index));
-                    world.fillRect(Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y), color);
+                    const position = self.cellToWorld(cell).add(state.offset);
+                    for (stack.items.items) |value| {
+                        const color = debugTileColor(value, @intCast(layer_index));
+                        canvas.fillRect(Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y), color);
+                    }
                 }
             }
         }
     }
 
     pub fn drawImages(self: TileMap, world: CameraCanvas, images: []const Image) void {
+        self.drawImagesAt(world, images, 0);
+    }
+
+    pub fn drawImagesAt(self: TileMap, world: CameraCanvas, images: []const Image, time: f32) void {
         if (images.len < self.tilesets.items.len) return;
-        for (self.layers.items) |layer| {
-            if (layer.kind != .tiles or !layer.visible) continue;
+        for (self.layers.items, 0..) |layer, layer_index| {
+            const state = self.layerState(@intCast(layer_index));
+            if (layer.kind != .tiles or !state.visible) continue;
+            const camera = world.camera.parallax(state.parallax);
+            const canvas = CameraCanvas.init(world.canvas, &camera);
             for (layer.chunks.items) |chunk| {
-                for (chunk.tiles, 0..) |tile, index| {
-                    const value = tile orelse continue;
-                    const tileset = self.tilesets.items[value.tileset];
-                    if (tileset.kind != .grid_image) continue;
-                    const image = images[value.tileset];
-                    const available_width = @as(f32, @floatFromInt(image.width)) - 2 * @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(tileset.spacing));
-                    const stride = tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing));
-                    const columns = @max(@as(u32, 1), @as(u32, @intFromFloat(@floor(available_width / stride))));
-                    const source_col = value.id % columns;
-                    const source_row = value.id / columns;
-                    const source = Rect.init(@as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_col)) * (tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing))), @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_row)) * (tileset.tile_size.y + @as(f32, @floatFromInt(tileset.spacing))), tileset.tile_size.x, tileset.tile_size.y);
+                for (chunk.tiles, 0..) |stack, index| {
                     const size: i32 = @intCast(self.chunk_size);
                     const local_x: i32 = @intCast(index % self.chunk_size);
                     const local_y: i32 = @intCast(index / self.chunk_size);
-                    const position = self.cellToWorld(.{ .x = chunk.coord.x * size + local_x, .y = chunk.coord.y * size + local_y }).add(layer.offset);
-                    world.drawImageRegion(image, source, Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
+                    const position = self.cellToWorld(.{ .x = chunk.coord.x * size + local_x, .y = chunk.coord.y * size + local_y }).add(state.offset);
+                    for (stack.items.items) |value| {
+                        const resolved = animatedTile(self.tilesets.items[value.tileset], value, time);
+                        const tileset = self.tilesets.items[resolved.tileset];
+                        if (tileset.kind != .grid_image) continue;
+                        const image = images[resolved.tileset];
+                        const available_width = @as(f32, @floatFromInt(image.width)) - 2 * @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(tileset.spacing));
+                        const stride = tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing));
+                        const columns = @max(@as(u32, 1), @as(u32, @intFromFloat(@floor(available_width / stride))));
+                        const source_col = resolved.id % columns;
+                        const source_row = resolved.id / columns;
+                        const source = Rect.init(@as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_col)) * (tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing))), @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_row)) * (tileset.tile_size.y + @as(f32, @floatFromInt(tileset.spacing))), tileset.tile_size.x, tileset.tile_size.y);
+                        canvas.drawImageRegion(image, source, Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
+                    }
                 }
             }
         }
@@ -250,6 +333,10 @@ pub const TileMap = struct {
     }
 
     pub fn loadTiled(allocator: std.mem.Allocator, path: []const u8) !TileMap {
+        return loadTiledWithOptions(allocator, path, .{});
+    }
+
+    pub fn loadTiledWithOptions(allocator: std.mem.Allocator, path: []const u8, options: TileMapLoadOptions) !TileMap {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_map_bytes);
         defer allocator.free(bytes);
         var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
@@ -268,10 +355,15 @@ pub const TileMap = struct {
         defer allocator.free(ranges);
         try parseTiledLayers(&result, try array(root.get("layers") orelse return error.InvalidTiledMap), null, ranges);
         result.editable = false;
+        if (options.overlay_path) |overlay_path| try result.applyOverlay(overlay_path);
         return result;
     }
 
     pub fn loadLdtkProject(allocator: std.mem.Allocator, path: []const u8) !TileMapProject {
+        return loadLdtkProjectWithOptions(allocator, path, .{});
+    }
+
+    pub fn loadLdtkProjectWithOptions(allocator: std.mem.Allocator, path: []const u8, options: TileMapLoadOptions) !TileMapProject {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_map_bytes);
         defer allocator.free(bytes);
         var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
@@ -284,13 +376,24 @@ pub const TileMap = struct {
         errdefer project.deinit();
         for (levels.items) |level_json| {
             const level = try object(level_json);
-            const layer_instances = level.get("layerInstances") orelse return error.ExternalLdtkLevelsUnsupported;
-            const layers = try array(layer_instances);
             var map = try init(allocator, .{ .x = 16, .y = 16 }, 32);
             errdefer map.deinit();
             try parseLdtkTileSets(&map, tile_sets);
-            try parseLdtkLayers(&map, layers);
+            const layer_instances = level.get("layerInstances") orelse return error.InvalidLdtkProject;
+            if (layer_instances == .null) {
+                const external_path = try resolveSiblingPath(allocator, path, try string(level.get("externalRelPath") orelse return error.InvalidLdtkProject));
+                defer allocator.free(external_path);
+                const external_bytes = try std.fs.cwd().readFileAlloc(allocator, external_path, max_map_bytes);
+                defer allocator.free(external_bytes);
+                var external_parsed = try std.json.parseFromSlice(std.json.Value, allocator, external_bytes, .{});
+                defer external_parsed.deinit();
+                const external_level = try object(external_parsed.value);
+                try parseLdtkLayers(&map, try array(external_level.get("layerInstances") orelse return error.InvalidLdtkProject));
+            } else {
+                try parseLdtkLayers(&map, try array(layer_instances));
+            }
             map.editable = false;
+            if (options.overlay_path) |overlay_path| try map.applyOverlay(overlay_path);
             try project.levels.append(allocator, .{
                 .identifier = try allocator.dupe(u8, try string(level.get("identifier") orelse return error.InvalidLdtkProject)),
                 .world_position = .{
@@ -301,6 +404,21 @@ pub const TileMap = struct {
             });
         }
         return project;
+    }
+
+    pub fn applyOverlay(self: *TileMap, path: []const u8) !void {
+        const bytes = try std.fs.cwd().readFileAlloc(self.allocator, path, max_map_bytes);
+        defer self.allocator.free(bytes);
+        var parsed = try std.json.parseFromSlice(std.json.Value, self.allocator, bytes, .{});
+        defer parsed.deinit();
+        const root = try object(parsed.value);
+        if (!std.mem.eql(u8, try string(root.get("format") orelse return error.InvalidTileOverlay), "unpolished-peas-tile-overlay")) return error.InvalidTileOverlay;
+        if (try u32Value(root.get("version") orelse return error.InvalidTileOverlay) != 1) return error.UnsupportedTileOverlay;
+        for ((try array(root.get("animations") orelse return error.InvalidTileOverlay)).items) |animation_value| {
+            const animation = try object(animation_value);
+            const tileset = self.findTileSetByName(try string(animation.get("tileset") orelse return error.InvalidTileOverlay)) orelse return error.UnknownOverlayTileSet;
+            try replaceAnimation(self.allocator, &self.tilesets.items[tileset], try u32Value(animation.get("tile") orelse return error.InvalidTileOverlay), try parseAnimationFrames(self.allocator, try array(animation.get("frames") orelse return error.InvalidTileOverlay)));
+        }
     }
 
     pub fn decodeNative(allocator: std.mem.Allocator, bytes: []const u8) !TileMap {
@@ -358,12 +476,38 @@ pub const TileMap = struct {
         return &self.layers.items[index];
     }
 
+    fn findTileSetByName(self: *const TileMap, name: []const u8) ?usize {
+        for (self.tilesets.items, 0..) |tileset, index| if (std.mem.eql(u8, tileset.name, name)) return index;
+        return null;
+    }
+
+    const LayerState = struct {
+        visible: bool = true,
+        opacity: f32 = 1,
+        offset: Vec2 = .{},
+        parallax: Vec2 = .{ .x = 1, .y = 1 },
+    };
+
+    fn layerState(self: TileMap, index: u32) LayerState {
+        var result = LayerState{};
+        var current: ?u32 = index;
+        while (current) |layer_index| {
+            const layer = self.layers.items[layer_index];
+            result.visible = result.visible and layer.visible;
+            result.opacity *= layer.opacity;
+            result.offset = result.offset.add(layer.offset);
+            result.parallax = .{ .x = result.parallax.x * layer.parallax.x, .y = result.parallax.y * layer.parallax.y };
+            current = layer.parent;
+        }
+        return result;
+    }
+
     fn ensureChunk(self: *TileMap, target: *TileMapLayer, coord: ChunkCoord) !*Chunk {
         if (findChunk(target, coord)) |chunk| return chunk;
         const count = try cellCount(self.chunk_size);
-        const tiles = try self.allocator.alloc(?Tile, count);
+        const tiles = try self.allocator.alloc(TileStack, count);
         errdefer self.allocator.free(tiles);
-        @memset(tiles, null);
+        for (tiles) |*stack| stack.* = .{};
         const int_grid = try self.allocator.alloc(i32, count);
         errdefer self.allocator.free(int_grid);
         @memset(int_grid, 0);
@@ -398,6 +542,10 @@ fn parseTiledTileSets(map: *TileMap, values: std.json.Array, map_path: []const u
     return ranges;
 }
 
+fn resolveSiblingPath(allocator: std.mem.Allocator, path: []const u8, relative: []const u8) ![]u8 {
+    return std.fs.path.join(allocator, &.{ std.fs.path.dirname(path) orelse ".", relative });
+}
+
 fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap) !u16 {
     const image = entry.get("image") orelse blk: {
             const tile_defs = try array(entry.get("tiles") orelse return error.InvalidTiledMap);
@@ -414,7 +562,48 @@ fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap) !u16 {
     var tileset = &map.tilesets.items[index];
     if (entry.get("margin")) |margin| tileset.margin = try u32Value(margin);
     if (entry.get("spacing")) |spacing| tileset.spacing = try u32Value(spacing);
+    if (entry.get("tiles")) |tiles| {
+        for ((try array(tiles)).items) |tile_value| {
+            const tile = try object(tile_value);
+            if (tile.get("animation")) |frames| try replaceAnimation(map.allocator, tileset, try u32Value(tile.get("id") orelse return error.InvalidTiledMap), try parseTiledAnimationFrames(map.allocator, try array(frames)));
+        }
+    }
     return index;
+}
+
+fn parseTiledAnimationFrames(allocator: std.mem.Allocator, values: std.json.Array) ![]TileAnimationFrame {
+    const frames = try allocator.alloc(TileAnimationFrame, values.items.len);
+    errdefer allocator.free(frames);
+    for (values.items, 0..) |value, index| {
+        const frame = try object(value);
+        frames[index] = .{ .tile_id = try u32Value(frame.get("tileid") orelse return error.InvalidTiledMap), .duration = @as(f32, @floatFromInt(try u32Value(frame.get("duration") orelse return error.InvalidTiledMap))) / 1000 };
+    }
+    return frames;
+}
+
+fn parseAnimationFrames(allocator: std.mem.Allocator, values: std.json.Array) ![]TileAnimationFrame {
+    const frames = try allocator.alloc(TileAnimationFrame, values.items.len);
+    errdefer allocator.free(frames);
+    for (values.items, 0..) |value, index| {
+        const frame = try object(value);
+        const duration = try f32Value(frame.get("duration") orelse return error.InvalidTileOverlay);
+        if (duration <= 0) return error.InvalidTileOverlay;
+        frames[index] = .{ .tile_id = try u32Value(frame.get("tile") orelse return error.InvalidTileOverlay), .duration = duration };
+    }
+    if (frames.len == 0) return error.InvalidTileOverlay;
+    return frames;
+}
+
+fn replaceAnimation(allocator: std.mem.Allocator, tileset: *TileSet, tile_id: u32, frames: []TileAnimationFrame) !void {
+    for (tileset.animations) |*animation| {
+        if (animation.tile_id != tile_id) continue;
+        allocator.free(animation.frames);
+        animation.frames = frames;
+        return;
+    }
+    const next = try allocator.realloc(tileset.animations, tileset.animations.len + 1);
+    next[next.len - 1] = .{ .tile_id = tile_id, .frames = frames };
+    tileset.animations = next;
 }
 
 fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges: []const TiledTileSetRange) !void {
@@ -564,7 +753,7 @@ fn parseLdtkLayers(map: *TileMap, values: std.json.Array) !void {
                 const source_id = try u32Value(tile.get("t") orelse return error.InvalidLdtkProject);
                 const source_uid = if (entry.get("__tilesetDefUid")) |uid| try u32Value(uid) else return error.InvalidLdtkProject;
                 const tileset = findTileSetBySourceId(map, source_uid) orelse return error.InvalidLdtkProject;
-                try map.setTile(layer_index, .{ .x = @divFloor(try i32Value(point.items[0]), grid_size), .y = @divFloor(try i32Value(point.items[1]), grid_size) }, .{ .tileset = tileset, .id = source_id, .flags = .{ .flip_x = if (tile.get("f")) |flags| ((try u32Value(flags)) & 1) != 0 else false, .flip_y = if (tile.get("f")) |flags| ((try u32Value(flags)) & 2) != 0 else false } });
+                try map.pushTile(layer_index, .{ .x = @divFloor(try i32Value(point.items[0]), grid_size), .y = @divFloor(try i32Value(point.items[1]), grid_size) }, .{ .tileset = tileset, .id = source_id, .flags = .{ .flip_x = if (tile.get("f")) |flags| ((try u32Value(flags)) & 1) != 0 else false, .flip_y = if (tile.get("f")) |flags| ((try u32Value(flags)) & 2) != 0 else false }, .opacity = if (tile.get("a")) |opacity| try f32Value(opacity) else 1 });
             }
         }
     }
@@ -603,24 +792,33 @@ fn parseLayers(map: *TileMap, values: std.json.Array) !void {
             for ((try array(chunk_value)).items) |chunk_json| {
                 const chunk_obj = try object(chunk_json);
                 const chunk = try map.ensureChunk(layer, .{ .x = try i32Value(chunk_obj.get("x") orelse return error.InvalidMap), .y = try i32Value(chunk_obj.get("y") orelse return error.InvalidMap) });
-                if (chunk_obj.get("tiles")) |tiles_value| try parseTiles(chunk.tiles, try array(tiles_value));
+                if (chunk_obj.get("tiles")) |tiles_value| try parseTiles(map.allocator, chunk.tiles, try array(tiles_value));
                 if (chunk_obj.get("int_grid")) |grid_value| try parseIntGrid(chunk.int_grid, try array(grid_value));
             }
         }
     }
 }
 
-fn parseTiles(output: []?Tile, values: std.json.Array) !void {
+fn parseTiles(allocator: std.mem.Allocator, output: []TileStack, values: std.json.Array) !void {
     if (values.items.len != output.len) return error.InvalidChunkData;
     for (values.items, 0..) |value, i| {
         if (value == .null) continue;
-        const item = try object(value);
-        output[i] = .{
-            .tileset = @intCast(try u32Value(item.get("tileset") orelse return error.InvalidMap)),
-            .id = try u32Value(item.get("id") orelse return error.InvalidMap),
-            .flags = if (item.get("flags")) |flags| @bitCast(@as(u8, @intCast(try u32Value(flags)))) else .{},
-        };
+        if (value == .array) {
+            for ((try array(value)).items) |tile_value| try appendParsedTile(allocator, &output[i], tile_value);
+        } else {
+            try appendParsedTile(allocator, &output[i], value);
+        }
     }
+}
+
+fn appendParsedTile(allocator: std.mem.Allocator, stack: *TileStack, tile_value: std.json.Value) !void {
+            const item = try object(tile_value);
+            try stack.items.append(allocator, .{
+                .tileset = @intCast(try u32Value(item.get("tileset") orelse return error.InvalidMap)),
+                .id = try u32Value(item.get("id") orelse return error.InvalidMap),
+                .flags = if (item.get("flags")) |flags| @bitCast(@as(u8, @intCast(try u32Value(flags)))) else .{},
+                .opacity = if (item.get("opacity")) |opacity| try f32Value(opacity) else 1,
+            });
 }
 
 fn parseIntGrid(output: []i32, values: std.json.Array) !void {
@@ -667,13 +865,22 @@ fn writeNative(map: TileMap, json: *std.json.Stringify) !void {
             try json.objectField("x"); try json.write(chunk.coord.x);
             try json.objectField("y"); try json.write(chunk.coord.y);
             try json.objectField("tiles"); try json.beginArray();
-            for (chunk.tiles) |tile| if (tile) |value| {
-                try json.beginObject();
-                try json.objectField("tileset"); try json.write(value.tileset);
-                try json.objectField("id"); try json.write(value.id);
-                try json.objectField("flags"); try json.write(@as(u8, @bitCast(value.flags)));
-                try json.endObject();
-            } else try json.write(null);
+            for (chunk.tiles) |stack| {
+                if (stack.items.items.len == 0) {
+                    try json.write(null);
+                } else {
+                    try json.beginArray();
+                    for (stack.items.items) |value| {
+                        try json.beginObject();
+                        try json.objectField("tileset"); try json.write(value.tileset);
+                        try json.objectField("id"); try json.write(value.id);
+                        try json.objectField("flags"); try json.write(@as(u8, @bitCast(value.flags)));
+                        try json.objectField("opacity"); try json.write(value.opacity);
+                        try json.endObject();
+                    }
+                    try json.endArray();
+                }
+            }
             try json.endArray();
             try json.objectField("int_grid"); try json.write(chunk.int_grid);
             try json.endObject();
@@ -695,6 +902,25 @@ fn findTileSetBySourceId(map: *const TileMap, source_id: u32) ?u16 {
 fn debugTileColor(tile: Tile, layer: u8) Color {
     const seed = tile.id *% 37 +% @as(u32, tile.tileset) *% 101 +% layer *% 53;
     return .rgb(@intCast(64 + seed % 160), @intCast(64 + (seed / 3) % 160), @intCast(64 + (seed / 7) % 160));
+}
+
+fn animatedTile(tileset: TileSet, tile: Tile, time: f32) Tile {
+    for (tileset.animations) |animation| {
+        if (animation.tile_id != tile.id) continue;
+        var duration: f32 = 0;
+        for (animation.frames) |frame| duration += frame.duration;
+        if (duration <= 0) return tile;
+        var cursor = @mod(@max(0, time), duration);
+        for (animation.frames) |frame| {
+            if (cursor < frame.duration) {
+                var result = tile;
+                result.id = frame.tile_id;
+                return result;
+            }
+            cursor -= frame.duration;
+        }
+    }
+    return tile;
 }
 
 fn validChunkSize(value: u32) bool {
@@ -724,6 +950,11 @@ fn cellIndex(cell: ChunkCoord, chunk_size: u32) usize {
 }
 
 fn findChunk(layer: *TileMapLayer, coord: ChunkCoord) ?*Chunk {
+    for (layer.chunks.items) |*chunk| if (chunk.coord.x == coord.x and chunk.coord.y == coord.y) return chunk;
+    return null;
+}
+
+fn findChunkConst(layer: *const TileMapLayer, coord: ChunkCoord) ?*const Chunk {
     for (layer.chunks.items) |*chunk| if (chunk.coord.x == coord.x and chunk.coord.y == coord.y) return chunk;
     return null;
 }
