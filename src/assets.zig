@@ -98,8 +98,11 @@ const AtlasAsset = struct {
 const TileMapAsset = struct {
     file: AssetFile,
     map: TileMap,
+    images: []ImageAsset,
 
     fn deinit(self: *TileMapAsset) void {
+        for (self.images) |*image| image.deinit();
+        self.map.allocator.free(self.images);
         self.map.deinit();
         self.file.deinit();
     }
@@ -198,8 +201,13 @@ pub const AssetStore = struct {
             var cleanup = map;
             cleanup.deinit();
         }
+        const images = try self.loadTileMapImages(path, map);
+        errdefer {
+            for (images) |*entry| entry.deinit();
+            self.allocator.free(images);
+        }
         const index = self.tile_maps.items.len;
-        try self.tile_maps.append(self.allocator, .{ .file = file, .map = map });
+        try self.tile_maps.append(self.allocator, .{ .file = file, .map = map, .images = images });
         return .{ .index = index };
     }
 
@@ -225,6 +233,15 @@ pub const AssetStore = struct {
 
     pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap {
         return &self.tile_maps.items[handle.index].map;
+    }
+
+    pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void {
+        const asset = &self.tile_maps.items[handle.index];
+        var images = std.ArrayListUnmanaged(Image){};
+        defer images.deinit(self.allocator);
+        images.ensureTotalCapacity(self.allocator, asset.images.len) catch return;
+        for (asset.images) |entry| images.appendAssumeCapacity(entry.image);
+        asset.map.drawImagesAt(.init(canvas, camera), images.items, time);
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -317,18 +334,48 @@ pub const AssetStore = struct {
     }
 
     fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset) !bool {
-        const stat = try asset.file.dir.statFile(asset.file.path);
-        if (stat.mtime == asset.file.mtime) return false;
+        const root_stat = try asset.file.dir.statFile(asset.file.path);
+        var changed = root_stat.mtime != asset.file.mtime;
+        for (asset.images) |entry| {
+            if ((try entry.file.dir.statFile(entry.file.path)).mtime != entry.file.mtime) changed = true;
+        }
+        if (!changed) return false;
         const bytes = try asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes);
         errdefer self.allocator.free(bytes);
         var next = try TileMap.decodeNative(self.allocator, bytes);
         errdefer next.deinit();
+        const images = try self.loadTileMapImages(asset.file.path, next);
+        errdefer {
+            for (images) |*entry| entry.deinit();
+            self.allocator.free(images);
+        }
         self.allocator.free(asset.file.bytes);
         asset.file.bytes = bytes;
-        asset.file.mtime = stat.mtime;
+        asset.file.mtime = root_stat.mtime;
         asset.map.deinit();
         asset.map = next;
+        for (asset.images) |*entry| entry.deinit();
+        self.allocator.free(asset.images);
+        asset.images = images;
         return true;
+    }
+
+    fn loadTileMapImages(self: *AssetStore, map_path: []const u8, map: TileMap) ![]ImageAsset {
+        const images = try self.allocator.alloc(ImageAsset, map.tilesets.items.len);
+        errdefer self.allocator.free(images);
+        for (map.tilesets.items, 0..) |tileset, index| {
+            if (tileset.kind != .grid_image) return error.UnsupportedTileMapSource;
+            const path = try atlas_mod.resolveSiblingPath(self.allocator, map_path, tileset.path);
+            defer self.allocator.free(path);
+            const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
+            errdefer {
+                var cleanup = file;
+                cleanup.deinit();
+            }
+            const decoded = try Image.decodePng(self.allocator, file.bytes);
+            images[index] = .{ .file = file, .image = decoded };
+        }
+        return images;
     }
 };
 
