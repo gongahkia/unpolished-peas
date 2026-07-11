@@ -109,11 +109,11 @@ pub const Context = struct {
     pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
         const source_atlas = self.assets.atlasPtr(atlas_handle);
         const source = source_atlas.frame(frame);
-        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and options.scale == 1 and !options.flip_x and !options.flip_y and options.origin == .top_left and std.meta.eql(options.tint, up.Color.white)) {
+        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and !(options.flip_x and options.flip_y) and options.origin == .top_left and std.meta.eql(options.tint, up.Color.white)) {
             const draw_x = x + source.offset_x;
             const draw_y = y + source.offset_y;
             if (draw_x >= 0 and draw_y >= 0) {
-                self.sprite_batch.append(.{ .image = &source_atlas.image, .source = .{ .x = @intCast(source.x), .y = @intCast(source.y), .w = @intCast(source.w), .h = @intCast(source.h) }, .x = draw_x, .y = draw_y }) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
+                self.sprite_batch.append(.{ .image = &source_atlas.image, .source = .{ .x = @intCast(source.x), .y = @intCast(source.y), .w = @intCast(source.w), .h = @intCast(source.h) }, .x = draw_x, .y = draw_y, .scale = options.scale, .flip_x = options.flip_x, .flip_y = options.flip_y }) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
                 return;
             }
         }
@@ -681,10 +681,10 @@ const Presenter = struct {
                 const sprite = self.findSprite(draw.image) orelse unreachable;
                 c.SDL_BlitGPUTexture(command, &.{
                     .source = .{ .texture = sprite.texture, .mip_level = 0, .layer_or_depth_plane = 0, .x = draw.source.x, .y = draw.source.y, .w = draw.source.w, .h = draw.source.h },
-                    .destination = .{ .texture = target, .mip_level = 0, .layer_or_depth_plane = 0, .x = @intCast(draw.x), .y = @intCast(draw.y), .w = draw.source.w, .h = draw.source.h },
+                    .destination = .{ .texture = target, .mip_level = 0, .layer_or_depth_plane = 0, .x = @intCast(draw.x), .y = @intCast(draw.y), .w = draw.source.w * draw.scale, .h = draw.source.h * draw.scale },
                     .load_op = c.SDL_GPU_LOADOP_LOAD,
                     .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-                    .flip_mode = c.SDL_FLIP_NONE,
+                    .flip_mode = if (draw.flip_x) c.SDL_FLIP_HORIZONTAL else if (draw.flip_y) c.SDL_FLIP_VERTICAL else c.SDL_FLIP_NONE,
                     .filter = c.SDL_GPU_FILTER_NEAREST,
                     .cycle = false,
                     .padding1 = 0,
