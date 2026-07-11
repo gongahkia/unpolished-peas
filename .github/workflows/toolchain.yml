@@ -18,6 +18,7 @@ jobs:
       - run: script/check_zig_version.sh
       - run: script/check_third_party_notices.py
       - run: script/test_core_without_sdl.sh
+      - run: script/check_no_legacy_lifecycle.sh
       - run: zig build test
       - run: zig build check-examples
       - run: zig build test-sdl

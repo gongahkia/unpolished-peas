@@ -27,17 +27,6 @@ pub const Config = struct {
     max_frames: ?u32 = null,
 };
 
-pub const Frame = struct {
-    allocator: std.mem.Allocator,
-    canvas: *up.Canvas,
-    input: *up.Input,
-    assets: *up.AssetStore,
-    audio: *up.AudioMixer,
-    app_data_path: []const u8,
-    presentation: *const up.Presentation,
-    dt: f32,
-};
-
 pub const Context = struct {
     allocator: std.mem.Allocator,
     canvas: *up.Canvas,
@@ -155,119 +144,6 @@ pub fn play(config: Config, comptime Game: type) !void {
     const allocator = gpa.allocator();
     const parsed_config = try configFromArgs(allocator, config);
     try playWithAllocator(allocator, parsed_config, Game);
-}
-
-pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
-    if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
-    defer c.SDL_Quit();
-
-    const window_w = try scaledInt(config.width, config.scale);
-    const window_h = try scaledInt(config.height, config.scale);
-    const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlFail("SDL_CreateWindow");
-    defer c.SDL_DestroyWindow(window);
-
-    const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL;
-    const device = c.SDL_CreateGPUDevice(shader_formats, true, null) orelse return sdlFail("SDL_CreateGPUDevice");
-    defer c.SDL_DestroyGPUDevice(device);
-
-    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlFail("SDL_ClaimWindowForGPUDevice");
-    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
-
-    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
-        return sdlFail("SDL_SetGPUSwapchainParameters");
-    }
-
-    var canvas = try up.Canvas.init(allocator, config.width, config.height);
-    defer canvas.deinit();
-
-    var assets = up.AssetStore.init(allocator, std.fs.cwd());
-    defer assets.deinit();
-
-    var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
-    defer audio.deinit();
-
-    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
-    defer if (audio_output) |*output| output.deinit(allocator);
-
-    var input = up.Input{};
-    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, try framebufferSize(window), config.presentation_mode);
-    var clock = up.StepClock.init(config.fixed_hz);
-    const data_path = try appDataPath(allocator, config.organization, config.application);
-    defer allocator.free(data_path);
-    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
-    defer dev.deinit();
-
-    var presenter = try Presenter.init(device, config.width, config.height);
-    defer presenter.deinit(device);
-
-    var failure: ?Failure = null;
-    var game: ?Game = Game.init(allocator) catch |err| blk: {
-        dev.failure("init", err);
-        failure = .{ .phase = "init", .err = err };
-        break :blk null;
-    };
-    defer if (game) |*value| value.deinit();
-
-    var running = true;
-    var last_ticks = c.SDL_GetTicksNS();
-    var frame_count: u64 = 0;
-
-    while (running) {
-        input.beginFrame();
-        refreshPresentation(window, &presentation);
-        running = pollInput(&input, window, &presentation);
-        if (input.wasPressed(.debug)) dev.toggleOverlay();
-
-        if (failure) |current| {
-            drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &presentation);
-            running = advanceFrame(&frame_count, config.max_frames) and running;
-            continue;
-        }
-
-        const reload_events = assets.reloadChanged() catch |err| {
-            dev.failure("asset reload", err);
-            failure = .{ .phase = "asset reload", .err = err };
-            continue;
-        };
-
-        const now = c.SDL_GetTicksNS();
-        const dt = ticksToSeconds(now - last_ticks);
-        last_ticks = now;
-
-        const steps = clock.push(dt);
-        var step: u32 = 0;
-        while (step < steps) : (step += 1) {
-            if (game) |*value| {
-                value.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = clock.step_seconds }) catch |err| {
-                    dev.failure("update", err);
-                    failure = .{ .phase = "update", .err = err };
-                    break;
-                };
-            }
-        }
-        if (failure != null) continue;
-
-        canvas.clear(config.clear_color);
-        if (game) |*value| {
-            value.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = dt }) catch |err| {
-                dev.failure("render", err);
-                failure = .{ .phase = "render", .err = err };
-                continue;
-            };
-        }
-        drawReloadOverlay(&canvas, reload_events);
-        dev.drawOverlay(&canvas, dt, frame_count);
-        if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, frame_count);
-        if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &presentation);
-
-        running = advanceFrame(&frame_count, config.max_frames) and running;
-    }
-
-    _ = c.SDL_WaitForGPUIdle(device);
 }
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
