@@ -1,5 +1,5 @@
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const width = 160;
 const height = 90;
@@ -47,7 +47,7 @@ const Ball = struct {
 
 pub fn main() !void {
     try sdl.play(.{
-        .title = "unpolished dev bounce",
+        .title = "unpolished-peas dev bounce",
         .width = width,
         .height = height,
         .scale = 4,

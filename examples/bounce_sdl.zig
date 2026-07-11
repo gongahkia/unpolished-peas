@@ -1,6 +1,6 @@
 const std = @import("std");
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const width = 160;
 const height = 90;
@@ -88,7 +88,7 @@ pub fn main() !void {
     }
 
     try sdl.run(gpa.allocator(), .{
-        .title = "unpolished SDL_GPU",
+        .title = "unpolished-peas SDL3",
         .width = width,
         .height = height,
         .scale = 4,

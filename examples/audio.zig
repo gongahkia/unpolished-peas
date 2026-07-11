@@ -1,5 +1,5 @@
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     blip: up.Sound,
@@ -40,7 +40,7 @@ const Game = struct {
 
 pub fn main() !void {
     try sdl.play(.{
-        .title = "unpolished audio",
+        .title = "unpolished-peas audio",
         .width = 128,
         .height = 72,
         .scale = 5,

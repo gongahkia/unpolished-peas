@@ -1,5 +1,5 @@
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     atlas: up.AtlasHandle,
@@ -44,7 +44,7 @@ const Game = struct {
 
 pub fn main() !void {
     try sdl.play(.{
-        .title = "unpolished atlas",
+        .title = "unpolished-peas atlas",
         .width = 128,
         .height = 72,
         .scale = 5,

@@ -1,7 +1,7 @@
 .{
-    .name = .unpolished,
+    .name = .unpolished_peas,
     .version = "0.0.1",
-    .fingerprint = 0x30eaa454181c13ae, // Changing this has security and trust implications.
+    .fingerprint = 0x9801f8ecd9290536, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
     .dependencies = .{},
     .paths = .{

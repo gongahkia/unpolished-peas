@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished");
+const up = @import("unpolished-peas");
 
 const expected_hash: u64 = 0xe011c59da9c4ec07;
 
