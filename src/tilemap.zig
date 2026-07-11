@@ -237,7 +237,7 @@ pub const TileMap = struct {
         }, 32);
         errdefer result.deinit();
         result.projection = projection;
-        const ranges = try parseTiledTileSets(&result, try array(root.get("tilesets") orelse return error.InvalidTiledMap));
+        const ranges = try parseTiledTileSets(&result, try array(root.get("tilesets") orelse return error.InvalidTiledMap), path);
         defer allocator.free(ranges);
         try parseTiledLayers(&result, try array(root.get("layers") orelse return error.InvalidTiledMap), null, ranges);
         result.editable = false;
@@ -347,34 +347,47 @@ pub const TileMap = struct {
 
 const TiledTileSetRange = struct { first_gid: u32, tileset: u16 };
 
-fn parseTiledTileSets(map: *TileMap, values: std.json.Array) ![]TiledTileSetRange {
+fn parseTiledTileSets(map: *TileMap, values: std.json.Array, map_path: []const u8) ![]TiledTileSetRange {
     var ranges = try map.allocator.alloc(TiledTileSetRange, values.items.len);
     errdefer map.allocator.free(ranges);
     for (values.items, 0..) |value, i| {
         const entry = try object(value);
-        if (entry.get("source") != null) return error.ExternalTiledTileSetsUnsupported;
         const first_gid = try u32Value(entry.get("firstgid") orelse return error.InvalidTiledMap);
-        const image = entry.get("image") orelse blk: {
+        const content = if (entry.get("source")) |source| {
+            const parent = std.fs.path.dirname(map_path) orelse ".";
+            const resolved = try std.fs.path.join(map.allocator, &.{ parent, try string(source) });
+            defer map.allocator.free(resolved);
+            const bytes = try std.fs.cwd().readFileAlloc(map.allocator, resolved, max_map_bytes);
+            defer map.allocator.free(bytes);
+            var parsed = try std.json.parseFromSlice(std.json.Value, map.allocator, bytes, .{});
+            defer parsed.deinit();
+            const external = try object(parsed.value);
+            ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, external) };
+            continue;
+        } else entry;
+        ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, content) };
+    }
+    std.mem.sort(TiledTileSetRange, ranges, {}, struct { fn less(_: void, a: TiledTileSetRange, b: TiledTileSetRange) bool { return a.first_gid < b.first_gid; } }.less);
+    return ranges;
+}
+
+fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap) !u16 {
+    const image = entry.get("image") orelse blk: {
             const tile_defs = try array(entry.get("tiles") orelse return error.InvalidTiledMap);
             if (tile_defs.items.len == 0) return error.InvalidTiledMap;
             const first_tile = try object(tile_defs.items[0]);
             break :blk first_tile.get("image") orelse return error.InvalidTiledMap;
         };
-        const is_collection = entry.get("image") == null;
-        const name = if (entry.get("name")) |name_value| try string(name_value) else "tileset";
-        ranges[i] = .{
-            .first_gid = first_gid,
-            .tileset = try map.addTileSet(name, if (is_collection) .image_collection else .grid_image, try string(image), .{
-                .x = try f32Value(entry.get("tilewidth") orelse return error.InvalidTiledMap),
-                .y = try f32Value(entry.get("tileheight") orelse return error.InvalidTiledMap),
-            }),
-        };
-        var tileset = &map.tilesets.items[ranges[i].tileset];
-        if (entry.get("margin")) |margin| tileset.margin = try u32Value(margin);
-        if (entry.get("spacing")) |spacing| tileset.spacing = try u32Value(spacing);
-    }
-    std.mem.sort(TiledTileSetRange, ranges, {}, struct { fn less(_: void, a: TiledTileSetRange, b: TiledTileSetRange) bool { return a.first_gid < b.first_gid; } }.less);
-    return ranges;
+    const is_collection = entry.get("image") == null;
+    const name = if (entry.get("name")) |name_value| try string(name_value) else "tileset";
+    const index = try map.addTileSet(name, if (is_collection) .image_collection else .grid_image, try string(image), .{
+        .x = try f32Value(entry.get("tilewidth") orelse return error.InvalidTiledMap),
+        .y = try f32Value(entry.get("tileheight") orelse return error.InvalidTiledMap),
+    });
+    var tileset = &map.tilesets.items[index];
+    if (entry.get("margin")) |margin| tileset.margin = try u32Value(margin);
+    if (entry.get("spacing")) |spacing| tileset.spacing = try u32Value(spacing);
+    return index;
 }
 
 fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges: []const TiledTileSetRange) !void {
@@ -403,27 +416,72 @@ fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges:
         if (entry.get("chunks")) |chunks| {
             for ((try array(chunks)).items) |chunk_value| {
                 const chunk = try object(chunk_value);
-                try setTiledData(map, layer_index, .{ .x = try i32Value(chunk.get("x") orelse return error.InvalidTiledMap), .y = try i32Value(chunk.get("y") orelse return error.InvalidTiledMap) }, try u32Value(chunk.get("width") orelse return error.InvalidTiledMap), try u32Value(chunk.get("height") orelse return error.InvalidTiledMap), chunk.get("data") orelse return error.InvalidTiledMap, ranges);
+                try setTiledData(map, layer_index, .{ .x = try i32Value(chunk.get("x") orelse return error.InvalidTiledMap), .y = try i32Value(chunk.get("y") orelse return error.InvalidTiledMap) }, try u32Value(chunk.get("width") orelse return error.InvalidTiledMap), try u32Value(chunk.get("height") orelse return error.InvalidTiledMap), chunk.get("data") orelse return error.InvalidTiledMap, if (entry.get("encoding")) |encoding| try string(encoding) else null, if (entry.get("compression")) |compression| try string(compression) else null, ranges);
             }
         } else {
-            try setTiledData(map, layer_index, .{ .x = 0, .y = 0 }, try u32Value(entry.get("width") orelse return error.InvalidTiledMap), try u32Value(entry.get("height") orelse return error.InvalidTiledMap), entry.get("data") orelse return error.InvalidTiledMap, ranges);
+            try setTiledData(map, layer_index, .{ .x = 0, .y = 0 }, try u32Value(entry.get("width") orelse return error.InvalidTiledMap), try u32Value(entry.get("height") orelse return error.InvalidTiledMap), entry.get("data") orelse return error.InvalidTiledMap, if (entry.get("encoding")) |encoding| try string(encoding) else null, if (entry.get("compression")) |compression| try string(compression) else null, ranges);
         }
     }
 }
 
-fn setTiledData(map: *TileMap, layer_index: u32, origin: ChunkCoord, width: u32, height: u32, data: std.json.Value, ranges: []const TiledTileSetRange) !void {
-    const entries = try array(data);
+fn setTiledData(map: *TileMap, layer_index: u32, origin: ChunkCoord, width: u32, height: u32, data: std.json.Value, encoding: ?[]const u8, compression: ?[]const u8, ranges: []const TiledTileSetRange) !void {
     const expected = std.math.mul(usize, width, height) catch return error.InvalidTiledMap;
-    if (entries.items.len != expected) return error.InvalidTiledMap;
+    const entries = try decodeTiledData(map.allocator, data, encoding, compression, expected);
+    defer map.allocator.free(entries);
     map.editable = true;
     defer map.editable = false;
-    for (entries.items, 0..) |gid_value, index| {
-        const gid = try u32Value(gid_value);
+    for (entries, 0..) |gid, index| {
         if (gid == 0) continue;
         const x: i32 = @intCast(index % width);
         const y: i32 = @intCast(index / width);
         try map.setTile(layer_index, .{ .x = origin.x + x, .y = origin.y + y }, tiledTile(gid, ranges));
     }
+}
+
+fn decodeTiledData(allocator: std.mem.Allocator, data: std.json.Value, encoding: ?[]const u8, compression: ?[]const u8, expected: usize) ![]u32 {
+    const values = try allocator.alloc(u32, expected);
+    errdefer allocator.free(values);
+    switch (data) {
+        .array => |items| {
+            if (encoding != null or compression != null or items.items.len != expected) return error.InvalidTiledMap;
+            for (items.items, 0..) |item, index| values[index] = try u32Value(item);
+        },
+        .string => |encoded| {
+            if (!std.mem.eql(u8, encoding orelse return error.InvalidTiledMap, "base64")) return error.UnsupportedTiledEncoding;
+            const decoder = std.base64.standard.decoderWithIgnore(" \t\r\n");
+            const max_size = try decoder.calcSizeUpperBound(encoded.len);
+            var raw = try allocator.alloc(u8, max_size);
+            defer allocator.free(raw);
+            const raw_len = try decoder.decode(raw, encoded);
+            const byte_len = std.math.mul(usize, expected, 4) catch return error.InvalidTiledMap;
+            const bytes = try decodeTiledBytes(allocator, raw[0..raw_len], compression, byte_len);
+            defer allocator.free(bytes);
+            if (bytes.len != byte_len) return error.InvalidTiledMap;
+            for (values, 0..) |*value, index| value.* = std.mem.readInt(u32, bytes[index * 4 ..][0..4], .little);
+        },
+        else => return error.InvalidTiledMap,
+    }
+    return values;
+}
+
+fn decodeTiledBytes(allocator: std.mem.Allocator, input: []const u8, compression: ?[]const u8, expected_len: usize) ![]u8 {
+    const output = try allocator.alloc(u8, expected_len);
+    errdefer allocator.free(output);
+    if (compression == null) {
+        if (input.len != expected_len) return error.InvalidTiledMap;
+        @memcpy(output, input);
+        return output;
+    }
+    var reader: std.Io.Reader = .fixed(input);
+    const name = compression.?;
+    if (std.mem.eql(u8, name, "zlib") or std.mem.eql(u8, name, "gzip")) {
+        var decompress: std.compress.flate.Decompress = .init(&reader, if (std.mem.eql(u8, name, "zlib")) .zlib else .gzip, &.{});
+        try decompress.reader.readSliceAll(output);
+    } else if (std.mem.eql(u8, name, "zstd")) {
+        var decompress: std.compress.zstd.Decompress = .init(&reader, &.{}, .{});
+        try decompress.reader.readSliceAll(output);
+    } else return error.UnsupportedTiledCompression;
+    return output;
 }
 
 fn tiledTile(gid: u32, ranges: []const TiledTileSetRange) Tile {
@@ -664,4 +722,14 @@ test "native tile map mutates signed chunks and round trips binary" {
     try std.testing.expectEqual(@as(u32, 2), map.tileAt(layer, .{ .x = -1, .y = -1 }).?.id);
     const isometric = TileMap{ .allocator = std.testing.allocator, .projection = .isometric, .tile_size = .{ .x = 8, .y = 8 } };
     try std.testing.expectEqual(Vec2.init(-4, -4), isometric.cellToWorld(.{ .x = -1, .y = 0 }));
+}
+
+test "native tile map decodes strict minimal document" {
+    const source =
+        \\{"format":"unpolished-peas-map","version":1,"projection":"orthogonal","tile_width":8,"tile_height":8,"chunk_size":8,"tilesets":[],"layers":[]}
+    ;
+    var map = try TileMap.decodeNative(std.testing.allocator, source);
+    defer map.deinit();
+    try std.testing.expectEqual(@as(u32, 8), map.chunk_size);
+    try std.testing.expectEqual(@as(usize, 0), map.layers.items.len);
 }
