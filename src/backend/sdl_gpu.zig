@@ -61,6 +61,7 @@ pub const Context = struct {
     audio: *up.AudioMixer,
     app_data_path: []const u8,
     presentation: *const up.Presentation,
+    sprite_batch: *up.SpriteBatch,
     dt: f32,
     frame: u64,
 
@@ -97,11 +98,26 @@ pub const Context = struct {
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
-        self.canvas.drawImage(self.assets.image(handle), x, y);
+        const source_image = self.assets.imagePtr(handle);
+        if (x < 0 or y < 0) {
+            self.canvas.drawImage(source_image.*, x, y);
+            return;
+        }
+        self.sprite_batch.append(.{ .image = source_image, .source = .{ .x = 0, .y = 0, .w = source_image.width, .h = source_image.height }, .x = x, .y = y }) catch self.canvas.drawImage(source_image.*, x, y);
     }
 
     pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
-        self.canvas.drawAtlasFrame(self.assets.atlas(atlas_handle), frame, x, y, options);
+        const source_atlas = self.assets.atlasPtr(atlas_handle);
+        const source = source_atlas.frame(frame);
+        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and options.scale == 1 and !options.flip_x and !options.flip_y and options.origin == .top_left and std.meta.eql(options.tint, up.Color.white)) {
+            const draw_x = x + source.offset_x;
+            const draw_y = y + source.offset_y;
+            if (draw_x >= 0 and draw_y >= 0) {
+                self.sprite_batch.append(.{ .image = &source_atlas.image, .source = .{ .x = @intCast(source.x), .y = @intCast(source.y), .w = @intCast(source.w), .h = @intCast(source.h) }, .x = draw_x, .y = draw_y }) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
+                return;
+            }
+        }
+        self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
     }
 
     pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
@@ -199,6 +215,8 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     var assets = up.AssetStore.init(allocator, std.fs.cwd());
     defer assets.deinit();
+    var sprite_batch = up.SpriteBatch.init(allocator);
+    defer sprite_batch.deinit();
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
@@ -216,7 +234,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
         dev.failure("init", err);
@@ -230,13 +248,14 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     while (running) {
         input.beginFrame();
+        sprite_batch.clear();
         refreshPresentation(window, &presentation);
         running = pollInput(&input, window, &presentation);
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -278,7 +297,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         dev.drawOverlay(&canvas, dt, ctx.frame);
         if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &presentation);
+        try presenter.present(device, window, canvas, &sprite_batch, &presentation);
 
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
@@ -533,6 +552,14 @@ const Presenter = struct {
     byte_len: u32,
     resources: up.GpuResources,
     texture_handle: up.TextureHandle,
+    sprite_textures: std.ArrayList(SpriteTexture) = .empty,
+
+    const SpriteTexture = struct {
+        image: *const up.Image,
+        texture: *c.SDL_GPUTexture,
+        transfer: *c.SDL_GPUTransferBuffer,
+        uploaded: bool = false,
+    };
 
     fn init(device: *c.SDL_GPUDevice, width: u32, height: u32) !Presenter {
         const byte_len = try checkedByteLen(width, height);
@@ -562,6 +589,11 @@ const Presenter = struct {
     }
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
+        for (self.sprite_textures.items) |sprite| {
+            c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
+            c.SDL_ReleaseGPUTexture(device, sprite.texture);
+        }
+        self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
         c.SDL_ReleaseGPUTexture(device, self.texture);
         self.resources.destroyTexture(self.texture_handle) catch unreachable;
@@ -569,7 +601,9 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, presentation: *up.Presentation) !void {
+        try sprites.sortByTexture();
+        for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         try self.copyCanvas(device, canvas);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
@@ -595,6 +629,12 @@ const Presenter = struct {
             .h = self.height,
             .d = 1,
         }, false);
+        for (self.sprite_textures.items) |*sprite| {
+            if (!sprite.uploaded) {
+                try self.uploadSprite(device, copy_pass, sprite);
+                sprite.uploaded = true;
+            }
+        }
         c.SDL_EndGPUCopyPass(copy_pass);
 
         var swapchain: ?*c.SDL_GPUTexture = null;
@@ -636,6 +676,22 @@ const Presenter = struct {
                 .padding2 = 0,
                 .padding3 = 0,
             });
+            for (sprites.sorted.items) |draw_index| {
+                const draw = sprites.draws.items[draw_index];
+                const sprite = self.findSprite(draw.image) orelse unreachable;
+                c.SDL_BlitGPUTexture(command, &.{
+                    .source = .{ .texture = sprite.texture, .mip_level = 0, .layer_or_depth_plane = 0, .x = draw.source.x, .y = draw.source.y, .w = draw.source.w, .h = draw.source.h },
+                    .destination = .{ .texture = target, .mip_level = 0, .layer_or_depth_plane = 0, .x = @intCast(draw.x), .y = @intCast(draw.y), .w = draw.source.w, .h = draw.source.h },
+                    .load_op = c.SDL_GPU_LOADOP_LOAD,
+                    .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
+                    .flip_mode = c.SDL_FLIP_NONE,
+                    .filter = c.SDL_GPU_FILTER_NEAREST,
+                    .cycle = false,
+                    .padding1 = 0,
+                    .padding2 = 0,
+                    .padding3 = 0,
+                });
+            }
         }
 
         if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
@@ -657,6 +713,36 @@ const Presenter = struct {
             dst[i + 3] = p.a;
             i += 4;
         }
+    }
+
+    fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {
+        for (self.sprite_textures.items, 0..) |sprite, index| if (sprite.image == image) return index;
+        const bytes = std.math.mul(u32, image.width, image.height) catch return error.ImageTooLarge;
+        const texture = c.SDL_CreateGPUTexture(device, &.{ .type = c.SDL_GPU_TEXTURETYPE_2D, .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER, .width = image.width, .height = image.height, .layer_count_or_depth = 1, .num_levels = 1, .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTexture");
+        errdefer c.SDL_ReleaseGPUTexture(device, texture);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = try std.math.mul(u32, bytes, 4), .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        try self.sprite_textures.append(std.heap.page_allocator, .{ .image = image, .texture = texture, .transfer = transfer });
+        return self.sprite_textures.items.len - 1;
+    }
+
+    fn findSprite(self: *Presenter, image: *const up.Image) ?*SpriteTexture {
+        for (self.sprite_textures.items) |*sprite| if (sprite.image == image) return sprite;
+        return null;
+    }
+
+    fn uploadSprite(_: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, sprite: *SpriteTexture) !void {
+        const mapped = c.SDL_MapGPUTransferBuffer(device, sprite.transfer, false) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, sprite.transfer);
+        const dst: [*]u8 = @ptrCast(mapped);
+        for (sprite.image.pixels, 0..) |pixel, index| {
+            const offset = index * 4;
+            dst[offset] = pixel.r;
+            dst[offset + 1] = pixel.g;
+            dst[offset + 2] = pixel.b;
+            dst[offset + 3] = pixel.a;
+        }
+        c.SDL_UploadToGPUTexture(copy_pass, &.{ .transfer_buffer = sprite.transfer, .offset = 0, .pixels_per_row = sprite.image.width, .rows_per_layer = sprite.image.height }, &.{ .texture = sprite.texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = sprite.image.width, .h = sprite.image.height, .d = 1 }, false);
     }
 };
 
