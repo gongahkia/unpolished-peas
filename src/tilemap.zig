@@ -593,7 +593,11 @@ fn parseTiledTileSets(map: *TileMap, values: std.json.Array, map_path: []const u
         } else entry;
         ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, content, map_path) };
     }
-    std.mem.sort(TiledTileSetRange, ranges, {}, struct { fn less(_: void, a: TiledTileSetRange, b: TiledTileSetRange) bool { return a.first_gid < b.first_gid; } }.less);
+    std.mem.sort(TiledTileSetRange, ranges, {}, struct {
+        fn less(_: void, a: TiledTileSetRange, b: TiledTileSetRange) bool {
+            return a.first_gid < b.first_gid;
+        }
+    }.less);
     return ranges;
 }
 
@@ -603,11 +607,11 @@ fn resolveSiblingPath(allocator: std.mem.Allocator, path: []const u8, relative: 
 
 fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap, source_path: []const u8) !u16 {
     const image = entry.get("image") orelse blk: {
-            const tile_defs = try array(entry.get("tiles") orelse return error.InvalidTiledMap);
-            if (tile_defs.items.len == 0) return error.InvalidTiledMap;
-            const first_tile = try object(tile_defs.items[0]);
-            break :blk first_tile.get("image") orelse return error.InvalidTiledMap;
-        };
+        const tile_defs = try array(entry.get("tiles") orelse return error.InvalidTiledMap);
+        if (tile_defs.items.len == 0) return error.InvalidTiledMap;
+        const first_tile = try object(tile_defs.items[0]);
+        break :blk first_tile.get("image") orelse return error.InvalidTiledMap;
+    };
     const is_collection = entry.get("image") == null;
     const name = if (entry.get("name")) |name_value| try string(name_value) else "tileset";
     const resolved_image = try resolveSiblingPath(map.allocator, source_path, try string(image));
@@ -889,13 +893,13 @@ fn parseTiles(allocator: std.mem.Allocator, output: []TileStack, values: std.jso
 }
 
 fn appendParsedTile(allocator: std.mem.Allocator, stack: *TileStack, tile_value: std.json.Value) !void {
-            const item = try object(tile_value);
-            try stack.items.append(allocator, .{
-                .tileset = @intCast(try u32Value(item.get("tileset") orelse return error.InvalidMap)),
-                .id = try u32Value(item.get("id") orelse return error.InvalidMap),
-                .flags = if (item.get("flags")) |flags| @bitCast(@as(u8, @intCast(try u32Value(flags)))) else .{},
-                .opacity = if (item.get("opacity")) |opacity| try f32Value(opacity) else 1,
-            });
+    const item = try object(tile_value);
+    try stack.items.append(allocator, .{
+        .tileset = @intCast(try u32Value(item.get("tileset") orelse return error.InvalidMap)),
+        .id = try u32Value(item.get("id") orelse return error.InvalidMap),
+        .flags = if (item.get("flags")) |flags| @bitCast(@as(u8, @intCast(try u32Value(flags)))) else .{},
+        .opacity = if (item.get("opacity")) |opacity| try f32Value(opacity) else 1,
+    });
 }
 
 fn parseIntGrid(output: []i32, values: std.json.Array) !void {
@@ -905,43 +909,73 @@ fn parseIntGrid(output: []i32, values: std.json.Array) !void {
 
 fn writeNative(map: TileMap, json: *std.json.Stringify) !void {
     try json.beginObject();
-    try json.objectField("format"); try json.write(native_format);
-    try json.objectField("version"); try json.write(native_version);
-    try json.objectField("projection"); try json.write(@tagName(map.projection));
-    try json.objectField("tile_width"); try json.write(map.tile_size.x);
-    try json.objectField("tile_height"); try json.write(map.tile_size.y);
-    try json.objectField("chunk_size"); try json.write(map.chunk_size);
-    try json.objectField("tilesets"); try json.beginArray();
+    try json.objectField("format");
+    try json.write(native_format);
+    try json.objectField("version");
+    try json.write(native_version);
+    try json.objectField("projection");
+    try json.write(@tagName(map.projection));
+    try json.objectField("tile_width");
+    try json.write(map.tile_size.x);
+    try json.objectField("tile_height");
+    try json.write(map.tile_size.y);
+    try json.objectField("chunk_size");
+    try json.write(map.chunk_size);
+    try json.objectField("tilesets");
+    try json.beginArray();
     for (map.tilesets.items) |tileset| {
         try json.beginObject();
-        try json.objectField("name"); try json.write(tileset.name);
-        try json.objectField("kind"); try json.write(@tagName(tileset.kind));
-        try json.objectField("path"); try json.write(tileset.path);
-        try json.objectField("tile_width"); try json.write(tileset.tile_size.x);
-        try json.objectField("tile_height"); try json.write(tileset.tile_size.y);
-        try json.objectField("margin"); try json.write(tileset.margin);
-        try json.objectField("spacing"); try json.write(tileset.spacing);
-        if (tileset.source_id) |source_id| { try json.objectField("source_id"); try json.write(source_id); }
-        try json.objectField("atlas_frames"); try json.beginArray();
+        try json.objectField("name");
+        try json.write(tileset.name);
+        try json.objectField("kind");
+        try json.write(@tagName(tileset.kind));
+        try json.objectField("path");
+        try json.write(tileset.path);
+        try json.objectField("tile_width");
+        try json.write(tileset.tile_size.x);
+        try json.objectField("tile_height");
+        try json.write(tileset.tile_size.y);
+        try json.objectField("margin");
+        try json.write(tileset.margin);
+        try json.objectField("spacing");
+        try json.write(tileset.spacing);
+        if (tileset.source_id) |source_id| {
+            try json.objectField("source_id");
+            try json.write(source_id);
+        }
+        try json.objectField("atlas_frames");
+        try json.beginArray();
         for (tileset.atlas_frames) |frame| try json.write(frame);
         try json.endArray();
         try json.endObject();
     }
     try json.endArray();
-    try json.objectField("layers"); try json.beginArray();
+    try json.objectField("layers");
+    try json.beginArray();
     for (map.layers.items) |layer| {
         try json.beginObject();
-        try json.objectField("name"); try json.write(layer.name);
-        try json.objectField("kind"); try json.write(@tagName(layer.kind));
-        if (layer.parent) |parent| { try json.objectField("parent"); try json.write(parent); }
-        try json.objectField("visible"); try json.write(layer.visible);
-        try json.objectField("opacity"); try json.write(layer.opacity);
-        try json.objectField("chunks"); try json.beginArray();
+        try json.objectField("name");
+        try json.write(layer.name);
+        try json.objectField("kind");
+        try json.write(@tagName(layer.kind));
+        if (layer.parent) |parent| {
+            try json.objectField("parent");
+            try json.write(parent);
+        }
+        try json.objectField("visible");
+        try json.write(layer.visible);
+        try json.objectField("opacity");
+        try json.write(layer.opacity);
+        try json.objectField("chunks");
+        try json.beginArray();
         for (layer.chunks.items) |chunk| {
             try json.beginObject();
-            try json.objectField("x"); try json.write(chunk.coord.x);
-            try json.objectField("y"); try json.write(chunk.coord.y);
-            try json.objectField("tiles"); try json.beginArray();
+            try json.objectField("x");
+            try json.write(chunk.coord.x);
+            try json.objectField("y");
+            try json.write(chunk.coord.y);
+            try json.objectField("tiles");
+            try json.beginArray();
             for (chunk.tiles) |stack| {
                 if (stack.items.items.len == 0) {
                     try json.write(null);
@@ -949,17 +983,22 @@ fn writeNative(map: TileMap, json: *std.json.Stringify) !void {
                     try json.beginArray();
                     for (stack.items.items) |value| {
                         try json.beginObject();
-                        try json.objectField("tileset"); try json.write(value.tileset);
-                        try json.objectField("id"); try json.write(value.id);
-                        try json.objectField("flags"); try json.write(@as(u8, @bitCast(value.flags)));
-                        try json.objectField("opacity"); try json.write(value.opacity);
+                        try json.objectField("tileset");
+                        try json.write(value.tileset);
+                        try json.objectField("id");
+                        try json.write(value.id);
+                        try json.objectField("flags");
+                        try json.write(@as(u8, @bitCast(value.flags)));
+                        try json.objectField("opacity");
+                        try json.write(value.opacity);
                         try json.endObject();
                     }
                     try json.endArray();
                 }
             }
             try json.endArray();
-            try json.objectField("int_grid"); try json.write(chunk.int_grid);
+            try json.objectField("int_grid");
+            try json.write(chunk.int_grid);
             try json.endObject();
         }
         try json.endArray();
@@ -1036,17 +1075,58 @@ fn findChunkConst(layer: *const TileMapLayer, coord: ChunkCoord) ?*const Chunk {
     return null;
 }
 
-fn object(value: std.json.Value) !std.json.ObjectMap { return switch (value) { .object => |item| item, else => error.InvalidMap }; }
-fn array(value: std.json.Value) !std.json.Array { return switch (value) { .array => |item| item, else => error.InvalidMap }; }
-fn string(value: std.json.Value) ![]const u8 { return switch (value) { .string => |item| item, else => error.InvalidMap }; }
-fn boolValue(value: std.json.Value) !bool { return switch (value) { .bool => |item| item, else => error.InvalidMap }; }
-fn i32Value(value: std.json.Value) !i32 { return std.math.cast(i32, try i64Value(value)) orelse error.InvalidMap; }
-fn u32Value(value: std.json.Value) !u32 { return std.math.cast(u32, try i64Value(value)) orelse error.InvalidMap; }
-fn i64Value(value: std.json.Value) !i64 { return switch (value) { .integer => |item| item, else => error.InvalidMap }; }
-fn f32Value(value: std.json.Value) !f32 { return switch (value) { .integer => |item| @floatFromInt(item), .float => |item| @floatCast(item), else => error.InvalidMap }; }
-fn projectionValue(value: std.json.Value) !Projection { return std.meta.stringToEnum(Projection, try string(value)) orelse error.UnsupportedProjection; }
-fn layerKindValue(value: std.json.Value) !LayerKind { return std.meta.stringToEnum(LayerKind, try string(value)) orelse error.InvalidMap; }
-fn sourceKindValue(value: std.json.Value) !TileSourceKind { return std.meta.stringToEnum(TileSourceKind, try string(value)) orelse error.InvalidMap; }
+fn object(value: std.json.Value) !std.json.ObjectMap {
+    return switch (value) {
+        .object => |item| item,
+        else => error.InvalidMap,
+    };
+}
+fn array(value: std.json.Value) !std.json.Array {
+    return switch (value) {
+        .array => |item| item,
+        else => error.InvalidMap,
+    };
+}
+fn string(value: std.json.Value) ![]const u8 {
+    return switch (value) {
+        .string => |item| item,
+        else => error.InvalidMap,
+    };
+}
+fn boolValue(value: std.json.Value) !bool {
+    return switch (value) {
+        .bool => |item| item,
+        else => error.InvalidMap,
+    };
+}
+fn i32Value(value: std.json.Value) !i32 {
+    return std.math.cast(i32, try i64Value(value)) orelse error.InvalidMap;
+}
+fn u32Value(value: std.json.Value) !u32 {
+    return std.math.cast(u32, try i64Value(value)) orelse error.InvalidMap;
+}
+fn i64Value(value: std.json.Value) !i64 {
+    return switch (value) {
+        .integer => |item| item,
+        else => error.InvalidMap,
+    };
+}
+fn f32Value(value: std.json.Value) !f32 {
+    return switch (value) {
+        .integer => |item| @floatFromInt(item),
+        .float => |item| @floatCast(item),
+        else => error.InvalidMap,
+    };
+}
+fn projectionValue(value: std.json.Value) !Projection {
+    return std.meta.stringToEnum(Projection, try string(value)) orelse error.UnsupportedProjection;
+}
+fn layerKindValue(value: std.json.Value) !LayerKind {
+    return std.meta.stringToEnum(LayerKind, try string(value)) orelse error.InvalidMap;
+}
+fn sourceKindValue(value: std.json.Value) !TileSourceKind {
+    return std.meta.stringToEnum(TileSourceKind, try string(value)) orelse error.InvalidMap;
+}
 
 test "native tile map mutates signed chunks and round trips binary" {
     var map = try TileMap.init(std.testing.allocator, .{ .x = 8, .y = 8 }, 8);
