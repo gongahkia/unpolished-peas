@@ -228,6 +228,10 @@ pub const AssetStore = struct {
         return self.images.items[handle.index].image;
     }
 
+    pub fn imagePtr(self: *AssetStore, handle: ImageHandle) *const Image {
+        return &self.images.items[handle.index].image;
+    }
+
     pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas {
         return self.atlases.items[handle.index].atlas;
     }

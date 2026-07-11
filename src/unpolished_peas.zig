@@ -52,6 +52,9 @@ pub const PipelineHandle = @import("gpu.zig").PipelineHandle;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;
+pub const SpriteBatch = @import("sprite_batch.zig").SpriteBatch;
+pub const SpriteBatchDraw = @import("sprite_batch.zig").SpriteDraw;
+pub const SpriteSourceRect = @import("sprite_batch.zig").SourceRect;
 pub const StepClock = @import("app.zig").StepClock;
 pub const TextHandle = @import("assets.zig").TextHandle;
 pub const TileMapHandle = @import("assets.zig").TileMapHandle;
@@ -79,5 +82,6 @@ test {
     _ = @import("math.zig");
     _ = @import("presentation.zig");
     _ = @import("render.zig");
+    _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");
 }
