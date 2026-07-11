@@ -67,6 +67,7 @@ pub const ReloadStatus = enum {
 pub const ReloadEvent = struct {
     path: []const u8,
     status: ReloadStatus,
+    err: ?anyerror = null,
 };
 
 const TextAsset = struct {
@@ -311,8 +312,8 @@ pub const AssetStore = struct {
         self.events.clearRetainingCapacity();
 
         for (self.texts.items) |*asset| {
-            if (asset.file.reloadIfChanged() catch {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+            if (asset.file.reloadIfChanged() catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
             }) {
                 asset.generation +%= 1;
@@ -322,20 +323,20 @@ pub const AssetStore = struct {
         }
 
         for (self.images.items) |*asset| {
-            const stat = asset.file.dir.statFile(asset.file.path) catch {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+            const stat = asset.file.dir.statFile(asset.file.path) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
             };
             if (stat.mtime == asset.file.mtime) continue;
 
-            const bytes = asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes) catch {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+            const bytes = asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
             };
 
-            const next = Image.decodePng(self.allocator, bytes) catch {
+            const next = Image.decodePng(self.allocator, bytes) catch |err| {
                 self.allocator.free(bytes);
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
             };
 
@@ -350,8 +351,8 @@ pub const AssetStore = struct {
         }
 
         for (self.atlases.items) |*asset| {
-            if (self.reloadAtlas(asset) catch {
-                try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .failed });
+            if (self.reloadAtlas(asset) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .failed, .err = err });
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .changed });
@@ -359,8 +360,8 @@ pub const AssetStore = struct {
         }
 
         for (self.tile_maps.items) |*asset| {
-            if (self.reloadTileMap(asset) catch {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+            if (self.reloadTileMap(asset) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
@@ -532,4 +533,37 @@ test "asset handles reject stale generations" {
     try std.testing.expectError(error.StaleHandle, store.tryImage(.{ .index = image.index, .generation = nextGeneration(image.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryAtlas(.{ .index = atlas.index, .generation = nextGeneration(atlas.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryTileMap(.{ .index = 0, .generation = 1 }));
+}
+
+test "image reload keeps last good asset after invalid edit" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(png);
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = png });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const handle = try store.loadPng("ball.png");
+    const before = try store.tryImage(handle);
+    var stat = try tmp.dir.statFile("ball.png");
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });
+    while ((try tmp.dir.statFile("ball.png")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });
+        stat = try tmp.dir.statFile("ball.png");
+    }
+    const failed = try store.reloadChanged();
+    try std.testing.expectEqual(ReloadStatus.failed, failed[0].status);
+    try std.testing.expect(failed[0].err != null);
+    const preserved = try store.tryImage(handle);
+    try std.testing.expectEqual(before.width, preserved.width);
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = png });
+    while ((try tmp.dir.statFile("ball.png")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = png });
+        stat = try tmp.dir.statFile("ball.png");
+    }
+    const changed = try store.reloadChanged();
+    try std.testing.expectEqual(ReloadStatus.changed, changed[0].status);
+    try std.testing.expectError(error.StaleHandle, store.tryImage(handle));
 }
