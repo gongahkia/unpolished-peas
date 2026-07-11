@@ -42,6 +42,19 @@ jobs:
           path: zig-out/*.ppm
           if-no-files-found: warn
 
+  sample-smoke:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-tilemap, stress-audio-sdl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+      - run: xvfb-run -a script/run_sample_smoke.sh ${{ matrix.target }}
+
   advisory-next-zig:
     continue-on-error: true
     runs-on: ubuntu-latest

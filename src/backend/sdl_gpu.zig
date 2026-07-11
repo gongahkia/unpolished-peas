@@ -181,7 +181,7 @@ pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, app
 
 pub fn play(config: Config, comptime Game: type) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
+    defer if (gpa.deinit() == .leak) @panic("game allocation leak");
 
     const allocator = gpa.allocator();
     const parsed_config = try configFromArgs(allocator, config);
