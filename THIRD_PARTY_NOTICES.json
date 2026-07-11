@@ -1,0 +1,37 @@
+[
+  {
+    "name": "stb_image",
+    "version": "2.30",
+    "source": "https://github.com/nothings/stb/blob/master/stb_image.h",
+    "license": "MIT OR Unlicense",
+    "usage": "vendored image decoder"
+  },
+  {
+    "name": "stb_vorbis",
+    "version": "1.22",
+    "source": "https://github.com/nothings/stb/blob/master/stb_vorbis.c",
+    "license": "MIT OR Unlicense",
+    "usage": "vendored Ogg Vorbis decoder"
+  },
+  {
+    "name": "SDL3",
+    "version": "3.2.24",
+    "source": "https://github.com/castholm/SDL/tree/1d4b8dcc03bd216712b55318b4ad2402b5511490",
+    "license": "(BSD-3-Clause OR GPL-3.0 OR HIDAPI) AND Apache-2.0 AND BSD-3-Clause AND CC0-1.0 AND HIDAPI AND HPND-sell-variant AND MIT AND SunPro AND Zlib",
+    "usage": "fetched runtime dependency"
+  },
+  {
+    "name": "allyourcodebase/box2d",
+    "version": "3.1.1",
+    "source": "https://github.com/allyourcodebase/box2d/tree/0482245bf59bec743a7cb29961a480c3f7497f0c",
+    "license": "MIT",
+    "usage": "fetched Zig build package"
+  },
+  {
+    "name": "Box2D",
+    "version": "3.1.1",
+    "source": "https://github.com/erincatto/box2d/tree/8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3",
+    "license": "MIT",
+    "usage": "fetched optional physics source"
+  }
+]

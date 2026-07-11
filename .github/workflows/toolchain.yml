@@ -16,6 +16,7 @@ jobs:
         with:
           version: 0.15.2
       - run: script/check_zig_version.sh
+      - run: script/check_third_party_notices.py
       - run: zig build test
       - run: zig build test-sdl
       - run: zig build test-box2d
