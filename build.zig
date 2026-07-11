@@ -101,13 +101,13 @@ fn addRunStep(b: *std.Build, name: []const u8, description: []const u8, exe: *st
 
 fn addStb(mod: *std.Build.Module) void {
     mod.link_libc = true;
-    mod.addIncludePath(.{ .cwd_relative = "vendor/stb" });
+    mod.addIncludePath(mod.owner.path("vendor/stb"));
     mod.addCSourceFile(.{
-        .file = .{ .cwd_relative = "src/vendor/stb_image.c" },
+        .file = mod.owner.path("src/vendor/stb_image.c"),
         .flags = &.{"-std=c99"},
     });
     mod.addCSourceFile(.{
-        .file = .{ .cwd_relative = "vendor/stb/stb_vorbis.c" },
+        .file = mod.owner.path("vendor/stb/stb_vorbis.c"),
         .flags = &.{ "-std=c99", "-DSTB_VORBIS_NO_STDIO" },
     });
 }

@@ -1,21 +1,31 @@
-# unpolished
+# unpolished-peas
 
 Small Zig 2D engine experiment.
 
 ## API Goal
 
-Unpolished should feel as simple to start with as raylib, LÖVE, and Ebitengine:
+unpolished-peas should feel as simple to start with as raylib, LÖVE, and Ebitengine:
 
 - draw a sprite, play a sound, read input, and reload an asset with minimal setup.
 - keep tiny games in one readable file without framework ceremony.
 - make the simple path obvious, while preserving explicit Zig control flow.
 - treat long examples as temporary scaffolding until the public API supports shorter ones.
 
+## Requirements
+
+- Zig 0.15.2
+- SDL3 and `pkg-config`
+
+```sh
+brew install sdl3 pkg-config
+sudo apt install libsdl3-dev pkg-config
+```
+
 ## Tiny Start
 
 ```zig
-const up = @import("unpolished");
-const sdl = @import("unpolished_sdl3");
+const up = @import("unpolished-peas");
+const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
@@ -28,6 +38,18 @@ pub fn main() !void {
     try sdl.play(.{ .width = 80, .height = 60, .scale = 6 }, Game);
 }
 ```
+
+## Starter Project
+
+From an unpolished-peas checkout:
+
+```sh
+zig build new -- ../my-game
+cd ../my-game
+zig build run
+```
+
+The generated bouncing-square game includes its own build files and points to the engine checkout that created it. The GitHub remote currently has no commit that Zig can fingerprint, so the generator cannot yet write a pinned Git dependency. Replace this local path dependency after the first published unpolished-peas release.
 
 ## Positioning
 
@@ -56,15 +78,23 @@ zig build run-audio
 zig build run-atlas
 zig build test-scenes
 zig build stress-audio-sdl
+zig build new -- ../my-game
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
-`run-bounce-sdl` opens an SDL_GPU window.
+`run-bounce-sdl` opens an SDL3 window.
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
 `run-atlas` opens a JSON atlas/tile scene demo.
 `test-scenes` runs deterministic headless scene hashing.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
+`new` creates the bouncing-square starter project.
+
+## Developer Runtime
+
+`Config.developer_tools` defaults to enabled in Debug builds. F3 toggles the FPS/frame-time overlay. F12 writes a PPM screenshot. The app-data path is printed at startup, available through `Context.appDataPath`, and contains `unpolished-peas.log` when developer tools are enabled.
+
+Game initialization, update, draw, and asset-reload errors are written to the terminal and log, then held in an in-window error state until Escape is pressed. Zig panics remain process failures and require the normal debugger/test workflow.
 
 ## Current API
 
@@ -87,11 +117,18 @@ zig build stress-audio-sdl
 - `AudioMixer`
 - `BusHandle`
 - `PlaybackHandle`
-- `unpolished_sdl3.play`, `unpolished_sdl3.Context`
-- `unpolished_sdl3.run` for lower-level control
+- `unpolished-peas-sdl3.play`, `unpolished-peas-sdl3.Context`
+- `unpolished-peas-sdl3.run` for lower-level control
+- `unpolished-peas-sdl3.appDataPath`
 
-## Next build targets
+## Next Build Targets
 
-1. Starter template: one command to copy a tiny playable project.
-2. Shader API with one strict pixel-effect example.
-3. Web export after desktop loop, assets, and audio feel solid.
+1. Publish a tagged package release and update `zig build new` to generate a pinned Git dependency.
+2. Add a 2D camera with position, zoom, viewport bounds, and world-to-screen/screen-to-world conversion; preserve pixel-perfect rendering by default.
+3. Add tile-map loading, visible-region culling, and a headless camera scene before broadening rendering APIs.
+4. Add explicit 2D collision queries and resolution for rectangles, circles, and tile maps; ship a character-controller example.
+5. Add an optional Box2D-backed physics module with explicit world stepping, body/fixture lifetime, and deterministic headless tests; do not hand-roll a general rigid-body solver.
+6. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
+7. Add mouse, gamepad, and named action mapping with rebinding and deterministic input tests.
+8. Add a shader API with one strict pixel-effect example and headless fallback coverage.
+9. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.

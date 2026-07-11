@@ -30,6 +30,7 @@ const Game = struct {
 pub fn main() !void {
     try sdl.play(.{
         .title = "bouncing-square",
+        .organization = "your-name",
         .application = "bouncing-square",
         .width = width,
         .height = height,

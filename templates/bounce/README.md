@@ -18,4 +18,6 @@ zig build run
 
 Arrow keys steer the square. F3 toggles developer stats. F12 writes a PPM screenshot to the app-data directory printed at startup. Callback failures are logged there and held in the game window until Escape is pressed.
 
+Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
+
 This project initially points to the engine checkout that created it. Replace the path dependency with a pinned `unpolished-peas` release after the repository has been published.
