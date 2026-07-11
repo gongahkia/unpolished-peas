@@ -1,6 +1,7 @@
 const std = @import("std");
 const CameraCanvas = @import("camera_canvas.zig").CameraCanvas;
 const Color = @import("color.zig").Color;
+const Image = @import("image.zig").Image;
 const Rect = @import("math.zig").Rect;
 const Vec2 = @import("math.zig").Vec2;
 
@@ -211,6 +212,32 @@ pub const TileMap = struct {
                     const position = self.cellToWorld(cell).add(layer.offset);
                     const color = debugTileColor(value, @intCast(layer_index));
                     world.fillRect(Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y), color);
+                }
+            }
+        }
+    }
+
+    pub fn drawImages(self: TileMap, world: CameraCanvas, images: []const Image) void {
+        if (images.len < self.tilesets.items.len) return;
+        for (self.layers.items) |layer| {
+            if (layer.kind != .tiles or !layer.visible) continue;
+            for (layer.chunks.items) |chunk| {
+                for (chunk.tiles, 0..) |tile, index| {
+                    const value = tile orelse continue;
+                    const tileset = self.tilesets.items[value.tileset];
+                    if (tileset.kind != .grid_image) continue;
+                    const image = images[value.tileset];
+                    const available_width = @as(f32, @floatFromInt(image.width)) - 2 * @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(tileset.spacing));
+                    const stride = tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing));
+                    const columns = @max(@as(u32, 1), @as(u32, @intFromFloat(@floor(available_width / stride))));
+                    const source_col = value.id % columns;
+                    const source_row = value.id / columns;
+                    const source = Rect.init(@as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_col)) * (tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing))), @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_row)) * (tileset.tile_size.y + @as(f32, @floatFromInt(tileset.spacing))), tileset.tile_size.x, tileset.tile_size.y);
+                    const size: i32 = @intCast(self.chunk_size);
+                    const local_x: i32 = @intCast(index % self.chunk_size);
+                    const local_y: i32 = @intCast(index / self.chunk_size);
+                    const position = self.cellToWorld(.{ .x = chunk.coord.x * size + local_x, .y = chunk.coord.y * size + local_y }).add(layer.offset);
+                    world.drawImageRegion(image, source, Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
                 }
             }
         }

@@ -63,6 +63,26 @@ pub const CameraCanvas = struct {
         self.drawImageRect(image, position, .{ .x = @floatFromInt(image.width), .y = @floatFromInt(image.height) });
     }
 
+    pub fn drawImageRegion(self: CameraCanvas, image: Image, source: Rect, destination: Rect) void {
+        if (source.w <= 0 or source.h <= 0 or destination.w <= 0 or destination.h <= 0) return;
+        const min_x: i32 = @intFromFloat(@floor(source.x));
+        const min_y: i32 = @intFromFloat(@floor(source.y));
+        const max_x: i32 = @intFromFloat(@ceil(source.x + source.w));
+        const max_y: i32 = @intFromFloat(@ceil(source.y + source.h));
+        var y = min_y;
+        while (y < max_y) : (y += 1) {
+            var x = min_x;
+            while (x < max_x) : (x += 1) {
+                if (x < 0 or y < 0 or x >= image.width or y >= image.height) continue;
+                const color = image.pixels[@as(usize, @intCast(y)) * image.width + @as(u32, @intCast(x))];
+                if (color.a == 0) continue;
+                const u = (@as(f32, @floatFromInt(x)) - source.x) / source.w;
+                const v = (@as(f32, @floatFromInt(y)) - source.y) / source.h;
+                self.fillRect(.init(destination.x + u * destination.w, destination.y + v * destination.h, destination.w / source.w, destination.h / source.h), color);
+            }
+        }
+    }
+
     pub fn drawAtlasFrame(self: CameraCanvas, atlas: atlas_mod.Atlas, handle: atlas_mod.AtlasFrameHandle, position: Vec2, options: atlas_mod.DrawSpriteOptions) void {
         if (options.scale == 0) return;
         const frame = atlas.frame(handle);

@@ -3,12 +3,13 @@ const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     map: up.TileMap,
+    image: up.ImageHandle,
     camera: up.Camera2D = .{ .position = .{ .x = 80, .y = 45 }, .zoom = 1.5, .bounds = .{ .rect = .init(-128, -128, 512, 384) } },
 
     pub fn init(ctx: *sdl.Context) !Game {
         var map = try up.TileMap.init(ctx.allocator, .{ .x = 8, .y = 8 }, 16);
         errdefer map.deinit();
-        _ = try map.addTileSet("debug", .grid_image, "examples/assets/atlas.png", .{ .x = 8, .y = 8 });
+        _ = try map.addTileSet("debug", .grid_image, "examples/assets/ball.png", .{ .x = 8, .y = 8 });
         const terrain = try map.addLayer("terrain", .tiles, null);
         const detail = try map.addLayer("detail", .tiles, null);
         var y: i32 = -16;
@@ -19,7 +20,7 @@ const Game = struct {
                 if (@rem(x + y, 13) == 0) try map.setTile(detail, .{ .x = x, .y = y }, .{ .tileset = 0, .id = 7 });
             }
         }
-        return .{ .map = map };
+        return .{ .map = map, .image = try ctx.loadPng("examples/assets/ball.png") };
     }
 
     pub fn deinit(self: *Game, _: *sdl.Context) void {
@@ -42,7 +43,8 @@ const Game = struct {
     }
 
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        self.map.drawDebug(ctx.camera(&self.camera));
+        const images = [_]up.Image{ctx.assets.image(self.image)};
+        self.map.drawImages(ctx.camera(&self.camera), &images);
         ctx.text("TILE MAP", 4, 4, up.Color.white);
         ctx.text("ARROWS MOVE", 4, 14, up.Color.rgb(170, 198, 225));
         ctx.text("L/R PAINT", 4, 24, up.Color.rgb(170, 198, 225));

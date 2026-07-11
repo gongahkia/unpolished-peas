@@ -50,6 +50,7 @@ pub const Tile = @import("tilemap.zig").Tile;
 pub const TileFlags = @import("tilemap.zig").TileFlags;
 pub const TileMap = @import("tilemap.zig").TileMap;
 pub const TileMapLayer = @import("tilemap.zig").TileMapLayer;
+pub const TileMapProject = @import("tilemap.zig").TileMapProject;
 pub const TileSet = @import("tilemap.zig").TileSet;
 pub const Vec2 = @import("math.zig").Vec2;
 
