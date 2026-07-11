@@ -52,12 +52,14 @@ zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
 zig build run-minimal
+zig build run-audio
 zig build test-scenes
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
 `run-bounce-sdl` opens an SDL_GPU window.
 `dev-bounce` opens a PNG/text live-reload demo.
+`run-audio` opens a WAV/OGG audio demo.
 `test-scenes` runs deterministic headless scene hashing.
 
 ## Current API
@@ -72,13 +74,17 @@ zig build test-scenes
 - `AssetFile`
 - `AssetStore`
 - `Image`
+- `Sound`
+- `Music`
+- `AudioMixer`
+- `BusHandle`
+- `PlaybackHandle`
 - `unpolished_sdl3.play`, `unpolished_sdl3.Context`
 - `unpolished_sdl3.run` for lower-level control
 
 ## Next build targets
 
-1. Minimal audio: `loadWav`, `playSound`, looping music, volume.
-2. Sprite ergonomics: centered draw helpers, texture atlas, frame animation.
-3. Starter template: one command to copy a tiny playable project.
-4. Shader API with one strict pixel-effect example.
-5. Web export after desktop loop, assets, and audio feel solid.
+1. Sprite ergonomics: centered draw helpers, texture atlas, frame animation.
+2. Starter template: one command to copy a tiny playable project.
+3. Shader API with one strict pixel-effect example.
+4. Web export after desktop loop, assets, and audio feel solid.

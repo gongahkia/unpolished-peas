@@ -10,21 +10,27 @@ pub const Config = struct {
     height: u32 = 180,
     scale: u32 = 3,
     fixed_hz: u32 = 60,
+    audio_sample_rate: u32 = 48_000,
+    audio_buffer_frames: u32 = 1024,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
 };
 
 pub const Frame = struct {
+    allocator: std.mem.Allocator,
     canvas: *up.Canvas,
     input: *up.Input,
     assets: *up.AssetStore,
+    audio: *up.AudioMixer,
     dt: f32,
 };
 
 pub const Context = struct {
+    allocator: std.mem.Allocator,
     canvas: *up.Canvas,
     input: *up.Input,
     assets: *up.AssetStore,
+    audio: *up.AudioMixer,
     dt: f32,
     frame: u64,
 
@@ -80,7 +86,7 @@ pub fn play(config: Config, comptime Game: type) !void {
 
 pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS | c.SDL_INIT_AUDIO)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
 
     const window_w = try scaledInt(config.width, config.scale);
@@ -104,6 +110,12 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
     var assets = up.AssetStore.init(allocator, std.fs.cwd());
     defer assets.deinit();
+
+    var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
+    defer audio.deinit();
+
+    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames);
+    defer audio_output.deinit(allocator);
 
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
@@ -129,12 +141,13 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         const steps = clock.push(dt);
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
-            try game.update(.{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = clock.step_seconds });
+            try game.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = clock.step_seconds });
         }
 
         canvas.clear(config.clear_color);
-        try game.render(.{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = dt });
+        try game.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = dt });
         drawReloadOverlay(&canvas, reload_events);
+        try audio_output.queue(&audio);
         try presenter.present(device, window, canvas);
 
         frame_count += 1;
@@ -148,7 +161,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS | c.SDL_INIT_AUDIO)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
 
     const window_w = try scaledInt(config.width, config.scale);
@@ -173,12 +186,18 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var assets = up.AssetStore.init(allocator, std.fs.cwd());
     defer assets.deinit();
 
+    var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
+    defer audio.deinit();
+
+    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames);
+    defer audio_output.deinit(allocator);
+
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .canvas = &canvas, .input = &input, .assets = &assets, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = 0, .frame = 0 };
     var game = try initGame(Game, &ctx);
     defer deinitGame(Game, &game, &ctx);
 
@@ -205,6 +224,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         ctx.dt = dt;
         try callDraw(Game, &game, &ctx);
         drawReloadOverlay(&canvas, reload_events);
+        try audio_output.queue(&audio);
         try presenter.present(device, window, canvas);
 
         ctx.frame += 1;
@@ -274,6 +294,56 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
         y += 17;
     }
 }
+
+const AudioOutput = struct {
+    stream: *c.SDL_AudioStream,
+    samples: []up.AudioSample,
+    interleaved: []f32,
+    target_frames: usize,
+
+    fn init(allocator: std.mem.Allocator, sample_rate: u32, buffer_frames: u32) !AudioOutput {
+        if (sample_rate == 0 or buffer_frames == 0) return error.InvalidConfig;
+        const frames: usize = buffer_frames;
+        const samples = try allocator.alloc(up.AudioSample, frames);
+        errdefer allocator.free(samples);
+        const interleaved = try allocator.alloc(f32, frames * 2);
+        errdefer allocator.free(interleaved);
+
+        const spec = c.SDL_AudioSpec{
+            .format = c.SDL_AUDIO_F32,
+            .channels = 2,
+            .freq = @intCast(sample_rate),
+        };
+        const stream = c.SDL_OpenAudioDeviceStream(c.SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, null, null) orelse return sdlFail("SDL_OpenAudioDeviceStream");
+        errdefer c.SDL_DestroyAudioStream(stream);
+        if (!c.SDL_ResumeAudioStreamDevice(stream)) return sdlFail("SDL_ResumeAudioStreamDevice");
+        return .{ .stream = stream, .samples = samples, .interleaved = interleaved, .target_frames = frames * 3 };
+    }
+
+    fn deinit(self: *AudioOutput, allocator: std.mem.Allocator) void {
+        c.SDL_DestroyAudioStream(self.stream);
+        allocator.free(self.interleaved);
+        allocator.free(self.samples);
+        self.* = undefined;
+    }
+
+    fn queue(self: *AudioOutput, mixer: *up.AudioMixer) !void {
+        const frame_bytes = @as(usize, 2 * @sizeOf(f32));
+        var queued_bytes = c.SDL_GetAudioStreamQueued(self.stream);
+        if (queued_bytes < 0) return sdlFail("SDL_GetAudioStreamQueued");
+        while (@as(usize, @intCast(queued_bytes)) / frame_bytes < self.target_frames) {
+            try mixer.mix(self.samples);
+            for (self.samples, 0..) |sample, i| {
+                self.interleaved[i * 2] = sample.left;
+                self.interleaved[i * 2 + 1] = sample.right;
+            }
+            const byte_len = self.interleaved.len * @sizeOf(f32);
+            if (byte_len > std.math.maxInt(c_int)) return error.InvalidConfig;
+            if (!c.SDL_PutAudioStreamData(self.stream, self.interleaved.ptr, @intCast(byte_len))) return sdlFail("SDL_PutAudioStreamData");
+            queued_bytes += @intCast(byte_len);
+        }
+    }
+};
 
 const Presenter = struct {
     texture: *c.SDL_GPUTexture,
