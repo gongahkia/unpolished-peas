@@ -83,6 +83,20 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(minimal_demo);
 
+    const audio_demo = b.addExecutable(.{
+        .name = "audio",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/audio.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "unpolished", .module = mod },
+                .{ .name = "unpolished_sdl3", .module = sdl_mod },
+            },
+        }),
+    });
+    b.installArtifact(audio_demo);
+
     const scene_tests = b.addExecutable(.{
         .name = "test-scenes",
         .root_module = b.createModule(.{
@@ -118,6 +132,12 @@ pub fn build(b: *std.Build) void {
     const run_minimal_step = b.step("run-minimal", "Run the minimal SDL_GPU demo");
     run_minimal_step.dependOn(&run_minimal_demo.step);
 
+    const run_audio_demo = b.addRunArtifact(audio_demo);
+    if (b.args) |args| run_audio_demo.addArgs(args);
+
+    const run_audio_step = b.step("run-audio", "Run the SDL audio demo");
+    run_audio_step.dependOn(&run_audio_demo.step);
+
     const run_scene_tests = b.addRunArtifact(scene_tests);
     const scene_step = b.step("test-scenes", "Run deterministic scene hash tests");
     scene_step.dependOn(&run_scene_tests.step);
@@ -135,6 +155,10 @@ fn addStb(mod: *std.Build.Module) void {
     mod.addCSourceFile(.{
         .file = .{ .cwd_relative = "src/vendor/stb_image.c" },
         .flags = &.{"-std=c99"},
+    });
+    mod.addCSourceFile(.{
+        .file = .{ .cwd_relative = "vendor/stb/stb_vorbis.c" },
+        .flags = &.{ "-std=c99", "-DSTB_VORBIS_NO_STDIO" },
     });
 }
 
