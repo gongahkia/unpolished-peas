@@ -105,6 +105,14 @@ pub const Context = struct {
         return self.assets.atlas(atlas_handle).findAnimation(name);
     }
 
+    pub fn loadTileMap(self: *Context, path: []const u8) !up.TileMapHandle {
+        return self.assets.loadTileMap(path);
+    }
+
+    pub fn tileMap(self: *Context, handle: up.TileMapHandle) *const up.TileMap {
+        return self.assets.tileMapPtr(handle);
+    }
+
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
         return self.assets.loadText(path);
     }
