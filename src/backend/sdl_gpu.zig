@@ -113,6 +113,10 @@ pub const Context = struct {
         return self.assets.tileMapPtr(handle);
     }
 
+    pub fn drawTileMap(self: *Context, handle: up.TileMapHandle, target_camera: *const up.Camera2D, time: f32) void {
+        self.assets.drawTileMap(handle, target_camera, self.canvas, time);
+    }
+
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
         return self.assets.loadText(path);
     }
