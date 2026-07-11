@@ -5,7 +5,7 @@ on:
   push:
 
 jobs:
-  zig-0-15-2:
+  required-zig-0-15-2:
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
@@ -20,6 +20,8 @@ jobs:
       - run: script/test_core_without_sdl.sh
       - run: script/check_no_legacy_lifecycle.sh
       - run: script/test_downstream_fixture.sh
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build check-examples
@@ -39,3 +41,14 @@ jobs:
           name: visual-diagnostics-${{ matrix.os }}
           path: zig-out/*.ppm
           if-no-files-found: warn
+
+  advisory-next-zig:
+    continue-on-error: true
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: master
+      - run: zig version
+      - run: zig build test
