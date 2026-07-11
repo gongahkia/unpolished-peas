@@ -1,5 +1,9 @@
 # unpolished-peas
 
+<div align="center">
+    <img src="./asset/logo/peas-color-logo.png" width="30%">
+</div>
+
 Small Zig 2D engine experiment.
 
 ## API Goal
