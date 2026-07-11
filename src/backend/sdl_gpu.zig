@@ -109,6 +109,10 @@ pub const Context = struct {
         return self.assets.loadTileMap(path);
     }
 
+    pub fn loadTileMapWithOptions(self: *Context, path: []const u8, options: up.TileMapAssetOptions) !up.TileMapHandle {
+        return self.assets.loadTileMapWithOptions(path, options);
+    }
+
     pub fn tileMap(self: *Context, handle: up.TileMapHandle) *const up.TileMap {
         return self.assets.tileMapPtr(handle);
     }
