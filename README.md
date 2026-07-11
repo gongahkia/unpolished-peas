@@ -17,7 +17,7 @@ unpolished-peas should feel as simple to start with as raylib, LÖVE, and Ebiten
 
 ## Requirements
 
-- Zig 0.15.2
+- Zig 0.15.2 exactly
 - SDL3 and `pkg-config`
 
 ```sh
