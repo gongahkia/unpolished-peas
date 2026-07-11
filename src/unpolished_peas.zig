@@ -25,6 +25,9 @@ pub const CameraViewport = @import("camera.zig").CameraViewport;
 pub const Canvas = @import("canvas.zig").Canvas;
 pub const Color = @import("color.zig").Color;
 pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
+pub const EcsEntity = @import("ecs.zig").Entity;
+pub const EcsWorld = @import("ecs.zig").World;
+pub const ComponentStore = @import("ecs.zig").ComponentStore;
 pub const SpriteSampling = @import("atlas.zig").Sampling;
 pub const Image = @import("image.zig").Image;
 pub const ImageHandle = @import("assets.zig").ImageHandle;
@@ -81,6 +84,7 @@ test {
     _ = @import("assets.zig");
     _ = @import("canvas.zig");
     _ = @import("color.zig");
+    _ = @import("ecs.zig");
     _ = @import("image.zig");
     _ = @import("gpu.zig");
     _ = @import("input.zig");
