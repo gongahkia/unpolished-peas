@@ -40,6 +40,9 @@ pub const PresentationRect = @import("presentation.zig").PresentationRect;
 pub const Rect = @import("math.zig").Rect;
 pub const ReloadEvent = @import("assets.zig").ReloadEvent;
 pub const ReloadStatus = @import("assets.zig").ReloadStatus;
+pub const RenderCommand = @import("render.zig").Command;
+pub const RenderCommandBuffer = @import("render.zig").CommandBuffer;
+pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;
@@ -68,5 +71,6 @@ test {
     _ = @import("input.zig");
     _ = @import("math.zig");
     _ = @import("presentation.zig");
+    _ = @import("render.zig");
     _ = @import("tilemap.zig");
 }

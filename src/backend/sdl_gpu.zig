@@ -9,6 +9,24 @@ test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
 }
 
+test "SDL adapter consumes render commands" {
+    var canvas = try up.Canvas.init(std.testing.allocator, 2, 2);
+    defer canvas.deinit();
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    try commands.append(.{ .clear = up.Color.black });
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 1, .h = 1, .color = up.Color.white } });
+
+    try renderCommands(std.testing.allocator, &canvas, commands.commands.items);
+    try std.testing.expectEqual(up.Color.white, canvas.get(0, 0).?);
+}
+
+pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
+    var renderer = up.HeadlessRenderer.init(canvas);
+    defer renderer.deinit(allocator);
+    try renderer.submit(allocator, commands);
+}
+
 pub const Config = struct {
     title: [:0]const u8 = "unpolished-peas",
     organization: [:0]const u8 = "gongahkia",
