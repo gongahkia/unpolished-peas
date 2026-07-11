@@ -45,6 +45,12 @@ pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;
 pub const StepClock = @import("app.zig").StepClock;
 pub const TextHandle = @import("assets.zig").TextHandle;
+pub const TileMapHandle = @import("assets.zig").TileMapHandle;
+pub const Tile = @import("tilemap.zig").Tile;
+pub const TileFlags = @import("tilemap.zig").TileFlags;
+pub const TileMap = @import("tilemap.zig").TileMap;
+pub const TileMapLayer = @import("tilemap.zig").TileMapLayer;
+pub const TileSet = @import("tilemap.zig").TileSet;
 pub const Vec2 = @import("math.zig").Vec2;
 
 test {
@@ -60,4 +66,5 @@ test {
     _ = @import("input.zig");
     _ = @import("math.zig");
     _ = @import("presentation.zig");
+    _ = @import("tilemap.zig");
 }

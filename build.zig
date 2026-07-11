@@ -35,8 +35,10 @@ pub fn build(b: *std.Build) void {
     const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
+    const tilemap_demo = addExample(b, "unpolished-peas-tilemap", "examples/tilemap.zig", target, optimize, peas, sdl);
     const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
+    const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
 
     const starter = b.addExecutable(.{
         .name = "unpolished-peas-new",
@@ -60,8 +62,10 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-audio", "Run the unpolished-peas audio demo", audio_demo);
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
+    addRunStep(b, "run-tilemap", "Run the unpolished-peas tile-map demo", tilemap_demo);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
+    addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
     const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);

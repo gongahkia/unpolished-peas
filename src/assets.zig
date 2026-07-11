@@ -2,6 +2,7 @@ const std = @import("std");
 const atlas_mod = @import("atlas.zig");
 const Atlas = atlas_mod.Atlas;
 const Image = @import("image.zig").Image;
+const TileMap = @import("tilemap.zig").TileMap;
 
 pub const AssetFile = struct {
     allocator: std.mem.Allocator,
@@ -52,6 +53,7 @@ pub const AssetFile = struct {
 pub const TextHandle = struct { index: usize };
 pub const ImageHandle = struct { index: usize };
 pub const AtlasHandle = struct { index: usize };
+pub const TileMapHandle = struct { index: usize };
 
 pub const ReloadStatus = enum {
     changed,
@@ -93,12 +95,23 @@ const AtlasAsset = struct {
     }
 };
 
+const TileMapAsset = struct {
+    file: AssetFile,
+    map: TileMap,
+
+    fn deinit(self: *TileMapAsset) void {
+        self.map.deinit();
+        self.file.deinit();
+    }
+};
+
 pub const AssetStore = struct {
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     atlases: std.ArrayListUnmanaged(AtlasAsset) = .{},
+    tile_maps: std.ArrayListUnmanaged(TileMapAsset) = .{},
     events: std.ArrayListUnmanaged(ReloadEvent) = .{},
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
@@ -109,9 +122,11 @@ pub const AssetStore = struct {
         for (self.texts.items) |*asset| asset.deinit();
         for (self.images.items) |*asset| asset.deinit();
         for (self.atlases.items) |*asset| asset.deinit();
+        for (self.tile_maps.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.atlases.deinit(self.allocator);
+        self.tile_maps.deinit(self.allocator);
         self.events.deinit(self.allocator);
         self.* = undefined;
     }
@@ -172,6 +187,22 @@ pub const AssetStore = struct {
         return .{ .index = index };
     }
 
+    pub fn loadTileMap(self: *AssetStore, path: []const u8) !TileMapHandle {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 64 * 1024 * 1024);
+        errdefer {
+            var cleanup = file;
+            cleanup.deinit();
+        }
+        const map = try TileMap.decodeNative(self.allocator, file.bytes);
+        errdefer {
+            var cleanup = map;
+            cleanup.deinit();
+        }
+        const index = self.tile_maps.items.len;
+        try self.tile_maps.append(self.allocator, .{ .file = file, .map = map });
+        return .{ .index = index };
+    }
+
     pub fn text(self: AssetStore, handle: TextHandle) []const u8 {
         return self.texts.items[handle.index].file.text();
     }
@@ -186,6 +217,14 @@ pub const AssetStore = struct {
 
     pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas {
         return &self.atlases.items[handle.index].atlas;
+    }
+
+    pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap {
+        return self.tile_maps.items[handle.index].map;
+    }
+
+    pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap {
+        return &self.tile_maps.items[handle.index].map;
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -235,6 +274,15 @@ pub const AssetStore = struct {
             }
         }
 
+        for (self.tile_maps.items) |*asset| {
+            if (self.reloadTileMap(asset) catch {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
+                continue;
+            }) {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
+            }
+        }
+
         return self.events.items;
     }
 
@@ -265,6 +313,21 @@ pub const AssetStore = struct {
 
         asset.deinit();
         asset.* = .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas };
+        return true;
+    }
+
+    fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset) !bool {
+        const stat = try asset.file.dir.statFile(asset.file.path);
+        if (stat.mtime == asset.file.mtime) return false;
+        const bytes = try asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes);
+        errdefer self.allocator.free(bytes);
+        var next = try TileMap.decodeNative(self.allocator, bytes);
+        errdefer next.deinit();
+        self.allocator.free(asset.file.bytes);
+        asset.file.bytes = bytes;
+        asset.file.mtime = stat.mtime;
+        asset.map.deinit();
+        asset.map = next;
         return true;
     }
 };
