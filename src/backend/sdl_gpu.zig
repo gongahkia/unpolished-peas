@@ -523,6 +523,8 @@ const Presenter = struct {
     width: u32,
     height: u32,
     byte_len: u32,
+    resources: up.GpuResources,
+    texture_handle: up.TextureHandle,
 
     fn init(device: *c.SDL_GPUDevice, width: u32, height: u32) !Presenter {
         const byte_len = try checkedByteLen(width, height);
@@ -546,12 +548,16 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        return .{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len };
+        var resources = up.GpuResources.init(std.heap.page_allocator);
+        const texture_handle = try resources.createTexture();
+        return .{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle };
     }
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
         c.SDL_ReleaseGPUTexture(device, self.texture);
+        self.resources.destroyTexture(self.texture_handle) catch unreachable;
+        self.resources.deinit();
         self.* = undefined;
     }
 
