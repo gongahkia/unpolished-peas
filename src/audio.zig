@@ -481,7 +481,7 @@ fn mixOggMusic(playback: *OggPlayback, allocator: std.mem.Allocator, mixer_rate:
     var i: usize = 0;
     while (i < out.len) : (i += 1) {
         var frame_index = normalizePos(&playback.pos, info.frames, loop) orelse return false;
-        if (loop and frame_index == 0 and playback.pos == 0 and (playback.start != 0 or playback.eof)) playback.reset();
+        if (loop and (frame_index < playback.start or (frame_index == 0 and playback.eof))) playback.reset();
         if (!try playback.ensure(allocator, frame_index)) {
             if (!loop) return false;
             playback.reset();
@@ -801,7 +801,7 @@ test "headless mixer stress keeps handles and buses stable" {
         try mixer.mix(&block);
         hash ^= hashSamples(&block);
         if (i == 16) try mixer.stopBus(AudioMixer.sfxBus());
-        if (i == 32) try std.testing.expect(mixer.stop(music_handle));
+        if (i == 72) try std.testing.expect(mixer.stop(music_handle));
     }
     try std.testing.expect(hash != 0);
     try std.testing.expect(!mixer.stop(handles[0]));
