@@ -70,6 +70,7 @@ pub fn main() !void {
         .width = width,
         .height = height,
         .scale = 4,
+        .resizable = true,
         .fixed_hz = 60,
         .clear_color = up.Color.rgb(14, 18, 24),
     }, Game);

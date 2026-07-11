@@ -21,6 +21,14 @@ test "SDL adapter consumes render commands" {
     try std.testing.expectEqual(up.Color.white, canvas.get(0, 0).?);
 }
 
+test "swapchain lifecycle accepts minimized and resized frames" {
+    var presentation = up.Presentation.init(.{ .x = 80, .y = 60 }, .{ .x = 80, .y = 60 }, .integer_fit);
+    try std.testing.expect(!swapchainAvailable(null));
+    updateFramebufferSize(&presentation, 640, 480);
+    try std.testing.expectEqual(@as(f32, 640), presentation.framebuffer_size.x);
+    try std.testing.expectEqual(@as(f32, 480), presentation.framebuffer_size.y);
+}
+
 pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
     var renderer = up.HeadlessRenderer.init(canvas);
     defer renderer.deinit(allocator);
@@ -596,8 +604,9 @@ const Presenter = struct {
             return sdlFail("SDL_WaitAndAcquireGPUSwapchainTexture");
         }
         acquired_swapchain = true;
-        if (swapchain) |target| {
-            presentation.framebuffer_size = .{ .x = @floatFromInt(swap_w), .y = @floatFromInt(swap_h) };
+        if (swapchainAvailable(swapchain)) {
+            const target = swapchain.?;
+            updateFramebufferSize(presentation, swap_w, swap_h);
             const destination = presentation.destination();
             c.SDL_BlitGPUTexture(command, &.{
                 .source = .{
@@ -687,7 +696,17 @@ fn framebufferSize(window: *c.SDL_Window) !up.Vec2 {
 }
 
 fn refreshPresentation(window: *c.SDL_Window, presentation: *up.Presentation) void {
-    presentation.framebuffer_size = framebufferSize(window) catch return;
+    const size = framebufferSize(window) catch return;
+    updateFramebufferSize(presentation, @intFromFloat(size.x), @intFromFloat(size.y));
+}
+
+fn swapchainAvailable(texture: ?*c.SDL_GPUTexture) bool {
+    return texture != null;
+}
+
+fn updateFramebufferSize(presentation: *up.Presentation, width: u32, height: u32) void {
+    if (width == 0 or height == 0) return;
+    presentation.framebuffer_size = .{ .x = @floatFromInt(width), .y = @floatFromInt(height) };
 }
 
 fn setPointerPosition(input: *up.Input, window: *c.SDL_Window, presentation: *const up.Presentation, window_point: up.Vec2) void {
