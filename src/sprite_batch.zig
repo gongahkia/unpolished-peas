@@ -9,6 +9,9 @@ pub const SpriteDraw = struct {
     source: SourceRect,
     x: i32,
     y: i32,
+    scale: u32 = 1,
+    flip_x: bool = false,
+    flip_y: bool = false,
     tint: Color = Color.white,
 };
 
@@ -42,7 +45,7 @@ pub const SpriteBatch = struct {
     }
 
     pub fn append(self: *SpriteBatch, draw: SpriteDraw) !void {
-        if (draw.source.w == 0 or draw.source.h == 0) return error.InvalidSourceRect;
+        if (draw.source.w == 0 or draw.source.h == 0 or draw.scale == 0) return error.InvalidSourceRect;
         if (draw.source.x > draw.image.width or draw.source.y > draw.image.height) return error.InvalidSourceRect;
         if (draw.source.w > draw.image.width - draw.source.x or draw.source.h > draw.image.height - draw.source.y) return error.InvalidSourceRect;
         try self.draws.append(self.allocator, draw);
