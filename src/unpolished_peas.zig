@@ -25,6 +25,7 @@ pub const CameraViewport = @import("camera.zig").CameraViewport;
 pub const Canvas = @import("canvas.zig").Canvas;
 pub const Color = @import("color.zig").Color;
 pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
+pub const SpriteSampling = @import("atlas.zig").Sampling;
 pub const Image = @import("image.zig").Image;
 pub const ImageHandle = @import("assets.zig").ImageHandle;
 pub const Input = @import("input.zig").Input;

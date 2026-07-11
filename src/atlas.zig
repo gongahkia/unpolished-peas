@@ -18,12 +18,16 @@ pub const Origin = enum {
     center,
 };
 
+pub const Sampling = enum { nearest, linear };
+
 pub const DrawSpriteOptions = struct {
     origin: Origin = .top_left,
     scale: u32 = 1,
     flip_x: bool = false,
     flip_y: bool = false,
     tint: Color = Color.white,
+    rotation: f32 = 0,
+    sampling: Sampling = .nearest,
 };
 
 pub const AtlasFrame = struct {
