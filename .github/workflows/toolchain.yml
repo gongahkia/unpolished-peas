@@ -1,4 +1,4 @@
-name: Toolchain
+name: CI
 
 on:
   pull_request:
@@ -19,7 +19,21 @@ jobs:
       - run: script/check_third_party_notices.py
       - run: script/test_core_without_sdl.sh
       - run: script/check_no_legacy_lifecycle.sh
+      - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build check-examples
       - run: zig build test-sdl
       - run: zig build test-box2d
+      - run: zig build test-scenes
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+      - if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
+      - if: matrix.os == 'macos-latest'
+        run: env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diagnostics-${{ matrix.os }}
+          path: zig-out/*.ppm
+          if-no-files-found: warn
