@@ -5,6 +5,10 @@ const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
 
+test "SDL3 headers are available" {
+    _ = c.SDL_INIT_VIDEO;
+}
+
 pub const Config = struct {
     title: [:0]const u8 = "unpolished-peas",
     organization: [:0]const u8 = "gongahkia",

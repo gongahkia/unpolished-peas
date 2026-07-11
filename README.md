@@ -18,12 +18,22 @@ unpolished-peas should feel as simple to start with as raylib, LÖVE, and Ebiten
 ## Requirements
 
 - Zig 0.15.2 exactly
-- SDL3 and `pkg-config`
+- no system SDL3 installation in the default pinned-source mode
+
+```sh
+zig build test-sdl
+```
+
+`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The pinned Box2D source is reserved for the optional physics module and is validated with `zig build test-box2d`.
+
+To use a system SDL3 instead:
 
 ```sh
 brew install sdl3 pkg-config
-sudo apt install libsdl3-dev pkg-config
+zig build -Dsystem-sdl=true run-bounce-sdl
 ```
+
+On Debian or Ubuntu, replace the `brew install` command with `sudo apt install libsdl3-dev pkg-config`.
 
 ## Tiny Start
 
