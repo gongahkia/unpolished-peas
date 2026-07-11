@@ -8,6 +8,15 @@ pub fn build(b: *std.Build) void {
     }
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
+    const bundled_sdl = if (system_sdl) null else b.dependency("sdl", .{
+        .target = target,
+        .optimize = optimize,
+    });
+    const box2d = b.dependency("box2d", .{
+        .target = target,
+        .optimize = optimize,
+    });
 
     const peas = b.addModule("unpolished-peas", .{
         .root_source_file = b.path("src/unpolished_peas.zig"),
@@ -24,7 +33,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "unpolished-peas", .module = peas },
         },
     });
-    addSdl3(sdl);
+    addSdl3(sdl, bundled_sdl);
 
     const lib = b.addLibrary(.{
         .name = "unpolished-peas",
@@ -76,6 +85,23 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+
+    const sdl_tests = b.addTest(.{ .root_module = sdl });
+    const run_sdl_tests = b.addRunArtifact(sdl_tests);
+    const sdl_test_step = b.step("test-sdl", "Compile the SDL3 runtime against its configured dependency");
+    sdl_test_step.dependOn(&run_sdl_tests.step);
+
+    const box2d_test_module = b.createModule(.{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    addStb(box2d_test_module);
+    box2d_test_module.linkLibrary(box2d.artifact("box2d"));
+    const box2d_tests = b.addTest(.{ .root_module = box2d_test_module });
+    const run_box2d_tests = b.addRunArtifact(box2d_tests);
+    const box2d_test_step = b.step("test-box2d", "Compile the pinned Box2D source dependency");
+    box2d_test_step.dependOn(&run_box2d_tests.step);
 }
 
 fn addExample(
@@ -123,7 +149,12 @@ fn addStb(mod: *std.Build.Module) void {
     });
 }
 
-fn addSdl3(mod: *std.Build.Module) void {
+fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency) void {
     mod.link_libc = true;
-    mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
+    if (bundled_sdl) |dependency| {
+        mod.addIncludePath(dependency.path("include"));
+        mod.linkLibrary(dependency.artifact("SDL3"));
+    } else {
+        mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
+    }
 }
