@@ -1,0 +1,16 @@
+name: Toolchain
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  zig-0-15-2:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: script/check_zig_version.sh
+      - run: zig build test

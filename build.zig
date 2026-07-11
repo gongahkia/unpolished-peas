@@ -1,6 +1,11 @@
 const std = @import("std");
+const builtin = @import("builtin");
+const supported_zig_version = "0.15.2";
 
 pub fn build(b: *std.Build) void {
+    if (!std.mem.eql(u8, builtin.zig_version_string, supported_zig_version)) {
+        @panic("unpolished-peas requires Zig " ++ supported_zig_version ++ "; found " ++ builtin.zig_version_string);
+    }
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
 
