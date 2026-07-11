@@ -81,6 +81,11 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
+    const check_examples = b.step("check-examples", "Compile every example without running it");
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, audio_stress, scene_tests, mapc }) |example| {
+        check_examples.dependOn(&example.step);
+    }
+
     const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");

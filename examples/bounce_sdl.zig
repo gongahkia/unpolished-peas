@@ -1,4 +1,3 @@
-const std = @import("std");
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
@@ -43,57 +42,35 @@ const Ball = struct {
 const Game = struct {
     ball: Ball = .{},
 
-    pub fn init(_: std.mem.Allocator) !Game {
-        return .{};
+    pub fn update(self: *Game, ctx: *sdl.Context) void {
+        self.ball.update(ctx.dt, ctx.input.*);
     }
 
-    pub fn deinit(_: *Game) void {}
-
-    pub fn update(self: *Game, frame: sdl.Frame) !void {
-        self.ball.update(frame.dt, frame.input.*);
-    }
-
-    pub fn render(self: *Game, frame: sdl.Frame) !void {
+    pub fn draw(self: *Game, ctx: *sdl.Context) void {
         var x: i32 = 0;
-        while (x < @as(i32, @intCast(frame.canvas.width))) : (x += 16) {
-            frame.canvas.line(x, 0, x, @intCast(frame.canvas.height - 1), up.Color.rgb(32, 39, 50));
+        while (x < @as(i32, @intCast(ctx.canvas.width))) : (x += 16) {
+            ctx.canvas.line(x, 0, x, @intCast(ctx.canvas.height - 1), up.Color.rgb(32, 39, 50));
         }
         var y: i32 = 0;
-        while (y < @as(i32, @intCast(frame.canvas.height))) : (y += 16) {
-            frame.canvas.line(0, y, @intCast(frame.canvas.width - 1), y, up.Color.rgb(32, 39, 50));
+        while (y < @as(i32, @intCast(ctx.canvas.height))) : (y += 16) {
+            ctx.canvas.line(0, y, @intCast(ctx.canvas.width - 1), y, up.Color.rgb(32, 39, 50));
         }
-        frame.canvas.strokeRect(0, 0, @intCast(frame.canvas.width), @intCast(frame.canvas.height), up.Color.rgb(91, 104, 124));
-        frame.canvas.fillCircle(@intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y), self.ball.radius, up.Color.rgb(255, 198, 74));
-        frame.canvas.drawText("SDL_GPU", 4, 4, up.Color.rgb(225, 232, 240));
-        if (frame.input.isDown(.action)) {
-            frame.canvas.drawText("ACTION", 4, 76, up.Color.rgb(113, 232, 162));
+        ctx.canvas.strokeRect(0, 0, @intCast(ctx.canvas.width), @intCast(ctx.canvas.height), up.Color.rgb(91, 104, 124));
+        ctx.canvas.fillCircle(@intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y), self.ball.radius, up.Color.rgb(255, 198, 74));
+        ctx.text("SDL_GPU", 4, 4, up.Color.rgb(225, 232, 240));
+        if (ctx.down(.action)) {
+            ctx.text("ACTION", 4, 76, up.Color.rgb(113, 232, 162));
         }
     }
 };
 
 pub fn main() !void {
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer _ = gpa.deinit();
-
-    var args = try std.process.argsWithAllocator(gpa.allocator());
-    defer args.deinit();
-
-    var max_frames: ?u32 = null;
-    _ = args.next();
-    while (args.next()) |arg| {
-        if (std.mem.eql(u8, arg, "--frames")) {
-            const value = args.next() orelse return error.MissingFrameCount;
-            max_frames = try std.fmt.parseInt(u32, value, 10);
-        }
-    }
-
-    try sdl.run(gpa.allocator(), .{
+    try sdl.play(.{
         .title = "unpolished-peas SDL3",
         .width = width,
         .height = height,
         .scale = 4,
         .fixed_hz = 60,
         .clear_color = up.Color.rgb(14, 18, 24),
-        .max_frames = max_frames,
     }, Game);
 }
