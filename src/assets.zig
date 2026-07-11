@@ -55,6 +55,10 @@ pub const ImageHandle = struct { index: usize };
 pub const AtlasHandle = struct { index: usize };
 pub const TileMapHandle = struct { index: usize };
 
+pub const TileMapAssetOptions = struct {
+    overlay_path: ?[]const u8 = null,
+};
+
 pub const ReloadStatus = enum {
     changed,
     failed,
@@ -98,14 +102,25 @@ const AtlasAsset = struct {
 const TileMapAsset = struct {
     file: AssetFile,
     map: TileMap,
-    images: []ImageAsset,
+    dependencies: []AssetFile,
+    images: []TileMapImage,
+    overlay_path: ?[]u8 = null,
 
     fn deinit(self: *TileMapAsset) void {
-        for (self.images) |*image| image.deinit();
+        for (self.images) |*image| image.image.deinit();
         self.map.allocator.free(self.images);
+        for (self.dependencies) |*dependency| dependency.deinit();
+        self.map.allocator.free(self.dependencies);
+        if (self.overlay_path) |path| self.map.allocator.free(path);
         self.map.deinit();
         self.file.deinit();
     }
+};
+
+const TileMapImage = struct {
+    tileset: u16,
+    tile_id: ?u32,
+    image: Image,
 };
 
 pub const AssetStore = struct {
@@ -191,23 +206,17 @@ pub const AssetStore = struct {
     }
 
     pub fn loadTileMap(self: *AssetStore, path: []const u8) !TileMapHandle {
-        const file = try AssetFile.load(self.allocator, self.dir, path, 64 * 1024 * 1024);
+        return self.loadTileMapWithOptions(path, .{});
+    }
+
+    pub fn loadTileMapWithOptions(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapHandle {
+        const asset = try self.loadTileMapAsset(path, options);
         errdefer {
-            var cleanup = file;
+            var cleanup = asset;
             cleanup.deinit();
-        }
-        const map = try TileMap.decodeNative(self.allocator, file.bytes);
-        errdefer {
-            var cleanup = map;
-            cleanup.deinit();
-        }
-        const images = try self.loadTileMapImages(path, map);
-        errdefer {
-            for (images) |*entry| entry.deinit();
-            self.allocator.free(images);
         }
         const index = self.tile_maps.items.len;
-        try self.tile_maps.append(self.allocator, .{ .file = file, .map = map, .images = images });
+        try self.tile_maps.append(self.allocator, asset);
         return .{ .index = index };
     }
 
@@ -237,11 +246,16 @@ pub const AssetStore = struct {
 
     pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void {
         const asset = &self.tile_maps.items[handle.index];
-        var images = std.ArrayListUnmanaged(Image){};
-        defer images.deinit(self.allocator);
-        images.ensureTotalCapacity(self.allocator, asset.images.len) catch return;
-        for (asset.images) |entry| images.appendAssumeCapacity(entry.image);
-        asset.map.drawImagesAt(.init(canvas, camera), images.items, time);
+        const Resolver = struct {
+            images: []const TileMapImage,
+            fn resolve(context: *const anyopaque, tileset: u16, tile_id: u32) ?Image {
+                const self_resolver: *const @This() = @ptrCast(@alignCast(context));
+                for (self_resolver.images) |entry| if (entry.tileset == tileset and (entry.tile_id == null or entry.tile_id.? == tile_id)) return entry.image;
+                return null;
+            }
+        };
+        const resolver = Resolver{ .images = asset.images };
+        asset.map.drawResolvedImagesAt(.init(canvas, camera), .{ .context = &resolver, .resolve = Resolver.resolve }, time);
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -336,46 +350,78 @@ pub const AssetStore = struct {
     fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset) !bool {
         const root_stat = try asset.file.dir.statFile(asset.file.path);
         var changed = root_stat.mtime != asset.file.mtime;
-        for (asset.images) |entry| {
-            if ((try entry.file.dir.statFile(entry.file.path)).mtime != entry.file.mtime) changed = true;
+        for (asset.dependencies) |dependency| {
+            if ((try dependency.dir.statFile(dependency.path)).mtime != dependency.mtime) changed = true;
         }
         if (!changed) return false;
-        const bytes = try asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes);
-        errdefer self.allocator.free(bytes);
-        var next = try TileMap.decodeNative(self.allocator, bytes);
-        errdefer next.deinit();
-        const images = try self.loadTileMapImages(asset.file.path, next);
-        errdefer {
-            for (images) |*entry| entry.deinit();
-            self.allocator.free(images);
-        }
-        self.allocator.free(asset.file.bytes);
-        asset.file.bytes = bytes;
-        asset.file.mtime = root_stat.mtime;
-        asset.map.deinit();
-        asset.map = next;
-        for (asset.images) |*entry| entry.deinit();
-        self.allocator.free(asset.images);
-        asset.images = images;
+        const next = try self.loadTileMapAsset(asset.file.path, .{ .overlay_path = asset.overlay_path });
+        asset.deinit();
+        asset.* = next;
         return true;
     }
 
-    fn loadTileMapImages(self: *AssetStore, map_path: []const u8, map: TileMap) ![]ImageAsset {
-        const images = try self.allocator.alloc(ImageAsset, map.tilesets.items.len);
-        errdefer self.allocator.free(images);
-        for (map.tilesets.items, 0..) |tileset, index| {
-            if (tileset.kind != .grid_image) return error.UnsupportedTileMapSource;
-            const path = try atlas_mod.resolveSiblingPath(self.allocator, map_path, tileset.path);
-            defer self.allocator.free(path);
-            const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
-            errdefer {
-                var cleanup = file;
-                cleanup.deinit();
+    fn loadTileMapAsset(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapAsset {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 64 * 1024 * 1024);
+        errdefer { var cleanup = file; cleanup.deinit(); }
+        var map = if (std.mem.endsWith(u8, path, ".tmj"))
+            try TileMap.loadTiledWithOptions(self.allocator, path, .{ .overlay_path = options.overlay_path })
+        else if (std.mem.endsWith(u8, path, ".ldtk")) blk: {
+            var project = try TileMap.loadLdtkProjectWithOptions(self.allocator, path, .{ .overlay_path = options.overlay_path });
+            errdefer project.deinit();
+            if (project.levels.items.len == 0) return error.EmptyLdtkProject;
+            const level = project.levels.orderedRemove(0);
+            self.allocator.free(level.identifier);
+            project.deinit();
+            break :blk level.map;
+        } else blk: {
+            var native = try TileMap.loadNative(self.allocator, path);
+            errdefer native.deinit();
+            if (options.overlay_path) |overlay_path| {
+                try native.addDependency(.overlay, overlay_path);
+                try native.applyOverlay(overlay_path);
             }
-            const decoded = try Image.decodePng(self.allocator, file.bytes);
-            images[index] = .{ .file = file, .image = decoded };
+            break :blk native;
+        };
+        errdefer map.deinit();
+        const dependencies = try self.loadTileMapDependencies(map);
+        errdefer { for (dependencies) |*entry| entry.deinit(); self.allocator.free(dependencies); }
+        const images = try self.decodeTileMapImages(map, dependencies);
+        errdefer { for (images) |*entry| entry.image.deinit(); self.allocator.free(images); }
+        const overlay_path = if (options.overlay_path) |value| try self.allocator.dupe(u8, value) else null;
+        errdefer if (overlay_path) |value| self.allocator.free(value);
+        return .{ .file = file, .map = map, .dependencies = dependencies, .images = images, .overlay_path = overlay_path };
+    }
+
+    fn loadTileMapDependencies(self: *AssetStore, map: TileMap) ![]AssetFile {
+        const dependencies = try self.allocator.alloc(AssetFile, map.dependencies.items.len);
+        var count: usize = 0;
+        errdefer { for (dependencies[0..count]) |*entry| entry.deinit(); self.allocator.free(dependencies); }
+        for (map.dependencies.items) |dependency| {
+            dependencies[count] = try AssetFile.load(self.allocator, self.dir, dependency.path, 64 * 1024 * 1024);
+            count += 1;
         }
-        return images;
+        return dependencies;
+    }
+
+    fn decodeTileMapImages(self: *AssetStore, map: TileMap, dependencies: []const AssetFile) ![]TileMapImage {
+        var images = std.ArrayListUnmanaged(TileMapImage){};
+        errdefer { for (images.items) |*entry| entry.image.deinit(); images.deinit(self.allocator); }
+        for (map.tilesets.items, 0..) |tileset, tileset_index| {
+            if (tileset.kind == .atlas_frames) continue;
+            if (tileset.kind == .grid_image) try self.appendTileMapImage(&images, dependencies, @intCast(tileset_index), null, tileset.path);
+            for (tileset.image_paths, 0..) |image_path, tile_id| if (image_path) |value| try self.appendTileMapImage(&images, dependencies, @intCast(tileset_index), @intCast(tile_id), value);
+        }
+        return images.toOwnedSlice(self.allocator);
+    }
+
+    fn appendTileMapImage(self: *AssetStore, images: *std.ArrayListUnmanaged(TileMapImage), dependencies: []const AssetFile, tileset: u16, tile_id: ?u32, path: []const u8) !void {
+        for (dependencies) |dependency| if (std.mem.eql(u8, dependency.path, path)) {
+            var decoded = try Image.decodePng(self.allocator, dependency.bytes);
+            errdefer decoded.deinit();
+            try images.append(self.allocator, .{ .tileset = tileset, .tile_id = tile_id, .image = decoded });
+            return;
+        };
+        return error.MissingTileMapImageDependency;
     }
 };
 

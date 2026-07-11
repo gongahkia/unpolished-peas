@@ -42,6 +42,18 @@ pub const TileMapLoadOptions = struct {
     overlay_path: ?[]const u8 = null,
 };
 
+pub const TileMapDependencyKind = enum { tileset, image, level, overlay };
+
+pub const TileMapDependency = struct {
+    kind: TileMapDependencyKind,
+    path: []u8,
+};
+
+pub const TileImageResolver = struct {
+    context: *const anyopaque,
+    resolve: *const fn (context: *const anyopaque, tileset: u16, tile_id: u32) ?Image,
+};
+
 pub const TileStack = struct {
     items: std.ArrayListUnmanaged(Tile) = .{},
 
@@ -61,12 +73,15 @@ pub const TileSet = struct {
     margin: u32 = 0,
     spacing: u32 = 0,
     source_id: ?u32 = null,
+    image_paths: []?[]u8 = &.{},
     atlas_frames: [][]u8 = &.{},
     animations: []TileAnimation = &.{},
 
     fn deinit(self: *TileSet, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
         allocator.free(self.path);
+        for (self.image_paths) |image_path| if (image_path) |value| allocator.free(value);
+        allocator.free(self.image_paths);
         for (self.atlas_frames) |frame| allocator.free(frame);
         allocator.free(self.atlas_frames);
         for (self.animations) |animation| allocator.free(animation.frames);
@@ -142,6 +157,7 @@ pub const TileMap = struct {
     editable: bool = true,
     tilesets: std.ArrayListUnmanaged(TileSet) = .{},
     layers: std.ArrayListUnmanaged(TileMapLayer) = .{},
+    dependencies: std.ArrayListUnmanaged(TileMapDependency) = .{},
 
     pub fn init(allocator: std.mem.Allocator, tile_size: Vec2, chunk_size: u32) !TileMap {
         if (tile_size.x <= 0 or tile_size.y <= 0 or !validChunkSize(chunk_size)) return error.InvalidMapConfig;
@@ -153,6 +169,8 @@ pub const TileMap = struct {
         self.tilesets.deinit(self.allocator);
         for (self.layers.items) |*entry| entry.deinit(self.allocator);
         self.layers.deinit(self.allocator);
+        for (self.dependencies.items) |dependency| self.allocator.free(dependency.path);
+        self.dependencies.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -171,6 +189,11 @@ pub const TileMap = struct {
             .tile_size = tile_size,
         });
         return @intCast(self.tilesets.items.len - 1);
+    }
+
+    pub fn addDependency(self: *TileMap, kind: TileMapDependencyKind, path: []const u8) !void {
+        for (self.dependencies.items) |entry| if (std.mem.eql(u8, entry.path, path)) return;
+        try self.dependencies.append(self.allocator, .{ .kind = kind, .path = try self.allocator.dupe(u8, path) });
     }
 
     pub fn setTile(self: *TileMap, layer_index: u32, cell: ChunkCoord, tile: ?Tile) !void {
@@ -297,6 +320,18 @@ pub const TileMap = struct {
 
     pub fn drawImagesAt(self: TileMap, world: CameraCanvas, images: []const Image, time: f32) void {
         if (images.len < self.tilesets.items.len) return;
+        const Adapter = struct {
+            images: []const Image,
+            fn resolve(context: *const anyopaque, tileset: u16, _: u32) ?Image {
+                const self_adapter: *const @This() = @ptrCast(@alignCast(context));
+                return self_adapter.images[tileset];
+            }
+        };
+        const adapter = Adapter{ .images = images };
+        self.drawResolvedImagesAt(world, .{ .context = &adapter, .resolve = Adapter.resolve }, time);
+    }
+
+    pub fn drawResolvedImagesAt(self: TileMap, world: CameraCanvas, resolver: TileImageResolver, time: f32) void {
         for (self.layers.items, 0..) |layer, layer_index| {
             const state = self.layerState(@intCast(layer_index));
             if (layer.kind != .tiles or !state.visible) continue;
@@ -311,8 +346,12 @@ pub const TileMap = struct {
                     for (stack.items.items) |value| {
                         const resolved = animatedTile(self.tilesets.items[value.tileset], value, time);
                         const tileset = self.tilesets.items[resolved.tileset];
+                        const image = resolver.resolve(resolver.context, resolved.tileset, resolved.id) orelse continue;
+                        if (tileset.kind == .image_collection) {
+                            canvas.drawImageRegion(image, Rect.init(0, 0, @floatFromInt(image.width), @floatFromInt(image.height)), Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
+                            continue;
+                        }
                         if (tileset.kind != .grid_image) continue;
-                        const image = images[resolved.tileset];
                         const available_width = @as(f32, @floatFromInt(image.width)) - 2 * @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(tileset.spacing));
                         const stride = tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing));
                         const columns = @max(@as(u32, 1), @as(u32, @intFromFloat(@floor(available_width / stride))));
@@ -329,7 +368,15 @@ pub const TileMap = struct {
     pub fn loadNative(allocator: std.mem.Allocator, path: []const u8) !TileMap {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_map_bytes);
         defer allocator.free(bytes);
-        return decodeNative(allocator, bytes);
+        var result = try decodeNative(allocator, bytes);
+        errdefer result.deinit();
+        for (result.tilesets.items) |tileset| {
+            if (tileset.kind == .atlas_frames) continue;
+            const resolved = try resolveSiblingPath(allocator, path, tileset.path);
+            defer allocator.free(resolved);
+            try result.addDependency(.image, resolved);
+        }
+        return result;
     }
 
     pub fn loadTiled(allocator: std.mem.Allocator, path: []const u8) !TileMap {
@@ -355,7 +402,10 @@ pub const TileMap = struct {
         defer allocator.free(ranges);
         try parseTiledLayers(&result, try array(root.get("layers") orelse return error.InvalidTiledMap), null, ranges);
         result.editable = false;
-        if (options.overlay_path) |overlay_path| try result.applyOverlay(overlay_path);
+        if (options.overlay_path) |overlay_path| {
+            try result.addDependency(.overlay, overlay_path);
+            try result.applyOverlay(overlay_path);
+        }
         return result;
     }
 
@@ -378,11 +428,12 @@ pub const TileMap = struct {
             const level = try object(level_json);
             var map = try init(allocator, .{ .x = 16, .y = 16 }, 32);
             errdefer map.deinit();
-            try parseLdtkTileSets(&map, tile_sets);
+            try parseLdtkTileSets(&map, tile_sets, path);
             const layer_instances = level.get("layerInstances") orelse return error.InvalidLdtkProject;
             if (layer_instances == .null) {
                 const external_path = try resolveSiblingPath(allocator, path, try string(level.get("externalRelPath") orelse return error.InvalidLdtkProject));
                 defer allocator.free(external_path);
+                try map.addDependency(.level, external_path);
                 const external_bytes = try std.fs.cwd().readFileAlloc(allocator, external_path, max_map_bytes);
                 defer allocator.free(external_bytes);
                 var external_parsed = try std.json.parseFromSlice(std.json.Value, allocator, external_bytes, .{});
@@ -393,7 +444,10 @@ pub const TileMap = struct {
                 try parseLdtkLayers(&map, try array(layer_instances));
             }
             map.editable = false;
-            if (options.overlay_path) |overlay_path| try map.applyOverlay(overlay_path);
+            if (options.overlay_path) |overlay_path| {
+                try map.addDependency(.overlay, overlay_path);
+                try map.applyOverlay(overlay_path);
+            }
             try project.levels.append(allocator, .{
                 .identifier = try allocator.dupe(u8, try string(level.get("identifier") orelse return error.InvalidLdtkProject)),
                 .world_position = .{
@@ -528,15 +582,16 @@ fn parseTiledTileSets(map: *TileMap, values: std.json.Array, map_path: []const u
             const parent = std.fs.path.dirname(map_path) orelse ".";
             const resolved = try std.fs.path.join(map.allocator, &.{ parent, try string(source) });
             defer map.allocator.free(resolved);
+            try map.addDependency(.tileset, resolved);
             const bytes = try std.fs.cwd().readFileAlloc(map.allocator, resolved, max_map_bytes);
             defer map.allocator.free(bytes);
             var parsed = try std.json.parseFromSlice(std.json.Value, map.allocator, bytes, .{});
             defer parsed.deinit();
             const external = try object(parsed.value);
-            ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, external) };
+            ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, external, resolved) };
             continue;
         } else entry;
-        ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, content) };
+        ranges[i] = .{ .first_gid = first_gid, .tileset = try appendTiledTileSet(map, content, map_path) };
     }
     std.mem.sort(TiledTileSetRange, ranges, {}, struct { fn less(_: void, a: TiledTileSetRange, b: TiledTileSetRange) bool { return a.first_gid < b.first_gid; } }.less);
     return ranges;
@@ -546,7 +601,7 @@ fn resolveSiblingPath(allocator: std.mem.Allocator, path: []const u8, relative: 
     return std.fs.path.join(allocator, &.{ std.fs.path.dirname(path) orelse ".", relative });
 }
 
-fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap) !u16 {
+fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap, source_path: []const u8) !u16 {
     const image = entry.get("image") orelse blk: {
             const tile_defs = try array(entry.get("tiles") orelse return error.InvalidTiledMap);
             if (tile_defs.items.len == 0) return error.InvalidTiledMap;
@@ -555,14 +610,33 @@ fn appendTiledTileSet(map: *TileMap, entry: std.json.ObjectMap) !u16 {
         };
     const is_collection = entry.get("image") == null;
     const name = if (entry.get("name")) |name_value| try string(name_value) else "tileset";
-    const index = try map.addTileSet(name, if (is_collection) .image_collection else .grid_image, try string(image), .{
+    const resolved_image = try resolveSiblingPath(map.allocator, source_path, try string(image));
+    defer map.allocator.free(resolved_image);
+    const index = try map.addTileSet(name, if (is_collection) .image_collection else .grid_image, resolved_image, .{
         .x = try f32Value(entry.get("tilewidth") orelse return error.InvalidTiledMap),
         .y = try f32Value(entry.get("tileheight") orelse return error.InvalidTiledMap),
     });
     var tileset = &map.tilesets.items[index];
+    try map.addDependency(.image, resolved_image);
     if (entry.get("margin")) |margin| tileset.margin = try u32Value(margin);
     if (entry.get("spacing")) |spacing| tileset.spacing = try u32Value(spacing);
     if (entry.get("tiles")) |tiles| {
+        if (is_collection) {
+            const definitions = try array(tiles);
+            var max_id: u32 = 0;
+            for (definitions.items) |tile_value| max_id = @max(max_id, try u32Value((try object(tile_value)).get("id") orelse return error.InvalidTiledMap));
+            tileset.image_paths = try map.allocator.alloc(?[]u8, @as(usize, max_id) + 1);
+            @memset(tileset.image_paths, null);
+            for (definitions.items) |tile_value| {
+                const tile = try object(tile_value);
+                const id = try u32Value(tile.get("id") orelse return error.InvalidTiledMap);
+                const tile_image = tile.get("image") orelse continue;
+                const resolved = try resolveSiblingPath(map.allocator, source_path, try string(tile_image));
+                errdefer map.allocator.free(resolved);
+                tileset.image_paths[id] = resolved;
+                try map.addDependency(.image, resolved);
+            }
+        }
         for ((try array(tiles)).items) |tile_value| {
             const tile = try object(tile_value);
             if (tile.get("animation")) |frames| try replaceAnimation(map.allocator, tileset, try u32Value(tile.get("id") orelse return error.InvalidTiledMap), try parseTiledAnimationFrames(map.allocator, try array(frames)));
@@ -712,14 +786,17 @@ fn tiledTile(gid: u32, ranges: []const TiledTileSetRange) Tile {
     return .{ .tileset = selected.tileset, .id = raw - selected.first_gid, .flags = .{ .flip_x = flip_x, .flip_y = flip_y, .diagonal = diagonal } };
 }
 
-fn parseLdtkTileSets(map: *TileMap, values: std.json.Array) !void {
+fn parseLdtkTileSets(map: *TileMap, values: std.json.Array, project_path: []const u8) !void {
     for (values.items) |value| {
         const entry = try object(value);
         const path = entry.get("relPath") orelse continue;
-        const index = try map.addTileSet(try string(entry.get("identifier") orelse return error.InvalidLdtkProject), .grid_image, try string(path), .{
+        const resolved = try resolveSiblingPath(map.allocator, project_path, try string(path));
+        defer map.allocator.free(resolved);
+        const index = try map.addTileSet(try string(entry.get("identifier") orelse return error.InvalidLdtkProject), .grid_image, resolved, .{
             .x = try f32Value(entry.get("tileGridSize") orelse return error.InvalidLdtkProject),
             .y = try f32Value(entry.get("tileGridSize") orelse return error.InvalidLdtkProject),
         });
+        try map.addDependency(.image, resolved);
         map.tilesets.items[index].source_id = try u32Value(entry.get("uid") orelse return error.InvalidLdtkProject);
     }
 }

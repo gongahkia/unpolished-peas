@@ -46,6 +46,7 @@ pub const Sprite = @import("canvas.zig").Sprite;
 pub const StepClock = @import("app.zig").StepClock;
 pub const TextHandle = @import("assets.zig").TextHandle;
 pub const TileMapHandle = @import("assets.zig").TileMapHandle;
+pub const TileMapAssetOptions = @import("assets.zig").TileMapAssetOptions;
 pub const Tile = @import("tilemap.zig").Tile;
 pub const TileFlags = @import("tilemap.zig").TileFlags;
 pub const TileMap = @import("tilemap.zig").TileMap;
