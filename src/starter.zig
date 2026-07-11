@@ -27,6 +27,10 @@ fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template
     defer source.close();
     var output = try std.fs.cwd().makeOpenPath(destination, .{});
     defer output.close();
+    const output_path = try output.realpathAlloc(allocator, ".");
+    defer allocator.free(output_path);
+    const engine_path = try std.fs.path.relative(allocator, output_path, engine_root);
+    defer allocator.free(engine_path);
     try output.makePath("src");
     try source.copyFile("build.zig", output, "build.zig", .{});
     try source.copyFile("README.md", output, "README.md", .{});
@@ -50,7 +54,7 @@ fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template
         \\    }},
         \\}}
         \\ 
-    , .{engine_root});
+    , .{engine_path});
     defer allocator.free(manifest);
     try output.writeFile(.{ .sub_path = "build.zig.zon", .data = manifest });
 }
