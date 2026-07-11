@@ -4,6 +4,7 @@ const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const font = @import("font.zig");
 const Vec2 = @import("math.zig").Vec2;
+const text_layout = @import("text_layout.zig");
 
 pub const ClipRect = struct {
     x: i32,
@@ -227,20 +228,12 @@ pub const Canvas = struct {
     }
 
     pub fn drawText(self: *Canvas, text: []const u8, x: i32, y: i32, color: Color) void {
-        var pen_x = x;
-        var pen_y = y;
-        for (text) |c| {
-            switch (c) {
-                '\n' => {
-                    pen_x = x;
-                    pen_y += font.height + 1;
-                },
-                ' ' => pen_x += font.width + 1,
-                else => {
-                    self.drawGlyph(c, pen_x, pen_y, color);
-                    pen_x += font.width + 1;
-                },
-            }
+        var laid_out = text_layout.layout(self.allocator, text, .{}) catch return;
+        defer laid_out.deinit();
+        for (laid_out.glyphs) |glyph| {
+            if (glyph.codepoint == ' ') continue;
+            const codepoint: u8 = if (glyph.codepoint <= 0x7f) @intCast(glyph.codepoint) else '?';
+            self.drawGlyph(codepoint, x + glyph.x, y + glyph.y, color);
         }
     }
 

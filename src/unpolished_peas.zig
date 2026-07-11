@@ -58,6 +58,10 @@ pub const SpriteBatchDraw = @import("sprite_batch.zig").SpriteDraw;
 pub const SpriteSourceRect = @import("sprite_batch.zig").SourceRect;
 pub const StepClock = @import("app.zig").StepClock;
 pub const TextHandle = @import("assets.zig").TextHandle;
+pub const TextAlignment = @import("text_layout.zig").Alignment;
+pub const TextLayoutOptions = @import("text_layout.zig").Options;
+pub const TextLayout = @import("text_layout.zig").Layout;
+pub const layoutText = @import("text_layout.zig").layout;
 pub const TileMapHandle = @import("assets.zig").TileMapHandle;
 pub const TileMapAssetOptions = @import("assets.zig").TileMapAssetOptions;
 pub const Tile = @import("tilemap.zig").Tile;
@@ -85,4 +89,5 @@ test {
     _ = @import("render.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");
+    _ = @import("text_layout.zig");
 }

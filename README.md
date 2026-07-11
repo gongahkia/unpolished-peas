@@ -28,6 +28,8 @@ zig build test-sdl
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
+Text uses the built-in 5×7 bitmap font. `layoutText` measures and places UTF-8 text deterministically; unsupported or invalid code points use one fallback glyph.
+
 To use a system SDL3 instead:
 
 ```sh
