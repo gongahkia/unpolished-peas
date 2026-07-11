@@ -26,6 +26,8 @@ zig build test-sdl
 
 `zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The pinned Box2D source is reserved for the optional physics module and is validated with `zig build test-box2d`.
 
+The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
+
 To use a system SDL3 instead:
 
 ```sh
