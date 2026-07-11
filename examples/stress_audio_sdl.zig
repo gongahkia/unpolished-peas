@@ -51,7 +51,8 @@ pub fn main() !void {
         .width = 80,
         .height = 24,
         .scale = 4,
-        .max_frames = 120,
+        .max_frames = 3,
+        .audio_buffer_frames = 256,
         .strict_audio = false,
         .clear_color = up.Color.rgb(14, 18, 24),
     }, Game);
