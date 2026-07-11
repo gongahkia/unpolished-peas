@@ -97,6 +97,33 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(audio_demo);
 
+    const atlas_demo = b.addExecutable(.{
+        .name = "atlas",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/atlas.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "unpolished", .module = mod },
+                .{ .name = "unpolished_sdl3", .module = sdl_mod },
+            },
+        }),
+    });
+    b.installArtifact(atlas_demo);
+
+    const audio_stress = b.addExecutable(.{
+        .name = "stress-audio-sdl",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/stress_audio_sdl.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "unpolished", .module = mod },
+                .{ .name = "unpolished_sdl3", .module = sdl_mod },
+            },
+        }),
+    });
+
     const scene_tests = b.addExecutable(.{
         .name = "test-scenes",
         .root_module = b.createModule(.{
@@ -137,6 +164,16 @@ pub fn build(b: *std.Build) void {
 
     const run_audio_step = b.step("run-audio", "Run the SDL audio demo");
     run_audio_step.dependOn(&run_audio_demo.step);
+
+    const run_atlas_demo = b.addRunArtifact(atlas_demo);
+    if (b.args) |args| run_atlas_demo.addArgs(args);
+
+    const run_atlas_step = b.step("run-atlas", "Run the atlas sprite demo");
+    run_atlas_step.dependOn(&run_atlas_demo.step);
+
+    const run_audio_stress = b.addRunArtifact(audio_stress);
+    const audio_stress_step = b.step("stress-audio-sdl", "Run local SDL audio stress smoke");
+    audio_stress_step.dependOn(&run_audio_stress.step);
 
     const run_scene_tests = b.addRunArtifact(scene_tests);
     const scene_step = b.step("test-scenes", "Run deterministic scene hash tests");

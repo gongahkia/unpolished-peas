@@ -53,14 +53,18 @@ zig build run-bounce-sdl
 zig build dev-bounce
 zig build run-minimal
 zig build run-audio
+zig build run-atlas
 zig build test-scenes
+zig build stress-audio-sdl
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
 `run-bounce-sdl` opens an SDL_GPU window.
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
+`run-atlas` opens a JSON atlas/tile scene demo.
 `test-scenes` runs deterministic headless scene hashing.
+`stress-audio-sdl` runs a local SDL audio stress smoke.
 
 ## Current API
 
@@ -70,10 +74,14 @@ zig build test-scenes
 - `StepClock`
 - `Canvas`, `Sprite`
 - `Canvas.drawImage`
+- `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
 - `AssetFile`
 - `AssetStore`
 - `Image`
+- `Atlas`
+- `AtlasFrameHandle`
+- `AnimationPlayer`
 - `Sound`
 - `Music`
 - `AudioMixer`
@@ -84,7 +92,6 @@ zig build test-scenes
 
 ## Next build targets
 
-1. Sprite ergonomics: centered draw helpers, texture atlas, frame animation.
-2. Starter template: one command to copy a tiny playable project.
-3. Shader API with one strict pixel-effect example.
-4. Web export after desktop loop, assets, and audio feel solid.
+1. Starter template: one command to copy a tiny playable project.
+2. Shader API with one strict pixel-effect example.
+3. Web export after desktop loop, assets, and audio feel solid.

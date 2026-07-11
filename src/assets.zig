@@ -1,4 +1,6 @@
 const std = @import("std");
+const atlas_mod = @import("atlas.zig");
+const Atlas = atlas_mod.Atlas;
 const Image = @import("image.zig").Image;
 
 pub const AssetFile = struct {
@@ -49,6 +51,7 @@ pub const AssetFile = struct {
 
 pub const TextHandle = struct { index: usize };
 pub const ImageHandle = struct { index: usize };
+pub const AtlasHandle = struct { index: usize };
 
 pub const ReloadStatus = enum {
     changed,
@@ -78,11 +81,24 @@ const ImageAsset = struct {
     }
 };
 
+const AtlasAsset = struct {
+    json_file: AssetFile,
+    image_file: AssetFile,
+    atlas: Atlas,
+
+    fn deinit(self: *AtlasAsset) void {
+        self.atlas.deinit();
+        self.image_file.deinit();
+        self.json_file.deinit();
+    }
+};
+
 pub const AssetStore = struct {
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
+    atlases: std.ArrayListUnmanaged(AtlasAsset) = .{},
     events: std.ArrayListUnmanaged(ReloadEvent) = .{},
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
@@ -92,8 +108,10 @@ pub const AssetStore = struct {
     pub fn deinit(self: *AssetStore) void {
         for (self.texts.items) |*asset| asset.deinit();
         for (self.images.items) |*asset| asset.deinit();
+        for (self.atlases.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
+        self.atlases.deinit(self.allocator);
         self.events.deinit(self.allocator);
         self.* = undefined;
     }
@@ -128,12 +146,46 @@ pub const AssetStore = struct {
         return .{ .index = index };
     }
 
+    pub fn loadAtlas(self: *AssetStore, path: []const u8) !AtlasHandle {
+        const json_file = try AssetFile.load(self.allocator, self.dir, path, 8 * 1024 * 1024);
+        errdefer {
+            var cleanup = json_file;
+            cleanup.deinit();
+        }
+        const image_rel = try atlas_mod.imagePathFromJson(self.allocator, json_file.bytes);
+        defer self.allocator.free(image_rel);
+        const image_path = try atlas_mod.resolveSiblingPath(self.allocator, path, image_rel);
+        defer self.allocator.free(image_path);
+        const image_file = try AssetFile.load(self.allocator, self.dir, image_path, 32 * 1024 * 1024);
+        errdefer {
+            var cleanup = image_file;
+            cleanup.deinit();
+        }
+        const decoded_atlas = try Atlas.decode(self.allocator, image_file.bytes, image_path, json_file.bytes);
+        errdefer {
+            var cleanup = decoded_atlas;
+            cleanup.deinit();
+        }
+
+        const index = self.atlases.items.len;
+        try self.atlases.append(self.allocator, .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas });
+        return .{ .index = index };
+    }
+
     pub fn text(self: AssetStore, handle: TextHandle) []const u8 {
         return self.texts.items[handle.index].file.text();
     }
 
     pub fn image(self: AssetStore, handle: ImageHandle) Image {
         return self.images.items[handle.index].image;
+    }
+
+    pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas {
+        return self.atlases.items[handle.index].atlas;
+    }
+
+    pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas {
+        return &self.atlases.items[handle.index].atlas;
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -174,7 +226,46 @@ pub const AssetStore = struct {
             try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
         }
 
+        for (self.atlases.items) |*asset| {
+            if (self.reloadAtlas(asset) catch {
+                try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .failed });
+                continue;
+            }) {
+                try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .changed });
+            }
+        }
+
         return self.events.items;
+    }
+
+    fn reloadAtlas(self: *AssetStore, asset: *AtlasAsset) !bool {
+        const json_stat = try asset.json_file.dir.statFile(asset.json_file.path);
+        const image_stat = try asset.image_file.dir.statFile(asset.image_file.path);
+        if (json_stat.mtime == asset.json_file.mtime and image_stat.mtime == asset.image_file.mtime) return false;
+
+        const json_file = try AssetFile.load(self.allocator, self.dir, asset.json_file.path, asset.json_file.max_bytes);
+        errdefer {
+            var cleanup = json_file;
+            cleanup.deinit();
+        }
+        const image_rel = try atlas_mod.imagePathFromJson(self.allocator, json_file.bytes);
+        defer self.allocator.free(image_rel);
+        const image_path = try atlas_mod.resolveSiblingPath(self.allocator, asset.json_file.path, image_rel);
+        defer self.allocator.free(image_path);
+        const image_file = try AssetFile.load(self.allocator, self.dir, image_path, asset.image_file.max_bytes);
+        errdefer {
+            var cleanup = image_file;
+            cleanup.deinit();
+        }
+        const decoded_atlas = try Atlas.decode(self.allocator, image_file.bytes, image_path, json_file.bytes);
+        errdefer {
+            var cleanup = decoded_atlas;
+            cleanup.deinit();
+        }
+
+        asset.deinit();
+        asset.* = .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas };
+        return true;
     }
 };
 
