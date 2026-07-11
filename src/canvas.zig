@@ -214,7 +214,14 @@ pub const Canvas = struct {
                 if (options.flip_x) logical_x = frame.source_w - 1 - logical_x;
                 if (options.flip_y) logical_y = frame.source_h - 1 - logical_y;
                 const pixel_color = tint(atlas.image.pixels[@as(usize, sy) * atlas.image.width + sx], options.tint);
-                self.fillRect(origin_x + logical_x * scale, origin_y + logical_y * scale, scale, scale, pixel_color);
+                const x = origin_x + logical_x * scale;
+                const y = origin_y + logical_y * scale;
+                if (options.rotation == 0) {
+                    self.fillRect(x, y, scale, scale, pixel_color);
+                } else {
+                    const center = Vec2.init(@as(f32, @floatFromInt(origin_x)) + @as(f32, @floatFromInt(frame.source_w * scale)) / 2, @as(f32, @floatFromInt(origin_y)) + @as(f32, @floatFromInt(frame.source_h * scale)) / 2);
+                    self.fillQuad(rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y + scale) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y + scale) }, center, options.rotation), pixel_color);
+                }
             }
         }
     }
@@ -276,6 +283,14 @@ pub const Canvas = struct {
 
 fn edge(a: Vec2, b: Vec2, point: Vec2) f32 {
     return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+}
+
+fn rotatePoint(point: Vec2, center: Vec2, angle: f32) Vec2 {
+    const sin = @sin(angle);
+    const cos = @cos(angle);
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+    return .{ .x = center.x + x * cos - y * sin, .y = center.y + x * sin + y * cos };
 }
 
 fn intersectClip(a: ClipRect, b: ClipRect) ClipRect {

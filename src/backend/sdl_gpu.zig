@@ -109,7 +109,7 @@ pub const Context = struct {
     pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
         const source_atlas = self.assets.atlasPtr(atlas_handle);
         const source = source_atlas.frame(frame);
-        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and !(options.flip_x and options.flip_y) and options.origin == .top_left and std.meta.eql(options.tint, up.Color.white)) {
+        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and !(options.flip_x and options.flip_y) and options.origin == .top_left and options.rotation == 0 and options.sampling == .nearest and std.meta.eql(options.tint, up.Color.white)) {
             const draw_x = x + source.offset_x;
             const draw_y = y + source.offset_y;
             if (draw_x >= 0 and draw_y >= 0) {
