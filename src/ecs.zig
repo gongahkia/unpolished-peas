@@ -38,6 +38,32 @@ pub const World = struct {
         const slot = self.slots.items[entity.index];
         if (!slot.live or slot.generation != entity.generation) return error.StaleEntity;
     }
+    pub fn entities(self: *const World, allocator: std.mem.Allocator) ![]Entity {
+        var result = std.ArrayList(Entity).empty;
+        errdefer result.deinit(allocator);
+        for (self.slots.items, 0..) |slot, index| if (slot.live) try result.append(allocator, .{ .index = @intCast(index), .generation = slot.generation });
+        return result.toOwnedSlice(allocator);
+    }
+};
+
+pub const Commands = struct {
+    allocator: std.mem.Allocator,
+    destroys: std.ArrayList(Entity) = .empty,
+
+    pub fn init(allocator: std.mem.Allocator) Commands {
+        return .{ .allocator = allocator };
+    }
+    pub fn deinit(self: *Commands) void {
+        self.destroys.deinit(self.allocator);
+        self.* = undefined;
+    }
+    pub fn destroy(self: *Commands, entity: Entity) !void {
+        try self.destroys.append(self.allocator, entity);
+    }
+    pub fn apply(self: *Commands, world: *World) !void {
+        for (self.destroys.items) |entity| try world.destroy(entity);
+        self.destroys.clearRetainingCapacity();
+    }
 };
 
 pub fn ComponentStore(comptime T: type) type {
@@ -92,6 +118,18 @@ pub fn ComponentStore(comptime T: type) type {
             _ = self.dense_entities.pop();
             self.sparse.items[entity.index] = invalid;
         }
+        pub fn entities(self: *const Self, world: *const World, allocator: std.mem.Allocator) ![]Entity {
+            var result = std.ArrayList(Entity).empty;
+            errdefer result.deinit(allocator);
+            for (self.sparse.items, 0..) |dense_index, index| {
+                if (dense_index == invalid) continue;
+                const entity = self.dense_entities.items[dense_index];
+                if (entity.index != index) continue;
+                world.validate(entity) catch continue;
+                try result.append(allocator, entity);
+            }
+            return result.toOwnedSlice(allocator);
+        }
         const invalid = std.math.maxInt(usize);
         fn ensure(self: *Self, index: u32) !void {
             while (self.sparse.items.len <= index) try self.sparse.append(self.allocator, invalid);
@@ -114,4 +152,26 @@ test "ECS reuses entities and removes sparse components" {
     try std.testing.expectEqual(first.index, replacement.index);
     try std.testing.expect(replacement.generation != first.generation);
     try std.testing.expectError(error.StaleEntity, positions.put(&world, first, 1));
+}
+
+test "ECS queries and commands are deterministic" {
+    var world = World.init(std.testing.allocator);
+    defer world.deinit();
+    var values = ComponentStore(u8).init(std.testing.allocator);
+    defer values.deinit();
+    const a = try world.create();
+    const b = try world.create();
+    try values.put(&world, b, 2);
+    try values.put(&world, a, 1);
+    const queried = try values.entities(&world, std.testing.allocator);
+    defer std.testing.allocator.free(queried);
+    try std.testing.expectEqualSlices(Entity, &.{ a, b }, queried);
+    var commands = Commands.init(std.testing.allocator);
+    defer commands.deinit();
+    try commands.destroy(a);
+    const before_apply = try world.entities(std.testing.allocator);
+    defer std.testing.allocator.free(before_apply);
+    try std.testing.expect(before_apply.len == 2);
+    try commands.apply(&world);
+    try std.testing.expectError(error.StaleEntity, world.validate(a));
 }
