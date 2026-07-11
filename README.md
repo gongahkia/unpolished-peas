@@ -77,9 +77,11 @@ zig build run-minimal
 zig build run-audio
 zig build run-atlas
 zig build run-camera
+zig build run-tilemap
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
+zig build upmapc -- level.upmap level.upmapb
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
@@ -88,6 +90,7 @@ zig build new -- ../my-game
 `run-audio` opens a WAV/OGG audio demo.
 `run-atlas` opens a JSON atlas/tile scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
+`run-tilemap` opens the sparse tile-map and camera-culling demo.
 `test-scenes` runs deterministic headless scene hashing.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
@@ -118,6 +121,9 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
+- `TileMap`, `TileMapLayer`, `TileSet`, `TileMapHandle`
+- `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
+- `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`
@@ -137,7 +143,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 ## Next Build Targets
 
 1. Publish a tagged package release and update `zig build new` to generate a pinned Git dependency.
-2. Add tile-map loading, visible-region culling, and a headless tile scene before broadening rendering APIs.
+2. Complete external tile-source blitting and compressed/external Tiled fixture coverage for the tile-map compatibility layer.
 3. Add explicit 2D collision queries and resolution for rectangles, circles, and tile maps; ship a character-controller example.
 4. Add an optional Box2D-backed physics module with explicit world stepping, body/fixture lifetime, and deterministic headless tests; do not hand-roll a general rigid-body solver.
 5. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
