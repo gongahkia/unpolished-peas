@@ -1,0 +1,17 @@
+{
+  "image": "ball.png",
+  "frames": {
+    "tile_a": { "x": 0, "y": 0, "w": 8, "h": 8 },
+    "tile_b": { "x": 8, "y": 0, "w": 8, "h": 8 },
+    "tile_c": { "x": 0, "y": 8, "w": 8, "h": 8 },
+    "tile_d": { "x": 8, "y": 8, "w": 8, "h": 8 }
+  },
+  "animations": {
+    "pulse": [
+      { "frame": "tile_a", "duration": 0.12 },
+      { "frame": "tile_b", "duration": 0.12 },
+      { "frame": "tile_d", "duration": 0.12 },
+      { "frame": "tile_c", "duration": 0.12 }
+    ]
+  }
+}

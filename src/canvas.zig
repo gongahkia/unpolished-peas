@@ -1,4 +1,5 @@
 const std = @import("std");
+const atlas_mod = @import("atlas.zig");
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const font = @import("font.zig");
@@ -125,6 +126,40 @@ pub const Canvas = struct {
         self.drawSprite(image.sprite(), dst_x, dst_y);
     }
 
+    pub fn drawAtlasFrame(self: *Canvas, atlas: atlas_mod.Atlas, handle: atlas_mod.AtlasFrameHandle, dst_x: i32, dst_y: i32, options: atlas_mod.DrawSpriteOptions) void {
+        if (options.scale == 0) return;
+        const frame = atlas.frame(handle);
+        const scale: i32 = @intCast(options.scale);
+        const origin_x = switch (options.origin) {
+            .top_left => dst_x,
+            .center => dst_x - @divTrunc(frame.source_w * scale, 2),
+        };
+        const origin_y = switch (options.origin) {
+            .top_left => dst_y,
+            .center => dst_y - @divTrunc(frame.source_h * scale, 2),
+        };
+        const trim_w = if (frame.rotated) frame.h else frame.w;
+        const trim_h = if (frame.rotated) frame.w else frame.h;
+        var local_y: i32 = 0;
+        while (local_y < trim_h) : (local_y += 1) {
+            var local_x: i32 = 0;
+            while (local_x < trim_w) : (local_x += 1) {
+                const source_x = if (frame.rotated) frame.x + local_y else frame.x + local_x;
+                const source_y = if (frame.rotated) frame.y + frame.h - 1 - local_x else frame.y + local_y;
+                if (source_x < 0 or source_y < 0) continue;
+                const sx: u32 = @intCast(source_x);
+                const sy: u32 = @intCast(source_y);
+                if (sx >= atlas.image.width or sy >= atlas.image.height) continue;
+                var logical_x = frame.offset_x + local_x;
+                var logical_y = frame.offset_y + local_y;
+                if (options.flip_x) logical_x = frame.source_w - 1 - logical_x;
+                if (options.flip_y) logical_y = frame.source_h - 1 - logical_y;
+                const pixel_color = tint(atlas.image.pixels[@as(usize, sy) * atlas.image.width + sx], options.tint);
+                self.fillRect(origin_x + logical_x * scale, origin_y + logical_y * scale, scale, scale, pixel_color);
+            }
+        }
+    }
+
     pub fn drawText(self: *Canvas, text: []const u8, x: i32, y: i32, color: Color) void {
         var pen_x = x;
         var pen_y = y;
@@ -179,6 +214,15 @@ pub const Canvas = struct {
     }
 };
 
+fn tint(color: Color, value: Color) Color {
+    return .{
+        .r = @intCast((@as(u16, color.r) * value.r) / 255),
+        .g = @intCast((@as(u16, color.g) * value.g) / 255),
+        .b = @intCast((@as(u16, color.b) * value.b) / 255),
+        .a = @intCast((@as(u16, color.a) * value.a) / 255),
+    };
+}
+
 test "canvas clips draws" {
     var canvas = try Canvas.init(std.testing.allocator, 4, 4);
     defer canvas.deinit();
@@ -221,5 +265,38 @@ test "text draws visible pixels" {
     canvas.clear(Color.black);
     canvas.drawText("A", 0, 0, Color.white);
     try std.testing.expectEqual(Color.white, canvas.get(1, 0).?);
+    try std.testing.expectEqual(Color.black, canvas.get(0, 0).?);
+}
+
+test "atlas frame draw handles trim rotation flip and tint" {
+    var canvas = try Canvas.init(std.testing.allocator, 4, 4);
+    defer canvas.deinit();
+    const pixels = try std.testing.allocator.dupe(Color, &.{
+        Color.rgb(255, 0, 0), Color.rgb(0, 255, 0),
+        Color.rgb(0, 0, 255), Color.rgb(255, 255, 255),
+    });
+    const image = Image{ .allocator = std.testing.allocator, .width = 2, .height = 2, .pixels = pixels };
+    const frame_name = try std.testing.allocator.dupe(u8, "rot");
+    const path = try std.testing.allocator.dupe(u8, "memory.png");
+    const frames = try std.testing.allocator.dupe(atlas_mod.AtlasFrame, &.{.{
+        .name = frame_name,
+        .x = 0,
+        .y = 0,
+        .w = 2,
+        .h = 2,
+        .source_w = 4,
+        .source_h = 4,
+        .offset_x = 1,
+        .offset_y = 1,
+        .rotated = true,
+    }});
+    const animations = try std.testing.allocator.alloc(atlas_mod.Animation, 0);
+    var atlas = atlas_mod.Atlas{ .allocator = std.testing.allocator, .image = image, .image_path = path, .frames = frames, .animations = animations };
+    defer atlas.deinit();
+
+    canvas.clear(Color.black);
+    canvas.drawAtlasFrame(atlas, .{ .index = 0 }, 0, 0, .{ .tint = Color.rgb(255, 128, 255) });
+    try std.testing.expectEqual(Color.rgb(0, 128, 0), canvas.get(2, 2).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(2, 1).?);
     try std.testing.expectEqual(Color.black, canvas.get(0, 0).?);
 }

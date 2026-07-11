@@ -426,21 +426,15 @@ const OggPlayback = struct {
 
     fn decodeMore(self: *OggPlayback, allocator: std.mem.Allocator) !bool {
         const info = self.music.info();
-        var temp: [4096 * max_ogg_channels]c_short = undefined;
-        const got = vorbis.stb_vorbis_get_frame_short_interleaved(
-            self.decoder,
-            @intCast(info.channels),
-            temp[0..].ptr,
-            @intCast(@as(usize, 4096) * info.channels),
-        );
+        var output: [*c][*c]f32 = undefined;
+        const got = vorbis.stb_vorbis_get_frame_float(self.decoder, null, &output);
         if (got <= 0) {
             self.eof = true;
             return false;
         }
         var frame: usize = 0;
         while (frame < @as(usize, @intCast(got))) : (frame += 1) {
-            const base = frame * info.channels;
-            try self.buffer.append(allocator, sampleFromShorts(temp[base..], info.channels));
+            try self.buffer.append(allocator, sampleFromVorbis(output, info.channels, frame));
         }
         return true;
     }
@@ -522,14 +516,10 @@ fn mixAdd(out: *AudioSample, sample: AudioSample, gain: f32) void {
     out.right += sample.right * gain;
 }
 
-fn sampleFromShorts(samples: []const c_short, channels: u16) AudioSample {
-    const left = shortToFloat(samples[0]);
-    const right = if (channels == 1) left else shortToFloat(samples[1]);
+fn sampleFromVorbis(output: [*c][*c]f32, channels: u16, frame: usize) AudioSample {
+    const left = output[0][frame];
+    const right = if (channels == 1) left else output[1][frame];
     return .{ .left = left, .right = right };
-}
-
-fn shortToFloat(value: c_short) f32 {
-    return @as(f32, @floatFromInt(value)) / 32768.0;
 }
 
 fn requireVolume(volume: f32) !void {
@@ -559,19 +549,13 @@ fn decodeOggSound(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
     var frames: std.ArrayListUnmanaged(AudioSample) = .{};
     errdefer frames.deinit(allocator);
     try frames.ensureTotalCapacity(allocator, info.frames);
-    var temp: [4096 * max_ogg_channels]c_short = undefined;
     while (true) {
-        const got = vorbis.stb_vorbis_get_frame_short_interleaved(
-            decoder,
-            @intCast(info.channels),
-            temp[0..].ptr,
-            @intCast(@as(usize, 4096) * info.channels),
-        );
+        var output: [*c][*c]f32 = undefined;
+        const got = vorbis.stb_vorbis_get_frame_float(decoder, null, &output);
         if (got <= 0) break;
         var frame: usize = 0;
         while (frame < @as(usize, @intCast(got))) : (frame += 1) {
-            const base = frame * info.channels;
-            try frames.append(allocator, sampleFromShorts(temp[base..], info.channels));
+            try frames.append(allocator, sampleFromVorbis(output, info.channels, frame));
         }
     }
     if (frames.items.len == 0) return error.EmptyOgg;
@@ -788,6 +772,39 @@ test "ogg music streams through mixer" {
         if (sample.left != 0 or sample.right != 0) nonzero = true;
     }
     try std.testing.expect(nonzero);
+}
+
+test "headless mixer stress keeps handles and buses stable" {
+    var sound = try Sound.loadWav(std.testing.allocator, "examples/assets/blip.wav");
+    defer sound.deinit();
+    var music = try Music.openOgg(std.testing.allocator, "examples/assets/tone.ogg");
+    defer music.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+
+    var handles: [128]PlaybackHandle = undefined;
+    for (&handles, 0..) |*handle, index| {
+        handle.* = try mixer.playSound(&sound, .{ .volume = if ((index % 2) == 0) 0.02 else 0.01, .loop = true });
+    }
+    const music_handle = try mixer.playMusic(&music, .{ .volume = 0.08, .loop = true });
+    try mixer.pauseBus(AudioMixer.sfxBus());
+    var silent: [128]AudioSample = undefined;
+    try mixer.mix(&silent);
+    try mixer.resumeBus(AudioMixer.sfxBus());
+    try mixer.setBusVolume(AudioMixer.masterBus(), 0.5);
+    try mixer.setBusVolume(AudioMixer.sfxBus(), 0.75);
+
+    var hash: u64 = 0;
+    var block: [512]AudioSample = undefined;
+    var i: usize = 0;
+    while (i < 96) : (i += 1) {
+        try mixer.mix(&block);
+        hash ^= hashSamples(&block);
+        if (i == 16) try mixer.stopBus(AudioMixer.sfxBus());
+        if (i == 32) try std.testing.expect(mixer.stop(music_handle));
+    }
+    try std.testing.expect(hash != 0);
+    try std.testing.expect(!mixer.stop(handles[0]));
 }
 
 fn hashSamples(samples: []const AudioSample) u64 {

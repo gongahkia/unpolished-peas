@@ -12,6 +12,7 @@ pub const Config = struct {
     fixed_hz: u32 = 60,
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
+    strict_audio: bool = false,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
 };
@@ -58,8 +59,28 @@ pub const Context = struct {
         self.canvas.drawImage(self.assets.image(handle), x, y);
     }
 
+    pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
+        self.canvas.drawAtlasFrame(self.assets.atlas(atlas_handle), frame, x, y, options);
+    }
+
     pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
         return self.assets.loadPng(path);
+    }
+
+    pub fn loadAtlas(self: *Context, path: []const u8) !up.AtlasHandle {
+        return self.assets.loadAtlas(path);
+    }
+
+    pub fn atlasFrame(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AtlasFrameHandle {
+        return self.assets.atlas(atlas_handle).findFrame(name);
+    }
+
+    pub fn atlas(self: *Context, atlas_handle: up.AtlasHandle) *const up.Atlas {
+        return self.assets.atlasPtr(atlas_handle);
+    }
+
+    pub fn atlasAnimation(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AnimationHandle {
+        return self.assets.atlas(atlas_handle).findAnimation(name);
     }
 
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
@@ -86,7 +107,7 @@ pub fn play(config: Config, comptime Game: type) !void {
 
 pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS | c.SDL_INIT_AUDIO)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
 
     const window_w = try scaledInt(config.width, config.scale);
@@ -114,8 +135,8 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
 
-    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames);
-    defer audio_output.deinit(allocator);
+    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+    defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
@@ -147,7 +168,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         canvas.clear(config.clear_color);
         try game.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .dt = dt });
         drawReloadOverlay(&canvas, reload_events);
-        try audio_output.queue(&audio);
+        if (audio_output) |*output| try output.queue(&audio);
         try presenter.present(device, window, canvas);
 
         frame_count += 1;
@@ -161,7 +182,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS | c.SDL_INIT_AUDIO)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
 
     const window_w = try scaledInt(config.width, config.scale);
@@ -189,8 +210,8 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
 
-    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames);
-    defer audio_output.deinit(allocator);
+    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+    defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
     var clock = up.StepClock.init(config.fixed_hz);
@@ -224,7 +245,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         ctx.dt = dt;
         try callDraw(Game, &game, &ctx);
         drawReloadOverlay(&canvas, reload_events);
-        try audio_output.queue(&audio);
+        if (audio_output) |*output| try output.queue(&audio);
         try presenter.present(device, window, canvas);
 
         ctx.frame += 1;
@@ -301,27 +322,38 @@ const AudioOutput = struct {
     interleaved: []f32,
     target_frames: usize,
 
-    fn init(allocator: std.mem.Allocator, sample_rate: u32, buffer_frames: u32) !AudioOutput {
+    fn init(allocator: std.mem.Allocator, sample_rate: u32, buffer_frames: u32, strict: bool) !?AudioOutput {
         if (sample_rate == 0 or buffer_frames == 0) return error.InvalidConfig;
         const frames: usize = buffer_frames;
-        const samples = try allocator.alloc(up.AudioSample, frames);
-        errdefer allocator.free(samples);
-        const interleaved = try allocator.alloc(f32, frames * 2);
-        errdefer allocator.free(interleaved);
-
         const spec = c.SDL_AudioSpec{
             .format = c.SDL_AUDIO_F32,
             .channels = 2,
             .freq = @intCast(sample_rate),
         };
-        const stream = c.SDL_OpenAudioDeviceStream(c.SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, null, null) orelse return sdlFail("SDL_OpenAudioDeviceStream");
+        if (!c.SDL_InitSubSystem(c.SDL_INIT_AUDIO)) return audioFail(strict, "SDL_InitSubSystem");
+        errdefer c.SDL_QuitSubSystem(c.SDL_INIT_AUDIO);
+
+        const stream = c.SDL_OpenAudioDeviceStream(c.SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &spec, null, null) orelse {
+            c.SDL_QuitSubSystem(c.SDL_INIT_AUDIO);
+            return audioFail(strict, "SDL_OpenAudioDeviceStream");
+        };
         errdefer c.SDL_DestroyAudioStream(stream);
-        if (!c.SDL_ResumeAudioStreamDevice(stream)) return sdlFail("SDL_ResumeAudioStreamDevice");
+        if (!c.SDL_ResumeAudioStreamDevice(stream)) {
+            c.SDL_DestroyAudioStream(stream);
+            c.SDL_QuitSubSystem(c.SDL_INIT_AUDIO);
+            return audioFail(strict, "SDL_ResumeAudioStreamDevice");
+        }
+
+        const samples = try allocator.alloc(up.AudioSample, frames);
+        errdefer allocator.free(samples);
+        const interleaved = try allocator.alloc(f32, frames * 2);
+        errdefer allocator.free(interleaved);
         return .{ .stream = stream, .samples = samples, .interleaved = interleaved, .target_frames = frames * 3 };
     }
 
     fn deinit(self: *AudioOutput, allocator: std.mem.Allocator) void {
         c.SDL_DestroyAudioStream(self.stream);
+        c.SDL_QuitSubSystem(c.SDL_INIT_AUDIO);
         allocator.free(self.interleaved);
         allocator.free(self.samples);
         self.* = undefined;
@@ -537,4 +569,10 @@ fn ticksToSeconds(ns: u64) f32 {
 fn sdlFail(comptime label: []const u8) error{SdlError} {
     std.debug.print("{s}: {s}\n", .{ label, c.SDL_GetError() });
     return error.SdlError;
+}
+
+fn audioFail(strict: bool, comptime label: []const u8) error{SdlError}!?AudioOutput {
+    std.debug.print("audio muted: {s}: {s}\n", .{ label, c.SDL_GetError() });
+    if (strict) return error.SdlError;
+    return null;
 }
