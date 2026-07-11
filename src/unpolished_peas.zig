@@ -12,6 +12,8 @@ pub const AtlasHandle = @import("assets.zig").AtlasHandle;
 pub const AssetFile = @import("assets.zig").AssetFile;
 pub const AssetStore = @import("assets.zig").AssetStore;
 pub const BusHandle = @import("audio.zig").BusHandle;
+pub const Broadphase = @import("broadphase.zig").Broadphase;
+pub const BroadphaseProxy = @import("broadphase.zig").Proxy;
 pub const Camera2D = @import("camera.zig").Camera2D;
 pub const CameraBounds = @import("camera.zig").CameraBounds;
 pub const CameraCanvas = @import("camera_canvas.zig").CameraCanvas;
@@ -85,6 +87,7 @@ pub const Vec2 = @import("math.zig").Vec2;
 test {
     _ = @import("app.zig");
     _ = @import("audio.zig");
+    _ = @import("broadphase.zig");
     _ = @import("atlas.zig");
     _ = @import("camera.zig");
     _ = @import("camera_canvas.zig");
