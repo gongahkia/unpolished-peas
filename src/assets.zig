@@ -50,10 +50,10 @@ pub const AssetFile = struct {
     }
 };
 
-pub const TextHandle = struct { index: usize };
-pub const ImageHandle = struct { index: usize };
-pub const AtlasHandle = struct { index: usize };
-pub const TileMapHandle = struct { index: usize };
+pub const TextHandle = struct { index: usize, generation: u32 };
+pub const ImageHandle = struct { index: usize, generation: u32 };
+pub const AtlasHandle = struct { index: usize, generation: u32 };
+pub const TileMapHandle = struct { index: usize, generation: u32 };
 
 pub const TileMapAssetOptions = struct {
     overlay_path: ?[]const u8 = null,
@@ -71,6 +71,7 @@ pub const ReloadEvent = struct {
 
 const TextAsset = struct {
     file: AssetFile,
+    generation: u32 = 1,
 
     fn deinit(self: *TextAsset) void {
         self.file.deinit();
@@ -80,6 +81,7 @@ const TextAsset = struct {
 const ImageAsset = struct {
     file: AssetFile,
     image: Image,
+    generation: u32 = 1,
 
     fn deinit(self: *ImageAsset) void {
         self.image.deinit();
@@ -91,6 +93,7 @@ const AtlasAsset = struct {
     json_file: AssetFile,
     image_file: AssetFile,
     atlas: Atlas,
+    generation: u32 = 1,
 
     fn deinit(self: *AtlasAsset) void {
         self.atlas.deinit();
@@ -105,6 +108,7 @@ const TileMapAsset = struct {
     dependencies: []AssetFile,
     images: []TileMapImage,
     overlay_path: ?[]u8 = null,
+    generation: u32 = 1,
 
     fn deinit(self: *TileMapAsset) void {
         for (self.images) |*image| image.image.deinit();
@@ -122,6 +126,11 @@ const TileMapImage = struct {
     tile_id: ?u32,
     image: Image,
 };
+
+fn nextGeneration(generation: u32) u32 {
+    const next = generation +% 1;
+    return if (next == 0) 1 else next;
+}
 
 pub const AssetStore = struct {
     allocator: std.mem.Allocator,
@@ -158,7 +167,7 @@ pub const AssetStore = struct {
 
         const index = self.texts.items.len;
         try self.texts.append(self.allocator, .{ .file = file });
-        return .{ .index = index };
+        return .{ .index = index, .generation = 1 };
     }
 
     pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
@@ -176,7 +185,7 @@ pub const AssetStore = struct {
 
         const index = self.images.items.len;
         try self.images.append(self.allocator, .{ .file = file, .image = decoded });
-        return .{ .index = index };
+        return .{ .index = index, .generation = 1 };
     }
 
     pub fn loadAtlas(self: *AssetStore, path: []const u8) !AtlasHandle {
@@ -202,7 +211,7 @@ pub const AssetStore = struct {
 
         const index = self.atlases.items.len;
         try self.atlases.append(self.allocator, .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas });
-        return .{ .index = index };
+        return .{ .index = index, .generation = 1 };
     }
 
     pub fn loadTileMap(self: *AssetStore, path: []const u8) !TileMapHandle {
@@ -217,38 +226,74 @@ pub const AssetStore = struct {
         }
         const index = self.tile_maps.items.len;
         try self.tile_maps.append(self.allocator, asset);
-        return .{ .index = index };
+        return .{ .index = index, .generation = 1 };
     }
 
     pub fn text(self: AssetStore, handle: TextHandle) []const u8 {
+        return self.tryText(handle) catch @panic("stale text handle");
+    }
+
+    pub fn tryText(self: AssetStore, handle: TextHandle) ![]const u8 {
+        if (handle.index >= self.texts.items.len or self.texts.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.texts.items[handle.index].file.text();
     }
 
     pub fn image(self: AssetStore, handle: ImageHandle) Image {
+        return self.tryImage(handle) catch @panic("stale image handle");
+    }
+
+    pub fn tryImage(self: AssetStore, handle: ImageHandle) !Image {
+        if (handle.index >= self.images.items.len or self.images.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.images.items[handle.index].image;
     }
 
     pub fn imagePtr(self: *AssetStore, handle: ImageHandle) *const Image {
+        return self.tryImagePtr(handle) catch @panic("stale image handle");
+    }
+
+    pub fn tryImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image {
+        if (handle.index >= self.images.items.len or self.images.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return &self.images.items[handle.index].image;
     }
 
     pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas {
+        return self.tryAtlas(handle) catch @panic("stale atlas handle");
+    }
+
+    pub fn tryAtlas(self: AssetStore, handle: AtlasHandle) !Atlas {
+        if (handle.index >= self.atlases.items.len or self.atlases.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.atlases.items[handle.index].atlas;
     }
 
     pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas {
+        return self.tryAtlasPtr(handle) catch @panic("stale atlas handle");
+    }
+
+    pub fn tryAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
+        if (handle.index >= self.atlases.items.len or self.atlases.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return &self.atlases.items[handle.index].atlas;
     }
 
     pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap {
+        return self.tryTileMap(handle) catch @panic("stale tile-map handle");
+    }
+
+    pub fn tryTileMap(self: AssetStore, handle: TileMapHandle) !TileMap {
+        if (handle.index >= self.tile_maps.items.len or self.tile_maps.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.tile_maps.items[handle.index].map;
     }
 
     pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap {
+        return self.tryTileMapPtr(handle) catch @panic("stale tile-map handle");
+    }
+
+    pub fn tryTileMapPtr(self: *AssetStore, handle: TileMapHandle) !*const TileMap {
+        if (handle.index >= self.tile_maps.items.len or self.tile_maps.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return &self.tile_maps.items[handle.index].map;
     }
 
     pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void {
+        _ = self.tryTileMap(handle) catch @panic("stale tile-map handle");
         const asset = &self.tile_maps.items[handle.index];
         const Resolver = struct {
             images: []const TileMapImage,
@@ -270,6 +315,8 @@ pub const AssetStore = struct {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed });
                 continue;
             }) {
+                asset.generation +%= 1;
+                if (asset.generation == 0) asset.generation = 1;
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
             }
         }
@@ -297,6 +344,8 @@ pub const AssetStore = struct {
             asset.file.bytes = bytes;
             asset.file.mtime = stat.mtime;
             asset.image = next;
+            asset.generation +%= 1;
+            if (asset.generation == 0) asset.generation = 1;
             try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
         }
 
@@ -346,8 +395,9 @@ pub const AssetStore = struct {
             cleanup.deinit();
         }
 
+        const generation = nextGeneration(asset.generation);
         asset.deinit();
-        asset.* = .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas };
+        asset.* = .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas, .generation = generation };
         return true;
     }
 
@@ -359,8 +409,10 @@ pub const AssetStore = struct {
         }
         if (!changed) return false;
         const next = try self.loadTileMapAsset(asset.file.path, .{ .overlay_path = asset.overlay_path });
+        const generation = nextGeneration(asset.generation);
         asset.deinit();
         asset.* = next;
+        asset.generation = generation;
         return true;
     }
 
@@ -465,4 +517,19 @@ test "asset reload detects content changes" {
 
     try std.testing.expect(try asset.reloadIfChanged());
     try std.testing.expectEqualStrings("two", asset.text());
+}
+
+test "asset handles reject stale generations" {
+    var store = AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer store.deinit();
+    const text = try store.loadText("examples/assets/message.txt");
+    const image = try store.loadPng("examples/assets/ball.png");
+    const atlas = try store.loadAtlas("examples/assets/atlas.json");
+    try std.testing.expect((try store.tryText(text)).len > 0);
+    try std.testing.expect((try store.tryImage(image)).width > 0);
+    try std.testing.expect((try store.tryAtlas(atlas)).frames.len > 0);
+    try std.testing.expectError(error.StaleHandle, store.tryText(.{ .index = text.index, .generation = nextGeneration(text.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.tryImage(.{ .index = image.index, .generation = nextGeneration(image.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.tryAtlas(.{ .index = atlas.index, .generation = nextGeneration(atlas.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.tryTileMap(.{ .index = 0, .generation = 1 }));
 }
