@@ -12,6 +12,8 @@ pub const Config = struct {
     width: u32 = 320,
     height: u32 = 180,
     scale: u32 = 3,
+    resizable: bool = false,
+    presentation_mode: up.PresentationMode = .integer_fit,
     fixed_hz: u32 = 60,
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
@@ -28,6 +30,7 @@ pub const Frame = struct {
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
     app_data_path: []const u8,
+    presentation: *const up.Presentation,
     dt: f32,
 };
 
@@ -38,11 +41,24 @@ pub const Context = struct {
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
     app_data_path: []const u8,
+    presentation: *const up.Presentation,
     dt: f32,
     frame: u64,
 
     pub fn clear(self: *Context, color: up.Color) void {
         self.canvas.clear(color);
+    }
+
+    pub fn camera(self: *Context, target_camera: *const up.Camera2D) up.CameraCanvas {
+        return .init(self.canvas, target_camera);
+    }
+
+    pub fn canvasToFramebuffer(self: *const Context, point: up.Vec2) ?up.Vec2 {
+        return self.presentation.canvasToFramebuffer(point);
+    }
+
+    pub fn framebufferToCanvas(self: *const Context, point: up.Vec2) ?up.Vec2 {
+        return self.presentation.framebufferToCanvas(point);
     }
 
     pub fn rect(self: *Context, x: i32, y: i32, w: i32, h: i32, color: up.Color) void {
@@ -128,7 +144,8 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
     const window_w = try scaledInt(config.width, config.scale);
     const window_h = try scaledInt(config.height, config.scale);
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, 0) orelse return sdlFail("SDL_CreateWindow");
+    const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
+    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
 
     const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL;
@@ -155,6 +172,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
     defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
+    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, try framebufferSize(window), config.presentation_mode);
     var clock = up.StepClock.init(config.fixed_hz);
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
@@ -178,12 +196,13 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
     while (running) {
         input.beginFrame();
-        running = pollInput(&input);
+        refreshPresentation(window, &presentation);
+        running = pollInput(&input, window, &presentation);
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas);
+            try presenter.present(device, window, canvas, &presentation);
             running = advanceFrame(&frame_count, config.max_frames) and running;
             continue;
         }
@@ -202,7 +221,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
             if (game) |*value| {
-                value.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = clock.step_seconds }) catch |err| {
+                value.update(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = clock.step_seconds }) catch |err| {
                     dev.failure("update", err);
                     failure = .{ .phase = "update", .err = err };
                     break;
@@ -213,7 +232,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
 
         canvas.clear(config.clear_color);
         if (game) |*value| {
-            value.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = dt }) catch |err| {
+            value.render(.{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = dt }) catch |err| {
                 dev.failure("render", err);
                 failure = .{ .phase = "render", .err = err };
                 continue;
@@ -223,7 +242,7 @@ pub fn run(allocator: std.mem.Allocator, config: Config, comptime Game: type) !v
         dev.drawOverlay(&canvas, dt, frame_count);
         if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, frame_count);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas);
+        try presenter.present(device, window, canvas, &presentation);
 
         running = advanceFrame(&frame_count, config.max_frames) and running;
     }
@@ -238,7 +257,8 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     const window_w = try scaledInt(config.width, config.scale);
     const window_h = try scaledInt(config.height, config.scale);
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, 0) orelse return sdlFail("SDL_CreateWindow");
+    const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
+    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
 
     const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL;
@@ -265,6 +285,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
+    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, try framebufferSize(window), config.presentation_mode);
     var clock = up.StepClock.init(config.fixed_hz);
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
@@ -273,7 +294,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
         dev.failure("init", err);
@@ -287,12 +308,13 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     while (running) {
         input.beginFrame();
-        running = pollInput(&input);
+        refreshPresentation(window, &presentation);
+        running = pollInput(&input, window, &presentation);
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas);
+            try presenter.present(device, window, canvas, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -334,7 +356,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         dev.drawOverlay(&canvas, dt, ctx.frame);
         if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas);
+        try presenter.present(device, window, canvas, &presentation);
 
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
@@ -595,7 +617,7 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, presentation: *up.Presentation) !void {
         try self.copyCanvas(device, canvas);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
@@ -631,6 +653,8 @@ const Presenter = struct {
         }
         acquired_swapchain = true;
         if (swapchain) |target| {
+            presentation.framebuffer_size = .{ .x = @floatFromInt(swap_w), .y = @floatFromInt(swap_h) };
+            const destination = presentation.destination();
             c.SDL_BlitGPUTexture(command, &.{
                 .source = .{
                     .texture = self.texture,
@@ -645,10 +669,10 @@ const Presenter = struct {
                     .texture = target,
                     .mip_level = 0,
                     .layer_or_depth_plane = 0,
-                    .x = 0,
-                    .y = 0,
-                    .w = swap_w,
-                    .h = swap_h,
+                    .x = @intFromFloat(@round(destination.x)),
+                    .y = @intFromFloat(@round(destination.y)),
+                    .w = @intFromFloat(@round(destination.w)),
+                    .h = @intFromFloat(@round(destination.h)),
                 },
                 .load_op = c.SDL_GPU_LOADOP_CLEAR,
                 .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 1 },
@@ -683,7 +707,7 @@ const Presenter = struct {
     }
 };
 
-fn pollInput(input: *up.Input) bool {
+fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation) bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
@@ -697,10 +721,51 @@ fn pollInput(input: *up.Input) bool {
                     if (key == .cancel and is_down) running = false;
                 }
             },
+            c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => refreshPresentation(window, presentation),
+            c.SDL_EVENT_MOUSE_MOTION => setPointerPosition(input, window, presentation, .{ .x = event.motion.x, .y = event.motion.y }),
+            c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_BUTTON_UP => {
+                setPointerPosition(input, window, presentation, .{ .x = event.button.x, .y = event.button.y });
+                if (mapPointerButton(event.button.button)) |button| input.setPointerButton(button, event.type == c.SDL_EVENT_MOUSE_BUTTON_DOWN);
+            },
+            c.SDL_EVENT_MOUSE_WHEEL => input.addPointerWheel(.{ .x = event.wheel.x, .y = event.wheel.y }),
             else => {},
         }
     }
     return running;
+}
+
+fn framebufferSize(window: *c.SDL_Window) !up.Vec2 {
+    var width: c_int = 0;
+    var height: c_int = 0;
+    if (!c.SDL_GetWindowSizeInPixels(window, &width, &height)) return sdlFail("SDL_GetWindowSizeInPixels");
+    if (width <= 0 or height <= 0) return error.InvalidWindowSize;
+    return .{ .x = @floatFromInt(width), .y = @floatFromInt(height) };
+}
+
+fn refreshPresentation(window: *c.SDL_Window, presentation: *up.Presentation) void {
+    presentation.framebuffer_size = framebufferSize(window) catch return;
+}
+
+fn setPointerPosition(input: *up.Input, window: *c.SDL_Window, presentation: *const up.Presentation, window_point: up.Vec2) void {
+    var window_width: c_int = 0;
+    var window_height: c_int = 0;
+    if (!c.SDL_GetWindowSize(window, &window_width, &window_height) or window_width <= 0 or window_height <= 0) return;
+    const framebuffer = up.Vec2{
+        .x = window_point.x * presentation.framebuffer_size.x / @as(f32, @floatFromInt(window_width)),
+        .y = window_point.y * presentation.framebuffer_size.y / @as(f32, @floatFromInt(window_height)),
+    };
+    input.setPointerPosition(window_point, framebuffer, presentation.framebufferToCanvas(framebuffer));
+}
+
+fn mapPointerButton(button: u8) ?up.PointerButton {
+    return switch (button) {
+        c.SDL_BUTTON_LEFT => .left,
+        c.SDL_BUTTON_MIDDLE => .middle,
+        c.SDL_BUTTON_RIGHT => .right,
+        c.SDL_BUTTON_X1 => .back,
+        c.SDL_BUTTON_X2 => .forward,
+        else => null,
+    };
 }
 
 fn mapKey(key: c.SDL_Keycode) ?up.Key {

@@ -76,6 +76,7 @@ zig build dev-bounce
 zig build run-minimal
 zig build run-audio
 zig build run-atlas
+zig build run-camera
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -86,6 +87,7 @@ zig build new -- ../my-game
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
 `run-atlas` opens a JSON atlas/tile scene demo.
+`run-camera` opens the resizable multi-viewport camera demo.
 `test-scenes` runs deterministic headless scene hashing.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
@@ -96,16 +98,27 @@ zig build new -- ../my-game
 
 Game initialization, update, draw, and asset-reload errors are written to the terminal and log, then held in an in-window error state until Escape is pressed. Zig panics remain process failures and require the normal debugger/test workflow.
 
+## Camera And Presentation
+
+`Camera2D` provides position, zoom limits, rotation, viewport rectangles, world bounds, nearest or bilinear image sampling, pixel snapping, dead-zone follow, spring motion, deterministic shake, coordinate conversion, visibility checks, and parallax copies. `CameraRig` owns an arbitrary number of generation-checked cameras; `CameraDirector` plays deterministic cuts and blended shots.
+
+Use `ctx.camera(&camera)` for world rendering. It transforms and clips rectangles, circles, lines, images, atlas frames, and text to the camera viewport. Use the existing `ctx` drawing calls for HUD rendering.
+
+SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit` presentation. `Input.pointer` exposes window, physical framebuffer, and optional logical-canvas coordinates; letterbox bars map to `null` canvas coordinates.
+
 ## Current API
 
 - `Vec2`, `Rect`
 - `Color`
 - `Input`, `Key`
+- `Pointer`, `PointerButton`
 - `StepClock`
 - `Canvas`, `Sprite`
 - `Canvas.drawImage`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
+- `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
+- `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`
 - `Image`
@@ -124,11 +137,10 @@ Game initialization, update, draw, and asset-reload errors are written to the te
 ## Next Build Targets
 
 1. Publish a tagged package release and update `zig build new` to generate a pinned Git dependency.
-2. Add a 2D camera with position, zoom, viewport bounds, and world-to-screen/screen-to-world conversion; preserve pixel-perfect rendering by default.
-3. Add tile-map loading, visible-region culling, and a headless camera scene before broadening rendering APIs.
-4. Add explicit 2D collision queries and resolution for rectangles, circles, and tile maps; ship a character-controller example.
-5. Add an optional Box2D-backed physics module with explicit world stepping, body/fixture lifetime, and deterministic headless tests; do not hand-roll a general rigid-body solver.
-6. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
-7. Add mouse, gamepad, and named action mapping with rebinding and deterministic input tests.
-8. Add a shader API with one strict pixel-effect example and headless fallback coverage.
-9. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
+2. Add tile-map loading, visible-region culling, and a headless tile scene before broadening rendering APIs.
+3. Add explicit 2D collision queries and resolution for rectangles, circles, and tile maps; ship a character-controller example.
+4. Add an optional Box2D-backed physics module with explicit world stepping, body/fixture lifetime, and deterministic headless tests; do not hand-roll a general rigid-body solver.
+5. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
+6. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
+7. Add a shader API with one strict pixel-effect example and headless fallback coverage.
+8. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.

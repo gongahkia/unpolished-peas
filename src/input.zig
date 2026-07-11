@@ -1,4 +1,5 @@
 const std = @import("std");
+const Vec2 = @import("math.zig").Vec2;
 
 pub const Key = enum(u8) {
     up,
@@ -15,14 +16,40 @@ pub const Key = enum(u8) {
 
 const key_count = @typeInfo(Key).@"enum".fields.len;
 
+pub const PointerButton = enum(u8) {
+    left,
+    middle,
+    right,
+    back,
+    forward,
+};
+
+const pointer_button_count = @typeInfo(PointerButton).@"enum".fields.len;
+
+pub const Pointer = struct {
+    window: Vec2 = .{},
+    framebuffer: Vec2 = .{},
+    canvas: ?Vec2 = null,
+    delta: Vec2 = .{},
+    wheel: Vec2 = .{},
+};
+
 pub const Input = struct {
     down: [key_count]bool = .{false} ** key_count,
     pressed: [key_count]bool = .{false} ** key_count,
     released: [key_count]bool = .{false} ** key_count,
+    pointer: Pointer = .{},
+    pointer_down: [pointer_button_count]bool = .{false} ** pointer_button_count,
+    pointer_pressed: [pointer_button_count]bool = .{false} ** pointer_button_count,
+    pointer_released: [pointer_button_count]bool = .{false} ** pointer_button_count,
 
     pub fn beginFrame(self: *Input) void {
         @memset(self.pressed[0..], false);
         @memset(self.released[0..], false);
+        @memset(self.pointer_pressed[0..], false);
+        @memset(self.pointer_released[0..], false);
+        self.pointer.delta = .{};
+        self.pointer.wheel = .{};
     }
 
     pub fn set(self: *Input, key: Key, is_down: bool) void {
@@ -47,6 +74,36 @@ pub const Input = struct {
     pub fn wasReleased(self: Input, key: Key) bool {
         return self.released[@intFromEnum(key)];
     }
+
+    pub fn setPointerPosition(self: *Input, window: Vec2, framebuffer: Vec2, canvas: ?Vec2) void {
+        self.pointer.delta = framebuffer.sub(self.pointer.framebuffer);
+        self.pointer.window = window;
+        self.pointer.framebuffer = framebuffer;
+        self.pointer.canvas = canvas;
+    }
+
+    pub fn addPointerWheel(self: *Input, delta: Vec2) void {
+        self.pointer.wheel = self.pointer.wheel.add(delta);
+    }
+
+    pub fn setPointerButton(self: *Input, button: PointerButton, is_down: bool) void {
+        const index = @intFromEnum(button);
+        if (self.pointer_down[index] == is_down) return;
+        self.pointer_down[index] = is_down;
+        if (is_down) self.pointer_pressed[index] = true else self.pointer_released[index] = true;
+    }
+
+    pub fn pointerIsDown(self: Input, button: PointerButton) bool {
+        return self.pointer_down[@intFromEnum(button)];
+    }
+
+    pub fn pointerWasPressed(self: Input, button: PointerButton) bool {
+        return self.pointer_pressed[@intFromEnum(button)];
+    }
+
+    pub fn pointerWasReleased(self: Input, button: PointerButton) bool {
+        return self.pointer_released[@intFromEnum(button)];
+    }
 };
 
 test "input edges" {
@@ -58,4 +115,17 @@ test "input edges" {
     try std.testing.expect(!input.wasPressed(.action));
     input.set(.action, false);
     try std.testing.expect(input.wasReleased(.action));
+}
+
+test "pointer records mapped coordinates and edges" {
+    var input = Input{};
+    input.setPointerPosition(.{ .x = 10, .y = 20 }, .{ .x = 20, .y = 40 }, .{ .x = 5, .y = 10 });
+    input.setPointerButton(.left, true);
+    input.addPointerWheel(.{ .y = -1 });
+    try std.testing.expectEqual(Vec2.init(20, 40), input.pointer.framebuffer);
+    try std.testing.expect(input.pointerWasPressed(.left));
+    try std.testing.expectEqual(@as(f32, -1), input.pointer.wheel.y);
+    input.beginFrame();
+    try std.testing.expectEqual(Vec2.zero, input.pointer.delta);
+    try std.testing.expect(!input.pointerWasPressed(.left));
 }

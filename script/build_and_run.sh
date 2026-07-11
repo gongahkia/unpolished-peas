@@ -2,7 +2,7 @@
 set -euo pipefail
 
 MODE="${1:-run}"
-APP_NAME="unpolished-peas-bounce-sdl"
+APP_NAME="unpolished-peas-camera"
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_BINARY="$ROOT_DIR/zig-out/bin/$APP_NAME"
 

@@ -1,7 +1,7 @@
 const std = @import("std");
 const up = @import("unpolished-peas");
 
-const expected_hash: u64 = 0xe011c59da9c4ec07;
+const expected_hash: u64 = 0x3a157a05d10f355b;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -19,6 +19,10 @@ pub fn main() !void {
     canvas.fillRect(4, 4, 12, 10, up.Color.rgb(255, 198, 74));
     canvas.drawImage(assets.image(ball), 24, 16);
     canvas.drawText("TEST", 4, 36, up.Color.white);
+    const camera = up.Camera2D{ .position = .{ .x = 32, .y = 24 }, .zoom = 1.5, .rotation = 0.15, .pixel_snap = .off };
+    const world = up.CameraCanvas.init(&canvas, &camera);
+    world.fillRect(.init(20, 10, 14, 8), up.Color.rgb(91, 166, 210));
+    world.fillCircle(.{ .x = 44, .y = 30 }, 4, up.Color.rgb(255, 112, 112));
 
     const got = hashCanvas(canvas);
     if (got != expected_hash) {

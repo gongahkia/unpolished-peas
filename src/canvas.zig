@@ -3,6 +3,18 @@ const atlas_mod = @import("atlas.zig");
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const font = @import("font.zig");
+const Vec2 = @import("math.zig").Vec2;
+
+pub const ClipRect = struct {
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+
+    pub fn contains(self: ClipRect, x: i32, y: i32) bool {
+        return x >= self.x and y >= self.y and x < self.x + self.w and y < self.y + self.h;
+    }
+};
 
 pub const Sprite = struct {
     width: u32,
@@ -21,6 +33,7 @@ pub const Canvas = struct {
     width: u32,
     height: u32,
     pixels: []Color,
+    clip: ?ClipRect = null,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !Canvas {
         if (width == 0 or height == 0) return error.InvalidCanvasSize;
@@ -37,6 +50,16 @@ pub const Canvas = struct {
 
     pub fn clear(self: *Canvas, color: Color) void {
         @memset(self.pixels, color);
+    }
+
+    pub fn pushClip(self: *Canvas, next: ClipRect) ?ClipRect {
+        const previous = self.clip;
+        self.clip = if (previous) |current| intersectClip(current, next) else next;
+        return previous;
+    }
+
+    pub fn restoreClip(self: *Canvas, previous: ?ClipRect) void {
+        self.clip = previous;
     }
 
     pub fn pixel(self: *Canvas, x: i32, y: i32, color: Color) void {
@@ -82,6 +105,42 @@ pub const Canvas = struct {
             var x = -radius;
             while (x <= radius) : (x += 1) {
                 if (x * x + y * y <= r2) self.pixel(cx + x, cy + y, color);
+            }
+        }
+    }
+
+    pub fn fillTriangle(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, color: Color) void {
+        self.fillTriangleImpl(a, b, c, color, false);
+    }
+
+    pub fn fillQuad(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) void {
+        self.fillTriangleImpl(a, b, c, color, false);
+        self.fillTriangleImpl(a, c, d, color, true);
+    }
+
+    fn fillTriangleImpl(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, color: Color, exclude_first_edge: bool) void {
+        const area = edge(a, b, c);
+        if (area == 0) return;
+        const width_i: i32 = @intCast(self.width);
+        const height_i: i32 = @intCast(self.height);
+        const min_x: i32 = @max(0, @as(i32, @intFromFloat(@floor(@min(a.x, @min(b.x, c.x))))));
+        const min_y: i32 = @max(0, @as(i32, @intFromFloat(@floor(@min(a.y, @min(b.y, c.y))))));
+        const max_x: i32 = @min(width_i - 1, @as(i32, @intFromFloat(@ceil(@max(a.x, @max(b.x, c.x))))));
+        const max_y: i32 = @min(height_i - 1, @as(i32, @intFromFloat(@ceil(@max(a.y, @max(b.y, c.y))))));
+        if (min_x > max_x or min_y > max_y) return;
+
+        var y = min_y;
+        while (y <= max_y) : (y += 1) {
+            var x = min_x;
+            while (x <= max_x) : (x += 1) {
+                const point = Vec2.init(@as(f32, @floatFromInt(x)) + 0.5, @as(f32, @floatFromInt(y)) + 0.5);
+                const ab = edge(a, b, point);
+                const bc = edge(b, c, point);
+                const ca = edge(c, a, point);
+                const first_edge = if (exclude_first_edge) if (area > 0) ab > 0 else ab < 0 else if (area > 0) ab >= 0 else ab <= 0;
+                if (first_edge and ((area > 0 and bc >= 0 and ca >= 0) or (area < 0 and bc <= 0 and ca <= 0))) {
+                    self.pixel(x, y, color);
+                }
             }
         }
     }
@@ -207,12 +266,25 @@ pub const Canvas = struct {
 
     fn index(self: Canvas, x: i32, y: i32) ?usize {
         if (x < 0 or y < 0) return null;
+        if (self.clip) |clip| if (!clip.contains(x, y)) return null;
         const ux: u32 = @intCast(x);
         const uy: u32 = @intCast(y);
         if (ux >= self.width or uy >= self.height) return null;
         return @as(usize, uy) * self.width + ux;
     }
 };
+
+fn edge(a: Vec2, b: Vec2, point: Vec2) f32 {
+    return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
+}
+
+fn intersectClip(a: ClipRect, b: ClipRect) ClipRect {
+    const x = @max(a.x, b.x);
+    const y = @max(a.y, b.y);
+    const right = @min(a.x + a.w, b.x + b.w);
+    const bottom = @min(a.y + a.h, b.y + b.h);
+    return .{ .x = x, .y = y, .w = @max(0, right - x), .h = @max(0, bottom - y) };
+}
 
 fn tint(color: Color, value: Color) Color {
     return .{
@@ -231,6 +303,18 @@ test "canvas clips draws" {
     canvas.fillRect(-1, -1, 3, 3, Color.white);
     try std.testing.expectEqual(Color.white, canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.black, canvas.get(3, 3).?);
+}
+
+test "canvas clips affine draws" {
+    var canvas = try Canvas.init(std.testing.allocator, 8, 8);
+    defer canvas.deinit();
+
+    canvas.clear(Color.black);
+    const previous = canvas.pushClip(.{ .x = 2, .y = 2, .w = 3, .h = 3 });
+    canvas.fillTriangle(.{ .x = 0, .y = 0 }, .{ .x = 7, .y = 0 }, .{ .x = 0, .y = 7 }, Color.white);
+    canvas.restoreClip(previous);
+    try std.testing.expectEqual(Color.black, canvas.get(1, 1).?);
+    try std.testing.expectEqual(Color.white, canvas.get(2, 2).?);
 }
 
 test "sprite draw honors alpha" {
