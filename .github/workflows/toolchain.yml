@@ -27,7 +27,8 @@ jobs:
       - run: zig build test-box2d
       - run: zig build test-scenes
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers
+      - run: script/compile_shaders.sh
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'macos-latest'
