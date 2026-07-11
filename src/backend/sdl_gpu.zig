@@ -424,6 +424,30 @@ fn maybeError(value: anytype) !void {
     }
 }
 
+test "lifecycle accepts optional callbacks" {
+    const DrawOnly = struct {
+        pub fn draw(_: *@This(), _: *Context) void {}
+    };
+    const Full = struct {
+        pub fn init(_: *Context) @This() {
+            return .{};
+        }
+        pub fn deinit(_: *@This(), _: *Context) void {}
+        pub fn update(_: *@This(), _: *Context) !void {}
+        pub fn draw(_: *@This(), _: *Context) !void {}
+    };
+
+    var ctx: Context = undefined;
+    var draw_only = try initGame(DrawOnly, &ctx);
+    try callUpdate(DrawOnly, &draw_only, &ctx);
+    try callDraw(DrawOnly, &draw_only, &ctx);
+
+    var full = try initGame(Full, &ctx);
+    try callUpdate(Full, &full, &ctx);
+    try callDraw(Full, &full, &ctx);
+    deinitGame(Full, &full, &ctx);
+}
+
 fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
     if (events.len == 0) return;
 
