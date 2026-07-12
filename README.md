@@ -131,6 +131,8 @@ SDL sprite textures upload on first use; changed image or atlas buffers stage a 
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
 
+`Context.setPixelEffect("invert", .{ .amount = 0...1 })` enables the strict built-in pixel effect. Invalid effect text or parameters return recoverable errors; `Canvas.applyPixelEffect` is the headless fallback.
+
 ## Camera And Presentation
 
 `Camera2D` provides position, zoom limits, rotation, viewport rectangles, world bounds, nearest or bilinear image sampling, pixel snapping, dead-zone follow, spring motion, deterministic shake, coordinate conversion, visibility checks, and parallax copies. `CameraRig` owns an arbitrary number of generation-checked cameras; `CameraDirector` plays deterministic cuts and blended shots.

@@ -2,6 +2,11 @@ const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub fn init(ctx: *sdl.Context) !Game {
+        try ctx.setPixelEffect("invert", .{ .amount = 0.2 });
+        return .{};
+    }
+
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
         ctx.rect(8, 8, 24, 16, up.Color.rgba(255, 198, 74, 220));
         ctx.strokeRect(40, 8, 24, 16, up.Color.rgb(113, 232, 162));

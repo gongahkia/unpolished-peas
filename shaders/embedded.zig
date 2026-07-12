@@ -6,3 +6,7 @@ pub const primitive_vert_spirv = @embedFile("primitive.vert.spv");
 pub const primitive_frag_spirv = @embedFile("primitive.frag.spv");
 pub const primitive_vert_msl = @embedFile("primitive.vert.msl");
 pub const primitive_frag_msl = @embedFile("primitive.frag.msl");
+pub const effect_vert_spirv = @embedFile("effect.vert.spv");
+pub const effect_frag_spirv = @embedFile("effect.frag.spv");
+pub const effect_vert_msl = @embedFile("effect.vert.msl");
+pub const effect_frag_msl = @embedFile("effect.frag.msl");
