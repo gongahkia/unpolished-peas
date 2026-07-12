@@ -953,13 +953,20 @@ fn parseLdtkLayers(map: *TileMap, values: std.json.Array) !void {
         reverse_index -= 1;
         const entry = try object(values.items[reverse_index]);
         const type_name = try string(entry.get("__type") orelse return error.InvalidLdtkProject);
-        const kind: LayerKind = if (std.mem.eql(u8, type_name, "IntGrid")) .int_grid else if (std.mem.eql(u8, type_name, "Tiles") or std.mem.eql(u8, type_name, "AutoLayer")) .tiles else return error.UnsupportedLdtkFeature;
+        const kind: LayerKind = if (std.mem.eql(u8, type_name, "IntGrid")) .int_grid else if (std.mem.eql(u8, type_name, "Tiles") or std.mem.eql(u8, type_name, "AutoLayer")) .tiles else if (std.mem.eql(u8, type_name, "Entities")) .objects else return error.UnsupportedLdtkFeature;
         const layer_index = try map.addLayer(try string(entry.get("__identifier") orelse return error.InvalidLdtkProject), kind, null);
         var layer = &map.layers.items[layer_index];
         layer.visible = try boolValue(entry.get("visible") orelse return error.InvalidLdtkProject);
         layer.opacity = try f32Value(entry.get("__opacity") orelse return error.InvalidLdtkProject);
+        layer.offset = .{ .x = if (entry.get("__pxTotalOffsetX")) |value| @floatFromInt(try i32Value(value)) else 0, .y = if (entry.get("__pxTotalOffsetY")) |value| @floatFromInt(try i32Value(value)) else 0 };
         const grid_size = try i32Value(entry.get("__gridSize") orelse return error.InvalidLdtkProject);
         map.tile_size = .{ .x = @floatFromInt(grid_size), .y = @floatFromInt(grid_size) };
+        if (kind == .objects) {
+            for ((try array(entry.get("entityInstances") orelse return error.InvalidLdtkProject)).items) |entity| {
+                try layer.objects.append(map.allocator, try parseLdtkEntity(map.allocator, try object(entity)));
+            }
+            continue;
+        }
         map.editable = true;
         defer map.editable = false;
         if (kind == .int_grid) {
@@ -980,6 +987,44 @@ fn parseLdtkLayers(map: *TileMap, values: std.json.Array) !void {
             }
         }
     }
+}
+
+fn parseLdtkEntity(allocator: std.mem.Allocator, entry: std.json.ObjectMap) !MapObject {
+    const px = try array(entry.get("px") orelse return error.InvalidLdtkProject);
+    if (px.items.len != 2) return error.InvalidLdtkProject;
+    var result = MapObject{
+        .id = try u32Value(entry.get("defUid") orelse return error.InvalidLdtkProject),
+        .name = try allocator.dupe(u8, try string(entry.get("__identifier") orelse return error.InvalidLdtkProject)),
+        .class_name = try allocator.dupe(u8, try string(entry.get("__identifier") orelse return error.InvalidLdtkProject)),
+        .bounds = .{ .x = @floatFromInt(try i32Value(px.items[0])), .y = @floatFromInt(try i32Value(px.items[1])), .w = @floatFromInt(try i32Value(entry.get("width") orelse return error.InvalidLdtkProject)), .h = @floatFromInt(try i32Value(entry.get("height") orelse return error.InvalidLdtkProject)) },
+        .shape = .rectangle,
+    };
+    errdefer result.deinit(allocator);
+    if (entry.get("fieldInstances")) |fields| result.properties = try parseLdtkFields(allocator, try array(fields));
+    return result;
+}
+
+fn parseLdtkFields(allocator: std.mem.Allocator, values: std.json.Array) ![]Property {
+    const properties = try allocator.alloc(Property, values.items.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (properties[0..initialized]) |*property| property.deinit(allocator);
+        allocator.free(properties);
+    }
+    for (values.items, 0..) |value, index| {
+        properties[index] = try parseLdtkField(allocator, try object(value));
+        initialized += 1;
+    }
+    return properties;
+}
+
+fn parseLdtkField(allocator: std.mem.Allocator, field: std.json.ObjectMap) !Property {
+    const field_type = try string(field.get("__type") orelse return error.InvalidLdtkProject);
+    const raw = field.get("__value") orelse return error.InvalidLdtkProject;
+    const name = try allocator.dupe(u8, try string(field.get("__identifier") orelse return error.InvalidLdtkProject));
+    errdefer allocator.free(name);
+    const property_value: PropertyValue = if (std.mem.eql(u8, field_type, "Int")) .{ .integer = try i64Value(raw) } else if (std.mem.eql(u8, field_type, "Float")) .{ .float = @as(f64, try f32Value(raw)) } else if (std.mem.eql(u8, field_type, "Bool")) .{ .boolean = try boolValue(raw) } else if (std.mem.eql(u8, field_type, "String") or std.mem.eql(u8, field_type, "Text") or std.mem.eql(u8, field_type, "FilePath")) .{ .string = try allocator.dupe(u8, try string(raw)) } else return error.UnsupportedLdtkField;
+    return .{ .name = name, .value = property_value };
 }
 
 fn parseTileSets(map: *TileMap, values: std.json.Array) !void {
@@ -1383,4 +1428,40 @@ test "versioned infinite external Tiled fixture preserves signed chunks and flag
     const tile = map.tileAt(0, .{ .x = -1, .y = 2 }).?;
     try std.testing.expect(tile.flags.flip_x and tile.flags.flip_y and tile.flags.diagonal);
     try std.testing.expectEqual(@as(usize, 2), map.dependencies.items.len);
+}
+
+test "LDtk entities expose collision bounds metadata and IntGrid values" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const source =
+        \\{"defs":{"tilesets":[]},"levels":[{"identifier":"Level","worldX":0,"worldY":0,"layerInstances":[{"__type":"Entities","__identifier":"Collision","visible":true,"__opacity":1,"__gridSize":16,"entityInstances":[{"defUid":7,"__identifier":"Wall","px":[4,8],"width":16,"height":8,"fieldInstances":[{"__identifier":"damage","__type":"Int","__value":3},{"__identifier":"solid","__type":"Bool","__value":true}]}]},{"__type":"IntGrid","__identifier":"CollisionGrid","visible":true,"__opacity":0.5,"__gridSize":16,"__cWid":2,"intGridCsv":[0,1]}]}]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "level.ldtk", .data = source });
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "level.ldtk" });
+    defer std.testing.allocator.free(path);
+    var project = try TileMap.loadLdtkProject(std.testing.allocator, path);
+    defer project.deinit();
+    const map = &project.levels.items[0].map;
+    try std.testing.expectEqual(@as(i32, 1), map.intGridAt(0, .{ .x = 1, .y = 0 }).?);
+    const objects = map.layerObjects(1);
+    try std.testing.expectEqual(@as(usize, 1), objects.len);
+    try std.testing.expectEqual(Rect.init(4, 8, 16, 8), objects[0].bounds);
+    try std.testing.expectEqual(@as(i64, 3), objects[0].properties[0].value.integer);
+}
+
+test "LDtk external level data is loaded through its tracked dependency" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "external.json", .data = "{\"layerInstances\":[{\"__type\":\"IntGrid\",\"__identifier\":\"Grid\",\"visible\":true,\"__opacity\":1,\"__gridSize\":16,\"__cWid\":1,\"intGridCsv\":[7]}]}" });
+    try tmp.dir.writeFile(.{ .sub_path = "project.ldtk", .data = "{\"defs\":{\"tilesets\":[]},\"levels\":[{\"identifier\":\"External\",\"worldX\":0,\"worldY\":0,\"layerInstances\":null,\"externalRelPath\":\"external.json\"}] }" });
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "project.ldtk" });
+    defer std.testing.allocator.free(path);
+    var project = try TileMap.loadLdtkProject(std.testing.allocator, path);
+    defer project.deinit();
+    try std.testing.expectEqual(@as(i32, 7), project.levels.items[0].map.intGridAt(0, .{ .x = 0, .y = 0 }).?);
+    try std.testing.expectEqual(@as(usize, 1), project.levels.items[0].map.dependencies.items.len);
 }
