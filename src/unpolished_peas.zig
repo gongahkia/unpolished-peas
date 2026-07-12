@@ -2,6 +2,9 @@ pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
 pub const AudioSample = @import("audio.zig").AudioSample;
 pub const Animation = @import("atlas.zig").Animation;
+pub const ActionBinding = @import("actions.zig").Binding;
+pub const Action = @import("actions.zig").Action;
+pub const ActionMap = @import("actions.zig").Map;
 pub const AnimationFrame = @import("atlas.zig").AnimationFrame;
 pub const AnimationHandle = @import("atlas.zig").AnimationHandle;
 pub const AnimationPlayer = @import("atlas.zig").AnimationPlayer;
@@ -90,6 +93,7 @@ pub const Vec2 = @import("math.zig").Vec2;
 
 test {
     _ = @import("app.zig");
+    _ = @import("actions.zig");
     _ = @import("audio.zig");
     _ = @import("broadphase.zig");
     _ = @import("atlas.zig");
