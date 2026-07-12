@@ -113,7 +113,7 @@ zig build upmapc -- level.upmap level.upmapb
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.
 `run-primitives` opens the GPU primitive and text-quads demo.
-`test-scenes` runs deterministic headless scene hashing.
+`test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
 
