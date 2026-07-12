@@ -557,6 +557,7 @@ pub const TileMap = struct {
         errdefer result.deinit();
         result.projection = try projectionValue(root.get("projection") orelse return error.InvalidMap);
         if (root.get("tilesets")) |value| try parseTileSets(&result, try array(value));
+        if (root.get("dependencies")) |value| try parseDependencies(&result, try array(value));
         try parseLayers(&result, try array(root.get("layers") orelse return error.InvalidMap));
         return result;
     }
@@ -573,12 +574,11 @@ pub const TileMap = struct {
     }
 
     pub fn writeBinary(self: TileMap, path: []const u8) !void {
-        if (!self.editable) return error.ReadOnlyMap;
         var file = try std.fs.cwd().createFile(path, .{});
         defer file.close();
-        try file.writeAll(binary_magic);
         var buffer: [8192]u8 = undefined;
         var writer = file.writer(&buffer);
+        try writer.interface.writeAll(binary_magic);
         var json = std.json.Stringify{ .writer = &writer.interface };
         try writeNative(self, &json);
         try writer.interface.flush();
@@ -1049,6 +1049,14 @@ fn parseTileSets(map: *TileMap, values: std.json.Array) !void {
     }
 }
 
+fn parseDependencies(map: *TileMap, values: std.json.Array) !void {
+    for (values.items) |value| {
+        const item = try object(value);
+        const kind = std.meta.stringToEnum(TileMapDependencyKind, try string(item.get("kind") orelse return error.InvalidMap)) orelse return error.InvalidMap;
+        try map.addDependency(kind, try string(item.get("path") orelse return error.InvalidMap));
+    }
+}
+
 fn parseLayers(map: *TileMap, values: std.json.Array) !void {
     for (values.items) |value| {
         const item = try object(value);
@@ -1134,6 +1142,17 @@ fn writeNative(map: TileMap, json: *std.json.Stringify) !void {
         try json.beginArray();
         for (tileset.atlas_frames) |frame| try json.write(frame);
         try json.endArray();
+        try json.endObject();
+    }
+    try json.endArray();
+    try json.objectField("dependencies");
+    try json.beginArray();
+    for (map.dependencies.items) |dependency| {
+        try json.beginObject();
+        try json.objectField("kind");
+        try json.write(@tagName(dependency.kind));
+        try json.objectField("path");
+        try json.write(dependency.path);
         try json.endObject();
     }
     try json.endArray();
@@ -1324,6 +1343,24 @@ test "native tile map mutates signed chunks and round trips binary" {
     try std.testing.expectEqual(@as(u32, 2), map.tileAt(layer, .{ .x = -1, .y = -1 }).?.id);
     const isometric = TileMap{ .allocator = std.testing.allocator, .projection = .isometric, .tile_size = .{ .x = 8, .y = 8 } };
     try std.testing.expectEqual(Vec2.init(-4, -4), isometric.cellToWorld(.{ .x = -1, .y = 0 }));
+}
+
+test "native binary cache preserves tracked dependencies" {
+    var map = try TileMap.init(std.testing.allocator, .{ .x = 8, .y = 8 }, 8);
+    defer map.deinit();
+    try map.addDependency(.tileset, "tiles.tsj");
+    try map.addDependency(.image, "tiles.png");
+    try map.addDependency(.overlay, "rules.json");
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "cache.upmapb" });
+    defer std.testing.allocator.free(path);
+    try map.writeBinary(path);
+    var cached = try TileMap.loadBinary(std.testing.allocator, path);
+    defer cached.deinit();
+    try std.testing.expectEqual(@as(usize, 3), cached.dependencies.items.len);
 }
 
 test "native tile map decodes strict minimal document" {
