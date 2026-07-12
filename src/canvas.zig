@@ -17,6 +17,8 @@ pub const ClipRect = struct {
     }
 };
 
+pub const BlendMode = enum { alpha, additive };
+
 pub const Sprite = struct {
     width: u32,
     height: u32,
@@ -35,6 +37,7 @@ pub const Canvas = struct {
     height: u32,
     pixels: []Color,
     clip: ?ClipRect = null,
+    blend: BlendMode = .alpha,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !Canvas {
         if (width == 0 or height == 0) return error.InvalidCanvasSize;
@@ -63,9 +66,18 @@ pub const Canvas = struct {
         self.clip = previous;
     }
 
+    pub fn setBlend(self: *Canvas, blend: BlendMode) BlendMode {
+        const previous = self.blend;
+        self.blend = blend;
+        return previous;
+    }
+
     pub fn pixel(self: *Canvas, x: i32, y: i32, color: Color) void {
         if (self.index(x, y)) |i| {
-            self.pixels[i] = color.over(self.pixels[i]);
+            self.pixels[i] = switch (self.blend) {
+                .alpha => color.over(self.pixels[i]),
+                .additive => color.add(self.pixels[i]),
+            };
         }
     }
 

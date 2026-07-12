@@ -112,6 +112,31 @@ test "primitive commands build GPU vertices without CPU canvas access" {
     try std.testing.expect(batch.vertices.items.len > 100);
 }
 
+test "GPU primitive draws retain nested clip and blend state" {
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    try commands.append(.{ .push_clip = .{ .x = 1, .y = 1, .w = 8, .h = 8 } });
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 16, .h = 16, .color = up.Color.white } });
+    try commands.append(.{ .push_clip = .{ .x = 3, .y = 3, .w = 4, .h = 4 } });
+    try commands.append(.{ .push_blend = .additive });
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 16, .h = 16, .color = up.Color.white } });
+    try commands.append(.pop_blend);
+    try commands.append(.pop_clip);
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 16, .h = 16, .color = up.Color.white } });
+    try commands.append(.pop_clip);
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 16, .h = 16, .color = up.Color.white } });
+    var batch = up.PrimitiveBatch.init(std.testing.allocator);
+    defer batch.deinit();
+    try appendPrimitiveCommands(&batch, 16, 16, commands.commands.items);
+    try std.testing.expectEqual(@as(usize, 4), batch.draws.items.len);
+    try std.testing.expectEqual(up.BlendMode.alpha, batch.draws.items[0].blend);
+    try std.testing.expectEqual(up.ClipRect{ .x = 3, .y = 3, .w = 4, .h = 4 }, batch.draws.items[1].clip.?);
+    try std.testing.expectEqual(up.BlendMode.additive, batch.draws.items[1].blend);
+    try std.testing.expectEqual(up.ClipRect{ .x = 1, .y = 1, .w = 8, .h = 8 }, batch.draws.items[2].clip.?);
+    try std.testing.expect(batch.draws.items[3].clip == null);
+    try std.testing.expectEqual(up.BlendMode.alpha, batch.draws.items[3].blend);
+}
+
 test "audio device removal and format changes request recovery" {
     try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_REMOVED));
     try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED));
@@ -206,6 +231,22 @@ pub const Context = struct {
             self.canvas.line(@intFromFloat(@round(b.x)), @intFromFloat(@round(b.y)), @intFromFloat(@round(c_point.x)), @intFromFloat(@round(c_point.y)), color);
             self.canvas.line(@intFromFloat(@round(c_point.x)), @intFromFloat(@round(c_point.y)), @intFromFloat(@round(a.x)), @intFromFloat(@round(a.y)), color);
         };
+    }
+
+    pub fn pushClip(self: *Context, clip_rect: up.ClipRect) void {
+        self.commands.append(.{ .push_clip = clip_rect }) catch @panic("render command allocation failed");
+    }
+
+    pub fn popClip(self: *Context) void {
+        self.commands.append(.pop_clip) catch @panic("render command allocation failed");
+    }
+
+    pub fn pushBlend(self: *Context, blend: up.BlendMode) void {
+        self.commands.append(.{ .push_blend = blend }) catch @panic("render command allocation failed");
+    }
+
+    pub fn popBlend(self: *Context) void {
+        self.commands.append(.pop_blend) catch @panic("render command allocation failed");
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
@@ -749,7 +790,8 @@ const Presenter = struct {
     vertex_transfer: ?*c.SDL_GPUTransferBuffer = null,
     vertex_capacity: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
-    primitive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    primitive_alpha_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    primitive_additive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     primitive_buffer: ?*c.SDL_GPUBuffer = null,
     primitive_transfer: ?*c.SDL_GPUTransferBuffer = null,
     primitive_capacity: u32 = 0,
@@ -808,7 +850,8 @@ const Presenter = struct {
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
         presenter.sprite_pipeline = try createSpritePipeline(device);
-        presenter.primitive_pipeline = try createPrimitivePipeline(device);
+        presenter.primitive_alpha_pipeline = try createPrimitivePipeline(device, .alpha);
+        presenter.primitive_additive_pipeline = try createPrimitivePipeline(device, .additive);
         return presenter;
     }
 
@@ -818,7 +861,8 @@ const Presenter = struct {
         if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.vertex_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
-        if (self.primitive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.primitive_alpha_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.primitive_additive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.primitive_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.primitive_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         self.primitive_batch.deinit();
@@ -972,7 +1016,6 @@ const Presenter = struct {
     }
 
     fn renderPrimitives(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
-        const pipeline = self.primitive_pipeline orelse return error.PrimitivePipelineUnavailable;
         var color_target = c.SDL_GPUColorTargetInfo{
             .texture = self.texture,
             .mip_level = 0,
@@ -990,10 +1033,19 @@ const Presenter = struct {
         };
         const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
         defer c.SDL_EndGPURenderPass(pass);
-        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-        const binding = c.SDL_GPUBufferBinding{ .buffer = self.primitive_buffer orelse return error.PrimitivePipelineUnavailable, .offset = 0 };
-        c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
-        c.SDL_DrawGPUPrimitives(pass, @intCast(self.primitive_batch.vertices.items.len), 1, 0, 0);
+        const buffer = self.primitive_buffer orelse return error.PrimitivePipelineUnavailable;
+        for (self.primitive_batch.draws.items) |draw| {
+            const pipeline = switch (draw.blend) {
+                .alpha => self.primitive_alpha_pipeline orelse return error.PrimitivePipelineUnavailable,
+                .additive => self.primitive_additive_pipeline orelse return error.PrimitivePipelineUnavailable,
+            };
+            c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+            const scissor = primitiveScissor(draw.clip, self.width, self.height);
+            c.SDL_SetGPUScissor(pass, &scissor);
+            const binding = c.SDL_GPUBufferBinding{ .buffer = buffer, .offset = draw.vertex_start * @sizeOf(up.PrimitiveBatchVertex) };
+            c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+            c.SDL_DrawGPUPrimitives(pass, draw.vertex_count, 1, 0, 0);
+        }
     }
 
     fn uploadVertices(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, vertices: []const up.SpriteBatchVertex) !void {
@@ -1147,17 +1199,98 @@ const Presenter = struct {
 };
 
 fn appendPrimitiveCommands(batch: *up.PrimitiveBatch, width: u32, height: u32, commands: []const up.RenderCommand) !void {
+    var clip_stack = std.ArrayList(?up.ClipRect).empty;
+    defer clip_stack.deinit(batch.allocator);
+    var blend_stack = std.ArrayList(up.BlendMode).empty;
+    defer blend_stack.deinit(batch.allocator);
+    var clip: ?up.ClipRect = null;
+    var blend: up.BlendMode = .alpha;
+
     for (commands) |command| switch (command) {
-        .begin_frame, .clear, .image, .push_clip, .pop_clip, .present => {},
-        .rect => |value| try batch.rect(width, height, value.x, value.y, value.w, value.h, value.color),
-        .stroke_rect => |value| try batch.strokeRect(width, height, value.x, value.y, value.w, value.h, value.color),
-        .circle => |value| try batch.circle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color),
-        .stroke_circle => |value| try batch.strokeCircle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color),
-        .line => |value| try batch.line(width, height, .{ .x = @floatFromInt(value.x0), .y = @floatFromInt(value.y0) }, .{ .x = @floatFromInt(value.x1), .y = @floatFromInt(value.y1) }, value.color),
-        .triangle => |value| try batch.triangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color),
-        .stroke_triangle => |value| try batch.strokeTriangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color),
-        .text => |value| try batch.text(width, height, value.value, value.x, value.y, value.color),
+        .begin_frame, .clear, .image, .present => {},
+        .push_clip => |next| {
+            try clip_stack.append(batch.allocator, clip);
+            clip = if (clip) |current| intersectClip(current, next) else next;
+        },
+        .pop_clip => clip = clip_stack.pop() orelse return error.UnbalancedRenderState,
+        .push_blend => |next| {
+            try blend_stack.append(batch.allocator, blend);
+            blend = next;
+        },
+        .pop_blend => blend = blend_stack.pop() orelse return error.UnbalancedRenderState,
+        .rect => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.rect(width, height, value.x, value.y, value.w, value.h, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .stroke_rect => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.strokeRect(width, height, value.x, value.y, value.w, value.h, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .circle => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.circle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .stroke_circle => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.strokeCircle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .line => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.line(width, height, .{ .x = @floatFromInt(value.x0), .y = @floatFromInt(value.y0) }, .{ .x = @floatFromInt(value.x1), .y = @floatFromInt(value.y1) }, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .triangle => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.triangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .stroke_triangle => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.strokeTriangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
+        .text => |value| {
+            const start: u32 = @intCast(batch.vertices.items.len);
+            try batch.text(width, height, value.value, value.x, value.y, value.color);
+            try batch.finishDraw(start, blend, clip);
+        },
     };
+    if (clip_stack.items.len != 0 or blend_stack.items.len != 0) return error.UnbalancedRenderState;
+}
+
+fn intersectClip(a: up.ClipRect, b: up.ClipRect) up.ClipRect {
+    const x = @max(@as(i64, a.x), @as(i64, b.x));
+    const y = @max(@as(i64, a.y), @as(i64, b.y));
+    const right = @min(@as(i64, a.x) + a.w, @as(i64, b.x) + b.w);
+    const bottom = @min(@as(i64, a.y) + a.h, @as(i64, b.y) + b.h);
+    return .{ .x = clampI64ToI32(x), .y = clampI64ToI32(y), .w = clampI64ToI32(@max(@as(i64, 0), right - x)), .h = clampI64ToI32(@max(@as(i64, 0), bottom - y)) };
+}
+
+fn clampI64ToI32(value: i64) i32 {
+    return @intCast(@max(@as(i64, std.math.minInt(i32)), @min(@as(i64, std.math.maxInt(i32)), value)));
+}
+
+fn primitiveScissor(clip: ?up.ClipRect, width: u32, height: u32) c.SDL_Rect {
+    const limit_x: i64 = @intCast(width);
+    const limit_y: i64 = @intCast(height);
+    if (clip) |value| {
+        const clip_right = @as(i64, value.x) + @max(@as(i64, 0), @as(i64, value.w));
+        const clip_bottom = @as(i64, value.y) + @max(@as(i64, 0), @as(i64, value.h));
+        const x0 = @max(@as(i64, 0), @min(limit_x, @as(i64, value.x)));
+        const y0 = @max(@as(i64, 0), @min(limit_y, @as(i64, value.y)));
+        const x1 = @max(x0, @min(limit_x, clip_right));
+        const y1 = @max(y0, @min(limit_y, clip_bottom));
+        return .{ .x = clampI64ToCInt(x0), .y = clampI64ToCInt(y0), .w = clampI64ToCInt(x1 - x0), .h = clampI64ToCInt(y1 - y0) };
+    }
+    return .{ .x = 0, .y = 0, .w = clampI64ToCInt(limit_x), .h = clampI64ToCInt(limit_y) };
+}
+
+fn clampI64ToCInt(value: i64) c_int {
+    return @intCast(@max(@as(i64, std.math.minInt(c_int)), @min(@as(i64, std.math.maxInt(c_int)), value)));
 }
 
 fn createSpriteSampler(device: *c.SDL_GPUDevice, sampling: up.SpriteSampling) !*c.SDL_GPUSampler {
@@ -1260,19 +1393,23 @@ fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SD
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn createPrimitivePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {
     const vertex_shader = try createPrimitiveShader(device, .vertex);
     defer c.SDL_ReleaseGPUShader(device, vertex_shader);
     const fragment_shader = try createPrimitiveShader(device, .fragment);
     defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const destination_factor: c.SDL_GPUBlendFactor = switch (blend) {
+        .alpha => c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .additive => c.SDL_GPU_BLENDFACTOR_ONE,
+    };
     const target = c.SDL_GPUColorTargetDescription{
         .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .blend_state = .{
             .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .dst_color_blendfactor = destination_factor,
             .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
             .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
-            .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .dst_alpha_blendfactor = destination_factor,
             .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
             .color_write_mask = 0xF,
             .enable_blend = true,
