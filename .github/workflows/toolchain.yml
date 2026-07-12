@@ -40,7 +40,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: visual-diagnostics-${{ matrix.os }}
-          path: zig-out/*.ppm
+          path: |
+            zig-out/scenes/*.png
+            zig-out/*.ppm
           if-no-files-found: warn
 
   sample-smoke:
