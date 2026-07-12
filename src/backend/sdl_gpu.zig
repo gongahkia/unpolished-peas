@@ -14,6 +14,10 @@ const primitive_vert_spirv = sprite_shaders.primitive_vert_spirv;
 const primitive_frag_spirv = sprite_shaders.primitive_frag_spirv;
 const primitive_vert_msl = sprite_shaders.primitive_vert_msl;
 const primitive_frag_msl = sprite_shaders.primitive_frag_msl;
+const effect_vert_spirv = sprite_shaders.effect_vert_spirv;
+const effect_frag_spirv = sprite_shaders.effect_frag_spirv;
+const effect_vert_msl = sprite_shaders.effect_vert_msl;
+const effect_frag_msl = sprite_shaders.effect_frag_msl;
 
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
@@ -178,6 +182,7 @@ pub const Context = struct {
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
+    pixel_effect: *?up.PixelEffect,
     dt: f32,
     frame: u64,
 
@@ -247,6 +252,14 @@ pub const Context = struct {
 
     pub fn popBlend(self: *Context) void {
         self.commands.append(.pop_blend) catch @panic("render command allocation failed");
+    }
+
+    pub fn setPixelEffect(self: *Context, source: []const u8, params: up.PixelEffectParameters) !void {
+        self.pixel_effect.* = try up.PixelEffect.parse(source, params);
+    }
+
+    pub fn clearPixelEffect(self: *Context) void {
+        self.pixel_effect.* = null;
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
@@ -441,6 +454,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     defer sprite_batch.deinit();
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
+    var pixel_effect: ?up.PixelEffect = null;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
@@ -458,7 +472,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
         dev.failure("init", err);
@@ -485,7 +499,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -527,7 +541,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         dev.drawOverlay(&canvas, dt, ctx.frame);
         if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, &presentation);
+        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, &presentation);
 
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
@@ -776,6 +790,7 @@ const AudioOutput = struct {
 
 const Presenter = struct {
     texture: *c.SDL_GPUTexture,
+    effect_texture: *c.SDL_GPUTexture,
     transfer: *c.SDL_GPUTransferBuffer,
     width: u32,
     height: u32,
@@ -784,6 +799,7 @@ const Presenter = struct {
     texture_handle: up.TextureHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    effect_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     nearest_sampler: ?*c.SDL_GPUSampler = null,
     linear_sampler: ?*c.SDL_GPUSampler = null,
     vertex_buffer: ?*c.SDL_GPUBuffer = null,
@@ -836,6 +852,19 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTexture");
         errdefer c.SDL_ReleaseGPUTexture(device, texture);
 
+        const effect_texture = c.SDL_CreateGPUTexture(device, &.{
+            .type = c.SDL_GPU_TEXTURETYPE_2D,
+            .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+            .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER | c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+            .width = width,
+            .height = height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+            .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
+            .props = 0,
+        }) orelse return sdlFail("SDL_CreateGPUTexture");
+        errdefer c.SDL_ReleaseGPUTexture(device, effect_texture);
+
         const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{
             .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
             .size = byte_len,
@@ -845,11 +874,12 @@ const Presenter = struct {
 
         var resources = up.GpuResources.init(std.heap.page_allocator);
         const texture_handle = try resources.createTexture();
-        var presenter = Presenter{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
+        var presenter = Presenter{ .texture = texture, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
         presenter.sprite_pipeline = try createSpritePipeline(device);
+        presenter.effect_pipeline = try createEffectPipeline(device);
         presenter.primitive_alpha_pipeline = try createPrimitivePipeline(device, .alpha);
         presenter.primitive_additive_pipeline = try createPrimitivePipeline(device, .additive);
         return presenter;
@@ -857,6 +887,7 @@ const Presenter = struct {
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
         if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.effect_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.nearest_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
@@ -876,13 +907,14 @@ const Presenter = struct {
         }
         self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
+        c.SDL_ReleaseGPUTexture(device, self.effect_texture);
         c.SDL_ReleaseGPUTexture(device, self.texture);
         self.resources.destroyTexture(self.texture_handle) catch unreachable;
         self.resources.deinit();
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effect: ?up.PixelEffect, presentation: *up.Presentation) !void {
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
@@ -926,6 +958,7 @@ const Presenter = struct {
 
         if (self.primitive_batch.vertices.items.len != 0) try self.renderPrimitives(command);
         if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
+        const display_texture = if (effect) |value| try self.renderPixelEffect(command, value) else self.texture;
 
         var swapchain: ?*c.SDL_GPUTexture = null;
         var swap_w: u32 = 0;
@@ -940,7 +973,7 @@ const Presenter = struct {
             const destination = presentation.destination();
             c.SDL_BlitGPUTexture(command, &.{
                 .source = .{
-                    .texture = self.texture,
+                    .texture = display_texture,
                     .mip_level = 0,
                     .layer_or_depth_plane = 0,
                     .x = 0,
@@ -1106,6 +1139,35 @@ const Presenter = struct {
             c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
             c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
         }
+    }
+
+    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, effect: up.PixelEffect) !*c.SDL_GPUTexture {
+        const pipeline = self.effect_pipeline orelse return error.PixelEffectUnavailable;
+        const sampler = self.nearest_sampler orelse return error.PixelEffectUnavailable;
+        var color_target = c.SDL_GPUColorTargetInfo{
+            .texture = self.effect_texture,
+            .mip_level = 0,
+            .layer_or_depth_plane = 0,
+            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
+            .load_op = c.SDL_GPU_LOADOP_CLEAR,
+            .store_op = c.SDL_GPU_STOREOP_STORE,
+            .resolve_texture = null,
+            .resolve_mip_level = 0,
+            .resolve_layer = 0,
+            .cycle = false,
+            .cycle_resolve_texture = false,
+            .padding1 = 0,
+            .padding2 = 0,
+        };
+        const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        defer c.SDL_EndGPURenderPass(pass);
+        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = self.texture, .sampler = sampler };
+        c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
+        const parameters = [_]f32{ effect.amount, 0, 0, 0 };
+        c.SDL_PushGPUFragmentUniformData(command, 0, &parameters, @sizeOf(@TypeOf(parameters)));
+        c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
+        return self.effect_texture;
     }
 
     fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {
@@ -1391,6 +1453,32 @@ fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SD
         .num_uniform_buffers = 0,
         .props = 0,
     }) orelse return sdlFail("SDL_CreateGPUShader");
+}
+
+fn createEffectPipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+    const vertex_shader = try createEffectShader(device, .vertex);
+    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
+    const fragment_shader = try createEffectShader(device, .fragment);
+    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const target = c.SDL_GPUColorTargetDescription{ .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .blend_state = .{ .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .color_blend_op = c.SDL_GPU_BLENDOP_ADD, .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD, .color_write_mask = 0xF, .enable_blend = false, .enable_color_write_mask = true, .padding1 = 0, .padding2 = 0 } };
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{ .vertex_shader = vertex_shader, .fragment_shader = fragment_shader, .vertex_input_state = .{ .vertex_buffer_descriptions = null, .num_vertex_buffers = 0, .vertex_attributes = null, .num_vertex_attributes = 0 }, .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST, .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 }, .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .props = 0 }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+}
+
+fn createEffectShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
+    const formats = c.SDL_GetGPUShaderFormats(device);
+    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) switch (stage) {
+        .vertex => effect_vert_msl,
+        .fragment => effect_frag_msl,
+    } else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0) switch (stage) {
+        .vertex => effect_vert_spirv,
+        .fragment => effect_frag_spirv,
+    } else return error.UnsupportedGpuShaderFormat;
+    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    return c.SDL_CreateGPUShader(device, &.{ .code_size = source.len, .code = source.ptr, .entrypoint = entrypoint, .format = format, .stage = switch (stage) {
+        .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+        .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+    }, .num_samplers = if (stage == .fragment) 1 else 0, .num_storage_textures = 0, .num_storage_buffers = 0, .num_uniform_buffers = if (stage == .fragment) 1 else 0, .props = 0 }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
 fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {

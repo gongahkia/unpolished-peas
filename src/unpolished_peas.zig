@@ -73,6 +73,8 @@ pub const GpuResources = @import("gpu.zig").Resources;
 pub const TextureHandle = @import("gpu.zig").TextureHandle;
 pub const RenderTargetHandle = @import("gpu.zig").RenderTargetHandle;
 pub const ShaderHandle = @import("gpu.zig").ShaderHandle;
+pub const PixelEffect = @import("shader.zig").PixelEffect;
+pub const PixelEffectParameters = @import("shader.zig").Parameters;
 pub const PipelineHandle = @import("gpu.zig").PipelineHandle;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
@@ -119,6 +121,7 @@ test {
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
+    _ = @import("shader.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");
     _ = @import("text_layout.zig");

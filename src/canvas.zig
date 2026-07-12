@@ -5,6 +5,7 @@ const Image = @import("image.zig").Image;
 const font = @import("font.zig");
 const Vec2 = @import("math.zig").Vec2;
 const text_layout = @import("text_layout.zig");
+const PixelEffect = @import("shader.zig").PixelEffect;
 
 pub const ClipRect = struct {
     x: i32,
@@ -54,6 +55,10 @@ pub const Canvas = struct {
 
     pub fn clear(self: *Canvas, color: Color) void {
         @memset(self.pixels, color);
+    }
+
+    pub fn applyPixelEffect(self: *Canvas, effect: PixelEffect) void {
+        for (self.pixels) |*value| value.* = effect.apply(value.*);
     }
 
     pub fn pushClip(self: *Canvas, next: ClipRect) ?ClipRect {
@@ -323,6 +328,14 @@ test "canvas clips draws" {
     canvas.fillRect(-1, -1, 3, 3, Color.white);
     try std.testing.expectEqual(Color.white, canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.black, canvas.get(3, 3).?);
+}
+
+test "canvas applies strict pixel-effect fallback" {
+    var canvas = try Canvas.init(std.testing.allocator, 1, 1);
+    defer canvas.deinit();
+    canvas.clear(Color.rgb(10, 20, 30));
+    canvas.applyPixelEffect(try PixelEffect.parse("invert", .{}));
+    try std.testing.expectEqual(Color.rgb(245, 235, 225), canvas.get(0, 0).?);
 }
 
 test "canvas clips affine draws" {
