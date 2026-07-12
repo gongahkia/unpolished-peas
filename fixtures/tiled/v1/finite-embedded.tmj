@@ -1,0 +1,34 @@
+{
+  "version": "1.10",
+  "orientation": "orthogonal",
+  "infinite": false,
+  "tilewidth": 8,
+  "tileheight": 8,
+  "tilesets": [{
+    "firstgid": 1,
+    "name": "embedded",
+    "tilewidth": 8,
+    "tileheight": 8,
+    "image": "../../../examples/assets/ball.png",
+    "tiles": [{
+      "id": 0,
+      "animation": [{"tileid": 0, "duration": 80}, {"tileid": 1, "duration": 120}]
+    }]
+  }],
+  "layers": [{
+    "type": "group",
+    "name": "scene",
+    "opacity": 0.5,
+    "offsetx": 2,
+    "offsety": 3,
+    "parallaxx": 0.75,
+    "parallaxy": 0.5,
+    "layers": [{
+      "type": "tilelayer",
+      "name": "ground",
+      "width": 2,
+      "height": 1,
+      "data": [2147483649, 1]
+    }]
+  }]
+}

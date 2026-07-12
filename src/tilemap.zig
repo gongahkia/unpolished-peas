@@ -1361,3 +1361,26 @@ test "Tiled approved subset preserves external embedded group and animation fiel
     const tile = map.tileAt(1, .{ .x = 0, .y = 0 }).?;
     try std.testing.expect(tile.flags.flip_x and tile.flags.flip_y and tile.flags.diagonal);
 }
+
+test "versioned finite embedded Tiled fixture preserves hierarchy flags and animation" {
+    var map = try TileMap.loadTiled(std.testing.allocator, "fixtures/tiled/v1/finite-embedded.tmj");
+    defer map.deinit();
+    try std.testing.expectEqual(@as(usize, 1), map.tilesets.items.len);
+    try std.testing.expectEqual(@as(usize, 2), map.layers.items.len);
+    try std.testing.expectEqual(@as(?u32, 0), map.layers.items[1].parent);
+    try std.testing.expectEqual(@as(usize, 1), map.tilesets.items[0].animations.len);
+    try std.testing.expect(map.tileAt(1, .{ .x = 0, .y = 0 }).?.flags.flip_x);
+    const state = map.layerState(1);
+    try std.testing.expectEqual(@as(f32, 0.5), state.opacity);
+    try std.testing.expectEqual(Vec2.init(2, 3), state.offset);
+}
+
+test "versioned infinite external Tiled fixture preserves signed chunks and flags" {
+    var map = try TileMap.loadTiled(std.testing.allocator, "fixtures/tiled/v1/infinite-external.tmj");
+    defer map.deinit();
+    try std.testing.expectEqual(@as(usize, 1), map.tilesets.items.len);
+    try std.testing.expectEqual(@as(usize, 1), map.tilesets.items[0].animations.len);
+    const tile = map.tileAt(0, .{ .x = -1, .y = 2 }).?;
+    try std.testing.expect(tile.flags.flip_x and tile.flags.flip_y and tile.flags.diagonal);
+    try std.testing.expectEqual(@as(usize, 2), map.dependencies.items.len);
+}
