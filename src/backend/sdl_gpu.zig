@@ -29,6 +29,23 @@ test "swapchain lifecycle accepts minimized and resized frames" {
     try std.testing.expectEqual(@as(f32, 480), presentation.framebuffer_size.y);
 }
 
+test "sprite residency detects a reloaded image buffer" {
+    var first = [_]up.Color{up.Color.white};
+    var second = [_]up.Color{up.Color.black};
+    var image = up.Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = first[0..] };
+    const resident = Presenter.SpriteTexture{
+        .image = &image,
+        .texture = undefined,
+        .transfer = undefined,
+        .pixels = image.pixels.ptr,
+        .width = image.width,
+        .height = image.height,
+    };
+    try std.testing.expect(resident.matches(&image));
+    image.pixels = second[0..];
+    try std.testing.expect(!resident.matches(&image));
+}
+
 pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
     var renderer = up.HeadlessRenderer.init(canvas);
     defer renderer.deinit(allocator);
@@ -99,7 +116,7 @@ pub const Context = struct {
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
-        const source_image = self.assets.imagePtr(handle);
+        const source_image = self.assets.latestImagePtr(handle) catch @panic("invalid image handle");
         if (x < 0 or y < 0) {
             self.canvas.drawImage(source_image.*, x, y);
             return;
@@ -108,7 +125,7 @@ pub const Context = struct {
     }
 
     pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
-        const source_atlas = self.assets.atlasPtr(atlas_handle);
+        const source_atlas = self.assets.latestAtlasPtr(atlas_handle) catch @panic("invalid atlas handle");
         const source = source_atlas.frame(frame);
         if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and !(options.flip_x and options.flip_y) and options.origin == .top_left and options.rotation == 0 and options.sampling == .nearest and std.meta.eql(options.tint, up.Color.white)) {
             const draw_x = x + source.offset_x;
@@ -138,7 +155,7 @@ pub const Context = struct {
     }
 
     pub fn atlas(self: *Context, atlas_handle: up.AtlasHandle) *const up.Atlas {
-        return self.assets.atlasPtr(atlas_handle);
+        return self.assets.latestAtlasPtr(atlas_handle) catch @panic("invalid atlas handle");
     }
 
     pub fn atlasAnimation(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AnimationHandle {
@@ -166,7 +183,7 @@ pub const Context = struct {
     }
 
     pub fn textAsset(self: *Context, handle: up.TextHandle) []const u8 {
-        return self.assets.text(handle);
+        return self.assets.latestText(handle) catch @panic("invalid text handle");
     }
 
     pub fn down(self: *Context, key: up.Key) bool {
@@ -565,12 +582,30 @@ const Presenter = struct {
     resources: up.GpuResources,
     texture_handle: up.TextureHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
+    frame: u64 = 0,
 
     const SpriteTexture = struct {
         image: *const up.Image,
         texture: *c.SDL_GPUTexture,
         transfer: *c.SDL_GPUTransferBuffer,
+        pixels: [*]const up.Color,
+        width: u32,
+        height: u32,
         uploaded: bool = false,
+        pending: ?PendingTexture = null,
+        last_used_frame: u64 = 0,
+
+        const PendingTexture = struct {
+            texture: *c.SDL_GPUTexture,
+            transfer: *c.SDL_GPUTransferBuffer,
+            pixels: [*]const up.Color,
+            width: u32,
+            height: u32,
+        };
+
+        fn matches(self: SpriteTexture, image: *const up.Image) bool {
+            return self.pixels == image.pixels.ptr and self.width == image.width and self.height == image.height;
+        }
     };
 
     fn init(device: *c.SDL_GPUDevice, width: u32, height: u32) !Presenter {
@@ -604,6 +639,10 @@ const Presenter = struct {
         for (self.sprite_textures.items) |sprite| {
             c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
             c.SDL_ReleaseGPUTexture(device, sprite.texture);
+            if (sprite.pending) |pending| {
+                c.SDL_ReleaseGPUTransferBuffer(device, pending.transfer);
+                c.SDL_ReleaseGPUTexture(device, pending.texture);
+            }
         }
         self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
@@ -614,6 +653,7 @@ const Presenter = struct {
     }
 
     fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, presentation: *up.Presentation) !void {
+        self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         try self.copyCanvas(device, canvas);
@@ -646,6 +686,7 @@ const Presenter = struct {
                 try self.uploadSprite(device, copy_pass, sprite);
                 sprite.uploaded = true;
             }
+            if (sprite.pending != null) try self.commitPendingSprite(device, copy_pass, sprite);
         }
         c.SDL_EndGPUCopyPass(copy_pass);
 
@@ -707,6 +748,7 @@ const Presenter = struct {
         }
 
         if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
+        self.reclaimUnusedSprites(device);
     }
 
     fn copyCanvas(self: *Presenter, device: *c.SDL_GPUDevice, canvas: up.Canvas) !void {
@@ -728,13 +770,18 @@ const Presenter = struct {
     }
 
     fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {
-        for (self.sprite_textures.items, 0..) |sprite, index| if (sprite.image == image) return index;
+        for (self.sprite_textures.items, 0..) |*sprite, index| {
+            if (sprite.image != image) continue;
+            sprite.last_used_frame = self.frame;
+            if (!sprite.matches(image)) try self.queueSpriteReplacement(device, sprite, image);
+            return index;
+        }
         const bytes = std.math.mul(u32, image.width, image.height) catch return error.ImageTooLarge;
         const texture = c.SDL_CreateGPUTexture(device, &.{ .type = c.SDL_GPU_TEXTURETYPE_2D, .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER, .width = image.width, .height = image.height, .layer_count_or_depth = 1, .num_levels = 1, .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTexture");
         errdefer c.SDL_ReleaseGPUTexture(device, texture);
         const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = try std.math.mul(u32, bytes, 4), .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
-        try self.sprite_textures.append(std.heap.page_allocator, .{ .image = image, .texture = texture, .transfer = transfer });
+        try self.sprite_textures.append(std.heap.page_allocator, .{ .image = image, .texture = texture, .transfer = transfer, .pixels = image.pixels.ptr, .width = image.width, .height = image.height, .last_used_frame = self.frame });
         return self.sprite_textures.items.len - 1;
     }
 
@@ -744,17 +791,71 @@ const Presenter = struct {
     }
 
     fn uploadSprite(_: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, sprite: *SpriteTexture) !void {
-        const mapped = c.SDL_MapGPUTransferBuffer(device, sprite.transfer, false) orelse return sdlFail("SDL_MapGPUTransferBuffer");
-        defer c.SDL_UnmapGPUTransferBuffer(device, sprite.transfer);
+        try uploadSpriteTexture(device, copy_pass, sprite.image, sprite.texture, sprite.transfer);
+    }
+
+    fn queueSpriteReplacement(_: *Presenter, device: *c.SDL_GPUDevice, sprite: *SpriteTexture, image: *const up.Image) !void {
+        if (sprite.pending) |pending| {
+            if (pending.pixels == image.pixels.ptr and pending.width == image.width and pending.height == image.height) return;
+            c.SDL_ReleaseGPUTransferBuffer(device, pending.transfer);
+            c.SDL_ReleaseGPUTexture(device, pending.texture);
+        }
+        const replacement = try createSpriteTexture(device, image);
+        sprite.pending = .{ .texture = replacement.texture, .transfer = replacement.transfer, .pixels = image.pixels.ptr, .width = image.width, .height = image.height };
+    }
+
+    fn commitPendingSprite(_: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, sprite: *SpriteTexture) !void {
+        const pending = sprite.pending orelse return;
+        try uploadSpriteTexture(device, copy_pass, sprite.image, pending.texture, pending.transfer);
+        c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
+        c.SDL_ReleaseGPUTexture(device, sprite.texture);
+        sprite.texture = pending.texture;
+        sprite.transfer = pending.transfer;
+        sprite.pixels = pending.pixels;
+        sprite.width = pending.width;
+        sprite.height = pending.height;
+        sprite.uploaded = true;
+        sprite.pending = null;
+    }
+
+    fn reclaimUnusedSprites(self: *Presenter, device: *c.SDL_GPUDevice) void {
+        var index: usize = 0;
+        while (index < self.sprite_textures.items.len) {
+            const sprite = self.sprite_textures.items[index];
+            if (self.frame -% sprite.last_used_frame <= 120) {
+                index += 1;
+                continue;
+            }
+            c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
+            c.SDL_ReleaseGPUTexture(device, sprite.texture);
+            if (sprite.pending) |pending| {
+                c.SDL_ReleaseGPUTransferBuffer(device, pending.transfer);
+                c.SDL_ReleaseGPUTexture(device, pending.texture);
+            }
+            _ = self.sprite_textures.orderedRemove(index);
+        }
+    }
+
+    fn createSpriteTexture(device: *c.SDL_GPUDevice, image: *const up.Image) !struct { texture: *c.SDL_GPUTexture, transfer: *c.SDL_GPUTransferBuffer } {
+        const pixels = std.math.mul(u32, image.width, image.height) catch return error.ImageTooLarge;
+        const texture = c.SDL_CreateGPUTexture(device, &.{ .type = c.SDL_GPU_TEXTURETYPE_2D, .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER, .width = image.width, .height = image.height, .layer_count_or_depth = 1, .num_levels = 1, .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTexture");
+        errdefer c.SDL_ReleaseGPUTexture(device, texture);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = try std.math.mul(u32, pixels, 4), .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        return .{ .texture = texture, .transfer = transfer };
+    }
+
+    fn uploadSpriteTexture(device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, image: *const up.Image, texture: *c.SDL_GPUTexture, transfer: *c.SDL_GPUTransferBuffer) !void {
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, false) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
         const dst: [*]u8 = @ptrCast(mapped);
-        for (sprite.image.pixels, 0..) |pixel, index| {
+        for (image.pixels, 0..) |pixel, index| {
             const offset = index * 4;
             dst[offset] = pixel.r;
             dst[offset + 1] = pixel.g;
             dst[offset + 2] = pixel.b;
             dst[offset + 3] = pixel.a;
         }
-        c.SDL_UploadToGPUTexture(copy_pass, &.{ .transfer_buffer = sprite.transfer, .offset = 0, .pixels_per_row = sprite.image.width, .rows_per_layer = sprite.image.height }, &.{ .texture = sprite.texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = sprite.image.width, .h = sprite.image.height, .d = 1 }, false);
+        c.SDL_UploadToGPUTexture(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0, .pixels_per_row = image.width, .rows_per_layer = image.height }, &.{ .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = image.width, .h = image.height, .d = 1 }, false);
     }
 };
 

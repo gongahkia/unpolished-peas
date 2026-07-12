@@ -279,6 +279,11 @@ pub const AssetStore = struct {
         return self.texts.items[handle.index].file.text();
     }
 
+    pub fn latestText(self: AssetStore, handle: TextHandle) ![]const u8 {
+        if (handle.index >= self.texts.items.len) return error.InvalidHandle;
+        return self.texts.items[handle.index].file.text();
+    }
+
     pub fn image(self: AssetStore, handle: ImageHandle) Image {
         return self.tryImage(handle) catch @panic("stale image handle");
     }
@@ -297,6 +302,11 @@ pub const AssetStore = struct {
         return &self.images.items[handle.index].image;
     }
 
+    pub fn latestImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image {
+        if (handle.index >= self.images.items.len) return error.InvalidHandle;
+        return &self.images.items[handle.index].image;
+    }
+
     pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas {
         return self.tryAtlas(handle) catch @panic("stale atlas handle");
     }
@@ -312,6 +322,11 @@ pub const AssetStore = struct {
 
     pub fn tryAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
         if (handle.index >= self.atlases.items.len or self.atlases.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return &self.atlases.items[handle.index].atlas;
+    }
+
+    pub fn latestAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
+        if (handle.index >= self.atlases.items.len) return error.InvalidHandle;
         return &self.atlases.items[handle.index].atlas;
     }
 
@@ -606,4 +621,5 @@ test "image reload keeps last good asset after invalid edit" {
     const changed = try store.reloadChanged();
     try std.testing.expectEqual(ReloadStatus.changed, changed[0].status);
     try std.testing.expectError(error.StaleHandle, store.tryImage(handle));
+    try std.testing.expect((try store.latestImagePtr(handle)).width > 0);
 }
