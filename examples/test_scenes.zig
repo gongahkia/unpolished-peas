@@ -8,9 +8,9 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var assets = up.AssetStore.init(allocator, std.fs.cwd());
+    var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    const ball = try assets.loadPng("examples/assets/ball.png");
+    const ball = try assets.loadPng("ball.png");
 
     var canvas = try up.Canvas.init(allocator, 64, 48);
     defer canvas.deinit();

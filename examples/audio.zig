@@ -7,9 +7,13 @@ const Game = struct {
     music_handle: ?up.PlaybackHandle = null,
 
     pub fn init(ctx: *sdl.Context) !Game {
+        const blip_path = try ctx.assetPath("blip.wav");
+        defer ctx.allocator.free(blip_path);
+        const music_path = try ctx.assetPath("tone.ogg");
+        defer ctx.allocator.free(music_path);
         var game = Game{
-            .blip = try up.Sound.loadWav(ctx.allocator, "examples/assets/blip.wav"),
-            .music = try up.Music.openOgg(ctx.allocator, "examples/assets/tone.ogg"),
+            .blip = try up.Sound.loadWav(ctx.allocator, blip_path),
+            .music = try up.Music.openOgg(ctx.allocator, music_path),
         };
         errdefer {
             game.music.deinit();

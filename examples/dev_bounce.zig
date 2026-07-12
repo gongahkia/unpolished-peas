@@ -11,8 +11,8 @@ const Game = struct {
 
     pub fn init(ctx: *sdl.Context) !Game {
         return .{
-            .sprite = try ctx.loadPng("examples/assets/ball.png"),
-            .message = try ctx.loadText("examples/assets/message.txt"),
+            .sprite = try ctx.loadPng("ball.png"),
+            .message = try ctx.loadText("message.txt"),
         };
     }
 
@@ -23,7 +23,7 @@ const Game = struct {
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
         ctx.image(self.sprite, @intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y));
         ctx.text(ctx.textAsset(self.message), 4, 4, up.Color.rgb(225, 232, 240));
-        ctx.text("EDIT examples/assets/message.txt", 4, 76, up.Color.rgb(113, 232, 162));
+        ctx.text("EDIT assets/message.txt", 4, 76, up.Color.rgb(113, 232, 162));
     }
 };
 

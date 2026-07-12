@@ -7,7 +7,7 @@ const Game = struct {
     player: up.AnimationPlayer,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const atlas = try ctx.loadAtlas("examples/assets/atlas.json");
+        const atlas = try ctx.loadAtlas("atlas.json");
         const animation = ctx.atlasAnimation(atlas, "pulse").?;
         return .{
             .atlas = atlas,

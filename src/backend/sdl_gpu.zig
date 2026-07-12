@@ -48,6 +48,7 @@ pub const Config = struct {
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
     strict_audio: bool = false,
+    asset_root: ?[]const u8 = null,
     developer_tools: bool = builtin.mode == .Debug,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
@@ -171,6 +172,10 @@ pub const Context = struct {
     pub fn appDataPath(self: *Context) []const u8 {
         return self.app_data_path;
     }
+
+    pub fn assetPath(self: *Context, path: []const u8) ![]u8 {
+        return self.assets.assetPath(self.allocator, path);
+    }
 };
 
 pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, application: [:0]const u8) ![]u8 {
@@ -213,7 +218,10 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var canvas = try up.Canvas.init(allocator, config.width, config.height);
     defer canvas.deinit();
 
-    var assets = up.AssetStore.init(allocator, std.fs.cwd());
+    var assets = if (config.asset_root) |root_path|
+        try up.AssetStore.initAbsolute(allocator, root_path)
+    else
+        try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
     var sprite_batch = up.SpriteBatch.init(allocator);
     defer sprite_batch.deinit();
