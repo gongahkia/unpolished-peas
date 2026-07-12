@@ -123,7 +123,7 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 ## Developer Runtime
 
-`Config.developer_tools` defaults to enabled in Debug builds. F3 toggles the FPS/frame-time overlay. F12 writes a PPM screenshot. The app-data path is printed at startup, available through `Context.appDataPath`, and contains `unpolished-peas.log` when developer tools are enabled.
+`Config.developer_tools` defaults to enabled in Debug builds. F3 toggles the FPS/frame-time overlay. F12 writes a PNG read back from the composed GPU render target. `Context.captureFrame()` requests the same capture after the current frame. The app-data path is printed at startup, available through `Context.appDataPath`, and contains `unpolished-peas.log` when developer tools are enabled.
 
 Game initialization, update, draw, and asset-reload errors are written to the terminal and log, then held in an in-window error state until Escape is pressed. Zig panics remain process failures and require the normal debugger/test workflow.
 

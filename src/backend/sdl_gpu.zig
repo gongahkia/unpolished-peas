@@ -43,6 +43,58 @@ test "swapchain lifecycle accepts minimized and resized frames" {
     try std.testing.expectEqual(@as(f32, 480), presentation.framebuffer_size.y);
 }
 
+test "GPU target readback preserves RGBA dimensions and pixels" {
+    var canvas = try canvasFromRgba(std.testing.allocator, 2, 1, &.{ 1, 2, 3, 4, 5, 6, 7, 8 });
+    defer canvas.deinit();
+    try std.testing.expectEqual(@as(u32, 2), canvas.width);
+    try std.testing.expectEqual(@as(u32, 1), canvas.height);
+    try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 4), canvas.pixels[0]);
+    try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), canvas.pixels[1]);
+}
+
+test "SDL GPU target capture writes expected PNG" {
+    if (std.posix.getenv("UP_GPU_CAPTURE_TEST") == null) return;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const temp_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(temp_path);
+    const capture_path = try std.fs.path.join(std.testing.allocator, &.{ temp_path, "capture.png" });
+    defer std.testing.allocator.free(capture_path);
+
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlFail("SDL_Init");
+    defer c.SDL_Quit();
+    const window = c.SDL_CreateWindow("unpolished-peas capture", 2, 2, c.SDL_WINDOW_HIDDEN) orelse return sdlFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(window);
+    const device = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV, false, null) orelse return sdlFail("SDL_CreateGPUDevice");
+    defer c.SDL_DestroyGPUDevice(device);
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlFail("SDL_ClaimWindowForGPUDevice");
+    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
+    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) return sdlFail("SDL_SetGPUSwapchainParameters");
+
+    var presenter = try Presenter.init(device, 2, 1);
+    defer presenter.deinit(device);
+    var canvas = try up.Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    canvas.pixels[0] = up.Color.rgba(1, 2, 3, 4);
+    canvas.pixels[1] = up.Color.rgba(5, 6, 7, 8);
+    var sprites = up.SpriteBatch.init(std.testing.allocator);
+    defer sprites.deinit();
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    var presentation = up.Presentation.init(.{ .x = 2, .y = 1 }, .{ .x = 2, .y = 1 }, .integer_fit);
+    try presenter.present(device, window, canvas, &sprites, commands.commands.items, null, capture_path, &presentation);
+
+    const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
+    defer std.testing.allocator.free(png);
+    var image = try up.Image.decode(std.testing.allocator, png, .{});
+    defer image.deinit();
+    try std.testing.expectEqual(@as(u32, 2), image.width);
+    try std.testing.expectEqual(@as(u32, 1), image.height);
+    try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 4), image.pixels[0]);
+    try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), image.pixels[1]);
+}
+
 test "high DPI letterboxing maps pointer through the GPU presentation" {
     const presentation = up.Presentation.init(.{ .x = 100, .y = 100 }, .{ .x = 400, .y = 200 }, .fit);
     const center = pointerFramebufferPoint(.{ .x = 100, .y = 50 }, .{ .x = 200, .y = 100 }, &presentation);
@@ -192,6 +244,7 @@ pub const Context = struct {
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
     pixel_effect: *?up.PixelEffect,
+    capture_requested: *bool,
     dt: f32,
     frame: u64,
 
@@ -273,6 +326,10 @@ pub const Context = struct {
 
     pub fn clearPixelEffect(self: *Context) void {
         self.pixel_effect.* = null;
+    }
+
+    pub fn captureFrame(self: *Context) void {
+        self.capture_requested.* = true;
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
@@ -524,6 +581,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
     var pixel_effect: ?up.PixelEffect = null;
+    var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
@@ -541,7 +599,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
         dev.failure("init", err);
@@ -568,7 +626,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, null, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -608,9 +666,18 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         }
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, dt, ctx.frame);
-        if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
+        var screenshot_path: ?[]u8 = null;
+        if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
+            screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
+                dev.failure("screenshot path", err);
+                break :blk null;
+            };
+        }
+        defer if (screenshot_path) |path| allocator.free(path);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, &presentation);
+        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, screenshot_path, &presentation);
+        if (screenshot_path) |path| dev.noteScreenshot(path);
+        capture_requested = false;
 
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
@@ -750,17 +817,11 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
-    fn writeScreenshot(self: *DeveloperTools, canvas: up.Canvas, frame: u64) void {
-        if (!self.enabled) return;
-        const path = std.fmt.allocPrint(self.allocator, "{s}screenshot-{d}-{d}.ppm", .{ self.app_data_path, c.SDL_GetTicksNS(), frame }) catch |err| {
-            self.failure("screenshot path", err);
-            return;
-        };
-        defer self.allocator.free(path);
-        canvas.writePpmFile(path) catch |err| {
-            self.failure("screenshot", err);
-            return;
-        };
+    fn screenshotPath(self: *DeveloperTools, frame: u64) ![]u8 {
+        return std.fmt.allocPrint(self.allocator, "{s}screenshot-{d}-{d}.png", .{ self.app_data_path, c.SDL_GetTicksNS(), frame });
+    }
+
+    fn noteScreenshot(self: *DeveloperTools, path: []const u8) void {
         var buffer: [512]u8 = undefined;
         const line = std.fmt.bufPrint(&buffer, "unpolished-peas screenshot: {s}\n", .{path}) catch return;
         std.debug.print("{s}", .{line});
@@ -858,14 +919,14 @@ const AudioOutput = struct {
 };
 
 const Presenter = struct {
-    texture: *c.SDL_GPUTexture,
+    render_target: *c.SDL_GPUTexture,
     effect_texture: *c.SDL_GPUTexture,
     transfer: *c.SDL_GPUTransferBuffer,
     width: u32,
     height: u32,
     byte_len: u32,
     resources: up.GpuResources,
-    texture_handle: up.TextureHandle,
+    render_target_handle: up.RenderTargetHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     effect_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
@@ -908,7 +969,7 @@ const Presenter = struct {
 
     fn init(device: *c.SDL_GPUDevice, width: u32, height: u32) !Presenter {
         const byte_len = try checkedByteLen(width, height);
-        const texture = c.SDL_CreateGPUTexture(device, &.{
+        const render_target = c.SDL_CreateGPUTexture(device, &.{
             .type = c.SDL_GPU_TEXTURETYPE_2D,
             .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
             .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER | c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
@@ -919,7 +980,7 @@ const Presenter = struct {
             .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
             .props = 0,
         }) orelse return sdlFail("SDL_CreateGPUTexture");
-        errdefer c.SDL_ReleaseGPUTexture(device, texture);
+        errdefer c.SDL_ReleaseGPUTexture(device, render_target);
 
         const effect_texture = c.SDL_CreateGPUTexture(device, &.{
             .type = c.SDL_GPU_TEXTURETYPE_2D,
@@ -942,8 +1003,8 @@ const Presenter = struct {
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
         var resources = up.GpuResources.init(std.heap.page_allocator);
-        const texture_handle = try resources.createTexture();
-        var presenter = Presenter{ .texture = texture, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
+        const render_target_handle = try resources.createRenderTarget();
+        var presenter = Presenter{ .render_target = render_target, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .render_target_handle = render_target_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
@@ -977,13 +1038,13 @@ const Presenter = struct {
         self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
         c.SDL_ReleaseGPUTexture(device, self.effect_texture);
-        c.SDL_ReleaseGPUTexture(device, self.texture);
-        self.resources.destroyTexture(self.texture_handle) catch unreachable;
+        c.SDL_ReleaseGPUTexture(device, self.render_target);
+        self.resources.destroyRenderTarget(self.render_target_handle) catch unreachable;
         self.resources.deinit();
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effect: ?up.PixelEffect, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effect: ?up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation) !void {
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
@@ -1004,7 +1065,7 @@ const Presenter = struct {
             .pixels_per_row = self.width,
             .rows_per_layer = self.height,
         }, &.{
-            .texture = self.texture,
+            .texture = self.render_target,
             .mip_level = 0,
             .layer = 0,
             .x = 0,
@@ -1027,7 +1088,10 @@ const Presenter = struct {
 
         if (self.primitive_batch.vertices.items.len != 0) try self.renderPrimitives(command);
         if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
-        const display_texture = if (effect) |value| try self.renderPixelEffect(command, value) else self.texture;
+        const display_texture = if (effect) |value| try self.renderPixelEffect(command, value) else self.render_target;
+        var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
+        if (capture_path != null) capture_transfer = try self.downloadTexture(device, command, display_texture);
+        errdefer if (capture_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
         var swapchain: ?*c.SDL_GPUTexture = null;
         var swap_w: u32 = 0;
@@ -1070,8 +1134,34 @@ const Presenter = struct {
             });
         }
 
-        if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
+        if (capture_transfer) |transfer| {
+            const fence = c.SDL_SubmitGPUCommandBufferAndAcquireFence(command) orelse return sdlFail("SDL_SubmitGPUCommandBufferAndAcquireFence");
+            defer c.SDL_ReleaseGPUFence(device, fence);
+            const fences = [_]*c.SDL_GPUFence{fence};
+            if (!c.SDL_WaitForGPUFences(device, true, &fences, 1)) return sdlFail("SDL_WaitForGPUFences");
+            try self.writeCapturedPng(device, transfer, capture_path.?);
+            c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+            capture_transfer = null;
+        } else if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
         self.reclaimUnusedSprites(device);
+    }
+
+    fn downloadTexture(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, texture: *c.SDL_GPUTexture) !*c.SDL_GPUTransferBuffer {
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_DOWNLOAD, .size = self.byte_len, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        const copy_pass = c.SDL_BeginGPUCopyPass(command) orelse return sdlFail("SDL_BeginGPUCopyPass");
+        c.SDL_DownloadFromGPUTexture(copy_pass, &.{ .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = self.width, .h = self.height, .d = 1 }, &.{ .transfer_buffer = transfer, .offset = 0, .pixels_per_row = self.width, .rows_per_layer = self.height });
+        c.SDL_EndGPUCopyPass(copy_pass);
+        return transfer;
+    }
+
+    fn writeCapturedPng(self: *Presenter, device: *c.SDL_GPUDevice, transfer: *c.SDL_GPUTransferBuffer, path: []const u8) !void {
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, false) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
+        const bytes: [*]const u8 = @ptrCast(mapped);
+        var canvas = try canvasFromRgba(std.heap.page_allocator, self.width, self.height, bytes[0..self.byte_len]);
+        defer canvas.deinit();
+        try canvas.writePngFile(path);
     }
 
     fn copyCanvas(self: *Presenter, device: *c.SDL_GPUDevice, canvas: up.Canvas) !void {
@@ -1119,7 +1209,7 @@ const Presenter = struct {
 
     fn renderPrimitives(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
         var color_target = c.SDL_GPUColorTargetInfo{
-            .texture = self.texture,
+            .texture = self.render_target,
             .mip_level = 0,
             .layer_or_depth_plane = 0,
             .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
@@ -1178,7 +1268,7 @@ const Presenter = struct {
     fn renderSprites(self: *Presenter, command: *c.SDL_GPUCommandBuffer, sprites: *up.SpriteBatch) !void {
         const pipeline = self.sprite_pipeline orelse return error.SpritePipelineUnavailable;
         var color_target = c.SDL_GPUColorTargetInfo{
-            .texture = self.texture,
+            .texture = self.render_target,
             .mip_level = 0,
             .layer_or_depth_plane = 0,
             .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
@@ -1231,7 +1321,7 @@ const Presenter = struct {
         const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
         defer c.SDL_EndGPURenderPass(pass);
         c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = self.texture, .sampler = sampler };
+        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = self.render_target, .sampler = sampler };
         c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
         const parameters = [_]f32{ effect.amount, 0, 0, 0 };
         c.SDL_PushGPUFragmentUniformData(command, 0, &parameters, @sizeOf(@TypeOf(parameters)));
@@ -1760,6 +1850,18 @@ fn mapKey(key: c.SDL_Keycode) ?up.Key {
         c.SDLK_F12 => .screenshot,
         else => null,
     };
+}
+
+fn canvasFromRgba(allocator: std.mem.Allocator, width: u32, height: u32, rgba: []const u8) !up.Canvas {
+    const byte_len: usize = try checkedByteLen(width, height);
+    if (rgba.len != byte_len) return error.InvalidCapturePixels;
+    var canvas = try up.Canvas.init(allocator, width, height);
+    errdefer canvas.deinit();
+    for (canvas.pixels, 0..) |*pixel, index| {
+        const offset = index * 4;
+        pixel.* = .{ .r = rgba[offset], .g = rgba[offset + 1], .b = rgba[offset + 2], .a = rgba[offset + 3] };
+    }
+    return canvas;
 }
 
 fn checkedByteLen(width: u32, height: u32) !u32 {

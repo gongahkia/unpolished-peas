@@ -16,7 +16,7 @@ sudo apt install libsdl3-dev pkg-config
 zig build run
 ```
 
-Arrow keys steer the square. F3 toggles developer stats. F12 writes a PPM screenshot to the app-data directory printed at startup. Callback failures are logged there and held in the game window until Escape is pressed.
+Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screenshot from the composed GPU frame to the app-data directory printed at startup. Callback failures are logged there and held in the game window until Escape is pressed.
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
