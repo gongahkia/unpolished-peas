@@ -2,3 +2,7 @@ pub const vert_spirv = @embedFile("sprite.vert.spv");
 pub const frag_spirv = @embedFile("sprite.frag.spv");
 pub const vert_msl = @embedFile("sprite.vert.msl");
 pub const frag_msl = @embedFile("sprite.frag.msl");
+pub const primitive_vert_spirv = @embedFile("primitive.vert.spv");
+pub const primitive_frag_spirv = @embedFile("primitive.frag.spv");
+pub const primitive_vert_msl = @embedFile("primitive.vert.msl");
+pub const primitive_frag_msl = @embedFile("primitive.frag.msl");

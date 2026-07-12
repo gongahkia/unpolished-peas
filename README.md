@@ -98,6 +98,7 @@ zig build run-audio
 zig build run-atlas
 zig build run-camera
 zig build run-tilemap
+zig build run-primitives
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -111,6 +112,7 @@ zig build upmapc -- level.upmap level.upmapb
 `run-atlas` opens a JSON atlas/tile scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.
+`run-primitives` opens the GPU primitive and text-quads demo.
 `test-scenes` runs deterministic headless scene hashing.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
@@ -126,6 +128,8 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 Game initialization, update, draw, and asset-reload errors are written to the terminal and log, then held in an in-window error state until Escape is pressed. Zig panics remain process failures and require the normal debugger/test workflow.
 
 SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames. Atlas draws preserve source regions, origin, scale, rotation, flips, tint, and nearest or linear sampling through the GPU path.
+
+GPU command primitives use one logical-pixel strokes, 32-segment circles, and standard source-over alpha blending.
 
 ## Camera And Presentation
 

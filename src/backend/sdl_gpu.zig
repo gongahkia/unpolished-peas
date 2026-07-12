@@ -10,6 +10,10 @@ const sprite_vert_spirv = sprite_shaders.vert_spirv;
 const sprite_frag_spirv = sprite_shaders.frag_spirv;
 const sprite_vert_msl = sprite_shaders.vert_msl;
 const sprite_frag_msl = sprite_shaders.frag_msl;
+const primitive_vert_spirv = sprite_shaders.primitive_vert_spirv;
+const primitive_frag_spirv = sprite_shaders.primitive_frag_spirv;
+const primitive_vert_msl = sprite_shaders.primitive_vert_msl;
+const primitive_frag_msl = sprite_shaders.primitive_frag_msl;
 
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
@@ -91,6 +95,23 @@ test "GPU atlas quads preserve center origin, flip, rotation, tint, and filterin
     try std.testing.expectEqual(@as(usize, 48), batch.vertices.items.len);
 }
 
+test "primitive commands build GPU vertices without CPU canvas access" {
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    try commands.append(.{ .rect = .{ .x = 1, .y = 1, .w = 4, .h = 3, .color = up.Color.white } });
+    try commands.append(.{ .stroke_rect = .{ .x = 7, .y = 1, .w = 4, .h = 3, .color = up.Color.white } });
+    try commands.append(.{ .circle = .{ .x = 4, .y = 9, .radius = 3, .color = up.Color.white } });
+    try commands.append(.{ .stroke_circle = .{ .x = 11, .y = 9, .radius = 3, .color = up.Color.white } });
+    try commands.append(.{ .line = .{ .x0 = 1, .y0 = 14, .x1 = 6, .y1 = 14, .color = up.Color.white } });
+    try commands.append(.{ .triangle = .{ .a = .{ .x = 8, .y = 12 }, .b = .{ .x = 12, .y = 12 }, .c = .{ .x = 10, .y = 15 }, .color = up.Color.white } });
+    try commands.append(.{ .stroke_triangle = .{ .a = .{ .x = 1, .y = 20 }, .b = .{ .x = 5, .y = 20 }, .c = .{ .x = 3, .y = 23 }, .color = up.Color.white } });
+    try commands.append(.{ .text = .{ .value = "A", .x = 8, .y = 18, .color = up.Color.white } });
+    var batch = up.PrimitiveBatch.init(std.testing.allocator);
+    defer batch.deinit();
+    try appendPrimitiveCommands(&batch, 32, 32, commands.commands.items);
+    try std.testing.expect(batch.vertices.items.len > 100);
+}
+
 test "audio device removal and format changes request recovery" {
     try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_REMOVED));
     try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED));
@@ -131,6 +152,7 @@ pub const Context = struct {
     app_data_path: []const u8,
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
+    commands: *up.RenderCommandBuffer,
     dt: f32,
     frame: u64,
 
@@ -151,19 +173,39 @@ pub const Context = struct {
     }
 
     pub fn rect(self: *Context, x: i32, y: i32, w: i32, h: i32, color: up.Color) void {
-        self.canvas.fillRect(x, y, w, h, color);
+        self.commands.append(.{ .rect = .{ .x = x, .y = y, .w = w, .h = h, .color = color } }) catch self.canvas.fillRect(x, y, w, h, color);
     }
 
     pub fn circle(self: *Context, x: i32, y: i32, radius: i32, color: up.Color) void {
-        self.canvas.fillCircle(x, y, radius, color);
+        self.commands.append(.{ .circle = .{ .x = x, .y = y, .radius = radius, .color = color } }) catch self.canvas.fillCircle(x, y, radius, color);
     }
 
     pub fn line(self: *Context, x0: i32, y0: i32, x1: i32, y1: i32, color: up.Color) void {
-        self.canvas.line(x0, y0, x1, y1, color);
+        self.commands.append(.{ .line = .{ .x0 = x0, .y0 = y0, .x1 = x1, .y1 = y1, .color = color } }) catch self.canvas.line(x0, y0, x1, y1, color);
     }
 
     pub fn text(self: *Context, value: []const u8, x: i32, y: i32, color: up.Color) void {
-        self.canvas.drawText(value, x, y, color);
+        self.commands.append(.{ .text = .{ .value = value, .x = x, .y = y, .color = color } }) catch self.canvas.drawText(value, x, y, color);
+    }
+
+    pub fn strokeRect(self: *Context, x: i32, y: i32, w: i32, h: i32, color: up.Color) void {
+        self.commands.append(.{ .stroke_rect = .{ .x = x, .y = y, .w = w, .h = h, .color = color } }) catch self.canvas.strokeRect(x, y, w, h, color);
+    }
+
+    pub fn strokeCircle(self: *Context, x: i32, y: i32, radius: i32, color: up.Color) void {
+        self.commands.append(.{ .stroke_circle = .{ .x = x, .y = y, .radius = radius, .color = color } }) catch self.canvas.fillCircle(x, y, radius, color);
+    }
+
+    pub fn triangle(self: *Context, a: up.Vec2, b: up.Vec2, c_point: up.Vec2, color: up.Color) void {
+        self.commands.append(.{ .triangle = .{ .a = a, .b = b, .c = c_point, .color = color } }) catch self.canvas.fillTriangle(a, b, c_point, color);
+    }
+
+    pub fn strokeTriangle(self: *Context, a: up.Vec2, b: up.Vec2, c_point: up.Vec2, color: up.Color) void {
+        self.commands.append(.{ .stroke_triangle = .{ .a = a, .b = b, .c = c_point, .color = color } }) catch {
+            self.canvas.line(@intFromFloat(@round(a.x)), @intFromFloat(@round(a.y)), @intFromFloat(@round(b.x)), @intFromFloat(@round(b.y)), color);
+            self.canvas.line(@intFromFloat(@round(b.x)), @intFromFloat(@round(b.y)), @intFromFloat(@round(c_point.x)), @intFromFloat(@round(c_point.y)), color);
+            self.canvas.line(@intFromFloat(@round(c_point.x)), @intFromFloat(@round(c_point.y)), @intFromFloat(@round(a.x)), @intFromFloat(@round(a.y)), color);
+        };
     }
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
@@ -356,6 +398,8 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     defer assets.deinit();
     var sprite_batch = up.SpriteBatch.init(allocator);
     defer sprite_batch.deinit();
+    var commands = up.RenderCommandBuffer.init(allocator);
+    defer commands.deinit();
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
@@ -373,7 +417,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
         dev.failure("init", err);
@@ -388,6 +432,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     while (running) {
         input.beginFrame();
         sprite_batch.clear();
+        commands.commands.clearRetainingCapacity();
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
         running = pollInput(&input, window, &presentation, &audio_device_changed);
@@ -399,7 +444,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -441,7 +486,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         dev.drawOverlay(&canvas, dt, ctx.frame);
         if (input.wasPressed(.screenshot)) dev.writeScreenshot(canvas, ctx.frame);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &sprite_batch, &presentation);
+        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, &presentation);
 
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
@@ -703,6 +748,11 @@ const Presenter = struct {
     vertex_buffer: ?*c.SDL_GPUBuffer = null,
     vertex_transfer: ?*c.SDL_GPUTransferBuffer = null,
     vertex_capacity: u32 = 0,
+    primitive_batch: up.PrimitiveBatch,
+    primitive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    primitive_buffer: ?*c.SDL_GPUBuffer = null,
+    primitive_transfer: ?*c.SDL_GPUTransferBuffer = null,
+    primitive_capacity: u32 = 0,
     frame: u64 = 0,
 
     const SpriteTexture = struct {
@@ -753,11 +803,12 @@ const Presenter = struct {
 
         var resources = up.GpuResources.init(std.heap.page_allocator);
         const texture_handle = try resources.createTexture();
-        var presenter = Presenter{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle };
+        var presenter = Presenter{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
         presenter.sprite_pipeline = try createSpritePipeline(device);
+        presenter.primitive_pipeline = try createPrimitivePipeline(device);
         return presenter;
     }
 
@@ -767,6 +818,10 @@ const Presenter = struct {
         if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.vertex_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        if (self.primitive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.primitive_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
+        if (self.primitive_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        self.primitive_batch.deinit();
         for (self.sprite_textures.items) |sprite| {
             c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
             c.SDL_ReleaseGPUTexture(device, sprite.texture);
@@ -783,10 +838,12 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, presentation: *up.Presentation) !void {
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
+        self.primitive_batch.clear();
+        try appendPrimitiveCommands(&self.primitive_batch, self.width, self.height, commands);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
         var acquired_swapchain = false;
@@ -820,8 +877,10 @@ const Presenter = struct {
             if (sprite.pending != null) try self.commitPendingSprite(device, copy_pass, sprite);
         }
         if (sprites.vertices.items.len != 0) try self.uploadVertices(device, copy_pass, sprites.vertices.items);
+        if (self.primitive_batch.vertices.items.len != 0) try self.uploadPrimitiveVertices(device, copy_pass, self.primitive_batch.vertices.items);
         c.SDL_EndGPUCopyPass(copy_pass);
 
+        if (self.primitive_batch.vertices.items.len != 0) try self.renderPrimitives(command);
         if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
 
         var swapchain: ?*c.SDL_GPUTexture = null;
@@ -885,6 +944,56 @@ const Presenter = struct {
             dst[i + 3] = p.a;
             i += 4;
         }
+    }
+
+    fn uploadPrimitiveVertices(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, vertices: []const up.PrimitiveBatchVertex) !void {
+        const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(vertices).len) orelse return error.PrimitiveBatchTooLarge;
+        try self.ensurePrimitiveCapacity(device, byte_len);
+        const transfer = self.primitive_transfer orelse unreachable;
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, true) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
+        const dst: [*]u8 = @ptrCast(mapped);
+        @memcpy(dst[0..byte_len], std.mem.sliceAsBytes(vertices));
+        c.SDL_UploadToGPUBuffer(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0 }, &.{ .buffer = self.primitive_buffer orelse unreachable, .offset = 0, .size = byte_len }, true);
+    }
+
+    fn ensurePrimitiveCapacity(self: *Presenter, device: *c.SDL_GPUDevice, needed: u32) !void {
+        if (needed <= self.primitive_capacity) return;
+        var capacity: u32 = 4096;
+        while (capacity < needed) capacity = std.math.mul(u32, capacity, 2) catch return error.PrimitiveBatchTooLarge;
+        const buffer = c.SDL_CreateGPUBuffer(device, &.{ .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUBuffer");
+        errdefer c.SDL_ReleaseGPUBuffer(device, buffer);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        if (self.primitive_buffer) |old| c.SDL_ReleaseGPUBuffer(device, old);
+        if (self.primitive_transfer) |old| c.SDL_ReleaseGPUTransferBuffer(device, old);
+        self.primitive_buffer = buffer;
+        self.primitive_transfer = transfer;
+        self.primitive_capacity = capacity;
+    }
+
+    fn renderPrimitives(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
+        const pipeline = self.primitive_pipeline orelse return error.PrimitivePipelineUnavailable;
+        var color_target = c.SDL_GPUColorTargetInfo{
+            .texture = self.texture,
+            .mip_level = 0,
+            .layer_or_depth_plane = 0,
+            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
+            .load_op = c.SDL_GPU_LOADOP_LOAD,
+            .store_op = c.SDL_GPU_STOREOP_STORE,
+            .resolve_texture = null,
+            .resolve_mip_level = 0,
+            .resolve_layer = 0,
+            .cycle = false,
+            .cycle_resolve_texture = false,
+            .padding1 = 0,
+            .padding2 = 0,
+        };
+        const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        defer c.SDL_EndGPURenderPass(pass);
+        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        const binding = c.SDL_GPUBufferBinding{ .buffer = self.primitive_buffer orelse return error.PrimitivePipelineUnavailable, .offset = 0 };
+        c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+        c.SDL_DrawGPUPrimitives(pass, @intCast(self.primitive_batch.vertices.items.len), 1, 0, 0);
     }
 
     fn uploadVertices(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, vertices: []const up.SpriteBatchVertex) !void {
@@ -1037,6 +1146,20 @@ const Presenter = struct {
     }
 };
 
+fn appendPrimitiveCommands(batch: *up.PrimitiveBatch, width: u32, height: u32, commands: []const up.RenderCommand) !void {
+    for (commands) |command| switch (command) {
+        .begin_frame, .clear, .image, .push_clip, .pop_clip, .present => {},
+        .rect => |value| try batch.rect(width, height, value.x, value.y, value.w, value.h, value.color),
+        .stroke_rect => |value| try batch.strokeRect(width, height, value.x, value.y, value.w, value.h, value.color),
+        .circle => |value| try batch.circle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color),
+        .stroke_circle => |value| try batch.strokeCircle(width, height, .{ .x = @floatFromInt(value.x), .y = @floatFromInt(value.y) }, value.radius, value.color),
+        .line => |value| try batch.line(width, height, .{ .x = @floatFromInt(value.x0), .y = @floatFromInt(value.y0) }, .{ .x = @floatFromInt(value.x1), .y = @floatFromInt(value.y1) }, value.color),
+        .triangle => |value| try batch.triangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color),
+        .stroke_triangle => |value| try batch.strokeTriangle(width, height, .{ .x = value.a.x, .y = value.a.y }, .{ .x = value.b.x, .y = value.b.y }, .{ .x = value.c.x, .y = value.c.y }, value.color),
+        .text => |value| try batch.text(width, height, value.value, value.x, value.y, value.color),
+    };
+}
+
 fn createSpriteSampler(device: *c.SDL_GPUDevice, sampling: up.SpriteSampling) !*c.SDL_GPUSampler {
     const filter: c.SDL_GPUFilter = switch (sampling) {
         .nearest => c.SDL_GPU_FILTER_NEAREST,
@@ -1130,6 +1253,78 @@ fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SD
             .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
         },
         .num_samplers = if (stage == .fragment) 1 else 0,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 0,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUShader");
+}
+
+fn createPrimitivePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+    const vertex_shader = try createPrimitiveShader(device, .vertex);
+    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
+    const fragment_shader = try createPrimitiveShader(device, .fragment);
+    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const target = c.SDL_GPUColorTargetDescription{
+        .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = .{
+            .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .color_write_mask = 0xF,
+            .enable_blend = true,
+            .enable_color_write_mask = true,
+            .padding1 = 0,
+            .padding2 = 0,
+        },
+    };
+    const vertex_buffer = c.SDL_GPUVertexBufferDescription{ .slot = 0, .pitch = @sizeOf(up.PrimitiveBatchVertex), .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX, .instance_step_rate = 0 };
+    const vertex_attributes = [_]c.SDL_GPUVertexAttribute{
+        .{ .location = 0, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(up.PrimitiveBatchVertex, "x") },
+        .{ .location = 1, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = @offsetOf(up.PrimitiveBatchVertex, "r") },
+    };
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{
+        .vertex_shader = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffer, .num_vertex_buffers = 1, .vertex_attributes = &vertex_attributes, .num_vertex_attributes = vertex_attributes.len },
+        .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+}
+
+fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
+    const formats = c.SDL_GetGPUShaderFormats(device);
+    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0)
+        switch (stage) {
+            .vertex => primitive_vert_msl,
+            .fragment => primitive_frag_msl,
+        }
+    else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0)
+        switch (stage) {
+            .vertex => primitive_vert_spirv,
+            .fragment => primitive_frag_spirv,
+        }
+    else
+        return error.UnsupportedGpuShaderFormat;
+    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    return c.SDL_CreateGPUShader(device, &.{
+        .code_size = source.len,
+        .code = source.ptr,
+        .entrypoint = entrypoint,
+        .format = format,
+        .stage = switch (stage) {
+            .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+            .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+        },
+        .num_samplers = 0,
         .num_storage_textures = 0,
         .num_storage_buffers = 0,
         .num_uniform_buffers = 0,

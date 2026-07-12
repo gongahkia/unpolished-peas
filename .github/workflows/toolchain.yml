@@ -47,7 +47,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-tilemap, stress-audio-sdl]
+        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-tilemap, run-primitives, stress-audio-sdl]
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
