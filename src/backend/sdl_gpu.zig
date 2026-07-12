@@ -43,6 +43,15 @@ test "swapchain lifecycle accepts minimized and resized frames" {
     try std.testing.expectEqual(@as(f32, 480), presentation.framebuffer_size.y);
 }
 
+test "high DPI letterboxing maps pointer through the GPU presentation" {
+    const presentation = up.Presentation.init(.{ .x = 100, .y = 100 }, .{ .x = 400, .y = 200 }, .fit);
+    const center = pointerFramebufferPoint(.{ .x = 100, .y = 50 }, .{ .x = 200, .y = 100 }, &presentation);
+    try std.testing.expectEqual(up.Vec2.init(200, 100), center);
+    try std.testing.expectEqual(up.Vec2.init(50, 50), presentation.framebufferToCanvas(center).?);
+    const letterbox = pointerFramebufferPoint(.{ .x = 0, .y = 50 }, .{ .x = 200, .y = 100 }, &presentation);
+    try std.testing.expect(presentation.framebufferToCanvas(letterbox) == null);
+}
+
 test "sprite residency detects a reloaded image buffer" {
     var first = [_]up.Color{up.Color.white};
     var second = [_]up.Color{up.Color.black};
@@ -194,6 +203,10 @@ pub const Context = struct {
         return .init(self.canvas, target_camera);
     }
 
+    pub fn gpuCamera(self: *Context, target_camera: *const up.Camera2D) GpuCameraCanvas {
+        return .init(self.commands, target_camera, .{ .x = @floatFromInt(self.canvas.width), .y = @floatFromInt(self.canvas.height) });
+    }
+
     pub fn canvasToFramebuffer(self: *const Context, point: up.Vec2) ?up.Vec2 {
         return self.presentation.canvasToFramebuffer(point);
     }
@@ -337,6 +350,62 @@ pub const Context = struct {
 
     pub fn assetPath(self: *Context, path: []const u8) ![]u8 {
         return self.assets.assetPath(self.allocator, path);
+    }
+};
+
+pub const GpuCameraCanvas = struct {
+    commands: *up.RenderCommandBuffer,
+    camera: *const up.Camera2D,
+    canvas_size: up.Vec2,
+
+    pub fn init(commands: *up.RenderCommandBuffer, camera: *const up.Camera2D, canvas_size: up.Vec2) GpuCameraCanvas {
+        return .{ .commands = commands, .camera = camera, .canvas_size = canvas_size };
+    }
+
+    pub fn line(self: GpuCameraCanvas, from: up.Vec2, to: up.Vec2, color: up.Color) void {
+        const a = self.camera.worldToCanvas(from, self.canvas_size);
+        const b = self.camera.worldToCanvas(to, self.canvas_size);
+        self.withViewport(.{ .line = .{ .x0 = @intFromFloat(@round(a.x)), .y0 = @intFromFloat(@round(a.y)), .x1 = @intFromFloat(@round(b.x)), .y1 = @intFromFloat(@round(b.y)), .color = color } });
+    }
+
+    pub fn fillRect(self: GpuCameraCanvas, rect: up.Rect, color: up.Color) void {
+        if (!self.camera.isVisibleRect(rect, self.canvas_size)) return;
+        const a = self.camera.worldToCanvas(.{ .x = rect.x, .y = rect.y }, self.canvas_size);
+        const b = self.camera.worldToCanvas(.{ .x = rect.x + rect.w, .y = rect.y }, self.canvas_size);
+        const c_point = self.camera.worldToCanvas(.{ .x = rect.x + rect.w, .y = rect.y + rect.h }, self.canvas_size);
+        const d = self.camera.worldToCanvas(.{ .x = rect.x, .y = rect.y + rect.h }, self.canvas_size);
+        self.pushViewport();
+        self.append(.{ .triangle = .{ .a = a, .b = b, .c = c_point, .color = color } });
+        self.append(.{ .triangle = .{ .a = a, .b = c_point, .c = d, .color = color } });
+        self.append(.pop_clip);
+    }
+
+    pub fn fillCircle(self: GpuCameraCanvas, center: up.Vec2, radius: f32, color: up.Color) void {
+        if (!self.camera.isVisibleRect(.init(center.x - radius, center.y - radius, radius * 2, radius * 2), self.canvas_size)) return;
+        const screen = self.camera.worldToCanvas(center, self.canvas_size);
+        self.withViewport(.{ .circle = .{ .x = @intFromFloat(@round(screen.x)), .y = @intFromFloat(@round(screen.y)), .radius = @max(@as(i32, 1), @as(i32, @intFromFloat(@round(radius * self.camera.zoom)))), .color = color } });
+    }
+
+    pub fn strokeRect(self: GpuCameraCanvas, rect: up.Rect, color: up.Color) void {
+        self.line(.{ .x = rect.x, .y = rect.y }, .{ .x = rect.x + rect.w, .y = rect.y }, color);
+        self.line(.{ .x = rect.x + rect.w, .y = rect.y }, .{ .x = rect.x + rect.w, .y = rect.y + rect.h }, color);
+        self.line(.{ .x = rect.x + rect.w, .y = rect.y + rect.h }, .{ .x = rect.x, .y = rect.y + rect.h }, color);
+        self.line(.{ .x = rect.x, .y = rect.y + rect.h }, .{ .x = rect.x, .y = rect.y }, color);
+    }
+
+    fn withViewport(self: GpuCameraCanvas, command: up.RenderCommand) void {
+        self.pushViewport();
+        self.append(command);
+        self.append(.pop_clip);
+    }
+
+    fn pushViewport(self: GpuCameraCanvas) void {
+        const viewport = self.camera.canvasViewport(self.canvas_size);
+        self.append(.{ .push_clip = .{ .x = @intFromFloat(@floor(viewport.x)), .y = @intFromFloat(@floor(viewport.y)), .w = @max(@as(i32, 0), @as(i32, @intFromFloat(@ceil(viewport.w)))), .h = @max(@as(i32, 0), @as(i32, @intFromFloat(@ceil(viewport.h)))) } });
+    }
+
+    fn append(self: GpuCameraCanvas, command: up.RenderCommand) void {
+        self.commands.append(command) catch @panic("render command allocation failed");
     }
 };
 
@@ -1658,11 +1727,12 @@ fn setPointerPosition(input: *up.Input, window: *c.SDL_Window, presentation: *co
     var window_width: c_int = 0;
     var window_height: c_int = 0;
     if (!c.SDL_GetWindowSize(window, &window_width, &window_height) or window_width <= 0 or window_height <= 0) return;
-    const framebuffer = up.Vec2{
-        .x = window_point.x * presentation.framebuffer_size.x / @as(f32, @floatFromInt(window_width)),
-        .y = window_point.y * presentation.framebuffer_size.y / @as(f32, @floatFromInt(window_height)),
-    };
+    const framebuffer = pointerFramebufferPoint(window_point, .{ .x = @floatFromInt(window_width), .y = @floatFromInt(window_height) }, presentation);
     input.setPointerPosition(window_point, framebuffer, presentation.framebufferToCanvas(framebuffer));
+}
+
+fn pointerFramebufferPoint(window_point: up.Vec2, window_size: up.Vec2, presentation: *const up.Presentation) up.Vec2 {
+    return .{ .x = window_point.x * presentation.framebuffer_size.x / window_size.x, .y = window_point.y * presentation.framebuffer_size.y / window_size.y };
 }
 
 fn mapPointerButton(button: u8) ?up.PointerButton {

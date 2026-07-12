@@ -62,8 +62,8 @@ const Game = struct {
     }
 
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        drawWorld(ctx.camera(self.rig.getConst(self.main).?), self.target);
-        drawWorld(ctx.camera(self.rig.getConst(self.inset).?), self.target);
+        drawWorld(ctx.gpuCamera(self.rig.getConst(self.main).?), self.target);
+        drawWorld(ctx.gpuCamera(self.rig.getConst(self.inset).?), self.target);
         ctx.canvas.strokeRect(103, 3, 54, 36, up.Color.rgb(222, 236, 255));
         ctx.text("CAMERA", 4, 4, up.Color.rgb(222, 236, 255));
         ctx.text("ARROWS/MOUSE", 4, 14, up.Color.rgb(158, 184, 210));
@@ -71,7 +71,7 @@ const Game = struct {
     }
 };
 
-fn drawWorld(world: up.CameraCanvas, target: up.Vec2) void {
+fn drawWorld(world: sdl.GpuCameraCanvas, target: up.Vec2) void {
     var y: i32 = -16;
     while (y < 96) : (y += 8) world.line(.{ .x = -16, .y = @floatFromInt(y) }, .{ .x = 144, .y = @floatFromInt(y) }, up.Color.rgb(28, 39, 54));
     var x: i32 = -16;
