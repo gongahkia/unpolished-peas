@@ -771,8 +771,8 @@ fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges:
             }
             continue;
         }
-        if (std.mem.eql(u8, type_name, "imagelayer")) return error.UnsupportedTiledFeature;
-        if (!std.mem.eql(u8, type_name, "tilelayer")) return error.UnsupportedTiledFeature;
+        if (std.mem.eql(u8, type_name, "imagelayer")) return error.UnsupportedTiledImageLayer;
+        if (!std.mem.eql(u8, type_name, "tilelayer")) return error.UnsupportedTiledLayer;
         const layer_index = try map.addLayer(try string(entry.get("name") orelse return error.InvalidTiledMap), .tiles, parent);
         const layer = &map.layers.items[layer_index];
         try applyTiledLayerMetadata(map.allocator, layer, entry);
@@ -1331,4 +1331,33 @@ test "Tiled tile rendering applies layer opacity and flip flags" {
     map.drawImagesAt(CameraCanvas.init(&canvas, &camera), &.{image}, 0);
     try std.testing.expectEqual(Color.rgb(0, 64, 0), canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.rgb(64, 0, 0), canvas.get(1, 0).?);
+}
+
+test "Tiled approved subset preserves external embedded group and animation fields" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const tileset_source =
+        \\{"name":"external","tilewidth":8,"tileheight":8,"image":"external.png","tiles":[{"id":0,"animation":[{"tileid":0,"duration":100},{"tileid":1,"duration":200}]}]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "tiles.tsj", .data = tileset_source });
+    const map_source =
+        \\{"orientation":"orthogonal","tilewidth":8,"tileheight":8,"tilesets":[{"firstgid":1,"source":"tiles.tsj"},{"firstgid":100,"name":"collection","tilewidth":8,"tileheight":8,"tiles":[{"id":0,"image":"single.png"}]}],"layers":[{"type":"group","name":"world","opacity":0.5,"offsetx":2,"offsety":3,"parallaxx":0.75,"parallaxy":0.5,"layers":[{"type":"tilelayer","name":"ground","width":1,"height":1,"data":[3758096385]}]}]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "map.tmj", .data = map_source });
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "map.tmj" });
+    defer std.testing.allocator.free(path);
+
+    var map = try TileMap.loadTiled(std.testing.allocator, path);
+    defer map.deinit();
+    try std.testing.expectEqual(@as(usize, 2), map.tilesets.items.len);
+    try std.testing.expectEqual(TileSourceKind.image_collection, map.tilesets.items[1].kind);
+    try std.testing.expectEqual(@as(usize, 1), map.tilesets.items[0].animations.len);
+    try std.testing.expectEqual(@as(?u32, 0), map.layers.items[1].parent);
+    const state = map.layerState(1);
+    try std.testing.expectEqual(@as(f32, 0.5), state.opacity);
+    try std.testing.expectEqual(Vec2.init(2, 3), state.offset);
+    const tile = map.tileAt(1, .{ .x = 0, .y = 0 }).?;
+    try std.testing.expect(tile.flags.flip_x and tile.flags.flip_y and tile.flags.diagonal);
 }
