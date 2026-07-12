@@ -64,6 +64,14 @@ pub const CameraCanvas = struct {
     }
 
     pub fn drawImageRegion(self: CameraCanvas, image: Image, source: Rect, destination: Rect) void {
+        self.drawImageRegionTint(image, source, destination, Color.white);
+    }
+
+    pub fn drawImageRegionTint(self: CameraCanvas, image: Image, source: Rect, destination: Rect, tint_color: Color) void {
+        self.drawImageRegionTransformed(image, source, destination, tint_color, false, false, false);
+    }
+
+    pub fn drawImageRegionTransformed(self: CameraCanvas, image: Image, source: Rect, destination: Rect, tint_color: Color, flip_x: bool, flip_y: bool, diagonal: bool) void {
         if (source.w <= 0 or source.h <= 0 or destination.w <= 0 or destination.h <= 0) return;
         const min_x: i32 = @intFromFloat(@floor(source.x));
         const min_y: i32 = @intFromFloat(@floor(source.y));
@@ -74,10 +82,13 @@ pub const CameraCanvas = struct {
             var x = min_x;
             while (x < max_x) : (x += 1) {
                 if (x < 0 or y < 0 or x >= image.width or y >= image.height) continue;
-                const color = image.pixels[@as(usize, @intCast(y)) * image.width + @as(u32, @intCast(x))];
+                const color = tint(image.pixels[@as(usize, @intCast(y)) * image.width + @as(u32, @intCast(x))], tint_color);
                 if (color.a == 0) continue;
-                const u = (@as(f32, @floatFromInt(x)) - source.x) / source.w;
-                const v = (@as(f32, @floatFromInt(y)) - source.y) / source.h;
+                var u = (@as(f32, @floatFromInt(x)) - source.x) / source.w;
+                var v = (@as(f32, @floatFromInt(y)) - source.y) / source.h;
+                if (diagonal) std.mem.swap(f32, &u, &v);
+                if (flip_x) u = 1 - u - 1 / source.w;
+                if (flip_y) v = 1 - v - 1 / source.h;
                 self.fillRect(.init(destination.x + u * destination.w, destination.y + v * destination.h, destination.w / source.w, destination.h / source.h), color);
             }
         }
@@ -252,4 +263,16 @@ test "camera canvas rotates world rectangle" {
     const world = CameraCanvas.init(&canvas, &camera);
     world.fillRect(.init(8, 8, 4, 1), Color.white);
     try std.testing.expectEqual(Color.white, canvas.get(8, 5).?);
+}
+
+test "camera canvas transforms image regions" {
+    var canvas = try canvas_mod.Canvas.init(std.testing.allocator, 2, 2);
+    defer canvas.deinit();
+    const pixels = [_]Color{ Color.rgb(255, 0, 0), Color.rgb(0, 255, 0), Color.rgb(0, 0, 255), Color.white };
+    const image = Image{ .allocator = std.testing.allocator, .width = 2, .height = 2, .pixels = @constCast(&pixels) };
+    const camera = camera_mod.Camera2D{ .position = .{ .x = 1, .y = 1 } };
+    const world = CameraCanvas.init(&canvas, &camera);
+    world.drawImageRegionTransformed(image, .init(0, 0, 2, 2), .init(0, 0, 2, 2), Color.white, true, false, false);
+    try std.testing.expectEqual(Color.rgb(0, 255, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(1, 0).?);
 }

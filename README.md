@@ -131,6 +131,8 @@ SDL sprite textures upload on first use; changed image or atlas buffers stage a 
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
 
+Tiled object layers retain rectangle, ellipse, point, polygon, and polyline collision shapes plus typed string, integer, float, and boolean properties. Tile rendering applies inherited visibility, offsets, parallax, opacity, and flip flags.
+
 `Context.setPixelEffect("invert", .{ .amount = 0...1 })` enables the strict built-in pixel effect. Invalid effect text or parameters return recoverable errors; `Canvas.applyPixelEffect` is the headless fallback.
 
 ## Camera And Presentation
@@ -153,7 +155,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
-- `TileMap`, `TileMapLayer`, `TileSet`, `TileMapHandle`
+- `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`

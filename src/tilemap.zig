@@ -11,8 +11,59 @@ const binary_magic = "UPMB\x01";
 const max_map_bytes = 64 * 1024 * 1024;
 
 pub const Projection = enum { orthogonal, isometric };
-pub const LayerKind = enum { tiles, int_grid, group };
+pub const LayerKind = enum { tiles, int_grid, group, objects };
 pub const TileSourceKind = enum { grid_image, image_collection, atlas_frames };
+
+pub const PropertyValue = union(enum) {
+    string: []u8,
+    integer: i64,
+    float: f64,
+    boolean: bool,
+};
+
+pub const Property = struct {
+    name: []u8,
+    value: PropertyValue,
+
+    fn deinit(self: *Property, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        switch (self.value) {
+            .string => |value| allocator.free(value),
+            else => {},
+        }
+        self.* = undefined;
+    }
+};
+
+pub const ObjectShape = union(enum) {
+    rectangle,
+    ellipse,
+    point,
+    polygon: []Vec2,
+    polyline: []Vec2,
+};
+
+pub const MapObject = struct {
+    id: u32,
+    name: []u8,
+    class_name: []u8,
+    bounds: Rect,
+    shape: ObjectShape,
+    properties: []Property = &.{},
+
+    fn deinit(self: *MapObject, allocator: std.mem.Allocator) void {
+        allocator.free(self.name);
+        allocator.free(self.class_name);
+        switch (self.shape) {
+            .polygon => |points| allocator.free(points),
+            .polyline => |points| allocator.free(points),
+            else => {},
+        }
+        for (self.properties) |*property| property.deinit(allocator);
+        allocator.free(self.properties);
+        self.* = undefined;
+    }
+};
 
 pub const TileFlags = packed struct(u8) {
     flip_x: bool = false,
@@ -112,11 +163,17 @@ pub const TileMapLayer = struct {
     offset: Vec2 = .{},
     parallax: Vec2 = .{ .x = 1, .y = 1 },
     chunks: std.ArrayListUnmanaged(Chunk) = .{},
+    objects: std.ArrayListUnmanaged(MapObject) = .{},
+    properties: []Property = &.{},
 
     fn deinit(self: *TileMapLayer, allocator: std.mem.Allocator) void {
         allocator.free(self.name);
         for (self.chunks.items) |*chunk| chunk.deinit(allocator);
         self.chunks.deinit(allocator);
+        for (self.objects.items) |*map_object| map_object.deinit(allocator);
+        self.objects.deinit(allocator);
+        for (self.properties) |*property| property.deinit(allocator);
+        allocator.free(self.properties);
         self.* = undefined;
     }
 };
@@ -272,6 +329,16 @@ pub const TileMap = struct {
         return chunk.int_grid[cellIndex(cell, self.chunk_size)];
     }
 
+    pub fn layerObjects(self: TileMap, layer_index: u32) []const MapObject {
+        if (layer_index >= self.layers.items.len) return &.{};
+        return self.layers.items[layer_index].objects.items;
+    }
+
+    pub fn layerProperties(self: TileMap, layer_index: u32) []const Property {
+        if (layer_index >= self.layers.items.len) return &.{};
+        return self.layers.items[layer_index].properties;
+    }
+
     pub fn cellToWorld(self: TileMap, cell: ChunkCoord) Vec2 {
         return switch (self.projection) {
             .orthogonal => .{ .x = @as(f32, @floatFromInt(cell.x)) * self.tile_size.x, .y = @as(f32, @floatFromInt(cell.y)) * self.tile_size.y },
@@ -347,8 +414,9 @@ pub const TileMap = struct {
                         const resolved = animatedTile(self.tilesets.items[value.tileset], value, time);
                         const tileset = self.tilesets.items[resolved.tileset];
                         const image = resolver.resolve(resolver.context, resolved.tileset, resolved.id) orelse continue;
+                        const opacity = Color.rgba(255, 255, 255, @intFromFloat(@round(@max(@as(f32, 0), @min(@as(f32, 1), state.opacity * resolved.opacity)) * 255)));
                         if (tileset.kind == .image_collection) {
-                            canvas.drawImageRegion(image, Rect.init(0, 0, @floatFromInt(image.width), @floatFromInt(image.height)), Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
+                            canvas.drawImageRegionTransformed(image, Rect.init(0, 0, @floatFromInt(image.width), @floatFromInt(image.height)), Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y), opacity, resolved.flags.flip_x, resolved.flags.flip_y, resolved.flags.diagonal);
                             continue;
                         }
                         if (tileset.kind != .grid_image) continue;
@@ -358,7 +426,7 @@ pub const TileMap = struct {
                         const source_col = resolved.id % columns;
                         const source_row = resolved.id / columns;
                         const source = Rect.init(@as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_col)) * (tileset.tile_size.x + @as(f32, @floatFromInt(tileset.spacing))), @as(f32, @floatFromInt(tileset.margin)) + @as(f32, @floatFromInt(source_row)) * (tileset.tile_size.y + @as(f32, @floatFromInt(tileset.spacing))), tileset.tile_size.x, tileset.tile_size.y);
-                        canvas.drawImageRegion(image, source, Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y));
+                        canvas.drawImageRegionTransformed(image, source, Rect.init(position.x, position.y, self.tile_size.x, self.tile_size.y), opacity, resolved.flags.flip_x, resolved.flags.flip_y, resolved.flags.diagonal);
                     }
                 }
             }
@@ -688,25 +756,26 @@ fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges:
     for (values.items) |value| {
         const entry = try object(value);
         const type_name = try string(entry.get("type") orelse return error.InvalidTiledMap);
-        if (std.mem.eql(u8, type_name, "objectgroup") or std.mem.eql(u8, type_name, "imagelayer")) return error.UnsupportedTiledFeature;
         if (std.mem.eql(u8, type_name, "group")) {
             const group = try map.addLayer(try string(entry.get("name") orelse return error.InvalidTiledMap), .group, parent);
+            try applyTiledLayerMetadata(map.allocator, &map.layers.items[group], entry);
             try parseTiledLayers(map, try array(entry.get("layers") orelse return error.InvalidTiledMap), group, ranges);
             continue;
         }
+        if (std.mem.eql(u8, type_name, "objectgroup")) {
+            const layer_index = try map.addLayer(try string(entry.get("name") orelse return error.InvalidTiledMap), .objects, parent);
+            const layer = &map.layers.items[layer_index];
+            try applyTiledLayerMetadata(map.allocator, layer, entry);
+            for ((try array(entry.get("objects") orelse return error.InvalidTiledMap)).items) |object_value| {
+                try layer.objects.append(map.allocator, try parseTiledObject(map.allocator, try object(object_value)));
+            }
+            continue;
+        }
+        if (std.mem.eql(u8, type_name, "imagelayer")) return error.UnsupportedTiledFeature;
         if (!std.mem.eql(u8, type_name, "tilelayer")) return error.UnsupportedTiledFeature;
         const layer_index = try map.addLayer(try string(entry.get("name") orelse return error.InvalidTiledMap), .tiles, parent);
-        var layer = &map.layers.items[layer_index];
-        if (entry.get("visible")) |visible| layer.visible = try boolValue(visible);
-        if (entry.get("opacity")) |opacity| layer.opacity = try f32Value(opacity);
-        layer.offset = .{
-            .x = if (entry.get("offsetx")) |offset| try f32Value(offset) else 0,
-            .y = if (entry.get("offsety")) |offset| try f32Value(offset) else 0,
-        };
-        layer.parallax = .{
-            .x = if (entry.get("parallaxx")) |factor| try f32Value(factor) else 1,
-            .y = if (entry.get("parallaxy")) |factor| try f32Value(factor) else 1,
-        };
+        const layer = &map.layers.items[layer_index];
+        try applyTiledLayerMetadata(map.allocator, layer, entry);
         if (entry.get("chunks")) |chunks| {
             for ((try array(chunks)).items) |chunk_value| {
                 const chunk = try object(chunk_value);
@@ -716,6 +785,79 @@ fn parseTiledLayers(map: *TileMap, values: std.json.Array, parent: ?u32, ranges:
             try setTiledData(map, layer_index, .{ .x = 0, .y = 0 }, try u32Value(entry.get("width") orelse return error.InvalidTiledMap), try u32Value(entry.get("height") orelse return error.InvalidTiledMap), entry.get("data") orelse return error.InvalidTiledMap, if (entry.get("encoding")) |encoding| try string(encoding) else null, if (entry.get("compression")) |compression| try string(compression) else null, ranges);
         }
     }
+}
+
+fn applyTiledLayerMetadata(allocator: std.mem.Allocator, layer: *TileMapLayer, entry: std.json.ObjectMap) !void {
+    if (entry.get("visible")) |visible| layer.visible = try boolValue(visible);
+    if (entry.get("opacity")) |opacity| layer.opacity = try f32Value(opacity);
+    layer.offset = .{
+        .x = if (entry.get("offsetx")) |offset| try f32Value(offset) else 0,
+        .y = if (entry.get("offsety")) |offset| try f32Value(offset) else 0,
+    };
+    layer.parallax = .{
+        .x = if (entry.get("parallaxx")) |factor| try f32Value(factor) else 1,
+        .y = if (entry.get("parallaxy")) |factor| try f32Value(factor) else 1,
+    };
+    if (entry.get("properties")) |properties| layer.properties = try parseTiledProperties(allocator, try array(properties));
+}
+
+fn parseTiledObject(allocator: std.mem.Allocator, entry: std.json.ObjectMap) !MapObject {
+    const polygon = entry.get("polygon");
+    const polyline = entry.get("polyline");
+    const shape: ObjectShape = if (polygon) |points|
+        .{ .polygon = try parseTiledPoints(allocator, try array(points)) }
+    else if (polyline) |points|
+        .{ .polyline = try parseTiledPoints(allocator, try array(points)) }
+    else if (entry.get("ellipse")) |ellipse| blk: {
+        if (!try boolValue(ellipse)) return error.InvalidTiledMap;
+        break :blk .ellipse;
+    } else if (entry.get("point")) |point| blk: {
+        if (!try boolValue(point)) return error.InvalidTiledMap;
+        break :blk .point;
+    } else .rectangle;
+    var result = MapObject{
+        .id = try u32Value(entry.get("id") orelse return error.InvalidTiledMap),
+        .name = try allocator.dupe(u8, if (entry.get("name")) |name| try string(name) else ""),
+        .class_name = try allocator.dupe(u8, if (entry.get("class")) |class| try string(class) else if (entry.get("type")) |class| try string(class) else ""),
+        .bounds = .{ .x = try f32Value(entry.get("x") orelse return error.InvalidTiledMap), .y = try f32Value(entry.get("y") orelse return error.InvalidTiledMap), .w = if (entry.get("width")) |width| try f32Value(width) else 0, .h = if (entry.get("height")) |height| try f32Value(height) else 0 },
+        .shape = shape,
+    };
+    errdefer result.deinit(allocator);
+    if (entry.get("properties")) |properties| result.properties = try parseTiledProperties(allocator, try array(properties));
+    return result;
+}
+
+fn parseTiledPoints(allocator: std.mem.Allocator, values: std.json.Array) ![]Vec2 {
+    const points = try allocator.alloc(Vec2, values.items.len);
+    errdefer allocator.free(points);
+    for (values.items, 0..) |value, index| {
+        const point = try object(value);
+        points[index] = .{ .x = try f32Value(point.get("x") orelse return error.InvalidTiledMap), .y = try f32Value(point.get("y") orelse return error.InvalidTiledMap) };
+    }
+    return points;
+}
+
+fn parseTiledProperties(allocator: std.mem.Allocator, values: std.json.Array) ![]Property {
+    const properties = try allocator.alloc(Property, values.items.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (properties[0..initialized]) |*property| property.deinit(allocator);
+        allocator.free(properties);
+    }
+    for (values.items, 0..) |value, index| {
+        properties[index] = try parseTiledProperty(allocator, try object(value));
+        initialized += 1;
+    }
+    return properties;
+}
+
+fn parseTiledProperty(allocator: std.mem.Allocator, entry: std.json.ObjectMap) !Property {
+    const property_type = if (entry.get("type")) |type_value| try string(type_value) else "string";
+    const raw = entry.get("value") orelse return error.InvalidTiledMap;
+    const name = try allocator.dupe(u8, try string(entry.get("name") orelse return error.InvalidTiledMap));
+    errdefer allocator.free(name);
+    const value: PropertyValue = if (std.mem.eql(u8, property_type, "string") or std.mem.eql(u8, property_type, "file")) .{ .string = try allocator.dupe(u8, try string(raw)) } else if (std.mem.eql(u8, property_type, "int") or std.mem.eql(u8, property_type, "object")) .{ .integer = try i64Value(raw) } else if (std.mem.eql(u8, property_type, "float")) .{ .float = @as(f64, try f32Value(raw)) } else if (std.mem.eql(u8, property_type, "bool")) .{ .boolean = try boolValue(raw) } else return error.UnsupportedTiledProperty;
+    return .{ .name = name, .value = value };
 }
 
 fn setTiledData(map: *TileMap, layer_index: u32, origin: ChunkCoord, width: u32, height: u32, data: std.json.Value, encoding: ?[]const u8, compression: ?[]const u8, ranges: []const TiledTileSetRange) !void {
@@ -1147,4 +1289,46 @@ test "native tile map decodes strict minimal document" {
     defer map.deinit();
     try std.testing.expectEqual(@as(u32, 8), map.chunk_size);
     try std.testing.expectEqual(@as(usize, 0), map.layers.items.len);
+}
+
+test "Tiled object layers expose shapes and typed properties" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const source =
+        \\{"orientation":"orthogonal","tilewidth":16,"tileheight":16,"tilesets":[],"layers":[{"type":"objectgroup","name":"collision","offsetx":2,"offsety":3,"properties":[{"name":"enabled","type":"bool","value":true},{"name":"gravity","type":"float","value":9.5}],"objects":[{"id":7,"name":"wall","class":"solid","x":4,"y":5,"width":6,"height":7,"properties":[{"name":"damage","type":"int","value":3}]},{"id":8,"name":"path","x":0,"y":0,"polygon":[{"x":1,"y":2},{"x":3,"y":4}]}]}]}
+    ;
+    try tmp.dir.writeFile(.{ .sub_path = "objects.tmj", .data = source });
+    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "objects.tmj" });
+    defer std.testing.allocator.free(path);
+
+    var map = try TileMap.loadTiled(std.testing.allocator, path);
+    defer map.deinit();
+    try std.testing.expectEqual(@as(usize, 1), map.layers.items.len);
+    try std.testing.expectEqual(LayerKind.objects, map.layers.items[0].kind);
+    try std.testing.expectEqual(@as(usize, 2), map.layerProperties(0).len);
+    try std.testing.expectEqual(@as(usize, 2), map.layerObjects(0).len);
+    try std.testing.expectEqualStrings("wall", map.layerObjects(0)[0].name);
+    try std.testing.expectEqual(@as(i64, 3), map.layerObjects(0)[0].properties[0].value.integer);
+    try std.testing.expectEqual(@as(usize, 2), map.layerObjects(0)[1].shape.polygon.len);
+}
+
+test "Tiled tile rendering applies layer opacity and flip flags" {
+    var map = try TileMap.init(std.testing.allocator, .{ .x = 2, .y = 1 }, 8);
+    defer map.deinit();
+    _ = try map.addTileSet("tiles", .grid_image, "tiles.png", .{ .x = 2, .y = 1 });
+    const layer = try map.addLayer("ground", .tiles, null);
+    map.layers.items[layer].opacity = 0.5;
+    try map.setTile(layer, .{ .x = 0, .y = 0 }, .{ .tileset = 0, .id = 0, .flags = .{ .flip_x = true }, .opacity = 0.5 });
+
+    var canvas = try @import("canvas.zig").Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    canvas.clear(Color.black);
+    const camera = @import("camera.zig").Camera2D{ .position = .{ .x = 1, .y = 0.5 } };
+    const source = [_]Color{ Color.rgb(255, 0, 0), Color.rgb(0, 255, 0) };
+    const image = Image{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = @constCast(&source) };
+    map.drawImagesAt(CameraCanvas.init(&canvas, &camera), &.{image}, 0);
+    try std.testing.expectEqual(Color.rgb(0, 64, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(64, 0, 0), canvas.get(1, 0).?);
 }
