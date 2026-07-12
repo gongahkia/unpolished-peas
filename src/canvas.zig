@@ -281,6 +281,48 @@ pub const Canvas = struct {
         try out.flush();
     }
 
+    pub fn writePngFile(self: Canvas, path: []const u8) !void {
+        var file = try std.fs.cwd().createFile(path, .{});
+        defer file.close();
+
+        var buffer: [8192]u8 = undefined;
+        var writer = file.writer(&buffer);
+        try self.writePng(&writer.interface);
+        try writer.interface.flush();
+    }
+
+    pub fn writePng(self: Canvas, out: *std.Io.Writer) !void {
+        const pixel_bytes = std.math.mul(usize, self.width, self.height) catch return error.PngTooLarge;
+        const rgba_bytes = std.math.mul(usize, pixel_bytes, 4) catch return error.PngTooLarge;
+        const scanline_bytes = std.math.add(usize, std.math.mul(usize, self.width, 4) catch return error.PngTooLarge, 1) catch return error.PngTooLarge;
+        const raw_bytes = std.math.mul(usize, scanline_bytes, self.height) catch return error.PngTooLarge;
+        if (rgba_bytes != pixel_bytes * @sizeOf(Color)) return error.InvalidPngPixels;
+
+        const raw = try self.allocator.alloc(u8, raw_bytes);
+        defer self.allocator.free(raw);
+        var raw_index: usize = 0;
+        for (self.pixels, 0..) |value, pixel_i| {
+            if (pixel_i % self.width == 0) {
+                raw[raw_index] = 0;
+                raw_index += 1;
+            }
+            raw[raw_index..][0..4].* = .{ value.r, value.g, value.b, value.a };
+            raw_index += 4;
+        }
+
+        const compressed = try pngStoredDeflate(self.allocator, raw);
+        defer self.allocator.free(compressed);
+
+        try out.writeAll("\x89PNG\r\n\x1a\n");
+        var ihdr: [13]u8 = undefined;
+        std.mem.writeInt(u32, ihdr[0..4], self.width, .big);
+        std.mem.writeInt(u32, ihdr[4..8], self.height, .big);
+        ihdr[8..].* = .{ 8, 6, 0, 0, 0 };
+        try writePngChunk(out, "IHDR", &ihdr);
+        try writePngChunk(out, "IDAT", compressed);
+        try writePngChunk(out, "IEND", "");
+    }
+
     fn index(self: Canvas, x: i32, y: i32) ?usize {
         if (x < 0 or y < 0) return null;
         if (self.clip) |clip| if (!clip.contains(x, y)) return null;
@@ -290,6 +332,47 @@ pub const Canvas = struct {
         return @as(usize, uy) * self.width + ux;
     }
 };
+
+fn pngStoredDeflate(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
+    const blocks = std.math.divCeil(usize, raw.len, 65535) catch return error.PngTooLarge;
+    const block_bytes = std.math.mul(usize, blocks, 5) catch return error.PngTooLarge;
+    const payload_bytes = std.math.add(usize, raw.len, block_bytes) catch return error.PngTooLarge;
+    const total_bytes = std.math.add(usize, payload_bytes, 6) catch return error.PngTooLarge;
+    const encoded = try allocator.alloc(u8, total_bytes);
+    encoded[0..2].* = .{ 0x78, 0x01 };
+
+    var src_index: usize = 0;
+    var dst_index: usize = 2;
+    while (src_index < raw.len) {
+        const remaining = raw.len - src_index;
+        const len: u16 = @intCast(@min(remaining, 65535));
+        encoded[dst_index] = if (remaining <= 65535) 1 else 0;
+        std.mem.writeInt(u16, encoded[dst_index + 1 ..][0..2], len, .little);
+        std.mem.writeInt(u16, encoded[dst_index + 3 ..][0..2], ~len, .little);
+        dst_index += 5;
+        @memcpy(encoded[dst_index..][0..len], raw[src_index..][0..len]);
+        src_index += len;
+        dst_index += len;
+    }
+    std.mem.writeInt(u32, encoded[dst_index..][0..4], std.hash.Adler32.hash(raw), .big);
+    return encoded;
+}
+
+fn writePngChunk(out: *std.Io.Writer, kind: []const u8, data: []const u8) !void {
+    if (kind.len != 4) return error.InvalidPngChunk;
+    const len = std.math.cast(u32, data.len) orelse return error.PngTooLarge;
+    var length: [4]u8 = undefined;
+    std.mem.writeInt(u32, &length, len, .big);
+    try out.writeAll(&length);
+    try out.writeAll(kind);
+    try out.writeAll(data);
+    var crc = std.hash.Crc32.init();
+    crc.update(kind);
+    crc.update(data);
+    var checksum: [4]u8 = undefined;
+    std.mem.writeInt(u32, &checksum, crc.final(), .big);
+    try out.writeAll(&checksum);
+}
 
 fn edge(a: Vec2, b: Vec2, point: Vec2) f32 {
     return (point.x - a.x) * (b.y - a.y) - (point.y - a.y) * (b.x - a.x);
@@ -336,6 +419,26 @@ test "canvas applies strict pixel-effect fallback" {
     canvas.clear(Color.rgb(10, 20, 30));
     canvas.applyPixelEffect(try PixelEffect.parse("invert", .{}));
     try std.testing.expectEqual(Color.rgb(245, 235, 225), canvas.get(0, 0).?);
+}
+
+test "canvas writes decodable RGBA PNG" {
+    var canvas = try Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    canvas.pixels[0] = Color.rgba(1, 2, 3, 4);
+    canvas.pixels[1] = Color.rgba(5, 6, 7, 8);
+
+    var output = std.Io.Writer.Allocating.init(std.testing.allocator);
+    defer output.deinit();
+    try canvas.writePng(&output.writer);
+    const bytes = output.written();
+    try std.testing.expectEqualStrings("\x89PNG\r\n\x1a\n", bytes[0..8]);
+
+    var decoded = try Image.decode(std.testing.allocator, bytes, .{});
+    defer decoded.deinit();
+    try std.testing.expectEqual(@as(u32, 2), decoded.width);
+    try std.testing.expectEqual(@as(u32, 1), decoded.height);
+    try std.testing.expectEqual(Color.rgba(1, 2, 3, 4), decoded.pixels[0]);
+    try std.testing.expectEqual(Color.rgba(5, 6, 7, 8), decoded.pixels[1]);
 }
 
 test "canvas clips affine draws" {
