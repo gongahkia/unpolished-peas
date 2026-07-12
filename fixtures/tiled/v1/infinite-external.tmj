@@ -1,0 +1,13 @@
+{
+  "version": "1.10",
+  "orientation": "orthogonal",
+  "infinite": true,
+  "tilewidth": 8,
+  "tileheight": 8,
+  "tilesets": [{"firstgid": 1, "source": "external.tsj"}],
+  "layers": [{
+    "type": "tilelayer",
+    "name": "infinite",
+    "chunks": [{"x": -1, "y": 2, "width": 1, "height": 1, "data": [3758096385]}]
+  }]
+}
