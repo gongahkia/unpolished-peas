@@ -6,7 +6,7 @@ case "$target" in
   run-bounce|test-scenes)
     zig build "$target"
     ;;
-  run-bounce-sdl|dev-bounce|run-minimal|run-audio|run-atlas|run-camera|run-tilemap|stress-audio-sdl)
+  run-bounce-sdl|dev-bounce|run-minimal|run-audio|run-atlas|run-camera|run-tilemap|run-primitives|stress-audio-sdl)
     SDL_AUDIODRIVER=dummy zig build "$target" -- --frames 2
     ;;
   *)

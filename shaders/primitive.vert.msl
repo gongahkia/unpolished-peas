@@ -1,0 +1,16 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct VertexIn {
+    float2 position [[attribute(0)]];
+    float4 color [[attribute(1)]];
+};
+
+struct VertexOut {
+    float4 position [[position]];
+    float4 color [[user(locn0)]];
+};
+
+vertex VertexOut main0(VertexIn input [[stage_in]]) {
+    return { .position = float4(input.position, 0.0, 1.0), .color = input.color };
+}

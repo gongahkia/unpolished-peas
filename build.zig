@@ -56,6 +56,7 @@ pub fn build(b: *std.Build) void {
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
     const tilemap_demo = addExample(b, "unpolished-peas-tilemap", "examples/tilemap.zig", target, optimize, peas, sdl);
+    const primitives_demo = addExample(b, "unpolished-peas-primitives", "examples/primitives.zig", target, optimize, peas, sdl);
     const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
@@ -83,12 +84,13 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
     addRunStep(b, "run-tilemap", "Run the unpolished-peas tile-map demo", tilemap_demo);
+    addRunStep(b, "run-primitives", "Run the unpolished-peas GPU primitive demo", primitives_demo);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, audio_stress, scene_tests, mapc }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, primitives_demo, audio_stress, scene_tests, mapc }) |example| {
         check_examples.dependOn(&example.step);
     }
 

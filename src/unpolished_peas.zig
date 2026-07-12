@@ -57,6 +57,9 @@ pub const PointerButton = @import("input.zig").PointerButton;
 pub const Presentation = @import("presentation.zig").Presentation;
 pub const PresentationMode = @import("presentation.zig").PresentationMode;
 pub const PresentationRect = @import("presentation.zig").PresentationRect;
+pub const PrimitiveBatch = @import("primitive_batch.zig").PrimitiveBatch;
+pub const PrimitiveBatchPoint = @import("primitive_batch.zig").Point;
+pub const PrimitiveBatchVertex = @import("primitive_batch.zig").Vertex;
 pub const Rect = @import("math.zig").Rect;
 pub const ReloadEvent = @import("assets.zig").ReloadEvent;
 pub const ReloadStatus = @import("assets.zig").ReloadStatus;
@@ -112,6 +115,7 @@ test {
     _ = @import("input.zig");
     _ = @import("math.zig");
     _ = @import("presentation.zig");
+    _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");

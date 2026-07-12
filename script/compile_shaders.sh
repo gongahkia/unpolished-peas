@@ -7,6 +7,8 @@ mkdir -p "$OUT_DIR"
 
 glslangValidator -V -S vert "$ROOT_DIR/shaders/sprite.vert" -o "$OUT_DIR/sprite.vert.spv"
 glslangValidator -V -S frag "$ROOT_DIR/shaders/sprite.frag" -o "$OUT_DIR/sprite.frag.spv"
+glslangValidator -V -S vert "$ROOT_DIR/shaders/primitive.vert" -o "$OUT_DIR/primitive.vert.spv"
+glslangValidator -V -S frag "$ROOT_DIR/shaders/primitive.frag" -o "$OUT_DIR/primitive.frag.spv"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   spirv-cross "$OUT_DIR/sprite.vert.spv" --msl --output "$OUT_DIR/sprite.vert.metal"
@@ -15,4 +17,8 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun metal -c "$OUT_DIR/sprite.frag.metal" -o "$OUT_DIR/sprite.frag.air"
   xcrun metallib "$OUT_DIR/sprite.vert.air" -o "$OUT_DIR/sprite.vert.metallib"
   xcrun metallib "$OUT_DIR/sprite.frag.air" -o "$OUT_DIR/sprite.frag.metallib"
+  xcrun metal -x metal -c "$ROOT_DIR/shaders/primitive.vert.msl" -o "$OUT_DIR/primitive.vert.air"
+  xcrun metal -x metal -c "$ROOT_DIR/shaders/primitive.frag.msl" -o "$OUT_DIR/primitive.frag.air"
+  xcrun metallib "$OUT_DIR/primitive.vert.air" -o "$OUT_DIR/primitive.vert.metallib"
+  xcrun metallib "$OUT_DIR/primitive.frag.air" -o "$OUT_DIR/primitive.frag.metallib"
 fi
