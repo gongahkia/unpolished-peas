@@ -26,6 +26,25 @@ pub const PointerButton = enum(u8) {
 
 const pointer_button_count = @typeInfo(PointerButton).@"enum".fields.len;
 
+pub const GamepadButton = enum(u8) { south, east, west, north, back, start, left_stick, right_stick, left_shoulder, right_shoulder, dpad_up, dpad_down, dpad_left, dpad_right };
+pub const GamepadAxis = enum(u8) { left_x, left_y, right_x, right_y, left_trigger, right_trigger };
+const gamepad_button_count = @typeInfo(GamepadButton).@"enum".fields.len;
+const gamepad_axis_count = @typeInfo(GamepadAxis).@"enum".fields.len;
+
+pub const Gamepad = struct {
+    id: i32,
+    connected: bool = true,
+    buttons: [gamepad_button_count]bool = .{false} ** gamepad_button_count,
+    axes: [gamepad_axis_count]f32 = .{0} ** gamepad_axis_count,
+
+    pub fn button(self: Gamepad, value: GamepadButton) bool {
+        return self.buttons[@intFromEnum(value)];
+    }
+    pub fn axis(self: Gamepad, value: GamepadAxis) f32 {
+        return self.axes[@intFromEnum(value)];
+    }
+};
+
 pub const Pointer = struct {
     window: Vec2 = .{},
     framebuffer: Vec2 = .{},
@@ -42,6 +61,7 @@ pub const Input = struct {
     pointer_down: [pointer_button_count]bool = .{false} ** pointer_button_count,
     pointer_pressed: [pointer_button_count]bool = .{false} ** pointer_button_count,
     pointer_released: [pointer_button_count]bool = .{false} ** pointer_button_count,
+    gamepads: [4]?Gamepad = .{null} ** 4,
 
     pub fn beginFrame(self: *Input) void {
         @memset(self.pressed[0..], false);
@@ -104,6 +124,38 @@ pub const Input = struct {
     pub fn pointerWasReleased(self: Input, button: PointerButton) bool {
         return self.pointer_released[@intFromEnum(button)];
     }
+
+    pub fn addGamepad(self: *Input, id: i32) bool {
+        for (&self.gamepads) |*slot| if (slot.*) |pad| if (pad.id == id) return false;
+        for (&self.gamepads) |*slot| if (slot.* == null) {
+            slot.* = .{ .id = id };
+            return true;
+        };
+        return false;
+    }
+    pub fn removeGamepad(self: *Input, id: i32) bool {
+        for (&self.gamepads) |*slot| if (slot.*) |pad| if (pad.id == id) {
+            slot.* = null;
+            return true;
+        };
+        return false;
+    }
+    pub fn gamepad(self: Input, id: i32) ?Gamepad {
+        for (self.gamepads) |slot| if (slot) |pad| if (pad.id == id) return pad;
+        return null;
+    }
+    pub fn setGamepadButton(self: *Input, id: i32, button: GamepadButton, down: bool) void {
+        for (&self.gamepads) |*slot| if (slot.*) |*pad| if (pad.id == id) {
+            pad.buttons[@intFromEnum(button)] = down;
+            return;
+        };
+    }
+    pub fn setGamepadAxis(self: *Input, id: i32, axis: GamepadAxis, value: f32, dead_zone: f32) void {
+        for (&self.gamepads) |*slot| if (slot.*) |*pad| if (pad.id == id) {
+            pad.axes[@intFromEnum(axis)] = if (@abs(value) < dead_zone) 0 else value;
+            return;
+        };
+    }
 };
 
 test "input edges" {
@@ -128,4 +180,18 @@ test "pointer records mapped coordinates and edges" {
     input.beginFrame();
     try std.testing.expectEqual(Vec2.zero, input.pointer.delta);
     try std.testing.expect(!input.pointerWasPressed(.left));
+}
+
+test "gamepad add remove and dead-zone transitions" {
+    var input = Input{};
+    try std.testing.expect(input.addGamepad(7));
+    try std.testing.expect(!input.addGamepad(7));
+    input.setGamepadButton(7, .south, true);
+    input.setGamepadAxis(7, .left_x, 0.1, 0.2);
+    try std.testing.expect((input.gamepad(7).?).button(.south));
+    try std.testing.expectEqual(@as(f32, 0), (input.gamepad(7).?).axis(.left_x));
+    input.setGamepadAxis(7, .left_x, -0.75, 0.2);
+    try std.testing.expectEqual(@as(f32, -0.75), (input.gamepad(7).?).axis(.left_x));
+    try std.testing.expect(input.removeGamepad(7));
+    try std.testing.expect(input.gamepad(7) == null);
 }

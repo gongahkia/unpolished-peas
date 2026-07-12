@@ -200,6 +200,13 @@ pub const Context = struct {
         return self.app_data_path;
     }
 
+    pub fn rumbleGamepad(_: *Context, id: i32, low: f32, high: f32, duration_ms: u32) bool {
+        if (low < 0 or low > 1 or high < 0 or high > 1) return false;
+        const gamepad = c.SDL_OpenGamepad(@intCast(id)) orelse return false;
+        defer c.SDL_CloseGamepad(gamepad);
+        return c.SDL_RumbleGamepad(gamepad, @intFromFloat(low * 65535), @intFromFloat(high * 65535), duration_ms);
+    }
+
     pub fn assetPath(self: *Context, path: []const u8) ![]u8 {
         return self.assets.assetPath(self.allocator, path);
     }
@@ -894,6 +901,10 @@ fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presenta
                 if (mapPointerButton(event.button.button)) |button| input.setPointerButton(button, event.type == c.SDL_EVENT_MOUSE_BUTTON_DOWN);
             },
             c.SDL_EVENT_MOUSE_WHEEL => input.addPointerWheel(.{ .x = event.wheel.x, .y = event.wheel.y }),
+            c.SDL_EVENT_GAMEPAD_ADDED => _ = input.addGamepad(@intCast(event.gdevice.which)),
+            c.SDL_EVENT_GAMEPAD_REMOVED => _ = input.removeGamepad(@intCast(event.gdevice.which)),
+            c.SDL_EVENT_GAMEPAD_BUTTON_DOWN, c.SDL_EVENT_GAMEPAD_BUTTON_UP => if (mapGamepadButton(event.gbutton.button)) |button| input.setGamepadButton(@intCast(event.gbutton.which), button, event.type == c.SDL_EVENT_GAMEPAD_BUTTON_DOWN),
+            c.SDL_EVENT_GAMEPAD_AXIS_MOTION => if (mapGamepadAxis(event.gaxis.axis)) |axis| input.setGamepadAxis(@intCast(event.gaxis.which), axis, normalizeGamepadAxis(axis, event.gaxis.value), 0.15),
         }
     }
     return running;
@@ -901,6 +912,44 @@ fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presenta
 
 fn audioDeviceChanged(event_type: c.SDL_EventType) bool {
     return event_type == c.SDL_EVENT_AUDIO_DEVICE_REMOVED or event_type == c.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED;
+}
+
+fn mapGamepadButton(button: u8) ?up.GamepadButton {
+    return switch (button) {
+        c.SDL_GAMEPAD_BUTTON_SOUTH => .south,
+        c.SDL_GAMEPAD_BUTTON_EAST => .east,
+        c.SDL_GAMEPAD_BUTTON_WEST => .west,
+        c.SDL_GAMEPAD_BUTTON_NORTH => .north,
+        c.SDL_GAMEPAD_BUTTON_BACK => .back,
+        c.SDL_GAMEPAD_BUTTON_START => .start,
+        c.SDL_GAMEPAD_BUTTON_LEFT_STICK => .left_stick,
+        c.SDL_GAMEPAD_BUTTON_RIGHT_STICK => .right_stick,
+        c.SDL_GAMEPAD_BUTTON_LEFT_SHOULDER => .left_shoulder,
+        c.SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER => .right_shoulder,
+        c.SDL_GAMEPAD_BUTTON_DPAD_UP => .dpad_up,
+        c.SDL_GAMEPAD_BUTTON_DPAD_DOWN => .dpad_down,
+        c.SDL_GAMEPAD_BUTTON_DPAD_LEFT => .dpad_left,
+        c.SDL_GAMEPAD_BUTTON_DPAD_RIGHT => .dpad_right,
+        else => null,
+    };
+}
+fn mapGamepadAxis(axis: u8) ?up.GamepadAxis {
+    return switch (axis) {
+        c.SDL_GAMEPAD_AXIS_LEFTX => .left_x,
+        c.SDL_GAMEPAD_AXIS_LEFTY => .left_y,
+        c.SDL_GAMEPAD_AXIS_RIGHTX => .right_x,
+        c.SDL_GAMEPAD_AXIS_RIGHTY => .right_y,
+        c.SDL_GAMEPAD_AXIS_LEFT_TRIGGER => .left_trigger,
+        c.SDL_GAMEPAD_AXIS_RIGHT_TRIGGER => .right_trigger,
+        else => null,
+    };
+}
+fn normalizeGamepadAxis(axis: up.GamepadAxis, value: i16) f32 {
+    const normalized = @as(f32, @floatFromInt(value)) / 32767;
+    return switch (axis) {
+        .left_trigger, .right_trigger => @max(0, normalized),
+        else => normalized,
+    };
 }
 
 fn framebufferSize(window: *c.SDL_Window) !up.Vec2 {
