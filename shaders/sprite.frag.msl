@@ -1,0 +1,11 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct FragmentIn {
+    float2 uv [[user(locn0)]];
+    float4 tint [[user(locn1)]];
+};
+
+fragment float4 main0(FragmentIn input [[stage_in]], texture2d<float> sprite_texture [[texture(0)]], sampler sprite_sampler [[sampler(0)]]) {
+    return sprite_texture.sample(sprite_sampler, input.uv) * input.tint;
+}
