@@ -28,6 +28,8 @@ zig build test-sdl
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
+`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
+
 Text uses the built-in 5×7 bitmap font. `layoutText` measures and places UTF-8 text deterministically; unsupported or invalid code points use one fallback glyph.
 
 `Image.decode` and `AssetStore.loadImage` accept PNG, JPEG, and TGA with a 32 MiB input cap, 4096×4096 dimension caps, and a 16 MiB pixel cap; pass `ImageDecodeOptions` to tighten direct decoder limits.

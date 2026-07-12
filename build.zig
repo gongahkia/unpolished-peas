@@ -41,6 +41,14 @@ pub fn build(b: *std.Build) void {
     });
     addSdl3(sdl, bundled_sdl);
 
+    const physics = b.addModule("unpolished-peas-physics", .{
+        .root_source_file = b.path("src/physics.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
+    addBox2d(physics, box2d);
+
     const lib = b.addLibrary(.{
         .name = "unpolished-peas",
         .linkage = .static,
@@ -104,14 +112,7 @@ pub fn build(b: *std.Build) void {
     const sdl_test_step = b.step("test-sdl", "Compile the SDL3 runtime against its configured dependency");
     sdl_test_step.dependOn(&run_sdl_tests.step);
 
-    const box2d_test_module = b.createModule(.{
-        .root_source_file = b.path("src/unpolished_peas.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    addStb(box2d_test_module);
-    box2d_test_module.linkLibrary(box2d.artifact("box2d"));
-    const box2d_tests = b.addTest(.{ .root_module = box2d_test_module });
+    const box2d_tests = b.addTest(.{ .root_module = physics });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
     const box2d_test_step = b.step("test-box2d", "Compile the pinned Box2D source dependency");
     box2d_test_step.dependOn(&run_box2d_tests.step);
@@ -171,4 +172,10 @@ fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency) void {
     } else {
         mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
     }
+}
+
+fn addBox2d(mod: *std.Build.Module, dependency: *std.Build.Dependency) void {
+    mod.link_libc = true;
+    mod.addIncludePath(dependency.path("include"));
+    mod.linkLibrary(dependency.artifact("box2d"));
 }
