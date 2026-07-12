@@ -39,6 +39,7 @@ pub const EcsCommands = @import("ecs.zig").Commands;
 pub const ComponentStore = @import("ecs.zig").ComponentStore;
 pub const SpriteSampling = @import("atlas.zig").Sampling;
 pub const Image = @import("image.zig").Image;
+pub const ImageDecodeOptions = @import("image.zig").DecodeOptions;
 pub const ImageHandle = @import("assets.zig").ImageHandle;
 pub const Input = @import("input.zig").Input;
 pub const Key = @import("input.zig").Key;

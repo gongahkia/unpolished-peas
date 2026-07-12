@@ -207,14 +207,14 @@ pub const AssetStore = struct {
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
+    pub fn loadImage(self: *AssetStore, path: []const u8) !ImageHandle {
         const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
         errdefer {
             var cleanup = file;
             cleanup.deinit();
         }
 
-        const decoded = try Image.decodePng(self.allocator, file.bytes);
+        const decoded = try Image.decode(self.allocator, file.bytes, .{});
         errdefer {
             var cleanup = decoded;
             cleanup.deinit();
@@ -223,6 +223,10 @@ pub const AssetStore = struct {
         const index = self.images.items.len;
         try self.images.append(self.allocator, .{ .file = file, .image = decoded });
         return .{ .index = index, .generation = 1 };
+    }
+
+    pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
+        return self.loadImage(path);
     }
 
     pub fn loadAtlas(self: *AssetStore, path: []const u8) !AtlasHandle {
@@ -370,7 +374,7 @@ pub const AssetStore = struct {
                 continue;
             };
 
-            const next = Image.decodePng(self.allocator, bytes) catch |err| {
+            const next = Image.decode(self.allocator, bytes, .{}) catch |err| {
                 self.allocator.free(bytes);
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
                 continue;
@@ -524,7 +528,7 @@ pub const AssetStore = struct {
 
     fn appendTileMapImage(self: *AssetStore, images: *std.ArrayListUnmanaged(TileMapImage), dependencies: []const AssetFile, tileset: u16, tile_id: ?u32, path: []const u8) !void {
         for (dependencies) |dependency| if (std.mem.eql(u8, dependency.path, path)) {
-            var decoded = try Image.decodePng(self.allocator, dependency.bytes);
+            var decoded = try Image.decode(self.allocator, dependency.bytes, .{});
             errdefer decoded.deinit();
             try images.append(self.allocator, .{ .tileset = tileset, .tile_id = tile_id, .image = decoded });
             return;

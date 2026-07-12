@@ -120,7 +120,7 @@ pub const Atlas = struct {
     }
 
     pub fn decode(allocator: std.mem.Allocator, image_bytes: []const u8, image_path: []const u8, json_bytes: []const u8) !Atlas {
-        var image = try Image.decodePng(allocator, image_bytes);
+        var image = try Image.decode(allocator, image_bytes, .{});
         errdefer image.deinit();
         const owned_path = try allocator.dupe(u8, image_path);
         errdefer allocator.free(owned_path);

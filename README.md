@@ -30,6 +30,8 @@ The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-pea
 
 Text uses the built-in 5×7 bitmap font. `layoutText` measures and places UTF-8 text deterministically; unsupported or invalid code points use one fallback glyph.
 
+`Image.decode` and `AssetStore.loadImage` accept PNG, JPEG, and TGA with a 32 MiB input cap, 4096×4096 dimension caps, and a 16 MiB pixel cap; pass `ImageDecodeOptions` to tighten direct decoder limits.
+
 To use a system SDL3 instead:
 
 ```sh
