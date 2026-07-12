@@ -8,6 +8,7 @@ const vorbis = @cImport({
 
 const max_audio_bytes = 128 * 1024 * 1024;
 const max_ogg_channels = 8;
+const stream_buffer_frames = 16 * 1024;
 
 pub const AudioSample = struct {
     left: f32 = 0,
@@ -26,12 +27,14 @@ pub const PlaybackHandle = struct {
 pub const SoundOptions = struct {
     bus: ?BusHandle = null,
     volume: f32 = 1,
+    pan: f32 = 0,
     loop: bool = false,
 };
 
 pub const MusicOptions = struct {
     bus: ?BusHandle = null,
     volume: f32 = 1,
+    pan: f32 = 0,
     loop: bool = true,
 };
 
@@ -156,6 +159,7 @@ pub const AudioMixer = struct {
 
     pub fn playSound(self: *AudioMixer, sound: *const Sound, options: SoundOptions) !PlaybackHandle {
         try requireVolume(options.volume);
+        try requirePan(options.pan);
         if (sound.frames.len == 0) return error.EmptySound;
         const bus_handle = options.bus orelse sfxBus();
         _ = try self.getBus(bus_handle);
@@ -165,6 +169,7 @@ pub const AudioMixer = struct {
             .paused = false,
             .bus = bus_handle,
             .volume = options.volume,
+            .pan = options.pan,
             .loop = options.loop,
             .kind = .{ .sound = .{ .sound = sound } },
         };
@@ -173,6 +178,7 @@ pub const AudioMixer = struct {
 
     pub fn playMusic(self: *AudioMixer, music: *const Music, options: MusicOptions) !PlaybackHandle {
         try requireVolume(options.volume);
+        try requirePan(options.pan);
         const bus_handle = options.bus orelse musicBus();
         _ = try self.getBus(bus_handle);
         var playback = Playback{
@@ -181,6 +187,7 @@ pub const AudioMixer = struct {
             .paused = false,
             .bus = bus_handle,
             .volume = options.volume,
+            .pan = options.pan,
             .loop = options.loop,
             .kind = switch (music.kind) {
                 .wav => .{ .wav_music = .{ .music = music } },
@@ -224,11 +231,34 @@ pub const AudioMixer = struct {
         return false;
     }
 
+    pub fn setPlaybackPan(self: *AudioMixer, handle: PlaybackHandle, pan: f32) !bool {
+        try requirePan(pan);
+        if (self.getPlayback(handle)) |playback| {
+            playback.pan = pan;
+            return true;
+        }
+        return false;
+    }
+
+    pub fn fadePlayback(self: *AudioMixer, handle: PlaybackHandle, target_volume: f32, frames: u32) !bool {
+        try requireVolume(target_volume);
+        if (self.getPlayback(handle)) |playback| {
+            if (frames == 0) {
+                playback.volume = target_volume;
+                playback.fade = null;
+            } else {
+                playback.fade = .{ .target = target_volume, .remaining = frames, .step = (target_volume - playback.volume) / @as(f32, @floatFromInt(frames)) };
+            }
+            return true;
+        }
+        return false;
+    }
+
     pub fn mix(self: *AudioMixer, out: []AudioSample) !void {
         @memset(out, AudioSample{});
         for (self.playbacks.items) |*playback| {
             if (!playback.active or playback.paused) continue;
-            const gain = self.busGain(playback.bus) * playback.volume;
+            const gain = self.busGain(playback.bus);
             if (gain == 0) continue;
             const alive = try playback.mix(self, out, gain);
             if (!alive) playback.deinit(self.allocator);
@@ -351,6 +381,8 @@ const Playback = struct {
     paused: bool,
     bus: BusHandle,
     volume: f32,
+    pan: f32,
+    fade: ?Fade = null,
     loop: bool,
     kind: PlaybackKind,
 
@@ -363,12 +395,27 @@ const Playback = struct {
         self.active = false;
     }
 
+    const Fade = struct { target: f32, remaining: u32, step: f32 };
+
     fn mix(self: *Playback, mixer: *AudioMixer, out: []AudioSample, gain: f32) !bool {
         return switch (self.kind) {
-            .sound => |*sound| mixSound(sound, mixer.sample_rate, self.loop, out, gain),
-            .wav_music => |*wav| mixWavMusic(wav, mixer.sample_rate, self.loop, out, gain),
-            .ogg_music => |*ogg| try mixOggMusic(ogg, mixer.allocator, mixer.sample_rate, self.loop, out, gain),
+            .sound => |*sound| mixSound(sound, self, mixer.sample_rate, self.loop, out, gain),
+            .wav_music => |*wav| mixWavMusic(wav, self, mixer.sample_rate, self.loop, out, gain),
+            .ogg_music => |*ogg| try mixOggMusic(ogg, self, mixer.allocator, mixer.sample_rate, self.loop, out, gain),
         };
+    }
+
+    fn nextGain(self: *Playback, bus_gain: f32) f32 {
+        const gain = self.volume * bus_gain;
+        if (self.fade) |*fade| {
+            self.volume += fade.step;
+            fade.remaining -= 1;
+            if (fade.remaining == 0) {
+                self.volume = fade.target;
+                self.fade = null;
+            }
+        }
+        return gain;
     }
 };
 
@@ -399,8 +446,10 @@ const OggPlayback = struct {
     fn init(allocator: std.mem.Allocator, music: *const Music) !OggPlayback {
         const decoder = try openOggDecoder(music.bytes);
         errdefer vorbis.stb_vorbis_close(decoder);
-        _ = allocator;
-        return .{ .music = music, .decoder = decoder };
+        var buffer: std.ArrayListUnmanaged(AudioSample) = .{};
+        errdefer buffer.deinit(allocator);
+        try buffer.ensureTotalCapacity(allocator, stream_buffer_frames);
+        return .{ .music = music, .decoder = decoder, .buffer = buffer };
     }
 
     fn deinit(self: *OggPlayback, allocator: std.mem.Allocator) void {
@@ -425,6 +474,7 @@ const OggPlayback = struct {
     }
 
     fn decodeMore(self: *OggPlayback, allocator: std.mem.Allocator) !bool {
+        _ = allocator;
         const info = self.music.info();
         var output: [*c][*c]f32 = undefined;
         const got = vorbis.stb_vorbis_get_frame_float(self.decoder, null, &output);
@@ -432,9 +482,11 @@ const OggPlayback = struct {
             self.eof = true;
             return false;
         }
+        const frame_count: usize = @intCast(got);
+        if (frame_count > self.buffer.capacity - self.buffer.items.len) return error.StreamBufferFull;
         var frame: usize = 0;
-        while (frame < @as(usize, @intCast(got))) : (frame += 1) {
-            try self.buffer.append(allocator, sampleFromVorbis(output, info.channels, frame));
+        while (frame < frame_count) : (frame += 1) {
+            self.buffer.appendAssumeCapacity(sampleFromVorbis(output, info.channels, frame));
         }
         return true;
     }
@@ -448,19 +500,19 @@ const OggPlayback = struct {
     }
 };
 
-fn mixSound(playback: *SoundPlayback, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) bool {
+fn mixSound(playback: *SoundPlayback, controls: *Playback, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) bool {
     const sound = playback.sound;
     const step = rateStep(sound.sample_rate, mixer_rate);
     var i: usize = 0;
     while (i < out.len) : (i += 1) {
         const frame_index = normalizePos(&playback.pos, sound.frames.len, loop) orelse return false;
-        mixAdd(&out[i], sound.frames[frame_index], gain);
+        mixAdd(&out[i], sound.frames[frame_index], controls.nextGain(gain), controls.pan);
         playback.pos += step;
     }
     return true;
 }
 
-fn mixWavMusic(playback: *WavPlayback, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) bool {
+fn mixWavMusic(playback: *WavPlayback, controls: *Playback, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) bool {
     const wav = switch (playback.music.kind) {
         .wav => |info| info,
         else => return false,
@@ -469,13 +521,13 @@ fn mixWavMusic(playback: *WavPlayback, mixer_rate: u32, loop: bool, out: []Audio
     var i: usize = 0;
     while (i < out.len) : (i += 1) {
         const frame_index = normalizePos(&playback.pos, wav.frames, loop) orelse return false;
-        mixAdd(&out[i], wavFrame(playback.music.bytes, wav, frame_index), gain);
+        mixAdd(&out[i], wavFrame(playback.music.bytes, wav, frame_index), controls.nextGain(gain), controls.pan);
         playback.pos += step;
     }
     return true;
 }
 
-fn mixOggMusic(playback: *OggPlayback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
+fn mixOggMusic(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
     const info = playback.music.info();
     const step = rateStep(info.sample_rate, mixer_rate);
     var i: usize = 0;
@@ -489,7 +541,7 @@ fn mixOggMusic(playback: *OggPlayback, allocator: std.mem.Allocator, mixer_rate:
             if (!try playback.ensure(allocator, frame_index)) return false;
         }
         const local = frame_index - playback.start;
-        mixAdd(&out[i], playback.buffer.items[local], gain);
+        mixAdd(&out[i], playback.buffer.items[local], controls.nextGain(gain), controls.pan);
         playback.pos += step;
         playback.trim(frame_index);
     }
@@ -511,9 +563,9 @@ fn rateStep(src_rate: u32, dst_rate: u32) f64 {
     return @as(f64, @floatFromInt(src_rate)) / @as(f64, @floatFromInt(dst_rate));
 }
 
-fn mixAdd(out: *AudioSample, sample: AudioSample, gain: f32) void {
-    out.left += sample.left * gain;
-    out.right += sample.right * gain;
+fn mixAdd(out: *AudioSample, sample: AudioSample, gain: f32, pan: f32) void {
+    out.left += sample.left * gain * (1 - @max(pan, 0));
+    out.right += sample.right * gain * (1 + @min(pan, 0));
 }
 
 fn sampleFromVorbis(output: [*c][*c]f32, channels: u16, frame: usize) AudioSample {
@@ -524,6 +576,10 @@ fn sampleFromVorbis(output: [*c][*c]f32, channels: u16, frame: usize) AudioSampl
 
 fn requireVolume(volume: f32) !void {
     if (std.math.isNan(volume) or volume < 0) return error.InvalidVolume;
+}
+
+fn requirePan(pan: f32) !void {
+    if (std.math.isNan(pan) or pan < -1 or pan > 1) return error.InvalidPan;
 }
 
 fn clampUnit(value: f32) f32 {
@@ -719,6 +775,25 @@ test "sound playback handle lifecycle and bus volume" {
     try std.testing.expect(!mixer.stop(handle));
 }
 
+test "playback pan and fades are sample-accurate" {
+    const frames = try std.testing.allocator.dupe(AudioSample, &.{.{ .left = 1, .right = 1 }});
+    var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
+    defer sound.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+    const handle = try mixer.playSound(&sound, .{ .loop = true, .pan = 1 });
+    var out: [2]AudioSample = undefined;
+    try mixer.mix(&out);
+    try std.testing.expectEqual(@as(f32, 0), out[0].left);
+    try std.testing.expectEqual(@as(f32, 1), out[0].right);
+    try std.testing.expect(try mixer.setPlaybackPan(handle, -1));
+    try std.testing.expect(try mixer.fadePlayback(handle, 0, 2));
+    try mixer.mix(&out);
+    try std.testing.expectApproxEqAbs(@as(f32, 1), out[0].left, 0.0001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), out[1].left, 0.0001);
+    try std.testing.expect(!try mixer.setPlaybackPan(.{ .index = handle.index, .id = handle.id +% 1 }, 0));
+}
+
 test "looped wav music streams across buffer boundaries" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -764,7 +839,11 @@ test "ogg music streams through mixer" {
     defer music.deinit();
     var mixer = try AudioMixer.init(std.testing.allocator, .{ .sample_rate = music.info().sample_rate });
     defer mixer.deinit();
-    _ = try mixer.playMusic(&music, .{ .loop = false });
+    const handle = try mixer.playMusic(&music, .{ .loop = true });
+    const capacity = switch (mixer.playbacks.items[handle.index].kind) {
+        .ogg_music => |ogg| ogg.buffer.capacity,
+        else => unreachable,
+    };
     var out: [32]AudioSample = undefined;
     try mixer.mix(&out);
     var nonzero = false;
@@ -772,6 +851,13 @@ test "ogg music streams through mixer" {
         if (sample.left != 0 or sample.right != 0) nonzero = true;
     }
     try std.testing.expect(nonzero);
+    var i: usize = 0;
+    while (i < 128) : (i += 1) try mixer.mix(&out);
+    const final_capacity = switch (mixer.playbacks.items[handle.index].kind) {
+        .ogg_music => |ogg| ogg.buffer.capacity,
+        else => unreachable,
+    };
+    try std.testing.expectEqual(capacity, final_capacity);
 }
 
 test "headless mixer stress keeps handles and buses stable" {

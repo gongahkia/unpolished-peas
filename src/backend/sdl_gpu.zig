@@ -46,6 +46,12 @@ test "sprite residency detects a reloaded image buffer" {
     try std.testing.expect(!resident.matches(&image));
 }
 
+test "audio device removal and format changes request recovery" {
+    try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_REMOVED));
+    try std.testing.expect(audioDeviceChanged(c.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED));
+    try std.testing.expect(!audioDeviceChanged(c.SDL_EVENT_QUIT));
+}
+
 pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
     var renderer = up.HeadlessRenderer.init(canvas);
     defer renderer.deinit(allocator);
@@ -279,7 +285,12 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         input.beginFrame();
         sprite_batch.clear();
         refreshPresentation(window, &presentation);
-        running = pollInput(&input, window, &presentation);
+        var audio_device_changed = false;
+        running = pollInput(&input, window, &presentation, &audio_device_changed);
+        if (audio_device_changed) {
+            if (audio_output) |*output| output.deinit(allocator);
+            audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+        }
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
         if (failure) |current| {
@@ -859,7 +870,7 @@ const Presenter = struct {
     }
 };
 
-fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation) bool {
+fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
@@ -874,16 +885,22 @@ fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presenta
                 }
             },
             c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => refreshPresentation(window, presentation),
+            else => {
+                if (audioDeviceChanged(event.type)) audio_device_changed.* = true;
+            },
             c.SDL_EVENT_MOUSE_MOTION => setPointerPosition(input, window, presentation, .{ .x = event.motion.x, .y = event.motion.y }),
             c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_BUTTON_UP => {
                 setPointerPosition(input, window, presentation, .{ .x = event.button.x, .y = event.button.y });
                 if (mapPointerButton(event.button.button)) |button| input.setPointerButton(button, event.type == c.SDL_EVENT_MOUSE_BUTTON_DOWN);
             },
             c.SDL_EVENT_MOUSE_WHEEL => input.addPointerWheel(.{ .x = event.wheel.x, .y = event.wheel.y }),
-            else => {},
         }
     }
     return running;
+}
+
+fn audioDeviceChanged(event_type: c.SDL_EventType) bool {
+    return event_type == c.SDL_EVENT_AUDIO_DEVICE_REMOVED or event_type == c.SDL_EVENT_AUDIO_DEVICE_FORMAT_CHANGED;
 }
 
 fn framebufferSize(window: *c.SDL_Window) !up.Vec2 {
