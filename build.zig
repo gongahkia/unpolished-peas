@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
     addSdl3(sdl, bundled_sdl);

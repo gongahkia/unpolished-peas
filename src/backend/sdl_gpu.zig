@@ -1,9 +1,15 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas");
+const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
+
+const sprite_vert_spirv = sprite_shaders.vert_spirv;
+const sprite_frag_spirv = sprite_shaders.frag_spirv;
+const sprite_vert_msl = sprite_shaders.vert_msl;
+const sprite_frag_msl = sprite_shaders.frag_msl;
 
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
@@ -44,6 +50,45 @@ test "sprite residency detects a reloaded image buffer" {
     try std.testing.expect(resident.matches(&image));
     image.pixels = second[0..];
     try std.testing.expect(!resident.matches(&image));
+}
+
+test "GPU atlas quads preserve center origin, flip, rotation, tint, and filtering" {
+    var pixels = [_]up.Color{up.Color.white} ** 8;
+    var image_path = [_]u8{'x'};
+    var frame_name = [_]u8{'f'};
+    var frames = [_]up.AtlasFrame{.{
+        .name = frame_name[0..],
+        .x = 1,
+        .y = 0,
+        .w = 2,
+        .h = 1,
+        .source_w = 2,
+        .source_h = 1,
+        .offset_x = 0,
+        .offset_y = 0,
+    }};
+    const animations = [_]up.Animation{};
+    const atlas = up.Atlas{
+        .allocator = std.testing.allocator,
+        .image = .{ .allocator = std.testing.allocator, .width = 4, .height = 2, .pixels = pixels[0..] },
+        .image_path = image_path[0..],
+        .frames = frames[0..],
+        .animations = animations[0..],
+    };
+    var batch = up.SpriteBatch.init(std.testing.allocator);
+    defer batch.deinit();
+    try appendAtlasQuad(&batch, 100, 100, &atlas, .{ .index = 0 }, 50, 40, .{ .origin = .center, .scale = 2, .flip_x = true, .tint = up.Color.rgb(255, 128, 0), .rotation = 1.5707964, .sampling = .linear });
+    try std.testing.expectEqual(@as(usize, 1), batch.draws.items.len);
+    try std.testing.expectEqual(up.SpriteSampling.linear, batch.draws.items[0].sampling);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.02), batch.vertices.items[0].x, 0.0001);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.16), batch.vertices.items[0].y, 0.0001);
+    try std.testing.expectApproxEqAbs(@as(f32, 128.0 / 255.0), batch.vertices.items[0].g, 0.0001);
+    batch.clear();
+    for ([_]bool{ false, true }) |center| for ([_]bool{ false, true }) |flip_x| for ([_]bool{ false, true }) |flip_y| {
+        try appendAtlasQuad(&batch, 100, 100, &atlas, .{ .index = 0 }, 50, 40, .{ .origin = if (center) .center else .top_left, .scale = 2, .flip_x = flip_x, .flip_y = flip_y, .tint = up.Color.rgb(255, 128, 0), .rotation = if (flip_x or flip_y) 0.25 else 0, .sampling = if (center) .linear else .nearest });
+    };
+    try std.testing.expectEqual(@as(usize, 8), batch.draws.items.len);
+    try std.testing.expectEqual(@as(usize, 48), batch.vertices.items.len);
 }
 
 test "audio device removal and format changes request recovery" {
@@ -123,25 +168,12 @@ pub const Context = struct {
 
     pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
         const source_image = self.assets.latestImagePtr(handle) catch @panic("invalid image handle");
-        if (x < 0 or y < 0) {
-            self.canvas.drawImage(source_image.*, x, y);
-            return;
-        }
-        self.sprite_batch.append(.{ .image = source_image, .source = .{ .x = 0, .y = 0, .w = source_image.width, .h = source_image.height }, .x = x, .y = y }) catch self.canvas.drawImage(source_image.*, x, y);
+        appendImageQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_image, x, y) catch self.canvas.drawImage(source_image.*, x, y);
     }
 
     pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
         const source_atlas = self.assets.latestAtlasPtr(atlas_handle) catch @panic("invalid atlas handle");
-        const source = source_atlas.frame(frame);
-        if (source.x >= 0 and source.y >= 0 and source.w > 0 and source.h > 0 and !source.rotated and !(options.flip_x and options.flip_y) and options.origin == .top_left and options.rotation == 0 and options.sampling == .nearest and std.meta.eql(options.tint, up.Color.white)) {
-            const draw_x = x + source.offset_x;
-            const draw_y = y + source.offset_y;
-            if (draw_x >= 0 and draw_y >= 0) {
-                self.sprite_batch.append(.{ .image = &source_atlas.image, .source = .{ .x = @intCast(source.x), .y = @intCast(source.y), .w = @intCast(source.w), .h = @intCast(source.h) }, .x = draw_x, .y = draw_y, .scale = options.scale, .flip_x = options.flip_x, .flip_y = options.flip_y }) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
-                return;
-            }
-        }
-        self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
+        appendAtlasQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_atlas, frame, x, y, options) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
     }
 
     pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
@@ -212,6 +244,71 @@ pub const Context = struct {
     }
 };
 
+fn appendImageQuad(batch: *up.SpriteBatch, canvas_width: u32, canvas_height: u32, image: *const up.Image, x: i32, y: i32) !void {
+    const width: f32 = @floatFromInt(image.width);
+    const height: f32 = @floatFromInt(image.height);
+    const left: f32 = @floatFromInt(x);
+    const top: f32 = @floatFromInt(y);
+    const positions = .{
+        clipPoint(canvas_width, canvas_height, left, top),
+        clipPoint(canvas_width, canvas_height, left + width, top),
+        clipPoint(canvas_width, canvas_height, left + width, top + height),
+        clipPoint(canvas_width, canvas_height, left, top + height),
+    };
+    try batch.appendQuad(image, .{ .x = 0, .y = 0, .w = image.width, .h = image.height }, positions, .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 0, .y = 1 } }, up.Color.white, .nearest);
+}
+
+fn appendAtlasQuad(batch: *up.SpriteBatch, canvas_width: u32, canvas_height: u32, atlas: *const up.Atlas, handle: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) !void {
+    if (options.scale == 0) return error.InvalidSpriteTransform;
+    const frame = atlas.frame(handle);
+    if (frame.x < 0 or frame.y < 0 or frame.w <= 0 or frame.h <= 0 or frame.source_w <= 0 or frame.source_h <= 0) return error.InvalidSourceRect;
+    const scale: f32 = @floatFromInt(options.scale);
+    const source_width: f32 = @floatFromInt(frame.source_w);
+    const source_height: f32 = @floatFromInt(frame.source_h);
+    const trim_width: f32 = @floatFromInt(if (frame.rotated) frame.h else frame.w);
+    const trim_height: f32 = @floatFromInt(if (frame.rotated) frame.w else frame.h);
+    var anchor_x: f32 = @floatFromInt(x);
+    var anchor_y: f32 = @floatFromInt(y);
+    if (options.origin == .center) {
+        anchor_x -= source_width * scale / 2;
+        anchor_y -= source_height * scale / 2;
+    }
+    const center = up.SpriteBatchPoint{ .x = anchor_x + source_width * scale / 2, .y = anchor_y + source_height * scale / 2 };
+    const locals = [_]up.SpriteBatchPoint{ .{ .x = 0, .y = 0 }, .{ .x = trim_width, .y = 0 }, .{ .x = trim_width, .y = trim_height }, .{ .x = 0, .y = trim_height } };
+    var positions: [4]up.SpriteBatchPoint = undefined;
+    for (locals, 0..) |local, index| {
+        var logical_x = @as(f32, @floatFromInt(frame.offset_x)) + local.x;
+        var logical_y = @as(f32, @floatFromInt(frame.offset_y)) + local.y;
+        if (options.flip_x) logical_x = source_width - logical_x;
+        if (options.flip_y) logical_y = source_height - logical_y;
+        const point = rotatePoint(.{ .x = anchor_x + logical_x * scale, .y = anchor_y + logical_y * scale }, center, options.rotation);
+        positions[index] = clipPoint(canvas_width, canvas_height, point.x, point.y);
+    }
+    const image_width: f32 = @floatFromInt(atlas.image.width);
+    const image_height: f32 = @floatFromInt(atlas.image.height);
+    const uv_x0 = @as(f32, @floatFromInt(frame.x)) / image_width;
+    const uv_y0 = @as(f32, @floatFromInt(frame.y)) / image_height;
+    const uv_x1 = @as(f32, @floatFromInt(frame.x + frame.w)) / image_width;
+    const uv_y1 = @as(f32, @floatFromInt(frame.y + frame.h)) / image_height;
+    const uvs: [4]up.SpriteBatchUv = if (frame.rotated)
+        .{ .{ .x = uv_x0, .y = uv_y1 }, .{ .x = uv_x0, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y1 } }
+    else
+        .{ .{ .x = uv_x0, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y1 }, .{ .x = uv_x0, .y = uv_y1 } };
+    try batch.appendQuad(&atlas.image, .{ .x = @intCast(frame.x), .y = @intCast(frame.y), .w = @intCast(frame.w), .h = @intCast(frame.h) }, positions, uvs, options.tint, options.sampling);
+}
+
+fn clipPoint(canvas_width: u32, canvas_height: u32, x: f32, y: f32) up.SpriteBatchPoint {
+    return .{ .x = x * 2 / @as(f32, @floatFromInt(canvas_width)) - 1, .y = 1 - y * 2 / @as(f32, @floatFromInt(canvas_height)) };
+}
+
+fn rotatePoint(point: up.SpriteBatchPoint, center: up.SpriteBatchPoint, angle: f32) up.SpriteBatchPoint {
+    const sin = @sin(angle);
+    const cos = @cos(angle);
+    const x = point.x - center.x;
+    const y = point.y - center.y;
+    return .{ .x = center.x + x * cos - y * sin, .y = center.y + x * sin + y * cos };
+}
+
 pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, application: [:0]const u8) ![]u8 {
     const raw = c.SDL_GetPrefPath(organization.ptr, application.ptr) orelse return sdlFail("SDL_GetPrefPath");
     defer c.SDL_free(raw);
@@ -238,7 +335,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
     const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
 
-    const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV | c.SDL_GPU_SHADERFORMAT_DXIL;
+    const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV;
     const device = c.SDL_CreateGPUDevice(shader_formats, true, null) orelse return sdlFail("SDL_CreateGPUDevice");
     defer c.SDL_DestroyGPUDevice(device);
 
@@ -600,6 +697,12 @@ const Presenter = struct {
     resources: up.GpuResources,
     texture_handle: up.TextureHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
+    sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    nearest_sampler: ?*c.SDL_GPUSampler = null,
+    linear_sampler: ?*c.SDL_GPUSampler = null,
+    vertex_buffer: ?*c.SDL_GPUBuffer = null,
+    vertex_transfer: ?*c.SDL_GPUTransferBuffer = null,
+    vertex_capacity: u32 = 0,
     frame: u64 = 0,
 
     const SpriteTexture = struct {
@@ -631,7 +734,7 @@ const Presenter = struct {
         const texture = c.SDL_CreateGPUTexture(device, &.{
             .type = c.SDL_GPU_TEXTURETYPE_2D,
             .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER,
+            .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER | c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
             .width = width,
             .height = height,
             .layer_count_or_depth = 1,
@@ -650,10 +753,20 @@ const Presenter = struct {
 
         var resources = up.GpuResources.init(std.heap.page_allocator);
         const texture_handle = try resources.createTexture();
-        return .{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle };
+        var presenter = Presenter{ .texture = texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .texture_handle = texture_handle };
+        errdefer presenter.deinit(device);
+        presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
+        presenter.linear_sampler = try createSpriteSampler(device, .linear);
+        presenter.sprite_pipeline = try createSpritePipeline(device);
+        return presenter;
     }
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
+        if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.nearest_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
+        if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
+        if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
+        if (self.vertex_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         for (self.sprite_textures.items) |sprite| {
             c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
             c.SDL_ReleaseGPUTexture(device, sprite.texture);
@@ -674,7 +787,6 @@ const Presenter = struct {
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
-        try self.copyCanvas(device, canvas);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
         var acquired_swapchain = false;
@@ -683,6 +795,7 @@ const Presenter = struct {
         }
 
         const copy_pass = c.SDL_BeginGPUCopyPass(command) orelse return sdlFail("SDL_BeginGPUCopyPass");
+        try self.copyCanvas(device, canvas);
         c.SDL_UploadToGPUTexture(copy_pass, &.{
             .transfer_buffer = self.transfer,
             .offset = 0,
@@ -706,7 +819,10 @@ const Presenter = struct {
             }
             if (sprite.pending != null) try self.commitPendingSprite(device, copy_pass, sprite);
         }
+        if (sprites.vertices.items.len != 0) try self.uploadVertices(device, copy_pass, sprites.vertices.items);
         c.SDL_EndGPUCopyPass(copy_pass);
+
+        if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
 
         var swapchain: ?*c.SDL_GPUTexture = null;
         var swap_w: u32 = 0;
@@ -747,22 +863,6 @@ const Presenter = struct {
                 .padding2 = 0,
                 .padding3 = 0,
             });
-            for (sprites.sorted.items) |draw_index| {
-                const draw = sprites.draws.items[draw_index];
-                const sprite = self.findSprite(draw.image) orelse unreachable;
-                c.SDL_BlitGPUTexture(command, &.{
-                    .source = .{ .texture = sprite.texture, .mip_level = 0, .layer_or_depth_plane = 0, .x = draw.source.x, .y = draw.source.y, .w = draw.source.w, .h = draw.source.h },
-                    .destination = .{ .texture = target, .mip_level = 0, .layer_or_depth_plane = 0, .x = @intCast(draw.x), .y = @intCast(draw.y), .w = draw.source.w * draw.scale, .h = draw.source.h * draw.scale },
-                    .load_op = c.SDL_GPU_LOADOP_LOAD,
-                    .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-                    .flip_mode = if (draw.flip_x) c.SDL_FLIP_HORIZONTAL else if (draw.flip_y) c.SDL_FLIP_VERTICAL else c.SDL_FLIP_NONE,
-                    .filter = c.SDL_GPU_FILTER_NEAREST,
-                    .cycle = false,
-                    .padding1 = 0,
-                    .padding2 = 0,
-                    .padding3 = 0,
-                });
-            }
         }
 
         if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
@@ -784,6 +884,66 @@ const Presenter = struct {
             dst[i + 2] = p.b;
             dst[i + 3] = p.a;
             i += 4;
+        }
+    }
+
+    fn uploadVertices(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, vertices: []const up.SpriteBatchVertex) !void {
+        const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(vertices).len) orelse return error.SpriteBatchTooLarge;
+        try self.ensureVertexCapacity(device, byte_len);
+        const transfer = self.vertex_transfer orelse unreachable;
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, true) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
+        const dst: [*]u8 = @ptrCast(mapped);
+        @memcpy(dst[0..byte_len], std.mem.sliceAsBytes(vertices));
+        c.SDL_UploadToGPUBuffer(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0 }, &.{ .buffer = self.vertex_buffer orelse unreachable, .offset = 0, .size = byte_len }, true);
+    }
+
+    fn ensureVertexCapacity(self: *Presenter, device: *c.SDL_GPUDevice, needed: u32) !void {
+        if (needed <= self.vertex_capacity) return;
+        var capacity: u32 = 4096;
+        while (capacity < needed) capacity = std.math.mul(u32, capacity, 2) catch return error.SpriteBatchTooLarge;
+        const buffer = c.SDL_CreateGPUBuffer(device, &.{ .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUBuffer");
+        errdefer c.SDL_ReleaseGPUBuffer(device, buffer);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        if (self.vertex_buffer) |old| c.SDL_ReleaseGPUBuffer(device, old);
+        if (self.vertex_transfer) |old| c.SDL_ReleaseGPUTransferBuffer(device, old);
+        self.vertex_buffer = buffer;
+        self.vertex_transfer = transfer;
+        self.vertex_capacity = capacity;
+    }
+
+    fn renderSprites(self: *Presenter, command: *c.SDL_GPUCommandBuffer, sprites: *up.SpriteBatch) !void {
+        const pipeline = self.sprite_pipeline orelse return error.SpritePipelineUnavailable;
+        var color_target = c.SDL_GPUColorTargetInfo{
+            .texture = self.texture,
+            .mip_level = 0,
+            .layer_or_depth_plane = 0,
+            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
+            .load_op = c.SDL_GPU_LOADOP_LOAD,
+            .store_op = c.SDL_GPU_STOREOP_STORE,
+            .resolve_texture = null,
+            .resolve_mip_level = 0,
+            .resolve_layer = 0,
+            .cycle = false,
+            .cycle_resolve_texture = false,
+            .padding1 = 0,
+            .padding2 = 0,
+        };
+        const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        defer c.SDL_EndGPURenderPass(pass);
+        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        for (sprites.sorted.items) |draw_index| {
+            const draw = sprites.draws.items[draw_index];
+            const sprite = self.findSprite(draw.image) orelse return error.MissingSpriteTexture;
+            const sampler = switch (draw.sampling) {
+                .nearest => self.nearest_sampler orelse return error.SpritePipelineUnavailable,
+                .linear => self.linear_sampler orelse return error.SpritePipelineUnavailable,
+            };
+            const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = sprite.texture, .sampler = sampler };
+            c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
+            const binding = c.SDL_GPUBufferBinding{ .buffer = self.vertex_buffer orelse return error.SpritePipelineUnavailable, .offset = draw.vertex_start * @sizeOf(up.SpriteBatchVertex) };
+            c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+            c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
         }
     }
 
@@ -876,6 +1036,106 @@ const Presenter = struct {
         c.SDL_UploadToGPUTexture(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0, .pixels_per_row = image.width, .rows_per_layer = image.height }, &.{ .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = image.width, .h = image.height, .d = 1 }, false);
     }
 };
+
+fn createSpriteSampler(device: *c.SDL_GPUDevice, sampling: up.SpriteSampling) !*c.SDL_GPUSampler {
+    const filter: c.SDL_GPUFilter = switch (sampling) {
+        .nearest => c.SDL_GPU_FILTER_NEAREST,
+        .linear => c.SDL_GPU_FILTER_LINEAR,
+    };
+    return c.SDL_CreateGPUSampler(device, &.{
+        .min_filter = filter,
+        .mag_filter = filter,
+        .mipmap_mode = c.SDL_GPU_SAMPLERMIPMAPMODE_NEAREST,
+        .address_mode_u = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_v = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .address_mode_w = c.SDL_GPU_SAMPLERADDRESSMODE_CLAMP_TO_EDGE,
+        .mip_lod_bias = 0,
+        .max_anisotropy = 0,
+        .compare_op = c.SDL_GPU_COMPAREOP_NEVER,
+        .min_lod = 0,
+        .max_lod = 0,
+        .enable_anisotropy = false,
+        .enable_compare = false,
+        .padding1 = 0,
+        .padding2 = 0,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUSampler");
+}
+
+fn createSpritePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+    const vertex_shader = try createSpriteShader(device, .vertex);
+    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
+    const fragment_shader = try createSpriteShader(device, .fragment);
+    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const target = c.SDL_GPUColorTargetDescription{
+        .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = .{
+            .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .color_write_mask = 0xF,
+            .enable_blend = true,
+            .enable_color_write_mask = true,
+            .padding1 = 0,
+            .padding2 = 0,
+        },
+    };
+    const vertex_buffer = c.SDL_GPUVertexBufferDescription{ .slot = 0, .pitch = @sizeOf(up.SpriteBatchVertex), .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX, .instance_step_rate = 0 };
+    const vertex_attributes = [_]c.SDL_GPUVertexAttribute{
+        .{ .location = 0, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(up.SpriteBatchVertex, "x") },
+        .{ .location = 1, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(up.SpriteBatchVertex, "u") },
+        .{ .location = 2, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = @offsetOf(up.SpriteBatchVertex, "r") },
+    };
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{
+        .vertex_shader = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffer, .num_vertex_buffers = 1, .vertex_attributes = &vertex_attributes, .num_vertex_attributes = vertex_attributes.len },
+        .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+}
+
+const SpriteShaderStage = enum { vertex, fragment };
+
+fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
+    const formats = c.SDL_GetGPUShaderFormats(device);
+    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0)
+        switch (stage) {
+            .vertex => sprite_vert_msl,
+            .fragment => sprite_frag_msl,
+        }
+    else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0)
+        switch (stage) {
+            .vertex => sprite_vert_spirv,
+            .fragment => sprite_frag_spirv,
+        }
+    else
+        return error.UnsupportedGpuShaderFormat;
+    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    return c.SDL_CreateGPUShader(device, &.{
+        .code_size = source.len,
+        .code = source.ptr,
+        .entrypoint = entrypoint,
+        .format = format,
+        .stage = switch (stage) {
+            .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+            .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+        },
+        .num_samplers = if (stage == .fragment) 1 else 0,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 0,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUShader");
+}
 
 fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) bool {
     var running = true;

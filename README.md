@@ -125,7 +125,7 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 Game initialization, update, draw, and asset-reload errors are written to the terminal and log, then held in an in-window error state until Escape is pressed. Zig panics remain process failures and require the normal debugger/test workflow.
 
-SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames.
+SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames. Atlas draws preserve source regions, origin, scale, rotation, flips, tint, and nearest or linear sampling through the GPU path.
 
 ## Camera And Presentation
 

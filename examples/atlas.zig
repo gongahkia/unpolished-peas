@@ -37,7 +37,7 @@ const Game = struct {
             const y: i32 = @intCast((i / 8) * 8);
             ctx.sprite(self.atlas, self.tiles[tile], x, y, .{});
         }
-        ctx.sprite(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3 });
+        ctx.sprite(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
         ctx.text("ATLAS", 72, 8, up.Color.white);
     }
 };
