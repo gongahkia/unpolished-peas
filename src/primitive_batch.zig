@@ -1,4 +1,6 @@
 const std = @import("std");
+const ClipRect = @import("canvas.zig").ClipRect;
+const BlendMode = @import("canvas.zig").BlendMode;
 const Color = @import("color.zig").Color;
 const font = @import("font.zig");
 const text_layout = @import("text_layout.zig");
@@ -14,9 +16,17 @@ pub const Vertex = extern struct {
     a: f32,
 };
 
+pub const Draw = struct {
+    vertex_start: u32,
+    vertex_count: u32,
+    blend: BlendMode,
+    clip: ?ClipRect,
+};
+
 pub const PrimitiveBatch = struct {
     allocator: std.mem.Allocator,
     vertices: std.ArrayList(Vertex) = .empty,
+    draws: std.ArrayList(Draw) = .empty,
 
     pub fn init(allocator: std.mem.Allocator) PrimitiveBatch {
         return .{ .allocator = allocator };
@@ -24,11 +34,21 @@ pub const PrimitiveBatch = struct {
 
     pub fn deinit(self: *PrimitiveBatch) void {
         self.vertices.deinit(self.allocator);
+        self.draws.deinit(self.allocator);
         self.* = undefined;
     }
 
     pub fn clear(self: *PrimitiveBatch) void {
         self.vertices.clearRetainingCapacity();
+        self.draws.clearRetainingCapacity();
+    }
+
+    pub fn finishDraw(self: *PrimitiveBatch, vertex_start: u32, blend: BlendMode, clip: ?ClipRect) !void {
+        const start: usize = vertex_start;
+        if (start > self.vertices.items.len) return error.InvalidPrimitiveDraw;
+        const vertex_count = std.math.cast(u32, self.vertices.items.len - start) orelse return error.PrimitiveBatchTooLarge;
+        if (vertex_count == 0) return;
+        try self.draws.append(self.allocator, .{ .vertex_start = vertex_start, .vertex_count = vertex_count, .blend = blend, .clip = clip });
     }
 
     pub fn rect(self: *PrimitiveBatch, canvas_width: u32, canvas_height: u32, x: i32, y: i32, w: i32, h: i32, color: Color) !void {

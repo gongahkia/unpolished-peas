@@ -31,9 +31,23 @@ pub const Color = struct {
             .a = 255,
         };
     }
+
+    pub fn add(src: Color, dst: Color) Color {
+        const alpha = @as(u16, src.a);
+        return .{
+            .r = @intCast(@min(255, @as(u16, dst.r) + (@as(u16, src.r) * alpha) / 255)),
+            .g = @intCast(@min(255, @as(u16, dst.g) + (@as(u16, src.g) * alpha) / 255)),
+            .b = @intCast(@min(255, @as(u16, dst.b) + (@as(u16, src.b) * alpha) / 255)),
+            .a = 255,
+        };
+    }
 };
 
 test "alpha composite" {
     try std.testing.expectEqual(Color.rgb(255, 0, 0), Color.rgb(255, 0, 0).over(Color.black));
     try std.testing.expectEqual(Color.black, Color.transparent.over(Color.black));
+}
+
+test "additive composite" {
+    try std.testing.expectEqual(Color.rgb(128, 0, 128), Color.rgba(0, 0, 255, 128).add(Color.rgb(128, 0, 0)));
 }
