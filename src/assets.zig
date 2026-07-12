@@ -136,6 +136,8 @@ fn nextGeneration(generation: u32) u32 {
 pub const AssetStore = struct {
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
+    owned_dir: ?std.fs.Dir = null,
+    root_path: ?[]u8 = null,
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     atlases: std.ArrayListUnmanaged(AtlasAsset) = .{},
@@ -144,6 +146,33 @@ pub const AssetStore = struct {
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
         return .{ .allocator = allocator, .dir = dir };
+    }
+
+    pub fn initAbsolute(allocator: std.mem.Allocator, root_path: []const u8) !AssetStore {
+        if (!std.fs.path.isAbsolute(root_path)) return error.AssetRootMustBeAbsolute;
+        const owned_path = try allocator.dupe(u8, root_path);
+        errdefer allocator.free(owned_path);
+        const dir = try std.fs.openDirAbsolute(owned_path, .{});
+        return .{ .allocator = allocator, .dir = dir, .owned_dir = dir, .root_path = owned_path };
+    }
+
+    pub fn initExecutable(allocator: std.mem.Allocator) !AssetStore {
+        if (std.posix.getenv("UP_ASSET_ROOT")) |root_path| return initAbsolute(allocator, root_path);
+
+        const executable_path = try std.fs.selfExePathAlloc(allocator);
+        defer allocator.free(executable_path);
+        const executable_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidExecutablePath;
+
+        const beside_executable = try std.fs.path.join(allocator, &.{ executable_dir, "assets" });
+        defer allocator.free(beside_executable);
+        return initAbsolute(allocator, beside_executable) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => blk: {
+                const beside_prefix = try std.fs.path.join(allocator, &.{ executable_dir, "..", "assets" });
+                defer allocator.free(beside_prefix);
+                break :blk initAbsolute(allocator, beside_prefix);
+            },
+            else => return err,
+        };
     }
 
     pub fn deinit(self: *AssetStore) void {
@@ -156,7 +185,14 @@ pub const AssetStore = struct {
         self.atlases.deinit(self.allocator);
         self.tile_maps.deinit(self.allocator);
         self.events.deinit(self.allocator);
+        if (self.root_path) |path| self.allocator.free(path);
+        if (self.owned_dir) |*dir| dir.close();
         self.* = undefined;
+    }
+
+    pub fn assetPath(self: AssetStore, allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+        const root_path = self.root_path orelse return error.AssetRootUnavailable;
+        return std.fs.path.join(allocator, &.{ root_path, path });
     }
 
     pub fn loadText(self: *AssetStore, path: []const u8) !TextHandle {

@@ -17,6 +17,11 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    b.getInstallStep().dependOn(&b.addInstallDirectory(.{
+        .source_dir = b.path("examples/assets"),
+        .install_dir = .prefix,
+        .install_subdir = "assets",
+    }).step);
 
     const peas = b.addModule("unpolished-peas", .{
         .root_source_file = b.path("src/unpolished_peas.zig"),
@@ -136,6 +141,7 @@ fn addExample(
 
 fn addRunStep(b: *std.Build, name: []const u8, description: []const u8, exe: *std.Build.Step.Compile) void {
     const run = b.addRunArtifact(exe);
+    run.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("examples/assets"));
     if (b.args) |args| run.addArgs(args);
     const step = b.step(name, description);
     step.dependOn(&run.step);

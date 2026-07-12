@@ -9,7 +9,9 @@ const Game = struct {
     pub fn init(ctx: *sdl.Context) !Game {
         var map = try up.TileMap.init(ctx.allocator, .{ .x = 8, .y = 8 }, 16);
         errdefer map.deinit();
-        _ = try map.addTileSet("debug", .grid_image, "examples/assets/ball.png", .{ .x = 8, .y = 8 });
+        const ball_path = try ctx.assetPath("ball.png");
+        defer ctx.allocator.free(ball_path);
+        _ = try map.addTileSet("debug", .grid_image, ball_path, .{ .x = 8, .y = 8 });
         const terrain = try map.addLayer("terrain", .tiles, null);
         const detail = try map.addLayer("detail", .tiles, null);
         var y: i32 = -16;
@@ -20,7 +22,7 @@ const Game = struct {
                 if (@rem(x + y, 13) == 0) try map.setTile(detail, .{ .x = x, .y = y }, .{ .tileset = 0, .id = 7 });
             }
         }
-        return .{ .map = map, .image = try ctx.loadPng("examples/assets/ball.png") };
+        return .{ .map = map, .image = try ctx.loadPng("ball.png") };
     }
 
     pub fn deinit(self: *Game, _: *sdl.Context) void {
