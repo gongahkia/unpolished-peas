@@ -125,6 +125,10 @@ pub const Context = struct {
         return self.assets.loadPng(path);
     }
 
+    pub fn loadImage(self: *Context, path: []const u8) !up.ImageHandle {
+        return self.assets.loadImage(path);
+    }
+
     pub fn loadAtlas(self: *Context, path: []const u8) !up.AtlasHandle {
         return self.assets.loadAtlas(path);
     }
