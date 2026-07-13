@@ -106,8 +106,10 @@ zig build run-breakout-sdl
 zig build smoke-breakout-sdl
 zig build test-breakout
 zig build run-topdown-sdl
+zig build run-topdown-multiplayer
 zig build smoke-topdown-sdl
 zig build test-topdown
+zig build test-topdown-multiplayer
 zig build test-topdown-scene
 zig build run-platformer-sdl
 zig build smoke-platformer-sdl
@@ -131,8 +133,10 @@ zig build upmapc -- level.upmap level.upmapb
 `smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
 `test-breakout` runs fixed-step Breakout simulation tests.
 `run-topdown-sdl` opens the action-mapped Tiled top-down demo.
+`run-topdown-multiplayer` runs the seeded two-client authoritative top-down smoke.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
+`test-topdown-multiplayer` verifies two faulted clients converge on the authoritative state.
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
