@@ -30,6 +30,8 @@ fn createProject(allocator: std.mem.Allocator, template_root: []const u8, destin
     try source.copyFile("build.zig", output, "build.zig", .{});
     try source.copyFile("README.md", output, "README.md", .{});
     try source.copyFile(".gitignore", output, ".gitignore", .{});
+    try output.makePath("assets");
+    try source.copyFile("assets/.gitkeep", output, "assets/.gitkeep", .{});
     try source.copyFile("src/main.zig", output, "src/main.zig", .{});
 
     const manifest = try std.fmt.allocPrint(allocator,
