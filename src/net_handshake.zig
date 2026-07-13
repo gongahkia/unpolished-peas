@@ -8,7 +8,7 @@ pub const server_reject_bytes: usize = 4;
 
 const Kind = enum(u8) { client_hello = 1, server_accept = 2, server_reject = 3 };
 
-pub const Rejection = enum(u8) { incompatible_version = 1, malformed_handshake = 2 };
+pub const Rejection = enum(u8) { incompatible_version = 1, malformed_handshake = 2, capacity_reached = 3 };
 pub const ClientHello = struct { protocol_version: u16, nonce: u64 };
 pub const ServerAccept = struct { protocol_version: u16, nonce: u64, session_token: u64 };
 pub const ServerReply = union(enum) {
@@ -154,18 +154,23 @@ pub const Client = struct {
                 return switch (reject.reason) {
                     .incompatible_version => error.IncompatibleVersion,
                     .malformed_handshake => error.MalformedHandshake,
+                    .capacity_reached => error.CapacityReached,
                 };
             },
         }
     }
 };
 
-pub const ServerConfig = struct { protocol_version: u16 = protocol_version };
+pub const ServerConfig = struct {
+    protocol_version: u16 = protocol_version,
+    max_sessions: usize = std.math.maxInt(usize),
+};
 
 pub const Server = struct {
     allocator: std.mem.Allocator,
     config: ServerConfig,
     sessions: std.ArrayListUnmanaged(ServerSession) = .{},
+    accepted: std.ArrayListUnmanaged(Session) = .{},
 
     const ServerSession = struct { peer: transport.Peer, nonce: u64, session_token: u64 };
 
@@ -175,7 +180,28 @@ pub const Server = struct {
 
     pub fn deinit(self: *Server) void {
         self.sessions.deinit(self.allocator);
+        self.accepted.deinit(self.allocator);
         self.* = undefined;
+    }
+
+    pub fn takeAccepted(self: *Server) ?Session {
+        if (self.accepted.items.len == 0) return null;
+        return self.accepted.orderedRemove(0);
+    }
+
+    pub fn removePeer(self: *Server, peer: transport.Peer) void {
+        var index: usize = 0;
+        while (index < self.sessions.items.len) {
+            if (self.sessions.items[index].peer.id != peer.id) {
+                index += 1;
+                continue;
+            }
+            _ = self.sessions.orderedRemove(index);
+        }
+    }
+
+    pub fn handleHello(self: *Server, peer: transport.Peer, bytes: []const u8) !ServerReply {
+        return self.replyFor(peer, bytes);
     }
 
     pub fn poll(self: *Server, net: transport.Transport) !void {
@@ -191,9 +217,19 @@ pub const Server = struct {
     fn replyFor(self: *Server, peer: transport.Peer, bytes: []const u8) !ServerReply {
         const hello = decodeClientHello(bytes) catch return .{ .reject = .{ .protocol_version = self.config.protocol_version, .reason = .malformed_handshake } };
         if (hello.protocol_version != self.config.protocol_version) return .{ .reject = .{ .protocol_version = self.config.protocol_version, .reason = .incompatible_version } };
-        for (self.sessions.items) |session| if (session.peer.id == peer.id and session.nonce == hello.nonce) return .{ .accept = .{ .protocol_version = self.config.protocol_version, .nonce = hello.nonce, .session_token = session.session_token } };
+        var existing_index: usize = 0;
+        while (existing_index < self.sessions.items.len) : (existing_index += 1) {
+            const session = self.sessions.items[existing_index];
+            if (session.peer.id != peer.id) continue;
+            if (session.nonce == hello.nonce) return .{ .accept = .{ .protocol_version = self.config.protocol_version, .nonce = hello.nonce, .session_token = session.session_token } };
+            _ = self.sessions.orderedRemove(existing_index);
+            break;
+        }
+        if (self.sessions.items.len >= self.config.max_sessions) return .{ .reject = .{ .protocol_version = self.config.protocol_version, .reason = .capacity_reached } };
         const session_token = try self.newToken();
         try self.sessions.append(self.allocator, .{ .peer = peer, .nonce = hello.nonce, .session_token = session_token });
+        errdefer _ = self.sessions.pop();
+        try self.accepted.append(self.allocator, .{ .peer = peer, .protocol_version = self.config.protocol_version, .session_token = session_token });
         return .{ .accept = .{ .protocol_version = self.config.protocol_version, .nonce = hello.nonce, .session_token = session_token } };
     }
 

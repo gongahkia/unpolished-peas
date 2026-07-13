@@ -4,7 +4,7 @@ pub const version: u8 = 1;
 pub const max_payload_bytes: usize = 1024;
 pub const header_bytes: usize = 8;
 
-pub const Kind = enum(u8) { hello = 1, input = 2, snapshot = 3, ping = 4 };
+pub const Kind = enum(u8) { hello = 1, input = 2, snapshot = 3, ping = 4, disconnect = 5 };
 pub const Message = struct { kind: Kind, sequence: u32, payload: []const u8 };
 pub const OwnedMessage = struct {
     kind: Kind,
