@@ -32,7 +32,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+      - run: sudo apt-get update && sudo apt-get install --yes libvulkan1 mesa-vulkan-drivers
       - run: script/test_linux_package.sh dist/linux
       - uses: actions/upload-artifact@v4
         with:
