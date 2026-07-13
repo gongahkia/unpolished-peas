@@ -270,6 +270,14 @@ pub const Config = struct {
     max_frames: ?u32 = null,
 };
 
+pub const Event = union(enum) {
+    close_requested,
+    resized: struct { framebuffer_size: up.Vec2 },
+    gamepad_connected: i32,
+    gamepad_disconnected: i32,
+    audio_device_changed,
+};
+
 pub const Context = struct {
     allocator: std.mem.Allocator,
     canvas: *up.Canvas,
@@ -634,6 +642,7 @@ pub fn play(config: Config, comptime Game: type) !void {
 }
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
+    comptime validateGame(Game);
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
@@ -704,7 +713,12 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         commands.commands.clearRetainingCapacity();
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
-        running = pollInput(&input, window, &presentation, &audio_device_changed);
+        running = pollInput(Game, if (game) |*value| value else null, &ctx, &input, window, &presentation, &audio_device_changed) catch |err| blk: {
+            dev.failure("event", err);
+            failure = .{ .phase = "event", .err = err };
+            break :blk false;
+        };
+        if (failure != null) continue;
         if (audio_device_changed) {
             if (audio_output) |*output| output.deinit(allocator);
             audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
@@ -779,6 +793,13 @@ fn initGame(comptime Game: type, ctx: *Context) !Game {
     return .{};
 }
 
+fn validateGame(comptime Game: type) void {
+    switch (@typeInfo(Game)) {
+        .@"struct" => {},
+        else => @compileError("Game must be a struct with optional init, event, update, draw, and deinit callbacks"),
+    }
+}
+
 fn deinitGame(comptime Game: type, game: *Game, ctx: *Context) void {
     if (@hasDecl(Game, "deinit")) {
         game.deinit(ctx);
@@ -794,6 +815,12 @@ fn callUpdate(comptime Game: type, game: *Game, ctx: *Context) !void {
 fn callDraw(comptime Game: type, game: *Game, ctx: *Context) !void {
     if (@hasDecl(Game, "draw")) {
         try maybeError(game.draw(ctx));
+    }
+}
+
+fn callEvent(comptime Game: type, game: *Game, ctx: *Context, event: Event) !void {
+    if (@hasDecl(Game, "event")) {
+        try maybeError(game.event(ctx, event));
     }
 }
 
@@ -817,12 +844,29 @@ test "lifecycle accepts optional callbacks" {
         pub fn draw(_: *@This(), _: *Context) void {}
     };
     const Full = struct {
+        calls: [4]u8 = undefined,
+        call_count: usize = 0,
+
         pub fn init(_: *Context) @This() {
-            return .{};
+            var game: @This() = .{};
+            game.note('i');
+            return game;
         }
-        pub fn deinit(_: *@This(), _: *Context) void {}
-        pub fn update(_: *@This(), _: *Context) !void {}
-        pub fn draw(_: *@This(), _: *Context) !void {}
+        pub fn deinit(self: *@This(), _: *Context) void {
+            self.note('x');
+        }
+        pub fn update(self: *@This(), _: *Context) !void {
+            self.note('u');
+        }
+        pub fn draw(self: *@This(), _: *Context) !void {
+            self.note('d');
+        }
+        pub fn event(_: *@This(), _: *Context, _: Event) !void {}
+
+        fn note(self: *@This(), call: u8) void {
+            self.calls[self.call_count] = call;
+            self.call_count += 1;
+        }
     };
 
     var ctx: Context = undefined;
@@ -833,7 +877,9 @@ test "lifecycle accepts optional callbacks" {
     var full = try initGame(Full, &ctx);
     try callUpdate(Full, &full, &ctx);
     try callDraw(Full, &full, &ctx);
+    try callEvent(Full, &full, &ctx, .close_requested);
     deinitGame(Full, &full, &ctx);
+    try std.testing.expectEqualSlices(u8, "iudx", full.calls[0..full.call_count]);
 }
 
 fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
@@ -1807,12 +1853,15 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) bool {
+fn pollInput(comptime Game: type, game: ?*Game, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
         switch (event.type) {
-            c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => running = false,
+            c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                try emitEvent(Game, game, ctx, .close_requested);
+                running = false;
+            },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                 if (event.key.repeat) continue;
                 const is_down = event.type == c.SDL_EVENT_KEY_DOWN;
@@ -1821,9 +1870,15 @@ fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presenta
                     if (key == .cancel and is_down) running = false;
                 }
             },
-            c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => refreshPresentation(window, presentation),
+            c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => {
+                refreshPresentation(window, presentation);
+                try emitEvent(Game, game, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } });
+            },
             else => {
-                if (audioDeviceChanged(event.type)) audio_device_changed.* = true;
+                if (audioDeviceChanged(event.type)) {
+                    audio_device_changed.* = true;
+                    try emitEvent(Game, game, ctx, .audio_device_changed);
+                }
             },
             c.SDL_EVENT_MOUSE_MOTION => setPointerPosition(input, window, presentation, .{ .x = event.motion.x, .y = event.motion.y }),
             c.SDL_EVENT_MOUSE_BUTTON_DOWN, c.SDL_EVENT_MOUSE_BUTTON_UP => {
@@ -1831,13 +1886,25 @@ fn pollInput(input: *up.Input, window: *c.SDL_Window, presentation: *up.Presenta
                 if (mapPointerButton(event.button.button)) |button| input.setPointerButton(button, event.type == c.SDL_EVENT_MOUSE_BUTTON_DOWN);
             },
             c.SDL_EVENT_MOUSE_WHEEL => input.addPointerWheel(.{ .x = event.wheel.x, .y = event.wheel.y }),
-            c.SDL_EVENT_GAMEPAD_ADDED => _ = input.addGamepad(@intCast(event.gdevice.which)),
-            c.SDL_EVENT_GAMEPAD_REMOVED => _ = input.removeGamepad(@intCast(event.gdevice.which)),
+            c.SDL_EVENT_GAMEPAD_ADDED => {
+                const id: i32 = @intCast(event.gdevice.which);
+                _ = input.addGamepad(id);
+                try emitEvent(Game, game, ctx, .{ .gamepad_connected = id });
+            },
+            c.SDL_EVENT_GAMEPAD_REMOVED => {
+                const id: i32 = @intCast(event.gdevice.which);
+                _ = input.removeGamepad(id);
+                try emitEvent(Game, game, ctx, .{ .gamepad_disconnected = id });
+            },
             c.SDL_EVENT_GAMEPAD_BUTTON_DOWN, c.SDL_EVENT_GAMEPAD_BUTTON_UP => if (mapGamepadButton(event.gbutton.button)) |button| input.setGamepadButton(@intCast(event.gbutton.which), button, event.type == c.SDL_EVENT_GAMEPAD_BUTTON_DOWN),
             c.SDL_EVENT_GAMEPAD_AXIS_MOTION => if (mapGamepadAxis(event.gaxis.axis)) |axis| input.setGamepadAxis(@intCast(event.gaxis.which), axis, normalizeGamepadAxis(axis, event.gaxis.value), 0.15),
         }
     }
     return running;
+}
+
+fn emitEvent(comptime Game: type, game: ?*Game, ctx: *Context, event: Event) !void {
+    if (game) |value| try callEvent(Game, value, ctx, event);
 }
 
 fn audioDeviceChanged(event_type: c.SDL_EventType) bool {
