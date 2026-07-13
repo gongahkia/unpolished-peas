@@ -8,16 +8,15 @@ pub fn main() !void {
     var args = try std.process.argsWithAllocator(allocator);
     defer args.deinit();
     _ = args.next();
-    const engine_root = args.next() orelse return usage();
     const template_root = args.next() orelse return usage();
     const destination = args.next() orelse return usage();
     if (args.next() != null) return usage();
 
-    try createProject(allocator, engine_root, template_root, destination);
+    try createProject(allocator, template_root, destination);
     std.debug.print("created unpolished-peas project: {s}\n", .{destination});
 }
 
-fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template_root: []const u8, destination: []const u8) !void {
+fn createProject(allocator: std.mem.Allocator, template_root: []const u8, destination: []const u8) !void {
     if (std.fs.cwd().access(destination, .{})) |_| return error.DestinationExists else |err| switch (err) {
         error.FileNotFound => {},
         else => return err,
@@ -27,10 +26,6 @@ fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template
     defer source.close();
     var output = try std.fs.cwd().makeOpenPath(destination, .{});
     defer output.close();
-    const output_path = try output.realpathAlloc(allocator, ".");
-    defer allocator.free(output_path);
-    const engine_path = try std.fs.path.relative(allocator, output_path, engine_root);
-    defer allocator.free(engine_path);
     try output.makePath("src");
     try source.copyFile("build.zig", output, "build.zig", .{});
     try source.copyFile("README.md", output, "README.md", .{});
@@ -44,7 +39,10 @@ fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template
         \\    .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
         \\    .minimum_zig_version = "0.15.2",
         \\    .dependencies = .{{
-        \\        .unpolished_peas = .{{ .path = "{s}" }},
+        \\        .unpolished_peas = .{{
+        \\            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.1.tar.gz",
+        \\            .hash = "unpolished_peas-0.0.1-NgUp2X3jGgB99VRJINAEX-4w_tvcz8QSH4cSMte4-7Iq",
+        \\        }},
         \\    }},
         \\    .paths = .{{
         \\        "build.zig",
@@ -54,7 +52,7 @@ fn createProject(allocator: std.mem.Allocator, engine_root: []const u8, template
         \\    }},
         \\}}
         \\ 
-    , .{engine_path});
+    , .{});
     defer allocator.free(manifest);
     try output.writeFile(.{ .sub_path = "build.zig.zon", .data = manifest });
 }

@@ -71,7 +71,7 @@ cd ../my-game
 zig build run
 ```
 
-The generated bouncing-square game includes its own build files and points to the engine checkout that created it. The GitHub remote currently has no commit that Zig can fingerprint, so the generator cannot yet write a pinned Git dependency. Replace this local path dependency after the first published unpolished-peas release.
+The generated bouncing-square game includes its own build files and a pinned `unpolished-peas` v0.0.1 release archive dependency.
 
 ## Positioning
 
@@ -223,7 +223,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 
 ## Next Build Targets
 
-1. Publish a tagged package release and update `zig build new` to generate a pinned Git dependency.
+1. Publish future tagged package releases and update the starter dependency URL and hash.
 2. Complete external tile-source blitting and compressed/external Tiled fixture coverage for the tile-map compatibility layer.
 3. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
 4. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
