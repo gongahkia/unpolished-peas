@@ -8,4 +8,4 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 cd "$repo"
 zig build install
 cd "$tmp"
-"$repo/zig-out/bin/unpolished-peas-test-scenes"
+"$repo/zig-out/bin/unpolished-peas-test-packaged-assets"
