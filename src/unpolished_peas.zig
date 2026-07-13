@@ -66,6 +66,7 @@ pub const NetPeer = @import("net_transport.zig").Peer;
 pub const NetReceived = @import("net_transport.zig").Received;
 pub const NetTransport = @import("net_transport.zig").Transport;
 pub const LoopbackTransport = @import("net_transport.zig").Loopback;
+pub const netFrame = @import("net_frame.zig");
 pub const MusicOptions = @import("audio.zig").MusicOptions;
 pub const PlaybackHandle = @import("audio.zig").PlaybackHandle;
 pub const Pointer = @import("input.zig").Pointer;
@@ -139,6 +140,7 @@ test {
     _ = @import("math.zig");
     _ = @import("net_codec.zig");
     _ = @import("net_transport.zig");
+    _ = @import("net_frame.zig");
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
