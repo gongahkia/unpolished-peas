@@ -105,6 +105,10 @@ zig build run-breakout
 zig build run-breakout-sdl
 zig build smoke-breakout-sdl
 zig build test-breakout
+zig build run-topdown-sdl
+zig build smoke-topdown-sdl
+zig build test-topdown
+zig build test-topdown-scene
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -123,6 +127,9 @@ zig build upmapc -- level.upmap level.upmapb
 `run-breakout-sdl` opens Breakout with keyboard paddle input and collision audio.
 `smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
 `test-breakout` runs fixed-step Breakout simulation tests.
+`run-topdown-sdl` opens the action-mapped Tiled top-down demo.
+`smoke-topdown-sdl` runs two SDL frames with dummy audio.
+`test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
