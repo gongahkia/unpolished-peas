@@ -32,9 +32,9 @@ jobs:
       - run: zig build test-scenes
       - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'
-        run: script/test_linux_package.sh
-      - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/test_linux_package.sh
       - run: script/compile_shaders.sh
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
