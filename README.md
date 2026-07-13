@@ -115,6 +115,7 @@ zig build run-platformer-sdl
 zig build smoke-platformer-sdl
 zig build test-platformer
 zig build test-replays
+zig build test-fuzz
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -141,6 +142,7 @@ zig build upmapc -- level.upmap level.upmapb
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
+`test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
