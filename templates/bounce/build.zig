@@ -4,6 +4,11 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const peas = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize });
+    const install_assets = b.addInstallDirectory(.{
+        .source_dir = b.path("assets"),
+        .install_dir = .prefix,
+        .install_subdir = "assets",
+    });
 
     const exe = b.addExecutable(.{
         .name = "bouncing-square",
@@ -18,8 +23,10 @@ pub fn build(b: *std.Build) void {
         }),
     });
     b.installArtifact(exe);
+    b.getInstallStep().dependOn(&install_assets.step);
 
     const run = b.addRunArtifact(exe);
+    run.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("assets"));
     if (b.args) |args| run.addArgs(args);
     const run_step = b.step("run", "Run the bouncing-square game");
     run_step.dependOn(&run.step);
