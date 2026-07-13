@@ -182,6 +182,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
 - `TileCollider`, `CharacterController`
+- `netCodec` (`v1`, little-endian, 1024-byte bounded messages)
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
