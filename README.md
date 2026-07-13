@@ -71,7 +71,7 @@ cd ../my-game
 zig build run
 ```
 
-The generated bouncing-square game includes its own build files and a pinned `unpolished-peas` v0.0.1 release archive dependency.
+The generated bouncing-square game includes its own build files and a pinned `unpolished-peas` v0.0.3 release archive dependency.
 
 ## Positioning
 

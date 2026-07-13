@@ -40,8 +40,8 @@ fn createProject(allocator: std.mem.Allocator, template_root: []const u8, destin
         \\    .minimum_zig_version = "0.15.2",
         \\    .dependencies = .{{
         \\        .unpolished_peas = .{{
-        \\            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.1.tar.gz",
-        \\            .hash = "unpolished_peas-0.0.1-NgUp2X3jGgB99VRJINAEX-4w_tvcz8QSH4cSMte4-7Iq",
+        \\            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.3.tar.gz",
+        \\            .hash = "unpolished_peas-0.0.3-NgUp2fkUGwBwIM0m4MCAABnpI0Cf3baA7TFc_SJ71n1S",
         \\        }},
         \\    }},
         \\    .paths = .{{

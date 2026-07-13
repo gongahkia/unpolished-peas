@@ -20,4 +20,4 @@ Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screen
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
-This project pins the `unpolished-peas` v0.0.1 release archive. Update the dependency URL and hash together when upgrading the engine.
+This project pins the `unpolished-peas` v0.0.3 release archive. Update the dependency URL and hash together when upgrading the engine.
