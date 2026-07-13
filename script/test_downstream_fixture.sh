@@ -6,9 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 
 project="$tmp/project"
-mkdir -p "$project/src"
-cp "$ROOT_DIR/fixtures/downstream/build.zig" "$project/"
-cp "$ROOT_DIR/fixtures/downstream/build.zig.zon" "$project/"
-cp "$ROOT_DIR/fixtures/downstream/src/main.zig" "$project/src/"
+cd "$ROOT_DIR"
+ZIG_GLOBAL_CACHE_DIR="$tmp/generator-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/generator-local-cache" zig build new -- "$project"
 cd "$project"
-ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" zig build run
+ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build
