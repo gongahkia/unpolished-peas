@@ -9,7 +9,7 @@ trap 'rm -rf "$stage"' EXIT HUP INT TERM
 rm -rf "$out"
 package="$out/unpolished-peas-bounce-linux-x86_64"
 mkdir -p "$package"
-zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe -p "$stage" install
+zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe -p "$stage" package-bounce-sdl
 cp "$stage/bin/unpolished-peas-bounce-sdl" "$package/unpolished-peas-bounce"
 cp -R "$stage/assets" "$package/assets"
 epoch=$(git -C "$repo" log -1 --format=%ct)

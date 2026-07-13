@@ -19,11 +19,12 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    b.getInstallStep().dependOn(&b.addInstallDirectory(.{
+    const install_assets = b.addInstallDirectory(.{
         .source_dir = b.path("examples/assets"),
         .install_dir = .prefix,
         .install_subdir = "assets",
-    }).step);
+    });
+    b.getInstallStep().dependOn(&install_assets.step);
 
     const peas = b.addModule("unpolished-peas", .{
         .root_source_file = b.path("src/unpolished_peas.zig"),
@@ -60,6 +61,9 @@ pub fn build(b: *std.Build) void {
 
     const demo = addExample(b, "unpolished-peas-bounce", "examples/bounce.zig", target, optimize, peas, null);
     const sdl_demo = addExample(b, "unpolished-peas-bounce-sdl", "examples/bounce_sdl.zig", target, optimize, peas, sdl);
+    const package_bounce_sdl = b.step("package-bounce-sdl", "Install the bounce SDL sample and assets");
+    package_bounce_sdl.dependOn(&b.addInstallArtifact(sdl_demo, .{}).step);
+    package_bounce_sdl.dependOn(&install_assets.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
