@@ -1,15 +1,22 @@
 #!/bin/sh
 set -eu
 
-repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 out=${1:-"$repo/dist/linux"}
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
 
 rm -rf "$out"
-mkdir -p "$out/unpolished-peas-bounce-linux-x86_64"
-zig build -Dtarget=x86_64-linux -Doptimize=ReleaseSafe -p "$stage" install
-cp "$stage/bin/unpolished-peas-bounce-sdl" "$out/unpolished-peas-bounce-linux-x86_64/unpolished-peas-bounce"
-cp -R "$stage/assets" "$out/unpolished-peas-bounce-linux-x86_64/assets"
-tar -C "$out" -czf "$out/unpolished-peas-bounce-linux-x86_64.tar.gz" unpolished-peas-bounce-linux-x86_64
-sha256sum "$out/unpolished-peas-bounce-linux-x86_64.tar.gz" > "$out/SHA256SUMS"
+package="$out/unpolished-peas-bounce-linux-x86_64"
+mkdir -p "$package"
+zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe -p "$stage" install
+cp "$stage/bin/unpolished-peas-bounce-sdl" "$package/unpolished-peas-bounce"
+cp -R "$stage/assets" "$package/assets"
+mtime=$(git -C "$repo" log -1 --format=%cd --date=format:%Y%m%d%H%M.%S)
+find "$package" -exec touch -t "$mtime" {} +
+(
+    cd "$out"
+    tar --format ustar -cf unpolished-peas-bounce-linux-x86_64.tar unpolished-peas-bounce-linux-x86_64
+    gzip -n unpolished-peas-bounce-linux-x86_64.tar
+    sha256sum unpolished-peas-bounce-linux-x86_64.tar.gz > SHA256SUMS
+)
