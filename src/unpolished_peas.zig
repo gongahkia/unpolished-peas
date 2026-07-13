@@ -37,6 +37,12 @@ pub const Polygon = @import("collision.zig").Polygon;
 pub const CollisionContact = @import("collision.zig").Contact;
 pub const CollisionRayHit = @import("collision.zig").RayHit;
 pub const collision = @import("collision.zig");
+pub const CharacterConfig = @import("tile_collision.zig").CharacterConfig;
+pub const CharacterController = @import("tile_collision.zig").CharacterController;
+pub const CharacterState = @import("tile_collision.zig").CharacterState;
+pub const TileCollider = @import("tile_collision.zig").TileCollider;
+pub const TileCollisionHit = @import("tile_collision.zig").Hit;
+pub const TileCollisionShape = @import("tile_collision.zig").Shape;
 pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
 pub const EcsEntity = @import("ecs.zig").Entity;
 pub const EcsWorld = @import("ecs.zig").World;
@@ -129,5 +135,6 @@ test {
     _ = @import("shader.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");
+    _ = @import("tile_collision.zig");
     _ = @import("text_layout.zig");
 }

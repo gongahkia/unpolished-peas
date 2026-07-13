@@ -135,6 +135,8 @@ GPU command primitives use one logical-pixel strokes, 32-segment circles, and so
 
 Tiled object layers retain rectangle, ellipse, point, polygon, and polyline collision shapes plus typed string, integer, float, and boolean properties. Tile rendering applies inherited visibility, offsets, parallax, opacity, and flip flags.
 
+`TileCollider.addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
+
 `Context.setPixelEffect("invert", .{ .amount = 0...1 })` enables the strict built-in pixel effect. Invalid effect text or parameters return recoverable errors; `Canvas.applyPixelEffect` is the headless fallback.
 
 ## Camera And Presentation
@@ -159,6 +161,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
+- `TileCollider`, `CharacterController`
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
@@ -180,9 +183,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 
 1. Publish a tagged package release and update `zig build new` to generate a pinned Git dependency.
 2. Complete external tile-source blitting and compressed/external Tiled fixture coverage for the tile-map compatibility layer.
-3. Add explicit 2D collision queries and resolution for rectangles, circles, and tile maps; ship a character-controller example.
-4. Add an optional Box2D-backed physics module with explicit world stepping, body/fixture lifetime, and deterministic headless tests; do not hand-roll a general rigid-body solver.
-5. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
-6. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
-7. Add a shader API with one strict pixel-effect example and headless fallback coverage.
-8. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
+3. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
+4. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
+5. Add a shader API with one strict pixel-effect example and headless fallback coverage.
+6. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
