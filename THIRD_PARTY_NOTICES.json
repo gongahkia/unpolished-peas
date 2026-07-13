@@ -14,6 +14,13 @@
     "usage": "vendored Ogg Vorbis decoder"
   },
   {
+    "name": "stb_truetype",
+    "version": "1.26",
+    "source": "https://github.com/nothings/stb/blob/master/stb_truetype.h",
+    "license": "MIT OR Unlicense",
+    "usage": "vendored TrueType and OpenType rasterizer"
+  },
+  {
     "name": "SDL3",
     "version": "3.2.24",
     "source": "https://github.com/castholm/SDL/tree/1d4b8dcc03bd216712b55318b4ad2402b5511490",
