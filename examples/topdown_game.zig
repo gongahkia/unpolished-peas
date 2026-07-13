@@ -47,3 +47,30 @@ test "top-down action map drives deterministic bounded movement" {
     input.set(.action, true);
     try std.testing.expect(a.step(input, 1.0 / 60.0).fired);
 }
+
+test "stored top-down replay has a stable state hash" {
+    var replay = try up.parseInputReplay(std.testing.allocator, @embedFile("replays/topdown.upr"));
+    defer replay.deinit(std.testing.allocator);
+    var game = Game{};
+    for (replay.frames) |frame| {
+        var input = up.Input{};
+        input.set(.left, (frame.buttons & 1) != 0);
+        input.set(.right, (frame.buttons & 2) != 0);
+        input.set(.up, (frame.buttons & 4) != 0);
+        input.set(.down, (frame.buttons & 8) != 0);
+        input.set(.action, (frame.buttons & 16) != 0);
+        _ = game.step(input, 1.0 / @as(f32, @floatFromInt(replay.fixed_hz)));
+    }
+    const hash = replayHash(game);
+    try std.testing.expectEqual(@as(u64, 0x85ac12ab1a612ca8), hash);
+}
+
+fn replayHash(game: Game) u64 {
+    var hash = std.hash.Fnv1a_64.init();
+    hash.update(std.mem.asBytes(&game.player.x));
+    hash.update(std.mem.asBytes(&game.player.y));
+    hash.update(std.mem.asBytes(&game.aim.x));
+    hash.update(std.mem.asBytes(&game.aim.y));
+    hash.update(std.mem.asBytes(&game.shots));
+    return hash.final();
+}

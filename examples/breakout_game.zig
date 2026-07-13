@@ -103,3 +103,28 @@ test "breakout resolves bricks and fixed-step state deterministically" {
     }
     try std.testing.expectEqualDeep(a, b);
 }
+
+test "stored Breakout replay has a stable state hash" {
+    var replay = try up.parseInputReplay(std.testing.allocator, @embedFile("replays/breakout.upr"));
+    defer replay.deinit(std.testing.allocator);
+    var game = Game{};
+    for (replay.frames) |frame| {
+        const axis: f32 = if ((frame.buttons & 1) != 0) -1 else if ((frame.buttons & 2) != 0) 1 else 0;
+        _ = game.step(1.0 / @as(f32, @floatFromInt(replay.fixed_hz)), axis);
+    }
+    const hash = replayHash(game);
+    try std.testing.expectEqual(@as(u64, 0x2d407efdf7179fce), hash);
+}
+
+fn replayHash(game: Game) u64 {
+    var hash = std.hash.Fnv1a_64.init();
+    hash.update(std.mem.asBytes(&game.paddle.x));
+    hash.update(std.mem.asBytes(&game.ball.x));
+    hash.update(std.mem.asBytes(&game.ball.y));
+    hash.update(std.mem.asBytes(&game.velocity.x));
+    hash.update(std.mem.asBytes(&game.velocity.y));
+    hash.update(std.mem.asBytes(&game.score));
+    hash.update(&.{game.lives});
+    for (game.bricks) |brick| hash.update(&.{@intFromBool(brick)});
+    return hash.final();
+}
