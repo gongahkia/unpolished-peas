@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 
-repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 out=${1:-"$repo/dist/macos"}
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
@@ -22,4 +22,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <plist version="1.0"><dict><key>CFBundleExecutable</key><string>unpolished-peas-bounce</string><key>CFBundleIdentifier</key><string>dev.unpolishedpeas.bounce</string><key>CFBundleName</key><string>unpolished-peas Bounce</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>
 PLIST
 ditto -c -k --sequesterRsrc --keepParent "$app" "$out/unpolished-peas-bounce-macos-universal.zip"
-shasum -a 256 "$out/unpolished-peas-bounce-macos-universal.zip" > "$out/SHA256SUMS"
+(
+    cd "$out"
+    shasum -a 256 unpolished-peas-bounce-macos-universal.zip > SHA256SUMS
+)

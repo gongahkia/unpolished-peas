@@ -13,6 +13,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const framework_path = if (target.result.os.tag == .macos) if (b.sysroot) |sysroot| b.pathJoin(&.{ sysroot, "System", "Library", "Frameworks" }) else null else null;
     const box2d = b.dependency("box2d", .{
         .target = target,
         .optimize = optimize,
@@ -39,7 +40,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
-    addSdl3(sdl, bundled_sdl);
+    addSdl3(sdl, bundled_sdl, framework_path);
 
     const physics = b.addModule("unpolished-peas-physics", .{
         .root_source_file = b.path("src/physics.zig"),
@@ -248,8 +249,9 @@ fn addStb(mod: *std.Build.Module) void {
     });
 }
 
-fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency) void {
+fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency, framework_path: ?[]const u8) void {
     mod.link_libc = true;
+    if (framework_path) |path| mod.addSystemFrameworkPath(.{ .cwd_relative = path });
     if (bundled_sdl) |dependency| {
         mod.addIncludePath(dependency.path("include"));
         mod.linkLibrary(dependency.artifact("SDL3"));
