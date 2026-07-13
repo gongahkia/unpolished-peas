@@ -101,6 +101,10 @@ zig build run-atlas
 zig build run-camera
 zig build run-tilemap
 zig build run-primitives
+zig build run-breakout
+zig build run-breakout-sdl
+zig build smoke-breakout-sdl
+zig build test-breakout
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -115,6 +119,10 @@ zig build upmapc -- level.upmap level.upmapb
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.
 `run-primitives` opens the GPU primitive and text-quads demo.
+`run-breakout` writes the deterministic Breakout frame to `zig-out/breakout.ppm`.
+`run-breakout-sdl` opens Breakout with keyboard paddle input and collision audio.
+`smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
+`test-breakout` runs fixed-step Breakout simulation tests.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
