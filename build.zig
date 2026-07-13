@@ -239,6 +239,10 @@ fn addStb(mod: *std.Build.Module) void {
         .flags = &.{"-std=c99"},
     });
     mod.addCSourceFile(.{
+        .file = mod.owner.path("src/vendor/stb_truetype.c"),
+        .flags = &.{"-std=c99"},
+    });
+    mod.addCSourceFile(.{
         .file = mod.owner.path("vendor/stb/stb_vorbis.c"),
         .flags = &.{ "-std=c99", "-DSTB_VORBIS_NO_STDIO" },
     });
