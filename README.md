@@ -109,6 +109,9 @@ zig build run-topdown-sdl
 zig build smoke-topdown-sdl
 zig build test-topdown
 zig build test-topdown-scene
+zig build run-platformer-sdl
+zig build smoke-platformer-sdl
+zig build test-platformer
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
@@ -130,6 +133,8 @@ zig build upmapc -- level.upmap level.upmapb
 `run-topdown-sdl` opens the action-mapped Tiled top-down demo.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
+`run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
+`smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
