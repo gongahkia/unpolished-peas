@@ -22,4 +22,4 @@ if printf '%s\n' "$runtime" | grep -Fq 'not found'; then exit 1; fi
 if printf '%s\n' "$runtime" | grep -Fq 'libSDL'; then exit 1; fi
 mkdir "$tmp/outside-repository"
 cd "$tmp/outside-repository"
-xvfb-run -a env SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy "$game" --frames 2
+env SDL_VIDEODRIVER=offscreen SDL_GPU_DRIVER=vulkan SDL_AUDIODRIVER=dummy "$game" --frames 2
