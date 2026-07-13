@@ -102,6 +102,8 @@ pub const FaultNetwork = @import("net_fault.zig").Network;
 pub const FaultEndpoint = @import("net_fault.zig").Endpoint;
 pub const FaultNetworkConfig = @import("net_fault.zig").Config;
 pub const netFault = @import("net_fault.zig");
+pub const InputReplay = @import("input_replay.zig").Replay;
+pub const parseInputReplay = @import("input_replay.zig").parse;
 pub const netFrame = @import("net_frame.zig");
 pub const MusicOptions = @import("audio.zig").MusicOptions;
 pub const PlaybackHandle = @import("audio.zig").PlaybackHandle;
@@ -184,6 +186,7 @@ test {
     _ = @import("net_session.zig");
     _ = @import("net_sync.zig");
     _ = @import("net_fault.zig");
+    _ = @import("input_replay.zig");
     _ = @import("net_frame.zig");
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");

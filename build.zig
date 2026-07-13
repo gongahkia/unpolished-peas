@@ -173,6 +173,10 @@ pub fn build(b: *std.Build) void {
     const run_platformer_tests = b.addRunArtifact(platformer_tests);
     const platformer_test_step = b.step("test-platformer", "Run deterministic platformer fixtures");
     platformer_test_step.dependOn(&run_platformer_tests.step);
+    const replay_test_step = b.step("test-replays", "Run stored fixed-step input replays");
+    replay_test_step.dependOn(&run_breakout_tests.step);
+    replay_test_step.dependOn(&run_topdown_tests.step);
+    replay_test_step.dependOn(&run_platformer_tests.step);
 
     const sdl_tests = b.addTest(.{ .root_module = sdl });
     const run_sdl_tests = b.addRunArtifact(sdl_tests);

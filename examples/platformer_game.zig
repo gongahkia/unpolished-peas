@@ -41,3 +41,25 @@ test "platformer movement fixture lands and jumps deterministically" {
     _ = game.step(&fixture.collider, .{ .jump = true }, 1.0 / 60.0);
     try std.testing.expect(game.velocity.y < 0);
 }
+
+test "stored platformer replay has a stable state hash" {
+    var fixture = try loadCollider(std.testing.allocator);
+    defer fixture.collider.deinit();
+    defer fixture.map.deinit();
+    var replay = try up.parseInputReplay(std.testing.allocator, @embedFile("replays/platformer.upr"));
+    defer replay.deinit(std.testing.allocator);
+    var game = try Game.init(.{ .x = 8, .y = 0 });
+    for (replay.frames) |frame| _ = game.step(&fixture.collider, .{ .left = (frame.buttons & 1) != 0, .right = (frame.buttons & 2) != 0, .jump = (frame.buttons & 4) != 0 }, 1.0 / @as(f32, @floatFromInt(replay.fixed_hz)));
+    const hash = replayHash(game);
+    try std.testing.expectEqual(@as(u64, 0xe4499432c1aab5be), hash);
+}
+
+fn replayHash(game: Game) u64 {
+    var hash = std.hash.Fnv1a_64.init();
+    hash.update(std.mem.asBytes(&game.controller.bounds.x));
+    hash.update(std.mem.asBytes(&game.controller.bounds.y));
+    hash.update(std.mem.asBytes(&game.velocity.x));
+    hash.update(std.mem.asBytes(&game.velocity.y));
+    hash.update(&.{ @intFromBool(game.controller.grounded), @intFromBool(game.controller.wall_left), @intFromBool(game.controller.wall_right), @intFromBool(game.controller.ceiling) });
+    return hash.final();
+}
