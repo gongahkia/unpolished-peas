@@ -30,7 +30,7 @@ The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-pea
 
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
 
-Text uses the built-in 5×7 bitmap font. `layoutText` measures and places UTF-8 text deterministically; unsupported or invalid code points use one fallback glyph.
+`Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont` loads TrueType/OpenType fonts into a GPU atlas (Latin-1 by default; configure `FontLoadOptions` for another contiguous range), and `loadBitmapFont` loads AngelCode text `.fnt` descriptors. Draw either with `Context.font`; unsupported or invalid UTF-8 code points use the font's `?` glyph when present. `layoutText` remains the deterministic built-in-font layout helper.
 
 `Image.decode` and `AssetStore.loadImage` accept PNG, JPEG, and TGA with a 32 MiB input cap, 4096×4096 dimension caps, and a 16 MiB pixel cap; pass `ImageDecodeOptions` to tighten direct decoder limits.
 
