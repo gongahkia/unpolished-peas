@@ -12,7 +12,12 @@ mkdir -p "$package"
 zig build -Dtarget=x86_64-linux-musl -Doptimize=ReleaseSafe -p "$stage" install
 cp "$stage/bin/unpolished-peas-bounce-sdl" "$package/unpolished-peas-bounce"
 cp -R "$stage/assets" "$package/assets"
-mtime=$(git -C "$repo" log -1 --format=%cd --date=format:%Y%m%d%H%M.%S)
+epoch=$(git -C "$repo" log -1 --format=%ct)
+if date --version >/dev/null 2>&1; then
+    mtime=$(date -u -d "@$epoch" +%Y%m%d%H%M.%S)
+else
+    mtime=$(date -u -r "$epoch" +%Y%m%d%H%M.%S)
+fi
 find "$package" -exec touch -t "$mtime" {} +
 (
     cd "$out"
