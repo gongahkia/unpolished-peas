@@ -478,10 +478,12 @@ pub const AssetStore = struct {
             var cleanup = file;
             cleanup.deinit();
         }
+        const source_path = try self.assetPath(self.allocator, path);
+        defer self.allocator.free(source_path);
         var map = if (std.mem.endsWith(u8, path, ".tmj"))
-            try TileMap.loadTiledWithOptions(self.allocator, path, .{ .overlay_path = options.overlay_path })
+            try TileMap.loadTiledWithOptions(self.allocator, source_path, .{ .overlay_path = options.overlay_path })
         else if (std.mem.endsWith(u8, path, ".ldtk")) blk: {
-            var project = try TileMap.loadLdtkProjectWithOptions(self.allocator, path, .{ .overlay_path = options.overlay_path });
+            var project = try TileMap.loadLdtkProjectWithOptions(self.allocator, source_path, .{ .overlay_path = options.overlay_path });
             errdefer project.deinit();
             if (project.levels.items.len == 0) return error.EmptyLdtkProject;
             const level = project.levels.orderedRemove(0);
@@ -489,7 +491,7 @@ pub const AssetStore = struct {
             project.deinit();
             break :blk level.map;
         } else blk: {
-            var native = try TileMap.loadNative(self.allocator, path);
+            var native = try TileMap.loadNative(self.allocator, source_path);
             errdefer native.deinit();
             if (options.overlay_path) |overlay_path| {
                 try native.addDependency(.overlay, overlay_path);

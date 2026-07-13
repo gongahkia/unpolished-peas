@@ -67,6 +67,8 @@ pub fn build(b: *std.Build) void {
     const primitives_demo = addExample(b, "unpolished-peas-primitives", "examples/primitives.zig", target, optimize, peas, sdl);
     const breakout = addExample(b, "unpolished-peas-breakout", "examples/breakout.zig", target, optimize, peas, null);
     const breakout_sdl = addExample(b, "unpolished-peas-breakout-sdl", "examples/breakout_sdl.zig", target, optimize, peas, sdl);
+    const topdown_sdl = addExample(b, "unpolished-peas-topdown-sdl", "examples/topdown_sdl.zig", target, optimize, peas, sdl);
+    const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
     const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
@@ -97,18 +99,26 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-primitives", "Run the unpolished-peas GPU primitive demo", primitives_demo);
     addRunStep(b, "run-breakout", "Run the deterministic Breakout demo", breakout);
     addRunStep(b, "run-breakout-sdl", "Run the unpolished-peas SDL3 Breakout demo", breakout_sdl);
+    addRunStep(b, "run-topdown-sdl", "Run the unpolished-peas SDL3 top-down demo", topdown_sdl);
+    addRunStep(b, "test-topdown-scene", "Run the deterministic top-down scene", topdown_scene);
     const breakout_smoke = b.addRunArtifact(breakout_sdl);
     breakout_smoke.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("examples/assets"));
     breakout_smoke.setEnvironmentVariable("SDL_AUDIODRIVER", "dummy");
     breakout_smoke.addArgs(&.{ "--frames", "2" });
     const breakout_smoke_step = b.step("smoke-breakout-sdl", "Run a bounded SDL3 Breakout smoke");
     breakout_smoke_step.dependOn(&breakout_smoke.step);
+    const topdown_smoke = b.addRunArtifact(topdown_sdl);
+    topdown_smoke.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("examples/assets"));
+    topdown_smoke.setEnvironmentVariable("SDL_AUDIODRIVER", "dummy");
+    topdown_smoke.addArgs(&.{ "--frames", "2" });
+    const topdown_smoke_step = b.step("smoke-topdown-sdl", "Run a bounded SDL3 top-down smoke");
+    topdown_smoke_step.dependOn(&topdown_smoke.step);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, audio_stress, scene_tests, mapc }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, audio_stress, scene_tests, mapc }) |example| {
         check_examples.dependOn(&example.step);
     }
 
@@ -126,6 +136,15 @@ pub fn build(b: *std.Build) void {
     const run_breakout_tests = b.addRunArtifact(breakout_tests);
     const breakout_test_step = b.step("test-breakout", "Run deterministic Breakout tests");
     breakout_test_step.dependOn(&run_breakout_tests.step);
+    const topdown_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/topdown_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_topdown_tests = b.addRunArtifact(topdown_tests);
+    const topdown_test_step = b.step("test-topdown", "Run deterministic top-down tests");
+    topdown_test_step.dependOn(&run_topdown_tests.step);
 
     const sdl_tests = b.addTest(.{ .root_module = sdl });
     const run_sdl_tests = b.addRunArtifact(sdl_tests);
