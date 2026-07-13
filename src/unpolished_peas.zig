@@ -86,6 +86,9 @@ pub const SnapshotPublisher = @import("net_snapshot.zig").Publisher;
 pub const SnapshotClient = @import("net_snapshot.zig").Client;
 pub const SnapshotConfig = @import("net_snapshot.zig").Config;
 pub const netSnapshot = @import("net_snapshot.zig");
+pub const EcsReplicationAdapter = @import("net_ecs_replication.zig").Adapter;
+pub const EcsReplicationSchema = @import("net_ecs_replication.zig").ComponentSchema;
+pub const netEcsReplication = @import("net_ecs_replication.zig");
 pub const netFrame = @import("net_frame.zig");
 pub const MusicOptions = @import("audio.zig").MusicOptions;
 pub const PlaybackHandle = @import("audio.zig").PlaybackHandle;
@@ -164,6 +167,7 @@ test {
     _ = @import("net_peer.zig");
     _ = @import("net_channel.zig");
     _ = @import("net_snapshot.zig");
+    _ = @import("net_ecs_replication.zig");
     _ = @import("net_frame.zig");
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");
