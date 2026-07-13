@@ -84,7 +84,6 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_starter = b.addRunArtifact(starter);
-    run_starter.addArg(b.pathFromRoot("."));
     run_starter.addArg(b.pathFromRoot("templates/bounce"));
     if (b.args) |args| run_starter.addArgs(args);
     const new_step = b.step("new", "Create an unpolished-peas bouncing-square project");
