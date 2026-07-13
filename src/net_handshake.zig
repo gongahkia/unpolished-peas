@@ -111,6 +111,7 @@ pub const Client = struct {
     }
 
     pub fn poll(self: *Client, net: transport.Transport) !void {
+        if (self.state != .connecting) return;
         try net.poll();
         while (net.receive()) |received| {
             var packet = received;
@@ -122,8 +123,8 @@ pub const Client = struct {
                 return err;
             };
             try self.handleReply(reply);
+            if (self.state != .connecting) return;
         }
-        if (self.state != .connecting) return;
         const now = net.now();
         if (now < self.next_retry_at) return;
         if (self.attempts >= self.config.max_attempts) {
