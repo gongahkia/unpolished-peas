@@ -25,6 +25,7 @@ jobs:
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build test-replays
+      - run: zig build test-fuzz
       - run: zig build check-examples
       - run: zig build test-sdl
       - run: zig build test-box2d

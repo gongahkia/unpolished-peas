@@ -136,6 +136,15 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    const fuzz_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/fuzz_targets.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    addStb(fuzz_tests.root_module);
+    const run_fuzz_tests = b.addRunArtifact(fuzz_tests);
+    const fuzz_test_step = b.step("test-fuzz", "Run bounded decoder and protocol fuzz corpus");
+    fuzz_test_step.dependOn(&run_fuzz_tests.step);
 
     const breakout_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("examples/breakout_game.zig"),
