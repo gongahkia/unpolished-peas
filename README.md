@@ -145,6 +145,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 
 `script/package_macos.sh` writes a universal macOS bounce app, zip, and checksum manifest; `script/test_macos_package.sh` launches its bounded smoke outside the repository.
+`script/package_linux.sh` writes an x86_64 Linux bounce tarball and checksum manifest; `script/test_linux_package.sh` launches its bounded smoke outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
