@@ -10,6 +10,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
+    if (!system_sdl and target.result.os.tag == .linux) _ = b.dependency("sdl_linux_deps", .{});
     const bundled_sdl = if (system_sdl) null else b.dependency("sdl", .{
         .target = target,
         .optimize = optimize,
