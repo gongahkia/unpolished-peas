@@ -1,0 +1,25 @@
+#!/bin/sh
+set -eu
+
+repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+out=${1:-"$repo/dist/macos"}
+stage=$(mktemp -d)
+trap 'rm -rf "$stage"' EXIT HUP INT TERM
+
+rm -rf "$out"
+mkdir -p "$out"
+sdk=$(xcrun --show-sdk-path)
+for target in aarch64-macos x86_64-macos; do
+  zig build --sysroot "$sdk" -Dtarget="$target" -Doptimize=ReleaseSafe -p "$stage/$target" install
+done
+app="$out/unpolished-peas-bounce.app"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/assets"
+lipo -create "$stage/aarch64-macos/bin/unpolished-peas-bounce-sdl" "$stage/x86_64-macos/bin/unpolished-peas-bounce-sdl" -output "$app/Contents/MacOS/unpolished-peas-bounce"
+cp -R "$stage/aarch64-macos/assets/." "$app/Contents/assets/"
+cat > "$app/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict><key>CFBundleExecutable</key><string>unpolished-peas-bounce</string><key>CFBundleIdentifier</key><string>dev.unpolishedpeas.bounce</string><key>CFBundleName</key><string>unpolished-peas Bounce</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>
+PLIST
+ditto -c -k --sequesterRsrc --keepParent "$app" "$out/unpolished-peas-bounce-macos-universal.zip"
+shasum -a 256 "$out/unpolished-peas-bounce-macos-universal.zip" > "$out/SHA256SUMS"

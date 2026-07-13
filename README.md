@@ -143,6 +143,8 @@ zig build upmapc -- level.upmap level.upmapb
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
+
+`script/package_macos.sh` writes a universal macOS bounce app, zip, and checksum manifest; `script/test_macos_package.sh` launches its bounded smoke outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `new` creates the bouncing-square starter project.
