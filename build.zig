@@ -83,6 +83,23 @@ pub fn build(b: *std.Build) void {
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
 
+    const peas_cli = b.addExecutable(.{
+        .name = "peas",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/peas.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
+    });
+    const run_peas = b.addRunArtifact(peas_cli);
+    if (b.args) |args| run_peas.addArgs(args);
+    const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
+    peas_step.dependOn(&run_peas.step);
+    const peas_tests = b.addTest(.{ .root_module = peas_cli.root_module });
+    const run_peas_tests = b.addRunArtifact(peas_tests);
+    const peas_test_step = b.step("test-peas", "Run the unpolished-peas project CLI tests");
+    peas_test_step.dependOn(&run_peas_tests.step);
+
     const starter = b.addExecutable(.{
         .name = "unpolished-peas-new",
         .root_module = b.createModule(.{
@@ -135,7 +152,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, audio_demo, atlas_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 

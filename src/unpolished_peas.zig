@@ -1,3 +1,5 @@
+pub const api = @import("api.zig");
+pub const preview = @import("preview.zig");
 pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
 pub const AudioSample = @import("audio.zig").AudioSample;
@@ -164,6 +166,8 @@ pub const TileSet = @import("tilemap.zig").TileSet;
 pub const Vec2 = @import("math.zig").Vec2;
 
 test {
+    _ = @import("api.zig");
+    _ = @import("preview.zig");
     _ = @import("app.zig");
     _ = @import("actions.zig");
     _ = @import("audio.zig");
@@ -201,4 +205,13 @@ test {
     _ = @import("tilemap.zig");
     _ = @import("tile_collision.zig");
     _ = @import("text_layout.zig");
+}
+
+test "namespaced API retains legacy facade compatibility" {
+    const position: api.core.Vec2 = Vec2.init(1, 2);
+    _ = position;
+    const action: api.input.Action = .{ .name = "jump", .binding = .{ .key = .action } };
+    _ = action;
+    const channel = preview.networking.Channel;
+    _ = channel;
 }
