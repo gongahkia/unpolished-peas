@@ -10,7 +10,7 @@ rm -rf "$out"
 mkdir -p "$out"
 sdk=$(xcrun --show-sdk-path)
 for target in aarch64-macos x86_64-macos; do
-  zig build -Dmacos-sdk="$sdk" -Dtarget="$target" -Doptimize=ReleaseSafe -p "$stage/$target" install
+  zig build -Dmacos-sdk="$sdk" -Dtarget="$target" -Doptimize=ReleaseSafe -p "$stage/$target" package-bounce-sdl
 done
 app="$out/unpolished-peas-bounce.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/assets"
