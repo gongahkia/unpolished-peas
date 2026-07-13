@@ -189,6 +189,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netPeer`, `PeerServer`
 - `netChannel`, `NetChannel`
 - `netSnapshot`, `SnapshotPublisher`, `SnapshotClient`
+- `netEcsReplication`, `EcsReplicationAdapter`
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
