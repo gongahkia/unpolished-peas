@@ -21,6 +21,20 @@
     "usage": "vendored TrueType and OpenType rasterizer"
   },
   {
+    "name": "Basic",
+    "version": "2014",
+    "source": "https://github.com/google/fonts/tree/main/ofl/basic",
+    "license": "OFL-1.1",
+    "usage": "font asset test fixture"
+  },
+  {
+    "name": "Source Sans 3",
+    "version": "3.052",
+    "source": "https://github.com/adobe-fonts/source-sans/tree/release/OTF",
+    "license": "OFL-1.1",
+    "usage": "OpenType font asset test fixture"
+  },
+  {
     "name": "SDL3",
     "version": "3.2.24",
     "source": "https://github.com/castholm/SDL/tree/1d4b8dcc03bd216712b55318b4ad2402b5511490",

@@ -64,7 +64,7 @@ test "SDL GPU target capture writes expected PNG" {
 
     if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
-    const window = c.SDL_CreateWindow("unpolished-peas capture", 2, 2, c.SDL_WINDOW_HIDDEN) orelse return sdlFail("SDL_CreateWindow");
+    const window = c.SDL_CreateWindow("unpolished-peas capture", 64, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
     const device = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV, false, null) orelse return sdlFail("SDL_CreateGPUDevice");
     defer c.SDL_DestroyGPUDevice(device);
@@ -72,27 +72,40 @@ test "SDL GPU target capture writes expected PNG" {
     defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
     if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) return sdlFail("SDL_SetGPUSwapchainParameters");
 
-    var presenter = try Presenter.init(device, 2, 1);
+    var presenter = try Presenter.init(device, 64, 32);
     defer presenter.deinit(device);
-    var canvas = try up.Canvas.init(std.testing.allocator, 2, 1);
+    var canvas = try up.Canvas.init(std.testing.allocator, 64, 32);
     defer canvas.deinit();
     canvas.pixels[0] = up.Color.rgba(1, 2, 3, 4);
     canvas.pixels[1] = up.Color.rgba(5, 6, 7, 8);
+    var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer assets.deinit();
+    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf");
+    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
+    const bitmap = try assets.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
     var sprites = up.SpriteBatch.init(std.testing.allocator);
     defer sprites.deinit();
+    try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(truetype), "HÉ", 2, 2, up.Color.rgb(255, 198, 74));
+    try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(opentype), "HÉ", 22, 2, up.Color.rgb(122, 213, 255));
+    try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(bitmap), "B", 40, 2, up.Color.white);
     var commands = up.RenderCommandBuffer.init(std.testing.allocator);
     defer commands.deinit();
-    var presentation = up.Presentation.init(.{ .x = 2, .y = 1 }, .{ .x = 2, .y = 1 }, .integer_fit);
+    var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     try presenter.present(device, window, canvas, &sprites, commands.commands.items, null, capture_path, &presentation);
 
     const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
     defer std.testing.allocator.free(png);
     var image = try up.Image.decode(std.testing.allocator, png, .{});
     defer image.deinit();
-    try std.testing.expectEqual(@as(u32, 2), image.width);
-    try std.testing.expectEqual(@as(u32, 1), image.height);
+    try std.testing.expectEqual(@as(u32, 64), image.width);
+    try std.testing.expectEqual(@as(u32, 32), image.height);
     try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 4), image.pixels[0]);
     try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), image.pixels[1]);
+    var nontransparent: usize = 0;
+    for (image.pixels) |pixel| {
+        if (pixel.a != 0) nontransparent += 1;
+    }
+    try std.testing.expect(nontransparent > 2);
 }
 
 test "high DPI letterboxing maps pointer through the GPU presentation" {
@@ -158,6 +171,30 @@ test "GPU atlas quads preserve center origin, flip, rotation, tint, and filterin
     };
     try std.testing.expectEqual(@as(usize, 8), batch.draws.items.len);
     try std.testing.expectEqual(@as(usize, 48), batch.vertices.items.len);
+}
+
+test "font assets build GPU sprite quads" {
+    var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer assets.deinit();
+    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf");
+    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
+    const bitmap = try assets.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
+    const ttf = try assets.tryFontPtr(truetype);
+    const otf = try assets.tryFontPtr(opentype);
+    const bmfont = try assets.tryFontPtr(bitmap);
+    var batch = up.SpriteBatch.init(std.testing.allocator);
+    defer batch.deinit();
+    try appendFontText(&batch, 160, 90, ttf, "HÉ", 4, 8, up.Color.rgb(255, 198, 74));
+    try appendFontText(&batch, 160, 90, otf, "HÉ", 4, 32, up.Color.rgb(122, 213, 255));
+    try appendFontText(&batch, 160, 90, bmfont, "B?", 4, 56, up.Color.white);
+    try std.testing.expectEqual(@as(usize, 6), batch.draws.items.len);
+    try std.testing.expect(batch.draws.items[0].image == &ttf.image);
+    try std.testing.expectEqual(up.SpriteSampling.linear, batch.draws.items[0].sampling);
+    try std.testing.expect(batch.draws.items[2].image == &otf.image);
+    try std.testing.expectEqual(up.SpriteSampling.linear, batch.draws.items[2].sampling);
+    try std.testing.expect(batch.draws.items[4].image == &bmfont.image);
+    try std.testing.expectEqual(up.SpriteSampling.nearest, batch.draws.items[4].sampling);
+    try std.testing.expectEqual(@as(usize, 36), batch.vertices.items.len);
 }
 
 test "primitive commands build GPU vertices without CPU canvas access" {
@@ -284,6 +321,11 @@ pub const Context = struct {
         self.commands.append(.{ .text = .{ .value = value, .x = x, .y = y, .color = color } }) catch self.canvas.drawText(value, x, y, color);
     }
 
+    pub fn font(self: *Context, handle: up.FontHandle, value: []const u8, x: i32, y: i32, color: up.Color) void {
+        const source_font = self.assets.latestFontPtr(handle) catch @panic("invalid font handle");
+        appendFontText(self.sprite_batch, self.canvas.width, self.canvas.height, source_font, value, x, y, color) catch source_font.drawText(self.canvas, value, x, y, color);
+    }
+
     pub fn strokeRect(self: *Context, x: i32, y: i32, w: i32, h: i32, color: up.Color) void {
         self.commands.append(.{ .stroke_rect = .{ .x = x, .y = y, .w = w, .h = h, .color = color } }) catch self.canvas.strokeRect(x, y, w, h, color);
     }
@@ -352,6 +394,22 @@ pub const Context = struct {
 
     pub fn loadAtlas(self: *Context, path: []const u8) !up.AtlasHandle {
         return self.assets.loadAtlas(path);
+    }
+
+    pub fn loadFont(self: *Context, path: []const u8) !up.FontHandle {
+        return self.assets.loadFont(path);
+    }
+
+    pub fn loadFontWithOptions(self: *Context, path: []const u8, options: up.FontLoadOptions) !up.FontHandle {
+        return self.assets.loadFontWithOptions(path, options);
+    }
+
+    pub fn loadBitmapFont(self: *Context, path: []const u8) !up.FontHandle {
+        return self.assets.loadBitmapFont(path);
+    }
+
+    pub fn fontAsset(self: *Context, handle: up.FontHandle) *const up.Font {
+        return self.assets.latestFontPtr(handle) catch @panic("invalid font handle");
     }
 
     pub fn atlasFrame(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AtlasFrameHandle {
@@ -517,6 +575,35 @@ fn appendAtlasQuad(batch: *up.SpriteBatch, canvas_width: u32, canvas_height: u32
     else
         .{ .{ .x = uv_x0, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y1 }, .{ .x = uv_x0, .y = uv_y1 } };
     try batch.appendQuad(&atlas.image, .{ .x = @intCast(frame.x), .y = @intCast(frame.y), .w = @intCast(frame.w), .h = @intCast(frame.h) }, positions, uvs, options.tint, options.sampling);
+}
+
+fn appendFontText(batch: *up.SpriteBatch, canvas_width: u32, canvas_height: u32, font: *const up.Font, text: []const u8, x: i32, y: i32, color: up.Color) !void {
+    var index: usize = 0;
+    var pen_x = x;
+    var pen_y = y;
+    while (up.Font.nextCodepoint(text, &index)) |codepoint| {
+        if (codepoint == '\r') continue;
+        if (codepoint == '\n') {
+            pen_x = x;
+            pen_y = saturatingAdd(pen_y, font.line_height);
+            continue;
+        }
+        const glyph = font.glyphForCodepoint(codepoint) orelse continue;
+        if (glyph.width != 0 and glyph.height != 0) {
+            const left: f32 = @floatFromInt(saturatingAdd(pen_x, glyph.x_offset));
+            const top: f32 = @floatFromInt(saturatingAdd(saturatingAdd(pen_y, font.baseline), glyph.y_offset));
+            const right = left + @as(f32, @floatFromInt(glyph.width));
+            const bottom = top + @as(f32, @floatFromInt(glyph.height));
+            const image_width: f32 = @floatFromInt(font.image.width);
+            const image_height: f32 = @floatFromInt(font.image.height);
+            const uv_x0 = @as(f32, @floatFromInt(glyph.x)) / image_width;
+            const uv_y0 = @as(f32, @floatFromInt(glyph.y)) / image_height;
+            const uv_x1 = @as(f32, @floatFromInt(glyph.x + glyph.width)) / image_width;
+            const uv_y1 = @as(f32, @floatFromInt(glyph.y + glyph.height)) / image_height;
+            try batch.appendQuad(&font.image, .{ .x = glyph.x, .y = glyph.y, .w = glyph.width, .h = glyph.height }, .{ clipPoint(canvas_width, canvas_height, left, top), clipPoint(canvas_width, canvas_height, right, top), clipPoint(canvas_width, canvas_height, right, bottom), clipPoint(canvas_width, canvas_height, left, bottom) }, .{ .{ .x = uv_x0, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y0 }, .{ .x = uv_x1, .y = uv_y1 }, .{ .x = uv_x0, .y = uv_y1 } }, color, font.sampling);
+        }
+        pen_x = saturatingAdd(pen_x, glyph.advance);
+    }
 }
 
 fn clipPoint(canvas_width: u32, canvas_height: u32, x: f32, y: f32) up.SpriteBatchPoint {
@@ -1493,6 +1580,10 @@ fn intersectClip(a: up.ClipRect, b: up.ClipRect) up.ClipRect {
 
 fn clampI64ToI32(value: i64) i32 {
     return @intCast(@max(@as(i64, std.math.minInt(i32)), @min(@as(i64, std.math.maxInt(i32)), value)));
+}
+
+fn saturatingAdd(a: i32, b: i32) i32 {
+    return std.math.add(i32, a, b) catch if (b < 0) std.math.minInt(i32) else std.math.maxInt(i32);
 }
 
 fn primitiveScissor(clip: ?up.ClipRect, width: u32, height: u32) c.SDL_Rect {

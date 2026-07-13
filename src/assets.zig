@@ -1,6 +1,8 @@
 const std = @import("std");
 const atlas_mod = @import("atlas.zig");
 const Atlas = atlas_mod.Atlas;
+const Font = @import("font_asset.zig").Font;
+const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
 const TileMap = @import("tilemap.zig").TileMap;
 
@@ -53,6 +55,7 @@ pub const AssetFile = struct {
 pub const TextHandle = struct { index: usize, generation: u32 };
 pub const ImageHandle = struct { index: usize, generation: u32 };
 pub const AtlasHandle = struct { index: usize, generation: u32 };
+pub const FontHandle = struct { index: usize, generation: u32 };
 pub const TileMapHandle = struct { index: usize, generation: u32 };
 
 pub const TileMapAssetOptions = struct {
@@ -103,6 +106,23 @@ const AtlasAsset = struct {
     }
 };
 
+const FontKind = enum { truetype, bitmap };
+
+const FontAsset = struct {
+    kind: FontKind,
+    font_file: AssetFile,
+    image_file: ?AssetFile = null,
+    font: Font,
+    options: FontLoadOptions = .{},
+    generation: u32 = 1,
+
+    fn deinit(self: *FontAsset) void {
+        self.font.deinit();
+        if (self.image_file) |*file| file.deinit();
+        self.font_file.deinit();
+    }
+};
+
 const TileMapAsset = struct {
     file: AssetFile,
     map: TileMap,
@@ -141,6 +161,7 @@ pub const AssetStore = struct {
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     atlases: std.ArrayListUnmanaged(AtlasAsset) = .{},
+    fonts: std.ArrayListUnmanaged(FontAsset) = .{},
     tile_maps: std.ArrayListUnmanaged(TileMapAsset) = .{},
     events: std.ArrayListUnmanaged(ReloadEvent) = .{},
 
@@ -179,10 +200,12 @@ pub const AssetStore = struct {
         for (self.texts.items) |*asset| asset.deinit();
         for (self.images.items) |*asset| asset.deinit();
         for (self.atlases.items) |*asset| asset.deinit();
+        for (self.fonts.items) |*asset| asset.deinit();
         for (self.tile_maps.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.atlases.deinit(self.allocator);
+        self.fonts.deinit(self.allocator);
         self.tile_maps.deinit(self.allocator);
         self.events.deinit(self.allocator);
         if (self.root_path) |path| self.allocator.free(path);
@@ -252,6 +275,32 @@ pub const AssetStore = struct {
 
         const index = self.atlases.items.len;
         try self.atlases.append(self.allocator, .{ .json_file = json_file, .image_file = image_file, .atlas = decoded_atlas });
+        return .{ .index = index, .generation = 1 };
+    }
+
+    pub fn loadFont(self: *AssetStore, path: []const u8) !FontHandle {
+        return self.loadFontWithOptions(path, .{});
+    }
+
+    pub fn loadFontWithOptions(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontHandle {
+        const asset = try self.loadFontAsset(path, options);
+        errdefer {
+            var cleanup = asset;
+            cleanup.deinit();
+        }
+        const index = self.fonts.items.len;
+        try self.fonts.append(self.allocator, asset);
+        return .{ .index = index, .generation = 1 };
+    }
+
+    pub fn loadBitmapFont(self: *AssetStore, path: []const u8) !FontHandle {
+        const asset = try self.loadBitmapFontAsset(path);
+        errdefer {
+            var cleanup = asset;
+            cleanup.deinit();
+        }
+        const index = self.fonts.items.len;
+        try self.fonts.append(self.allocator, asset);
         return .{ .index = index, .generation = 1 };
     }
 
@@ -328,6 +377,29 @@ pub const AssetStore = struct {
     pub fn latestAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
         if (handle.index >= self.atlases.items.len) return error.InvalidHandle;
         return &self.atlases.items[handle.index].atlas;
+    }
+
+    pub fn font(self: AssetStore, handle: FontHandle) Font {
+        return self.tryFont(handle) catch @panic("stale font handle");
+    }
+
+    pub fn tryFont(self: AssetStore, handle: FontHandle) !Font {
+        if (handle.index >= self.fonts.items.len or self.fonts.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return self.fonts.items[handle.index].font;
+    }
+
+    pub fn fontPtr(self: *AssetStore, handle: FontHandle) *const Font {
+        return self.tryFontPtr(handle) catch @panic("stale font handle");
+    }
+
+    pub fn tryFontPtr(self: *AssetStore, handle: FontHandle) !*const Font {
+        if (handle.index >= self.fonts.items.len or self.fonts.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return &self.fonts.items[handle.index].font;
+    }
+
+    pub fn latestFontPtr(self: *AssetStore, handle: FontHandle) !*const Font {
+        if (handle.index >= self.fonts.items.len) return error.InvalidHandle;
+        return &self.fonts.items[handle.index].font;
     }
 
     pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap {
@@ -414,6 +486,15 @@ pub const AssetStore = struct {
             }
         }
 
+        for (self.fonts.items) |*asset| {
+            if (self.reloadFont(asset) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.font_file.path, .status = .failed, .err = err });
+                continue;
+            }) {
+                try self.events.append(self.allocator, .{ .path = asset.font_file.path, .status = .changed });
+            }
+        }
+
         for (self.tile_maps.items) |*asset| {
             if (self.reloadTileMap(asset) catch |err| {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
@@ -457,6 +538,24 @@ pub const AssetStore = struct {
         return true;
     }
 
+    fn reloadFont(self: *AssetStore, asset: *FontAsset) !bool {
+        const font_stat = try asset.font_file.dir.statFile(asset.font_file.path);
+        var changed = font_stat.mtime != asset.font_file.mtime;
+        if (asset.image_file) |image_file| {
+            if ((try image_file.dir.statFile(image_file.path)).mtime != image_file.mtime) changed = true;
+        }
+        if (!changed) return false;
+        const next = switch (asset.kind) {
+            .truetype => try self.loadFontAsset(asset.font_file.path, asset.options),
+            .bitmap => try self.loadBitmapFontAsset(asset.font_file.path),
+        };
+        const generation = nextGeneration(asset.generation);
+        asset.deinit();
+        asset.* = next;
+        asset.generation = generation;
+        return true;
+    }
+
     fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset) !bool {
         const root_stat = try asset.file.dir.statFile(asset.file.path);
         var changed = root_stat.mtime != asset.file.mtime;
@@ -470,6 +569,43 @@ pub const AssetStore = struct {
         asset.* = next;
         asset.generation = generation;
         return true;
+    }
+
+    fn loadFontAsset(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontAsset {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
+        errdefer {
+            var cleanup = file;
+            cleanup.deinit();
+        }
+        const decoded = try Font.decodeTrueType(self.allocator, file.bytes, options);
+        errdefer {
+            var cleanup = decoded;
+            cleanup.deinit();
+        }
+        return .{ .kind = .truetype, .font_file = file, .font = decoded, .options = options };
+    }
+
+    fn loadBitmapFontAsset(self: *AssetStore, path: []const u8) !FontAsset {
+        const font_file = try AssetFile.load(self.allocator, self.dir, path, 8 * 1024 * 1024);
+        errdefer {
+            var cleanup = font_file;
+            cleanup.deinit();
+        }
+        const image_rel = try Font.bitmapImagePath(self.allocator, font_file.bytes);
+        defer self.allocator.free(image_rel);
+        const image_path = try atlas_mod.resolveSiblingPath(self.allocator, path, image_rel);
+        defer self.allocator.free(image_path);
+        const image_file = try AssetFile.load(self.allocator, self.dir, image_path, 32 * 1024 * 1024);
+        errdefer {
+            var cleanup = image_file;
+            cleanup.deinit();
+        }
+        const decoded = try Font.decodeBitmap(self.allocator, font_file.bytes, image_file.bytes);
+        errdefer {
+            var cleanup = decoded;
+            cleanup.deinit();
+        }
+        return .{ .kind = .bitmap, .font_file = font_file, .image_file = image_file, .font = decoded };
     }
 
     fn loadTileMapAsset(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapAsset {
@@ -583,12 +719,20 @@ test "asset handles reject stale generations" {
     const text = try store.loadText("examples/assets/message.txt");
     const image = try store.loadPng("examples/assets/ball.png");
     const atlas = try store.loadAtlas("examples/assets/atlas.json");
+    const truetype = try store.loadFont("examples/assets/fonts/Basic-Regular.ttf");
+    const opentype = try store.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
+    const bitmap = try store.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
     try std.testing.expect((try store.tryText(text)).len > 0);
     try std.testing.expect((try store.tryImage(image)).width > 0);
     try std.testing.expect((try store.tryAtlas(atlas)).frames.len > 0);
+    try std.testing.expect((try store.tryFont(truetype)).glyphForCodepoint(0x00c9).?.width > 0);
+    try std.testing.expect((try store.tryFont(opentype)).glyphForCodepoint(0x00c9).?.width > 0);
+    try std.testing.expect((try store.tryFont(bitmap)).glyphForCodepoint('B').?.width > 0);
     try std.testing.expectError(error.StaleHandle, store.tryText(.{ .index = text.index, .generation = nextGeneration(text.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryImage(.{ .index = image.index, .generation = nextGeneration(image.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryAtlas(.{ .index = atlas.index, .generation = nextGeneration(atlas.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = truetype.index, .generation = nextGeneration(truetype.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = opentype.index, .generation = nextGeneration(opentype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryTileMap(.{ .index = 0, .generation = 1 }));
 }
 
