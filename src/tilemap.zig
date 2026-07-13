@@ -624,6 +624,11 @@ pub const TileMap = struct {
         return result;
     }
 
+    pub fn layerOffset(self: TileMap, index: u32) Vec2 {
+        if (index >= self.layers.items.len) return .{};
+        return self.layerState(index).offset;
+    }
+
     fn ensureChunk(self: *TileMap, target: *TileMapLayer, coord: ChunkCoord) !*Chunk {
         if (findChunk(target, coord)) |chunk| return chunk;
         const count = try cellCount(self.chunk_size);
