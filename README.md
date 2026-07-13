@@ -188,6 +188,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netHandshake`, `HandshakeClient`, `HandshakeServer`
 - `netPeer`, `PeerServer`
 - `netChannel`, `NetChannel`
+- `netSnapshot`, `SnapshotPublisher`, `SnapshotClient`
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
