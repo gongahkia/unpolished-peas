@@ -259,7 +259,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netSnapshot`, `SnapshotPublisher`, `SnapshotClient`
 - `netEcsReplication`, `EcsReplicationAdapter`
 - `netSession`, `NetHost`, `NetHostRole`, `NetClient`
-- `netSync`, `SnapshotInterpolator`, `InputCommandClient`
+- `netSync`, `SnapshotInterpolator`, `InputCommandClient`, `PredictionClient`, `AuthoritativeServer`
 - `netFault`, `FaultNetwork`, `FaultEndpoint`
 - `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
