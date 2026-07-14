@@ -1,0 +1,23 @@
+{
+  "version": "1.10",
+  "orientation": "orthogonal",
+  "tilewidth": 8,
+  "tileheight": 8,
+  "tilesets": [{
+    "firstgid": 1,
+    "name": "collection",
+    "tilewidth": 8,
+    "tileheight": 8,
+    "tiles": [
+      {"id": 0, "image": "../../../examples/assets/ball.png"},
+      {"id": 2, "image": "../../../examples/assets/ball.png"}
+    ]
+  }],
+  "layers": [{
+    "type": "tilelayer",
+    "name": "ground",
+    "width": 2,
+    "height": 1,
+    "data": [1, 3]
+  }]
+}

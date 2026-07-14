@@ -45,11 +45,34 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try migrateContent(allocator, args);
             return null;
         },
+        .import_tiled => {
+            try importTiledContent(allocator, args);
+            return null;
+        },
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
+}
+
+fn importTiledContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const input_path = args.next() orelse return importTiledUsage();
+    const output_path = args.next() orelse return importTiledUsage();
+    if (args.next() != null) return importTiledUsage();
+    var diagnostic = content.tiled_importer.Diagnostic{};
+    const source = content.tiled_importer.importFile(allocator, input_path, &diagnostic) catch |err| {
+        std.debug.print("peas import-tiled: {s}:{d}:{d}: {s}\n", .{ input_path, diagnostic.line, diagnostic.column, diagnostic.message });
+        return err;
+    };
+    defer allocator.free(source);
+    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = source });
+    std.debug.print("peas import-tiled: {s} -> {s}\n", .{ input_path, output_path });
+}
+
+fn importTiledUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- import-tiled <input.tmj> <output.upmap>\n", .{});
+    return error.InvalidArguments;
 }
 
 fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -317,6 +340,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
     try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
+    try std.testing.expectEqual(tools.Command.import_tiled, tools.parseCommand("import-tiled").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);

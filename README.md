@@ -199,6 +199,8 @@ GPU command primitives use one logical-pixel strokes, 32-segment circles, and so
 
 Tiled object layers retain rectangle, ellipse, point, polygon, and polyline collision shapes plus typed string, integer, float, and boolean properties. Tile rendering applies inherited visibility, offsets, parallax, opacity, and flip flags.
 
+`zig build peas -- import-tiled <input.tmj> <output.upmap>` imports the validated Tiled JSON subset into native map source, writing only after native validation succeeds. It supports orthogonal/isometric maps; embedded or external grid/image-collection tilesets; tile animations; group, tile, and object layers; finite/infinite signed chunks; array or base64 data with zlib/gzip/zstd; supported object shapes; and string/file/int/object/float/bool properties. Image layers, unsupported layer/property/data formats, and unsafe asset paths fail with an input line/column diagnostic.
+
 `TileCollider.addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
 
 `Context.loadShader` loads a validated `.upshader` resource (`effect=invert` plus `uniform amount:f32`, or `effect=passthrough`). `Context.setShaderEffect` replaces the post-process chain; `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and invalid shader reloads retain the last good program. `Canvas.applyPixelEffect` is the defined headless fallback.
