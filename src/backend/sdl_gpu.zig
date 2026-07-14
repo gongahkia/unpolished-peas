@@ -10,30 +10,39 @@ const sprite_vert_spirv = sprite_shaders.vert_spirv;
 const sprite_frag_spirv = sprite_shaders.frag_spirv;
 const sprite_vert_msl = sprite_shaders.vert_msl;
 const sprite_frag_msl = sprite_shaders.frag_msl;
+const sprite_vert_hlsl = sprite_shaders.vert_hlsl;
+const sprite_frag_hlsl = sprite_shaders.frag_hlsl;
 const primitive_vert_spirv = sprite_shaders.primitive_vert_spirv;
 const primitive_frag_spirv = sprite_shaders.primitive_frag_spirv;
 const primitive_vert_msl = sprite_shaders.primitive_vert_msl;
 const primitive_frag_msl = sprite_shaders.primitive_frag_msl;
+const primitive_vert_hlsl = sprite_shaders.primitive_vert_hlsl;
+const primitive_frag_hlsl = sprite_shaders.primitive_frag_hlsl;
 const effect_vert_spirv = sprite_shaders.effect_vert_spirv;
 const effect_frag_spirv = sprite_shaders.effect_frag_spirv;
 const effect_vert_msl = sprite_shaders.effect_vert_msl;
 const effect_frag_msl = sprite_shaders.effect_frag_msl;
+const effect_vert_hlsl = sprite_shaders.effect_vert_hlsl;
+const effect_frag_hlsl = sprite_shaders.effect_frag_hlsl;
 
 pub const GpuShaderFormat = enum {
     msl,
     spirv,
+    dxbc,
 };
 
 pub const GpuCapabilities = struct {
     pub const msl: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_MSL);
     pub const spirv: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_SPIRV);
-    pub const required_shader_formats = msl | spirv;
+    pub const dxbc: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_DXBC);
+    pub const required_shader_formats = msl | spirv | dxbc;
 
     shader_formats: u32,
 
     pub fn preferredShaderFormat(self: GpuCapabilities) ?GpuShaderFormat {
         if ((self.shader_formats & msl) != 0) return .msl;
         if ((self.shader_formats & spirv) != 0) return .spirv;
+        if ((self.shader_formats & dxbc) != 0) return .dxbc;
         return null;
     }
 
@@ -55,6 +64,7 @@ test "renderer conformance shared smoke golden fixture" {
 test "renderer conformance reports unsupported shader capabilities" {
     try std.testing.expectEqual(GpuShaderFormat.msl, try (GpuCapabilities{ .shader_formats = GpuCapabilities.msl | GpuCapabilities.spirv }).requireShaderFormat());
     try std.testing.expectEqual(GpuShaderFormat.spirv, try (GpuCapabilities{ .shader_formats = GpuCapabilities.spirv }).requireShaderFormat());
+    try std.testing.expectEqual(GpuShaderFormat.dxbc, try (GpuCapabilities{ .shader_formats = GpuCapabilities.dxbc }).requireShaderFormat());
     try std.testing.expectError(error.UnsupportedGpuShaderFormat, (GpuCapabilities{ .shader_formats = @intCast(c.SDL_GPU_SHADERFORMAT_DXIL) }).requireShaderFormat());
 }
 
@@ -892,21 +902,45 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     try validateConfig(config);
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
+    const data_path = try appDataPath(allocator, config.organization, config.application);
+    defer allocator.free(data_path);
+    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
+    defer dev.deinit();
+    var profiler = up.FrameProfiler.init(config.cpu_profiler);
+    profiler.beginFrame(0);
 
     const window_w = try scaledInt(config.width, config.scale);
     const window_h = try scaledInt(config.height, config.scale);
     const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlRendererFail("SDL_CreateWindow");
+    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse {
+        dev.failure(.gpu, error.SdlError);
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_CreateWindow");
+        return sdlRendererFail("SDL_CreateWindow");
+    };
     defer c.SDL_DestroyWindow(window);
 
-    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), true, null) orelse return sdlRendererFail("SDL_CreateGPUDevice");
+    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), true, null) orelse {
+        dev.failure(.gpu, error.SdlError);
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_CreateGPUDevice");
+        return sdlRendererFail("SDL_CreateGPUDevice");
+    };
     defer c.SDL_DestroyGPUDevice(device);
-    _ = try selectGpuShaderFormat(device);
+    _ = selectGpuShaderFormat(device) catch |err| {
+        dev.failure(.gpu, err);
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = err }, &profiler, "SDL_GetGPUShaderFormats");
+        return err;
+    };
 
-    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) {
+        dev.failure(.gpu, error.SdlError);
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_ClaimWindowForGPUDevice");
+        return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+    }
     defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
+        dev.failure(.gpu, error.SdlError);
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_SetGPUSwapchainParameters");
         return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
     }
 
@@ -925,7 +959,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var pixel_effects = up.PostProcessChain{};
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
-    var profiler = up.FrameProfiler.init(config.cpu_profiler);
     var runtime_metrics = up.RuntimeMetrics{};
     var frame_metrics = up.RuntimeMetrics{};
     var metrics_panel = up.InspectorMetricsPanel{ .metrics = &runtime_metrics };
@@ -935,15 +968,25 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
     defer audio.deinit();
 
-    var audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+    var audio_output = AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio) catch |err| {
+        dev.failure(.audio, err);
+        dev.captureFailure(.{ .phase = .audio, .err = err }, 0, canvas, commands.commands.items, &profiler);
+        return err;
+    };
+    if (audio_output == null) {
+        dev.failure(.audio, error.SdlError);
+        dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, 0, canvas, commands.commands.items, &profiler);
+    }
     defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
     var desktop_state = DesktopState{};
-    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, try framebufferSize(window), config.presentation_mode);
+    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, framebufferSize(window) catch |err| {
+        dev.failure(.gpu, err);
+        dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
+        return err;
+    }, config.presentation_mode);
     var clock = up.StepClock.init(config.fixed_hz);
-    const data_path = try appDataPath(allocator, config.organization, config.application);
-    defer allocator.free(data_path);
     var actions = try up.ActionMap.init(allocator, config.actions);
     defer actions.deinit();
     actions.attachAppData(data_path);
@@ -951,9 +994,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         error.FileNotFound => {},
         else => return err,
     };
-    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
-    defer dev.deinit();
-    var presenter = try Presenter.init(device, config.width, config.height);
+    var presenter = Presenter.init(device, config.width, config.height) catch |err| {
+        dev.failure(.gpu, err);
+        dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
+        return err;
+    };
     var presenter_live = true;
     defer if (presenter_live) presenter.deinit(device);
 
@@ -986,9 +1031,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         var close_requested = false;
         const callback_timer = profiler.scope(.callback);
         running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery) catch |err| blk: {
-            dev.failure(.event, err);
-            dev.captureFailure(.{ .phase = .event, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
-            failure = .{ .phase = .event, .err = err };
+            dev.failure(.input, err);
+            dev.captureFailure(.{ .phase = .input, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
+            failure = .{ .phase = .input, .err = err };
             break :blk !close_requested;
         };
         callback_timer.end();
@@ -1021,8 +1066,20 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             continue;
         }
         if (audio_device_changed) {
-            if (audio_output) |*output| output.deinit(allocator);
-            audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+            if (audio_output) |*output| {
+                output.deinit(allocator);
+                audio_output = null;
+            }
+            audio_output = AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio) catch |err| {
+                dev.failure(.audio, err);
+                dev.captureFailure(.{ .phase = .audio, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
+                failure = .{ .phase = .audio, .err = err };
+                continue;
+            };
+            if (audio_output == null) {
+                dev.failure(.audio, error.SdlError);
+                dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, ctx.frame, canvas, commands.commands.items, &profiler);
+            }
         }
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
@@ -1417,6 +1474,9 @@ fn shouldPause(policy: PausePolicy, state: DesktopState) bool {
 
 const FailurePhase = enum {
     init,
+    gpu,
+    audio,
+    input,
     event,
     asset_reload,
     gpu_recovery,
@@ -1427,6 +1487,9 @@ const FailurePhase = enum {
     fn label(self: FailurePhase) []const u8 {
         return switch (self) {
             .init => "init",
+            .gpu => "GPU",
+            .audio => "audio",
+            .input => "input",
             .event => "event",
             .asset_reload => "asset reload",
             .gpu_recovery => "GPU recovery",
@@ -1493,6 +1556,14 @@ const DeveloperTools = struct {
     }
 
     fn captureFailure(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler) void {
+        self.captureDiagnostic(failure_value, frame, canvas, commands, frame_profiler, "runtime");
+    }
+
+    fn captureStartupFailure(self: *DeveloperTools, failure_value: Failure, frame_profiler: *const up.FrameProfiler, operation: []const u8) void {
+        self.captureDiagnostic(failure_value, 0, null, &.{}, frame_profiler, operation);
+    }
+
+    fn captureDiagnostic(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: ?up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler, operation: []const u8) void {
         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
         const configured_path = std.process.getEnvVarOwned(self.allocator, "UP_DIAGNOSTICS_ROOT") catch |err| switch (err) {
             error.EnvironmentVariableNotFound => null,
@@ -1501,7 +1572,7 @@ const DeveloperTools = struct {
         defer if (configured_path) |value| self.allocator.free(value);
         const path = configured_path orelse std.fmt.bufPrint(&path_buffer, "{s}diagnostics", .{self.app_data_path}) catch return;
         var message_buffer: [256]u8 = undefined;
-        const message = std.fmt.bufPrint(&message_buffer, "runtime failure phase={s} error={s} frame={d}\n", .{ failure_value.phase.label(), @errorName(failure_value.err), frame }) catch return;
+        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), frame }) catch return;
         up.diagnostics.capture(self.allocator, .{ .path = path }, .{ .canvas = canvas, .commands = commands, .profiler = frame_profiler, .log = message }) catch |err| {
             var buffer: [192]u8 = undefined;
             const line = std.fmt.bufPrint(&buffer, "unpolished-peas diagnostics failed: {s}\n", .{@errorName(err)}) catch return;
@@ -1593,6 +1664,33 @@ test "runtime failures capture bounded artifacts" {
     try directory.access("commands.json", .{});
     try directory.access("trace.json", .{});
     try directory.access("failure.log", .{});
+}
+
+test "GPU audio and input startup failures capture diagnostics" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const cases = [_]FailurePhase{ .gpu, .audio, .input };
+    for (cases) |phase| {
+        const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/{s}/", .{ root, phase.label() });
+        defer std.testing.allocator.free(data_path);
+        var tools = try DeveloperTools.init(std.testing.allocator, false, data_path);
+        defer tools.deinit();
+        var profiler = up.FrameProfiler.init(true);
+        profiler.beginFrame(0);
+        tools.captureStartupFailure(.{ .phase = phase, .err = error.StartupFailed }, &profiler, "startup-test");
+        const diagnostics_path = try std.fs.path.join(std.testing.allocator, &.{ data_path, "diagnostics" });
+        defer std.testing.allocator.free(diagnostics_path);
+        var directory = try std.fs.openDirAbsolute(diagnostics_path, .{});
+        defer directory.close();
+        try directory.access("commands.json", .{});
+        try directory.access("trace.json", .{});
+        const log = try directory.readFileAlloc(std.testing.allocator, "failure.log", 1024);
+        defer std.testing.allocator.free(log);
+        try std.testing.expect(std.mem.indexOf(u8, log, phase.label()) != null);
+        try std.testing.expect(std.mem.indexOf(u8, log, "startup-test") != null);
+    }
 }
 
 fn drawFailure(canvas: *up.Canvas, failure: Failure) void {
@@ -2403,6 +2501,10 @@ const SpriteShaderStage = enum { vertex, fragment };
 
 fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
     const shader_format = try selectGpuShaderFormat(device);
+    if (shader_format == .dxbc) return createD3dShader(device, stage, switch (stage) {
+        .vertex => sprite_vert_hlsl,
+        .fragment => sprite_frag_hlsl,
+    }, if (stage == .fragment) 1 else 0, 0);
     const source: []const u8 = if (shader_format == .msl)
         switch (stage) {
             .vertex => sprite_vert_msl,
@@ -2442,6 +2544,10 @@ fn createEffectPipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
 
 fn createEffectShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
     const shader_format = try selectGpuShaderFormat(device);
+    if (shader_format == .dxbc) return createD3dShader(device, stage, switch (stage) {
+        .vertex => effect_vert_hlsl,
+        .fragment => effect_frag_hlsl,
+    }, if (stage == .fragment) 1 else 0, if (stage == .fragment) 1 else 0);
     const source: []const u8 = if (shader_format == .msl) switch (stage) {
         .vertex => effect_vert_msl,
         .fragment => effect_frag_msl,
@@ -2502,6 +2608,10 @@ fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SD
 
 fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
     const shader_format = try selectGpuShaderFormat(device);
+    if (shader_format == .dxbc) return createD3dShader(device, stage, switch (stage) {
+        .vertex => primitive_vert_hlsl,
+        .fragment => primitive_frag_hlsl,
+    }, 0, 0);
     const source: []const u8 = if (shader_format == .msl)
         switch (stage) {
             .vertex => primitive_vert_msl,
@@ -2529,6 +2639,68 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
         .props = 0,
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
+
+fn createD3dShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage, source: []const u8, samplers: u32, uniform_buffers: u32) !*c.SDL_GPUShader {
+    return d3d_compiler.createShader(device, stage, source, samplers, uniform_buffers);
+}
+
+const d3d_compiler = if (builtin.os.tag == .windows) struct {
+    const win = @cImport({
+        @cDefine("COBJMACROS", "1");
+        @cInclude("d3dcompiler.h");
+    });
+    const CompileFn = *const fn (?*const anyopaque, usize, ?[*:0]const u8, ?*const anyopaque, ?*anyopaque, [*:0]const u8, [*:0]const u8, u32, u32, *?*win.ID3DBlob, *?*win.ID3DBlob) callconv(.winapi) i32;
+
+    fn createShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage, source: []const u8, samplers: u32, uniform_buffers: u32) !*c.SDL_GPUShader {
+        var library = std.DynLib.open("d3dcompiler_47.dll") catch return error.WindowsShaderCompilerUnavailable;
+        defer library.close();
+        const compile = library.lookup(CompileFn, "D3DCompile") orelse return error.WindowsShaderCompilerUnavailable;
+        var bytecode: ?*win.ID3DBlob = null;
+        var errors: ?*win.ID3DBlob = null;
+        defer {
+            if (errors) |value| _ = release(value);
+        }
+        const result = compile(@ptrCast(source.ptr), source.len, null, null, null, "main", switch (stage) {
+            .vertex => "vs_5_1",
+            .fragment => "ps_5_1",
+        }, 0, 0, &bytecode, &errors);
+        if (result < 0) return error.WindowsShaderCompileFailed;
+        const compiled = bytecode orelse return error.WindowsShaderCompileFailed;
+        defer _ = release(compiled);
+        const bytecode_ptr: [*]const u8 = @ptrCast(bufferPointer(compiled) orelse return error.WindowsShaderCompileFailed);
+        return c.SDL_CreateGPUShader(device, &.{
+            .code_size = bufferSize(compiled),
+            .code = bytecode_ptr,
+            .entrypoint = "main",
+            .format = c.SDL_GPU_SHADERFORMAT_DXBC,
+            .stage = switch (stage) {
+                .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+                .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+            },
+            .num_samplers = samplers,
+            .num_storage_textures = 0,
+            .num_storage_buffers = 0,
+            .num_uniform_buffers = uniform_buffers,
+            .props = 0,
+        }) orelse return sdlFail("SDL_CreateGPUShader");
+    }
+
+    fn release(value: *win.ID3DBlob) u32 {
+        return value.lpVtbl[0].Release.?(value);
+    }
+
+    fn bufferPointer(value: *win.ID3DBlob) ?*anyopaque {
+        return value.lpVtbl[0].GetBufferPointer.?(value);
+    }
+
+    fn bufferSize(value: *win.ID3DBlob) usize {
+        return value.lpVtbl[0].GetBufferSize.?(value);
+    }
+} else struct {
+    fn createShader(_: *c.SDL_GPUDevice, _: SpriteShaderStage, _: []const u8, _: u32, _: u32) error{UnsupportedGpuShaderFormat}!*c.SDL_GPUShader {
+        return error.UnsupportedGpuShaderFormat;
+    }
+};
 
 fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery) !bool {
     var running = true;

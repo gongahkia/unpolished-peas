@@ -26,7 +26,7 @@ zig build test-renderer-conformance
 ```
 
 `zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The pinned Box2D source is reserved for the optional physics module and is validated with `zig build test-box2d`.
-`test-renderer-conformance` runs the shared canvas smoke/golden fixture and an opt-in GPU capture golden. CI requires the GPU capture on macOS and Linux; Windows runs the same fixture when an MSL or SPIR-V GPU driver is available, otherwise emits its platform, drivers, and shader-format capability report.
+`test-renderer-conformance` runs the shared canvas smoke/golden fixture and an opt-in GPU capture golden. CI requires the GPU capture on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
@@ -174,7 +174,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
-`zig build peas -- check [project-directory] [--target <linux|macos>]` statically validates the manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; failures include a recovery command.
+`zig build peas -- check [project-directory] [--target <linux|macos|windows>]` statically validates the manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; Windows checks require Windows 10/11 x64 with `D3DCompiler_47.dll`; failures include a recovery command.
 `project.up` is the strict version-1 ZON project manifest. It requires the `unpolished-peas-project` format, an entry `.upscene` path, title/width/height/scale build settings, a safe asset root, and engine version `v0.0.3`; unknown and invalid fields report file locations through `peas check`.
 `.upassets` is the strict version-1 ZON asset catalog. It requires the `unpolished-peas-assets` format and explicitly lists image, audio, font, atlas, and shader assets by unique ID and safe relative path; `up.assetCatalog.parse`, `load`, and `graph` validate, bind `AssetStore` handles, and expose declared dependencies.
 `up.mapSource` parses strict version-1 ZON native map source with tilesets, sparse signed cells, object geometry, collision properties, and parented layers; invalid references report source locations.
