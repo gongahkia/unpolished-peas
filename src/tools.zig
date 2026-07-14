@@ -75,6 +75,12 @@ pub const PackageTarget = enum {
     }
 };
 
+pub const CheckTarget = enum {
+    linux,
+    macos,
+    windows,
+};
+
 pub const DocsTopic = enum {
     overview,
     quickstart,
@@ -141,6 +147,18 @@ pub fn parsePackageTarget(value: []const u8) ?PackageTarget {
     return std.meta.stringToEnum(PackageTarget, value);
 }
 
+pub fn parseCheckTarget(value: []const u8) ?CheckTarget {
+    return std.meta.stringToEnum(CheckTarget, value);
+}
+
+pub fn targetSetupDiagnostic(target: CheckTarget) ?[]const u8 {
+    if (target != .windows) return null;
+    if (builtin.os.tag != .windows) return "Windows validation must run on a Windows 10/11 x64 host";
+    var compiler = std.DynLib.open("d3dcompiler_47.dll") catch return "D3DCompiler_47.dll is unavailable";
+    compiler.close();
+    return null;
+}
+
 pub fn parseDocsTopic(value: []const u8) ?DocsTopic {
     return std.meta.stringToEnum(DocsTopic, value);
 }
@@ -167,7 +185,7 @@ pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
         \\commands: new run check compile migrate import-tiled import-ldtk test package docs
-        \\check: zig build peas -- check [project-directory] [--target <linux|macos>]
+        \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\compile: zig build peas -- compile [project-directory] [output-directory]
         \\migrate: zig build peas -- migrate <scene|catalog|map> <input> <output>
         \\import-tiled: zig build peas -- import-tiled <input.tmj> <output.upmap>
@@ -391,8 +409,17 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
     try std.testing.expect(parsePackageTarget("windows") == null);
+    try std.testing.expectEqual(CheckTarget.windows, parseCheckTarget("windows").?);
+    try std.testing.expect(parseCheckTarget("web") == null);
     try std.testing.expectEqual(DocsTopic.api, parseDocsTopic("api").?);
     try std.testing.expect(parseDocsTopic("reference") == null);
+}
+
+test "tools diagnose unsupported Windows setup" {
+    const diagnostic = targetSetupDiagnostic(.windows);
+    if (builtin.os.tag == .windows) {
+        if (diagnostic) |value| try std.testing.expectEqualStrings("D3DCompiler_47.dll is unavailable", value);
+    } else try std.testing.expectEqualStrings("Windows validation must run on a Windows 10/11 x64 host", diagnostic.?);
 }
 
 test "tools classify diagnostic fixtures" {

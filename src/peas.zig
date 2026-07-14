@@ -216,13 +216,13 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
 fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
     var project_path: []const u8 = ".";
     var project_path_set = false;
-    var target: ?tools.PackageTarget = null;
+    var target: ?tools.CheckTarget = null;
     while (args.next()) |argument| {
         if (std.mem.eql(u8, argument, "--target")) {
             if (target != null) return checkUsage();
             const target_argument = args.next() orelse return checkUsage();
-            target = tools.parsePackageTarget(target_argument) orelse {
-                std.debug.print("peas check: unsupported target {s}\npeas check: recovery: zig build peas -- check --target linux\n", .{target_argument});
+            target = tools.parseCheckTarget(target_argument) orelse {
+                std.debug.print("peas check: unsupported target {s}\npeas check: recovery: zig build peas -- check --target windows\n", .{target_argument});
                 return error.UnsupportedTarget;
             };
         } else if (!project_path_set) {
@@ -235,7 +235,13 @@ fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !v
         return err;
     };
     defer allocator.free(project_root);
-    if (target) |value| std.debug.print("peas check: target {s}\n", .{@tagName(value)});
+    if (target) |value| {
+        std.debug.print("peas check: target {s}\n", .{@tagName(value)});
+        if (tools.targetSetupDiagnostic(value)) |diagnostic| {
+            std.debug.print("peas check: unsupported {s} setup: {s}\npeas check: recovery: run `zig build peas -- check {s} --target windows` on Windows 10/11 x64\n", .{ @tagName(value), diagnostic, project_root });
+            return error.UnsupportedTarget;
+        }
+    }
     if (try tools.checkProject(allocator, project_root)) |check_issue| {
         var owned_issue = check_issue;
         defer owned_issue.deinit(allocator);
@@ -247,7 +253,7 @@ fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !v
 }
 
 fn checkUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- check [project-directory] [--target <linux|macos>]\n", .{});
+    std.debug.print("usage: zig build peas -- check [project-directory] [--target <linux|macos|windows>]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -389,6 +395,10 @@ test "known test selections parse" {
 test "known package targets parse" {
     try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
     try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
+}
+
+test "known check targets parse" {
+    try std.testing.expectEqual(tools.CheckTarget.windows, tools.parseCheckTarget("windows").?);
 }
 
 test "known docs topics parse" {

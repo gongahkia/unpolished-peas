@@ -12,6 +12,13 @@ glslangValidator -V -S frag "$ROOT_DIR/shaders/primitive.frag" -o "$OUT_DIR/prim
 glslangValidator -V -S vert "$ROOT_DIR/shaders/effect.vert" -o "$OUT_DIR/effect.vert.spv"
 glslangValidator -V -S frag "$ROOT_DIR/shaders/effect.frag" -o "$OUT_DIR/effect.frag.spv"
 
+spirv-cross "$OUT_DIR/sprite.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.vert.hlsl"
+spirv-cross "$OUT_DIR/sprite.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.frag.hlsl"
+spirv-cross "$OUT_DIR/primitive.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.vert.hlsl"
+spirv-cross "$OUT_DIR/primitive.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.frag.hlsl"
+spirv-cross "$OUT_DIR/effect.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/effect.vert.hlsl"
+spirv-cross "$OUT_DIR/effect.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/effect.frag.hlsl"
+
 if [[ "$(uname -s)" == "Darwin" ]]; then
   spirv-cross "$OUT_DIR/sprite.vert.spv" --msl --output "$OUT_DIR/sprite.vert.metal"
   spirv-cross "$OUT_DIR/sprite.frag.spv" --msl --output "$OUT_DIR/sprite.frag.metal"
