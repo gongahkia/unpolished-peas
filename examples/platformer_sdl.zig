@@ -35,10 +35,11 @@ const Game = struct {
         try self.world.step(ctx.dt, 4);
         if (ctx.down(.action)) try ctx.setPixelEffect("invert", .{ .amount = 0.2 }) else ctx.clearPixelEffect();
     }
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
         ctx.drawTileMap(self.map, &camera, 0);
         ctx.sprite(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
+        try self.world.appendDebug(ctx.commands, &camera, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
         const marker = self.world.bodyPosition(self.marker) catch return;
         ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
         ctx.text("PLATFORMER", 2, 2, up.Color.white);
