@@ -77,13 +77,28 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
-            package_script: script/test_linux_package.sh dist/linux
+            game: topdown
+            package_script: script/test_linux_package.sh
           - os: macos-15-intel
             target: macos
-            package_script: script/test_macos_package.sh dist/macos
+            game: topdown
+            package_script: script/test_macos_package.sh
           - os: windows-2022
             target: windows
-            package_script: script/test_windows_package.ps1 dist/windows
+            game: topdown
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: platformer
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: platformer
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: platformer
+            package_script: script/test_windows_package.ps1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -92,11 +107,11 @@ jobs:
           version: 0.15.2
       - if: matrix.target == 'linux'
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
-      - run: ${{ matrix.package_script }}
+      - run: ${{ matrix.package_script }} dist/${{ matrix.target }} ${{ matrix.game }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: package-compatibility-${{ matrix.target }}
+          name: package-compatibility-${{ matrix.target }}-${{ matrix.game }}
           path: |
             dist/**/*
             zig-out/diagnostics/**/*
