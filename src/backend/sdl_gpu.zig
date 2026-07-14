@@ -349,6 +349,7 @@ pub const Config = struct {
     asset_root: ?[]const u8 = null,
     actions: []const up.Action = &.{},
     developer_tools: bool = builtin.mode == .Debug,
+    cpu_profiler: bool = builtin.mode == .Debug,
     pause_policy: PausePolicy = .never,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
@@ -387,6 +388,7 @@ pub const Context = struct {
     commands: *up.RenderCommandBuffer,
     pixel_effects: *up.PostProcessChain,
     inspector: *up.Inspector,
+    profiler: *up.FrameProfiler,
     capture_requested: *bool,
     dt: f32,
     frame: u64,
@@ -484,7 +486,23 @@ pub const Context = struct {
         self.inspector.toggle();
     }
 
+    pub fn profile(self: *Context, scope: up.ProfileScope) up.ProfileTimer {
+        return self.profiler.scope(scope);
+    }
+
+    pub fn profileMetrics(self: *const Context) up.ProfileMetrics {
+        return self.profiler.metrics();
+    }
+
+    pub fn exportCpuTrace(self: *const Context) !void {
+        var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const path = try std.fmt.bufPrint(&path_buffer, "{s}cpu-trace.json", .{self.app_data_path});
+        try self.profiler.writeTrace(path);
+    }
+
     pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadShader(path);
     }
 
@@ -511,26 +529,38 @@ pub const Context = struct {
     }
 
     pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadPng(path);
     }
 
     pub fn loadImage(self: *Context, path: []const u8) !up.ImageHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadImage(path);
     }
 
     pub fn loadAtlas(self: *Context, path: []const u8) !up.AtlasHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadAtlas(path);
     }
 
     pub fn loadFont(self: *Context, path: []const u8) !up.FontHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadFont(path);
     }
 
     pub fn loadFontWithOptions(self: *Context, path: []const u8, options: up.FontLoadOptions) !up.FontHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadFontWithOptions(path, options);
     }
 
     pub fn loadBitmapFont(self: *Context, path: []const u8) !up.FontHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadBitmapFont(path);
     }
 
@@ -551,10 +581,14 @@ pub const Context = struct {
     }
 
     pub fn loadTileMap(self: *Context, path: []const u8) !up.TileMapHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadTileMap(path);
     }
 
     pub fn loadTileMapWithOptions(self: *Context, path: []const u8, options: up.TileMapAssetOptions) !up.TileMapHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadTileMapWithOptions(path, options);
     }
 
@@ -567,6 +601,8 @@ pub const Context = struct {
     }
 
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
+        const timer = self.profile(.asset);
+        defer timer.end();
         return self.assets.loadText(path);
     }
 
@@ -879,6 +915,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var pixel_effects = up.PostProcessChain{};
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
+    var profiler = up.FrameProfiler.init(config.cpu_profiler);
     var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
@@ -906,14 +943,17 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var presenter_live = true;
     defer if (presenter_live) presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
+    profiler.beginFrame(ctx.frame);
+    const init_timer = profiler.scope(.callback);
     callLoopInit(state, callbacks, &ctx) catch |err| {
         dev.failure(.init, err);
         failure = .{ .phase = .init, .err = err };
     };
+    init_timer.end();
     initialized = failure == null;
     defer if (initialized) callLoopDeinit(state, callbacks, &ctx);
 
@@ -921,17 +961,20 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var last_ticks = c.SDL_GetTicksNS();
 
     while (running) {
+        profiler.beginFrame(ctx.frame);
         input.beginFrame();
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
         var close_requested = false;
+        const callback_timer = profiler.scope(.callback);
         running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery) catch |err| blk: {
             dev.failure(.event, err);
             failure = .{ .phase = .event, .err = err };
             break :blk !close_requested;
         };
+        callback_timer.end();
         actions.update(input);
         switch (gpu_recovery) {
             .ready => {},
@@ -963,11 +1006,14 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         }
         if (input.wasPressed(.debug)) dev.toggleOverlay();
 
+        const asset_timer = profiler.scope(.asset);
         const reload_events = assets.reloadChanged() catch |err| {
+            asset_timer.end();
             dev.failure(.asset_reload, err);
             failure = .{ .phase = .asset_reload, .err = err };
             continue;
         };
+        asset_timer.end();
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -978,21 +1024,27 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
             ctx.dt = clock.step_seconds;
+            const update_timer = profiler.scope(.update);
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
+                update_timer.end();
                 dev.failure(.update, err);
                 failure = .{ .phase = .update, .err = err };
                 break;
             };
+            update_timer.end();
         }
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
         ctx.dt = if (paused) 0 else dt;
+        const draw_timer = profiler.scope(.draw);
         callLoopDraw(state, callbacks, &ctx) catch |err| {
+            draw_timer.end();
             dev.failure(.draw, err);
             failure = .{ .phase = .draw, .err = err };
             continue;
         };
+        draw_timer.end();
         inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, dt, ctx.frame);

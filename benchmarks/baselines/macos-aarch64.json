@@ -6,6 +6,9 @@
     "frame_ns": 5000000,
     "frame_allocation_events": 480,
     "frame_allocated_bytes": 40320,
+    "profiler_frame_ns": 1000000,
+    "profiler_frame_allocation_events": 0,
+    "profiler_frame_allocated_bytes": 0,
     "renderer_ns": 5000000,
     "renderer_allocation_events": 0,
     "renderer_allocated_bytes": 0
