@@ -34,13 +34,17 @@ migrate="$repo/script/services_migrate.sh"
 bootstrap="$repo/script/services_bootstrap_db.sh"
 "$bootstrap" "$database_url"
 "$migrate" "$database_url" up
-psql "$database_url" -Atq -c 'SELECT count(*) FROM service_schema_migrations' | grep -Fx '1'
-if command -v sha256sum >/dev/null 2>&1; then
-    digest=$(sha256sum "$repo/services/migrations/0001_service_storage.up.sql" | awk '{print $1}')
-else
-    digest=$(shasum -a 256 "$repo/services/migrations/0001_service_storage.up.sql" | awk '{print $1}')
-fi
-psql "$database_url" -Atq -c "SELECT checksum FROM service_schema_migrations WHERE version = '0001_service_storage'" | grep -Fx "$digest"
+psql "$database_url" -Atq -c 'SELECT count(*) FROM service_schema_migrations' | grep -Fx '2'
+for migration_file in "$repo/services/migrations"/*.up.sql; do
+    filename=$(basename "$migration_file")
+    migration_version=$(printf '%s' "$filename" | sed 's/\.up\.sql$//')
+    if command -v sha256sum >/dev/null 2>&1; then
+        digest=$(sha256sum "$migration_file" | awk '{print $1}')
+    else
+        digest=$(shasum -a 256 "$migration_file" | awk '{print $1}')
+    fi
+    psql "$database_url" -Atq -c "SELECT checksum FROM service_schema_migrations WHERE version = '$migration_version'" | grep -Fx "$digest"
+done
 
 psql "$database_url" -v ON_ERROR_STOP=1 -q <<'SQL'
 INSERT INTO service_identities (id, token_hash, expires_at)
@@ -55,6 +59,39 @@ INSERT INTO service_matches (id, lobby_id)
 VALUES ('55555555-5555-5555-5555-555555555555', '33333333-3333-3333-3333-333333333333');
 SQL
 
+psql "$database_url" -v ON_ERROR_STOP=1 -Atq <<'SQL' | grep -Fx 'aaaaaaaa-0000-0000-0000-000000000001'
+SELECT service_issue_guest_session(
+    'aaaaaaaa-0000-0000-0000-000000000001',
+    decode(repeat('ab', 32), 'hex'),
+    CURRENT_TIMESTAMP + interval '2 hours',
+    'aaaaaaaa-0000-0000-0000-000000000002',
+    decode(repeat('ac', 32), 'hex'),
+    CURRENT_TIMESTAMP + interval '1 hour'
+);
+SELECT identity_id
+FROM service_validate_guest_session(decode(repeat('ac', 32), 'hex'));
+SQL
+
+psql "$database_url" -v ON_ERROR_STOP=1 -Atq <<'SQL' | grep -Fx 'aaaaaaaa-0000-0000-0000-000000000003'
+SELECT service_rotate_guest_session(
+    'aaaaaaaa-0000-0000-0000-000000000002',
+    decode(repeat('ac', 32), 'hex'),
+    'aaaaaaaa-0000-0000-0000-000000000003',
+    decode(repeat('ad', 32), 'hex'),
+    CURRENT_TIMESTAMP + interval '1 hour'
+);
+SELECT session_id
+FROM service_validate_guest_session(decode(repeat('ad', 32), 'hex'));
+SQL
+
+test -z "$(psql "$database_url" -Atq -c "SELECT session_id FROM service_validate_guest_session(decode(repeat('ac', 32), 'hex'))")"
+psql "$database_url" -Atq -c "SELECT service_revoke_guest_session('aaaaaaaa-0000-0000-0000-000000000003', decode(repeat('ad', 32), 'hex'))" | grep -Fx 't'
+psql "$database_url" -Atq -c "SELECT service_revoke_guest_session('aaaaaaaa-0000-0000-0000-000000000003', decode(repeat('ad', 32), 'hex'))" | grep -Fx 'f'
+test -z "$(psql "$database_url" -Atq -c "SELECT session_id FROM service_validate_guest_session(decode(repeat('ad', 32), 'hex'))")"
+
+psql "$database_url" -v ON_ERROR_STOP=1 -q -c "INSERT INTO service_sessions (id, identity_id, token_hash, issued_at, expires_at) VALUES ('aaaaaaaa-0000-0000-0000-000000000004', 'aaaaaaaa-0000-0000-0000-000000000001', decode(repeat('ae', 32), 'hex'), CURRENT_TIMESTAMP - interval '2 hours', CURRENT_TIMESTAMP - interval '1 hour')"
+test -z "$(psql "$database_url" -Atq -c "SELECT session_id FROM service_validate_guest_session(decode(repeat('ae', 32), 'hex'))")"
+
 expect_failure() {
     if psql "$database_url" -v ON_ERROR_STOP=1 -q -c "$1" >/dev/null 2>&1; then
         printf '%s\n' 'test_services_migrations.sh: expected constraint failure' >&2
@@ -68,6 +105,7 @@ expect_failure "INSERT INTO service_lobby_memberships (id, lobby_id, identity_id
 expect_failure "INSERT INTO service_matches (id, lobby_id, status, started_at, finished_at) VALUES ('99999999-9999-9999-9999-999999999999', '33333333-3333-3333-3333-333333333333', 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP - interval '1 second')"
 expect_failure "INSERT INTO service_relay_allocations (id, match_id, issued_identity_id, route_token_hash, endpoint, max_connections, max_bandwidth_kbps, expires_at) VALUES ('aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', '55555555-5555-5555-5555-555555555555', '11111111-1111-1111-1111-111111111111', decode(repeat('aa', 32), 'hex'), '127.0.0.1:48081', 0, 128, CURRENT_TIMESTAMP + interval '1 hour')"
 
+"$migrate" "$database_url" down
 "$migrate" "$database_url" down
 psql "$database_url" -Atq -c "SELECT to_regclass('public.service_identities') IS NULL" | grep -Fx 't'
 psql "$database_url" -Atq -c 'SELECT count(*) FROM service_schema_migrations' | grep -Fx '0'

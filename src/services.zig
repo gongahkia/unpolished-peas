@@ -1,4 +1,9 @@
 const up = @import("unpolished-peas");
+const guest = @import("guest_credentials.zig");
+
+pub const GuestToken = guest.Token;
+pub const GuestCredentials = guest.Credentials;
+pub const GuestCredentialStore = guest.Store;
 
 pub const Endpoint = struct {
     host: []const u8,
