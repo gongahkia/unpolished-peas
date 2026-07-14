@@ -642,6 +642,16 @@ pub fn play(config: Config, comptime Game: type) !void {
     try playWithAllocator(allocator, parsed_config, Game);
 }
 
+pub fn playGame(comptime Game: type) !void {
+    comptime validateGame(Game);
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() == .leak) @panic("game allocation leak");
+
+    const allocator = gpa.allocator();
+    const parsed_config = try configFromArgs(allocator, gameConfig(Game));
+    try playWithAllocator(allocator, parsed_config, Game);
+}
+
 pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) @panic("game allocation leak");
@@ -649,6 +659,11 @@ pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
     const allocator = gpa.allocator();
     const parsed_config = try configFromArgs(allocator, config);
     try runWithAllocator(allocator, parsed_config, state, callbacks);
+}
+
+pub fn validateConfig(config: Config) !void {
+    if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
+    if (config.fixed_hz == 0 or config.audio_sample_rate == 0 or config.audio_buffer_frames == 0) return error.InvalidConfig;
 }
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
@@ -685,7 +700,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
-    if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
+    try validateConfig(config);
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
 
@@ -838,6 +853,14 @@ fn validateGame(comptime Game: type) void {
     }
 }
 
+fn gameConfig(comptime Game: type) Config {
+    comptime validateGame(Game);
+    if (!@hasDecl(Game, "config")) @compileError("structured Game must declare pub const config: sdl.Config");
+    const config = Game.config;
+    if (@TypeOf(config) != Config) @compileError("structured Game.config must be sdl.Config");
+    return config;
+}
+
 fn deinitGame(comptime Game: type, game: *Game, ctx: *Context) void {
     if (@hasDecl(Game, "deinit")) {
         game.deinit(ctx);
@@ -959,6 +982,32 @@ test "lifecycle accepts optional callbacks" {
     try callEvent(Full, &full, &ctx, .close_requested);
     deinitGame(Full, &full, &ctx);
     try std.testing.expectEqualSlices(u8, "iudx", full.calls[0..full.call_count]);
+}
+
+test "structured Game owns desktop configuration" {
+    const Game = struct {
+        pub const config: Config = .{
+            .title = "structured",
+            .width = 160,
+            .height = 90,
+            .scale = 4,
+            .presentation_mode = .fit,
+            .asset_root = "assets",
+            .developer_tools = false,
+        };
+    };
+    const config = gameConfig(Game);
+    try std.testing.expectEqualStrings("structured", config.title);
+    try std.testing.expectEqual(@as(u32, 160), config.width);
+    try std.testing.expectEqual(up.PresentationMode.fit, config.presentation_mode);
+    try std.testing.expectEqualStrings("assets", config.asset_root.?);
+}
+
+test "desktop configuration errors are recoverable" {
+    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .width = 0 }));
+    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .fixed_hz = 0 }));
+    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_sample_rate = 0 }));
+    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_buffer_frames = 0 }));
 }
 
 test "explicit loop callbacks share the lifecycle" {

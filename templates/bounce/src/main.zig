@@ -6,6 +6,16 @@ const width = 160;
 const height = 90;
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "bouncing-square",
+        .organization = "your-name",
+        .application = "bouncing-square",
+        .width = width,
+        .height = height,
+        .scale = 5,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     pos: up.Vec2 = .{ .x = 76, .y = 41 },
     vel: up.Vec2 = .{ .x = 50, .y = 36 },
 
@@ -29,15 +39,7 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "bouncing-square",
-        .organization = "your-name",
-        .application = "bouncing-square",
-        .width = width,
-        .height = height,
-        .scale = 5,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }
 
 test "bouncing-square starts within the canvas" {

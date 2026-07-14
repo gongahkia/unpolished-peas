@@ -54,6 +54,8 @@ const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{ .width = 80, .height = 60, .scale = 6 };
+
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
         ctx.rect(18, 18, 28, 28, up.Color.rgb(255, 198, 74));
         ctx.text("HELLO", 8, 8, up.Color.white);
@@ -61,13 +63,13 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{ .width = 80, .height = 60, .scale = 6 }, Game);
+    try sdl.playGame(Game);
 }
 ```
 
 ## Explicit Loop
 
-`sdl.run` accepts a caller-owned state pointer and an explicit `init`, `event`, `update`, `draw`, and `deinit` callback table. It uses the same runtime lifecycle and resource ownership as `sdl.play`; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a `Game` type.
+sdl.playGame(Game) reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. sdl.play(config, Game) and sdl.run(config, state, callbacks) remain equivalent low-level paths; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a Game type.
 
 ## Starter Project
 
