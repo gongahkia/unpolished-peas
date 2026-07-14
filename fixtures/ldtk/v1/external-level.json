@@ -1,0 +1,11 @@
+{
+  "layerInstances": [{
+    "__type": "IntGrid",
+    "__identifier": "ExternalGrid",
+    "visible": true,
+    "__opacity": 1,
+    "__gridSize": 8,
+    "__cWid": 1,
+    "intGridCsv": [7]
+  }]
+}

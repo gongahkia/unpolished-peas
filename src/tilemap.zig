@@ -968,7 +968,8 @@ fn parseLdtkLayers(map: *TileMap, values: std.json.Array) !void {
         map.tile_size = .{ .x = @floatFromInt(grid_size), .y = @floatFromInt(grid_size) };
         if (kind == .objects) {
             for ((try array(entry.get("entityInstances") orelse return error.InvalidLdtkProject)).items) |entity| {
-                try layer.objects.append(map.allocator, try parseLdtkEntity(map.allocator, try object(entity)));
+                const entity_object = try object(entity);
+                try layer.objects.append(map.allocator, try parseLdtkEntity(map.allocator, entity_object, try uniqueLdtkObjectId(entity_object, layer.objects.items)));
             }
             continue;
         }
@@ -994,11 +995,24 @@ fn parseLdtkLayers(map: *TileMap, values: std.json.Array) !void {
     }
 }
 
-fn parseLdtkEntity(allocator: std.mem.Allocator, entry: std.json.ObjectMap) !MapObject {
+fn uniqueLdtkObjectId(entry: std.json.ObjectMap, objects: []const MapObject) !u32 {
+    var id: u32 = if (entry.get("iid")) |iid| @truncate(std.hash.Wyhash.hash(0, try string(iid))) else try u32Value(entry.get("defUid") orelse return error.InvalidLdtkProject);
+    while (true) {
+        var occupied = false;
+        for (objects) |existing| if (existing.id == id) {
+            occupied = true;
+            break;
+        };
+        if (!occupied) return id;
+        id +%= 1;
+    }
+}
+
+fn parseLdtkEntity(allocator: std.mem.Allocator, entry: std.json.ObjectMap, id: u32) !MapObject {
     const px = try array(entry.get("px") orelse return error.InvalidLdtkProject);
     if (px.items.len != 2) return error.InvalidLdtkProject;
     var result = MapObject{
-        .id = try u32Value(entry.get("defUid") orelse return error.InvalidLdtkProject),
+        .id = id,
         .name = try allocator.dupe(u8, try string(entry.get("__identifier") orelse return error.InvalidLdtkProject)),
         .class_name = try allocator.dupe(u8, try string(entry.get("__identifier") orelse return error.InvalidLdtkProject)),
         .bounds = .{ .x = @floatFromInt(try i32Value(px.items[0])), .y = @floatFromInt(try i32Value(px.items[1])), .w = @floatFromInt(try i32Value(entry.get("width") orelse return error.InvalidLdtkProject)), .h = @floatFromInt(try i32Value(entry.get("height") orelse return error.InvalidLdtkProject)) },
