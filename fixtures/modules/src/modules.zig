@@ -20,6 +20,9 @@ test "downstream module imports remain SDL-free" {
     const session = up.NetSession{ .id = 1, .identity = identity, .issued_at_ms = 0, .expires_at_ms = 2 };
     _ = try up.NetConnection.init(authoritative, session, .{ .id = 2 }, 1);
     _ = try up.NetConnection.init(peer_to_peer, session, .{ .id = 2 }, 1);
+    const prediction_config = up.PredictionConfig{ .history_limit = 2 };
+    var prediction = try up.PredictionClient.init(std.testing.allocator, .{ .id = 2 }, .{}, prediction_config);
+    defer prediction.deinit();
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
     const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");

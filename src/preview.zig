@@ -19,6 +19,8 @@ pub const networking = struct {
     pub const SnapshotClient = @import("net_snapshot.zig").Client;
     pub const Host = @import("net_session.zig").Host;
     pub const Client = @import("net_session.zig").Client;
+    pub const PredictionClient = @import("net_sync.zig").PredictionClient;
+    pub const AuthoritativeServer = @import("net_sync.zig").AuthoritativeServer;
     pub const FaultNetwork = @import("net_fault.zig").Network;
 };
 

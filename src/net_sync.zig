@@ -1,5 +1,6 @@
 const std = @import("std");
 const Vec2 = @import("math.zig").Vec2;
+const snapshot_mod = @import("net_snapshot.zig");
 const transport = @import("net_transport.zig");
 
 pub const max_command_bytes: usize = 256;
@@ -88,6 +89,10 @@ pub const CommandClient = struct { // owns pending commands allocated by init; c
     }
 
     pub fn send(self: *CommandClient, net: transport.Transport, tick: u32, payload: []const u8) !void {
+        _ = try self.sendWithSequence(net, tick, payload);
+    }
+
+    pub fn sendWithSequence(self: *CommandClient, net: transport.Transport, tick: u32, payload: []const u8) !u32 {
         if (payload.len > max_command_bytes) return error.CommandTooLarge;
         const sequence = self.next_sequence;
         self.next_sequence +%= 1;
@@ -101,6 +106,14 @@ pub const CommandClient = struct { // owns pending commands allocated by init; c
         }
         var bytes: [command_header_bytes + max_command_bytes]u8 = undefined;
         try net.send(self.peer, try encodeCommand(&bytes, .{ .tick = tick, .sequence = sequence, .payload = owned_payload }));
+        return sequence;
+    }
+
+    pub fn retransmitPending(self: *CommandClient, net: transport.Transport) !void {
+        for (self.pending.items) |command| {
+            var bytes: [command_header_bytes + max_command_bytes]u8 = undefined;
+            try net.send(self.peer, try encodeCommand(&bytes, command));
+        }
     }
 
     pub fn poll(self: *CommandClient, net: transport.Transport) !void {
@@ -109,10 +122,15 @@ pub const CommandClient = struct { // owns pending commands allocated by init; c
             var packet = received;
             defer packet.deinit(self.allocator);
             if (packet.from.id != self.peer.id) continue;
-            const acknowledgement = decodeAcknowledgement(packet.bytes) catch continue;
-            self.last_server_tick = acknowledgement.tick;
-            self.acknowledge(acknowledgement.sequence);
+            _ = self.handlePacket(packet.bytes);
         }
+    }
+
+    pub fn handlePacket(self: *CommandClient, bytes: []const u8) bool {
+        const acknowledgement = decodeAcknowledgement(bytes) catch return false;
+        self.last_server_tick = acknowledgement.tick;
+        self.acknowledge(acknowledgement.sequence);
+        return true;
     }
 
     fn acknowledge(self: *CommandClient, sequence: u32) void {
@@ -204,6 +222,209 @@ pub const CommandServer = struct { // owns reordered and delivered commands allo
     }
 };
 
+const predicted_input_bytes: usize = 8;
+const authoritative_state_bytes: usize = 16;
+const snapshot_envelope_tag: u8 = 0x7f;
+const no_command_sequence: u32 = std.math.maxInt(u32);
+
+pub const PredictionConfig = struct {
+    history_limit: usize = 64,
+    interpolation: InterpolationConfig = .{},
+    snapshot_history_limit: usize = 32,
+};
+
+pub const AuthoritativeState = struct {
+    tick: u32 = 0,
+    last_command_sequence: ?u32 = null,
+    position: Vec2 = .{},
+};
+
+pub const PredictionClient = struct { // owns command, snapshot, interpolation, and prediction history; call deinit once.
+    allocator: std.mem.Allocator,
+    config: PredictionConfig,
+    peer: transport.Peer,
+    commands: CommandClient,
+    snapshots: snapshot_mod.Client,
+    interpolator: Interpolator,
+    predicted_position: Vec2,
+    history: std.ArrayListUnmanaged(PredictedInput) = .{},
+
+    const PredictedInput = struct { tick: u32, sequence: u32, delta: Vec2 };
+
+    pub fn init(allocator: std.mem.Allocator, peer: transport.Peer, initial_position: Vec2, config: PredictionConfig) !PredictionClient {
+        if (config.history_limit == 0) return error.InvalidPredictionConfig;
+        var client = PredictionClient{
+            .allocator = allocator,
+            .config = config,
+            .peer = peer,
+            .commands = CommandClient.init(allocator, peer),
+            .snapshots = try snapshot_mod.Client.init(allocator, .{ .history_limit = config.snapshot_history_limit }),
+            .interpolator = undefined,
+            .predicted_position = initial_position,
+        };
+        errdefer client.snapshots.deinit();
+        client.interpolator = try Interpolator.init(allocator, config.interpolation);
+        return client;
+    }
+
+    pub fn deinit(self: *PredictionClient) void {
+        self.history.deinit(self.allocator);
+        self.interpolator.deinit();
+        self.snapshots.deinit();
+        self.commands.deinit();
+        self.* = undefined;
+    }
+
+    pub fn submit(self: *PredictionClient, net: transport.Transport, tick: u32, delta: Vec2) !void {
+        if (self.history.items.len >= self.config.history_limit) return error.PredictionHistoryFull;
+        try self.history.ensureUnusedCapacity(self.allocator, 1);
+        var payload: [predicted_input_bytes]u8 = undefined;
+        const sequence = try self.commands.sendWithSequence(net, tick, encodePredictedInput(&payload, delta));
+        self.history.appendAssumeCapacity(.{ .tick = tick, .sequence = sequence, .delta = delta });
+        self.predicted_position = self.predicted_position.add(delta);
+    }
+
+    pub fn retransmitPending(self: *PredictionClient, net: transport.Transport) !void {
+        try self.commands.retransmitPending(net);
+    }
+
+    pub fn poll(self: *PredictionClient, net: transport.Transport) !void {
+        try net.poll();
+        const received_at_ms = net.now();
+        while (net.receive()) |received| {
+            var packet = received;
+            defer packet.deinit(self.allocator);
+            if (packet.from.id != self.peer.id) continue;
+            if (packet.bytes.len > 1 and packet.bytes[0] == snapshot_envelope_tag) {
+                self.applySnapshot(packet.bytes[1..], received_at_ms) catch |err| switch (err) {
+                    error.MissingBaseline => {},
+                    else => return err,
+                };
+                continue;
+            }
+            _ = self.commands.handlePacket(packet.bytes);
+        }
+    }
+
+    pub fn snapshotAcknowledgement(self: PredictionClient) ?u32 {
+        if (self.snapshots.recovery_required) return null;
+        return self.snapshots.acknowledgement();
+    }
+
+    pub fn interpolatedPosition(self: PredictionClient, now_ms: u64) Vec2 {
+        return self.interpolator.sample(now_ms) orelse self.predicted_position;
+    }
+
+    pub fn assertConverged(self: PredictionClient, authoritative: AuthoritativeState) !void {
+        if (self.history.items.len != 0 or !std.meta.eql(self.predicted_position, authoritative.position)) return error.SimulationDiverged;
+    }
+
+    fn applySnapshot(self: *PredictionClient, packet: []const u8, received_at_ms: u64) !void {
+        const previous_id = self.snapshots.acknowledgement();
+        try self.snapshots.apply(packet);
+        if (self.snapshots.acknowledgement() == previous_id) return;
+        const encoded = self.snapshots.state() orelse return error.MissingAuthoritativeState;
+        const state = try decodeAuthoritativeState(encoded);
+        self.reconcile(state);
+        try self.interpolator.push(.{ .tick = state.tick, .received_at_ms = received_at_ms, .position = state.position });
+    }
+
+    fn reconcile(self: *PredictionClient, authoritative: AuthoritativeState) void {
+        if (authoritative.last_command_sequence) |sequence| {
+            var index: usize = 0;
+            while (index < self.history.items.len) {
+                if (isAfter(self.history.items[index].sequence, sequence)) {
+                    index += 1;
+                    continue;
+                }
+                _ = self.history.orderedRemove(index);
+            }
+        }
+        self.predicted_position = authoritative.position;
+        for (self.history.items) |input| self.predicted_position = self.predicted_position.add(input.delta);
+    }
+};
+
+pub const AuthoritativeServer = struct { // owns command and snapshot histories allocated by init; call deinit once.
+    allocator: std.mem.Allocator,
+    commands: CommandServer,
+    snapshots: snapshot_mod.Publisher,
+    state: AuthoritativeState,
+
+    pub fn init(allocator: std.mem.Allocator, peer: transport.Peer, initial_position: Vec2, config: PredictionConfig) !AuthoritativeServer {
+        return .{
+            .allocator = allocator,
+            .commands = CommandServer.init(allocator, peer),
+            .snapshots = try snapshot_mod.Publisher.init(allocator, .{ .history_limit = config.snapshot_history_limit }),
+            .state = .{ .position = initial_position },
+        };
+    }
+
+    pub fn deinit(self: *AuthoritativeServer) void {
+        self.snapshots.deinit();
+        self.commands.deinit();
+        self.* = undefined;
+    }
+
+    pub fn poll(self: *AuthoritativeServer, net: transport.Transport) !void {
+        try self.commands.poll(net);
+        while (self.commands.next()) |received| {
+            var command = received;
+            defer command.deinit(self.allocator);
+            const delta = try decodePredictedInput(command.payload);
+            self.state.tick = command.tick;
+            self.state.last_command_sequence = command.sequence;
+            self.state.position = self.state.position.add(delta);
+        }
+    }
+
+    pub fn sendSnapshot(self: *AuthoritativeServer, net: transport.Transport, acknowledged_snapshot: ?u32) !void {
+        var encoded_state: [authoritative_state_bytes]u8 = undefined;
+        encodeAuthoritativeState(&encoded_state, self.state);
+        var packet = try self.snapshots.publish(acknowledged_snapshot, &encoded_state);
+        defer packet.deinit(self.allocator);
+        var envelope: [snapshot_mod.max_state_bytes + snapshot_mod.header_bytes + 1]u8 = undefined;
+        if (packet.bytes.len + 1 > envelope.len) return error.SnapshotTooLarge;
+        envelope[0] = snapshot_envelope_tag;
+        @memcpy(envelope[1..][0..packet.bytes.len], packet.bytes);
+        try net.send(self.commands.peer, envelope[0 .. packet.bytes.len + 1]);
+    }
+};
+
+fn encodePredictedInput(destination: *[predicted_input_bytes]u8, delta: Vec2) []const u8 {
+    std.mem.writeInt(u32, destination[0..4], @bitCast(delta.x), .little);
+    std.mem.writeInt(u32, destination[4..8], @bitCast(delta.y), .little);
+    return destination;
+}
+
+fn decodePredictedInput(source: []const u8) !Vec2 {
+    if (source.len != predicted_input_bytes) return error.MalformedPredictedInput;
+    return .{
+        .x = @bitCast(std.mem.readInt(u32, source[0..4], .little)),
+        .y = @bitCast(std.mem.readInt(u32, source[4..8], .little)),
+    };
+}
+
+fn encodeAuthoritativeState(destination: *[authoritative_state_bytes]u8, state: AuthoritativeState) void {
+    std.mem.writeInt(u32, destination[0..4], state.tick, .little);
+    std.mem.writeInt(u32, destination[4..8], state.last_command_sequence orelse no_command_sequence, .little);
+    std.mem.writeInt(u32, destination[8..12], @bitCast(state.position.x), .little);
+    std.mem.writeInt(u32, destination[12..16], @bitCast(state.position.y), .little);
+}
+
+fn decodeAuthoritativeState(source: []const u8) !AuthoritativeState {
+    if (source.len != authoritative_state_bytes) return error.MalformedAuthoritativeState;
+    const sequence = std.mem.readInt(u32, source[4..8], .little);
+    return .{
+        .tick = std.mem.readInt(u32, source[0..4], .little),
+        .last_command_sequence = if (sequence == no_command_sequence) null else sequence,
+        .position = .{
+            .x = @bitCast(std.mem.readInt(u32, source[8..12], .little)),
+            .y = @bitCast(std.mem.readInt(u32, source[12..16], .little)),
+        },
+    };
+}
+
 fn encodeCommand(destination: []u8, command: InputCommand) ![]u8 {
     if (command.payload.len > max_command_bytes or destination.len < command_header_bytes + command.payload.len) return error.MalformedCommand;
     destination[0] = @intFromEnum(Kind.command);
@@ -270,4 +491,52 @@ test "delayed loopback interpolation is smooth and commands are server ordered" 
     try std.testing.expectEqualStrings("up", second.payload);
     try std.testing.expectEqual(@as(usize, 0), client.pending.items.len);
     try std.testing.expectEqual(@as(?u32, 11), client.last_server_tick);
+}
+
+test "prediction reconciles a bounded history through seeded loss and reordering" {
+    var network = try @import("net_fault.zig").Network.init(std.testing.allocator, .{
+        .seed = 122,
+        .latency_ms = 2,
+        .jitter_ms = 3,
+        .loss_per_mille = 200,
+        .duplicate_per_mille = 200,
+        .reorder_per_mille = 250,
+        .reorder_delay_ms = 7,
+    });
+    defer network.deinit();
+    var client_endpoint = @import("net_fault.zig").Endpoint.init(std.testing.allocator, &network, .{ .id = 1 });
+    defer client_endpoint.deinit();
+    var server_endpoint = @import("net_fault.zig").Endpoint.init(std.testing.allocator, &network, .{ .id = 2 });
+    defer server_endpoint.deinit();
+    @import("net_fault.zig").Endpoint.pair(&client_endpoint, &server_endpoint);
+    const config = PredictionConfig{ .history_limit = 64, .interpolation = .{ .delay_ms = 16, .max_snapshots = 16 }, .snapshot_history_limit = 16 };
+    var client = try PredictionClient.init(std.testing.allocator, .{ .id = 2 }, .{}, config);
+    defer client.deinit();
+    var server = try AuthoritativeServer.init(std.testing.allocator, .{ .id = 1 }, .{}, config);
+    defer server.deinit();
+
+    var tick: u32 = 1;
+    while (tick <= 48) : (tick += 1) {
+        const delta = if (tick % 2 == 0) Vec2{ .x = 1, .y = 0 } else Vec2{ .x = 0, .y = 0.5 };
+        try client.submit(client_endpoint.asTransport(), tick, delta);
+        try client.retransmitPending(client_endpoint.asTransport());
+        network.advance(16);
+        try server.poll(server_endpoint.asTransport());
+        try server.sendSnapshot(server_endpoint.asTransport(), client.snapshotAcknowledgement());
+        network.advance(16);
+        try client.poll(client_endpoint.asTransport());
+        try std.testing.expect(client.history.items.len <= config.history_limit);
+    }
+
+    var flush: usize = 0;
+    while (flush < 256 and client.history.items.len != 0) : (flush += 1) {
+        try client.retransmitPending(client_endpoint.asTransport());
+        network.advance(16);
+        try server.poll(server_endpoint.asTransport());
+        try server.sendSnapshot(server_endpoint.asTransport(), client.snapshotAcknowledgement());
+        network.advance(16);
+        try client.poll(client_endpoint.asTransport());
+    }
+    try client.assertConverged(server.state);
+    try std.testing.expect(!std.meta.eql(client.interpolatedPosition(network.now_ms), Vec2.zero));
 }
