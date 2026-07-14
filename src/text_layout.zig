@@ -1,5 +1,6 @@
 const std = @import("std");
 const font = @import("font.zig");
+const Font = @import("font_asset.zig").Font;
 
 pub const Alignment = enum { left, center, right };
 
@@ -35,7 +36,7 @@ pub fn layout(allocator: std.mem.Allocator, text: []const u8, options: Options) 
     var width: i32 = 0;
     var line_start: usize = 0;
     var lines: u32 = 1;
-    while (nextCodepoint(text, &index)) |codepoint| {
+    while (Font.nextCodepoint(text, &index)) |codepoint| {
         if (codepoint == '\n') {
             alignLine(glyphs.items[line_start..], x - advance, options);
             width = @max(width, x - advance);
@@ -72,38 +73,8 @@ fn alignLine(glyphs: []Glyph, width: i32, options: Options) void {
     for (glyphs) |*glyph| glyph.x += offset;
 }
 
-fn nextCodepoint(text: []const u8, index: *usize) ?u21 {
-    if (index.* >= text.len) return null;
-    const first = text[index.*];
-    if (first < 0x80) {
-        index.* += 1;
-        return first;
-    }
-    const length: usize = if ((first & 0xe0) == 0xc0) 2 else if ((first & 0xf0) == 0xe0) 3 else if ((first & 0xf8) == 0xf0) 4 else 1;
-    if (length == 1) {
-        index.* += 1;
-        return 0xfffd;
-    }
-    if (index.* + length > text.len) {
-        index.* += 1;
-        return 0xfffd;
-    }
-    var codepoint: u21 = first & (@as(u8, 0x7f) >> @intCast(length));
-    var offset: usize = 1;
-    while (offset < length) : (offset += 1) {
-        const byte = text[index.* + offset];
-        if ((byte & 0xc0) != 0x80) {
-            index.* += 1;
-            return 0xfffd;
-        }
-        codepoint = (codepoint << 6) | (byte & 0x3f);
-    }
-    index.* += length;
-    return codepoint;
-}
-
-test "layout wraps aligns and replaces invalid UTF-8" {
-    const invalid = [_]u8{ 'A', 0xff, 'B' };
+test "layout uses strict deterministic UTF-8 replacement" {
+    const invalid = [_]u8{ 'A', 0xc0, 0x80, 'B' };
     var result = try layout(std.testing.allocator, &invalid, .{ .max_width = 18, .alignment = .center });
     defer result.deinit();
     try std.testing.expectEqual(@as(u32, 1), result.lines);

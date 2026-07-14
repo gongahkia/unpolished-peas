@@ -29,6 +29,8 @@ pub const graphics = struct {
     pub const Presentation = @import("presentation.zig").Presentation;
     pub const PresentationMode = @import("presentation.zig").PresentationMode;
     pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
+    pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
+    pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
 };
 
 pub const assets = struct {

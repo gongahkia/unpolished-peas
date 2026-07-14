@@ -197,6 +197,35 @@ test "font assets build GPU sprite quads" {
     try std.testing.expectEqual(@as(usize, 36), batch.vertices.items.len);
 }
 
+test "headless and GPU font paths use identical Unicode fallback glyphs" {
+    var pixels = [_]up.Color{ up.Color.white, up.Color.rgb(255, 0, 0) };
+    var glyphs = [_]up.FontGlyph{
+        .{ .codepoint = 'A', .x = 0, .y = 0, .width = 1, .height = 1, .x_offset = 0, .y_offset = 0, .advance = 2 },
+        .{ .codepoint = '?', .x = 1, .y = 0, .width = 1, .height = 1, .x_offset = 0, .y_offset = 0, .advance = 2 },
+    };
+    const font = up.Font{
+        .allocator = std.testing.allocator,
+        .image = .{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = &pixels },
+        .glyphs = &glyphs,
+        .line_height = 2,
+        .baseline = 0,
+        .sampling = .nearest,
+    };
+    const text = [_]u8{ 'A', 0xe4, 0xb8, 0x80 };
+    var canvas = try up.Canvas.init(std.testing.allocator, 6, 2);
+    defer canvas.deinit();
+    font.drawText(&canvas, &text, 0, 0, up.Color.white);
+
+    var batch = up.SpriteBatch.init(std.testing.allocator);
+    defer batch.deinit();
+    try appendFontText(&batch, 6, 2, &font, &text, 0, 0, up.Color.white);
+    try std.testing.expectEqual(up.Color.white, canvas.get(0, 0).?);
+    try std.testing.expectEqual(up.Color.rgb(255, 0, 0), canvas.get(2, 0).?);
+    try std.testing.expectEqual(@as(usize, 2), batch.draws.items.len);
+    try std.testing.expectEqual(@as(u32, 0), batch.draws.items[0].source.x);
+    try std.testing.expectEqual(@as(u32, 1), batch.draws.items[1].source.x);
+}
+
 test "primitive commands build GPU vertices without CPU canvas access" {
     var commands = up.RenderCommandBuffer.init(std.testing.allocator);
     defer commands.deinit();
@@ -633,7 +662,7 @@ fn appendFontText(batch: *up.SpriteBatch, canvas_width: u32, canvas_height: u32,
             pen_y = saturatingAdd(pen_y, font.line_height);
             continue;
         }
-        const glyph = font.glyphForCodepoint(codepoint) orelse continue;
+        const glyph = font.resolveGlyph(codepoint).glyph orelse continue;
         if (glyph.width != 0 and glyph.height != 0) {
             const left: f32 = @floatFromInt(saturatingAdd(pen_x, glyph.x_offset));
             const top: f32 = @floatFromInt(saturatingAdd(saturatingAdd(pen_y, font.baseline), glyph.y_offset));
