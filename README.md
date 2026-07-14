@@ -201,6 +201,8 @@ Game initialization, event, update, draw, GPU-recovery, and asset-reload errors 
 
 Runtime failures write bounded local diagnostics: `screenshot.png`, `commands.json`, `trace.json`, and `failure.log`. Golden/replay test failures add deterministic diagnostics under `zig-out/diagnostics`; set `UP_DIAGNOSTICS_ROOT` to redirect runtime captures for CI. Diagnostics are local artifacts and contain no transmitted telemetry.
 
+`contentReload.Controller` compiles and watches a native project with absolute project/cache paths. `reloadIfChanged()` keeps its prior compiled scene after invalid edits, reports the source path and location, and observes transitive project asset changes; `loadRuntime()` builds a candidate scene runtime from the last valid cache.
+
 SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames. Atlas draws preserve source regions, origin, scale, rotation, flips, tint, and nearest or linear sampling through the GPU path.
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
