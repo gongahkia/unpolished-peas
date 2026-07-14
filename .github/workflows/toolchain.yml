@@ -39,6 +39,7 @@ jobs:
       - run: zig build test-peas
       - run: zig build test-replays
       - run: zig build test-fuzz
+      - run: script/check_performance_budgets.sh
       - run: zig build check-examples
       - run: zig build test-sdl
       - run: zig build test-box2d
@@ -60,6 +61,7 @@ jobs:
           path: |
             zig-out/scenes/*.png
             zig-out/*.ppm
+            zig-out/performance/*.json
           if-no-files-found: warn
 
   sample-smoke:

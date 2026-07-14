@@ -103,6 +103,7 @@ pub fn build(b: *std.Build) void {
     const packaged_assets = addExample(b, "unpolished-peas-test-packaged-assets", "examples/test_packaged_assets.zig", target, optimize, peas, null);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
+    const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
 
     const peas_cli = b.addExecutable(.{
         .name = "peas",
@@ -173,9 +174,10 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
+    addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
