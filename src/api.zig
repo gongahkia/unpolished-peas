@@ -31,6 +31,10 @@ pub const graphics = struct {
     pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
     pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
     pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
+    pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
+    pub const ShaderProgram = @import("shader.zig").Program;
+    pub const ShaderReflection = @import("shader.zig").Reflection;
+    pub const ShaderKind = @import("shader.zig").Kind;
 };
 
 pub const assets = struct {
