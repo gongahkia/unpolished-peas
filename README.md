@@ -34,6 +34,7 @@ Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop 
 
 `services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. It exposes only a generic local endpoint contract to engine clients and contains no database or vendor integration.
 Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed, transactional service migrations; rerunning it verifies and preserves the recorded schema version.
+`GuestToken` uses 256-bit random values; `GuestCredentialStore` atomically keeps only active identity/session credentials under the caller-provided app-data directory and removes expired records.
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
