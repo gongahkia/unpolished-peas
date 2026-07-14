@@ -15,11 +15,11 @@ pub const AudioSample = struct {
     right: f32 = 0,
 };
 
-pub const BusHandle = struct {
+pub const BusHandle = struct { // borrows an AudioMixer bus; invalid bus access returns error.InvalidBus.
     index: usize,
 };
 
-pub const PlaybackHandle = struct {
+pub const PlaybackHandle = struct { // borrows an AudioMixer playback; false from control methods means the playback is stale.
     index: usize,
     id: u64,
 };
@@ -38,7 +38,7 @@ pub const MusicOptions = struct {
     loop: bool = true,
 };
 
-pub const Sound = struct {
+pub const Sound = struct { // owns decoded frames allocated by loadWav/loadOgg; call deinit after all mixer playback stops.
     allocator: std.mem.Allocator,
     sample_rate: u32,
     frames: []AudioSample,
@@ -61,7 +61,7 @@ pub const Sound = struct {
     }
 };
 
-pub const Music = struct {
+pub const Music = struct { // owns source bytes allocated by openWav/openOgg; call deinit after all mixer playback stops.
     allocator: std.mem.Allocator,
     bytes: []u8,
     kind: MusicKind,
@@ -91,7 +91,7 @@ pub const Music = struct {
     }
 };
 
-pub const AudioMixer = struct {
+pub const AudioMixer = struct { // owns buses, playbacks, and stream state allocated by init; call deinit before borrowed Sound/Music values.
     pub const Config = struct {
         sample_rate: u32 = 48_000,
     };

@@ -18,7 +18,7 @@ pub fn ComponentSchema(comptime T: type) type {
     };
 }
 
-pub const Packet = struct {
+pub const Packet = struct { // owns encoded packet bytes; call deinit with the encoding allocator.
     bytes: []u8,
 
     pub fn deinit(self: *Packet, allocator: std.mem.Allocator) void {

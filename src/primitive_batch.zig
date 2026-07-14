@@ -23,7 +23,7 @@ pub const Draw = struct {
     clip: ?ClipRect,
 };
 
-pub const PrimitiveBatch = struct {
+pub const PrimitiveBatch = struct { // owns vertex and draw buffers allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     vertices: std.ArrayList(Vertex) = .empty,
     draws: std.ArrayList(Draw) = .empty,

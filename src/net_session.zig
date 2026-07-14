@@ -10,7 +10,7 @@ pub const ClientConfig = struct {
     heartbeat_interval_ms: u64 = 1_000,
 };
 
-pub const Host = struct {
+pub const Host = struct { // owns its peer server and borrows Transport; call deinit before the transport owner.
     transport: transport.Transport,
     peers: net_peer.Server,
 

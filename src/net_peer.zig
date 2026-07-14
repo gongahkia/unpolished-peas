@@ -13,7 +13,7 @@ pub const Config = struct {
 };
 
 pub const DisconnectReason = enum { requested, timeout, reconnected };
-pub const Event = union(enum) {
+pub const Event = union(enum) { // input events own decoded messages; call deinit with the Server allocator.
     connected: handshake.Session,
     disconnected: struct { session: handshake.Session, reason: DisconnectReason },
     rejected: struct { peer: transport.Peer, reason: handshake.Rejection },
@@ -36,7 +36,7 @@ pub fn encodeSessionMessage(destination: []u8, kind: net_codec.Kind, sequence: u
     return net_codec.encode(destination, .{ .kind = kind, .sequence = sequence, .payload = authenticated[0 .. session_token_bytes + payload.len] });
 }
 
-pub const Server = struct {
+pub const Server = struct { // owns peer and event queues allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     config: Config,
     handshake_server: handshake.Server,

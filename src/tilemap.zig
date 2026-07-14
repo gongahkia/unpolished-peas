@@ -178,7 +178,7 @@ pub const TileMapLayer = struct {
     }
 };
 
-pub const TileMapProject = struct {
+pub const TileMapProject = struct { // owns parsed levels and maps allocated by load; call deinit once.
     allocator: std.mem.Allocator,
     levels: std.ArrayListUnmanaged(Level) = .{},
 
@@ -206,7 +206,7 @@ pub const TileMapProject = struct {
     }
 };
 
-pub const TileMap = struct {
+pub const TileMap = struct { // owns tilesets, layers, chunks, and dependencies allocated by init/load; call deinit once.
     allocator: std.mem.Allocator,
     projection: Projection = .orthogonal,
     tile_size: Vec2,

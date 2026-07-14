@@ -32,7 +32,7 @@ pub const Sprite = struct {
     }
 };
 
-pub const Canvas = struct {
+pub const Canvas = struct { // owns its pixel buffer allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     width: u32,
     height: u32,

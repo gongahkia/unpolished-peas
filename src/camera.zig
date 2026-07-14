@@ -192,7 +192,7 @@ pub const Camera2D = struct {
     }
 };
 
-pub const CameraHandle = struct {
+pub const CameraHandle = struct { // borrows a CameraRig slot; tryGet/tryRemove return error.StaleCamera after removal.
     index: u32,
     generation: u32,
 };
@@ -203,7 +203,7 @@ const CameraSlot = struct {
     camera: Camera2D = .{},
 };
 
-pub const CameraRig = struct {
+pub const CameraRig = struct { // owns camera slots allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     slots: std.ArrayListUnmanaged(CameraSlot) = .{},
 
@@ -227,24 +227,35 @@ pub const CameraRig = struct {
         return .{ .index = @intCast(self.slots.items.len - 1), .generation = 1 };
     }
 
-    pub fn remove(self: *CameraRig, handle: CameraHandle) bool {
-        const slot = self.resolve(handle) orelse return false;
+    pub fn tryRemove(self: *CameraRig, handle: CameraHandle) !void {
+        const slot = try self.tryResolve(handle);
         slot.active = false;
         slot.generation +%= 1;
         if (slot.generation == 0) slot.generation = 1;
+    }
+
+    pub fn remove(self: *CameraRig, handle: CameraHandle) bool { // compatibility helper; false means error.StaleCamera.
+        self.tryRemove(handle) catch return false;
         return true;
     }
 
-    pub fn get(self: *CameraRig, handle: CameraHandle) ?*Camera2D {
-        const slot = self.resolve(handle) orelse return null;
+    pub fn tryGet(self: *CameraRig, handle: CameraHandle) !*Camera2D {
+        return &(try self.tryResolve(handle)).camera;
+    }
+
+    pub fn get(self: *CameraRig, handle: CameraHandle) ?*Camera2D { // compatibility helper; null means error.StaleCamera.
+        return self.tryGet(handle) catch null;
+    }
+
+    pub fn tryGetConst(self: *const CameraRig, handle: CameraHandle) !*const Camera2D {
+        if (handle.index >= self.slots.items.len) return error.StaleCamera;
+        const slot = &self.slots.items[handle.index];
+        if (!slot.active or slot.generation != handle.generation) return error.StaleCamera;
         return &slot.camera;
     }
 
-    pub fn getConst(self: *const CameraRig, handle: CameraHandle) ?*const Camera2D {
-        if (handle.index >= self.slots.items.len) return null;
-        const slot = &self.slots.items[handle.index];
-        if (!slot.active or slot.generation != handle.generation) return null;
-        return &slot.camera;
+    pub fn getConst(self: *const CameraRig, handle: CameraHandle) ?*const Camera2D { // compatibility helper; null means error.StaleCamera.
+        return self.tryGetConst(handle) catch null;
     }
 
     pub fn update(self: *CameraRig, dt: f32, canvas_size: Vec2) void {
@@ -260,6 +271,10 @@ pub const CameraRig = struct {
         const slot = &self.slots.items[handle.index];
         if (!slot.active or slot.generation != handle.generation) return null;
         return slot;
+    }
+
+    fn tryResolve(self: *CameraRig, handle: CameraHandle) !*CameraSlot {
+        return self.resolve(handle) orelse error.StaleCamera;
     }
 
     pub const ActiveIterator = struct {
@@ -300,7 +315,7 @@ const ActiveShot = struct {
     started: bool = false,
 };
 
-pub const CameraDirector = struct {
+pub const CameraDirector = struct { // owns queued shots allocated by init; stale shot handles are discarded during update.
     allocator: std.mem.Allocator,
     shots: std.ArrayListUnmanaged(ActiveShot) = .{},
 
@@ -389,7 +404,10 @@ test "camera rig rejects stale handles" {
     const second = try rig.create(.{});
     try std.testing.expect(first.index == second.index);
     try std.testing.expect(rig.get(first) == null);
+    try std.testing.expectError(error.StaleCamera, rig.tryGet(first));
+    try std.testing.expectError(error.StaleCamera, rig.tryRemove(first));
     try std.testing.expect(rig.get(second) != null);
+    _ = try rig.tryGet(second);
 }
 
 test "camera director interpolates deterministic shot" {

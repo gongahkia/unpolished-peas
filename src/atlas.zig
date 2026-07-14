@@ -54,7 +54,7 @@ pub const Animation = struct {
     frames: []AnimationFrame,
 };
 
-pub const AnimationPlayer = struct {
+pub const AnimationPlayer = struct { // borrows its Atlas; the atlas must outlive the player.
     atlas: *const Atlas,
     animation: AnimationHandle,
     frame_index: usize = 0,
@@ -98,7 +98,7 @@ pub const AnimationPlayer = struct {
     }
 };
 
-pub const Atlas = struct {
+pub const Atlas = struct { // owns decoded image, frame, and animation allocations; call deinit once after players are unused.
     allocator: std.mem.Allocator,
     image: Image,
     image_path: []u8,

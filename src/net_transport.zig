@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const Peer = struct { id: u64 };
-pub const Received = struct {
+pub const Received = struct { // owns received bytes; the receiver must call deinit with the source allocator.
     from: Peer,
     bytes: []u8,
     pub fn deinit(self: *Received, allocator: std.mem.Allocator) void {
@@ -10,7 +10,7 @@ pub const Received = struct {
     }
 };
 
-pub const Transport = struct {
+pub const Transport = struct { // borrows its context; the concrete transport owner must outlive this value.
     context: *anyopaque,
     poll_fn: *const fn (context: *anyopaque) anyerror!void,
     send_fn: *const fn (context: *anyopaque, to: Peer, bytes: []const u8) anyerror!void,
@@ -31,7 +31,7 @@ pub const Transport = struct {
     }
 };
 
-pub const Loopback = struct {
+pub const Loopback = struct { // owns queued packets allocated by init; Transport values borrowed from it become invalid after deinit.
     allocator: std.mem.Allocator,
     peer: Peer,
     remote: ?*Loopback = null,
@@ -82,7 +82,7 @@ pub const UdpConfig = struct {
     reuse_address: bool = false,
 };
 
-pub const Udp = struct {
+pub const Udp = struct { // owns its socket, receive buffer, peers, and inbox allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     socket: std.posix.socket_t,
     local_address: std.net.Address,
