@@ -6,6 +6,7 @@ pub const ecs = struct {
 };
 
 pub const networking = struct {
+    pub const Contract = @import("net_contract.zig");
     pub const Codec = @import("net_codec.zig");
     pub const Transport = @import("net_transport.zig").Transport;
     pub const LoopbackTransport = @import("net_transport.zig").Loopback;

@@ -12,6 +12,14 @@ test "downstream module imports remain SDL-free" {
     _ = transport;
     const target = try services.ClientTarget.init(services.Endpoint.local());
     try std.testing.expect(target.endpoint.isUsable());
+    const authoritative = up.NetContract{ .mode = .authoritative, .role = .listen_host };
+    const peer_to_peer = up.NetContract{ .mode = .peer_to_peer, .role = .peer };
+    try authoritative.validate();
+    try peer_to_peer.validate();
+    const identity = try up.NetIdentity.init(1);
+    const session = up.NetSession{ .id = 1, .identity = identity, .issued_at_ms = 0, .expires_at_ms = 2 };
+    _ = try up.NetConnection.init(authoritative, session, .{ .id = 2 }, 1);
+    _ = try up.NetConnection.init(peer_to_peer, session, .{ .id = 2 }, 1);
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
     const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
