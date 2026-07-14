@@ -11,7 +11,7 @@ pub const Options = struct {
 
 pub const Glyph = struct { codepoint: u21, x: i32, y: i32 };
 
-pub const Layout = struct {
+pub const Layout = struct { // owns glyph storage returned by layout; call deinit once.
     allocator: std.mem.Allocator,
     glyphs: []Glyph,
     width: i32,

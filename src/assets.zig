@@ -6,7 +6,7 @@ const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
 const TileMap = @import("tilemap.zig").TileMap;
 
-pub const AssetFile = struct {
+pub const AssetFile = struct { // owns path and bytes allocated by load; call deinit once.
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
     path: []u8,
@@ -52,11 +52,11 @@ pub const AssetFile = struct {
     }
 };
 
-pub const TextHandle = struct { index: usize, generation: u32 };
-pub const ImageHandle = struct { index: usize, generation: u32 };
-pub const AtlasHandle = struct { index: usize, generation: u32 };
-pub const FontHandle = struct { index: usize, generation: u32 };
-pub const TileMapHandle = struct { index: usize, generation: u32 };
+pub const TextHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryText for stale-handle errors.
+pub const ImageHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryImage for stale-handle errors.
+pub const AtlasHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryAtlas for stale-handle errors.
+pub const FontHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryFont for stale-handle errors.
+pub const TileMapHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryTileMap for stale-handle errors.
 
 pub const TileMapAssetOptions = struct {
     overlay_path: ?[]const u8 = null,
@@ -153,7 +153,7 @@ fn nextGeneration(generation: u32) u32 {
     return if (next == 0) 1 else next;
 }
 
-pub const AssetStore = struct {
+pub const AssetStore = struct { // owns loaded assets and any directory opened by initAbsolute/initExecutable; call deinit once.
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
     owned_dir: ?std.fs.Dir = null,
@@ -319,7 +319,7 @@ pub const AssetStore = struct {
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn text(self: AssetStore, handle: TextHandle) []const u8 {
+    pub fn text(self: AssetStore, handle: TextHandle) []const u8 { // panic-only compatibility accessor; use tryText for recoverable stale access.
         return self.tryText(handle) catch @panic("stale text handle");
     }
 
@@ -328,12 +328,12 @@ pub const AssetStore = struct {
         return self.texts.items[handle.index].file.text();
     }
 
-    pub fn latestText(self: AssetStore, handle: TextHandle) ![]const u8 {
+    pub fn latestText(self: AssetStore, handle: TextHandle) ![]const u8 { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.texts.items.len) return error.InvalidHandle;
         return self.texts.items[handle.index].file.text();
     }
 
-    pub fn image(self: AssetStore, handle: ImageHandle) Image {
+    pub fn image(self: AssetStore, handle: ImageHandle) Image { // panic-only compatibility accessor; use tryImage for recoverable stale access.
         return self.tryImage(handle) catch @panic("stale image handle");
     }
 
@@ -342,7 +342,7 @@ pub const AssetStore = struct {
         return self.images.items[handle.index].image;
     }
 
-    pub fn imagePtr(self: *AssetStore, handle: ImageHandle) *const Image {
+    pub fn imagePtr(self: *AssetStore, handle: ImageHandle) *const Image { // panic-only compatibility accessor; use tryImagePtr for recoverable stale access.
         return self.tryImagePtr(handle) catch @panic("stale image handle");
     }
 
@@ -351,12 +351,12 @@ pub const AssetStore = struct {
         return &self.images.items[handle.index].image;
     }
 
-    pub fn latestImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image {
+    pub fn latestImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.images.items.len) return error.InvalidHandle;
         return &self.images.items[handle.index].image;
     }
 
-    pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas {
+    pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas { // panic-only compatibility accessor; use tryAtlas for recoverable stale access.
         return self.tryAtlas(handle) catch @panic("stale atlas handle");
     }
 
@@ -365,7 +365,7 @@ pub const AssetStore = struct {
         return self.atlases.items[handle.index].atlas;
     }
 
-    pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas {
+    pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas { // panic-only compatibility accessor; use tryAtlasPtr for recoverable stale access.
         return self.tryAtlasPtr(handle) catch @panic("stale atlas handle");
     }
 
@@ -374,12 +374,12 @@ pub const AssetStore = struct {
         return &self.atlases.items[handle.index].atlas;
     }
 
-    pub fn latestAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
+    pub fn latestAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.atlases.items.len) return error.InvalidHandle;
         return &self.atlases.items[handle.index].atlas;
     }
 
-    pub fn font(self: AssetStore, handle: FontHandle) Font {
+    pub fn font(self: AssetStore, handle: FontHandle) Font { // panic-only compatibility accessor; use tryFont for recoverable stale access.
         return self.tryFont(handle) catch @panic("stale font handle");
     }
 
@@ -388,7 +388,7 @@ pub const AssetStore = struct {
         return self.fonts.items[handle.index].font;
     }
 
-    pub fn fontPtr(self: *AssetStore, handle: FontHandle) *const Font {
+    pub fn fontPtr(self: *AssetStore, handle: FontHandle) *const Font { // panic-only compatibility accessor; use tryFontPtr for recoverable stale access.
         return self.tryFontPtr(handle) catch @panic("stale font handle");
     }
 
@@ -397,12 +397,12 @@ pub const AssetStore = struct {
         return &self.fonts.items[handle.index].font;
     }
 
-    pub fn latestFontPtr(self: *AssetStore, handle: FontHandle) !*const Font {
+    pub fn latestFontPtr(self: *AssetStore, handle: FontHandle) !*const Font { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.fonts.items.len) return error.InvalidHandle;
         return &self.fonts.items[handle.index].font;
     }
 
-    pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap {
+    pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap { // panic-only compatibility accessor; use tryTileMap for recoverable stale access.
         return self.tryTileMap(handle) catch @panic("stale tile-map handle");
     }
 
@@ -411,7 +411,7 @@ pub const AssetStore = struct {
         return self.tile_maps.items[handle.index].map;
     }
 
-    pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap {
+    pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap { // panic-only compatibility accessor; use tryTileMapPtr for recoverable stale access.
         return self.tryTileMapPtr(handle) catch @panic("stale tile-map handle");
     }
 
@@ -420,7 +420,7 @@ pub const AssetStore = struct {
         return &self.tile_maps.items[handle.index].map;
     }
 
-    pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void {
+    pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void { // panic-only convenience draw; validate with tryTileMap before calling.
         _ = self.tryTileMap(handle) catch @panic("stale tile-map handle");
         const asset = &self.tile_maps.items[handle.index];
         const Resolver = struct {

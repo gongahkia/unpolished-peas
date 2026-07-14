@@ -31,7 +31,7 @@ pub const Batch = struct {
     len: usize,
 };
 
-pub const SpriteBatch = struct {
+pub const SpriteBatch = struct { // owns batch buffers allocated by init and borrows source Images; call deinit once.
     allocator: std.mem.Allocator,
     draws: std.ArrayList(SpriteDraw) = .empty,
     vertices: std.ArrayList(Vertex) = .empty,

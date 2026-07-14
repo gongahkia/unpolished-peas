@@ -10,8 +10,8 @@ pub const Config = struct {
 };
 
 pub const BodyType = enum { static, kinematic, dynamic };
-pub const BodyHandle = struct { index: u32, generation: u32 };
-pub const FixtureHandle = struct { index: u32, generation: u32 };
+pub const BodyHandle = struct { index: u32, generation: u32 }; // borrows a World body; stale access returns error.StaleBody.
+pub const FixtureHandle = struct { index: u32, generation: u32 }; // borrows a World fixture; stale access returns error.StaleFixture.
 pub const JointHandle = struct { id: c.b2JointId };
 
 pub const BodyConfig = struct {
@@ -33,7 +33,7 @@ pub const Events = struct {
     sensor_ends: u32,
 };
 
-pub const World = struct {
+pub const World = struct { // owns the Box2D world and allocator-backed slot tables; call deinit once.
     allocator: std.mem.Allocator,
     id: c.b2WorldId,
     bodies: std.ArrayList(BodySlot) = .empty,

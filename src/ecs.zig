@@ -1,8 +1,8 @@
 const std = @import("std");
 
-pub const Entity = struct { index: u32, generation: u32 };
+pub const Entity = struct { index: u32, generation: u32 }; // borrows a World slot; stale operations return error.StaleEntity.
 
-pub const World = struct {
+pub const World = struct { // owns entity-slot bookkeeping allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     slots: std.ArrayList(Slot) = .empty,
     free: std.ArrayList(u32) = .empty,
@@ -46,7 +46,7 @@ pub const World = struct {
     }
 };
 
-pub const Commands = struct {
+pub const Commands = struct { // owns queued commands allocated by init; call deinit once after apply or discard.
     allocator: std.mem.Allocator,
     destroys: std.ArrayList(Entity) = .empty,
 
@@ -66,7 +66,7 @@ pub const Commands = struct {
     }
 };
 
-pub fn ComponentStore(comptime T: type) type {
+pub fn ComponentStore(comptime T: type) type { // returned store owns component storage allocated by init; call deinit once.
     return struct {
         const Self = @This();
         allocator: std.mem.Allocator,

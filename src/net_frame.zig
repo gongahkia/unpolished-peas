@@ -21,7 +21,7 @@ pub fn decode(input: []const u8) !struct { header: Header, payload: []const u8 }
     if (header.count == 0 or header.count > max_fragments or header.index >= header.count) return error.InvalidFrame;
     return .{ .header = header, .payload = input[header_bytes..] };
 }
-pub const Reassembler = struct {
+pub const Reassembler = struct { // owns partial frame buffers allocated by init; call deinit once and free completed results with its allocator.
     allocator: std.mem.Allocator,
     message: ?u32 = null,
     count: u16 = 0,

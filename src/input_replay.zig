@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const max_frames: usize = 100_000;
 pub const Frame = struct { buttons: u8 };
-pub const Replay = struct {
+pub const Replay = struct { // owns parsed frame storage returned by parse; call deinit once.
     fixed_hz: u32,
     frames: []Frame,
 

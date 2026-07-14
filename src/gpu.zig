@@ -2,7 +2,7 @@ const std = @import("std");
 
 pub const ResourceKind = enum { texture, render_target, shader, pipeline };
 
-pub const Handle = struct {
+pub const Handle = struct { // borrows a Resources slot; all stale access and destruction return error.StaleHandle.
     index: u32,
     generation: u32,
 };
@@ -12,7 +12,7 @@ pub const RenderTargetHandle = Handle;
 pub const ShaderHandle = Handle;
 pub const PipelineHandle = Handle;
 
-pub const Resources = struct {
+pub const Resources = struct { // owns resource-slot bookkeeping allocated by init; call deinit once after destroying resources.
     allocator: std.mem.Allocator,
     slots: std.ArrayList(Slot) = .empty,
     free: std.ArrayList(u32) = .empty,

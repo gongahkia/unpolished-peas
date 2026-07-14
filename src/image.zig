@@ -13,7 +13,7 @@ pub const DecodeOptions = struct {
     max_pixels: u64 = 4096 * 4096,
 };
 
-pub const Image = struct {
+pub const Image = struct { // owns decoded pixels allocated by decode; call deinit once after borrowed sprites are unused.
     allocator: std.mem.Allocator,
     width: u32,
     height: u32,

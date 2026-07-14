@@ -167,7 +167,7 @@ pub const ServerConfig = struct {
     max_sessions: usize = std.math.maxInt(usize),
 };
 
-pub const Server = struct {
+pub const Server = struct { // owns registered sessions allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     config: ServerConfig,
     sessions: std.ArrayListUnmanaged(ServerSession) = .{},

@@ -7,7 +7,7 @@ pub const header_bytes: usize = 13;
 const Kind = enum(u8) { full = 1, delta = 2 };
 
 pub const Config = struct { history_limit: usize = 32 };
-pub const Snapshot = struct {
+pub const Snapshot = struct { // owns encoded bytes returned by publish; call deinit with the publisher allocator.
     id: u32,
     bytes: []u8,
 
@@ -17,7 +17,7 @@ pub const Snapshot = struct {
     }
 };
 
-pub const Publisher = struct {
+pub const Publisher = struct { // owns retained baseline states allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     config: Config,
     next_id: u32 = 1,
@@ -89,7 +89,7 @@ pub const Publisher = struct {
     }
 };
 
-pub const Client = struct {
+pub const Client = struct { // owns reconstructed snapshot history allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     config: Config,
     history: std.ArrayListUnmanaged(StoredState) = .{},

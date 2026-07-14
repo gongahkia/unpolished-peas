@@ -2,9 +2,9 @@ const std = @import("std");
 const Rect = @import("math.zig").Rect;
 const collision = @import("collision.zig");
 
-pub const Proxy = struct { index: u32, generation: u32 };
+pub const Proxy = struct { index: u32, generation: u32 }; // borrows a Broadphase entry; stale update/remove returns error.StaleProxy.
 
-pub const Broadphase = struct {
+pub const Broadphase = struct { // owns entries and query bookkeeping allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     entries: std.ArrayList(Entry) = .empty,
     free: std.ArrayList(u32) = .empty,

@@ -15,7 +15,7 @@ pub const InterpolationConfig = struct {
 };
 pub const TimedSnapshot = struct { tick: u32, received_at_ms: u64, position: Vec2 };
 
-pub const Interpolator = struct {
+pub const Interpolator = struct { // owns ordered snapshot storage allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     config: InterpolationConfig,
     snapshots: std.ArrayListUnmanaged(TimedSnapshot) = .{},
@@ -59,7 +59,7 @@ pub const Interpolator = struct {
     }
 };
 
-pub const InputCommand = struct {
+pub const InputCommand = struct { // owns encoded payload bytes; call deinit with the command owner allocator.
     tick: u32,
     sequence: u32,
     payload: []u8,
@@ -70,7 +70,7 @@ pub const InputCommand = struct {
     }
 };
 
-pub const CommandClient = struct {
+pub const CommandClient = struct { // owns pending commands allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     peer: transport.Peer,
     next_sequence: u32 = 0,
@@ -128,7 +128,7 @@ pub const CommandClient = struct {
     }
 };
 
-pub const CommandServer = struct {
+pub const CommandServer = struct { // owns reordered and delivered commands allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     peer: transport.Peer,
     expected_sequence: u32 = 0,

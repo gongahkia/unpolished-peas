@@ -37,7 +37,7 @@ pub const Glyph = struct {
     advance: i32,
 };
 
-pub const Font = struct {
+pub const Font = struct { // owns atlas pixels and glyph storage allocated by decode; call deinit once.
     allocator: std.mem.Allocator,
     image: Image,
     glyphs: []Glyph,

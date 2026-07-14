@@ -8,7 +8,7 @@ pub const Slope = struct { a: Vec2, b: Vec2, normal: Vec2 };
 pub const Shape = union(enum) { solid: Rect, one_way: Rect, slope: Slope };
 pub const Hit = struct { normal: Vec2, fraction: f32, one_way: bool = false };
 
-pub const TileCollider = struct {
+pub const TileCollider = struct { // owns copied collision shapes allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     shapes: std.ArrayListUnmanaged(Shape) = .{},
 

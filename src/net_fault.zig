@@ -12,7 +12,7 @@ pub const Config = struct {
     bandwidth_bytes_per_second: u64 = 0,
 };
 
-pub const Network = struct {
+pub const Network = struct { // owns queued faulted packets allocated by init; endpoints must deinit before the network.
     allocator: std.mem.Allocator,
     config: Config,
     random: std.Random.DefaultPrng,
@@ -81,7 +81,7 @@ pub const Network = struct {
     }
 };
 
-pub const Endpoint = struct {
+pub const Endpoint = struct { // owns its inbox and borrows its Network; call deinit before Network.deinit.
     allocator: std.mem.Allocator,
     network: *Network,
     peer: transport.Peer,

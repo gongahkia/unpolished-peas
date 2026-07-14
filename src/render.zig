@@ -33,7 +33,7 @@ pub const ImageDraw = struct { image: *const Image, x: i32, y: i32 };
 pub const Text = struct { value: []const u8, x: i32, y: i32, color: Color };
 pub const BlendMode = @import("canvas.zig").BlendMode;
 
-pub const CommandBuffer = struct {
+pub const CommandBuffer = struct { // owns command storage allocated by init; call deinit once after submission.
     allocator: std.mem.Allocator,
     commands: std.ArrayList(Command) = .empty,
 
@@ -51,7 +51,7 @@ pub const CommandBuffer = struct {
     }
 };
 
-pub const HeadlessRenderer = struct {
+pub const HeadlessRenderer = struct { // borrows its Canvas and owns temporary stacks released by deinit.
     canvas: *Canvas,
     clip_stack: std.ArrayList(?ClipRect) = .empty,
     blend_stack: std.ArrayList(BlendMode) = .empty,

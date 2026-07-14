@@ -12,7 +12,7 @@ pub const Config = struct {
     resend_interval_ms: u64 = 100,
     max_retransmits: u8 = 8,
 };
-pub const Message = struct {
+pub const Message = struct { // owns received payload bytes; call deinit with the Channel allocator.
     mode: Mode,
     sequence: u32,
     payload: []u8,
@@ -23,7 +23,7 @@ pub const Message = struct {
     }
 };
 
-pub const Channel = struct {
+pub const Channel = struct { // owns queued packets and messages allocated by init; call deinit once.
     allocator: std.mem.Allocator,
     peer: transport.Peer,
     config: Config,
