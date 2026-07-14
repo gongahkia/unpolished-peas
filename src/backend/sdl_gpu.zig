@@ -741,8 +741,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var failure: ?Failure = null;
     var initialized = false;
     callLoopInit(state, callbacks, &ctx) catch |err| {
-        dev.failure("init", err);
-        failure = .{ .phase = "init", .err = err };
+        dev.failure(.init, err);
+        failure = .{ .phase = .init, .err = err };
     };
     initialized = failure == null;
     defer if (initialized) callLoopDeinit(state, callbacks, &ctx);
@@ -756,28 +756,27 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         commands.commands.clearRetainingCapacity();
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
-        running = pollInput(state, callbacks, initialized, &ctx, &input, window, &presentation, &audio_device_changed) catch |err| blk: {
-            dev.failure("event", err);
-            failure = .{ .phase = "event", .err = err };
-            break :blk false;
+        var close_requested = false;
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested) catch |err| blk: {
+            dev.failure(.event, err);
+            failure = .{ .phase = .event, .err = err };
+            break :blk !close_requested;
         };
-        if (failure != null) continue;
-        if (audio_device_changed) {
-            if (audio_output) |*output| output.deinit(allocator);
-            audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
-        }
-        if (input.wasPressed(.debug)) dev.toggleOverlay();
-
         if (failure) |current| {
             drawFailure(&canvas, current);
             try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, null, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
+        if (audio_device_changed) {
+            if (audio_output) |*output| output.deinit(allocator);
+            audio_output = try AudioOutput.init(allocator, config.audio_sample_rate, config.audio_buffer_frames, config.strict_audio);
+        }
+        if (input.wasPressed(.debug)) dev.toggleOverlay();
 
         const reload_events = assets.reloadChanged() catch |err| {
-            dev.failure("asset reload", err);
-            failure = .{ .phase = "asset reload", .err = err };
+            dev.failure(.asset_reload, err);
+            failure = .{ .phase = .asset_reload, .err = err };
             continue;
         };
 
@@ -790,8 +789,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         while (step < steps) : (step += 1) {
             ctx.dt = clock.step_seconds;
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
-                dev.failure("update", err);
-                failure = .{ .phase = "update", .err = err };
+                dev.failure(.update, err);
+                failure = .{ .phase = .update, .err = err };
                 break;
             };
         }
@@ -800,8 +799,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         canvas.clear(config.clear_color);
         ctx.dt = dt;
         callLoopDraw(state, callbacks, &ctx) catch |err| {
-            dev.failure("draw", err);
-            failure = .{ .phase = "draw", .err = err };
+            dev.failure(.draw, err);
+            failure = .{ .phase = .draw, .err = err };
             continue;
         };
         drawReloadOverlay(&canvas, reload_events);
@@ -809,7 +808,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         var screenshot_path: ?[]u8 = null;
         if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
-                dev.failure("screenshot path", err);
+                dev.failure(.screenshot_path, err);
                 break :blk null;
             };
         }
@@ -1030,9 +1029,38 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
 }
 
 const Failure = struct {
-    phase: []const u8,
+    phase: FailurePhase,
     err: anyerror,
 };
+
+const FailurePhase = enum {
+    init,
+    event,
+    asset_reload,
+    update,
+    draw,
+    screenshot_path,
+
+    fn label(self: FailurePhase) []const u8 {
+        return switch (self) {
+            .init => "init",
+            .event => "event",
+            .asset_reload => "asset reload",
+            .update => "update",
+            .draw => "draw",
+            .screenshot_path => "screenshot path",
+        };
+    }
+};
+
+test "runtime failures retain category and render a safe report" {
+    try std.testing.expectEqualStrings("asset reload", FailurePhase.asset_reload.label());
+    var canvas = try up.Canvas.init(std.testing.allocator, 80, 64);
+    defer canvas.deinit();
+    drawFailure(&canvas, .{ .phase = .draw, .err = error.DrawFailed });
+    try std.testing.expectEqual(up.Color.rgb(41, 18, 24), canvas.get(0, 0).?);
+    try std.testing.expectEqual(up.Color.rgb(88, 31, 40), canvas.get(2, 2).?);
+}
 
 const DeveloperTools = struct {
     allocator: std.mem.Allocator,
@@ -1058,7 +1086,7 @@ const DeveloperTools = struct {
         };
         if (tools.log_file) |file| file.seekFromEnd(0) catch {};
         tools.note("unpolished-peas: started\n");
-        std.debug.print("unpolished-peas app data: {s}\n", .{app_data_path});
+        std.debug.print("unpolished-peas app data: {s}\nunpolished-peas log: {s}\n", .{ app_data_path, log_path });
         return tools;
     }
 
@@ -1071,10 +1099,12 @@ const DeveloperTools = struct {
         if (self.enabled) self.overlay = !self.overlay;
     }
 
-    fn failure(self: *DeveloperTools, phase: []const u8, err: anyerror) void {
+    fn failure(self: *DeveloperTools, phase: FailurePhase, err: anyerror) void {
         var buffer: [256]u8 = undefined;
-        const line = std.fmt.bufPrint(&buffer, "unpolished-peas {s} failed: {s}\n", .{ phase, @errorName(err) }) catch return;
-        std.debug.print("{s}", .{line});
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas {s} failed: {s}\n", .{ phase.label(), @errorName(err) }) catch return;
+        if (self.log_file != null) {
+            std.debug.print("unpolished-peas {s} failed: {s}; log: {s}unpolished-peas.log\n", .{ phase.label(), @errorName(err), self.app_data_path });
+        } else std.debug.print("{s}", .{line});
         self.note(line);
     }
 
@@ -1103,13 +1133,37 @@ const DeveloperTools = struct {
     }
 };
 
+test "developer tools log runtime failure categories" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    var tools = try DeveloperTools.init(std.testing.allocator, true, data_path);
+    defer tools.deinit();
+    tools.failure(.init, error.InitFailed);
+    tools.failure(.update, error.UpdateFailed);
+    tools.failure(.draw, error.DrawFailed);
+    tools.failure(.asset_reload, error.ReloadFailed);
+    var data = try std.fs.openDirAbsolute(root, .{});
+    defer data.close();
+    const log = try data.readFileAlloc(std.testing.allocator, "unpolished-peas.log", 4096);
+    defer std.testing.allocator.free(log);
+    try std.testing.expect(std.mem.indexOf(u8, log, "init failed: InitFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "update failed: UpdateFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "draw failed: DrawFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
+}
+
 fn drawFailure(canvas: *up.Canvas, failure: Failure) void {
     canvas.clear(up.Color.rgb(41, 18, 24));
     canvas.fillRect(2, 2, @intCast(canvas.width -| 4), @intCast(canvas.height -| 4), up.Color.rgb(88, 31, 40));
     canvas.drawText("ERROR", 6, 6, up.Color.rgb(255, 225, 225));
-    canvas.drawText(failure.phase, 6, 18, up.Color.rgb(255, 198, 74));
+    canvas.drawText(failure.phase.label(), 6, 18, up.Color.rgb(255, 198, 74));
     canvas.drawText(@errorName(failure.err), 6, 30, up.Color.rgb(255, 225, 225));
-    canvas.drawText("ESC TO QUIT", 6, 48, up.Color.rgb(225, 232, 240));
+    canvas.drawText("LOG: unpolished-peas.log", 6, 42, up.Color.rgb(225, 225, 225));
+    canvas.drawText("ESC TO QUIT", 6, 54, up.Color.rgb(225, 232, 240));
 }
 
 fn advanceFrame(frame: *u64, max_frames: ?u32) bool {
@@ -1981,12 +2035,13 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
         switch (event.type) {
             c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
+                close_requested.* = true;
                 if (initialized) try callLoopEvent(state, callbacks, ctx, .close_requested);
                 running = false;
             },
