@@ -1,5 +1,6 @@
 const std = @import("std");
 const catalog = @import("asset_catalog.zig");
+const cache = @import("content_cache.zig");
 const map_source = @import("map_source.zig");
 const scene = @import("scene.zig");
 
@@ -95,7 +96,7 @@ pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, ou
         try next_entries.append(allocator, .{ .path = input.path, .fingerprint = fingerprint });
         const output_path = try artifactPath(allocator, output_root, input.path);
         defer allocator.free(output_path);
-        const reusable = previousFingerprint(previous, input.path) == fingerprint and fileExists(output_path);
+        const reusable = previousFingerprint(previous, input.path) == fingerprint and cacheIsFresh(allocator, output_path, input.kind, fingerprint);
         if (reusable) {
             report.reused += 1;
             continue;
@@ -104,7 +105,9 @@ pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, ou
         defer allocator.free(artifact);
         const output_dir = std.fs.path.dirname(output_path) orelse return error.InvalidOutputPath;
         try std.fs.cwd().makePath(output_dir);
-        try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = artifact });
+        const binary_cache = try cache.encode(allocator, cacheKind(input.kind), fingerprint, artifact);
+        defer allocator.free(binary_cache);
+        try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = binary_cache });
         report.compiled += 1;
     }
     try writeState(allocator, output_root, next_entries.items);
@@ -255,9 +258,20 @@ fn artifactPath(allocator: std.mem.Allocator, output_root: []const u8, input_pat
     return std.fs.path.join(allocator, &.{ output_root, filename });
 }
 
-fn fileExists(path: []const u8) bool {
-    std.fs.cwd().access(path, .{}) catch return false;
-    return true;
+fn cacheIsFresh(allocator: std.mem.Allocator, path: []const u8, kind: Kind, fingerprint: u64) bool {
+    const bytes = std.fs.cwd().readFileAlloc(allocator, path, cache.max_payload_bytes + 20) catch return false;
+    defer allocator.free(bytes);
+    var decoded = cache.decode(allocator, bytes) catch return false;
+    defer decoded.deinit();
+    return decoded.kind == cacheKind(kind) and decoded.fingerprint == fingerprint;
+}
+
+fn cacheKind(kind: Kind) cache.Kind {
+    return switch (kind) {
+        .scene => .scene,
+        .catalog => .catalog,
+        .map => .map,
+    };
 }
 
 fn safePath(path: []const u8) bool {
@@ -324,6 +338,23 @@ test "content compiler reuses unchanged scene catalog and map artifacts" {
     try std.testing.expectEqual(@as(usize, 3), initial.compiled);
     const repeated = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 3), repeated.reused);
+    const scene_cache_path = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "main.upscene.upc" });
+    defer std.testing.allocator.free(scene_cache_path);
+    const scene_cache_bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, scene_cache_path, cache.max_payload_bytes + 20);
+    defer std.testing.allocator.free(scene_cache_bytes);
+    var scene_cache = try cache.decode(std.testing.allocator, scene_cache_bytes);
+    defer scene_cache.deinit();
+    var cached_scene_diagnostic = scene.Diagnostic{};
+    var cached_scene = try scene.parse(std.testing.allocator, scene_cache.payload, &cached_scene_diagnostic);
+    defer cached_scene.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("main", cached_scene.metadata.name);
+    var corrupt_cache = try std.testing.allocator.dupe(u8, scene_cache_bytes);
+    defer std.testing.allocator.free(corrupt_cache);
+    corrupt_cache[0] = 0;
+    try std.fs.cwd().writeFile(.{ .sub_path = scene_cache_path, .data = corrupt_cache });
+    const repaired = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 1), repaired.compiled);
+    try std.testing.expectEqual(@as(usize, 2), repaired.reused);
     try temp.dir.writeFile(.{ .sub_path = "project/maps/main.upmap", .data =
         \\.{ .format = "unpolished-peas-map", .version = 1, .metadata = .{ .name = "changed", .projection = .orthogonal, .tile_width = 8, .tile_height = 8, .chunk_size = 8 }, .tilesets = .{}, .layers = .{} }
         \\
@@ -331,9 +362,7 @@ test "content compiler reuses unchanged scene catalog and map artifacts" {
     const changed = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 1), changed.compiled);
     try std.testing.expectEqual(@as(usize, 2), changed.reused);
-    const artifact = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "main.upscene.upc" });
-    defer std.testing.allocator.free(artifact);
-    try std.fs.cwd().access(artifact, .{});
+    try std.fs.cwd().access(scene_cache_path, .{});
 }
 
 test "content compiler preserves source diagnostics" {
