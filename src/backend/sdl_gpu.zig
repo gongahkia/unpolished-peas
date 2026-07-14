@@ -143,7 +143,12 @@ test "desktop renderer conformance GPU golden capture" {
         try up.PixelEffect.parse("invert", .{ .amount = 1 }),
         try up.PixelEffect.parse("invert", .{ .amount = 1 }),
     };
-    try presenter.present(device, window, canvas, &sprites, commands.commands.items, &effects, capture_path, &presentation);
+    var metrics = up.RuntimeMetrics{};
+    metrics.beginFrame(0);
+    try presenter.present(device, window, canvas, &sprites, commands.commands.items, &effects, capture_path, &presentation, &metrics);
+    try std.testing.expect(metrics.gpu_frame_ns == null);
+    try std.testing.expect(metrics.pass_count >= 4);
+    try std.testing.expect(metrics.texture_bytes > 0);
 
     const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
     defer std.testing.allocator.free(png);
@@ -389,6 +394,7 @@ pub const Context = struct {
     pixel_effects: *up.PostProcessChain,
     inspector: *up.Inspector,
     profiler: *up.FrameProfiler,
+    runtime_metrics: *up.RuntimeMetrics,
     capture_requested: *bool,
     dt: f32,
     frame: u64,
@@ -492,6 +498,10 @@ pub const Context = struct {
 
     pub fn profileMetrics(self: *const Context) up.ProfileMetrics {
         return self.profiler.metrics();
+    }
+
+    pub fn runtimeMetrics(self: *const Context) up.RuntimeMetrics {
+        return self.runtime_metrics.*;
     }
 
     pub fn exportCpuTrace(self: *const Context) !void {
@@ -916,6 +926,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
     var profiler = up.FrameProfiler.init(config.cpu_profiler);
+    var runtime_metrics = up.RuntimeMetrics{};
+    var frame_metrics = up.RuntimeMetrics{};
+    var metrics_panel = up.InspectorMetricsPanel{ .metrics = &runtime_metrics };
+    try inspector.register(metrics_panel.panel());
     var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
@@ -943,7 +957,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var presenter_live = true;
     defer if (presenter_live) presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -962,6 +976,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
 
     while (running) {
         profiler.beginFrame(ctx.frame);
+        frame_metrics.beginFrame(ctx.frame);
         input.beginFrame();
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
@@ -996,7 +1011,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         }
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation, &frame_metrics);
+            runtime_metrics = frame_metrics;
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -1014,6 +1030,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             continue;
         };
         asset_timer.end();
+        frame_metrics.recordAssetReloads(reload_events.len);
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -1056,8 +1073,12 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             };
         }
         defer if (screenshot_path) |path| allocator.free(path);
-        if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation);
+        if (audio_output) |*output| {
+            try output.queue(&audio);
+            frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
+        }
+        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation, &frame_metrics);
+        runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
 
@@ -1595,6 +1616,16 @@ const AudioOutput = struct {
             queued_bytes += @intCast(byte_len);
         }
     }
+
+    fn bufferBytes(self: *const AudioOutput) u64 {
+        return @as(u64, @intCast(self.samples.len * @sizeOf(up.AudioSample) + self.interleaved.len * @sizeOf(f32)));
+    }
+
+    fn queuedBytes(self: *const AudioOutput) ?u64 {
+        const queued = c.SDL_GetAudioStreamQueued(self.stream);
+        if (queued < 0) return null;
+        return @intCast(queued);
+    }
 };
 
 const Presenter = struct {
@@ -1723,7 +1754,9 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+        var encoder_timer = std.time.Timer.start() catch unreachable;
+        var pass_count: u32 = 1;
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
@@ -1765,15 +1798,25 @@ const Presenter = struct {
         if (self.primitive_batch.vertices.items.len != 0) try self.uploadPrimitiveVertices(device, copy_pass, self.primitive_batch.vertices.items);
         c.SDL_EndGPUCopyPass(copy_pass);
 
-        if (self.primitive_batch.vertices.items.len != 0) try self.renderPrimitives(command);
-        if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
+        if (self.primitive_batch.vertices.items.len != 0) {
+            try self.renderPrimitives(command);
+            pass_count +%= 1;
+        }
+        if (sprites.vertices.items.len != 0) {
+            try self.renderSprites(command, sprites);
+            pass_count +%= 1;
+        }
         var display_texture = self.render_target;
         for (effects) |effect| {
             const target = if (display_texture == self.render_target) self.effect_texture else self.render_target;
             display_texture = try self.renderPixelEffect(command, display_texture, target, effect);
+            pass_count +%= 1;
         }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
-        if (capture_path != null) capture_transfer = try self.downloadTexture(device, command, display_texture);
+        if (capture_path != null) {
+            capture_transfer = try self.downloadTexture(device, command, display_texture);
+            pass_count +%= 1;
+        }
         errdefer if (capture_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
         var swapchain: ?*c.SDL_GPUTexture = null;
@@ -1784,6 +1827,7 @@ const Presenter = struct {
         }
         acquired_swapchain = true;
         if (swapchainAvailable(swapchain)) {
+            pass_count +%= 1;
             const target = swapchain.?;
             updateFramebufferSize(presentation, swap_w, swap_h);
             const destination = presentation.destination();
@@ -1827,6 +1871,40 @@ const Presenter = struct {
             capture_transfer = null;
         } else if (!c.SDL_SubmitGPUCommandBuffer(command)) return sdlFail("SDL_SubmitGPUCommandBuffer");
         self.reclaimUnusedSprites(device);
+        metrics.recordGpuSubmission(encoder_timer.read(), pass_count, @intCast(sprites.batches.items.len), self.textureCount(), self.textureBytes(), self.allocationBytes(sprites));
+    }
+
+    fn textureCount(self: *const Presenter) u32 {
+        var count: u32 = 2;
+        for (self.sprite_textures.items) |sprite| {
+            count +%= 1;
+            if (sprite.pending != null) count +%= 1;
+        }
+        return count;
+    }
+
+    fn textureBytes(self: *const Presenter) u64 {
+        var bytes = @as(u64, self.byte_len) * 2;
+        for (self.sprite_textures.items) |sprite| {
+            bytes +|= imageBytes(sprite.width, sprite.height);
+            if (sprite.pending) |pending| bytes +|= imageBytes(pending.width, pending.height);
+        }
+        return bytes;
+    }
+
+    fn allocationBytes(self: *const Presenter, sprites: *const up.SpriteBatch) u64 {
+        var bytes = @as(u64, self.vertex_capacity) + @as(u64, self.primitive_capacity);
+        bytes +|= @as(u64, @intCast(sprites.draws.capacity)) * @sizeOf(up.SpriteBatchDraw);
+        bytes +|= @as(u64, @intCast(sprites.vertices.capacity)) * @sizeOf(up.SpriteBatchVertex);
+        bytes +|= @as(u64, @intCast(sprites.sorted.capacity)) * @sizeOf(usize);
+        bytes +|= @as(u64, @intCast(sprites.batches.capacity)) * @sizeOf(up.SpriteBatchGroup);
+        bytes +|= @as(u64, @intCast(self.primitive_batch.vertices.capacity)) * @sizeOf(up.PrimitiveBatchVertex);
+        bytes +|= @as(u64, @intCast(self.primitive_batch.draws.capacity)) * @sizeOf(up.PrimitiveBatchDraw);
+        return bytes;
+    }
+
+    fn imageBytes(width: u32, height: u32) u64 {
+        return @as(u64, width) * @as(u64, height) * 4;
     }
 
     fn downloadTexture(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, texture: *c.SDL_GPUTexture) !*c.SDL_GPUTransferBuffer {
