@@ -8,7 +8,7 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 project="$tmp/project"
 cd "$ROOT_DIR"
 ZIG_GLOBAL_CACHE_DIR="$tmp/generator-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/generator-local-cache" zig build peas -- new "$project"
-ZIG_GLOBAL_CACHE_DIR="$tmp/generator-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/generator-local-cache" zig build peas -- check "$project"
+ZIG_GLOBAL_CACHE_DIR="$tmp/generator-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/generator-local-cache" zig build peas -- check "$project" --target linux
 ZIG_GLOBAL_CACHE_DIR="$tmp/generator-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/generator-local-cache" zig build peas -- test unit "$project"
 cd "$project"
 ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build
