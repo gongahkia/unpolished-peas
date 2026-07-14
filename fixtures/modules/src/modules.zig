@@ -10,4 +10,6 @@ test "downstream module imports remain SDL-free" {
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
     const transport = services.networking.Transport;
     _ = transport;
+    const target = try services.ClientTarget.init(services.Endpoint.local());
+    try std.testing.expect(target.endpoint.isUsable());
 }
