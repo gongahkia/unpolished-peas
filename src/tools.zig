@@ -66,11 +66,13 @@ pub const TestSelection = enum {
 pub const PackageTarget = enum {
     linux,
     macos,
+    windows,
 
     pub fn scriptName(self: PackageTarget) []const u8 {
         return switch (self) {
             .linux => "package_linux.sh",
             .macos => "package_macos.sh",
+            .windows => "package_windows.ps1",
         };
     }
 };
@@ -192,7 +194,7 @@ pub fn printHelp() void {
         \\import-ldtk: zig build peas -- import-ldtk <input.ldtk> <output-directory>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
-        \\package: zig build peas -- package <linux|macos> [output-directory]
+        \\package: zig build peas -- package <linux|macos|windows> [output-directory]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 
@@ -408,7 +410,7 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(TestSelection.replay, parseTestSelection("replay").?);
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
-    try std.testing.expect(parsePackageTarget("windows") == null);
+    try std.testing.expectEqual(PackageTarget.windows, parsePackageTarget("windows").?);
     try std.testing.expectEqual(CheckTarget.windows, parseCheckTarget("windows").?);
     try std.testing.expect(parseCheckTarget("web") == null);
     try std.testing.expectEqual(DocsTopic.api, parseDocsTopic("api").?);

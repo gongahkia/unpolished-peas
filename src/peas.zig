@@ -301,7 +301,13 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
     defer allocator.free(script_path);
     var command_args = std.ArrayList([]const u8).empty;
     defer command_args.deinit(allocator);
-    try command_args.append(allocator, script_path);
+    if (target == .windows) {
+        if (tools.targetSetupDiagnostic(.windows)) |diagnostic| {
+            std.debug.print("peas package: unsupported windows setup: {s}\npeas package: recovery: run `zig build peas -- package windows` on Windows 10/11 x64\n", .{diagnostic});
+            return error.UnsupportedTarget;
+        }
+        try command_args.appendSlice(allocator, &.{ "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path });
+    } else try command_args.append(allocator, script_path);
     if (output_directory) |value| try command_args.append(allocator, value);
     std.debug.print("peas package: target {s}\n", .{@tagName(target)});
     var child = std.process.Child.init(command_args.items, allocator);
@@ -312,7 +318,7 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 }
 
 fn packageUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- package <linux|macos> [output-directory]\n", .{});
+    std.debug.print("usage: zig build peas -- package <linux|macos|windows> [output-directory]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -395,6 +401,7 @@ test "known test selections parse" {
 test "known package targets parse" {
     try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
     try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
+    try std.testing.expectEqual(tools.PackageTarget.windows, tools.parsePackageTarget("windows").?);
 }
 
 test "known check targets parse" {
