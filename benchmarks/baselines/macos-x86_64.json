@@ -9,6 +9,9 @@
     "profiler_frame_ns": 1000000,
     "profiler_frame_allocation_events": 0,
     "profiler_frame_allocated_bytes": 0,
+    "runtime_metrics_frame_ns": 1000000,
+    "runtime_metrics_frame_allocation_events": 0,
+    "runtime_metrics_frame_allocated_bytes": 0,
     "renderer_ns": 10000000,
     "renderer_allocation_events": 0,
     "renderer_allocated_bytes": 0

@@ -5,6 +5,7 @@ const Canvas = @import("canvas.zig").Canvas;
 const Color = @import("color.zig").Color;
 const input = @import("input.zig");
 const InspectorPanel = @import("inspector.zig").Panel;
+const runtime_metrics = @import("runtime_metrics.zig");
 const Vec2 = @import("math.zig").Vec2;
 const scene_runtime = @import("scene_runtime.zig");
 
@@ -129,6 +130,37 @@ pub const InputPanel = struct {
     }
 };
 
+pub const MetricsPanel = struct {
+    metrics: ?*const runtime_metrics.Metrics = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 7,
+
+    pub fn panel(self: *MetricsPanel) InspectorPanel {
+        return .{ .name = "metrics", .context = self, .draw = draw };
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *MetricsPanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("METRICS", .{}, panel_title);
+        const metrics = self.metrics orelse {
+            lines.line("runtime unavailable", .{}, panel_warning);
+            return;
+        };
+        if (metrics.gpu_frame_ns) |frame_ns| {
+            const pass_ns: ?u64 = if (metrics.gpu_pass_ns) |value| value / std.time.ns_per_us else null;
+            lines.line("gpu frame={}us pass={?}us", .{ frame_ns / std.time.ns_per_us, pass_ns }, panel_text);
+        } else lines.line("gpu timing unavailable", .{}, panel_warning);
+        lines.line("encoder={}us pass={} batch={}", .{ metrics.encoder_ns / std.time.ns_per_us, metrics.pass_count, metrics.batches }, panel_text);
+        lines.line("textures={} {}KiB", .{ metrics.texture_count, metrics.texture_bytes / 1024 }, panel_text);
+        if (metrics.audio_buffer_bytes) |buffer_bytes| {
+            lines.line("audio={}KiB queued={}KiB", .{ buffer_bytes / 1024, (metrics.audio_queued_bytes orelse 0) / 1024 }, panel_text);
+        } else lines.line("audio unavailable", .{}, panel_warning);
+        lines.line("churn resource={} alloc={}KiB", .{ metrics.resource_churn, metrics.allocation_churn_bytes / 1024 }, panel_text);
+    }
+};
+
 const Lines = struct {
     canvas: *Canvas,
     x: i32,
@@ -187,11 +219,25 @@ test "inspector panels render unavailable sources safely" {
     var scene = ScenePanel{};
     var asset = AssetPanel{};
     var input_panel = InputPanel{};
+    var metrics_panel = MetricsPanel{};
     try scene.panel().draw(scene.panel().context, &canvas);
     try asset.panel().draw(asset.panel().context, &canvas);
     try input_panel.panel().draw(input_panel.panel().context, &canvas);
+    try metrics_panel.panel().draw(metrics_panel.panel().context, &canvas);
     const hash = test_support.canvasHash(canvas);
     try std.testing.expect(hash != 0);
+}
+
+test "metrics panel renders unavailable GPU timing and resource state" {
+    var metrics = runtime_metrics.Metrics{};
+    metrics.beginFrame(2);
+    metrics.recordGpuSubmission(250, 3, 2, 4, 4096, 8192);
+    metrics.recordAudio(1024, 256);
+    var panel = MetricsPanel{ .metrics = &metrics };
+    var canvas = try Canvas.init(std.testing.allocator, 320, 320);
+    defer canvas.deinit();
+    try panel.panel().draw(panel.panel().context, &canvas);
+    try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
 }
 
 test "inspector panels match representative runtime state" {
