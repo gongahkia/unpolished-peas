@@ -17,6 +17,7 @@ pub const input = struct {
     pub const Action = @import("actions.zig").Action;
     pub const ActionBinding = @import("actions.zig").Binding;
     pub const ActionMap = @import("actions.zig").Map;
+    pub const InspectorInputPanel = @import("inspector_panels.zig").InputPanel;
 };
 
 pub const graphics = struct {
@@ -29,6 +30,10 @@ pub const graphics = struct {
     pub const Inspector = @import("inspector.zig").Inspector;
     pub const InspectorPanel = @import("inspector.zig").Panel;
     pub const InspectorVisibility = @import("inspector.zig").Visibility;
+    pub const InspectorScenePanel = @import("inspector_panels.zig").ScenePanel;
+    pub const InspectorAssetPanel = @import("inspector_panels.zig").AssetPanel;
+    pub const InspectorResource = @import("inspector_panels.zig").Resource;
+    pub const InspectorResourceHandle = @import("inspector_panels.zig").ResourceHandle;
     pub const LightingPipeline = @import("lighting.zig").Pipeline;
     pub const LightingConfig = @import("lighting.zig").Config;
     pub const Light = @import("lighting.zig").Light;
@@ -62,6 +67,7 @@ pub const assets = struct {
     pub const Font = @import("font_asset.zig").Font;
     pub const Sound = @import("audio.zig").Sound;
     pub const Music = @import("audio.zig").Music;
+    pub const AssetStats = @import("assets.zig").AssetStats;
 };
 
 pub const world = struct {

@@ -67,6 +67,17 @@ pub const TileMapAssetOptions = struct {
     overlay_path: ?[]const u8 = null,
 };
 
+pub const AssetStats = struct {
+    texts: usize,
+    images: usize,
+    sounds: usize,
+    atlases: usize,
+    fonts: usize,
+    shaders: usize,
+    tile_maps: usize,
+    reload_events: usize,
+};
+
 pub const ReloadStatus = enum {
     changed,
     failed,
@@ -195,6 +206,19 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
         return .{ .allocator = allocator, .dir = dir };
+    }
+
+    pub fn stats(self: AssetStore) AssetStats {
+        return .{
+            .texts = self.texts.items.len,
+            .images = self.images.items.len,
+            .sounds = self.sounds.items.len,
+            .atlases = self.atlases.items.len,
+            .fonts = self.fonts.items.len,
+            .shaders = self.shaders.items.len,
+            .tile_maps = self.tile_maps.items.len,
+            .reload_events = self.events.items.len,
+        };
     }
 
     pub fn initAbsolute(allocator: std.mem.Allocator, root_path: []const u8) !AssetStore {
