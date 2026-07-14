@@ -1,5 +1,6 @@
 const std = @import("std");
 const tools = @import("unpolished-peas-tools");
+const starter = @import("starter.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -16,13 +17,39 @@ pub fn main() !void {
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
         return usage();
     };
-    try dispatch(command, &args);
+    try dispatch(gpa.allocator(), command, &args);
 }
 
-fn dispatch(command: tools.Command, args: *std.process.ArgIterator) !void {
-    while (args.next()) |_| {}
-    std.debug.print("peas {s}: command registered but not implemented yet\n", .{@tagName(command)});
-    return error.CommandNotImplemented;
+fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.process.ArgIterator) !void {
+    switch (command) {
+        .new => try createProject(allocator, args),
+        else => {
+            while (args.next()) |_| {}
+            std.debug.print("peas {s}: command registered but not implemented yet\n", .{@tagName(command)});
+            return error.CommandNotImplemented;
+        },
+    }
+}
+
+fn createProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const destination = args.next() orelse return newUsage();
+    if (args.next() != null) return newUsage();
+    const template_root = std.process.getEnvVarOwned(allocator, "UP_TEMPLATE_ROOT") catch return error.TemplateUnavailable;
+    defer allocator.free(template_root);
+    starter.createProject(allocator, template_root, destination) catch |err| {
+        switch (err) {
+            error.InvalidDestination => std.debug.print("peas new: destination must name a new project directory\n", .{}),
+            error.DestinationExists => std.debug.print("peas new: destination already exists: {s}\n", .{destination}),
+            else => std.debug.print("peas new: failed to create {s}: {s}\n", .{ destination, @errorName(err) }),
+        }
+        return err;
+    };
+    std.debug.print("created unpolished-peas project: {s}\n", .{destination});
+}
+
+fn newUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- new <directory>\n", .{});
+    return error.InvalidArguments;
 }
 
 fn usage() error{InvalidArguments} {
@@ -44,4 +71,8 @@ test "known commands parse" {
 
 test "unknown command is rejected" {
     try std.testing.expect(tools.parseCommand("publish") == null);
+}
+
+test "new command rejects invalid destinations" {
+    try std.testing.expectError(error.InvalidDestination, starter.validateDestination(""));
 }

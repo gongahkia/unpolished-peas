@@ -29,7 +29,6 @@ jobs:
       - run: script/test_core_without_sdl.sh
       - run: script/test_module_fixture.sh
       - run: script/check_no_legacy_lifecycle.sh
-      - run: script/test_downstream_fixture.sh
       - if: matrix.os == 'ubuntu-latest'
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples templates
@@ -37,6 +36,7 @@ jobs:
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas
+      - run: zig build test-starter
       - run: zig build test-replays
       - run: zig build test-fuzz
       - run: script/check_performance_budgets.sh
@@ -54,6 +54,10 @@ jobs:
         run: xvfb-run -a env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'macos-latest'
         run: env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
+      - if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
+      - if: matrix.os == 'macos-latest'
+        run: env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
       - if: failure()
         uses: actions/upload-artifact@v4
         with:
