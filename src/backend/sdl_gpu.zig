@@ -633,6 +633,7 @@ pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, app
 }
 
 pub fn play(config: Config, comptime Game: type) !void {
+    comptime validateGame(Game);
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) @panic("game allocation leak");
 
@@ -641,8 +642,49 @@ pub fn play(config: Config, comptime Game: type) !void {
     try playWithAllocator(allocator, parsed_config, Game);
 }
 
+pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    defer if (gpa.deinit() == .leak) @panic("game allocation leak");
+
+    const allocator = gpa.allocator();
+    const parsed_config = try configFromArgs(allocator, config);
+    try runWithAllocator(allocator, parsed_config, state, callbacks);
+}
+
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
-    comptime validateGame(Game);
+    const Adapter = struct {
+        fn init(state: *Game, ctx: *Context) !void {
+            state.* = try initGame(Game, ctx);
+        }
+
+        fn deinit(state: *Game, ctx: *Context) void {
+            deinitGame(Game, state, ctx);
+        }
+
+        fn update(state: *Game, ctx: *Context) !void {
+            try callUpdate(Game, state, ctx);
+        }
+
+        fn draw(state: *Game, ctx: *Context) !void {
+            try callDraw(Game, state, ctx);
+        }
+
+        fn event(state: *Game, ctx: *Context, event_value: Event) !void {
+            try callEvent(Game, state, ctx, event_value);
+        }
+    };
+    var game: Game = undefined;
+    try runWithAllocator(allocator, config, &game, .{
+        .init = Adapter.init,
+        .deinit = Adapter.deinit,
+        .update = Adapter.update,
+        .draw = Adapter.draw,
+        .event = Adapter.event,
+    });
+}
+
+fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
+    comptime validateLoopCallbacks(callbacks);
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
     defer c.SDL_Quit();
@@ -697,12 +739,13 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
     var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
-    var game: ?Game = initGame(Game, &ctx) catch |err| blk: {
+    var initialized = false;
+    callLoopInit(state, callbacks, &ctx) catch |err| {
         dev.failure("init", err);
         failure = .{ .phase = "init", .err = err };
-        break :blk null;
     };
-    defer if (game) |*value| deinitGame(Game, value, &ctx);
+    initialized = failure == null;
+    defer if (initialized) callLoopDeinit(state, callbacks, &ctx);
 
     var running = true;
     var last_ticks = c.SDL_GetTicksNS();
@@ -713,7 +756,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         commands.commands.clearRetainingCapacity();
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
-        running = pollInput(Game, if (game) |*value| value else null, &ctx, &input, window, &presentation, &audio_device_changed) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized, &ctx, &input, window, &presentation, &audio_device_changed) catch |err| blk: {
             dev.failure("event", err);
             failure = .{ .phase = "event", .err = err };
             break :blk false;
@@ -746,25 +789,21 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
             ctx.dt = clock.step_seconds;
-            if (game) |*value| {
-                callUpdate(Game, value, &ctx) catch |err| {
-                    dev.failure("update", err);
-                    failure = .{ .phase = "update", .err = err };
-                    break;
-                };
-            }
+            callLoopUpdate(state, callbacks, &ctx) catch |err| {
+                dev.failure("update", err);
+                failure = .{ .phase = "update", .err = err };
+                break;
+            };
         }
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
         ctx.dt = dt;
-        if (game) |*value| {
-            callDraw(Game, value, &ctx) catch |err| {
-                dev.failure("draw", err);
-                failure = .{ .phase = "draw", .err = err };
-                continue;
-            };
-        }
+        callLoopDraw(state, callbacks, &ctx) catch |err| {
+            dev.failure("draw", err);
+            failure = .{ .phase = "draw", .err = err };
+            continue;
+        };
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, dt, ctx.frame);
         var screenshot_path: ?[]u8 = null;
@@ -824,6 +863,47 @@ fn callEvent(comptime Game: type, game: *Game, ctx: *Context, event: Event) !voi
     }
 }
 
+fn validateLoopCallbacks(comptime callbacks: anytype) void {
+    switch (@typeInfo(@TypeOf(callbacks))) {
+        .@"struct" => |info| inline for (info.fields) |field| {
+            if (!isLoopCallback(field.name)) @compileError("unknown SDL loop callback: " ++ field.name);
+            switch (@typeInfo(@TypeOf(@field(callbacks, field.name)))) {
+                .@"fn" => {},
+                .pointer => |pointer| switch (@typeInfo(pointer.child)) {
+                    .@"fn" => {},
+                    else => @compileError("SDL loop callbacks must be functions"),
+                },
+                else => @compileError("SDL loop callbacks must be functions"),
+            }
+        },
+        else => @compileError("SDL loop callbacks must be a struct literal"),
+    }
+}
+
+fn isLoopCallback(comptime name: []const u8) bool {
+    return std.mem.eql(u8, name, "init") or std.mem.eql(u8, name, "deinit") or std.mem.eql(u8, name, "event") or std.mem.eql(u8, name, "update") or std.mem.eql(u8, name, "draw");
+}
+
+fn callLoopInit(state: anytype, comptime callbacks: anytype, ctx: *Context) !void {
+    if (@hasField(@TypeOf(callbacks), "init")) try maybeError(callbacks.init(state, ctx));
+}
+
+fn callLoopDeinit(state: anytype, comptime callbacks: anytype, ctx: *Context) void {
+    if (@hasField(@TypeOf(callbacks), "deinit")) maybeError(callbacks.deinit(state, ctx)) catch @panic("SDL loop deinit failed");
+}
+
+fn callLoopEvent(state: anytype, comptime callbacks: anytype, ctx: *Context, event_value: Event) !void {
+    if (@hasField(@TypeOf(callbacks), "event")) try maybeError(callbacks.event(state, ctx, event_value));
+}
+
+fn callLoopUpdate(state: anytype, comptime callbacks: anytype, ctx: *Context) !void {
+    if (@hasField(@TypeOf(callbacks), "update")) try maybeError(callbacks.update(state, ctx));
+}
+
+fn callLoopDraw(state: anytype, comptime callbacks: anytype, ctx: *Context) !void {
+    if (@hasField(@TypeOf(callbacks), "draw")) try maybeError(callbacks.draw(state, ctx));
+}
+
 fn unwrap(comptime T: type, value: anytype) !T {
     return switch (@typeInfo(@TypeOf(value))) {
         .error_union => try value,
@@ -835,7 +915,7 @@ fn maybeError(value: anytype) !void {
     switch (@typeInfo(@TypeOf(value))) {
         .error_union => try value,
         .void => {},
-        else => @compileError("game callbacks must return void or !void"),
+        else => @compileError("runtime callbacks must return void or !void"),
     }
 }
 
@@ -880,6 +960,54 @@ test "lifecycle accepts optional callbacks" {
     try callEvent(Full, &full, &ctx, .close_requested);
     deinitGame(Full, &full, &ctx);
     try std.testing.expectEqualSlices(u8, "iudx", full.calls[0..full.call_count]);
+}
+
+test "explicit loop callbacks share the lifecycle" {
+    const State = struct {
+        calls: [5]u8 = undefined,
+        call_count: usize = 0,
+
+        fn init(self: *@This(), _: *Context) void {
+            self.note('i');
+        }
+
+        fn event(self: *@This(), _: *Context, _: Event) void {
+            self.note('e');
+        }
+
+        fn update(self: *@This(), _: *Context) void {
+            self.note('u');
+        }
+
+        fn draw(self: *@This(), _: *Context) void {
+            self.note('d');
+        }
+
+        fn deinit(self: *@This(), _: *Context) void {
+            self.note('x');
+        }
+
+        fn note(self: *@This(), call: u8) void {
+            self.calls[self.call_count] = call;
+            self.call_count += 1;
+        }
+    };
+    const callbacks = .{
+        .init = State.init,
+        .event = State.event,
+        .update = State.update,
+        .draw = State.draw,
+        .deinit = State.deinit,
+    };
+
+    var ctx: Context = undefined;
+    var state = State{};
+    try callLoopInit(&state, callbacks, &ctx);
+    try callLoopEvent(&state, callbacks, &ctx, .close_requested);
+    try callLoopUpdate(&state, callbacks, &ctx);
+    try callLoopDraw(&state, callbacks, &ctx);
+    callLoopDeinit(&state, callbacks, &ctx);
+    try std.testing.expectEqualSlices(u8, "ieudx", state.calls[0..state.call_count]);
 }
 
 fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
@@ -1853,13 +1981,13 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn pollInput(comptime Game: type, game: ?*Game, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
         switch (event.type) {
             c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
-                try emitEvent(Game, game, ctx, .close_requested);
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .close_requested);
                 running = false;
             },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
@@ -1872,12 +2000,12 @@ fn pollInput(comptime Game: type, game: ?*Game, ctx: *Context, input: *up.Input,
             },
             c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => {
                 refreshPresentation(window, presentation);
-                try emitEvent(Game, game, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } });
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } });
             },
             else => {
                 if (audioDeviceChanged(event.type)) {
                     audio_device_changed.* = true;
-                    try emitEvent(Game, game, ctx, .audio_device_changed);
+                    if (initialized) try callLoopEvent(state, callbacks, ctx, .audio_device_changed);
                 }
             },
             c.SDL_EVENT_MOUSE_MOTION => setPointerPosition(input, window, presentation, .{ .x = event.motion.x, .y = event.motion.y }),
@@ -1889,22 +2017,18 @@ fn pollInput(comptime Game: type, game: ?*Game, ctx: *Context, input: *up.Input,
             c.SDL_EVENT_GAMEPAD_ADDED => {
                 const id: i32 = @intCast(event.gdevice.which);
                 _ = input.addGamepad(id);
-                try emitEvent(Game, game, ctx, .{ .gamepad_connected = id });
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .gamepad_connected = id });
             },
             c.SDL_EVENT_GAMEPAD_REMOVED => {
                 const id: i32 = @intCast(event.gdevice.which);
                 _ = input.removeGamepad(id);
-                try emitEvent(Game, game, ctx, .{ .gamepad_disconnected = id });
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .gamepad_disconnected = id });
             },
             c.SDL_EVENT_GAMEPAD_BUTTON_DOWN, c.SDL_EVENT_GAMEPAD_BUTTON_UP => if (mapGamepadButton(event.gbutton.button)) |button| input.setGamepadButton(@intCast(event.gbutton.which), button, event.type == c.SDL_EVENT_GAMEPAD_BUTTON_DOWN),
             c.SDL_EVENT_GAMEPAD_AXIS_MOTION => if (mapGamepadAxis(event.gaxis.axis)) |axis| input.setGamepadAxis(@intCast(event.gaxis.which), axis, normalizeGamepadAxis(axis, event.gaxis.value), 0.15),
         }
     }
     return running;
-}
-
-fn emitEvent(comptime Game: type, game: ?*Game, ctx: *Context, event: Event) !void {
-    if (game) |value| try callEvent(Game, value, ctx, event);
 }
 
 fn audioDeviceChanged(event_type: c.SDL_EventType) bool {

@@ -61,6 +61,10 @@ pub fn main() !void {
 }
 ```
 
+## Explicit Loop
+
+`sdl.run` accepts a caller-owned state pointer and an explicit `init`, `event`, `update`, `draw`, and `deinit` callback table. It uses the same runtime lifecycle and resource ownership as `sdl.play`; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a `Game` type.
+
 ## Starter Project
 
 From an unpolished-peas checkout:
@@ -96,6 +100,7 @@ zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
 zig build run-minimal
+zig build run-explicit-loop
 zig build run-audio
 zig build run-atlas
 zig build run-camera
@@ -126,6 +131,7 @@ zig build upmapc -- level.upmap level.upmapb
 `run-bounce-sdl` opens an SDL3 window.
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
+`run-explicit-loop` opens the caller-owned-state SDL loop demo.
 `run-atlas` opens a JSON atlas/tile scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.
