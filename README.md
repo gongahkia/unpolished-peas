@@ -253,6 +253,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Atlas`
 - `AtlasFrameHandle`
 - `AnimationPlayer`
+- `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `Sound`
 - `Music`
 - `AudioMixer`
