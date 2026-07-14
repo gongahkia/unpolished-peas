@@ -15,6 +15,22 @@ pub const Command = enum {
     package,
 };
 
+pub const TestSelection = enum {
+    unit,
+    replay,
+    visual,
+    integration,
+
+    pub fn buildStep(self: TestSelection) []const u8 {
+        return switch (self) {
+            .unit => "test",
+            .replay => "test-replays",
+            .visual => "test-scenes",
+            .integration => "test-modules",
+        };
+    }
+};
+
 pub const CheckIssue = struct {
     path: []u8,
     line: usize,
@@ -32,12 +48,17 @@ pub fn parseCommand(value: []const u8) ?Command {
     return std.meta.stringToEnum(Command, value);
 }
 
+pub fn parseTestSelection(value: []const u8) ?TestSelection {
+    return std.meta.stringToEnum(TestSelection, value);
+}
+
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
         \\commands: new run check test package
         \\check: zig build peas -- check [project-directory]
         \\run: zig build peas -- run [project-directory] -- [game-args]
+        \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\use `zig build peas -- help` for this message
         \\ 
     , .{});
@@ -166,6 +187,8 @@ fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, co
 test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.new, parseCommand("new").?);
     try std.testing.expect(parseCommand("publish") == null);
+    try std.testing.expectEqual(TestSelection.replay, parseTestSelection("replay").?);
+    try std.testing.expect(parseTestSelection("load") == null);
 }
 
 test "tools discover a project above the selected directory" {
