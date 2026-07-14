@@ -19,8 +19,51 @@ const effect_frag_spirv = sprite_shaders.effect_frag_spirv;
 const effect_vert_msl = sprite_shaders.effect_vert_msl;
 const effect_frag_msl = sprite_shaders.effect_frag_msl;
 
+pub const GpuShaderFormat = enum {
+    msl,
+    spirv,
+};
+
+pub const GpuCapabilities = struct {
+    pub const msl: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_MSL);
+    pub const spirv: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_SPIRV);
+    pub const required_shader_formats = msl | spirv;
+
+    shader_formats: u32,
+
+    pub fn preferredShaderFormat(self: GpuCapabilities) ?GpuShaderFormat {
+        if ((self.shader_formats & msl) != 0) return .msl;
+        if ((self.shader_formats & spirv) != 0) return .spirv;
+        return null;
+    }
+
+    pub fn requireShaderFormat(self: GpuCapabilities) error{UnsupportedGpuShaderFormat}!GpuShaderFormat {
+        return self.preferredShaderFormat() orelse error.UnsupportedGpuShaderFormat;
+    }
+};
+
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
+}
+
+test "renderer conformance shared smoke golden fixture" {
+    var canvas = try renderConformanceCanvas(std.testing.allocator, 4, 3);
+    defer canvas.deinit();
+    try expectConformanceGolden(&canvas);
+}
+
+test "renderer conformance reports unsupported shader capabilities" {
+    try std.testing.expectEqual(GpuShaderFormat.msl, try (GpuCapabilities{ .shader_formats = GpuCapabilities.msl | GpuCapabilities.spirv }).requireShaderFormat());
+    try std.testing.expectEqual(GpuShaderFormat.spirv, try (GpuCapabilities{ .shader_formats = GpuCapabilities.spirv }).requireShaderFormat());
+    try std.testing.expectError(error.UnsupportedGpuShaderFormat, (GpuCapabilities{ .shader_formats = @intCast(c.SDL_GPU_SHADERFORMAT_DXIL) }).requireShaderFormat());
+}
+
+test "renderer conformance diagnostics name the backend and formats" {
+    var buffer: [256]u8 = undefined;
+    const diagnostic = try formatGpuDiagnostics(&buffer, "SDL_CreateGPUTexture", "vulkan", .{ .shader_formats = GpuCapabilities.spirv });
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "operation=SDL_CreateGPUTexture") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "driver=vulkan") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "shader_formats=0x2") != null);
 }
 
 test "SDL adapter consumes render commands" {
@@ -52,8 +95,8 @@ test "GPU target readback preserves RGBA dimensions and pixels" {
     try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), canvas.pixels[1]);
 }
 
-test "SDL GPU target capture writes expected PNG" {
-    if (std.posix.getenv("UP_GPU_CAPTURE_TEST") == null) return;
+test "desktop renderer conformance GPU golden capture" {
+    if (!rendererConformanceEnabled()) return;
 
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -62,22 +105,27 @@ test "SDL GPU target capture writes expected PNG" {
     const capture_path = try std.fs.path.join(std.testing.allocator, &.{ temp_path, "capture.png" });
     defer std.testing.allocator.free(capture_path);
 
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
-    const window = c.SDL_CreateWindow("unpolished-peas capture", 64, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlFail("SDL_CreateWindow");
+    if (!c.SDL_GPUSupportsShaderFormats(requiredGpuShaderFormats(), null)) {
+        printRendererConformanceUnavailable();
+        if (rendererConformanceRequiresGpu()) return error.UnsupportedGpuShaderFormat;
+        return;
+    }
+    const window = c.SDL_CreateWindow("unpolished-peas capture", 64, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlRendererFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
-    const device = c.SDL_CreateGPUDevice(c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV, false, null) orelse return sdlFail("SDL_CreateGPUDevice");
+    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), false, null) orelse return sdlRendererFail("SDL_CreateGPUDevice");
     defer c.SDL_DestroyGPUDevice(device);
-    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlFail("SDL_ClaimWindowForGPUDevice");
+    const shader_format = try selectGpuShaderFormat(device);
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
     defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
-    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) return sdlFail("SDL_SetGPUSwapchainParameters");
+    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
 
     var presenter = try Presenter.init(device, 64, 32);
     defer presenter.deinit(device);
-    var canvas = try up.Canvas.init(std.testing.allocator, 64, 32);
+    var canvas = try renderConformanceCanvas(std.testing.allocator, 64, 32);
     defer canvas.deinit();
-    canvas.pixels[0] = up.Color.rgba(1, 2, 3, 4);
-    canvas.pixels[1] = up.Color.rgba(5, 6, 7, 8);
+    try expectConformanceGolden(&canvas);
     var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer assets.deinit();
     const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf");
@@ -103,13 +151,14 @@ test "SDL GPU target capture writes expected PNG" {
     defer image.deinit();
     try std.testing.expectEqual(@as(u32, 64), image.width);
     try std.testing.expectEqual(@as(u32, 32), image.height);
-    try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 4), image.pixels[0]);
-    try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), image.pixels[1]);
+    const captured = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
+    try expectConformanceGolden(&captured);
     var nontransparent: usize = 0;
     for (image.pixels) |pixel| {
         if (pixel.a != 0) nontransparent += 1;
     }
     try std.testing.expect(nontransparent > 2);
+    std.debug.print("renderer conformance: platform={s} driver={s} shader_format={s} golden=capture.png\n", .{ @tagName(builtin.os.tag), gpuDriverName(device), @tagName(shader_format) });
 }
 
 test "high DPI letterboxing maps pointer through the GPU presentation" {
@@ -786,24 +835,24 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
     try validateConfig(config);
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
 
     const window_w = try scaledInt(config.width, config.scale);
     const window_h = try scaledInt(config.height, config.scale);
     const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlFail("SDL_CreateWindow");
+    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse return sdlRendererFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
 
-    const shader_formats = c.SDL_GPU_SHADERFORMAT_MSL | c.SDL_GPU_SHADERFORMAT_SPIRV;
-    const device = c.SDL_CreateGPUDevice(shader_formats, true, null) orelse return sdlFail("SDL_CreateGPUDevice");
+    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), true, null) orelse return sdlRendererFail("SDL_CreateGPUDevice");
     defer c.SDL_DestroyGPUDevice(device);
+    _ = try selectGpuShaderFormat(device);
 
-    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlFail("SDL_ClaimWindowForGPUDevice");
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
     defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
 
     if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
-        return sdlFail("SDL_SetGPUSwapchainParameters");
+        return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
     }
 
     var canvas = try up.Canvas.init(allocator, config.width, config.height);
@@ -2148,21 +2197,18 @@ fn createSpritePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
 const SpriteShaderStage = enum { vertex, fragment };
 
 fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
-    const formats = c.SDL_GetGPUShaderFormats(device);
-    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0)
+    const shader_format = try selectGpuShaderFormat(device);
+    const source: []const u8 = if (shader_format == .msl)
         switch (stage) {
             .vertex => sprite_vert_msl,
             .fragment => sprite_frag_msl,
         }
-    else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0)
-        switch (stage) {
-            .vertex => sprite_vert_spirv,
-            .fragment => sprite_frag_spirv,
-        }
-    else
-        return error.UnsupportedGpuShaderFormat;
-    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
-    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    else switch (stage) {
+        .vertex => sprite_vert_spirv,
+        .fragment => sprite_frag_spirv,
+    };
+    const format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (shader_format == .msl) "main0" else "main";
     return c.SDL_CreateGPUShader(device, &.{
         .code_size = source.len,
         .code = source.ptr,
@@ -2190,16 +2236,16 @@ fn createEffectPipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
 }
 
 fn createEffectShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
-    const formats = c.SDL_GetGPUShaderFormats(device);
-    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) switch (stage) {
+    const shader_format = try selectGpuShaderFormat(device);
+    const source: []const u8 = if (shader_format == .msl) switch (stage) {
         .vertex => effect_vert_msl,
         .fragment => effect_frag_msl,
-    } else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0) switch (stage) {
+    } else switch (stage) {
         .vertex => effect_vert_spirv,
         .fragment => effect_frag_spirv,
-    } else return error.UnsupportedGpuShaderFormat;
-    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
-    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    };
+    const format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (shader_format == .msl) "main0" else "main";
     return c.SDL_CreateGPUShader(device, &.{ .code_size = source.len, .code = source.ptr, .entrypoint = entrypoint, .format = format, .stage = switch (stage) {
         .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
         .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
@@ -2250,21 +2296,18 @@ fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SD
 }
 
 fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
-    const formats = c.SDL_GetGPUShaderFormats(device);
-    const source: []const u8 = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0)
+    const shader_format = try selectGpuShaderFormat(device);
+    const source: []const u8 = if (shader_format == .msl)
         switch (stage) {
             .vertex => primitive_vert_msl,
             .fragment => primitive_frag_msl,
         }
-    else if ((formats & c.SDL_GPU_SHADERFORMAT_SPIRV) != 0)
-        switch (stage) {
-            .vertex => primitive_vert_spirv,
-            .fragment => primitive_frag_spirv,
-        }
-    else
-        return error.UnsupportedGpuShaderFormat;
-    const format = if ((formats & c.SDL_GPU_SHADERFORMAT_MSL) != 0) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
-    const entrypoint: [*:0]const u8 = if (format == c.SDL_GPU_SHADERFORMAT_MSL) "main0" else "main";
+    else switch (stage) {
+        .vertex => primitive_vert_spirv,
+        .fragment => primitive_frag_spirv,
+    };
+    const format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (shader_format == .msl) "main0" else "main";
     return c.SDL_CreateGPUShader(device, &.{
         .code_size = source.len,
         .code = source.ptr,
@@ -2472,6 +2515,30 @@ fn canvasFromRgba(allocator: std.mem.Allocator, width: u32, height: u32, rgba: [
     return canvas;
 }
 
+fn renderConformanceCanvas(allocator: std.mem.Allocator, width: u32, height: u32) !up.Canvas {
+    if (width < 3 or height < 2) return error.InvalidConformanceCanvas;
+    var canvas = try up.Canvas.init(allocator, width, height);
+    errdefer canvas.deinit();
+    var commands = up.RenderCommandBuffer.init(allocator);
+    defer commands.deinit();
+    try commands.append(.{ .clear = up.Color.rgba(19, 37, 61, 255) });
+    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 1, .h = 1, .color = up.Color.rgba(1, 2, 3, 255) } });
+    try commands.append(.{ .rect = .{ .x = 1, .y = 0, .w = 1, .h = 1, .color = up.Color.rgba(5, 6, 7, 255) } });
+    try commands.append(.{ .rect = .{ .x = @intCast(width - 1), .y = @intCast(height - 1), .w = 1, .h = 1, .color = up.Color.rgba(9, 10, 11, 255) } });
+    try renderCommands(allocator, &canvas, commands.commands.items);
+    return canvas;
+}
+
+fn expectConformanceGolden(canvas: *const up.Canvas) !void {
+    try std.testing.expect(canvas.width >= 3 and canvas.height >= 2);
+    const last_x = std.math.cast(i32, canvas.width - 1) orelse return error.InvalidConformanceCanvas;
+    const last_y = std.math.cast(i32, canvas.height - 1) orelse return error.InvalidConformanceCanvas;
+    try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 255), canvas.get(0, 0).?);
+    try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 255), canvas.get(1, 0).?);
+    try std.testing.expectEqual(up.Color.rgba(19, 37, 61, 255), canvas.get(2, 1).?);
+    try std.testing.expectEqual(up.Color.rgba(9, 10, 11, 255), canvas.get(last_x, last_y).?);
+}
+
 fn checkedByteLen(width: u32, height: u32) !u32 {
     const pixels = std.math.mul(u32, width, height) catch return error.CanvasTooLarge;
     return std.math.mul(u32, pixels, 4) catch error.CanvasTooLarge;
@@ -2501,8 +2568,78 @@ fn ticksToSeconds(ns: u64) f32 {
     return @as(f32, @floatFromInt(ns)) / 1_000_000_000.0;
 }
 
+fn requiredGpuShaderFormats() c.SDL_GPUShaderFormat {
+    return @intCast(GpuCapabilities.required_shader_formats);
+}
+
+fn gpuCapabilities(device: *c.SDL_GPUDevice) GpuCapabilities {
+    return .{ .shader_formats = @intCast(c.SDL_GetGPUShaderFormats(device)) };
+}
+
+fn gpuDriverName(device: *c.SDL_GPUDevice) []const u8 {
+    const raw = c.SDL_GetGPUDeviceDriver(device) orelse return "unknown";
+    return std.mem.span(raw);
+}
+
+fn printGpuDrivers() void {
+    const count = c.SDL_GetNumGPUDrivers();
+    var index: c_int = 0;
+    while (index < count) : (index += 1) {
+        if (index != 0) std.debug.print(",", .{});
+        const driver = c.SDL_GetGPUDriver(index) orelse {
+            std.debug.print("unknown", .{});
+            continue;
+        };
+        std.debug.print("{s}", .{std.mem.span(driver)});
+    }
+    if (count == 0) std.debug.print("none", .{});
+}
+
+fn rendererConformanceEnabled() bool {
+    return std.process.hasEnvVarConstant("UP_RENDERER_CONFORMANCE") or std.process.hasEnvVarConstant("UP_GPU_CAPTURE_TEST");
+}
+
+fn rendererConformanceRequiresGpu() bool {
+    return std.process.hasEnvVarConstant("UP_RENDERER_CONFORMANCE_REQUIRE_GPU");
+}
+
+fn printRendererConformanceUnavailable() void {
+    std.debug.print("renderer conformance unavailable: platform={s} required_shader_formats=0x{x} drivers=[", .{ @tagName(builtin.os.tag), GpuCapabilities.required_shader_formats });
+    printGpuDrivers();
+    std.debug.print("] sdl_error={s}\n", .{c.SDL_GetError()});
+}
+
+fn selectGpuShaderFormat(device: *c.SDL_GPUDevice) error{UnsupportedGpuShaderFormat}!GpuShaderFormat {
+    return gpuCapabilities(device).requireShaderFormat() catch {
+        const capabilities = gpuCapabilities(device);
+        std.debug.print("SDL GPU capability failure: platform={s} driver={s} shader_formats=0x{x} required_shader_formats=0x{x}\n", .{ @tagName(builtin.os.tag), gpuDriverName(device), capabilities.shader_formats, GpuCapabilities.required_shader_formats });
+        return error.UnsupportedGpuShaderFormat;
+    };
+}
+
+fn formatGpuDiagnostics(buffer: []u8, operation: []const u8, driver: []const u8, capabilities: GpuCapabilities) ![]const u8 {
+    return std.fmt.bufPrint(buffer, "SDL GPU failure: operation={s} platform={s} driver={s} shader_formats=0x{x} required_shader_formats=0x{x}", .{ operation, @tagName(builtin.os.tag), driver, capabilities.shader_formats, GpuCapabilities.required_shader_formats });
+}
+
+fn sdlRendererFail(comptime label: []const u8) error{SdlError} {
+    std.debug.print("SDL renderer failure: operation={s} platform={s} required_shader_formats=0x{x} drivers=[", .{ label, @tagName(builtin.os.tag), GpuCapabilities.required_shader_formats });
+    printGpuDrivers();
+    std.debug.print("] sdl_error={s}\n", .{c.SDL_GetError()});
+    return error.SdlError;
+}
+
+fn sdlGpuFail(device: *c.SDL_GPUDevice, comptime label: []const u8) error{SdlError} {
+    const capabilities = gpuCapabilities(device);
+    var buffer: [256]u8 = undefined;
+    const diagnostic = formatGpuDiagnostics(&buffer, label, gpuDriverName(device), capabilities) catch unreachable;
+    std.debug.print("{s} sdl_error={s}\n", .{ diagnostic, c.SDL_GetError() });
+    return error.SdlError;
+}
+
 fn sdlFail(comptime label: []const u8) error{SdlError} {
-    std.debug.print("{s}: {s}\n", .{ label, c.SDL_GetError() });
+    std.debug.print("SDL failure: operation={s} platform={s} required_shader_formats=0x{x} drivers=[", .{ label, @tagName(builtin.os.tag), GpuCapabilities.required_shader_formats });
+    printGpuDrivers();
+    std.debug.print("] sdl_error={s}\n", .{c.SDL_GetError()});
     return error.SdlError;
 }
 

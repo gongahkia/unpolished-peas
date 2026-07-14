@@ -192,7 +192,14 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn initExecutable(allocator: std.mem.Allocator) !AssetStore {
-        if (std.posix.getenv("UP_ASSET_ROOT")) |root_path| return initAbsolute(allocator, root_path);
+        const environment_root = std.process.getEnvVarOwned(allocator, "UP_ASSET_ROOT") catch |err| switch (err) {
+            error.EnvironmentVariableNotFound => null,
+            else => return err,
+        };
+        if (environment_root) |root_path| {
+            defer allocator.free(root_path);
+            return initAbsolute(allocator, root_path);
+        }
 
         const executable_path = try std.fs.selfExePathAlloc(allocator);
         defer allocator.free(executable_path);

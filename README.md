@@ -22,9 +22,11 @@ unpolished-peas should feel as simple to start with as raylib, LÖVE, and Ebiten
 
 ```sh
 zig build test-sdl
+zig build test-renderer-conformance
 ```
 
 `zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The pinned Box2D source is reserved for the optional physics module and is validated with `zig build test-box2d`.
+`test-renderer-conformance` runs the shared canvas smoke/golden fixture and an opt-in GPU capture golden. CI requires the GPU capture on macOS and Linux; Windows runs the same fixture when an MSL or SPIR-V GPU driver is available, otherwise emits its platform, drivers, and shader-format capability report.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
