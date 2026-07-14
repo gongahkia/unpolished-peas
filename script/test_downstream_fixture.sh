@@ -13,5 +13,6 @@ ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" 
 test -d assets
 test -d zig-out/assets
 if [[ "${RUN_GENERATED_PROJECT:-0}" == "1" ]]; then
-  ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" SDL_AUDIODRIVER=dummy zig build run -- --frames 2
+  cd "$ROOT_DIR"
+  ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" SDL_AUDIODRIVER=dummy zig build peas -- run "$project" -- --frames 2
 fi
