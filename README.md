@@ -169,7 +169,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
 
-`zig build peas -- package <linux|macos|windows> [output-directory]` writes a portable archive with uniform `bin/`, `assets/`, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; each platform's package smoke runs outside the repository.
+`zig build peas -- package <linux|macos|windows> [output-directory]` writes a portable archive with uniform `bin/`, `assets/`, `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; each platform's package smoke runs outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.

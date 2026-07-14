@@ -31,13 +31,17 @@ try {
         & zig build docs
         if ($LASTEXITCODE -ne 0) { throw "zig build docs failed: $LASTEXITCODE" }
         Copy-Item -LiteralPath (Join-Path $repo 'zig-out/docs') -Destination (Join-Path $package 'docs') -Recurse
+        $content = Join-Path $package 'content'
+        Copy-Item -LiteralPath (Join-Path $repo 'fixtures/content-project') -Destination $content -Recurse
+        & zig build contentc -- $content (Join-Path $content 'cache')
+        if ($LASTEXITCODE -ne 0) { throw "zig build contentc failed: $LASTEXITCODE" }
     } finally {
         Pop-Location
     }
 
     Set-Content -LiteralPath (Join-Path $package 'launcher.json') -Encoding ascii -NoNewline -Value '{"version":1,"platform":"windows-x86_64","runtime":"bin/unpolished-peas-bounce.exe","assets":"assets/","docs":"docs/"}'
     Set-Content -LiteralPath (Join-Path $package 'run.cmd') -Encoding ascii -Value @('@echo off', '"%~dp0bin\unpolished-peas-bounce.exe" %*')
-    Set-Content -LiteralPath (Join-Path $package 'PACKAGE-MANIFEST.txt') -Encoding ascii -Value @('format=unpolished-peas-package', 'version=1', 'platform=windows-x86_64', 'runtime=bin/unpolished-peas-bounce.exe', 'assets=assets/', 'docs=docs/', 'launcher=launcher.json', 'bundled-runtime=SDL3:static', 'shader-compiler=bin/D3DCompiler_47.dll')
+    Set-Content -LiteralPath (Join-Path $package 'PACKAGE-MANIFEST.txt') -Encoding ascii -Value @('format=unpolished-peas-package', 'version=1', 'platform=windows-x86_64', 'runtime=bin/unpolished-peas-bounce.exe', 'assets=assets/', 'content=content/', 'caches=content/cache/', 'docs=docs/', 'launcher=launcher.json', 'bundled-runtime=SDL3:static', 'shader-compiler=bin/D3DCompiler_47.dll')
 
     $epoch = [int64](& git -C $repo log -1 --format=%ct)
     if ($LASTEXITCODE -ne 0) { throw "git log failed: $LASTEXITCODE" }
