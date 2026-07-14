@@ -420,6 +420,14 @@ pub const Context = struct {
         self.pixel_effect.* = null;
     }
 
+    pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
+        return self.assets.loadShader(path);
+    }
+
+    pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: up.PixelEffectParameters) !void {
+        self.pixel_effect.* = try (try self.assets.latestShader(handle)).instantiate(params);
+    }
+
     pub fn captureFrame(self: *Context) void {
         self.capture_requested.* = true;
     }
@@ -1798,6 +1806,7 @@ const Presenter = struct {
     }
 
     fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, effect: up.PixelEffect) !*c.SDL_GPUTexture {
+        if (effect.kind == .passthrough) return self.render_target;
         const pipeline = self.effect_pipeline orelse return error.PixelEffectUnavailable;
         const sampler = self.nearest_sampler orelse return error.PixelEffectUnavailable;
         var color_target = c.SDL_GPUColorTargetInfo{
