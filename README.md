@@ -164,7 +164,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-topdown-multiplayer` verifies two faulted clients converge on the authoritative state.
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
-`fixtures/platformer-project` is the native platformer reference project; `peas compile` emits its scene, map, and asset-catalog caches, while its unit/replay/visual/integration targets run through `peas test`.
+`fixtures/platformer-project` and `fixtures/topdown-project` are native reference projects; `peas compile` emits scene, map, and asset-catalog caches, while their unit/replay/visual/integration targets run through `peas test`.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.

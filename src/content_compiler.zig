@@ -496,3 +496,37 @@ test "content compiler builds the native platformer fixture" {
     try std.testing.expectEqual(@as(usize, 0), second.compiled);
     try std.testing.expectEqual(@as(usize, 3), second.reused);
 }
+
+test "content compiler builds the native top-down fixture" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const project_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "fixtures/topdown-project");
+    defer std.testing.allocator.free(project_root);
+    const output_root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(output_root);
+    var diagnostic = Diagnostic{};
+    defer diagnostic.deinit(std.testing.allocator);
+    const first = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 3), first.compiled);
+    const scene_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "topdown.upscene.upc" });
+    defer std.testing.allocator.free(scene_cache);
+    const map_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "topdown.upmap.upc" });
+    defer std.testing.allocator.free(map_cache);
+    const assets_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "topdown.upassets.upc" });
+    defer std.testing.allocator.free(assets_cache);
+    try std.fs.cwd().access(scene_cache, .{});
+    try std.fs.cwd().access(map_cache, .{});
+    try std.fs.cwd().access(assets_cache, .{});
+    const scene_cache_bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, scene_cache, cache.max_payload_bytes + 20);
+    defer std.testing.allocator.free(scene_cache_bytes);
+    var decoded_scene = try cache.decode(std.testing.allocator, scene_cache_bytes);
+    defer decoded_scene.deinit();
+    var scene_diagnostic = scene.Diagnostic{};
+    var parsed_scene = try scene.parse(std.testing.allocator, decoded_scene.payload, &scene_diagnostic);
+    defer parsed_scene.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("topdown", parsed_scene.metadata.name);
+    try std.testing.expectEqual(@as(usize, 5), parsed_scene.entities.len);
+    const second = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 0), second.compiled);
+    try std.testing.expectEqual(@as(usize, 3), second.reused);
+}

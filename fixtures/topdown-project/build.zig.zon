@@ -1,0 +1,8 @@
+.{
+    .name = .native_topdown_fixture,
+    .version = "0.0.0",
+    .fingerprint = 0x7feb6b72dbc34faf,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{},
+    .paths = .{""},
+}

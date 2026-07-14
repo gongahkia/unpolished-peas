@@ -32,7 +32,7 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "zig build docs failed: $LASTEXITCODE" }
         Copy-Item -LiteralPath (Join-Path $repo 'zig-out/docs') -Destination (Join-Path $package 'docs') -Recurse
         $content = Join-Path $package 'content'
-        Copy-Item -LiteralPath (Join-Path $repo 'fixtures/content-project') -Destination $content -Recurse
+        Copy-Item -LiteralPath (Join-Path $repo 'fixtures/topdown-project') -Destination $content -Recurse
         & zig build contentc -- $content (Join-Path $content 'cache')
         if ($LASTEXITCODE -ne 0) { throw "zig build contentc failed: $LASTEXITCODE" }
     } finally {
