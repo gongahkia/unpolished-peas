@@ -968,6 +968,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         failure = .{ .phase = .init, .err = err };
     };
     init_timer.end();
+    if (failure) |current| dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
     initialized = failure == null;
     defer if (initialized) callLoopDeinit(state, callbacks, &ctx);
 
@@ -986,6 +987,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const callback_timer = profiler.scope(.callback);
         running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery) catch |err| blk: {
             dev.failure(.event, err);
+            dev.captureFailure(.{ .phase = .event, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
             failure = .{ .phase = .event, .err = err };
             break :blk !close_requested;
         };
@@ -998,6 +1000,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
                 presenter_live = false;
                 presenter = Presenter.init(device, config.width, config.height) catch |err| {
                     dev.failure(.gpu_recovery, err);
+                    dev.captureFailure(.{ .phase = .gpu_recovery, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
                     failure = .{ .phase = .gpu_recovery, .err = err };
                     continue;
                 };
@@ -1006,6 +1009,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             },
             .lost => {
                 dev.failure(.gpu_recovery, error.GpuDeviceLost);
+                dev.captureFailure(.{ .phase = .gpu_recovery, .err = error.GpuDeviceLost }, ctx.frame, canvas, commands.commands.items, &profiler);
                 failure = .{ .phase = .gpu_recovery, .err = error.GpuDeviceLost };
             },
         }
@@ -1026,6 +1030,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const reload_events = assets.reloadChanged() catch |err| {
             asset_timer.end();
             dev.failure(.asset_reload, err);
+            dev.captureFailure(.{ .phase = .asset_reload, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
             failure = .{ .phase = .asset_reload, .err = err };
             continue;
         };
@@ -1045,6 +1050,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
                 update_timer.end();
                 dev.failure(.update, err);
+                dev.captureFailure(.{ .phase = .update, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
                 failure = .{ .phase = .update, .err = err };
                 break;
             };
@@ -1058,6 +1064,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             draw_timer.end();
             dev.failure(.draw, err);
+            dev.captureFailure(.{ .phase = .draw, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
             failure = .{ .phase = .draw, .err = err };
             continue;
         };
@@ -1069,6 +1076,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
                 dev.failure(.screenshot_path, err);
+                dev.captureFailure(.{ .phase = .screenshot_path, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
                 break :blk null;
             };
         }
@@ -1484,6 +1492,23 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
+    fn captureFailure(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler) void {
+        var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const configured_path = std.process.getEnvVarOwned(self.allocator, "UP_DIAGNOSTICS_ROOT") catch |err| switch (err) {
+            error.EnvironmentVariableNotFound => null,
+            else => null,
+        };
+        defer if (configured_path) |value| self.allocator.free(value);
+        const path = configured_path orelse std.fmt.bufPrint(&path_buffer, "{s}diagnostics", .{self.app_data_path}) catch return;
+        var message_buffer: [256]u8 = undefined;
+        const message = std.fmt.bufPrint(&message_buffer, "runtime failure phase={s} error={s} frame={d}\n", .{ failure_value.phase.label(), @errorName(failure_value.err), frame }) catch return;
+        up.diagnostics.capture(self.allocator, .{ .path = path }, .{ .canvas = canvas, .commands = commands, .profiler = frame_profiler, .log = message }) catch |err| {
+            var buffer: [192]u8 = undefined;
+            const line = std.fmt.bufPrint(&buffer, "unpolished-peas diagnostics failed: {s}\n", .{@errorName(err)}) catch return;
+            self.note(line);
+        };
+    }
+
     fn screenshotPath(self: *DeveloperTools, frame: u64) ![]u8 {
         return std.fmt.allocPrint(self.allocator, "{s}screenshot-{d}-{d}.png", .{ self.app_data_path, c.SDL_GetTicksNS(), frame });
     }
@@ -1539,6 +1564,35 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "draw failed: DrawFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
+}
+
+test "runtime failures capture bounded artifacts" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    var tools = try DeveloperTools.init(std.testing.allocator, false, data_path);
+    defer tools.deinit();
+    var canvas = try up.Canvas.init(std.testing.allocator, 2, 2);
+    defer canvas.deinit();
+    canvas.clear(up.Color.white);
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    try commands.append(.{ .clear = up.Color.black });
+    var profiler = up.FrameProfiler.init(true);
+    profiler.beginFrame(2);
+    profiler.scope(.draw).end();
+    tools.captureFailure(.{ .phase = .draw, .err = error.DrawFailed }, 2, canvas, commands.commands.items, &profiler);
+    const diagnostics_path = try std.fs.path.join(std.testing.allocator, &.{ root, "diagnostics" });
+    defer std.testing.allocator.free(diagnostics_path);
+    var directory = try std.fs.openDirAbsolute(diagnostics_path, .{});
+    defer directory.close();
+    try directory.access("screenshot.png", .{});
+    try directory.access("commands.json", .{});
+    try directory.access("trace.json", .{});
+    try directory.access("failure.log", .{});
 }
 
 fn drawFailure(canvas: *up.Canvas, failure: Failure) void {

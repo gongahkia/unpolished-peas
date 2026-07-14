@@ -113,7 +113,7 @@ test "stored Breakout replay has a stable state hash" {
         _ = game.step(up.testSupport.frameSeconds(replay.fixed_hz), axis);
     }
     const hash = replayHash(game);
-    try std.testing.expectEqual(@as(u64, 0x2d407efdf7179fce), hash);
+    try up.testSupport.assertReplayHash(std.testing.allocator, 0x2d407efdf7179fce, hash, &replay, "zig-out/diagnostics/replays/breakout");
 }
 
 fn replayHash(game: Game) u64 {
