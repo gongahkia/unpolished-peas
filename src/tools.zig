@@ -77,6 +77,12 @@ pub const PackageTarget = enum {
     }
 };
 
+pub const PackageGame = enum {
+    bounce,
+    topdown,
+    platformer,
+};
+
 pub const CheckTarget = enum {
     linux,
     macos,
@@ -149,6 +155,10 @@ pub fn parsePackageTarget(value: []const u8) ?PackageTarget {
     return std.meta.stringToEnum(PackageTarget, value);
 }
 
+pub fn parsePackageGame(value: []const u8) ?PackageGame {
+    return std.meta.stringToEnum(PackageGame, value);
+}
+
 pub fn parseCheckTarget(value: []const u8) ?CheckTarget {
     return std.meta.stringToEnum(CheckTarget, value);
 }
@@ -194,7 +204,7 @@ pub fn printHelp() void {
         \\import-ldtk: zig build peas -- import-ldtk <input.ldtk> <output-directory>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
-        \\package: zig build peas -- package <linux|macos|windows> [output-directory]
+        \\package: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 
