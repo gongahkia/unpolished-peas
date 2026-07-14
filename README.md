@@ -164,6 +164,7 @@ zig build upmapc -- level.upmap level.upmapb
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
 `zig build peas -- check [project-directory]` statically validates the manifest, project build script, native source, assets, and declared Zig compatibility without starting the game.
+`zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL playback reopens after device removal or format changes.

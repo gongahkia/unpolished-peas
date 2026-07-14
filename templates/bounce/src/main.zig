@@ -1,5 +1,6 @@
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
+const std = @import("std");
 
 const width = 160;
 const height = 90;
@@ -37,4 +38,10 @@ pub fn main() !void {
         .scale = 5,
         .clear_color = up.Color.rgb(14, 18, 24),
     }, Game);
+}
+
+test "bouncing-square starts within the canvas" {
+    const game = Game{};
+    try std.testing.expect(game.pos.x >= 0 and game.pos.x < width);
+    try std.testing.expect(game.pos.y >= 0 and game.pos.y < height);
 }

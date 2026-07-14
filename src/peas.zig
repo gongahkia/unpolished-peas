@@ -35,6 +35,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             return null;
         },
         .run => return try runProject(allocator, args),
+        .@"test" => return try testProject(allocator, args),
         else => {
             while (args.next()) |_| {}
             std.debug.print("peas {s}: command registered but not implemented yet\n", .{@tagName(command)});
@@ -118,6 +119,35 @@ fn checkUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+    const selection_argument = args.next() orelse return testUsage();
+    const selection = tools.parseTestSelection(selection_argument) orelse return testUsage();
+    const project_path = args.next() orelse ".";
+    if (args.next() != null) return testUsage();
+    const project_root = tools.discoverProject(allocator, project_path) catch |err| {
+        std.debug.print("peas test: no project build.zig found from {s}\n", .{project_path});
+        return err;
+    };
+    defer allocator.free(project_root);
+    const step = selection.buildStep();
+    std.debug.print("peas test: target {s}\npeas test: artifact directory {s}/zig-out\n", .{ step, project_root });
+    var child = std.process.Child.init(&.{ "zig", "build", step }, allocator);
+    child.cwd = project_root;
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    const term = try child.spawnAndWait();
+    if (term == .Exited and term.Exited != 0) {
+        std.debug.print("peas test: target {s} failed; artifact directory {s}/zig-out\n", .{ step, project_root });
+    }
+    return term;
+}
+
+fn testUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- test <unit|replay|visual|integration> [project-directory]\n", .{});
+    return error.InvalidArguments;
+}
+
 fn runUsage() error{InvalidArguments} {
     std.debug.print("usage: zig build peas -- run [project-directory] -- [game-args]\n", .{});
     return error.InvalidArguments;
@@ -138,6 +168,13 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
+}
+
+test "known test selections parse" {
+    try std.testing.expectEqual(tools.TestSelection.unit, tools.parseTestSelection("unit").?);
+    try std.testing.expectEqual(tools.TestSelection.replay, tools.parseTestSelection("replay").?);
+    try std.testing.expectEqual(tools.TestSelection.visual, tools.parseTestSelection("visual").?);
+    try std.testing.expectEqual(tools.TestSelection.integration, tools.parseTestSelection("integration").?);
 }
 
 test "unknown command is rejected" {
