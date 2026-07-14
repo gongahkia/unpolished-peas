@@ -169,8 +169,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
 
-`zig build peas -- package macos [output-directory]` writes a universal macOS bounce app, archive, checksum, and runtime/assets manifest; `script/test_macos_package.sh` launches its bounded smoke outside the repository.
-`zig build peas -- package linux [output-directory]` writes an x86_64 Linux bounce archive, checksum, and runtime/assets manifest; `script/test_linux_package.sh` verifies bundled SDL linkage, asset layout, and bounded smoke outside the repository.
+`zig build peas -- package <linux|macos|windows> [output-directory]` writes a portable archive with uniform `bin/`, `assets/`, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; each platform's package smoke runs outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
@@ -181,7 +180,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build contentc -- <project-directory> [output-directory]` emits versioned `.upc` binary caches for the manifest entry scene plus `.upassets` files under the asset root and `.upmap` files under `maps/`; cache headers validate magic, version, kind, size, and source fingerprint before reuse. `zig build peas -- compile [project-directory] [output-directory]` provides the same project workflow.
 `zig build peas -- migrate <scene|catalog|map> <input> <output>` explicitly upgrades supported source versions and writes only the requested output path; unsupported versions include a recovery command.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
-`zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
+`zig build peas -- package <linux|macos|windows> [output-directory]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
