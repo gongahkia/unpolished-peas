@@ -70,6 +70,33 @@ jobs:
             zig-out/performance/*.json
           if-no-files-found: warn
 
+  renderer-conformance:
+    strategy:
+      matrix:
+        os: [macos-latest, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+      - if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
+      - if: matrix.os == 'macos-latest'
+        run: env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
+      - if: matrix.os == 'windows-latest'
+        run: zig build test-renderer-conformance
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-conformance-${{ matrix.os }}
+          path: |
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+          if-no-files-found: warn
+
   sample-smoke:
     runs-on: ubuntu-latest
     strategy:

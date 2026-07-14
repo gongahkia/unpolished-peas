@@ -279,6 +279,10 @@ pub fn build(b: *std.Build) void {
     const run_sdl_tests = b.addRunArtifact(sdl_tests);
     const sdl_test_step = b.step("test-sdl", "Compile the SDL3 runtime against its configured dependency");
     sdl_test_step.dependOn(&run_sdl_tests.step);
+    const renderer_conformance = b.addRunArtifact(sdl_tests);
+    renderer_conformance.setEnvironmentVariable("UP_RENDERER_CONFORMANCE", "1");
+    const renderer_conformance_step = b.step("test-renderer-conformance", "Run shared desktop renderer smoke and GPU golden fixtures");
+    renderer_conformance_step.dependOn(&renderer_conformance.step);
 
     const box2d_tests = b.addTest(.{ .root_module = physics });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
