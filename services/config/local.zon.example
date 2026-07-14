@@ -1,0 +1,5 @@
+.{
+    .bind_address = "127.0.0.1",
+    .port = 48080,
+    .secrets_path = "/absolute/path/to/unpolished-peas-services.secret",
+}

@@ -1,0 +1,5 @@
+.{
+    .bind_address = "127.0.0.1",
+    .port = 0,
+    .secrets_path = "/var/lib/unpolished-peas/local-services.secret",
+}

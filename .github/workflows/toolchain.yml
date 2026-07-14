@@ -28,10 +28,11 @@ jobs:
       - run: script/check_third_party_notices.py
       - run: script/test_core_without_sdl.sh
       - run: script/test_module_fixture.sh
+      - run: script/test_services_workspace.sh
       - run: script/check_no_legacy_lifecycle.sh
       - if: matrix.os == 'ubuntu-latest'
         run: script/validate_wsl.sh
-      - run: zig fmt --check build.zig src examples templates
+      - run: zig fmt --check build.zig src examples services templates
       - run: zig build test
       - run: zig build test-support
       - run: zig build test-modules

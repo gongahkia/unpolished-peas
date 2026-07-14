@@ -1,0 +1,18 @@
+.{
+    .name = .unpolished_peas_local_services,
+    .version = "0.0.3",
+    .fingerprint = 0x9893e5344623d918,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .path = "..",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "config",
+        "fixtures",
+        "src",
+    },
+}
