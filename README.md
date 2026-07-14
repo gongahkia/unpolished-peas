@@ -255,6 +255,9 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AnimationPlayer`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`
+- `LightingPipeline`, `LightingConfig`, `Light`, `LightOccluder`, `LightingRenderPath`, `lighting`
+
+`LightingPipeline.append` emits GPU primitive commands; `LightingPipeline.render` is the explicit headless fallback selected by `LightingPipeline.preferredPath`.
 - `Sound`
 - `Music`
 - `AudioMixer`
