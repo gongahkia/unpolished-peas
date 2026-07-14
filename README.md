@@ -172,6 +172,7 @@ zig build upmapc -- level.upmap level.upmapb
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
 `zig build peas -- check [project-directory] [--target <linux|macos>]` statically validates the manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; failures include a recovery command.
+`project.up` is the strict version-1 ZON project manifest. It requires the `unpolished-peas-project` format, an entry `.upscene` path, title/width/height/scale build settings, a safe asset root, and engine version `v0.0.3`; unknown and invalid fields report file locations through `peas check`.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
