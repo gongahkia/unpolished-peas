@@ -13,10 +13,12 @@ pub const Config = struct {
 };
 
 pub const DisconnectReason = enum { requested, timeout, reconnected };
+pub const PacketRejection = enum { missing_session_token, unknown_peer, invalid_session_token, invalid_payload, unsupported_kind };
 pub const Event = union(enum) { // input events own decoded messages; call deinit with the Server allocator.
     connected: handshake.Session,
     disconnected: struct { session: handshake.Session, reason: DisconnectReason },
     rejected: struct { peer: transport.Peer, reason: handshake.Rejection },
+    rejected_packet: struct { peer: transport.Peer, reason: PacketRejection },
     input: struct { session: handshake.Session, message: net_codec.OwnedMessage },
 
     pub fn deinit(self: *Event, allocator: std.mem.Allocator) void {
@@ -94,17 +96,17 @@ pub const Server = struct { // owns peer and event queues allocated by init; cal
 
     fn drainAccepted(self: *Server, now: u64) !void {
         while (self.handshake_server.takeAccepted()) |session| {
-            if (self.findPeer(session.peer)) |index| try self.disconnect(index, .reconnected);
+            if (self.findPeer(session.peer)) |index| try self.disconnect(index, .reconnected, false);
             try self.peers.append(self.allocator, .{ .session = session, .last_seen_at = now });
             try self.events.append(self.allocator, .{ .connected = session });
         }
     }
 
     fn handleMessage(self: *Server, peer: transport.Peer, now: u64, message: *net_codec.OwnedMessage) !bool {
-        if (message.payload.len < session_token_bytes) return false;
+        if (message.payload.len < session_token_bytes) return self.rejectPacket(peer, .missing_session_token);
         const session_token = std.mem.readInt(u64, message.payload[0..session_token_bytes], .little);
-        const index = self.findPeer(peer) orelse return false;
-        if (self.peers.items[index].session.session_token != session_token) return false;
+        const index = self.findPeer(peer) orelse return self.rejectPacket(peer, .unknown_peer);
+        if (self.peers.items[index].session.session_token != session_token) return self.rejectPacket(peer, .invalid_session_token);
         self.peers.items[index].last_seen_at = now;
         const session = self.peers.items[index].session;
         switch (message.kind) {
@@ -113,11 +115,11 @@ pub const Server = struct { // owns peer and event queues allocated by init; cal
                 return true;
             },
             .disconnect => {
-                if (message.payload.len != session_token_bytes) return false;
-                try self.disconnect(index, .requested);
+                if (message.payload.len != session_token_bytes) return self.rejectPacket(peer, .invalid_payload);
+                try self.disconnect(index, .requested, true);
             },
-            .ping => if (message.payload.len != session_token_bytes) return false,
-            else => {},
+            .ping => if (message.payload.len != session_token_bytes) return self.rejectPacket(peer, .invalid_payload),
+            else => return self.rejectPacket(peer, .unsupported_kind),
         }
         return false;
     }
@@ -130,14 +132,19 @@ pub const Server = struct { // owns peer and event queues allocated by init; cal
                 index += 1;
                 continue;
             }
-            try self.disconnect(index, .timeout);
+            try self.disconnect(index, .timeout, true);
         }
     }
 
-    fn disconnect(self: *Server, index: usize, reason: DisconnectReason) !void {
+    fn disconnect(self: *Server, index: usize, reason: DisconnectReason, remove_handshake_session: bool) !void {
         const peer = self.peers.orderedRemove(index).session;
-        self.handshake_server.removePeer(peer.peer);
+        if (remove_handshake_session) self.handshake_server.removePeer(peer.peer);
         try self.events.append(self.allocator, .{ .disconnected = .{ .session = peer, .reason = reason } });
+    }
+
+    fn rejectPacket(self: *Server, peer: transport.Peer, reason: PacketRejection) !bool {
+        try self.events.append(self.allocator, .{ .rejected_packet = .{ .peer = peer, .reason = reason } });
+        return false;
     }
 
     fn findPeer(self: Server, peer: transport.Peer) ?usize {
@@ -321,4 +328,78 @@ test "peer server handles capacity, authenticated input, timeout, and reconnect"
         std.Thread.sleep(std.time.ns_per_ms);
     }
     try std.testing.expect(disconnected);
+}
+
+test "peer server retains a replacement session and rejects forged packets" {
+    var client_endpoint = transport.Loopback.init(std.testing.allocator, .{ .id = 1 });
+    defer client_endpoint.deinit();
+    var server_endpoint = transport.Loopback.init(std.testing.allocator, .{ .id = 2 });
+    defer server_endpoint.deinit();
+    transport.Loopback.pair(&client_endpoint, &server_endpoint);
+    var server = try Server.init(std.testing.allocator, .{ .heartbeat_interval_ms = 10, .timeout_ms = 100 });
+    defer server.deinit();
+    var client = handshake.Client.init(std.testing.allocator, .{});
+    const server_peer = transport.Peer{ .id = 2 };
+
+    try client.connect(server_peer, 1);
+    try client.poll(client_endpoint.transport());
+    try server.poll(server_endpoint.transport());
+    try client.poll(client_endpoint.transport());
+    const first_token = client.session.?.session_token;
+    while (server.nextEvent()) |received| {
+        var event = received;
+        defer event.deinit(std.testing.allocator);
+    }
+
+    try client.connect(server_peer, 2);
+    try client.poll(client_endpoint.transport());
+    try server.poll(server_endpoint.transport());
+    try client.poll(client_endpoint.transport());
+    const replacement_token = client.session.?.session_token;
+    try std.testing.expect(replacement_token != first_token);
+    var reconnected = false;
+    var replaced = false;
+    while (server.nextEvent()) |received| {
+        var event = received;
+        defer event.deinit(std.testing.allocator);
+        switch (event) {
+            .disconnected => |value| reconnected = value.reason == .reconnected,
+            .connected => |session| replaced = session.session_token == replacement_token,
+            else => {},
+        }
+    }
+    try std.testing.expect(reconnected and replaced);
+
+    var forged: [net_codec.header_bytes + session_token_bytes]u8 = undefined;
+    try client_endpoint.transport().send(server_peer, try encodeSessionMessage(&forged, .ping, 1, first_token, ""));
+    try server.poll(server_endpoint.transport());
+    var rejected = false;
+    while (server.nextEvent()) |received| {
+        var event = received;
+        defer event.deinit(std.testing.allocator);
+        switch (event) {
+            .rejected_packet => |value| rejected = value.peer.id == 1 and value.reason == .invalid_session_token,
+            else => {},
+        }
+    }
+    try std.testing.expect(rejected);
+
+    try client.connect(server_peer, 2);
+    try client.poll(client_endpoint.transport());
+    try server.poll(server_endpoint.transport());
+    try client.poll(client_endpoint.transport());
+    try std.testing.expectEqual(replacement_token, client.session.?.session_token);
+    var input: [net_codec.header_bytes + session_token_bytes + 2]u8 = undefined;
+    try client_endpoint.transport().send(server_peer, try encodeSessionMessage(&input, .input, 2, replacement_token, "ok"));
+    try server.poll(server_endpoint.transport());
+    var accepted = false;
+    while (server.nextEvent()) |received| {
+        var event = received;
+        defer event.deinit(std.testing.allocator);
+        switch (event) {
+            .input => |value| accepted = value.session.session_token == replacement_token,
+            else => {},
+        }
+    }
+    try std.testing.expect(accepted);
 }

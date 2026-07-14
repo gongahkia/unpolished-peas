@@ -13,6 +13,7 @@ pub const networking = struct {
     pub const UdpTransport = @import("net_transport.zig").Udp;
     pub const Handshake = @import("net_handshake.zig");
     pub const PeerServer = @import("net_peer.zig").Server;
+    pub const PeerPacketRejection = @import("net_peer.zig").PacketRejection;
     pub const Channel = @import("net_channel.zig").Channel;
     pub const SnapshotPublisher = @import("net_snapshot.zig").Publisher;
     pub const SnapshotClient = @import("net_snapshot.zig").Client;
