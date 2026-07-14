@@ -1,4 +1,8 @@
-param([string]$OutputDirectory)
+param(
+    [string]$OutputDirectory,
+    [ValidateSet('bounce', 'topdown', 'platformer')]
+    [string]$Game = 'bounce'
+)
 
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
@@ -10,7 +14,12 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
     $out = Join-Path $repo $OutputDirectory
 }
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("unpolished-peas-package-" + [guid]::NewGuid().ToString('N'))
-$name = 'unpolished-peas-bounce-windows-x86_64'
+switch ($Game) {
+    'bounce' { $build_step = 'package-bounce-sdl'; $source_runtime = 'unpolished-peas-bounce-sdl.exe'; $fixture = 'topdown-project' }
+    'topdown' { $build_step = 'package-topdown-sdl'; $source_runtime = 'unpolished-peas-topdown-sdl.exe'; $fixture = 'topdown-project' }
+    'platformer' { $build_step = 'package-platformer-sdl'; $source_runtime = 'unpolished-peas-platformer-sdl.exe'; $fixture = 'platformer-project' }
+}
+$name = "unpolished-peas-$Game-windows-x86_64"
 
 try {
     Remove-Item -LiteralPath $out -Recurse -Force -ErrorAction SilentlyContinue
@@ -21,9 +30,9 @@ try {
 
     Push-Location $repo
     try {
-        & zig build '-Dtarget=x86_64-windows-gnu' '-Doptimize=ReleaseSafe' '-p' $stage 'package-bounce-sdl'
-        if ($LASTEXITCODE -ne 0) { throw "zig build package-bounce-sdl failed: $LASTEXITCODE" }
-        Copy-Item -LiteralPath (Join-Path $stage 'bin/unpolished-peas-bounce-sdl.exe') -Destination (Join-Path $package 'bin/unpolished-peas-bounce.exe')
+        & zig build '-Dtarget=x86_64-windows-gnu' '-Doptimize=ReleaseSafe' '-p' $stage $build_step
+        if ($LASTEXITCODE -ne 0) { throw "zig build $build_step failed: $LASTEXITCODE" }
+        Copy-Item -LiteralPath (Join-Path $stage ('bin/' + $source_runtime)) -Destination (Join-Path $package ('bin/unpolished-peas-' + $Game + '.exe'))
         $shader_compiler = Join-Path $env:SystemRoot 'System32/D3DCompiler_47.dll'
         if (-not (Test-Path -LiteralPath $shader_compiler -PathType Leaf)) { throw "missing Windows shader compiler: $shader_compiler" }
         Copy-Item -LiteralPath $shader_compiler -Destination (Join-Path $package 'bin/D3DCompiler_47.dll')
@@ -32,16 +41,16 @@ try {
         if ($LASTEXITCODE -ne 0) { throw "zig build docs failed: $LASTEXITCODE" }
         Copy-Item -LiteralPath (Join-Path $repo 'zig-out/docs') -Destination (Join-Path $package 'docs') -Recurse
         $content = Join-Path $package 'content'
-        Copy-Item -LiteralPath (Join-Path $repo 'fixtures/topdown-project') -Destination $content -Recurse
+        Copy-Item -LiteralPath (Join-Path $repo ('fixtures/' + $fixture)) -Destination $content -Recurse
         & zig build contentc -- $content (Join-Path $content 'cache')
         if ($LASTEXITCODE -ne 0) { throw "zig build contentc failed: $LASTEXITCODE" }
     } finally {
         Pop-Location
     }
 
-    Set-Content -LiteralPath (Join-Path $package 'launcher.json') -Encoding ascii -NoNewline -Value '{"version":1,"platform":"windows-x86_64","runtime":"bin/unpolished-peas-bounce.exe","assets":"assets/","docs":"docs/"}'
-    Set-Content -LiteralPath (Join-Path $package 'run.cmd') -Encoding ascii -Value @('@echo off', '"%~dp0bin\unpolished-peas-bounce.exe" %*')
-    Set-Content -LiteralPath (Join-Path $package 'PACKAGE-MANIFEST.txt') -Encoding ascii -Value @('format=unpolished-peas-package', 'version=1', 'platform=windows-x86_64', 'runtime=bin/unpolished-peas-bounce.exe', 'assets=assets/', 'content=content/', 'caches=content/cache/', 'docs=docs/', 'launcher=launcher.json', 'bundled-runtime=SDL3:static', 'shader-compiler=bin/D3DCompiler_47.dll')
+    Set-Content -LiteralPath (Join-Path $package 'launcher.json') -Encoding ascii -NoNewline -Value ('{"version":1,"platform":"windows-x86_64","game":"' + $Game + '","runtime":"bin/unpolished-peas-' + $Game + '.exe","assets":"assets/","docs":"docs/"}')
+    Set-Content -LiteralPath (Join-Path $package 'run.cmd') -Encoding ascii -Value @('@echo off', ('"%~dp0bin\unpolished-peas-' + $Game + '.exe" %*'))
+    Set-Content -LiteralPath (Join-Path $package 'PACKAGE-MANIFEST.txt') -Encoding ascii -Value @('format=unpolished-peas-package', 'version=1', 'platform=windows-x86_64', ('game=' + $Game), ('runtime=bin/unpolished-peas-' + $Game + '.exe'), 'assets=assets/', 'content=content/', 'caches=content/cache/', 'docs=docs/', 'launcher=launcher.json', 'bundled-runtime=SDL3:static', 'shader-compiler=bin/D3DCompiler_47.dll')
 
     $epoch = [int64](& git -C $repo log -1 --format=%ct)
     if ($LASTEXITCODE -ne 0) { throw "git log failed: $LASTEXITCODE" }

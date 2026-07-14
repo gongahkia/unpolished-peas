@@ -293,8 +293,19 @@ fn testUsage() error{InvalidArguments} {
 fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
     const target_argument = args.next() orelse return packageUsage();
     const target = tools.parsePackageTarget(target_argument) orelse return packageUsage();
-    const output_directory = args.next();
-    if (args.next() != null) return packageUsage();
+    var output_directory: ?[]const u8 = null;
+    var game: tools.PackageGame = .bounce;
+    var game_set = false;
+    while (args.next()) |argument| {
+        if (std.mem.eql(u8, argument, "--game")) {
+            if (game_set) return packageUsage();
+            const game_argument = args.next() orelse return packageUsage();
+            game = tools.parsePackageGame(game_argument) orelse return packageUsage();
+            game_set = true;
+        } else if (output_directory == null) {
+            output_directory = argument;
+        } else return packageUsage();
+    }
     const script_root = std.process.getEnvVarOwned(allocator, "UP_SCRIPT_ROOT") catch return error.PackageUnavailable;
     defer allocator.free(script_root);
     const script_path = try std.fs.path.join(allocator, &.{ script_root, target.scriptName() });
@@ -307,9 +318,14 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
             return error.UnsupportedTarget;
         }
         try command_args.appendSlice(allocator, &.{ "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script_path });
-    } else try command_args.append(allocator, script_path);
-    if (output_directory) |value| try command_args.append(allocator, value);
-    std.debug.print("peas package: target {s}\n", .{@tagName(target)});
+        if (output_directory) |value| try command_args.appendSlice(allocator, &.{ "-OutputDirectory", value });
+        try command_args.appendSlice(allocator, &.{ "-Game", @tagName(game) });
+    } else {
+        try command_args.append(script_path);
+        if (output_directory) |value| try command_args.append(allocator, value);
+        try command_args.appendSlice(allocator, &.{ "--game", @tagName(game) });
+    }
+    std.debug.print("peas package: target {s}, game {s}\n", .{ @tagName(target), @tagName(game) });
     var child = std.process.Child.init(command_args.items, allocator);
     child.stdin_behavior = .Inherit;
     child.stdout_behavior = .Inherit;
@@ -318,7 +334,7 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 }
 
 fn packageUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- package <linux|macos|windows> [output-directory]\n", .{});
+    std.debug.print("usage: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -402,6 +418,12 @@ test "known package targets parse" {
     try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
     try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
     try std.testing.expectEqual(tools.PackageTarget.windows, tools.parsePackageTarget("windows").?);
+}
+
+test "known package games parse" {
+    try std.testing.expectEqual(tools.PackageGame.bounce, tools.parsePackageGame("bounce").?);
+    try std.testing.expectEqual(tools.PackageGame.topdown, tools.parsePackageGame("topdown").?);
+    try std.testing.expectEqual(tools.PackageGame.platformer, tools.parsePackageGame("platformer").?);
 }
 
 test "known check targets parse" {

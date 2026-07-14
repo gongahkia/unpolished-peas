@@ -102,9 +102,15 @@ pub fn build(b: *std.Build) void {
     const breakout = addExample(b, "unpolished-peas-breakout", "examples/breakout.zig", target, optimize, peas, null);
     const breakout_sdl = addExample(b, "unpolished-peas-breakout-sdl", "examples/breakout_sdl.zig", target, optimize, peas, sdl);
     const topdown_sdl = addExample(b, "unpolished-peas-topdown-sdl", "examples/topdown_sdl.zig", target, optimize, peas, sdl);
+    const package_topdown_sdl = b.step("package-topdown-sdl", "Install the top-down SDL sample and assets");
+    package_topdown_sdl.dependOn(&b.addInstallArtifact(topdown_sdl, .{}).step);
+    package_topdown_sdl.dependOn(&install_assets.step);
     const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
     const topdown_multiplayer = addExample(b, "unpolished-peas-topdown-multiplayer", "examples/topdown_multiplayer.zig", target, optimize, peas, null);
     const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics } } }) });
+    const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
+    package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
+    package_platformer_sdl.dependOn(&install_assets.step);
     const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
     const packaged_assets = addExample(b, "unpolished-peas-test-packaged-assets", "examples/test_packaged_assets.zig", target, optimize, peas, null);
     const packaged_layout = addExample(b, "unpolished-peas-test-packaged-layout", "examples/test_packaged_layout.zig", target, optimize, peas, sdl);
