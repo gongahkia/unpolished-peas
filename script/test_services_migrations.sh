@@ -34,6 +34,7 @@ migrate="$repo/script/services_migrate.sh"
 bootstrap="$repo/script/services_bootstrap_db.sh"
 "$bootstrap" "$database_url"
 "$migrate" "$database_url" up
+UP_SERVICES_DATABASE_URL="$database_url" "$repo/script/test_services_provider.sh"
 psql "$database_url" -Atq -c 'SELECT count(*) FROM service_schema_migrations' | grep -Fx '2'
 for migration_file in "$repo/services/migrations"/*.up.sql; do
     filename=$(basename "$migration_file")

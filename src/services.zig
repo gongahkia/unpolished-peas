@@ -1,9 +1,16 @@
 const up = @import("unpolished-peas");
 const guest = @import("guest_credentials.zig");
+const provider = @import("service_provider.zig");
 
 pub const GuestToken = guest.Token;
 pub const GuestCredentials = guest.Credentials;
 pub const GuestCredentialStore = guest.Store;
+pub const ServiceProvider = provider.Provider;
+pub const ServiceProviderError = provider.Error;
+pub const ServiceSessionRequest = provider.SessionRequest;
+pub const ServiceSessionStatus = provider.SessionStatus;
+pub const FakeServiceProvider = provider.FakeAdapter;
+pub const LocalPostgresServiceProvider = provider.LocalPostgresAdapter;
 
 pub const Endpoint = struct {
     host: []const u8,
@@ -47,4 +54,11 @@ test "engine client can target the local service runtime" {
     const target = try ClientTarget.init(Endpoint.local());
     try @import("std").testing.expectEqualStrings("127.0.0.1", target.endpoint.host);
     try @import("std").testing.expectEqual(@as(u16, 48080), target.endpoint.port);
+}
+
+test "services expose an SDL-free provider contract" {
+    var fake = FakeServiceProvider{};
+    const provider_contract = fake.provider();
+    const credentials = try provider_contract.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 1 });
+    try @import("std").testing.expectEqual(ServiceSessionStatus.active, try provider_contract.validateGuestSession(credentials.session));
 }
