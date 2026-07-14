@@ -46,6 +46,9 @@ pub const Canvas = @import("canvas.zig").Canvas;
 pub const ClipRect = @import("canvas.zig").ClipRect;
 pub const BlendMode = @import("canvas.zig").BlendMode;
 pub const Color = @import("color.zig").Color;
+pub const DiagnosticCapture = @import("diagnostics.zig").Input;
+pub const DiagnosticCaptureOptions = @import("diagnostics.zig").Options;
+pub const diagnostics = @import("diagnostics.zig");
 pub const Circle = @import("collision.zig").Circle;
 pub const Segment = @import("collision.zig").Segment;
 pub const AssetCatalog = @import("asset_catalog.zig").Source;
@@ -254,6 +257,7 @@ test {
     _ = @import("assets.zig");
     _ = @import("canvas.zig");
     _ = @import("color.zig");
+    _ = @import("diagnostics.zig");
     _ = @import("collision.zig");
     _ = @import("ecs.zig");
     _ = @import("font_asset.zig");

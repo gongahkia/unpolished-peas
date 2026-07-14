@@ -58,7 +58,7 @@ test "stored top-down replay has a stable state hash" {
         _ = game.step(input, up.testSupport.frameSeconds(replay.fixed_hz));
     }
     const hash = replayHash(game);
-    try std.testing.expectEqual(@as(u64, 0x85ac12ab1a612ca8), hash);
+    try up.testSupport.assertReplayHash(std.testing.allocator, 0x85ac12ab1a612ca8, hash, &replay, "zig-out/diagnostics/replays/topdown");
 }
 
 fn replayHash(game: Game) u64 {

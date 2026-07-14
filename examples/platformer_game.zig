@@ -51,7 +51,7 @@ test "stored platformer replay has a stable state hash" {
     var game = try Game.init(.{ .x = 8, .y = 0 });
     for (replay.frames) |frame| _ = game.step(&fixture.collider, .{ .left = (frame.buttons & 1) != 0, .right = (frame.buttons & 2) != 0, .jump = (frame.buttons & 4) != 0 }, up.testSupport.frameSeconds(replay.fixed_hz));
     const hash = replayHash(game);
-    try std.testing.expectEqual(@as(u64, 0xe4499432c1aab5be), hash);
+    try up.testSupport.assertReplayHash(std.testing.allocator, 0xe4499432c1aab5be, hash, &replay, "zig-out/diagnostics/replays/platformer");
 }
 
 fn replayHash(game: Game) u64 {

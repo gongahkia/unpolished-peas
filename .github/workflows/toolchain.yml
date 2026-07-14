@@ -53,9 +53,9 @@ jobs:
         run: script/test_linux_package.sh
       - run: script/compile_shaders.sh
       - if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
+        run: xvfb-run -a env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'macos-latest'
-        run: env SDL_AUDIODRIVER=dummy zig build run-bounce-sdl -- --frames 2
+        run: env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
       - if: matrix.os == 'macos-latest'
@@ -68,6 +68,7 @@ jobs:
             zig-out/scenes/*.png
             zig-out/*.ppm
             zig-out/performance/*.json
+            zig-out/diagnostics/**/*
           if-no-files-found: warn
 
   renderer-conformance:
@@ -95,6 +96,7 @@ jobs:
           path: |
             zig-out/**/*.png
             zig-out/**/*.ppm
+            zig-out/diagnostics/**/*
           if-no-files-found: warn
 
   sample-smoke:
@@ -109,6 +111,12 @@ jobs:
           version: 0.15.2
       - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
       - run: xvfb-run -a script/run_sample_smoke.sh ${{ matrix.target }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-diagnostics-${{ matrix.target }}
+          path: zig-out/diagnostics/**/*
+          if-no-files-found: warn
 
   advisory-next-zig:
     continue-on-error: true

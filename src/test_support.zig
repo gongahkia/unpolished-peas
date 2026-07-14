@@ -1,8 +1,10 @@
 const std = @import("std");
 const Canvas = @import("canvas.zig").Canvas;
 const Color = @import("color.zig").Color;
+const diagnostics = @import("diagnostics.zig");
 const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
+const input_replay = @import("input_replay.zig");
 
 pub const TempProject = struct { // owns a temporary project directory and its absolute path; call deinit once.
     allocator: std.mem.Allocator,
@@ -98,7 +100,18 @@ pub fn canvasHash(canvas: Canvas) u64 {
 pub fn assertGolden(allocator: std.mem.Allocator, actual: Canvas, expected: Image, options: GoldenOptions) !void {
     if (canvasHash(actual) == options.expected_hash and actual.width == expected.width and actual.height == expected.height and pixelsEqual(actual.pixels, expected.pixels)) return;
     try writeGoldenDiagnostics(allocator, actual, expected, options.diagnostics_path);
+    var buffer: [128]u8 = undefined;
+    const log = std.fmt.bufPrint(&buffer, "golden mismatch actual_hash={x} expected_hash={x}\n", .{ canvasHash(actual), options.expected_hash }) catch "golden mismatch\n";
+    try diagnostics.capture(allocator, .{ .path = options.diagnostics_path }, .{ .canvas = actual, .log = log });
     return error.GoldenMismatch;
+}
+
+pub fn assertReplayHash(allocator: std.mem.Allocator, expected: u64, actual: u64, value: *const input_replay.Replay, diagnostics_path: []const u8) !void {
+    if (actual == expected) return;
+    var buffer: [128]u8 = undefined;
+    const log = std.fmt.bufPrint(&buffer, "replay mismatch actual_hash={x} expected_hash={x}\n", .{ actual, expected }) catch "replay mismatch\n";
+    try diagnostics.capture(allocator, .{ .path = diagnostics_path }, .{ .log = log, .replay = value });
+    return error.ReplayMismatch;
 }
 
 pub fn expectError(expected: anyerror, result: anytype) !void {
@@ -180,9 +193,24 @@ test "test support writes golden mismatch diagnostics" {
     pixels[0] = Color.black;
     const expected = Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = pixels };
     try expectError(error.GoldenMismatch, assertGolden(std.testing.allocator, actual, expected, .{ .expected_hash = 0, .diagnostics_path = project.path }));
-    var diagnostics = try std.fs.openDirAbsolute(project.path, .{});
-    defer diagnostics.close();
-    try diagnostics.access("actual.png", .{});
-    try diagnostics.access("expected.png", .{});
-    try diagnostics.access("diff.png", .{});
+    var directory = try std.fs.openDirAbsolute(project.path, .{});
+    defer directory.close();
+    try directory.access("actual.png", .{});
+    try directory.access("expected.png", .{});
+    try directory.access("diff.png", .{});
+    try directory.access("screenshot.png", .{});
+    try directory.access("commands.json", .{});
+    try directory.access("failure.log", .{});
+}
+
+test "test support writes replay mismatch diagnostics" {
+    var project = try TempProject.init(std.testing.allocator);
+    defer project.deinit();
+    var replay = try input_replay.parse(std.testing.allocator, "UPR1 60\n2 1\n");
+    defer replay.deinit(std.testing.allocator);
+    try expectError(error.ReplayMismatch, assertReplayHash(std.testing.allocator, 1, 2, &replay, project.path));
+    var directory = try std.fs.openDirAbsolute(project.path, .{});
+    defer directory.close();
+    try directory.access("failure.log", .{});
+    try directory.access("replay.json", .{});
 }
