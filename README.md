@@ -174,6 +174,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build peas -- check [project-directory] [--target <linux|macos>]` statically validates the manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; failures include a recovery command.
 `project.up` is the strict version-1 ZON project manifest. It requires the `unpolished-peas-project` format, an entry `.upscene` path, title/width/height/scale build settings, a safe asset root, and engine version `v0.0.3`; unknown and invalid fields report file locations through `peas check`.
 `.upassets` is the strict version-1 ZON asset catalog. It requires the `unpolished-peas-assets` format and explicitly lists image, audio, font, atlas, and shader assets by unique ID and safe relative path; `up.assetCatalog.parse`, `load`, and `graph` validate, bind `AssetStore` handles, and expose declared dependencies.
+`up.mapSource` parses strict version-1 ZON native map source with tilesets, sparse signed cells, object geometry, collision properties, and parented layers; invalid references report source locations.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
@@ -224,6 +225,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
+- `MapSource`, `mapSource`
 - `TileCollider`, `CharacterController`
 - `netCodec` (`v1`, little-endian, 1024-byte bounded messages)
 - `NetTransport`, `LoopbackTransport`

@@ -1,0 +1,12 @@
+.{
+    .format = "unpolished-peas-map",
+    .version = 1,
+    .metadata = .{ .name = "invalid", .projection = .orthogonal, .tile_width = 8, .tile_height = 8, .chunk_size = 8 },
+    .tilesets = &.{.{ .id = "tiles", .kind = .grid_image, .path = "tiles.png", .tile_width = 8, .tile_height = 8 }},
+    .layers = &.{.{
+        .id = "ground",
+        .name = "Ground",
+        .kind = .tiles,
+        .cells = &.{.{ .x = -1, .y = 0, .tiles = &.{.{ .tileset = "missing", .id = 1 }} }},
+    }},
+}
