@@ -54,23 +54,19 @@ test "stored top-down replay has a stable state hash" {
     var game = Game{};
     for (replay.frames) |frame| {
         var input = up.Input{};
-        input.set(.left, (frame.buttons & 1) != 0);
-        input.set(.right, (frame.buttons & 2) != 0);
-        input.set(.up, (frame.buttons & 4) != 0);
-        input.set(.down, (frame.buttons & 8) != 0);
-        input.set(.action, (frame.buttons & 16) != 0);
-        _ = game.step(input, 1.0 / @as(f32, @floatFromInt(replay.fixed_hz)));
+        up.testSupport.applyTopDownButtons(&input, frame.buttons);
+        _ = game.step(input, up.testSupport.frameSeconds(replay.fixed_hz));
     }
     const hash = replayHash(game);
     try std.testing.expectEqual(@as(u64, 0x85ac12ab1a612ca8), hash);
 }
 
 fn replayHash(game: Game) u64 {
-    var hash = std.hash.Fnv1a_64.init();
-    hash.update(std.mem.asBytes(&game.player.x));
-    hash.update(std.mem.asBytes(&game.player.y));
-    hash.update(std.mem.asBytes(&game.aim.x));
-    hash.update(std.mem.asBytes(&game.aim.y));
-    hash.update(std.mem.asBytes(&game.shots));
-    return hash.final();
+    var hash = up.testSupport.StateHash{};
+    hash.updateValue(game.player.x);
+    hash.updateValue(game.player.y);
+    hash.updateValue(game.aim.x);
+    hash.updateValue(game.aim.y);
+    hash.updateValue(game.shots);
+    return hash.finish();
 }

@@ -28,7 +28,7 @@ zig build test-sdl
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-tools` (host CLI helpers), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, and services graph.
+Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
@@ -100,6 +100,7 @@ The generated bouncing-square game includes its own build files and a pinned `un
 
 ```sh
 zig build test
+zig build test-support
 zig build test-modules
 zig build run-bounce
 zig build run-bounce-sdl
