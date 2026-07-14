@@ -827,6 +827,20 @@ test "deterministic mixer output hash" {
     try std.testing.expectEqual(@as(u64, 0xd29318ef7d25eea5), hashSamples(&out));
 }
 
+test "deterministic mixer hash covers bus pan and fades" {
+    const frames = try std.testing.allocator.dupe(AudioSample, &.{ .{ .left = 0.75, .right = 0.25 }, .{ .left = 0.25, .right = 0.75 } });
+    var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
+    defer sound.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+    try mixer.setBusVolume(AudioMixer.sfxBus(), 0.5);
+    const handle = try mixer.playSound(&sound, .{ .loop = true, .pan = -0.5, .volume = 0.8 });
+    try std.testing.expect(try mixer.fadePlayback(handle, 0.2, 3));
+    var out: [6]AudioSample = undefined;
+    try mixer.mix(&out);
+    try std.testing.expectEqual(@as(u64, 8393355929743166360), hashSamples(&out));
+}
+
 test "ogg decode fixture" {
     var sound = try Sound.loadOgg(std.testing.allocator, "examples/assets/tone.ogg");
     defer sound.deinit();
