@@ -256,8 +256,11 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`
 - `LightingPipeline`, `LightingConfig`, `Light`, `LightOccluder`, `LightingRenderPath`, `lighting`
+- `UiFrame`, `UiState`, `UiLayout`, `UiStyle`, `UiSurface`, `ui`
 
 `LightingPipeline.append` emits GPU primitive commands; `LightingPipeline.render` is the explicit headless fallback selected by `LightingPipeline.preferredPath`.
+
+`ui.Frame` is immediate-only: callers retain `UiState`, emit widgets every frame, and finish with `Frame.end` to resolve navigation.
 - `Sound`
 - `Music`
 - `AudioMixer`
