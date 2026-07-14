@@ -34,6 +34,7 @@ jobs:
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
+      - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas
       - run: zig build test-replays

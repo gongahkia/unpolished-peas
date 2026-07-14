@@ -1,5 +1,6 @@
 pub const api = @import("api.zig");
 pub const preview = @import("preview.zig");
+pub const testSupport = @import("test_support.zig");
 pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
 pub const AudioSample = @import("audio.zig").AudioSample;
@@ -205,6 +206,7 @@ test {
     _ = @import("tilemap.zig");
     _ = @import("tile_collision.zig");
     _ = @import("text_layout.zig");
+    _ = @import("test_support.zig");
 }
 
 test "namespaced API retains legacy facade compatibility" {

@@ -24,11 +24,9 @@ pub fn main() !void {
     assets.drawTileMap(map, &camera, &canvas, 0);
     canvas.drawImage(assets.image(player), @intFromFloat(game.player.x - 8), @intFromFloat(game.player.y - 8));
     canvas.drawText("TOPDOWN", 4, 4, up.Color.white);
-    var hash = std.hash.Fnv1a_64.init();
-    for (canvas.pixels) |pixel| hash.update(&.{ pixel.r, pixel.g, pixel.b, pixel.a });
     var buffer: [32]u8 = undefined;
     var writer = std.fs.File.stdout().writer(&buffer);
-    if (hash.final() != expected_hash) return error.TopDownSceneMismatch;
+    if (up.testSupport.canvasHash(canvas) != expected_hash) return error.TopDownSceneMismatch;
     try writer.interface.print("{x}\n", .{expected_hash});
     try writer.interface.flush();
 }

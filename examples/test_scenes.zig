@@ -46,45 +46,5 @@ pub fn main() !void {
     }
 
     const golden = try assets.loadPng(golden_path);
-    try assertGolden(allocator, canvas, assets.image(golden));
-}
-
-fn assertGolden(allocator: std.mem.Allocator, actual: up.Canvas, expected: up.Image) !void {
-    if (hashCanvas(actual) == expected_hash and actual.width == expected.width and actual.height == expected.height and pixelsEqual(actual.pixels, expected.pixels)) return;
-
-    try writeDiagnostics(allocator, actual, expected);
-    return error.SceneGoldenMismatch;
-}
-
-fn writeDiagnostics(allocator: std.mem.Allocator, actual: up.Canvas, expected: up.Image) !void {
-    try std.fs.cwd().makePath(diagnostics_path);
-    try actual.writePngFile(diagnostics_path ++ "/actual.png");
-
-    var expected_canvas = try up.Canvas.init(allocator, expected.width, expected.height);
-    defer expected_canvas.deinit();
-    @memcpy(expected_canvas.pixels, expected.pixels);
-    try expected_canvas.writePngFile(diagnostics_path ++ "/expected.png");
-
-    var diff = try up.Canvas.init(allocator, @max(actual.width, expected.width), @max(actual.height, expected.height));
-    defer diff.deinit();
-    for (diff.pixels, 0..) |*pixel, index| {
-        const x = index % diff.width;
-        const y = index / diff.width;
-        const actual_pixel = if (x < actual.width and y < actual.height) actual.pixels[y * actual.width + x] else up.Color.transparent;
-        const expected_pixel = if (x < expected.width and y < expected.height) expected.pixels[y * expected.width + x] else up.Color.transparent;
-        pixel.* = if (std.meta.eql(actual_pixel, expected_pixel)) up.Color.transparent else up.Color.rgba(255, 0, 255, 255);
-    }
-    try diff.writePngFile(diagnostics_path ++ "/diff.png");
-}
-
-fn pixelsEqual(actual: []const up.Color, expected: []const up.Color) bool {
-    if (actual.len != expected.len) return false;
-    for (actual, expected) |a, b| if (!std.meta.eql(a, b)) return false;
-    return true;
-}
-
-fn hashCanvas(canvas: up.Canvas) u64 {
-    var hasher = std.hash.Fnv1a_64.init();
-    for (canvas.pixels) |pixel| hasher.update(&.{ pixel.r, pixel.g, pixel.b, pixel.a });
-    return hasher.final();
+    try up.testSupport.assertGolden(allocator, canvas, assets.image(golden), .{ .expected_hash = expected_hash, .diagnostics_path = diagnostics_path });
 }

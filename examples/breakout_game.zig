@@ -110,21 +110,21 @@ test "stored Breakout replay has a stable state hash" {
     var game = Game{};
     for (replay.frames) |frame| {
         const axis: f32 = if ((frame.buttons & 1) != 0) -1 else if ((frame.buttons & 2) != 0) 1 else 0;
-        _ = game.step(1.0 / @as(f32, @floatFromInt(replay.fixed_hz)), axis);
+        _ = game.step(up.testSupport.frameSeconds(replay.fixed_hz), axis);
     }
     const hash = replayHash(game);
     try std.testing.expectEqual(@as(u64, 0x2d407efdf7179fce), hash);
 }
 
 fn replayHash(game: Game) u64 {
-    var hash = std.hash.Fnv1a_64.init();
-    hash.update(std.mem.asBytes(&game.paddle.x));
-    hash.update(std.mem.asBytes(&game.ball.x));
-    hash.update(std.mem.asBytes(&game.ball.y));
-    hash.update(std.mem.asBytes(&game.velocity.x));
-    hash.update(std.mem.asBytes(&game.velocity.y));
-    hash.update(std.mem.asBytes(&game.score));
-    hash.update(&.{game.lives});
-    for (game.bricks) |brick| hash.update(&.{@intFromBool(brick)});
-    return hash.final();
+    var hash = up.testSupport.StateHash{};
+    hash.updateValue(game.paddle.x);
+    hash.updateValue(game.ball.x);
+    hash.updateValue(game.ball.y);
+    hash.updateValue(game.velocity.x);
+    hash.updateValue(game.velocity.y);
+    hash.updateValue(game.score);
+    hash.updateValue(game.lives);
+    for (game.bricks) |brick| hash.updateBool(brick);
+    return hash.finish();
 }
