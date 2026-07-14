@@ -118,6 +118,12 @@ pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, ou
     return report;
 }
 
+pub fn entryArtifactPath(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *Diagnostic) ![]u8 {
+    var project = try readProject(allocator, project_root, diagnostic);
+    defer project.deinit();
+    return artifactPath(allocator, output_root, project.entry_scene);
+}
+
 fn readProject(allocator: std.mem.Allocator, project_root: []const u8, diagnostic: *Diagnostic) !Project {
     const path = try std.fs.path.join(allocator, &.{ project_root, "project.up" });
     defer allocator.free(path);
