@@ -2,6 +2,7 @@
 set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+cd "$repo"
 out=${1:-"$repo/dist/linux"}
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
@@ -12,7 +13,9 @@ mkdir -p "$package"
 zig build -Dtarget=x86_64-linux-gnu -Doptimize=ReleaseSafe -p "$stage" package-bounce-sdl
 cp "$stage/bin/unpolished-peas-bounce-sdl" "$package/unpolished-peas-bounce"
 cp -R "$stage/assets" "$package/assets"
-printf '%s\n' 'runtime=unpolished-peas-bounce' 'assets=assets/' > "$package/PACKAGE-MANIFEST.txt"
+zig build docs
+cp -R zig-out/docs "$package/docs"
+printf '%s\n' 'runtime=unpolished-peas-bounce' 'assets=assets/' 'docs=docs/' > "$package/PACKAGE-MANIFEST.txt"
 epoch=$(git -C "$repo" log -1 --format=%ct)
 if date --version >/dev/null 2>&1; then
     mtime=$(date -u -d "@$epoch" +%Y%m%d%H%M.%S)

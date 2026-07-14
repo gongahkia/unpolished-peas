@@ -117,6 +117,7 @@ pub fn build(b: *std.Build) void {
     const run_peas = b.addRunArtifact(peas_cli);
     run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/bounce"));
     run_peas.setEnvironmentVariable("UP_SCRIPT_ROOT", b.pathFromRoot("script"));
+    run_peas.setEnvironmentVariable("UP_REPOSITORY_ROOT", b.pathFromRoot("."));
     if (b.args) |args| run_peas.addArgs(args);
     const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
     peas_step.dependOn(&run_peas.step);
@@ -124,6 +125,25 @@ pub fn build(b: *std.Build) void {
     const run_peas_tests = b.addRunArtifact(peas_tests);
     const peas_test_step = b.step("test-peas", "Run the unpolished-peas project CLI tests");
     peas_test_step.dependOn(&run_peas_tests.step);
+
+    const docs = b.addExecutable(.{
+        .name = "unpolished-peas-docs",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/docs.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
+    });
+    const run_docs = b.addRunArtifact(docs);
+    run_docs.addArg(b.pathFromRoot("docs"));
+    run_docs.addArg(b.pathFromRoot("src/unpolished_peas.zig"));
+    run_docs.addArg(b.pathFromRoot("zig-out/docs"));
+    const docs_step = b.step("docs", "Emit validated local Markdown documentation");
+    docs_step.dependOn(&run_docs.step);
+    const docs_tests = b.addTest(.{ .root_module = docs.root_module });
+    const run_docs_tests = b.addRunArtifact(docs_tests);
+    const docs_test_step = b.step("test-docs", "Validate local documentation generation and links");
+    docs_test_step.dependOn(&run_docs_tests.step);
 
     const starter = b.addExecutable(.{
         .name = "unpolished-peas-new",
