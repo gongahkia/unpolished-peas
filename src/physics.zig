@@ -12,7 +12,7 @@ pub const Config = struct {
 pub const BodyType = enum { static, kinematic, dynamic };
 pub const BodyHandle = struct { index: u32, generation: u32 }; // borrows a World body; stale access returns error.StaleBody.
 pub const FixtureHandle = struct { index: u32, generation: u32 }; // borrows a World fixture; stale access returns error.StaleFixture.
-pub const JointHandle = struct { id: c.b2JointId };
+pub const JointHandle = struct { index: u32, generation: u32 }; // borrows a World joint; stale access returns error.StaleJoint.
 
 pub const BodyConfig = struct {
     body_type: BodyType = .static,
@@ -26,9 +26,17 @@ pub const CircleConfig = struct {
     contact_events: bool = true,
 };
 
+pub const BoxConfig = struct {
+    size: up.Vec2,
+    density: f32 = 1,
+    sensor: bool = false,
+    contact_events: bool = true,
+};
+
 pub const Events = struct {
     contact_begins: u32,
     contact_ends: u32,
+    contact_hits: u32,
     sensor_begins: u32,
     sensor_ends: u32,
 };
@@ -38,9 +46,12 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
     id: c.b2WorldId,
     bodies: std.ArrayList(BodySlot) = .empty,
     fixtures: std.ArrayList(FixtureSlot) = .empty,
+    joints: std.ArrayList(JointSlot) = .empty,
 
     const BodySlot = struct { id: c.b2BodyId, generation: u32 = 1, live: bool = true };
-    const FixtureSlot = struct { id: c.b2ShapeId, body: BodyHandle, generation: u32 = 1, live: bool = true };
+    const FixtureShape = union(enum) { circle: f32, box: up.Vec2 };
+    const FixtureSlot = struct { id: c.b2ShapeId, body: BodyHandle, shape: FixtureShape, generation: u32 = 1, live: bool = true };
+    const JointSlot = struct { id: c.b2JointId, a: BodyHandle, b: BodyHandle, generation: u32 = 1, live: bool = true };
 
     pub fn init(config: Config) World {
         var definition = c.b2DefaultWorldDef();
@@ -52,12 +63,13 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
         if (c.b2World_IsValid(self.id)) c.b2DestroyWorld(self.id);
         self.bodies.deinit(self.allocator);
         self.fixtures.deinit(self.allocator);
+        self.joints.deinit(self.allocator);
         self.* = undefined;
     }
 
     pub fn step(self: World, dt: f32, sub_steps: u8) !void {
         if (!c.b2World_IsValid(self.id)) return error.StaleWorld;
-        if (dt <= 0 or sub_steps == 0) return error.InvalidStep;
+        if (!std.math.isFinite(dt) or dt <= 0 or sub_steps == 0) return error.InvalidStep;
         c.b2World_Step(self.id, dt, sub_steps);
     }
 
@@ -68,6 +80,7 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
 
     pub fn createBody(self: *World, config: BodyConfig) !BodyHandle {
         if (!c.b2World_IsValid(self.id)) return error.StaleWorld;
+        if (!finiteVec(config.position)) return error.InvalidBody;
         var definition = c.b2DefaultBodyDef();
         definition.type = switch (config.body_type) {
             .static => c.b2_staticBody,
@@ -76,6 +89,7 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
         };
         definition.position = .{ .x = config.position.x, .y = config.position.y };
         const id = c.b2CreateBody(self.id, &definition);
+        errdefer c.b2DestroyBody(id);
         try self.bodies.append(self.allocator, .{ .id = id });
         return .{ .index = @intCast(self.bodies.items.len - 1), .generation = 1 };
     }
@@ -89,19 +103,31 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
             fixture.live = false;
             fixture.generation +%= 1;
         };
+        for (self.joints.items) |*joint| if ((joint.a.index == handle.index and joint.a.generation == handle.generation) or (joint.b.index == handle.index and joint.b.generation == handle.generation)) {
+            joint.live = false;
+            joint.generation +%= 1;
+        };
     }
 
     pub fn createCircle(self: *World, body: BodyHandle, config: CircleConfig) !FixtureHandle {
-        if (config.radius <= 0 or config.density < 0) return error.InvalidFixture;
+        if (!std.math.isFinite(config.radius) or !std.math.isFinite(config.density) or config.radius <= 0 or config.density < 0) return error.InvalidFixture;
         const body_slot = try self.bodySlot(body);
-        var definition = c.b2DefaultShapeDef();
-        definition.density = config.density;
-        definition.isSensor = config.sensor;
-        definition.enableSensorEvents = config.sensor;
-        definition.enableContactEvents = config.contact_events and !config.sensor;
+        var definition = fixtureDefinition(config.density, config.sensor, config.contact_events);
         const circle = c.b2Circle{ .center = .{ .x = 0, .y = 0 }, .radius = config.radius };
         const id = c.b2CreateCircleShape(body_slot.id, &definition, &circle);
-        try self.fixtures.append(self.allocator, .{ .id = id, .body = body });
+        errdefer c.b2DestroyShape(id, true);
+        try self.fixtures.append(self.allocator, .{ .id = id, .body = body, .shape = .{ .circle = config.radius } });
+        return .{ .index = @intCast(self.fixtures.items.len - 1), .generation = 1 };
+    }
+
+    pub fn createBox(self: *World, body: BodyHandle, config: BoxConfig) !FixtureHandle {
+        if (!finiteVec(config.size) or !std.math.isFinite(config.density) or config.size.x <= 0 or config.size.y <= 0 or config.density < 0) return error.InvalidFixture;
+        const body_slot = try self.bodySlot(body);
+        var definition = fixtureDefinition(config.density, config.sensor, config.contact_events);
+        const box = c.b2MakeBox(config.size.x / 2, config.size.y / 2);
+        const id = c.b2CreatePolygonShape(body_slot.id, &definition, &box);
+        errdefer c.b2DestroyShape(id, true);
+        try self.fixtures.append(self.allocator, .{ .id = id, .body = body, .shape = .{ .box = config.size } });
         return .{ .index = @intCast(self.fixtures.items.len - 1), .generation = 1 };
     }
 
@@ -118,19 +144,53 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
     }
 
     pub fn createDistanceJoint(self: *World, a: BodyHandle, b: BodyHandle, length: f32) !JointHandle {
-        if (length <= 0) return error.InvalidJoint;
+        if (!std.math.isFinite(length) or length <= 0) return error.InvalidJoint;
         var definition = c.b2DefaultDistanceJointDef();
         definition.bodyIdA = (try self.bodySlot(a)).id;
         definition.bodyIdB = (try self.bodySlot(b)).id;
         definition.length = length;
-        return .{ .id = c.b2CreateDistanceJoint(self.id, &definition) };
+        const id = c.b2CreateDistanceJoint(self.id, &definition);
+        errdefer c.b2DestroyJoint(id);
+        try self.joints.append(self.allocator, .{ .id = id, .a = a, .b = b });
+        return .{ .index = @intCast(self.joints.items.len - 1), .generation = 1 };
+    }
+
+    pub fn destroyJoint(self: *World, handle: JointHandle) !void {
+        const slot = try self.jointSlot(handle);
+        c.b2DestroyJoint(slot.id);
+        slot.live = false;
+        slot.generation +%= 1;
     }
 
     pub fn events(self: World) !Events {
         if (!c.b2World_IsValid(self.id)) return error.StaleWorld;
         const contacts = c.b2World_GetContactEvents(self.id);
         const sensors = c.b2World_GetSensorEvents(self.id);
-        return .{ .contact_begins = @intCast(@max(contacts.beginCount, 0)), .contact_ends = @intCast(@max(contacts.endCount, 0)), .sensor_begins = @intCast(@max(sensors.beginCount, 0)), .sensor_ends = @intCast(@max(sensors.endCount, 0)) };
+        return .{ .contact_begins = @intCast(@max(contacts.beginCount, 0)), .contact_ends = @intCast(@max(contacts.endCount, 0)), .contact_hits = @intCast(@max(contacts.hitCount, 0)), .sensor_begins = @intCast(@max(sensors.beginCount, 0)), .sensor_ends = @intCast(@max(sensors.endCount, 0)) };
+    }
+
+    pub fn appendDebug(self: *World, commands: *up.RenderCommandBuffer, camera: *const up.Camera2D, canvas_size: up.Vec2) !void {
+        if (!c.b2World_IsValid(self.id)) return error.StaleWorld;
+        const viewport = camera.canvasViewport(canvas_size);
+        try commands.append(.{ .push_clip = .{ .x = @intFromFloat(@floor(viewport.x)), .y = @intFromFloat(@floor(viewport.y)), .w = @max(0, @as(i32, @intFromFloat(@ceil(viewport.w)))), .h = @max(0, @as(i32, @intFromFloat(@ceil(viewport.h)))) } });
+        errdefer _ = commands.append(.pop_clip) catch {};
+        for (self.fixtures.items) |fixture| {
+            if (!fixture.live) continue;
+            const transform = c.b2Body_GetTransform((try self.bodySlot(fixture.body)).id);
+            switch (fixture.shape) {
+                .circle => |radius| try appendCircle(commands, camera, canvas_size, .{ .x = transform.p.x, .y = transform.p.y }, radius),
+                .box => |size| try appendBox(commands, camera, canvas_size, transform, size),
+            }
+        }
+        for (self.joints.items) |joint| {
+            if (!joint.live) continue;
+            const a = c.b2Body_GetPosition((try self.bodySlot(joint.a)).id);
+            const b = c.b2Body_GetPosition((try self.bodySlot(joint.b)).id);
+            const start = camera.worldToCanvas(.{ .x = a.x, .y = a.y }, canvas_size);
+            const end = camera.worldToCanvas(.{ .x = b.x, .y = b.y }, canvas_size);
+            try commands.append(.{ .line = .{ .x0 = @intFromFloat(@round(start.x)), .y0 = @intFromFloat(@round(start.y)), .x1 = @intFromFloat(@round(end.x)), .y1 = @intFromFloat(@round(end.y)), .color = up.Color.rgb(255, 198, 74) } });
+        }
+        try commands.append(.pop_clip);
     }
 
     fn bodySlot(self: *World, handle: BodyHandle) !*BodySlot {
@@ -146,7 +206,80 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
         if (!slot.live or slot.generation != handle.generation or !c.b2Shape_IsValid(slot.id)) return error.StaleFixture;
         return slot;
     }
+
+    fn jointSlot(self: *World, handle: JointHandle) !*JointSlot {
+        if (handle.index >= self.joints.items.len) return error.StaleJoint;
+        const slot = &self.joints.items[handle.index];
+        if (!slot.live or slot.generation != handle.generation or !c.b2Joint_IsValid(slot.id)) return error.StaleJoint;
+        return slot;
+    }
 };
+
+pub const SceneBinding = struct {
+    world: *World,
+    config: BodyConfig = .{},
+    bodies: std.AutoHashMapUnmanaged(up.EcsEntity, BodyHandle) = .{},
+
+    pub fn deinit(self: *SceneBinding) void {
+        var values = self.bodies.valueIterator();
+        while (values.next()) |handle| self.world.destroyBody(handle.*) catch {};
+        self.bodies.deinit(self.world.allocator);
+        self.* = undefined;
+    }
+
+    pub fn binding(self: *SceneBinding, name: []const u8) up.SceneRuntimeBinding {
+        return .{
+            .name = name,
+            .context = self,
+            .on_load = onLoad,
+            .on_unload = onUnload,
+        };
+    }
+
+    pub fn body(self: *const SceneBinding, entity: up.EcsEntity) ?BodyHandle {
+        return self.bodies.get(entity);
+    }
+
+    fn onLoad(context: *anyopaque, _: *const up.SceneRuntime, entity: up.EcsEntity, _: up.SceneEntity) anyerror!void {
+        const self: *SceneBinding = @ptrCast(@alignCast(context));
+        if (self.bodies.contains(entity)) return error.DuplicatePhysicsBinding;
+        const handle = try self.world.createBody(self.config);
+        errdefer self.world.destroyBody(handle) catch {};
+        try self.bodies.put(self.world.allocator, entity, handle);
+    }
+
+    fn onUnload(context: *anyopaque, entity: up.EcsEntity, _: up.SceneEntity) void {
+        const self: *SceneBinding = @ptrCast(@alignCast(context));
+        if (self.bodies.fetchRemove(entity)) |entry| self.world.destroyBody(entry.value) catch {};
+    }
+};
+
+fn fixtureDefinition(density: f32, sensor: bool, contact_events: bool) c.b2ShapeDef {
+    var definition = c.b2DefaultShapeDef();
+    definition.density = density;
+    definition.isSensor = sensor;
+    definition.enableSensorEvents = sensor;
+    definition.enableContactEvents = contact_events and !sensor;
+    return definition;
+}
+
+fn finiteVec(value: up.Vec2) bool {
+    return std.math.isFinite(value.x) and std.math.isFinite(value.y);
+}
+
+fn appendCircle(commands: *up.RenderCommandBuffer, camera: *const up.Camera2D, canvas_size: up.Vec2, center: up.Vec2, radius: f32) !void {
+    const screen = camera.worldToCanvas(center, canvas_size);
+    try commands.append(.{ .circle = .{ .x = @intFromFloat(@round(screen.x)), .y = @intFromFloat(@round(screen.y)), .radius = @max(1, @as(i32, @intFromFloat(@round(radius * camera.zoom)))), .color = up.Color.rgb(90, 220, 255) } });
+}
+
+fn appendBox(commands: *up.RenderCommandBuffer, camera: *const up.Camera2D, canvas_size: up.Vec2, transform: c.b2Transform, size: up.Vec2) !void {
+    const local = [_]up.Vec2{ .{ .x = -size.x / 2, .y = -size.y / 2 }, .{ .x = size.x / 2, .y = -size.y / 2 }, .{ .x = size.x / 2, .y = size.y / 2 }, .{ .x = -size.x / 2, .y = size.y / 2 } };
+    var points: [4]up.Vec2 = undefined;
+    for (local, 0..) |point, index| points[index] = camera.worldToCanvas(.{ .x = transform.p.x + transform.q.c * point.x - transform.q.s * point.y, .y = transform.p.y + transform.q.s * point.x + transform.q.c * point.y }, canvas_size);
+    const color = up.Color.rgb(90, 220, 255);
+    try commands.append(.{ .triangle = .{ .a = points[0], .b = points[1], .c = points[2], .color = color } });
+    try commands.append(.{ .triangle = .{ .a = points[0], .b = points[2], .c = points[3], .color = color } });
+}
 
 test "Box2D world creates steps and destroys cleanly" {
     var world = World.init(.{ .gravity = .{ .x = 0, .y = 4 } });
@@ -170,7 +303,50 @@ test "Box2D distance joints and event snapshots are available" {
     defer world.deinit();
     const a = try world.createBody(.{ .body_type = .dynamic });
     const b = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 2, .y = 0 } });
-    _ = try world.createDistanceJoint(a, b, 2);
+    const joint = try world.createDistanceJoint(a, b, 2);
     try world.step(1.0 / 60.0, 4);
     _ = try world.events();
+    try world.destroyJoint(joint);
+    try std.testing.expectError(error.StaleJoint, world.destroyJoint(joint));
+}
+
+test "Box2D contacts and debug commands cover headless output" {
+    var world = World.init(.{});
+    defer world.deinit();
+    const ground = try world.createBody(.{});
+    _ = try world.createBox(ground, .{ .size = .{ .x = 4, .y = 2 } });
+    const body = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 0, .y = -0.5 } });
+    _ = try world.createCircle(body, .{ .radius = 1 });
+    try world.step(1.0 / 60.0, 4);
+    try std.testing.expect((try world.events()).contact_begins > 0);
+
+    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer commands.deinit();
+    var camera = up.Camera2D{};
+    try world.appendDebug(&commands, &camera, .{ .x = 16, .y = 16 });
+    var canvas = try up.Canvas.init(std.testing.allocator, 16, 16);
+    defer canvas.deinit();
+    var renderer = up.HeadlessRenderer.init(&canvas);
+    defer renderer.deinit(std.testing.allocator);
+    try renderer.submit(std.testing.allocator, commands.commands.items);
+    try std.testing.expect(!std.meta.eql(canvas.get(8, 8).?, up.Color.transparent));
+}
+
+test "Box2D scene bindings create and release bodies with entities" {
+    var world = World.init(.{});
+    defer world.deinit();
+    var binding = SceneBinding{ .world = &world, .config = .{ .body_type = .dynamic, .position = .{ .x = 3, .y = 4 } } };
+    defer binding.deinit();
+    var entities = up.EcsWorld.init(std.testing.allocator);
+    defer entities.deinit();
+    const entity = try entities.create();
+    const source = up.SceneEntity{ .id = "physics", .name = "Physics", .components = &.{}, .references = &.{} };
+    var runtime: up.SceneRuntime = undefined;
+    const callback = binding.binding("physics");
+    try callback.on_load(callback.context, &runtime, entity, source);
+    const body = binding.body(entity).?;
+    try std.testing.expectEqual(up.Vec2.init(3, 4), try world.bodyPosition(body));
+    callback.on_unload.?(callback.context, entity, source);
+    try std.testing.expect(binding.body(entity) == null);
+    try std.testing.expectError(error.StaleBody, world.bodyPosition(body));
 }

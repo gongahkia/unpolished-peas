@@ -34,7 +34,8 @@ Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop 
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
-`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
+`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `SceneBinding`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
+`World.appendDebug` emits the same core render commands for headless and GPU presentation.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont` loads TrueType/OpenType fonts into a GPU atlas; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `loadBitmapFont` loads AngelCode text `.fnt` descriptors; `layoutText` shares the same deterministic UTF-8 decoder.
 
