@@ -1,0 +1,9 @@
+.{
+    .format = "unpolished-peas-assets",
+    .version = 1,
+    .images = .{.{ .id = "player", .path = "player.png" }},
+    .audio = .{.{ .id = "jump", .path = "jump.wav" }},
+    .fonts = .{},
+    .atlases = .{},
+    .shaders = .{},
+}

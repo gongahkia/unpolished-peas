@@ -1,0 +1,9 @@
+.{
+    .format = "unpolished-peas-scene",
+    .version = 1,
+    .metadata = .{ .name = "platformer", .tags = .{ "reference" } },
+    .entities = .{
+        .{ .id = "audio", .name = "Audio", .binding = "audio", .components = .{.{ .kind = "audio" }}, .references = .{} },
+        .{ .id = "player", .name = "Player", .binding = "physics", .components = .{ .{ .kind = "animation" }, .{ .kind = "physics" } }, .references = .{} },
+    },
+}
