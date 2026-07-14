@@ -36,6 +36,13 @@ pub const Source = struct {
         std.zon.parse.free(allocator, self.*);
         self.* = undefined;
     }
+
+    pub fn encode(self: Source, allocator: std.mem.Allocator) ![]u8 {
+        var output = std.Io.Writer.Allocating.init(allocator);
+        defer output.deinit();
+        try std.zon.stringify.serialize(self, .{}, &output.writer);
+        return allocator.dupe(u8, output.written());
+    }
 };
 
 pub const Edge = struct {
@@ -93,9 +100,11 @@ pub const Diagnostic = struct {
 };
 
 pub fn parse(allocator: std.mem.Allocator, source: []const u8, diagnostic: *Diagnostic) !Source {
+    const zon_source = try allocator.dupeZ(u8, source);
+    defer allocator.free(zon_source);
     var zon_diagnostics: std.zon.parse.Diagnostics = .{};
     defer zon_diagnostics.deinit(allocator);
-    var catalog = std.zon.parse.fromSlice(Source, allocator, source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
+    var catalog = std.zon.parse.fromSlice(Source, allocator, zon_source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
         error.ParseZon => {
             var errors = zon_diagnostics.iterateErrors();
             if (errors.next()) |parse_error| {
@@ -253,18 +262,18 @@ test "asset catalog validates paths, dependencies, and handle bindings" {
 
 test "asset catalog rejects duplicate unsafe and missing paths" {
     const duplicate =
-        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = &.{ .{ .id = "a", .path = "same.png" }, .{ .id = "b", .path = "same.png" } }, .audio = &.{}, .fonts = &.{}, .atlases = &.{}, .shaders = &.{} }
+        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{ .{ .id = "a", .path = "same.png" }, .{ .id = "b", .path = "same.png" } }, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{} }
         \\
     ;
     const unsafe =
-        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = &.{ .{ .id = "a", .path = "../same.png" } }, .audio = &.{}, .fonts = &.{}, .atlases = &.{}, .shaders = &.{} }
+        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{ .{ .id = "a", .path = "../same.png" } }, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{} }
         \\
     ;
     var diagnostic = Diagnostic{};
     try std.testing.expectError(error.InvalidCatalog, parse(std.testing.allocator, duplicate, &diagnostic));
     try std.testing.expect(diagnostic.line > 0 and diagnostic.column > 0);
     try std.testing.expectError(error.InvalidCatalog, parse(std.testing.allocator, unsafe, &diagnostic));
-    var catalog = try parse(std.testing.allocator, ".{ .format = \"unpolished-peas-assets\", .version = 1, .images = &.{ .{ .id = \"missing\", .path = \"missing.png\" } }, .audio = &.{}, .fonts = &.{}, .atlases = &.{}, .shaders = &.{} }", &diagnostic);
+    var catalog = try parse(std.testing.allocator, ".{ .format = \"unpolished-peas-assets\", .version = 1, .images = .{ .{ .id = \"missing\", .path = \"missing.png\" } }, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{} }", &diagnostic);
     defer catalog.deinit(std.testing.allocator);
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();

@@ -39,6 +39,12 @@ pub fn build(b: *std.Build) void {
         .target = b.graph.host,
         .optimize = optimize,
     });
+    const content = b.addModule("unpolished-peas-content", .{
+        .root_source_file = b.path("src/content_compiler.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+    addStb(content);
 
     const test_support = b.addModule("unpolished-peas-test", .{
         .root_source_file = b.path("src/test_support.zig"),
@@ -103,6 +109,15 @@ pub fn build(b: *std.Build) void {
     const packaged_assets = addExample(b, "unpolished-peas-test-packaged-assets", "examples/test_packaged_assets.zig", target, optimize, peas, null);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
+    const contentc = b.addExecutable(.{
+        .name = "upcontentc",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/contentc.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "unpolished-peas-content", .module = content }},
+        }),
+    });
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
 
     const peas_cli = b.addExecutable(.{
@@ -111,7 +126,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/peas.zig"),
             .target = b.graph.host,
             .optimize = optimize,
-            .imports = &.{.{ .name = "unpolished-peas-tools", .module = tools }},
+            .imports = &.{ .{ .name = "unpolished-peas-tools", .module = tools }, .{ .name = "unpolished-peas-content", .module = content } },
         }),
     });
     const run_peas = b.addRunArtifact(peas_cli);
@@ -201,10 +216,14 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
+    const run_contentc = b.addRunArtifact(contentc);
+    if (b.args) |args| run_contentc.addArgs(args);
+    const contentc_step = b.step("contentc", "Compile native project content");
+    contentc_step.dependOn(&run_contentc.step);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, contentc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
@@ -214,6 +233,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_tests.step);
     const tools_tests = b.addTest(.{ .root_module = tools });
     const run_tools_tests = b.addRunArtifact(tools_tests);
+    const content_tests = b.addTest(.{ .root_module = content });
+    const run_content_tests = b.addRunArtifact(content_tests);
     const test_support_tests = b.addTest(.{ .root_module = test_support });
     const run_test_support_tests = b.addRunArtifact(test_support_tests);
     const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
@@ -223,6 +244,7 @@ pub fn build(b: *std.Build) void {
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, test fixtures, and services modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);
+    module_test_step.dependOn(&run_content_tests.step);
     module_test_step.dependOn(&run_test_support_tests.step);
     module_test_step.dependOn(&run_services_tests.step);
     const fuzz_tests = b.addTest(.{ .root_module = b.createModule(.{

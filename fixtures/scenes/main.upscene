@@ -3,21 +3,21 @@
     .version = 1,
     .metadata = .{
         .name = "main",
-        .tags = &.{ "demo", "gameplay" },
+        .tags = .{ "demo", "gameplay" },
     },
-    .entities = &.{
+    .entities = .{
         .{
             .id = "camera",
             .name = "Camera",
-            .components = &.{.{ .kind = "camera" }},
-            .references = &.{},
+            .components = .{.{ .kind = "camera" }},
+            .references = .{},
         },
         .{
             .id = "player",
             .name = "Player",
             .binding = "game.Player",
-            .components = &.{ .{ .kind = "sprite" }, .{ .kind = "transform" } },
-            .references = &.{.{ .name = "camera", .target = "camera" }},
+            .components = .{ .{ .kind = "sprite" }, .{ .kind = "transform" } },
+            .references = .{.{ .name = "camera", .target = "camera" }},
         },
     },
 }

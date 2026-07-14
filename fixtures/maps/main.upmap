@@ -8,7 +8,7 @@
         .tile_height = 16,
         .chunk_size = 16,
     },
-    .tilesets = &.{
+    .tilesets = .{
         .{
             .id = "tiles",
             .kind = .grid_image,
@@ -17,7 +17,7 @@
             .tile_height = 16,
         },
     },
-    .layers = &.{
+    .layers = .{
         .{
             .id = "world",
             .name = "World",
@@ -28,9 +28,9 @@
             .name = "Ground",
             .kind = .tiles,
             .parent = "world",
-            .cells = &.{
-                .{ .x = -2, .y = 0, .tiles = &.{.{ .tileset = "tiles", .id = 3 }} },
-                .{ .x = 0, .y = 0, .tiles = &.{.{ .tileset = "tiles", .id = 1 }} },
+            .cells = .{
+                .{ .x = -2, .y = 0, .tiles = .{.{ .tileset = "tiles", .id = 3 }} },
+                .{ .x = 0, .y = 0, .tiles = .{.{ .tileset = "tiles", .id = 1 }} },
             },
         },
         .{
@@ -38,15 +38,15 @@
             .name = "Collision",
             .kind = .int_grid,
             .parent = "world",
-            .cells = &.{.{ .x = -2, .y = 0, .int_grid = 1 }},
-            .properties = &.{.{ .name = "one_way", .boolean = true }},
+            .cells = .{.{ .x = -2, .y = 0, .int_grid = 1 }},
+            .properties = .{.{ .name = "one_way", .boolean = true }},
         },
         .{
             .id = "objects",
             .name = "Objects",
             .kind = .objects,
             .parent = "world",
-            .objects = &.{
+            .objects = .{
                 .{
                     .id = "wall",
                     .name = "Wall",
@@ -55,7 +55,7 @@
                     .y = 0,
                     .width = 16,
                     .height = 16,
-                    .properties = &.{.{ .name = "solid", .boolean = true }},
+                    .properties = .{.{ .name = "solid", .boolean = true }},
                 },
             },
         },

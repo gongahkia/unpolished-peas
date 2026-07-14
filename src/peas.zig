@@ -1,5 +1,6 @@
 const std = @import("std");
 const tools = @import("unpolished-peas-tools");
+const content = @import("unpolished-peas-content");
 const starter = @import("starter.zig");
 
 const max_build_output_bytes = 8 * 1024 * 1024;
@@ -36,11 +37,50 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try checkProject(allocator, args);
             return null;
         },
+        .compile => {
+            try compileProject(allocator, args);
+            return null;
+        },
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
+}
+
+fn compileProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const project_path = args.next() orelse ".";
+    const output_argument = args.next();
+    if (args.next() != null) return compileUsage();
+    const project_root = tools.discoverProject(allocator, project_path) catch |err| {
+        std.debug.print("peas compile: no project build.zig found from {s}\n", .{project_path});
+        return err;
+    };
+    defer allocator.free(project_root);
+    const output_root = if (output_argument) |value|
+        try absolutePath(allocator, value)
+    else
+        try std.fs.path.join(allocator, &.{ project_root, "zig-out", "content" });
+    defer allocator.free(output_root);
+    var diagnostic = content.Diagnostic{};
+    defer diagnostic.deinit(allocator);
+    const report = content.compileProject(allocator, project_root, output_root, &diagnostic) catch |err| {
+        if (diagnostic.path) |path| std.debug.print("peas compile: {s}:{d}:{d}: {s}\n", .{ path, diagnostic.line, diagnostic.column, diagnostic.message });
+        return err;
+    };
+    std.debug.print("peas compile: compiled {d}, reused {d}, output {s}\n", .{ report.compiled, report.reused, output_root });
+}
+
+fn absolutePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    if (std.fs.path.isAbsolute(path)) return allocator.dupe(u8, path);
+    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(cwd);
+    return std.fs.path.join(allocator, &.{ cwd, path });
+}
+
+fn compileUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- compile [project-directory] [output-directory]\n", .{});
+    return error.InvalidArguments;
 }
 
 fn createProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -248,6 +288,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.new, tools.parseCommand("new").?);
     try std.testing.expectEqual(tools.Command.run, tools.parseCommand("run").?);
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
+    try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
