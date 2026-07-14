@@ -7,6 +7,7 @@ test "downstream module imports remain SDL-free" {
     var canvas = try up.Canvas.init(std.testing.allocator, 1, 1);
     defer canvas.deinit();
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
+    try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
     const transport = services.networking.Transport;
     _ = transport;
 }

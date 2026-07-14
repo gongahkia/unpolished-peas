@@ -166,6 +166,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build peas -- check [project-directory] [--target <linux|macos>]` statically validates the manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; failures include a recovery command.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
+`zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
 

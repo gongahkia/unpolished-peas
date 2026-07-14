@@ -39,6 +39,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
+        .docs => return try docsProject(allocator, args),
     }
 }
 
@@ -187,6 +188,30 @@ fn packageUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn docsProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+    const topic = if (args.next()) |value| tools.parseDocsTopic(value) orelse return docsUsage() else .overview;
+    if (args.next() != null) return docsUsage();
+    const repository_root = std.process.getEnvVarOwned(allocator, "UP_REPOSITORY_ROOT") catch return error.DocsUnavailable;
+    defer allocator.free(repository_root);
+    var child = std.process.Child.init(&.{ "zig", "build", "docs" }, allocator);
+    child.cwd = repository_root;
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    const term = try child.spawnAndWait();
+    if (term == .Exited and term.Exited == 0) {
+        const path = try std.fs.path.join(allocator, &.{ repository_root, "zig-out", "docs", topic.relativePath() });
+        defer allocator.free(path);
+        std.debug.print("peas docs: {s}\n", .{path});
+    }
+    return term;
+}
+
+fn docsUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- docs [overview|quickstart|testing|api]\n", .{});
+    return error.InvalidArguments;
+}
+
 fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8) !std.process.Child.Term {
     const result = try std.process.Child.run(.{
         .allocator = allocator,
@@ -225,6 +250,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
+    try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
 }
 
 test "known test selections parse" {
@@ -237,6 +263,13 @@ test "known test selections parse" {
 test "known package targets parse" {
     try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
     try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
+}
+
+test "known docs topics parse" {
+    try std.testing.expectEqual(tools.DocsTopic.overview, tools.parseDocsTopic("overview").?);
+    try std.testing.expectEqual(tools.DocsTopic.quickstart, tools.parseDocsTopic("quickstart").?);
+    try std.testing.expectEqual(tools.DocsTopic.testing, tools.parseDocsTopic("testing").?);
+    try std.testing.expectEqual(tools.DocsTopic.api, tools.parseDocsTopic("api").?);
 }
 
 test "unknown command is rejected" {

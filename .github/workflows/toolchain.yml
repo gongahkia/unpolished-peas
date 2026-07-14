@@ -37,6 +37,8 @@ jobs:
       - run: zig build test-modules
       - run: zig build test-peas
       - run: zig build test-starter
+      - run: zig build test-docs
+      - run: zig build docs
       - run: zig build test-replays
       - run: zig build test-fuzz
       - run: script/check_performance_budgets.sh

@@ -19,6 +19,7 @@ pub const Command = enum {
     check,
     @"test",
     package,
+    docs,
 };
 
 pub const TestSelection = enum {
@@ -45,6 +46,22 @@ pub const PackageTarget = enum {
         return switch (self) {
             .linux => "package_linux.sh",
             .macos => "package_macos.sh",
+        };
+    }
+};
+
+pub const DocsTopic = enum {
+    overview,
+    quickstart,
+    testing,
+    api,
+
+    pub fn relativePath(self: DocsTopic) []const u8 {
+        return switch (self) {
+            .overview => "index.md",
+            .quickstart => "guides/quickstart.md",
+            .testing => "guides/testing.md",
+            .api => "api/core.md",
         };
     }
 };
@@ -95,6 +112,10 @@ pub fn parsePackageTarget(value: []const u8) ?PackageTarget {
     return std.meta.stringToEnum(PackageTarget, value);
 }
 
+pub fn parseDocsTopic(value: []const u8) ?DocsTopic {
+    return std.meta.stringToEnum(DocsTopic, value);
+}
+
 pub fn classifyDiagnostic(text: []const u8) DiagnosticContext {
     if (std.mem.indexOf(u8, text, "no module named 'unpolished-peas-sdl3'")) |_| return .missing_sdl_module;
     if (std.mem.indexOf(u8, text, "no module named 'unpolished-peas'")) |_| return .missing_engine_module;
@@ -121,6 +142,7 @@ pub fn printHelp() void {
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\package: zig build peas -- package <linux|macos> [output-directory]
+        \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 
     , .{});
@@ -265,10 +287,13 @@ fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, co
 test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.new, parseCommand("new").?);
     try std.testing.expect(parseCommand("publish") == null);
+    try std.testing.expectEqual(Command.docs, parseCommand("docs").?);
     try std.testing.expectEqual(TestSelection.replay, parseTestSelection("replay").?);
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
     try std.testing.expect(parsePackageTarget("windows") == null);
+    try std.testing.expectEqual(DocsTopic.api, parseDocsTopic("api").?);
+    try std.testing.expect(parseDocsTopic("reference") == null);
 }
 
 test "tools classify diagnostic fixtures" {
