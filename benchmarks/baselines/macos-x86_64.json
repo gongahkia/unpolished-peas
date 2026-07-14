@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "target": "macos-x86_64",
+  "limits": {
+    "startup_ns": 20000000,
+    "frame_ns": 10000000,
+    "frame_allocation_events": 480,
+    "frame_allocated_bytes": 40320,
+    "renderer_ns": 10000000,
+    "renderer_allocation_events": 0,
+    "renderer_allocated_bytes": 0
+  }
+}
