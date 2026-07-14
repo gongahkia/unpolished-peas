@@ -1,0 +1,12 @@
+.{
+    .format = "unpolished-peas-scene",
+    .version = 1,
+    .metadata = .{ .name = "topdown", .tags = .{ "action", "reference" } },
+    .entities = .{
+        .{ .id = "audio", .name = "Audio", .binding = "audio", .components = .{.{ .kind = "audio" }}, .references = .{} },
+        .{ .id = "effects", .name = "Effects", .binding = "effects", .components = .{.{ .kind = "shader" }}, .references = .{.{ .name = "target", .target = "player" }} },
+        .{ .id = "input", .name = "Input", .binding = "input", .components = .{.{ .kind = "actions" }}, .references = .{} },
+        .{ .id = "player", .name = "Player", .binding = "player", .components = .{ .{ .kind = "movement" }, .{ .kind = "sprite" } }, .references = .{} },
+        .{ .id = "ui", .name = "UI", .binding = "ui", .components = .{.{ .kind = "text" }}, .references = .{.{ .name = "player", .target = "player" }} },
+    },
+}

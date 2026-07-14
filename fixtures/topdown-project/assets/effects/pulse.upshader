@@ -1,0 +1,2 @@
+effect=invert
+uniform amount:f32

@@ -20,7 +20,7 @@ lipo -create "$stage/aarch64-macos/bin/unpolished-peas-bounce-sdl" "$stage/x86_6
 cp -R "$stage/aarch64-macos/assets" "$package/assets"
 zig build docs
 cp -R zig-out/docs "$package/docs"
-cp -R fixtures/content-project "$package/content"
+cp -R fixtures/topdown-project "$package/content"
 zig build contentc -- "$package/content" "$package/content/cache"
 printf '%s\n' '{"version":1,"platform":"macos-universal","runtime":"bin/unpolished-peas-bounce","assets":"assets/","docs":"docs/"}' > "$package/launcher.json"
 printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/bin/unpolished-peas-bounce" "$@"' > "$package/run.sh"

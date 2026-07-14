@@ -39,11 +39,11 @@ fn verify() !void {
 
     const project = try readPackageFile(allocator, package, "content/project.up");
     defer allocator.free(project);
-    const scene_source = try readPackageFile(allocator, package, "content/scenes/main.upscene");
+    const scene_source = try readPackageFile(allocator, package, "content/scenes/topdown.upscene");
     defer allocator.free(scene_source);
-    const catalog_source = try readPackageFile(allocator, package, "content/assets/catalog.upassets");
+    const catalog_source = try readPackageFile(allocator, package, "content/assets/topdown.upassets");
     defer allocator.free(catalog_source);
-    const map_source = try readPackageFile(allocator, package, "content/maps/main.upmap");
+    const map_source = try readPackageFile(allocator, package, "content/maps/topdown.upmap");
     defer allocator.free(map_source);
 
     var scene_diagnostic: up.SceneDiagnostic = .{};
@@ -56,9 +56,9 @@ fn verify() !void {
     var map = try up.mapSource.parse(allocator, map_source, &map_diagnostic);
     defer map.deinit(allocator);
 
-    try validateCache(allocator, package, "content/cache/scenes/main.upscene.upc", .scene);
-    try validateCache(allocator, package, "content/cache/assets/catalog.upassets.upc", .catalog);
-    try validateCache(allocator, package, "content/cache/maps/main.upmap.upc", .map);
+    try validateCache(allocator, package, "content/cache/scenes/topdown.upscene.upc", .scene);
+    try validateCache(allocator, package, "content/cache/assets/topdown.upassets.upc", .catalog);
+    try validateCache(allocator, package, "content/cache/maps/topdown.upmap.upc", .map);
     try probeAppData(allocator, package);
 }
 
