@@ -41,11 +41,38 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try compileProject(allocator, args);
             return null;
         },
+        .migrate => {
+            try migrateContent(allocator, args);
+            return null;
+        },
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
+}
+
+fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const kind_argument = args.next() orelse return migrateUsage();
+    const kind = std.meta.stringToEnum(content.migration.Kind, kind_argument) orelse return migrateUsage();
+    const input_path = args.next() orelse return migrateUsage();
+    const output_path = args.next() orelse return migrateUsage();
+    if (args.next() != null) return migrateUsage();
+    const source = try std.fs.cwd().readFileAlloc(allocator, input_path, 64 * 1024 * 1024);
+    defer allocator.free(source);
+    var diagnostic = content.migration.Diagnostic{};
+    var result = content.migration.migrate(allocator, kind, source, &diagnostic) catch |err| {
+        std.debug.print("peas migrate: {s}: {d}:{d}: {s}\n", .{ input_path, diagnostic.line, diagnostic.column, diagnostic.message });
+        return err;
+    };
+    defer result.deinit();
+    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = result.source });
+    std.debug.print("peas migrate: {s} -> {s}: {s}\n", .{ input_path, output_path, if (result.changed) "migrated" else "already current" });
+}
+
+fn migrateUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- migrate <scene|catalog|map> <input> <output>\n", .{});
+    return error.InvalidArguments;
 }
 
 fn compileProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -289,6 +316,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.run, tools.parseCommand("run").?);
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
+    try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
