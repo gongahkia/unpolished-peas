@@ -265,6 +265,7 @@ pub const Config = struct {
     audio_buffer_frames: u32 = 1024,
     strict_audio: bool = false,
     asset_root: ?[]const u8 = null,
+    actions: []const up.Action = &.{},
     developer_tools: bool = builtin.mode == .Debug,
     pause_policy: PausePolicy = .never,
     clear_color: up.Color = up.Color.black,
@@ -293,6 +294,7 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
     canvas: *up.Canvas,
     input: *up.Input,
+    actions: *up.ActionMap,
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
     app_data_path: []const u8,
@@ -469,6 +471,30 @@ pub const Context = struct {
 
     pub fn down(self: *Context, key: up.Key) bool {
         return self.input.isDown(key);
+    }
+
+    pub fn actionValue(self: *Context, context: []const u8, name: []const u8) f32 {
+        return self.actions.value(self.input.*, context, name);
+    }
+
+    pub fn actionIsDown(self: *Context, context: []const u8, name: []const u8) bool {
+        return self.actions.isDown(context, name);
+    }
+
+    pub fn actionWasPressed(self: *Context, context: []const u8, name: []const u8) bool {
+        return self.actions.wasPressed(context, name);
+    }
+
+    pub fn actionWasReleased(self: *Context, context: []const u8, name: []const u8) bool {
+        return self.actions.wasReleased(context, name);
+    }
+
+    pub fn rebindAction(self: *Context, context: []const u8, name: []const u8, binding: up.ActionBinding) !void {
+        try self.actions.rebind(context, name, binding);
+    }
+
+    pub fn rebindActionBinding(self: *Context, context: []const u8, name: []const u8, binding_index: usize, binding: up.ActionBinding) !void {
+        try self.actions.rebindBinding(context, name, binding_index, binding);
     }
 
     pub fn appDataPath(self: *Context) []const u8 {
@@ -675,6 +701,7 @@ pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
 pub fn validateConfig(config: Config) !void {
     if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
     if (config.fixed_hz == 0 or config.audio_sample_rate == 0 or config.audio_buffer_frames == 0) return error.InvalidConfig;
+    try up.ActionMap.validate(config.actions);
 }
 
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
@@ -759,12 +786,19 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var clock = up.StepClock.init(config.fixed_hz);
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
+    var actions = try up.ActionMap.init(allocator, config.actions);
+    defer actions.deinit();
+    actions.attachAppData(data_path);
+    actions.loadAppData() catch |err| switch (err) {
+        error.FileNotFound => {},
+        else => return err,
+    };
     var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
     defer dev.deinit();
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var initialized = false;
     callLoopInit(state, callbacks, &ctx) catch |err| {
@@ -789,6 +823,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             failure = .{ .phase = .event, .err = err };
             break :blk !close_requested;
         };
+        actions.update(input);
         if (failure) |current| {
             drawFailure(&canvas, current);
             try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, null, &presentation);
@@ -1021,6 +1056,10 @@ test "desktop configuration errors are recoverable" {
     try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .fixed_hz = 0 }));
     try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_sample_rate = 0 }));
     try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_buffer_frames = 0 }));
+    try std.testing.expectError(error.DuplicateBinding, validateConfig(.{ .actions = &.{
+        .{ .name = "fire", .binding = .{ .key = .action } },
+        .{ .name = "fire", .binding = .{ .key = .action } },
+    } }));
 }
 
 test "desktop pause policy is opt-in and deterministic" {

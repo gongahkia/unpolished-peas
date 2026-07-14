@@ -73,6 +73,8 @@ sdl.playGame(Game) reads window, presentation, developer, asset-root, and lifecy
 
 Set Game.config.pause_policy to .unfocused or .minimized to suppress update callbacks while that desktop state applies. Focus, minimize, restore, resize, and close stay ordered Event callbacks; draw continues with ctx.dt set to zero, leaving game state under user control.
 
+Set `Config.actions` to repeated `Action` entries with the same context/name to merge keyboard, mouse, and gamepad bindings. `Context.actionValue`, `actionIsDown`, `actionWasPressed`, and `actionWasReleased` read the per-frame map; `Context.rebindAction` or `Context.rebindActionBinding` persists `bindings.up` in app data.
+
 ## Starter Project
 
 From an unpolished-peas checkout:
@@ -208,6 +210,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Color`
 - `Input`, `Key`
 - `Pointer`, `PointerButton`
+- `Action`, `ActionBinding`, `ActionMap`
 - `StepClock`
 - `Canvas`, `Sprite`
 - `Canvas.drawImage`

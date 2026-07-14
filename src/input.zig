@@ -35,13 +35,29 @@ pub const Gamepad = struct {
     id: i32,
     connected: bool = true,
     buttons: [gamepad_button_count]bool = .{false} ** gamepad_button_count,
+    pressed: [gamepad_button_count]bool = .{false} ** gamepad_button_count,
+    released: [gamepad_button_count]bool = .{false} ** gamepad_button_count,
     axes: [gamepad_axis_count]f32 = .{0} ** gamepad_axis_count,
+    previous_axes: [gamepad_axis_count]f32 = .{0} ** gamepad_axis_count,
 
     pub fn button(self: Gamepad, value: GamepadButton) bool {
         return self.buttons[@intFromEnum(value)];
     }
+
+    pub fn wasPressed(self: Gamepad, value: GamepadButton) bool {
+        return self.pressed[@intFromEnum(value)];
+    }
+
+    pub fn wasReleased(self: Gamepad, value: GamepadButton) bool {
+        return self.released[@intFromEnum(value)];
+    }
+
     pub fn axis(self: Gamepad, value: GamepadAxis) f32 {
         return self.axes[@intFromEnum(value)];
+    }
+
+    pub fn previousAxis(self: Gamepad, value: GamepadAxis) f32 {
+        return self.previous_axes[@intFromEnum(value)];
     }
 };
 
@@ -70,6 +86,11 @@ pub const Input = struct {
         @memset(self.pointer_released[0..], false);
         self.pointer.delta = .{};
         self.pointer.wheel = .{};
+        for (&self.gamepads) |*slot| if (slot.*) |*pad| {
+            @memset(pad.pressed[0..], false);
+            @memset(pad.released[0..], false);
+            pad.previous_axes = pad.axes;
+        };
     }
 
     pub fn set(self: *Input, key: Key, is_down: bool) void {
@@ -146,7 +167,10 @@ pub const Input = struct {
     }
     pub fn setGamepadButton(self: *Input, id: i32, button: GamepadButton, down: bool) void {
         for (&self.gamepads) |*slot| if (slot.*) |*pad| if (pad.id == id) {
-            pad.buttons[@intFromEnum(button)] = down;
+            const index = @intFromEnum(button);
+            if (pad.buttons[index] == down) return;
+            pad.buttons[index] = down;
+            if (down) pad.pressed[index] = true else pad.released[index] = true;
             return;
         };
     }
@@ -189,9 +213,14 @@ test "gamepad add remove and dead-zone transitions" {
     input.setGamepadButton(7, .south, true);
     input.setGamepadAxis(7, .left_x, 0.1, 0.2);
     try std.testing.expect((input.gamepad(7).?).button(.south));
+    try std.testing.expect((input.gamepad(7).?).wasPressed(.south));
     try std.testing.expectEqual(@as(f32, 0), (input.gamepad(7).?).axis(.left_x));
     input.setGamepadAxis(7, .left_x, -0.75, 0.2);
     try std.testing.expectEqual(@as(f32, -0.75), (input.gamepad(7).?).axis(.left_x));
+    input.beginFrame();
+    input.setGamepadButton(7, .south, false);
+    try std.testing.expect((input.gamepad(7).?).wasReleased(.south));
+    try std.testing.expectEqual(@as(f32, -0.75), (input.gamepad(7).?).previousAxis(.left_x));
     try std.testing.expect(input.removeGamepad(7));
     try std.testing.expect(input.gamepad(7) == null);
 }
