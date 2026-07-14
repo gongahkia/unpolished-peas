@@ -20,10 +20,12 @@ lipo -create "$stage/aarch64-macos/bin/unpolished-peas-bounce-sdl" "$stage/x86_6
 cp -R "$stage/aarch64-macos/assets" "$package/assets"
 zig build docs
 cp -R zig-out/docs "$package/docs"
+cp -R fixtures/content-project "$package/content"
+zig build contentc -- "$package/content" "$package/content/cache"
 printf '%s\n' '{"version":1,"platform":"macos-universal","runtime":"bin/unpolished-peas-bounce","assets":"assets/","docs":"docs/"}' > "$package/launcher.json"
 printf '%s\n' '#!/bin/sh' 'exec "$(dirname "$0")/bin/unpolished-peas-bounce" "$@"' > "$package/run.sh"
 chmod +x "$package/run.sh"
-printf '%s\n' 'format=unpolished-peas-package' 'version=1' 'platform=macos-universal' 'runtime=bin/unpolished-peas-bounce' 'assets=assets/' 'docs=docs/' 'launcher=launcher.json' 'bundled-runtime=SDL3:static' > "$package/PACKAGE-MANIFEST.txt"
+printf '%s\n' 'format=unpolished-peas-package' 'version=1' 'platform=macos-universal' 'runtime=bin/unpolished-peas-bounce' 'assets=assets/' 'content=content/' 'caches=content/cache/' 'docs=docs/' 'launcher=launcher.json' 'bundled-runtime=SDL3:static' > "$package/PACKAGE-MANIFEST.txt"
 epoch=$(git -C "$repo" log -1 --format=%ct)
 mtime=$(date -u -r "$epoch" +%Y%m%d%H%M.%S)
 find "$package" -exec touch -t "$mtime" {} +

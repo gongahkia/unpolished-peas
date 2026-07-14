@@ -55,6 +55,7 @@ pub const AssetCatalog = @import("asset_catalog.zig").Source;
 pub const AssetCatalogDiagnostic = @import("asset_catalog.zig").Diagnostic;
 pub const AssetCatalogGraph = @import("asset_catalog.zig").Graph;
 pub const assetCatalog = @import("asset_catalog.zig");
+pub const contentCache = @import("content_cache.zig");
 pub const MapSource = @import("map_source.zig").Source;
 pub const MapSourceDiagnostic = @import("map_source.zig").Diagnostic;
 pub const mapSource = @import("map_source.zig");
