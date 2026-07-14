@@ -1,6 +1,7 @@
 const std = @import("std");
 const atlas_mod = @import("atlas.zig");
 const Atlas = atlas_mod.Atlas;
+const Sound = @import("audio.zig").Sound;
 const Font = @import("font_asset.zig").Font;
 const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
@@ -56,6 +57,7 @@ pub const AssetFile = struct { // owns path and bytes allocated by load; call de
 
 pub const TextHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryText for stale-handle errors.
 pub const ImageHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryImage for stale-handle errors.
+pub const AudioHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use trySound for stale-handle errors.
 pub const AtlasHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryAtlas for stale-handle errors.
 pub const FontHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryFont for stale-handle errors.
 pub const ShaderAssetHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryShader for stale-handle errors.
@@ -92,6 +94,17 @@ const ImageAsset = struct {
 
     fn deinit(self: *ImageAsset) void {
         self.image.deinit();
+        self.file.deinit();
+    }
+};
+
+const SoundAsset = struct {
+    file: AssetFile,
+    sound: Sound,
+    generation: u32 = 1,
+
+    fn deinit(self: *SoundAsset) void {
+        self.sound.deinit();
         self.file.deinit();
     }
 };
@@ -173,6 +186,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     root_path: ?[]u8 = null,
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
+    sounds: std.ArrayListUnmanaged(SoundAsset) = .{},
     atlases: std.ArrayListUnmanaged(AtlasAsset) = .{},
     fonts: std.ArrayListUnmanaged(FontAsset) = .{},
     shaders: std.ArrayListUnmanaged(ShaderAsset) = .{},
@@ -220,12 +234,14 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     pub fn deinit(self: *AssetStore) void {
         for (self.texts.items) |*asset| asset.deinit();
         for (self.images.items) |*asset| asset.deinit();
+        for (self.sounds.items) |*asset| asset.deinit();
         for (self.atlases.items) |*asset| asset.deinit();
         for (self.fonts.items) |*asset| asset.deinit();
         for (self.shaders.items) |*asset| asset.deinit();
         for (self.tile_maps.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
+        self.sounds.deinit(self.allocator);
         self.atlases.deinit(self.allocator);
         self.fonts.deinit(self.allocator);
         self.shaders.deinit(self.allocator);
@@ -273,6 +289,17 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
     pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
         return self.loadImage(path);
+    }
+
+    pub fn loadSound(self: *AssetStore, path: []const u8) !AudioHandle {
+        const asset = try self.loadSoundAsset(path);
+        errdefer {
+            var cleanup = asset;
+            cleanup.deinit();
+        }
+        const index = self.sounds.items.len;
+        try self.sounds.append(self.allocator, asset);
+        return .{ .index = index, .generation = 1 };
     }
 
     pub fn loadAtlas(self: *AssetStore, path: []const u8) !AtlasHandle {
@@ -388,6 +415,16 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     pub fn latestImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.images.items.len) return error.InvalidHandle;
         return &self.images.items[handle.index].image;
+    }
+
+    pub fn trySound(self: AssetStore, handle: AudioHandle) !Sound {
+        if (handle.index >= self.sounds.items.len or self.sounds.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return self.sounds.items[handle.index].sound;
+    }
+
+    pub fn trySoundPtr(self: *AssetStore, handle: AudioHandle) !*const Sound {
+        if (handle.index >= self.sounds.items.len or self.sounds.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return &self.sounds.items[handle.index].sound;
     }
 
     pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas { // panic-only compatibility accessor; use tryAtlas for recoverable stale access.
@@ -521,6 +558,15 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
         }
 
+        for (self.sounds.items) |*asset| {
+            if (self.reloadSound(asset) catch |err| {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                continue;
+            }) {
+                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
+            }
+        }
+
         for (self.atlases.items) |*asset| {
             if (self.reloadAtlas(asset) catch |err| {
                 try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .failed, .err = err });
@@ -591,6 +637,16 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return true;
     }
 
+    fn reloadSound(self: *AssetStore, asset: *SoundAsset) !bool {
+        if ((try asset.file.dir.statFile(asset.file.path)).mtime == asset.file.mtime) return false;
+        const next = try self.loadSoundAsset(asset.file.path);
+        const generation = nextGeneration(asset.generation);
+        asset.deinit();
+        asset.* = next;
+        asset.generation = generation;
+        return true;
+    }
+
     fn reloadFont(self: *AssetStore, asset: *FontAsset) !bool {
         const font_stat = try asset.font_file.dir.statFile(asset.font_file.path);
         var changed = font_stat.mtime != asset.font_file.mtime;
@@ -646,6 +702,25 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             cleanup.deinit();
         }
         return .{ .kind = .truetype, .font_file = file, .font = decoded, .options = options };
+    }
+
+    fn loadSoundAsset(self: *AssetStore, path: []const u8) !SoundAsset {
+        const file = try AssetFile.load(self.allocator, self.dir, path, 128 * 1024 * 1024);
+        errdefer {
+            var cleanup = file;
+            cleanup.deinit();
+        }
+        const decoded = if (std.mem.endsWith(u8, path, ".wav"))
+            try Sound.decodeWav(self.allocator, file.bytes)
+        else if (std.mem.endsWith(u8, path, ".ogg"))
+            try Sound.decodeOgg(self.allocator, file.bytes)
+        else
+            return error.UnsupportedSoundAsset;
+        errdefer {
+            var cleanup = decoded;
+            cleanup.deinit();
+        }
+        return .{ .file = file, .sound = decoded };
     }
 
     fn loadShaderAsset(self: *AssetStore, path: []const u8) !ShaderAsset {
@@ -790,18 +865,21 @@ test "asset handles reject stale generations" {
     defer store.deinit();
     const text = try store.loadText("examples/assets/message.txt");
     const image = try store.loadPng("examples/assets/ball.png");
+    const sound = try store.loadSound("examples/assets/blip.wav");
     const atlas = try store.loadAtlas("examples/assets/atlas.json");
     const truetype = try store.loadFont("examples/assets/fonts/Basic-Regular.ttf");
     const opentype = try store.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
     const bitmap = try store.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
     try std.testing.expect((try store.tryText(text)).len > 0);
     try std.testing.expect((try store.tryImage(image)).width > 0);
+    try std.testing.expect((try store.trySound(sound)).frames.len > 0);
     try std.testing.expect((try store.tryAtlas(atlas)).frames.len > 0);
     try std.testing.expect((try store.tryFont(truetype)).glyphForCodepoint(0x00c9).?.width > 0);
     try std.testing.expect((try store.tryFont(opentype)).glyphForCodepoint(0x00c9).?.width > 0);
     try std.testing.expect((try store.tryFont(bitmap)).glyphForCodepoint('B').?.width > 0);
     try std.testing.expectError(error.StaleHandle, store.tryText(.{ .index = text.index, .generation = nextGeneration(text.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryImage(.{ .index = image.index, .generation = nextGeneration(image.generation) }));
+    try std.testing.expectError(error.StaleHandle, store.trySound(.{ .index = sound.index, .generation = nextGeneration(sound.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryAtlas(.{ .index = atlas.index, .generation = nextGeneration(atlas.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = truetype.index, .generation = nextGeneration(truetype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = opentype.index, .generation = nextGeneration(opentype.generation) }));

@@ -40,6 +40,7 @@ pub const graphics = struct {
 pub const assets = struct {
     pub const AssetStore = @import("assets.zig").AssetStore;
     pub const AssetFile = @import("assets.zig").AssetFile;
+    pub const AudioHandle = @import("assets.zig").AudioHandle;
     pub const Image = @import("image.zig").Image;
     pub const Atlas = @import("atlas.zig").Atlas;
     pub const Font = @import("font_asset.zig").Font;

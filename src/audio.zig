@@ -55,6 +55,14 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav/loadOgg; 
         return decodeOggSound(allocator, bytes);
     }
 
+    pub fn decodeWav(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+        return decodeWavSound(allocator, bytes);
+    }
+
+    pub fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+        return decodeOggSound(allocator, bytes);
+    }
+
     pub fn deinit(self: *Sound) void {
         self.allocator.free(self.frames);
         self.* = undefined;
