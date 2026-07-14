@@ -386,6 +386,7 @@ pub const Context = struct {
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
     pixel_effects: *up.PostProcessChain,
+    inspector: *up.Inspector,
     capture_requested: *bool,
     dt: f32,
     frame: u64,
@@ -473,6 +474,14 @@ pub const Context = struct {
 
     pub fn clearPixelEffect(self: *Context) void {
         self.pixel_effects.clear();
+    }
+
+    pub fn registerInspectorPanel(self: *Context, panel: up.InspectorPanel) !void {
+        try self.inspector.register(panel);
+    }
+
+    pub fn toggleInspector(self: *Context) void {
+        self.inspector.toggle();
     }
 
     pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
@@ -868,6 +877,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
     var pixel_effects = up.PostProcessChain{};
+    var inspector = up.Inspector.init(allocator, config.developer_tools);
+    defer inspector.deinit();
     var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
@@ -895,7 +906,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var presenter_live = true;
     defer if (presenter_live) presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -982,6 +993,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             failure = .{ .phase = .draw, .err = err };
             continue;
         };
+        inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, dt, ctx.frame);
         var screenshot_path: ?[]u8 = null;
@@ -1410,6 +1422,13 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
+    fn inspectorFailure(context: *anyopaque, panel: []const u8, err: anyerror) void {
+        const self: *DeveloperTools = @ptrCast(@alignCast(context));
+        var buffer: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas inspector panel {s} failed: {s}\n", .{ panel, @errorName(err) }) catch return;
+        self.note(line);
+    }
+
     fn drawOverlay(self: DeveloperTools, canvas: *up.Canvas, dt: f32, frame: u64) void {
         if (!self.enabled or !self.overlay) return;
         const fps = if (dt > 0) 1.0 / dt else 0;
@@ -1437,6 +1456,7 @@ test "developer tools log runtime failure categories" {
     tools.failure(.update, error.UpdateFailed);
     tools.failure(.draw, error.DrawFailed);
     tools.failure(.asset_reload, error.ReloadFailed);
+    DeveloperTools.inspectorFailure(&tools, "scene", error.PanelFailed);
     var data = try std.fs.openDirAbsolute(root, .{});
     defer data.close();
     const log = try data.readFileAlloc(std.testing.allocator, "unpolished-peas.log", 4096);
@@ -1445,6 +1465,7 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "update failed: UpdateFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "draw failed: DrawFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
 }
 
 fn drawFailure(canvas: *up.Canvas, failure: Failure) void {
