@@ -167,6 +167,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
+When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL playback reopens after device removal or format changes.
 

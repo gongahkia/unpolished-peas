@@ -1,0 +1,1 @@
+src/main.zig:2:21: error: no module named 'unpolished-peas-sdl3' available within module 'root'
