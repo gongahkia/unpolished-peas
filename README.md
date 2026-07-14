@@ -232,6 +232,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
 - `MapSource`, `mapSource`
+- `SceneRuntime`, `SceneRuntimeBinding`, `sceneRuntime`
 - `TileCollider`, `CharacterController`
 - `netCodec` (`v1`, little-endian, 1024-byte bounded messages)
 - `NetTransport`, `LoopbackTransport`
