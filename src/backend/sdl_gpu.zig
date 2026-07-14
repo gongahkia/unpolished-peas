@@ -266,12 +266,23 @@ pub const Config = struct {
     strict_audio: bool = false,
     asset_root: ?[]const u8 = null,
     developer_tools: bool = builtin.mode == .Debug,
+    pause_policy: PausePolicy = .never,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
 };
 
+pub const PausePolicy = enum {
+    never,
+    unfocused,
+    minimized,
+};
+
 pub const Event = union(enum) {
     close_requested,
+    focus_gained,
+    focus_lost,
+    minimized,
+    restored,
     resized: struct { framebuffer_size: up.Vec2 },
     gamepad_connected: i32,
     gamepad_disconnected: i32,
@@ -743,6 +754,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer if (audio_output) |*output| output.deinit(allocator);
 
     var input = up.Input{};
+    var desktop_state = DesktopState{};
     var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, try framebufferSize(window), config.presentation_mode);
     var clock = up.StepClock.init(config.fixed_hz);
     const data_path = try appDataPath(allocator, config.organization, config.application);
@@ -772,7 +784,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
         var close_requested = false;
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state) catch |err| blk: {
             dev.failure(.event, err);
             failure = .{ .phase = .event, .err = err };
             break :blk !close_requested;
@@ -798,8 +810,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
         last_ticks = now;
+        const paused = shouldPause(config.pause_policy, desktop_state);
 
-        const steps = clock.push(dt);
+        const steps = if (paused) 0 else clock.push(dt);
         var step: u32 = 0;
         while (step < steps) : (step += 1) {
             ctx.dt = clock.step_seconds;
@@ -812,7 +825,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
-        ctx.dt = dt;
+        ctx.dt = if (paused) 0 else dt;
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             dev.failure(.draw, err);
             failure = .{ .phase = .draw, .err = err };
@@ -1010,6 +1023,45 @@ test "desktop configuration errors are recoverable" {
     try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_buffer_frames = 0 }));
 }
 
+test "desktop pause policy is opt-in and deterministic" {
+    try std.testing.expect(!shouldPause(.never, .{ .focused = false, .minimized = true }));
+    try std.testing.expect(shouldPause(.unfocused, .{ .focused = false }));
+    try std.testing.expect(!shouldPause(.unfocused, .{ .focused = true, .minimized = true }));
+    try std.testing.expect(shouldPause(.minimized, .{ .focused = true, .minimized = true }));
+}
+
+test "desktop lifecycle events preserve focus minimize resize and quit order" {
+    const State = struct {
+        calls: [7]u8 = undefined,
+        count: usize = 0,
+
+        fn event(self: *@This(), _: *Context, event_value: Event) void {
+            self.calls[self.count] = switch (event_value) {
+                .focus_lost => 'f',
+                .minimized => 'm',
+                .resized => 'r',
+                .restored => 's',
+                .focus_gained => 'g',
+                .close_requested => 'q',
+                else => unreachable,
+            };
+            self.count += 1;
+        }
+    };
+    const callbacks = .{ .event = State.event };
+    var ctx: Context = undefined;
+    var state = State{};
+    for ([_]Event{
+        .focus_lost,
+        .minimized,
+        .{ .resized = .{ .framebuffer_size = .{ .x = 320, .y = 180 } } },
+        .restored,
+        .focus_gained,
+        .close_requested,
+    }) |event_value| try callLoopEvent(&state, callbacks, &ctx, event_value);
+    try std.testing.expectEqualSlices(u8, "fmrsgq", state.calls[0..state.count]);
+}
+
 test "explicit loop callbacks share the lifecycle" {
     const State = struct {
         calls: [5]u8 = undefined,
@@ -1081,6 +1133,19 @@ const Failure = struct {
     phase: FailurePhase,
     err: anyerror,
 };
+
+const DesktopState = struct {
+    focused: bool = true,
+    minimized: bool = false,
+};
+
+fn shouldPause(policy: PausePolicy, state: DesktopState) bool {
+    return switch (policy) {
+        .never => false,
+        .unfocused => !state.focused,
+        .minimized => state.minimized,
+    };
+}
 
 const FailurePhase = enum {
     init,
@@ -2084,7 +2149,7 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
@@ -2093,6 +2158,22 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
                 close_requested.* = true;
                 if (initialized) try callLoopEvent(state, callbacks, ctx, .close_requested);
                 running = false;
+            },
+            c.SDL_EVENT_WINDOW_FOCUS_GAINED => {
+                desktop_state.focused = true;
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .focus_gained);
+            },
+            c.SDL_EVENT_WINDOW_FOCUS_LOST => {
+                desktop_state.focused = false;
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .focus_lost);
+            },
+            c.SDL_EVENT_WINDOW_MINIMIZED => {
+                desktop_state.minimized = true;
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .minimized);
+            },
+            c.SDL_EVENT_WINDOW_RESTORED => {
+                desktop_state.minimized = false;
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .restored);
             },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                 if (event.key.repeat) continue;
