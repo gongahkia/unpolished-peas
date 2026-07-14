@@ -28,6 +28,10 @@ zig build test-sdl
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
+Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-tools` (host CLI helpers), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, and services graph.
+
+[fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
+
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont` loads TrueType/OpenType fonts into a GPU atlas (Latin-1 by default; configure `FontLoadOptions` for another contiguous range), and `loadBitmapFont` loads AngelCode text `.fnt` descriptors. Draw either with `Context.font`; unsupported or invalid UTF-8 code points use the font's `?` glyph when present. `layoutText` remains the deterministic built-in-font layout helper.
@@ -96,6 +100,7 @@ The generated bouncing-square game includes its own build files and a pinned `un
 
 ```sh
 zig build test
+zig build test-modules
 zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
