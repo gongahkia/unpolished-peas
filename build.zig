@@ -116,6 +116,7 @@ pub fn build(b: *std.Build) void {
     });
     const run_peas = b.addRunArtifact(peas_cli);
     run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/bounce"));
+    run_peas.setEnvironmentVariable("UP_SCRIPT_ROOT", b.pathFromRoot("script"));
     if (b.args) |args| run_peas.addArgs(args);
     const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
     peas_step.dependOn(&run_peas.step);

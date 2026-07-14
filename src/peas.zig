@@ -36,11 +36,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
         },
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
-        else => {
-            while (args.next()) |_| {}
-            std.debug.print("peas {s}: command registered but not implemented yet\n", .{@tagName(command)});
-            return error.CommandNotImplemented;
-        },
+        .package => return try packageProject(allocator, args),
     }
 }
 
@@ -148,6 +144,32 @@ fn testUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+    const target_argument = args.next() orelse return packageUsage();
+    const target = tools.parsePackageTarget(target_argument) orelse return packageUsage();
+    const output_directory = args.next();
+    if (args.next() != null) return packageUsage();
+    const script_root = std.process.getEnvVarOwned(allocator, "UP_SCRIPT_ROOT") catch return error.PackageUnavailable;
+    defer allocator.free(script_root);
+    const script_path = try std.fs.path.join(allocator, &.{ script_root, target.scriptName() });
+    defer allocator.free(script_path);
+    var command_args = std.ArrayList([]const u8).empty;
+    defer command_args.deinit(allocator);
+    try command_args.append(allocator, script_path);
+    if (output_directory) |value| try command_args.append(allocator, value);
+    std.debug.print("peas package: target {s}\n", .{@tagName(target)});
+    var child = std.process.Child.init(command_args.items, allocator);
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    return child.spawnAndWait();
+}
+
+fn packageUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- package <linux|macos> [output-directory]\n", .{});
+    return error.InvalidArguments;
+}
+
 fn runUsage() error{InvalidArguments} {
     std.debug.print("usage: zig build peas -- run [project-directory] -- [game-args]\n", .{});
     return error.InvalidArguments;
@@ -175,6 +197,11 @@ test "known test selections parse" {
     try std.testing.expectEqual(tools.TestSelection.replay, tools.parseTestSelection("replay").?);
     try std.testing.expectEqual(tools.TestSelection.visual, tools.parseTestSelection("visual").?);
     try std.testing.expectEqual(tools.TestSelection.integration, tools.parseTestSelection("integration").?);
+}
+
+test "known package targets parse" {
+    try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
+    try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
 }
 
 test "unknown command is rejected" {

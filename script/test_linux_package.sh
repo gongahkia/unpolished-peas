@@ -7,7 +7,8 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 out=${1:-"$tmp/dist"}
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
 
-"$repo/script/package_linux.sh" "$out"
+cd "$repo"
+zig build peas -- package linux "$out"
 (
     cd "$out"
     sha256sum --check SHA256SUMS
@@ -17,6 +18,9 @@ tar -C "$tmp/unpacked" -xzf "$out/unpolished-peas-bounce-linux-x86_64.tar.gz"
 game="$tmp/unpacked/unpolished-peas-bounce-linux-x86_64/unpolished-peas-bounce"
 test -x "$game"
 test -d "$tmp/unpacked/unpolished-peas-bounce-linux-x86_64/assets"
+manifest="$tmp/unpacked/unpolished-peas-bounce-linux-x86_64/PACKAGE-MANIFEST.txt"
+grep -Fx 'runtime=unpolished-peas-bounce' "$manifest"
+grep -Fx 'assets=assets/' "$manifest"
 runtime=$(ldd "$game" 2>&1 || true)
 if printf '%s\n' "$runtime" | grep -Fq 'not found'; then exit 1; fi
 if printf '%s\n' "$runtime" | grep -Fq 'libSDL'; then exit 1; fi

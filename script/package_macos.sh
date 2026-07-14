@@ -21,6 +21,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict><key>CFBundleExecutable</key><string>unpolished-peas-bounce</string><key>CFBundleIdentifier</key><string>dev.unpolishedpeas.bounce</string><key>CFBundleName</key><string>unpolished-peas Bounce</string><key>CFBundlePackageType</key><string>APPL</string></dict></plist>
 PLIST
+printf '%s\n' 'runtime=Contents/MacOS/unpolished-peas-bounce' 'assets=Contents/assets/' > "$app/Contents/PACKAGE-MANIFEST.txt"
 ditto -c -k --sequesterRsrc --keepParent "$app" "$out/unpolished-peas-bounce-macos-universal.zip"
 (
     cd "$out"
