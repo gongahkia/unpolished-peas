@@ -251,12 +251,14 @@ pub fn build(b: *std.Build) void {
     test_support_step.dependOn(&run_test_support_tests.step);
     const services_tests = b.addTest(.{ .root_module = services });
     const run_services_tests = b.addRunArtifact(services_tests);
+    const services_test_step = b.step("test-services", "Run SDL-free online-service contract tests");
+    services_test_step.dependOn(&run_services_tests.step);
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, test fixtures, and services modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);
     module_test_step.dependOn(&run_content_tests.step);
     module_test_step.dependOn(&run_test_support_tests.step);
-    module_test_step.dependOn(&run_services_tests.step);
+    module_test_step.dependOn(services_test_step);
     const fuzz_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz_targets.zig"),
         .target = target,

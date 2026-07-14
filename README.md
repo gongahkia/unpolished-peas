@@ -32,9 +32,10 @@ The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-pea
 
 Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
 
-`services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. It exposes only a generic local endpoint contract to engine clients and contains no database or vendor integration.
+`services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. Engine provider contracts contain no database or vendor types; the opt-in local PostgreSQL adapter is isolated behind that boundary.
 Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed, transactional service migrations; rerunning it verifies and preserves the recorded schema version.
 `GuestToken` uses 256-bit random values; `GuestCredentialStore` atomically keeps only active identity/session credentials under the caller-provided app-data directory and removes expired records.
+`ServiceProvider` is the engine-facing, value-only guest-session boundary: use `FakeServiceProvider` in engine tests or `LocalPostgresServiceProvider` for local PostgreSQL. Its only operational dependency is the local `psql` CLI; provider errors are limited to unavailable, invalid-request, and invalid-response. A provider borrows its adapter; deinit the adapter after its provider is no longer used.
 `NetContract` explicitly selects authoritative or peer-to-peer mode, host role, and channel reliability; its identity, session, and connection values own no transport and validate bounded IDs, expiry, protocol, and connection limits.
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.

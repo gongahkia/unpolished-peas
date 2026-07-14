@@ -34,4 +34,8 @@ test "downstream module imports remain SDL-free" {
     try store.save(credentials);
     const reused = (try store.loadReusable(15)).?;
     try std.testing.expect(reused.session.eql(credentials.session));
+    var fake_provider = services.FakeServiceProvider{};
+    const provider = fake_provider.provider();
+    const issued = try provider.issueGuestSession(.{ .now_ms = 10, .lifetime_ms = 10 });
+    try std.testing.expectEqual(services.ServiceSessionStatus.active, try provider.validateGuestSession(issued.session));
 }
