@@ -30,6 +30,10 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try createProject(allocator, args);
             return null;
         },
+        .check => {
+            try checkProject(allocator, args);
+            return null;
+        },
         .run => return try runProject(allocator, args),
         else => {
             while (args.next()) |_| {}
@@ -90,6 +94,28 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
     child.stdout_behavior = .Inherit;
     child.stderr_behavior = .Inherit;
     return child.spawnAndWait();
+}
+
+fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const project_path = args.next() orelse ".";
+    if (args.next() != null) return checkUsage();
+    const project_root = tools.discoverProject(allocator, project_path) catch |err| {
+        std.debug.print("peas check: no project build.zig found from {s}\n", .{project_path});
+        return err;
+    };
+    defer allocator.free(project_root);
+    if (try tools.checkProject(allocator, project_root)) |check_issue| {
+        var owned_issue = check_issue;
+        defer owned_issue.deinit(allocator);
+        std.debug.print("peas check: {s}:{d}:{d}: {s}\n", .{ owned_issue.path, owned_issue.line, owned_issue.column, owned_issue.message });
+        return error.ProjectCheckFailed;
+    }
+    std.debug.print("peas check: valid project {s}\n", .{project_root});
+}
+
+fn checkUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- check [project-directory]\n", .{});
+    return error.InvalidArguments;
 }
 
 fn runUsage() error{InvalidArguments} {
