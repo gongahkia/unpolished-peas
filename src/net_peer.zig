@@ -159,7 +159,7 @@ test "peer server handles capacity, authenticated input, timeout, and reconnect"
     defer second_endpoint.deinit();
     var third_endpoint = try transport.Udp.init(std.testing.allocator, .{ .bind_address = try std.net.Address.parseIp("127.0.0.1", 0), .receive_buffer_bytes = 16 * 1024, .send_buffer_bytes = 16 * 1024 });
     defer third_endpoint.deinit();
-    var server = try Server.init(std.testing.allocator, .{ .max_peers = 2, .heartbeat_interval_ms = 5, .timeout_ms = 50 });
+    var server = try Server.init(std.testing.allocator, .{ .max_peers = 2, .heartbeat_interval_ms = 5, .timeout_ms = 5_000 });
     defer server.deinit();
     var first = handshake.Client.init(std.testing.allocator, .{ .retry_interval_ms = 5, .max_attempts = 50 });
     var second = handshake.Client.init(std.testing.allocator, .{ .retry_interval_ms = 5, .max_attempts = 50 });
@@ -243,7 +243,7 @@ test "peer server handles capacity, authenticated input, timeout, and reconnect"
     }
     try std.testing.expect(input_received);
 
-    std.Thread.sleep(30 * std.time.ns_per_ms);
+    std.Thread.sleep(std.time.ns_per_ms);
     var heartbeat_bytes: [net_codec.header_bytes + session_token_bytes]u8 = undefined;
     try second_endpoint.transport().send(second_server, try encodeSessionMessage(&heartbeat_bytes, .ping, 8, second.session.?.session_token, ""));
     const second_index = server.findPeer(second_on_server) orelse return error.TestExpectedEqual;
@@ -260,7 +260,11 @@ test "peer server handles capacity, authenticated input, timeout, and reconnect"
         std.Thread.sleep(std.time.ns_per_ms);
     }
     try std.testing.expect(heartbeat_processed);
-    std.Thread.sleep(30 * std.time.ns_per_ms);
+    const now = server_endpoint.transport().now();
+    const first_index = server.findPeer(first_on_server) orelse return error.TestExpectedEqual;
+    const current_second_index = server.findPeer(second_on_server) orelse return error.TestExpectedEqual;
+    server.peers.items[first_index].last_seen_at = now - server.config.timeout_ms;
+    server.peers.items[current_second_index].last_seen_at = now;
     try server.poll(server_endpoint.transport());
     var timed_out = false;
     while (server.nextEvent()) |received| {

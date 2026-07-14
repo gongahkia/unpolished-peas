@@ -1,12 +1,5 @@
 const std = @import("std");
-
-const Command = enum {
-    new,
-    run,
-    check,
-    @"test",
-    package,
-};
+const tools = @import("unpolished-peas-tools");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -19,18 +12,14 @@ pub fn main() !void {
         printHelp();
         return;
     }
-    const command = parseCommand(argument) orelse {
+    const command = tools.parseCommand(argument) orelse {
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
         return usage();
     };
     try dispatch(command, &args);
 }
 
-fn parseCommand(value: []const u8) ?Command {
-    return std.meta.stringToEnum(Command, value);
-}
-
-fn dispatch(command: Command, args: *std.process.ArgIterator) !void {
+fn dispatch(command: tools.Command, args: *std.process.ArgIterator) !void {
     while (args.next()) |_| {}
     std.debug.print("peas {s}: command registered but not implemented yet\n", .{@tagName(command)});
     return error.CommandNotImplemented;
@@ -42,22 +31,17 @@ fn usage() error{InvalidArguments} {
 }
 
 fn printHelp() void {
-    std.debug.print(
-        \\usage: zig build peas -- <command> [args]
-        \\commands: new run check test package
-        \\use `zig build peas -- help` for this message
-        \\ 
-    , .{});
+    tools.printHelp();
 }
 
 test "known commands parse" {
-    try std.testing.expectEqual(Command.new, parseCommand("new").?);
-    try std.testing.expectEqual(Command.run, parseCommand("run").?);
-    try std.testing.expectEqual(Command.check, parseCommand("check").?);
-    try std.testing.expectEqual(Command.@"test", parseCommand("test").?);
-    try std.testing.expectEqual(Command.package, parseCommand("package").?);
+    try std.testing.expectEqual(tools.Command.new, tools.parseCommand("new").?);
+    try std.testing.expectEqual(tools.Command.run, tools.parseCommand("run").?);
+    try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
+    try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
+    try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
 }
 
 test "unknown command is rejected" {
-    try std.testing.expect(parseCommand("publish") == null);
+    try std.testing.expect(tools.parseCommand("publish") == null);
 }

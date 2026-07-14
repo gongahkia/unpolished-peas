@@ -34,6 +34,19 @@ pub fn build(b: *std.Build) void {
     });
     addStb(peas);
 
+    const tools = b.addModule("unpolished-peas-tools", .{
+        .root_source_file = b.path("src/tools.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    });
+
+    const services = b.addModule("unpolished-peas-services", .{
+        .root_source_file = b.path("src/services.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
+
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
         .target = target,
@@ -90,6 +103,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/peas.zig"),
             .target = b.graph.host,
             .optimize = optimize,
+            .imports = &.{.{ .name = "unpolished-peas-tools", .module = tools }},
         }),
     });
     const run_peas = b.addRunArtifact(peas_cli);
@@ -162,6 +176,14 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    const tools_tests = b.addTest(.{ .root_module = tools });
+    const run_tools_tests = b.addRunArtifact(tools_tests);
+    const services_tests = b.addTest(.{ .root_module = services });
+    const run_services_tests = b.addRunArtifact(services_tests);
+    const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and services modules");
+    module_test_step.dependOn(&run_tests.step);
+    module_test_step.dependOn(&run_tools_tests.step);
+    module_test_step.dependOn(&run_services_tests.step);
     const fuzz_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/fuzz_targets.zig"),
         .target = target,
