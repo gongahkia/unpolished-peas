@@ -40,6 +40,7 @@ pub const Command = enum {
     check,
     compile,
     migrate,
+    import_tiled,
     @"test",
     package,
     docs,
@@ -126,6 +127,7 @@ pub const CheckIssueKind = enum {
 };
 
 pub fn parseCommand(value: []const u8) ?Command {
+    if (std.mem.eql(u8, value, "import-tiled")) return .import_tiled;
     return std.meta.stringToEnum(Command, value);
 }
 
@@ -162,10 +164,11 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run check compile migrate test package docs
+        \\commands: new run check compile migrate import-tiled test package docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos>]
         \\compile: zig build peas -- compile [project-directory] [output-directory]
         \\migrate: zig build peas -- migrate <scene|catalog|map> <input> <output>
+        \\import-tiled: zig build peas -- import-tiled <input.tmj> <output.upmap>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\package: zig build peas -- package <linux|macos> [output-directory]

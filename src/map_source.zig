@@ -1,4 +1,6 @@
 const std = @import("std");
+const tilemap = @import("tilemap.zig");
+const Vec2 = @import("math.zig").Vec2;
 
 pub const native_format = "unpolished-peas-map";
 pub const native_version: u32 = 1;
@@ -24,7 +26,19 @@ pub const TileSet = struct {
     tile_height: f32,
     margin: u32 = 0,
     spacing: u32 = 0,
+    image_paths: []const ?[]const u8 = &.{},
     atlas_frames: []const []const u8 = &.{},
+    animations: []const Animation = &.{},
+};
+
+pub const AnimationFrame = struct {
+    tile_id: u32,
+    duration: f32,
+};
+
+pub const Animation = struct {
+    tile_id: u32,
+    frames: []const AnimationFrame,
 };
 
 pub const Tile = struct {
@@ -103,6 +117,98 @@ pub const Source = struct {
         try std.zon.stringify.serialize(self, .{}, &output.writer);
         return allocator.dupe(u8, output.written());
     }
+
+    pub fn build(self: Source, allocator: std.mem.Allocator) !tilemap.TileMap {
+        var result = try tilemap.TileMap.init(allocator, .{ .x = self.metadata.tile_width, .y = self.metadata.tile_height }, self.metadata.chunk_size);
+        errdefer result.deinit();
+        result.projection = switch (self.metadata.projection) {
+            .orthogonal => .orthogonal,
+            .isometric => .isometric,
+        };
+        for (self.tilesets) |tileset| {
+            const index = try result.addTileSet(tileset.id, switch (tileset.kind) {
+                .grid_image => .grid_image,
+                .image_collection => .image_collection,
+                .atlas_frames => .atlas_frames,
+            }, tileset.path, .{ .x = tileset.tile_width, .y = tileset.tile_height });
+            var target = &result.tilesets.items[index];
+            target.margin = tileset.margin;
+            target.spacing = tileset.spacing;
+            target.image_paths = try allocator.alloc(?[]u8, tileset.image_paths.len);
+            @memset(target.image_paths, null);
+            errdefer {
+                for (target.image_paths) |image_path| if (image_path) |path| allocator.free(path);
+                allocator.free(target.image_paths);
+                target.image_paths = &.{};
+            }
+            for (tileset.image_paths, 0..) |image_path, image_index| {
+                if (image_path) |path| target.image_paths[image_index] = try allocator.dupe(u8, path);
+            }
+            target.atlas_frames = try allocator.alloc([]u8, tileset.atlas_frames.len);
+            var atlas_initialized: usize = 0;
+            errdefer {
+                for (target.atlas_frames[0..atlas_initialized]) |frame| allocator.free(frame);
+                allocator.free(target.atlas_frames);
+                target.atlas_frames = &.{};
+            }
+            for (tileset.atlas_frames, 0..) |frame, frame_index| {
+                target.atlas_frames[frame_index] = try allocator.dupe(u8, frame);
+                atlas_initialized += 1;
+            }
+            target.animations = try allocator.alloc(tilemap.TileAnimation, tileset.animations.len);
+            var animation_initialized: usize = 0;
+            errdefer {
+                for (target.animations[0..animation_initialized]) |animation| allocator.free(animation.frames);
+                allocator.free(target.animations);
+                target.animations = &.{};
+            }
+            for (tileset.animations, 0..) |animation, animation_index| {
+                target.animations[animation_index] = .{
+                    .tile_id = animation.tile_id,
+                    .frames = try allocator.alloc(tilemap.TileAnimationFrame, animation.frames.len),
+                };
+                animation_initialized += 1;
+                for (animation.frames, 0..) |frame, frame_index| {
+                    target.animations[animation_index].frames[frame_index] = .{
+                        .tile_id = frame.tile_id,
+                        .duration = frame.duration,
+                    };
+                }
+            }
+        }
+        for (self.layers, 0..) |layer, layer_index| {
+            const parent = if (layer.parent) |parent_id| findLayerIndex(self.layers, layer_index, parent_id) orelse return error.InvalidParentLayer else null;
+            const index = try result.addLayer(layer.name, switch (layer.kind) {
+                .tiles => .tiles,
+                .int_grid => .int_grid,
+                .group => .group,
+                .objects => .objects,
+            }, parent);
+            result.layers.items[index].visible = layer.visible;
+            result.layers.items[index].opacity = layer.opacity;
+            result.layers.items[index].offset = .{ .x = layer.offset_x, .y = layer.offset_y };
+            result.layers.items[index].parallax = .{ .x = layer.parallax_x, .y = layer.parallax_y };
+            result.layers.items[index].properties = try buildProperties(allocator, layer.properties);
+            switch (layer.kind) {
+                .tiles => for (layer.cells) |cell| {
+                    const tiles = try allocator.alloc(tilemap.Tile, cell.tiles.len);
+                    defer allocator.free(tiles);
+                    for (cell.tiles, 0..) |tile, tile_index| {
+                        const tileset = findTileSetIndex(self.tilesets, tile.tileset) orelse return error.UnknownTileSet;
+                        tiles[tile_index] = .{ .tileset = tileset, .id = tile.id, .flags = .{ .flip_x = tile.flip_x, .flip_y = tile.flip_y, .diagonal = tile.diagonal }, .opacity = tile.opacity };
+                    }
+                    try result.replaceTileStack(index, .{ .x = cell.x, .y = cell.y }, tiles);
+                },
+                .int_grid => for (layer.cells) |cell| try result.setIntGrid(index, .{ .x = cell.x, .y = cell.y }, cell.int_grid.?),
+                .objects => for (layer.objects) |object| {
+                    try result.layers.items[index].objects.ensureUnusedCapacity(allocator, 1);
+                    result.layers.items[index].objects.appendAssumeCapacity(try buildObject(allocator, object));
+                },
+                .group => {},
+            }
+        }
+        return result;
+    }
 };
 
 pub const Diagnostic = struct {
@@ -152,6 +258,12 @@ fn validateTileSets(map: Source, source: []const u8, diagnostic: *Diagnostic) !v
         for (map.tilesets[0..index]) |previous| if (std.mem.eql(u8, previous.id, tileset.id)) return fail(diagnostic, source, "tilesets", "tileset ids must be unique");
         for (tileset.atlas_frames, 0..) |frame, frame_index| {
             if (frame.len == 0 or (frame_index != 0 and std.mem.order(u8, tileset.atlas_frames[frame_index - 1], frame) != .lt)) return fail(diagnostic, source, "atlas_frames", "atlas frame names must be nonempty, unique, and sorted");
+        }
+        if (tileset.kind != .image_collection and tileset.image_paths.len != 0) return fail(diagnostic, source, "image_paths", "only image-collection tilesets can contain per-tile image paths");
+        for (tileset.image_paths) |image_path| if (image_path) |path| if (!safePath(path)) return fail(diagnostic, source, "image_paths", "image paths must be safe relative paths");
+        for (tileset.animations, 0..) |animation, animation_index| {
+            if (animation.frames.len == 0 or (animation_index != 0 and tileset.animations[animation_index - 1].tile_id >= animation.tile_id)) return fail(diagnostic, source, "animations", "tile animations must have unique sorted ids and nonempty frames");
+            for (animation.frames) |frame| if (!positiveFinite(frame.duration)) return fail(diagnostic, source, "animations", "tile animation frame durations must be positive and finite");
         }
     }
 }
@@ -238,6 +350,71 @@ fn findPriorLayer(layers: []const Layer, end: usize, id: []const u8) ?Layer {
 fn hasTileSet(tilesets: []const TileSet, id: []const u8) bool {
     for (tilesets) |tileset| if (std.mem.eql(u8, tileset.id, id)) return true;
     return false;
+}
+
+fn findTileSetIndex(tilesets: []const TileSet, id: []const u8) ?u16 {
+    for (tilesets, 0..) |tileset, index| if (std.mem.eql(u8, tileset.id, id)) return @intCast(index);
+    return null;
+}
+
+fn findLayerIndex(layers: []const Layer, end: usize, id: []const u8) ?u32 {
+    for (layers[0..end], 0..) |layer, index| if (std.mem.eql(u8, layer.id, id)) return @intCast(index);
+    return null;
+}
+
+fn buildProperties(allocator: std.mem.Allocator, source: []const Property) ![]tilemap.Property {
+    const output = try allocator.alloc(tilemap.Property, source.len);
+    var initialized: usize = 0;
+    errdefer {
+        for (output[0..initialized]) |property| {
+            allocator.free(property.name);
+            switch (property.value) {
+                .string => |value| allocator.free(value),
+                else => {},
+            }
+        }
+        allocator.free(output);
+    }
+    for (source, 0..) |property, index| {
+        output[index].name = try allocator.dupe(u8, property.name);
+        errdefer allocator.free(output[index].name);
+        output[index].value = if (property.string) |value|
+            .{ .string = try allocator.dupe(u8, value) }
+        else if (property.integer) |value|
+            .{ .integer = value }
+        else if (property.float) |value|
+            .{ .float = value }
+        else
+            .{ .boolean = property.boolean.? };
+        initialized += 1;
+    }
+    return output;
+}
+
+fn buildObject(allocator: std.mem.Allocator, source: Object) !tilemap.MapObject {
+    const id = std.fmt.parseInt(u32, source.id, 10) catch return error.InvalidObjectId;
+    const name = try allocator.dupe(u8, source.name);
+    errdefer allocator.free(name);
+    const class_name = try allocator.dupe(u8, source.class_name);
+    errdefer allocator.free(class_name);
+    const shape: tilemap.ObjectShape = switch (source.shape) {
+        .rectangle => .rectangle,
+        .ellipse => .ellipse,
+        .point => .point,
+        .polygon, .polyline => blk: {
+            const points = try allocator.alloc(Vec2, source.points.len);
+            errdefer allocator.free(points);
+            for (source.points, 0..) |point, index| points[index] = .{ .x = point.x, .y = point.y };
+            break :blk if (source.shape == .polygon) .{ .polygon = points } else .{ .polyline = points };
+        },
+    };
+    errdefer switch (shape) {
+        .polygon => |points| allocator.free(points),
+        .polyline => |points| allocator.free(points),
+        else => {},
+    };
+    const properties = try buildProperties(allocator, source.properties);
+    return .{ .id = id, .name = name, .class_name = class_name, .bounds = .{ .x = source.x, .y = source.y, .w = source.width, .h = source.height }, .shape = shape, .properties = properties };
 }
 
 fn cellOrder(left: Cell, right: Cell) std.math.Order {
