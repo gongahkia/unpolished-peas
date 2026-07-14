@@ -13,6 +13,7 @@ const Game = struct {
         .width = width,
         .height = height,
         .scale = 5,
+        .pause_policy = .unfocused,
         .clear_color = up.Color.rgb(14, 18, 24),
     };
 

@@ -71,6 +71,8 @@ pub fn main() !void {
 
 sdl.playGame(Game) reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. sdl.play(config, Game) and sdl.run(config, state, callbacks) remain equivalent low-level paths; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a Game type.
 
+Set Game.config.pause_policy to .unfocused or .minimized to suppress update callbacks while that desktop state applies. Focus, minimize, restore, resize, and close stay ordered Event callbacks; draw continues with ctx.dt set to zero, leaving game state under user control.
+
 ## Starter Project
 
 From an unpolished-peas checkout:
