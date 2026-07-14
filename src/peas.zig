@@ -321,7 +321,7 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
         if (output_directory) |value| try command_args.appendSlice(allocator, &.{ "-OutputDirectory", value });
         try command_args.appendSlice(allocator, &.{ "-Game", @tagName(game) });
     } else {
-        try command_args.append(script_path);
+        try command_args.append(allocator, script_path);
         if (output_directory) |value| try command_args.append(allocator, value);
         try command_args.appendSlice(allocator, &.{ "--game", @tagName(game) });
     }
