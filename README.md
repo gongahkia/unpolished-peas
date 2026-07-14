@@ -158,13 +158,14 @@ zig build upmapc -- level.upmap level.upmapb
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations with leak checks.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
 
-`script/package_macos.sh` writes a universal macOS bounce app, zip, and checksum manifest; `script/test_macos_package.sh` launches its bounded smoke outside the repository.
-`script/package_linux.sh` writes an x86_64 Linux bounce tarball and checksum manifest; `script/test_linux_package.sh` verifies the archive, bundled SDL linkage, asset layout, and bounded smoke outside the repository.
+`zig build peas -- package macos [output-directory]` writes a universal macOS bounce app, archive, checksum, and runtime/assets manifest; `script/test_macos_package.sh` launches its bounded smoke outside the repository.
+`zig build peas -- package linux [output-directory]` writes an x86_64 Linux bounce archive, checksum, and runtime/assets manifest; `script/test_linux_package.sh` verifies bundled SDL linkage, asset layout, and bounded smoke outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
 `zig build peas -- check [project-directory]` statically validates the manifest, project build script, native source, assets, and declared Zig compatibility without starting the game.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
+`zig build peas -- package <linux|macos> [output-directory]` creates the selected portable archive through the project CLI.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL playback reopens after device removal or format changes.
