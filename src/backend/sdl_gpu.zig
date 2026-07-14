@@ -321,6 +321,8 @@ pub const Event = union(enum) {
     gamepad_connected: i32,
     gamepad_disconnected: i32,
     audio_device_changed,
+    gpu_device_reset,
+    gpu_device_lost,
 };
 
 pub const Context = struct {
@@ -841,10 +843,12 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
     defer dev.deinit();
     var presenter = try Presenter.init(device, config.width, config.height);
-    defer presenter.deinit(device);
+    var presenter_live = true;
+    defer if (presenter_live) presenter.deinit(device);
 
     var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
+    var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
     callLoopInit(state, callbacks, &ctx) catch |err| {
         dev.failure(.init, err);
@@ -863,12 +867,30 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
         var close_requested = false;
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery) catch |err| blk: {
             dev.failure(.event, err);
             failure = .{ .phase = .event, .err = err };
             break :blk !close_requested;
         };
         actions.update(input);
+        switch (gpu_recovery) {
+            .ready => {},
+            .reset_pending => {
+                presenter.deinit(device);
+                presenter_live = false;
+                presenter = Presenter.init(device, config.width, config.height) catch |err| {
+                    dev.failure(.gpu_recovery, err);
+                    failure = .{ .phase = .gpu_recovery, .err = err };
+                    continue;
+                };
+                presenter_live = true;
+                gpu_recovery = .ready;
+            },
+            .lost => {
+                dev.failure(.gpu_recovery, error.GpuDeviceLost);
+                failure = .{ .phase = .gpu_recovery, .err = error.GpuDeviceLost };
+            },
+        }
         if (failure) |current| {
             drawFailure(&canvas, current);
             try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation);
@@ -1114,6 +1136,12 @@ test "desktop pause policy is opt-in and deterministic" {
     try std.testing.expect(shouldPause(.minimized, .{ .focused = true, .minimized = true }));
 }
 
+test "GPU recovery state bounds reset and loss transitions" {
+    try std.testing.expectEqual(GpuRecovery.reset_pending, nextGpuRecovery(.ready, .gpu_device_reset));
+    try std.testing.expectEqual(GpuRecovery.lost, nextGpuRecovery(.reset_pending, .gpu_device_lost));
+    try std.testing.expectEqual(GpuRecovery.lost, nextGpuRecovery(.lost, .gpu_device_reset));
+}
+
 test "desktop lifecycle events preserve focus minimize resize and quit order" {
     const State = struct {
         calls: [7]u8 = undefined,
@@ -1223,6 +1251,20 @@ const DesktopState = struct {
     minimized: bool = false,
 };
 
+const GpuRecovery = enum {
+    ready,
+    reset_pending,
+    lost,
+};
+
+fn nextGpuRecovery(current: GpuRecovery, event: Event) GpuRecovery {
+    return switch (event) {
+        .gpu_device_lost => .lost,
+        .gpu_device_reset => if (current == .lost) .lost else .reset_pending,
+        else => current,
+    };
+}
+
 fn shouldPause(policy: PausePolicy, state: DesktopState) bool {
     return switch (policy) {
         .never => false,
@@ -1235,6 +1277,7 @@ const FailurePhase = enum {
     init,
     event,
     asset_reload,
+    gpu_recovery,
     update,
     draw,
     screenshot_path,
@@ -1244,6 +1287,7 @@ const FailurePhase = enum {
             .init => "init",
             .event => "event",
             .asset_reload => "asset reload",
+            .gpu_recovery => "GPU recovery",
             .update => "update",
             .draw => "draw",
             .screenshot_path => "screenshot path",
@@ -1552,7 +1596,7 @@ const Presenter = struct {
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
         c.SDL_ReleaseGPUTexture(device, self.effect_texture);
         c.SDL_ReleaseGPUTexture(device, self.render_target);
-        self.resources.destroyRenderTarget(self.render_target_handle) catch unreachable;
+        self.resources.invalidateAll();
         self.resources.deinit();
         self.* = undefined;
     }
@@ -2238,7 +2282,7 @@ fn createPrimitiveShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c
     }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
-fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
@@ -2263,6 +2307,14 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             c.SDL_EVENT_WINDOW_RESTORED => {
                 desktop_state.minimized = false;
                 if (initialized) try callLoopEvent(state, callbacks, ctx, .restored);
+            },
+            c.SDL_EVENT_RENDER_DEVICE_RESET => {
+                gpu_recovery.* = nextGpuRecovery(gpu_recovery.*, .gpu_device_reset);
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .gpu_device_reset);
+            },
+            c.SDL_EVENT_RENDER_DEVICE_LOST => {
+                gpu_recovery.* = nextGpuRecovery(gpu_recovery.*, .gpu_device_lost);
+                if (initialized) try callLoopEvent(state, callbacks, ctx, .gpu_device_lost);
             },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                 if (event.key.repeat) continue;
