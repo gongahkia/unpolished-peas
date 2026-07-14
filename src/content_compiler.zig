@@ -4,6 +4,8 @@ const cache = @import("content_cache.zig");
 const map_source = @import("map_source.zig");
 const scene = @import("scene.zig");
 
+pub const migration = @import("content_migration.zig");
+
 const max_source_bytes = 64 * 1024 * 1024;
 const state_format = "unpolished-peas-content-state";
 const state_version: u32 = 1;

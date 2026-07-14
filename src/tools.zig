@@ -39,6 +39,7 @@ pub const Command = enum {
     run,
     check,
     compile,
+    migrate,
     @"test",
     package,
     docs,
@@ -161,9 +162,10 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run check compile test package docs
+        \\commands: new run check compile migrate test package docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos>]
         \\compile: zig build peas -- compile [project-directory] [output-directory]
+        \\migrate: zig build peas -- migrate <scene|catalog|map> <input> <output>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\package: zig build peas -- package <linux|macos> [output-directory]
