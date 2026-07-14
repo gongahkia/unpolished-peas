@@ -49,11 +49,43 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try importTiledContent(allocator, args);
             return null;
         },
+        .import_ldtk => {
+            try importLdtkContent(allocator, args);
+            return null;
+        },
         .run => return try runProject(allocator, args),
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
+}
+
+fn importLdtkContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const input_path = args.next() orelse return importLdtkUsage();
+    const output_root = args.next() orelse return importLdtkUsage();
+    if (args.next() != null) return importLdtkUsage();
+    var diagnostic = content.ldtk_importer.Diagnostic{};
+    var result = content.ldtk_importer.importFile(allocator, input_path, &diagnostic) catch |err| {
+        std.debug.print("peas import-ldtk: {s}:{d}:{d}: {s}\n", .{ input_path, diagnostic.line, diagnostic.column, diagnostic.message });
+        return err;
+    };
+    defer result.deinit(allocator);
+    const maps_root = try std.fs.path.join(allocator, &.{ output_root, "maps" });
+    defer allocator.free(maps_root);
+    try std.fs.cwd().makePath(maps_root);
+    for (result.maps) |map| {
+        const filename = try std.fmt.allocPrint(allocator, "{s}.upmap", .{map.name});
+        defer allocator.free(filename);
+        const output_path = try std.fs.path.join(allocator, &.{ maps_root, filename });
+        defer allocator.free(output_path);
+        try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = map.source });
+    }
+    std.debug.print("peas import-ldtk: {s} -> {s}/maps ({d} maps)\n", .{ input_path, output_root, result.maps.len });
+}
+
+fn importLdtkUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- import-ldtk <input.ldtk> <output-directory>\n", .{});
+    return error.InvalidArguments;
 }
 
 fn importTiledContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -341,6 +373,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
     try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
     try std.testing.expectEqual(tools.Command.import_tiled, tools.parseCommand("import-tiled").?);
+    try std.testing.expectEqual(tools.Command.import_ldtk, tools.parseCommand("import-ldtk").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
