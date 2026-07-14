@@ -1,0 +1,8 @@
+.{
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.2.tar.gz",
+        },
+    },
+}

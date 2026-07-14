@@ -2,9 +2,15 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const max_project_file_bytes = 1024 * 1024;
+const supported_engine_version = "v0.0.3";
 
 const ProjectManifest = struct {
     minimum_zig_version: []const u8,
+    dependencies: ?struct {
+        unpolished_peas: ?struct {
+            url: ?[]const u8 = null,
+        } = null,
+    } = null,
 };
 
 pub const Command = enum {
@@ -52,6 +58,7 @@ pub const DiagnosticContext = enum {
 };
 
 pub const CheckIssue = struct {
+    kind: CheckIssueKind,
     path: []u8,
     line: usize,
     column: usize,
@@ -62,6 +69,18 @@ pub const CheckIssue = struct {
         allocator.free(self.message);
         self.* = undefined;
     }
+};
+
+pub const CheckIssueKind = enum {
+    missing_manifest,
+    invalid_manifest,
+    incompatible_zig,
+    incompatible_engine,
+    missing_build,
+    invalid_build,
+    missing_source,
+    invalid_source,
+    missing_assets,
 };
 
 pub fn parseCommand(value: []const u8) ?Command {
@@ -98,7 +117,7 @@ pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
         \\commands: new run check test package
-        \\check: zig build peas -- check [project-directory]
+        \\check: zig build peas -- check [project-directory] [--target <linux|macos>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\package: zig build peas -- package <linux|macos> [output-directory]
@@ -139,7 +158,7 @@ pub fn checkProject(allocator: std.mem.Allocator, root: []const u8) !?CheckIssue
     const manifest_path = try std.fs.path.join(allocator, &.{ root, "build.zig.zon" });
     defer allocator.free(manifest_path);
     const manifest_source = std.fs.cwd().readFileAllocOptions(allocator, manifest_path, max_project_file_bytes, null, .of(u8), 0) catch |err| switch (err) {
-        error.FileNotFound => return try issue(allocator, manifest_path, 1, 1, "missing project manifest"),
+        error.FileNotFound => return try issue(allocator, .missing_manifest, manifest_path, 1, 1, "missing project manifest"),
         else => return err,
     };
     defer allocator.free(manifest_source);
@@ -154,11 +173,12 @@ pub fn checkProject(allocator: std.mem.Allocator, root: []const u8) !?CheckIssue
 
     const version_location = fieldLocation(manifest_source, "minimum_zig_version");
     const minimum_version = std.SemanticVersion.parse(manifest.minimum_zig_version) catch
-        return try issue(allocator, manifest_path, version_location.line, version_location.column, "minimum_zig_version is not a semantic version");
+        return try issue(allocator, .incompatible_zig, manifest_path, version_location.line, version_location.column, "minimum_zig_version is not a semantic version");
     const current_version = std.SemanticVersion.parse(builtin.zig_version_string) catch unreachable;
     if (current_version.order(minimum_version) == .lt) {
         return try issueFmt(
             allocator,
+            .incompatible_zig,
             manifest_path,
             version_location.line,
             version_location.column,
@@ -167,22 +187,37 @@ pub fn checkProject(allocator: std.mem.Allocator, root: []const u8) !?CheckIssue
         );
     }
 
-    if (try checkZigFile(allocator, root, "build.zig", "missing project build configuration")) |value| return value;
-    if (try checkZigFile(allocator, root, "src/main.zig", "missing project source")) |value| return value;
+    if (manifest.dependencies) |dependencies| if (dependencies.unpolished_peas) |engine| if (engine.url) |url| {
+        if (std.mem.indexOf(u8, url, supported_engine_version) == null) {
+            const engine_location = fieldLocation(manifest_source, "unpolished_peas");
+            return try issueFmt(
+                allocator,
+                .incompatible_engine,
+                manifest_path,
+                engine_location.line,
+                engine_location.column,
+                "requires unpolished-peas {s}",
+                .{supported_engine_version},
+            );
+        }
+    };
+
+    if (try checkZigFile(allocator, root, "build.zig", .missing_build, .invalid_build, "missing project build configuration")) |value| return value;
+    if (try checkZigFile(allocator, root, "src/main.zig", .missing_source, .invalid_source, "missing project source")) |value| return value;
     const assets_path = try std.fs.path.join(allocator, &.{ root, "assets" });
     defer allocator.free(assets_path);
     validateProjectAssets(allocator, root) catch |err| switch (err) {
-        error.ProjectAssetsMissing => return try issue(allocator, assets_path, 1, 1, "missing project assets"),
+        error.ProjectAssetsMissing => return try issue(allocator, .missing_assets, assets_path, 1, 1, "missing project assets"),
         else => return err,
     };
     return null;
 }
 
-fn checkZigFile(allocator: std.mem.Allocator, root: []const u8, relative_path: []const u8, missing_message: []const u8) !?CheckIssue {
+fn checkZigFile(allocator: std.mem.Allocator, root: []const u8, relative_path: []const u8, missing_kind: CheckIssueKind, invalid_kind: CheckIssueKind, missing_message: []const u8) !?CheckIssue {
     const path = try std.fs.path.join(allocator, &.{ root, relative_path });
     defer allocator.free(path);
     const source = std.fs.cwd().readFileAllocOptions(allocator, path, max_project_file_bytes, null, .of(u8), 0) catch |err| switch (err) {
-        error.FileNotFound => return try issue(allocator, path, 1, 1, missing_message),
+        error.FileNotFound => return try issue(allocator, missing_kind, path, 1, 1, missing_message),
         else => return err,
     };
     defer allocator.free(source);
@@ -191,25 +226,25 @@ fn checkZigFile(allocator: std.mem.Allocator, root: []const u8, relative_path: [
     if (ast.errors.len == 0) return null;
     const parse_error = ast.errors[0];
     const location = ast.tokenLocation(ast.errorOffset(parse_error), parse_error.token);
-    return try issue(allocator, path, location.line + 1, location.column + 1, "invalid Zig source");
+    return try issue(allocator, invalid_kind, path, location.line + 1, location.column + 1, "invalid Zig source");
 }
 
 fn zonIssue(allocator: std.mem.Allocator, path: []const u8, diagnostics: *const std.zon.parse.Diagnostics) !CheckIssue {
     var errors = diagnostics.iterateErrors();
-    const parse_error = errors.next() orelse return issue(allocator, path, 1, 1, "invalid project manifest");
+    const parse_error = errors.next() orelse return issue(allocator, .invalid_manifest, path, 1, 1, "invalid project manifest");
     const location = parse_error.getLocation(diagnostics);
-    return issueFmt(allocator, path, location.line + 1, location.column + 1, "{f}", .{parse_error.fmtMessage(diagnostics)});
+    return issueFmt(allocator, .invalid_manifest, path, location.line + 1, location.column + 1, "{f}", .{parse_error.fmtMessage(diagnostics)});
 }
 
-fn issue(allocator: std.mem.Allocator, path: []const u8, line: usize, column: usize, message: []const u8) !CheckIssue {
-    return issueFmt(allocator, path, line, column, "{s}", .{message});
+fn issue(allocator: std.mem.Allocator, kind: CheckIssueKind, path: []const u8, line: usize, column: usize, message: []const u8) !CheckIssue {
+    return issueFmt(allocator, kind, path, line, column, "{s}", .{message});
 }
 
-fn issueFmt(allocator: std.mem.Allocator, path: []const u8, line: usize, column: usize, comptime format: []const u8, args: anytype) !CheckIssue {
+fn issueFmt(allocator: std.mem.Allocator, kind: CheckIssueKind, path: []const u8, line: usize, column: usize, comptime format: []const u8, args: anytype) !CheckIssue {
     const owned_path = try allocator.dupe(u8, path);
     errdefer allocator.free(owned_path);
     const message = try std.fmt.allocPrint(allocator, format, args);
-    return .{ .path = owned_path, .line = line, .column = column, .message = message };
+    return .{ .kind = kind, .path = owned_path, .line = line, .column = column, .message = message };
 }
 
 fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, column: usize } {
@@ -272,6 +307,25 @@ test "tools discover a project above the selected directory" {
     try validateProjectAssets(std.testing.allocator, discovered);
 }
 
+test "tools discover a fixture from a nested external path without mutation" {
+    const root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "fixtures/peas-check/valid");
+    defer std.testing.allocator.free(root);
+    const nested = try std.fs.path.join(std.testing.allocator, &.{ root, "src" });
+    defer std.testing.allocator.free(nested);
+    const discovered = try discoverProject(std.testing.allocator, nested);
+    defer std.testing.allocator.free(discovered);
+    try std.testing.expectEqualStrings(root, discovered);
+    const manifest_path = try std.fs.path.join(std.testing.allocator, &.{ root, "build.zig.zon" });
+    defer std.testing.allocator.free(manifest_path);
+    const before = try std.fs.cwd().readFileAlloc(std.testing.allocator, manifest_path, 4096);
+    defer std.testing.allocator.free(before);
+    const result = try checkProject(std.testing.allocator, root);
+    try std.testing.expect(result == null);
+    const after = try std.fs.cwd().readFileAlloc(std.testing.allocator, manifest_path, 4096);
+    defer std.testing.allocator.free(after);
+    try std.testing.expectEqualStrings(before, after);
+}
+
 test "tools reject projects without assets" {
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
@@ -283,16 +337,18 @@ test "tools reject projects without assets" {
 }
 
 test "tools validate project fixture matrix without runtime imports" {
-    const cases = [_]struct { name: []const u8, path_suffix: ?[]const u8, message: ?[]const u8 }{
-        .{ .name = "valid", .path_suffix = null, .message = null },
-        .{ .name = "invalid-zon", .path_suffix = "build.zig.zon", .message = "expected" },
-        .{ .name = "missing-minimum-zig", .path_suffix = "build.zig.zon", .message = "missing" },
-        .{ .name = "unsupported-zig", .path_suffix = "build.zig.zon", .message = "requires Zig" },
-        .{ .name = "invalid-build", .path_suffix = "build.zig", .message = "invalid Zig source" },
-        .{ .name = "missing-main", .path_suffix = "src/main.zig", .message = "missing project source" },
-        .{ .name = "invalid-main", .path_suffix = "src/main.zig", .message = "invalid Zig source" },
-        .{ .name = "missing-assets", .path_suffix = "assets", .message = "missing project assets" },
-        .{ .name = "asset-file", .path_suffix = "assets", .message = "missing project assets" },
+    const cases = [_]struct { name: []const u8, path_suffix: ?[]const u8, message: ?[]const u8, kind: ?CheckIssueKind }{
+        .{ .name = "valid", .path_suffix = null, .message = null, .kind = null },
+        .{ .name = "invalid-zon", .path_suffix = "build.zig.zon", .message = "expected", .kind = .invalid_manifest },
+        .{ .name = "missing-minimum-zig", .path_suffix = "build.zig.zon", .message = "missing", .kind = .invalid_manifest },
+        .{ .name = "unsupported-zig", .path_suffix = "build.zig.zon", .message = "requires Zig", .kind = .incompatible_zig },
+        .{ .name = "unsupported-engine", .path_suffix = "build.zig.zon", .message = "requires unpolished-peas", .kind = .incompatible_engine },
+        .{ .name = "missing-manifest", .path_suffix = "build.zig.zon", .message = "missing project manifest", .kind = .missing_manifest },
+        .{ .name = "invalid-build", .path_suffix = "build.zig", .message = "invalid Zig source", .kind = .invalid_build },
+        .{ .name = "missing-main", .path_suffix = "src/main.zig", .message = "missing project source", .kind = .missing_source },
+        .{ .name = "invalid-main", .path_suffix = "src/main.zig", .message = "invalid Zig source", .kind = .invalid_source },
+        .{ .name = "missing-assets", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
+        .{ .name = "asset-file", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
     };
     for (cases) |case| {
         const fixture_path = try std.fs.path.join(std.testing.allocator, &.{ "fixtures", "peas-check", case.name });
@@ -303,6 +359,7 @@ test "tools validate project fixture matrix without runtime imports" {
         if (case.message) |expected_message| {
             var check_issue = result orelse return error.TestExpectedEqual;
             defer check_issue.deinit(std.testing.allocator);
+            try std.testing.expectEqual(case.kind.?, check_issue.kind);
             try std.testing.expect(check_issue.line > 0 and check_issue.column > 0);
             try std.testing.expect(std.mem.endsWith(u8, check_issue.path, case.path_suffix.?));
             try std.testing.expect(std.mem.indexOf(u8, check_issue.message, expected_message) != null);

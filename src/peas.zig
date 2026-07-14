@@ -91,25 +91,50 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
 }
 
 fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
-    const project_path = args.next() orelse ".";
-    if (args.next() != null) return checkUsage();
+    var project_path: []const u8 = ".";
+    var project_path_set = false;
+    var target: ?tools.PackageTarget = null;
+    while (args.next()) |argument| {
+        if (std.mem.eql(u8, argument, "--target")) {
+            if (target != null) return checkUsage();
+            const target_argument = args.next() orelse return checkUsage();
+            target = tools.parsePackageTarget(target_argument) orelse {
+                std.debug.print("peas check: unsupported target {s}\npeas check: recovery: zig build peas -- check --target linux\n", .{target_argument});
+                return error.UnsupportedTarget;
+            };
+        } else if (!project_path_set) {
+            project_path = argument;
+            project_path_set = true;
+        } else return checkUsage();
+    }
     const project_root = tools.discoverProject(allocator, project_path) catch |err| {
-        std.debug.print("peas check: no project build.zig found from {s}\n", .{project_path});
+        std.debug.print("peas check: no project build.zig found from {s}\npeas check: recovery: zig build peas -- new <directory>\n", .{project_path});
         return err;
     };
     defer allocator.free(project_root);
+    if (target) |value| std.debug.print("peas check: target {s}\n", .{@tagName(value)});
     if (try tools.checkProject(allocator, project_root)) |check_issue| {
         var owned_issue = check_issue;
         defer owned_issue.deinit(allocator);
         std.debug.print("peas check: {s}:{d}:{d}: {s}\n", .{ owned_issue.path, owned_issue.line, owned_issue.column, owned_issue.message });
+        try printCheckRecovery(allocator, project_root, owned_issue.kind);
         return error.ProjectCheckFailed;
     }
     std.debug.print("peas check: valid project {s}\n", .{project_root});
 }
 
 fn checkUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- check [project-directory]\n", .{});
+    std.debug.print("usage: zig build peas -- check [project-directory] [--target <linux|macos>]\n", .{});
     return error.InvalidArguments;
+}
+
+fn printCheckRecovery(allocator: std.mem.Allocator, project_root: []const u8, kind: tools.CheckIssueKind) !void {
+    const command = switch (kind) {
+        .missing_assets => try std.fmt.allocPrint(allocator, "mkdir -p \"{s}/assets\" && zig build peas -- check \"{s}\"", .{ project_root, project_root }),
+        else => try std.fmt.allocPrint(allocator, "zig build peas -- check \"{s}\"", .{project_root}),
+    };
+    defer allocator.free(command);
+    std.debug.print("peas check: recovery: {s}\n", .{command});
 }
 
 fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
