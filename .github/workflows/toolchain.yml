@@ -49,8 +49,6 @@ jobs:
       - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers
-      - if: matrix.os == 'ubuntu-latest'
-        run: script/test_linux_package.sh
       - run: script/compile_shaders.sh
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
@@ -69,6 +67,41 @@ jobs:
             zig-out/*.ppm
             zig-out/performance/*.json
             zig-out/diagnostics/**/*
+          if-no-files-found: warn
+
+  desktop-package-compatibility:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            package_script: script/test_linux_package.sh dist/linux
+          - os: macos-15-intel
+            target: macos
+            package_script: script/test_macos_package.sh dist/macos
+          - os: windows-2022
+            target: windows
+            package_script: script/test_windows_package.ps1 dist/windows
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: ${{ matrix.package_script }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-compatibility-${{ matrix.target }}
+          path: |
+            dist/**/*
+            zig-out/diagnostics/**/*
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/performance/**/*
           if-no-files-found: warn
 
   renderer-conformance:
