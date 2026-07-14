@@ -115,6 +115,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_peas = b.addRunArtifact(peas_cli);
+    run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/bounce"));
     if (b.args) |args| run_peas.addArgs(args);
     const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
     peas_step.dependOn(&run_peas.step);
@@ -136,6 +137,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_starter.addArgs(args);
     const new_step = b.step("new", "Create an unpolished-peas bouncing-square project");
     new_step.dependOn(&run_starter.step);
+    const starter_tests = b.addTest(.{ .root_module = starter.root_module });
+    const run_starter_tests = b.addRunArtifact(starter_tests);
+    const starter_test_step = b.step("test-starter", "Run generated project tests");
+    starter_test_step.dependOn(&run_starter_tests.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);

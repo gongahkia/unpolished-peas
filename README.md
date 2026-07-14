@@ -162,7 +162,7 @@ zig build upmapc -- level.upmap level.upmapb
 `script/package_linux.sh` writes an x86_64 Linux bounce tarball and checksum manifest; `script/test_linux_package.sh` verifies the archive, bundled SDL linkage, asset layout, and bounded smoke outside the repository.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
-`new` creates the bouncing-square starter project.
+`zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, asset, and manifest layout without replacing an existing destination.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL playback reopens after device removal or format changes.
 
