@@ -1,0 +1,7 @@
+.{
+    .name = .native_platformer_fixture,
+    .version = "0.0.0",
+    .fingerprint = 0x1606c7fe545498a5,
+    .minimum_zig_version = "0.15.2",
+    .paths = .{ "build.zig", "build.zig.zon", "src", "project.up", "assets", "maps", "scenes" },
+}

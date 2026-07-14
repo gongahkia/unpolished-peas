@@ -464,3 +464,29 @@ test "content compiler accepts imported LDtk map source" {
     defer std.testing.allocator.free(external_cache_path);
     try std.fs.cwd().access(external_cache_path, .{});
 }
+
+test "content compiler builds the native platformer fixture" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const project_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "fixtures/platformer-project");
+    defer std.testing.allocator.free(project_root);
+    const output_root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(output_root);
+    var diagnostic = Diagnostic{};
+    defer diagnostic.deinit(std.testing.allocator);
+    const first = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 3), first.compiled);
+    try std.testing.expectEqual(@as(usize, 0), first.reused);
+    const scene_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "platformer.upscene.upc" });
+    defer std.testing.allocator.free(scene_cache);
+    const map_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "platformer.upmap.upc" });
+    defer std.testing.allocator.free(map_cache);
+    const assets_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "platformer.upassets.upc" });
+    defer std.testing.allocator.free(assets_cache);
+    try std.fs.cwd().access(scene_cache, .{});
+    try std.fs.cwd().access(map_cache, .{});
+    try std.fs.cwd().access(assets_cache, .{});
+    const second = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 0), second.compiled);
+    try std.testing.expectEqual(@as(usize, 3), second.reused);
+}
