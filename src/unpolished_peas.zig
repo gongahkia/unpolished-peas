@@ -141,6 +141,7 @@ pub const ShaderReflection = @import("shader.zig").Reflection;
 pub const ShaderKind = @import("shader.zig").Kind;
 pub const PixelEffect = @import("shader.zig").PixelEffect;
 pub const PixelEffectParameters = @import("shader.zig").Parameters;
+pub const PostProcessChain = @import("shader.zig").Chain;
 pub const PipelineHandle = @import("gpu.zig").PipelineHandle;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;

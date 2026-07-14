@@ -91,7 +91,11 @@ test "SDL GPU target capture writes expected PNG" {
     var commands = up.RenderCommandBuffer.init(std.testing.allocator);
     defer commands.deinit();
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
-    try presenter.present(device, window, canvas, &sprites, commands.commands.items, null, capture_path, &presentation);
+    const effects = [_]up.PixelEffect{
+        try up.PixelEffect.parse("invert", .{ .amount = 1 }),
+        try up.PixelEffect.parse("invert", .{ .amount = 1 }),
+    };
+    try presenter.present(device, window, canvas, &sprites, commands.commands.items, &effects, capture_path, &presentation);
 
     const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
     defer std.testing.allocator.free(png);
@@ -330,7 +334,7 @@ pub const Context = struct {
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
-    pixel_effect: *?up.PixelEffect,
+    pixel_effects: *up.PostProcessChain,
     capture_requested: *bool,
     dt: f32,
     frame: u64,
@@ -413,11 +417,11 @@ pub const Context = struct {
     }
 
     pub fn setPixelEffect(self: *Context, source: []const u8, params: up.PixelEffectParameters) !void {
-        self.pixel_effect.* = try up.PixelEffect.parse(source, params);
+        self.pixel_effects.replace(try up.PixelEffect.parse(source, params));
     }
 
     pub fn clearPixelEffect(self: *Context) void {
-        self.pixel_effect.* = null;
+        self.pixel_effects.clear();
     }
 
     pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
@@ -425,7 +429,11 @@ pub const Context = struct {
     }
 
     pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: up.PixelEffectParameters) !void {
-        self.pixel_effect.* = try (try self.assets.latestShader(handle)).instantiate(params);
+        self.pixel_effects.replace(try (try self.assets.latestShader(handle)).instantiate(params));
+    }
+
+    pub fn appendPixelEffect(self: *Context, source: []const u8, params: up.PixelEffectParameters) !void {
+        try self.pixel_effects.append(try up.PixelEffect.parse(source, params));
     }
 
     pub fn captureFrame(self: *Context) void {
@@ -808,7 +816,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer sprite_batch.deinit();
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
-    var pixel_effect: ?up.PixelEffect = null;
+    var pixel_effects = up.PostProcessChain{};
     var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
@@ -835,7 +843,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var presenter = try Presenter.init(device, config.width, config.height);
     defer presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effect = &pixel_effect, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
     var failure: ?Failure = null;
     var initialized = false;
     callLoopInit(state, callbacks, &ctx) catch |err| {
@@ -863,7 +871,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         actions.update(input);
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, null, &presentation);
+            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation);
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
         }
@@ -914,7 +922,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         }
         defer if (screenshot_path) |path| allocator.free(path);
         if (audio_output) |*output| try output.queue(&audio);
-        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effect, screenshot_path, &presentation);
+        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation);
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
 
@@ -1549,7 +1557,7 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effect: ?up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation) !void {
         self.frame +%= 1;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
@@ -1593,7 +1601,11 @@ const Presenter = struct {
 
         if (self.primitive_batch.vertices.items.len != 0) try self.renderPrimitives(command);
         if (sprites.vertices.items.len != 0) try self.renderSprites(command, sprites);
-        const display_texture = if (effect) |value| try self.renderPixelEffect(command, value) else self.render_target;
+        var display_texture = self.render_target;
+        for (effects) |effect| {
+            const target = if (display_texture == self.render_target) self.effect_texture else self.render_target;
+            display_texture = try self.renderPixelEffect(command, display_texture, target, effect);
+        }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
         if (capture_path != null) capture_transfer = try self.downloadTexture(device, command, display_texture);
         errdefer if (capture_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
@@ -1805,12 +1817,12 @@ const Presenter = struct {
         }
     }
 
-    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, effect: up.PixelEffect) !*c.SDL_GPUTexture {
-        if (effect.kind == .passthrough) return self.render_target;
+    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, source: *c.SDL_GPUTexture, target: *c.SDL_GPUTexture, effect: up.PixelEffect) !*c.SDL_GPUTexture {
+        if (effect.kind == .passthrough) return source;
         const pipeline = self.effect_pipeline orelse return error.PixelEffectUnavailable;
         const sampler = self.nearest_sampler orelse return error.PixelEffectUnavailable;
         var color_target = c.SDL_GPUColorTargetInfo{
-            .texture = self.effect_texture,
+            .texture = target,
             .mip_level = 0,
             .layer_or_depth_plane = 0,
             .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
@@ -1827,12 +1839,12 @@ const Presenter = struct {
         const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
         defer c.SDL_EndGPURenderPass(pass);
         c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = self.render_target, .sampler = sampler };
+        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = source, .sampler = sampler };
         c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
         const parameters = [_]f32{ effect.amount, 0, 0, 0 };
         c.SDL_PushGPUFragmentUniformData(command, 0, &parameters, @sizeOf(@TypeOf(parameters)));
         c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
-        return self.effect_texture;
+        return target;
     }
 
     fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {

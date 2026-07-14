@@ -194,7 +194,7 @@ Tiled object layers retain rectangle, ellipse, point, polygon, and polyline coll
 
 `TileCollider.addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
 
-`Context.loadShader` loads a validated `.upshader` resource (`effect=invert` plus `uniform amount:f32`, or `effect=passthrough`). `Context.setShaderEffect` validates reflected parameters; invalid reloads retain the last good program and stale handles return recoverable errors. `Canvas.applyPixelEffect` is the defined headless fallback.
+`Context.loadShader` loads a validated `.upshader` resource (`effect=invert` plus `uniform amount:f32`, or `effect=passthrough`). `Context.setShaderEffect` replaces the post-process chain; `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and invalid shader reloads retain the last good program. `Canvas.applyPixelEffect` is the defined headless fallback.
 
 ## Camera And Presentation
 
