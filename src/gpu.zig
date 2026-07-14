@@ -66,6 +66,17 @@ pub const Resources = struct { // owns resource-slot bookkeeping allocated by in
         try self.validate(.pipeline, handle);
     }
 
+    pub fn invalidateAll(self: *Resources) void {
+        self.free.clearRetainingCapacity();
+        for (self.slots.items, 0..) |*slot, index| {
+            if (!slot.live) continue;
+            slot.live = false;
+            slot.generation +%= 1;
+            if (slot.generation == 0) slot.generation = 1;
+            self.free.append(self.allocator, @intCast(index)) catch @panic("GPU resource invalidation allocation failed");
+        }
+    }
+
     fn create(self: *Resources, kind: ResourceKind) !Handle {
         if (self.free.pop()) |index| {
             var slot = &self.slots.items[index];
@@ -104,4 +115,14 @@ test "GPU resource handles reject stale access" {
     try std.testing.expect(replacement.index == texture.index);
     try std.testing.expect(replacement.generation != texture.generation);
     try resources.texture(replacement);
+}
+
+test "GPU resource invalidation makes every prior handle stale" {
+    var resources = Resources.init(std.testing.allocator);
+    defer resources.deinit();
+    const shader = try resources.createShader();
+    const pipeline = try resources.createPipeline();
+    resources.invalidateAll();
+    try std.testing.expectError(error.StaleHandle, resources.shader(shader));
+    try std.testing.expectError(error.StaleHandle, resources.pipeline(pipeline));
 }
