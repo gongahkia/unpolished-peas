@@ -67,6 +67,7 @@ pub fn build(b: *std.Build) void {
     package_bounce_sdl.dependOn(&install_assets.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
+    const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, sdl);
     const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
@@ -118,6 +119,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
     addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
     addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
+    addRunStep(b, "run-explicit-loop", "Run the explicit SDL3 loop demo", explicit_loop_demo);
     addRunStep(b, "run-audio", "Run the unpolished-peas audio demo", audio_demo);
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
@@ -152,7 +154,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, scene_tests, mapc, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
