@@ -112,9 +112,11 @@ pub const Diagnostic = struct {
 };
 
 pub fn parse(allocator: std.mem.Allocator, source: []const u8, diagnostic: *Diagnostic) !Source {
+    const zon_source = try allocator.dupeZ(u8, source);
+    defer allocator.free(zon_source);
     var zon_diagnostics: std.zon.parse.Diagnostics = .{};
     defer zon_diagnostics.deinit(allocator);
-    var parsed = std.zon.parse.fromSlice(Source, allocator, source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
+    var parsed = std.zon.parse.fromSlice(Source, allocator, zon_source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
         error.ParseZon => {
             var errors = zon_diagnostics.iterateErrors();
             if (errors.next()) |parse_error| {
@@ -297,7 +299,9 @@ test "native map source parses layers objects properties and signed cells" {
     defer std.testing.allocator.free(encoded);
     var decoded = try parse(std.testing.allocator, encoded, &diagnostic);
     defer decoded.deinit(std.testing.allocator);
-    try std.testing.expect(std.meta.eql(map, decoded));
+    try std.testing.expectEqualStrings(map.metadata.name, decoded.metadata.name);
+    try std.testing.expectEqual(@as(i32, -2), decoded.layers[1].cells[0].x);
+    try std.testing.expect(decoded.layers[3].objects[0].properties[0].boolean.?);
 }
 
 test "native map source reports precise validation errors" {

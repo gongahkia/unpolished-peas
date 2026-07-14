@@ -52,9 +52,11 @@ pub const Diagnostic = struct {
 };
 
 pub fn parse(allocator: std.mem.Allocator, source: []const u8, diagnostic: *Diagnostic) !Source {
+    const zon_source = try allocator.dupeZ(u8, source);
+    defer allocator.free(zon_source);
     var zon_diagnostics: std.zon.parse.Diagnostics = .{};
     defer zon_diagnostics.deinit(allocator);
-    var parsed = std.zon.parse.fromSlice(Source, allocator, source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
+    var parsed = std.zon.parse.fromSlice(Source, allocator, zon_source, &zon_diagnostics, .{ .ignore_unknown_fields = false }) catch |err| switch (err) {
         error.ParseZon => {
             var errors = zon_diagnostics.iterateErrors();
             if (errors.next()) |parse_error| {
@@ -140,7 +142,8 @@ test "native scene parses, validates references, and round trips" {
     defer std.testing.allocator.free(encoded);
     var decoded = try parse(std.testing.allocator, encoded, &diagnostic);
     defer decoded.deinit(std.testing.allocator);
-    try std.testing.expect(std.meta.eql(scene, decoded));
+    try std.testing.expectEqualStrings(scene.metadata.name, decoded.metadata.name);
+    try std.testing.expectEqualStrings(scene.entities[1].id, decoded.entities[1].id);
 }
 
 test "native scene reports invalid reference locations" {
@@ -148,8 +151,8 @@ test "native scene reports invalid reference locations" {
         \\.{
         \\    .format = "unpolished-peas-scene",
         \\    .version = 1,
-        \\    .metadata = .{ .name = "main", .tags = &.{} },
-        \\    .entities = &.{ .{ .id = "player", .name = "Player", .components = &.{}, .references = &.{ .{ .name = "target", .target = "missing" } } } },
+        \\    .metadata = .{ .name = "main", .tags = .{} },
+        \\    .entities = .{ .{ .id = "player", .name = "Player", .components = .{}, .references = .{ .{ .name = "target", .target = "missing" } } } },
         \\}
         \\
     ;

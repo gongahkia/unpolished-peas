@@ -1,0 +1,8 @@
+.{
+    .format = "unpolished-peas-project",
+    .version = 1,
+    .entry_scene = "scenes/main.upscene",
+    .build = .{ .title = "content fixture", .width = 8, .height = 8, .scale = 1 },
+    .assets = .{ .root = "assets" },
+    .engine = .{ .version = "v0.0.3" },
+}
