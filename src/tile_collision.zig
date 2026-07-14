@@ -21,9 +21,20 @@ pub const TileCollider = struct { // owns copied collision shapes allocated by i
         self.* = undefined;
     }
 
+    pub fn clear(self: *TileCollider) void {
+        self.shapes.clearRetainingCapacity();
+    }
+
+    pub fn addShape(self: *TileCollider, shape: Shape) !void {
+        if (!validShape(shape)) return error.InvalidColliderShape;
+        try self.shapes.append(self.allocator, shape);
+    }
+
     pub fn addLayer(self: *TileCollider, map: *const tilemap.TileMap, layer_index: u32) !void {
         if (map.projection != .orthogonal) return error.UnsupportedCollisionProjection;
         if (layer_index >= map.layers.items.len) return error.InvalidCollisionLayer;
+        const shape_count = self.shapes.items.len;
+        errdefer self.shapes.shrinkRetainingCapacity(shape_count);
         const layer = &map.layers.items[layer_index];
         const offset = map.layerOffset(layer_index);
         const layer_one_way = propertiesEnabled(layer.properties, "one_way") or propertiesEnabled(layer.properties, "oneway");
@@ -76,7 +87,7 @@ pub const TileCollider = struct { // owns copied collision shapes allocated by i
     }
 
     fn appendRect(self: *TileCollider, bounds: Rect, one_way: bool) !void {
-        try self.shapes.append(self.allocator, if (one_way) .{ .one_way = bounds } else .{ .solid = bounds });
+        try self.addShape(if (one_way) .{ .one_way = bounds } else .{ .solid = bounds });
     }
 
     fn appendObject(self: *TileCollider, object: tilemap.MapObject, offset: Vec2, layer_one_way: bool) !void {
@@ -91,9 +102,11 @@ pub const TileCollider = struct { // owns copied collision shapes allocated by i
     }
 
     fn appendSlopes(self: *TileCollider, points: []const Vec2, object_bounds: Rect, offset: Vec2) !void {
-        if (points.len < 2) return;
+        if (points.len < 2) return error.InvalidColliderShape;
+        const shape_count = self.shapes.items.len;
         for (points[0 .. points.len - 1], points[1..]) |a_raw, b_raw| try self.appendSlope(a_raw.add(.{ .x = object_bounds.x + offset.x, .y = object_bounds.y + offset.y }), b_raw.add(.{ .x = object_bounds.x + offset.x, .y = object_bounds.y + offset.y }));
         if (points.len > 2) try self.appendSlope(points[points.len - 1].add(.{ .x = object_bounds.x + offset.x, .y = object_bounds.y + offset.y }), points[0].add(.{ .x = object_bounds.x + offset.x, .y = object_bounds.y + offset.y }));
+        if (self.shapes.items.len == shape_count) return error.InvalidColliderShape;
     }
 
     fn appendSlope(self: *TileCollider, first: Vec2, second: Vec2) !void {
@@ -104,7 +117,7 @@ pub const TileCollider = struct { // owns copied collision shapes allocated by i
         if (direction.x <= 0) return;
         const normal = Vec2.init(direction.y, -direction.x).normalized();
         if (normal.y >= -0.001) return;
-        try self.shapes.append(self.allocator, .{ .slope = .{ .a = a, .b = b, .normal = normal } });
+        try self.addShape(.{ .slope = .{ .a = a, .b = b, .normal = normal } });
     }
 };
 
@@ -134,7 +147,7 @@ pub const CharacterController = struct {
     ceiling: bool = false,
 
     pub fn init(config: CharacterConfig) !CharacterController {
-        if (config.bounds.w <= 0 or config.bounds.h <= 0 or config.max_step_height < 0 or config.max_slope_degrees <= 0 or config.max_slope_degrees >= 90 or config.skin <= 0) return error.InvalidCharacterConfig;
+        if (!validRect(config.bounds) or !std.math.isFinite(config.max_step_height) or !std.math.isFinite(config.max_slope_degrees) or !std.math.isFinite(config.skin) or config.max_step_height < 0 or config.max_slope_degrees <= 0 or config.max_slope_degrees >= 90 or config.skin <= 0) return error.InvalidCharacterConfig;
         return .{ .bounds = config.bounds, .max_step_height = config.max_step_height, .max_slope_degrees = config.max_slope_degrees, .skin = config.skin };
     }
 
@@ -224,6 +237,17 @@ pub const CharacterController = struct {
     }
 };
 
+fn validShape(shape: Shape) bool {
+    return switch (shape) {
+        .solid, .one_way => |bounds| validRect(bounds),
+        .slope => |slope| std.math.isFinite(slope.a.x) and std.math.isFinite(slope.a.y) and std.math.isFinite(slope.b.x) and std.math.isFinite(slope.b.y) and std.math.isFinite(slope.normal.x) and std.math.isFinite(slope.normal.y) and slope.b.x > slope.a.x and slope.normal.y < -0.001,
+    };
+}
+
+fn validRect(bounds: Rect) bool {
+    return std.math.isFinite(bounds.x) and std.math.isFinite(bounds.y) and std.math.isFinite(bounds.w) and std.math.isFinite(bounds.h) and bounds.w > 0 and bounds.h > 0;
+}
+
 fn propertiesEnabled(properties: []const tilemap.Property, name: []const u8) bool {
     for (properties) |property| {
         if (!std.mem.eql(u8, property.name, name)) continue;
@@ -296,4 +320,41 @@ test "tile collider derives nonzero IntGrid cells" {
     try collider.addLayer(&map, layer);
     try std.testing.expect(collider.overlaps(Rect.init(-16, 32, 16, 16)));
     try std.testing.expect(!collider.overlaps(Rect.init(0, 0, 8, 8)));
+}
+
+test "tile collider validates shapes and recovers from failed layers" {
+    var collider = TileCollider.init(std.testing.allocator);
+    defer collider.deinit();
+    try collider.addShape(.{ .solid = Rect.init(-16, 0, 16, 16) });
+    try std.testing.expectError(error.InvalidColliderShape, collider.addShape(.{ .one_way = Rect.init(0, 0, 0, 16) }));
+    try std.testing.expectError(error.InvalidColliderShape, collider.addShape(.{ .slope = .{ .a = .{ .x = 1, .y = 0 }, .b = .{ .x = 0, .y = 1 }, .normal = .{ .y = -1 } } }));
+    try std.testing.expectEqual(@as(usize, 1), collider.shapes.items.len);
+
+    var map = try tilemap.TileMap.init(std.testing.allocator, .{ .x = 16, .y = 16 }, 8);
+    defer map.deinit();
+    const layer = try map.addLayer("group", .group, null);
+    try std.testing.expectError(error.InvalidCollisionLayer, collider.addLayer(&map, layer));
+    const objects = try map.addLayer("objects", .objects, null);
+    try map.layers.items[objects].objects.append(std.testing.allocator, .{
+        .id = 1,
+        .name = try std.testing.allocator.dupe(u8, "valid"),
+        .class_name = try std.testing.allocator.dupe(u8, ""),
+        .bounds = Rect.init(0, 0, 16, 16),
+        .shape = .rectangle,
+        .properties = try std.testing.allocator.alloc(tilemap.Property, 0),
+    });
+    try map.layers.items[objects].objects.append(std.testing.allocator, .{
+        .id = 2,
+        .name = try std.testing.allocator.dupe(u8, "invalid"),
+        .class_name = try std.testing.allocator.dupe(u8, ""),
+        .bounds = Rect.init(16, 0, 0, 16),
+        .shape = .rectangle,
+        .properties = try std.testing.allocator.alloc(tilemap.Property, 0),
+    });
+    try std.testing.expectError(error.InvalidColliderShape, collider.addLayer(&map, objects));
+    try std.testing.expectEqual(@as(usize, 1), collider.shapes.items.len);
+    map.projection = .isometric;
+    try std.testing.expectError(error.UnsupportedCollisionProjection, collider.addLayer(&map, layer));
+    try std.testing.expectEqual(@as(usize, 1), collider.shapes.items.len);
+    try std.testing.expectError(error.InvalidCharacterConfig, CharacterController.init(.{ .bounds = Rect.init(0, 0, std.math.inf(f32), 1) }));
 }
