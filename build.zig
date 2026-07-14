@@ -151,6 +151,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/starter.zig"),
             .target = b.graph.host,
             .optimize = optimize,
+            .imports = &.{.{ .name = "unpolished-peas-tools", .module = tools }},
         }),
     });
     const run_starter = b.addRunArtifact(starter);
