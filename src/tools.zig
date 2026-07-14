@@ -43,6 +43,14 @@ pub const PackageTarget = enum {
     }
 };
 
+pub const DiagnosticContext = enum {
+    none,
+    missing_engine_module,
+    missing_sdl_module,
+    invalid_project_manifest,
+    manual_sdl_linkage,
+};
+
 pub const CheckIssue = struct {
     path: []u8,
     line: usize,
@@ -66,6 +74,24 @@ pub fn parseTestSelection(value: []const u8) ?TestSelection {
 
 pub fn parsePackageTarget(value: []const u8) ?PackageTarget {
     return std.meta.stringToEnum(PackageTarget, value);
+}
+
+pub fn classifyDiagnostic(text: []const u8) DiagnosticContext {
+    if (std.mem.indexOf(u8, text, "no module named 'unpolished-peas-sdl3'")) |_| return .missing_sdl_module;
+    if (std.mem.indexOf(u8, text, "no module named 'unpolished-peas'")) |_| return .missing_engine_module;
+    if (std.mem.indexOf(u8, text, "build.zig.zon") != null and std.mem.indexOf(u8, text, "missing top-level") != null) return .invalid_project_manifest;
+    if (std.mem.indexOf(u8, text, "unable to find dynamic system library 'SDL3'")) |_| return .manual_sdl_linkage;
+    return .none;
+}
+
+pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
+    return switch (context) {
+        .none => null,
+        .missing_engine_module => "add unpolished-peas to build.zig imports and declare it in build.zig.zon",
+        .missing_sdl_module => "add unpolished-peas-sdl3 from the unpolished-peas dependency to build.zig imports",
+        .invalid_project_manifest => "add the required build.zig.zon fields and use the engine's supported Zig version",
+        .manual_sdl_linkage => "use the bundled unpolished-peas-sdl3 module instead of manually linking SDL3",
+    };
 }
 
 pub fn printHelp() void {
@@ -208,6 +234,26 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
     try std.testing.expect(parsePackageTarget("windows") == null);
+}
+
+test "tools classify diagnostic fixtures" {
+    const cases = [_]struct { path: []const u8, context: DiagnosticContext }{
+        .{ .path = "fixtures/peas-diagnostics/missing-engine-module.txt", .context = .missing_engine_module },
+        .{ .path = "fixtures/peas-diagnostics/missing-sdl-module.txt", .context = .missing_sdl_module },
+        .{ .path = "fixtures/peas-diagnostics/invalid-manifest.txt", .context = .invalid_project_manifest },
+        .{ .path = "fixtures/peas-diagnostics/manual-sdl-linkage.txt", .context = .manual_sdl_linkage },
+        .{ .path = "fixtures/peas-diagnostics/unclassified.txt", .context = .none },
+    };
+    for (cases) |case| {
+        const text = try std.fs.cwd().readFileAlloc(std.testing.allocator, case.path, 4096);
+        defer std.testing.allocator.free(text);
+        try std.testing.expectEqual(case.context, classifyDiagnostic(text));
+        if (case.context == .none) {
+            try std.testing.expect(diagnosticRemediation(case.context) == null);
+        } else {
+            try std.testing.expect(diagnosticRemediation(case.context) != null);
+        }
+    }
 }
 
 test "tools discover a project above the selected directory" {

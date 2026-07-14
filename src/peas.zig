@@ -2,6 +2,8 @@ const std = @import("std");
 const tools = @import("unpolished-peas-tools");
 const starter = @import("starter.zig");
 
+const max_build_output_bytes = 8 * 1024 * 1024;
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -85,12 +87,7 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
     defer command_args.deinit(allocator);
     try command_args.appendSlice(allocator, &.{ "zig", "build", "-Doptimize=Debug", "run", "--" });
     try command_args.appendSlice(allocator, game_args.items);
-    var child = std.process.Child.init(command_args.items, allocator);
-    child.cwd = project_root;
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
-    child.stderr_behavior = .Inherit;
-    return child.spawnAndWait();
+    return runZigBuild(allocator, command_args.items, project_root);
 }
 
 fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -127,12 +124,7 @@ fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !st
     defer allocator.free(project_root);
     const step = selection.buildStep();
     std.debug.print("peas test: target {s}\npeas test: artifact directory {s}/zig-out\n", .{ step, project_root });
-    var child = std.process.Child.init(&.{ "zig", "build", step }, allocator);
-    child.cwd = project_root;
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
-    child.stderr_behavior = .Inherit;
-    const term = try child.spawnAndWait();
+    const term = try runZigBuild(allocator, &.{ "zig", "build", step }, project_root);
     if (term == .Exited and term.Exited != 0) {
         std.debug.print("peas test: target {s} failed; artifact directory {s}/zig-out\n", .{ step, project_root });
     }
@@ -168,6 +160,24 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 fn packageUsage() error{InvalidArguments} {
     std.debug.print("usage: zig build peas -- package <linux|macos> [output-directory]\n", .{});
     return error.InvalidArguments;
+}
+
+fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8) !std.process.Child.Term {
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = arguments,
+        .cwd = cwd,
+        .max_output_bytes = max_build_output_bytes,
+    });
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    try std.fs.File.stdout().writeAll(result.stdout);
+    try std.fs.File.stderr().writeAll(result.stderr);
+    if (tools.diagnosticRemediation(tools.classifyDiagnostic(result.stderr))) |remediation| {
+        if (result.stderr.len != 0 and result.stderr[result.stderr.len - 1] != '\n') try std.fs.File.stderr().writeAll("\n");
+        std.debug.print("peas recovery: {s}\n", .{remediation});
+    }
+    return result.term;
 }
 
 fn runUsage() error{InvalidArguments} {

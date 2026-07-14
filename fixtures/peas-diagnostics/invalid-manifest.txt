@@ -1,0 +1,1 @@
+/tmp/game/build.zig.zon:1:2: error: missing top-level 'minimum_zig_version' field
