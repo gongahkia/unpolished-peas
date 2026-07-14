@@ -196,6 +196,8 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 Game initialization, event, update, draw, GPU-recovery, and asset-reload errors include their phase and log path in the terminal, are written to the app-data log, then stay in an in-window error state until Escape or close. A GPU reset rebuilds presenter resources and invalidates prior handles; a GPU loss reports a terminal recovery failure. Zig panics remain process failures and require the normal debugger/test workflow.
 
+`Config.cpu_profiler` defaults to Debug builds. The runtime measures callback, update, draw, and asset-reload scopes; use `ctx.profile(.scene)` or `ctx.profile(.asset)` around game-owned work, inspect `ctx.profileMetrics()`, and call `ctx.exportCpuTrace()` to write Chrome Trace JSON to the app-data directory.
+
 SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames. Atlas draws preserve source regions, origin, scale, rotation, flips, tint, and nearest or linear sampling through the GPU path.
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
@@ -258,6 +260,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AnimationPlayer`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`
+- `FrameProfiler`, `ProfileScope`, `ProfileMetrics`, `profiler`
 - `LightingPipeline`, `LightingConfig`, `Light`, `LightOccluder`, `LightingRenderPath`, `lighting`
 - `UiFrame`, `UiState`, `UiLayout`, `UiStyle`, `UiSurface`, `ui`
 

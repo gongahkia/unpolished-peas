@@ -10,6 +10,9 @@ const Metrics = struct {
     frame_ns: u64,
     frame_allocation_events: u64,
     frame_allocated_bytes: u64,
+    profiler_frame_ns: u64,
+    profiler_frame_allocation_events: u64,
+    profiler_frame_allocated_bytes: u64,
     renderer_ns: u64,
     renderer_allocation_events: u64,
     renderer_allocated_bytes: u64,
@@ -89,6 +92,9 @@ pub fn main() !void {
         \\    "frame_ns": {d},
         \\    "frame_allocation_events": {d},
         \\    "frame_allocated_bytes": {d},
+        \\    "profiler_frame_ns": {d},
+        \\    "profiler_frame_allocation_events": {d},
+        \\    "profiler_frame_allocated_bytes": {d},
         \\    "renderer_ns": {d},
         \\    "renderer_allocation_events": {d},
         \\    "renderer_allocated_bytes": {d}
@@ -102,6 +108,9 @@ pub fn main() !void {
             metrics.frame_ns,
             metrics.frame_allocation_events,
             metrics.frame_allocated_bytes,
+            metrics.profiler_frame_ns,
+            metrics.profiler_frame_allocation_events,
+            metrics.profiler_frame_allocated_bytes,
             metrics.renderer_ns,
             metrics.renderer_allocation_events,
             metrics.renderer_allocated_bytes,
@@ -130,6 +139,11 @@ fn measure(allocator: std.mem.Allocator) !Metrics {
     const frame_allocated_bytes = counter.allocated_bytes;
 
     counter.reset();
+    const profiler_frame_ns = measureProfilerFrame();
+    const profiler_frame_allocation_events = counter.allocation_events;
+    const profiler_frame_allocated_bytes = counter.allocated_bytes;
+
+    counter.reset();
     const renderer_ns = try measureRenderer(&canvas, &renderer, measured_allocator, commands.commands.items);
     const renderer_allocation_events = counter.allocation_events;
     const renderer_allocated_bytes = counter.allocated_bytes;
@@ -138,6 +152,9 @@ fn measure(allocator: std.mem.Allocator) !Metrics {
         .frame_ns = frame_ns,
         .frame_allocation_events = frame_allocation_events,
         .frame_allocated_bytes = frame_allocated_bytes,
+        .profiler_frame_ns = profiler_frame_ns,
+        .profiler_frame_allocation_events = profiler_frame_allocation_events,
+        .profiler_frame_allocated_bytes = profiler_frame_allocated_bytes,
         .renderer_ns = renderer_ns,
         .renderer_allocation_events = renderer_allocation_events,
         .renderer_allocated_bytes = renderer_allocated_bytes,
@@ -173,6 +190,18 @@ fn measureFrame(canvas: *up.Canvas) !u64 {
     const elapsed = timer.read();
     std.mem.doNotOptimizeAway(canvas.pixels);
     return elapsed / frame_samples;
+}
+
+fn measureProfilerFrame() u64 {
+    var profiler = up.FrameProfiler.init(true);
+    var timer = std.time.Timer.start() catch unreachable;
+    var sample: u32 = 0;
+    while (sample < frame_samples) : (sample += 1) {
+        profiler.beginFrame(sample);
+        inline for ([_]up.ProfileScope{ .callback, .scene, .asset, .update, .draw }) |scope| profiler.scope(scope).end();
+    }
+    std.mem.doNotOptimizeAway(profiler.metrics());
+    return timer.read() / frame_samples;
 }
 
 fn measureRenderer(canvas: *up.Canvas, renderer: *up.HeadlessRenderer, allocator: std.mem.Allocator, commands: []const up.RenderCommand) !u64 {
