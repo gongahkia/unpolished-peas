@@ -51,6 +51,15 @@ pub const CommandBuffer = struct { // owns command storage allocated by init; ca
     }
 };
 
+pub const Backend = struct {
+    context: *anyopaque,
+    submit_fn: *const fn (context: *anyopaque, commands: []const Command) anyerror!void,
+
+    pub fn submit(self: Backend, commands: []const Command) !void {
+        try self.submit_fn(self.context, commands);
+    }
+};
+
 pub const HeadlessRenderer = struct { // borrows its Canvas and owns temporary stacks released by deinit.
     allocator: std.mem.Allocator,
     canvas: *Canvas,
@@ -149,4 +158,18 @@ test "headless renderer restores nested clip and blend state" {
     try std.testing.expectEqual(Color.rgb(63, 128, 0), canvas.get(1, 1).?);
     try std.testing.expectEqual(Color.rgb(63, 128, 63), canvas.get(2, 2).?);
     try std.testing.expectEqual(Color.black, canvas.get(4, 4).?);
+}
+
+test "renderer backend receives canonical command slices" {
+    const Probe = struct {
+        count: usize = 0,
+        fn submit(context: *anyopaque, commands: []const Command) !void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.count = commands.len;
+        }
+    };
+    var probe = Probe{};
+    const backend = Backend{ .context = &probe, .submit_fn = Probe.submit };
+    try backend.submit(&.{ .{ .clear = Color.black }, .{ .clear = Color.white } });
+    try std.testing.expectEqual(@as(usize, 2), probe.count);
 }
