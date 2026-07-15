@@ -1,5 +1,6 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
+const net = @import("unpolished-peas-networking").networking(up);
 const game_mod = @import("topdown_game.zig");
 
 const player_count = 2;
@@ -12,7 +13,7 @@ const Replica = struct {
     last_tick: ?u32 = null,
     players: [player_count]up.Vec2 = [_]up.Vec2{.{ .x = 80, .y = 48 }} ** player_count,
 
-    fn poll(self: *Replica, allocator: std.mem.Allocator, endpoint: *up.FaultEndpoint) !void {
+    fn poll(self: *Replica, allocator: std.mem.Allocator, endpoint: *net.fault.Endpoint) !void {
         try endpoint.asTransport().poll();
         while (endpoint.asTransport().receive()) |received| {
             var packet = received;
@@ -35,7 +36,7 @@ const Authoritative = struct {
     inputs: [player_count]up.Input = [_]up.Input{.{}} ** player_count,
     last_input_tick: [player_count]?u32 = [_]?u32{null} ** player_count,
 
-    fn pollInput(self: *Authoritative, allocator: std.mem.Allocator, endpoint: *up.FaultEndpoint, player_index: usize) !void {
+    fn pollInput(self: *Authoritative, allocator: std.mem.Allocator, endpoint: *net.fault.Endpoint, player_index: usize) !void {
         try endpoint.asTransport().poll();
         while (endpoint.asTransport().receive()) |received| {
             var packet = received;
@@ -52,7 +53,7 @@ const Authoritative = struct {
         for (&self.games, self.inputs) |*game, input| _ = game.step(input, 1.0 / 60.0);
     }
 
-    fn sendSnapshot(self: *const Authoritative, endpoint: *up.FaultEndpoint, tick: u32) !void {
+    fn sendSnapshot(self: *const Authoritative, endpoint: *net.fault.Endpoint, tick: u32) !void {
         var bytes: [snapshot_bytes]u8 = undefined;
         bytes[0] = snapshot_tag;
         std.mem.writeInt(u32, bytes[1..5], tick, .little);
@@ -72,22 +73,22 @@ pub fn main() !void {
 }
 
 pub fn runSmoke(allocator: std.mem.Allocator) !void {
-    const config_a = up.FaultNetworkConfig{ .seed = 31, .latency_ms = 2, .jitter_ms = 4, .loss_per_mille = 100, .duplicate_per_mille = 150, .reorder_per_mille = 200, .reorder_delay_ms = 6, .bandwidth_bytes_per_second = 10_000 };
-    const config_b = up.FaultNetworkConfig{ .seed = 47, .latency_ms = 3, .jitter_ms = 5, .loss_per_mille = 100, .duplicate_per_mille = 150, .reorder_per_mille = 200, .reorder_delay_ms = 6, .bandwidth_bytes_per_second = 10_000 };
-    var network_a = try up.FaultNetwork.init(allocator, config_a);
+    const config_a = net.fault.Config{ .seed = 31, .latency_ms = 2, .jitter_ms = 4, .loss_per_mille = 100, .duplicate_per_mille = 150, .reorder_per_mille = 200, .reorder_delay_ms = 6, .bandwidth_bytes_per_second = 10_000 };
+    const config_b = net.fault.Config{ .seed = 47, .latency_ms = 3, .jitter_ms = 5, .loss_per_mille = 100, .duplicate_per_mille = 150, .reorder_per_mille = 200, .reorder_delay_ms = 6, .bandwidth_bytes_per_second = 10_000 };
+    var network_a = try net.fault.Network.init(allocator, config_a);
     defer network_a.deinit();
-    var client_a_endpoint = up.FaultEndpoint.init(allocator, &network_a, .{ .id = 1 });
+    var client_a_endpoint = net.fault.Endpoint.init(allocator, &network_a, .{ .id = 1 });
     defer client_a_endpoint.deinit();
-    var server_a_endpoint = up.FaultEndpoint.init(allocator, &network_a, .{ .id = 2 });
+    var server_a_endpoint = net.fault.Endpoint.init(allocator, &network_a, .{ .id = 2 });
     defer server_a_endpoint.deinit();
-    up.FaultEndpoint.pair(&client_a_endpoint, &server_a_endpoint);
-    var network_b = try up.FaultNetwork.init(allocator, config_b);
+    net.fault.Endpoint.pair(&client_a_endpoint, &server_a_endpoint);
+    var network_b = try net.fault.Network.init(allocator, config_b);
     defer network_b.deinit();
-    var client_b_endpoint = up.FaultEndpoint.init(allocator, &network_b, .{ .id = 1 });
+    var client_b_endpoint = net.fault.Endpoint.init(allocator, &network_b, .{ .id = 1 });
     defer client_b_endpoint.deinit();
-    var server_b_endpoint = up.FaultEndpoint.init(allocator, &network_b, .{ .id = 2 });
+    var server_b_endpoint = net.fault.Endpoint.init(allocator, &network_b, .{ .id = 2 });
     defer server_b_endpoint.deinit();
-    up.FaultEndpoint.pair(&client_b_endpoint, &server_b_endpoint);
+    net.fault.Endpoint.pair(&client_b_endpoint, &server_b_endpoint);
 
     var authoritative = Authoritative{};
     var client_a = Replica{};
@@ -125,7 +126,7 @@ pub fn runSmoke(allocator: std.mem.Allocator) !void {
     }
 }
 
-fn sendInput(endpoint: *up.FaultEndpoint, tick: u32, direction: u8) !void {
+fn sendInput(endpoint: *net.fault.Endpoint, tick: u32, direction: u8) !void {
     var bytes: [input_bytes]u8 = undefined;
     bytes[0] = input_tag;
     std.mem.writeInt(u32, bytes[1..5], tick, .little);

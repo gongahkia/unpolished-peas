@@ -1,4 +1,4 @@
-const up = @import("unpolished-peas").api;
+const net = @import("unpolished-peas-networking");
 const guest = @import("guest_credentials.zig");
 const provider = @import("service_provider.zig");
 const lobby = @import("service_lobby.zig");
@@ -51,14 +51,14 @@ pub const ClientTarget = struct {
 };
 
 pub const networking = struct {
-    pub const Peer = up.NetPeer;
-    pub const Transport = up.NetTransport;
-    pub const Received = up.NetReceived;
-    pub const LoopbackTransport = up.LoopbackTransport;
-    pub const UdpTransport = up.UdpTransport;
-    pub const HandshakeClient = up.HandshakeClient;
-    pub const HandshakeServer = up.HandshakeServer;
-    pub const Channel = up.NetChannel;
+    pub const Peer = net.transport.Peer;
+    pub const Transport = net.transport.Transport;
+    pub const Received = net.transport.Received;
+    pub const LoopbackTransport = net.transport.Loopback;
+    pub const UdpTransport = net.transport.Udp;
+    pub const HandshakeClient = net.handshake.Client;
+    pub const HandshakeServer = net.handshake.Server;
+    pub const Channel = net.channel.Channel;
 };
 
 test "services module imports only core contracts" {

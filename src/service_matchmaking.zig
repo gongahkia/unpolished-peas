@@ -1,7 +1,7 @@
 const std = @import("std");
 const guest = @import("guest_credentials.zig");
 const lobby = @import("service_lobby.zig");
-const up = @import("unpolished-peas").api;
+const net = @import("unpolished-peas-networking");
 
 pub const Config = struct { max_queue_entries: usize = 128, queue_timeout_ms: i64 = 30_000 };
 pub const QueueState = enum { waiting, assigned, cancelled, expired };
@@ -152,16 +152,16 @@ test "matched local lobby participants receive deterministic bootstrap assignmen
     try std.testing.expectEqual(assignment.match_id, matches.assignmentFor(host_request.id).?.match_id);
     try std.testing.expect(!std.crypto.timing_safe.eql([32]u8, assignment.host_identity, assignment.client_identity));
     const authentication_token = std.mem.readInt(u64, assignment.route_token[0..8], .little) | 1;
-    var host_endpoint = up.LoopbackTransport.init(std.testing.allocator, .{ .id = 1 });
+    var host_endpoint = net.transport.Loopback.init(std.testing.allocator, .{ .id = 1 });
     defer host_endpoint.deinit();
-    var client_endpoint = up.LoopbackTransport.init(std.testing.allocator, .{ .id = 2 });
+    var client_endpoint = net.transport.Loopback.init(std.testing.allocator, .{ .id = 2 });
     defer client_endpoint.deinit();
-    up.LoopbackTransport.pair(&host_endpoint, &client_endpoint);
-    const host_identity = try up.NetIdentity.init(1);
-    const client_identity = try up.NetIdentity.init(2);
-    var host_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = host_identity, .remote_identity = client_identity, .session_id = assignment.match_id, .authentication_token = authentication_token, .expires_at_ms = 100, .peer = .{ .id = 2 } });
+    net.transport.Loopback.pair(&host_endpoint, &client_endpoint);
+    const host_identity = try net.contract.Identity.init(1);
+    const client_identity = try net.contract.Identity.init(2);
+    var host_peer = try net.p2p.Peer.init(std.testing.allocator, .{ .local_identity = host_identity, .remote_identity = client_identity, .session_id = assignment.match_id, .authentication_token = authentication_token, .expires_at_ms = 100, .peer = .{ .id = 2 } });
     defer host_peer.deinit();
-    var client_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = client_identity, .remote_identity = host_identity, .session_id = assignment.match_id, .authentication_token = authentication_token, .expires_at_ms = 100, .peer = .{ .id = 1 } });
+    var client_peer = try net.p2p.Peer.init(std.testing.allocator, .{ .local_identity = client_identity, .remote_identity = host_identity, .session_id = assignment.match_id, .authentication_token = authentication_token, .expires_at_ms = 100, .peer = .{ .id = 1 } });
     defer client_peer.deinit();
     try host_peer.begin(host_endpoint.transport());
     try client_peer.begin(client_endpoint.transport());

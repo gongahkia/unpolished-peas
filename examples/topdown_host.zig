@@ -1,9 +1,10 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
+const net = @import("unpolished-peas-networking").networking(up);
 const game_mod = @import("topdown_game.zig");
 
 pub const Config = struct {
-    role: up.NetHostRole,
+    role: net.session.HostRole,
     bind_address: []const u8 = "127.0.0.1",
     port: u16 = 48081,
     max_peers: u16 = 16,
@@ -11,7 +12,7 @@ pub const Config = struct {
 };
 
 pub const Report = struct {
-    role: up.NetHostRole,
+    role: net.session.HostRole,
     player: up.Vec2,
 };
 
@@ -35,9 +36,9 @@ pub fn runSample(allocator: std.mem.Allocator, config: Config) !Report {
 }
 
 fn runDedicated(allocator: std.mem.Allocator, config: Config) !Report {
-    var endpoint = try up.UdpTransport.init(allocator, .{ .bind_address = try std.net.Address.parseIp(config.bind_address, config.port), .receive_buffer_bytes = 16 * 1024, .send_buffer_bytes = 16 * 1024 });
+    var endpoint = try net.transport.Udp.init(allocator, .{ .bind_address = try std.net.Address.parseIp(config.bind_address, config.port), .receive_buffer_bytes = 16 * 1024, .send_buffer_bytes = 16 * 1024 });
     defer endpoint.deinit();
-    var host = try up.NetHost.init(allocator, endpoint.transport(), .{ .role = .dedicated, .peer = .{ .max_peers = config.max_peers } });
+    var host = try net.session.Host.init(allocator, endpoint.transport(), .{ .role = .dedicated, .peer = .{ .max_peers = config.max_peers } });
     defer host.deinit();
     var game = game_mod.Game{};
     var tick: u32 = 0;
@@ -49,14 +50,14 @@ fn runDedicated(allocator: std.mem.Allocator, config: Config) !Report {
 }
 
 fn runListen(allocator: std.mem.Allocator, config: Config) !Report {
-    var client_endpoint = up.LoopbackTransport.init(allocator, .{ .id = 1 });
+    var client_endpoint = net.transport.Loopback.init(allocator, .{ .id = 1 });
     defer client_endpoint.deinit();
-    var host_endpoint = up.LoopbackTransport.init(allocator, .{ .id = 2 });
+    var host_endpoint = net.transport.Loopback.init(allocator, .{ .id = 2 });
     defer host_endpoint.deinit();
-    up.LoopbackTransport.pair(&client_endpoint, &host_endpoint);
-    var host = try up.NetHost.init(allocator, host_endpoint.transport(), .{ .role = .listen, .peer = .{ .max_peers = config.max_peers } });
+    net.transport.Loopback.pair(&client_endpoint, &host_endpoint);
+    var host = try net.session.Host.init(allocator, host_endpoint.transport(), .{ .role = .listen, .peer = .{ .max_peers = config.max_peers } });
     defer host.deinit();
-    var client = try up.NetClient.init(allocator, client_endpoint.transport(), .{});
+    var client = try net.session.Client.init(allocator, client_endpoint.transport(), .{});
     try client.connect(.{ .id = 2 }, 1);
     try client.poll();
     try host.poll();
@@ -72,14 +73,14 @@ fn runListen(allocator: std.mem.Allocator, config: Config) !Report {
     return .{ .role = .listen, .player = game.player };
 }
 
-fn stepAuthoritative(allocator: std.mem.Allocator, host: *up.NetHost, game: *game_mod.Game) !void {
+fn stepAuthoritative(allocator: std.mem.Allocator, host: *net.session.Host, game: *game_mod.Game) !void {
     var input = up.Input{};
     while (host.nextEvent()) |received| {
         var event = received;
         defer event.deinit(allocator);
         switch (event) {
             .input => |value| {
-                if (std.mem.eql(u8, value.message.payload[up.netPeer.session_token_bytes..], "right")) input.set(.right, true);
+                if (std.mem.eql(u8, value.message.payload[net.peer.session_token_bytes..], "right")) input.set(.right, true);
             },
             else => {},
         }
@@ -89,7 +90,7 @@ fn stepAuthoritative(allocator: std.mem.Allocator, host: *up.NetHost, game: *gam
 
 fn parseConfig(args: *std.process.ArgIterator) !Config {
     const role_argument = args.next() orelse return usage();
-    const role = std.meta.stringToEnum(up.NetHostRole, role_argument) orelse return usage();
+    const role = std.meta.stringToEnum(net.session.HostRole, role_argument) orelse return usage();
     var config = Config{ .role = role };
     while (args.next()) |argument| {
         const value = args.next() orelse return usage();
@@ -111,8 +112,8 @@ fn usage() error{InvalidArguments} {
 
 test "dedicated and listen top-down hosts use shared authoritative game rules" {
     const dedicated = try runSample(std.testing.allocator, .{ .role = .dedicated, .port = 0, .ticks = 1 });
-    try std.testing.expectEqual(up.NetHostRole.dedicated, dedicated.role);
+    try std.testing.expectEqual(net.session.HostRole.dedicated, dedicated.role);
     const listen = try runSample(std.testing.allocator, .{ .role = .listen, .ticks = 4 });
-    try std.testing.expectEqual(up.NetHostRole.listen, listen.role);
+    try std.testing.expectEqual(net.session.HostRole.listen, listen.role);
     try std.testing.expect(listen.player.x > dedicated.player.x);
 }

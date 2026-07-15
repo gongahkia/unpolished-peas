@@ -102,7 +102,7 @@ pub const Client = struct {
     }
 };
 
-test "host and client sessions run from an explicit fixed step" {
+test "host and client sessions exchange a loopback input" {
     var client_endpoint = transport.Loopback.init(std.testing.allocator, .{ .id = 1 });
     defer client_endpoint.deinit();
     var host_endpoint = transport.Loopback.init(std.testing.allocator, .{ .id = 2 });
@@ -114,8 +114,6 @@ test "host and client sessions run from an explicit fixed step" {
     try std.testing.expectError(error.NotConnected, client.sendInput("before-connect"));
     try client.connect(.{ .id = 2 }, 44);
 
-    var clock = @import("app.zig").StepClock.init(60);
-    try std.testing.expectEqual(@as(u32, 1), clock.push(1.0 / 60.0));
     try client.poll();
     try host.poll();
     try client.poll();

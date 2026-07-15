@@ -12,6 +12,10 @@
             .path = "packages/physics",
             .lazy = true,
         },
+        .networking = .{
+            .path = "packages/networking",
+            .lazy = true,
+        },
         .ui = .{
             .path = "packages/ui",
             .lazy = true,

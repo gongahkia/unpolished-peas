@@ -1,0 +1,9 @@
+.{
+    .format = "unpolished-peas-extension",
+    .version = 1,
+    .name = "networking",
+    .package_version = "1.0.0",
+    .core_range = "^1.0.0",
+    .modules = .{ .{ .name = "unpolished-peas-networking", .path = "src/networking.zig" } },
+    .tests = .{ .{ .name = "networking-integration", .target = "test-networking", .path = "src/networking.zig" } },
+}
