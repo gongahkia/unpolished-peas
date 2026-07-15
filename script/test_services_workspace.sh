@@ -9,6 +9,7 @@ fi
 cd "$repo/services"
 PKG_CONFIG_LIBDIR=/nonexistent zig build test
 cd "$repo"
+script/test_services_integration.sh
 script/run_local_services.sh services/fixtures/local.zon --once
 
 tmp=$(mktemp -d)
