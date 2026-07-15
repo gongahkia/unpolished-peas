@@ -3,8 +3,6 @@ const tools = @import("unpolished-peas-tools");
 const content = @import("unpolished-peas-content");
 const starter = @import("starter.zig");
 
-const max_build_output_bytes = 8 * 1024 * 1024;
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -380,21 +378,12 @@ fn docsUsage() error{InvalidArguments} {
 }
 
 fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8) !std.process.Child.Term {
-    const result = try std.process.Child.run(.{
-        .allocator = allocator,
-        .argv = arguments,
-        .cwd = cwd,
-        .max_output_bytes = max_build_output_bytes,
-    });
-    defer allocator.free(result.stdout);
-    defer allocator.free(result.stderr);
-    try std.fs.File.stdout().writeAll(result.stdout);
-    try std.fs.File.stderr().writeAll(result.stderr);
-    if (tools.diagnosticRemediation(tools.classifyDiagnostic(result.stderr))) |remediation| {
-        if (result.stderr.len != 0 and result.stderr[result.stderr.len - 1] != '\n') try std.fs.File.stderr().writeAll("\n");
-        std.debug.print("peas recovery: {s}\n", .{remediation});
-    }
-    return result.term;
+    var child = std.process.Child.init(arguments, allocator);
+    child.cwd = cwd;
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    return child.spawnAndWait();
 }
 
 fn runUsage() error{InvalidArguments} {
