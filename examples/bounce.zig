@@ -1,12 +1,15 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
 
-const Ball = struct {
+pub const width = 160;
+pub const height = 90;
+
+pub const Ball = struct {
     pos: up.Vec2 = .{ .x = 30, .y = 30 },
     vel: up.Vec2 = .{ .x = 52, .y = 37 },
     radius: i32 = 6,
 
-    fn update(self: *Ball, dt: f32, bounds_w: f32, bounds_h: f32) void {
+    pub fn update(self: *Ball, dt: f32, bounds_w: f32, bounds_h: f32) void {
         self.pos = self.pos.add(self.vel.scale(dt));
 
         const r: f32 = @floatFromInt(self.radius);
@@ -34,7 +37,7 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var canvas = try up.Canvas.init(allocator, 160, 90);
+    var canvas = try up.Canvas.init(allocator, width, height);
     defer canvas.deinit();
 
     var clock = up.StepClock.init(60);
