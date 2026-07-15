@@ -13,6 +13,7 @@ jobs:
         with:
           version: 0.15.2
       - run: script/test_downstream_fixture.sh
+      - run: script/test_core_downstream_fixture.sh
 
   services-migrations:
     runs-on: ubuntu-latest

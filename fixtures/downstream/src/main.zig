@@ -1,14 +1,9 @@
-const std = @import("std");
-const up = @import("unpolished-peas").api;
-const sdl = @import("unpolished-peas-sdl3");
+const core = @import("unpolished-peas").api.core;
 
 pub fn main() !void {
-    const runtime_config: sdl.Config = .{ .max_frames = 1 };
-    _ = runtime_config;
-
-    var canvas = try up.Canvas.init(std.heap.page_allocator, 2, 2);
-    defer canvas.deinit();
-    canvas.clear(up.Color.black);
-    canvas.fillRect(0, 0, 1, 1, up.Color.white);
-    if (canvas.pixels[0].r != 255) return error.DrawFailed;
+    var clock = core.StepClock.init(60);
+    if (clock.push(1.0 / 60.0) != 1 or clock.alpha() != 0) return error.InvalidStepClock;
+    const color = core.Color.rgb(12, 34, 56);
+    const bounds = core.Rect.init(0, 0, 4, 4);
+    if (!bounds.contains(core.Vec2.init(2, 2)) or color.b != 56) return error.InvalidCoreValue;
 }

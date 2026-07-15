@@ -12,7 +12,6 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") },
-                .{ .name = "unpolished-peas-sdl3", .module = peas.module("unpolished-peas-sdl3") },
             },
         }),
     });
