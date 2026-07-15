@@ -10,6 +10,8 @@ pub const Config = struct {
     reorder_per_mille: u16 = 0,
     reorder_delay_ms: u64 = 0,
     bandwidth_bytes_per_second: u64 = 0,
+    max_flights: usize = 256,
+    max_inbox_packets: usize = 256,
 };
 
 pub const Network = struct { // owns queued faulted packets allocated by init; endpoints must deinit before the network.
@@ -20,15 +22,15 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
     next_bandwidth_slot: u64 = 0,
     flights: std.ArrayListUnmanaged(Flight) = .{},
 
-    const Flight = struct { from: transport.Peer, to: *Endpoint, deliver_at_ms: u64, bytes: []u8 };
+    const Flight = struct { allocator: std.mem.Allocator, from: transport.Peer, to: *Endpoint, deliver_at_ms: u64, bytes: []u8 };
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Network {
-        if (config.loss_per_mille > 1_000 or config.duplicate_per_mille > 1_000 or config.reorder_per_mille > 1_000) return error.InvalidFaultConfig;
+        if (config.loss_per_mille > 1_000 or config.duplicate_per_mille > 1_000 or config.reorder_per_mille > 1_000 or config.max_flights == 0 or config.max_flights > 4_096 or config.max_inbox_packets == 0 or config.max_inbox_packets > 4_096) return error.InvalidFaultConfig;
         return .{ .allocator = allocator, .config = config, .random = std.Random.DefaultPrng.init(config.seed) };
     }
 
     pub fn deinit(self: *Network) void {
-        for (self.flights.items) |flight| flight.to.allocator.free(flight.bytes);
+        for (self.flights.items) |flight| flight.allocator.free(flight.bytes);
         self.flights.deinit(self.allocator);
         self.* = undefined;
     }
@@ -45,6 +47,7 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
     }
 
     fn schedule(self: *Network, from: transport.Peer, to: *Endpoint, bytes: []const u8) !void {
+        if (self.flights.items.len >= self.config.max_flights) return error.FaultFlightLimit;
         var delay = self.config.latency_ms + self.jitter();
         if (self.selected(self.config.reorder_per_mille)) delay +%= self.config.reorder_delay_ms;
         var deliver_at = self.now_ms +% delay;
@@ -53,7 +56,7 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
             const serial_ms = @max(@as(u64, 1), std.math.divCeil(u64, @as(u64, @intCast(bytes.len)) * 1_000, self.config.bandwidth_bytes_per_second) catch return error.InvalidFaultConfig);
             self.next_bandwidth_slot = deliver_at +% serial_ms;
         }
-        try self.flights.append(self.allocator, .{ .from = from, .to = to, .deliver_at_ms = deliver_at, .bytes = try to.allocator.dupe(u8, bytes) });
+        try self.flights.append(self.allocator, .{ .allocator = to.allocator, .from = from, .to = to, .deliver_at_ms = deliver_at, .bytes = try to.allocator.dupe(u8, bytes) });
         self.flush();
     }
 
@@ -65,7 +68,11 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
                 continue;
             }
             const flight = self.flights.orderedRemove(index);
-            flight.to.inbox.append(flight.to.allocator, .{ .from = flight.from, .bytes = flight.bytes }) catch flight.to.allocator.free(flight.bytes);
+            if (flight.to.inbox.items.len >= self.config.max_inbox_packets) {
+                flight.to.allocator.free(flight.bytes);
+            } else {
+                flight.to.inbox.append(flight.to.allocator, .{ .from = flight.from, .bytes = flight.bytes }) catch flight.to.allocator.free(flight.bytes);
+            }
         }
     }
 
@@ -105,6 +112,10 @@ pub const Endpoint = struct { // owns its inbox and borrows its Network; call de
 
     pub fn asTransport(self: *Endpoint) transport.Transport {
         return .{ .context = self, .poll_fn = poll, .send_fn = send, .receive_fn = receive, .now_fn = now };
+    }
+
+    pub fn queuedPackets(self: *const Endpoint) usize {
+        return self.inbox.items.len;
     }
 
     fn poll(context: *anyopaque) !void {
@@ -221,4 +232,21 @@ test "fault network reorders delayed packets and shapes bandwidth" {
     var shaped = bandwidth_receiver.asTransport().receive().?;
     defer shaped.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("b", shaped.bytes);
+}
+
+test "fault network bounds flights and inboxes" {
+    var network = try Network.init(std.testing.allocator, .{ .seed = 4, .latency_ms = 10, .max_flights = 1, .max_inbox_packets = 1 });
+    defer network.deinit();
+    var sender = Endpoint.init(std.testing.allocator, &network, .{ .id = 1 });
+    defer sender.deinit();
+    var receiver = Endpoint.init(std.testing.allocator, &network, .{ .id = 2 });
+    defer receiver.deinit();
+    Endpoint.pair(&sender, &receiver);
+    try sender.asTransport().send(.{ .id = 2 }, "first");
+    try std.testing.expectError(error.FaultFlightLimit, sender.asTransport().send(.{ .id = 2 }, "second"));
+    network.advance(10);
+    try std.testing.expectEqual(@as(usize, 1), receiver.queuedPackets());
+    try sender.asTransport().send(.{ .id = 2 }, "third");
+    network.advance(10);
+    try std.testing.expectEqual(@as(usize, 1), receiver.queuedPackets());
 }
