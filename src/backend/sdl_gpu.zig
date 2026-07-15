@@ -1008,8 +1008,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     profiler.beginFrame(ctx.frame);
     const init_timer = profiler.scope(.callback);
     callLoopInit(state, callbacks, &ctx) catch |err| {
-        dev.failure(.init, err);
-        failure = .{ .phase = .init, .err = err };
+        const current = lifecycleCallbackFailure(.init, err);
+        dev.callbackFailure(current);
+        failure = current;
     };
     init_timer.end();
     if (failure) |current| dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -1028,11 +1029,13 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         refreshPresentation(window, &presentation);
         var audio_device_changed = false;
         var close_requested = false;
+        var callback_failure: ?Failure = null;
         const callback_timer = profiler.scope(.callback);
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery) catch |err| blk: {
-            dev.failure(.input, err);
-            dev.captureFailure(.{ .phase = .input, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
-            failure = .{ .phase = .input, .err = err };
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
+            const current = callback_failure orelse Failure{ .phase = .input, .err = err };
+            if (callback_failure != null) dev.callbackFailure(current) else dev.failure(.input, err);
+            dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
+            failure = current;
             break :blk !close_requested;
         };
         callback_timer.end();
@@ -1105,9 +1108,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             const update_timer = profiler.scope(.update);
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
                 update_timer.end();
-                dev.failure(.update, err);
-                dev.captureFailure(.{ .phase = .update, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
-                failure = .{ .phase = .update, .err = err };
+                const current = lifecycleCallbackFailure(.update, err);
+                dev.callbackFailure(current);
+                dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
+                failure = current;
                 break;
             };
             update_timer.end();
@@ -1119,9 +1123,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const draw_timer = profiler.scope(.draw);
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             draw_timer.end();
-            dev.failure(.draw, err);
-            dev.captureFailure(.{ .phase = .draw, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
-            failure = .{ .phase = .draw, .err = err };
+            const current = lifecycleCallbackFailure(.draw, err);
+            dev.callbackFailure(current);
+            dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
+            failure = current;
             continue;
         };
         draw_timer.end();
@@ -1229,6 +1234,13 @@ fn callLoopDeinit(state: anytype, comptime callbacks: anytype, ctx: *Context) vo
 
 fn callLoopEvent(state: anytype, comptime callbacks: anytype, ctx: *Context, event_value: Event) !void {
     if (@hasField(@TypeOf(callbacks), "event")) try maybeError(callbacks.event(state, ctx, event_value));
+}
+
+fn callLoopEventWithFailure(state: anytype, comptime callbacks: anytype, ctx: *Context, event_value: Event, callback_failure: *?Failure) !void {
+    callLoopEvent(state, callbacks, ctx, event_value) catch |err| {
+        callback_failure.* = callbackFailure(.event, err, eventContext(event_value));
+        return err;
+    };
 }
 
 fn callLoopUpdate(state: anytype, comptime callbacks: anytype, ctx: *Context) !void {
@@ -1420,6 +1432,30 @@ test "explicit loop callbacks share the lifecycle" {
     try std.testing.expectEqualSlices(u8, "ieudx", state.calls[0..state.call_count]);
 }
 
+test "callback failures retain phase and local context" {
+    const phases = [_]FailurePhase{ .init, .update, .draw };
+    for (phases) |phase| {
+        const failure = lifecycleCallbackFailure(phase, error.CallbackFailed);
+        try std.testing.expectEqual(phase, failure.phase);
+        try std.testing.expect(std.mem.startsWith(u8, failure.context, "callback="));
+    }
+}
+
+test "event callback failures retain the event context" {
+    const State = struct {
+        fn event(_: *@This(), _: *Context, _: Event) !void {
+            return error.EventFailed;
+        }
+    };
+    var ctx: Context = undefined;
+    var state = State{};
+    var failure: ?Failure = null;
+    try std.testing.expectError(error.EventFailed, callLoopEventWithFailure(&state, .{ .event = State.event }, &ctx, .focus_lost, &failure));
+    const current = failure.?;
+    try std.testing.expectEqual(FailurePhase.event, current.phase);
+    try std.testing.expectEqualStrings("event=focus_lost", current.context);
+}
+
 fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
     if (events.len == 0) return;
 
@@ -1442,7 +1478,37 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
 const Failure = struct {
     phase: FailurePhase,
     err: anyerror,
+    context: []const u8 = "",
 };
+
+fn callbackFailure(phase: FailurePhase, err: anyerror, context: []const u8) Failure {
+    return .{ .phase = phase, .err = err, .context = context };
+}
+
+fn lifecycleCallbackFailure(phase: FailurePhase, err: anyerror) Failure {
+    return callbackFailure(phase, err, switch (phase) {
+        .init => "callback=init",
+        .update => "callback=update",
+        .draw => "callback=draw",
+        else => unreachable,
+    });
+}
+
+fn eventContext(event_value: Event) []const u8 {
+    return switch (event_value) {
+        .close_requested => "event=close_requested",
+        .focus_gained => "event=focus_gained",
+        .focus_lost => "event=focus_lost",
+        .minimized => "event=minimized",
+        .restored => "event=restored",
+        .resized => "event=resized",
+        .gamepad_connected => "event=gamepad_connected",
+        .gamepad_disconnected => "event=gamepad_disconnected",
+        .audio_device_changed => "event=audio_device_changed",
+        .gpu_device_reset => "event=gpu_device_reset",
+        .gpu_device_lost => "event=gpu_device_lost",
+    };
+}
 
 const DesktopState = struct {
     focused: bool = true,
@@ -1554,6 +1620,15 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
+    fn callbackFailure(self: *DeveloperTools, failure_value: Failure) void {
+        var buffer: [320]u8 = undefined;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas {s} callback failed: {s} {s}\n", .{ failure_value.phase.label(), @errorName(failure_value.err), failure_value.context }) catch return;
+        if (self.log_file != null) {
+            std.debug.print("unpolished-peas {s} callback failed: {s} {s}; log: {s}unpolished-peas.log\n", .{ failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, self.app_data_path });
+        } else std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
     fn captureFailure(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler) void {
         self.captureDiagnostic(failure_value, frame, canvas, commands, frame_profiler, "runtime");
     }
@@ -1571,7 +1646,7 @@ const DeveloperTools = struct {
         defer if (configured_path) |value| self.allocator.free(value);
         const path = configured_path orelse std.fmt.bufPrint(&path_buffer, "{s}diagnostics", .{self.app_data_path}) catch return;
         var message_buffer: [256]u8 = undefined;
-        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), frame }) catch return;
+        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} context={s} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, frame }) catch return;
         up.diagnostics.capture(self.allocator, .{ .path = path }, .{ .canvas = canvas, .commands = commands, .profiler = frame_profiler, .log = message }) catch |err| {
             var buffer: [192]u8 = undefined;
             const line = std.fmt.bufPrint(&buffer, "unpolished-peas diagnostics failed: {s}\n", .{@errorName(err)}) catch return;
@@ -1624,6 +1699,7 @@ test "developer tools log runtime failure categories" {
     tools.failure(.update, error.UpdateFailed);
     tools.failure(.draw, error.DrawFailed);
     tools.failure(.asset_reload, error.ReloadFailed);
+    tools.callbackFailure(callbackFailure(.event, error.EventFailed, "event=focus_lost"));
     DeveloperTools.inspectorFailure(&tools, "scene", error.PanelFailed);
     var data = try std.fs.openDirAbsolute(root, .{});
     defer data.close();
@@ -1633,6 +1709,7 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "update failed: UpdateFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "draw failed: DrawFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "event callback failed: EventFailed event=focus_lost") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
 }
 
@@ -1654,7 +1731,7 @@ test "runtime failures capture bounded artifacts" {
     var profiler = up.FrameProfiler.init(true);
     profiler.beginFrame(2);
     profiler.scope(.draw).end();
-    tools.captureFailure(.{ .phase = .draw, .err = error.DrawFailed }, 2, canvas, commands.commands.items, &profiler);
+    tools.captureFailure(callbackFailure(.event, error.EventFailed, "event=focus_lost"), 2, canvas, commands.commands.items, &profiler);
     const diagnostics_path = try std.fs.path.join(std.testing.allocator, &.{ root, "diagnostics" });
     defer std.testing.allocator.free(diagnostics_path);
     var directory = try std.fs.openDirAbsolute(diagnostics_path, .{});
@@ -1662,7 +1739,10 @@ test "runtime failures capture bounded artifacts" {
     try directory.access("screenshot.png", .{});
     try directory.access("commands.json", .{});
     try directory.access("trace.json", .{});
-    try directory.access("failure.log", .{});
+    const log = try directory.readFileAlloc(std.testing.allocator, "failure.log", 1024);
+    defer std.testing.allocator.free(log);
+    try std.testing.expect(std.mem.indexOf(u8, log, "phase=event") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "context=event=focus_lost") != null);
 }
 
 test "GPU audio and input startup failures capture diagnostics" {
@@ -1698,7 +1778,7 @@ fn drawFailure(canvas: *up.Canvas, failure: Failure) void {
     canvas.drawText("ERROR", 6, 6, up.Color.rgb(255, 225, 225));
     canvas.drawText(failure.phase.label(), 6, 18, up.Color.rgb(255, 198, 74));
     canvas.drawText(@errorName(failure.err), 6, 30, up.Color.rgb(255, 225, 225));
-    canvas.drawText("LOG: unpolished-peas.log", 6, 42, up.Color.rgb(225, 225, 225));
+    canvas.drawText(if (failure.context.len == 0) "LOG: unpolished-peas.log" else failure.context, 6, 42, up.Color.rgb(225, 225, 225));
     canvas.drawText("ESC TO QUIT", 6, 54, up.Color.rgb(225, 232, 240));
 }
 
@@ -2701,39 +2781,39 @@ const d3d_compiler = if (builtin.os.tag == .windows) struct {
     }
 };
 
-fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery, callback_failure: *?Failure) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
         switch (event.type) {
             c.SDL_EVENT_QUIT, c.SDL_EVENT_WINDOW_CLOSE_REQUESTED => {
                 close_requested.* = true;
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .close_requested);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .close_requested, callback_failure);
                 running = false;
             },
             c.SDL_EVENT_WINDOW_FOCUS_GAINED => {
                 desktop_state.focused = true;
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .focus_gained);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .focus_gained, callback_failure);
             },
             c.SDL_EVENT_WINDOW_FOCUS_LOST => {
                 desktop_state.focused = false;
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .focus_lost);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .focus_lost, callback_failure);
             },
             c.SDL_EVENT_WINDOW_MINIMIZED => {
                 desktop_state.minimized = true;
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .minimized);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .minimized, callback_failure);
             },
             c.SDL_EVENT_WINDOW_RESTORED => {
                 desktop_state.minimized = false;
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .restored);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .restored, callback_failure);
             },
             c.SDL_EVENT_RENDER_DEVICE_RESET => {
                 gpu_recovery.* = nextGpuRecovery(gpu_recovery.*, .gpu_device_reset);
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .gpu_device_reset);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .gpu_device_reset, callback_failure);
             },
             c.SDL_EVENT_RENDER_DEVICE_LOST => {
                 gpu_recovery.* = nextGpuRecovery(gpu_recovery.*, .gpu_device_lost);
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .gpu_device_lost);
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .gpu_device_lost, callback_failure);
             },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
                 if (event.key.repeat) continue;
@@ -2745,12 +2825,12 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             },
             c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => {
                 refreshPresentation(window, presentation);
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } });
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } }, callback_failure);
             },
             else => {
                 if (audioDeviceChanged(event.type)) {
                     audio_device_changed.* = true;
-                    if (initialized) try callLoopEvent(state, callbacks, ctx, .audio_device_changed);
+                    if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .audio_device_changed, callback_failure);
                 }
             },
             c.SDL_EVENT_MOUSE_MOTION => setPointerPosition(input, window, presentation, .{ .x = event.motion.x, .y = event.motion.y }),
@@ -2762,12 +2842,12 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             c.SDL_EVENT_GAMEPAD_ADDED => {
                 const id: i32 = @intCast(event.gdevice.which);
                 _ = input.addGamepad(id);
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .gamepad_connected = id });
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .{ .gamepad_connected = id }, callback_failure);
             },
             c.SDL_EVENT_GAMEPAD_REMOVED => {
                 const id: i32 = @intCast(event.gdevice.which);
                 _ = input.removeGamepad(id);
-                if (initialized) try callLoopEvent(state, callbacks, ctx, .{ .gamepad_disconnected = id });
+                if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .{ .gamepad_disconnected = id }, callback_failure);
             },
             c.SDL_EVENT_GAMEPAD_BUTTON_DOWN, c.SDL_EVENT_GAMEPAD_BUTTON_UP => if (mapGamepadButton(event.gbutton.button)) |button| input.setGamepadButton(@intCast(event.gbutton.which), button, event.type == c.SDL_EVENT_GAMEPAD_BUTTON_DOWN),
             c.SDL_EVENT_GAMEPAD_AXIS_MOTION => if (mapGamepadAxis(event.gaxis.axis)) |axis| input.setGamepadAxis(@intCast(event.gaxis.which), axis, normalizeGamepadAxis(axis, event.gaxis.value), 0.15),
