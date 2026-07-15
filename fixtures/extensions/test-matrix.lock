@@ -1,4 +1,6 @@
+1.0.0	effects	test-effects
 1.0.0	physics	test-box2d
 1.0.0	sdl3	test-sdl
+1.0.1	effects	test-effects
 1.0.1	physics	test-box2d
 1.0.1	sdl3	test-sdl

@@ -27,6 +27,7 @@ for command in \
     'run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown' \
     'run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer' \
     'run diagnostics zig build test-support' \
+    'run package-release zig build test-package-release' \
     'run effects-conformance zig build test-effects-conformance' \
     'run physics-conformance zig build test-physics-conformance' \
     'run visual-scenes zig build test-scenes' \
