@@ -324,10 +324,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn loadPng(self: *AssetStore, path: []const u8) !ImageHandle {
-        return self.loadImage(path);
-    }
-
     pub fn loadSound(self: *AssetStore, path: []const u8) !AudioHandle {
         const asset = try self.loadSoundAsset(path);
         errdefer {
@@ -365,23 +361,8 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn loadFont(self: *AssetStore, path: []const u8) !FontHandle {
-        return self.loadFontWithOptions(path, .{});
-    }
-
-    pub fn loadFontWithOptions(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontHandle {
-        const asset = try self.loadFontAsset(path, options);
-        errdefer {
-            var cleanup = asset;
-            cleanup.deinit();
-        }
-        const index = self.fonts.items.len;
-        try self.fonts.append(self.allocator, asset);
-        return .{ .index = index, .generation = 1 };
-    }
-
-    pub fn loadBitmapFont(self: *AssetStore, path: []const u8) !FontHandle {
-        const asset = try self.loadBitmapFontAsset(path);
+    pub fn loadFont(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontHandle {
+        const asset = if (std.mem.endsWith(u8, path, ".fnt")) try self.loadBitmapFontAsset(path) else try self.loadFontAsset(path, options);
         errdefer {
             var cleanup = asset;
             cleanup.deinit();
@@ -402,11 +383,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn loadTileMap(self: *AssetStore, path: []const u8) !TileMapHandle {
-        return self.loadTileMapWithOptions(path, .{});
-    }
-
-    pub fn loadTileMapWithOptions(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapHandle {
+    pub fn loadTileMap(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapHandle {
         const asset = try self.loadTileMapAsset(path, options, null);
         errdefer {
             var cleanup = asset;
@@ -884,12 +861,12 @@ test "asset handles reject stale generations" {
     var store = AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer store.deinit();
     const text = try store.loadText("examples/assets/message.txt");
-    const image = try store.loadPng("examples/assets/ball.png");
+    const image = try store.loadImage("examples/assets/ball.png");
     const sound = try store.loadSound("examples/assets/blip.wav");
     const atlas = try store.loadAtlas("examples/assets/atlas.json");
-    const truetype = try store.loadFont("examples/assets/fonts/Basic-Regular.ttf");
-    const opentype = try store.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
-    const bitmap = try store.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
+    const truetype = try store.loadFont("examples/assets/fonts/Basic-Regular.ttf", .{});
+    const opentype = try store.loadFont("examples/assets/fonts/SourceSans3-Regular.otf", .{});
+    const bitmap = try store.loadFont("examples/assets/fonts/bitmap.fnt", .{});
     try std.testing.expect((try store.tryText(text)).len > 0);
     try std.testing.expect((try store.tryImage(image)).width > 0);
     try std.testing.expect((try store.trySound(sound)).frames.len > 0);
@@ -904,6 +881,18 @@ test "asset handles reject stale generations" {
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = truetype.index, .generation = nextGeneration(truetype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = opentype.index, .generation = nextGeneration(opentype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryTileMap(.{ .index = 0, .generation = 1 }));
+}
+
+test "asset store exposes canonical loaders only" {
+    try std.testing.expect(@hasDecl(AssetStore, "loadImage"));
+    try std.testing.expect(@hasDecl(AssetStore, "loadAtlas"));
+    try std.testing.expect(@hasDecl(AssetStore, "loadFont"));
+    try std.testing.expect(@hasDecl(AssetStore, "loadSound"));
+    try std.testing.expect(@hasDecl(AssetStore, "loadTileMap"));
+    try std.testing.expect(!@hasDecl(AssetStore, "loadPng"));
+    try std.testing.expect(!@hasDecl(AssetStore, "loadBitmapFont"));
+    try std.testing.expect(!@hasDecl(AssetStore, "loadFontWithOptions"));
+    try std.testing.expect(!@hasDecl(AssetStore, "loadTileMapWithOptions"));
 }
 
 test "asset store exposes checked handle accessors" {
@@ -947,7 +936,7 @@ test "tile-map reload failures retain source diagnostics and last valid content"
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
     var store = AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
-    const handle = try store.loadTileMap("topdown.upmap");
+    const handle = try store.loadTileMap("topdown.upmap", .{});
 
     const invalid =
         \\.{
@@ -989,7 +978,7 @@ test "tile-map dependency reload failures retain the last valid map" {
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
     var store = AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
-    const handle = try store.loadTileMap("topdown.upmap");
+    const handle = try store.loadTileMap("topdown.upmap", .{});
 
     var stat = try tmp.dir.statFile("ball.png");
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });
@@ -1044,7 +1033,7 @@ test "image reload keeps last good asset after invalid edit" {
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = png });
     var store = AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
-    const handle = try store.loadPng("ball.png");
+    const handle = try store.loadImage("ball.png");
     const before = try store.tryImage(handle);
     var stat = try tmp.dir.statFile("ball.png");
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });

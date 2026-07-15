@@ -14,22 +14,18 @@ const Game = struct {
 
     game: breakout.Game = .{},
     ball: up.ImageHandle,
-    blip: up.Sound,
+    blip: up.AudioHandle,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const path = try ctx.assetPath("blip.wav");
-        defer ctx.allocator.free(path);
-        return .{ .ball = try ctx.loadPng("ball.png"), .blip = try up.Sound.loadWav(ctx.allocator, path) };
+        return .{ .ball = try ctx.loadImage("ball.png"), .blip = try ctx.loadSound("blip.wav") };
     }
 
-    pub fn deinit(self: *Game, _: *sdl.Context) void {
-        self.blip.deinit();
-    }
+    pub fn deinit(_: *Game, _: *sdl.Context) void {}
 
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         const axis: f32 = if (ctx.input.isDown(.left)) -1 else if (ctx.input.isDown(.right)) 1 else 0;
         const event = self.game.step(ctx.dt, axis);
-        if (event.brick or event.paddle) _ = try ctx.audio.playSound(&self.blip, .{ .volume = 0.35 });
+        if (event.brick or event.paddle) _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.blip), .{ .volume = 0.35 });
     }
 
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {

@@ -158,9 +158,9 @@ test "desktop renderer conformance GPU golden capture" {
     try expectConformanceGolden(&canvas);
     var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer assets.deinit();
-    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf");
-    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
-    const bitmap = try assets.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
+    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf", .{});
+    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf", .{});
+    const bitmap = try assets.loadFont("examples/assets/fonts/bitmap.fnt", .{});
     var sprites = up.SpriteBatch.init(std.testing.allocator);
     defer sprites.deinit();
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(truetype), "HÉ", 2, 2, up.Color.rgb(255, 198, 74));
@@ -264,9 +264,9 @@ test "GPU atlas quads preserve center origin, flip, rotation, tint, and filterin
 test "font assets build GPU sprite quads" {
     var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer assets.deinit();
-    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf");
-    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf");
-    const bitmap = try assets.loadBitmapFont("examples/assets/fonts/bitmap.fnt");
+    const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf", .{});
+    const opentype = try assets.loadFont("examples/assets/fonts/SourceSans3-Regular.otf", .{});
+    const bitmap = try assets.loadFont("examples/assets/fonts/bitmap.fnt", .{});
     const ttf = try assets.tryFontPtr(truetype);
     const otf = try assets.tryFontPtr(opentype);
     const bmfont = try assets.tryFontPtr(bitmap);
@@ -588,12 +588,6 @@ pub const Context = struct {
         appendAtlasQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_atlas, frame, x, y, options) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
     }
 
-    pub fn loadPng(self: *Context, path: []const u8) !up.ImageHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadPng(path);
-    }
-
     pub fn loadImage(self: *Context, path: []const u8) !up.ImageHandle {
         const timer = self.profile(.asset);
         defer timer.end();
@@ -606,22 +600,10 @@ pub const Context = struct {
         return self.assets.loadAtlas(path);
     }
 
-    pub fn loadFont(self: *Context, path: []const u8) !up.FontHandle {
+    pub fn loadFont(self: *Context, path: []const u8, options: up.FontLoadOptions) !up.FontHandle {
         const timer = self.profile(.asset);
         defer timer.end();
-        return self.assets.loadFont(path);
-    }
-
-    pub fn loadFontWithOptions(self: *Context, path: []const u8, options: up.FontLoadOptions) !up.FontHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadFontWithOptions(path, options);
-    }
-
-    pub fn loadBitmapFont(self: *Context, path: []const u8) !up.FontHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadBitmapFont(path);
+        return self.assets.loadFont(path, options);
     }
 
     pub fn fontAsset(self: *Context, handle: up.FontHandle) !*const up.Font {
@@ -640,16 +622,16 @@ pub const Context = struct {
         return (try self.assets.tryAtlas(atlas_handle)).findAnimation(name);
     }
 
-    pub fn loadTileMap(self: *Context, path: []const u8) !up.TileMapHandle {
+    pub fn loadTileMap(self: *Context, path: []const u8, options: up.TileMapAssetOptions) !up.TileMapHandle {
         const timer = self.profile(.asset);
         defer timer.end();
-        return self.assets.loadTileMap(path);
+        return self.assets.loadTileMap(path, options);
     }
 
-    pub fn loadTileMapWithOptions(self: *Context, path: []const u8, options: up.TileMapAssetOptions) !up.TileMapHandle {
+    pub fn loadSound(self: *Context, path: []const u8) !up.AudioHandle {
         const timer = self.profile(.asset);
         defer timer.end();
-        return self.assets.loadTileMapWithOptions(path, options);
+        return self.assets.loadSound(path);
     }
 
     pub fn tileMap(self: *Context, handle: up.TileMapHandle) !*const up.TileMap {

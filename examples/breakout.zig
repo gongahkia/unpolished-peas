@@ -8,7 +8,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    const ball = try assets.loadPng("ball.png");
+    const ball = try assets.loadImage("ball.png");
     const sound_path = try assets.assetPath(allocator, "blip.wav");
     defer allocator.free(sound_path);
     var sound = try up.Sound.loadWav(allocator, sound_path);

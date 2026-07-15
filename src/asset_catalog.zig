@@ -13,7 +13,6 @@ pub const Entry = struct {
 pub const FontEntry = struct {
     id: []const u8,
     path: []const u8,
-    bitmap: bool = false,
     dependencies: []const []const u8 = &.{},
     pixel_height: u16 = 20,
     atlas_width: u32 = 512,
@@ -189,7 +188,7 @@ pub fn load(allocator: std.mem.Allocator, store: *assets.AssetStore, catalog: So
     for (catalog.images) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .image = try store.loadImage(entry.path) });
     for (catalog.audio) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .audio = try store.loadSound(entry.path) });
     for (catalog.fonts) |entry| {
-        const handle = if (entry.bitmap) try store.loadBitmapFont(entry.path) else try store.loadFontWithOptions(entry.path, .{ .pixel_height = entry.pixel_height, .atlas_width = entry.atlas_width, .atlas_height = entry.atlas_height, .first_codepoint = entry.first_codepoint, .codepoint_count = entry.codepoint_count, .fallback_codepoint = entry.fallback_codepoint });
+        const handle = try store.loadFont(entry.path, .{ .pixel_height = entry.pixel_height, .atlas_width = entry.atlas_width, .atlas_height = entry.atlas_height, .first_codepoint = entry.first_codepoint, .codepoint_count = entry.codepoint_count, .fallback_codepoint = entry.fallback_codepoint });
         try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .font = handle });
     }
     for (catalog.atlases) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .atlas = try store.loadAtlas(entry.path) });

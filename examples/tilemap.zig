@@ -31,7 +31,7 @@ const Game = struct {
                 if (@rem(x + y, 13) == 0) try map.setTile(detail, .{ .x = x, .y = y }, .{ .tileset = 0, .id = 7 });
             }
         }
-        return .{ .map = map, .image = try ctx.loadPng("ball.png") };
+        return .{ .map = map, .image = try ctx.loadImage("ball.png") };
     }
 
     pub fn deinit(self: *Game, _: *sdl.Context) void {

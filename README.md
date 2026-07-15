@@ -49,7 +49,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 `World.appendDebug` emits the same core render commands for headless and GPU presentation.
 `Inspector` panels register explicitly through `Context.registerInspectorPanel`; disabled developer tools retain no panels and execute no inspector rendering. `InspectorScenePanel`, `InspectorAssetPanel`, `InspectorInputPanel`, `InspectorCollisionPanel`, `InspectorPhysicsPanel`, and `InspectorNetworkPanel` render unavailable sources as status rows. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
 
-`Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont` loads TrueType/OpenType fonts into a GPU atlas; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `loadBitmapFont` loads AngelCode text `.fnt` descriptors; `layoutText` shares the same deterministic UTF-8 decoder.
+`Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont(path, options)` loads TrueType/OpenType fonts into a GPU atlas and detects AngelCode `.fnt` descriptors; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `layoutText` shares the same deterministic UTF-8 decoder.
 
 `Image.decode` and `AssetStore.loadImage` accept PNG, JPEG, and TGA with a 32 MiB input cap, 4096×4096 dimension caps, and a 16 MiB pixel cap; pass `ImageDecodeOptions` to tighten direct decoder limits.
 
