@@ -27,6 +27,8 @@
     {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AudioHandle", "Camera2D", "Color", "ImageHandle", "Input", "LoopbackTransport", "NetClient", "NetHost", "TileMapHandle", "netPeer"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "fixtures/downstream/build.zig", "imports": []},
     {"path": "fixtures/downstream/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api.core", "symbols": ["Color", "Rect", "StepClock", "Vec2"]}]},
+    {"path": "fixtures/external-game/build.zig", "imports": []},
+    {"path": "fixtures/external-game/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AudioSample", "Color", "Image", "Input", "Sound", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "fixtures/modules/build.zig", "imports": []},
     {"path": "fixtures/modules/src/modules.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Canvas", "NetConnection", "NetContract", "NetIdentity", "NetSession", "PredictionClient", "PredictionConfig"]}, {"module": "unpolished-peas-services", "path": "", "symbols": ["ClientTarget", "Endpoint", "FakeServiceProvider", "GuestCredentialStore", "GuestCredentials", "GuestToken", "ServiceSessionStatus", "networking"]}, {"module": "unpolished-peas-tools", "path": "", "symbols": ["Command", "parseCommand"]}]},
     {"path": "fixtures/peas-check/asset-file/build.zig", "imports": []},
