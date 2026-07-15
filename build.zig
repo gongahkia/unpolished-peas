@@ -140,6 +140,9 @@ pub fn build(b: *std.Build) void {
             .imports = &.{ .{ .name = "unpolished-peas-tools", .module = tools }, .{ .name = "unpolished-peas-content", .module = content } },
         }),
     });
+    const install_peas = b.addInstallArtifact(peas_cli, .{});
+    const install_peas_step = b.step("install-peas", "Install the unpolished-peas project CLI");
+    install_peas_step.dependOn(&install_peas.step);
     const run_peas = b.addRunArtifact(peas_cli);
     run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/bounce"));
     run_peas.setEnvironmentVariable("UP_SCRIPT_ROOT", b.pathFromRoot("script"));
