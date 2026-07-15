@@ -1,8 +1,0 @@
-.{
-    .format = "unpolished-peas-project",
-    .version = 1,
-    .entry_scene = "scenes/platformer.upscene",
-    .build = .{ .title = "native platformer", .width = 160, .height = 64, .scale = 5 },
-    .assets = .{ .root = "assets" },
-    .engine = .{ .version = "v0.0.3" },
-}

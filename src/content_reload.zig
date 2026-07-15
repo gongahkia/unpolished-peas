@@ -28,24 +28,28 @@ pub const Controller = struct {
     allocator: std.mem.Allocator,
     project_root: []u8,
     output_root: []u8,
+    entry_scene: []u8,
     watched: []Entry,
     compiled_scene: []u8,
     diagnostic: compiler.Diagnostic = .{},
 
-    pub fn init(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *compiler.Diagnostic) !Controller {
+    pub fn init(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, entry_scene: []const u8, diagnostic: *compiler.Diagnostic) !Controller {
         if (!std.fs.path.isAbsolute(project_root) or !std.fs.path.isAbsolute(output_root)) return error.ContentPathsMustBeAbsolute;
         const owned_project_root = try allocator.dupe(u8, project_root);
         errdefer allocator.free(owned_project_root);
         const owned_output_root = try allocator.dupe(u8, output_root);
         errdefer allocator.free(owned_output_root);
+        const owned_entry_scene = try allocator.dupe(u8, entry_scene);
+        errdefer allocator.free(owned_entry_scene);
         _ = try compiler.compileProject(allocator, owned_project_root, owned_output_root, diagnostic);
-        const compiled_scene = try loadEntryCache(allocator, owned_project_root, owned_output_root, diagnostic);
+        const compiled_scene = try loadEntryCache(allocator, owned_output_root, owned_entry_scene, diagnostic);
         errdefer allocator.free(compiled_scene);
         const watched = try snapshot(allocator, owned_project_root);
         return .{
             .allocator = allocator,
             .project_root = owned_project_root,
             .output_root = owned_output_root,
+            .entry_scene = owned_entry_scene,
             .watched = watched,
             .compiled_scene = compiled_scene,
         };
@@ -55,6 +59,7 @@ pub const Controller = struct {
         self.diagnostic.deinit(self.allocator);
         deinitEntries(self.allocator, self.watched);
         self.allocator.free(self.compiled_scene);
+        self.allocator.free(self.entry_scene);
         self.allocator.free(self.output_root);
         self.allocator.free(self.project_root);
         self.* = undefined;
@@ -85,7 +90,7 @@ pub const Controller = struct {
             self.replaceDiagnostic(&next_diagnostic);
             return .{ .status = .failed, .err = err };
         };
-        const next_scene = loadEntryCache(self.allocator, self.project_root, self.output_root, &next_diagnostic) catch |err| {
+        const next_scene = loadEntryCache(self.allocator, self.output_root, self.entry_scene, &next_diagnostic) catch |err| {
             self.replaceWatched(next_watched);
             self.replaceDiagnostic(&next_diagnostic);
             return .{ .status = .failed, .err = err };
@@ -110,8 +115,8 @@ pub const Controller = struct {
     }
 };
 
-fn loadEntryCache(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *compiler.Diagnostic) ![]u8 {
-    const path = try compiler.entryArtifactPath(allocator, project_root, output_root, diagnostic);
+fn loadEntryCache(allocator: std.mem.Allocator, output_root: []const u8, entry_scene: []const u8, diagnostic: *compiler.Diagnostic) ![]u8 {
+    const path = try compiler.entryArtifactPath(allocator, output_root, entry_scene);
     defer allocator.free(path);
     const bytes = std.fs.cwd().readFileAlloc(allocator, path, max_cache_bytes) catch |err| {
         try setCacheDiagnostic(allocator, diagnostic, path, "compiled scene cache is missing");
@@ -195,7 +200,7 @@ test "content reload retains the last valid compiled scene and source diagnostic
 
     var diagnostic: compiler.Diagnostic = .{};
     defer diagnostic.deinit(std.testing.allocator);
-    var controller = try Controller.init(std.testing.allocator, root, output, &diagnostic);
+    var controller = try Controller.init(std.testing.allocator, root, output, "scenes/main.upscene", &diagnostic);
     defer controller.deinit();
     const previous = try std.testing.allocator.dupe(u8, controller.compiledScene());
     defer std.testing.allocator.free(previous);
@@ -238,7 +243,7 @@ test "content reload tracks transitive asset changes and refreshes caches" {
 
     var diagnostic: compiler.Diagnostic = .{};
     defer diagnostic.deinit(std.testing.allocator);
-    var controller = try Controller.init(std.testing.allocator, root, output, &diagnostic);
+    var controller = try Controller.init(std.testing.allocator, root, output, "scenes/main.upscene", &diagnostic);
     defer controller.deinit();
     try temp.dir.writeFile(.{ .sub_path = "project/assets/sprites/ball.txt", .data = "changed-asset" });
     const reloaded = try controller.reloadIfChanged();
@@ -256,10 +261,6 @@ fn writeProject(temp: *std.testing.TmpDir) !void {
     try temp.dir.makePath("project/scenes");
     try temp.dir.makePath("project/assets/sprites");
     try temp.dir.makePath("project/maps");
-    try temp.dir.writeFile(.{ .sub_path = "project/project.up", .data =
-        \\.{ .format = "unpolished-peas-project", .version = 1, .entry_scene = "scenes/main.upscene", .build = .{ .title = "test", .width = 8, .height = 8, .scale = 1 }, .assets = .{ .root = "assets" }, .engine = .{ .version = "v0.0.3" } }
-        \\
-    });
     try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
         \\.{ .format = "unpolished-peas-scene", .version = 1, .metadata = .{ .name = "main", .tags = .{} }, .entities = .{} }
         \\

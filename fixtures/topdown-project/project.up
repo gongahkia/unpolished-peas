@@ -1,8 +1,0 @@
-.{
-    .format = "unpolished-peas-project",
-    .version = 1,
-    .entry_scene = "scenes/topdown.upscene",
-    .build = .{ .title = "native top-down", .width = 160, .height = 96, .scale = 5 },
-    .assets = .{ .root = "assets" },
-    .engine = .{ .version = "v0.0.3" },
-}
