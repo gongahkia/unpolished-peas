@@ -70,6 +70,10 @@ pub const HeadlessRenderer = struct { // borrows its Canvas and owns temporary s
         return .{ .allocator = allocator, .canvas = canvas };
     }
 
+    pub fn backend(self: *HeadlessRenderer) Backend {
+        return .{ .context = self, .submit_fn = submitBackend };
+    }
+
     pub fn deinit(self: *HeadlessRenderer) void {
         self.clip_stack.deinit(self.allocator);
         self.blend_stack.deinit(self.allocator);
@@ -99,6 +103,11 @@ pub const HeadlessRenderer = struct { // borrows its Canvas and owns temporary s
             .present => {},
         };
         if (self.clip_stack.items.len != 0 or self.blend_stack.items.len != 0) return error.UnbalancedRenderState;
+    }
+
+    fn submitBackend(context: *anyopaque, commands: []const Command) anyerror!void {
+        const self: *HeadlessRenderer = @ptrCast(@alignCast(context));
+        try self.submit(commands);
     }
 };
 

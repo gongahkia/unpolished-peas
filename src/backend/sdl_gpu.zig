@@ -213,7 +213,8 @@ test "desktop renderer conformance GPU golden capture" {
     };
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    try presenter.present(device, window, canvas, &sprites, commands.commands.items, &effects, capture_path, &presentation, &metrics);
+    var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprites, .effects = &effects, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
+    try backend.backend().submit(commands.commands.items);
     try std.testing.expect(metrics.gpu_frame_ns == null);
     try std.testing.expect(metrics.pass_count >= 4);
     try std.testing.expect(metrics.texture_bytes > 0);
@@ -403,7 +404,7 @@ test "audio device removal and format changes request recovery" {
 pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
     var renderer = up.HeadlessRenderer.init(allocator, canvas);
     defer renderer.deinit();
-    try renderer.submit(commands);
+    try renderer.backend().submit(commands);
 }
 
 pub const Config = struct {
@@ -1106,7 +1107,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         }
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation, &frame_metrics);
+            var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprite_batch, .effects = pixel_effects.items(), .presentation = &presentation, .metrics = &frame_metrics };
+            try backend.backend().submit(commands.commands.items);
             runtime_metrics = frame_metrics;
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
@@ -1192,7 +1194,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             try output.queue(&audio);
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
-        try presenter.present(device, window, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation, &frame_metrics);
+        var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprite_batch, .effects = pixel_effects.items(), .capture_path = screenshot_path, .presentation = &presentation, .metrics = &frame_metrics };
+        try backend.backend().submit(commands.commands.items);
         runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -2163,6 +2166,27 @@ const AudioOutput = struct {
         const queued = c.SDL_GetAudioStreamQueued(self.stream);
         if (queued < 0) return null;
         return @intCast(queued);
+    }
+};
+
+const GpuBackend = struct {
+    presenter: *Presenter,
+    device: *c.SDL_GPUDevice,
+    window: *c.SDL_Window,
+    canvas: up.Canvas,
+    sprites: *up.SpriteBatch,
+    effects: []const effect_api.PixelEffect,
+    capture_path: ?[]const u8 = null,
+    presentation: *up.Presentation,
+    metrics: *up.RuntimeMetrics,
+
+    fn backend(self: *GpuBackend) up.RendererBackend {
+        return .{ .context = self, .submit_fn = submit };
+    }
+
+    fn submit(context: *anyopaque, commands: []const up.RenderCommand) anyerror!void {
+        const self: *GpuBackend = @ptrCast(@alignCast(context));
+        try self.presenter.present(self.device, self.window, self.canvas, self.sprites, commands, self.effects, self.capture_path, self.presentation, self.metrics);
     }
 };
 
