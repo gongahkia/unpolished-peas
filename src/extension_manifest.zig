@@ -95,6 +95,7 @@ test "extension manifests validate package identity, modules, tests, and hook" {
     try validateFile(std.testing.allocator, "packages/effects/extension.zon");
     try validateFile(std.testing.allocator, "packages/networking/extension.zon");
     try validateFile(std.testing.allocator, "packages/physics/extension.zon");
+    try validateFile(std.testing.allocator, "packages/services/extension.zon");
     try validateFile(std.testing.allocator, "packages/ui/extension.zon");
 }
 

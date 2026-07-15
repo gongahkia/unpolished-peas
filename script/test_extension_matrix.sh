@@ -13,7 +13,7 @@ while IFS=$'\t' read -r core package target consumer; do
     test -n "$consumer"
     test -f "$consumer/build.zig"
     case "$target" in
-        test-ecs|test-effects|test-networking|test-sdl|test-box2d|test-ui) ;;
+        test-ecs|test-effects|test-networking|test-sdl|test-box2d|test-services|test-ui) ;;
         *) printf 'unsupported extension target: %s\n' "$target" >&2; exit 64 ;;
     esac
     printf 'extension matrix: core=%s package=%s target=%s consumer=%s\n' "$core" "$package" "$target" "$consumer"
