@@ -2,15 +2,9 @@ const std = @import("std");
 const builtin = @import("builtin");
 
 const max_project_file_bytes = 1024 * 1024;
-const supported_engine_version = "v0.0.3";
 
 const ProjectManifest = struct {
     minimum_zig_version: []const u8,
-    dependencies: ?struct {
-        unpolished_peas: ?struct {
-            url: ?[]const u8 = null,
-        } = null,
-    } = null,
 };
 
 pub const Command = enum {
@@ -123,12 +117,10 @@ pub const CheckIssueKind = enum {
     missing_manifest,
     invalid_manifest,
     incompatible_zig,
-    incompatible_engine,
     missing_build,
     invalid_build,
-    missing_source,
-    invalid_source,
     missing_assets,
+    missing_maps,
 };
 
 pub fn parseCommand(value: []const u8) ?Command {
@@ -210,7 +202,7 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
         .none => null,
         .missing_engine_module => "add unpolished-peas to build.zig imports and declare it in build.zig.zon",
         .missing_sdl_module => "add unpolished-peas-sdl3 from the unpolished-peas dependency to build.zig imports",
-        .invalid_project_manifest => "add the required build.zig.zon fields and use the engine's supported Zig version",
+        .invalid_project_manifest => "add the required build.zig.zon fields and use a supported Zig version",
         .manual_sdl_linkage => "use the bundled unpolished-peas-sdl3 module instead of manually linking SDL3",
     };
 }
@@ -298,23 +290,20 @@ pub fn checkProject(allocator: std.mem.Allocator, root: []const u8) !?CheckIssue
         );
     }
 
-    if (manifest.dependencies) |dependencies| if (dependencies.unpolished_peas) |engine| if (engine.url) |url| {
-        if (std.mem.indexOf(u8, url, supported_engine_version) == null) {
-            const engine_location = fieldLocation(manifest_source, "unpolished_peas");
-            return try issueFmt(
-                allocator,
-                .incompatible_engine,
-                manifest_path,
-                engine_location.line,
-                engine_location.column,
-                "requires unpolished-peas {s}",
-                .{supported_engine_version},
-            );
-        }
-    };
-
     if (try checkZigFile(allocator, root, "build.zig", .missing_build, .invalid_build, "missing project build configuration")) |value| return value;
-    if (try checkZigFile(allocator, root, "src/main.zig", .missing_source, .invalid_source, "missing project source")) |value| return value;
+    if (try checkDirectory(allocator, root, "assets", .missing_assets, "missing project assets")) |value| return value;
+    if (try checkDirectory(allocator, root, "maps", .missing_maps, "missing project maps")) |value| return value;
+    return null;
+}
+
+fn checkDirectory(allocator: std.mem.Allocator, root: []const u8, relative_path: []const u8, kind: CheckIssueKind, message: []const u8) !?CheckIssue {
+    const path = try std.fs.path.join(allocator, &.{ root, relative_path });
+    defer allocator.free(path);
+    var directory = std.fs.cwd().openDir(path, .{}) catch |err| switch (err) {
+        error.FileNotFound, error.NotDir => return try issue(allocator, kind, path, 1, 1, message),
+        else => return err,
+    };
+    directory.close();
     return null;
 }
 
@@ -468,13 +457,14 @@ test "tools validate project fixture matrix without runtime imports" {
         .{ .name = "invalid-zon", .path_suffix = "build.zig.zon", .message = "expected", .kind = .invalid_manifest },
         .{ .name = "missing-minimum-zig", .path_suffix = "build.zig.zon", .message = "missing", .kind = .invalid_manifest },
         .{ .name = "unsupported-zig", .path_suffix = "build.zig.zon", .message = "requires Zig", .kind = .incompatible_zig },
-        .{ .name = "unsupported-engine", .path_suffix = "build.zig.zon", .message = "requires unpolished-peas", .kind = .incompatible_engine },
+        .{ .name = "unsupported-engine", .path_suffix = null, .message = null, .kind = null },
         .{ .name = "missing-manifest", .path_suffix = "build.zig.zon", .message = "missing project manifest", .kind = .missing_manifest },
         .{ .name = "invalid-build", .path_suffix = "build.zig", .message = "invalid Zig source", .kind = .invalid_build },
-        .{ .name = "missing-main", .path_suffix = "src/main.zig", .message = "missing project source", .kind = .missing_source },
-        .{ .name = "invalid-main", .path_suffix = "src/main.zig", .message = "invalid Zig source", .kind = .invalid_source },
+        .{ .name = "missing-main", .path_suffix = null, .message = null, .kind = null },
+        .{ .name = "invalid-main", .path_suffix = null, .message = null, .kind = null },
         .{ .name = "missing-assets", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
         .{ .name = "asset-file", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
+        .{ .name = "missing-maps", .path_suffix = "maps", .message = "missing project maps", .kind = .missing_maps },
     };
     for (cases) |case| {
         const fixture_path = try std.fs.path.join(std.testing.allocator, &.{ "fixtures", "peas-check", case.name });

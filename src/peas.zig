@@ -259,6 +259,7 @@ fn checkUsage() error{InvalidArguments} {
 fn printCheckRecovery(allocator: std.mem.Allocator, project_root: []const u8, kind: tools.CheckIssueKind) !void {
     const command = switch (kind) {
         .missing_assets => try std.fmt.allocPrint(allocator, "mkdir -p \"{s}/assets\" && zig build peas -- check \"{s}\"", .{ project_root, project_root }),
+        .missing_maps => try std.fmt.allocPrint(allocator, "mkdir -p \"{s}/maps\" && zig build peas -- check \"{s}\"", .{ project_root, project_root }),
         else => try std.fmt.allocPrint(allocator, "zig build peas -- check \"{s}\"", .{project_root}),
     };
     defer allocator.free(command);
