@@ -30,7 +30,7 @@ zig build test-renderer-conformance
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
+Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-ui` (immediate UI), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
 
 `services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. Engine provider contracts contain no database or vendor types; the opt-in local PostgreSQL adapter is isolated behind that boundary.
 `services/config/deploy.zon.example` and `services/deploy/unpolished-peas-services.service` keep database credentials external; `/healthz` reports liveness and `/readyz` probes PostgreSQL plus the configured relay without enabling engine telemetry.
@@ -46,7 +46,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `step`, and `deinit`; the core module and generated starter do not link Box2D.
-Use `@import("unpolished-peas-physics").physics(core)` to bind that optional package to the core API used by the game.
+Use `@import("unpolished-peas-physics").physics(core)` and `@import("unpolished-peas-ui").ui(core)` to bind optional packages to the core API used by the game.
 `World.appendDebug` emits the same core render commands for headless and GPU presentation.
 The SDL runtime wires only `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision, physics, and network panels remain explicitly application-owned. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
 
@@ -198,6 +198,7 @@ An extension hook is a declared Zig script exporting `name` and `apply(dependenc
 `script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.
 `script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
 `test-effects-conformance` verifies effects fallbacks, source reload validation, and command/headless renderer parity.
+`test-ui-conformance` verifies immediate UI pointer, keyboard, gamepad, HUD, and camera-surface behavior through an external consumer.
 `test-physics-conformance` verifies independent Box2D world lifecycle, contacts, inspector state, debug output, and teardown.
 `script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
 `test-package-release` validates package release metadata, dependency locks, fetched archive contents, and external archive consumers.
@@ -296,11 +297,10 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`
 - `FrameProfiler`, `ProfileScope`, `ProfileMetrics`, `profiler`
 - `RuntimeMetrics`, `InspectorMetricsPanel`, `runtimeMetrics`
-- `UiFrame`, `UiState`, `UiLayout`, `UiStyle`, `UiSurface`, `ui`
 
 `effects.lighting(core).Pipeline.append` emits GPU primitive commands; `render` is the explicit headless fallback selected by `Pipeline.preferredPath`.
 
-`ui.Frame` is immediate-only: callers retain `UiState`, emit widgets every frame, and finish with `Frame.end` to resolve navigation.
+`ui(core).Frame` is immediate-only: callers retain `ui(core).State`, emit widgets every frame, and finish with `Frame.end` to resolve navigation.
 - `Sound`
 - `Music`
 - `AudioMixer`

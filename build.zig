@@ -34,6 +34,8 @@ pub fn build(b: *std.Build) void {
     addStb(peas);
     const effects_dependency = b.lazyDependency("effects", .{ .target = target, .optimize = optimize }) orelse @panic("missing effects package");
     const effects = effects_dependency.module("unpolished-peas-effects");
+    const ui_dependency = b.lazyDependency("ui", .{ .target = target, .optimize = optimize }) orelse @panic("missing UI package");
+    const ui = ui_dependency.module("unpolished-peas-ui");
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -122,7 +124,7 @@ pub fn build(b: *std.Build) void {
     const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
     const topdown_multiplayer = addExample(b, "unpolished-peas-topdown-multiplayer", "examples/topdown_multiplayer.zig", target, optimize, peas, null);
     const topdown_host = addExample(b, "unpolished-peas-topdown-host", "examples/topdown_host.zig", target, optimize, peas, null);
-    const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics } } }) });
+    const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics }, .{ .name = "unpolished-peas-ui", .module = ui } } }) });
     const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
     package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
     package_platformer_sdl.dependOn(&install_assets.step);
@@ -427,6 +429,23 @@ pub fn build(b: *std.Build) void {
     effects_conformance.setCwd(b.path("."));
     const effects_conformance_step = b.step("test-effects-conformance", "Run effects fallback, reload, and renderer conformance fixtures");
     effects_conformance_step.dependOn(&effects_conformance.step);
+
+    const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("fixtures/ui-package/src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-ui", .module = ui },
+        },
+    }) });
+    const run_ui_tests = b.addRunArtifact(ui_tests);
+    const ui_test_step = b.step("test-ui", "Test the optional UI package against core contracts");
+    ui_test_step.dependOn(&run_ui_tests.step);
+    const ui_conformance = b.addSystemCommand(&.{"script/test_ui_package.sh"});
+    ui_conformance.setCwd(b.path("."));
+    const ui_conformance_step = b.step("test-ui-conformance", "Run immediate UI package and external consumer conformance fixtures");
+    ui_conformance_step.dependOn(&ui_conformance.step);
 
     const box2d_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("fixtures/physics-package/src/main.zig"),
