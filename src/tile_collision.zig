@@ -272,44 +272,6 @@ fn slopeBounds(slope: Slope) Rect {
     return .{ .x = @min(slope.a.x, slope.b.x), .y = @min(slope.a.y, slope.b.y), .w = @abs(slope.b.x - slope.a.x), .h = @abs(slope.b.y - slope.a.y) };
 }
 
-test "platformer fixture resolves tile walls, steps, one way platforms, and slopes" {
-    var map = try tilemap.TileMap.loadTiled(std.testing.allocator, "fixtures/platformer/collision.tmj");
-    defer map.deinit();
-    var collider = TileCollider.init(std.testing.allocator);
-    defer collider.deinit();
-    try collider.addLayer(&map, 0);
-    try collider.addLayer(&map, 1);
-    try std.testing.expectEqual(@as(usize, 15), collider.shapes.items.len);
-
-    var fall = try CharacterController.init(.{ .bounds = Rect.init(36, 0, 12, 12), .max_step_height = 16 });
-    const landed = fall.move(&collider, .{ .x = 0, .y = 100 });
-    try std.testing.expect(landed.grounded);
-    try std.testing.expect(landed.bounds.y + landed.bounds.h <= 48);
-
-    var wall = try CharacterController.init(.{ .bounds = Rect.init(36, 36, 12, 12), .max_step_height = 16 });
-    const blocked = wall.move(&collider, .{ .x = 100, .y = 0 });
-    try std.testing.expect(blocked.wall_right);
-    try std.testing.expect(blocked.bounds.x + blocked.bounds.w <= 64);
-
-    var step = try CharacterController.init(.{ .bounds = Rect.init(0, 36, 12, 12), .max_step_height = 16 });
-    step.grounded = true;
-    const climbed = step.move(&collider, .{ .x = 20, .y = 0 });
-    try std.testing.expect(climbed.grounded);
-    try std.testing.expect(climbed.bounds.x > 16 and climbed.bounds.y + climbed.bounds.h <= 32);
-
-    var platform = try CharacterController.init(.{ .bounds = Rect.init(96, 40, 12, 12), .max_step_height = 16 });
-    _ = platform.move(&collider, .{ .x = 0, .y = -40 });
-    const platform_landed = platform.move(&collider, .{ .x = 0, .y = 80 });
-    try std.testing.expect(platform_landed.grounded);
-    try std.testing.expect(platform_landed.bounds.y + platform_landed.bounds.h <= 32);
-
-    var slope = try CharacterController.init(.{ .bounds = Rect.init(128, 36, 12, 12), .max_step_height = 16 });
-    slope.grounded = true;
-    const climbed_slope = slope.move(&collider, .{ .x = 16, .y = 0 });
-    try std.testing.expect(climbed_slope.grounded);
-    try std.testing.expect(climbed_slope.bounds.y < 36);
-}
-
 test "tile collider derives nonzero IntGrid cells" {
     var map = try tilemap.TileMap.init(std.testing.allocator, .{ .x = 16, .y = 16 }, 8);
     defer map.deinit();

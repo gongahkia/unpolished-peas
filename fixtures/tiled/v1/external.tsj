@@ -1,8 +1,0 @@
-{
-  "version": "1.10",
-  "name": "external",
-  "tilewidth": 8,
-  "tileheight": 8,
-  "image": "../../../examples/assets/ball.png",
-  "tiles": [{"id": 0, "animation": [{"tileid": 0, "duration": 100}, {"tileid": 1, "duration": 200}]}]
-}

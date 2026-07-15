@@ -9,7 +9,7 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    const map = try assets.loadTileMap("topdown.tmj");
+    const map = try assets.loadTileMap("topdown.upmap");
     const player = try assets.loadPng("ball.png");
     var game = game_mod.Game{};
     var input = up.Input{};

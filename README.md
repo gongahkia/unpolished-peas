@@ -172,7 +172,7 @@ zig build upmapc -- level.upmap level.upmapb
 `run-breakout-sdl` opens Breakout with keyboard paddle input and collision audio.
 `smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
 `test-breakout` runs fixed-step Breakout simulation tests.
-`run-topdown-sdl` opens the action-mapped Tiled top-down demo.
+`run-topdown-sdl` opens the action-mapped native-map top-down demo.
 `run-topdown-multiplayer` runs the seeded two-client authoritative top-down smoke.
 `run-topdown-dedicated` runs the core-only UDP dedicated-host sample; `run-topdown-listen` runs the matching loopback listen-host sample; `run-topdown-listen-sdl` opens the in-game listen-host path.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
@@ -227,10 +227,6 @@ SDL sprite textures upload on first use; changed image or atlas buffers stage a 
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
 
-Tiled object layers retain rectangle, ellipse, point, polygon, and polyline collision shapes plus typed string, integer, float, and boolean properties. Tile rendering applies inherited visibility, offsets, parallax, opacity, and flip flags.
-
-`zig build peas -- import-tiled <input.tmj> <output.upmap>` imports the validated Tiled JSON subset into native map source, writing only after native validation succeeds. It supports orthogonal/isometric maps; embedded or external grid/image-collection tilesets; tile animations; group, tile, and object layers; finite/infinite signed chunks; array or base64 data with zlib/gzip/zstd; supported object shapes; and string/file/int/object/float/bool properties. Image layers, unsupported layer/property/data formats, and unsafe asset paths fail with an input line/column diagnostic.
-
 `zig build peas -- import-ldtk <input.ldtk> <output-directory>` imports each validated LDtk level as `maps/<level>.upmap`. It supports inline/external levels, grid-image tilesets, IntGrid, Tiles, AutoLayer, and Entities layers, plus Int/Float/Bool/String/Text/FilePath fields. Unsupported layer/field types and unsafe asset paths fail with an input line/column diagnostic.
 
 `TileCollider.addShape` and `addLayer` are the default collision path. `addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer; failures leave the existing collider unchanged. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
@@ -260,7 +256,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
-- `TileMap.loadNative`, `TileMap.loadTiled`, `TileMap.loadLdtkProject`
+- `TileMap.loadNative`, `TileMap.loadLdtkProject`
 - `MapSource`, `mapSource`
 - `SceneRuntime`, `SceneRuntimeBinding`, `sceneRuntime`
 - `TileCollider`, `CharacterController`
@@ -307,8 +303,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 ## Next Build Targets
 
 1. Publish future tagged package releases and update the starter dependency URL and hash.
-2. Complete external tile-source blitting and compressed/external Tiled fixture coverage for the tile-map compatibility layer.
-3. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
-4. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
-5. Add a shader API with one strict pixel-effect example and headless fallback coverage.
-6. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
+2. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
+3. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
+4. Add a shader API with one strict pixel-effect example and headless fallback coverage.
+5. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
