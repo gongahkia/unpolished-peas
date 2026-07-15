@@ -978,6 +978,36 @@ test "tile-map reload failures retain source diagnostics and last valid content"
     try std.testing.expect((try store.tryTileMap(handle)).layers.items.len > 0);
 }
 
+test "tile-map dependency reload failures retain the last valid map" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
+    defer std.testing.allocator.free(map);
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(image);
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const handle = try store.loadTileMap("topdown.upmap");
+
+    var stat = try tmp.dir.statFile("ball.png");
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });
+    while ((try tmp.dir.statFile("ball.png")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = "invalid" });
+        stat = try tmp.dir.statFile("ball.png");
+    }
+
+    const events = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(ReloadStatus.failed, events[0].status);
+    try std.testing.expectEqualStrings("topdown.upmap", events[0].path);
+    try std.testing.expectEqual(ReloadFailureClass.decode, events[0].failure_class.?);
+    try std.testing.expect(events[0].retained_content);
+    try std.testing.expect((try store.tryTileMap(handle)).layers.items.len > 0);
+}
+
 test "shader assets retain last good program across failed reloads" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
