@@ -342,9 +342,9 @@ test "audio device removal and format changes request recovery" {
 }
 
 pub fn renderCommands(allocator: std.mem.Allocator, canvas: *up.Canvas, commands: []const up.RenderCommand) !void {
-    var renderer = up.HeadlessRenderer.init(canvas);
-    defer renderer.deinit(allocator);
-    try renderer.submit(allocator, commands);
+    var renderer = up.HeadlessRenderer.init(allocator, canvas);
+    defer renderer.deinit();
+    try renderer.submit(commands);
 }
 
 pub const Config = struct {

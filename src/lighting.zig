@@ -258,8 +258,8 @@ test "lighting command pass matches headless fallback" {
     var command_canvas = try @import("canvas.zig").Canvas.init(std.testing.allocator, 4, 2);
     defer command_canvas.deinit();
     command_canvas.clear(Color.black);
-    var renderer = HeadlessRenderer.init(&command_canvas);
-    defer renderer.deinit(std.testing.allocator);
-    try renderer.submit(std.testing.allocator, commands.commands.items);
+    var renderer = HeadlessRenderer.init(std.testing.allocator, &command_canvas);
+    defer renderer.deinit();
+    try renderer.submit(commands.commands.items);
     try std.testing.expectEqualSlices(Color, direct.pixels, command_canvas.pixels);
 }

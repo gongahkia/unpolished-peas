@@ -319,8 +319,8 @@ test "Box2D contacts and debug commands cover headless output" {
     try world.appendDebug(&commands, &camera, .{ .x = 16, .y = 16 });
     var canvas = try up.Canvas.init(std.testing.allocator, 16, 16);
     defer canvas.deinit();
-    var renderer = up.HeadlessRenderer.init(&canvas);
-    defer renderer.deinit(std.testing.allocator);
-    try renderer.submit(std.testing.allocator, commands.commands.items);
+    var renderer = up.HeadlessRenderer.init(std.testing.allocator, &canvas);
+    defer renderer.deinit();
+    try renderer.submit(commands.commands.items);
     try std.testing.expect(!std.meta.eql(canvas.get(8, 8).?, up.Color.transparent));
 }
