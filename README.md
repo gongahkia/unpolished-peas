@@ -45,7 +45,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
-`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `SceneBinding`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
+`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `step`, and `deinit`; the core module and generated starter do not link Box2D.
 `World.appendDebug` emits the same core render commands for headless and GPU presentation.
 `Inspector` panels register explicitly through `Context.registerInspectorPanel`; disabled developer tools retain no panels and execute no inspector rendering. `InspectorScenePanel`, `InspectorAssetPanel`, `InspectorInputPanel`, `InspectorCollisionPanel`, `InspectorPhysicsPanel`, and `InspectorNetworkPanel` render unavailable sources as status rows. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
 
@@ -195,7 +195,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build peas -- check [project-directory] [--target <linux|macos|windows>]` statically validates the build manifest, project build script, native source, assets, engine/Zig compatibility, and selected runtime target without starting the game; Windows checks require Windows 10/11 x64 with `D3DCompiler_47.dll`; failures include a recovery command.
 `.upassets` is the strict version-1 ZON asset catalog. It requires the `unpolished-peas-assets` format and explicitly lists image, audio, font, atlas, and shader assets by unique ID and safe relative path; `up.assetCatalog.parse`, `load`, and `graph` validate, bind `AssetStore` handles, and expose declared dependencies.
 `up.mapSource` parses strict version-1 ZON native map source with tilesets, sparse signed cells, object geometry, collision properties, and parented layers; invalid references report source locations.
-`zig build contentc -- <project-directory> [output-directory]` emits versioned `.upc` binary caches for `.upscene` files under `scenes/`, `.upassets` files under `assets/`, and `.upmap` files under `maps/`; cache headers validate magic, version, kind, size, and source fingerprint before reuse. `zig build peas -- compile [project-directory] [output-directory]` provides the same project workflow.
+`zig build contentc -- <project-directory> [output-directory]` emits versioned `.upc` binary caches for `.upassets` files under `assets/` and `.upmap` files under `maps/`; cache headers validate magic, version, kind, size, and source fingerprint before reuse. `zig build peas -- compile [project-directory] [output-directory]` provides the same project workflow.
 `zig build peas -- migrate <scene|catalog|map> <input> <output>` explicitly upgrades supported source versions and writes only the requested output path; unsupported versions include a recovery command.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable archive through the project CLI.
@@ -214,13 +214,11 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 Game initialization, event, update, draw, GPU-recovery, and asset-reload errors include their phase and log path in the terminal, are written to the app-data log, then stay in an in-window error state until Escape or close. A GPU reset rebuilds presenter resources and invalidates prior handles; a GPU loss reports a terminal recovery failure. Zig panics remain process failures and require the normal debugger/test workflow.
 
-`Config.cpu_profiler` defaults to Debug builds. The runtime measures callback, update, draw, and asset-reload scopes; use `ctx.profile(.scene)` or `ctx.profile(.asset)` around game-owned work, inspect `ctx.profileMetrics()`, and call `ctx.exportCpuTrace()` to write Chrome Trace JSON to the app-data directory.
+`Config.cpu_profiler` defaults to Debug builds. The runtime measures callback, update, draw, and asset-reload scopes; use `ctx.profile(.asset)` around game-owned work, inspect `ctx.profileMetrics()`, and call `ctx.exportCpuTrace()` to write Chrome Trace JSON to the app-data directory.
 
 `ctx.runtimeMetrics()` reports the last completed frame's CPU encoder time, pass and batch counts, texture and audio-buffer usage, plus resource/allocation churn. Hardware GPU timing is `null` because this SDL runtime does not issue timestamp queries; the developer inspector renders that state explicitly.
 
 Runtime failures write bounded local diagnostics: `screenshot.png`, `commands.json`, `trace.json`, and `failure.log`. Golden/replay test failures add deterministic diagnostics under `zig-out/diagnostics`; set `UP_DIAGNOSTICS_ROOT` to redirect runtime captures for CI. Diagnostics are local artifacts and contain no transmitted telemetry.
-
-`contentReload.Controller` compiles and watches a native project with absolute project/cache paths. `reloadIfChanged()` keeps its prior compiled scene after invalid edits, reports the source path and location, and observes transitive project asset changes; `loadRuntime()` builds a candidate scene runtime from the last valid cache.
 
 SDL sprite textures upload on first use; changed image or atlas buffers stage a replacement upload before the prior GPU resource is released, and unused sprite resources expire after 120 rendered frames. Atlas draws preserve source regions, origin, scale, rotation, flips, tint, and nearest or linear sampling through the GPU path.
 
@@ -255,7 +253,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
 - `TileMap.loadNative`
 - `MapSource`, `mapSource`
-- `SceneRuntime`, `SceneRuntimeBinding`, `sceneRuntime`
 - `TileCollider`, `CharacterController`
 - `netCodec` (`v1`, little-endian, 1024-byte bounded messages)
 - `NetTransport`, `LoopbackTransport`

@@ -2,7 +2,6 @@ const std = @import("std");
 const catalog = @import("asset_catalog.zig");
 const cache = @import("content_cache.zig");
 const map_source = @import("map_source.zig");
-const scene = @import("scene.zig");
 
 pub const migration = @import("content_migration.zig");
 
@@ -10,7 +9,7 @@ const max_source_bytes = 64 * 1024 * 1024;
 const state_format = "unpolished-peas-content-state";
 const state_version: u32 = 1;
 
-const Kind = enum { scene, catalog, map };
+const Kind = enum { catalog, map };
 
 const Input = struct {
     kind: Kind,
@@ -84,15 +83,9 @@ pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, ou
     return report;
 }
 
-pub fn entryArtifactPath(allocator: std.mem.Allocator, output_root: []const u8, entry_scene: []const u8) ![]u8 {
-    if (!safePath(entry_scene) or !std.mem.endsWith(u8, entry_scene, ".upscene")) return error.InvalidEntryScene;
-    return artifactPath(allocator, output_root, entry_scene);
-}
-
 fn discoverInputs(allocator: std.mem.Allocator, project_root: []const u8) !std.ArrayListUnmanaged(Input) {
     var inputs = std.ArrayListUnmanaged(Input){};
     errdefer deinitInputs(allocator, &inputs);
-    try appendDirectoryInputs(allocator, project_root, "scenes", ".upscene", .scene, &inputs);
     try appendDirectoryInputs(allocator, project_root, "assets", ".upassets", .catalog, &inputs);
     try appendDirectoryInputs(allocator, project_root, "maps", ".upmap", .map, &inputs);
     return inputs;
@@ -128,15 +121,6 @@ fn deinitInputs(allocator: std.mem.Allocator, inputs: *std.ArrayListUnmanaged(In
 
 fn compileInput(allocator: std.mem.Allocator, kind: Kind, path: []const u8, source: []const u8, diagnostic: *Diagnostic) ![]u8 {
     return switch (kind) {
-        .scene => blk: {
-            var inner = scene.Diagnostic{};
-            var parsed = scene.parse(allocator, source, &inner) catch |err| {
-                try setDiagnostic(allocator, diagnostic, path, inner.line, inner.column, inner.message);
-                return err;
-            };
-            defer parsed.deinit(allocator);
-            break :blk parsed.encode(allocator);
-        },
         .catalog => blk: {
             var inner = catalog.Diagnostic{};
             var parsed = catalog.parse(allocator, source, &inner) catch |err| {
@@ -207,17 +191,9 @@ fn cacheIsFresh(allocator: std.mem.Allocator, path: []const u8, kind: Kind, fing
 
 fn cacheKind(kind: Kind) cache.Kind {
     return switch (kind) {
-        .scene => .scene,
         .catalog => .catalog,
         .map => .map,
     };
-}
-
-fn safePath(path: []const u8) bool {
-    if (path.len == 0 or std.fs.path.isAbsolute(path)) return false;
-    var components = std.mem.tokenizeAny(u8, path, "/\\");
-    while (components.next()) |component| if (std.mem.eql(u8, component, "..")) return false;
-    return true;
 }
 
 fn setDiagnostic(allocator: std.mem.Allocator, diagnostic: *Diagnostic, path: []const u8, line: usize, column: usize, message: []const u8) !void {
@@ -225,16 +201,11 @@ fn setDiagnostic(allocator: std.mem.Allocator, diagnostic: *Diagnostic, path: []
     diagnostic.* = .{ .path = try allocator.dupe(u8, path), .line = line, .column = column, .message = message };
 }
 
-test "content compiler reuses unchanged scene catalog and map artifacts" {
+test "content compiler reuses unchanged catalog and map artifacts" {
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
-    try temp.dir.makePath("project/scenes");
     try temp.dir.makePath("project/assets");
     try temp.dir.makePath("project/maps");
-    try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
-        \\.{ .format = "unpolished-peas-scene", .version = 1, .metadata = .{ .name = "main", .tags = .{} }, .entities = .{} }
-        \\
-    });
     try temp.dir.writeFile(.{ .sub_path = "project/assets/catalog.upassets", .data =
         \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{}, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{} }
         \\
@@ -250,60 +221,34 @@ test "content compiler reuses unchanged scene catalog and map artifacts" {
     var diagnostic = Diagnostic{};
     defer diagnostic.deinit(std.testing.allocator);
     const initial = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
-    try std.testing.expectEqual(@as(usize, 3), initial.compiled);
+    try std.testing.expectEqual(@as(usize, 2), initial.compiled);
     const repeated = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
-    try std.testing.expectEqual(@as(usize, 3), repeated.reused);
-    const scene_cache_path = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "main.upscene.upc" });
-    defer std.testing.allocator.free(scene_cache_path);
-    const scene_cache_bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, scene_cache_path, cache.max_payload_bytes + 20);
-    defer std.testing.allocator.free(scene_cache_bytes);
-    var scene_cache = try cache.decode(std.testing.allocator, scene_cache_bytes);
-    defer scene_cache.deinit();
-    var cached_scene_diagnostic = scene.Diagnostic{};
-    var cached_scene = try scene.parse(std.testing.allocator, scene_cache.payload, &cached_scene_diagnostic);
-    defer cached_scene.deinit(std.testing.allocator);
-    try std.testing.expectEqualStrings("main", cached_scene.metadata.name);
-    var corrupt_cache = try std.testing.allocator.dupe(u8, scene_cache_bytes);
+    try std.testing.expectEqual(@as(usize, 2), repeated.reused);
+    const map_cache_path = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "main.upmap.upc" });
+    defer std.testing.allocator.free(map_cache_path);
+    const map_cache_bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, map_cache_path, cache.max_payload_bytes + 20);
+    defer std.testing.allocator.free(map_cache_bytes);
+    var map_cache = try cache.decode(std.testing.allocator, map_cache_bytes);
+    defer map_cache.deinit();
+    var cached_map_diagnostic = map_source.Diagnostic{};
+    var cached_map = try map_source.parse(std.testing.allocator, map_cache.payload, &cached_map_diagnostic);
+    defer cached_map.deinit(std.testing.allocator);
+    try std.testing.expectEqualStrings("main", cached_map.metadata.name);
+    var corrupt_cache = try std.testing.allocator.dupe(u8, map_cache_bytes);
     defer std.testing.allocator.free(corrupt_cache);
     corrupt_cache[0] = 0;
-    try std.fs.cwd().writeFile(.{ .sub_path = scene_cache_path, .data = corrupt_cache });
+    try std.fs.cwd().writeFile(.{ .sub_path = map_cache_path, .data = corrupt_cache });
     const repaired = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 1), repaired.compiled);
-    try std.testing.expectEqual(@as(usize, 2), repaired.reused);
+    try std.testing.expectEqual(@as(usize, 1), repaired.reused);
     try temp.dir.writeFile(.{ .sub_path = "project/maps/main.upmap", .data =
         \\.{ .format = "unpolished-peas-map", .version = 1, .metadata = .{ .name = "changed", .projection = .orthogonal, .tile_width = 8, .tile_height = 8, .chunk_size = 8 }, .tilesets = .{}, .layers = .{} }
         \\
     });
     const changed = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 1), changed.compiled);
-    try std.testing.expectEqual(@as(usize, 2), changed.reused);
-    try std.fs.cwd().access(scene_cache_path, .{});
-}
-
-test "content compiler preserves source diagnostics" {
-    var temp = std.testing.tmpDir(.{});
-    defer temp.cleanup();
-    try temp.dir.makePath("project/scenes");
-    try temp.dir.makePath("project/assets");
-    try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
-        \\.{
-        \\    .format = "unpolished-peas-scene",
-        \\    .version = 1,
-        \\    .metadata = .{ .name = "main", .tags = .{} },
-        \\    .entities = .{ .{ .id = "player", .name = "Player", .components = .{}, .references = .{ .{ .name = "target", .target = "missing" } } } },
-        \\}
-        \\
-    });
-    const project_root = try temp.dir.realpathAlloc(std.testing.allocator, "project");
-    defer std.testing.allocator.free(project_root);
-    const output_root = try std.fs.path.join(std.testing.allocator, &.{ project_root, "zig-out", "content" });
-    defer std.testing.allocator.free(output_root);
-    var diagnostic = Diagnostic{};
-    defer diagnostic.deinit(std.testing.allocator);
-    try std.testing.expectError(error.InvalidScene, compileProject(std.testing.allocator, project_root, output_root, &diagnostic));
-    try std.testing.expect(diagnostic.path != null and std.mem.endsWith(u8, diagnostic.path.?, "scenes/main.upscene"));
-    try std.testing.expect(diagnostic.line > 1 and diagnostic.column > 0);
-    try std.testing.expectEqualStrings("reference targets an unknown entity", diagnostic.message);
+    try std.testing.expectEqual(@as(usize, 1), changed.reused);
+    try std.fs.cwd().access(map_cache_path, .{});
 }
 
 test "content compiler builds the native platformer fixture" {
@@ -316,20 +261,17 @@ test "content compiler builds the native platformer fixture" {
     var diagnostic = Diagnostic{};
     defer diagnostic.deinit(std.testing.allocator);
     const first = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
-    try std.testing.expectEqual(@as(usize, 3), first.compiled);
+    try std.testing.expectEqual(@as(usize, 2), first.compiled);
     try std.testing.expectEqual(@as(usize, 0), first.reused);
-    const scene_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "platformer.upscene.upc" });
-    defer std.testing.allocator.free(scene_cache);
     const map_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "platformer.upmap.upc" });
     defer std.testing.allocator.free(map_cache);
     const assets_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "platformer.upassets.upc" });
     defer std.testing.allocator.free(assets_cache);
-    try std.fs.cwd().access(scene_cache, .{});
     try std.fs.cwd().access(map_cache, .{});
     try std.fs.cwd().access(assets_cache, .{});
     const second = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 0), second.compiled);
-    try std.testing.expectEqual(@as(usize, 3), second.reused);
+    try std.testing.expectEqual(@as(usize, 2), second.reused);
 }
 
 test "content compiler builds the native top-down fixture" {
@@ -342,26 +284,14 @@ test "content compiler builds the native top-down fixture" {
     var diagnostic = Diagnostic{};
     defer diagnostic.deinit(std.testing.allocator);
     const first = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
-    try std.testing.expectEqual(@as(usize, 3), first.compiled);
-    const scene_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "scenes", "topdown.upscene.upc" });
-    defer std.testing.allocator.free(scene_cache);
+    try std.testing.expectEqual(@as(usize, 2), first.compiled);
     const map_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "topdown.upmap.upc" });
     defer std.testing.allocator.free(map_cache);
     const assets_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "topdown.upassets.upc" });
     defer std.testing.allocator.free(assets_cache);
-    try std.fs.cwd().access(scene_cache, .{});
     try std.fs.cwd().access(map_cache, .{});
     try std.fs.cwd().access(assets_cache, .{});
-    const scene_cache_bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, scene_cache, cache.max_payload_bytes + 20);
-    defer std.testing.allocator.free(scene_cache_bytes);
-    var decoded_scene = try cache.decode(std.testing.allocator, scene_cache_bytes);
-    defer decoded_scene.deinit();
-    var scene_diagnostic = scene.Diagnostic{};
-    var parsed_scene = try scene.parse(std.testing.allocator, decoded_scene.payload, &scene_diagnostic);
-    defer parsed_scene.deinit(std.testing.allocator);
-    try std.testing.expectEqualStrings("topdown", parsed_scene.metadata.name);
-    try std.testing.expectEqual(@as(usize, 5), parsed_scene.entities.len);
     const second = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
     try std.testing.expectEqual(@as(usize, 0), second.compiled);
-    try std.testing.expectEqual(@as(usize, 3), second.reused);
+    try std.testing.expectEqual(@as(usize, 2), second.reused);
 }

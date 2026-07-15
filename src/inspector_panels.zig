@@ -12,7 +12,6 @@ const net_snapshot = @import("net_snapshot.zig");
 const runtime_metrics = @import("runtime_metrics.zig");
 const tile_collision = @import("tile_collision.zig");
 const Vec2 = @import("math.zig").Vec2;
-const scene_runtime = @import("scene_runtime.zig");
 
 const panel_background = Color.rgba(12, 18, 28, 210);
 const panel_border = Color.rgb(91, 123, 171);
@@ -33,34 +32,6 @@ pub const ResourceHandle = union(enum) {
 pub const Resource = struct {
     name: []const u8,
     handle: ResourceHandle,
-};
-
-pub const ScenePanel = struct {
-    runtime: ?*const scene_runtime.Runtime = null,
-    position: Vec2 = .{ .x = 4, .y = 4 },
-    max_rows: usize = 9,
-
-    pub fn panel(self: *ScenePanel) InspectorPanel {
-        return .{ .name = "scene", .context = self, .draw = draw };
-    }
-
-    fn draw(context: *anyopaque, canvas: *Canvas) !void {
-        const self: *ScenePanel = @ptrCast(@alignCast(context));
-        var lines = Lines.init(canvas, self.position, self.max_rows);
-        lines.box();
-        lines.line("SCENE", .{}, panel_title);
-        const runtime = self.runtime orelse {
-            lines.line("runtime unavailable", .{}, panel_warning);
-            return;
-        };
-        lines.line("{s} entities={} {s}", .{ runtime.source.metadata.name, runtime.source.entities.len, if (runtime.unloaded) "unloaded" else "loaded" }, panel_text);
-        for (runtime.source.entities) |entity| {
-            const state = entityState(runtime, entity.id);
-            lines.line("{s} {s} bind={s}", .{ entity.id, state, entity.binding orelse "-" }, if (std.mem.eql(u8, state, "live")) panel_text else panel_warning);
-            for (entity.components) |component| lines.line("  component {s}", .{component.kind}, panel_text);
-            for (entity.references) |reference| lines.line("  ref {s}->{s}", .{ reference.name, reference.target }, panel_text);
-        }
-    }
 };
 
 pub const AssetPanel = struct {
@@ -297,12 +268,6 @@ const Lines = struct {
     }
 };
 
-fn entityState(runtime: *const scene_runtime.Runtime, id: []const u8) []const u8 {
-    const entity = runtime.entity(id) orelse return "missing";
-    runtime.world.validate(entity) catch return "stale";
-    return "live";
-}
-
 fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []const u8 {
     return switch (handle) {
         .text => |value| if (store.tryText(value)) |_| "ready" else |_| "stale",
@@ -319,14 +284,12 @@ test "inspector panels render unavailable sources safely" {
     const test_support = @import("test_support.zig");
     var canvas = try Canvas.init(std.testing.allocator, 320, 256);
     defer canvas.deinit();
-    var scene = ScenePanel{};
     var asset = AssetPanel{};
     var input_panel = InputPanel{};
     var metrics_panel = MetricsPanel{};
     var collision_panel = CollisionPanel{};
     var physics_panel = PhysicsPanel{};
     var network_panel = NetworkPanel{};
-    try scene.panel().draw(scene.panel().context, &canvas);
     try asset.panel().draw(asset.panel().context, &canvas);
     try input_panel.panel().draw(input_panel.panel().context, &canvas);
     try metrics_panel.panel().draw(metrics_panel.panel().context, &canvas);
@@ -393,63 +356,4 @@ test "metrics panel renders unavailable GPU timing and resource state" {
     defer canvas.deinit();
     try panel.panel().draw(panel.panel().context, &canvas);
     try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
-}
-
-test "inspector panels match representative runtime state" {
-    const test_support = @import("test_support.zig");
-    const source =
-        \\.{
-        \\    .format = "unpolished-peas-scene",
-        \\    .version = 1,
-        \\    .metadata = .{ .name = "main", .tags = .{} },
-        \\    .entities = .{
-        \\        .{ .id = "camera", .name = "Camera", .components = .{ .{ .kind = "camera" } }, .references = .{} },
-        \\        .{ .id = "player", .name = "Player", .binding = "player", .components = .{ .{ .kind = "sprite" } }, .references = .{ .{ .name = "target", .target = "camera" } } },
-        \\    },
-        \\}
-    ;
-    const Callback = struct {
-        fn load(_: *anyopaque, _: *const scene_runtime.Runtime, _: @import("ecs.zig").Entity, _: @import("scene.zig").Entity) !void {}
-    };
-    var world = @import("ecs.zig").World.init(std.testing.allocator);
-    defer world.deinit();
-    var diagnostic = scene_runtime.Diagnostic{};
-    defer diagnostic.deinit(std.testing.allocator);
-    var callback: u8 = 0;
-    var runtime = try scene_runtime.loadSource(std.testing.allocator, &world, source, &.{.{ .name = "player", .context = &callback, .on_load = Callback.load }}, &diagnostic);
-    defer {
-        runtime.unload() catch unreachable;
-        runtime.deinit();
-    }
-    var store = assets.AssetStore.init(std.testing.allocator, std.fs.cwd());
-    defer store.deinit();
-    const text = try store.loadText("README.md");
-    var state = input.Input{};
-    state.set(.action, true);
-    state.setPointerPosition(.{ .x = 10, .y = 20 }, .{ .x = 20, .y = 40 }, .{ .x = 5, .y = 10 });
-    var action_map = try actions.Map.init(std.testing.allocator, &.{.{ .name = "jump", .binding = .{ .key = .action } }});
-    defer action_map.deinit();
-    action_map.update(state);
-    const resources = [_]Resource{
-        .{ .name = "readme", .handle = .{ .text = text } },
-        .{ .name = "missing", .handle = .{ .text = .{ .index = 99, .generation = 1 } } },
-    };
-    var scene = ScenePanel{ .runtime = &runtime };
-    var asset = AssetPanel{ .store = &store, .resources = &resources };
-    var input_panel = InputPanel{ .state = &state, .action_map = &action_map };
-    var canvas = try Canvas.init(std.testing.allocator, 320, 256);
-    defer canvas.deinit();
-    canvas.clear(Color.rgb(14, 18, 24));
-    try scene.panel().draw(scene.panel().context, &canvas);
-    try asset.panel().draw(asset.panel().context, &canvas);
-    try input_panel.panel().draw(input_panel.panel().context, &canvas);
-    const fixture = try std.fs.cwd().readFileAlloc(std.testing.allocator, "fixtures/inspector/representative.png", 1024 * 1024);
-    defer std.testing.allocator.free(fixture);
-    var expected = try @import("image.zig").Image.decodePng(std.testing.allocator, fixture);
-    defer expected.deinit();
-    try test_support.assertGolden(std.testing.allocator, canvas, expected, .{ .expected_hash = 0x47457b9ec6f65bdf, .diagnostics_path = "zig-out/inspector" });
-    try std.testing.expectEqualStrings("live", entityState(&runtime, "player"));
-    try std.testing.expectEqualStrings("ready", resourceState(&store, .{ .text = text }));
-    try std.testing.expectEqualStrings("stale", resourceState(&store, .{ .text = .{ .index = 99, .generation = 1 } }));
-    try std.testing.expectEqual(@as(f32, 1), action_map.value(state, "game", "jump"));
 }

@@ -5,7 +5,7 @@ pub const version: u16 = 1;
 pub const max_payload_bytes: usize = 64 * 1024 * 1024;
 const header_size = magic.len + @sizeOf(u16) + @sizeOf(u8) + @sizeOf(u8) + @sizeOf(u64) + @sizeOf(u32);
 
-pub const Kind = enum(u8) { scene = 1, catalog = 2, map = 3 };
+pub const Kind = enum(u8) { catalog = 1, map = 2 };
 
 pub const Cache = struct {
     allocator: std.mem.Allocator,
@@ -44,13 +44,13 @@ pub fn decode(allocator: std.mem.Allocator, bytes: []const u8) !Cache {
 }
 
 test "content cache validates magic version kind and size" {
-    const encoded = try encode(std.testing.allocator, .scene, 42, "scene");
+    const encoded = try encode(std.testing.allocator, .catalog, 42, "catalog");
     defer std.testing.allocator.free(encoded);
     var cache = try decode(std.testing.allocator, encoded);
     defer cache.deinit();
-    try std.testing.expectEqual(Kind.scene, cache.kind);
+    try std.testing.expectEqual(Kind.catalog, cache.kind);
     try std.testing.expectEqual(@as(u64, 42), cache.fingerprint);
-    try std.testing.expectEqualStrings("scene", cache.payload);
+    try std.testing.expectEqualStrings("catalog", cache.payload);
     try std.testing.expectError(error.InvalidCacheMagic, decode(std.testing.allocator, "bad"));
     var unsupported = try std.testing.allocator.dupe(u8, encoded);
     defer std.testing.allocator.free(unsupported);

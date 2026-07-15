@@ -1,6 +1,0 @@
-.{
-    .format = "unpolished-peas-scene",
-    .version = 1,
-    .metadata = .{ .name = "main", .tags = .{} },
-    .entities = .{},
-}

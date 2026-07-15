@@ -220,7 +220,7 @@ pub fn printHelp() void {
         \\commands: new run host check compile migrate test package docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\compile: zig build peas -- compile [project-directory] [output-directory]
-        \\migrate: zig build peas -- migrate <scene|catalog|map> <input> <output>
+        \\migrate: zig build peas -- migrate <catalog|map> <input> <output>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\host: zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
@@ -348,6 +348,19 @@ fn issueFmt(allocator: std.mem.Allocator, kind: CheckIssueKind, path: []const u8
     errdefer allocator.free(owned_path);
     const message = try std.fmt.allocPrint(allocator, format, args);
     return .{ .kind = kind, .path = owned_path, .line = line, .column = column, .message = message };
+}
+
+fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, column: usize } {
+    const offset = std.mem.indexOf(u8, source, field) orelse return .{ .line = 1, .column = 1 };
+    var line: usize = 1;
+    var column: usize = 1;
+    for (source[0..offset]) |byte| {
+        if (byte == '\n') {
+            line += 1;
+            column = 1;
+        } else column += 1;
+    }
+    return .{ .line = line, .column = column };
 }
 
 test "tools module parses CLI commands without runtime imports" {

@@ -2,9 +2,6 @@ const std = @import("std");
 const atlas = @import("atlas.zig");
 const Canvas = @import("canvas.zig").Canvas;
 const Color = @import("color.zig").Color;
-const ecs = @import("ecs.zig");
-const scene = @import("scene.zig");
-const scene_runtime = @import("scene_runtime.zig");
 
 pub const BlendPolicy = enum { immediate, hold_previous };
 
@@ -140,33 +137,6 @@ pub const Machine = struct {
     }
 };
 
-pub const SceneBinding = struct {
-    machine: *Machine,
-    diagnostic: *Diagnostic,
-    trigger: ?[]const u8 = null,
-    entity: ?ecs.Entity = null,
-
-    pub fn binding(self: *SceneBinding, name: []const u8) scene_runtime.Binding {
-        return .{
-            .name = name,
-            .context = self,
-            .on_load = onLoad,
-            .on_unload = onUnload,
-        };
-    }
-
-    fn onLoad(context: *anyopaque, _: *const scene_runtime.Runtime, entity: ecs.Entity, _: scene.Entity) anyerror!void {
-        const self: *SceneBinding = @ptrCast(@alignCast(context));
-        self.entity = entity;
-        if (self.trigger) |trigger| try self.machine.transition(trigger, self.diagnostic);
-    }
-
-    fn onUnload(context: *anyopaque, _: ecs.Entity, _: scene.Entity) void {
-        const self: *SceneBinding = @ptrCast(@alignCast(context));
-        self.entity = null;
-    }
-};
-
 fn validate(texture_atlas: *const atlas.Atlas, states: []const State, initial: []const u8, diagnostic: *Diagnostic) !void {
     if (states.len == 0) {
         diagnostic.* = .{ .message = "animation state machines require at least one state" };
@@ -291,35 +261,4 @@ test "animation state sprite output preserves the configured blend policy" {
     canvas.clear(Color.black);
     canvas.drawAtlasFrame(texture_atlas, machine.frame(), 0, 0, .{});
     try std.testing.expectEqual(Color.rgb(0, 255, 0), canvas.get(0, 0).?);
-}
-
-test "animation state machines bind through native scene lifecycle callbacks" {
-    const source =
-        \\.{
-        \\    .format = "unpolished-peas-scene",
-        \\    .version = 1,
-        \\    .metadata = .{ .name = "main", .tags = .{} },
-        \\    .entities = .{ .{ .id = "player", .name = "Player", .binding = "animation", .components = .{}, .references = .{} } },
-        \\}
-    ;
-    var texture_atlas = try testAtlas();
-    defer texture_atlas.deinit();
-    const states = [_]State{
-        .{ .name = "idle", .animation = .{ .index = 0 }, .transitions = &.{.{ .trigger = "walk", .target = "walk" }} },
-        .{ .name = "walk", .animation = .{ .index = 1 } },
-    };
-    var diagnostic = Diagnostic{};
-    var machine = try Machine.init(std.testing.allocator, &texture_atlas, &states, "idle", &diagnostic);
-    defer machine.deinit();
-    var binding_context = SceneBinding{ .machine = &machine, .diagnostic = &diagnostic, .trigger = "walk" };
-    var runtime_diagnostic = scene_runtime.Diagnostic{};
-    defer runtime_diagnostic.deinit(std.testing.allocator);
-    var world = ecs.World.init(std.testing.allocator);
-    defer world.deinit();
-    var runtime = try scene_runtime.loadSource(std.testing.allocator, &world, source, &.{binding_context.binding("animation")}, &runtime_diagnostic);
-    try std.testing.expect(binding_context.entity != null);
-    try std.testing.expectEqualStrings("walk", machine.state().name);
-    try runtime.unload();
-    runtime.deinit();
-    try std.testing.expect(binding_context.entity == null);
 }

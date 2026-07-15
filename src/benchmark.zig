@@ -215,7 +215,7 @@ fn measureProfilerFrame() u64 {
     var sample: u32 = 0;
     while (sample < frame_samples) : (sample += 1) {
         profiler.beginFrame(sample);
-        inline for ([_]up.ProfileScope{ .callback, .scene, .asset, .update, .draw }) |scope| profiler.scope(scope).end();
+        inline for ([_]up.ProfileScope{ .callback, .asset, .update, .draw }) |scope| profiler.scope(scope).end();
     }
     std.mem.doNotOptimizeAway(profiler.metrics());
     return timer.read() / frame_samples;
