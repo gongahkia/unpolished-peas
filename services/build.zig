@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
     run_step.dependOn(&run.step);
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
-            .root_source_file = b.path("src/config.zig"),
+            .root_source_file = b.path("src/tests.zig"),
             .target = target,
             .optimize = optimize,
             .imports = &.{.{ .name = "unpolished-peas-services", .module = services }},
