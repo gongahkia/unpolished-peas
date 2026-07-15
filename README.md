@@ -264,7 +264,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netPeer`, `PeerServer`
 - `netChannel`, `NetChannel`
 - `netSnapshot`, `SnapshotPublisher`, `SnapshotClient`
-- `netEcsReplication`, `EcsReplicationAdapter`
+- `netEcsReplication`, `ReplicationSchema`, `ReplicationStateAdapter`, `SceneReplicationAdapter`, `EcsReplicationAdapter`
 - `netSession`, `NetHost`, `NetHostRole`, `NetClient`
 - `netSync`, `SnapshotInterpolator`, `InputCommandClient`, `PredictionClient`, `AuthoritativeServer`
 - `netFault`, `FaultNetwork`, `FaultEndpoint`
