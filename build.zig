@@ -432,6 +432,10 @@ pub fn build(b: *std.Build) void {
     const run_effects_tests = b.addRunArtifact(effects_tests);
     const effects_test_step = b.step("test-effects", "Test the independent effects package module");
     effects_test_step.dependOn(&run_effects_tests.step);
+    const effects_conformance = b.addSystemCommand(&.{"script/test_effects_package.sh"});
+    effects_conformance.setCwd(b.path("."));
+    const effects_conformance_step = b.step("test-effects-conformance", "Run effects fallback, reload, and renderer conformance fixtures");
+    effects_conformance_step.dependOn(&effects_conformance.step);
 
     const box2d_tests = b.addTest(.{ .root_module = physics });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
