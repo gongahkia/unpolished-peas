@@ -22,7 +22,7 @@ pub const Game = struct {
 };
 
 fn loadCollider(allocator: std.mem.Allocator) !struct { map: up.TileMap, collider: up.TileCollider } {
-    var map = try up.TileMap.loadNative(allocator, "examples/assets/platformer.upmap");
+    var map = try up.mapSource.loadFile(allocator, "examples/assets/platformer.upmap");
     errdefer map.deinit();
     var collider = up.TileCollider.init(allocator);
     errdefer collider.deinit();

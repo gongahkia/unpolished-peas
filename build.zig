@@ -136,7 +136,6 @@ pub fn build(b: *std.Build) void {
     const packaged_layout_step = b.step("package-layout-checker", "Install the portable package layout checker");
     packaged_layout_step.dependOn(&install_packaged_layout.step);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
-    const mapc = addExample(b, "upmapc", "src/mapc.zig", target, optimize, peas, null);
     const contentc = b.addExecutable(.{
         .name = "upcontentc",
         .root_module = b.createModule(.{
@@ -268,7 +267,6 @@ pub fn build(b: *std.Build) void {
     platformer_smoke_step.dependOn(&platformer_smoke.step);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
-    addRunStep(b, "upmapc", "Compile a native .upmap JSON map to .upmapb", mapc);
     const run_contentc = b.addRunArtifact(contentc);
     if (b.args) |args| run_contentc.addArgs(args);
     const contentc_step = b.step("contentc", "Compile native project content");
@@ -276,7 +274,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, mapc, contentc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, contentc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
