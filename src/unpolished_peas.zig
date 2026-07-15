@@ -10,7 +10,6 @@ test {
     _ = @import("atlas.zig");
     _ = @import("camera.zig");
     _ = @import("camera_canvas.zig");
-    _ = @import("ui.zig");
     _ = @import("assets.zig");
     _ = @import("canvas.zig");
     _ = @import("color.zig");

@@ -54,6 +54,7 @@ run package-platformer "$package_script" zig-out/release-gate/packages/platforme
 run diagnostics zig build test-support
 run package-release zig build test-package-release
 run effects-conformance zig build test-effects-conformance
+run ui-conformance zig build test-ui-conformance
 run physics-conformance zig build test-physics-conformance
 run visual-scenes zig build test-scenes
 run visual-renderer runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance

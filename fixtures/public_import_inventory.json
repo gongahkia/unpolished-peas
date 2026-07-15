@@ -13,7 +13,7 @@
     {"path": "examples/explicit_loop.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Context", "run"]}]},
     {"path": "examples/minimal.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/platformer_game.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["CharacterController", "CharacterState", "TileCollider", "TileMap", "Vec2", "mapSource", "parseInputReplay", "testSupport"]}]},
-    {"path": "examples/platformer_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AnimationPlayer", "AtlasHandle", "AudioHandle", "Camera2D", "Color", "TileCollider", "TileMapHandle", "UiFrame", "UiState"]}, {"module": "unpolished-peas-physics", "path": "physics", "symbols": ["BodyHandle", "World"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
+    {"path": "examples/platformer_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AnimationPlayer", "AtlasHandle", "AudioHandle", "Camera2D", "Color", "TileCollider", "TileMapHandle"]}, {"module": "unpolished-peas-physics", "path": "physics", "symbols": ["BodyHandle", "World"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}, {"module": "unpolished-peas-ui", "path": "ui", "symbols": ["Frame", "State"]}]},
     {"path": "examples/primitives.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/proof_benchmark.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AnimationPlayer", "AssetStore", "AtlasHandle", "Camera2D", "Canvas", "Color", "ImageHandle", "Input", "StepClock", "TileCollider", "TileMapHandle"]}]},
     {"path": "examples/stress_audio_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AudioHandle", "AudioMixer", "Color", "Music", "PlaybackHandle"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
@@ -74,6 +74,8 @@
     {"path": "fixtures/platformer-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["CharacterController", "Rect", "TileCollider"]}]},
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Action", "ActionMap", "Input"]}]},
+    {"path": "fixtures/ui-package/build.zig", "imports": []},
+    {"path": "fixtures/ui-package/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Camera2D", "Canvas", "Color", "Input"]}, {"module": "unpolished-peas-ui", "path": "ui", "symbols": ["Frame", "Id", "State"]}]},
     {"path": "templates/bounce/build.zig", "imports": []},
     {"path": "templates/bounce/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api.core", "symbols": ["Color", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]}
   ]

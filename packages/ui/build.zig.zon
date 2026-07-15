@@ -1,0 +1,12 @@
+.{
+    .name = .unpolished_peas_ui,
+    .version = "1.0.0",
+    .fingerprint = 0xf51d96af8b78c4fa,
+    .minimum_zig_version = "0.15.1",
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "extension.zon",
+        "src",
+    },
+}

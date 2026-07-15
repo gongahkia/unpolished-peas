@@ -1,6 +1,7 @@
 const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 const physics = @import("unpolished-peas-physics").physics(up);
+const ui = @import("unpolished-peas-ui").ui(up);
 const platformer = @import("platformer_game.zig");
 
 const Game = struct {
@@ -14,7 +15,7 @@ const Game = struct {
     world: physics.World,
     marker: physics.BodyHandle,
     jump_sound: up.AudioHandle,
-    ui: up.UiState = .{},
+    ui_state: ui.State = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
         const map = try ctx.loadTileMap("platformer.upmap", .{});
@@ -48,9 +49,9 @@ const Game = struct {
         try self.world.appendDebug(ctx.commands, &camera, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
         const marker = self.world.bodyPosition(self.marker) catch return;
         ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
-        var ui = up.UiFrame.begin(&self.ui, ctx.input, .{ .hud = ctx.canvas }, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
-        _ = ui.button(1, "DEBUG");
-        ui.end();
+        var frame = ui.Frame.begin(&self.ui_state, ctx.input, .{ .hud = ctx.canvas }, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
+        _ = frame.button(1, "DEBUG");
+        frame.end();
         ctx.text("PLATFORMER", 2, 2, up.Color.white);
     }
 };
