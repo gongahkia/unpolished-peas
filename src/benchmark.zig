@@ -138,9 +138,9 @@ fn measure(allocator: std.mem.Allocator) !Metrics {
     var commands = up.RenderCommandBuffer.init(measured_allocator);
     defer commands.deinit();
     try appendRendererWorkload(&commands);
-    var renderer = up.HeadlessRenderer.init(&canvas);
-    defer renderer.deinit(measured_allocator);
-    try renderer.submit(measured_allocator, commands.commands.items);
+    var renderer = up.HeadlessRenderer.init(measured_allocator, &canvas);
+    defer renderer.deinit();
+    try renderer.submit(commands.commands.items);
 
     counter.reset();
     const frame_ns = try measureFrame(&canvas);
@@ -158,7 +158,7 @@ fn measure(allocator: std.mem.Allocator) !Metrics {
     const runtime_metrics_frame_allocated_bytes = counter.allocated_bytes;
 
     counter.reset();
-    const renderer_ns = try measureRenderer(&canvas, &renderer, measured_allocator, commands.commands.items);
+    const renderer_ns = try measureRenderer(&canvas, &renderer, commands.commands.items);
     const renderer_allocation_events = counter.allocation_events;
     const renderer_allocated_bytes = counter.allocated_bytes;
     return .{
@@ -187,10 +187,10 @@ fn measureStartup(allocator: std.mem.Allocator) !u64 {
         var canvas = try up.Canvas.init(allocator, 160, 90);
         var commands = up.RenderCommandBuffer.init(allocator);
         try appendRendererWorkload(&commands);
-        var renderer = up.HeadlessRenderer.init(&canvas);
-        try renderer.submit(allocator, commands.commands.items);
+        var renderer = up.HeadlessRenderer.init(allocator, &canvas);
+        try renderer.submit(commands.commands.items);
         std.mem.doNotOptimizeAway(canvas.pixels);
-        renderer.deinit(allocator);
+        renderer.deinit();
         commands.deinit();
         canvas.deinit();
         total_ns +|= timer.read();
@@ -235,10 +235,10 @@ fn measureRuntimeMetricsFrame() u64 {
     return timer.read() / frame_samples;
 }
 
-fn measureRenderer(canvas: *up.Canvas, renderer: *up.HeadlessRenderer, allocator: std.mem.Allocator, commands: []const up.RenderCommand) !u64 {
+fn measureRenderer(canvas: *up.Canvas, renderer: *up.HeadlessRenderer, commands: []const up.RenderCommand) !u64 {
     var timer = try std.time.Timer.start();
     var sample: u32 = 0;
-    while (sample < frame_samples) : (sample += 1) try renderer.submit(allocator, commands);
+    while (sample < frame_samples) : (sample += 1) try renderer.submit(commands);
     const elapsed = timer.read();
     std.mem.doNotOptimizeAway(canvas.pixels);
     return elapsed / frame_samples;
