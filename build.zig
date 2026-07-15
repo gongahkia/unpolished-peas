@@ -1,25 +1,28 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const supported_zig_version = "0.15.2";
+const current_zig_version = "0.15.2";
+const previous_zig_version = "0.15.1";
 
 pub fn build(b: *std.Build) void {
-    if (!std.mem.eql(u8, builtin.zig_version_string, supported_zig_version)) {
-        @panic("unpolished-peas requires Zig " ++ supported_zig_version ++ "; found " ++ builtin.zig_version_string);
+    if (!std.mem.eql(u8, builtin.zig_version_string, current_zig_version) and !std.mem.eql(u8, builtin.zig_version_string, previous_zig_version)) {
+        @panic("unpolished-peas requires Zig " ++ previous_zig_version ++ " or " ++ current_zig_version ++ "; found " ++ builtin.zig_version_string);
     }
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
+    const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 extension") orelse true;
+    const with_box2d = b.option(bool, "with_box2d", "Resolve the Box2D extension") orelse true;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
-    if (!system_sdl and target.result.os.tag == .linux) _ = b.dependency("sdl_linux_deps", .{});
-    const bundled_sdl = if (system_sdl) null else b.dependency("sdl", .{
+    if (with_sdl and !system_sdl and target.result.os.tag == .linux) _ = b.lazyDependency("sdl_linux_deps", .{});
+    const bundled_sdl = if (!with_sdl or system_sdl) null else b.lazyDependency("sdl", .{
         .target = target,
         .optimize = optimize,
     });
     const framework_path = if (target.result.os.tag == .macos) if (b.sysroot) |sysroot| b.pathJoin(&.{ sysroot, "System", "Library", "Frameworks" }) else null else null;
-    const box2d = b.dependency("box2d", .{
+    const box2d = if (with_box2d) b.lazyDependency("box2d", .{
         .target = target,
         .optimize = optimize,
-    });
+    }) else null;
     const install_assets = b.addInstallDirectory(.{
         .source_dir = b.path("examples/assets"),
         .install_dir = .prefix,
@@ -86,7 +89,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
-    addSdl3(sdl, bundled_sdl, framework_path);
+    if (with_sdl and (system_sdl or bundled_sdl != null)) addSdl3(sdl, bundled_sdl, framework_path);
 
     const physics = b.addModule("unpolished-peas-physics", .{
         .root_source_file = b.path("src/physics.zig"),
@@ -94,7 +97,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
     });
-    addBox2d(physics, box2d);
+    if (box2d) |dependency| addBox2d(physics, dependency);
 
     const lib = b.addLibrary(.{
         .name = "unpolished-peas",

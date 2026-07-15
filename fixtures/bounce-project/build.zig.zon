@@ -2,7 +2,7 @@
     .name = .external_bounce_fixture,
     .version = "0.0.1",
     .fingerprint = 0x2026b76e28edc26,
-    .minimum_zig_version = "0.15.2",
+    .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .unpolished_peas = .{
             .path = "../..",

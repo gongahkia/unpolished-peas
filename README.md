@@ -17,7 +17,7 @@ unpolished-peas should feel as simple to start with as raylib, LÖVE, and Ebiten
 
 ## Requirements
 
-- Zig 0.15.2 exactly
+- Zig 0.15.1 or 0.15.2
 - no system SDL3 installation in the default pinned-source mode
 
 ```sh
@@ -187,6 +187,7 @@ zig build new -- ../my-game
 `fixtures/external-game` is a standalone callback game that draws a sprite, plays synthesized audio, and consumes normalized input through the public desktop module.
 `fixtures/external-tilemap-game` is a standalone desktop game that loads native asset/map sources, drives movement through configured actions, follows with a camera, and exercises catalog-backed asset reloads.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
+`release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
