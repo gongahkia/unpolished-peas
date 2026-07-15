@@ -42,7 +42,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `SceneBinding`, `step`, and `deinit`; the core module and generated starter do not link Box2D.
 `World.appendDebug` emits the same core render commands for headless and GPU presentation.
-`Inspector` panels register explicitly through `Context.registerInspectorPanel`; disabled developer tools retain no panels and execute no inspector rendering. `InspectorScenePanel`, `InspectorAssetPanel`, and `InspectorInputPanel` render missing sources and stale handles as status rows.
+`Inspector` panels register explicitly through `Context.registerInspectorPanel`; disabled developer tools retain no panels and execute no inspector rendering. `InspectorScenePanel`, `InspectorAssetPanel`, `InspectorInputPanel`, `InspectorCollisionPanel`, `InspectorPhysicsPanel`, and `InspectorNetworkPanel` render unavailable sources as status rows. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont` loads TrueType/OpenType fonts into a GPU atlas; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `loadBitmapFont` loads AngelCode text `.fnt` descriptors; `layoutText` shares the same deterministic UTF-8 decoder.
 

@@ -169,6 +169,23 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
         return .{ .contact_begins = @intCast(@max(contacts.beginCount, 0)), .contact_ends = @intCast(@max(contacts.endCount, 0)), .contact_hits = @intCast(@max(contacts.hitCount, 0)), .sensor_begins = @intCast(@max(sensors.beginCount, 0)), .sensor_ends = @intCast(@max(sensors.endCount, 0)) };
     }
 
+    pub fn inspectorState(self: World) !up.InspectorPhysicsState {
+        const contact_events = try self.events();
+        var bodies: u32 = 0;
+        var fixtures: u32 = 0;
+        var joints: u32 = 0;
+        for (self.bodies.items) |body| {
+            if (body.live) bodies += 1;
+        }
+        for (self.fixtures.items) |fixture| {
+            if (fixture.live) fixtures += 1;
+        }
+        for (self.joints.items) |joint| {
+            if (joint.live) joints += 1;
+        }
+        return .{ .bodies = bodies, .fixtures = fixtures, .joints = joints, .contact_begins = contact_events.contact_begins, .contact_ends = contact_events.contact_ends, .contact_hits = contact_events.contact_hits, .sensor_begins = contact_events.sensor_begins, .sensor_ends = contact_events.sensor_ends };
+    }
+
     pub fn appendDebug(self: *World, commands: *up.RenderCommandBuffer, camera: *const up.Camera2D, canvas_size: up.Vec2) !void {
         if (!c.b2World_IsValid(self.id)) return error.StaleWorld;
         const viewport = camera.canvasViewport(canvas_size);
@@ -308,6 +325,21 @@ test "Box2D distance joints and event snapshots are available" {
     _ = try world.events();
     try world.destroyJoint(joint);
     try std.testing.expectError(error.StaleJoint, world.destroyJoint(joint));
+}
+
+test "Box2D inspector state reports live objects without mutation" {
+    var world = World.init(.{});
+    defer world.deinit();
+    const a = try world.createBody(.{ .body_type = .dynamic });
+    const b = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 2, .y = 0 } });
+    _ = try world.createCircle(a, .{ .radius = 1 });
+    _ = try world.createDistanceJoint(a, b, 2);
+    const first = try world.inspectorState();
+    const second = try world.inspectorState();
+    try std.testing.expectEqual(@as(u32, 2), first.bodies);
+    try std.testing.expectEqual(@as(u32, 1), first.fixtures);
+    try std.testing.expectEqual(@as(u32, 1), first.joints);
+    try std.testing.expectEqual(first, second);
 }
 
 test "Box2D contacts and debug commands cover headless output" {
