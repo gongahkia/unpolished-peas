@@ -482,3 +482,31 @@ test "font UTF-8 decoding replaces malformed sequences" {
     try std.testing.expectEqual(@as(?u21, 0xfffd), Font.nextCodepoint(&invalid, &index));
     try std.testing.expectEqual(@as(?u21, 'B'), Font.nextCodepoint(&invalid, &index));
 }
+
+test "font fallback diagnostics and layout share strict UTF-8 decoding" {
+    var pixels = [_]Color{ Color.white, Color.rgb(255, 0, 0) };
+    var glyphs = [_]Glyph{
+        .{ .codepoint = 'A', .x = 0, .y = 0, .width = 1, .height = 1, .x_offset = 0, .y_offset = 0, .advance = 2 },
+        .{ .codepoint = '?', .x = 1, .y = 0, .width = 1, .height = 1, .x_offset = 0, .y_offset = 0, .advance = 2 },
+    };
+    const fixture = Font{
+        .allocator = std.testing.allocator,
+        .image = .{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = &pixels },
+        .glyphs = &glyphs,
+        .line_height = 2,
+        .baseline = 0,
+        .sampling = .nearest,
+    };
+    const text = [_]u8{ 'A', 0xe4, 0xb8, 0x80, '\n', 0xff };
+    const diagnostics = fixture.textDiagnostics(&text);
+    try std.testing.expectEqual(@as(u32, 1), diagnostics.invalid_utf8);
+    try std.testing.expectEqual(@as(u32, 2), diagnostics.missing_glyphs);
+    try std.testing.expectEqual(@as(u32, 2), diagnostics.fallback_glyphs);
+
+    var canvas = try Canvas.init(std.testing.allocator, 4, 4);
+    defer canvas.deinit();
+    fixture.drawText(&canvas, &text, 0, 0, Color.white);
+    try std.testing.expectEqual(Color.white, canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(2, 0).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(0, 2).?);
+}
