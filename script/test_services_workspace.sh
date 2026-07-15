@@ -2,6 +2,10 @@
 set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
+if rg -n -i 'postgres(ql)?://|password[[:space:]]*=|UP_SERVICES_DATABASE_URL=' "$repo/services/config" "$repo/services/deploy"; then
+    printf '%s\n' 'test_services_workspace.sh: deployment config must not contain secrets' >&2
+    exit 1
+fi
 cd "$repo/services"
 PKG_CONFIG_LIBDIR=/nonexistent zig build test
 cd "$repo"
