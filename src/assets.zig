@@ -1111,3 +1111,63 @@ test "image reload keeps last good asset after invalid edit" {
     try std.testing.expectError(error.StaleHandle, store.tryImage(handle));
     try std.testing.expect((try store.latestImagePtr(handle)).width > 0);
 }
+
+test "asset and native map reload fixture retains failures and recovers together" {
+    const Fixture = struct {
+        fn replace(dir: std.fs.Dir, path: []const u8, bytes: []const u8) !void {
+            const previous = try dir.statFile(path);
+            while (true) {
+                try dir.writeFile(.{ .sub_path = path, .data = bytes });
+                if ((try dir.statFile(path)).mtime != previous.mtime) return;
+                std.Thread.sleep(1_000_000);
+            }
+        }
+    };
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
+    defer std.testing.allocator.free(map);
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(image);
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const image_handle = try store.loadImage("ball.png");
+    const map_handle = try store.loadTileMap("topdown.upmap", .{});
+
+    try Fixture.replace(tmp.dir, "ball.png", image);
+    const refreshed = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 2), refreshed.len);
+    try std.testing.expectEqual(ReloadStatus.changed, refreshed[0].status);
+    try std.testing.expectEqualStrings("ball.png", refreshed[0].path);
+    try std.testing.expectEqual(ReloadStatus.changed, refreshed[1].status);
+    try std.testing.expectEqualStrings("topdown.upmap", refreshed[1].path);
+    try std.testing.expectError(error.StaleHandle, store.tryImage(image_handle));
+    try std.testing.expectError(error.StaleHandle, store.tryTileMap(map_handle));
+    const refreshed_image = ImageHandle{ .index = image_handle.index, .generation = store.images.items[image_handle.index].generation };
+    const refreshed_map = TileMapHandle{ .index = map_handle.index, .generation = store.tile_maps.items[map_handle.index].generation };
+    try std.testing.expect((try store.tryImage(refreshed_image)).width > 0);
+    try std.testing.expect((try store.tryTileMap(refreshed_map)).layers.items.len > 0);
+
+    try Fixture.replace(tmp.dir, "ball.png", "invalid");
+    const failed = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 2), failed.len);
+    try std.testing.expectEqual(ReloadStatus.failed, failed[0].status);
+    try std.testing.expectEqualStrings("ball.png", failed[0].path);
+    try std.testing.expectEqual(ReloadFailureClass.decode, failed[0].failure_class.?);
+    try std.testing.expect(failed[0].retained_content);
+    try std.testing.expectEqual(ReloadStatus.failed, failed[1].status);
+    try std.testing.expectEqualStrings("topdown.upmap", failed[1].path);
+    try std.testing.expectEqual(ReloadFailureClass.decode, failed[1].failure_class.?);
+    try std.testing.expect(failed[1].retained_content);
+    try std.testing.expect((try store.tryImage(refreshed_image)).width > 0);
+    try std.testing.expect((try store.tryTileMap(refreshed_map)).layers.items.len > 0);
+
+    try Fixture.replace(tmp.dir, "ball.png", image);
+    const recovered = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 2), recovered.len);
+    for (recovered) |event| try std.testing.expectEqual(ReloadStatus.changed, event.status);
+    try std.testing.expectError(error.StaleHandle, store.tryImage(refreshed_image));
+    try std.testing.expectError(error.StaleHandle, store.tryTileMap(refreshed_map));
+}
