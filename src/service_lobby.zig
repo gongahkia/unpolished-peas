@@ -61,6 +61,12 @@ pub const Service = struct { // owns bounded lobby and membership records; call 
         try self.leave(lobby_id, credentials, now_ms);
     }
 
+    pub fn isActiveMember(self: *Service, lobby_id: u64, credentials: guest.Credentials, now_ms: i64) !bool {
+        const identity = try self.authenticate(credentials, now_ms);
+        self.expire(now_ms);
+        return self.activeMembership(lobby_id, identity) != null;
+    }
+
     pub fn inspectorState(self: *const Service, now_ms: i64) InspectorState {
         var state = InspectorState{};
         for (self.lobbies.items) |lobby| switch (lobby.status) {
