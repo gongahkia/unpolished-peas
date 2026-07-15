@@ -25,7 +25,7 @@ zig build test-sdl
 zig build test-renderer-conformance
 ```
 
-`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The pinned Box2D source is reserved for the optional physics module and is validated with `zig build test-box2d`.
+`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The optional physics package owns its pinned Box2D source and is validated with `zig build test-box2d`.
 `test-renderer-conformance` runs the shared canvas smoke/golden fixture and an opt-in GPU capture golden. CI requires the GPU capture on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
@@ -46,6 +46,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `step`, and `deinit`; the core module and generated starter do not link Box2D.
+Use `@import("unpolished-peas-physics").physics(core)` to bind that optional package to the core API used by the game.
 `World.appendDebug` emits the same core render commands for headless and GPU presentation.
 The SDL runtime wires only `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision, physics, and network panels remain explicitly application-owned. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
 

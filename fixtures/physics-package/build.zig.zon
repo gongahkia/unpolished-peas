@@ -1,0 +1,15 @@
+.{
+    .name = .physics_package_fixture,
+    .version = "0.0.1",
+    .fingerprint = 0xe993c884085d1824,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .unpolished_peas = .{ .path = "../.." },
+        .unpolished_peas_physics = .{ .path = "../../packages/physics" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
