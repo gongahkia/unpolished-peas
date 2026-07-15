@@ -298,7 +298,7 @@ test "tile collider validates shapes and recovers from failed layers" {
     try std.testing.expectError(error.InvalidCollisionLayer, collider.addLayer(&map, layer));
     const objects = try map.addLayer("objects", .objects, null);
     try map.layers.items[objects].objects.append(std.testing.allocator, .{
-        .id = 1,
+        .id = try std.testing.allocator.dupe(u8, "1"),
         .name = try std.testing.allocator.dupe(u8, "valid"),
         .class_name = try std.testing.allocator.dupe(u8, ""),
         .bounds = Rect.init(0, 0, 16, 16),
@@ -306,7 +306,7 @@ test "tile collider validates shapes and recovers from failed layers" {
         .properties = try std.testing.allocator.alloc(tilemap.Property, 0),
     });
     try map.layers.items[objects].objects.append(std.testing.allocator, .{
-        .id = 2,
+        .id = try std.testing.allocator.dupe(u8, "2"),
         .name = try std.testing.allocator.dupe(u8, "invalid"),
         .class_name = try std.testing.allocator.dupe(u8, ""),
         .bounds = Rect.init(16, 0, 0, 16),

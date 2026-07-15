@@ -5,6 +5,7 @@ const Sound = @import("audio.zig").Sound;
 const Font = @import("font_asset.zig").Font;
 const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
+const map_source = @import("map_source.zig");
 const ShaderProgram = @import("shader.zig").Program;
 const ShaderKind = @import("shader.zig").Kind;
 const TileMap = @import("tilemap.zig").TileMap;
@@ -788,7 +789,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         const source_path = try self.assetPath(self.allocator, path);
         defer self.allocator.free(source_path);
         var map = blk: {
-            var native = try TileMap.loadNative(self.allocator, source_path);
+            var native = try map_source.loadFile(self.allocator, source_path);
             errdefer native.deinit();
             if (options.overlay_path) |overlay_path| {
                 try native.addDependency(.overlay, overlay_path);

@@ -166,7 +166,7 @@ fn convertObjects(allocator: std.mem.Allocator, objects: []const tilemap.MapObje
             .polyline => .polyline,
         };
         output[index] = .{
-            .id = try std.fmt.allocPrint(allocator, "{d}", .{object.id}),
+            .id = object.id,
             .name = object.name,
             .class_name = object.class_name,
             .x = object.bounds.x,

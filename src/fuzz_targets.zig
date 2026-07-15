@@ -1,7 +1,7 @@
 const std = @import("std");
 const image = @import("image.zig");
 const atlas = @import("atlas.zig");
-const tilemap = @import("tilemap.zig");
+const map_source = @import("map_source.zig");
 const net_codec = @import("net_codec.zig");
 const net_frame = @import("net_frame.zig");
 const handshake = @import("net_handshake.zig");
@@ -27,9 +27,9 @@ fn runWith(allocator: std.mem.Allocator, input: []const u8) void {
         var value = decoded;
         value.deinit();
     } else |_| {}
-    if (tilemap.TileMap.decodeNative(allocator, bounded)) |decoded| {
+    if (map_source.load(allocator, bounded)) |decoded| {
         var value = decoded;
-        value.deinit();
+        value.deinit(allocator);
     } else |_| {}
     if (net_codec.decode(allocator, bounded)) |decoded| {
         var value = decoded;

@@ -4,6 +4,7 @@ const Vec2 = @import("math.zig").Vec2;
 
 pub const native_format = "unpolished-peas-map";
 pub const native_version: u32 = 1;
+const max_source_bytes = 64 * 1024 * 1024;
 
 pub const Projection = enum { orthogonal, isometric };
 pub const LayerKind = enum { tiles, int_grid, group, objects };
@@ -175,6 +176,8 @@ pub const Source = struct {
                     };
                 }
             }
+            if (tileset.kind != .atlas_frames) try result.addDependency(.image, tileset.path);
+            for (tileset.image_paths) |image_path| if (image_path) |path| try result.addDependency(.image, path);
         }
         for (self.layers, 0..) |layer, layer_index| {
             const parent = if (layer.parent) |parent_id| findLayerIndex(self.layers, layer_index, parent_id) orelse return error.InvalidParentLayer else null;
@@ -241,6 +244,15 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8, diagnostic: *Diag
 pub fn load(allocator: std.mem.Allocator, source: []const u8) !Source {
     var diagnostic = Diagnostic{};
     return parse(allocator, source, &diagnostic);
+}
+
+pub fn loadFile(allocator: std.mem.Allocator, path: []const u8) !tilemap.TileMap {
+    const source = try std.fs.cwd().readFileAlloc(allocator, path, max_source_bytes);
+    defer allocator.free(source);
+    var diagnostic = Diagnostic{};
+    var parsed = try parse(allocator, source, &diagnostic);
+    defer parsed.deinit(allocator);
+    return parsed.build(allocator);
 }
 
 fn validate(map: Source, source: []const u8, diagnostic: *Diagnostic) !void {
@@ -392,7 +404,8 @@ fn buildProperties(allocator: std.mem.Allocator, source: []const Property) ![]ti
 }
 
 fn buildObject(allocator: std.mem.Allocator, source: Object) !tilemap.MapObject {
-    const id = std.fmt.parseInt(u32, source.id, 10) catch return error.InvalidObjectId;
+    const id = try allocator.dupe(u8, source.id);
+    errdefer allocator.free(id);
     const name = try allocator.dupe(u8, source.name);
     errdefer allocator.free(name);
     const class_name = try allocator.dupe(u8, source.class_name);
@@ -479,6 +492,14 @@ test "native map source parses layers objects properties and signed cells" {
     try std.testing.expectEqualStrings(map.metadata.name, decoded.metadata.name);
     try std.testing.expectEqual(@as(i32, -2), decoded.layers[1].cells[0].x);
     try std.testing.expect(decoded.layers[3].objects[0].properties[0].boolean.?);
+}
+
+test "native map source loads .upmap files through the canonical parser" {
+    var map = try loadFile(std.testing.allocator, "fixtures/maps/main.upmap");
+    defer map.deinit();
+    try std.testing.expectEqual(@as(u32, 16), map.chunk_size);
+    try std.testing.expectEqual(@as(usize, 1), map.dependencies.items.len);
+    try std.testing.expectEqualStrings("tiles.png", map.dependencies.items[0].path);
 }
 
 test "native map source reports precise validation errors" {

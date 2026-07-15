@@ -156,7 +156,6 @@ script/check_performance_budgets.sh
 zig build test-scenes
 zig build stress-audio-sdl
 zig build new -- ../my-game
-zig build upmapc -- level.upmap level.upmapb
 ```
 
 `run-bounce` renders `zig-out/bounce.ppm`.
@@ -251,7 +250,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
-- `TileMap.loadNative`
 - `MapSource`, `mapSource`
 - `TileCollider`, `CharacterController`
 - `netCodec` (`v1`, little-endian, 1024-byte bounded messages)
@@ -267,7 +265,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netSession`, `NetHost`, `NetHostRole`, `NetClient`
 - `netSync`, `SnapshotInterpolator`, `InputCommandClient`, `PredictionClient`, `AuthoritativeServer`
 - `netFault`, `FaultNetwork`, `FaultEndpoint`
-- `upmapc` native JSON-to-binary compiler
 - `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`

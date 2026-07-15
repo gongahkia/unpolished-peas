@@ -5,9 +5,6 @@ const Image = @import("image.zig").Image;
 const Rect = @import("math.zig").Rect;
 const Vec2 = @import("math.zig").Vec2;
 
-pub const native_format = "unpolished-peas-map";
-pub const native_version: u32 = 1;
-const binary_magic = "UPMB\x01";
 const max_map_bytes = 64 * 1024 * 1024;
 
 pub const Projection = enum { orthogonal, isometric };
@@ -44,7 +41,7 @@ pub const ObjectShape = union(enum) {
 };
 
 pub const MapObject = struct {
-    id: u32,
+    id: []u8,
     name: []u8,
     class_name: []u8,
     bounds: Rect,
@@ -52,6 +49,7 @@ pub const MapObject = struct {
     properties: []Property = &.{},
 
     fn deinit(self: *MapObject, allocator: std.mem.Allocator) void {
+        allocator.free(self.id);
         allocator.free(self.name);
         allocator.free(self.class_name);
         switch (self.shape) {
@@ -400,20 +398,6 @@ pub const TileMap = struct { // owns tilesets, layers, chunks, and dependencies 
         }
     }
 
-    pub fn loadNative(allocator: std.mem.Allocator, path: []const u8) !TileMap {
-        const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_map_bytes);
-        defer allocator.free(bytes);
-        var result = try decodeNative(allocator, bytes);
-        errdefer result.deinit();
-        for (result.tilesets.items) |tileset| {
-            if (tileset.kind == .atlas_frames) continue;
-            const resolved = try resolveSiblingPath(allocator, path, tileset.path);
-            defer allocator.free(resolved);
-            try result.addDependency(.image, resolved);
-        }
-        return result;
-    }
-
     pub fn applyOverlay(self: *TileMap, path: []const u8) !void {
         const bytes = try std.fs.cwd().readFileAlloc(self.allocator, path, max_map_bytes);
         defer self.allocator.free(bytes);
@@ -427,56 +411,6 @@ pub const TileMap = struct { // owns tilesets, layers, chunks, and dependencies 
             const tileset = self.findTileSetByName(try string(animation.get("tileset") orelse return error.InvalidTileOverlay)) orelse return error.UnknownOverlayTileSet;
             try replaceAnimation(self.allocator, &self.tilesets.items[tileset], try u32Value(animation.get("tile") orelse return error.InvalidTileOverlay), try parseAnimationFrames(self.allocator, try array(animation.get("frames") orelse return error.InvalidTileOverlay)));
         }
-    }
-
-    pub fn decodeNative(allocator: std.mem.Allocator, bytes: []const u8) !TileMap {
-        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, bytes, .{});
-        defer parsed.deinit();
-        const root = try object(parsed.value);
-        if (!std.mem.eql(u8, try string(root.get("format") orelse return error.InvalidMap), native_format)) return error.InvalidMapFormat;
-        if (try u32Value(root.get("version") orelse return error.InvalidMap) != native_version) return error.UnsupportedMapVersion;
-        const map = try init(allocator, .{
-            .x = try f32Value(root.get("tile_width") orelse return error.InvalidMap),
-            .y = try f32Value(root.get("tile_height") orelse return error.InvalidMap),
-        }, try u32Value(root.get("chunk_size") orelse return error.InvalidMap));
-        var result = map;
-        errdefer result.deinit();
-        result.projection = try projectionValue(root.get("projection") orelse return error.InvalidMap);
-        if (root.get("tilesets")) |value| try parseTileSets(&result, try array(value));
-        if (root.get("dependencies")) |value| try parseDependencies(&result, try array(value));
-        try parseLayers(&result, try array(root.get("layers") orelse return error.InvalidMap));
-        return result;
-    }
-
-    pub fn saveNative(self: TileMap, path: []const u8) !void {
-        if (!self.editable) return error.ReadOnlyMap;
-        var file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        var buffer: [8192]u8 = undefined;
-        var writer = file.writer(&buffer);
-        var json = std.json.Stringify{ .writer = &writer.interface, .options = .{ .whitespace = .indent_2 } };
-        try writeNative(self, &json);
-        try writer.interface.flush();
-    }
-
-    pub fn writeBinary(self: TileMap, path: []const u8) !void {
-        var file = try std.fs.cwd().createFile(path, .{});
-        defer file.close();
-        var buffer: [8192]u8 = undefined;
-        var writer = file.writer(&buffer);
-        try writer.interface.writeAll(binary_magic);
-        var json = std.json.Stringify{ .writer = &writer.interface };
-        try writeNative(self, &json);
-        try writer.interface.flush();
-    }
-
-    pub fn loadBinary(allocator: std.mem.Allocator, path: []const u8) !TileMap {
-        const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_map_bytes);
-        defer allocator.free(bytes);
-        if (bytes.len < binary_magic.len or !std.mem.eql(u8, bytes[0..binary_magic.len], binary_magic)) return error.InvalidBinaryMap;
-        var result = try decodeNative(allocator, bytes[binary_magic.len..]);
-        result.editable = false;
-        return result;
     }
 
     fn findLayer(self: *TileMap, index: u32) ?*TileMapLayer {
@@ -529,10 +463,6 @@ pub const TileMap = struct { // owns tilesets, layers, chunks, and dependencies 
     }
 };
 
-fn resolveSiblingPath(allocator: std.mem.Allocator, path: []const u8, relative: []const u8) ![]u8 {
-    return std.fs.path.join(allocator, &.{ std.fs.path.dirname(path) orelse ".", relative });
-}
-
 fn parseAnimationFrames(allocator: std.mem.Allocator, values: std.json.Array) ![]TileAnimationFrame {
     const frames = try allocator.alloc(TileAnimationFrame, values.items.len);
     errdefer allocator.free(frames);
@@ -556,188 +486,6 @@ fn replaceAnimation(allocator: std.mem.Allocator, tileset: *TileSet, tile_id: u3
     const next = try allocator.realloc(tileset.animations, tileset.animations.len + 1);
     next[next.len - 1] = .{ .tile_id = tile_id, .frames = frames };
     tileset.animations = next;
-}
-
-fn parseTileSets(map: *TileMap, values: std.json.Array) !void {
-    for (values.items) |value| {
-        const item = try object(value);
-        const kind = try sourceKindValue(item.get("kind") orelse return error.InvalidMap);
-        const index = try map.addTileSet(try string(item.get("name") orelse return error.InvalidMap), kind, try string(item.get("path") orelse return error.InvalidMap), .{
-            .x = try f32Value(item.get("tile_width") orelse return error.InvalidMap),
-            .y = try f32Value(item.get("tile_height") orelse return error.InvalidMap),
-        });
-        var tileset = &map.tilesets.items[index];
-        if (item.get("margin")) |margin| tileset.margin = try u32Value(margin);
-        if (item.get("spacing")) |spacing| tileset.spacing = try u32Value(spacing);
-        if (item.get("atlas_frames")) |frames| {
-            const items = try array(frames);
-            const owned = try map.allocator.alloc([]u8, items.items.len);
-            errdefer map.allocator.free(owned);
-            for (items.items, 0..) |frame, i| owned[i] = try map.allocator.dupe(u8, try string(frame));
-            tileset.atlas_frames = owned;
-        }
-    }
-}
-
-fn parseDependencies(map: *TileMap, values: std.json.Array) !void {
-    for (values.items) |value| {
-        const item = try object(value);
-        const kind = std.meta.stringToEnum(TileMapDependencyKind, try string(item.get("kind") orelse return error.InvalidMap)) orelse return error.InvalidMap;
-        try map.addDependency(kind, try string(item.get("path") orelse return error.InvalidMap));
-    }
-}
-
-fn parseLayers(map: *TileMap, values: std.json.Array) !void {
-    for (values.items) |value| {
-        const item = try object(value);
-        const layer_index = try map.addLayer(try string(item.get("name") orelse return error.InvalidMap), try layerKindValue(item.get("kind") orelse return error.InvalidMap), if (item.get("parent")) |parent| try u32Value(parent) else null);
-        var layer = &map.layers.items[layer_index];
-        if (item.get("visible")) |visible| layer.visible = try boolValue(visible);
-        if (item.get("opacity")) |opacity| layer.opacity = try f32Value(opacity);
-        if (item.get("chunks")) |chunk_value| {
-            for ((try array(chunk_value)).items) |chunk_json| {
-                const chunk_obj = try object(chunk_json);
-                const chunk = try map.ensureChunk(layer, .{ .x = try i32Value(chunk_obj.get("x") orelse return error.InvalidMap), .y = try i32Value(chunk_obj.get("y") orelse return error.InvalidMap) });
-                if (chunk_obj.get("tiles")) |tiles_value| try parseTiles(map.allocator, chunk.tiles, try array(tiles_value));
-                if (chunk_obj.get("int_grid")) |grid_value| try parseIntGrid(chunk.int_grid, try array(grid_value));
-            }
-        }
-    }
-}
-
-fn parseTiles(allocator: std.mem.Allocator, output: []TileStack, values: std.json.Array) !void {
-    if (values.items.len != output.len) return error.InvalidChunkData;
-    for (values.items, 0..) |value, i| {
-        if (value == .null) continue;
-        if (value == .array) {
-            for ((try array(value)).items) |tile_value| try appendParsedTile(allocator, &output[i], tile_value);
-        } else {
-            try appendParsedTile(allocator, &output[i], value);
-        }
-    }
-}
-
-fn appendParsedTile(allocator: std.mem.Allocator, stack: *TileStack, tile_value: std.json.Value) !void {
-    const item = try object(tile_value);
-    try stack.items.append(allocator, .{
-        .tileset = @intCast(try u32Value(item.get("tileset") orelse return error.InvalidMap)),
-        .id = try u32Value(item.get("id") orelse return error.InvalidMap),
-        .flags = if (item.get("flags")) |flags| @bitCast(@as(u8, @intCast(try u32Value(flags)))) else .{},
-        .opacity = if (item.get("opacity")) |opacity| try f32Value(opacity) else 1,
-    });
-}
-
-fn parseIntGrid(output: []i32, values: std.json.Array) !void {
-    if (values.items.len != output.len) return error.InvalidChunkData;
-    for (values.items, 0..) |value, i| output[i] = try i32Value(value);
-}
-
-fn writeNative(map: TileMap, json: *std.json.Stringify) !void {
-    try json.beginObject();
-    try json.objectField("format");
-    try json.write(native_format);
-    try json.objectField("version");
-    try json.write(native_version);
-    try json.objectField("projection");
-    try json.write(@tagName(map.projection));
-    try json.objectField("tile_width");
-    try json.write(map.tile_size.x);
-    try json.objectField("tile_height");
-    try json.write(map.tile_size.y);
-    try json.objectField("chunk_size");
-    try json.write(map.chunk_size);
-    try json.objectField("tilesets");
-    try json.beginArray();
-    for (map.tilesets.items) |tileset| {
-        try json.beginObject();
-        try json.objectField("name");
-        try json.write(tileset.name);
-        try json.objectField("kind");
-        try json.write(@tagName(tileset.kind));
-        try json.objectField("path");
-        try json.write(tileset.path);
-        try json.objectField("tile_width");
-        try json.write(tileset.tile_size.x);
-        try json.objectField("tile_height");
-        try json.write(tileset.tile_size.y);
-        try json.objectField("margin");
-        try json.write(tileset.margin);
-        try json.objectField("spacing");
-        try json.write(tileset.spacing);
-        try json.objectField("atlas_frames");
-        try json.beginArray();
-        for (tileset.atlas_frames) |frame| try json.write(frame);
-        try json.endArray();
-        try json.endObject();
-    }
-    try json.endArray();
-    try json.objectField("dependencies");
-    try json.beginArray();
-    for (map.dependencies.items) |dependency| {
-        try json.beginObject();
-        try json.objectField("kind");
-        try json.write(@tagName(dependency.kind));
-        try json.objectField("path");
-        try json.write(dependency.path);
-        try json.endObject();
-    }
-    try json.endArray();
-    try json.objectField("layers");
-    try json.beginArray();
-    for (map.layers.items) |layer| {
-        try json.beginObject();
-        try json.objectField("name");
-        try json.write(layer.name);
-        try json.objectField("kind");
-        try json.write(@tagName(layer.kind));
-        if (layer.parent) |parent| {
-            try json.objectField("parent");
-            try json.write(parent);
-        }
-        try json.objectField("visible");
-        try json.write(layer.visible);
-        try json.objectField("opacity");
-        try json.write(layer.opacity);
-        try json.objectField("chunks");
-        try json.beginArray();
-        for (layer.chunks.items) |chunk| {
-            try json.beginObject();
-            try json.objectField("x");
-            try json.write(chunk.coord.x);
-            try json.objectField("y");
-            try json.write(chunk.coord.y);
-            try json.objectField("tiles");
-            try json.beginArray();
-            for (chunk.tiles) |stack| {
-                if (stack.items.items.len == 0) {
-                    try json.write(null);
-                } else {
-                    try json.beginArray();
-                    for (stack.items.items) |value| {
-                        try json.beginObject();
-                        try json.objectField("tileset");
-                        try json.write(value.tileset);
-                        try json.objectField("id");
-                        try json.write(value.id);
-                        try json.objectField("flags");
-                        try json.write(@as(u8, @bitCast(value.flags)));
-                        try json.objectField("opacity");
-                        try json.write(value.opacity);
-                        try json.endObject();
-                    }
-                    try json.endArray();
-                }
-            }
-            try json.endArray();
-            try json.objectField("int_grid");
-            try json.write(chunk.int_grid);
-            try json.endObject();
-        }
-        try json.endArray();
-        try json.endObject();
-    }
-    try json.endArray();
-    try json.endObject();
 }
 
 fn debugTileColor(tile: Tile, layer: u8) Color {
@@ -818,15 +566,6 @@ fn string(value: std.json.Value) ![]const u8 {
         else => error.InvalidMap,
     };
 }
-fn boolValue(value: std.json.Value) !bool {
-    return switch (value) {
-        .bool => |item| item,
-        else => error.InvalidMap,
-    };
-}
-fn i32Value(value: std.json.Value) !i32 {
-    return std.math.cast(i32, try i64Value(value)) orelse error.InvalidMap;
-}
 fn u32Value(value: std.json.Value) !u32 {
     return std.math.cast(u32, try i64Value(value)) orelse error.InvalidMap;
 }
@@ -843,17 +582,7 @@ fn f32Value(value: std.json.Value) !f32 {
         else => error.InvalidMap,
     };
 }
-fn projectionValue(value: std.json.Value) !Projection {
-    return std.meta.stringToEnum(Projection, try string(value)) orelse error.UnsupportedProjection;
-}
-fn layerKindValue(value: std.json.Value) !LayerKind {
-    return std.meta.stringToEnum(LayerKind, try string(value)) orelse error.InvalidMap;
-}
-fn sourceKindValue(value: std.json.Value) !TileSourceKind {
-    return std.meta.stringToEnum(TileSourceKind, try string(value)) orelse error.InvalidMap;
-}
-
-test "native tile map mutates signed chunks and round trips binary" {
+test "tile map mutates signed chunks" {
     var map = try TileMap.init(std.testing.allocator, .{ .x = 8, .y = 8 }, 8);
     defer map.deinit();
     _ = try map.addTileSet("tiles", .grid_image, "tiles.png", .{ .x = 8, .y = 8 });
@@ -864,35 +593,12 @@ test "native tile map mutates signed chunks and round trips binary" {
     try std.testing.expectEqual(Vec2.init(-4, -4), isometric.cellToWorld(.{ .x = -1, .y = 0 }));
 }
 
-test "native binary cache preserves tracked dependencies" {
-    var map = try TileMap.init(std.testing.allocator, .{ .x = 8, .y = 8 }, 8);
-    defer map.deinit();
-    try map.addDependency(.tileset, "tiles.metadata");
-    try map.addDependency(.image, "tiles.png");
-    try map.addDependency(.overlay, "rules.json");
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    const root = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
-    defer std.testing.allocator.free(root);
-    const path = try std.fs.path.join(std.testing.allocator, &.{ root, "cache.upmapb" });
-    defer std.testing.allocator.free(path);
-    try map.writeBinary(path);
-    var cached = try TileMap.loadBinary(std.testing.allocator, path);
-    defer cached.deinit();
-    try std.testing.expectEqual(@as(usize, 3), cached.dependencies.items.len);
-}
-
-test "native tile map decodes strict minimal document" {
-    const source =
-        \\{"format":"unpolished-peas-map","version":1,"projection":"orthogonal","tile_width":8,"tile_height":8,"chunk_size":8,"tilesets":[],"layers":[]}
-    ;
-    var map = try TileMap.decodeNative(std.testing.allocator, source);
-    defer map.deinit();
-    try std.testing.expectEqual(@as(u32, 8), map.chunk_size);
-    try std.testing.expectEqual(@as(usize, 0), map.layers.items.len);
-}
-
-test "tile map exposes native loaders only" {
+test "tile map excludes legacy map loaders" {
+    try std.testing.expect(!@hasDecl(TileMap, "loadNative"));
+    try std.testing.expect(!@hasDecl(TileMap, "decodeNative"));
+    try std.testing.expect(!@hasDecl(TileMap, "saveNative"));
+    try std.testing.expect(!@hasDecl(TileMap, "writeBinary"));
+    try std.testing.expect(!@hasDecl(TileMap, "loadBinary"));
     try std.testing.expect(!@hasDecl(TileMap, "loadTiled"));
     try std.testing.expect(!@hasDecl(TileMap, "loadTiledWithOptions"));
     try std.testing.expect(!@hasDecl(TileMap, "loadLdtkProject"));
