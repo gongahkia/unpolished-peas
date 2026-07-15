@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const max_file_bytes = 64 * 1024 * 1024;

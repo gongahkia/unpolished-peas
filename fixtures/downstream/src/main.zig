@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 pub fn main() !void {

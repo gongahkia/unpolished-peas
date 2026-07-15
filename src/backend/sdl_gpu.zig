@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");

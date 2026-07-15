@@ -1,4 +1,4 @@
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const guest = @import("guest_credentials.zig");
 const provider = @import("service_provider.zig");
 const lobby = @import("service_lobby.zig");

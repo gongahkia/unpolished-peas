@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 const startup_samples: u32 = 32;
 const frame_samples: u32 = 240;

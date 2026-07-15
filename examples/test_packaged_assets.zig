@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};

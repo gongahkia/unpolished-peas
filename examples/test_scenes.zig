@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 const golden_path = "headless-reference.png";
 const diagnostics_path = "zig-out/scenes";

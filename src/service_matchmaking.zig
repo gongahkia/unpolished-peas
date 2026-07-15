@@ -1,7 +1,7 @@
 const std = @import("std");
 const guest = @import("guest_credentials.zig");
 const lobby = @import("service_lobby.zig");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 pub const Config = struct { max_queue_entries: usize = 128, queue_timeout_ms: i64 = 30_000 };
 pub const QueueState = enum { waiting, assigned, cancelled, expired };
