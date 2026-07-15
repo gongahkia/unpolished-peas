@@ -284,7 +284,7 @@ test "inventory records API namespace imports" {
         \\const core = @import("unpolished-peas").api.core;
         \\const sdl = @import("unpolished-peas-sdl3");
         \\const point: core.Vec2 = api.Vec2{};
-        \\try sdl.play(.{}, struct {});
+        \\try sdl.playGame(Game);
     ;
     var imports = std.ArrayListUnmanaged(Import){};
     defer {
@@ -299,7 +299,7 @@ test "inventory records API namespace imports" {
     try std.testing.expectEqualStrings("api.core", imports.items[1].path);
     try std.testing.expectEqualStrings("Vec2", imports.items[1].symbols.items[0]);
     try std.testing.expectEqualStrings("unpolished-peas-sdl3", imports.items[2].module);
-    try std.testing.expectEqualStrings("play", imports.items[2].symbols.items[0]);
+    try std.testing.expectEqualStrings("playGame", imports.items[2].symbols.items[0]);
 }
 
 test "inventory ignores comments and strings" {

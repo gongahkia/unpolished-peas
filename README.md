@@ -65,15 +65,15 @@ On Debian or Ubuntu, replace the `brew install` command with `sudo apt install l
 ## Tiny Start
 
 ```zig
-const up = @import("unpolished-peas");
+const core = @import("unpolished-peas").api.core;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     pub const config: sdl.Config = .{ .width = 80, .height = 60, .scale = 6 };
 
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.rect(18, 18, 28, 28, up.Color.rgb(255, 198, 74));
-        ctx.text("HELLO", 8, 8, up.Color.white);
+        ctx.rect(18, 18, 28, 28, core.Color.rgb(255, 198, 74));
+        ctx.text("HELLO", 8, 8, core.Color.white);
     }
 };
 
@@ -84,7 +84,7 @@ pub fn main() !void {
 
 ## Explicit Loop
 
-sdl.playGame(Game) reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. sdl.play(config, Game) and sdl.run(config, state, callbacks) remain equivalent low-level paths; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a Game type.
+sdl.playGame(Game) is the callback-game facade and reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. sdl.run(config, state, callbacks) is the caller-owned escape hatch; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a Game type.
 
 Set Game.config.pause_policy to .unfocused or .minimized to suppress update callbacks while that desktop state applies. Focus, minimize, restore, resize, and close stay ordered Event callbacks; draw continues with ctx.dt set to zero, leaving game state under user control.
 
@@ -287,7 +287,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AudioMixer`
 - `BusHandle`
 - `PlaybackHandle`
-- `unpolished-peas-sdl3.play`, `unpolished-peas-sdl3.Context`
+- `unpolished-peas-sdl3.playGame`, `unpolished-peas-sdl3.Context`
 - `unpolished-peas-sdl3.run` for lower-level control
 - `unpolished-peas-sdl3.appDataPath`
 

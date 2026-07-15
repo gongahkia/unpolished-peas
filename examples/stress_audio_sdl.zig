@@ -2,6 +2,17 @@ const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas audio stress",
+        .width = 80,
+        .height = 24,
+        .scale = 4,
+        .max_frames = 3,
+        .audio_buffer_frames = 256,
+        .strict_audio = false,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     blip: up.Sound,
     music: up.Music,
     music_handle: ?up.PlaybackHandle = null,
@@ -50,14 +61,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas audio stress",
-        .width = 80,
-        .height = 24,
-        .scale = 4,
-        .max_frames = 3,
-        .audio_buffer_frames = 256,
-        .strict_audio = false,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }

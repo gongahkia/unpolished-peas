@@ -3,6 +3,15 @@ const sdl = @import("unpolished-peas-sdl3");
 const breakout = @import("breakout_game.zig");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas Breakout",
+        .width = breakout.width,
+        .height = breakout.height,
+        .scale = 5,
+        .fixed_hz = 60,
+        .clear_color = up.Color.rgb(10, 14, 26),
+    };
+
     game: breakout.Game = .{},
     ball: up.ImageHandle,
     blip: up.Sound,
@@ -37,12 +46,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas Breakout",
-        .width = breakout.width,
-        .height = breakout.height,
-        .scale = 5,
-        .fixed_hz = 60,
-        .clear_color = up.Color.rgb(10, 14, 26),
-    }, Game);
+    try sdl.playGame(Game);
 }

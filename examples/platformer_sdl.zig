@@ -4,6 +4,8 @@ const physics = @import("unpolished-peas-physics");
 const platformer = @import("platformer_game.zig");
 
 const Game = struct {
+    pub const config: sdl.Config = .{ .title = "unpolished-peas Platformer", .width = 160, .height = 64, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(12, 18, 28) };
+
     game: platformer.Game,
     map: up.TileMapHandle,
     collider: up.TileCollider,
@@ -54,5 +56,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{ .title = "unpolished-peas Platformer", .width = 160, .height = 64, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(12, 18, 28) }, Game);
+    try sdl.playGame(Game);
 }

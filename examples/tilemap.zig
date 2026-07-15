@@ -2,6 +2,15 @@ const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas tile map",
+        .width = 160,
+        .height = 90,
+        .scale = 6,
+        .resizable = true,
+        .clear_color = up.Color.rgb(12, 17, 24),
+    };
+
     map: up.TileMap,
     image: up.ImageHandle,
     camera: up.Camera2D = .{ .position = .{ .x = 80, .y = 45 }, .zoom = 1.5, .bounds = .{ .rect = .init(-128, -128, 512, 384) } },
@@ -54,12 +63,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas tile map",
-        .width = 160,
-        .height = 90,
-        .scale = 6,
-        .resizable = true,
-        .clear_color = up.Color.rgb(12, 17, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }

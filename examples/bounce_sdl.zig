@@ -40,6 +40,16 @@ const Ball = struct {
 };
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas SDL3",
+        .width = width,
+        .height = height,
+        .scale = 4,
+        .resizable = true,
+        .fixed_hz = 60,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     ball: Ball = .{},
 
     pub fn update(self: *Game, ctx: *sdl.Context) void {
@@ -65,13 +75,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas SDL3",
-        .width = width,
-        .height = height,
-        .scale = 4,
-        .resizable = true,
-        .fixed_hz = 60,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }
