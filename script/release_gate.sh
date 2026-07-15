@@ -46,6 +46,7 @@ run proof-platformer runtime script/test_proof_game_matrix.sh platformer
 run services zig build test-services
 run services-workspace script/test_services_workspace.sh
 run services-migrations script/test_services_migrations.sh
+run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
 run visual-scenes zig build test-scenes
