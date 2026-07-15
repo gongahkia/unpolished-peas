@@ -53,6 +53,7 @@ run package-topdown "$package_script" zig-out/release-gate/packages/topdown topd
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
 run diagnostics zig build test-support
 run effects-conformance zig build test-effects-conformance
+run physics-conformance zig build test-physics-conformance
 run visual-scenes zig build test-scenes
 run visual-renderer runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
 run replay zig build test-replays
