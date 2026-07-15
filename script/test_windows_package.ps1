@@ -7,6 +7,19 @@ param(
 $ErrorActionPreference = 'Stop'
 $repo = (Resolve-Path (Join-Path $PSScriptRoot '..')).Path
 $tmp = Join-Path ([IO.Path]::GetTempPath()) ("unpolished-peas-package-test-" + [guid]::NewGuid().ToString('N'))
+function Get-Sha256([string]$Path) {
+    $algorithm = [Security.Cryptography.SHA256]::Create()
+    try {
+        $stream = [IO.File]::OpenRead($Path)
+        try {
+            return ([BitConverter]::ToString($algorithm.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $stream.Dispose()
+        }
+    } finally {
+        $algorithm.Dispose()
+    }
+}
 switch ($Game) {
     'bounce' { $fixture = 'topdown' }
     'topdown' { $fixture = 'topdown' }
@@ -29,7 +42,7 @@ try {
     $name = "unpolished-peas-$Game-windows-x86_64"
     $archive = Join-Path $out ($name + '.zip')
     $sum = Get-Content -LiteralPath (Join-Path $out 'SHA256SUMS') -Raw
-    $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash.ToLowerInvariant()
+    $hash = Get-Sha256 $archive
     if ($sum -ne ($hash + '  ' + $name + '.zip')) { throw 'checksum manifest mismatch' }
     Expand-Archive -LiteralPath $archive -DestinationPath $tmp
     $package = Join-Path $tmp $name
