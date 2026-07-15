@@ -278,12 +278,12 @@ fn usage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
-test "inventory records root and namespaced imports" {
+test "inventory records API namespace imports" {
     const source =
-        \\const up = @import("unpolished-peas");
+        \\const api = @import("unpolished-peas").api;
         \\const core = @import("unpolished-peas").api.core;
         \\const sdl = @import("unpolished-peas-sdl3");
-        \\const point: core.Vec2 = up.Vec2{};
+        \\const point: core.Vec2 = api.Vec2{};
         \\try sdl.play(.{}, struct {});
     ;
     var imports = std.ArrayListUnmanaged(Import){};
@@ -294,7 +294,7 @@ test "inventory records root and namespaced imports" {
     try scanImports(std.testing.allocator, source, &imports);
     try std.testing.expectEqual(@as(usize, 3), imports.items.len);
     try std.testing.expectEqualStrings("unpolished-peas", imports.items[0].module);
-    try std.testing.expectEqualStrings("", imports.items[0].path);
+    try std.testing.expectEqualStrings("api", imports.items[0].path);
     try std.testing.expectEqualStrings("Vec2", imports.items[0].symbols.items[0]);
     try std.testing.expectEqualStrings("api.core", imports.items[1].path);
     try std.testing.expectEqualStrings("Vec2", imports.items[1].symbols.items[0]);
@@ -304,10 +304,10 @@ test "inventory records root and namespaced imports" {
 
 test "inventory ignores comments and strings" {
     const source =
-        \\// const ignored = @import("unpolished-peas");
-        \\const up = @import("unpolished-peas");
-        \\const message = "up.Color";
-        \\const color = up.Color;
+        \\// const ignored = @import("unpolished-peas").api;
+        \\const api = @import("unpolished-peas").api;
+        \\const message = "api.Color";
+        \\const color = api.Color;
     ;
     var imports = std.ArrayListUnmanaged(Import){};
     defer {

@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const c = @cImport({
     @cInclude("box2d/box2d.h");
 });

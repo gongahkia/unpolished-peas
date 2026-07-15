@@ -3,7 +3,7 @@ const guest = @import("guest_credentials.zig");
 const lobby = @import("service_lobby.zig");
 const matchmaking = @import("service_matchmaking.zig");
 const provider = @import("service_provider.zig");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 const route_cipher = std.crypto.aead.chacha_poly.XChaCha20Poly1305;
 const route_token_bytes = 32;

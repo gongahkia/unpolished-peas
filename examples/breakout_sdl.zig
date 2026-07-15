@@ -1,4 +1,4 @@
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 const breakout = @import("breakout_game.zig");
 

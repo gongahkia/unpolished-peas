@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const breakout = @import("breakout_game.zig");
 
 pub fn main() !void {

@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const tools = @import("unpolished-peas-tools");
 const services = @import("unpolished-peas-services");
 

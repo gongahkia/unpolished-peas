@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 
 pub const Input = struct { left: bool = false, right: bool = false, jump: bool = false };
 pub const Game = struct {

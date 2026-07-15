@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas");
+const up = @import("unpolished-peas").api;
 const game_mod = @import("topdown_game.zig");
 const expected_hash: u64 = 0x95b619e80d995c40;
 
