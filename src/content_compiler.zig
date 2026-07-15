@@ -10,36 +10,6 @@ const max_source_bytes = 64 * 1024 * 1024;
 const state_format = "unpolished-peas-content-state";
 const state_version: u32 = 1;
 
-const ProjectManifest = struct {
-    format: []const u8,
-    version: u32,
-    entry_scene: []const u8,
-    build: struct {
-        title: []const u8,
-        width: u32,
-        height: u32,
-        scale: u32,
-    },
-    assets: struct {
-        root: []const u8,
-    },
-    engine: struct {
-        version: []const u8,
-    },
-};
-
-const Project = struct {
-    allocator: std.mem.Allocator,
-    entry_scene: []u8,
-    assets_root: []u8,
-
-    fn deinit(self: *Project) void {
-        self.allocator.free(self.entry_scene);
-        self.allocator.free(self.assets_root);
-        self.* = undefined;
-    }
-};
-
 const Kind = enum { scene, catalog, map };
 
 const Input = struct {
@@ -76,9 +46,7 @@ pub const Report = struct {
 };
 
 pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *Diagnostic) !Report {
-    var project = try readProject(allocator, project_root, diagnostic);
-    defer project.deinit();
-    var inputs = try discoverInputs(allocator, project_root, project);
+    var inputs = try discoverInputs(allocator, project_root);
     defer deinitInputs(allocator, &inputs);
     try std.fs.cwd().makePath(output_root);
     var previous = try loadState(allocator, output_root);
@@ -116,53 +84,16 @@ pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, ou
     return report;
 }
 
-pub fn entryArtifactPath(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *Diagnostic) ![]u8 {
-    var project = try readProject(allocator, project_root, diagnostic);
-    defer project.deinit();
-    return artifactPath(allocator, output_root, project.entry_scene);
+pub fn entryArtifactPath(allocator: std.mem.Allocator, output_root: []const u8, entry_scene: []const u8) ![]u8 {
+    if (!safePath(entry_scene) or !std.mem.endsWith(u8, entry_scene, ".upscene")) return error.InvalidEntryScene;
+    return artifactPath(allocator, output_root, entry_scene);
 }
 
-fn readProject(allocator: std.mem.Allocator, project_root: []const u8, diagnostic: *Diagnostic) !Project {
-    const path = try std.fs.path.join(allocator, &.{ project_root, "project.up" });
-    defer allocator.free(path);
-    const source = std.fs.cwd().readFileAllocOptions(allocator, path, max_source_bytes, null, .of(u8), 0) catch |err| {
-        try setDiagnostic(allocator, diagnostic, path, 1, 1, "missing project manifest");
-        return err;
-    };
-    defer allocator.free(source);
-    var diagnostics: std.zon.parse.Diagnostics = .{};
-    defer diagnostics.deinit(allocator);
-    const manifest = std.zon.parse.fromSlice(ProjectManifest, allocator, source, &diagnostics, .{ .ignore_unknown_fields = false }) catch |err| {
-        const location = zonLocation(&diagnostics);
-        try setDiagnostic(allocator, diagnostic, path, location.line, location.column, "invalid project manifest");
-        return err;
-    };
-    defer std.zon.parse.free(allocator, manifest);
-    if (!std.mem.eql(u8, manifest.format, "unpolished-peas-project") or manifest.version != 1) {
-        try setDiagnostic(allocator, diagnostic, path, 1, 1, "unsupported project manifest");
-        return error.ContentCompileFailed;
-    }
-    if (!safePath(manifest.entry_scene) or !std.mem.endsWith(u8, manifest.entry_scene, ".upscene")) {
-        const location = fieldLocation(source, "entry_scene");
-        try setDiagnostic(allocator, diagnostic, path, location.line, location.column, "entry_scene must be a safe .upscene path");
-        return error.ContentCompileFailed;
-    }
-    if (!safePath(manifest.assets.root)) {
-        const location = fieldLocation(source, "assets");
-        try setDiagnostic(allocator, diagnostic, path, location.line, location.column, "assets.root must be a safe relative path");
-        return error.ContentCompileFailed;
-    }
-    const entry_scene = try allocator.dupe(u8, manifest.entry_scene);
-    errdefer allocator.free(entry_scene);
-    const assets_root = try allocator.dupe(u8, manifest.assets.root);
-    return .{ .allocator = allocator, .entry_scene = entry_scene, .assets_root = assets_root };
-}
-
-fn discoverInputs(allocator: std.mem.Allocator, project_root: []const u8, project: Project) !std.ArrayListUnmanaged(Input) {
+fn discoverInputs(allocator: std.mem.Allocator, project_root: []const u8) !std.ArrayListUnmanaged(Input) {
     var inputs = std.ArrayListUnmanaged(Input){};
     errdefer deinitInputs(allocator, &inputs);
-    try appendInput(allocator, &inputs, .scene, project.entry_scene);
-    try appendDirectoryInputs(allocator, project_root, project.assets_root, ".upassets", .catalog, &inputs);
+    try appendDirectoryInputs(allocator, project_root, "scenes", ".upscene", .scene, &inputs);
+    try appendDirectoryInputs(allocator, project_root, "assets", ".upassets", .catalog, &inputs);
     try appendDirectoryInputs(allocator, project_root, "maps", ".upmap", .map, &inputs);
     return inputs;
 }
@@ -289,26 +220,6 @@ fn safePath(path: []const u8) bool {
     return true;
 }
 
-fn zonLocation(diagnostics: *const std.zon.parse.Diagnostics) struct { line: usize, column: usize } {
-    var errors = diagnostics.iterateErrors();
-    const parse_error = errors.next() orelse return .{ .line = 1, .column = 1 };
-    const location = parse_error.getLocation(diagnostics);
-    return .{ .line = location.line + 1, .column = location.column + 1 };
-}
-
-fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, column: usize } {
-    const offset = std.mem.indexOf(u8, source, field) orelse return .{ .line = 1, .column = 1 };
-    var line: usize = 1;
-    var column: usize = 1;
-    for (source[0..offset]) |byte| {
-        if (byte == '\n') {
-            line += 1;
-            column = 1;
-        } else column += 1;
-    }
-    return .{ .line = line, .column = column };
-}
-
 fn setDiagnostic(allocator: std.mem.Allocator, diagnostic: *Diagnostic, path: []const u8, line: usize, column: usize, message: []const u8) !void {
     if (diagnostic.path) |previous| allocator.free(previous);
     diagnostic.* = .{ .path = try allocator.dupe(u8, path), .line = line, .column = column, .message = message };
@@ -320,10 +231,6 @@ test "content compiler reuses unchanged scene catalog and map artifacts" {
     try temp.dir.makePath("project/scenes");
     try temp.dir.makePath("project/assets");
     try temp.dir.makePath("project/maps");
-    try temp.dir.writeFile(.{ .sub_path = "project/project.up", .data =
-        \\.{ .format = "unpolished-peas-project", .version = 1, .entry_scene = "scenes/main.upscene", .build = .{ .title = "test", .width = 8, .height = 8, .scale = 1 }, .assets = .{ .root = "assets" }, .engine = .{ .version = "v0.0.3" } }
-        \\
-    });
     try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
         \\.{ .format = "unpolished-peas-scene", .version = 1, .metadata = .{ .name = "main", .tags = .{} }, .entities = .{} }
         \\
@@ -378,10 +285,6 @@ test "content compiler preserves source diagnostics" {
     defer temp.cleanup();
     try temp.dir.makePath("project/scenes");
     try temp.dir.makePath("project/assets");
-    try temp.dir.writeFile(.{ .sub_path = "project/project.up", .data =
-        \\.{ .format = "unpolished-peas-project", .version = 1, .entry_scene = "scenes/main.upscene", .build = .{ .title = "test", .width = 8, .height = 8, .scale = 1 }, .assets = .{ .root = "assets" }, .engine = .{ .version = "v0.0.3" } }
-        \\
-    });
     try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
         \\.{
         \\    .format = "unpolished-peas-scene",

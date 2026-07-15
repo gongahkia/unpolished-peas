@@ -58,8 +58,6 @@ fn verify() !void {
     var music = try up.Music.openOgg(allocator, ogg_path);
     defer music.deinit();
 
-    const project = try readPackageFile(allocator, package, "content/project.up");
-    defer allocator.free(project);
     const scene_source = try readPackageFile(allocator, package, fixture.scene);
     defer allocator.free(scene_source);
     const catalog_source = try readPackageFile(allocator, package, fixture.catalog);

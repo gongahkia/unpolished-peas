@@ -30,7 +30,6 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
     defer output.close();
     try output.makePath("src");
     try source.copyFile("build.zig", output, "build.zig", .{});
-    try source.copyFile("project.up", output, "project.up", .{});
     try source.copyFile("README.md", output, "README.md", .{});
     try source.copyFile(".gitignore", output, ".gitignore", .{});
     try output.makePath("assets");
@@ -88,7 +87,6 @@ test "starter creates a structured project and rejects invalid destinations" {
     defer project.close();
     try project.access("build.zig", .{});
     try project.access("build.zig.zon", .{});
-    try project.access("project.up", .{});
     try project.access("src/main.zig", .{});
     try project.access("assets/.gitkeep", .{});
     const source = try project.readFileAlloc(std.testing.allocator, "src/main.zig", 8192);

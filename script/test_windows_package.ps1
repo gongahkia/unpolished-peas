@@ -47,7 +47,7 @@ try {
     Expand-Archive -LiteralPath $archive -DestinationPath $tmp
     $package = Join-Path $tmp $name
     $runtime = Join-Path $package ('bin/unpolished-peas-' + $Game + '.exe')
-    foreach ($path in @($runtime, (Join-Path $package 'bin/D3DCompiler_47.dll'), (Join-Path $package 'assets'), (Join-Path $package 'docs/api/core.md'), (Join-Path $package 'content/project.up'), (Join-Path $package ('content/cache/scenes/' + $fixture + '.upscene.upc')), (Join-Path $package ('content/cache/assets/' + $fixture + '.upassets.upc')), (Join-Path $package ('content/cache/maps/' + $fixture + '.upmap.upc')), (Join-Path $package 'run.cmd'), (Join-Path $package 'launcher.json'))) {
+    foreach ($path in @($runtime, (Join-Path $package 'bin/D3DCompiler_47.dll'), (Join-Path $package 'assets'), (Join-Path $package 'docs/api/core.md'), (Join-Path $package ('content/cache/scenes/' + $fixture + '.upscene.upc')), (Join-Path $package ('content/cache/assets/' + $fixture + '.upassets.upc')), (Join-Path $package ('content/cache/maps/' + $fixture + '.upmap.upc')), (Join-Path $package 'run.cmd'), (Join-Path $package 'launcher.json'))) {
         if (-not (Test-Path -LiteralPath $path)) { throw "missing package path: $path" }
     }
     $launcher = Get-Content -LiteralPath (Join-Path $package 'launcher.json') -Raw | ConvertFrom-Json
