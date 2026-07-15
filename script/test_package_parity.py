@@ -20,6 +20,8 @@ COMMON = {
     "checksum": "verified",
     "layout": "passed",
     "runtime-smoke": "passed",
+    "renderer-sdl-gpu": "passed",
+    "renderer-opengl": "passed",
     "cache-recovery": "passed",
 }
 
