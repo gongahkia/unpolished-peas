@@ -68,6 +68,27 @@ test "renderer conformance reports unsupported shader capabilities" {
     try std.testing.expectError(error.UnsupportedGpuShaderFormat, (GpuCapabilities{ .shader_formats = @intCast(c.SDL_GPU_SHADERFORMAT_DXIL) }).requireShaderFormat());
 }
 
+test "Context returns errors for invalid asset handles" {
+    var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer assets.deinit();
+    var context: Context = undefined;
+    context.assets = &assets;
+    const text = up.TextHandle{ .index = 0, .generation = 1 };
+    const image = up.ImageHandle{ .index = 0, .generation = 1 };
+    const atlas = up.AtlasHandle{ .index = 0, .generation = 1 };
+    const font = up.FontHandle{ .index = 0, .generation = 1 };
+    const map = up.TileMapHandle{ .index = 0, .generation = 1 };
+    try std.testing.expectError(error.InvalidHandle, context.textAsset(text));
+    try std.testing.expectError(error.InvalidHandle, context.image(image, 0, 0));
+    try std.testing.expectError(error.InvalidHandle, context.sprite(atlas, .{ .index = 0 }, 0, 0, .{}));
+    try std.testing.expectError(error.InvalidHandle, context.font(font, "x", 0, 0, up.Color.white));
+    try std.testing.expectError(error.InvalidHandle, context.fontAsset(font));
+    try std.testing.expectError(error.StaleHandle, context.atlasFrame(atlas, "frame"));
+    try std.testing.expectError(error.InvalidHandle, context.atlas(atlas));
+    try std.testing.expectError(error.StaleHandle, context.atlasAnimation(atlas, "animation"));
+    try std.testing.expectError(error.StaleHandle, context.tileMap(map));
+}
+
 test "renderer conformance diagnostics name the backend and formats" {
     var buffer: [256]u8 = undefined;
     const diagnostic = try formatGpuDiagnostics(&buffer, "SDL_CreateGPUTexture", "vulkan", .{ .shader_formats = GpuCapabilities.spirv });
@@ -464,8 +485,8 @@ pub const Context = struct {
         self.commands.append(.{ .text = .{ .value = value, .x = x, .y = y, .color = color } }) catch self.canvas.drawText(value, x, y, color);
     }
 
-    pub fn font(self: *Context, handle: up.FontHandle, value: []const u8, x: i32, y: i32, color: up.Color) void {
-        const source_font = self.assets.latestFontPtr(handle) catch @panic("invalid font handle");
+    pub fn font(self: *Context, handle: up.FontHandle, value: []const u8, x: i32, y: i32, color: up.Color) !void {
+        const source_font = try self.assets.latestFontPtr(handle);
         appendFontText(self.sprite_batch, self.canvas.width, self.canvas.height, source_font, value, x, y, color) catch source_font.drawText(self.canvas, value, x, y, color);
     }
 
@@ -557,13 +578,13 @@ pub const Context = struct {
         self.capture_requested.* = true;
     }
 
-    pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) void {
-        const source_image = self.assets.latestImagePtr(handle) catch @panic("invalid image handle");
+    pub fn image(self: *Context, handle: up.ImageHandle, x: i32, y: i32) !void {
+        const source_image = try self.assets.latestImagePtr(handle);
         appendImageQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_image, x, y) catch self.canvas.drawImage(source_image.*, x, y);
     }
 
-    pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) void {
-        const source_atlas = self.assets.latestAtlasPtr(atlas_handle) catch @panic("invalid atlas handle");
+    pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) !void {
+        const source_atlas = try self.assets.latestAtlasPtr(atlas_handle);
         appendAtlasQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_atlas, frame, x, y, options) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
     }
 
@@ -603,20 +624,20 @@ pub const Context = struct {
         return self.assets.loadBitmapFont(path);
     }
 
-    pub fn fontAsset(self: *Context, handle: up.FontHandle) *const up.Font {
-        return self.assets.latestFontPtr(handle) catch @panic("invalid font handle");
+    pub fn fontAsset(self: *Context, handle: up.FontHandle) !*const up.Font {
+        return self.assets.latestFontPtr(handle);
     }
 
-    pub fn atlasFrame(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AtlasFrameHandle {
-        return self.assets.atlas(atlas_handle).findFrame(name);
+    pub fn atlasFrame(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) !?up.AtlasFrameHandle {
+        return (try self.assets.tryAtlas(atlas_handle)).findFrame(name);
     }
 
-    pub fn atlas(self: *Context, atlas_handle: up.AtlasHandle) *const up.Atlas {
-        return self.assets.latestAtlasPtr(atlas_handle) catch @panic("invalid atlas handle");
+    pub fn atlas(self: *Context, atlas_handle: up.AtlasHandle) !*const up.Atlas {
+        return self.assets.latestAtlasPtr(atlas_handle);
     }
 
-    pub fn atlasAnimation(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) ?up.AnimationHandle {
-        return self.assets.atlas(atlas_handle).findAnimation(name);
+    pub fn atlasAnimation(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) !?up.AnimationHandle {
+        return (try self.assets.tryAtlas(atlas_handle)).findAnimation(name);
     }
 
     pub fn loadTileMap(self: *Context, path: []const u8) !up.TileMapHandle {
@@ -631,12 +652,12 @@ pub const Context = struct {
         return self.assets.loadTileMapWithOptions(path, options);
     }
 
-    pub fn tileMap(self: *Context, handle: up.TileMapHandle) *const up.TileMap {
-        return self.assets.tileMapPtr(handle);
+    pub fn tileMap(self: *Context, handle: up.TileMapHandle) !*const up.TileMap {
+        return self.assets.tryTileMapPtr(handle);
     }
 
-    pub fn drawTileMap(self: *Context, handle: up.TileMapHandle, target_camera: *const up.Camera2D, time: f32) void {
-        self.assets.drawTileMap(handle, target_camera, self.canvas, time);
+    pub fn drawTileMap(self: *Context, handle: up.TileMapHandle, target_camera: *const up.Camera2D, time: f32) !void {
+        try self.assets.drawTileMap(handle, target_camera, self.canvas, time);
     }
 
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
@@ -645,8 +666,8 @@ pub const Context = struct {
         return self.assets.loadText(path);
     }
 
-    pub fn textAsset(self: *Context, handle: up.TextHandle) []const u8 {
-        return self.assets.latestText(handle) catch @panic("invalid text handle");
+    pub fn textAsset(self: *Context, handle: up.TextHandle) ![]const u8 {
+        return self.assets.latestText(handle);
     }
 
     pub fn down(self: *Context, key: up.Key) bool {

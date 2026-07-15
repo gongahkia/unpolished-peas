@@ -405,10 +405,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn text(self: AssetStore, handle: TextHandle) []const u8 { // panic-only compatibility accessor; use tryText for recoverable stale access.
-        return self.tryText(handle) catch @panic("stale text handle");
-    }
-
     pub fn tryText(self: AssetStore, handle: TextHandle) ![]const u8 {
         if (handle.index >= self.texts.items.len or self.texts.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.texts.items[handle.index].file.text();
@@ -419,17 +415,9 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return self.texts.items[handle.index].file.text();
     }
 
-    pub fn image(self: AssetStore, handle: ImageHandle) Image { // panic-only compatibility accessor; use tryImage for recoverable stale access.
-        return self.tryImage(handle) catch @panic("stale image handle");
-    }
-
     pub fn tryImage(self: AssetStore, handle: ImageHandle) !Image {
         if (handle.index >= self.images.items.len or self.images.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.images.items[handle.index].image;
-    }
-
-    pub fn imagePtr(self: *AssetStore, handle: ImageHandle) *const Image { // panic-only compatibility accessor; use tryImagePtr for recoverable stale access.
-        return self.tryImagePtr(handle) catch @panic("stale image handle");
     }
 
     pub fn tryImagePtr(self: *AssetStore, handle: ImageHandle) !*const Image {
@@ -452,17 +440,9 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return &self.sounds.items[handle.index].sound;
     }
 
-    pub fn atlas(self: AssetStore, handle: AtlasHandle) Atlas { // panic-only compatibility accessor; use tryAtlas for recoverable stale access.
-        return self.tryAtlas(handle) catch @panic("stale atlas handle");
-    }
-
     pub fn tryAtlas(self: AssetStore, handle: AtlasHandle) !Atlas {
         if (handle.index >= self.atlases.items.len or self.atlases.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.atlases.items[handle.index].atlas;
-    }
-
-    pub fn atlasPtr(self: *AssetStore, handle: AtlasHandle) *const Atlas { // panic-only compatibility accessor; use tryAtlasPtr for recoverable stale access.
-        return self.tryAtlasPtr(handle) catch @panic("stale atlas handle");
     }
 
     pub fn tryAtlasPtr(self: *AssetStore, handle: AtlasHandle) !*const Atlas {
@@ -475,17 +455,9 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return &self.atlases.items[handle.index].atlas;
     }
 
-    pub fn font(self: AssetStore, handle: FontHandle) Font { // panic-only compatibility accessor; use tryFont for recoverable stale access.
-        return self.tryFont(handle) catch @panic("stale font handle");
-    }
-
     pub fn tryFont(self: AssetStore, handle: FontHandle) !Font {
         if (handle.index >= self.fonts.items.len or self.fonts.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.fonts.items[handle.index].font;
-    }
-
-    pub fn fontPtr(self: *AssetStore, handle: FontHandle) *const Font { // panic-only compatibility accessor; use tryFontPtr for recoverable stale access.
-        return self.tryFontPtr(handle) catch @panic("stale font handle");
     }
 
     pub fn tryFontPtr(self: *AssetStore, handle: FontHandle) !*const Font {
@@ -508,17 +480,9 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return self.shaders.items[handle.index].program;
     }
 
-    pub fn tileMap(self: AssetStore, handle: TileMapHandle) TileMap { // panic-only compatibility accessor; use tryTileMap for recoverable stale access.
-        return self.tryTileMap(handle) catch @panic("stale tile-map handle");
-    }
-
     pub fn tryTileMap(self: AssetStore, handle: TileMapHandle) !TileMap {
         if (handle.index >= self.tile_maps.items.len or self.tile_maps.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.tile_maps.items[handle.index].map;
-    }
-
-    pub fn tileMapPtr(self: *AssetStore, handle: TileMapHandle) *const TileMap { // panic-only compatibility accessor; use tryTileMapPtr for recoverable stale access.
-        return self.tryTileMapPtr(handle) catch @panic("stale tile-map handle");
     }
 
     pub fn tryTileMapPtr(self: *AssetStore, handle: TileMapHandle) !*const TileMap {
@@ -526,8 +490,8 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return &self.tile_maps.items[handle.index].map;
     }
 
-    pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) void { // panic-only convenience draw; validate with tryTileMap before calling.
-        _ = self.tryTileMap(handle) catch @panic("stale tile-map handle");
+    pub fn drawTileMap(self: *AssetStore, handle: TileMapHandle, camera: *const @import("camera.zig").Camera2D, canvas: *@import("canvas.zig").Canvas, time: f32) !void {
+        _ = try self.tryTileMap(handle);
         const asset = &self.tile_maps.items[handle.index];
         const Resolver = struct {
             images: []const TileMapImage,
@@ -899,6 +863,36 @@ test "asset handles reject stale generations" {
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = truetype.index, .generation = nextGeneration(truetype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryFont(.{ .index = opentype.index, .generation = nextGeneration(opentype.generation) }));
     try std.testing.expectError(error.StaleHandle, store.tryTileMap(.{ .index = 0, .generation = 1 }));
+}
+
+test "asset store exposes checked handle accessors" {
+    try std.testing.expect(@hasDecl(AssetStore, "tryText"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryImage"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryImagePtr"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryAtlas"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryAtlasPtr"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryFont"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryFontPtr"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryTileMap"));
+    try std.testing.expect(@hasDecl(AssetStore, "tryTileMapPtr"));
+    try std.testing.expect(!@hasDecl(AssetStore, "text"));
+    try std.testing.expect(!@hasDecl(AssetStore, "image"));
+    try std.testing.expect(!@hasDecl(AssetStore, "imagePtr"));
+    try std.testing.expect(!@hasDecl(AssetStore, "atlas"));
+    try std.testing.expect(!@hasDecl(AssetStore, "atlasPtr"));
+    try std.testing.expect(!@hasDecl(AssetStore, "font"));
+    try std.testing.expect(!@hasDecl(AssetStore, "fontPtr"));
+    try std.testing.expect(!@hasDecl(AssetStore, "tileMap"));
+    try std.testing.expect(!@hasDecl(AssetStore, "tileMapPtr"));
+}
+
+test "tile-map draw rejects stale handles" {
+    var store = AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer store.deinit();
+    var canvas = try @import("canvas.zig").Canvas.init(std.testing.allocator, 1, 1);
+    defer canvas.deinit();
+    const camera = @import("camera.zig").Camera2D{};
+    try std.testing.expectError(error.StaleHandle, store.drawTileMap(.{ .index = 0, .generation = 1 }, &camera, &canvas, 0));
 }
 
 test "shader assets retain last good program across failed reloads" {

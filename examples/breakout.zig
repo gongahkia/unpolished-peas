@@ -27,7 +27,7 @@ pub fn main() !void {
         if (event.brick or event.paddle) _ = try audio.playSound(&sound, .{ .volume = 0.2 });
         try audio.mix(&samples);
     }
-    game.drawHeadless(&canvas, assets.image(ball));
+    game.drawHeadless(&canvas, try assets.tryImage(ball));
     try std.fs.cwd().makePath("zig-out");
     try canvas.writePpmFile("zig-out/breakout.ppm");
 }

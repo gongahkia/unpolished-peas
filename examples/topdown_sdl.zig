@@ -94,9 +94,9 @@ const Game = struct {
         self.camera.position = self.game.player;
         if (event.fired) _ = try ctx.audio.playSound(&self.blip, .{ .volume = 0.3 });
     }
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        ctx.drawTileMap(self.map, &self.camera, 0);
-        ctx.image(self.player, @intFromFloat(self.game.player.x - 8), @intFromFloat(self.game.player.y - 8));
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
+        try ctx.drawTileMap(self.map, &self.camera, 0);
+        try ctx.image(self.player, @intFromFloat(self.game.player.x - 8), @intFromFloat(self.game.player.y - 8));
         ctx.text("TOPDOWN", 4, 4, up.Color.white);
         ctx.text("ARROWS SPACE", 84, 4, up.Color.rgb(180, 205, 230));
     }

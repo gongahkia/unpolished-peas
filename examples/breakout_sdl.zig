@@ -32,14 +32,14 @@ const Game = struct {
         if (event.brick or event.paddle) _ = try ctx.audio.playSound(&self.blip, .{ .volume = 0.35 });
     }
 
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         for (self.game.bricks, 0..) |active, index| {
             if (!active) continue;
             const brick = breakout.Game.brickRect(index);
             ctx.rect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), breakout.Game.brickColor(index));
         }
         ctx.rect(@intFromFloat(self.game.paddle.x), @intFromFloat(self.game.paddle.y), @intFromFloat(self.game.paddle.w), @intFromFloat(self.game.paddle.h), up.Color.rgb(225, 232, 240));
-        ctx.image(self.ball, @intFromFloat(self.game.ball.x - 4), @intFromFloat(self.game.ball.y - 4));
+        try ctx.image(self.ball, @intFromFloat(self.game.ball.x - 4), @intFromFloat(self.game.ball.y - 4));
         ctx.text("BREAKOUT", 4, 2, up.Color.white);
         ctx.text("LEFT RIGHT", 104, 2, up.Color.rgb(180, 200, 230));
     }

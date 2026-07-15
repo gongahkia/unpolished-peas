@@ -28,9 +28,9 @@ const Game = struct {
         self.ball.update(ctx);
     }
 
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        ctx.image(self.sprite, @intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y));
-        ctx.text(ctx.textAsset(self.message), 4, 4, up.Color.rgb(225, 232, 240));
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
+        try ctx.image(self.sprite, @intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y));
+        ctx.text(try ctx.textAsset(self.message), 4, 4, up.Color.rgb(225, 232, 240));
         ctx.text("EDIT assets/message.txt", 4, 76, up.Color.rgb(113, 232, 162));
     }
 };
