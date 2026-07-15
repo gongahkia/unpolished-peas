@@ -7,10 +7,10 @@ pub const RuntimeConfig = struct {
     bind_address: []const u8,
     port: u16,
     secrets_path: []const u8,
-    database_url_environment: []const u8 = "UP_SERVICES_DATABASE_URL",
-    relay_address: []const u8 = "127.0.0.1",
-    relay_port: u16 = 48081,
-    engine_runtime_telemetry_enabled: bool = false,
+    database_url_environment: []const u8,
+    relay_address: []const u8,
+    relay_port: u16,
+    engine_runtime_telemetry_enabled: bool,
 
     pub fn endpoint(self: RuntimeConfig) services.Endpoint {
         return .{ .host = self.bind_address, .port = self.port };
@@ -57,17 +57,17 @@ fn isEnvironmentName(name: []const u8) bool {
 }
 
 test "runtime config requires an explicit secret path" {
-    try std.testing.expectError(error.SecretPathMustBeAbsolute, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "local.secret" }));
+    try std.testing.expectError(error.SecretPathMustBeAbsolute, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "local.secret", .database_url_environment = "UP_SERVICES_DATABASE_URL", .relay_address = "127.0.0.1", .relay_port = 48081, .engine_runtime_telemetry_enabled = false }));
 }
 
 test "runtime config accepts a local bind with an explicit secret path" {
-    const runtime_config = RuntimeConfig{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret" };
+    const runtime_config = RuntimeConfig{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .database_url_environment = "UP_SERVICES_DATABASE_URL", .relay_address = "127.0.0.1", .relay_port = 48081, .engine_runtime_telemetry_enabled = false };
     try validate(runtime_config);
     try std.testing.expectEqual(@as(u16, 48081), runtime_config.relayEndpoint().port);
 }
 
 test "runtime config rejects unsafe deployment settings" {
-    try std.testing.expectError(error.InvalidDatabaseUrlEnvironment, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .database_url_environment = "UP_DATABASE_URL=value" }));
-    try std.testing.expectError(error.InvalidRelayEndpoint, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .relay_address = "relay.internal" }));
-    try std.testing.expectError(error.EngineRuntimeTelemetryMustBeDisabled, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .engine_runtime_telemetry_enabled = true }));
+    try std.testing.expectError(error.InvalidDatabaseUrlEnvironment, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .database_url_environment = "UP_DATABASE_URL=value", .relay_address = "127.0.0.1", .relay_port = 48081, .engine_runtime_telemetry_enabled = false }));
+    try std.testing.expectError(error.InvalidRelayEndpoint, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .database_url_environment = "UP_SERVICES_DATABASE_URL", .relay_address = "relay.internal", .relay_port = 48081, .engine_runtime_telemetry_enabled = false }));
+    try std.testing.expectError(error.EngineRuntimeTelemetryMustBeDisabled, validate(.{ .bind_address = "127.0.0.1", .port = 48080, .secrets_path = "/var/lib/unpolished-peas/local.secret", .database_url_environment = "UP_SERVICES_DATABASE_URL", .relay_address = "127.0.0.1", .relay_port = 48081, .engine_runtime_telemetry_enabled = true }));
 }
