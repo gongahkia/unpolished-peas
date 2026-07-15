@@ -84,10 +84,22 @@ pub const ReloadStatus = enum {
     failed,
 };
 
+pub const ReloadFailureClass = enum {
+    io,
+    source,
+    dependency,
+    decode,
+};
+
 pub const ReloadEvent = struct {
     path: []const u8,
     status: ReloadStatus,
     err: ?anyerror = null,
+    line: usize = 1,
+    column: usize = 1,
+    failure_class: ?ReloadFailureClass = null,
+    retained_content: bool = false,
+    message: []const u8 = "",
 };
 
 const TextAsset = struct {
@@ -395,7 +407,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn loadTileMapWithOptions(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapHandle {
-        const asset = try self.loadTileMapAsset(path, options);
+        const asset = try self.loadTileMapAsset(path, options, null);
         errdefer {
             var cleanup = asset;
             cleanup.deinit();
@@ -510,7 +522,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.texts.items) |*asset| {
             if (asset.file.reloadIfChanged() catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .io);
                 continue;
             }) {
                 asset.generation +%= 1;
@@ -521,19 +533,19 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.images.items) |*asset| {
             const stat = asset.file.dir.statFile(asset.file.path) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .io);
                 continue;
             };
             if (stat.mtime == asset.file.mtime) continue;
 
             const bytes = asset.file.dir.readFileAlloc(self.allocator, asset.file.path, asset.file.max_bytes) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .io);
                 continue;
             };
 
             const next = Image.decode(self.allocator, bytes, .{}) catch |err| {
                 self.allocator.free(bytes);
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .decode);
                 continue;
             };
 
@@ -549,7 +561,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.sounds.items) |*asset| {
             if (self.reloadSound(asset) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .decode);
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
@@ -558,7 +570,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.atlases.items) |*asset| {
             if (self.reloadAtlas(asset) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.json_file.path, err, .decode);
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.json_file.path, .status = .changed });
@@ -567,7 +579,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.fonts.items) |*asset| {
             if (self.reloadFont(asset) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.font_file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.font_file.path, err, .decode);
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.font_file.path, .status = .changed });
@@ -576,7 +588,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.shaders.items) |*asset| {
             if (self.reloadShader(asset) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+                try self.appendReloadFailure(asset.file.path, err, .decode);
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
@@ -584,8 +596,10 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         }
 
         for (self.tile_maps.items) |*asset| {
-            if (self.reloadTileMap(asset) catch |err| {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .failed, .err = err });
+            var diagnostic = map_source.Diagnostic{};
+            if (self.reloadTileMap(asset, &diagnostic) catch |err| {
+                const failure_class = mapReloadFailureClass(err);
+                try self.appendReloadFailureWithLocation(asset.file.path, err, failure_class, diagnostic.line, diagnostic.column, if (failure_class == .source) diagnostic.message else @errorName(err));
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
@@ -593,6 +607,23 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         }
 
         return self.events.items;
+    }
+
+    fn appendReloadFailure(self: *AssetStore, path: []const u8, err: anyerror, failure_class: ReloadFailureClass) !void {
+        try self.appendReloadFailureWithLocation(path, err, failure_class, 1, 1, @errorName(err));
+    }
+
+    fn appendReloadFailureWithLocation(self: *AssetStore, path: []const u8, err: anyerror, failure_class: ReloadFailureClass, line: usize, column: usize, message: []const u8) !void {
+        try self.events.append(self.allocator, .{
+            .path = path,
+            .status = .failed,
+            .err = err,
+            .line = line,
+            .column = column,
+            .failure_class = failure_class,
+            .retained_content = true,
+            .message = message,
+        });
     }
 
     fn reloadAtlas(self: *AssetStore, asset: *AtlasAsset) !bool {
@@ -664,14 +695,14 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return true;
     }
 
-    fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset) !bool {
+    fn reloadTileMap(self: *AssetStore, asset: *TileMapAsset, diagnostic: *map_source.Diagnostic) !bool {
         const root_stat = try asset.file.dir.statFile(asset.file.path);
         var changed = root_stat.mtime != asset.file.mtime;
         for (asset.dependencies) |dependency| {
             if ((try dependency.dir.statFile(dependency.path)).mtime != dependency.mtime) changed = true;
         }
         if (!changed) return false;
-        const next = try self.loadTileMapAsset(asset.file.path, .{ .overlay_path = asset.overlay_path });
+        const next = try self.loadTileMapAsset(asset.file.path, .{ .overlay_path = asset.overlay_path }, diagnostic);
         const generation = nextGeneration(asset.generation);
         asset.deinit();
         asset.* = next;
@@ -744,16 +775,17 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .kind = .bitmap, .font_file = font_file, .image_file = image_file, .font = decoded };
     }
 
-    fn loadTileMapAsset(self: *AssetStore, path: []const u8, options: TileMapAssetOptions) !TileMapAsset {
+    fn loadTileMapAsset(self: *AssetStore, path: []const u8, options: TileMapAssetOptions, diagnostic: ?*map_source.Diagnostic) !TileMapAsset {
         const file = try AssetFile.load(self.allocator, self.dir, path, 64 * 1024 * 1024);
         errdefer {
             var cleanup = file;
             cleanup.deinit();
         }
-        const source_path = try self.assetPath(self.allocator, path);
-        defer self.allocator.free(source_path);
         var map = blk: {
-            var native = try map_source.loadFile(self.allocator, source_path);
+            var ignored_diagnostic = map_source.Diagnostic{};
+            var parsed = try map_source.parse(self.allocator, file.bytes, diagnostic orelse &ignored_diagnostic);
+            defer parsed.deinit(self.allocator);
+            var native = try parsed.build(self.allocator);
             errdefer native.deinit();
             if (options.overlay_path) |overlay_path| {
                 try native.addDependency(.overlay, overlay_path);
@@ -815,6 +847,15 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return error.MissingTileMapImageDependency;
     }
 };
+
+fn mapReloadFailureClass(err: anyerror) ReloadFailureClass {
+    return switch (err) {
+        error.ParseZon, error.InvalidMapSource => .source,
+        error.MissingTileMapImageDependency, error.UnknownTileSet, error.InvalidParentLayer => .dependency,
+        error.FileNotFound => .io,
+        else => .decode,
+    };
+}
 
 test "asset reload detects content changes" {
     var tmp = std.testing.tmpDir(.{});
@@ -895,6 +936,48 @@ test "tile-map draw rejects stale handles" {
     try std.testing.expectError(error.StaleHandle, store.drawTileMap(.{ .index = 0, .generation = 1 }, &camera, &canvas, 0));
 }
 
+test "tile-map reload failures retain source diagnostics and last valid content" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
+    defer std.testing.allocator.free(map);
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(image);
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const handle = try store.loadTileMap("topdown.upmap");
+
+    const invalid =
+        \\.{
+        \\    .format = "invalid",
+        \\    .version = 1,
+        \\    .metadata = .{ .name = "invalid", .projection = .orthogonal, .tile_width = 8, .tile_height = 8, .chunk_size = 8 },
+        \\    .tilesets = .{},
+        \\    .layers = .{},
+        \\}
+    ;
+    var stat = try tmp.dir.statFile("topdown.upmap");
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = invalid });
+    while ((try tmp.dir.statFile("topdown.upmap")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = invalid });
+        stat = try tmp.dir.statFile("topdown.upmap");
+    }
+
+    const events = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 1), events.len);
+    try std.testing.expectEqual(ReloadStatus.failed, events[0].status);
+    try std.testing.expectEqual(error.InvalidMapSource, events[0].err.?);
+    try std.testing.expectEqual(@as(usize, 2), events[0].line);
+    try std.testing.expect(events[0].column > 0);
+    try std.testing.expectEqual(ReloadFailureClass.source, events[0].failure_class.?);
+    try std.testing.expect(events[0].retained_content);
+    try std.testing.expectEqualStrings("unsupported map format", events[0].message);
+    try std.testing.expect((try store.tryTileMap(handle)).layers.items.len > 0);
+}
+
 test "shader assets retain last good program across failed reloads" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
@@ -943,6 +1026,9 @@ test "image reload keeps last good asset after invalid edit" {
     const failed = try store.reloadChanged();
     try std.testing.expectEqual(ReloadStatus.failed, failed[0].status);
     try std.testing.expect(failed[0].err != null);
+    try std.testing.expectEqual(ReloadFailureClass.decode, failed[0].failure_class.?);
+    try std.testing.expect(failed[0].retained_content);
+    try std.testing.expect(failed[0].message.len > 0);
     const preserved = try store.tryImage(handle);
     try std.testing.expectEqual(before.width, preserved.width);
     try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = png });
