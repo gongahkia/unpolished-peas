@@ -338,23 +338,37 @@ test "action maps merge keyboard mouse and gamepad edges deterministically" {
     try std.testing.expect(actions.wasReleased("game", "fire"));
 }
 
-test "rebind persists and rejects duplicate logical bindings" {
+test "rebind persists gamepad bindings across map restarts" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const app_data_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
     defer std.testing.allocator.free(app_data_path);
-    var actions = try Map.init(std.testing.allocator, &.{
+    const definitions = [_]Action{
         .{ .name = "fire", .binding = .{ .key = .action } },
         .{ .name = "fire", .binding = .{ .pointer_button = .left } },
-    });
+    };
+    var actions = try Map.init(std.testing.allocator, &definitions);
     defer actions.deinit();
     actions.attachAppData(app_data_path);
 
     try actions.rebind("game", "fire", .{ .gamepad_button = .south });
+    try actions.rebindBinding("game", "fire", 1, .{ .gamepad_axis = .{ .axis = .left_x, .sign = -1, .threshold = 0.7 } });
     try std.testing.expectError(error.DuplicateBinding, actions.rebindBinding("game", "fire", 1, .{ .gamepad_button = .south }));
-    actions.owned_actions.?[0].binding = .{ .key = .cancel };
-    try actions.loadAppData();
-    try std.testing.expect(bindingEql(actions.actions[0].binding, .{ .gamepad_button = .south }));
+
+    var restored = try Map.init(std.testing.allocator, &definitions);
+    defer restored.deinit();
+    restored.attachAppData(app_data_path);
+    try restored.loadAppData();
+    try std.testing.expect(bindingEql(restored.actions[0].binding, .{ .gamepad_button = .south }));
+    try std.testing.expect(bindingEql(restored.actions[1].binding, .{ .gamepad_axis = .{ .axis = .left_x, .sign = -1, .threshold = 0.7 } }));
+
+    var state = input.Input{};
+    try std.testing.expect(state.addGamepad(1));
+    state.setGamepadButton(1, .south, true);
+    state.setGamepadAxis(1, .left_x, -0.8, 0);
+    restored.update(state);
+    try std.testing.expect(restored.isDown("game", "fire"));
+    try std.testing.expect(restored.wasPressed("game", "fire"));
 }
 
 test "device removal and reconnect produce deterministic action edges" {
