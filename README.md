@@ -193,7 +193,7 @@ zig build new -- ../my-game
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
 `zig build release-gate` runs API, CLI, proof-game, service, package, visual, replay, fuzz, and performance gates; every gate writes a local log under `zig-out/diagnostics/release-gate/`, and release validation requires no telemetry.
 
-`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; top-down and platformer package smokes run outside the repository and emit reports.
+`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository and emit reports.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, assets, and build-manifest layout without replacing an existing destination.

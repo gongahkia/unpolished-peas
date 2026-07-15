@@ -109,6 +109,18 @@ jobs:
         include:
           - os: ubuntu-latest
             target: linux
+            game: bounce
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: bounce
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: bounce
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
             game: topdown
             package_script: script/test_linux_package.sh
           - os: macos-15-intel
