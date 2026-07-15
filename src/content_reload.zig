@@ -159,7 +159,12 @@ fn snapshot(allocator: std.mem.Allocator, project_root: []const u8) ![]Entry {
 }
 
 fn ignoredPath(path: []const u8) bool {
-    return std.mem.startsWith(u8, path, ".git/") or std.mem.startsWith(u8, path, ".zig-cache/") or std.mem.startsWith(u8, path, "zig-out/");
+    return std.mem.startsWith(u8, path, ".git/") or
+        std.mem.startsWith(u8, path, ".git\\") or
+        std.mem.startsWith(u8, path, ".zig-cache/") or
+        std.mem.startsWith(u8, path, ".zig-cache\\") or
+        std.mem.startsWith(u8, path, "zig-out/") or
+        std.mem.startsWith(u8, path, "zig-out\\");
 }
 
 fn lessThan(_: void, lhs: Entry, rhs: Entry) bool {
@@ -240,6 +245,11 @@ test "content reload tracks transitive asset changes and refreshes caches" {
     try std.testing.expectEqual(Status.reloaded, reloaded.status);
     try std.testing.expectEqual(@as(usize, 3), reloaded.report.reused);
     try std.testing.expect((try controller.reloadIfChanged()).status == .unchanged);
+}
+
+test "content reload ignores generated Windows paths" {
+    try std.testing.expect(ignoredPath("zig-out\\content\\scenes\\main.upc"));
+    try std.testing.expect(ignoredPath(".zig-cache\\o\\artifact"));
 }
 
 fn writeProject(temp: *std.testing.TmpDir) !void {
