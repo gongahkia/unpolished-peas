@@ -428,6 +428,10 @@ pub fn build(b: *std.Build) void {
     cross_backend_conformance.setEnvironmentVariable("UP_CROSS_BACKEND_CONFORMANCE", "1");
     const cross_backend_conformance_step = b.step("test-renderer-cross-backend", "Compare SDL GPU and OpenGL renderer captures");
     cross_backend_conformance_step.dependOn(&cross_backend_conformance.step);
+    const desktop_backend_comparison = b.addSystemCommand(&.{"script/check_desktop_backend_comparison.sh"});
+    desktop_backend_comparison.setCwd(b.path("."));
+    const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays, captures, and budgets");
+    desktop_backend_comparison_step.dependOn(&desktop_backend_comparison.step);
     const effects_tests = b.addTest(.{ .root_module = effects });
     const run_effects_tests = b.addRunArtifact(effects_tests);
     const effects_test_step = b.step("test-effects", "Test the independent effects package module");
