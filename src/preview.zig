@@ -30,6 +30,7 @@ pub const networking = struct {
 
 pub const developer = struct {
     pub const InputReplay = @import("input_replay.zig").Replay;
+    pub const InputReplayRecorder = @import("input_replay.zig").Recorder;
     pub const parseInputReplay = @import("input_replay.zig").parse;
     pub const PixelEffect = @import("shader.zig").PixelEffect;
     pub const PixelEffectParameters = @import("shader.zig").Parameters;
