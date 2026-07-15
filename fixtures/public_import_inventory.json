@@ -25,7 +25,6 @@
     {"path": "examples/topdown_multiplayer.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["FaultEndpoint", "FaultNetwork", "FaultNetworkConfig", "Input", "Vec2"]}]},
     {"path": "examples/topdown_scene.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["AssetStore", "Camera2D", "Canvas", "Color", "Input", "testSupport"]}]},
     {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Camera2D", "Color", "ImageHandle", "Input", "LoopbackTransport", "NetClient", "NetHost", "Sound", "TileMapHandle", "netPeer"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Context", "play"]}]},
-    {"path": "fixtures/content-project/build.zig", "imports": []},
     {"path": "fixtures/downstream/build.zig", "imports": []},
     {"path": "fixtures/downstream/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Canvas", "Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config"]}]},
     {"path": "fixtures/modules/build.zig", "imports": []},
