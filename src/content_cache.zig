@@ -59,6 +59,10 @@ test "content cache validates magic version kind and size" {
 }
 
 test "content cache accepts only catalog and map kinds" {
+    const fields = std.meta.fields(Kind);
+    try std.testing.expectEqual(@as(usize, 2), fields.len);
+    try std.testing.expectEqualStrings("catalog", fields[0].name);
+    try std.testing.expectEqualStrings("map", fields[1].name);
     const encoded = try encode(std.testing.allocator, .map, 42, "map");
     defer std.testing.allocator.free(encoded);
     var decoded = try decode(std.testing.allocator, encoded);
