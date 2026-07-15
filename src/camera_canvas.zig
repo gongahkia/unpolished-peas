@@ -275,6 +275,21 @@ test "camera canvas clips to viewport" {
     try std.testing.expectEqual(Color.white, canvas.get(2, 2).?);
 }
 
+test "camera canvas preserves untransformed HUD after world drawing" {
+    var canvas = try canvas_mod.Canvas.init(std.testing.allocator, 12, 10);
+    defer canvas.deinit();
+    canvas.clear(Color.black);
+    const camera = camera_mod.Camera2D{ .position = .{ .x = 20, .y = 10 }, .viewport = .{ .x = 3, .y = 2, .w = 6, .h = 4 } };
+    const world = CameraCanvas.init(&canvas, &camera);
+    world.pixel(.{ .x = 20, .y = 10 }, Color.white);
+    world.pixel(.{ .x = 16, .y = 10 }, Color.white);
+    canvas.pixel(1, 1, Color.rgb(255, 0, 0));
+
+    try std.testing.expectEqual(Color.white, canvas.get(6, 4).?);
+    try std.testing.expectEqual(Color.black, canvas.get(2, 4).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(1, 1).?);
+}
+
 test "camera canvas rotates world rectangle" {
     var canvas = try canvas_mod.Canvas.init(std.testing.allocator, 16, 16);
     defer canvas.deinit();
