@@ -54,6 +54,7 @@ run package-platformer "$package_script" zig-out/release-gate/packages/platforme
 run diagnostics zig build test-support
 run package-release zig build test-package-release
 run effects-conformance zig build test-effects-conformance
+run ecs-conformance zig build test-ecs
 run networking-conformance zig build test-networking
 run ui-conformance zig build test-ui-conformance
 run physics-conformance zig build test-physics-conformance

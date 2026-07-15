@@ -11,7 +11,7 @@ while IFS=$'\t' read -r core package target; do
     test -n "$core"
     test -n "$package"
     case "$target" in
-        test-effects|test-networking|test-sdl|test-box2d|test-ui) ;;
+        test-ecs|test-effects|test-networking|test-sdl|test-box2d|test-ui) ;;
         *) printf 'unsupported extension target: %s\n' "$target" >&2; exit 64 ;;
     esac
     printf 'extension matrix: core=%s package=%s target=%s\n' "$core" "$package" "$target"

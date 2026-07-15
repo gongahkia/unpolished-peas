@@ -8,6 +8,10 @@
             .path = "packages/effects",
             .lazy = true,
         },
+        .ecs = .{
+            .path = "packages/ecs",
+            .lazy = true,
+        },
         .physics = .{
             .path = "packages/physics",
             .lazy = true,

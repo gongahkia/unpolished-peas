@@ -432,6 +432,10 @@ pub fn build(b: *std.Build) void {
     effects_conformance.setCwd(b.path("."));
     const effects_conformance_step = b.step("test-effects-conformance", "Run effects fallback, reload, and renderer conformance fixtures");
     effects_conformance_step.dependOn(&effects_conformance.step);
+    const ecs_conformance = b.addSystemCommand(&.{"script/test_ecs_package.sh"});
+    ecs_conformance.setCwd(b.path("."));
+    const ecs_conformance_step = b.step("test-ecs", "Run ECS package and external consumer fixtures");
+    ecs_conformance_step.dependOn(&ecs_conformance.step);
     const networking_conformance = b.addSystemCommand(&.{"script/test_networking_package.sh"});
     networking_conformance.setCwd(b.path("."));
     const networking_conformance_step = b.step("test-networking", "Run networking package and external module fixtures");

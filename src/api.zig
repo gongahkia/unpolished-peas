@@ -69,7 +69,7 @@ pub const world = struct {
 pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
-test "public API excludes effects GPU resource declarations" {
+test "public API excludes optional package declarations" {
     try std.testing.expect(!@hasDecl(@This(), "GpuResourceKind"));
     try std.testing.expect(!@hasDecl(@This(), "GpuResources"));
     try std.testing.expect(!@hasDecl(@This(), "TextureHandle"));
@@ -98,6 +98,10 @@ test "public API excludes effects GPU resource declarations" {
     try std.testing.expect(!@hasDecl(@This(), "netCodec"));
     try std.testing.expect(!@hasDecl(@This(), "InspectorNetworkPanel"));
     try std.testing.expect(!@hasDecl(graphics, "InspectorNetworkPanel"));
+    try std.testing.expect(!@hasDecl(@This(), "EcsEntity"));
+    try std.testing.expect(!@hasDecl(@This(), "EcsWorld"));
+    try std.testing.expect(!@hasDecl(@This(), "EcsCommands"));
+    try std.testing.expect(!@hasDecl(@This(), "ComponentStore"));
     try std.testing.expect(!@hasDecl(@This(), "UiFrame"));
     try std.testing.expect(!@hasDecl(@This(), "UiId"));
     try std.testing.expect(!@hasDecl(@This(), "UiLayout"));
@@ -196,10 +200,6 @@ pub const TileCollider = @import("tile_collision.zig").TileCollider;
 pub const TileCollisionHit = @import("tile_collision.zig").Hit;
 pub const TileCollisionShape = @import("tile_collision.zig").Shape;
 pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
-pub const EcsEntity = @import("ecs.zig").Entity;
-pub const EcsWorld = @import("ecs.zig").World;
-pub const EcsCommands = @import("ecs.zig").Commands;
-pub const ComponentStore = @import("ecs.zig").ComponentStore;
 pub const SpriteSampling = @import("atlas.zig").Sampling;
 pub const Image = @import("image.zig").Image;
 pub const ImageDecodeOptions = @import("image.zig").DecodeOptions;

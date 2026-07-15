@@ -3,6 +3,7 @@
     .version = 1,
     .core_releases = .{ "1.0.0", "1.0.1" },
     .packages = .{
+        .{ .name = "ecs", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-ecs" },
         .{ .name = "effects", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-effects" },
         .{ .name = "networking", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-networking" },
         .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d" },
