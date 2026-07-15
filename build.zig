@@ -75,12 +75,8 @@ pub fn build(b: *std.Build) void {
     });
     addStb(test_support);
 
-    const services = b.addModule("unpolished-peas-services", .{
-        .root_source_file = b.path("src/services.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas-networking", .module = networking }},
-    });
+    const services_dependency = b.lazyDependency("services", .{ .target = target, .optimize = optimize }) orelse @panic("missing services package");
+    const services = services_dependency.module("unpolished-peas-services");
 
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),

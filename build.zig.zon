@@ -20,6 +20,10 @@
             .path = "packages/networking",
             .lazy = true,
         },
+        .services = .{
+            .path = "packages/services",
+            .lazy = true,
+        },
         .ui = .{
             .path = "packages/ui",
             .lazy = true,

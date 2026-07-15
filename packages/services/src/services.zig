@@ -78,3 +78,7 @@ test "services expose an SDL-free provider contract" {
     const credentials = try provider_contract.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 1 });
     try @import("std").testing.expectEqual(ServiceSessionStatus.active, try provider_contract.validateGuestSession(credentials.session));
 }
+
+test {
+    _ = @import("service_integration.zig");
+}

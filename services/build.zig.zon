@@ -1,11 +1,11 @@
 .{
     .name = .unpolished_peas_local_services,
     .version = "0.0.3",
-    .fingerprint = 0x9893e5344623d918,
+    .fingerprint = 0x9893e53484e47d3a,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
-        .unpolished_peas = .{
-            .path = "..",
+        .unpolished_peas_services = .{
+            .path = "../packages/services",
         },
     },
     .paths = .{

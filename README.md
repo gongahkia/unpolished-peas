@@ -40,6 +40,7 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 `LobbyService` is the SDL-free guest-backed lobby boundary: create, join, leave, disconnect, expiration, bounded membership, and `inspectorState()` use only validated guest sessions.
 `MatchmakingService` queues active lobby members under bounded timeout/capacity rules and returns an idempotent match bootstrap usable by the P2P runtime.
 `RelayService` derives bounded relay routes from authorized match requests, seals each route ticket to its guest session with XChaCha20-Poly1305, expires leases, and caps concurrent relay connections and transmitted bytes.
+`unpolished-peas-services` owns guest identity, lobby, matchmaking, relay, and PostgreSQL provider APIs; use `@import("unpolished-peas-services")`.
 `unpolished-peas-ecs` owns generation-checked entities, sparse stores, commands, and deterministic queries; use `@import("unpolished-peas-ecs")`.
 `unpolished-peas-networking` owns protocol, transport, sync, peer-to-peer, fault, and replication APIs; use `@import("unpolished-peas-networking").networking(core)` and `@import("unpolished-peas-networking").replication(ecs)`.
 

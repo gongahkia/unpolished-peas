@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const upstream = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize });
+    const upstream = b.dependency("unpolished_peas_services", .{ .target = target, .optimize = optimize });
     const services = upstream.module("unpolished-peas-services");
     const runtime = b.addExecutable(.{
         .name = "unpolished-peas-services-local",

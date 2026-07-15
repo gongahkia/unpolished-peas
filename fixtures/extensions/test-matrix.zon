@@ -8,6 +8,7 @@
         .{ .name = "networking", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-networking", .consumer = "fixtures/modules" },
         .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d", .consumer = "fixtures/physics-package" },
         .{ .name = "sdl3", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-sdl", .consumer = "fixtures/external-game" },
+        .{ .name = "services", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-services", .consumer = "fixtures/modules" },
         .{ .name = "ui", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-ui", .consumer = "fixtures/ui-package" },
     },
 }
