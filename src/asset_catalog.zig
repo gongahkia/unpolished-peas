@@ -337,7 +337,7 @@ test "asset catalog reloads changed declarations and reports affected identifier
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=passthrough\n" });
-    try tmp.dir.writeFile(.{ .sub_path = "b.upshader", .data = "effect=invert\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "b.upshader", .data = "effect=invert\nuniform amount:f32\n" });
     try tmp.dir.writeFile(.{ .sub_path = "untracked.txt", .data = "one" });
     const source =
         \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{}, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{
@@ -354,10 +354,10 @@ test "asset catalog reloads changed declarations and reports affected identifier
     defer loaded.deinit();
 
     var stat = try tmp.dir.statFile("a.upshader");
-    try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\nuniform amount:f32\n" });
     while ((try tmp.dir.statFile("a.upshader")).mtime == stat.mtime) {
         std.Thread.sleep(1_000_000);
-        try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\n" });
+        try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\nuniform amount:f32\n" });
         stat = try tmp.dir.statFile("a.upshader");
     }
     const reloads = try loaded.reloadChanged(&store);

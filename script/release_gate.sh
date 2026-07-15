@@ -38,9 +38,11 @@ case "$(uname -s)" in
 esac
 
 run api zig build test
+run api-snapshot zig build test-core-api
 run api-modules zig build test-modules
 run cli zig build test-peas
 run cli-starter zig build test-starter
+run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
 run proof-platformer runtime script/test_proof_game_matrix.sh platformer
 run services zig build test-services
@@ -49,6 +51,7 @@ run services-migrations script/test_services_migrations.sh
 run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
+run diagnostics zig build test-support
 run visual-scenes zig build test-scenes
 run visual-renderer runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
 run replay zig build test-replays

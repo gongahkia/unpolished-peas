@@ -21,6 +21,7 @@ jobs:
         with:
           version: 0.15.2
       - run: sudo apt-get update && sudo apt-get install --yes postgresql xvfb libvulkan1 mesa-vulkan-drivers libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: script/test_release_validation.sh
       - run: zig build release-gate
       - if: failure()
         uses: actions/upload-artifact@v4
