@@ -14,6 +14,7 @@ $env:UP_DIAGNOSTICS_ROOT = $diagnostics
 Set-Location $repo
 function Invoke-Scenario([string]$Name, [scriptblock]$Command) {
     $script:scenario = $Name
+    Write-Output "proof scenario: $Name"
     & $Command
     if ($LASTEXITCODE -ne 0) { throw "$Name failed: $LASTEXITCODE" }
 }
@@ -25,7 +26,9 @@ try {
         Invoke-Scenario "cli-test-$selection" { zig build peas -- test $selection $project }
     }
     Invoke-Scenario 'integration-fixture' { zig test (Join-Path $project 'src/main.zig') }
-    Invoke-Scenario 'inspector-reload-profiler' { zig build test }
+    Invoke-Scenario 'inspector' { zig test src/inspector.zig -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c }
+    Invoke-Scenario 'content-reload' { zig test src/content_reload.zig -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c -cflags -std=c99 -DSTB_VORBIS_NO_STDIO -- vendor/stb/stb_vorbis.c }
+    Invoke-Scenario 'profiler' { zig test src/profiler.zig }
     if ($Game -eq 'topdown') {
         Invoke-Scenario 'headless' { zig build test-topdown-scene }
         Invoke-Scenario 'gameplay' { zig build test-topdown }
