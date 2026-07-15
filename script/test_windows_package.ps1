@@ -72,8 +72,10 @@ try {
     try {
         & $checker
         if ($LASTEXITCODE -ne 0) { throw "package layout checker failed: $LASTEXITCODE" }
-        & $runtime --frames 2
-        if ($LASTEXITCODE -ne 0) { throw "packaged smoke failed: $LASTEXITCODE" }
+        & $runtime --frames 2 --renderer sdl-gpu
+        if ($LASTEXITCODE -ne 0) { throw "SDL GPU packaged smoke failed: $LASTEXITCODE" }
+        & $runtime --frames 2 --renderer opengl
+        if ($LASTEXITCODE -ne 0) { throw "OpenGL packaged smoke failed: $LASTEXITCODE" }
     } finally {
         Pop-Location
     }
@@ -96,7 +98,7 @@ try {
         Pop-Location
     }
     if ((Get-Content -LiteralPath (Join-Path $out 'SHA256SUMS') -Raw) -ne (Get-Content -LiteralPath (Join-Path $repeat 'SHA256SUMS') -Raw)) { throw 'non-reproducible archive checksum' }
-    @('platform=windows-x86_64', ('game=' + $Game), ('archive=' + $name + '.zip'), 'checksum=verified', 'layout=passed', 'runtime-smoke=passed', 'cache-recovery=passed') | Set-Content -LiteralPath (Join-Path $out 'SMOKE-REPORT.txt') -Encoding ascii
+    @('platform=windows-x86_64', ('game=' + $Game), ('archive=' + $name + '.zip'), 'checksum=verified', 'layout=passed', 'runtime-smoke=passed', 'renderer-sdl-gpu=passed', 'renderer-opengl=passed', 'cache-recovery=passed') | Set-Content -LiteralPath (Join-Path $out 'SMOKE-REPORT.txt') -Encoding ascii
     Get-Content -LiteralPath (Join-Path $out 'SMOKE-REPORT.txt')
 } finally {
     Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue

@@ -55,7 +55,8 @@ cp "$checker_stage/bin/unpolished-peas-test-packaged-layout" "$checker"
 mkdir "$tmp/outside-repository"
 cd "$tmp/outside-repository"
 "$checker"
-SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2
+SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer sdl-gpu
+SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer opengl
 corrupt="$tmp/corrupt-cache"
 cp -R "$package" "$corrupt"
 printf '\0' > "$corrupt/content/cache/assets/$fixture.upassets.upc"
@@ -70,5 +71,5 @@ repeat="$tmp/repeat"
 cd "$repo"
 zig build peas -- package macos "$repeat" --game "$game"
 cmp "$out/SHA256SUMS" "$repeat/SHA256SUMS"
-printf '%s\n' "platform=macos-universal" "game=$game" "archive=$name.zip" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'cache-recovery=passed' > "$out/SMOKE-REPORT.txt"
+printf '%s\n' "platform=macos-universal" "game=$game" "archive=$name.zip" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'renderer-sdl-gpu=passed' 'renderer-opengl=passed' 'cache-recovery=passed' > "$out/SMOKE-REPORT.txt"
 cat "$out/SMOKE-REPORT.txt"
