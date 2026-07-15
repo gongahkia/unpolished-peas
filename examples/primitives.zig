@@ -2,6 +2,14 @@ const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas primitives",
+        .width = 128,
+        .height = 104,
+        .scale = 5,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     pub fn init(ctx: *sdl.Context) !Game {
         try ctx.setPixelEffect("invert", .{ .amount = 0.2 });
         return .{};
@@ -28,11 +36,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas primitives",
-        .width = 128,
-        .height = 104,
-        .scale = 5,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }

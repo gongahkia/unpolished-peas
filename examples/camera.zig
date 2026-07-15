@@ -2,6 +2,16 @@ const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas camera",
+        .width = 160,
+        .height = 90,
+        .scale = 6,
+        .resizable = true,
+        .presentation_mode = .integer_fit,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     rig: up.CameraRig,
     director: up.CameraDirector,
     main: up.CameraHandle,
@@ -83,13 +93,5 @@ fn drawWorld(world: sdl.GpuCameraCanvas, target: up.Vec2) void {
 }
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas camera",
-        .width = 160,
-        .height = 90,
-        .scale = 6,
-        .resizable = true,
-        .presentation_mode = .integer_fit,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }

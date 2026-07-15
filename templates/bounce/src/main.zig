@@ -40,7 +40,7 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(Game.config, Game);
+    try sdl.playGame(Game);
 }
 
 test "bouncing-square starts within the canvas" {

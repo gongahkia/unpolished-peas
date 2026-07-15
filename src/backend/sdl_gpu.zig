@@ -829,16 +829,6 @@ pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, app
     return allocator.dupe(u8, std.mem.span(raw));
 }
 
-pub fn play(config: Config, comptime Game: type) !void {
-    comptime validateGame(Game);
-    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
-    defer if (gpa.deinit() == .leak) @panic("game allocation leak");
-
-    const allocator = gpa.allocator();
-    const parsed_config = try configFromArgs(allocator, config);
-    try playWithAllocator(allocator, parsed_config, Game);
-}
-
 pub fn playGame(comptime Game: type) !void {
     comptime validateGame(Game);
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -1326,6 +1316,12 @@ test "structured Game owns desktop configuration" {
     try std.testing.expectEqual(@as(u32, 160), config.width);
     try std.testing.expectEqual(up.PresentationMode.fit, config.presentation_mode);
     try std.testing.expectEqualStrings("assets", config.asset_root.?);
+}
+
+test "desktop loop exposes one Game facade and one explicit escape hatch" {
+    try std.testing.expect(@hasDecl(@This(), "playGame"));
+    try std.testing.expect(@hasDecl(@This(), "run"));
+    try std.testing.expect(!@hasDecl(@This(), "play"));
 }
 
 test "desktop configuration errors are recoverable" {

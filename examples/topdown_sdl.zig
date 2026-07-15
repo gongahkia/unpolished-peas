@@ -67,6 +67,8 @@ const ListenRuntime = struct {
 };
 
 const Game = struct {
+    pub const config: sdl.Config = .{ .title = "unpolished-peas Top Down", .width = game_mod.width, .height = game_mod.height, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(10, 18, 26) };
+
     game: game_mod.Game = .{},
     map: up.TileMapHandle,
     player: up.ImageHandle,
@@ -110,5 +112,5 @@ pub fn main() !void {
             launch_listen_host = true;
         }
     }
-    try sdl.play(.{ .title = "unpolished-peas Top Down", .width = game_mod.width, .height = game_mod.height, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(10, 18, 26) }, Game);
+    try sdl.playGame(Game);
 }

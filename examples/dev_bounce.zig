@@ -5,6 +5,14 @@ const width = 160;
 const height = 90;
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas dev bounce",
+        .width = width,
+        .height = height,
+        .scale = 4,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     ball: Ball = .{},
     sprite: up.ImageHandle,
     message: up.TextHandle,
@@ -46,11 +54,5 @@ const Ball = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas dev bounce",
-        .width = width,
-        .height = height,
-        .scale = 4,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }

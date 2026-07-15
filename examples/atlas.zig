@@ -2,6 +2,14 @@ const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
+    pub const config: sdl.Config = .{
+        .title = "unpolished-peas atlas",
+        .width = 128,
+        .height = 72,
+        .scale = 5,
+        .clear_color = up.Color.rgb(14, 18, 24),
+    };
+
     atlas: up.AtlasHandle,
     tiles: [4]up.AtlasFrameHandle,
     player: up.AnimationPlayer,
@@ -43,11 +51,5 @@ const Game = struct {
 };
 
 pub fn main() !void {
-    try sdl.play(.{
-        .title = "unpolished-peas atlas",
-        .width = 128,
-        .height = 72,
-        .scale = 5,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, Game);
+    try sdl.playGame(Game);
 }
