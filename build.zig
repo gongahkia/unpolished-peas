@@ -296,6 +296,14 @@ pub fn build(b: *std.Build) void {
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&run_core_api_snapshot_tests.step);
     test_step.dependOn(&run_core_api_snapshot_tests.step);
+    const extension_resolver_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/extension_resolver.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_extension_resolver_tests = b.addRunArtifact(extension_resolver_tests);
+    const extension_resolver_test_step = b.step("test-extensions", "Resolve versioned extension package locks");
+    extension_resolver_test_step.dependOn(&run_extension_resolver_tests.step);
     const core_downstream_fixture = b.addSystemCommand(&.{"script/test_core_downstream_fixture.sh"});
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
