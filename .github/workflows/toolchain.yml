@@ -180,6 +180,51 @@ jobs:
           path: zig-out/diagnostics/**/*
           if-no-files-found: warn
 
+  proof-game-regression:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            game: topdown
+            runner: script/test_proof_game_matrix.sh
+          - os: ubuntu-latest
+            game: platformer
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-latest
+            game: topdown
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-latest
+            game: platformer
+            runner: script/test_proof_game_matrix.sh
+          - os: windows-2022
+            game: topdown
+            runner: script/test_proof_game_matrix.ps1
+          - os: windows-2022
+            game: platformer
+            runner: script/test_proof_game_matrix.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+      - if: matrix.os == 'ubuntu-latest'
+        run: xvfb-run -a ${{ matrix.runner }} ${{ matrix.game }}
+      - if: matrix.os == 'macos-latest'
+        run: ${{ matrix.runner }} ${{ matrix.game }}
+      - if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: ${{ matrix.runner }} ${{ matrix.game }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-game-diagnostics-${{ matrix.os }}-${{ matrix.game }}
+          path: zig-out/diagnostics/proof-matrix/**
+          if-no-files-found: warn
+
   sample-smoke:
     runs-on: ubuntu-latest
     strategy:
