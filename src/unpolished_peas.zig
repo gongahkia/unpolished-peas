@@ -280,7 +280,6 @@ pub const TileMapObject = @import("tilemap.zig").MapObject;
 pub const TileMapObjectShape = @import("tilemap.zig").ObjectShape;
 pub const TileMapProperty = @import("tilemap.zig").Property;
 pub const TileMapPropertyValue = @import("tilemap.zig").PropertyValue;
-pub const TileMapProject = @import("tilemap.zig").TileMapProject;
 pub const TileSet = @import("tilemap.zig").TileSet;
 pub const Vec2 = @import("math.zig").Vec2;
 

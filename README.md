@@ -227,8 +227,6 @@ SDL sprite textures upload on first use; changed image or atlas buffers stage a 
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
 
-`zig build peas -- import-ldtk <input.ldtk> <output-directory>` imports each validated LDtk level as `maps/<level>.upmap`. It supports inline/external levels, grid-image tilesets, IntGrid, Tiles, AutoLayer, and Entities layers, plus Int/Float/Bool/String/Text/FilePath fields. Unsupported layer/field types and unsafe asset paths fail with an input line/column diagnostic.
-
 `TileCollider.addShape` and `addLayer` are the default collision path. `addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer; failures leave the existing collider unchanged. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
 
 `Context.loadShader` loads a validated `.upshader` resource (`effect=invert` plus `uniform amount:f32`, or `effect=passthrough`). `Context.setShaderEffect` replaces the post-process chain; `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and invalid shader reloads retain the last good program. `Canvas.applyPixelEffect` is the defined headless fallback.
@@ -256,7 +254,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
 - `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
-- `TileMap.loadNative`, `TileMap.loadLdtkProject`
+- `TileMap.loadNative`
 - `MapSource`, `mapSource`
 - `SceneRuntime`, `SceneRuntimeBinding`, `sceneRuntime`
 - `TileCollider`, `CharacterController`
