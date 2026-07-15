@@ -69,6 +69,7 @@ jobs:
       - run: zig build test-effects-conformance
       - run: zig build test-physics-conformance
       - run: script/test_extension_matrix.sh
+      - run: zig build test-package-release
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas

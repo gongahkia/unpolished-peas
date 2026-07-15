@@ -200,6 +200,7 @@ An extension hook is a declared Zig script exporting `name` and `apply(dependenc
 `test-effects-conformance` verifies effects fallbacks, source reload validation, and command/headless renderer parity.
 `test-physics-conformance` verifies independent Box2D world lifecycle, contacts, inspector state, debug output, and teardown.
 `script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
+`test-package-release` validates package release metadata, dependency locks, fetched archive contents, and external archive consumers.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines.

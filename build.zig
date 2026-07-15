@@ -444,6 +444,10 @@ pub fn build(b: *std.Build) void {
     physics_conformance.setCwd(b.path("."));
     const physics_conformance_step = b.step("test-physics-conformance", "Run physics lifecycle, contact, debug, and teardown conformance fixtures");
     physics_conformance_step.dependOn(&physics_conformance.step);
+    const package_release = b.addSystemCommand(&.{"script/test_package_release.sh"});
+    package_release.setCwd(b.path("."));
+    const package_release_step = b.step("test-package-release", "Verify package archive, dependency, and release metadata");
+    package_release_step.dependOn(&package_release.step);
 }
 
 fn addExample(
