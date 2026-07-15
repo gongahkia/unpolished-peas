@@ -45,8 +45,6 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try migrateContent(allocator, args);
             return null;
         },
-        .import_tiled => return error.TiledSupportRemoved,
-        .import_ldtk => return error.LdtkSupportRemoved,
         .run => return try runProject(allocator, args),
         .host => {
             try hostRuntime(allocator, args);
@@ -365,8 +363,8 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
     try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
-    try std.testing.expectEqual(tools.Command.import_tiled, tools.parseCommand("import-tiled").?);
-    try std.testing.expectEqual(tools.Command.import_ldtk, tools.parseCommand("import-ldtk").?);
+    try std.testing.expect(tools.parseCommand("import-tiled") == null);
+    try std.testing.expect(tools.parseCommand("import-ldtk") == null);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
