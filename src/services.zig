@@ -2,6 +2,7 @@ const up = @import("unpolished-peas");
 const guest = @import("guest_credentials.zig");
 const provider = @import("service_provider.zig");
 const lobby = @import("service_lobby.zig");
+const matchmaking = @import("service_matchmaking.zig");
 
 pub const GuestToken = guest.Token;
 pub const GuestCredentials = guest.Credentials;
@@ -17,6 +18,9 @@ pub const LobbyConfig = lobby.Config;
 pub const Lobby = lobby.Lobby;
 pub const LobbyStatus = lobby.Status;
 pub const LobbyInspectorState = lobby.InspectorState;
+pub const MatchmakingService = matchmaking.Service;
+pub const MatchmakingConfig = matchmaking.Config;
+pub const MatchAssignment = matchmaking.Assignment;
 
 pub const Endpoint = struct {
     host: []const u8,
