@@ -29,6 +29,7 @@ zig build test-opengl
 `zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The optional physics package owns its pinned Box2D source and is validated with `zig build test-box2d`.
 `test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 `test-opengl` creates an OpenGL 3.3 core context and validates the fallback presenter with a readback fixture.
+`test-renderer-cross-backend` compares SDL GPU and OpenGL readbacks for the shared corpus; captures must have equal dimensions and every RGBA channel may differ by at most one.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 

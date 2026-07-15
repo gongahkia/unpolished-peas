@@ -13,7 +13,7 @@ const Gl = struct {
     const Clear = *const fn (u32) callconv(.c) void;
     const Enable = *const fn (u32) callconv(.c) void;
     const Disable = *const fn (u32) callconv(.c) void;
-    const BlendFunc = *const fn (u32, u32) callconv(.c) void;
+    const BlendFuncSeparate = *const fn (u32, u32, u32, u32) callconv(.c) void;
     const Scissor = *const fn (i32, i32, i32, i32) callconv(.c) void;
     const CreateShader = *const fn (u32) callconv(.c) u32;
     const ShaderSource = *const fn (u32, i32, [*]const [*]const u8, ?*const i32) callconv(.c) void;
@@ -53,7 +53,7 @@ const Gl = struct {
     clear: Clear,
     enable: Enable,
     disable: Disable,
-    blend_func: BlendFunc,
+    blend_func_separate: BlendFuncSeparate,
     scissor: Scissor,
     create_shader: CreateShader,
     shader_source: ShaderSource,
@@ -95,7 +95,7 @@ const Gl = struct {
             .clear = try loadProc(Clear, "glClear"),
             .enable = try loadProc(Enable, "glEnable"),
             .disable = try loadProc(Disable, "glDisable"),
-            .blend_func = try loadProc(BlendFunc, "glBlendFunc"),
+            .blend_func_separate = try loadProc(BlendFuncSeparate, "glBlendFuncSeparate"),
             .scissor = try loadProc(Scissor, "glScissor"),
             .create_shader = try loadProc(CreateShader, "glCreateShader"),
             .shader_source = try loadProc(ShaderSource, "glShaderSource"),
@@ -139,7 +139,7 @@ pub fn configureContext() !void {
 }
 
 pub const Presenter = struct {
-    window: *c.SDL_Window,
+    window: *anyopaque,
     context: c.SDL_GLContext,
     context_active: bool = true,
     gl: Gl,
@@ -155,11 +155,11 @@ pub const Presenter = struct {
     primitive_batch: up.PrimitiveBatch,
     recovery_failure: ?anyerror = null,
 
-    pub fn init(window: *c.SDL_Window, width: u32, height: u32) !Presenter {
+    pub fn init(window: *anyopaque, width: u32, height: u32) !Presenter {
         if (width == 0 or height == 0) return error.InvalidRenderCanvas;
-        const context = c.SDL_GL_CreateContext(window) orelse return error.OpenGlContextCreationFailed;
+        const context = c.SDL_GL_CreateContext(@ptrCast(window)) orelse return error.OpenGlContextCreationFailed;
         errdefer _ = c.SDL_GL_DestroyContext(context);
-        if (!c.SDL_GL_MakeCurrent(window, context)) return error.OpenGlContextActivationFailed;
+        if (!c.SDL_GL_MakeCurrent(@ptrCast(window), context)) return error.OpenGlContextActivationFailed;
         const gl = try Gl.load();
         var presenter = Presenter{
             .window = window,
@@ -176,7 +176,7 @@ pub const Presenter = struct {
 
     pub fn deinit(self: *Presenter) void {
         if (self.context_active) {
-            _ = c.SDL_GL_MakeCurrent(self.window, self.context);
+            _ = c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context);
             self.releaseGpuResources();
             _ = c.SDL_GL_DestroyContext(self.context);
         }
@@ -186,7 +186,7 @@ pub const Presenter = struct {
 
     pub fn recover(self: *Presenter) !void {
         if (self.context_active) {
-            _ = c.SDL_GL_MakeCurrent(self.window, self.context);
+            _ = c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context);
             self.releaseGpuResources();
             if (!c.SDL_GL_DestroyContext(self.context)) {
                 self.context_active = false;
@@ -194,10 +194,10 @@ pub const Presenter = struct {
             }
             self.context_active = false;
         }
-        const context = c.SDL_GL_CreateContext(self.window) orelse return self.recordRecoveryFailure(error.OpenGlContextCreationFailed);
+        const context = c.SDL_GL_CreateContext(@ptrCast(self.window)) orelse return self.recordRecoveryFailure(error.OpenGlContextCreationFailed);
         self.context = context;
         self.context_active = true;
-        if (!c.SDL_GL_MakeCurrent(self.window, context)) {
+        if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), context)) {
             _ = c.SDL_GL_DestroyContext(context);
             self.context_active = false;
             return self.recordRecoveryFailure(error.OpenGlContextActivationFailed);
@@ -223,7 +223,7 @@ pub const Presenter = struct {
     pub fn render(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
         if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (canvas.width != self.width or canvas.height != self.height) return error.InvalidRenderCanvas;
-        if (!c.SDL_GL_MakeCurrent(self.window, self.context)) return error.OpenGlContextActivationFailed;
+        if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context)) return error.OpenGlContextActivationFailed;
         const width = try glI32(self.width);
         const height = try glI32(self.height);
         self.gl.viewport(0, 0, width, height);
@@ -240,12 +240,12 @@ pub const Presenter = struct {
 
     pub fn present(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
         try self.render(canvas, sprites, commands);
-        if (!c.SDL_GL_SwapWindow(self.window)) return error.OpenGlSwapFailed;
+        if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
     }
 
     pub fn capture(self: *Presenter, allocator: std.mem.Allocator) !up.Canvas {
         if (!self.context_active) return error.OpenGlRecoveryRequired;
-        if (!c.SDL_GL_MakeCurrent(self.window, self.context)) return error.OpenGlContextActivationFailed;
+        if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context)) return error.OpenGlContextActivationFailed;
         var canvas = try up.Canvas.init(allocator, self.width, self.height);
         errdefer canvas.deinit();
         const byte_len = try byteLen(self.width, self.height);
@@ -390,10 +390,10 @@ pub const Presenter = struct {
     }
 
     fn setBlend(self: *Presenter, blend: up.BlendMode) void {
-        self.gl.blend_func(gl_src_alpha, switch (blend) {
+        self.gl.blend_func_separate(gl_src_alpha, switch (blend) {
             .alpha => gl_one_minus_src_alpha,
             .additive => gl_one,
-        });
+        }, gl_one, gl_one_minus_src_alpha);
     }
 
     fn applyClip(self: *Presenter, clip: ?up.ClipRect) void {
@@ -452,7 +452,7 @@ pub const Presenter = struct {
         errdefer self.gl.delete_shader(shader);
         const source_ptrs = [_][*]const u8{source.ptr};
         const lengths = [_]i32{try glI32(source.len)};
-        self.gl.shader_source(shader, 1, &source_ptrs, &lengths);
+        self.gl.shader_source(shader, 1, &source_ptrs, &lengths[0]);
         self.gl.compile_shader(shader);
         var status: i32 = 0;
         self.gl.get_shader_iv(shader, gl_compile_status, &status);
@@ -586,7 +586,8 @@ test "OpenGL 3.3 version requirement is bounded" {
 test "OpenGL recovery retains presenter failures" {
     var presenter: Presenter = undefined;
     presenter.recovery_failure = null;
-    _ = presenter.recordRecoveryFailure(error.OpenGlContextCreationFailed);
+    const err = presenter.recordRecoveryFailure(error.OpenGlContextCreationFailed);
+    try std.testing.expectEqual(error.OpenGlContextCreationFailed, err);
     try std.testing.expectEqual(error.OpenGlContextCreationFailed, presenter.recoveryFailure().?);
 }
 

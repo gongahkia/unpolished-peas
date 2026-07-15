@@ -3,14 +3,15 @@ const builtin = @import("builtin");
 const up = @import("unpolished-peas").api;
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
+const sdl_gl = @import("sdl_gl.zig");
 const effect_api = @import("unpolished-peas-effects");
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
 
-pub const OpenGlPresenter = @import("sdl_gl.zig").Presenter;
-pub const OpenGlBackend = @import("sdl_gl.zig").Backend;
+pub const OpenGlPresenter = sdl_gl.Presenter;
+pub const OpenGlBackend = sdl_gl.Backend;
 
 const sprite_vert_spirv = sprite_shaders.vert_spirv;
 const sprite_frag_spirv = sprite_shaders.frag_spirv;
@@ -248,6 +249,67 @@ test "desktop renderer conformance GPU golden capture" {
     try std.testing.expect(metrics.pass_count >= 4);
     try std.testing.expect(metrics.texture_bytes > 0);
     std.debug.print("renderer conformance: platform={s} driver={s} shader_format={s} golden=capture.png\n", .{ @tagName(builtin.os.tag), gpuDriverName(device), @tagName(shader_format) });
+}
+
+test "desktop renderers match cross-backend visual golden captures" {
+    if (!crossBackendConformanceEnabled()) return;
+
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const temp_path = try tmp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(temp_path);
+    const capture_path = try std.fs.path.join(std.testing.allocator, &.{ temp_path, "sdl-gpu.png" });
+    defer std.testing.allocator.free(capture_path);
+
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
+    defer c.SDL_Quit();
+    const device = createGpuDevice(false) orelse return error.UnsupportedGpuShaderFormat;
+    defer c.SDL_DestroyGPUDevice(device);
+    const gpu_window = c.SDL_CreateWindow("unpolished-peas SDL GPU cross-backend", 64, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlRendererFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(gpu_window);
+    _ = try selectGpuShaderFormat(device);
+    if (!c.SDL_ClaimWindowForGPUDevice(device, gpu_window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+    defer c.SDL_ReleaseWindowFromGPUDevice(device, gpu_window);
+    if (!c.SDL_SetGPUSwapchainParameters(device, gpu_window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
+    try sdl_gl.configureContext();
+    const gl_window = c.SDL_CreateWindow("unpolished-peas OpenGL cross-backend", 64, 32, c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_OPENGL) orelse return error.OpenGlWindowCreationFailed;
+    defer c.SDL_DestroyWindow(gl_window);
+
+    var gpu_presenter = try Presenter.init(device, 64, 32);
+    defer gpu_presenter.deinit(device);
+    var gl_presenter = try OpenGlPresenter.init(gl_window, 64, 32);
+    defer gl_presenter.deinit();
+    const effects = [_]effect_api.PixelEffect{};
+    var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
+    var metrics = up.RuntimeMetrics{};
+    metrics.beginFrame(0);
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    for (scenarios) |scenario_kind| {
+        var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
+        defer scenario.deinit();
+        var gpu_canvas = try scenario.initialCanvas(std.testing.allocator);
+        defer gpu_canvas.deinit();
+        var gpu_sprites = up.SpriteBatch.init(std.testing.allocator);
+        defer gpu_sprites.deinit();
+        var gpu_backend = GpuBackend{ .presenter = &gpu_presenter, .device = device, .window = gpu_window, .canvas = gpu_canvas, .sprites = &gpu_sprites, .effects = effects[0..], .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
+        try gpu_backend.backend().submit(scenario.commandSlice());
+        const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
+        defer std.testing.allocator.free(png);
+        var image = try up.Image.decode(std.testing.allocator, png, .{});
+        defer image.deinit();
+        const gpu_capture = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
+        try scenario.expectCapture(&gpu_capture);
+
+        var gl_canvas = try scenario.initialCanvas(std.testing.allocator);
+        defer gl_canvas.deinit();
+        var gl_sprites = up.SpriteBatch.init(std.testing.allocator);
+        defer gl_sprites.deinit();
+        try gl_presenter.render(gl_canvas, &gl_sprites, scenario.commandSlice());
+        var gl_capture = try gl_presenter.capture(std.testing.allocator);
+        defer gl_capture.deinit();
+        try scenario.expectCapture(&gl_capture);
+        try up.testSupport.expectRendererCapturesMatch(&gpu_capture, &gl_capture, up.testSupport.cross_backend_renderer_tolerance);
+    }
 }
 
 test "high DPI letterboxing maps pointer through the GPU presentation" {
@@ -3253,6 +3315,10 @@ fn printGpuDrivers() void {
 
 fn rendererConformanceEnabled() bool {
     return std.process.hasEnvVarConstant("UP_RENDERER_CONFORMANCE") or std.process.hasEnvVarConstant("UP_GPU_CAPTURE_TEST");
+}
+
+fn crossBackendConformanceEnabled() bool {
+    return std.process.hasEnvVarConstant("UP_CROSS_BACKEND_CONFORMANCE");
 }
 
 fn rendererConformanceRequiresGpu() bool {
