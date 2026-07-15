@@ -1630,6 +1630,60 @@ test "explicit loop callbacks share the lifecycle" {
     try std.testing.expectEqualSlices(u8, "ieudx", state.calls[0..state.call_count]);
 }
 
+test "lifecycle failure skips later callbacks and preserves deinit ordering" {
+    const State = struct {
+        calls: [5]u8 = undefined,
+        call_count: usize = 0,
+
+        fn init(self: *@This(), _: *Context) void {
+            self.note('i');
+        }
+
+        fn event(self: *@This(), _: *Context, _: Event) !void {
+            self.note('e');
+            return error.EventFailed;
+        }
+
+        fn update(self: *@This(), _: *Context) void {
+            self.note('u');
+        }
+
+        fn draw(self: *@This(), _: *Context) void {
+            self.note('d');
+        }
+
+        fn deinit(self: *@This(), _: *Context) void {
+            self.note('x');
+        }
+
+        fn note(self: *@This(), call: u8) void {
+            self.calls[self.call_count] = call;
+            self.call_count += 1;
+        }
+    };
+    const callbacks = .{
+        .init = State.init,
+        .event = State.event,
+        .update = State.update,
+        .draw = State.draw,
+        .deinit = State.deinit,
+    };
+    const Runner = struct {
+        fn run(state: *State, ctx: *Context) !void {
+            try callLoopInit(state, callbacks, ctx);
+            defer callLoopDeinit(state, callbacks, ctx);
+            try callLoopEvent(state, callbacks, ctx, .focus_lost);
+            try callLoopUpdate(state, callbacks, ctx);
+            try callLoopDraw(state, callbacks, ctx);
+        }
+    };
+
+    var ctx: Context = undefined;
+    var state = State{};
+    try std.testing.expectError(error.EventFailed, Runner.run(&state, &ctx));
+    try std.testing.expectEqualSlices(u8, "iex", state.calls[0..state.call_count]);
+}
+
 test "callback failures retain phase and local context" {
     const phases = [_]FailurePhase{ .init, .update, .draw };
     for (phases) |phase| {
