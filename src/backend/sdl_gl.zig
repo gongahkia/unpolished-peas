@@ -1,5 +1,6 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
+const camera_commands = @import("camera_commands.zig");
 const primitive_commands = @import("primitive_commands.zig");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -11,7 +12,9 @@ const Gl = struct {
     const ClearColor = *const fn (f32, f32, f32, f32) callconv(.c) void;
     const Clear = *const fn (u32) callconv(.c) void;
     const Enable = *const fn (u32) callconv(.c) void;
+    const Disable = *const fn (u32) callconv(.c) void;
     const BlendFunc = *const fn (u32, u32) callconv(.c) void;
+    const Scissor = *const fn (i32, i32, i32, i32) callconv(.c) void;
     const CreateShader = *const fn (u32) callconv(.c) u32;
     const ShaderSource = *const fn (u32, i32, [*]const [*]const u8, ?*const i32) callconv(.c) void;
     const CompileShader = *const fn (u32) callconv(.c) void;
@@ -49,7 +52,9 @@ const Gl = struct {
     clear_color: ClearColor,
     clear: Clear,
     enable: Enable,
+    disable: Disable,
     blend_func: BlendFunc,
+    scissor: Scissor,
     create_shader: CreateShader,
     shader_source: ShaderSource,
     compile_shader: CompileShader,
@@ -89,7 +94,9 @@ const Gl = struct {
             .clear_color = try loadProc(ClearColor, "glClearColor"),
             .clear = try loadProc(Clear, "glClear"),
             .enable = try loadProc(Enable, "glEnable"),
+            .disable = try loadProc(Disable, "glDisable"),
             .blend_func = try loadProc(BlendFunc, "glBlendFunc"),
+            .scissor = try loadProc(Scissor, "glScissor"),
             .create_shader = try loadProc(CreateShader, "glCreateShader"),
             .shader_source = try loadProc(ShaderSource, "glShaderSource"),
             .compile_shader = try loadProc(CompileShader, "glCompileShader"),
@@ -194,7 +201,7 @@ pub const Presenter = struct {
         self.gl.clear_color(0, 0, 0, 1);
         self.gl.clear(gl_color_buffer_bit);
         self.gl.enable(gl_blend);
-        self.gl.blend_func(gl_src_alpha, gl_one_minus_src_alpha);
+        self.setBlend(.alpha);
         try self.renderCanvas(canvas);
         self.primitive_batch.clear();
         try primitive_commands.append(&self.primitive_batch, self.width, self.height, commands);
@@ -284,8 +291,12 @@ pub const Presenter = struct {
         self.gl.use_program(self.primitive_program);
         self.gl.bind_vertex_array(self.primitive_vao);
         for (self.primitive_batch.draws.items) |draw| {
+            self.setBlend(draw.blend);
+            self.applyClip(draw.clip);
             self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), try glI32(draw.vertex_count));
         }
+        self.gl.disable(gl_scissor_test);
+        self.setBlend(.alpha);
     }
 
     fn renderSprites(self: *Presenter, sprites: *up.SpriteBatch) !void {
@@ -313,6 +324,30 @@ pub const Presenter = struct {
 
     fn uploadSpriteVertices(self: *Presenter, vertices: []const up.SpriteBatchVertex) !void {
         try self.uploadBuffer(self.sprite_vbo, std.mem.sliceAsBytes(vertices));
+    }
+
+    fn setBlend(self: *Presenter, blend: up.BlendMode) void {
+        self.gl.blend_func(gl_src_alpha, switch (blend) {
+            .alpha => gl_one_minus_src_alpha,
+            .additive => gl_one,
+        });
+    }
+
+    fn applyClip(self: *Presenter, clip: ?up.ClipRect) void {
+        const value = clip orelse {
+            self.gl.disable(gl_scissor_test);
+            return;
+        };
+        const max_x: i64 = @intCast(self.width);
+        const max_y: i64 = @intCast(self.height);
+        const right = @as(i64, value.x) + @max(@as(i64, 0), @as(i64, value.w));
+        const bottom = @as(i64, value.y) + @max(@as(i64, 0), @as(i64, value.h));
+        const x0 = @max(@as(i64, 0), @min(max_x, @as(i64, value.x)));
+        const y0 = @max(@as(i64, 0), @min(max_y, @as(i64, value.y)));
+        const x1 = @max(x0, @min(max_x, right));
+        const y1 = @max(y0, @min(max_y, bottom));
+        self.gl.enable(gl_scissor_test);
+        self.gl.scissor(@intCast(x0), @intCast(max_y - y1), @intCast(x1 - x0), @intCast(y1 - y0));
     }
 
     fn uploadBuffer(self: *Presenter, buffer: u32, bytes: []const u8) !void {
@@ -419,7 +454,9 @@ const gl_major_version: u32 = 0x821B;
 const gl_minor_version: u32 = 0x821C;
 const gl_nearest: u32 = 0x2600;
 const gl_one_minus_src_alpha: u32 = 0x0303;
+const gl_one: u32 = 1;
 const gl_rgba: u32 = 0x1908;
+const gl_scissor_test: u32 = 0x0C11;
 const gl_src_alpha: u32 = 0x0302;
 const gl_texture0: u32 = 0x84C0;
 const gl_texture_2d: u32 = 0x0DE1;
@@ -513,4 +550,37 @@ test "OpenGL 3.3 presenter renders canonical primitives, text, and sprites" {
     try std.testing.expectEqual(up.Color.white, captured.get(10, 10).?);
     var backend = Backend{ .presenter = &presenter, .canvas = canvas, .sprites = &sprites };
     try backend.rendererBackend().submit(commands.commands.items);
+
+    sprites.clear();
+    var clipped_scenario = try up.testSupport.RendererConformance.init(std.testing.allocator, .clipped_rect, 64, 32);
+    defer clipped_scenario.deinit();
+    var clipped_canvas = try clipped_scenario.initialCanvas(std.testing.allocator);
+    defer clipped_canvas.deinit();
+    try presenter.render(clipped_canvas, &sprites, clipped_scenario.commandSlice());
+    var clipped_capture = try presenter.capture(std.testing.allocator);
+    defer clipped_capture.deinit();
+    try clipped_scenario.expectCapture(&clipped_capture);
+
+    const background = up.Color.rgba(19, 37, 61, 255);
+    const alpha = up.Color.rgba(255, 0, 0, 128).over(background);
+    const additive = up.Color.rgba(0, 0, 255, 128).add(alpha);
+    var state_commands = up.RenderCommandBuffer.init(std.testing.allocator);
+    defer state_commands.deinit();
+    try state_commands.append(.{ .push_clip = .{ .x = 8, .y = 8, .w = 16, .h = 16 } });
+    try state_commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 64, .h = 32, .color = up.Color.rgba(255, 0, 0, 128) } });
+    try state_commands.append(.{ .push_blend = .additive });
+    try state_commands.append(.{ .rect = .{ .x = 12, .y = 12, .w = 4, .h = 4, .color = up.Color.rgba(0, 0, 255, 128) } });
+    try state_commands.append(.pop_blend);
+    try state_commands.append(.pop_clip);
+    var camera = up.Camera2D{ .viewport = .{ .x = 32, .y = 8, .w = 16, .h = 16 } };
+    camera_commands.Canvas.init(&state_commands, &camera, .{ .x = 64, .y = 32 }).fillRect(.init(-8, -8, 16, 16), up.Color.white);
+    canvas.clear(background);
+    try presenter.render(canvas, &sprites, state_commands.commands.items);
+    var state_capture = try presenter.capture(std.testing.allocator);
+    defer state_capture.deinit();
+    try std.testing.expectEqual(background, state_capture.get(7, 8).?);
+    try std.testing.expectEqual(alpha, state_capture.get(10, 10).?);
+    try std.testing.expectEqual(additive, state_capture.get(14, 14).?);
+    try std.testing.expectEqual(up.Color.white, state_capture.get(40, 16).?);
+    try std.testing.expectEqual(background, state_capture.get(30, 16).?);
 }
