@@ -18,6 +18,15 @@ METRICS = (
     "renderer_allocation_events",
     "renderer_allocated_bytes",
 )
+GAME_NAMES = ("bounce", "topdown", "platformer")
+GAME_METRICS = (
+    "startup_ns",
+    "startup_allocation_events",
+    "startup_allocated_bytes",
+    "frame_ns",
+    "frame_allocation_events",
+    "frame_allocated_bytes",
+)
 
 
 def load(path: str) -> dict:
@@ -33,32 +42,49 @@ def fail(message: str) -> None:
     raise SystemExit(1)
 
 
+def validate_metrics(limits: object, metrics: object, names: tuple[str, ...], scope: str) -> None:
+    if not isinstance(limits, dict) or not isinstance(metrics, dict):
+        raise ValueError(f"{scope}: missing limits or metrics object")
+    for name in names:
+        limit = limits.get(name)
+        actual = metrics.get(name)
+        if not isinstance(limit, int) or limit < 0:
+            raise ValueError(f"{scope}: invalid limit for {name}")
+        if not isinstance(actual, int) or actual < 0:
+            raise ValueError(f"{scope}: invalid metric for {name}")
+        if actual > limit:
+            raise ValueError(f"{scope}: {name}={actual} exceeds {limit}")
+
+
+def validate(baseline: dict, observed: dict) -> str:
+    if baseline.get("version") != 1 or observed.get("version") != 1:
+        raise ValueError("unsupported baseline or metrics version")
+    if baseline.get("target") != observed.get("target"):
+        raise ValueError(f"target mismatch: baseline={baseline.get('target')} observed={observed.get('target')}")
+    if "limits" in baseline or "metrics" in observed:
+        validate_metrics(baseline.get("limits"), observed.get("metrics"), METRICS, "engine")
+        return "engine"
+    game_limits = baseline.get("game_limits")
+    game_metrics = observed.get("game_metrics")
+    if not isinstance(game_limits, dict) or not isinstance(game_metrics, dict):
+        raise ValueError("missing proof-game limits or metrics object")
+    if set(game_limits) != set(GAME_NAMES) or set(game_metrics) != set(GAME_NAMES):
+        raise ValueError("proof-game metrics must include bounce, topdown, and platformer")
+    for game in GAME_NAMES:
+        validate_metrics(game_limits[game], game_metrics[game], GAME_METRICS, game)
+    return "proof games"
+
+
 def main() -> None:
     if len(sys.argv) != 3:
         fail("usage: check_performance_budget.py BASELINE METRICS")
     try:
         baseline = load(sys.argv[1])
         observed = load(sys.argv[2])
+        scope = validate(baseline, observed)
     except (OSError, ValueError, json.JSONDecodeError) as error:
         fail(str(error))
-    if baseline.get("version") != 1 or observed.get("version") != 1:
-        fail("unsupported baseline or metrics version")
-    if baseline.get("target") != observed.get("target"):
-        fail(f"target mismatch: baseline={baseline.get('target')} observed={observed.get('target')}")
-    limits = baseline.get("limits")
-    metrics = observed.get("metrics")
-    if not isinstance(limits, dict) or not isinstance(metrics, dict):
-        fail("missing limits or metrics object")
-    for name in METRICS:
-        limit = limits.get(name)
-        actual = metrics.get(name)
-        if not isinstance(limit, int) or limit < 0:
-            fail(f"invalid limit for {name}")
-        if not isinstance(actual, int) or actual < 0:
-            fail(f"invalid metric for {name}")
-        if actual > limit:
-            fail(f"{name}={actual} exceeds {limit}")
-    print(f"performance budgets pass for {observed['target']}")
+    print(f"performance budgets pass for {scope} on {observed['target']}")
 
 
 if __name__ == "__main__":

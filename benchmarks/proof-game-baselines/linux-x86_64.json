@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "target": "linux-x86_64",
+  "game_limits": {
+    "bounce": {
+      "startup_ns": 20000000,
+      "startup_allocation_events": 8,
+      "startup_allocated_bytes": 65536,
+      "frame_ns": 10000000,
+      "frame_allocation_events": 240,
+      "frame_allocated_bytes": 28800
+    },
+    "topdown": {
+      "startup_ns": 20000000,
+      "startup_allocation_events": 384,
+      "startup_allocated_bytes": 262144,
+      "frame_ns": 10000000,
+      "frame_allocation_events": 960,
+      "frame_allocated_bytes": 164160
+    },
+    "platformer": {
+      "startup_ns": 20000000,
+      "startup_allocation_events": 384,
+      "startup_allocated_bytes": 262144,
+      "frame_ns": 10000000,
+      "frame_allocation_events": 240,
+      "frame_allocated_bytes": 28800
+    }
+  }
+}
