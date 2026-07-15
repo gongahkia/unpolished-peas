@@ -925,6 +925,56 @@ test "tile-map draw rejects stale handles" {
     try std.testing.expectError(error.StaleHandle, store.drawTileMap(.{ .index = 0, .generation = 1 }, &camera, &canvas, 0));
 }
 
+test "native tile maps share camera canvas clip and blend semantics" {
+    const Canvas = @import("canvas.zig").Canvas;
+    const CameraCanvas = @import("camera_canvas.zig").CameraCanvas;
+    const Camera2D = @import("camera.zig").Camera2D;
+    const Color = @import("color.zig").Color;
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
+    defer std.testing.allocator.free(map);
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(image);
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const handle = try store.loadTileMap("topdown.upmap", .{});
+    const camera = Camera2D{ .position = .{ .x = 6, .y = 6 }, .viewport = .{ .x = 2, .y = 2, .w = 4, .h = 4 } };
+    const background = Color.rgb(1, 2, 3);
+    var actual = try Canvas.init(std.testing.allocator, 8, 8);
+    defer actual.deinit();
+    actual.clear(background);
+    _ = actual.setBlend(.additive);
+    try store.drawTileMap(handle, &camera, &actual, 0);
+
+    var expected = try Canvas.init(std.testing.allocator, 8, 8);
+    defer expected.deinit();
+    expected.clear(background);
+    _ = expected.setBlend(.additive);
+    const asset = &store.tile_maps.items[handle.index];
+    const Resolver = struct {
+        images: []const TileMapImage,
+        fn resolve(context: *const anyopaque, tileset: u16, tile_id: u32) ?Image {
+            const self_resolver: *const @This() = @ptrCast(@alignCast(context));
+            for (self_resolver.images) |entry| if (entry.tileset == tileset and (entry.tile_id == null or entry.tile_id.? == tile_id)) return entry.image;
+            return null;
+        }
+    };
+    const resolver = Resolver{ .images = asset.images };
+    asset.map.drawResolvedImagesAt(CameraCanvas.init(&expected, &camera), .{ .context = &resolver, .resolve = Resolver.resolve }, 0);
+    try std.testing.expectEqualSlices(Color, expected.pixels, actual.pixels);
+    try std.testing.expectEqual(background, actual.get(1, 4).?);
+    var changed = false;
+    for (2..6) |y| {
+        for (2..6) |x| {
+            if (!std.meta.eql(actual.get(@intCast(x), @intCast(y)).?, background)) changed = true;
+        }
+    }
+    try std.testing.expect(changed);
+}
+
 test "tile-map reload failures retain source diagnostics and last valid content" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
