@@ -150,6 +150,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
+    const extension_matrix = b.addExecutable(.{ .name = "unpolished-peas-extension-matrix", .root_module = b.createModule(.{ .root_source_file = b.path("src/extension_matrix.zig"), .target = b.graph.host, .optimize = optimize }) });
 
     const peas_cli = b.addExecutable(.{
         .name = "peas",
@@ -277,6 +278,9 @@ pub fn build(b: *std.Build) void {
     contentc_step.dependOn(&run_contentc.step);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
+    const run_extension_matrix = b.addRunArtifact(extension_matrix);
+    const extension_matrix_step = b.step("extension-matrix", "List resolved extension package test cases");
+    extension_matrix_step.dependOn(&run_extension_matrix.step);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
     for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, contentc, benchmark, peas_cli }) |example| {
@@ -304,6 +308,14 @@ pub fn build(b: *std.Build) void {
     const run_extension_resolver_tests = b.addRunArtifact(extension_resolver_tests);
     const extension_resolver_test_step = b.step("test-extensions", "Resolve versioned extension package locks");
     extension_resolver_test_step.dependOn(&run_extension_resolver_tests.step);
+    const extension_matrix_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/extension_matrix.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_extension_matrix_tests = b.addRunArtifact(extension_matrix_tests);
+    const extension_matrix_test_step = b.step("test-extension-matrix", "Validate extension package test-matrix fixtures");
+    extension_matrix_test_step.dependOn(&run_extension_matrix_tests.step);
     const core_downstream_fixture = b.addSystemCommand(&.{"script/test_core_downstream_fixture.sh"});
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
