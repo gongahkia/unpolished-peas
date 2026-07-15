@@ -4,6 +4,7 @@
     .fingerprint = 0x69f09f35a079369c,
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
+        .unpolished_peas = .{ .path = "../.." },
         .unpolished_peas_effects = .{ .path = "../../packages/effects" },
     },
     .paths = .{
