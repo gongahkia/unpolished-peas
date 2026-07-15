@@ -5,6 +5,8 @@ const profiler = @import("profiler.zig");
 const render = @import("render.zig");
 const replay = @import("input_replay.zig");
 
+pub const schema_version: u32 = 1;
+
 pub const Options = struct {
     path: []const u8,
     max_commands: usize = 256,
@@ -37,6 +39,7 @@ pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !vo
         try value.writeTrace(path);
     }
     if (input.replay) |value| try writeReplay(allocator, options, value);
+    try writeMetadata(allocator, options, input);
 }
 
 fn writeCommands(allocator: std.mem.Allocator, options: Options, commands: []const render.Command) !void {
@@ -155,6 +158,33 @@ fn writeReplay(allocator: std.mem.Allocator, options: Options, value: *const rep
     try out.flush();
 }
 
+fn writeMetadata(allocator: std.mem.Allocator, options: Options, input: Input) !void {
+    const path = try artifactPath(allocator, options.path, "metadata.json");
+    defer allocator.free(path);
+    var file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buffer: [1024]u8 = undefined;
+    var writer = file.writer(&buffer);
+    const out = &writer.interface;
+    const command_count = @min(input.commands.len, options.max_commands);
+    const log_count = @min(input.log.len, options.max_log_bytes);
+    const replay_frames = if (input.replay) |value| value.frames.len else 0;
+    const replay_count = @min(replay_frames, options.max_replay_frames);
+    try out.print("{{\"version\":{d},\"screenshot\":{{\"present\":{s},\"format\":\"png\"}},\"commands\":{{\"version\":1,\"count\":{d},\"truncated\":{s}}},\"trace\":{{\"present\":{s},\"format\":\"chrome-trace\"}},\"failure\":{{\"format\":\"text\",\"bytes\":{d},\"truncated\":{s}}},\"replay\":{{\"present\":{s},\"frame_count\":{d},\"truncated\":{s}}}}}", .{
+        schema_version,
+        if (input.canvas != null) "true" else "false",
+        input.commands.len,
+        if (command_count != input.commands.len) "true" else "false",
+        if (input.profiler != null) "true" else "false",
+        log_count,
+        if (log_count != input.log.len) "true" else "false",
+        if (input.replay != null) "true" else "false",
+        replay_frames,
+        if (replay_count != replay_frames) "true" else "false",
+    });
+    try out.flush();
+}
+
 fn artifactPath(allocator: std.mem.Allocator, root: []const u8, name: []const u8) ![]u8 {
     return std.fs.path.join(allocator, &.{ root, name });
 }
@@ -186,15 +216,40 @@ test "diagnostics capture deterministic bounded artifacts" {
     defer dir.close();
     try dir.access("screenshot.png", .{});
     try dir.access("trace.json", .{});
+    const screenshot_bytes = try dir.readFileAlloc(std.testing.allocator, "screenshot.png", 4096);
+    defer std.testing.allocator.free(screenshot_bytes);
+    var screenshot = try @import("image.zig").Image.decode(std.testing.allocator, screenshot_bytes, .{});
+    defer screenshot.deinit();
+    try std.testing.expectEqual(Color.rgb(1, 2, 3), screenshot.pixels[0]);
     const command_bytes = try dir.readFileAlloc(std.testing.allocator, "commands.json", 4096);
     defer std.testing.allocator.free(command_bytes);
     var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, command_bytes, .{});
     defer parsed.deinit();
+    try std.testing.expectEqual(@as(i64, 1), parsed.value.object.get("version").?.integer);
+    try std.testing.expectEqual(@as(i64, 3), parsed.value.object.get("count").?.integer);
     try std.testing.expect(parsed.value.object.get("truncated").?.bool);
+    const trace_bytes = try dir.readFileAlloc(std.testing.allocator, "trace.json", 4096);
+    defer std.testing.allocator.free(trace_bytes);
+    var trace = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, trace_bytes, .{});
+    defer trace.deinit();
+    try std.testing.expectEqual(@as(usize, 1), trace.value.object.get("traceEvents").?.array.items.len);
     const log = try dir.readFileAlloc(std.testing.allocator, "failure.log", 64);
     defer std.testing.allocator.free(log);
     try std.testing.expectEqualStrings("-log", log);
     const replay_bytes = try dir.readFileAlloc(std.testing.allocator, "replay.json", 4096);
     defer std.testing.allocator.free(replay_bytes);
     try std.testing.expect(std.mem.indexOf(u8, replay_bytes, "\"truncated\":true") != null);
+    const metadata_bytes = try dir.readFileAlloc(std.testing.allocator, "metadata.json", 4096);
+    defer std.testing.allocator.free(metadata_bytes);
+    var metadata = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, metadata_bytes, .{});
+    defer metadata.deinit();
+    const root_object = metadata.value.object;
+    try std.testing.expectEqual(@as(i64, schema_version), root_object.get("version").?.integer);
+    try std.testing.expect(root_object.get("screenshot").?.object.get("present").?.bool);
+    try std.testing.expectEqualStrings("png", root_object.get("screenshot").?.object.get("format").?.string);
+    try std.testing.expect(root_object.get("commands").?.object.get("truncated").?.bool);
+    try std.testing.expect(root_object.get("trace").?.object.get("present").?.bool);
+    try std.testing.expectEqual(@as(i64, 4), root_object.get("failure").?.object.get("bytes").?.integer);
+    try std.testing.expect(root_object.get("failure").?.object.get("truncated").?.bool);
+    try std.testing.expect(root_object.get("replay").?.object.get("truncated").?.bool);
 }
