@@ -107,6 +107,7 @@ pub fn build(b: *std.Build) void {
     package_topdown_sdl.dependOn(&install_assets.step);
     const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
     const topdown_multiplayer = addExample(b, "unpolished-peas-topdown-multiplayer", "examples/topdown_multiplayer.zig", target, optimize, peas, null);
+    const topdown_host = addExample(b, "unpolished-peas-topdown-host", "examples/topdown_host.zig", target, optimize, peas, null);
     const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics } } }) });
     const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
     package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
@@ -202,7 +203,19 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-breakout", "Run the deterministic Breakout demo", breakout);
     addRunStep(b, "run-breakout-sdl", "Run the unpolished-peas SDL3 Breakout demo", breakout_sdl);
     addRunStep(b, "run-topdown-sdl", "Run the unpolished-peas SDL3 top-down demo", topdown_sdl);
+    const run_topdown_listen_sdl = b.addRunArtifact(topdown_sdl);
+    run_topdown_listen_sdl.addArg("--listen-host");
+    const topdown_listen_sdl_step = b.step("run-topdown-listen-sdl", "Run the in-game top-down listen host");
+    topdown_listen_sdl_step.dependOn(&run_topdown_listen_sdl.step);
     addRunStep(b, "run-topdown-multiplayer", "Run the seeded authoritative top-down multiplayer smoke", topdown_multiplayer);
+    const run_topdown_dedicated = b.addRunArtifact(topdown_host);
+    run_topdown_dedicated.addArgs(&.{ "dedicated", "--port", "0", "--ticks", "2" });
+    const topdown_dedicated_step = b.step("run-topdown-dedicated", "Run the headless top-down dedicated host sample");
+    topdown_dedicated_step.dependOn(&run_topdown_dedicated.step);
+    const run_topdown_listen = b.addRunArtifact(topdown_host);
+    run_topdown_listen.addArgs(&.{ "listen", "--ticks", "2" });
+    const topdown_listen_step = b.step("run-topdown-listen", "Run the in-process top-down listen host sample");
+    topdown_listen_step.dependOn(&run_topdown_listen.step);
     addRunStep(b, "test-topdown-scene", "Run the deterministic top-down scene", topdown_scene);
     addRunStep(b, "run-platformer-sdl", "Run the unpolished-peas SDL3 platformer", platformer_sdl);
     const breakout_smoke = b.addRunArtifact(breakout_sdl);
@@ -233,7 +246,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, mapc, contentc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, mapc, contentc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
@@ -296,6 +309,15 @@ pub fn build(b: *std.Build) void {
     const run_topdown_multiplayer_tests = b.addRunArtifact(topdown_multiplayer_tests);
     const topdown_multiplayer_test_step = b.step("test-topdown-multiplayer", "Run seeded authoritative top-down multiplayer tests");
     topdown_multiplayer_test_step.dependOn(&run_topdown_multiplayer_tests.step);
+    const topdown_host_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/topdown_host.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_topdown_host_tests = b.addRunArtifact(topdown_host_tests);
+    const topdown_host_test_step = b.step("test-topdown-hosts", "Run dedicated and listen top-down host samples");
+    topdown_host_test_step.dependOn(&run_topdown_host_tests.step);
     const platformer_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("examples/platformer_game.zig"),
         .target = target,

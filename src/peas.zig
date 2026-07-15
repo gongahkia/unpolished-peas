@@ -54,10 +54,27 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             return null;
         },
         .run => return try runProject(allocator, args),
+        .host => {
+            try hostRuntime(allocator, args);
+            return null;
+        },
         .@"test" => return try testProject(allocator, args),
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
+}
+
+fn hostRuntime(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    var arguments = std.ArrayList([]const u8).empty;
+    defer arguments.deinit(allocator);
+    while (args.next()) |argument| try arguments.append(allocator, argument);
+    const config = tools.parseHostRuntimeConfig(arguments.items) catch return hostUsage();
+    std.debug.print("peas host: validated {s} bind {s}:{d} max-peers {d} ticks {d}\npeas host: sample target `zig build run-topdown-{s}`\n", .{ @tagName(config.mode), config.bind_address, config.port, config.max_peers, config.ticks, @tagName(config.mode) });
+}
+
+fn hostUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]\n", .{});
+    return error.InvalidArguments;
 }
 
 fn importLdtkContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -397,6 +414,7 @@ fn printHelp() void {
 test "known commands parse" {
     try std.testing.expectEqual(tools.Command.new, tools.parseCommand("new").?);
     try std.testing.expectEqual(tools.Command.run, tools.parseCommand("run").?);
+    try std.testing.expectEqual(tools.Command.host, tools.parseCommand("host").?);
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
     try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
