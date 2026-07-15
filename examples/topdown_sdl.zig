@@ -105,8 +105,10 @@ pub fn main() !void {
     defer args.deinit();
     _ = args.next();
     if (args.next()) |argument| {
-        if (!std.mem.eql(u8, argument, "--listen-host") or args.next() != null) return error.InvalidArguments;
-        launch_listen_host = true;
+        if (std.mem.eql(u8, argument, "--listen-host")) {
+            if (launch_listen_host) return error.InvalidArguments;
+            launch_listen_host = true;
+        }
     }
     try sdl.play(.{ .title = "unpolished-peas Top Down", .width = game_mod.width, .height = game_mod.height, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(10, 18, 26) }, Game);
 }
