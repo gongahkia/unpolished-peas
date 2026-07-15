@@ -1,0 +1,13 @@
+.{
+    .format = "unpolished-peas-extension",
+    .version = 1,
+    .name = "physics",
+    .package_version = "1.0.0",
+    .core_range = "^1.0.0",
+    .modules = .{
+        .{ .name = "unpolished-peas-physics", .path = "src/physics.zig" },
+    },
+    .tests = .{
+        .{ .name = "physics-integration", .target = "test-box2d", .path = "src/physics.zig" },
+    },
+}

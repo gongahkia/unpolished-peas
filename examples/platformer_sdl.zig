@@ -1,6 +1,6 @@
 const up = @import("unpolished-peas").api;
 const sdl = @import("unpolished-peas-sdl3");
-const physics = @import("unpolished-peas-physics");
+const physics = @import("unpolished-peas-physics").physics(up);
 const platformer = @import("platformer_game.zig");
 
 const Game = struct {

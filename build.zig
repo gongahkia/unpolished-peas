@@ -19,10 +19,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const framework_path = if (target.result.os.tag == .macos) if (b.sysroot) |sysroot| b.pathJoin(&.{ sysroot, "System", "Library", "Frameworks" }) else null else null;
-    const box2d = if (with_box2d) b.lazyDependency("box2d", .{
-        .target = target,
-        .optimize = optimize,
-    }) else null;
     const install_assets = b.addInstallDirectory(.{
         .source_dir = b.path("examples/assets"),
         .install_dir = .prefix,
@@ -94,13 +90,8 @@ pub fn build(b: *std.Build) void {
     });
     if (with_sdl and (system_sdl or bundled_sdl != null)) addSdl3(sdl, bundled_sdl, framework_path);
 
-    const physics = b.addModule("unpolished-peas-physics", .{
-        .root_source_file = b.path("src/physics.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
-    });
-    if (box2d) |dependency| addBox2d(physics, dependency);
+    const physics_dependency = b.lazyDependency("physics", .{ .target = target, .optimize = optimize, .with_box2d = with_box2d }) orelse @panic("missing physics package");
+    const physics = physics_dependency.module("unpolished-peas-physics");
 
     const lib = b.addLibrary(.{
         .name = "unpolished-peas",
@@ -437,9 +428,17 @@ pub fn build(b: *std.Build) void {
     const effects_conformance_step = b.step("test-effects-conformance", "Run effects fallback, reload, and renderer conformance fixtures");
     effects_conformance_step.dependOn(&effects_conformance.step);
 
-    const box2d_tests = b.addTest(.{ .root_module = physics });
+    const box2d_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("fixtures/physics-package/src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-physics", .module = physics },
+        },
+    }) });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
-    const box2d_test_step = b.step("test-box2d", "Compile the pinned Box2D source dependency");
+    const box2d_test_step = b.step("test-box2d", "Test the optional physics package against its pinned Box2D dependency");
     box2d_test_step.dependOn(&run_box2d_tests.step);
 }
 
@@ -502,10 +501,4 @@ fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency, framewor
     } else {
         mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
     }
-}
-
-fn addBox2d(mod: *std.Build.Module, dependency: *std.Build.Dependency) void {
-    mod.link_libc = true;
-    mod.addIncludePath(dependency.path("include"));
-    mod.linkLibrary(dependency.artifact("box2d"));
 }
