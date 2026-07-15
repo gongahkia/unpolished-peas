@@ -27,7 +27,7 @@ try {
     }
     Invoke-Scenario 'integration-fixture' { zig test (Join-Path $project 'src/main.zig') }
     Invoke-Scenario 'inspector' { zig test src/inspector.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c }
-    Invoke-Scenario 'content-reload' { zig test src/content_reload.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c -cflags -std=c99 -DSTB_VORBIS_NO_STDIO -- vendor/stb/stb_vorbis.c }
+    Invoke-Scenario 'content-reload' { zig test --test-filter "content reload" src/content_reload.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c -cflags -std=c99 -DSTB_VORBIS_NO_STDIO -- vendor/stb/stb_vorbis.c }
     Invoke-Scenario 'profiler' { zig test src/profiler.zig }
     if ($Game -eq 'topdown') {
         Invoke-Scenario 'headless' { zig build test-topdown-scene }
