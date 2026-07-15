@@ -80,12 +80,12 @@ try {
     $corrupt = Join-Path $tmp 'corrupt-cache'
     Copy-Item -LiteralPath $package -Destination $corrupt -Recurse
     [IO.File]::WriteAllBytes((Join-Path $corrupt ('content/cache/scenes/' + $fixture + '.upscene.upc')), [byte[]](0))
-    $corrupt_output = & (Join-Path $corrupt 'bin/unpolished-peas-test-packaged-layout.exe') 2>&1
+    $corrupt_output = (& (Join-Path $corrupt 'bin/unpolished-peas-test-packaged-layout.exe') 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0 -or $corrupt_output -notmatch 'recovery: restore a checksum-verified package archive') { throw 'corrupt cache did not report recovery' }
     $missing = Join-Path $tmp 'missing-assets'
     Copy-Item -LiteralPath $package -Destination $missing -Recurse
     Remove-Item -LiteralPath (Join-Path $missing 'assets') -Recurse -Force
-    $missing_output = & (Join-Path $missing 'bin/unpolished-peas-test-packaged-layout.exe') 2>&1
+    $missing_output = (& (Join-Path $missing 'bin/unpolished-peas-test-packaged-layout.exe') 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0 -or $missing_output -notmatch 'recovery: restore a checksum-verified package archive') { throw 'missing assets did not report recovery' }
     $repeat = Join-Path $tmp 'repeat'
     Push-Location $repo
