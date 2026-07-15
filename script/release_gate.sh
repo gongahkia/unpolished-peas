@@ -52,6 +52,7 @@ run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
 run diagnostics zig build test-support
+run effects-conformance zig build test-effects-conformance
 run visual-scenes zig build test-scenes
 run visual-renderer runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
 run replay zig build test-replays

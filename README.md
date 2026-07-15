@@ -196,6 +196,7 @@ zig build new -- ../my-game
 An extension hook is a declared Zig script exporting `name` and `apply(dependency, root_module)`; a game build opts in by calling its package build's `applyHook` with the declared name. Hooks never run automatically.
 `script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.
 `script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
+`test-effects-conformance` verifies effects fallbacks, source reload validation, and command/headless renderer parity.
 `script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.

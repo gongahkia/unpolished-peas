@@ -31,7 +31,7 @@
     {"path": "fixtures/downstream/build.zig", "imports": []},
     {"path": "fixtures/downstream/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api.core", "symbols": ["Color", "Rect", "StepClock", "Vec2"]}]},
     {"path": "fixtures/effects-package/build.zig", "imports": []},
-    {"path": "fixtures/effects-package/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Camera2D", "Canvas", "Color", "RenderCommandBuffer"]}, {"module": "unpolished-peas-effects", "path": "", "symbols": ["PostProcessChain", "Resources", "ShaderProgram", "lighting"]}]},
+    {"path": "fixtures/effects-package/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AssetStore", "Camera2D", "Canvas", "Color", "HeadlessRenderer", "ReloadStatus", "RenderCommandBuffer"]}, {"module": "unpolished-peas-effects", "path": "", "symbols": ["PixelEffect", "PostProcessChain", "Resources", "ShaderProgram", "applyPixelEffect", "lighting"]}]},
     {"path": "fixtures/extension-hook-game/build.zig", "imports": []},
     {"path": "fixtures/extension-hook-game/src/hooked.zig", "imports": [{"module": "unpolished-peas-effects", "path": "", "symbols": ["ShaderKind", "ShaderProgram"]}]},
     {"path": "fixtures/extension-hook-game/src/plain.zig", "imports": []},
