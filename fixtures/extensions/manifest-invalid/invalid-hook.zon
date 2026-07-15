@@ -1,0 +1,10 @@
+.{
+    .format = "unpolished-peas-extension",
+    .version = 1,
+    .name = "effects",
+    .package_version = "1.0.0",
+    .core_range = "^1.0.0",
+    .modules = .{ .{ .name = "unpolished-peas-effects", .path = "src/effects.zig" } },
+    .tests = .{ .{ .name = "effects-unit", .target = "test-effects", .path = "src/effects.zig" } },
+    .hook = .{ .name = "effects-build", .script = "build_hook.sh" },
+}

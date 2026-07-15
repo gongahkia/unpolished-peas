@@ -3,7 +3,7 @@ set -euo pipefail
 
 repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 cd "$repo/packages/effects"
-zig fmt --check build.zig src
+zig fmt --check build.zig build_hook.zig src
 zig build test
 cd "$repo/fixtures/effects-package"
 zig fmt --check build.zig src
