@@ -9,12 +9,12 @@
             .hash = "box2d-3.1.1-crFBk74aAAD-TJGY5mHVDB0sV5JntTq0MnlaHYxb5yl5",
         },
         .sdl = .{
-            .url = "git+https://github.com/castholm/SDL.git?ref=v0.3.1%2B3.2.24#1d4b8dcc03bd216712b55318b4ad2402b5511490",
-            .hash = "sdl-0.3.1+3.2.24-7uIn9L9AfwFQf90JcTh3Slw__ZA8SEomk6fQI9F8ItY0",
+            .url = "git+https://github.com/castholm/SDL.git?ref=v0.4.1%2B3.4.2#701da66369221654c501e9661c648dd3aa2cfe52",
+            .hash = "sdl-0.4.1+3.4.2-SDL--hF-pAEsbMtCvJAr9CwYI94eOItCgmnDb0ZXeKPJ",
         },
         .sdl_linux_deps = .{
-            .url = "git+https://github.com/castholm/SDL_linux_deps.git#085212f286621835f2638cb0cfff078fe515341a",
-            .hash = "sdl_linux_deps-0.0.0-Vy5_h4AlfwBtG7MIPe7ZNUANhmYLek_SA140uYk9SrED",
+            .url = "git+https://github.com/castholm/SDL_linux_deps.git#fd349940b9dbaa0f221703b05df826d745d7ce2a",
+            .hash = "sdl_linux_deps-0.0.0-SDL_ltg8hgAOayMwFN6BhHW3Rs5UPtf6n8m-2qcQHuGS",
         },
     },
     .paths = .{
