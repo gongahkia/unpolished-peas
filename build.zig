@@ -46,6 +46,23 @@ pub fn build(b: *std.Build) void {
     });
     addStb(content);
 
+    const public_import_inventory = b.addExecutable(.{
+        .name = "public-import-inventory",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/public_import_inventory.zig"),
+            .target = b.graph.host,
+            .optimize = optimize,
+        }),
+    });
+    const run_public_import_inventory = b.addRunArtifact(public_import_inventory);
+    run_public_import_inventory.addArgs(&.{ b.pathFromRoot("."), b.pathFromRoot("fixtures/public_import_inventory.json") });
+    const public_import_inventory_step = b.step("public-import-inventory", "Print public imports used by examples, fixtures, and templates");
+    public_import_inventory_step.dependOn(&run_public_import_inventory.step);
+    const check_public_import_inventory = b.addRunArtifact(public_import_inventory);
+    check_public_import_inventory.addArgs(&.{ b.pathFromRoot("."), b.pathFromRoot("fixtures/public_import_inventory.json"), "--check" });
+    const check_public_import_inventory_step = b.step("check-public-import-inventory", "Verify the public import inventory");
+    check_public_import_inventory_step.dependOn(&check_public_import_inventory.step);
+
     const test_support = b.addModule("unpolished-peas-test", .{
         .root_source_file = b.path("src/test_support.zig"),
         .target = target,
@@ -276,6 +293,13 @@ pub fn build(b: *std.Build) void {
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&run_core_api_snapshot_tests.step);
     test_step.dependOn(&run_core_api_snapshot_tests.step);
+    const public_import_inventory_tests = b.addTest(.{ .root_module = public_import_inventory.root_module });
+    const run_public_import_inventory_tests = b.addRunArtifact(public_import_inventory_tests);
+    const public_import_inventory_test_step = b.step("test-public-import-inventory", "Test public import inventory generation");
+    public_import_inventory_test_step.dependOn(&run_public_import_inventory_tests.step);
+    public_import_inventory_test_step.dependOn(&check_public_import_inventory.step);
+    test_step.dependOn(&run_public_import_inventory_tests.step);
+    test_step.dependOn(&check_public_import_inventory.step);
     const tools_tests = b.addTest(.{ .root_module = tools });
     const run_tools_tests = b.addRunArtifact(tools_tests);
     const content_tests = b.addTest(.{ .root_module = content });
