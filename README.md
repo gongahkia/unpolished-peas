@@ -36,6 +36,7 @@ Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop 
 Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed, transactional service migrations; rerunning it verifies and preserves the recorded schema version.
 `GuestToken` uses 256-bit random values; `GuestCredentialStore` atomically keeps only active identity/session credentials under the caller-provided app-data directory and removes expired records.
 `ServiceProvider` is the engine-facing, value-only guest-session boundary: use `FakeServiceProvider` in engine tests or `LocalPostgresServiceProvider` for local PostgreSQL. Its only operational dependency is the local `psql` CLI; provider errors are limited to unavailable, invalid-request, and invalid-response. A provider borrows its adapter; deinit the adapter after its provider is no longer used.
+`LobbyService` is the SDL-free guest-backed lobby boundary: create, join, leave, disconnect, expiration, bounded membership, and `inspectorState()` use only validated guest sessions.
 `NetContract` explicitly selects authoritative or peer-to-peer mode, host role, and channel reliability; its identity, session, and connection values own no transport and validate bounded IDs, expiry, protocol, and connection limits.
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
