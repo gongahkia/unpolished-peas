@@ -6,6 +6,13 @@ const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
 
+const GlViewport = struct {
+    x: u32 = 0,
+    y: u32 = 0,
+    width: u32,
+    height: u32,
+};
+
 const Gl = struct {
     const GetIntegerv = *const fn (u32, *i32) callconv(.c) void;
     const Viewport = *const fn (i32, i32, i32, i32) callconv(.c) void;
@@ -154,6 +161,7 @@ pub const Presenter = struct {
     canvas_texture: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
     recovery_failure: ?anyerror = null,
+    viewport: GlViewport,
 
     pub fn init(window: *anyopaque, width: u32, height: u32) !Presenter {
         if (width == 0 or height == 0) return error.InvalidRenderCanvas;
@@ -168,6 +176,7 @@ pub const Presenter = struct {
             .width = width,
             .height = height,
             .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator),
+            .viewport = .{ .width = width, .height = height },
         };
         errdefer presenter.deinit();
         try presenter.createGpuResources();
@@ -221,12 +230,25 @@ pub const Presenter = struct {
     }
 
     pub fn render(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
+        try self.renderToViewport(canvas, sprites, commands, .{ .width = self.width, .height = self.height });
+    }
+
+    pub fn present(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
+        try self.render(canvas, sprites, commands);
+        if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
+    }
+
+    pub fn presentWithPresentation(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, presentation: up.Presentation) !void {
+        try self.renderToViewport(canvas, sprites, commands, try viewportForPresentation(presentation));
+        if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
+    }
+
+    fn renderToViewport(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, viewport: GlViewport) !void {
         if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (canvas.width != self.width or canvas.height != self.height) return error.InvalidRenderCanvas;
         if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context)) return error.OpenGlContextActivationFailed;
-        const width = try glI32(self.width);
-        const height = try glI32(self.height);
-        self.gl.viewport(0, 0, width, height);
+        self.viewport = viewport;
+        self.gl.viewport(try glI32(viewport.x), try glI32(viewport.y), try glI32(viewport.width), try glI32(viewport.height));
         self.gl.clear_color(0, 0, 0, 1);
         self.gl.clear(gl_color_buffer_bit);
         self.gl.enable(gl_blend);
@@ -238,23 +260,19 @@ pub const Presenter = struct {
         try self.renderSprites(sprites);
     }
 
-    pub fn present(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
-        try self.render(canvas, sprites, commands);
-        if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
-    }
-
     pub fn capture(self: *Presenter, allocator: std.mem.Allocator) !up.Canvas {
         if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context)) return error.OpenGlContextActivationFailed;
         var canvas = try up.Canvas.init(allocator, self.width, self.height);
         errdefer canvas.deinit();
-        const byte_len = try byteLen(self.width, self.height);
+        const byte_len = try byteLen(self.viewport.width, self.viewport.height);
         const pixels = try allocator.alloc(u8, byte_len);
         defer allocator.free(pixels);
-        self.gl.read_pixels(0, 0, try glI32(self.width), try glI32(self.height), gl_rgba, gl_unsigned_byte, @ptrCast(pixels.ptr));
+        self.gl.read_pixels(try glI32(self.viewport.x), try glI32(self.viewport.y), try glI32(self.viewport.width), try glI32(self.viewport.height), gl_rgba, gl_unsigned_byte, @ptrCast(pixels.ptr));
         for (0..self.height) |y| for (0..self.width) |x| {
-            const source_y = self.height - 1 - y;
-            const source = (@as(usize, source_y) * self.width + x) * 4;
+            const source_x = x * self.viewport.width / self.width;
+            const source_y = (self.height - 1 - y) * self.viewport.height / self.height;
+            const source = (@as(usize, source_y) * self.viewport.width + source_x) * 4;
             const destination = @as(usize, y) * self.width + x;
             canvas.pixels[destination] = up.Color.rgba(pixels[source], pixels[source + 1], pixels[source + 2], pixels[source + 3]);
         };
@@ -410,7 +428,14 @@ pub const Presenter = struct {
         const x1 = @max(x0, @min(max_x, right));
         const y1 = @max(y0, @min(max_y, bottom));
         self.gl.enable(gl_scissor_test);
-        self.gl.scissor(@intCast(x0), @intCast(max_y - y1), @intCast(x1 - x0), @intCast(y1 - y0));
+        const viewport_width: i64 = @intCast(self.viewport.width);
+        const viewport_height: i64 = @intCast(self.viewport.height);
+        self.gl.scissor(
+            @intCast(@as(i64, self.viewport.x) + @divTrunc(x0 * viewport_width, max_x)),
+            @intCast(@as(i64, self.viewport.y) + @divTrunc((max_y - y1) * viewport_height, max_y)),
+            @intCast(@divTrunc((x1 - x0) * viewport_width, max_x)),
+            @intCast(@divTrunc((y1 - y0) * viewport_height, max_y)),
+        );
     }
 
     fn uploadBuffer(self: *Presenter, buffer: u32, bytes: []const u8) !void {
@@ -498,6 +523,22 @@ fn byteLen(width: u32, height: u32) !usize {
     return std.math.mul(usize, pixels, 4) catch error.InvalidRenderCanvas;
 }
 
+fn viewportForPresentation(presentation: up.Presentation) !GlViewport {
+    const destination = presentation.destination();
+    const framebuffer_height = try presentationDimension(presentation.framebuffer_size.y);
+    const x = try presentationDimension(destination.x);
+    const top = try presentationDimension(destination.y);
+    const width = try presentationDimension(destination.w);
+    const height = try presentationDimension(destination.h);
+    if (width == 0 or height == 0 or top > framebuffer_height or height > framebuffer_height - top) return error.InvalidPresentationViewport;
+    return .{ .x = x, .y = framebuffer_height - top - height, .width = width, .height = height };
+}
+
+fn presentationDimension(value: f32) !u32 {
+    if (!std.math.isFinite(value) or value < 0 or value > @as(f32, @floatFromInt(std.math.maxInt(u32)))) return error.InvalidPresentationViewport;
+    return @intFromFloat(@round(value));
+}
+
 fn conformanceEnabled() bool {
     const value = std.posix.getenv("UP_OPENGL_CONFORMANCE") orelse return false;
     return std.mem.eql(u8, value, "1");
@@ -581,6 +622,11 @@ test "OpenGL 3.3 version requirement is bounded" {
     try std.testing.expect(versionAtLeast(3, 3, 3, 3));
     try std.testing.expect(versionAtLeast(4, 0, 3, 3));
     try std.testing.expect(!versionAtLeast(3, 2, 3, 3));
+}
+
+test "OpenGL presentation viewport respects integer letterboxing" {
+    const viewport = try viewportForPresentation(up.Presentation.init(.{ .x = 320, .y = 180 }, .{ .x = 1000, .y = 800 }, .integer_fit));
+    try std.testing.expectEqual(GlViewport{ .x = 20, .y = 130, .width = 960, .height = 540 }, viewport);
 }
 
 test "OpenGL recovery retains presenter failures" {

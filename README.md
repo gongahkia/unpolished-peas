@@ -30,6 +30,7 @@ zig build test-opengl
 `test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 `test-opengl` creates an OpenGL 3.3 core context and validates the fallback presenter with a readback fixture.
 `test-renderer-cross-backend` compares SDL GPU and OpenGL readbacks for the shared corpus; captures must have equal dimensions and every RGBA channel may differ by at most one.
+Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--renderer <auto|sdl-gpu|opengl>` overrides it at launch. `sdl.Context.rendererDiagnostics()` reports the requested/selected backend, rejected attempts, shader and OpenGL capabilities, post-processing support, and latest recovery action; the desktop log records the same selection line.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
