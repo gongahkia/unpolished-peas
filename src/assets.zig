@@ -6,8 +6,6 @@ const Font = @import("font_asset.zig").Font;
 const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
 const map_source = @import("map_source.zig");
-const ShaderProgram = @import("shader.zig").Program;
-const ShaderKind = @import("shader.zig").Kind;
 const TileMap = @import("tilemap.zig").TileMap;
 
 pub const AssetFile = struct { // owns path and bytes allocated by load; call deinit once.
@@ -61,7 +59,7 @@ pub const ImageHandle = struct { index: usize, generation: u32 }; // borrows an 
 pub const AudioHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use trySound for stale-handle errors.
 pub const AtlasHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryAtlas for stale-handle errors.
 pub const FontHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryFont for stale-handle errors.
-pub const ShaderAssetHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryShader for stale-handle errors.
+pub const ShaderAssetHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryShaderSource for stale-handle errors.
 pub const TileMapHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryTileMap for stale-handle errors.
 
 pub const TileMapAssetOptions = struct {
@@ -165,7 +163,6 @@ const FontAsset = struct {
 
 const ShaderAsset = struct {
     file: AssetFile,
-    program: ShaderProgram,
     generation: u32 = 1,
 
     fn deinit(self: *ShaderAsset) void {
@@ -459,14 +456,14 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return &self.fonts.items[handle.index].font;
     }
 
-    pub fn tryShader(self: AssetStore, handle: ShaderAssetHandle) !ShaderProgram {
+    pub fn tryShaderSource(self: AssetStore, handle: ShaderAssetHandle) ![]const u8 {
         if (handle.index >= self.shaders.items.len or self.shaders.items[handle.index].generation != handle.generation) return error.StaleHandle;
-        return self.shaders.items[handle.index].program;
+        return self.shaders.items[handle.index].file.text();
     }
 
-    pub fn latestShader(self: AssetStore, handle: ShaderAssetHandle) !ShaderProgram {
+    pub fn latestShaderSource(self: AssetStore, handle: ShaderAssetHandle) ![]const u8 {
         if (handle.index >= self.shaders.items.len) return error.InvalidHandle;
-        return self.shaders.items[handle.index].program;
+        return self.shaders.items[handle.index].file.text();
     }
 
     pub fn tryTileMap(self: AssetStore, handle: TileMapHandle) !TileMap {
@@ -565,7 +562,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
         for (self.shaders.items) |*asset| {
             if (self.reloadShader(asset) catch |err| {
-                try self.appendReloadFailure(asset.file.path, err, .decode);
+                try self.appendReloadFailure(asset.file.path, err, .io);
                 continue;
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
@@ -726,7 +723,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             var cleanup = file;
             cleanup.deinit();
         }
-        return .{ .file = file, .program = try ShaderProgram.compile(file.bytes) };
+        return .{ .file = file };
     }
 
     fn loadBitmapFontAsset(self: *AssetStore, path: []const u8) !FontAsset {
@@ -1047,32 +1044,24 @@ test "tile-map dependency reload failures retain the last valid map" {
     try std.testing.expect((try store.tryTileMap(handle)).layers.items.len > 0);
 }
 
-test "shader assets retain last good program across failed reloads" {
+test "shader assets retain source across reloads" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     try tmp.dir.writeFile(.{ .sub_path = "effect.upshader", .data = "effect=invert\nuniform amount:f32\n" });
     var store = AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
     const handle = try store.loadShader("effect.upshader");
-    try std.testing.expectEqual(ShaderKind.invert, (try store.tryShader(handle)).kind);
+    try std.testing.expectEqualStrings("effect=invert\nuniform amount:f32\n", try store.tryShaderSource(handle));
 
-    var stat = try tmp.dir.statFile("effect.upshader");
+    const stat = try tmp.dir.statFile("effect.upshader");
     std.Thread.sleep(1_100_000_000);
     try tmp.dir.writeFile(.{ .sub_path = "effect.upshader", .data = "effect=blur\n" });
     try std.testing.expect((try tmp.dir.statFile("effect.upshader")).mtime != stat.mtime);
-    const failed = try store.reloadChanged();
-    try std.testing.expectEqual(@as(usize, 1), failed.len);
-    try std.testing.expectEqual(ReloadStatus.failed, failed[0].status);
-    try std.testing.expectEqual(ShaderKind.invert, (try store.tryShader(handle)).kind);
-
-    stat = try tmp.dir.statFile("effect.upshader");
-    std.Thread.sleep(1_100_000_000);
-    try tmp.dir.writeFile(.{ .sub_path = "effect.upshader", .data = "effect=passthrough\n" });
-    try std.testing.expect((try tmp.dir.statFile("effect.upshader")).mtime != stat.mtime);
     const changed = try store.reloadChanged();
+    try std.testing.expectEqual(@as(usize, 1), changed.len);
     try std.testing.expectEqual(ReloadStatus.changed, changed[0].status);
-    try std.testing.expectError(error.StaleHandle, store.tryShader(handle));
-    try std.testing.expectEqual(ShaderKind.passthrough, (try store.latestShader(handle)).kind);
+    try std.testing.expectError(error.StaleHandle, store.tryShaderSource(handle));
+    try std.testing.expectEqualStrings("effect=blur\n", try store.latestShaderSource(handle));
 }
 
 test "image reload keeps last good asset after invalid edit" {

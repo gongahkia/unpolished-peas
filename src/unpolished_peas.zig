@@ -45,7 +45,6 @@ test {
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
-    _ = @import("shader.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("tilemap.zig");
     _ = @import("tile_collision.zig");

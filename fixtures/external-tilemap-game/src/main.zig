@@ -116,7 +116,7 @@ test "external tile-map game loads native assets and map then reloads its catalo
     try std.testing.expectEqualStrings("pulse", reloads[0].id);
     try std.testing.expectEqual(up.ReloadStatus.changed, reloads[0].event.status);
     switch (pulse) {
-        .shader => |handle| try std.testing.expectError(error.StaleHandle, store.tryShader(handle)),
+        .shader => |handle| try std.testing.expectError(error.StaleHandle, store.tryShaderSource(handle)),
         else => unreachable,
     }
     try replaceAfterMtime(tmp.dir, "world.upmap", map_source);

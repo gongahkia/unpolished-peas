@@ -1,7 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas").api;
-const effect_resources = @import("unpolished-peas-effects");
+const effect_api = @import("unpolished-peas-effects");
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -207,9 +207,9 @@ test "desktop renderer conformance GPU golden capture" {
     var commands = up.RenderCommandBuffer.init(std.testing.allocator);
     defer commands.deinit();
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
-    const effects = [_]up.PixelEffect{
-        try up.PixelEffect.parse("invert", .{ .amount = 1 }),
-        try up.PixelEffect.parse("invert", .{ .amount = 1 }),
+    const effects = [_]effect_api.PixelEffect{
+        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
+        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
     };
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
@@ -478,7 +478,7 @@ pub const Context = struct {
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
-    pixel_effects: *up.PostProcessChain,
+    pixel_effects: *effect_api.PostProcessChain,
     inspector: *up.Inspector,
     profiler: *up.FrameProfiler,
     runtime_metrics: *up.RuntimeMetrics,
@@ -564,8 +564,8 @@ pub const Context = struct {
         self.commands.append(.pop_blend) catch @panic("render command allocation failed");
     }
 
-    pub fn setPixelEffect(self: *Context, source: []const u8, params: up.PixelEffectParameters) !void {
-        self.pixel_effects.replace(try up.PixelEffect.parse(source, params));
+    pub fn setPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
+        self.pixel_effects.replace(try effect_api.PixelEffect.parse(source, params));
     }
 
     pub fn clearPixelEffect(self: *Context) void {
@@ -604,12 +604,12 @@ pub const Context = struct {
         return self.assets.loadShader(path);
     }
 
-    pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: up.PixelEffectParameters) !void {
-        self.pixel_effects.replace(try (try self.assets.latestShader(handle)).instantiate(params));
+    pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: effect_api.PixelEffectParameters) !void {
+        self.pixel_effects.replace(try (try effect_api.ShaderProgram.compile(try self.assets.latestShaderSource(handle))).instantiate(params));
     }
 
-    pub fn appendPixelEffect(self: *Context, source: []const u8, params: up.PixelEffectParameters) !void {
-        try self.pixel_effects.append(try up.PixelEffect.parse(source, params));
+    pub fn appendPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
+        try self.pixel_effects.append(try effect_api.PixelEffect.parse(source, params));
     }
 
     pub fn captureFrame(self: *Context) void {
@@ -999,7 +999,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer sprite_batch.deinit();
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
-    var pixel_effects = up.PostProcessChain{};
+    var pixel_effects = effect_api.PostProcessChain{};
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
     var runtime_metrics = up.RuntimeMetrics{};
@@ -2173,8 +2173,8 @@ const Presenter = struct {
     width: u32,
     height: u32,
     byte_len: u32,
-    resources: effect_resources.Resources,
-    render_target_handle: effect_resources.RenderTargetHandle,
+    resources: effect_api.Resources,
+    render_target_handle: effect_api.RenderTargetHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     effect_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
@@ -2250,7 +2250,7 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        var resources = effect_resources.Resources.init(std.heap.page_allocator);
+        var resources = effect_api.Resources.init(std.heap.page_allocator);
         const render_target_handle = try resources.createRenderTarget();
         var presenter = Presenter{ .render_target = render_target, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .render_target_handle = render_target_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
@@ -2292,7 +2292,7 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const up.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
         var encoder_timer = std.time.Timer.start() catch unreachable;
         var pass_count: u32 = 1;
         self.frame +%= 1;
@@ -2599,7 +2599,7 @@ const Presenter = struct {
         }
     }
 
-    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, source: *c.SDL_GPUTexture, target: *c.SDL_GPUTexture, effect: up.PixelEffect) !*c.SDL_GPUTexture {
+    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, source: *c.SDL_GPUTexture, target: *c.SDL_GPUTexture, effect: effect_api.PixelEffect) !*c.SDL_GPUTexture {
         if (effect.kind == .passthrough) return source;
         const pipeline = self.effect_pipeline orelse return error.PixelEffectUnavailable;
         const sampler = self.nearest_sampler orelse return error.PixelEffectUnavailable;

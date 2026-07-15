@@ -275,7 +275,7 @@ fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []cons
         .sound => |value| if (store.trySound(value)) |_| "ready" else |_| "stale",
         .atlas => |value| if (store.tryAtlas(value)) |_| "ready" else |_| "stale",
         .font => |value| if (store.tryFont(value)) |_| "ready" else |_| "stale",
-        .shader => |value| if (store.tryShader(value)) |_| "ready" else |_| "stale",
+        .shader => |value| if (store.tryShaderSource(value)) |_| "ready" else |_| "stale",
         .tile_map => |value| if (store.tryTileMap(value)) |_| "ready" else |_| "stale",
     };
 }
