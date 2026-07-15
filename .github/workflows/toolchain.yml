@@ -63,6 +63,7 @@ jobs:
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples services templates
       - run: zig build test
+      - run: zig build test-extensions
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas

@@ -190,6 +190,7 @@ zig build new -- ../my-game
 `fixtures/external-tilemap-game` is a standalone desktop game that loads native asset/map sources, drives movement through configured actions, follows with a camera, and exercises catalog-backed asset reloads.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
+`test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines.
