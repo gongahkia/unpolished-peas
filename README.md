@@ -134,9 +134,13 @@ zig build smoke-breakout-sdl
 zig build test-breakout
 zig build run-topdown-sdl
 zig build run-topdown-multiplayer
+zig build run-topdown-dedicated
+zig build run-topdown-listen
+zig build run-topdown-listen-sdl
 zig build smoke-topdown-sdl
 zig build test-topdown
 zig build test-topdown-multiplayer
+zig build test-topdown-hosts
 zig build test-topdown-scene
 zig build run-platformer-sdl
 zig build smoke-platformer-sdl
@@ -165,9 +169,11 @@ zig build upmapc -- level.upmap level.upmapb
 `test-breakout` runs fixed-step Breakout simulation tests.
 `run-topdown-sdl` opens the action-mapped Tiled top-down demo.
 `run-topdown-multiplayer` runs the seeded two-client authoritative top-down smoke.
+`run-topdown-dedicated` runs the core-only UDP dedicated-host sample; `run-topdown-listen` runs the matching loopback listen-host sample; `run-topdown-listen-sdl` opens the in-game listen-host path.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
 `test-topdown-multiplayer` verifies two faulted clients converge on the authoritative state.
+`test-topdown-hosts` verifies both host samples use the shared top-down rules.
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `fixtures/platformer-project` and `fixtures/topdown-project` are native reference projects; `peas compile` emits scene, map, and asset-catalog caches, while their unit/replay/visual/integration targets run through `peas test`.
@@ -189,6 +195,7 @@ zig build upmapc -- level.upmap level.upmapb
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
+`zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]` validates a bounded host launch configuration and identifies the matching sample target.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL output reopens after device removal or format changes without resetting mixer playback state.
