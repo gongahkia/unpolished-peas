@@ -13,24 +13,19 @@ const Game = struct {
         .clear_color = up.Color.rgb(14, 18, 24),
     };
 
-    blip: up.Sound,
+    blip: up.AudioHandle,
     music: up.Music,
     music_handle: ?up.PlaybackHandle = null,
     spawned: bool = false,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const blip_path = try ctx.assetPath("blip.wav");
-        defer ctx.allocator.free(blip_path);
         const music_path = try ctx.assetPath("tone.ogg");
         defer ctx.allocator.free(music_path);
         var game = Game{
-            .blip = try up.Sound.loadWav(ctx.allocator, blip_path),
+            .blip = try ctx.loadSound("blip.wav"),
             .music = try up.Music.openOgg(ctx.allocator, music_path),
         };
-        errdefer {
-            game.music.deinit();
-            game.blip.deinit();
-        }
+        errdefer game.music.deinit();
         game.music_handle = try ctx.audio.playMusic(&game.music, .{ .volume = 0.1, .loop = true });
         return game;
     }
@@ -38,14 +33,13 @@ const Game = struct {
     pub fn deinit(self: *Game, ctx: *sdl.Context) void {
         if (self.music_handle) |handle| _ = ctx.audio.stop(handle);
         self.music.deinit();
-        self.blip.deinit();
     }
 
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         if (!self.spawned) {
             var i: usize = 0;
             while (i < 96) : (i += 1) {
-                _ = try ctx.audio.playSound(&self.blip, .{ .volume = 0.02, .loop = true });
+                _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.blip), .{ .volume = 0.02, .loop = true });
             }
             try ctx.audio.setBusVolume(up.AudioMixer.sfxBus(), 0.5);
             self.spawned = true;
