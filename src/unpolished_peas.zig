@@ -56,21 +56,9 @@ pub const AssetCatalogDiagnostic = @import("asset_catalog.zig").Diagnostic;
 pub const AssetCatalogGraph = @import("asset_catalog.zig").Graph;
 pub const assetCatalog = @import("asset_catalog.zig");
 pub const contentCache = @import("content_cache.zig");
-pub const contentReload = @import("content_reload.zig");
 pub const MapSource = @import("map_source.zig").Source;
 pub const MapSourceDiagnostic = @import("map_source.zig").Diagnostic;
 pub const mapSource = @import("map_source.zig");
-pub const Scene = @import("scene.zig").Source;
-pub const SceneComponent = @import("scene.zig").Component;
-pub const SceneDiagnostic = @import("scene.zig").Diagnostic;
-pub const SceneEntity = @import("scene.zig").Entity;
-pub const SceneMetadata = @import("scene.zig").Metadata;
-pub const SceneReference = @import("scene.zig").Reference;
-pub const scene = @import("scene.zig");
-pub const SceneRuntime = @import("scene_runtime.zig").Runtime;
-pub const SceneRuntimeBinding = @import("scene_runtime.zig").Binding;
-pub const SceneRuntimeDiagnostic = @import("scene_runtime.zig").Diagnostic;
-pub const sceneRuntime = @import("scene_runtime.zig");
 pub const Polygon = @import("collision.zig").Polygon;
 pub const ParticleEmitter = @import("particles.zig").Emitter;
 pub const ParticleConfig = @import("particles.zig").Config;
@@ -342,4 +330,11 @@ test "namespaced API retains legacy facade compatibility" {
     _ = action;
     const channel = preview.networking.Channel;
     _ = channel;
+}
+
+test "root module excludes scene APIs" {
+    try @import("std").testing.expect(!@hasDecl(@This(), "Scene"));
+    try @import("std").testing.expect(!@hasDecl(@This(), "SceneRuntime"));
+    try @import("std").testing.expect(!@hasDecl(@This(), "scene"));
+    try @import("std").testing.expect(!@hasDecl(@This(), "sceneRuntime"));
 }

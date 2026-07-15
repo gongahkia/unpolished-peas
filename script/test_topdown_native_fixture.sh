@@ -10,7 +10,6 @@ cp -R "$repo/fixtures/topdown-project" "$project"
 cd "$repo"
 zig build peas -- check "$project"
 zig build peas -- compile "$project" "$tmp/content"
-test -f "$tmp/content/scenes/topdown.upscene.upc"
 test -f "$tmp/content/assets/topdown.upassets.upc"
 test -f "$tmp/content/maps/topdown.upmap.upc"
 for selection in unit replay visual integration; do

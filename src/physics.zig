@@ -232,45 +232,6 @@ pub const World = struct { // owns the Box2D world and allocator-backed slot tab
     }
 };
 
-pub const SceneBinding = struct {
-    world: *World,
-    config: BodyConfig = .{},
-    bodies: std.AutoHashMapUnmanaged(up.EcsEntity, BodyHandle) = .{},
-
-    pub fn deinit(self: *SceneBinding) void {
-        var values = self.bodies.valueIterator();
-        while (values.next()) |handle| self.world.destroyBody(handle.*) catch {};
-        self.bodies.deinit(self.world.allocator);
-        self.* = undefined;
-    }
-
-    pub fn binding(self: *SceneBinding, name: []const u8) up.SceneRuntimeBinding {
-        return .{
-            .name = name,
-            .context = self,
-            .on_load = onLoad,
-            .on_unload = onUnload,
-        };
-    }
-
-    pub fn body(self: *const SceneBinding, entity: up.EcsEntity) ?BodyHandle {
-        return self.bodies.get(entity);
-    }
-
-    fn onLoad(context: *anyopaque, _: *const up.SceneRuntime, entity: up.EcsEntity, _: up.SceneEntity) anyerror!void {
-        const self: *SceneBinding = @ptrCast(@alignCast(context));
-        if (self.bodies.contains(entity)) return error.DuplicatePhysicsBinding;
-        const handle = try self.world.createBody(self.config);
-        errdefer self.world.destroyBody(handle) catch {};
-        try self.bodies.put(self.world.allocator, entity, handle);
-    }
-
-    fn onUnload(context: *anyopaque, entity: up.EcsEntity, _: up.SceneEntity) void {
-        const self: *SceneBinding = @ptrCast(@alignCast(context));
-        if (self.bodies.fetchRemove(entity)) |entry| self.world.destroyBody(entry.value) catch {};
-    }
-};
-
 fn fixtureDefinition(density: f32, sensor: bool, contact_events: bool) c.b2ShapeDef {
     var definition = c.b2DefaultShapeDef();
     definition.density = density;
@@ -362,23 +323,4 @@ test "Box2D contacts and debug commands cover headless output" {
     defer renderer.deinit(std.testing.allocator);
     try renderer.submit(std.testing.allocator, commands.commands.items);
     try std.testing.expect(!std.meta.eql(canvas.get(8, 8).?, up.Color.transparent));
-}
-
-test "Box2D scene bindings create and release bodies with entities" {
-    var world = World.init(.{});
-    defer world.deinit();
-    var binding = SceneBinding{ .world = &world, .config = .{ .body_type = .dynamic, .position = .{ .x = 3, .y = 4 } } };
-    defer binding.deinit();
-    var entities = up.EcsWorld.init(std.testing.allocator);
-    defer entities.deinit();
-    const entity = try entities.create();
-    const source = up.SceneEntity{ .id = "physics", .name = "Physics", .components = &.{}, .references = &.{} };
-    var runtime: up.SceneRuntime = undefined;
-    const callback = binding.binding("physics");
-    try callback.on_load(callback.context, &runtime, entity, source);
-    const body = binding.body(entity).?;
-    try std.testing.expectEqual(up.Vec2.init(3, 4), try world.bodyPosition(body));
-    callback.on_unload.?(callback.context, entity, source);
-    try std.testing.expect(binding.body(entity) == null);
-    try std.testing.expectError(error.StaleBody, world.bodyPosition(body));
 }

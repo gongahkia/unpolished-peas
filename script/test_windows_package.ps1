@@ -47,7 +47,7 @@ try {
     Expand-Archive -LiteralPath $archive -DestinationPath $tmp
     $package = Join-Path $tmp $name
     $runtime = Join-Path $package ('bin/unpolished-peas-' + $Game + '.exe')
-    foreach ($path in @($runtime, (Join-Path $package 'bin/D3DCompiler_47.dll'), (Join-Path $package 'assets'), (Join-Path $package 'docs/api/core.md'), (Join-Path $package ('content/cache/scenes/' + $fixture + '.upscene.upc')), (Join-Path $package ('content/cache/assets/' + $fixture + '.upassets.upc')), (Join-Path $package ('content/cache/maps/' + $fixture + '.upmap.upc')), (Join-Path $package 'run.cmd'), (Join-Path $package 'launcher.json'))) {
+    foreach ($path in @($runtime, (Join-Path $package 'bin/D3DCompiler_47.dll'), (Join-Path $package 'assets'), (Join-Path $package 'docs/api/core.md'), (Join-Path $package ('content/cache/assets/' + $fixture + '.upassets.upc')), (Join-Path $package ('content/cache/maps/' + $fixture + '.upmap.upc')), (Join-Path $package 'run.cmd'), (Join-Path $package 'launcher.json'))) {
         if (-not (Test-Path -LiteralPath $path)) { throw "missing package path: $path" }
     }
     $launcher = Get-Content -LiteralPath (Join-Path $package 'launcher.json') -Raw | ConvertFrom-Json
@@ -79,7 +79,7 @@ try {
     }
     $corrupt = Join-Path $tmp 'corrupt-cache'
     Copy-Item -LiteralPath $package -Destination $corrupt -Recurse
-    [IO.File]::WriteAllBytes((Join-Path $corrupt ('content/cache/scenes/' + $fixture + '.upscene.upc')), [byte[]](0))
+    [IO.File]::WriteAllBytes((Join-Path $corrupt ('content/cache/assets/' + $fixture + '.upassets.upc')), [byte[]](0))
     $corrupt_output = (& (Join-Path $corrupt 'bin/unpolished-peas-test-packaged-layout.exe') 2>&1 | Out-String)
     if ($LASTEXITCODE -eq 0 -or $corrupt_output -notmatch 'recovery: restore a checksum-verified package archive') { throw 'corrupt cache did not report recovery' }
     $missing = Join-Path $tmp 'missing-assets'

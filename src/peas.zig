@@ -88,7 +88,7 @@ fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 }
 
 fn migrateUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- migrate <scene|catalog|map> <input> <output>\n", .{});
+    std.debug.print("usage: zig build peas -- migrate <catalog|map> <input> <output>\n", .{});
     return error.InvalidArguments;
 }
 

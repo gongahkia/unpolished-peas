@@ -2,7 +2,6 @@ const std = @import("std");
 
 pub const Scope = enum {
     callback,
-    scene,
     update,
     draw,
     asset,
@@ -155,7 +154,6 @@ test "profiler exports Chrome trace JSON" {
     var profiler = Profiler.init(true);
     profiler.beginFrame(3);
     profiler.scope(.callback).end();
-    profiler.scope(.scene).end();
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
     var root_buffer: [std.fs.max_path_bytes]u8 = undefined;
@@ -169,6 +167,6 @@ test "profiler exports Chrome trace JSON" {
     defer parsed.deinit();
     const trace_root = parsed.value.object;
     const events = trace_root.get("traceEvents") orelse return error.InvalidTrace;
-    try std.testing.expectEqual(@as(usize, 2), events.array.items.len);
-    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"name\":\"scene\"") != null);
+    try std.testing.expectEqual(@as(usize, 1), events.array.items.len);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"name\":\"callback\"") != null);
 }

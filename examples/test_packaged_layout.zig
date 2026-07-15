@@ -15,10 +15,8 @@ const Launcher = struct {
 };
 
 const ContentFixture = struct {
-    scene: []const u8,
     catalog: []const u8,
     map: []const u8,
-    scene_cache: []const u8,
     catalog_cache: []const u8,
     map_cache: []const u8,
 };
@@ -58,16 +56,11 @@ fn verify() !void {
     var music = try up.Music.openOgg(allocator, ogg_path);
     defer music.deinit();
 
-    const scene_source = try readPackageFile(allocator, package, fixture.scene);
-    defer allocator.free(scene_source);
     const catalog_source = try readPackageFile(allocator, package, fixture.catalog);
     defer allocator.free(catalog_source);
     const map_source = try readPackageFile(allocator, package, fixture.map);
     defer allocator.free(map_source);
 
-    var scene_diagnostic: up.SceneDiagnostic = .{};
-    var scene = try up.scene.parse(allocator, scene_source, &scene_diagnostic);
-    defer scene.deinit(allocator);
     var catalog_diagnostic: up.AssetCatalogDiagnostic = .{};
     var catalog = try up.assetCatalog.parse(allocator, catalog_source, &catalog_diagnostic);
     defer catalog.deinit(allocator);
@@ -75,7 +68,6 @@ fn verify() !void {
     var map = try up.mapSource.parse(allocator, map_source, &map_diagnostic);
     defer map.deinit(allocator);
 
-    try validateCache(allocator, package, fixture.scene_cache, .scene);
     try validateCache(allocator, package, fixture.catalog_cache, .catalog);
     try validateCache(allocator, package, fixture.map_cache, .map);
     try probeAppData(allocator, package, game);
@@ -92,18 +84,14 @@ fn packageGame(allocator: std.mem.Allocator, package: []const u8) !PackageGame {
 fn contentFixture(game: PackageGame) ContentFixture {
     return switch (game) {
         .bounce, .topdown => .{
-            .scene = "content/scenes/topdown.upscene",
             .catalog = "content/assets/topdown.upassets",
             .map = "content/maps/topdown.upmap",
-            .scene_cache = "content/cache/scenes/topdown.upscene.upc",
             .catalog_cache = "content/cache/assets/topdown.upassets.upc",
             .map_cache = "content/cache/maps/topdown.upmap.upc",
         },
         .platformer => .{
-            .scene = "content/scenes/platformer.upscene",
             .catalog = "content/assets/platformer.upassets",
             .map = "content/maps/platformer.upmap",
-            .scene_cache = "content/cache/scenes/platformer.upscene.upc",
             .catalog_cache = "content/cache/assets/platformer.upassets.upc",
             .map_cache = "content/cache/maps/platformer.upmap.upc",
         },

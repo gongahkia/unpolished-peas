@@ -1,9 +1,7 @@
 const std = @import("std");
 const catalog = @import("asset_catalog.zig");
 const map_source = @import("map_source.zig");
-const scene = @import("scene.zig");
-
-pub const Kind = enum { scene, catalog, map };
+pub const Kind = enum { catalog, map };
 
 pub const Result = struct {
     allocator: std.mem.Allocator,
@@ -19,7 +17,7 @@ pub const Result = struct {
 pub const Diagnostic = struct {
     line: usize = 1,
     column: usize = 1,
-    message: []const u8 = "unsupported content version; run peas migrate <scene|catalog|map> <input> <output>",
+    message: []const u8 = "unsupported content version; run peas migrate <catalog|map> <input> <output>",
 };
 
 pub fn migrate(allocator: std.mem.Allocator, kind: Kind, source: []const u8, diagnostic: *Diagnostic) !Result {
@@ -40,14 +38,6 @@ pub fn migrate(allocator: std.mem.Allocator, kind: Kind, source: []const u8, dia
 
 fn validate(kind: Kind, allocator: std.mem.Allocator, source: []const u8, diagnostic: *Diagnostic) !void {
     switch (kind) {
-        .scene => {
-            var inner = scene.Diagnostic{};
-            var parsed = scene.parse(allocator, source, &inner) catch |err| {
-                diagnostic.* = .{ .line = inner.line, .column = inner.column, .message = inner.message };
-                return err;
-            };
-            parsed.deinit(allocator);
-        },
         .catalog => {
             var inner = catalog.Diagnostic{};
             var parsed = catalog.parse(allocator, source, &inner) catch |err| {
@@ -106,17 +96,17 @@ fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, co
     return .{ .line = line, .column = column };
 }
 
-test "content migration upgrades v0 idempotently without writing files" {
+test "content migration upgrades v0 maps idempotently without writing files" {
     const v0 =
-        \\.{ .format = "unpolished-peas-scene", .version = 0, .metadata = .{ .name = "main", .tags = .{} }, .entities = .{} }
+        \\.{ .format = "unpolished-peas-map", .version = 0, .metadata = .{ .name = "main", .projection = .orthogonal, .tile_width = 8, .tile_height = 8, .chunk_size = 8 }, .tilesets = .{}, .layers = .{} }
         \\
     ;
     var diagnostic = Diagnostic{};
-    var first = try migrate(std.testing.allocator, .scene, v0, &diagnostic);
+    var first = try migrate(std.testing.allocator, .map, v0, &diagnostic);
     defer first.deinit();
     try std.testing.expect(first.changed);
     try std.testing.expect(std.mem.indexOf(u8, first.source, ".version = 1") != null);
-    var second = try migrate(std.testing.allocator, .scene, first.source, &diagnostic);
+    var second = try migrate(std.testing.allocator, .map, first.source, &diagnostic);
     defer second.deinit();
     try std.testing.expect(!second.changed);
     try std.testing.expectEqualStrings(first.source, second.source);
