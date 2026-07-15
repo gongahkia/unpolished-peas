@@ -72,27 +72,23 @@ const Game = struct {
     game: game_mod.Game = .{},
     map: up.TileMapHandle,
     player: up.ImageHandle,
-    blip: up.Sound,
+    blip: up.AudioHandle,
     camera: up.Camera2D = .{ .position = .{ .x = 80, .y = 48 } },
     listen: ?ListenRuntime = null,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const path = try ctx.assetPath("blip.wav");
-        defer ctx.allocator.free(path);
-        var game = Game{ .map = try ctx.loadTileMap("topdown.upmap"), .player = try ctx.loadPng("ball.png"), .blip = try up.Sound.loadWav(ctx.allocator, path) };
-        errdefer game.blip.deinit();
+        var game = Game{ .map = try ctx.loadTileMap("topdown.upmap", .{}), .player = try ctx.loadImage("ball.png"), .blip = try ctx.loadSound("blip.wav") };
         if (launch_listen_host) game.listen = try ListenRuntime.init(ctx.allocator);
         return game;
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         if (self.listen) |*runtime| runtime.deinit();
-        self.blip.deinit();
     }
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         const input = if (self.listen) |*runtime| try runtime.submit(ctx.input.*) else ctx.input.*;
         const event = self.game.step(input, ctx.dt);
         self.camera.position = self.game.player;
-        if (event.fired) _ = try ctx.audio.playSound(&self.blip, .{ .volume = 0.3 });
+        if (event.fired) _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.blip), .{ .volume = 0.3 });
     }
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         try ctx.drawTileMap(self.map, &self.camera, 0);

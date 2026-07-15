@@ -17,7 +17,7 @@ const Game = struct {
     ui: up.UiState = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const map = try ctx.loadTileMap("platformer.upmap");
+        const map = try ctx.loadTileMap("platformer.upmap", .{});
         var collider = up.TileCollider.init(ctx.allocator);
         errdefer collider.deinit();
         try collider.addLayer(try ctx.tileMap(map), 0);
@@ -27,7 +27,7 @@ const Game = struct {
         errdefer world.deinit();
         const marker = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 84, .y = 8 } });
         _ = try world.createCircle(marker, .{ .radius = 2 });
-        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(try ctx.atlas(atlas), animation), .world = world, .marker = marker, .jump_sound = try ctx.assets.loadSound("blip.wav") };
+        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(try ctx.atlas(atlas), animation), .world = world, .marker = marker, .jump_sound = try ctx.loadSound("blip.wav") };
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         self.collider.deinit();

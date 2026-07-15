@@ -19,7 +19,7 @@ const Game = struct {
 
     pub fn init(ctx: *sdl.Context) !Game {
         return .{
-            .sprite = try ctx.loadPng("ball.png"),
+            .sprite = try ctx.loadImage("ball.png"),
             .message = try ctx.loadText("message.txt"),
         };
     }

@@ -20,7 +20,7 @@ pub fn main() !void {
 
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    const ball = try assets.loadPng("ball.png");
+    const ball = try assets.loadImage("ball.png");
     const atlas = try assets.loadAtlas("atlas.json");
     const source_atlas = try assets.tryAtlas(atlas);
 
@@ -45,6 +45,6 @@ pub fn main() !void {
         return canvas.writePngFile(path);
     }
 
-    const golden = try assets.loadPng(golden_path);
+    const golden = try assets.loadImage(golden_path);
     try up.testSupport.assertGolden(allocator, canvas, try assets.tryImage(golden), .{ .expected_hash = expected_hash, .diagnostics_path = diagnostics_path });
 }

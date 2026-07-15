@@ -44,9 +44,9 @@ fn verify() !void {
     defer assets.deinit();
     _ = try assets.loadImage("ball.png");
     _ = try assets.loadAtlas("atlas.json");
-    _ = try assets.loadTileMap("topdown.upmap");
-    _ = try assets.loadFont("fonts/Basic-Regular.ttf");
-    _ = try assets.loadBitmapFont("fonts/bitmap.fnt");
+    _ = try assets.loadTileMap("topdown.upmap", .{});
+    _ = try assets.loadFont("fonts/Basic-Regular.ttf", .{});
+    _ = try assets.loadFont("fonts/bitmap.fnt", .{});
     const wav_path = try assets.assetPath(allocator, "blip.wav");
     defer allocator.free(wav_path);
     var sound = try up.Sound.loadWav(allocator, wav_path);
