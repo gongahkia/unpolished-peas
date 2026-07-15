@@ -57,3 +57,15 @@ test "content cache validates magic version kind and size" {
     unsupported[4] = 2;
     try std.testing.expectError(error.UnsupportedCacheVersion, decode(std.testing.allocator, unsupported));
 }
+
+test "content cache accepts only catalog and map kinds" {
+    const encoded = try encode(std.testing.allocator, .map, 42, "map");
+    defer std.testing.allocator.free(encoded);
+    var decoded = try decode(std.testing.allocator, encoded);
+    defer decoded.deinit();
+    try std.testing.expectEqual(Kind.map, decoded.kind);
+    var unsupported = try std.testing.allocator.dupe(u8, encoded);
+    defer std.testing.allocator.free(unsupported);
+    unsupported[6] = 3;
+    try std.testing.expectError(error.InvalidCacheKind, decode(std.testing.allocator, unsupported));
+}
