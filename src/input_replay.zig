@@ -14,14 +14,15 @@ pub const Replay = struct { // owns parsed frame storage returned by parse; call
 
 pub fn parse(allocator: std.mem.Allocator, source: []const u8) !Replay {
     var lines = std.mem.tokenizeScalar(u8, source, '\n');
-    const header = lines.next() orelse return error.InvalidReplay;
+    const header = std.mem.trimRight(u8, lines.next() orelse return error.InvalidReplay, "\r");
     var fields = std.mem.tokenizeScalar(u8, header, ' ');
     if (!std.mem.eql(u8, fields.next() orelse return error.InvalidReplay, "UPR1")) return error.InvalidReplay;
     const fixed_hz = try std.fmt.parseInt(u32, fields.next() orelse return error.InvalidReplay, 10);
     if (fixed_hz == 0 or fields.next() != null) return error.InvalidReplay;
     var output = std.ArrayListUnmanaged(Frame){};
     errdefer output.deinit(allocator);
-    while (lines.next()) |line| {
+    while (lines.next()) |raw_line| {
+        const line = std.mem.trimRight(u8, raw_line, "\r");
         if (line.len == 0 or line[0] == '#') continue;
         var run = std.mem.tokenizeScalar(u8, line, ' ');
         const count = try std.fmt.parseInt(usize, run.next() orelse return error.InvalidReplay, 10);
@@ -39,4 +40,11 @@ test "replay expands deterministic run-length input" {
     defer replay.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(u32, 60), replay.fixed_hz);
     try std.testing.expectEqualSlices(Frame, &.{ .{ .buttons = 1 }, .{ .buttons = 1 }, .{ .buttons = 4 } }, replay.frames);
+}
+
+test "replay accepts CRLF line endings" {
+    var replay = try parse(std.testing.allocator, "UPR1 60\r\n2 1\r\n");
+    defer replay.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(u32, 60), replay.fixed_hz);
+    try std.testing.expectEqualSlices(Frame, &.{ .{ .buttons = 1 }, .{ .buttons = 1 } }, replay.frames);
 }
