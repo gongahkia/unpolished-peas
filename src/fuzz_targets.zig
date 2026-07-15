@@ -2,11 +2,10 @@ const std = @import("std");
 const image = @import("image.zig");
 const atlas = @import("atlas.zig");
 const map_source = @import("map_source.zig");
-const net_codec = @import("net_codec.zig");
-const net_frame = @import("net_frame.zig");
-const handshake = @import("net_handshake.zig");
-const multiplayer_matrix = @import("net_multiplayer_matrix.zig");
-const p2p = @import("net_p2p.zig");
+const core = struct {
+    pub const Vec2 = @import("math.zig").Vec2;
+};
+const networking = @import("unpolished-peas-networking");
 
 pub fn run(input: []const u8) !void {
     var bounded_storage: [128 * 1024]u8 = undefined;
@@ -31,15 +30,15 @@ fn runWith(allocator: std.mem.Allocator, input: []const u8) void {
         var value = decoded;
         value.deinit(allocator);
     } else |_| {}
-    if (net_codec.decode(allocator, bounded)) |decoded| {
+    if (networking.codec.decode(allocator, bounded)) |decoded| {
         var value = decoded;
         value.deinit(allocator);
     } else |_| {}
-    _ = net_frame.decode(bounded) catch {};
-    _ = handshake.decodeClientHello(bounded) catch {};
-    _ = handshake.decodeServerReply(bounded) catch {};
-    _ = p2p.decodeControl(bounded) catch {};
-    p2p.fuzzState(allocator, bounded);
+    _ = networking.frame.decode(bounded) catch {};
+    _ = networking.handshake.decodeClientHello(bounded) catch {};
+    _ = networking.handshake.decodeServerReply(bounded) catch {};
+    _ = networking.p2p.decodeControl(bounded) catch {};
+    networking.p2p.fuzzState(allocator, bounded);
 }
 
 test "bounded decoder and protocol corpus is leak free" {
@@ -63,5 +62,5 @@ test "bounded decoder and protocol corpus is leak free" {
 }
 
 test "fixed seed multiplayer matrix converges or fails defined and bounded" {
-    try multiplayer_matrix.run(std.testing.allocator);
+    try networking.multiplayerMatrix(core).run(std.testing.allocator);
 }

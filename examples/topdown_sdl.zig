@@ -1,5 +1,6 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
+const net = @import("unpolished-peas-networking").networking(up);
 const sdl = @import("unpolished-peas-sdl3");
 const game_mod = @import("topdown_game.zig");
 
@@ -7,20 +8,20 @@ var launch_listen_host = false;
 
 const ListenRuntime = struct {
     allocator: std.mem.Allocator,
-    client_endpoint: up.LoopbackTransport,
-    host_endpoint: up.LoopbackTransport,
-    host: up.NetHost,
-    client: up.NetClient,
+    client_endpoint: net.transport.Loopback,
+    host_endpoint: net.transport.Loopback,
+    host: net.session.Host,
+    client: net.session.Client,
 
     fn init(allocator: std.mem.Allocator) !ListenRuntime {
-        var client_endpoint = up.LoopbackTransport.init(allocator, .{ .id = 1 });
+        var client_endpoint = net.transport.Loopback.init(allocator, .{ .id = 1 });
         errdefer client_endpoint.deinit();
-        var host_endpoint = up.LoopbackTransport.init(allocator, .{ .id = 2 });
+        var host_endpoint = net.transport.Loopback.init(allocator, .{ .id = 2 });
         errdefer host_endpoint.deinit();
-        up.LoopbackTransport.pair(&client_endpoint, &host_endpoint);
-        var host = try up.NetHost.init(allocator, host_endpoint.transport(), .{ .role = .listen });
+        net.transport.Loopback.pair(&client_endpoint, &host_endpoint);
+        var host = try net.session.Host.init(allocator, host_endpoint.transport(), .{ .role = .listen });
         errdefer host.deinit();
-        var client = try up.NetClient.init(allocator, client_endpoint.transport(), .{});
+        var client = try net.session.Client.init(allocator, client_endpoint.transport(), .{});
         try client.connect(.{ .id = 2 }, 1);
         try client.poll();
         try host.poll();
@@ -51,7 +52,7 @@ const ListenRuntime = struct {
             defer event.deinit(self.allocator);
             switch (event) {
                 .input => |value| {
-                    const payload = value.message.payload[up.netPeer.session_token_bytes..];
+                    const payload = value.message.payload[net.peer.session_token_bytes..];
                     if (payload.len != 1) continue;
                     authoritative.set(.left, payload[0] & 1 != 0);
                     authoritative.set(.right, payload[0] & 2 != 0);

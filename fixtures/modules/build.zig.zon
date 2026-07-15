@@ -7,6 +7,9 @@
         .unpolished_peas = .{
             .path = "../..",
         },
+        .unpolished_peas_networking = .{
+            .path = "../../packages/networking",
+        },
     },
     .paths = .{
         "build.zig",

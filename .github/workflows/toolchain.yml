@@ -67,6 +67,7 @@ jobs:
       - run: zig build test-extension-manifest
       - run: script/test_extension_hook_fixture.sh
       - run: zig build test-effects-conformance
+      - run: zig build test-networking
       - run: zig build test-ui-conformance
       - run: zig build test-physics-conformance
       - run: script/test_extension_matrix.sh

@@ -4,6 +4,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const peas = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize });
+    const networking = b.dependency("unpolished_peas_networking", .{ .target = target, .optimize = optimize });
     const tests = b.addTest(.{
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/modules.zig"),
@@ -11,6 +12,7 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") },
+                .{ .name = "unpolished-peas-networking", .module = networking.module("unpolished-peas-networking") },
                 .{ .name = "unpolished-peas-tools", .module = peas.module("unpolished-peas-tools") },
                 .{ .name = "unpolished-peas-services", .module = peas.module("unpolished-peas-services") },
             },
