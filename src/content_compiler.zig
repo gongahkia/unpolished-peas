@@ -11,6 +11,14 @@ const state_version: u32 = 1;
 
 const Kind = enum { catalog, map };
 
+pub fn removedContentDiagnostic(path: []const u8) ?[]const u8 {
+    if (isProjectManifestPath(path)) return "project.up is no longer supported; declare assets in .upassets and maps in .upmap";
+    if (endsWithIgnoreCase(path, ".upscene")) return ".upscene is no longer supported; use .upassets and .upmap declarations";
+    if (endsWithIgnoreCase(path, ".tmx") or endsWithIgnoreCase(path, ".tsx")) return "Tiled input is no longer supported; convert it to a native .upmap";
+    if (endsWithIgnoreCase(path, ".ldtk")) return "LDtk input is no longer supported; convert it to a native .upmap";
+    return null;
+}
+
 const Input = struct {
     kind: Kind,
     path: []u8,
@@ -45,6 +53,7 @@ pub const Report = struct {
 };
 
 pub fn compileProject(allocator: std.mem.Allocator, project_root: []const u8, output_root: []const u8, diagnostic: *Diagnostic) !Report {
+    try rejectRemovedInputs(allocator, project_root, diagnostic);
     var inputs = try discoverInputs(allocator, project_root);
     defer deinitInputs(allocator, &inputs);
     try std.fs.cwd().makePath(output_root);
@@ -89,6 +98,25 @@ fn discoverInputs(allocator: std.mem.Allocator, project_root: []const u8) !std.A
     try appendDirectoryInputs(allocator, project_root, "assets", ".upassets", .catalog, &inputs);
     try appendDirectoryInputs(allocator, project_root, "maps", ".upmap", .map, &inputs);
     return inputs;
+}
+
+fn rejectRemovedInputs(allocator: std.mem.Allocator, project_root: []const u8, diagnostic: *Diagnostic) !void {
+    var dir = try std.fs.openDirAbsolute(project_root, .{ .iterate = true });
+    defer dir.close();
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+    var match: ?[]u8 = null;
+    defer if (match) |path| allocator.free(path);
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file or removedContentDiagnostic(entry.path) == null) continue;
+        if (match) |previous| if (std.mem.order(u8, entry.path, previous) != .lt) continue else allocator.free(previous);
+        match = try allocator.dupe(u8, entry.path);
+    }
+    const relative_path = match orelse return;
+    const path = try std.fs.path.join(allocator, &.{ project_root, relative_path });
+    defer allocator.free(path);
+    try setDiagnostic(allocator, diagnostic, path, 1, 1, removedContentDiagnostic(relative_path).?);
+    return error.RemovedContentFormat;
 }
 
 fn appendDirectoryInputs(allocator: std.mem.Allocator, project_root: []const u8, relative_dir: []const u8, suffix: []const u8, kind: Kind, inputs: *std.ArrayListUnmanaged(Input)) !void {
@@ -196,6 +224,14 @@ fn cacheKind(kind: Kind) cache.Kind {
     };
 }
 
+fn endsWithIgnoreCase(path: []const u8, suffix: []const u8) bool {
+    return path.len >= suffix.len and std.ascii.eqlIgnoreCase(path[path.len - suffix.len ..], suffix);
+}
+
+fn isProjectManifestPath(path: []const u8) bool {
+    return std.ascii.eqlIgnoreCase(path, "project.up") or endsWithIgnoreCase(path, "/project.up") or endsWithIgnoreCase(path, "\\project.up");
+}
+
 fn setDiagnostic(allocator: std.mem.Allocator, diagnostic: *Diagnostic, path: []const u8, line: usize, column: usize, message: []const u8) !void {
     if (diagnostic.path) |previous| allocator.free(previous);
     diagnostic.* = .{ .path = try allocator.dupe(u8, path), .line = line, .column = column, .message = message };
@@ -271,6 +307,38 @@ test "content compiler accepts only native asset declarations" {
     const legacy_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "legacy.json.upc" });
     defer std.testing.allocator.free(legacy_cache);
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(legacy_cache, .{}));
+}
+
+test "content compiler rejects removed content formats with recovery diagnostics" {
+    const cases = [_]struct { path: []const u8, message: []const u8 }{
+        .{ .path = "project.up", .message = "project.up is no longer supported; declare assets in .upassets and maps in .upmap" },
+        .{ .path = "scenes/main.upscene", .message = ".upscene is no longer supported; use .upassets and .upmap declarations" },
+        .{ .path = "maps/main.tmx", .message = "Tiled input is no longer supported; convert it to a native .upmap" },
+        .{ .path = "maps/main.tsx", .message = "Tiled input is no longer supported; convert it to a native .upmap" },
+        .{ .path = "maps/main.ldtk", .message = "LDtk input is no longer supported; convert it to a native .upmap" },
+    };
+    for (cases) |case| {
+        var temp = std.testing.tmpDir(.{});
+        defer temp.cleanup();
+        try temp.dir.makePath("project");
+        if (std.fs.path.dirname(case.path)) |directory| {
+            const path = try std.fs.path.join(std.testing.allocator, &.{ "project", directory });
+            defer std.testing.allocator.free(path);
+            try temp.dir.makePath(path);
+        }
+        const source_path = try std.fs.path.join(std.testing.allocator, &.{ "project", case.path });
+        defer std.testing.allocator.free(source_path);
+        try temp.dir.writeFile(.{ .sub_path = source_path, .data = "removed" });
+        const project_root = try temp.dir.realpathAlloc(std.testing.allocator, "project");
+        defer std.testing.allocator.free(project_root);
+        const output_root = try std.fs.path.join(std.testing.allocator, &.{ project_root, "zig-out", "content" });
+        defer std.testing.allocator.free(output_root);
+        var diagnostic = Diagnostic{};
+        defer diagnostic.deinit(std.testing.allocator);
+        try std.testing.expectError(error.RemovedContentFormat, compileProject(std.testing.allocator, project_root, output_root, &diagnostic));
+        try std.testing.expect(diagnostic.path != null and std.mem.endsWith(u8, diagnostic.path.?, case.path));
+        try std.testing.expectEqualStrings(case.message, diagnostic.message);
+    }
 }
 
 test "content compiler builds the native platformer fixture" {

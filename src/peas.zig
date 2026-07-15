@@ -17,6 +17,10 @@ pub fn main() !void {
         return;
     }
     const command = tools.parseCommand(argument) orelse {
+        if (removedCommandDiagnostic(argument)) |diagnostic| {
+            std.debug.print("peas: {s}\n", .{diagnostic});
+            return error.RemovedContentFormat;
+        }
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
         return usage();
     };
@@ -71,10 +75,18 @@ fn hostUsage() error{InvalidArguments} {
 
 fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
     const kind_argument = args.next() orelse return migrateUsage();
+    if (removedMigrationKindDiagnostic(kind_argument)) |diagnostic| {
+        std.debug.print("peas migrate: {s}\n", .{diagnostic});
+        return error.RemovedContentFormat;
+    }
     const kind = std.meta.stringToEnum(content.migration.Kind, kind_argument) orelse return migrateUsage();
     const input_path = args.next() orelse return migrateUsage();
     const output_path = args.next() orelse return migrateUsage();
     if (args.next() != null) return migrateUsage();
+    if (content.removedContentDiagnostic(input_path)) |diagnostic| {
+        std.debug.print("peas migrate: {s}: {s}\n", .{ input_path, diagnostic });
+        return error.RemovedContentFormat;
+    }
     const source = try std.fs.cwd().readFileAlloc(allocator, input_path, 64 * 1024 * 1024);
     defer allocator.free(source);
     var diagnostic = content.migration.Diagnostic{};
@@ -90,6 +102,19 @@ fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 fn migrateUsage() error{InvalidArguments} {
     std.debug.print("usage: zig build peas -- migrate <catalog|map> <input> <output>\n", .{});
     return error.InvalidArguments;
+}
+
+fn removedMigrationKindDiagnostic(kind: []const u8) ?[]const u8 {
+    if (std.ascii.eqlIgnoreCase(kind, "scene")) return content.removedContentDiagnostic("main.upscene");
+    if (std.ascii.eqlIgnoreCase(kind, "tiled")) return content.removedContentDiagnostic("main.tmx");
+    if (std.ascii.eqlIgnoreCase(kind, "ldtk")) return content.removedContentDiagnostic("main.ldtk");
+    return null;
+}
+
+fn removedCommandDiagnostic(command: []const u8) ?[]const u8 {
+    if (std.ascii.eqlIgnoreCase(command, "import-tiled")) return content.removedContentDiagnostic("main.tmx");
+    if (std.ascii.eqlIgnoreCase(command, "import-ldtk")) return content.removedContentDiagnostic("main.ldtk");
+    return null;
 }
 
 fn compileProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -368,6 +393,12 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
+}
+
+test "removed content commands and migration kinds provide recovery diagnostics" {
+    try std.testing.expectEqualStrings("Tiled input is no longer supported; convert it to a native .upmap", removedCommandDiagnostic("import-tiled").?);
+    try std.testing.expectEqualStrings("LDtk input is no longer supported; convert it to a native .upmap", removedCommandDiagnostic("import-ldtk").?);
+    try std.testing.expectEqualStrings(".upscene is no longer supported; use .upassets and .upmap declarations", removedMigrationKindDiagnostic("scene").?);
 }
 
 test "known test selections parse" {
