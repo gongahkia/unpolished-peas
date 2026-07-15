@@ -849,7 +849,6 @@ pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, app
 }
 
 pub fn playGame(comptime Game: type) !void {
-    comptime validateGame(Game);
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) @panic("game allocation leak");
 
@@ -1168,18 +1167,61 @@ fn initGame(comptime Game: type, ctx: *Context) !Game {
 }
 
 fn validateGame(comptime Game: type) void {
+    if (gameContractDiagnostic(Game)) |diagnostic| @compileError(diagnostic);
+}
+
+fn gameContractDiagnostic(comptime Game: type) ?[]const u8 {
     switch (@typeInfo(Game)) {
         .@"struct" => {},
-        else => @compileError("Game must be a struct with optional init, event, update, draw, and deinit callbacks"),
+        else => return "Game must be a struct",
     }
+    if (!@hasDecl(Game, "config")) return "Game must declare pub const config: sdl.Config";
+    if (@TypeOf(Game.config) != Config) return "Game.config must be sdl.Config";
+    if (callbackDiagnostic(Game, "init", &.{*Context}, Game, true)) |diagnostic| return diagnostic;
+    if (callbackDiagnostic(Game, "deinit", &.{ *Game, *Context }, void, false)) |diagnostic| return diagnostic;
+    if (callbackDiagnostic(Game, "update", &.{ *Game, *Context }, void, true)) |diagnostic| return diagnostic;
+    if (callbackDiagnostic(Game, "draw", &.{ *Game, *Context }, void, true)) |diagnostic| return diagnostic;
+    if (callbackDiagnostic(Game, "event", &.{ *Game, *Context, Event }, void, true)) |diagnostic| return diagnostic;
+    return null;
 }
 
 fn gameConfig(comptime Game: type) Config {
     comptime validateGame(Game);
-    if (!@hasDecl(Game, "config")) @compileError("structured Game must declare pub const config: sdl.Config");
-    const config = Game.config;
-    if (@TypeOf(config) != Config) @compileError("structured Game.config must be sdl.Config");
-    return config;
+    return Game.config;
+}
+
+fn callbackDiagnostic(comptime Game: type, comptime name: []const u8, comptime params: []const type, comptime payload: type, comptime allows_error: bool) ?[]const u8 {
+    if (!@hasDecl(Game, name)) return null;
+    const info = switch (@typeInfo(@TypeOf(@field(Game, name)))) {
+        .@"fn" => |function| function,
+        else => return callbackSignatureDiagnostic(name),
+    };
+    if (info.params.len != params.len) return callbackSignatureDiagnostic(name);
+    inline for (params, 0..) |expected, index| {
+        const actual = info.params[index].type orelse return callbackSignatureDiagnostic(name);
+        if (actual != expected) return callbackSignatureDiagnostic(name);
+    }
+    const return_type = info.return_type orelse return callbackSignatureDiagnostic(name);
+    if (!callbackReturns(return_type, payload, allows_error)) return callbackSignatureDiagnostic(name);
+    return null;
+}
+
+fn callbackReturns(comptime return_type: type, comptime payload: type, comptime allows_error: bool) bool {
+    if (return_type == payload) return true;
+    if (!allows_error) return false;
+    return switch (@typeInfo(return_type)) {
+        .error_union => |error_union| error_union.payload == payload,
+        else => false,
+    };
+}
+
+fn callbackSignatureDiagnostic(comptime name: []const u8) []const u8 {
+    if (std.mem.eql(u8, name, "init")) return "Game.init must be fn (*sdl.Context) Game or !Game";
+    if (std.mem.eql(u8, name, "deinit")) return "Game.deinit must be fn (*Game, *sdl.Context) void";
+    if (std.mem.eql(u8, name, "update")) return "Game.update must be fn (*Game, *sdl.Context) void or !void";
+    if (std.mem.eql(u8, name, "draw")) return "Game.draw must be fn (*Game, *sdl.Context) void or !void";
+    if (std.mem.eql(u8, name, "event")) return "Game.event must be fn (*Game, *sdl.Context, sdl.Event) void or !void";
+    unreachable;
 }
 
 fn deinitGame(comptime Game: type, game: *Game, ctx: *Context) void {
@@ -1310,6 +1352,68 @@ test "lifecycle accepts optional callbacks" {
     try callEvent(Full, &full, &ctx, .close_requested);
     deinitGame(Full, &full, &ctx);
     try std.testing.expectEqualSlices(u8, "iudx", full.calls[0..full.call_count]);
+}
+
+test "Game contract accepts config with optional lifecycle callbacks" {
+    const Minimal = struct {
+        pub const config: Config = .{};
+    };
+    const Full = struct {
+        pub const config: Config = .{};
+
+        pub fn init(_: *Context) error{InitFailed}!@This() {
+            return .{};
+        }
+
+        pub fn deinit(_: *@This(), _: *Context) void {}
+        pub fn update(_: *@This(), _: *Context) error{UpdateFailed}!void {}
+        pub fn draw(_: *@This(), _: *Context) void {}
+        pub fn event(_: *@This(), _: *Context, _: Event) error{EventFailed}!void {}
+    };
+    comptime {
+        validateGame(Minimal);
+        validateGame(Full);
+    }
+    try std.testing.expect(gameContractDiagnostic(Minimal) == null);
+    try std.testing.expect(gameContractDiagnostic(Full) == null);
+}
+
+test "Game contract reports malformed config and callback declarations" {
+    const MissingConfig = struct {};
+    const WrongConfig = struct {
+        pub const config = .{};
+    };
+    const BadInit = struct {
+        pub const config: Config = .{};
+        pub fn init(_: u8) @This() {
+            return .{};
+        }
+    };
+    const BadDeinit = struct {
+        pub const config: Config = .{};
+        pub fn deinit(_: *@This(), _: *Context) !void {}
+    };
+    const BadUpdate = struct {
+        pub const config: Config = .{};
+        pub fn update(_: *@This(), _: *Context) u8 {
+            return 0;
+        }
+    };
+    const BadDraw = struct {
+        pub const config: Config = .{};
+        pub fn draw(_: *@This(), _: *Context, _: Event) void {}
+    };
+    const BadEvent = struct {
+        pub const config: Config = .{};
+        pub fn event(_: *@This(), _: *Context) void {}
+    };
+    try std.testing.expectEqualStrings("Game must declare pub const config: sdl.Config", gameContractDiagnostic(MissingConfig).?);
+    try std.testing.expectEqualStrings("Game.config must be sdl.Config", gameContractDiagnostic(WrongConfig).?);
+    try std.testing.expectEqualStrings("Game.init must be fn (*sdl.Context) Game or !Game", gameContractDiagnostic(BadInit).?);
+    try std.testing.expectEqualStrings("Game.deinit must be fn (*Game, *sdl.Context) void", gameContractDiagnostic(BadDeinit).?);
+    try std.testing.expectEqualStrings("Game.update must be fn (*Game, *sdl.Context) void or !void", gameContractDiagnostic(BadUpdate).?);
+    try std.testing.expectEqualStrings("Game.draw must be fn (*Game, *sdl.Context) void or !void", gameContractDiagnostic(BadDraw).?);
+    try std.testing.expectEqualStrings("Game.event must be fn (*Game, *sdl.Context, sdl.Event) void or !void", gameContractDiagnostic(BadEvent).?);
 }
 
 test "structured Game owns desktop configuration" {
