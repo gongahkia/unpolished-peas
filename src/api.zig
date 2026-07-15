@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const core = struct {
     pub const App = @import("app.zig");
     pub const StepClock = @import("app.zig").StepClock;
@@ -83,6 +85,15 @@ pub const world = struct {
 
 pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
+
+test "public API excludes effects GPU resource declarations" {
+    try std.testing.expect(!@hasDecl(@This(), "GpuResourceKind"));
+    try std.testing.expect(!@hasDecl(@This(), "GpuResources"));
+    try std.testing.expect(!@hasDecl(@This(), "TextureHandle"));
+    try std.testing.expect(!@hasDecl(@This(), "RenderTargetHandle"));
+    try std.testing.expect(!@hasDecl(@This(), "ShaderHandle"));
+    try std.testing.expect(!@hasDecl(@This(), "PipelineHandle"));
+}
 pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
 pub const AudioSample = @import("audio.zig").AudioSample;
@@ -311,11 +322,6 @@ pub const ReloadStatus = @import("assets.zig").ReloadStatus;
 pub const RenderCommand = @import("render.zig").Command;
 pub const RenderCommandBuffer = @import("render.zig").CommandBuffer;
 pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
-pub const GpuResourceKind = @import("gpu.zig").ResourceKind;
-pub const GpuResources = @import("gpu.zig").Resources;
-pub const TextureHandle = @import("gpu.zig").TextureHandle;
-pub const RenderTargetHandle = @import("gpu.zig").RenderTargetHandle;
-pub const ShaderHandle = @import("gpu.zig").ShaderHandle;
 pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
 pub const ShaderProgram = @import("shader.zig").Program;
 pub const ShaderReflection = @import("shader.zig").Reflection;
@@ -323,7 +329,6 @@ pub const ShaderKind = @import("shader.zig").Kind;
 pub const PixelEffect = @import("shader.zig").PixelEffect;
 pub const PixelEffectParameters = @import("shader.zig").Parameters;
 pub const PostProcessChain = @import("shader.zig").Chain;
-pub const PipelineHandle = @import("gpu.zig").PipelineHandle;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;

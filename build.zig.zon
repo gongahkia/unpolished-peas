@@ -4,6 +4,10 @@
     .fingerprint = 0x9801f8ecd9290536, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
+        .effects = .{
+            .path = "packages/effects",
+            .lazy = true,
+        },
         .box2d = .{
             .url = "git+https://github.com/allyourcodebase/box2d#0482245bf59bec743a7cb29961a480c3f7497f0c",
             .hash = "box2d-3.1.1-crFBk74aAAD-TJGY5mHVDB0sV5JntTq0MnlaHYxb5yl5",
@@ -32,6 +36,7 @@
         "fixtures",
         "README.md",
         "LICENSE",
+        "packages",
         "THIRD_PARTY_NOTICES.json",
     },
 }

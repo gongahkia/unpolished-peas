@@ -36,6 +36,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     addStb(peas);
+    const effects_dependency = b.lazyDependency("effects", .{ .target = target, .optimize = optimize }) orelse @panic("missing effects package");
+    const effects = effects_dependency.module("unpolished-peas-effects");
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -86,6 +88,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-effects", .module = effects },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
@@ -425,6 +428,10 @@ pub fn build(b: *std.Build) void {
     renderer_conformance.setEnvironmentVariable("UP_RENDERER_CONFORMANCE", "1");
     const renderer_conformance_step = b.step("test-renderer-conformance", "Run shared desktop renderer smoke and GPU golden fixtures");
     renderer_conformance_step.dependOn(&renderer_conformance.step);
+    const effects_tests = b.addTest(.{ .root_module = effects });
+    const run_effects_tests = b.addRunArtifact(effects_tests);
+    const effects_test_step = b.step("test-effects", "Test the independent effects package module");
+    effects_test_step.dependOn(&run_effects_tests.step);
 
     const box2d_tests = b.addTest(.{ .root_module = physics });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);

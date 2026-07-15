@@ -89,8 +89,9 @@ fn safePath(value: []const u8) bool {
     return true;
 }
 
-test "extension manifest validates package identity, modules, tests, and hook" {
+test "extension manifests validate package identity, modules, tests, and hook" {
     try validateFile(std.testing.allocator, "fixtures/extensions/manifest-valid/extension.zon");
+    try validateFile(std.testing.allocator, "packages/effects/extension.zon");
 }
 
 test "extension manifest rejects invalid identity and paths" {

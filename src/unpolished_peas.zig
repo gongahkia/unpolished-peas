@@ -22,7 +22,6 @@ test {
     _ = @import("ecs.zig");
     _ = @import("font_asset.zig");
     _ = @import("image.zig");
-    _ = @import("gpu.zig");
     _ = @import("input.zig");
     _ = @import("inspector.zig");
     _ = @import("inspector_panels.zig");

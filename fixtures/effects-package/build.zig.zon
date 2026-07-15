@@ -1,0 +1,14 @@
+.{
+    .name = .effects_package_fixture,
+    .version = "0.0.1",
+    .fingerprint = 0x69f09f35a079369c,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .unpolished_peas_effects = .{ .path = "../../packages/effects" },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
