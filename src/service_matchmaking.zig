@@ -122,8 +122,9 @@ test "matchmaking enforces queue capacity timeout cancellation and idempotence" 
     const first = try provider.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 100 });
     const second = try provider.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 100 });
     const third = try provider.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 100 });
-    const first_lobby = try lobbies.create(first, 2, 100, 1);
+    const first_lobby = try lobbies.create(first, 3, 100, 1);
     try lobbies.join(first_lobby.id, second, 1);
+    try lobbies.join(first_lobby.id, third, 1);
     const first_request = try matches.enqueue(first_lobby.id, first, 1);
     try std.testing.expectEqual(first_request.id, (try matches.enqueue(first_lobby.id, first, 1)).id);
     const second_request = try matches.enqueue(first_lobby.id, second, 1);
