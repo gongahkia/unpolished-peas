@@ -141,6 +141,7 @@ pub fn configureContext() !void {
 pub const Presenter = struct {
     window: *c.SDL_Window,
     context: c.SDL_GLContext,
+    context_active: bool = true,
     gl: Gl,
     width: u32,
     height: u32,
@@ -152,6 +153,7 @@ pub const Presenter = struct {
     primitive_vbo: u32 = 0,
     canvas_texture: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
+    recovery_failure: ?anyerror = null,
 
     pub fn init(window: *c.SDL_Window, width: u32, height: u32) !Presenter {
         if (width == 0 or height == 0) return error.InvalidRenderCanvas;
@@ -168,31 +170,58 @@ pub const Presenter = struct {
             .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator),
         };
         errdefer presenter.deinit();
-        try presenter.requireVersion();
-        presenter.sprite_program = try presenter.makeProgram(sprite_vertex_source, sprite_fragment_source);
-        presenter.primitive_program = try presenter.makeProgram(primitive_vertex_source, primitive_fragment_source);
-        presenter.configureSpriteProgram();
-        try presenter.makeBuffers();
-        presenter.gl.gen_textures(1, &presenter.canvas_texture);
-        if (presenter.canvas_texture == 0) return error.OpenGlTextureCreationFailed;
+        try presenter.createGpuResources();
         return presenter;
     }
 
     pub fn deinit(self: *Presenter) void {
-        _ = c.SDL_GL_MakeCurrent(self.window, self.context);
-        if (self.canvas_texture != 0) self.gl.delete_textures(1, &self.canvas_texture);
-        if (self.sprite_vbo != 0) self.gl.delete_buffers(1, &self.sprite_vbo);
-        if (self.primitive_vbo != 0) self.gl.delete_buffers(1, &self.primitive_vbo);
-        if (self.sprite_vao != 0) self.gl.delete_vertex_arrays(1, &self.sprite_vao);
-        if (self.primitive_vao != 0) self.gl.delete_vertex_arrays(1, &self.primitive_vao);
-        if (self.sprite_program != 0) self.gl.delete_program(self.sprite_program);
-        if (self.primitive_program != 0) self.gl.delete_program(self.primitive_program);
+        if (self.context_active) {
+            _ = c.SDL_GL_MakeCurrent(self.window, self.context);
+            self.releaseGpuResources();
+            _ = c.SDL_GL_DestroyContext(self.context);
+        }
         self.primitive_batch.deinit();
-        _ = c.SDL_GL_DestroyContext(self.context);
         self.* = undefined;
     }
 
+    pub fn recover(self: *Presenter) !void {
+        if (self.context_active) {
+            _ = c.SDL_GL_MakeCurrent(self.window, self.context);
+            self.releaseGpuResources();
+            if (!c.SDL_GL_DestroyContext(self.context)) {
+                self.context_active = false;
+                return self.recordRecoveryFailure(error.OpenGlContextDestructionFailed);
+            }
+            self.context_active = false;
+        }
+        const context = c.SDL_GL_CreateContext(self.window) orelse return self.recordRecoveryFailure(error.OpenGlContextCreationFailed);
+        self.context = context;
+        self.context_active = true;
+        if (!c.SDL_GL_MakeCurrent(self.window, context)) {
+            _ = c.SDL_GL_DestroyContext(context);
+            self.context_active = false;
+            return self.recordRecoveryFailure(error.OpenGlContextActivationFailed);
+        }
+        self.gl = Gl.load() catch |err| {
+            _ = c.SDL_GL_DestroyContext(context);
+            self.context_active = false;
+            return self.recordRecoveryFailure(err);
+        };
+        self.createGpuResources() catch |err| {
+            self.releaseGpuResources();
+            _ = c.SDL_GL_DestroyContext(context);
+            self.context_active = false;
+            return self.recordRecoveryFailure(err);
+        };
+        self.recovery_failure = null;
+    }
+
+    pub fn recoveryFailure(self: *const Presenter) ?anyerror {
+        return self.recovery_failure;
+    }
+
     pub fn render(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
+        if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (canvas.width != self.width or canvas.height != self.height) return error.InvalidRenderCanvas;
         if (!c.SDL_GL_MakeCurrent(self.window, self.context)) return error.OpenGlContextActivationFailed;
         const width = try glI32(self.width);
@@ -215,6 +244,7 @@ pub const Presenter = struct {
     }
 
     pub fn capture(self: *Presenter, allocator: std.mem.Allocator) !up.Canvas {
+        if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (!c.SDL_GL_MakeCurrent(self.window, self.context)) return error.OpenGlContextActivationFailed;
         var canvas = try up.Canvas.init(allocator, self.width, self.height);
         errdefer canvas.deinit();
@@ -237,6 +267,39 @@ pub const Presenter = struct {
         self.gl.get_integerv(gl_major_version, &major);
         self.gl.get_integerv(gl_minor_version, &minor);
         if (!versionAtLeast(major, minor, 3, 3)) return error.UnsupportedOpenGl33;
+    }
+
+    fn createGpuResources(self: *Presenter) !void {
+        try self.requireVersion();
+        self.sprite_program = try self.makeProgram(sprite_vertex_source, sprite_fragment_source);
+        errdefer self.releaseGpuResources();
+        self.primitive_program = try self.makeProgram(primitive_vertex_source, primitive_fragment_source);
+        self.configureSpriteProgram();
+        try self.makeBuffers();
+        self.gl.gen_textures(1, &self.canvas_texture);
+        if (self.canvas_texture == 0) return error.OpenGlTextureCreationFailed;
+    }
+
+    fn releaseGpuResources(self: *Presenter) void {
+        if (self.canvas_texture != 0) self.gl.delete_textures(1, &self.canvas_texture);
+        if (self.sprite_vbo != 0) self.gl.delete_buffers(1, &self.sprite_vbo);
+        if (self.primitive_vbo != 0) self.gl.delete_buffers(1, &self.primitive_vbo);
+        if (self.sprite_vao != 0) self.gl.delete_vertex_arrays(1, &self.sprite_vao);
+        if (self.primitive_vao != 0) self.gl.delete_vertex_arrays(1, &self.primitive_vao);
+        if (self.sprite_program != 0) self.gl.delete_program(self.sprite_program);
+        if (self.primitive_program != 0) self.gl.delete_program(self.primitive_program);
+        self.canvas_texture = 0;
+        self.sprite_vbo = 0;
+        self.primitive_vbo = 0;
+        self.sprite_vao = 0;
+        self.primitive_vao = 0;
+        self.sprite_program = 0;
+        self.primitive_program = 0;
+    }
+
+    fn recordRecoveryFailure(self: *Presenter, err: anyerror) anyerror {
+        self.recovery_failure = err;
+        return err;
     }
 
     fn makeBuffers(self: *Presenter) !void {
@@ -520,6 +583,13 @@ test "OpenGL 3.3 version requirement is bounded" {
     try std.testing.expect(!versionAtLeast(3, 2, 3, 3));
 }
 
+test "OpenGL recovery retains presenter failures" {
+    var presenter: Presenter = undefined;
+    presenter.recovery_failure = null;
+    _ = presenter.recordRecoveryFailure(error.OpenGlContextCreationFailed);
+    try std.testing.expectEqual(error.OpenGlContextCreationFailed, presenter.recoveryFailure().?);
+}
+
 test "OpenGL 3.3 presenter renders canonical primitives, text, and sprites" {
     if (!conformanceEnabled()) return;
     if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return error.SdlInitializationFailed;
@@ -537,8 +607,8 @@ test "OpenGL 3.3 presenter renders canonical primitives, text, and sprites" {
     try commands.append(.{ .text = .{ .value = "A", .x = 20, .y = 20, .color = up.Color.white } });
     var canvas = try scenario.initialCanvas(std.testing.allocator);
     defer canvas.deinit();
-    const image_pixels = [_]up.Color{up.Color.white};
-    const image = up.Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = @constCast(&image_pixels) };
+    var image_pixels = [_]up.Color{up.Color.white};
+    const image = up.Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = &image_pixels };
     var sprites = up.SpriteBatch.init(std.testing.allocator);
     defer sprites.deinit();
     try sprites.appendQuad(&image, .{ .x = 0, .y = 0, .w = 1, .h = 1 }, .{ .{ .x = -0.6875, .y = 0.375 }, .{ .x = -0.625, .y = 0.375 }, .{ .x = -0.625, .y = 0.25 }, .{ .x = -0.6875, .y = 0.25 } }, .{ .{ .x = 0, .y = 0 }, .{ .x = 1, .y = 0 }, .{ .x = 1, .y = 1 }, .{ .x = 0, .y = 1 } }, up.Color.white, .nearest);
@@ -548,6 +618,17 @@ test "OpenGL 3.3 presenter renders canonical primitives, text, and sprites" {
     defer captured.deinit();
     try scenario.expectCapture(&captured);
     try std.testing.expectEqual(up.Color.white, captured.get(10, 10).?);
+    image_pixels[0] = up.Color.rgb(255, 0, 0);
+    try presenter.render(canvas, &sprites, commands.commands.items);
+    var reloaded_capture = try presenter.capture(std.testing.allocator);
+    defer reloaded_capture.deinit();
+    try std.testing.expectEqual(up.Color.rgb(255, 0, 0), reloaded_capture.get(10, 10).?);
+    try presenter.recover();
+    try std.testing.expect(presenter.recoveryFailure() == null);
+    try presenter.render(canvas, &sprites, commands.commands.items);
+    var recovered_capture = try presenter.capture(std.testing.allocator);
+    defer recovered_capture.deinit();
+    try std.testing.expectEqual(up.Color.rgb(255, 0, 0), recovered_capture.get(10, 10).?);
     var backend = Backend{ .presenter = &presenter, .canvas = canvas, .sprites = &sprites };
     try backend.rendererBackend().submit(commands.commands.items);
 
