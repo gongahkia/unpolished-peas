@@ -193,7 +193,7 @@ zig build new -- ../my-game
 `fixtures/external-tilemap-game` is a standalone desktop game that loads native asset/map sources, drives movement through configured actions, follows with a camera, and exercises catalog-backed asset reloads.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock.
+`test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock; `script/test_extension_matrix.sh` also compiles each resolved external consumer fixture.
 `test-extension-manifest` validates strict extension identity, semver/core range, module, test, and optional build-hook metadata.
 An extension hook is a declared Zig script exporting `name` and `apply(dependency, root_module)`; a game build opts in by calling its package build's `applyHook` with the declared name. Hooks never run automatically.
 `script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.

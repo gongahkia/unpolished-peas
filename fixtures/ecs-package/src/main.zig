@@ -1,7 +1,10 @@
 const std = @import("std");
+const core = @import("unpolished-peas").api;
 const ecs = @import("unpolished-peas-ecs");
 
 test "ECS package sparse stores and commands remain deterministic" {
+    const position = core.Vec2{ .x = 1, .y = 2 };
+    try std.testing.expectEqual(@as(f32, 2), position.y);
     var world = ecs.World.init(std.testing.allocator);
     defer world.deinit();
     var values = ecs.ComponentStore(u8).init(std.testing.allocator);

@@ -15,17 +15,20 @@ const PackageDefinition = struct {
     version: []const u8,
     core_range: []const u8,
     target: []const u8,
+    consumer: []const u8,
 };
 
 const Pair = struct {
     core: []u8,
     package: []u8,
     target: []u8,
+    consumer: []u8,
 
     fn deinit(self: *Pair, allocator: std.mem.Allocator) void {
         allocator.free(self.core);
         allocator.free(self.package);
         allocator.free(self.target);
+        allocator.free(self.consumer);
         self.* = undefined;
     }
 };
@@ -39,7 +42,7 @@ pub fn main() !void {
     var buffer: [1024]u8 = undefined;
     var writer = std.fs.File.stdout().writer(&buffer);
     const out = &writer.interface;
-    for (pairs) |pair| try out.print("{s}\t{s}\t{s}\n", .{ pair.core, pair.package, pair.target });
+    for (pairs) |pair| try out.print("{s}\t{s}\t{s}\t{s}\n", .{ pair.core, pair.package, pair.target, pair.consumer });
     try out.flush();
 }
 
@@ -58,7 +61,12 @@ fn resolveSource(allocator: std.mem.Allocator, source: [:0]const u8) ![]Pair {
     var packages = std.ArrayListUnmanaged(resolver.Package){};
     defer packages.deinit(allocator);
     for (fixture.packages) |package| {
-        if (package.name.len == 0 or package.target.len == 0) return error.InvalidExtensionMatrix;
+        if (package.name.len == 0 or package.target.len == 0 or !validConsumerPath(package.consumer)) return error.InvalidExtensionMatrix;
+        {
+            var consumer = std.fs.cwd().openDir(package.consumer, .{}) catch return error.InvalidExtensionMatrix;
+            defer consumer.close();
+            consumer.access("build.zig", .{}) catch return error.InvalidExtensionMatrix;
+        }
         try packages.append(allocator, .{ .name = package.name, .version = package.version, .core_range = package.core_range });
     }
     var pairs = std.ArrayListUnmanaged(Pair){};
@@ -75,6 +83,7 @@ fn resolveSource(allocator: std.mem.Allocator, source: [:0]const u8) ![]Pair {
             .core = try allocator.dupe(u8, core),
             .package = try allocator.dupe(u8, package.name),
             .target = try allocator.dupe(u8, package.target),
+            .consumer = try allocator.dupe(u8, package.consumer),
         });
     };
     sortPairs(pairs.items);
@@ -103,11 +112,18 @@ fn pairLessThan(lhs: Pair, rhs: Pair) bool {
     return if (core_order == .eq) std.mem.order(u8, lhs.package, rhs.package) == .lt else core_order == .lt;
 }
 
+fn validConsumerPath(value: []const u8) bool {
+    if (value.len == 0 or std.fs.path.isAbsolute(value)) return false;
+    var segments = std.mem.splitScalar(u8, value, '/');
+    while (segments.next()) |segment| if (segment.len == 0 or std.mem.eql(u8, segment, ".") or std.mem.eql(u8, segment, "..")) return false;
+    return true;
+}
+
 fn assertMatrixFixture(pairs: []const Pair, fixture: []const u8) !void {
     var lines = std.mem.splitScalar(u8, fixture, '\n');
     for (pairs) |pair| {
         var buffer: [256]u8 = undefined;
-        const line = try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{s}", .{ pair.core, pair.package, pair.target });
+        const line = try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{s}\t{s}", .{ pair.core, pair.package, pair.target, pair.consumer });
         try std.testing.expectEqualStrings(line, lines.next() orelse return error.InvalidFixture);
     }
     while (lines.next()) |line| try std.testing.expectEqualStrings("", line);
@@ -122,8 +138,19 @@ test "extension matrix resolves every declared package and core release" {
 }
 
 test "extension matrix rejects malformed fixture metadata" {
-    const source: [:0]const u8 = 
-        \\ .{ .format = "unpolished-peas-extension-test-matrix", .version = 2, .core_releases = .{ "1.0.0" }, .packages = .{ .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d" } } }
+    const source: [:0]const u8 =
+        \\ .{ .format = "unpolished-peas-extension-test-matrix", .version = 2, .core_releases = .{ "1.0.0" }, .packages = .{ .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d", .consumer = "fixtures/physics-package" } } }
     ;
     try std.testing.expectError(error.InvalidExtensionMatrix, resolveSource(std.testing.allocator, source));
+}
+
+test "extension matrix rejects unsafe or missing consumer fixtures" {
+    const unsafe: [:0]const u8 =
+        \\ .{ .format = "unpolished-peas-extension-test-matrix", .version = 1, .core_releases = .{ "1.0.0" }, .packages = .{ .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d", .consumer = "../outside" } } }
+    ;
+    const missing: [:0]const u8 =
+        \\ .{ .format = "unpolished-peas-extension-test-matrix", .version = 1, .core_releases = .{ "1.0.0" }, .packages = .{ .{ .name = "physics", .version = "1.0.0", .core_range = "^1.0.0", .target = "test-box2d", .consumer = "fixtures/missing-consumer" } } }
+    ;
+    try std.testing.expectError(error.InvalidExtensionMatrix, resolveSource(std.testing.allocator, unsafe));
+    try std.testing.expectError(error.InvalidExtensionMatrix, resolveSource(std.testing.allocator, missing));
 }
