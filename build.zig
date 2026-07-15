@@ -440,6 +440,10 @@ pub fn build(b: *std.Build) void {
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
     const box2d_test_step = b.step("test-box2d", "Test the optional physics package against its pinned Box2D dependency");
     box2d_test_step.dependOn(&run_box2d_tests.step);
+    const physics_conformance = b.addSystemCommand(&.{"script/test_physics_package.sh"});
+    physics_conformance.setCwd(b.path("."));
+    const physics_conformance_step = b.step("test-physics-conformance", "Run physics lifecycle, contact, debug, and teardown conformance fixtures");
+    physics_conformance_step.dependOn(&physics_conformance.step);
 }
 
 fn addExample(
