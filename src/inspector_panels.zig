@@ -357,3 +357,51 @@ test "metrics panel renders unavailable GPU timing and resource state" {
     try panel.panel().draw(panel.panel().context, &canvas);
     try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
 }
+
+test "core inspector panels expose bounded asset map input and frame state" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
+    defer std.testing.allocator.free(map);
+    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
+    defer std.testing.allocator.free(image);
+    try tmp.dir.writeFile(.{ .sub_path = "note.txt", .data = "ok" });
+    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
+    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
+    var store = assets.AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    _ = try store.loadText("note.txt");
+    _ = try store.loadTileMap("topdown.upmap", .{});
+    try store.events.append(std.testing.allocator, .{ .path = "topdown.upmap", .status = .failed, .failure_class = .source, .line = 2, .column = 4, .retained_content = true, .message = "invalid map" });
+
+    var state = input.Input{};
+    state.set(.action, true);
+    state.setPointerPosition(.{ .x = 10, .y = 20 }, .{ .x = 20, .y = 40 }, .{ .x = 5, .y = 10 });
+    var action_map = try actions.Map.init(std.testing.allocator, &.{.{ .name = "jump", .binding = .{ .key = .action } }});
+    defer action_map.deinit();
+    action_map.update(state);
+    var metrics = runtime_metrics.Metrics{};
+    metrics.beginFrame(8);
+    metrics.recordGpuSubmission(120, 2, 1, 3, 2048, 4096);
+    metrics.recordAssetReloads(store.events.items.len);
+
+    var asset_panel = AssetPanel{ .store = &store };
+    var input_panel = InputPanel{ .state = &state, .action_map = &action_map };
+    var metrics_panel = MetricsPanel{ .metrics = &metrics };
+    var first = try Canvas.init(std.testing.allocator, 320, 256);
+    defer first.deinit();
+    try asset_panel.panel().draw(asset_panel.panel().context, &first);
+    try input_panel.panel().draw(input_panel.panel().context, &first);
+    try metrics_panel.panel().draw(metrics_panel.panel().context, &first);
+    var second = try Canvas.init(std.testing.allocator, 320, 256);
+    defer second.deinit();
+    try asset_panel.panel().draw(asset_panel.panel().context, &second);
+    try input_panel.panel().draw(input_panel.panel().context, &second);
+    try metrics_panel.panel().draw(metrics_panel.panel().context, &second);
+    try std.testing.expectEqual(@import("test_support.zig").canvasHash(first), @import("test_support.zig").canvasHash(second));
+    try std.testing.expectEqual(@as(usize, 1), store.stats().tile_maps);
+    try std.testing.expectEqual(@as(usize, 1), store.stats().reload_events);
+    try std.testing.expectEqual(@as(f32, 1), action_map.value(state, "game", "jump"));
+    try std.testing.expectEqual(@as(u64, 8), metrics.frame);
+    try std.testing.expectEqual(@as(u32, 4), metrics.resource_churn);
+}
