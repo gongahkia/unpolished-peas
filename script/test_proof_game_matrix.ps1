@@ -19,13 +19,12 @@ function Invoke-Scenario([string]$Name, [scriptblock]$Command) {
 }
 try {
     $project = "fixtures/$Game-project"
-    Invoke-Scenario 'cli-build' { zig build install-peas }
-    $peas = Join-Path $repo 'zig-out/bin/peas.exe'
-    Invoke-Scenario 'cli-check' { & $peas check $project }
-    Invoke-Scenario 'cli-compile' { & $peas compile $project (Join-Path $tmp 'content') }
-    foreach ($selection in 'unit', 'replay', 'visual', 'integration') {
-        Invoke-Scenario "cli-test-$selection" { & $peas test $selection $project }
+    Invoke-Scenario 'cli-check' { zig build peas -- check $project }
+    Invoke-Scenario 'cli-compile' { zig build peas -- compile $project (Join-Path $tmp 'content') }
+    foreach ($selection in 'unit', 'replay', 'visual') {
+        Invoke-Scenario "cli-test-$selection" { zig build peas -- test $selection $project }
     }
+    Invoke-Scenario 'integration-fixture' { zig test (Join-Path $project 'src/main.zig') }
     Invoke-Scenario 'inspector-reload-profiler' { zig build test }
     if ($Game -eq 'topdown') {
         Invoke-Scenario 'headless' { zig build test-topdown-scene }
