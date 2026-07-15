@@ -420,6 +420,10 @@ pub fn build(b: *std.Build) void {
     renderer_conformance.setEnvironmentVariable("UP_RENDERER_CONFORMANCE", "1");
     const renderer_conformance_step = b.step("test-renderer-conformance", "Run shared desktop renderer smoke and GPU golden fixtures");
     renderer_conformance_step.dependOn(&renderer_conformance.step);
+    const opengl_conformance = b.addRunArtifact(sdl_tests);
+    opengl_conformance.setEnvironmentVariable("UP_OPENGL_CONFORMANCE", "1");
+    const opengl_conformance_step = b.step("test-opengl", "Run the OpenGL 3.3 desktop presenter conformance fixture");
+    opengl_conformance_step.dependOn(&opengl_conformance.step);
     const effects_tests = b.addTest(.{ .root_module = effects });
     const run_effects_tests = b.addRunArtifact(effects_tests);
     const effects_test_step = b.step("test-effects", "Test the independent effects package module");
