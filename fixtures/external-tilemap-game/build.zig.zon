@@ -1,0 +1,17 @@
+.{
+    .name = .external_tilemap_camera_actions,
+    .version = "0.0.1",
+    .fingerprint = 0xf01b01b7ec5170f2,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "assets",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}
