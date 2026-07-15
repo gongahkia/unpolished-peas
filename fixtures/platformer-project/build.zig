@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
-    const peas = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize });
+    const peas = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize, .with_box2d = false, .with_sdl = false });
     const module = b.createModule(.{
         .root_source_file = b.path("src/main.zig"),
         .target = target,
