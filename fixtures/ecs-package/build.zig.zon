@@ -1,0 +1,10 @@
+.{
+    .name = .ecs_package_fixture,
+    .version = "0.0.1",
+    .fingerprint = 0xaeb3d7f7687d71b7,
+    .minimum_zig_version = "0.15.1",
+    .dependencies = .{
+        .unpolished_peas_ecs = .{ .path = "../../packages/ecs" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

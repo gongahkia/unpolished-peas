@@ -17,7 +17,6 @@ pub fn networking(comptime core: type) type {
         pub const channel = @import("net_channel.zig");
         pub const codec = @import("net_codec.zig");
         pub const contract = @import("net_contract.zig");
-        pub const ecs_replication = @import("net_ecs_replication.zig").replication(core);
         pub const fault = @import("net_fault.zig");
         pub const frame = @import("net_frame.zig");
         pub const handshake = @import("net_handshake.zig");
@@ -36,10 +35,15 @@ pub fn multiplayerMatrix(comptime core: type) type {
     return @import("net_multiplayer_matrix.zig").matrix(core);
 }
 
+pub fn replication(comptime ecs: type) type {
+    return @import("net_ecs_replication.zig").replication(ecs);
+}
+
 test {
     _ = @import("net_channel.zig");
     _ = @import("net_codec.zig");
     _ = @import("net_contract.zig");
+    _ = @import("net_ecs_replication.zig");
     _ = @import("net_fault.zig");
     _ = @import("net_frame.zig");
     _ = @import("net_handshake.zig");

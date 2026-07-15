@@ -30,7 +30,7 @@ zig build test-renderer-conformance
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-networking` (multiplayer), `unpolished-peas-ui` (immediate UI), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
+Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-ecs` (entity storage), `unpolished-peas-networking` (multiplayer), `unpolished-peas-ui` (immediate UI), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
 
 `services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. Engine provider contracts contain no database or vendor types; the opt-in local PostgreSQL adapter is isolated behind that boundary.
 `services/config/deploy.zon.example` and `services/deploy/unpolished-peas-services.service` keep database credentials external; `/healthz` reports liveness and `/readyz` probes PostgreSQL plus the configured relay without enabling engine telemetry.
@@ -40,9 +40,10 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 `LobbyService` is the SDL-free guest-backed lobby boundary: create, join, leave, disconnect, expiration, bounded membership, and `inspectorState()` use only validated guest sessions.
 `MatchmakingService` queues active lobby members under bounded timeout/capacity rules and returns an idempotent match bootstrap usable by the P2P runtime.
 `RelayService` derives bounded relay routes from authorized match requests, seals each route ticket to its guest session with XChaCha20-Poly1305, expires leases, and caps concurrent relay connections and transmitted bytes.
-`unpolished-peas-networking` owns protocol, transport, sync, peer-to-peer, fault, and replication APIs; use `@import("unpolished-peas-networking").networking(core)`.
+`unpolished-peas-ecs` owns generation-checked entities, sparse stores, commands, and deterministic queries; use `@import("unpolished-peas-ecs")`.
+`unpolished-peas-networking` owns protocol, transport, sync, peer-to-peer, fault, and replication APIs; use `@import("unpolished-peas-networking").networking(core)` and `@import("unpolished-peas-networking").replication(ecs)`.
 
-[fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, networking, tools, and services.
+[fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, ECS, networking, tools, and services.
 
 `unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `step`, and `deinit`; the core module and generated starter do not link Box2D.
 Use `@import("unpolished-peas-physics").physics(core)` and `@import("unpolished-peas-ui").ui(core)` to bind optional packages to the core API used by the game.
@@ -126,6 +127,7 @@ zig build test
 zig build test-support
 zig build test-modules
 zig build test-effects
+zig build test-ecs
 zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
@@ -197,6 +199,7 @@ An extension hook is a declared Zig script exporting `name` and `apply(dependenc
 `script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.
 `script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
 `test-effects-conformance` verifies effects fallbacks, source reload validation, and command/headless renderer parity.
+`test-ecs` verifies the ECS package and an external consumer fixture.
 `test-networking` verifies the networking package and an external core-bound consumer.
 `test-ui-conformance` verifies immediate UI pointer, keyboard, gamepad, HUD, and camera-surface behavior through an external consumer.
 `test-physics-conformance` verifies independent Box2D world lifecycle, contacts, inspector state, debug output, and teardown.
@@ -300,7 +303,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 ## Next Build Targets
 
 1. Publish future tagged package releases and update the starter dependency URL and hash.
-2. Add an opt-in ECS with generation-checked entities, sparse component stores, deterministic queries, and no hidden scheduler; keep direct struct-based games first-class.
-3. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
-4. Add a shader API with one strict pixel-effect example and headless fallback coverage.
-5. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
+2. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
+3. Add a shader API with one strict pixel-effect example and headless fallback coverage.
+4. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.

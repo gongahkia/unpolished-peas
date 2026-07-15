@@ -1,0 +1,9 @@
+.{
+    .format = "unpolished-peas-extension",
+    .version = 1,
+    .name = "ecs",
+    .package_version = "1.0.0",
+    .core_range = "^1.0.0",
+    .modules = .{ .{ .name = "unpolished-peas-ecs", .path = "src/ecs.zig" } },
+    .tests = .{ .{ .name = "ecs-integration", .target = "test-ecs", .path = "src/ecs.zig" } },
+}

@@ -1,12 +1,7 @@
 const std = @import("std");
 const net_codec = @import("net_codec.zig");
 
-pub fn replication(comptime core: type) type {
-    const ecs = struct {
-        const Entity = core.EcsEntity;
-        const World = core.EcsWorld;
-        const ComponentStore = core.ComponentStore;
-    };
+pub fn replication(comptime ecs: type) type {
     return struct {
         pub const header_bytes: usize = 15;
         pub const max_packet_bytes: usize = net_codec.max_payload_bytes;
