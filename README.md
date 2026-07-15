@@ -186,6 +186,7 @@ zig build upmapc -- level.upmap level.upmapb
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
+`zig build release-gate` runs API, CLI, proof-game, service, package, visual, replay, fuzz, and performance gates; every gate writes a local log under `zig-out/diagnostics/release-gate/`, and release validation requires no telemetry.
 
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; top-down and platformer package smokes run outside the repository and emit reports.
 `test-scenes` compares a deterministic headless scene against a committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.

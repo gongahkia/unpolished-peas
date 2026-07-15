@@ -13,7 +13,23 @@ permissions:
   contents: write
 
 jobs:
+  release-gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes postgresql xvfb libvulkan1 mesa-vulkan-drivers libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: zig build release-gate
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-diagnostics
+          path: zig-out/diagnostics/release-gate/**
+          if-no-files-found: warn
   macos:
+    needs: release-gate
     runs-on: macos-15-intel
     steps:
       - uses: actions/checkout@v4
@@ -26,6 +42,7 @@ jobs:
           name: macos-release
           path: dist/macos
   linux:
+    needs: release-gate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +56,7 @@ jobs:
           name: linux-release
           path: dist/linux
   windows:
+    needs: release-gate
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4

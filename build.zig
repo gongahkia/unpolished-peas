@@ -281,6 +281,10 @@ pub fn build(b: *std.Build) void {
     const run_fuzz_tests = b.addRunArtifact(fuzz_tests);
     const fuzz_test_step = b.step("test-fuzz", "Run bounded decoder and protocol fuzz corpus");
     fuzz_test_step.dependOn(&run_fuzz_tests.step);
+    const release_gate = b.addSystemCommand(&.{"script/release_gate.sh"});
+    release_gate.setCwd(b.path("."));
+    const release_gate_step = b.step("release-gate", "Run the v1 release validation gate");
+    release_gate_step.dependOn(&release_gate.step);
 
     const breakout_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("examples/breakout_game.zig"),
