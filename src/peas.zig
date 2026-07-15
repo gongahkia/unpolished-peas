@@ -193,11 +193,17 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
     };
     std.debug.print("peas run: project {s}\npeas run: assets {s}/assets\npeas run: Debug runtime logs and app-data path follow\n", .{ project_root, project_root });
 
+    const command_args = try debugRunArguments(allocator, game_args.items);
+    defer allocator.free(command_args);
+    return runZigBuild(allocator, command_args, project_root);
+}
+
+fn debugRunArguments(allocator: std.mem.Allocator, game_args: []const []const u8) ![]const []const u8 {
     var command_args = std.ArrayList([]const u8).empty;
-    defer command_args.deinit(allocator);
+    errdefer command_args.deinit(allocator);
     try command_args.appendSlice(allocator, &.{ "zig", "build", "-Doptimize=Debug", "run", "--" });
-    try command_args.appendSlice(allocator, game_args.items);
-    return runZigBuild(allocator, command_args.items, project_root);
+    try command_args.appendSlice(allocator, game_args);
+    return command_args.toOwnedSlice(allocator);
 }
 
 fn checkProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -426,6 +432,19 @@ test "project test classes report deterministic targets" {
         defer std.testing.allocator.free(report);
         try std.testing.expectEqualStrings(case.expected, report);
     }
+}
+
+test "run launches a standard project debug target without a descriptor" {
+    const command = try debugRunArguments(std.testing.allocator, &.{ "--frames", "2" });
+    defer std.testing.allocator.free(command);
+    try std.testing.expectEqual(@as(usize, 7), command.len);
+    try std.testing.expectEqualStrings("zig", command[0]);
+    try std.testing.expectEqualStrings("build", command[1]);
+    try std.testing.expectEqualStrings("-Doptimize=Debug", command[2]);
+    try std.testing.expectEqualStrings("run", command[3]);
+    try std.testing.expectEqualStrings("--", command[4]);
+    try std.testing.expectEqualStrings("--frames", command[5]);
+    try std.testing.expectEqualStrings("2", command[6]);
 }
 
 test "known package targets parse" {
