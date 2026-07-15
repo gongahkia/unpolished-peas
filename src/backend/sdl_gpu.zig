@@ -51,6 +51,26 @@ pub const GpuCapabilities = struct {
     }
 };
 
+const RuntimeInspectorPanels = struct {
+    assets: up.InspectorAssetPanel,
+    input: up.InspectorInputPanel,
+    metrics: up.InspectorMetricsPanel,
+
+    fn init(asset_store: *const up.AssetStore, input_state: *const up.Input, action_map: *const up.ActionMap, runtime_metrics: *const up.RuntimeMetrics) RuntimeInspectorPanels {
+        return .{
+            .assets = .{ .store = asset_store },
+            .input = .{ .state = input_state, .action_map = action_map },
+            .metrics = .{ .metrics = runtime_metrics },
+        };
+    }
+
+    fn register(self: *RuntimeInspectorPanels, inspector: *up.Inspector) !void {
+        try inspector.register(self.assets.panel());
+        try inspector.register(self.input.panel());
+        try inspector.register(self.metrics.panel());
+    }
+};
+
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
 }
@@ -66,6 +86,23 @@ test "renderer conformance reports unsupported shader capabilities" {
     try std.testing.expectEqual(GpuShaderFormat.spirv, try (GpuCapabilities{ .shader_formats = GpuCapabilities.spirv }).requireShaderFormat());
     try std.testing.expectEqual(GpuShaderFormat.dxbc, try (GpuCapabilities{ .shader_formats = GpuCapabilities.dxbc }).requireShaderFormat());
     try std.testing.expectError(error.UnsupportedGpuShaderFormat, (GpuCapabilities{ .shader_formats = @intCast(c.SDL_GPU_SHADERFORMAT_DXIL) }).requireShaderFormat());
+}
+
+test "runtime wires only core inspector panels" {
+    var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer assets.deinit();
+    var input = up.Input{};
+    var actions = try up.ActionMap.init(std.testing.allocator, &.{});
+    defer actions.deinit();
+    var metrics = up.RuntimeMetrics{};
+    var inspector = up.Inspector.init(std.testing.allocator, true);
+    defer inspector.deinit();
+    var panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &metrics);
+    try panels.register(&inspector);
+    try std.testing.expectEqual(@as(usize, 3), inspector.panels.items.len);
+    try std.testing.expectEqualStrings("assets", inspector.panels.items[0].name);
+    try std.testing.expectEqualStrings("input", inspector.panels.items[1].name);
+    try std.testing.expectEqualStrings("metrics", inspector.panels.items[2].name);
 }
 
 test "Context returns errors for invalid asset handles" {
@@ -966,8 +1003,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer inspector.deinit();
     var runtime_metrics = up.RuntimeMetrics{};
     var frame_metrics = up.RuntimeMetrics{};
-    var metrics_panel = up.InspectorMetricsPanel{ .metrics = &runtime_metrics };
-    try inspector.register(metrics_panel.panel());
     var capture_requested = false;
 
     var audio = try up.AudioMixer.init(allocator, .{ .sample_rate = config.audio_sample_rate });
@@ -999,6 +1034,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         error.FileNotFound => {},
         else => return err,
     };
+    var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics);
+    try runtime_inspector_panels.register(&inspector);
     var presenter = Presenter.init(device, config.width, config.height) catch |err| {
         dev.failure(.gpu, err);
         dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
