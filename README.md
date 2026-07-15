@@ -265,6 +265,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `netPeer`, `PeerServer`
 - `netChannel`, `NetChannel`
 - `netP2p`, `P2pPeer`, `P2pRoute`
+- `netNat`, `NatGatherer`, `NatTraversalClient`
 - `netSnapshot`, `SnapshotPublisher`, `SnapshotClient`
 - `netEcsReplication`, `ReplicationSchema`, `ReplicationStateAdapter`, `SceneReplicationAdapter`, `EcsReplicationAdapter`
 - `netSession`, `NetHost`, `NetHostRole`, `NetClient`
