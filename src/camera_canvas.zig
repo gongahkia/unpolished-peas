@@ -98,7 +98,7 @@ pub const CameraCanvas = struct {
         if (options.scale == 0) return;
         const frame = atlas.frame(handle);
         const scale: f32 = @floatFromInt(options.scale);
-        const origin = switch (options.origin) {
+        const origin: Vec2 = switch (options.origin) {
             .top_left => position,
             .center => .{ .x = position.x - @as(f32, @floatFromInt(frame.source_w)) * scale / 2, .y = position.y - @as(f32, @floatFromInt(frame.source_h)) * scale / 2 },
         };
@@ -120,7 +120,14 @@ pub const CameraCanvas = struct {
                 if (options.flip_y) logical_y = frame.source_h - 1 - logical_y;
                 const color = tint(atlas.image.pixels[@as(usize, sy) * atlas.image.width + sx], options.tint);
                 if (color.a == 0) continue;
-                self.fillRect(.init(origin.x + @as(f32, @floatFromInt(logical_x)) * scale, origin.y + @as(f32, @floatFromInt(logical_y)) * scale, scale, scale), color);
+                const x = origin.x + @as(f32, @floatFromInt(logical_x)) * scale;
+                const y = origin.y + @as(f32, @floatFromInt(logical_y)) * scale;
+                if (options.rotation == 0) {
+                    self.fillRect(.init(x, y, scale, scale), color);
+                } else {
+                    const center = Vec2.init(origin.x + @as(f32, @floatFromInt(frame.source_w)) * scale / 2, origin.y + @as(f32, @floatFromInt(frame.source_h)) * scale / 2);
+                    self.fillQuad(rotatePoint(.{ .x = x, .y = y }, center, options.rotation), rotatePoint(.{ .x = x + scale, .y = y }, center, options.rotation), rotatePoint(.{ .x = x + scale, .y = y + scale }, center, options.rotation), rotatePoint(.{ .x = x, .y = y + scale }, center, options.rotation), color);
+                }
             }
         }
     }
@@ -157,6 +164,12 @@ pub const CameraCanvas = struct {
             .w = @max(0, ceilToI32(viewport.w)),
             .h = @max(0, ceilToI32(viewport.h)),
         });
+    }
+
+    fn fillQuad(self: CameraCanvas, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) void {
+        const previous = self.pushClip();
+        defer self.canvas.restoreClip(previous);
+        self.canvas.fillQuad(self.camera.worldToCanvas(a, self.canvas_size), self.camera.worldToCanvas(b, self.canvas_size), self.camera.worldToCanvas(c, self.canvas_size), self.camera.worldToCanvas(d, self.canvas_size), color);
     }
 
     fn drawImageRect(self: CameraCanvas, image: Image, position: Vec2, size: Vec2) void {
@@ -244,6 +257,13 @@ fn lerpColor(a: Color, b: Color, t: f32) Color {
     };
 }
 
+fn rotatePoint(point: Vec2, center: Vec2, angle: f32) Vec2 {
+    const delta = point.sub(center);
+    const sin = std.math.sin(angle);
+    const cos = std.math.cos(angle);
+    return .{ .x = center.x + delta.x * cos - delta.y * sin, .y = center.y + delta.x * sin + delta.y * cos };
+}
+
 test "camera canvas clips to viewport" {
     var canvas = try canvas_mod.Canvas.init(std.testing.allocator, 8, 8);
     defer canvas.deinit();
@@ -275,4 +295,22 @@ test "camera canvas transforms image regions" {
     world.drawImageRegionTransformed(image, .init(0, 0, 2, 2), .init(0, 0, 2, 2), Color.white, true, false, false);
     try std.testing.expectEqual(Color.rgb(0, 255, 0), canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(1, 0).?);
+}
+
+test "camera atlas draw matches Canvas transform options" {
+    var pixels = [_]Color{ Color.rgb(255, 0, 0), Color.rgb(0, 255, 0) };
+    var frame_name = [_]u8{'f'};
+    var frames = [_]atlas_mod.AtlasFrame{.{ .name = frame_name[0..], .x = 0, .y = 0, .w = 2, .h = 1, .source_w = 2, .source_h = 1, .offset_x = 0, .offset_y = 0 }};
+    var image_path = [_]u8{'x'};
+    const animations = [_]atlas_mod.Animation{};
+    const atlas = atlas_mod.Atlas{ .allocator = std.testing.allocator, .image = .{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = pixels[0..] }, .image_path = image_path[0..], .frames = frames[0..], .animations = animations[0..] };
+    const options = atlas_mod.DrawSpriteOptions{ .origin = .center, .scale = 2, .flip_x = true, .tint = Color.rgb(180, 220, 255), .rotation = @as(f32, std.math.pi) / 2, .sampling = .linear };
+    var expected = try canvas_mod.Canvas.init(std.testing.allocator, 16, 16);
+    defer expected.deinit();
+    expected.drawAtlasFrame(atlas, .{ .index = 0 }, 8, 8, options);
+    var actual = try canvas_mod.Canvas.init(std.testing.allocator, 16, 16);
+    defer actual.deinit();
+    const camera = camera_mod.Camera2D{ .position = .{ .x = 8, .y = 8 }, .pixel_snap = .off };
+    CameraCanvas.init(&actual, &camera).drawAtlasFrame(atlas, .{ .index = 0 }, .{ .x = 8, .y = 8 }, options);
+    try std.testing.expectEqualSlices(Color, expected.pixels, actual.pixels);
 }
