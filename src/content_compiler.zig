@@ -251,6 +251,28 @@ test "content compiler reuses unchanged catalog and map artifacts" {
     try std.fs.cwd().access(map_cache_path, .{});
 }
 
+test "content compiler accepts only native asset declarations" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    try temp.dir.makePath("project/assets");
+    try temp.dir.writeFile(.{ .sub_path = "project/assets/catalog.upassets", .data =
+        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{}, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{} }
+        \\
+    });
+    try temp.dir.writeFile(.{ .sub_path = "project/assets/legacy.json", .data = "not a native declaration\n" });
+    const project_root = try temp.dir.realpathAlloc(std.testing.allocator, "project");
+    defer std.testing.allocator.free(project_root);
+    const output_root = try std.fs.path.join(std.testing.allocator, &.{ project_root, "zig-out", "content" });
+    defer std.testing.allocator.free(output_root);
+    var diagnostic = Diagnostic{};
+    defer diagnostic.deinit(std.testing.allocator);
+    const report = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
+    try std.testing.expectEqual(@as(usize, 1), report.compiled);
+    const legacy_cache = try std.fs.path.join(std.testing.allocator, &.{ output_root, "assets", "legacy.json.upc" });
+    defer std.testing.allocator.free(legacy_cache);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(legacy_cache, .{}));
+}
+
 test "content compiler builds the native platformer fixture" {
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
