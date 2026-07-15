@@ -425,6 +425,7 @@ pub const Context = struct {
     runtime_metrics: *up.RuntimeMetrics,
     capture_requested: *bool,
     dt: f32,
+    alpha: f32,
     frame: u64,
 
     pub fn clear(self: *Context, color: up.Color) void {
@@ -1003,7 +1004,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var presenter_live = true;
     defer if (presenter_live) presenter.deinit(device);
 
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .capture_requested = &capture_requested, .dt = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1103,10 +1104,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         last_ticks = now;
         const paused = shouldPause(config.pause_policy, desktop_state);
 
-        const steps = if (paused) 0 else clock.push(dt);
+        const timing = frameTiming(&clock, dt, paused);
         var step: u32 = 0;
-        while (step < steps) : (step += 1) {
-            ctx.dt = clock.step_seconds;
+        while (step < timing.update_steps) : (step += 1) {
+            ctx.dt = timing.update_dt;
+            ctx.alpha = 0;
             const update_timer = profiler.scope(.update);
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
                 update_timer.end();
@@ -1121,7 +1123,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
-        ctx.dt = if (paused) 0 else dt;
+        ctx.dt = timing.draw_dt;
+        ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             draw_timer.end();
@@ -1134,7 +1137,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         draw_timer.end();
         inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
-        dev.drawOverlay(&canvas, dt, ctx.frame);
+        dev.drawOverlay(&canvas, timing.draw_dt, ctx.frame);
         var screenshot_path: ?[]u8 = null;
         if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
@@ -1471,6 +1474,55 @@ test "desktop pause policy is opt-in and deterministic" {
     try std.testing.expect(shouldPause(.minimized, .{ .focused = true, .minimized = true }));
 }
 
+test "frame timing runs fixed updates before one variable draw" {
+    const State = struct {
+        calls: [3]u8 = undefined,
+        dts: [3]f32 = undefined,
+        alphas: [3]f32 = undefined,
+        count: usize = 0,
+
+        fn update(self: *@This(), ctx: *Context) void {
+            self.note('u', ctx);
+        }
+
+        fn draw(self: *@This(), ctx: *Context) void {
+            self.note('d', ctx);
+        }
+
+        fn note(self: *@This(), call: u8, ctx: *Context) void {
+            self.calls[self.count] = call;
+            self.dts[self.count] = ctx.dt;
+            self.alphas[self.count] = ctx.alpha;
+            self.count += 1;
+        }
+    };
+    var clock = up.StepClock.init(10);
+    const timing = frameTiming(&clock, 0.25, false);
+    var ctx: Context = undefined;
+    var state = State{};
+    var step: u32 = 0;
+    while (step < timing.update_steps) : (step += 1) {
+        ctx.dt = timing.update_dt;
+        ctx.alpha = 0;
+        try callLoopUpdate(&state, .{ .update = State.update }, &ctx);
+    }
+    ctx.dt = timing.draw_dt;
+    ctx.alpha = timing.alpha;
+    try callLoopDraw(&state, .{ .draw = State.draw }, &ctx);
+    try std.testing.expectEqualSlices(u8, "uud", state.calls[0..state.count]);
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.1, state.dts[0], 0.0001));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.1, state.dts[1], 0.0001));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.25, state.dts[2], 0.0001));
+    try std.testing.expectEqual(@as(f32, 0), state.alphas[0]);
+    try std.testing.expectEqual(@as(f32, 0), state.alphas[1]);
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, state.alphas[2], 0.0001));
+    const paused = frameTiming(&clock, 1, true);
+    try std.testing.expectEqual(@as(u32, 0), paused.update_steps);
+    try std.testing.expectEqual(@as(f32, 0), paused.draw_dt);
+    try std.testing.expectEqual(@as(f32, 0), paused.alpha);
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.alpha(), 0.0001));
+}
+
 test "GPU recovery state bounds reset and loss transitions" {
     try std.testing.expectEqual(GpuRecovery.reset_pending, nextGpuRecovery(.ready, .gpu_device_reset));
     try std.testing.expectEqual(GpuRecovery.lost, nextGpuRecovery(.reset_pending, .gpu_device_lost));
@@ -1660,6 +1712,19 @@ fn shouldPause(policy: PausePolicy, state: DesktopState) bool {
         .unfocused => !state.focused,
         .minimized => state.minimized,
     };
+}
+
+const FrameTiming = struct {
+    update_steps: u32,
+    update_dt: f32,
+    draw_dt: f32,
+    alpha: f32,
+};
+
+fn frameTiming(clock: *up.StepClock, elapsed: f32, paused: bool) FrameTiming {
+    if (paused) return .{ .update_steps = 0, .update_dt = clock.step_seconds, .draw_dt = 0, .alpha = 0 };
+    const draw_dt = clock.frameDelta(elapsed);
+    return .{ .update_steps = clock.push(draw_dt), .update_dt = clock.step_seconds, .draw_dt = draw_dt, .alpha = clock.alpha() };
 }
 
 const FailurePhase = enum {

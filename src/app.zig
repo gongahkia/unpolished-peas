@@ -11,10 +11,7 @@ pub const StepClock = struct {
     }
 
     pub fn push(self: *StepClock, dt_seconds: f32) u32 {
-        if (dt_seconds <= 0) return 0;
-
-        const max_dt = self.step_seconds * @as(f32, @floatFromInt(self.max_steps_per_frame));
-        self.accumulator += @min(dt_seconds, max_dt);
+        self.accumulator += self.frameDelta(dt_seconds);
 
         var steps: u32 = 0;
         while (self.accumulator >= self.step_seconds and steps < self.max_steps_per_frame) {
@@ -27,15 +24,26 @@ pub const StepClock = struct {
         return steps;
     }
 
+    pub fn frameDelta(self: StepClock, dt_seconds: f32) f32 {
+        if (!(dt_seconds > 0)) return 0;
+        const max_dt = self.step_seconds * @as(f32, @floatFromInt(self.max_steps_per_frame));
+        return @min(dt_seconds, max_dt);
+    }
+
     pub fn alpha(self: StepClock) f32 {
         if (self.step_seconds == 0) return 0;
         return self.accumulator / self.step_seconds;
     }
 };
 
-test "fixed clock" {
-    var clock = StepClock.init(60);
-    try std.testing.expectEqual(@as(u32, 0), clock.push(1.0 / 120.0));
-    try std.testing.expectEqual(@as(u32, 1), clock.push(1.0 / 120.0));
-    try std.testing.expect(clock.alpha() >= 0 and clock.alpha() < 1);
+test "fixed clock accumulates clamped deltas and reports alpha" {
+    var clock = StepClock.init(10);
+    clock.max_steps_per_frame = 3;
+    try std.testing.expectEqual(@as(f32, 0), clock.frameDelta(-1));
+    try std.testing.expectEqual(@as(u32, 0), clock.push(0.05));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.alpha(), 0.0001));
+    try std.testing.expectEqual(@as(u32, 1), clock.push(0.1));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.alpha(), 0.0001));
+    try std.testing.expectEqual(@as(u32, 3), clock.push(1));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.alpha(), 0.0001));
 }
