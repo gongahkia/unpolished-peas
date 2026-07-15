@@ -51,6 +51,10 @@ pub fn validate(allocator: std.mem.Allocator, manifest: Source, directory: std.f
     const package = [_]resolver.Package{.{ .name = manifest.name, .version = manifest.package_version, .core_range = manifest.core_range }};
     _ = resolver.resolve(allocator, .{ .core_version = "1.0.0", .requirements = &.{}, .packages = &package }) catch return error.InvalidManifest;
     if (manifest.modules.len == 0 or manifest.tests.len == 0) return error.InvalidManifest;
+    if (manifest.hook) |hook| {
+        if (!validName(hook.name) or !validSourcePath(hook.script)) return error.InvalidManifest;
+        try directory.access(hook.script, .{});
+    }
     for (manifest.modules, 0..) |module, index| {
         if (!validName(module.name) or !validSourcePath(module.path)) return error.InvalidManifest;
         try directory.access(module.path, .{});
@@ -60,10 +64,6 @@ pub fn validate(allocator: std.mem.Allocator, manifest: Source, directory: std.f
         if (!validName(test_entry.name) or !validName(test_entry.target) or !validSourcePath(test_entry.path)) return error.InvalidManifest;
         try directory.access(test_entry.path, .{});
         for (manifest.tests[index + 1 ..]) |other| if (std.mem.eql(u8, test_entry.name, other.name) or std.mem.eql(u8, test_entry.target, other.target)) return error.InvalidManifest;
-    }
-    if (manifest.hook) |hook| {
-        if (!validName(hook.name) or !safePath(hook.script)) return error.InvalidManifest;
-        try directory.access(hook.script, .{});
     }
 }
 
@@ -97,4 +97,5 @@ test "extension manifests validate package identity, modules, tests, and hook" {
 test "extension manifest rejects invalid identity and paths" {
     try std.testing.expectError(error.InvalidManifest, validateFile(std.testing.allocator, "fixtures/extensions/manifest-invalid/invalid-name.zon"));
     try std.testing.expectError(error.InvalidManifest, validateFile(std.testing.allocator, "fixtures/extensions/manifest-invalid/invalid-path.zon"));
+    try std.testing.expectError(error.InvalidManifest, validateFile(std.testing.allocator, "fixtures/extensions/manifest-invalid/invalid-hook.zon"));
 }

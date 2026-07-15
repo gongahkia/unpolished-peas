@@ -10,4 +10,5 @@
     .tests = .{
         .{ .name = "effects-unit", .target = "test", .path = "src/effects.zig" },
     },
+    .hook = .{ .name = "effects-build", .script = "build_hook.zig" },
 }

@@ -2,9 +2,7 @@
 set -euo pipefail
 
 repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
-cd "$repo/packages/effects"
-zig fmt --check build.zig build_hook.zig src
-zig build test
-cd "$repo/fixtures/effects-package"
+cd "$repo/fixtures/extension-hook-game"
 zig fmt --check build.zig src
 zig build test
+zig build -Deffects-hook=true test

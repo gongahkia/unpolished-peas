@@ -193,6 +193,8 @@ zig build new -- ../my-game
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
 `test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock.
 `test-extension-manifest` validates strict extension identity, semver/core range, module, test, and optional build-hook metadata.
+An extension hook is a declared Zig script exporting `name` and `apply(dependency, root_module)`; a game build opts in by calling its package build's `applyHook` with the declared name. Hooks never run automatically.
+`script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.
 `script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
 `script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
