@@ -11,3 +11,4 @@ pub const PixelEffect = @import("shader.zig").PixelEffect;
 pub const PixelEffectParameters = @import("shader.zig").Parameters;
 pub const PostProcessChain = @import("shader.zig").Chain;
 pub const applyPixelEffect = @import("shader.zig").applyPixelEffect;
+pub const lighting = @import("lighting.zig").lighting;
