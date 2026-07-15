@@ -325,7 +325,7 @@ test "asset catalog validates paths, dependencies, and handle bindings" {
     try std.testing.expect((try store.trySound(blip.audio)).frames.len > 0);
     try std.testing.expect((try store.tryFont(loaded_font.font)).glyphs.len > 0);
     try std.testing.expect((try store.tryAtlas(atlas.atlas)).frames.len > 0);
-    try std.testing.expect((try store.tryShader(effect.shader)).kind == .passthrough);
+    try std.testing.expectEqualStrings("effect=passthrough\n", try store.tryShaderSource(effect.shader));
     var dependencies = try graph(std.testing.allocator, catalog);
     defer dependencies.deinit();
     try std.testing.expectEqual(@as(usize, 1), dependencies.edges.len);
@@ -366,7 +366,7 @@ test "asset catalog reloads changed declarations and reports affected identifier
     try std.testing.expectEqualStrings("b", reloads[1].id);
     try std.testing.expectEqual(assets.ReloadStatus.changed, reloads[0].event.status);
     try std.testing.expectEqualStrings("a.upshader", reloads[1].event.path);
-    try std.testing.expectEqual(.invert, (try store.tryShader(loaded.handle("a").?.shader)).kind);
+    try std.testing.expectEqualStrings("effect=invert\nuniform amount:f32\n", try store.tryShaderSource(loaded.handle("a").?.shader));
 
     _ = try store.loadText("untracked.txt");
     stat = try tmp.dir.statFile("untracked.txt");

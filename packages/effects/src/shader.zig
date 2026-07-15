@@ -1,5 +1,4 @@
 const std = @import("std");
-const Color = @import("color.zig").Color;
 
 pub const Kind = enum { invert, passthrough };
 pub const Reflection = struct { requires_amount: bool = false };
@@ -48,16 +47,17 @@ pub const PixelEffect = struct {
         return (Program{ .kind = kind, .reflection = .{ .requires_amount = kind == .invert } }).instantiate(params);
     }
 
-    pub fn apply(self: PixelEffect, color: Color) Color {
-        return switch (self.kind) {
-            .invert => .{
-                .r = mix(color.r, 255 - color.r, self.amount),
-                .g = mix(color.g, 255 - color.g, self.amount),
-                .b = mix(color.b, 255 - color.b, self.amount),
-                .a = color.a,
+    pub fn apply(self: PixelEffect, color: anytype) @TypeOf(color) {
+        var result = color;
+        switch (self.kind) {
+            .invert => {
+                result.r = mix(color.r, 255 - color.r, self.amount);
+                result.g = mix(color.g, 255 - color.g, self.amount);
+                result.b = mix(color.b, 255 - color.b, self.amount);
             },
-            .passthrough => color,
-        };
+            .passthrough => {},
+        }
+        return result;
     }
 };
 
@@ -86,23 +86,34 @@ pub const Chain = struct {
         return self.effects[0..self.len];
     }
 
-    pub fn apply(self: Chain, color: Color) Color {
+    pub fn apply(self: Chain, color: anytype) @TypeOf(color) {
         var result = color;
         for (self.effects[0..self.len]) |effect| result = effect.apply(result);
         return result;
     }
 };
 
+pub fn applyPixelEffect(surface: anytype, effect: PixelEffect) void {
+    for (surface.pixels) |*pixel| pixel.* = effect.apply(pixel.*);
+}
+
 fn mix(a: u8, b: u8, amount: f32) u8 {
     return @intFromFloat(@round(@as(f32, @floatFromInt(a)) + (@as(f32, @floatFromInt(b)) - @as(f32, @floatFromInt(a))) * amount));
 }
 
-test "shader compilation validates reflection and headless fallback" {
+const TestColor = struct {
+    r: u8,
+    g: u8,
+    b: u8,
+    a: u8,
+};
+
+test "shader compilation validates reflection and generic color fallback" {
     const program = try Program.compile("effect=invert\nuniform amount:f32\n");
     const effect = try program.instantiate(.{ .amount = 0.5 });
-    try std.testing.expectEqual(Color.rgba(128, 128, 128, 64), effect.apply(Color.rgba(0, 0, 0, 64)));
+    try std.testing.expectEqual(TestColor{ .r = 128, .g = 128, .b = 128, .a = 64 }, effect.apply(.{ .r = 0, .g = 0, .b = 0, .a = 64 }));
     const passthrough = try Program.compile("effect=passthrough");
-    try std.testing.expectEqual(Color.white, (try passthrough.instantiate(.{})).apply(Color.white));
+    try std.testing.expectEqual(TestColor{ .r = 1, .g = 2, .b = 3, .a = 4 }, (try passthrough.instantiate(.{})).apply(.{ .r = 1, .g = 2, .b = 3, .a = 4 }));
     try std.testing.expectError(error.InvalidShaderReflection, Program.compile("effect=invert"));
     try std.testing.expectError(error.InvalidShaderSource, Program.compile("effect=blur"));
     try std.testing.expectError(error.InvalidShaderParameter, program.instantiate(.{ .amount = 2 }));
@@ -112,7 +123,14 @@ test "post-process chains preserve declared pass order" {
     var chain = Chain{};
     try chain.append(try PixelEffect.parse("invert", .{ .amount = 1 }));
     try chain.append(try PixelEffect.parse("invert", .{ .amount = 1 }));
-    try std.testing.expectEqual(Color.rgb(12, 34, 56), chain.apply(Color.rgb(12, 34, 56)));
+    try std.testing.expectEqual(TestColor{ .r = 12, .g = 34, .b = 56, .a = 255 }, chain.apply(.{ .r = 12, .g = 34, .b = 56, .a = 255 }));
     chain.clear();
     try std.testing.expectEqual(@as(usize, 0), chain.items().len);
+}
+
+test "pixel-effect helper transforms a structural surface" {
+    var pixels = [_]TestColor{.{ .r = 10, .g = 20, .b = 30, .a = 255 }};
+    var surface = struct { pixels: []TestColor }{ .pixels = &pixels };
+    applyPixelEffect(&surface, try PixelEffect.parse("invert", .{}));
+    try std.testing.expectEqual(TestColor{ .r = 245, .g = 235, .b = 225, .a = 255 }, pixels[0]);
 }

@@ -31,7 +31,7 @@
     {"path": "fixtures/downstream/build.zig", "imports": []},
     {"path": "fixtures/downstream/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api.core", "symbols": ["Color", "Rect", "StepClock", "Vec2"]}]},
     {"path": "fixtures/effects-package/build.zig", "imports": []},
-    {"path": "fixtures/effects-package/src/main.zig", "imports": [{"module": "unpolished-peas-effects", "path": "", "symbols": ["Resources"]}]},
+    {"path": "fixtures/effects-package/src/main.zig", "imports": [{"module": "unpolished-peas-effects", "path": "", "symbols": ["PostProcessChain", "Resources", "ShaderProgram"]}]},
     {"path": "fixtures/extensions/manifest-valid/build_hook.zig", "imports": []},
     {"path": "fixtures/extensions/manifest-valid/src/effects.zig", "imports": []},
     {"path": "fixtures/extensions/manifest-valid/src/effects_test.zig", "imports": []},

@@ -58,9 +58,6 @@ pub const graphics = struct {
     pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
     pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
     pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
-    pub const ShaderProgram = @import("shader.zig").Program;
-    pub const ShaderReflection = @import("shader.zig").Reflection;
-    pub const ShaderKind = @import("shader.zig").Kind;
 };
 
 pub const assets = struct {
@@ -93,6 +90,12 @@ test "public API excludes effects GPU resource declarations" {
     try std.testing.expect(!@hasDecl(@This(), "RenderTargetHandle"));
     try std.testing.expect(!@hasDecl(@This(), "ShaderHandle"));
     try std.testing.expect(!@hasDecl(@This(), "PipelineHandle"));
+    try std.testing.expect(!@hasDecl(@This(), "ShaderProgram"));
+    try std.testing.expect(!@hasDecl(@This(), "ShaderReflection"));
+    try std.testing.expect(!@hasDecl(@This(), "ShaderKind"));
+    try std.testing.expect(!@hasDecl(@This(), "PixelEffect"));
+    try std.testing.expect(!@hasDecl(@This(), "PixelEffectParameters"));
+    try std.testing.expect(!@hasDecl(@This(), "PostProcessChain"));
 }
 pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
@@ -323,12 +326,6 @@ pub const RenderCommand = @import("render.zig").Command;
 pub const RenderCommandBuffer = @import("render.zig").CommandBuffer;
 pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
 pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
-pub const ShaderProgram = @import("shader.zig").Program;
-pub const ShaderReflection = @import("shader.zig").Reflection;
-pub const ShaderKind = @import("shader.zig").Kind;
-pub const PixelEffect = @import("shader.zig").PixelEffect;
-pub const PixelEffectParameters = @import("shader.zig").Parameters;
-pub const PostProcessChain = @import("shader.zig").Chain;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;
