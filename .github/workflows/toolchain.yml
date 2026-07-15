@@ -40,6 +40,7 @@ jobs:
       - run: script/test_module_fixture.sh
       - run: script/test_services_workspace.sh
       - run: script/check_no_legacy_lifecycle.sh
+      - run: script/check_no_removed_content_paths.sh
       - if: matrix.os == 'ubuntu-latest'
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples services templates
