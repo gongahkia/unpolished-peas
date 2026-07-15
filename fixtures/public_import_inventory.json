@@ -29,6 +29,8 @@
     {"path": "fixtures/bounce-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Canvas", "Color", "Vec2"]}]},
     {"path": "fixtures/downstream/build.zig", "imports": []},
     {"path": "fixtures/downstream/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api.core", "symbols": ["Color", "Rect", "StepClock", "Vec2"]}]},
+    {"path": "fixtures/external-animation-game/build.zig", "imports": []},
+    {"path": "fixtures/external-animation-game/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["Action", "ActionMap", "Animation", "AnimationFrame", "AnimationPlayer", "Atlas", "AtlasFrame", "AudioMixer", "AudioSample", "Camera2D", "Color", "Input", "Rect", "Sound", "Vec2", "collision"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "fixtures/external-game/build.zig", "imports": []},
     {"path": "fixtures/external-game/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "api", "symbols": ["AudioSample", "Color", "Image", "Input", "Sound", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "fixtures/external-tilemap-game/build.zig", "imports": []},
