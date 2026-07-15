@@ -42,6 +42,7 @@
     {"path": "fixtures/peas-check/missing-main/build.zig", "imports": []},
     {"path": "fixtures/peas-check/missing-manifest/build.zig", "imports": []},
     {"path": "fixtures/peas-check/missing-manifest/src/main.zig", "imports": []},
+    {"path": "fixtures/peas-check/missing-maps/build.zig", "imports": []},
     {"path": "fixtures/peas-check/missing-minimum-zig/build.zig", "imports": []},
     {"path": "fixtures/peas-check/missing-minimum-zig/src/main.zig", "imports": []},
     {"path": "fixtures/peas-check/unsupported-engine/build.zig", "imports": []},
