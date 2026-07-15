@@ -5,6 +5,7 @@ const diagnostics = @import("diagnostics.zig");
 const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
+const render = @import("render.zig");
 
 pub const TempProject = struct { // owns a temporary project directory and its absolute path; call deinit once.
     allocator: std.mem.Allocator,
@@ -89,6 +90,90 @@ pub const StateHash = struct {
 pub const GoldenOptions = struct {
     expected_hash: u64,
     diagnostics_path: []const u8,
+};
+
+pub const RendererConformance = struct {
+    pub const Scenario = enum {
+        opaque_rects,
+        clipped_rect,
+    };
+
+    scenario: Scenario,
+    width: u32,
+    height: u32,
+    commands: render.CommandBuffer,
+
+    const background = Color.rgba(19, 37, 61, 255);
+    const first = Color.rgba(1, 2, 3, 255);
+    const second = Color.rgba(5, 6, 7, 255);
+    const clipped = Color.rgba(13, 17, 23, 255);
+    const last = Color.rgba(9, 10, 11, 255);
+
+    pub fn init(allocator: std.mem.Allocator, scenario: Scenario, width: u32, height: u32) !RendererConformance {
+        if (width < 4 or height < 3) return error.InvalidConformanceCanvas;
+        var value = RendererConformance{
+            .scenario = scenario,
+            .width = width,
+            .height = height,
+            .commands = render.CommandBuffer.init(allocator),
+        };
+        errdefer value.deinit();
+        try value.commands.append(.{ .clear = background });
+        switch (scenario) {
+            .opaque_rects => {
+                try value.commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 1, .h = 1, .color = first } });
+                try value.commands.append(.{ .rect = .{ .x = 1, .y = 0, .w = 1, .h = 1, .color = second } });
+            },
+            .clipped_rect => {
+                try value.commands.append(.{ .push_clip = .{ .x = 2, .y = @intCast(height - 2), .w = 1, .h = 1 } });
+                try value.commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = @intCast(width), .h = @intCast(height), .color = clipped } });
+                try value.commands.append(.pop_clip);
+            },
+        }
+        try value.commands.append(.{ .rect = .{ .x = @intCast(width - 1), .y = @intCast(height - 1), .w = 1, .h = 1, .color = last } });
+        return value;
+    }
+
+    pub fn deinit(self: *RendererConformance) void {
+        self.commands.deinit();
+        self.* = undefined;
+    }
+
+    pub fn commandSlice(self: *const RendererConformance) []const render.Command {
+        return self.commands.commands.items;
+    }
+
+    pub fn initialCanvas(self: *const RendererConformance, allocator: std.mem.Allocator) !Canvas {
+        var canvas = try Canvas.init(allocator, self.width, self.height);
+        canvas.clear(background);
+        return canvas;
+    }
+
+    pub fn referenceCanvas(self: *const RendererConformance, allocator: std.mem.Allocator) !Canvas {
+        var canvas = try self.initialCanvas(allocator);
+        errdefer canvas.deinit();
+        var renderer = render.HeadlessRenderer.init(allocator, &canvas);
+        defer renderer.deinit();
+        try renderer.backend().submit(self.commandSlice());
+        return canvas;
+    }
+
+    pub fn expectCapture(self: *const RendererConformance, canvas: *const Canvas) !void {
+        if (canvas.width != self.width or canvas.height != self.height) return error.InvalidConformanceCanvas;
+        const bottom_right = canvas.get(@intCast(self.width - 1), @intCast(self.height - 1)) orelse return error.InvalidConformanceCanvas;
+        try std.testing.expectEqual(last, bottom_right);
+        switch (self.scenario) {
+            .opaque_rects => {
+                try std.testing.expectEqual(first, canvas.get(0, 0).?);
+                try std.testing.expectEqual(second, canvas.get(1, 0).?);
+                try std.testing.expectEqual(background, canvas.get(2, 1).?);
+            },
+            .clipped_rect => {
+                try std.testing.expectEqual(background, canvas.get(2, 0).?);
+                try std.testing.expectEqual(clipped, canvas.get(2, @intCast(self.height - 2)).?);
+            },
+        }
+    }
 };
 
 pub fn canvasHash(canvas: Canvas) u64 {
@@ -180,6 +265,21 @@ test "test support hashes canvases and asserts failures" {
     try std.testing.expect(hash.finish() != 0);
     try expectError(error.InvalidCanvasSize, Canvas.init(std.testing.allocator, 0, 1));
     try std.testing.expect(canvasHash(canvas) != 0);
+}
+
+test "renderer conformance scenarios submit canonical command slices" {
+    const scenarios = [_]RendererConformance.Scenario{ .opaque_rects, .clipped_rect };
+    for (scenarios) |scenario_kind| {
+        var scenario = try RendererConformance.init(std.testing.allocator, scenario_kind, 4, 3);
+        defer scenario.deinit();
+        var canvas = try scenario.initialCanvas(std.testing.allocator);
+        defer canvas.deinit();
+        var renderer = render.HeadlessRenderer.init(std.testing.allocator, &canvas);
+        defer renderer.deinit();
+        try renderer.backend().submit(scenario.commandSlice());
+        try scenario.expectCapture(&canvas);
+    }
+    try expectError(error.InvalidConformanceCanvas, RendererConformance.init(std.testing.allocator, .opaque_rects, 3, 3));
 }
 
 test "test support writes golden mismatch diagnostics" {
