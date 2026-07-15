@@ -191,10 +191,10 @@ jobs:
           - os: ubuntu-latest
             game: platformer
             runner: script/test_proof_game_matrix.sh
-          - os: macos-latest
+          - os: macos-15-intel
             game: topdown
             runner: script/test_proof_game_matrix.sh
-          - os: macos-latest
+          - os: macos-15-intel
             game: platformer
             runner: script/test_proof_game_matrix.sh
           - os: windows-2022
@@ -213,7 +213,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a ${{ matrix.runner }} ${{ matrix.game }}
-      - if: matrix.os == 'macos-latest'
+      - if: matrix.os == 'macos-15-intel'
         run: ${{ matrix.runner }} ${{ matrix.game }}
       - if: matrix.os == 'windows-2022'
         shell: pwsh
