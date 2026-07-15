@@ -25,6 +25,7 @@ pub const MatchAssignment = matchmaking.Assignment;
 pub const RelayService = relay.Service;
 pub const RelayConfig = relay.Config;
 pub const RelayBootstrap = relay.Bootstrap;
+pub const RelayRoute = relay.Route;
 pub const RelayLease = relay.Lease;
 
 pub const Endpoint = struct {

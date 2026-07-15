@@ -5,6 +5,9 @@ const matchmaking = @import("service_matchmaking.zig");
 const provider = @import("service_provider.zig");
 const up = @import("unpolished-peas");
 
+const route_cipher = std.crypto.aead.chacha_poly.XChaCha20Poly1305;
+const route_token_bytes = 32;
+const route_associated_data_bytes = @sizeOf(u64) * 3 + @sizeOf(u16);
 const Status = enum { allocated, expired };
 pub const Config = struct {
     max_allocations: usize = 128,
@@ -15,9 +18,29 @@ pub const Config = struct {
 pub const Bootstrap = struct {
     allocation_id: u64,
     match_id: u64,
-    route_token: [32]u8,
     expires_at_ms: i64,
     max_connections: u16,
+    sealed_route: SealedRoute,
+
+    pub fn route(self: Bootstrap, credentials: guest.Credentials, now_ms: i64) !Route {
+        if (!credentials.active(now_ms)) return error.GuestSessionExpired;
+        if (now_ms >= self.expires_at_ms) return error.RelayExpired;
+        var route_token: [route_token_bytes]u8 = undefined;
+        const associated_data = bootstrapAssociatedData(self);
+        route_cipher.decrypt(route_token[0..], self.sealed_route.ciphertext[0..], self.sealed_route.tag, associated_data[0..], self.sealed_route.nonce, credentials.session.bytes) catch return error.RelayRouteAuthenticationFailed;
+        return .{ .match_id = self.match_id, .authentication_token = std.mem.readInt(u64, route_token[0..8], .little) | 1, .route_key = route_token, .expires_at_ms = self.expires_at_ms };
+    }
+};
+pub const SealedRoute = struct {
+    nonce: [route_cipher.nonce_length]u8,
+    ciphertext: [route_token_bytes]u8,
+    tag: [route_cipher.tag_length]u8,
+};
+pub const Route = struct {
+    match_id: u64,
+    authentication_token: u64,
+    route_key: [route_token_bytes]u8,
+    expires_at_ms: i64,
 };
 pub const Lease = struct { allocation_id: u64, connection_id: u64 };
 const Allocation = struct {
@@ -57,20 +80,20 @@ pub const Service = struct { // owns bounded relay allocations and leases; call 
         const assignment = try self.matches.assignmentForParticipant(request_id, identity);
         self.expire(now_ms);
         for (self.allocations.items) |allocation| {
-            if (allocation.match_id == assignment.match_id and allocation.status == .allocated) return self.publicBootstrap(allocation);
+            if (allocation.match_id == assignment.match_id and allocation.status == .allocated) return self.publicBootstrap(allocation, credentials);
         }
         const expires_at_ms = @min(try std.math.add(i64, now_ms, self.config.allocation_lifetime_ms), credentials.expires_at_ms);
         if (expires_at_ms <= now_ms) return error.RelayExpired;
         const allocation = Allocation{ .id = self.nextId(&self.next_allocation_id), .match_id = assignment.match_id, .route_token = guest.Token.generate().bytes, .expires_at_ms = expires_at_ms };
         try self.storeAllocation(allocation);
-        return self.publicBootstrap(allocation);
+        return self.publicBootstrap(allocation, credentials);
     }
 
     pub fn open(self: *Service, route: Bootstrap, credentials: guest.Credentials, now_ms: i64) !Lease {
         const identity = try self.authenticate(credentials, now_ms);
         self.expire(now_ms);
         const allocation = self.findAllocation(route.allocation_id) orelse return error.UnknownRelayAllocation;
-        try self.authorize(allocation, route, identity);
+        try self.authorize(allocation, route, credentials, identity, now_ms);
         if (allocation.active_connections >= self.config.max_connections_per_allocation) return error.RelayConnectionCap;
         const connection = Connection{ .id = self.nextId(&self.next_connection_id), .allocation_id = allocation.id, .identity = identity };
         try self.storeConnection(connection);
@@ -118,14 +141,22 @@ pub const Service = struct { // owns bounded relay allocations and leases; call 
         return credentials.identity.hash();
     }
 
-    fn authorize(self: *Service, allocation: *Allocation, route: Bootstrap, identity: [32]u8) !void {
+    fn authorize(self: *Service, allocation: *Allocation, ticket: Bootstrap, credentials: guest.Credentials, identity: [32]u8, now_ms: i64) !void {
+        const route = ticket.route(credentials, now_ms) catch |err| switch (err) {
+            error.RelayExpired => return err,
+            else => return error.RelayForbidden,
+        };
         if (allocation.status != .allocated) return error.RelayExpired;
-        if (allocation.match_id != route.match_id or allocation.expires_at_ms != route.expires_at_ms or route.max_connections != self.config.max_connections_per_allocation or !std.crypto.timing_safe.eql([32]u8, allocation.route_token, route.route_token)) return error.RelayForbidden;
+        if (allocation.match_id != ticket.match_id or allocation.expires_at_ms != ticket.expires_at_ms or ticket.max_connections != self.config.max_connections_per_allocation or !std.crypto.timing_safe.eql([route_token_bytes]u8, allocation.route_token, route.route_key)) return error.RelayForbidden;
         if (!self.matches.isParticipant(allocation.match_id, identity)) return error.RelayForbidden;
     }
 
-    fn publicBootstrap(self: *const Service, allocation: Allocation) Bootstrap {
-        return .{ .allocation_id = allocation.id, .match_id = allocation.match_id, .route_token = allocation.route_token, .expires_at_ms = allocation.expires_at_ms, .max_connections = self.config.max_connections_per_allocation };
+    fn publicBootstrap(self: *const Service, allocation: Allocation, credentials: guest.Credentials) Bootstrap {
+        var ticket = Bootstrap{ .allocation_id = allocation.id, .match_id = allocation.match_id, .expires_at_ms = allocation.expires_at_ms, .max_connections = self.config.max_connections_per_allocation, .sealed_route = undefined };
+        std.crypto.random.bytes(&ticket.sealed_route.nonce);
+        const associated_data = bootstrapAssociatedData(ticket);
+        route_cipher.encrypt(ticket.sealed_route.ciphertext[0..], &ticket.sealed_route.tag, allocation.route_token[0..], associated_data[0..], ticket.sealed_route.nonce, credentials.session.bytes);
+        return ticket;
     }
 
     fn storeAllocation(self: *Service, allocation: Allocation) !void {
@@ -170,6 +201,15 @@ pub const Service = struct { // owns bounded relay allocations and leases; call 
     }
 };
 
+fn bootstrapAssociatedData(ticket: Bootstrap) [route_associated_data_bytes]u8 {
+    var bytes: [route_associated_data_bytes]u8 = undefined;
+    std.mem.writeInt(u64, bytes[0..8], ticket.allocation_id, .little);
+    std.mem.writeInt(u64, bytes[8..16], ticket.match_id, .little);
+    std.mem.writeInt(u64, bytes[16..24], @bitCast(ticket.expires_at_ms), .little);
+    std.mem.writeInt(u16, bytes[24..26], ticket.max_connections, .little);
+    return bytes;
+}
+
 const MatchedParticipants = struct {
     fake: provider.FakeAdapter = .{},
     lobbies: lobby.Service = undefined,
@@ -181,6 +221,7 @@ const MatchedParticipants = struct {
     client_request_id: u64 = undefined,
 
     fn init(self: *MatchedParticipants, allocator: std.mem.Allocator) !void {
+        self.fake = .{};
         const service_provider = self.fake.provider();
         self.lobbies = try lobby.Service.init(allocator, service_provider, .{});
         errdefer self.lobbies.deinit();
@@ -213,7 +254,13 @@ test "relay allocation enforces participant authorization and expiry" {
     const host_bootstrap = try relay.bootstrap(participants.host_request_id, participants.host, 1);
     const client_bootstrap = try relay.bootstrap(participants.client_request_id, participants.client, 1);
     try std.testing.expectEqual(host_bootstrap.allocation_id, client_bootstrap.allocation_id);
-    try std.testing.expect(std.crypto.timing_safe.eql([32]u8, host_bootstrap.route_token, client_bootstrap.route_token));
+    const host_route = try host_bootstrap.route(participants.host, 1);
+    const client_route = try client_bootstrap.route(participants.client, 1);
+    try std.testing.expect(std.crypto.timing_safe.eql([route_token_bytes]u8, host_route.route_key, client_route.route_key));
+    try std.testing.expectError(error.RelayRouteAuthenticationFailed, host_bootstrap.route(participants.intruder, 1));
+    var tampered = host_bootstrap;
+    tampered.sealed_route.tag[0] ^= 1;
+    try std.testing.expectError(error.RelayRouteAuthenticationFailed, tampered.route(participants.host, 1));
     const second_host = try service_provider.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 100 });
     const second_client = try service_provider.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 100 });
     const second_room = try participants.lobbies.create(second_host, 2, 100, 1);
@@ -241,7 +288,8 @@ test "relay allocation enforces bandwidth and bounded lease reuse" {
     try relay.record(lease, participants.host, 5, 1);
     try std.testing.expectError(error.RelayBandwidthCap, relay.record(lease, participants.host, 1, 1));
     try relay.close(lease, participants.host, 1);
-    const replacement = try relay.open(bootstrap, participants.client, 1);
+    const client_bootstrap = try relay.bootstrap(participants.client_request_id, participants.client, 1);
+    const replacement = try relay.open(client_bootstrap, participants.client, 1);
     try std.testing.expect(replacement.connection_id != lease.connection_id);
 }
 
@@ -252,9 +300,10 @@ test "relay fallback fixture transfers game packets" {
     const service_provider = participants.fake.provider();
     var relay = try Service.init(std.testing.allocator, service_provider, &participants.matches, .{ .max_bandwidth_bytes_per_allocation = 64, .allocation_lifetime_ms = 50 });
     defer relay.deinit();
-    const bootstrap = try relay.bootstrap(participants.host_request_id, participants.host, 1);
-    const host_lease = try relay.open(bootstrap, participants.host, 1);
-    const client_lease = try relay.open(bootstrap, participants.client, 1);
+    const host_bootstrap = try relay.bootstrap(participants.host_request_id, participants.host, 1);
+    const client_bootstrap = try relay.bootstrap(participants.client_request_id, participants.client, 1);
+    const host_lease = try relay.open(host_bootstrap, participants.host, 1);
+    const client_lease = try relay.open(client_bootstrap, participants.client, 1);
     defer relay.close(client_lease, participants.client, 1) catch {};
     defer relay.close(host_lease, participants.host, 1) catch {};
     var host_endpoint = up.LoopbackTransport.init(std.testing.allocator, .{ .id = 1 });
@@ -264,10 +313,12 @@ test "relay fallback fixture transfers game packets" {
     up.LoopbackTransport.pair(&host_endpoint, &client_endpoint);
     const host_identity = try up.NetIdentity.init(1);
     const client_identity = try up.NetIdentity.init(2);
-    const authentication_token = std.mem.readInt(u64, bootstrap.route_token[0..8], .little) | 1;
-    var host_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = host_identity, .remote_identity = client_identity, .session_id = bootstrap.match_id, .authentication_token = authentication_token, .expires_at_ms = @intCast(bootstrap.expires_at_ms), .peer = .{ .id = 2 }, .route = .relay });
+    const host_route = try host_bootstrap.route(participants.host, 1);
+    const client_route = try client_bootstrap.route(participants.client, 1);
+    try std.testing.expect(std.crypto.timing_safe.eql([route_token_bytes]u8, host_route.route_key, client_route.route_key));
+    var host_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = host_identity, .remote_identity = client_identity, .session_id = host_route.match_id, .authentication_token = host_route.authentication_token, .expires_at_ms = @intCast(host_route.expires_at_ms), .peer = .{ .id = 2 }, .route = .relay });
     defer host_peer.deinit();
-    var client_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = client_identity, .remote_identity = host_identity, .session_id = bootstrap.match_id, .authentication_token = authentication_token, .expires_at_ms = @intCast(bootstrap.expires_at_ms), .peer = .{ .id = 1 }, .route = .relay });
+    var client_peer = try up.P2pPeer.init(std.testing.allocator, .{ .local_identity = client_identity, .remote_identity = host_identity, .session_id = client_route.match_id, .authentication_token = client_route.authentication_token, .expires_at_ms = @intCast(client_route.expires_at_ms), .peer = .{ .id = 1 }, .route = .relay });
     defer client_peer.deinit();
     try host_peer.begin(host_endpoint.transport());
     try client_peer.begin(client_endpoint.transport());

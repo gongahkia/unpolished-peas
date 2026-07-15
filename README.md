@@ -38,8 +38,9 @@ Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed,
 `ServiceProvider` is the engine-facing, value-only guest-session boundary: use `FakeServiceProvider` in engine tests or `LocalPostgresServiceProvider` for local PostgreSQL. Its only operational dependency is the local `psql` CLI; provider errors are limited to unavailable, invalid-request, and invalid-response. A provider borrows its adapter; deinit the adapter after its provider is no longer used.
 `LobbyService` is the SDL-free guest-backed lobby boundary: create, join, leave, disconnect, expiration, bounded membership, and `inspectorState()` use only validated guest sessions.
 `MatchmakingService` queues active lobby members under bounded timeout/capacity rules and returns an idempotent match bootstrap usable by the P2P runtime.
-`RelayService` derives bounded relay routes from authorized match requests, expires leases, caps concurrent relay connections and transmitted bytes, and exposes only route bootstrap/lease values to clients.
+`RelayService` derives bounded relay routes from authorized match requests, seals each route ticket to its guest session with XChaCha20-Poly1305, expires leases, and caps concurrent relay connections and transmitted bytes.
 `NetContract` explicitly selects authoritative or peer-to-peer mode, host role, and channel reliability; its identity, session, and connection values own no transport and validate bounded IDs, expiry, protocol, and connection limits.
+`P2pMigration` elects the lowest active peer after a host failure and returns a bounded versioned game-state snapshot for deterministic reconnect over the selected direct or relay route.
 
 [fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, tools, and services.
 
