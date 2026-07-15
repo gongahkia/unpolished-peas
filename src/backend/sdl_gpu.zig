@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas").api;
+const effect_resources = @import("unpolished-peas-effects");
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -2172,8 +2173,8 @@ const Presenter = struct {
     width: u32,
     height: u32,
     byte_len: u32,
-    resources: up.GpuResources,
-    render_target_handle: up.RenderTargetHandle,
+    resources: effect_resources.Resources,
+    render_target_handle: effect_resources.RenderTargetHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     effect_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
@@ -2249,7 +2250,7 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        var resources = up.GpuResources.init(std.heap.page_allocator);
+        var resources = effect_resources.Resources.init(std.heap.page_allocator);
         const render_target_handle = try resources.createRenderTarget();
         var presenter = Presenter{ .render_target = render_target, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .render_target_handle = render_target_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);

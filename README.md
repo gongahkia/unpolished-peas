@@ -30,7 +30,7 @@ zig build test-renderer-conformance
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
+Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
 
 `services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. Engine provider contracts contain no database or vendor types; the opt-in local PostgreSQL adapter is isolated behind that boundary.
 `services/config/deploy.zon.example` and `services/deploy/unpolished-peas-services.service` keep database credentials external; `/healthz` reports liveness and `/readyz` probes PostgreSQL plus the configured relay without enabling engine telemetry.
@@ -125,6 +125,7 @@ The generated bouncing-square game includes its own build files and a pinned `un
 zig build test
 zig build test-support
 zig build test-modules
+zig build test-effects
 zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
@@ -192,6 +193,7 @@ zig build new -- ../my-game
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
 `test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock.
 `test-extension-manifest` validates strict extension identity, semver/core range, module, test, and optional build-hook metadata.
+`script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
 `script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.

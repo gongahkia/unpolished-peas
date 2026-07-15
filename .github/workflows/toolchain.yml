@@ -65,6 +65,7 @@ jobs:
       - run: zig build test
       - run: zig build test-extensions
       - run: zig build test-extension-manifest
+      - run: script/test_effects_package.sh
       - run: script/test_extension_matrix.sh
       - run: zig build test-support
       - run: zig build test-modules
