@@ -193,7 +193,7 @@ zig build new -- ../my-game
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines.
-`zig build release-gate` runs API, CLI, proof-game, service, package, visual, replay, fuzz, and performance gates; every gate writes a local log under `zig-out/diagnostics/release-gate/`, and release validation requires no telemetry.
+Tag pushes run `zig build release-gate`, which explicitly validates the frozen core API, all proof-game consumers, desktop packages, deterministic diagnostics, visual/replay/fuzz checks, and performance budgets; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository and emit reports.
 `test-scenes` compares deterministic headless, bounce, top-down, and platformer renders against committed PNG goldens; `zig build test-scenes -- --update-golden` refreshes all captures intentionally.
