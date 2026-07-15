@@ -4,6 +4,7 @@ const cache = @import("content_cache.zig");
 const map_source = @import("map_source.zig");
 
 pub const migration = @import("content_migration.zig");
+pub const input_replay = @import("input_replay.zig");
 
 const max_source_bytes = 64 * 1024 * 1024;
 const state_format = "unpolished-peas-content-state";

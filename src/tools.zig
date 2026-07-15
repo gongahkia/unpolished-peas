@@ -21,6 +21,7 @@ pub const Command = enum {
     compile,
     migrate,
     @"test",
+    replay,
     package,
     docs,
 };
@@ -217,13 +218,14 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run host check compile migrate test package docs
+        \\commands: new run host check compile migrate test replay package docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\compile: zig build peas -- compile [project-directory] [output-directory]
         \\migrate: zig build peas -- migrate <catalog|map> <input> <output>
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\host: zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
+        \\replay: zig build peas -- replay <fixture.upr> [expected-input-hash]
         \\package: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
@@ -365,6 +367,7 @@ fn fieldLocation(source: []const u8, field: []const u8) struct { line: usize, co
 
 test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.new, parseCommand("new").?);
+    try std.testing.expectEqual(Command.replay, parseCommand("replay").?);
     try std.testing.expect(parseCommand("publish") == null);
     try std.testing.expectEqual(Command.docs, parseCommand("docs").?);
     try std.testing.expectEqual(Command.host, parseCommand("host").?);
