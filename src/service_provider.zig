@@ -34,7 +34,7 @@ pub const Provider = struct {
 };
 
 pub const FakeAdapter = struct {
-    credentials: ?guest.Credentials = null,
+    credentials: [64]?guest.Credentials = [_]?guest.Credentials{null} ** 64,
     failure: ?Error = null,
 
     pub fn provider(self: *FakeAdapter) Provider {
@@ -51,15 +51,22 @@ pub const FakeAdapter = struct {
             .issued_at_ms = request.now_ms,
             .expires_at_ms = expires_at_ms,
         };
-        self.credentials = credentials;
-        return credentials;
+        for (&self.credentials) |*slot| {
+            if (slot.* != null) continue;
+            slot.* = credentials;
+            return credentials;
+        }
+        return error.Unavailable;
     }
 
     fn validate(context: *anyopaque, session: guest.Token) Error!SessionStatus {
         const self: *FakeAdapter = @ptrCast(@alignCast(context));
         if (self.failure) |failure| return failure;
-        const credentials = self.credentials orelse return .rejected;
-        return if (credentials.session.eql(session)) .active else .rejected;
+        for (self.credentials) |maybe| {
+            const credentials = maybe orelse continue;
+            if (credentials.session.eql(session)) return .active;
+        }
+        return .rejected;
     }
 };
 
