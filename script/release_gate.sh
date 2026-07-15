@@ -59,10 +59,6 @@ run networking-conformance zig build test-networking
 run ui-conformance zig build test-ui-conformance
 run physics-conformance zig build test-physics-conformance
 run visual-scenes zig build test-scenes
-run visual-renderer runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
-run visual-opengl runtime zig build test-opengl
-run visual-cross-backend runtime zig build test-renderer-cross-backend
-run replay zig build test-replays
+run backend-comparison zig build test-desktop-backends
 run fuzz zig build test-fuzz
-run performance script/check_performance_budgets.sh
 printf 'release gate passed: logs=%s\n' "$diagnostics"

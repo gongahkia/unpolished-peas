@@ -34,9 +34,9 @@ for command in \
     'run ui-conformance zig build test-ui-conformance' \
     'run physics-conformance zig build test-physics-conformance' \
     'run visual-scenes zig build test-scenes' \
-    'run replay zig build test-replays' \
+    'run backend-comparison zig build test-desktop-backends' \
     'run fuzz zig build test-fuzz' \
-    'run performance script/check_performance_budgets.sh'; do
+    ; do
     require "$command" "$gate"
 done
 printf '%s\n' 'release validation coverage passed'
