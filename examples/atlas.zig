@@ -16,16 +16,16 @@ const Game = struct {
 
     pub fn init(ctx: *sdl.Context) !Game {
         const atlas = try ctx.loadAtlas("atlas.json");
-        const animation = ctx.atlasAnimation(atlas, "pulse").?;
+        const animation = (try ctx.atlasAnimation(atlas, "pulse")) orelse return error.MissingAtlasAnimation;
         return .{
             .atlas = atlas,
             .tiles = .{
-                ctx.atlasFrame(atlas, "tile_a").?,
-                ctx.atlasFrame(atlas, "tile_b").?,
-                ctx.atlasFrame(atlas, "tile_c").?,
-                ctx.atlasFrame(atlas, "tile_d").?,
+                (try ctx.atlasFrame(atlas, "tile_a")) orelse return error.MissingAtlasFrame,
+                (try ctx.atlasFrame(atlas, "tile_b")) orelse return error.MissingAtlasFrame,
+                (try ctx.atlasFrame(atlas, "tile_c")) orelse return error.MissingAtlasFrame,
+                (try ctx.atlasFrame(atlas, "tile_d")) orelse return error.MissingAtlasFrame,
             },
-            .player = up.AnimationPlayer.init(ctx.atlas(atlas), animation),
+            .player = up.AnimationPlayer.init(try ctx.atlas(atlas), animation),
         };
     }
 
@@ -33,7 +33,7 @@ const Game = struct {
         self.player.update(ctx.dt);
     }
 
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         const map = [_]u8{
             0, 1, 0, 1, 2, 3, 2, 3,
             2, 3, 2, 3, 0, 1, 0, 1,
@@ -43,9 +43,9 @@ const Game = struct {
         for (map, 0..) |tile, i| {
             const x: i32 = @intCast((i % 8) * 8);
             const y: i32 = @intCast((i / 8) * 8);
-            ctx.sprite(self.atlas, self.tiles[tile], x, y, .{});
+            try ctx.sprite(self.atlas, self.tiles[tile], x, y, .{});
         }
-        ctx.sprite(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
+        try ctx.sprite(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
         ctx.text("ATLAS", 72, 8, up.Color.white);
     }
 };

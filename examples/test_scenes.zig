@@ -22,14 +22,14 @@ pub fn main() !void {
     defer assets.deinit();
     const ball = try assets.loadPng("ball.png");
     const atlas = try assets.loadAtlas("atlas.json");
-    const source_atlas = assets.atlas(atlas);
+    const source_atlas = try assets.tryAtlas(atlas);
 
     var canvas = try up.Canvas.init(allocator, 64, 48);
     defer canvas.deinit();
 
     canvas.clear(up.Color.rgb(14, 18, 24));
     canvas.fillRect(4, 4, 12, 10, up.Color.rgb(255, 198, 74));
-    canvas.drawImage(assets.image(ball), 24, 16);
+    canvas.drawImage(try assets.tryImage(ball), 24, 16);
     canvas.drawAtlasFrame(source_atlas, source_atlas.findFrame("tile_a").?, 48, 4, .{ .scale = 2, .tint = up.Color.rgb(255, 180, 120) });
     canvas.drawAtlasFrame(source_atlas, source_atlas.findFrame("tile_b").?, 58, 16, .{ .origin = .center, .scale = 2, .flip_x = true, .rotation = 0.25, .sampling = .linear });
     canvas.drawAtlasFrame(source_atlas, source_atlas.findFrame("tile_c").?, 52, 28, .{ .origin = .center, .scale = 2, .flip_y = true, .tint = up.Color.rgb(180, 255, 220), .rotation = -0.2 });
@@ -46,5 +46,5 @@ pub fn main() !void {
     }
 
     const golden = try assets.loadPng(golden_path);
-    try up.testSupport.assertGolden(allocator, canvas, assets.image(golden), .{ .expected_hash = expected_hash, .diagnostics_path = diagnostics_path });
+    try up.testSupport.assertGolden(allocator, canvas, try assets.tryImage(golden), .{ .expected_hash = expected_hash, .diagnostics_path = diagnostics_path });
 }

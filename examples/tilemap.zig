@@ -53,8 +53,8 @@ const Game = struct {
         self.camera.update(ctx.dt, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
     }
 
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        const images = [_]up.Image{ctx.assets.image(self.image)};
+    pub fn draw(self: *Game, ctx: *sdl.Context) !void {
+        const images = [_]up.Image{try ctx.assets.tryImage(self.image)};
         self.map.drawImages(ctx.camera(&self.camera), &images);
         ctx.text("TILE MAP", 4, 4, up.Color.white);
         ctx.text("ARROWS MOVE", 4, 14, up.Color.rgb(170, 198, 225));

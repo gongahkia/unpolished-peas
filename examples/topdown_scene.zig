@@ -21,8 +21,8 @@ pub fn main() !void {
     defer canvas.deinit();
     canvas.clear(up.Color.rgb(10, 18, 26));
     const camera = up.Camera2D{ .position = .{ .x = 80, .y = 48 }, .zoom = 1 };
-    assets.drawTileMap(map, &camera, &canvas, 0);
-    canvas.drawImage(assets.image(player), @intFromFloat(game.player.x - 8), @intFromFloat(game.player.y - 8));
+    try assets.drawTileMap(map, &camera, &canvas, 0);
+    canvas.drawImage(try assets.tryImage(player), @intFromFloat(game.player.x - 8), @intFromFloat(game.player.y - 8));
     canvas.drawText("TOPDOWN", 4, 4, up.Color.white);
     var buffer: [32]u8 = undefined;
     var writer = std.fs.File.stdout().writer(&buffer);

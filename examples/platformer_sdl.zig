@@ -20,14 +20,14 @@ const Game = struct {
         const map = try ctx.loadTileMap("platformer.upmap");
         var collider = up.TileCollider.init(ctx.allocator);
         errdefer collider.deinit();
-        try collider.addLayer(ctx.tileMap(map), 0);
+        try collider.addLayer(try ctx.tileMap(map), 0);
         const atlas = try ctx.loadAtlas("atlas.json");
-        const animation = ctx.atlasAnimation(atlas, "pulse").?;
+        const animation = (try ctx.atlasAnimation(atlas, "pulse")) orelse return error.MissingAtlasAnimation;
         var world = physics.World.init(.{ .gravity = .{ .x = 0, .y = 4 } });
         errdefer world.deinit();
         const marker = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 84, .y = 8 } });
         _ = try world.createCircle(marker, .{ .radius = 2 });
-        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(ctx.atlas(atlas), animation), .world = world, .marker = marker, .jump_sound = try ctx.assets.loadSound("blip.wav") };
+        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(try ctx.atlas(atlas), animation), .world = world, .marker = marker, .jump_sound = try ctx.assets.loadSound("blip.wav") };
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         self.collider.deinit();
@@ -43,8 +43,8 @@ const Game = struct {
     }
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
-        ctx.drawTileMap(self.map, &camera, 0);
-        ctx.sprite(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
+        try ctx.drawTileMap(self.map, &camera, 0);
+        try ctx.sprite(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
         try self.world.appendDebug(ctx.commands, &camera, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
         const marker = self.world.bodyPosition(self.marker) catch return;
         ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
