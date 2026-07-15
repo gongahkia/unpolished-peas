@@ -783,6 +783,29 @@ test "sound playback handle lifecycle and bus volume" {
     try std.testing.expect(!mixer.stop(handle));
 }
 
+test "mixer playback survives output recovery boundaries" {
+    const frames = try std.testing.allocator.dupe(AudioSample, &.{ .{ .left = 1, .right = 1 }, .{ .left = 0.5, .right = 0.5 } });
+    var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
+    defer sound.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+    try mixer.setBusVolume(AudioMixer.masterBus(), 0.5);
+    const handle = try mixer.playSound(&sound, .{ .loop = true });
+
+    var before: [1]AudioSample = undefined;
+    try mixer.mix(&before);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), before[0].left, 0.0001);
+
+    var after: [1]AudioSample = undefined;
+    try mixer.mix(&after);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.25), after[0].left, 0.0001);
+    try std.testing.expect(try mixer.setPlaybackVolume(handle, 1));
+
+    var resumed: [1]AudioSample = undefined;
+    try mixer.mix(&resumed);
+    try std.testing.expectApproxEqAbs(@as(f32, 0.5), resumed[0].left, 0.0001);
+}
+
 test "playback pan and fades are sample-accurate" {
     const frames = try std.testing.allocator.dupe(AudioSample, &.{.{ .left = 1, .right = 1 }});
     var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
