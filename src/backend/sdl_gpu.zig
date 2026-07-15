@@ -1714,6 +1714,23 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
     }
 }
 
+test "reload overlay bounds retained reload diagnostics" {
+    const events = [_]up.ReloadEvent{
+        .{ .path = "one.upmap", .status = .failed, .failure_class = .source, .line = 2, .column = 3, .retained_content = true, .message = "invalid" },
+        .{ .path = "two.upmap", .status = .failed, .failure_class = .dependency, .line = 4, .column = 5, .retained_content = true, .message = "missing" },
+        .{ .path = "three.png", .status = .failed, .failure_class = .decode, .line = 1, .column = 1, .retained_content = true, .message = "corrupt" },
+        .{ .path = "four.wav", .status = .failed, .failure_class = .io, .line = 1, .column = 1, .retained_content = true, .message = "unreadable" },
+        .{ .path = "five.fnt", .status = .failed, .failure_class = .source, .line = 8, .column = 9, .retained_content = true, .message = "ignored" },
+    };
+    var capped = try up.Canvas.init(std.testing.allocator, 320, 96);
+    defer capped.deinit();
+    var extra = try up.Canvas.init(std.testing.allocator, 320, 96);
+    defer extra.deinit();
+    drawReloadOverlay(&capped, events[0..4]);
+    drawReloadOverlay(&extra, &events);
+    try std.testing.expectEqual(std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(capped.pixels)), std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(extra.pixels)));
+}
+
 const Failure = struct {
     phase: FailurePhase,
     err: anyerror,
