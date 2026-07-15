@@ -3,7 +3,7 @@ const up = @import("unpolished-peas").api;
 
 const golden_path = "headless-reference.png";
 const diagnostics_path = "zig-out/scenes";
-const expected_hash: u64 = 0x2a1440decbfca661;
+const expected_hash: u64 = 0xb110a7d1f1344c2e;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -22,12 +22,15 @@ pub fn main() !void {
     defer assets.deinit();
     const ball = try assets.loadImage("ball.png");
     const atlas = try assets.loadAtlas("atlas.json");
+    const map = try assets.loadTileMap("topdown.upmap", .{});
     const source_atlas = try assets.tryAtlas(atlas);
 
     var canvas = try up.Canvas.init(allocator, 64, 48);
     defer canvas.deinit();
 
     canvas.clear(up.Color.rgb(14, 18, 24));
+    const tile_camera = up.Camera2D{ .position = .{ .x = 32, .y = 24 } };
+    try assets.drawTileMap(map, &tile_camera, &canvas, 0);
     canvas.fillRect(4, 4, 12, 10, up.Color.rgb(255, 198, 74));
     canvas.drawImage(try assets.tryImage(ball), 24, 16);
     canvas.drawAtlasFrame(source_atlas, source_atlas.findFrame("tile_a").?, 48, 4, .{ .scale = 2, .tint = up.Color.rgb(255, 180, 120) });
@@ -38,6 +41,12 @@ pub fn main() !void {
     const world = up.CameraCanvas.init(&canvas, &camera);
     world.fillRect(.init(20, 10, 14, 8), up.Color.rgb(91, 166, 210));
     world.fillCircle(.{ .x = 44, .y = 30 }, 4, up.Color.rgb(255, 112, 112));
+    const previous_clip = canvas.pushClip(.{ .x = 2, .y = 28, .w = 18, .h = 12 });
+    canvas.fillRect(0, 26, 24, 16, up.Color.rgba(91, 166, 210, 180));
+    const previous_blend = canvas.setBlend(.additive);
+    canvas.fillCircle(10, 34, 8, up.Color.rgba(255, 112, 112, 160));
+    _ = canvas.setBlend(previous_blend);
+    canvas.restoreClip(previous_clip);
 
     if (update_golden) {
         const path = try assets.assetPath(allocator, golden_path);
