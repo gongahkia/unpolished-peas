@@ -3,6 +3,7 @@ const guest = @import("guest_credentials.zig");
 const provider = @import("service_provider.zig");
 const lobby = @import("service_lobby.zig");
 const matchmaking = @import("service_matchmaking.zig");
+const relay = @import("service_relay.zig");
 
 pub const GuestToken = guest.Token;
 pub const GuestCredentials = guest.Credentials;
@@ -21,6 +22,10 @@ pub const LobbyInspectorState = lobby.InspectorState;
 pub const MatchmakingService = matchmaking.Service;
 pub const MatchmakingConfig = matchmaking.Config;
 pub const MatchAssignment = matchmaking.Assignment;
+pub const RelayService = relay.Service;
+pub const RelayConfig = relay.Config;
+pub const RelayBootstrap = relay.Bootstrap;
+pub const RelayLease = relay.Lease;
 
 pub const Endpoint = struct {
     host: []const u8,

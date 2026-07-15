@@ -81,6 +81,20 @@ pub const Service = struct { // owns bounded queue and assignment records; call 
         return null;
     }
 
+    pub fn assignmentForParticipant(self: *const Service, request_id: u64, identity: [32]u8) !Assignment {
+        const request = self.findRequestConst(request_id) orelse return error.UnknownMatchRequest;
+        if (!std.crypto.timing_safe.eql([32]u8, request.identity, identity)) return error.MatchRequestForbidden;
+        return self.assignmentFor(request_id) orelse error.MatchRequestUnavailable;
+    }
+
+    pub fn isParticipant(self: *const Service, match_id: u64, identity: [32]u8) bool {
+        for (self.assignments.items) |assignment| {
+            if (assignment.match_id != match_id) continue;
+            return std.crypto.timing_safe.eql([32]u8, assignment.host_identity, identity) or std.crypto.timing_safe.eql([32]u8, assignment.client_identity, identity);
+        }
+        return false;
+    }
+
     pub fn expire(self: *Service, now_ms: i64) void {
         for (self.queue.items) |*request| {
             if (request.state == .waiting and now_ms - request.joined_at_ms >= self.config.queue_timeout_ms) request.state = .expired;
