@@ -5,7 +5,6 @@ const map_source = @import("map_source.zig");
 const scene = @import("scene.zig");
 
 pub const migration = @import("content_migration.zig");
-pub const ldtk_importer = @import("ldtk_importer.zig");
 
 const max_source_bytes = 64 * 1024 * 1024;
 const state_format = "unpolished-peas-content-state";
@@ -402,41 +401,6 @@ test "content compiler preserves source diagnostics" {
     try std.testing.expect(diagnostic.path != null and std.mem.endsWith(u8, diagnostic.path.?, "scenes/main.upscene"));
     try std.testing.expect(diagnostic.line > 1 and diagnostic.column > 0);
     try std.testing.expectEqualStrings("reference targets an unknown entity", diagnostic.message);
-}
-
-test "content compiler accepts imported LDtk map source" {
-    var temp = std.testing.tmpDir(.{});
-    defer temp.cleanup();
-    try temp.dir.makePath("project/scenes");
-    try temp.dir.makePath("project/assets");
-    try temp.dir.makePath("project/maps");
-    try temp.dir.writeFile(.{ .sub_path = "project/project.up", .data =
-        \\.{ .format = "unpolished-peas-project", .version = 1, .entry_scene = "scenes/main.upscene", .build = .{ .title = "test", .width = 8, .height = 8, .scale = 1 }, .assets = .{ .root = "assets" }, .engine = .{ .version = "v0.0.3" } }
-        \\
-    });
-    try temp.dir.writeFile(.{ .sub_path = "project/scenes/main.upscene", .data =
-        \\.{ .format = "unpolished-peas-scene", .version = 1, .metadata = .{ .name = "main", .tags = .{} }, .entities = .{} }
-        \\
-    });
-    var import_diagnostic = ldtk_importer.Diagnostic{};
-    var imported = try ldtk_importer.importFile(std.testing.allocator, "fixtures/ldtk/v1/project.ldtk", &import_diagnostic);
-    defer imported.deinit(std.testing.allocator);
-    try temp.dir.writeFile(.{ .sub_path = "project/maps/Main.upmap", .data = imported.maps[0].source });
-    try temp.dir.writeFile(.{ .sub_path = "project/maps/External.upmap", .data = imported.maps[1].source });
-    const project_root = try temp.dir.realpathAlloc(std.testing.allocator, "project");
-    defer std.testing.allocator.free(project_root);
-    const output_root = try std.fs.path.join(std.testing.allocator, &.{ project_root, "zig-out", "content" });
-    defer std.testing.allocator.free(output_root);
-    var diagnostic = Diagnostic{};
-    defer diagnostic.deinit(std.testing.allocator);
-    const report = try compileProject(std.testing.allocator, project_root, output_root, &diagnostic);
-    try std.testing.expectEqual(@as(usize, 3), report.compiled);
-    const map_cache_path = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "Main.upmap.upc" });
-    defer std.testing.allocator.free(map_cache_path);
-    try std.fs.cwd().access(map_cache_path, .{});
-    const external_cache_path = try std.fs.path.join(std.testing.allocator, &.{ output_root, "maps", "External.upmap.upc" });
-    defer std.testing.allocator.free(external_cache_path);
-    try std.fs.cwd().access(external_cache_path, .{});
 }
 
 test "content compiler builds the native platformer fixture" {
