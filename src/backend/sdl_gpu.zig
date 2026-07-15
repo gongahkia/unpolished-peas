@@ -58,6 +58,90 @@ pub const GpuCapabilities = struct {
     }
 };
 
+pub const RendererPreference = enum {
+    auto,
+    sdl_gpu,
+    opengl,
+};
+
+pub const RendererKind = enum {
+    sdl_gpu,
+    opengl,
+};
+
+pub const RendererCapability = enum {
+    unknown,
+    unavailable,
+    available,
+};
+
+pub const RendererRejectionReason = enum {
+    window_creation_failed,
+    device_creation_failed,
+    unsupported_shader_format,
+    window_claim_failed,
+    swapchain_configuration_failed,
+    presenter_creation_failed,
+    context_configuration_failed,
+    context_creation_failed,
+};
+
+pub const RendererRejection = struct {
+    renderer: RendererKind,
+    reason: RendererRejectionReason,
+};
+
+pub const RendererRecoveryAction = enum {
+    none,
+    gpu_presenter_recreated,
+    opengl_context_recreated,
+};
+
+pub const RendererDiagnostics = struct {
+    requested: RendererPreference,
+    selected: ?RendererKind = null,
+    gpu: RendererCapability = .unknown,
+    opengl_33: RendererCapability = .unknown,
+    post_processing: RendererCapability = .unknown,
+    gpu_shader_format: ?GpuShaderFormat = null,
+    rejected: [2]?RendererRejection = .{ null, null },
+    recovery_action: RendererRecoveryAction = .none,
+
+    pub fn init(requested: RendererPreference) RendererDiagnostics {
+        return .{ .requested = requested };
+    }
+
+    pub fn reject(self: *RendererDiagnostics, renderer: RendererKind, reason: RendererRejectionReason) void {
+        for (&self.rejected) |*entry| {
+            if (entry.* == null) {
+                entry.* = .{ .renderer = renderer, .reason = reason };
+                break;
+            }
+        }
+        switch (renderer) {
+            .sdl_gpu => {
+                self.gpu = .unavailable;
+                self.gpu_shader_format = null;
+            },
+            .opengl => self.opengl_33 = .unavailable,
+        }
+    }
+
+    pub fn select(self: *RendererDiagnostics, renderer: RendererKind) void {
+        self.selected = renderer;
+        switch (renderer) {
+            .sdl_gpu => {
+                self.gpu = .available;
+                self.post_processing = .available;
+            },
+            .opengl => {
+                self.opengl_33 = .available;
+                self.post_processing = .unavailable;
+            },
+        }
+    }
+};
+
 const RuntimeInspectorPanels = struct {
     assets: up.InspectorAssetPanel,
     input: up.InspectorInputPanel,
@@ -493,6 +577,7 @@ pub const Config = struct {
     scale: u32 = 3,
     resizable: bool = false,
     presentation_mode: up.PresentationMode = .integer_fit,
+    renderer: RendererPreference = .auto,
     fixed_hz: u32 = 60,
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
@@ -560,6 +645,7 @@ pub const Context = struct {
     inspector: *up.Inspector,
     profiler: *up.FrameProfiler,
     runtime_metrics: *up.RuntimeMetrics,
+    renderer_diagnostics: *const RendererDiagnostics,
     capture_requested: *bool,
     dt: f32,
     alpha: f32,
@@ -668,6 +754,10 @@ pub const Context = struct {
 
     pub fn runtimeMetrics(self: *const Context) up.RuntimeMetrics {
         return self.runtime_metrics.*;
+    }
+
+    pub fn rendererDiagnostics(self: *const Context) RendererDiagnostics {
+        return self.renderer_diagnostics.*;
     }
 
     pub fn exportCpuTrace(self: *const Context) !void {
@@ -914,6 +1004,159 @@ pub fn appDataPath(allocator: std.mem.Allocator, organization: [:0]const u8, app
     return allocator.dupe(u8, std.mem.span(raw));
 }
 
+const RuntimeRenderer = union(RendererKind) {
+    sdl_gpu: Gpu,
+    opengl: OpenGl,
+
+    const Gpu = struct {
+        window: *c.SDL_Window,
+        device: *c.SDL_GPUDevice,
+        presenter: Presenter,
+    };
+
+    const OpenGl = struct {
+        window: *c.SDL_Window,
+        presenter: OpenGlPresenter,
+    };
+
+    fn init(config: Config, diagnostics: *RendererDiagnostics) !RuntimeRenderer {
+        return initWithWindowFlags(config, diagnostics, 0);
+    }
+
+    fn initWithWindowFlags(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
+        return switch (config.renderer) {
+            .sdl_gpu => initGpu(config, diagnostics, additional_window_flags),
+            .opengl => initOpenGl(config, diagnostics, additional_window_flags),
+            .auto => initGpu(config, diagnostics, additional_window_flags) catch initOpenGl(config, diagnostics, additional_window_flags),
+        };
+    }
+
+    fn initGpu(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
+        const native_window = c.SDL_CreateWindow(config.title.ptr, try scaledInt(config.width, config.scale), try scaledInt(config.height, config.scale), windowFlags(config, additional_window_flags)) orelse {
+            diagnostics.reject(.sdl_gpu, .window_creation_failed);
+            return sdlRendererFail("SDL_CreateWindow");
+        };
+        errdefer c.SDL_DestroyWindow(native_window);
+        const device = createGpuDevice(true) orelse {
+            diagnostics.reject(.sdl_gpu, .device_creation_failed);
+            return sdlRendererFail("SDL_CreateGPUDevice");
+        };
+        errdefer c.SDL_DestroyGPUDevice(device);
+        const shader_format = selectGpuShaderFormat(device) catch |err| {
+            diagnostics.reject(.sdl_gpu, .unsupported_shader_format);
+            return err;
+        };
+        diagnostics.gpu = .available;
+        diagnostics.gpu_shader_format = shader_format;
+        if (!c.SDL_ClaimWindowForGPUDevice(device, native_window)) {
+            diagnostics.reject(.sdl_gpu, .window_claim_failed);
+            return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+        }
+        errdefer c.SDL_ReleaseWindowFromGPUDevice(device, native_window);
+        if (!c.SDL_SetGPUSwapchainParameters(device, native_window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
+            diagnostics.reject(.sdl_gpu, .swapchain_configuration_failed);
+            return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
+        }
+        const presenter = Presenter.init(device, config.width, config.height) catch |err| {
+            diagnostics.reject(.sdl_gpu, .presenter_creation_failed);
+            return err;
+        };
+        diagnostics.select(.sdl_gpu);
+        return .{ .sdl_gpu = .{ .window = native_window, .device = device, .presenter = presenter } };
+    }
+
+    fn initOpenGl(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
+        sdl_gl.configureContext() catch |err| {
+            diagnostics.reject(.opengl, .context_configuration_failed);
+            return err;
+        };
+        const native_window = c.SDL_CreateWindow(config.title.ptr, try scaledInt(config.width, config.scale), try scaledInt(config.height, config.scale), windowFlags(config, additional_window_flags | c.SDL_WINDOW_OPENGL)) orelse {
+            diagnostics.reject(.opengl, .window_creation_failed);
+            return error.OpenGlWindowCreationFailed;
+        };
+        errdefer c.SDL_DestroyWindow(native_window);
+        const presenter = OpenGlPresenter.init(native_window, config.width, config.height) catch |err| {
+            diagnostics.reject(.opengl, .context_creation_failed);
+            return err;
+        };
+        diagnostics.select(.opengl);
+        return .{ .opengl = .{ .window = native_window, .presenter = presenter } };
+    }
+
+    fn deinit(self: *RuntimeRenderer) void {
+        switch (self.*) {
+            .sdl_gpu => |*gpu| {
+                gpu.presenter.deinit(gpu.device);
+                c.SDL_ReleaseWindowFromGPUDevice(gpu.device, gpu.window);
+                c.SDL_DestroyGPUDevice(gpu.device);
+                c.SDL_DestroyWindow(gpu.window);
+            },
+            .opengl => |*opengl| {
+                opengl.presenter.deinit();
+                c.SDL_DestroyWindow(opengl.window);
+            },
+        }
+        self.* = undefined;
+    }
+
+    fn window(self: *const RuntimeRenderer) *c.SDL_Window {
+        return switch (self.*) {
+            .sdl_gpu => |gpu| gpu.window,
+            .opengl => |opengl| opengl.window,
+        };
+    }
+
+    fn present(self: *RuntimeRenderer, allocator: std.mem.Allocator, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+        switch (self.*) {
+            .sdl_gpu => |*gpu| {
+                var backend = GpuBackend{ .presenter = &gpu.presenter, .device = gpu.device, .window = gpu.window, .canvas = canvas, .sprites = sprites, .effects = effects, .capture_path = capture_path, .presentation = presentation, .metrics = metrics };
+                try backend.backend().submit(commands);
+            },
+            .opengl => |*opengl| {
+                if (effects.len != 0) return error.OpenGlPostProcessingUnsupported;
+                metrics.gpu_frame_ns = null;
+                try opengl.presenter.presentWithPresentation(canvas, sprites, commands, presentation.*);
+                if (capture_path) |path| {
+                    var captured = try opengl.presenter.capture(allocator);
+                    defer captured.deinit();
+                    try captured.writePngFile(path);
+                }
+            },
+        }
+    }
+
+    fn recover(self: *RuntimeRenderer, config: Config, recovery: *GpuRecovery, diagnostics: *RendererDiagnostics) !void {
+        switch (self.*) {
+            .sdl_gpu => |*gpu| switch (recovery.*) {
+                .ready => {},
+                .reset_pending => {
+                    gpu.presenter.deinit(gpu.device);
+                    gpu.presenter = try Presenter.init(gpu.device, config.width, config.height);
+                    recovery.* = .ready;
+                    diagnostics.recovery_action = .gpu_presenter_recreated;
+                },
+                .lost => return error.GpuDeviceLost,
+            },
+            .opengl => |*opengl| if (recovery.* != .ready) {
+                try opengl.presenter.recover();
+                recovery.* = .ready;
+                diagnostics.recovery_action = .opengl_context_recreated;
+            },
+        }
+    }
+
+    fn waitIdle(self: *RuntimeRenderer) void {
+        switch (self.*) {
+            .sdl_gpu => |gpu| _ = c.SDL_WaitForGPUIdle(gpu.device),
+            .opengl => {},
+        }
+    }
+};
+
+fn windowFlags(config: Config, additional: c.SDL_WindowFlags) c.SDL_WindowFlags {
+    return additional | if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
+}
+
 pub fn playGame(comptime Game: type) !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer if (gpa.deinit() == .leak) @panic("game allocation leak");
@@ -976,40 +1219,15 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var profiler = up.FrameProfiler.init(config.cpu_profiler);
     profiler.beginFrame(0);
 
-    const window_w = try scaledInt(config.width, config.scale);
-    const window_h = try scaledInt(config.height, config.scale);
-    const window_flags: c.SDL_WindowFlags = if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
-    const window = c.SDL_CreateWindow(config.title.ptr, window_w, window_h, window_flags) orelse {
-        dev.failure(.gpu, error.SdlError);
-        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_CreateWindow");
-        return sdlRendererFail("SDL_CreateWindow");
-    };
-    defer c.SDL_DestroyWindow(window);
-
-    const device = createGpuDevice(true) orelse {
-        dev.failure(.gpu, error.SdlError);
-        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_CreateGPUDevice");
-        return sdlRendererFail("SDL_CreateGPUDevice");
-    };
-    defer c.SDL_DestroyGPUDevice(device);
-    _ = selectGpuShaderFormat(device) catch |err| {
+    var renderer_diagnostics = RendererDiagnostics.init(config.renderer);
+    var renderer = RuntimeRenderer.init(config, &renderer_diagnostics) catch |err| {
+        dev.rendererDiagnostics(&renderer_diagnostics);
         dev.failure(.gpu, err);
-        dev.captureStartupFailure(.{ .phase = .gpu, .err = err }, &profiler, "SDL_GetGPUShaderFormats");
+        dev.captureStartupFailure(.{ .phase = .gpu, .err = err }, &profiler, "renderer selection");
         return err;
     };
-
-    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) {
-        dev.failure(.gpu, error.SdlError);
-        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_ClaimWindowForGPUDevice");
-        return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
-    }
-    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
-
-    if (!c.SDL_SetGPUSwapchainParameters(device, window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
-        dev.failure(.gpu, error.SdlError);
-        dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_SetGPUSwapchainParameters");
-        return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
-    }
+    defer renderer.deinit();
+    dev.rendererDiagnostics(&renderer_diagnostics);
 
     var canvas = try up.Canvas.init(allocator, config.width, config.height);
     defer canvas.deinit();
@@ -1046,7 +1264,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
 
     var input = up.Input{};
     var desktop_state = DesktopState{};
-    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, framebufferSize(window) catch |err| {
+    var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, framebufferSize(renderer.window()) catch |err| {
         dev.failure(.gpu, err);
         dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
         return err;
@@ -1061,15 +1279,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     };
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics);
     try runtime_inspector_panels.register(&inspector);
-    var presenter = Presenter.init(device, config.width, config.height) catch |err| {
-        dev.failure(.gpu, err);
-        dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
-        return err;
-    };
-    var presenter_live = true;
-    defer if (presenter_live) presenter.deinit(device);
-
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1094,12 +1304,12 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         input.beginFrame();
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
-        refreshPresentation(window, &presentation);
+        refreshPresentation(renderer.window(), &presentation);
         var audio_device_changed = false;
         var close_requested = false;
         var callback_failure: ?Failure = null;
         const callback_timer = profiler.scope(.callback);
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, window, &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, renderer.window(), &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
             const current = callback_failure orelse Failure{ .phase = .input, .err = err };
             if (callback_failure != null) dev.callbackFailure(current) else dev.failure(.input, err);
             dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -1108,30 +1318,16 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         };
         callback_timer.end();
         actions.update(input);
-        switch (gpu_recovery) {
-            .ready => {},
-            .reset_pending => {
-                presenter.deinit(device);
-                presenter_live = false;
-                presenter = Presenter.init(device, config.width, config.height) catch |err| {
-                    dev.failure(.gpu_recovery, err);
-                    dev.captureFailure(.{ .phase = .gpu_recovery, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
-                    failure = .{ .phase = .gpu_recovery, .err = err };
-                    continue;
-                };
-                presenter_live = true;
-                gpu_recovery = .ready;
-            },
-            .lost => {
-                dev.failure(.gpu_recovery, error.GpuDeviceLost);
-                dev.captureFailure(.{ .phase = .gpu_recovery, .err = error.GpuDeviceLost }, ctx.frame, canvas, commands.commands.items, &profiler);
-                failure = .{ .phase = .gpu_recovery, .err = error.GpuDeviceLost };
-            },
-        }
+        const prior_recovery_action = renderer_diagnostics.recovery_action;
+        renderer.recover(config, &gpu_recovery, &renderer_diagnostics) catch |err| {
+            dev.failure(.gpu_recovery, err);
+            dev.captureFailure(.{ .phase = .gpu_recovery, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
+            failure = .{ .phase = .gpu_recovery, .err = err };
+        };
+        if (renderer_diagnostics.recovery_action != prior_recovery_action) dev.rendererDiagnostics(&renderer_diagnostics);
         if (failure) |current| {
             drawFailure(&canvas, current);
-            var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprite_batch, .effects = pixel_effects.items(), .presentation = &presentation, .metrics = &frame_metrics };
-            try backend.backend().submit(commands.commands.items);
+            try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation, &frame_metrics);
             runtime_metrics = frame_metrics;
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
@@ -1217,8 +1413,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             try output.queue(&audio);
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
-        var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprite_batch, .effects = pixel_effects.items(), .capture_path = screenshot_path, .presentation = &presentation, .metrics = &frame_metrics };
-        try backend.backend().submit(commands.commands.items);
+        try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation, &frame_metrics);
         runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -1226,7 +1421,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         running = advanceFrame(&ctx.frame, config.max_frames) and running;
     }
 
-    _ = c.SDL_WaitForGPUIdle(device);
+    renderer.waitIdle();
 }
 
 fn initGame(comptime Game: type, ctx: *Context) !Game {
@@ -1532,6 +1727,38 @@ test "runtime Config validates dynamic settings centrally" {
     try std.testing.expectError(error.InvalidConfig, (Config{ .audio_sample_rate = std.math.maxInt(u32) }).validate());
     try std.testing.expectError(error.InvalidConfig, (Config{ .audio_buffer_frames = std.math.maxInt(u32) }).validate());
     try std.testing.expectError(error.AssetRootMustBeAbsolute, (Config{ .asset_root = "assets" }).validate());
+}
+
+test "renderer diagnostics retain fallback capabilities and recovery action" {
+    var diagnostics = RendererDiagnostics.init(.auto);
+    diagnostics.reject(.sdl_gpu, .unsupported_shader_format);
+    diagnostics.select(.opengl);
+    diagnostics.recovery_action = .opengl_context_recreated;
+    try std.testing.expectEqual(RendererPreference.auto, diagnostics.requested);
+    try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
+    try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.gpu);
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
+    try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.post_processing);
+    try std.testing.expectEqual(RendererRejectionReason.unsupported_shader_format, diagnostics.rejected[0].?.reason);
+    try std.testing.expectEqual(RendererRecoveryAction.opengl_context_recreated, diagnostics.recovery_action);
+}
+
+test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
+    defer c.SDL_Quit();
+    var diagnostics = RendererDiagnostics.init(.opengl);
+    var renderer = try RuntimeRenderer.initWithWindowFlags(.{ .renderer = .opengl }, &diagnostics, c.SDL_WINDOW_HIDDEN);
+    defer renderer.deinit();
+    try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
+    try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.post_processing);
+}
+
+test "renderer preferences parse explicit desktop backends" {
+    try std.testing.expectEqual(RendererPreference.auto, parseRendererPreference("auto").?);
+    try std.testing.expectEqual(RendererPreference.sdl_gpu, parseRendererPreference("sdl-gpu").?);
+    try std.testing.expectEqual(RendererPreference.opengl, parseRendererPreference("opengl").?);
+    try std.testing.expect(parseRendererPreference("metal") == null);
 }
 
 test "desktop pause policy is opt-in and deterministic" {
@@ -1953,6 +2180,19 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
+    fn rendererDiagnostics(self: *DeveloperTools, diagnostics: *const RendererDiagnostics) void {
+        var buffer: [512]u8 = undefined;
+        const selected = if (diagnostics.selected) |renderer| @tagName(renderer) else "none";
+        const shader_format = if (diagnostics.gpu_shader_format) |format| @tagName(format) else "none";
+        const first_renderer = if (diagnostics.rejected[0]) |rejection| @tagName(rejection.renderer) else "none";
+        const first_reason = if (diagnostics.rejected[0]) |rejection| @tagName(rejection.reason) else "none";
+        const second_renderer = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.renderer) else "none";
+        const second_reason = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.reason) else "none";
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} post_processing={s} shader={s} recovery={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), @tagName(diagnostics.post_processing), shader_format, @tagName(diagnostics.recovery_action), first_renderer, first_reason, second_renderer, second_reason }) catch return;
+        std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
     fn callbackFailure(self: *DeveloperTools, failure_value: Failure) void {
         var buffer: [320]u8 = undefined;
         const line = std.fmt.bufPrint(&buffer, "unpolished-peas {s} callback failed: {s} {s}\n", .{ failure_value.phase.label(), @errorName(failure_value.err), failure_value.context }) catch return;
@@ -2034,6 +2274,10 @@ test "developer tools log runtime failure categories" {
     tools.failure(.asset_reload, error.ReloadFailed);
     tools.callbackFailure(callbackFailure(.event, error.EventFailed, "event=focus_lost"));
     DeveloperTools.inspectorFailure(&tools, "scene", error.PanelFailed);
+    var renderer_diagnostics = RendererDiagnostics.init(.auto);
+    renderer_diagnostics.reject(.sdl_gpu, .device_creation_failed);
+    renderer_diagnostics.select(.opengl);
+    tools.rendererDiagnostics(&renderer_diagnostics);
     var data = try std.fs.openDirAbsolute(root, .{});
     defer data.close();
     const log = try data.readFileAlloc(std.testing.allocator, "unpolished-peas.log", 4096);
@@ -2044,6 +2288,8 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "event callback failed: EventFailed event=focus_lost") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "renderer requested=auto selected=opengl") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "rejected0=sdl_gpu:device_creation_failed") != null);
 }
 
 test "runtime failures capture bounded artifacts" {
@@ -3269,9 +3515,19 @@ fn configFromArgs(allocator: std.mem.Allocator, config: Config) !Config {
         if (std.mem.eql(u8, arg, "--frames")) {
             const value = args.next() orelse return error.MissingFrameCount;
             parsed.max_frames = try std.fmt.parseInt(u32, value, 10);
+        } else if (std.mem.eql(u8, arg, "--renderer")) {
+            const value = args.next() orelse return error.MissingRenderer;
+            parsed.renderer = parseRendererPreference(value) orelse return error.InvalidRenderer;
         }
     }
     return parsed;
+}
+
+fn parseRendererPreference(value: []const u8) ?RendererPreference {
+    if (std.mem.eql(u8, value, "auto")) return .auto;
+    if (std.mem.eql(u8, value, "sdl-gpu")) return .sdl_gpu;
+    if (std.mem.eql(u8, value, "opengl")) return .opengl;
+    return null;
 }
 
 fn ticksToSeconds(ns: u64) f32 {
