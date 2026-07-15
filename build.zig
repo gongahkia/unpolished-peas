@@ -424,6 +424,10 @@ pub fn build(b: *std.Build) void {
     opengl_conformance.setEnvironmentVariable("UP_OPENGL_CONFORMANCE", "1");
     const opengl_conformance_step = b.step("test-opengl", "Run the OpenGL 3.3 desktop presenter conformance fixture");
     opengl_conformance_step.dependOn(&opengl_conformance.step);
+    const cross_backend_conformance = b.addRunArtifact(sdl_tests);
+    cross_backend_conformance.setEnvironmentVariable("UP_CROSS_BACKEND_CONFORMANCE", "1");
+    const cross_backend_conformance_step = b.step("test-renderer-cross-backend", "Compare SDL GPU and OpenGL renderer captures");
+    cross_backend_conformance_step.dependOn(&cross_backend_conformance.step);
     const effects_tests = b.addTest(.{ .root_module = effects });
     const run_effects_tests = b.addRunArtifact(effects_tests);
     const effects_test_step = b.step("test-effects", "Test the independent effects package module");

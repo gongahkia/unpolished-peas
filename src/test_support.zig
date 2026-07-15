@@ -92,6 +92,22 @@ pub const GoldenOptions = struct {
     diagnostics_path: []const u8,
 };
 
+pub const RendererCaptureTolerance = struct {
+    max_channel_delta: u8 = 1,
+};
+
+pub const cross_backend_renderer_tolerance = RendererCaptureTolerance{};
+
+pub fn expectRendererCapturesMatch(expected: *const Canvas, actual: *const Canvas, tolerance: RendererCaptureTolerance) !void {
+    if (expected.width != actual.width or expected.height != actual.height) return error.RendererCaptureDimensionsMismatch;
+    for (expected.pixels, actual.pixels) |expected_pixel, actual_pixel| {
+        if (channelDelta(expected_pixel.r, actual_pixel.r) > tolerance.max_channel_delta) return error.RendererCaptureMismatch;
+        if (channelDelta(expected_pixel.g, actual_pixel.g) > tolerance.max_channel_delta) return error.RendererCaptureMismatch;
+        if (channelDelta(expected_pixel.b, actual_pixel.b) > tolerance.max_channel_delta) return error.RendererCaptureMismatch;
+        if (channelDelta(expected_pixel.a, actual_pixel.a) > tolerance.max_channel_delta) return error.RendererCaptureMismatch;
+    }
+}
+
 pub const RendererConformance = struct {
     pub const Scenario = enum {
         opaque_rects,
@@ -209,6 +225,10 @@ fn pixelsEqual(actual: []const Color, expected: []const Color) bool {
     return true;
 }
 
+fn channelDelta(a: u8, b: u8) u8 {
+    return if (a >= b) a - b else b - a;
+}
+
 fn writeGoldenDiagnostics(allocator: std.mem.Allocator, actual: Canvas, expected: Image, path: []const u8) !void {
     try std.fs.cwd().makePath(path);
     const actual_path = try std.fs.path.join(allocator, &.{ path, "actual.png" });
@@ -280,6 +300,18 @@ test "renderer conformance scenarios submit canonical command slices" {
         try scenario.expectCapture(&canvas);
     }
     try expectError(error.InvalidConformanceCanvas, RendererConformance.init(std.testing.allocator, .opaque_rects, 3, 3));
+}
+
+test "renderer capture tolerance bounds channel deltas" {
+    var expected = try Canvas.init(std.testing.allocator, 1, 1);
+    defer expected.deinit();
+    var actual = try Canvas.init(std.testing.allocator, 1, 1);
+    defer actual.deinit();
+    expected.clear(Color.rgba(10, 20, 30, 40));
+    actual.clear(Color.rgba(11, 19, 31, 39));
+    try expectRendererCapturesMatch(&expected, &actual, cross_backend_renderer_tolerance);
+    actual.clear(Color.rgba(12, 20, 30, 40));
+    try expectError(error.RendererCaptureMismatch, expectRendererCapturesMatch(&expected, &actual, cross_backend_renderer_tolerance));
 }
 
 test "test support writes golden mismatch diagnostics" {
