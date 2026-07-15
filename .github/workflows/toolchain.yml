@@ -134,7 +134,7 @@ jobs:
   renderer-conformance:
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest, windows-latest]
+        os: [macos-15-intel, ubuntu-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -145,7 +145,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
       - if: matrix.os == 'ubuntu-latest'
         run: xvfb-run -a env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
-      - if: matrix.os == 'macos-latest'
+      - if: matrix.os == 'macos-15-intel'
         run: env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
       - if: matrix.os == 'windows-latest'
         run: zig build test-renderer-conformance

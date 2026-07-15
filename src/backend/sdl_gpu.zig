@@ -117,15 +117,14 @@ test "desktop renderer conformance GPU golden capture" {
 
     if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
-    if (!c.SDL_GPUSupportsShaderFormats(requiredGpuShaderFormats(), null)) {
+    const device = createGpuDevice(false) orelse {
         printRendererConformanceUnavailable();
         if (rendererConformanceRequiresGpu()) return error.UnsupportedGpuShaderFormat;
         return;
-    }
+    };
+    defer c.SDL_DestroyGPUDevice(device);
     const window = c.SDL_CreateWindow("unpolished-peas capture", 64, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlRendererFail("SDL_CreateWindow");
     defer c.SDL_DestroyWindow(window);
-    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), false, null) orelse return sdlRendererFail("SDL_CreateGPUDevice");
-    defer c.SDL_DestroyGPUDevice(device);
     const shader_format = try selectGpuShaderFormat(device);
     if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
     defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
@@ -919,7 +918,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     };
     defer c.SDL_DestroyWindow(window);
 
-    const device = c.SDL_CreateGPUDevice(requiredGpuShaderFormats(), true, null) orelse {
+    const device = createGpuDevice(true) orelse {
         dev.failure(.gpu, error.SdlError);
         dev.captureStartupFailure(.{ .phase = .gpu, .err = error.SdlError }, &profiler, "SDL_CreateGPUDevice");
         return sdlRendererFail("SDL_CreateGPUDevice");
@@ -2490,7 +2489,7 @@ fn createSpritePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
         .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffer, .num_vertex_buffers = 1, .vertex_attributes = &vertex_attributes, .num_vertex_attributes = vertex_attributes.len },
         .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
-        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 },
         .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
         .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
         .props = 0,
@@ -2539,7 +2538,7 @@ fn createEffectPipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
     const fragment_shader = try createEffectShader(device, .fragment);
     defer c.SDL_ReleaseGPUShader(device, fragment_shader);
     const target = c.SDL_GPUColorTargetDescription{ .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .blend_state = .{ .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .color_blend_op = c.SDL_GPU_BLENDOP_ADD, .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD, .color_write_mask = 0xF, .enable_blend = false, .enable_color_write_mask = true, .padding1 = 0, .padding2 = 0 } };
-    return c.SDL_CreateGPUGraphicsPipeline(device, &.{ .vertex_shader = vertex_shader, .fragment_shader = fragment_shader, .vertex_input_state = .{ .vertex_buffer_descriptions = null, .num_vertex_buffers = 0, .vertex_attributes = null, .num_vertex_attributes = 0 }, .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST, .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 }, .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .props = 0 }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{ .vertex_shader = vertex_shader, .fragment_shader = fragment_shader, .vertex_input_state = .{ .vertex_buffer_descriptions = null, .num_vertex_buffers = 0, .vertex_attributes = null, .num_vertex_attributes = 0 }, .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST, .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 }, .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 }, .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .props = 0 }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
 }
 
 fn createEffectShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
@@ -2599,7 +2598,7 @@ fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SD
         .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffer, .num_vertex_buffers = 1, .vertex_attributes = &vertex_attributes, .num_vertex_attributes = vertex_attributes.len },
         .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
         .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
-        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 },
         .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
         .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
         .props = 0,
@@ -2945,8 +2944,16 @@ fn ticksToSeconds(ns: u64) f32 {
     return @as(f32, @floatFromInt(ns)) / 1_000_000_000.0;
 }
 
-fn requiredGpuShaderFormats() c.SDL_GPUShaderFormat {
-    return @intCast(GpuCapabilities.required_shader_formats);
+fn createGpuDevice(debug_mode: bool) ?*c.SDL_GPUDevice {
+    const properties = c.SDL_CreateProperties();
+    if (properties == 0) return null;
+    defer c.SDL_DestroyProperties(properties);
+    if (!c.SDL_SetBooleanProperty(properties, c.SDL_PROP_GPU_DEVICE_CREATE_DEBUGMODE_BOOLEAN, debug_mode)) return null;
+    if (!c.SDL_SetBooleanProperty(properties, c.SDL_PROP_GPU_DEVICE_CREATE_SHADERS_MSL_BOOLEAN, true)) return null;
+    if (!c.SDL_SetBooleanProperty(properties, c.SDL_PROP_GPU_DEVICE_CREATE_SHADERS_SPIRV_BOOLEAN, true)) return null;
+    if (!c.SDL_SetBooleanProperty(properties, c.SDL_PROP_GPU_DEVICE_CREATE_SHADERS_DXBC_BOOLEAN, true)) return null;
+    if (builtin.os.tag == .macos and !c.SDL_SetBooleanProperty(properties, c.SDL_PROP_GPU_DEVICE_CREATE_METAL_ALLOW_MACFAMILY1_BOOLEAN, true)) return null;
+    return c.SDL_CreateGPUDeviceWithProperties(properties);
 }
 
 fn gpuCapabilities(device: *c.SDL_GPUDevice) GpuCapabilities {
