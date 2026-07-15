@@ -74,22 +74,63 @@ pub const BoundHandle = union(enum) {
 
 pub const Bound = struct {
     id: []const u8,
+    path: []const u8,
+    dependencies: []const []const u8,
     handle: BoundHandle,
+};
+
+pub const Reload = struct {
+    id: []const u8,
+    event: assets.ReloadEvent,
 };
 
 pub const Loaded = struct {
     allocator: std.mem.Allocator,
     bindings: []Bound,
+    reloads: std.ArrayListUnmanaged(Reload) = .{},
 
     pub fn deinit(self: *Loaded) void {
-        for (self.bindings) |binding| self.allocator.free(binding.id);
+        for (self.bindings) |binding| {
+            self.allocator.free(binding.id);
+            self.allocator.free(binding.path);
+            for (binding.dependencies) |dependency| self.allocator.free(dependency);
+            self.allocator.free(binding.dependencies);
+        }
         self.allocator.free(self.bindings);
+        self.reloads.deinit(self.allocator);
         self.* = undefined;
     }
 
     pub fn handle(self: Loaded, id: []const u8) ?BoundHandle {
         for (self.bindings) |binding| if (std.mem.eql(u8, binding.id, id)) return binding.handle;
         return null;
+    }
+
+    pub fn reloadChanged(self: *Loaded, store: *assets.AssetStore) ![]const Reload {
+        self.reloads.clearRetainingCapacity();
+        for (try store.reloadChanged()) |event| {
+            const start = self.reloads.items.len;
+            for (self.bindings) |*binding| {
+                if (!std.mem.eql(u8, binding.path, event.path)) continue;
+                if (event.status == .changed) refreshHandle(&binding.handle);
+                _ = try self.appendAffected(event, binding.id, start);
+                try self.appendDependents(event, binding.id, start);
+            }
+        }
+        return self.reloads.items;
+    }
+
+    fn appendDependents(self: *Loaded, event: assets.ReloadEvent, changed_id: []const u8, start: usize) !void {
+        for (self.bindings) |binding| {
+            if (!declaresDependency(binding.dependencies, changed_id)) continue;
+            if (try self.appendAffected(event, binding.id, start)) try self.appendDependents(event, binding.id, start);
+        }
+    }
+
+    fn appendAffected(self: *Loaded, event: assets.ReloadEvent, id: []const u8, start: usize) !bool {
+        for (self.reloads.items[start..]) |reload| if (std.mem.eql(u8, reload.id, id)) return false;
+        try self.reloads.append(self.allocator, .{ .id = id, .event = event });
+        return true;
     }
 };
 
@@ -144,25 +185,58 @@ pub fn validateFiles(dir: std.fs.Dir, catalog: Source) !void {
 pub fn load(allocator: std.mem.Allocator, store: *assets.AssetStore, catalog: Source) !Loaded {
     try validateFiles(store.dir, catalog);
     var bindings = std.ArrayListUnmanaged(Bound){};
-    errdefer {
-        for (bindings.items) |binding| allocator.free(binding.id);
-        bindings.deinit(allocator);
-    }
-    for (catalog.images) |entry| try appendBinding(allocator, &bindings, entry.id, .{ .image = try store.loadImage(entry.path) });
-    for (catalog.audio) |entry| try appendBinding(allocator, &bindings, entry.id, .{ .audio = try store.loadSound(entry.path) });
+    errdefer deinitBindings(allocator, &bindings);
+    for (catalog.images) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .image = try store.loadImage(entry.path) });
+    for (catalog.audio) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .audio = try store.loadSound(entry.path) });
     for (catalog.fonts) |entry| {
         const handle = if (entry.bitmap) try store.loadBitmapFont(entry.path) else try store.loadFontWithOptions(entry.path, .{ .pixel_height = entry.pixel_height, .atlas_width = entry.atlas_width, .atlas_height = entry.atlas_height, .first_codepoint = entry.first_codepoint, .codepoint_count = entry.codepoint_count, .fallback_codepoint = entry.fallback_codepoint });
-        try appendBinding(allocator, &bindings, entry.id, .{ .font = handle });
+        try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .font = handle });
     }
-    for (catalog.atlases) |entry| try appendBinding(allocator, &bindings, entry.id, .{ .atlas = try store.loadAtlas(entry.path) });
-    for (catalog.shaders) |entry| try appendBinding(allocator, &bindings, entry.id, .{ .shader = try store.loadShader(entry.path) });
+    for (catalog.atlases) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .atlas = try store.loadAtlas(entry.path) });
+    for (catalog.shaders) |entry| try appendBinding(allocator, &bindings, entry.id, entry.path, entry.dependencies, .{ .shader = try store.loadShader(entry.path) });
     return .{ .allocator = allocator, .bindings = try bindings.toOwnedSlice(allocator) };
 }
 
-fn appendBinding(allocator: std.mem.Allocator, bindings: *std.ArrayListUnmanaged(Bound), id: []const u8, handle: BoundHandle) !void {
+fn appendBinding(allocator: std.mem.Allocator, bindings: *std.ArrayListUnmanaged(Bound), id: []const u8, path: []const u8, dependencies: []const []const u8, handle: BoundHandle) !void {
     const owned_id = try allocator.dupe(u8, id);
     errdefer allocator.free(owned_id);
-    try bindings.append(allocator, .{ .id = owned_id, .handle = handle });
+    const owned_path = try allocator.dupe(u8, path);
+    errdefer allocator.free(owned_path);
+    const owned_dependencies = try allocator.alloc([]const u8, dependencies.len);
+    var dependency_count: usize = 0;
+    errdefer {
+        for (owned_dependencies[0..dependency_count]) |dependency| allocator.free(dependency);
+        allocator.free(owned_dependencies);
+    }
+    for (dependencies) |dependency| {
+        owned_dependencies[dependency_count] = try allocator.dupe(u8, dependency);
+        dependency_count += 1;
+    }
+    try bindings.append(allocator, .{ .id = owned_id, .path = owned_path, .dependencies = owned_dependencies, .handle = handle });
+}
+
+fn deinitBindings(allocator: std.mem.Allocator, bindings: *std.ArrayListUnmanaged(Bound)) void {
+    for (bindings.items) |binding| {
+        allocator.free(binding.id);
+        allocator.free(binding.path);
+        for (binding.dependencies) |dependency| allocator.free(dependency);
+        allocator.free(binding.dependencies);
+    }
+    bindings.deinit(allocator);
+}
+
+fn declaresDependency(dependencies: []const []const u8, id: []const u8) bool {
+    for (dependencies) |dependency| if (std.mem.eql(u8, dependency, id)) return true;
+    return false;
+}
+
+fn refreshHandle(handle: *BoundHandle) void {
+    switch (handle.*) {
+        inline else => |*value| {
+            value.generation +%= 1;
+            if (value.generation == 0) value.generation = 1;
+        },
+    }
 }
 
 fn appendEdge(allocator: std.mem.Allocator, edges: *std.ArrayListUnmanaged(Edge), asset: []const u8, dependency: []const u8) !void {
@@ -258,6 +332,52 @@ test "asset catalog validates paths, dependencies, and handle bindings" {
     try std.testing.expectEqual(@as(usize, 1), dependencies.edges.len);
     try std.testing.expectEqualStrings("atlas", dependencies.edges[0].asset);
     try std.testing.expectEqualStrings("ball", dependencies.edges[0].dependency);
+}
+
+test "asset catalog reloads changed declarations and reports affected identifiers" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=passthrough\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "b.upshader", .data = "effect=invert\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "untracked.txt", .data = "one" });
+    const source =
+        \\.{ .format = "unpolished-peas-assets", .version = 1, .images = .{}, .audio = .{}, .fonts = .{}, .atlases = .{}, .shaders = .{
+        \\    .{ .id = "a", .path = "a.upshader" },
+        \\    .{ .id = "b", .path = "b.upshader", .dependencies = .{ "a" } },
+        \\} }
+    ;
+    var diagnostic = Diagnostic{};
+    var catalog = try parse(std.testing.allocator, source, &diagnostic);
+    defer catalog.deinit(std.testing.allocator);
+    var store = assets.AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    var loaded = try load(std.testing.allocator, &store, catalog);
+    defer loaded.deinit();
+
+    var stat = try tmp.dir.statFile("a.upshader");
+    try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\n" });
+    while ((try tmp.dir.statFile("a.upshader")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "a.upshader", .data = "effect=invert\n" });
+        stat = try tmp.dir.statFile("a.upshader");
+    }
+    const reloads = try loaded.reloadChanged(&store);
+    try std.testing.expectEqual(@as(usize, 2), reloads.len);
+    try std.testing.expectEqualStrings("a", reloads[0].id);
+    try std.testing.expectEqualStrings("b", reloads[1].id);
+    try std.testing.expectEqual(assets.ReloadStatus.changed, reloads[0].event.status);
+    try std.testing.expectEqualStrings("a.upshader", reloads[1].event.path);
+    try std.testing.expectEqual(.invert, (try store.tryShader(loaded.handle("a").?.shader)).kind);
+
+    _ = try store.loadText("untracked.txt");
+    stat = try tmp.dir.statFile("untracked.txt");
+    try tmp.dir.writeFile(.{ .sub_path = "untracked.txt", .data = "two" });
+    while ((try tmp.dir.statFile("untracked.txt")).mtime == stat.mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "untracked.txt", .data = "two" });
+        stat = try tmp.dir.statFile("untracked.txt");
+    }
+    try std.testing.expectEqual(@as(usize, 0), (try loaded.reloadChanged(&store)).len);
 }
 
 test "asset catalog rejects duplicate unsafe and missing paths" {
