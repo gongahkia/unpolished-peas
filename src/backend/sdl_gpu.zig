@@ -367,6 +367,25 @@ pub const Config = struct {
     pause_policy: PausePolicy = .never,
     clear_color: up.Color = up.Color.black,
     max_frames: ?u32 = null,
+
+    pub fn validate(self: Config) !void {
+        const max_sdl_int: u32 = @intCast(std.math.maxInt(c_int));
+        const max_sdl_bytes: usize = @intCast(max_sdl_int);
+        if (self.title.len == 0 or self.organization.len == 0 or self.application.len == 0) return error.InvalidConfig;
+        if (self.width == 0 or self.height == 0 or self.scale == 0) return error.InvalidConfig;
+        if (self.fixed_hz == 0 or self.audio_sample_rate == 0 or self.audio_buffer_frames == 0) return error.InvalidConfig;
+        if (self.audio_sample_rate > max_sdl_int) return error.InvalidConfig;
+        if (self.max_frames) |max_frames| {
+            if (max_frames == 0) return error.InvalidConfig;
+        }
+        _ = try scaledInt(self.width, self.scale);
+        _ = try scaledInt(self.height, self.scale);
+        _ = try checkedByteLen(self.width, self.height);
+        const audio_bytes = std.math.mul(usize, @as(usize, self.audio_buffer_frames), 2 * @sizeOf(f32)) catch return error.InvalidConfig;
+        if (audio_bytes > max_sdl_bytes) return error.InvalidConfig;
+        if (self.asset_root) |root_path| if (!std.fs.path.isAbsolute(root_path)) return error.AssetRootMustBeAbsolute;
+        try up.ActionMap.validate(self.actions);
+    }
 };
 
 pub const PausePolicy = enum {
@@ -848,12 +867,6 @@ pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
     try runWithAllocator(allocator, parsed_config, state, callbacks);
 }
 
-pub fn validateConfig(config: Config) !void {
-    if (config.width == 0 or config.height == 0 or config.scale == 0) return error.InvalidConfig;
-    if (config.fixed_hz == 0 or config.audio_sample_rate == 0 or config.audio_buffer_frames == 0) return error.InvalidConfig;
-    try up.ActionMap.validate(config.actions);
-}
-
 fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     const Adapter = struct {
         fn init(state: *Game, ctx: *Context) !void {
@@ -888,7 +901,7 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
 
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
-    try validateConfig(config);
+    try config.validate();
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
     const data_path = try appDataPath(allocator, config.organization, config.application);
@@ -1300,6 +1313,7 @@ test "lifecycle accepts optional callbacks" {
 }
 
 test "structured Game owns desktop configuration" {
+    const asset_root: []const u8 = if (builtin.os.tag == .windows) "C:\\assets" else "/assets";
     const Game = struct {
         pub const config: Config = .{
             .title = "structured",
@@ -1307,7 +1321,7 @@ test "structured Game owns desktop configuration" {
             .height = 90,
             .scale = 4,
             .presentation_mode = .fit,
-            .asset_root = "assets",
+            .asset_root = asset_root,
             .developer_tools = false,
         };
     };
@@ -1315,7 +1329,7 @@ test "structured Game owns desktop configuration" {
     try std.testing.expectEqualStrings("structured", config.title);
     try std.testing.expectEqual(@as(u32, 160), config.width);
     try std.testing.expectEqual(up.PresentationMode.fit, config.presentation_mode);
-    try std.testing.expectEqualStrings("assets", config.asset_root.?);
+    try std.testing.expectEqualStrings(asset_root, config.asset_root.?);
 }
 
 test "desktop loop exposes one Game facade and one explicit escape hatch" {
@@ -1325,14 +1339,25 @@ test "desktop loop exposes one Game facade and one explicit escape hatch" {
 }
 
 test "desktop configuration errors are recoverable" {
-    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .width = 0 }));
-    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .fixed_hz = 0 }));
-    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_sample_rate = 0 }));
-    try std.testing.expectError(error.InvalidConfig, validateConfig(.{ .audio_buffer_frames = 0 }));
-    try std.testing.expectError(error.DuplicateBinding, validateConfig(.{ .actions = &.{
+    try std.testing.expectError(error.InvalidConfig, (Config{ .width = 0 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .fixed_hz = 0 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .audio_sample_rate = 0 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .audio_buffer_frames = 0 }).validate());
+    try std.testing.expectError(error.DuplicateBinding, (Config{ .actions = &.{
         .{ .name = "fire", .binding = .{ .key = .action } },
         .{ .name = "fire", .binding = .{ .key = .action } },
-    } }));
+    } }).validate());
+}
+
+test "runtime Config validates dynamic settings centrally" {
+    try (Config{}).validate();
+    try std.testing.expectError(error.InvalidConfig, (Config{ .title = "" }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .max_frames = 0 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .width = 1_073_741_824, .scale = 3 }).validate());
+    try std.testing.expectError(error.CanvasTooLarge, (Config{ .width = 65_536, .height = 65_536 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .audio_sample_rate = std.math.maxInt(u32) }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .audio_buffer_frames = std.math.maxInt(u32) }).validate());
+    try std.testing.expectError(error.AssetRootMustBeAbsolute, (Config{ .asset_root = "assets" }).validate());
 }
 
 test "desktop pause policy is opt-in and deterministic" {
