@@ -199,6 +199,7 @@ zig build new -- ../my-game
 `zig build contentc -- <project-directory> [output-directory]` emits versioned `.upc` binary caches for `.upassets` files under `assets/` and `.upmap` files under `maps/`; cache headers validate magic, version, kind, size, and source fingerprint before reuse. `zig build peas -- compile [project-directory] [output-directory]` provides the same project workflow.
 `zig build peas -- migrate <catalog|map> <input> <output>` explicitly upgrades supported source versions and writes only the requested output path; unsupported versions include a recovery command.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
+`zig build peas -- replay <fixture.upr> [expected-input-hash]` reproduces normalized fixed-step input and reports a deterministic final-state hash or divergence.
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.

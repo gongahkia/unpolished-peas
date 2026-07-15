@@ -1,9 +1,11 @@
 const std = @import("std");
 const tools = @import("unpolished-peas-tools");
 const content = @import("unpolished-peas-content");
+const input_replay = content.input_replay;
 const starter = @import("starter.zig");
 
 const max_build_output_bytes = 8 * 1024 * 1024;
+const max_replay_bytes = 1024 * 1024;
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -55,6 +57,10 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             return null;
         },
         .@"test" => return try testProject(allocator, args),
+        .replay => {
+            try replayFixture(allocator, args);
+            return null;
+        },
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
@@ -289,6 +295,46 @@ fn testUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn replayFixture(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const path = args.next() orelse return replayUsage();
+    const expected_argument = args.next();
+    if (args.next() != null) return replayUsage();
+    const source = std.fs.cwd().readFileAlloc(allocator, path, max_replay_bytes) catch |err| {
+        std.debug.print("peas replay: unable to read {s}: {s}\n", .{ path, @errorName(err) });
+        return err;
+    };
+    defer allocator.free(source);
+    var value = input_replay.parse(allocator, source) catch |err| {
+        std.debug.print("peas replay: invalid fixture {s}: {s}\n", .{ path, @errorName(err) });
+        return err;
+    };
+    defer value.deinit(allocator);
+    const expected = if (expected_argument) |argument| parseReplayHash(argument) catch return replayUsage() else null;
+    const result = try input_replay.reproduce(value);
+    const report = try replayReport(allocator, result, expected);
+    defer allocator.free(report);
+    std.debug.print("{s}", .{report});
+    if (expected) |hash| if (hash != result.hash) return error.ReplayDiverged;
+}
+
+fn replayUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- replay <fixture.upr> [expected-input-hash]\n", .{});
+    return error.InvalidArguments;
+}
+
+fn parseReplayHash(value: []const u8) !u64 {
+    const digits = if (std.mem.startsWith(u8, value, "0x")) value[2..] else value;
+    if (digits.len == 0) return error.InvalidReplayHash;
+    return std.fmt.parseInt(u64, digits, 16);
+}
+
+fn replayReport(allocator: std.mem.Allocator, result: input_replay.Reproduction, expected: ?u64) ![]u8 {
+    if (expected) |value| {
+        return std.fmt.allocPrint(allocator, "peas replay: frames={d} fixed-hz={d} updates={d} hash=0x{x}\npeas replay: expected=0x{x} actual=0x{x} divergence={s}\n", .{ result.frames, result.fixed_hz, result.updates, result.hash, value, result.hash, if (value == result.hash) "none" else "final-state" });
+    }
+    return std.fmt.allocPrint(allocator, "peas replay: frames={d} fixed-hz={d} updates={d} hash=0x{x}\n", .{ result.frames, result.fixed_hz, result.updates, result.hash });
+}
+
 fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
     const target_argument = args.next() orelse return packageUsage();
     const target = tools.parsePackageTarget(target_argument) orelse return packageUsage();
@@ -418,6 +464,25 @@ test "known test selections parse" {
     try std.testing.expectEqual(tools.TestSelection.replay, tools.parseTestSelection("replay").?);
     try std.testing.expectEqual(tools.TestSelection.visual, tools.parseTestSelection("visual").?);
     try std.testing.expectEqual(tools.TestSelection.integration, tools.parseTestSelection("integration").?);
+}
+
+test "replay reproduction reports deterministic final-state divergence" {
+    var value = try input_replay.parse(std.testing.allocator, "UPR1 60\n2 17\n1 2\n");
+    defer value.deinit(std.testing.allocator);
+    const first = try input_replay.reproduce(value);
+    const second = try input_replay.reproduce(value);
+    try std.testing.expectEqual(first.hash, second.hash);
+    try std.testing.expectEqual(@as(usize, 3), first.frames);
+    try std.testing.expectEqual(@as(u64, 3), first.updates);
+    const match = try replayReport(std.testing.allocator, first, first.hash);
+    defer std.testing.allocator.free(match);
+    try std.testing.expect(std.mem.indexOf(u8, match, "divergence=none") != null);
+    const mismatch = try replayReport(std.testing.allocator, first, first.hash +% 1);
+    defer std.testing.allocator.free(mismatch);
+    try std.testing.expect(std.mem.indexOf(u8, mismatch, "divergence=final-state") != null);
+    var buffer: [18]u8 = undefined;
+    const encoded = try std.fmt.bufPrint(&buffer, "0x{x}", .{first.hash});
+    try std.testing.expectEqual(first.hash, try parseReplayHash(encoded));
 }
 
 test "project test classes report deterministic targets" {

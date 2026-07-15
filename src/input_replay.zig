@@ -7,6 +7,13 @@ const PointerButton = @import("input.zig").PointerButton;
 pub const max_frames: usize = 100_000;
 pub const Button = enum(u3) { left, right, up, down, action, cancel, start, select };
 
+pub const Reproduction = struct {
+    frames: usize,
+    fixed_hz: u32,
+    updates: u64,
+    hash: u64,
+};
+
 pub const Frame = struct {
     buttons: u8,
 
@@ -125,6 +132,26 @@ pub fn parse(allocator: std.mem.Allocator, source: []const u8) !Replay {
     return .{ .fixed_hz = fixed_hz, .frames = try output.toOwnedSlice(allocator) };
 }
 
+pub fn reproduce(replay: Replay) !Reproduction {
+    var clock = StepClock.init(replay.fixed_hz);
+    var input = Input{};
+    var updates: u64 = 0;
+    var hash = std.hash.Fnv1a_64.init();
+    hash.update(std.mem.asBytes(&replay.fixed_hz));
+    for (replay.frames, 0..) |_, index| {
+        try replay.applyFrame(index, &input);
+        const steps = clock.push(clock.step_seconds);
+        for (0..steps) |_| {
+            inline for (@typeInfo(Key).@"enum".fields) |field| {
+                const key: Key = @enumFromInt(field.value);
+                hash.update(&.{@intFromBool(input.isDown(key))});
+            }
+            updates += 1;
+        }
+    }
+    return .{ .frames = replay.frames.len, .fixed_hz = replay.fixed_hz, .updates = updates, .hash = hash.final() };
+}
+
 test "replay expands deterministic run-length input" {
     var replay = try parse(std.testing.allocator, "UPR1 60\n2 1\n1 4\n");
     defer replay.deinit(std.testing.allocator);
@@ -169,6 +196,16 @@ test "recorder normalizes input and reproduces fixed-step state hashes" {
     const expected_hash: u64 = 0xce04c4a682059360;
     try std.testing.expectEqual(expected_hash, try fixedStepStateHash(replay));
     try std.testing.expectEqual(expected_hash, try fixedStepStateHash(parsed));
+}
+
+test "replay reproduction yields a deterministic normalized input hash" {
+    var replay = try parse(std.testing.allocator, "UPR1 60\n2 17\n1 2\n");
+    defer replay.deinit(std.testing.allocator);
+    const first = try reproduce(replay);
+    const second = try reproduce(replay);
+    try std.testing.expectEqual(@as(usize, 3), first.frames);
+    try std.testing.expectEqual(@as(u64, 3), first.updates);
+    try std.testing.expectEqual(first.hash, second.hash);
 }
 
 fn fixedStepStateHash(replay: Replay) !u64 {
