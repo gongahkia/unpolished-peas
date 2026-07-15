@@ -380,17 +380,10 @@ fn docsUsage() error{InvalidArguments} {
 }
 
 fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8) !std.process.Child.Term {
-    var environment = try std.process.getEnvMap(allocator);
-    defer environment.deinit();
-    const cache_dir = try std.fs.path.join(allocator, &.{ cwd, "zig-out", ".peas-cache" });
-    defer allocator.free(cache_dir);
-    try environment.put("ZIG_GLOBAL_CACHE_DIR", cache_dir);
-    try environment.put("ZIG_LOCAL_CACHE_DIR", cache_dir);
     const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = arguments,
         .cwd = cwd,
-        .env_map = &environment,
         .max_output_bytes = max_build_output_bytes,
     });
     defer allocator.free(result.stdout);

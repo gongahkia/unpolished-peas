@@ -15,13 +15,16 @@ Set-Location $repo
 function Invoke-Scenario([string]$Name, [scriptblock]$Command) {
     $script:scenario = $Name
     & $Command
+    if ($LASTEXITCODE -ne 0) { throw "$Name failed: $LASTEXITCODE" }
 }
 try {
     $project = "fixtures/$Game-project"
-    Invoke-Scenario 'cli-check' { zig build peas -- check $project }
-    Invoke-Scenario 'cli-compile' { zig build peas -- compile $project (Join-Path $tmp 'content') }
+    Invoke-Scenario 'cli-build' { zig build install-peas }
+    $peas = Join-Path $repo 'zig-out/bin/peas.exe'
+    Invoke-Scenario 'cli-check' { & $peas check $project }
+    Invoke-Scenario 'cli-compile' { & $peas compile $project (Join-Path $tmp 'content') }
     foreach ($selection in 'unit', 'replay', 'visual', 'integration') {
-        Invoke-Scenario "cli-test-$selection" { zig build peas -- test $selection $project }
+        Invoke-Scenario "cli-test-$selection" { & $peas test $selection $project }
     }
     Invoke-Scenario 'inspector-reload-profiler' { zig build test }
     if ($Game -eq 'topdown') {

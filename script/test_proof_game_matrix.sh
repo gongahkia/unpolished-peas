@@ -31,10 +31,12 @@ run() {
     "$@"
 }
 
-run cli-check zig build peas -- check "$project"
-run cli-compile zig build peas -- compile "$project" "$tmp/content"
+run cli-build zig build install-peas
+peas="$repo/zig-out/bin/peas"
+run cli-check "$peas" check "$project"
+run cli-compile "$peas" compile "$project" "$tmp/content"
 for selection in unit replay visual integration; do
-    run "cli-test-$selection" zig build peas -- test "$selection" "$project"
+    run "cli-test-$selection" "$peas" test "$selection" "$project"
 done
 run inspector-reload-profiler zig build test
 
