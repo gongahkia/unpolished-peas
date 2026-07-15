@@ -10,12 +10,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }},
     });
-    const exe = b.addExecutable(.{ .name = "external-topdown", .root_module = module });
+    const exe = b.addExecutable(.{ .name = "external-bounce", .root_module = module });
     b.installArtifact(exe);
     const tests = b.addTest(.{ .root_module = module });
     const run = b.addRunArtifact(tests);
-    inline for (.{ "test", "test-replays", "test-scenes", "test-modules" }) |name| {
-        const step = b.step(name, "Run native top-down fixture coverage");
-        step.dependOn(&run.step);
-    }
+    const step = b.step("test", "Test the external bounce fixture");
+    step.dependOn(&run.step);
 }
