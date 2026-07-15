@@ -88,6 +88,8 @@ sdl.playGame(Game) is the callback-game facade and reads window, presentation, d
 
 Set Game.config.pause_policy to .unfocused or .minimized to suppress update callbacks while that desktop state applies. Focus, minimize, restore, resize, and close stay ordered Event callbacks; draw continues with ctx.dt set to zero, leaving game state under user control.
 
+Each unpaused frame processes input/events, runs zero or more update callbacks at fixed `1 / Config.fixed_hz` `ctx.dt`, then runs one draw callback with clamped variable `ctx.dt`; `ctx.alpha` is the remaining fixed-step fraction for draw interpolation. Frame deltas are capped at `StepClock.max_steps_per_frame * step_seconds`; paused draws receive zero `dt` and `alpha` without advancing the clock.
+
 Set `Config.actions` to repeated `Action` entries with the same context/name to merge keyboard, mouse, and gamepad bindings. `Context.actionValue`, `actionIsDown`, `actionWasPressed`, and `actionWasReleased` read the per-frame map; `Context.rebindAction` or `Context.rebindActionBinding` persists `bindings.up` in app data.
 
 ## Starter Project
