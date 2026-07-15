@@ -264,12 +264,18 @@ fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !st
     };
     defer allocator.free(project_root);
     const step = selection.buildStep();
-    std.debug.print("peas test: target {s}\npeas test: artifact directory {s}/zig-out\n", .{ step, project_root });
+    const report = try testTargetReport(allocator, selection, project_root);
+    defer allocator.free(report);
+    std.debug.print("{s}", .{report});
     const term = try runZigBuild(allocator, &.{ "zig", "build", step }, project_root);
     if (term == .Exited and term.Exited != 0) {
-        std.debug.print("peas test: target {s} failed; artifact directory {s}/zig-out\n", .{ step, project_root });
+        std.debug.print("peas test: class={s} target={s} status=failed artifacts={s}/zig-out\n", .{ @tagName(selection), step, project_root });
     }
     return term;
+}
+
+fn testTargetReport(allocator: std.mem.Allocator, selection: tools.TestSelection, project_root: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "peas test: class={s} target={s} artifacts={s}/zig-out\n", .{ @tagName(selection), selection.buildStep(), project_root });
 }
 
 fn testUsage() error{InvalidArguments} {
@@ -406,6 +412,20 @@ test "known test selections parse" {
     try std.testing.expectEqual(tools.TestSelection.replay, tools.parseTestSelection("replay").?);
     try std.testing.expectEqual(tools.TestSelection.visual, tools.parseTestSelection("visual").?);
     try std.testing.expectEqual(tools.TestSelection.integration, tools.parseTestSelection("integration").?);
+}
+
+test "project test classes report deterministic targets" {
+    const cases = [_]struct { selection: tools.TestSelection, expected: []const u8 }{
+        .{ .selection = .unit, .expected = "peas test: class=unit target=test artifacts=/tmp/game/zig-out\n" },
+        .{ .selection = .replay, .expected = "peas test: class=replay target=test-replays artifacts=/tmp/game/zig-out\n" },
+        .{ .selection = .visual, .expected = "peas test: class=visual target=test-scenes artifacts=/tmp/game/zig-out\n" },
+        .{ .selection = .integration, .expected = "peas test: class=integration target=test-modules artifacts=/tmp/game/zig-out\n" },
+    };
+    for (cases) |case| {
+        const report = try testTargetReport(std.testing.allocator, case.selection, "/tmp/game");
+        defer std.testing.allocator.free(report);
+        try std.testing.expectEqualStrings(case.expected, report);
+    }
 }
 
 test "known package targets parse" {
