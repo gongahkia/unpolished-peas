@@ -45,10 +45,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try migrateContent(allocator, args);
             return null;
         },
-        .import_tiled => {
-            try importTiledContent(allocator, args);
-            return null;
-        },
+        .import_tiled => return error.TiledSupportRemoved,
         .import_ldtk => {
             try importLdtkContent(allocator, args);
             return null;
@@ -102,25 +99,6 @@ fn importLdtkContent(allocator: std.mem.Allocator, args: *std.process.ArgIterato
 
 fn importLdtkUsage() error{InvalidArguments} {
     std.debug.print("usage: zig build peas -- import-ldtk <input.ldtk> <output-directory>\n", .{});
-    return error.InvalidArguments;
-}
-
-fn importTiledContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
-    const input_path = args.next() orelse return importTiledUsage();
-    const output_path = args.next() orelse return importTiledUsage();
-    if (args.next() != null) return importTiledUsage();
-    var diagnostic = content.tiled_importer.Diagnostic{};
-    const source = content.tiled_importer.importFile(allocator, input_path, &diagnostic) catch |err| {
-        std.debug.print("peas import-tiled: {s}:{d}:{d}: {s}\n", .{ input_path, diagnostic.line, diagnostic.column, diagnostic.message });
-        return err;
-    };
-    defer allocator.free(source);
-    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = source });
-    std.debug.print("peas import-tiled: {s} -> {s}\n", .{ input_path, output_path });
-}
-
-fn importTiledUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- import-tiled <input.tmj> <output.upmap>\n", .{});
     return error.InvalidArguments;
 }
 

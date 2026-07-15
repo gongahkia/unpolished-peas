@@ -15,7 +15,7 @@ const Game = struct {
     ui: up.UiState = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const map = try ctx.loadTileMap("platformer.tmj");
+        const map = try ctx.loadTileMap("platformer.upmap");
         var collider = up.TileCollider.init(ctx.allocator);
         errdefer collider.deinit();
         try collider.addLayer(ctx.tileMap(map), 0);

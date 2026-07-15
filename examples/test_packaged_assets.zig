@@ -11,7 +11,7 @@ pub fn main() !void {
 
     _ = try assets.loadImage("ball.png");
     _ = try assets.loadAtlas("atlas.json");
-    _ = try assets.loadTileMap("topdown.tmj");
+    _ = try assets.loadTileMap("topdown.upmap");
     _ = try assets.loadFont("fonts/Basic-Regular.ttf");
     _ = try assets.loadBitmapFont("fonts/bitmap.fnt");
 

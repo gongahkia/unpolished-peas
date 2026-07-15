@@ -10,9 +10,7 @@ pub fn main() !void {
     const input = args.next() orelse return error.MissingInput;
     const output = args.next() orelse return error.MissingOutput;
     if (args.next() != null) return error.TooManyArguments;
-    var map = if (std.mem.endsWith(u8, input, ".tmj"))
-        try up.TileMap.loadTiled(gpa.allocator(), input)
-    else if (std.mem.endsWith(u8, input, ".ldtk")) blk: {
+    var map = if (std.mem.endsWith(u8, input, ".ldtk")) blk: {
         var project = try up.TileMap.loadLdtkProject(gpa.allocator(), input);
         errdefer project.deinit();
         if (project.levels.items.len != 1) return error.LdtkProjectRequiresOneLevel;

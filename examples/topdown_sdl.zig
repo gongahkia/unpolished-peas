@@ -77,7 +77,7 @@ const Game = struct {
     pub fn init(ctx: *sdl.Context) !Game {
         const path = try ctx.assetPath("blip.wav");
         defer ctx.allocator.free(path);
-        var game = Game{ .map = try ctx.loadTileMap("topdown.tmj"), .player = try ctx.loadPng("ball.png"), .blip = try up.Sound.loadWav(ctx.allocator, path) };
+        var game = Game{ .map = try ctx.loadTileMap("topdown.upmap"), .player = try ctx.loadPng("ball.png"), .blip = try up.Sound.loadWav(ctx.allocator, path) };
         errdefer game.blip.deinit();
         if (launch_listen_host) game.listen = try ListenRuntime.init(ctx.allocator);
         return game;

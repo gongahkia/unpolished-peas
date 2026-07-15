@@ -787,9 +787,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         }
         const source_path = try self.assetPath(self.allocator, path);
         defer self.allocator.free(source_path);
-        var map = if (std.mem.endsWith(u8, path, ".tmj"))
-            try TileMap.loadTiledWithOptions(self.allocator, source_path, .{ .overlay_path = options.overlay_path })
-        else if (std.mem.endsWith(u8, path, ".ldtk")) blk: {
+        var map = if (std.mem.endsWith(u8, path, ".ldtk")) blk: {
             var project = try TileMap.loadLdtkProjectWithOptions(self.allocator, source_path, .{ .overlay_path = options.overlay_path });
             errdefer project.deinit();
             if (project.levels.items.len == 0) return error.EmptyLdtkProject;
