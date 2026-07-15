@@ -5,6 +5,7 @@ const tilemap = @import("tilemap.zig");
 const net_codec = @import("net_codec.zig");
 const net_frame = @import("net_frame.zig");
 const handshake = @import("net_handshake.zig");
+const p2p = @import("net_p2p.zig");
 
 pub fn run(input: []const u8) !void {
     var bounded_storage: [128 * 1024]u8 = undefined;
@@ -36,6 +37,8 @@ fn runWith(allocator: std.mem.Allocator, input: []const u8) void {
     _ = net_frame.decode(bounded) catch {};
     _ = handshake.decodeClientHello(bounded) catch {};
     _ = handshake.decodeServerReply(bounded) catch {};
+    _ = p2p.decodeControl(bounded) catch {};
+    p2p.fuzzState(allocator, bounded);
 }
 
 test "bounded decoder and protocol corpus is leak free" {

@@ -80,9 +80,17 @@ pub const Channel = struct { // owns queued packets and messages allocated by in
         while (net.receive()) |received| {
             var packet = received;
             defer packet.deinit(self.allocator);
-            if (packet.from.id != self.peer.id) continue;
-            try self.handlePacket(net, packet.bytes);
+            try self.receivePacket(net, packet);
         }
+        try self.tick(net);
+    }
+
+    pub fn receivePacket(self: *Channel, net: transport.Transport, packet: transport.Received) !void {
+        if (packet.from.id != self.peer.id) return error.UnknownChannelPeer;
+        try self.handlePacket(net, packet.bytes);
+    }
+
+    pub fn tick(self: *Channel, net: transport.Transport) !void {
         try self.retransmit(net);
     }
 
