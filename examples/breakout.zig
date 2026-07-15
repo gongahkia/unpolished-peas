@@ -9,10 +9,7 @@ pub fn main() !void {
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
     const ball = try assets.loadImage("ball.png");
-    const sound_path = try assets.assetPath(allocator, "blip.wav");
-    defer allocator.free(sound_path);
-    var sound = try up.Sound.loadWav(allocator, sound_path);
-    defer sound.deinit();
+    const sound = try assets.loadSound("blip.wav");
     var audio = try up.AudioMixer.init(allocator, .{});
     defer audio.deinit();
     var samples: [128]up.AudioSample = undefined;
@@ -24,7 +21,7 @@ pub fn main() !void {
     while (frame < 360) : (frame += 1) {
         const axis: f32 = if ((frame / 90) % 2 == 0) 1 else -1;
         const event = game.step(1.0 / 60.0, axis);
-        if (event.brick or event.paddle) _ = try audio.playSound(&sound, .{ .volume = 0.2 });
+        if (event.brick or event.paddle) _ = try audio.playSound(try assets.trySoundPtr(sound), .{ .volume = 0.2 });
         try audio.mix(&samples);
     }
     game.drawHeadless(&canvas, try assets.tryImage(ball));
