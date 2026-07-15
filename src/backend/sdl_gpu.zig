@@ -1,6 +1,7 @@
 const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas").api;
+const renderer_conformance = up.testSupport.RendererConformance;
 const effect_api = @import("unpolished-peas-effects");
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
@@ -76,10 +77,15 @@ test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
 }
 
-test "renderer conformance shared smoke golden fixture" {
-    var canvas = try renderConformanceCanvas(std.testing.allocator, 4, 3);
-    defer canvas.deinit();
-    try expectConformanceGolden(&canvas);
+test "renderer conformance backend-neutral command corpus" {
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    for (scenarios) |scenario_kind| {
+        var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 4, 3);
+        defer scenario.deinit();
+        var canvas = try scenario.referenceCanvas(std.testing.allocator);
+        defer canvas.deinit();
+        try scenario.expectCapture(&canvas);
+    }
 }
 
 test "renderer conformance reports unsupported shader capabilities" {
@@ -191,9 +197,6 @@ test "desktop renderer conformance GPU golden capture" {
 
     var presenter = try Presenter.init(device, 64, 32);
     defer presenter.deinit(device);
-    var canvas = try renderConformanceCanvas(std.testing.allocator, 64, 32);
-    defer canvas.deinit();
-    try expectConformanceGolden(&canvas);
     var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer assets.deinit();
     const truetype = try assets.loadFont("examples/assets/fonts/Basic-Regular.ttf", .{});
@@ -204,8 +207,6 @@ test "desktop renderer conformance GPU golden capture" {
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(truetype), "HÉ", 2, 2, up.Color.rgb(255, 198, 74));
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(opentype), "HÉ", 22, 2, up.Color.rgb(122, 213, 255));
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(bitmap), "B", 40, 2, up.Color.white);
-    var commands = up.RenderCommandBuffer.init(std.testing.allocator);
-    defer commands.deinit();
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     const effects = [_]effect_api.PixelEffect{
         try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
@@ -213,25 +214,35 @@ test "desktop renderer conformance GPU golden capture" {
     };
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprites, .effects = &effects, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
-    try backend.backend().submit(commands.commands.items);
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    for (scenarios) |scenario_kind| {
+        var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
+        defer scenario.deinit();
+        var canvas = try scenario.initialCanvas(std.testing.allocator);
+        defer canvas.deinit();
+        var expected = try scenario.referenceCanvas(std.testing.allocator);
+        defer expected.deinit();
+        try scenario.expectCapture(&expected);
+        var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprites, .effects = &effects, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
+        try backend.backend().submit(scenario.commandSlice());
+
+        const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
+        defer std.testing.allocator.free(png);
+        var image = try up.Image.decode(std.testing.allocator, png, .{});
+        defer image.deinit();
+        try std.testing.expectEqual(@as(u32, 64), image.width);
+        try std.testing.expectEqual(@as(u32, 32), image.height);
+        const captured = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
+        try scenario.expectCapture(&captured);
+        var nontransparent: usize = 0;
+        for (image.pixels) |pixel| {
+            if (pixel.a != 0) nontransparent += 1;
+        }
+        try std.testing.expect(nontransparent > 2);
+    }
     try std.testing.expect(metrics.gpu_frame_ns == null);
     try std.testing.expect(metrics.pass_count >= 4);
     try std.testing.expect(metrics.texture_bytes > 0);
-
-    const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
-    defer std.testing.allocator.free(png);
-    var image = try up.Image.decode(std.testing.allocator, png, .{});
-    defer image.deinit();
-    try std.testing.expectEqual(@as(u32, 64), image.width);
-    try std.testing.expectEqual(@as(u32, 32), image.height);
-    const captured = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
-    try expectConformanceGolden(&captured);
-    var nontransparent: usize = 0;
-    for (image.pixels) |pixel| {
-        if (pixel.a != 0) nontransparent += 1;
-    }
-    try std.testing.expect(nontransparent > 2);
     std.debug.print("renderer conformance: platform={s} driver={s} shader_format={s} golden=capture.png\n", .{ @tagName(builtin.os.tag), gpuDriverName(device), @tagName(shader_format) });
 }
 
@@ -3300,30 +3311,6 @@ fn canvasFromRgba(allocator: std.mem.Allocator, width: u32, height: u32, rgba: [
         pixel.* = .{ .r = rgba[offset], .g = rgba[offset + 1], .b = rgba[offset + 2], .a = rgba[offset + 3] };
     }
     return canvas;
-}
-
-fn renderConformanceCanvas(allocator: std.mem.Allocator, width: u32, height: u32) !up.Canvas {
-    if (width < 3 or height < 2) return error.InvalidConformanceCanvas;
-    var canvas = try up.Canvas.init(allocator, width, height);
-    errdefer canvas.deinit();
-    var commands = up.RenderCommandBuffer.init(allocator);
-    defer commands.deinit();
-    try commands.append(.{ .clear = up.Color.rgba(19, 37, 61, 255) });
-    try commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = 1, .h = 1, .color = up.Color.rgba(1, 2, 3, 255) } });
-    try commands.append(.{ .rect = .{ .x = 1, .y = 0, .w = 1, .h = 1, .color = up.Color.rgba(5, 6, 7, 255) } });
-    try commands.append(.{ .rect = .{ .x = @intCast(width - 1), .y = @intCast(height - 1), .w = 1, .h = 1, .color = up.Color.rgba(9, 10, 11, 255) } });
-    try renderCommands(allocator, &canvas, commands.commands.items);
-    return canvas;
-}
-
-fn expectConformanceGolden(canvas: *const up.Canvas) !void {
-    try std.testing.expect(canvas.width >= 3 and canvas.height >= 2);
-    const last_x = std.math.cast(i32, canvas.width - 1) orelse return error.InvalidConformanceCanvas;
-    const last_y = std.math.cast(i32, canvas.height - 1) orelse return error.InvalidConformanceCanvas;
-    try std.testing.expectEqual(up.Color.rgba(1, 2, 3, 255), canvas.get(0, 0).?);
-    try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 255), canvas.get(1, 0).?);
-    try std.testing.expectEqual(up.Color.rgba(19, 37, 61, 255), canvas.get(2, 1).?);
-    try std.testing.expectEqual(up.Color.rgba(9, 10, 11, 255), canvas.get(last_x, last_y).?);
 }
 
 fn checkedByteLen(width: u32, height: u32) !u32 {

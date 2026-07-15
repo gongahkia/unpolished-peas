@@ -26,7 +26,7 @@ zig build test-renderer-conformance
 ```
 
 `zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The optional physics package owns its pinned Box2D source and is validated with `zig build test-box2d`.
-`test-renderer-conformance` runs the shared canvas smoke/golden fixture and an opt-in GPU capture golden. CI requires the GPU capture on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
+`test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
