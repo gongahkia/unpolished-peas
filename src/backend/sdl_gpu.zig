@@ -1713,16 +1713,21 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
 
     var y: i32 = 4;
     for (events[0..@min(events.len, 4)]) |event| {
-        const label = switch (event.status) {
-            .changed => "reload",
-            .failed => "reload failed",
+        var label_buffer: [64]u8 = undefined;
+        var source_buffer: [std.fs.max_path_bytes + 128]u8 = undefined;
+        const label, const source = switch (event.status) {
+            .changed => .{ "reload", event.path },
+            .failed => .{
+                std.fmt.bufPrint(&label_buffer, "reload {s} {s}", .{ @tagName(event.failure_class orelse .decode), if (event.retained_content) "retained" else "cleared" }) catch "reload failed",
+                std.fmt.bufPrint(&source_buffer, "{s}:{d}:{d} {s}", .{ event.path, event.line, event.column, event.message }) catch event.path,
+            },
         };
         const color = switch (event.status) {
             .changed => up.Color.rgb(113, 232, 162),
             .failed => up.Color.rgb(255, 112, 112),
         };
         canvas.drawText(label, 4, y, color);
-        canvas.drawText(event.path, 4, y + 8, color);
+        canvas.drawText(source, 4, y + 8, color);
         y += 17;
     }
 }
