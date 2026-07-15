@@ -5,6 +5,7 @@ const tilemap = @import("tilemap.zig");
 const net_codec = @import("net_codec.zig");
 const net_frame = @import("net_frame.zig");
 const handshake = @import("net_handshake.zig");
+const multiplayer_matrix = @import("net_multiplayer_matrix.zig");
 const p2p = @import("net_p2p.zig");
 
 pub fn run(input: []const u8) !void {
@@ -59,4 +60,8 @@ test "bounded decoder and protocol corpus is leak free" {
             try run(mutated[0..length]);
         }
     }
+}
+
+test "fixed seed multiplayer matrix converges or fails defined and bounded" {
+    try multiplayer_matrix.run(std.testing.allocator);
 }
