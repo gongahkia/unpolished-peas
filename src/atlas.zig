@@ -477,7 +477,7 @@ test "parses aseprite tags" {
     try std.testing.expectEqual(@as(f32, 0.05), state.animations.items[0].frames[0].duration);
 }
 
-test "animation player advances tagged frames" {
+test "animation player selects deterministic looping and transition frames" {
     const pixels = try std.testing.allocator.dupe(Color, &.{ Color.white, Color.black });
     var atlas = Atlas{
         .allocator = std.testing.allocator,
@@ -489,10 +489,22 @@ test "animation player advances tagged frames" {
         }),
         .animations = try std.testing.allocator.dupe(Animation, &.{
             .{ .name = try std.testing.allocator.dupe(u8, "blink"), .frames = try std.testing.allocator.dupe(AnimationFrame, &.{ .{ .frame = .{ .index = 0 }, .duration = 0.1 }, .{ .frame = .{ .index = 1 }, .duration = 0.1 } }) },
+            .{ .name = try std.testing.allocator.dupe(u8, "idle"), .frames = try std.testing.allocator.dupe(AnimationFrame, &.{.{ .frame = .{ .index = 0 }, .duration = 0.5 }}) },
         }),
     };
     defer atlas.deinit();
     var player = AnimationPlayer.init(&atlas, atlas.findAnimation("blink").?);
     player.update(0.11);
     try std.testing.expectEqual(@as(usize, 1), player.frame().index);
+    player.update(0.1);
+    try std.testing.expectEqual(@as(usize, 0), player.frame().index);
+    player.loop = false;
+    player.update(0.11);
+    try std.testing.expectEqual(@as(usize, 1), player.frame().index);
+    player.update(0.11);
+    try std.testing.expect(!player.playing);
+    try std.testing.expectEqual(@as(usize, 1), player.frame().index);
+    player.play(atlas.findAnimation("idle").?);
+    try std.testing.expect(player.playing);
+    try std.testing.expectEqual(@as(usize, 0), player.frame().index);
 }
