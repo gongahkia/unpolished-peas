@@ -189,6 +189,19 @@ pub fn build(b: *std.Build) void {
     const run_starter_tests = b.addRunArtifact(starter_tests);
     const starter_test_step = b.step("test-starter", "Run generated project tests");
     starter_test_step.dependOn(&run_starter_tests.step);
+    const starter_template_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("templates/bounce/src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-sdl3", .module = sdl },
+        },
+    }) });
+    const run_starter_template_tests = b.addRunArtifact(starter_template_tests);
+    const starter_template_test_step = b.step("test-starter-template", "Compile the starter against the local core API");
+    starter_template_test_step.dependOn(&run_starter_template_tests.step);
+    starter_test_step.dependOn(&run_starter_template_tests.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);

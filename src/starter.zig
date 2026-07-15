@@ -91,6 +91,13 @@ test "starter creates a structured project and rejects invalid destinations" {
     try project.access("project.up", .{});
     try project.access("src/main.zig", .{});
     try project.access("assets/.gitkeep", .{});
+    const source = try project.readFileAlloc(std.testing.allocator, "src/main.zig", 8192);
+    defer std.testing.allocator.free(source);
+    try std.testing.expect(std.mem.indexOf(u8, source, "const core = @import(\"unpolished-peas\").api.core;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "core.Color") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "core.Vec2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "sdl.play(Game.config, Game)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "up.") == null);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
     defer std.testing.allocator.free(manifest);
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"assets\"") != null);
