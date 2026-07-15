@@ -13,4 +13,6 @@ esac
 
 mkdir -p zig-out/performance
 zig build -Doptimize=ReleaseFast benchmark > "zig-out/performance/${target}.json"
+zig build -Doptimize=ReleaseFast benchmark-proofs > "zig-out/performance/proof-games-${target}.json"
 python3 script/check_performance_budget.py "benchmarks/baselines/${target}.json" "zig-out/performance/${target}.json"
+python3 script/check_performance_budget.py "benchmarks/proof-game-baselines/${target}.json" "zig-out/performance/proof-games-${target}.json"

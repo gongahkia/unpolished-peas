@@ -70,6 +70,7 @@ jobs:
       - run: zig build docs
       - run: zig build test-replays
       - run: zig build test-fuzz
+      - run: python3 script/test_check_performance_budget.py
       - run: script/check_performance_budgets.sh
       - run: zig build check-examples
       - run: zig build test-sdl

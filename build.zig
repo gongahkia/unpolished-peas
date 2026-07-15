@@ -139,6 +139,7 @@ pub fn build(b: *std.Build) void {
     const packaged_layout_step = b.step("package-layout-checker", "Install the portable package layout checker");
     packaged_layout_step.dependOn(&install_packaged_layout.step);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
+    const proof_benchmark = addExample(b, "unpolished-peas-proof-benchmark", "examples/proof_benchmark.zig", target, optimize, peas, null);
     const contentc = b.addExecutable(.{
         .name = "upcontentc",
         .root_module = b.createModule(.{
@@ -275,9 +276,10 @@ pub fn build(b: *std.Build) void {
     const contentc_step = b.step("contentc", "Compile native project content");
     contentc_step.dependOn(&run_contentc.step);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
+    addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, contentc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, contentc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 

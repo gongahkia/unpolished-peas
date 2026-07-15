@@ -154,6 +154,8 @@ zig build smoke-platformer-sdl
 zig build test-platformer
 zig build test-replays
 zig build test-fuzz
+zig build benchmark
+zig build benchmark-proofs
 script/check_performance_budgets.sh
 zig build test-scenes
 zig build stress-audio-sdl
@@ -190,7 +192,7 @@ zig build new -- ../my-game
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
-`script/check_performance_budgets.sh` records release-mode startup, frame, allocation, and headless-renderer metrics, then applies the versioned baseline for the host target.
+`script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines.
 `zig build release-gate` runs API, CLI, proof-game, service, package, visual, replay, fuzz, and performance gates; every gate writes a local log under `zig-out/diagnostics/release-gate/`, and release validation requires no telemetry.
 
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository and emit reports.
