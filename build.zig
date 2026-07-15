@@ -316,6 +316,14 @@ pub fn build(b: *std.Build) void {
     const run_extension_matrix_tests = b.addRunArtifact(extension_matrix_tests);
     const extension_matrix_test_step = b.step("test-extension-matrix", "Validate extension package test-matrix fixtures");
     extension_matrix_test_step.dependOn(&run_extension_matrix_tests.step);
+    const extension_manifest_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/extension_manifest.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_extension_manifest_tests = b.addRunArtifact(extension_manifest_tests);
+    const extension_manifest_test_step = b.step("test-extension-manifest", "Validate extension package manifests");
+    extension_manifest_test_step.dependOn(&run_extension_manifest_tests.step);
     const core_downstream_fixture = b.addSystemCommand(&.{"script/test_core_downstream_fixture.sh"});
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");

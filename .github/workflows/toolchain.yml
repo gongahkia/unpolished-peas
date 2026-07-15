@@ -64,6 +64,7 @@ jobs:
       - run: zig fmt --check build.zig src examples services templates
       - run: zig build test
       - run: zig build test-extensions
+      - run: zig build test-extension-manifest
       - run: script/test_extension_matrix.sh
       - run: zig build test-support
       - run: zig build test-modules
