@@ -99,6 +99,16 @@ test "stable public symbols are exact" {
         "ResourceHandle",
         "ResourceRegistry",
         "SdkBuffer",
+        "EventMode",
+        "EventOwnership",
+        "EventBuffer",
+        "MessageEvent",
+        "OverflowEvent",
+        "EventKind",
+        "Event",
+        "EventEnvelope",
+        "EventOrderError",
+        "EventOrder",
         "package_name",
     });
     try expectExactPublicDeclarations(c_abi, &.{"package_name"});
