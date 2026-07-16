@@ -21,6 +21,40 @@ extern "C" {
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
 typedef struct minna_san_handle minna_san_handle;
+typedef enum minna_san_result {
+    MINNA_SAN_RESULT_OK = 0,
+    MINNA_SAN_RESULT_INVALID_ARGUMENT = 1,
+    MINNA_SAN_RESULT_INVALID_STATE = 2,
+    MINNA_SAN_RESULT_UNSUPPORTED = 3,
+    MINNA_SAN_RESULT_RESOURCE_EXHAUSTED = 4,
+    MINNA_SAN_RESULT_TIMEOUT = 5,
+    MINNA_SAN_RESULT_CANCELLED = 6,
+    MINNA_SAN_RESULT_WOULD_BLOCK = 7,
+    MINNA_SAN_RESULT_AUTHENTICATION_FAILED = 8,
+    MINNA_SAN_RESULT_PERMISSION_DENIED = 9,
+    MINNA_SAN_RESULT_PROTOCOL_VIOLATION = 10,
+    MINNA_SAN_RESULT_VERSION_MISMATCH = 11,
+    MINNA_SAN_RESULT_INTEGRITY_FAILED = 12,
+    MINNA_SAN_RESULT_TRANSPORT_FAILURE = 13,
+    MINNA_SAN_RESULT_INTERNAL = 14,
+} minna_san_result;
+typedef enum minna_san_error_category {
+    MINNA_SAN_ERROR_CATEGORY_OK = 0,
+    MINNA_SAN_ERROR_CATEGORY_INVALID_ARGUMENT = 1,
+    MINNA_SAN_ERROR_CATEGORY_INVALID_STATE = 2,
+    MINNA_SAN_ERROR_CATEGORY_UNSUPPORTED = 3,
+    MINNA_SAN_ERROR_CATEGORY_RESOURCE_EXHAUSTED = 4,
+    MINNA_SAN_ERROR_CATEGORY_TIMEOUT = 5,
+    MINNA_SAN_ERROR_CATEGORY_CANCELLED = 6,
+    MINNA_SAN_ERROR_CATEGORY_WOULD_BLOCK = 7,
+    MINNA_SAN_ERROR_CATEGORY_AUTHENTICATION_FAILED = 8,
+    MINNA_SAN_ERROR_CATEGORY_PERMISSION_DENIED = 9,
+    MINNA_SAN_ERROR_CATEGORY_PROTOCOL_VIOLATION = 10,
+    MINNA_SAN_ERROR_CATEGORY_VERSION_MISMATCH = 11,
+    MINNA_SAN_ERROR_CATEGORY_INTEGRITY_FAILED = 12,
+    MINNA_SAN_ERROR_CATEGORY_TRANSPORT_FAILURE = 13,
+    MINNA_SAN_ERROR_CATEGORY_INTERNAL = 14,
+} minna_san_error_category;
 typedef struct minna_san_version {
     uint16_t major;
     uint16_t minor;
@@ -51,6 +85,9 @@ typedef struct minna_san_event {
 
 minna_san_abi_version_t minna_san_abi_version(void);
 uint8_t minna_san_abi_supports_version(minna_san_abi_version_t requested_version);
+uint8_t minna_san_result_is_known(int result_code);
+minna_san_error_category minna_san_result_category(int result_code);
+const char *minna_san_result_message(int result_code);
 
 #ifdef __cplusplus
 }
