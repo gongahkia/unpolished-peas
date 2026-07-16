@@ -89,6 +89,14 @@ pub fn build(b: *std.Build) void {
     const run_browser_runtime_tests = b.addRunArtifact(browser_runtime_tests);
     const browser_runtime_test_step = b.step("test-browser-runtime", "Test the host-independent browser runtime boundary");
     browser_runtime_test_step.dependOn(&run_browser_runtime_tests.step);
+    const browser_contract_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/browser/contract.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    }) });
+    const run_browser_contract_tests = b.addRunArtifact(browser_contract_tests);
+    const browser_contract_test_step = b.step("test-browser-contract", "Test the versioned browser host contract");
+    browser_contract_test_step.dependOn(&run_browser_contract_tests.step);
     const browser_scaffold_test = b.addSystemCommand(&.{"script/test_browser_scaffold.sh"});
     browser_scaffold_test.setCwd(b.path("."));
     const browser_scaffold_test_step = b.step("test-browser-scaffold", "Validate browser Wasm artifact layout");
