@@ -4,6 +4,7 @@ const socket_backend = @import("socket_backend.zig");
 const ipv4 = @import("ipv4.zig");
 const ipv6 = @import("ipv6.zig");
 const endpoint_selection = @import("endpoint_selection.zig");
+const udp_socket = @import("udp_socket.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -22,6 +23,9 @@ pub const EndpointMode = endpoint_selection.EndpointMode;
 pub const PlatformSupport = endpoint_selection.PlatformSupport;
 pub const EndpointSelectionError = endpoint_selection.EndpointSelectionError;
 pub const select_endpoint_mode = endpoint_selection.select_endpoint_mode;
+pub const UdpSocketError = udp_socket.UdpSocketError;
+pub const UdpSocketConfig = udp_socket.UdpSocketConfig;
+pub const UdpSocket = udp_socket.UdpSocket;
 pub const package_name = "transport";
 
 comptime {
@@ -38,4 +42,5 @@ test {
     _ = @import("ipv4.zig");
     _ = @import("ipv6.zig");
     _ = @import("endpoint_selection.zig");
+    _ = @import("udp_socket.zig");
 }
