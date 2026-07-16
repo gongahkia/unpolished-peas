@@ -100,7 +100,15 @@ test "stable public symbols are exact" {
         "validate_envelope",
         "package_name",
     });
-    try expectExactPublicDeclarations(transport, &.{"package_name"});
+    try expectExactPublicDeclarations(transport, &.{
+        "SocketKind",
+        "SocketPlatform",
+        "SocketError",
+        "Socket",
+        "native_platform",
+        "map_platform_error",
+        "package_name",
+    });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
     try expectExactPublicDeclarations(state, &.{"package_name"});
     try expectExactPublicDeclarations(runtime, &.{
