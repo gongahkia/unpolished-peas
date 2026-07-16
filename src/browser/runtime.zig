@@ -1,4 +1,5 @@
 const std = @import("std");
+const contract = @import("contract.zig");
 
 pub const target_triple = "wasm32-freestanding";
 
@@ -24,6 +25,85 @@ pub const Runtime = struct {
         self.host.on_resize(self.host.context, width, height);
     }
 };
+
+pub export fn up_browser_abi_version() u32 {
+    return contract.abi_version;
+}
+
+pub export fn up_browser_init(width: u32, height: u32) i32 {
+    if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
+    _ = contract.scheduleFrame();
+    return @intFromEnum(contract.Status.ok);
+}
+
+pub export fn up_browser_frame(_: f64) void {}
+
+pub export fn up_browser_resize(width: u32, height: u32) i32 {
+    if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
+    return @intFromEnum(contract.Status.ok);
+}
+
+pub export fn up_browser_cancel_frame(token: u32) void {
+    contract.cancelFrame(token);
+}
+
+pub export fn up_browser_gl_context_create(width: u32, height: u32) i32 {
+    return contract.createContext(width, height);
+}
+
+pub export fn up_browser_gl_context_destroy() void {
+    contract.destroyContext();
+}
+
+pub export fn up_browser_gl_resource_create(kind: u32, byte_len: u32) u32 {
+    const resource_kind = std.meta.intToEnum(contract.ResourceKind, kind) catch return 0;
+    return contract.createResource(resource_kind, byte_len);
+}
+
+pub export fn up_browser_gl_resource_destroy(kind: u32, handle: u32) void {
+    const resource_kind = std.meta.intToEnum(contract.ResourceKind, kind) catch return;
+    contract.destroyResource(resource_kind, handle);
+}
+
+pub export fn up_browser_gl_context_lost() u32 {
+    return @intFromBool(contract.contextLost());
+}
+
+pub export fn up_browser_input_poll() u32 {
+    return contract.pollInput();
+}
+
+pub export fn up_browser_input_read(destination: u32, capacity: u32) u32 {
+    return contract.readInput(destination, capacity);
+}
+
+pub export fn up_browser_audio_state() i32 {
+    return contract.audioState();
+}
+
+pub export fn up_browser_audio_submit(source: u32, byte_len: u32) i32 {
+    return contract.submitAudio(source, byte_len);
+}
+
+pub export fn up_browser_storage_read(key: u32, key_len: u32, destination: u32, capacity: u32) i32 {
+    return contract.readStorage(key, key_len, destination, capacity);
+}
+
+pub export fn up_browser_storage_write(key: u32, key_len: u32, source: u32, byte_len: u32) i32 {
+    return contract.writeStorage(key, key_len, source, byte_len);
+}
+
+pub export fn up_browser_storage_remove(key: u32, key_len: u32) i32 {
+    return contract.removeStorage(key, key_len);
+}
+
+pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
+    contract.emitDiagnostic(source, byte_len);
+}
+
+pub export fn up_browser_shutdown() void {
+    contract.teardown();
+}
 
 test "browser runtime boundary forwards validated resize state" {
     const State = struct {
