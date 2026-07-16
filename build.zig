@@ -109,6 +109,10 @@ pub fn build(b: *std.Build) void {
     browser_input_test.setCwd(b.path("."));
     const browser_input_test_step = b.step("test-browser-input", "Test browser DOM input bindings");
     browser_input_test_step.dependOn(&browser_input_test.step);
+    const browser_audio_test = b.addSystemCommand(&.{ "node", "script/test_browser_audio.mjs" });
+    browser_audio_test.setCwd(b.path("."));
+    const browser_audio_test_step = b.step("test-browser-audio", "Test browser audio bindings");
+    browser_audio_test_step.dependOn(&browser_audio_test.step);
     const browser_wasm_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_wasm_host.mjs" });
     browser_wasm_host_test.setCwd(b.path("."));
     browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);
