@@ -107,6 +107,9 @@ test "stable public symbols are exact" {
         "Socket",
         "native_platform",
         "map_platform_error",
+        "Ipv4Error",
+        "Ipv4Address",
+        "bind",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
