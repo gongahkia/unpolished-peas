@@ -190,6 +190,12 @@ pub fn build(b: *std.Build) void {
     const compatibility_step = b.step("compatibility-contract", "Check stable API and wire compatibility");
     compatibility_step.dependOn(&run_public_api.step);
     compatibility_step.dependOn(&run_compatibility.step);
+    const quality_check = b.addSystemCommand(&.{ "sh", "script/check_quality.sh" });
+    const quality_step = b.step("quality", "Check formatting and source quality without rewrites");
+    quality_step.dependOn(&quality_check.step);
+    const quality_test = b.addSystemCommand(&.{ "sh", "script/test_quality_gate.sh" });
+    const quality_test_step = b.step("quality-test", "Test the non-mutating quality gate");
+    quality_test_step.dependOn(&quality_test.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -197,6 +203,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_workspace_graph.step);
     test_step.dependOn(&run_public_api.step);
     test_step.dependOn(&run_compatibility.step);
+    test_step.dependOn(&quality_check.step);
+    test_step.dependOn(&quality_test.step);
     test_step.dependOn(&run_naming.step);
     test_step.dependOn(&run_boundary_verifier.step);
     test_step.dependOn(&run_core.step);
