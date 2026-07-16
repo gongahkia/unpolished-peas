@@ -1,0 +1,12 @@
+.{
+    .name = .minna_san_topology,
+    .version = "0.1.0",
+    .fingerprint = 0x3c7faf79c7d39af5,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .core = .{ .path = "../core", .lazy = true },
+        .protocol = .{ .path = "../protocol", .lazy = true },
+        .transport = .{ .path = "../transport", .lazy = true },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}
