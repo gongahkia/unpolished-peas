@@ -55,6 +55,21 @@ pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !vo
     try writeMetadata(allocator, options, input);
 }
 
+pub fn captureSession(allocator: std.mem.Allocator, root: []const u8, session_id: u64, failure_id: u64, input: Input) ![]u8 {
+    if (root.len == 0) return error.InvalidDiagnosticsPath;
+    const name = try std.fmt.allocPrint(allocator, "session-{d}-failure-{d}", .{ session_id, failure_id });
+    defer allocator.free(name);
+    const path = try std.fs.path.join(allocator, &.{ root, name });
+    errdefer allocator.free(path);
+    if (std.fs.cwd().access(path, .{})) |_| {
+        return error.DiagnosticsBundleExists;
+    } else |err| {
+        if (err != error.FileNotFound) return err;
+    }
+    try capture(allocator, .{ .path = path }, input);
+    return path;
+}
+
 fn writeEnvironment(allocator: std.mem.Allocator, options: Options, value: Environment) !void {
     const path = try artifactPath(allocator, options.path, "environment.json");
     defer allocator.free(path);
