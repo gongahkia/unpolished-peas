@@ -5,6 +5,7 @@ const Canvas = @import("canvas.zig").Canvas;
 const Color = @import("color.zig").Color;
 const input = @import("input.zig");
 const InspectorPanel = @import("inspector.zig").Panel;
+const profiler = @import("profiler.zig");
 const runtime_metrics = @import("runtime_metrics.zig");
 const tile_collision = @import("tile_collision.zig");
 const Vec2 = @import("math.zig").Vec2;
@@ -130,6 +131,158 @@ pub const MetricsPanel = struct {
     }
 };
 
+pub const RendererState = struct {
+    requested: []const u8 = "unknown",
+    selected: []const u8 = "none",
+    gpu: []const u8 = "unknown",
+    opengl: []const u8 = "unknown",
+    effects: []const u8 = "unknown",
+    recovery: []const u8 = "none",
+    preflight: []const u8 = "none",
+};
+
+pub const RendererPanel = struct {
+    state: ?*const RendererState = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 7,
+
+    pub fn panel(self: *RendererPanel) InspectorPanel {
+        return .{ .name = "renderer", .context = self, .draw = draw };
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *RendererPanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("RENDERER", .{}, panel_title);
+        const state = self.state orelse {
+            lines.line("state unavailable", .{}, panel_warning);
+            return;
+        };
+        lines.line("requested={s} selected={s}", .{ state.requested, state.selected }, panel_text);
+        lines.line("gpu={s} opengl={s}", .{ state.gpu, state.opengl }, panel_text);
+        lines.line("effects={s} recovery={s}", .{ state.effects, state.recovery }, panel_text);
+        lines.line("preflight={s}", .{state.preflight}, if (std.mem.eql(u8, state.preflight, "none")) panel_text else panel_warning);
+    }
+};
+
+pub const ReloadPanel = struct {
+    store: ?*const assets.AssetStore = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 6,
+
+    pub fn panel(self: *ReloadPanel) InspectorPanel {
+        return .{ .name = "asset-reload", .context = self, .draw = draw };
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *ReloadPanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("ASSET RELOAD", .{}, panel_title);
+        const store = self.store orelse {
+            lines.line("store unavailable", .{}, panel_warning);
+            return;
+        };
+        lines.line("events={}", .{store.events.items.len}, panel_text);
+        const event = store.events.getLastOrNull() orelse {
+            lines.line("no reload events", .{}, panel_text);
+            return;
+        };
+        lines.line("{s}: {s}", .{ event.path, @tagName(event.status) }, if (event.status == .changed) panel_text else panel_warning);
+        lines.line("class={s} retained={}", .{ if (event.failure_class) |value| @tagName(value) else "none", event.retained_content }, panel_text);
+        if (event.message.len != 0) lines.line("{s}", .{event.message}, panel_warning);
+    }
+};
+
+pub const BindingsPanel = struct {
+    action_map: ?*const actions.Map = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 8,
+
+    pub fn panel(self: *BindingsPanel) InspectorPanel {
+        return .{ .name = "bindings", .context = self, .draw = draw };
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *BindingsPanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("BINDINGS", .{}, panel_title);
+        const map = self.action_map orelse {
+            lines.line("actions unavailable", .{}, panel_warning);
+            return;
+        };
+        for (map.actions) |action| lines.line("{s}/{s}: {s}", .{ action.context, action.name, bindingName(action.binding) }, panel_text);
+    }
+};
+
+pub const ProfilePanel = struct {
+    value: ?*const profiler.Profiler = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 8,
+
+    pub fn panel(self: *ProfilePanel) InspectorPanel {
+        return .{ .name = "profile", .context = self, .draw = draw };
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *ProfilePanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("PROFILE", .{}, panel_title);
+        const value = self.value orelse {
+            lines.line("profiler unavailable", .{}, panel_warning);
+            return;
+        };
+        const metrics = value.metrics();
+        lines.line("frame={} samples={} dropped={}", .{ metrics.frame, metrics.samples, metrics.dropped_samples }, panel_text);
+        inline for (@typeInfo(profiler.Scope).@"enum".fields) |field| {
+            const scope: profiler.Scope = @enumFromInt(field.value);
+            const item = metrics.scope(scope);
+            lines.line("{s} {} {d}us", .{ @tagName(scope), item.calls, item.total_ns / std.time.ns_per_us }, panel_text);
+        }
+    }
+};
+
+pub const SubsystemState = struct {
+    app_data_path: []const u8 = "",
+    audio_ready: bool = false,
+    audio_queued_bytes: ?u64 = null,
+    renderer_ready: bool = false,
+};
+
+pub const SubsystemPanel = struct {
+    state: ?*const SubsystemState = null,
+    position: Vec2 = .{ .x = 4, .y = 4 },
+    max_rows: usize = 7,
+
+    pub fn panel(self: *SubsystemPanel) InspectorPanel {
+        return .{ .name = "subsystems", .context = self, .draw = draw };
+    }
+
+    pub fn copyableDiagnosticsPath(self: SubsystemPanel, allocator: std.mem.Allocator) !?[]u8 {
+        const state = self.state orelse return null;
+        if (state.app_data_path.len == 0) return null;
+        return try std.fs.path.join(allocator, &.{ state.app_data_path, "diagnostics" });
+    }
+
+    fn draw(context: *anyopaque, canvas: *Canvas) !void {
+        const self: *SubsystemPanel = @ptrCast(@alignCast(context));
+        var lines = Lines.init(canvas, self.position, self.max_rows);
+        lines.box();
+        lines.line("SUBSYSTEMS", .{}, panel_title);
+        const state = self.state orelse {
+            lines.line("state unavailable", .{}, panel_warning);
+            return;
+        };
+        lines.line("renderer={s} audio={s}", .{ if (state.renderer_ready) "ready" else "unavailable", if (state.audio_ready) "ready" else "unavailable" }, panel_text);
+        if (state.audio_queued_bytes) |bytes| lines.line("audio queued={}KiB", .{bytes / 1024}, panel_text) else lines.line("audio queue unavailable", .{}, panel_warning);
+        lines.line("app data {s}", .{state.app_data_path}, panel_text);
+        lines.line("copy diagnostics path via panel API", .{}, panel_text);
+    }
+};
+
 pub const CollisionPanel = struct {
     collider: ?*const tile_collision.TileCollider = null,
     position: Vec2 = .{ .x = 4, .y = 4 },
@@ -239,6 +392,15 @@ fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []cons
     };
 }
 
+fn bindingName(binding: actions.Binding) []const u8 {
+    return switch (binding) {
+        .key => |value| @tagName(value),
+        .pointer_button => |value| @tagName(value),
+        .gamepad_button => |value| @tagName(value),
+        .gamepad_axis => |value| @tagName(value.axis),
+    };
+}
+
 test "inspector panels render unavailable sources safely" {
     const test_support = @import("test_support.zig");
     var canvas = try Canvas.init(std.testing.allocator, 320, 256);
@@ -286,6 +448,35 @@ test "metrics panel renders unavailable GPU timing and resource state" {
     var canvas = try Canvas.init(std.testing.allocator, 320, 320);
     defer canvas.deinit();
     try panel.panel().draw(panel.panel().context, &canvas);
+    try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
+}
+
+test "extended diagnostic panels render navigable runtime state" {
+    var store = assets.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer store.deinit();
+    try store.events.append(std.testing.allocator, .{ .path = "sprite.png", .status = .failed, .failure_class = .decode, .retained_content = true, .message = "invalid image" });
+    var action_map = try actions.Map.init(std.testing.allocator, &.{.{ .name = "jump", .binding = .{ .key = .action } }});
+    defer action_map.deinit();
+    var frame_profiler = profiler.Profiler.init(true);
+    frame_profiler.beginFrame(9);
+    frame_profiler.scope(.draw).end();
+    const renderer_state = RendererState{ .requested = "auto", .selected = "opengl", .gpu = "unavailable", .opengl = "available", .effects = "available", .recovery = "none", .preflight = "none" };
+    const subsystem_state = SubsystemState{ .app_data_path = "/tmp/peas", .audio_ready = true, .audio_queued_bytes = 2048, .renderer_ready = true };
+    var renderer_panel = RendererPanel{ .state = &renderer_state };
+    var reload_panel = ReloadPanel{ .store = &store };
+    var bindings_panel = BindingsPanel{ .action_map = &action_map };
+    var profile_panel = ProfilePanel{ .value = &frame_profiler };
+    var subsystem_panel = SubsystemPanel{ .state = &subsystem_state };
+    const diagnostics_path = try subsystem_panel.copyableDiagnosticsPath(std.testing.allocator);
+    defer std.testing.allocator.free(diagnostics_path.?);
+    try std.testing.expectEqualStrings("/tmp/peas/diagnostics", diagnostics_path.?);
+    var canvas = try Canvas.init(std.testing.allocator, 320, 192);
+    defer canvas.deinit();
+    try renderer_panel.panel().draw(renderer_panel.panel().context, &canvas);
+    try reload_panel.panel().draw(reload_panel.panel().context, &canvas);
+    try bindings_panel.panel().draw(bindings_panel.panel().context, &canvas);
+    try profile_panel.panel().draw(profile_panel.panel().context, &canvas);
+    try subsystem_panel.panel().draw(subsystem_panel.panel().context, &canvas);
     try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
 }
 

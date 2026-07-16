@@ -201,6 +201,8 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 `Config.developer_tools` defaults to enabled in Debug builds. F3 toggles the FPS/frame-time overlay. F12 writes a PNG read back from the composed GPU render target. `Context.captureFrame()` requests the same capture after the current frame. The app-data path is printed at startup, available through `Context.appDataPath`, and contains `unpolished-peas.log` when developer tools are enabled.
 
+`Context.toggleInspector()` shows the selected diagnostic panel; Tab cycles assets, input, metrics, renderer capabilities, asset reload, bindings, profile, and subsystem state. `Context.nextInspectorPanel()` and `Context.previousInspectorPanel()` provide explicit navigation. `InspectorSubsystemPanel.copyableDiagnosticsPath()` returns the local diagnostics path for clipboard integration.
+
 Game initialization, event, update, draw, GPU-recovery, and asset-reload errors include their phase and log path in the terminal, are written to the app-data log, then stay in an in-window error state until Escape or close. A GPU reset rebuilds presenter resources and invalidates prior handles; a GPU loss reports a terminal recovery failure. Zig panics remain process failures and require the normal debugger/test workflow.
 
 `Config.cpu_profiler` defaults to Debug builds. The runtime measures callback, update, draw, and asset-reload scopes; use `ctx.profile(.asset)` around game-owned work, inspect `ctx.profileMetrics()`, and call `ctx.exportCpuTrace()` to write Chrome Trace JSON to the app-data directory.

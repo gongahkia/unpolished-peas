@@ -18,6 +18,7 @@ pub const Inspector = struct {
     allocator: std.mem.Allocator,
     panels: std.ArrayListUnmanaged(Panel) = .{},
     visibility: Visibility,
+    selected: usize = 0,
     failures: u32 = 0,
 
     pub fn init(allocator: std.mem.Allocator, enabled: bool) Inspector {
@@ -44,9 +45,25 @@ pub const Inspector = struct {
         if (self.visibility == .visible) self.visibility = .hidden else if (self.visibility == .hidden) self.visibility = .visible;
     }
 
+    pub fn next(self: *Inspector) void {
+        if (self.panels.items.len != 0) self.selected = (self.selected + 1) % self.panels.items.len;
+    }
+
+    pub fn previous(self: *Inspector) void {
+        if (self.panels.items.len != 0) self.selected = if (self.selected == 0) self.panels.items.len - 1 else self.selected - 1;
+    }
+
+    pub fn selectedPanel(self: *const Inspector) ?[]const u8 {
+        if (self.panels.items.len == 0) return null;
+        return self.panels.items[self.selected].name;
+    }
+
     pub fn draw(self: *Inspector, canvas: *Canvas, logger: ?Logger) void {
         if (self.visibility != .visible) return;
-        for (self.panels.items) |panel| panel.draw(panel.context, canvas) catch |err| {
+        if (self.selected >= self.panels.items.len) self.selected = 0;
+        if (self.panels.items.len == 0) return;
+        const panel = self.panels.items[self.selected];
+        panel.draw(panel.context, canvas) catch |err| {
             self.failures +%= 1;
             if (logger) |value| value.failure(value.context, panel.name, err);
         };
@@ -77,11 +94,27 @@ test "inspector registers panels explicitly and isolates failures" {
     defer canvas.deinit();
     inspector.draw(&canvas, .{ .context = &logger, .failure = Counter.log });
     try std.testing.expectEqual(@as(u8, 1), calls);
+    try std.testing.expectEqual(@as(u32, 0), inspector.failures);
+    inspector.next();
+    inspector.draw(&canvas, .{ .context = &logger, .failure = Counter.log });
     try std.testing.expectEqual(@as(u32, 1), inspector.failures);
     try std.testing.expectEqual(@as(u8, 1), logger.logged);
     inspector.toggle();
     inspector.draw(&canvas, null);
     try std.testing.expectEqual(@as(u8, 1), calls);
+}
+
+test "inspector navigates selected panels" {
+    var inspector = Inspector.init(std.testing.allocator, true);
+    defer inspector.deinit();
+    var calls: u8 = 0;
+    try inspector.register(.{ .name = "first", .context = &calls, .draw = Counter.draw });
+    try inspector.register(.{ .name = "second", .context = &calls, .draw = Counter.draw });
+    try std.testing.expectEqualStrings("first", inspector.selectedPanel().?);
+    inspector.next();
+    try std.testing.expectEqualStrings("second", inspector.selectedPanel().?);
+    inspector.previous();
+    try std.testing.expectEqualStrings("first", inspector.selectedPanel().?);
 }
 
 const Counter = struct {

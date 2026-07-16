@@ -210,12 +210,22 @@ const RuntimeInspectorPanels = struct {
     assets: up.InspectorAssetPanel,
     input: up.InspectorInputPanel,
     metrics: up.InspectorMetricsPanel,
+    renderer: up.InspectorRendererPanel,
+    reload: up.InspectorReloadPanel,
+    bindings: up.InspectorBindingsPanel,
+    profile: up.InspectorProfilePanel,
+    subsystems: up.InspectorSubsystemPanel,
 
-    fn init(asset_store: *const up.AssetStore, input_state: *const up.Input, action_map: *const up.ActionMap, runtime_metrics: *const up.RuntimeMetrics) RuntimeInspectorPanels {
+    fn init(asset_store: *const up.AssetStore, input_state: *const up.Input, action_map: *const up.ActionMap, runtime_metrics: *const up.RuntimeMetrics, renderer_state: *const up.InspectorRendererState, frame_profiler: *const up.FrameProfiler, subsystem_state: *const up.InspectorSubsystemState) RuntimeInspectorPanels {
         return .{
             .assets = .{ .store = asset_store },
             .input = .{ .state = input_state, .action_map = action_map },
             .metrics = .{ .metrics = runtime_metrics },
+            .renderer = .{ .state = renderer_state },
+            .reload = .{ .store = asset_store },
+            .bindings = .{ .action_map = action_map },
+            .profile = .{ .value = frame_profiler },
+            .subsystems = .{ .state = subsystem_state },
         };
     }
 
@@ -223,8 +233,31 @@ const RuntimeInspectorPanels = struct {
         try inspector.register(self.assets.panel());
         try inspector.register(self.input.panel());
         try inspector.register(self.metrics.panel());
+        try inspector.register(self.renderer.panel());
+        try inspector.register(self.reload.panel());
+        try inspector.register(self.bindings.panel());
+        try inspector.register(self.profile.panel());
+        try inspector.register(self.subsystems.panel());
     }
 };
+
+fn updateInspectorStates(renderer_state: *up.InspectorRendererState, subsystem_state: *up.InspectorSubsystemState, diagnostics: *const RendererDiagnostics, data_path: []const u8, audio_output: ?*const AudioOutput) void {
+    renderer_state.* = .{
+        .requested = @tagName(diagnostics.requested),
+        .selected = if (diagnostics.selected) |value| @tagName(value) else "none",
+        .gpu = @tagName(diagnostics.gpu),
+        .opengl = @tagName(diagnostics.opengl_33),
+        .effects = @tagName(diagnostics.post_processing),
+        .recovery = @tagName(diagnostics.recovery_action),
+        .preflight = if (diagnostics.preflight_failure) |value| @tagName(value) else "none",
+    };
+    subsystem_state.* = .{
+        .app_data_path = data_path,
+        .audio_ready = audio_output != null,
+        .audio_queued_bytes = if (audio_output) |value| value.queuedBytes() else null,
+        .renderer_ready = diagnostics.selected != null,
+    };
+}
 
 test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
@@ -248,7 +281,7 @@ test "renderer conformance reports unsupported shader capabilities" {
     try std.testing.expectError(error.UnsupportedGpuShaderFormat, (GpuCapabilities{ .shader_formats = @intCast(c.SDL_GPU_SHADERFORMAT_DXIL) }).requireShaderFormat());
 }
 
-test "runtime wires only core inspector panels" {
+test "runtime wires navigable diagnostic inspector panels" {
     var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
     defer assets.deinit();
     var input = up.Input{};
@@ -257,12 +290,20 @@ test "runtime wires only core inspector panels" {
     var metrics = up.RuntimeMetrics{};
     var inspector = up.Inspector.init(std.testing.allocator, true);
     defer inspector.deinit();
-    var panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &metrics);
+    var renderer_state = up.InspectorRendererState{};
+    var subsystem_state = up.InspectorSubsystemState{};
+    var profile = up.FrameProfiler.init(false);
+    var panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &metrics, &renderer_state, &profile, &subsystem_state);
     try panels.register(&inspector);
-    try std.testing.expectEqual(@as(usize, 3), inspector.panels.items.len);
+    try std.testing.expectEqual(@as(usize, 8), inspector.panels.items.len);
     try std.testing.expectEqualStrings("assets", inspector.panels.items[0].name);
     try std.testing.expectEqualStrings("input", inspector.panels.items[1].name);
     try std.testing.expectEqualStrings("metrics", inspector.panels.items[2].name);
+    try std.testing.expectEqualStrings("renderer", inspector.panels.items[3].name);
+    try std.testing.expectEqualStrings("asset-reload", inspector.panels.items[4].name);
+    try std.testing.expectEqualStrings("bindings", inspector.panels.items[5].name);
+    try std.testing.expectEqualStrings("profile", inspector.panels.items[6].name);
+    try std.testing.expectEqualStrings("subsystems", inspector.panels.items[7].name);
 }
 
 test "Context returns errors for invalid asset handles" {
@@ -830,6 +871,14 @@ pub const Context = struct {
         self.inspector.toggle();
     }
 
+    pub fn nextInspectorPanel(self: *Context) void {
+        self.inspector.next();
+    }
+
+    pub fn previousInspectorPanel(self: *Context) void {
+        self.inspector.previous();
+    }
+
     pub fn profile(self: *Context, scope: up.ProfileScope) up.ProfileTimer {
         return self.profiler.scope(scope);
     }
@@ -1349,7 +1398,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         error.FileNotFound => {},
         else => return err,
     };
-    var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics);
+    var inspector_renderer_state = up.InspectorRendererState{};
+    var inspector_subsystem_state = up.InspectorSubsystemState{};
+    updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
+    var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
     var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
     var failure: ?Failure = null;
@@ -1421,6 +1473,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             }
         }
         if (input.wasPressed(.debug)) dev.toggleOverlay();
+        if (inspector.visibility == .visible and input.wasPressed(.select)) inspector.next();
 
         const asset_timer = profiler.scope(.asset);
         const reload_events = assets.reloadChanged() catch |err| {
@@ -1469,6 +1522,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             continue;
         };
         draw_timer.end();
+        updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
         inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, timing.draw_dt, ctx.frame);
