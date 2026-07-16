@@ -3,6 +3,8 @@ const contract = @import("contract.zig");
 
 pub const target_triple = "wasm32-freestanding";
 
+var frame_token: u32 = 0;
+
 pub const HostCallbacks = struct {
     context: *anyopaque,
     on_resize: *const fn (*anyopaque, u32, u32) void,
@@ -32,11 +34,13 @@ pub export fn up_browser_abi_version() u32 {
 
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
-    _ = contract.scheduleFrame();
+    frame_token = contract.scheduleFrame();
     return @intFromEnum(contract.Status.ok);
 }
 
-pub export fn up_browser_frame(_: f64) void {}
+pub export fn up_browser_frame(_: f64) void {
+    frame_token = contract.scheduleFrame();
+}
 
 pub export fn up_browser_resize(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
@@ -45,6 +49,7 @@ pub export fn up_browser_resize(width: u32, height: u32) i32 {
 
 pub export fn up_browser_cancel_frame(token: u32) void {
     contract.cancelFrame(token);
+    if (frame_token == token) frame_token = 0;
 }
 
 pub export fn up_browser_gl_context_create(width: u32, height: u32) i32 {
@@ -170,6 +175,8 @@ pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
 }
 
 pub export fn up_browser_shutdown() void {
+    if (frame_token != 0) contract.cancelFrame(frame_token);
+    frame_token = 0;
     contract.teardown();
 }
 
