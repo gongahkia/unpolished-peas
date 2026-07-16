@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import {createHash} from "node:crypto";
 import {readFile, access} from "node:fs/promises";
 import {constants} from "node:fs";
 
@@ -12,3 +13,17 @@ assert.ok(["bounce", "topdown", "platformer"].includes(manifest.game));
 const html = await readFile(`${root}/index.html`, "utf8");
 assert.match(html, /bootstrap\.mjs/);
 assert.match(html, new RegExp(`data-game="${manifest.game}"`));
+const checksums = (await readFile(`${root}/SHA256SUMS`, "utf8")).trim().split("\n");
+assert.ok(checksums.length > 0);
+const listed = new Set();
+for (const line of checksums) {
+  const match = /^([a-f0-9]{64})  \.\/([^/].*)$/.exec(line);
+  assert.ok(match);
+  const [, expected, path] = match;
+  assert.ok(!path.includes(".."));
+  assert.ok(!listed.has(path));
+  listed.add(path);
+  assert.equal(createHash("sha256").update(await readFile(`${root}/${path}`)).digest("hex"), expected);
+}
+assert.ok(listed.has("unpolished-peas.wasm"));
+assert.ok(listed.has("web-manifest.json"));

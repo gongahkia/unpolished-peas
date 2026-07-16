@@ -306,6 +306,10 @@ pub fn build(b: *std.Build) void {
     desktop_package_matrix.setCwd(b.path("."));
     const desktop_package_matrix_step = b.step("test-desktop-package-matrix", "Package and smoke every proof game for the host desktop platform");
     desktop_package_matrix_step.dependOn(&desktop_package_matrix.step);
+    const cross_target_integrity = b.addSystemCommand(&.{ "script/test_cross_target_integrity.sh" });
+    cross_target_integrity.setCwd(b.path("."));
+    const cross_target_integrity_step = b.step("test-cross-target-integrity", "Verify desktop and Chromium diagnostics and package integrity");
+    cross_target_integrity_step.dependOn(&cross_target_integrity.step);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
