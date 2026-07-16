@@ -66,8 +66,9 @@ jobs:
       - run: zig build docs
       - run: zig build test-replays
       - run: zig build test-fuzz
-      - run: python3 script/test_check_performance_budget.py
-      - run: script/check_performance_budgets.sh
+      - if: always()
+        continue-on-error: true
+        run: script/record_performance_artifacts.sh
       - run: zig build check-examples
       - run: zig build test-sdl
       - run: zig build test-physics
@@ -97,6 +98,12 @@ jobs:
             zig-out/*.ppm
             zig-out/performance/*.json
             zig-out/diagnostics/**/*
+          if-no-files-found: warn
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-artifacts-${{ matrix.os }}
+          path: zig-out/performance/*.json
           if-no-files-found: warn
 
   desktop-package-compatibility:

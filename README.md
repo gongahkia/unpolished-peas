@@ -179,8 +179,8 @@ zig build new -- ../my-game
 `test-extensions` and `test-extension-manifest` validate versioned desktop extension metadata and its deterministic lock.
 `zig build test-effects`, `zig build test-ui`, and `zig build test-physics` validate the engine-owned effects, UI, and physics subsystems.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
-`script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines. `zig build test-desktop-backends` combines stored replay hashes, SDL GPU/OpenGL visual comparison, and those budgets with per-stage logs.
-Tag pushes run `zig build release-gate`, which explicitly validates the frozen core API, all proof-game consumers, desktop packages, deterministic diagnostics, visual/replay/fuzz checks, and performance budgets; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
+`script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
+Tag pushes run `zig build release-gate`, which validates the frozen core API, proof-game consumers, desktop packages, deterministic diagnostics, visual/replay/fuzz checks, and other correctness gates; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
 `zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
 `test-scenes` compares deterministic headless, bounce, top-down, and platformer renders against committed PNG goldens; `zig build test-scenes -- --update-golden` refreshes all captures intentionally.

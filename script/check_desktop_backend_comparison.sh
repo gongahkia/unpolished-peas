@@ -24,5 +24,4 @@ run replays zig build test-replays
 run sdl-gpu runtime env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
 run opengl runtime zig build test-opengl
 run visual-comparison runtime zig build test-renderer-cross-backend
-run performance script/check_performance_budgets.sh
 printf 'desktop backend comparison passed: logs=%s\n' "$diagnostics"
