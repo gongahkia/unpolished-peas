@@ -7,34 +7,87 @@ const support_bundle = @import("support_bundle.zig");
 const max_build_output_bytes = 8 * 1024 * 1024;
 const max_replay_bytes = 1024 * 1024;
 
+const CliMode = struct {
+    json: bool = false,
+    non_interactive: bool = false,
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     var args = try std.process.argsWithAllocator(gpa.allocator());
     defer args.deinit();
     _ = args.next();
-    const argument = args.next() orelse return usage();
+    var mode = CliMode{};
+    var argument = args.next() orelse return usage();
+    while (std.mem.eql(u8, argument, "--json") or std.mem.eql(u8, argument, "--non-interactive")) {
+        if (std.mem.eql(u8, argument, "--json")) mode.json = true else mode.non_interactive = true;
+        argument = args.next() orelse {
+            if (mode.json) {
+                try emitJson(gpa.allocator(), null, .failed, "invalid_arguments", mode);
+                std.process.exit(64);
+            }
+            return usage();
+        };
+    }
     if (std.mem.eql(u8, argument, "help") or std.mem.eql(u8, argument, "--help") or std.mem.eql(u8, argument, "-h")) {
         printHelp();
         return;
     }
     const command = tools.parseCommand(argument) orelse {
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
+        if (mode.json) {
+            try emitJson(gpa.allocator(), null, .failed, "unknown_command", mode);
+            std.process.exit(64);
+        }
         return usage();
     };
+    if (mode.non_interactive and (command == .run or command == .serve)) {
+        if (mode.json) {
+            try emitJson(gpa.allocator(), command, .failed, "interactive_command", mode);
+            std.process.exit(65);
+        }
+        return error.NonInteractiveCommand;
+    }
     if (command == .doctor) {
-        const code = try doctorEnvironment(gpa.allocator(), &args);
+        const code = doctorEnvironment(gpa.allocator(), &args) catch |err| {
+            if (mode.json) {
+                try emitJson(gpa.allocator(), command, .failed, recoveryCode(err), mode);
+                std.process.exit(recoveryExitCode(err));
+            }
+            return err;
+        };
+        if (mode.json) try emitJson(gpa.allocator(), command, if (code == 0) .ok else .failed, if (code == 0) "ok" else doctorRecoveryCode(code), mode);
         if (code != 0) std.process.exit(code);
         return;
     }
-    const term = try dispatch(gpa.allocator(), command, &args);
-    if (term) |value| switch (value) {
-        .Exited => |code| if (code != 0) std.process.exit(code),
-        else => return error.ProjectRunFailed,
+    const term = dispatch(gpa.allocator(), command, &args, mode) catch |err| {
+        if (mode.json) {
+            try emitJson(gpa.allocator(), command, .failed, recoveryCode(err), mode);
+            std.process.exit(recoveryExitCode(err));
+        }
+        return err;
     };
+    if (term) |value| switch (value) {
+        .Exited => |code| if (code != 0) {
+            if (mode.json) {
+                try emitJson(gpa.allocator(), command, .failed, "child_failed", mode);
+                std.process.exit(1);
+            }
+            std.process.exit(code);
+        },
+        else => {
+            if (mode.json) {
+                try emitJson(gpa.allocator(), command, .failed, "child_failed", mode);
+                std.process.exit(1);
+            }
+            return error.ProjectRunFailed;
+        },
+    };
+    if (mode.json) try emitJson(gpa.allocator(), command, .ok, "ok", mode);
 }
 
-fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.process.ArgIterator) !?std.process.Child.Term {
+fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.process.ArgIterator, mode: CliMode) !?std.process.Child.Term {
     switch (command) {
         .new => {
             try createProject(allocator, args);
@@ -44,19 +97,19 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try checkProject(allocator, args);
             return null;
         },
-        .run => return try runProject(allocator, args),
-        .@"test" => return try testProject(allocator, args),
+        .run => return try runProject(allocator, args, mode),
+        .@"test" => return try testProject(allocator, args, mode),
         .replay => {
             try replayFixture(allocator, args);
             return null;
         },
-        .package => return try packageProject(allocator, args),
-        .serve => return try serveBundle(allocator, args),
+        .package => return try packageProject(allocator, args, mode),
+        .serve => return try serveBundle(allocator, args, mode),
         .support_bundle => {
             try exportSupportBundle(allocator, args);
             return null;
         },
-        .docs => return try docsProject(allocator, args),
+        .docs => return try docsProject(allocator, args, mode),
         .doctor => unreachable,
     }
 }
@@ -82,7 +135,7 @@ fn newUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
-fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
     const first = args.next();
     const project_path = if (first) |value| if (std.mem.eql(u8, value, "--")) "." else value else ".";
     const separator_consumed = first != null and std.mem.eql(u8, first.?, "--");
@@ -104,7 +157,7 @@ fn runProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std
 
     const command_args = try debugRunArguments(allocator, game_args.items);
     defer allocator.free(command_args);
-    return runZigBuild(allocator, command_args, project_root);
+    return runZigBuild(allocator, command_args, project_root, mode);
 }
 
 fn debugRunArguments(allocator: std.mem.Allocator, game_args: []const []const u8) ![]const []const u8 {
@@ -168,7 +221,7 @@ fn printCheckRecovery(allocator: std.mem.Allocator, project_root: []const u8, ki
     std.debug.print("peas check: recovery: {s}\n", .{command});
 }
 
-fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
     const selection_argument = args.next() orelse return testUsage();
     const selection = tools.parseTestSelection(selection_argument) orelse return testUsage();
     const project_path = args.next() orelse ".";
@@ -182,7 +235,7 @@ fn testProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !st
     const report = try testTargetReport(allocator, selection, project_root);
     defer allocator.free(report);
     std.debug.print("{s}", .{report});
-    const term = try runZigBuild(allocator, &.{ "zig", "build", step }, project_root);
+    const term = try runZigBuild(allocator, &.{ "zig", "build", step }, project_root, mode);
     if (term == .Exited and term.Exited != 0) {
         std.debug.print("peas test: class={s} target={s} status=failed artifacts={s}/zig-out\n", .{ @tagName(selection), step, project_root });
     }
@@ -238,7 +291,7 @@ fn replayReport(allocator: std.mem.Allocator, result: input_replay.Reproduction,
     return std.fmt.allocPrint(allocator, "peas replay: frames={d} fixed-hz={d} updates={d} hash=0x{x}\n", .{ result.frames, result.fixed_hz, result.updates, result.hash });
 }
 
-fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
     const target_argument = args.next() orelse return packageUsage();
     const target = tools.parsePackageTarget(target_argument) orelse return packageUsage();
     var output_directory: ?[]const u8 = null;
@@ -275,8 +328,8 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
     }
     std.debug.print("peas package: target {s}, game {s}\n", .{ @tagName(target), @tagName(game) });
     var child = std.process.Child.init(command_args.items, allocator);
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
+    child.stdin_behavior = if (mode.non_interactive) .Ignore else .Inherit;
+    child.stdout_behavior = if (mode.json) .Ignore else .Inherit;
     child.stderr_behavior = .Inherit;
     return child.spawnAndWait();
 }
@@ -286,7 +339,7 @@ fn packageUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
-fn serveBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+fn serveBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
     var path: []const u8 = "dist/web/unpolished-peas-bounce-web";
     var port: []const u8 = "8000";
     var path_set = false;
@@ -308,8 +361,8 @@ fn serveBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !st
     std.fs.cwd().access(index, .{}) catch return error.WebBundleMissing;
     std.debug.print("peas serve: http://127.0.0.1:{s}/\n", .{port});
     var child = std.process.Child.init(&.{ "python3", "-m", "http.server", port, "--bind", "127.0.0.1", "--directory", root }, allocator);
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
+    child.stdin_behavior = if (mode.non_interactive) .Ignore else .Inherit;
+    child.stdout_behavior = if (mode.json) .Ignore else .Inherit;
     child.stderr_behavior = .Inherit;
     return child.spawnAndWait();
 }
@@ -465,15 +518,15 @@ fn doctorUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
-fn docsProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+fn docsProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
     const topic = if (args.next()) |value| tools.parseDocsTopic(value) orelse return docsUsage() else .overview;
     if (args.next() != null) return docsUsage();
     const repository_root = std.process.getEnvVarOwned(allocator, "UP_REPOSITORY_ROOT") catch return error.DocsUnavailable;
     defer allocator.free(repository_root);
     var child = std.process.Child.init(&.{ "zig", "build", "docs" }, allocator);
     child.cwd = repository_root;
-    child.stdin_behavior = .Inherit;
-    child.stdout_behavior = .Inherit;
+    child.stdin_behavior = if (mode.non_interactive) .Ignore else .Inherit;
+    child.stdout_behavior = if (mode.json) .Ignore else .Inherit;
     child.stderr_behavior = .Inherit;
     const term = try child.spawnAndWait();
     if (term == .Exited and term.Exited == 0) {
@@ -489,7 +542,7 @@ fn docsUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
-fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8) !std.process.Child.Term {
+fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd: []const u8, mode: CliMode) !std.process.Child.Term {
     const result = try std.process.Child.run(.{
         .allocator = allocator,
         .argv = arguments,
@@ -498,13 +551,67 @@ fn runZigBuild(allocator: std.mem.Allocator, arguments: []const []const u8, cwd:
     });
     defer allocator.free(result.stdout);
     defer allocator.free(result.stderr);
-    try std.fs.File.stdout().writeAll(result.stdout);
+    if (!mode.json) try std.fs.File.stdout().writeAll(result.stdout);
     try std.fs.File.stderr().writeAll(result.stderr);
-    if (tools.diagnosticRemediation(tools.classifyDiagnostic(result.stderr))) |remediation| {
-        if (result.stderr.len != 0 and result.stderr[result.stderr.len - 1] != '\n') try std.fs.File.stderr().writeAll("\n");
-        std.debug.print("peas recovery: {s}\n", .{remediation});
+    if (!mode.json) {
+        if (tools.diagnosticRemediation(tools.classifyDiagnostic(result.stderr))) |remediation| {
+            if (result.stderr.len != 0 and result.stderr[result.stderr.len - 1] != '\n') try std.fs.File.stderr().writeAll("\n");
+            std.debug.print("peas recovery: {s}\n", .{remediation});
+        }
     }
     return result.term;
+}
+
+const JsonStatus = enum { ok, failed };
+
+fn emitJson(allocator: std.mem.Allocator, command: ?tools.Command, status: JsonStatus, recovery: []const u8, mode: CliMode) !void {
+    const document = try jsonDocument(allocator, command, status, recovery, mode);
+    defer allocator.free(document);
+    try std.fs.File.stdout().writeAll(document);
+}
+
+fn jsonDocument(allocator: std.mem.Allocator, command: ?tools.Command, status: JsonStatus, recovery: []const u8, mode: CliMode) ![]u8 {
+    const command_name = if (command) |value| tools.commandName(value) else "";
+    return std.fmt.allocPrint(allocator, "{{\"version\":1,\"command\":\"{s}\",\"status\":\"{s}\",\"recovery_code\":\"{s}\",\"non_interactive\":{s}}}\n", .{ command_name, @tagName(status), recovery, if (mode.non_interactive) "true" else "false" });
+}
+
+fn recoveryCode(err: anyerror) []const u8 {
+    return switch (err) {
+        error.InvalidArguments => "invalid_arguments",
+        error.ProjectNotFound => "project_not_found",
+        error.ProjectAssetsMissing => "project_assets_missing",
+        error.UnsupportedTarget => "unsupported_target",
+        error.WebBundleMissing => "web_bundle_missing",
+        error.ReplayDiverged => "replay_diverged",
+        error.NonInteractiveCommand => "interactive_command",
+        error.TemplateUnavailable, error.PackageUnavailable, error.DocsUnavailable => "environment_unavailable",
+        error.DiagnosticsBundleExists, error.DiagnosticsBundleTooLarge, error.InvalidDiagnosticsLimits => "diagnostics_limited",
+        else => "operation_failed",
+    };
+}
+
+fn recoveryExitCode(err: anyerror) u8 {
+    return switch (err) {
+        error.InvalidArguments => 64,
+        error.NonInteractiveCommand => 65,
+        error.ProjectNotFound => 20,
+        error.ProjectAssetsMissing => 24,
+        error.UnsupportedTarget => 22,
+        else => 1,
+    };
+}
+
+fn doctorRecoveryCode(code: u8) []const u8 {
+    return switch (code) {
+        @intFromEnum(DoctorCode.project) => "project_invalid",
+        @intFromEnum(DoctorCode.zig) => "zig_unsupported",
+        @intFromEnum(DoctorCode.target) => "target_unsupported",
+        @intFromEnum(DoctorCode.renderer) => "renderer_unsupported",
+        @intFromEnum(DoctorCode.assets) => "project_assets_missing",
+        @intFromEnum(DoctorCode.browser_host) => "browser_host_unavailable",
+        @intFromEnum(DoctorCode.package) => "package_prerequisites_unavailable",
+        else => "operation_failed",
+    };
 }
 
 fn runUsage() error{InvalidArguments} {
@@ -623,6 +730,29 @@ test "doctor exit codes are stable" {
     try std.testing.expectEqual(@as(u8, 24), @intFromEnum(DoctorCode.assets));
     try std.testing.expectEqual(@as(u8, 25), @intFromEnum(DoctorCode.browser_host));
     try std.testing.expectEqual(@as(u8, 26), @intFromEnum(DoctorCode.package));
+}
+
+test "JSON envelopes cover every peas command" {
+    const commands = [_]tools.Command{ .new, .run, .check, .@"test", .replay, .package, .serve, .support_bundle, .doctor, .docs };
+    for (commands) |command| {
+        const document = try jsonDocument(std.testing.allocator, command, .ok, "ok", .{ .non_interactive = true });
+        defer std.testing.allocator.free(document);
+        var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, document, .{});
+        defer parsed.deinit();
+        try std.testing.expectEqual(@as(i64, 1), parsed.value.object.get("version").?.integer);
+        try std.testing.expectEqualStrings(tools.commandName(command), parsed.value.object.get("command").?.string);
+        try std.testing.expectEqualStrings("ok", parsed.value.object.get("status").?.string);
+        try std.testing.expectEqualStrings("ok", parsed.value.object.get("recovery_code").?.string);
+        try std.testing.expect(parsed.value.object.get("non_interactive").?.bool);
+    }
+}
+
+test "JSON recovery labels are stable" {
+    try std.testing.expectEqualStrings("invalid_arguments", recoveryCode(error.InvalidArguments));
+    try std.testing.expectEqualStrings("project_not_found", recoveryCode(error.ProjectNotFound));
+    try std.testing.expectEqualStrings("interactive_command", recoveryCode(error.NonInteractiveCommand));
+    try std.testing.expectEqual(@as(u8, 64), recoveryExitCode(error.InvalidArguments));
+    try std.testing.expectEqual(@as(u8, 65), recoveryExitCode(error.NonInteractiveCommand));
 }
 
 test "new command rejects invalid destinations" {
