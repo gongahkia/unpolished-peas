@@ -48,7 +48,20 @@ test "stable module inventory is exact" {
 }
 
 test "stable public symbols are exact" {
-    try expectExactPublicDeclarations(core, &.{"package_name"});
+    try expectExactPublicDeclarations(core, &.{
+        "ErrorClass",
+        "CResult",
+        "ZigError",
+        "all_errors",
+        "class_for_error",
+        "error_for_class",
+        "c_result_for_class",
+        "class_for_c_result",
+        "c_result_for_error",
+        "error_for_c_result",
+        "c_result_from_code",
+        "package_name",
+    });
     try expectExactPublicDeclarations(protocol, &.{"package_name"});
     try expectExactPublicDeclarations(transport, &.{"package_name"});
     try expectExactPublicDeclarations(topology, &.{"package_name"});
