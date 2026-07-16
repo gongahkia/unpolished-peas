@@ -56,11 +56,37 @@ pub const CSdkConfig = extern struct {
     now: ?CNowFn,
     allocator: CAllocator,
 };
+pub const CTransportKind = enum(u32) {
+    udp = 1,
+    tcp = 2,
+};
+pub const CSocketOptions = extern struct {
+    send_buffer_bytes: u32,
+    receive_buffer_bytes: u32,
+    reuse_address: u8,
+    no_delay: u8,
+    reserved: [2]u8,
+};
+pub const CTransportControl = extern struct {
+    connect_timeout_ns: CDurationNs,
+    idle_timeout_ns: CDurationNs,
+    max_datagram_bytes: u32,
+    max_in_flight: u32,
+};
+pub const CTransportConfig = extern struct {
+    kind: u32,
+    local_address: CAddress,
+    remote_address: CAddress,
+    socket_options: CSocketOptions,
+    control: CTransportControl,
+};
 pub const c_capability_transport: u32 = 1 << @intFromEnum(core.Capability.transport);
 pub const c_capability_packet_protection: u32 = 1 << @intFromEnum(core.Capability.packet_protection);
 pub const c_capability_topology: u32 = 1 << @intFromEnum(core.Capability.topology);
 pub const c_capability_state_replication: u32 = 1 << @intFromEnum(core.Capability.state_replication);
 pub const c_capability_capture: u32 = 1 << @intFromEnum(core.Capability.capture);
+pub const c_transport_udp: u32 = @intFromEnum(CTransportKind.udp);
+pub const c_transport_tcp: u32 = @intFromEnum(CTransportKind.tcp);
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
 
@@ -162,6 +188,30 @@ pub fn result_message(result_code: c_int) [*:0]const u8 {
         .transport_failure => "transport failure",
         .internal => "internal",
     };
+}
+
+pub fn is_valid_address(address: CAddress) bool {
+    switch (address.family) {
+        @intFromEnum(CAddressFamily.unspecified), @intFromEnum(CAddressFamily.ipv6) => return true,
+        @intFromEnum(CAddressFamily.ipv4) => return std.mem.allEqual(u8, address.bytes[4..], 0),
+        else => return false,
+    }
+}
+
+pub fn is_valid_socket_options(options: CSocketOptions) bool {
+    return options.reuse_address <= 1 and options.no_delay <= 1;
+}
+
+pub fn is_valid_transport_control(control: CTransportControl) bool {
+    return control.connect_timeout_ns >= 0 and control.idle_timeout_ns >= 0;
+}
+
+pub fn validate_transport_config(config: ?*const CTransportConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.kind != c_transport_udp and value.kind != c_transport_tcp) return .invalid_argument;
+    if (!is_valid_address(value.local_address) or !is_valid_address(value.remote_address)) return .invalid_argument;
+    if (!is_valid_socket_options(value.socket_options) or !is_valid_transport_control(value.control)) return .invalid_argument;
+    return .ok;
 }
 
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
@@ -267,6 +317,57 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     const allocator = state.allocator_bridge.allocator();
     state.poll_runtime.deinit();
     allocator.destroy(state);
+}
+
+pub export fn minna_san_transport_config_init(out_config: ?*CTransportConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{
+        .kind = c_transport_udp,
+        .local_address = .{ .family = @intFromEnum(CAddressFamily.unspecified), .bytes = [_]u8{0} ** 16, .port = 0 },
+        .remote_address = .{ .family = @intFromEnum(CAddressFamily.unspecified), .bytes = [_]u8{0} ** 16, .port = 0 },
+        .socket_options = .{ .send_buffer_bytes = 0, .receive_buffer_bytes = 0, .reuse_address = 0, .no_delay = 0, .reserved = .{ 0, 0 } },
+        .control = .{ .connect_timeout_ns = 0, .idle_timeout_ns = 0, .max_datagram_bytes = 0, .max_in_flight = 0 },
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_set_kind(config: ?*CTransportConfig, kind: u32) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (kind != c_transport_udp and kind != c_transport_tcp) return @intFromEnum(CResult.invalid_argument);
+    value.kind = kind;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_set_local_address(config: ?*CTransportConfig, address: CAddress) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_address(address)) return @intFromEnum(CResult.invalid_argument);
+    value.local_address = address;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_set_remote_address(config: ?*CTransportConfig, address: CAddress) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_address(address)) return @intFromEnum(CResult.invalid_argument);
+    value.remote_address = address;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_set_socket_options(config: ?*CTransportConfig, options: CSocketOptions) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_socket_options(options)) return @intFromEnum(CResult.invalid_argument);
+    value.socket_options = options;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_set_control(config: ?*CTransportConfig, control: CTransportControl) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_transport_control(control)) return @intFromEnum(CResult.invalid_argument);
+    value.control = control;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_transport_config_validate(config: ?*const CTransportConfig) c_int {
+    return @intFromEnum(validate_transport_config(config));
 }
 
 pub const package_name = "c_abi";
@@ -409,4 +510,26 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_start(null));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_poll(null, null));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_stop(null));
+}
+
+test "C transport builders configure valid selection addresses options and controls" {
+    var config: CTransportConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_set_kind(&config, c_transport_tcp));
+    const address = CAddress{ .family = @intFromEnum(CAddressFamily.ipv4), .bytes = .{ 127, 0, 0, 1 } ++ [_]u8{0} ** 12, .port = 7777 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_set_local_address(&config, address));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_set_remote_address(&config, address));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_set_socket_options(&config, .{ .send_buffer_bytes = 1, .receive_buffer_bytes = 2, .reuse_address = 1, .no_delay = 1, .reserved = .{ 0, 0 } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_set_control(&config, .{ .connect_timeout_ns = 1, .idle_timeout_ns = 2, .max_datagram_bytes = 3, .max_in_flight = 4 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_transport_config_validate(&config));
+}
+
+test "C transport builders reject invalid values" {
+    var config: CTransportConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_transport_config_init(null));
+    _ = minna_san_transport_config_init(&config);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_transport_config_set_kind(&config, 0));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_transport_config_set_local_address(&config, .{ .family = 3, .bytes = [_]u8{0} ** 16, .port = 0 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_transport_config_set_socket_options(&config, .{ .send_buffer_bytes = 0, .receive_buffer_bytes = 0, .reuse_address = 2, .no_delay = 0, .reserved = .{ 0, 0 } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_transport_config_set_control(&config, .{ .connect_timeout_ns = -1, .idle_timeout_ns = 0, .max_datagram_bytes = 0, .max_in_flight = 0 }));
 }
