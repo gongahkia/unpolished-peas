@@ -105,11 +105,15 @@ test "stable public symbols are exact" {
         "SocketPlatform",
         "SocketError",
         "Socket",
+        "open_with_family",
         "native_platform",
         "map_platform_error",
         "Ipv4Error",
         "Ipv4Address",
         "bind",
+        "Ipv6Error",
+        "Ipv6Address",
+        "bind_ipv6",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
