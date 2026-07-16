@@ -177,7 +177,7 @@ zig build new -- ../my-game
 `script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines. `zig build test-desktop-backends` combines stored replay hashes, SDL GPU/OpenGL visual comparison, and those budgets with per-stage logs.
 Tag pushes run `zig build release-gate`, which explicitly validates the frozen core API, all proof-game consumers, desktop packages, deterministic diagnostics, visual/replay/fuzz checks, and performance budgets; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
-`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with `bin/`, raw `assets/`, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, a package manifest, and a SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository and emit reports.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
 `test-scenes` compares deterministic headless, bounce, top-down, and platformer renders against committed PNG goldens; `zig build test-scenes -- --update-golden` refreshes all captures intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, assets, and build-manifest layout without replacing an existing destination.
@@ -185,7 +185,7 @@ Tag pushes run `zig build release-gate`, which explicitly validates the frozen c
 `assets/` contains user-owned raw files. Define atlas frames, animations, and TileMaps directly in Zig beside the game code; there is no engine-owned content format or compiler.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- replay <fixture.upr> [expected-input-hash]` reproduces normalized fixed-step input and reports a deterministic final-state hash or divergence.
-`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable archive through the project CLI.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable package through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
