@@ -12,6 +12,7 @@ pub const actions = [_]up.Action{
 };
 
 pub const Event = struct { fired: bool = false };
+pub const Diagnostics = struct { player: up.Vec2, aim: up.Vec2, shots: u32 };
 pub const Game = struct {
     player: up.Vec2 = .{ .x = 80, .y = 48 },
     aim: up.Vec2 = .{ .x = 1, .y = 0 },
@@ -28,6 +29,10 @@ pub const Game = struct {
         if (bindings.value(input, "game", "fire") == 0) return .{};
         self.shots += 1;
         return .{ .fired = true };
+    }
+
+    pub fn diagnostics(self: Game) Diagnostics {
+        return .{ .player = self.player, .aim = self.aim, .shots = self.shots };
     }
 };
 
@@ -59,6 +64,14 @@ test "stored top-down replay has a stable state hash" {
     }
     const hash = replayHash(game);
     try up.testSupport.assertReplayHash(std.testing.allocator, 0x85ac12ab1a612ca8, hash, &replay, "zig-out/diagnostics/replays/topdown");
+}
+
+test "top-down exposes structured v1 diagnostics" {
+    var game = Game{};
+    game.shots = 2;
+    const diagnostics = game.diagnostics();
+    try std.testing.expectEqual(@as(u32, 2), diagnostics.shots);
+    try std.testing.expectEqual(game.player, diagnostics.player);
 }
 
 fn replayHash(game: Game) u64 {
