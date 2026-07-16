@@ -118,6 +118,9 @@ test "stable public symbols are exact" {
         "PlatformSupport",
         "EndpointSelectionError",
         "select_endpoint_mode",
+        "UdpSocketError",
+        "UdpSocketConfig",
+        "UdpSocket",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
