@@ -95,6 +95,7 @@ pub const RuntimeLogEvent = api.RuntimeLogEvent;
 pub const RuntimeLogField = api.RuntimeLogField;
 pub const RuntimeLogLevel = api.RuntimeLogLevel;
 pub const RuntimeLogCategory = api.RuntimeLogCategory;
+pub const DiagnosticEnvironment = api.DiagnosticEnvironment;
 pub const Circle = api.Circle;
 pub const Segment = api.Segment;
 pub const Polygon = api.Polygon;

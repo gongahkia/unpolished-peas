@@ -51,18 +51,18 @@ pub fn writeJsonl(writer: anytype, event: Event) !void {
     try writer.writeAll(",\"frame_id\":");
     if (event.frame_id) |frame| try writer.print("{d}", .{frame}) else try writer.writeAll("null");
     try writer.writeAll(",\"level\":");
-    try std.json.stringify(@tagName(event.level), .{}, writer);
+    try std.json.Stringify.value(@tagName(event.level), .{}, writer);
     try writer.writeAll(",\"category\":");
-    try std.json.stringify(@tagName(event.category), .{}, writer);
+    try std.json.Stringify.value(@tagName(event.category), .{}, writer);
     try writer.writeAll(",\"message\":");
-    try std.json.stringify(event.message, .{}, writer);
+    try std.json.Stringify.value(event.message, .{}, writer);
     try writer.writeAll(",\"fields\":{");
     for (event.fields, 0..) |field, index| {
         if (index != 0) try writer.writeByte(',');
-        try std.json.stringify(field.key, .{}, writer);
+        try std.json.Stringify.value(field.key, .{}, writer);
         try writer.writeByte(':');
         switch (field.value) {
-            .string => |value| try std.json.stringify(value, .{}, writer),
+            .string => |value| try std.json.Stringify.value(value, .{}, writer),
             .integer => |value| try writer.print("{d}", .{value}),
             .boolean => |value| try writer.writeAll(if (value) "true" else "false"),
         }
@@ -81,11 +81,11 @@ pub fn writeTerminal(writer: anytype, filter: Filter, event: Event) !void {
     try writer.print("ts={d} session={d}", .{ event.timestamp_ns, event.session_id });
     if (event.frame_id) |frame| try writer.print(" frame={d}", .{frame});
     try writer.print(" level={s} category={s} message=", .{ @tagName(event.level), @tagName(event.category) });
-    try std.json.stringify(event.message, .{}, writer);
+    try std.json.Stringify.value(event.message, .{}, writer);
     for (event.fields) |field| {
         try writer.print(" {s}=", .{field.key});
         switch (field.value) {
-            .string => |value| try std.json.stringify(value, .{}, writer),
+            .string => |value| try std.json.Stringify.value(value, .{}, writer),
             .integer => |value| try writer.print("{d}", .{value}),
             .boolean => |value| try writer.writeAll(if (value) "true" else "false"),
         }

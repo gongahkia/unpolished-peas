@@ -207,6 +207,7 @@ pub const BlendMode = @import("canvas.zig").BlendMode;
 pub const Color = @import("color.zig").Color;
 pub const DiagnosticCapture = @import("diagnostics.zig").Input;
 pub const DiagnosticCaptureOptions = @import("diagnostics.zig").Options;
+pub const DiagnosticEnvironment = @import("diagnostics.zig").Environment;
 pub const diagnostics = @import("diagnostics.zig");
 pub const runtime_log = @import("runtime_log.zig");
 pub const RuntimeLogEvent = runtime_log.Event;
