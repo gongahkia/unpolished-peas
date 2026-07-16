@@ -1,3 +1,5 @@
+import {createBrowserInput} from "./input.mjs";
+
 export const AbiVersion = 1;
 
 export const ResourceKind = Object.freeze({
@@ -20,6 +22,10 @@ export function createBrowserHost({
   console: logger = globalThis.console,
   requestAnimationFrame: requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
   cancelAnimationFrame: cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
+  document: documentRef = globalThis.document,
+  window: windowRef = globalThis.window,
+  navigator: navigatorRef = globalThis.navigator,
+  ResizeObserver: ResizeObserverImpl = globalThis.ResizeObserver,
 } = {}) {
   let gl = null;
   let contextLost = false;
@@ -46,6 +52,14 @@ export function createBrowserHost({
   let needsResourceRecovery = false;
   let nextHandle = 1;
   const resources = new Map();
+  const input = createBrowserInput({
+    canvas,
+    document: documentRef,
+    window: windowRef,
+    navigator: navigatorRef,
+    ResizeObserver: ResizeObserverImpl,
+    mapCanvas: (x, y) => framebufferToCanvas(x, y, canvas?.width ?? 0, canvas?.height ?? 0),
+  });
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
@@ -903,8 +917,8 @@ export function createBrowserHost({
     up_host_gl_set_camera: setCamera,
     up_host_gl_effect_clear: clearEffects,
     up_host_gl_effect_append: appendEffect,
-    up_host_input_poll: () => 0,
-    up_host_input_read: () => 0,
+    up_host_input_poll: input.poll,
+    up_host_input_read: (destination, capacity) => input.read(destination, capacity, memory),
     up_host_audio_state: () => Status.unavailable,
     up_host_audio_submit: () => Status.unavailable,
     up_host_storage_read: () => Status.unavailable,
@@ -921,6 +935,7 @@ export function createBrowserHost({
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);
+      input.teardown();
       lifecyclePhase = "destroyed";
       runtime = null;
       gl = null;
@@ -939,6 +954,9 @@ export function createBrowserHost({
       return true;
     },
     lifecycle: () => ({phase: lifecyclePhase, generation: lifecycleGeneration, recoveries: recoveryCount, scheduledFrames: scheduledFrames.size}),
+    input: () => input.snapshot(),
+    setActionBindings: input.setActions,
+    actionValues: input.actionValues,
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
