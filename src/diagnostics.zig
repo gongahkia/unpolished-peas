@@ -13,6 +13,8 @@ pub const Options = struct {
     max_text_bytes: usize = 256,
     max_log_bytes: usize = 16 * 1024,
     max_replay_frames: usize = 4096,
+    max_bundle_bytes: usize = 64 * 1024 * 1024,
+    max_session_bundles: usize = 32,
 };
 
 pub const Input = struct {
@@ -53,10 +55,16 @@ pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !vo
     if (input.replay) |value| try writeReplay(allocator, options, value);
     if (input.environment) |value| try writeEnvironment(allocator, options, value);
     try writeMetadata(allocator, options, input);
+    if (try bundleSize(allocator, options.path) > options.max_bundle_bytes) return error.DiagnosticsBundleTooLarge;
 }
 
 pub fn captureSession(allocator: std.mem.Allocator, root: []const u8, session_id: u64, failure_id: u64, input: Input) ![]u8 {
+    return captureSessionWithOptions(allocator, root, session_id, failure_id, input, .{ .path = "" });
+}
+
+pub fn captureSessionWithOptions(allocator: std.mem.Allocator, root: []const u8, session_id: u64, failure_id: u64, input: Input, options: Options) ![]u8 {
     if (root.len == 0) return error.InvalidDiagnosticsPath;
+    if (options.max_bundle_bytes == 0 or options.max_session_bundles == 0) return error.InvalidDiagnosticsLimits;
     const name = try std.fmt.allocPrint(allocator, "session-{d}-failure-{d}", .{ session_id, failure_id });
     defer allocator.free(name);
     const path = try std.fs.path.join(allocator, &.{ root, name });
@@ -66,8 +74,69 @@ pub fn captureSession(allocator: std.mem.Allocator, root: []const u8, session_id
     } else |err| {
         if (err != error.FileNotFound) return err;
     }
-    try capture(allocator, .{ .path = path }, input);
+    var session_options = options;
+    session_options.path = path;
+    capture(allocator, session_options, input) catch |err| {
+        std.fs.cwd().deleteTree(path) catch {};
+        return err;
+    };
+    try retainSessionBundles(allocator, root, options.max_session_bundles);
     return path;
+}
+
+const Bundle = struct { name: []u8, session: u64, failure: u64 };
+
+fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum: usize) !void {
+    var dir = try std.fs.cwd().openDir(root, .{ .iterate = true });
+    defer dir.close();
+    var bundles = std.ArrayListUnmanaged(Bundle){};
+    defer {
+        for (bundles.items) |bundle| allocator.free(bundle.name);
+        bundles.deinit(allocator);
+    }
+    var iterator = dir.iterate();
+    while (try iterator.next()) |entry| {
+        if (entry.kind != .directory) continue;
+        const parsed = parseBundleName(entry.name) orelse continue;
+        try bundles.append(allocator, .{ .name = try allocator.dupe(u8, entry.name), .session = parsed.session, .failure = parsed.failure });
+    }
+    std.mem.sort(Bundle, bundles.items, {}, lessBundle);
+    while (bundles.items.len > maximum) {
+        const bundle = bundles.orderedRemove(0);
+        dir.deleteTree(bundle.name) catch |err| {
+            allocator.free(bundle.name);
+            return err;
+        };
+        allocator.free(bundle.name);
+    }
+}
+
+fn parseBundleName(name: []const u8) ?struct { session: u64, failure: u64 } {
+    const prefix = "session-";
+    const separator = "-failure-";
+    if (!std.mem.startsWith(u8, name, prefix)) return null;
+    const split = std.mem.indexOf(u8, name[prefix.len..], separator) orelse return null;
+    const session = std.fmt.parseInt(u64, name[prefix.len .. prefix.len + split], 10) catch return null;
+    const failure = std.fmt.parseInt(u64, name[prefix.len + split + separator.len ..], 10) catch return null;
+    return .{ .session = session, .failure = failure };
+}
+
+fn lessBundle(_: void, a: Bundle, b: Bundle) bool {
+    if (a.session != b.session) return a.session < b.session;
+    return a.failure < b.failure;
+}
+
+fn bundleSize(allocator: std.mem.Allocator, path: []const u8) !usize {
+    var dir = try std.fs.cwd().openDir(path, .{ .iterate = true });
+    defer dir.close();
+    var walker = try dir.walk(allocator);
+    defer walker.deinit();
+    var total: usize = 0;
+    while (try walker.next()) |entry| {
+        if (entry.kind != .file) continue;
+        total = std.math.add(usize, total, (try dir.statFile(entry.path)).size) catch return error.DiagnosticsBundleTooLarge;
+    }
+    return total;
 }
 
 fn writeEnvironment(allocator: std.mem.Allocator, options: Options, value: Environment) !void {
@@ -226,8 +295,10 @@ fn writeMetadata(allocator: std.mem.Allocator, options: Options, input: Input) !
     const log_count = @min(input.log.len, options.max_log_bytes);
     const replay_frames = if (input.replay) |value| value.frames.len else 0;
     const replay_count = @min(replay_frames, options.max_replay_frames);
-    try out.print("{{\"version\":{d},\"screenshot\":{{\"present\":{s},\"format\":\"png\"}},\"commands\":{{\"version\":1,\"count\":{d},\"truncated\":{s}}},\"trace\":{{\"present\":{s},\"format\":\"chrome-trace\"}},\"failure\":{{\"format\":\"text\",\"bytes\":{d},\"truncated\":{s}}},\"replay\":{{\"present\":{s},\"frame_count\":{d},\"truncated\":{s}}},\"environment\":{{\"present\":{s},\"format\":\"json\"}}}}", .{
+    try out.print("{{\"version\":{d},\"limits\":{{\"bundle_bytes\":{d},\"session_bundles\":{d}}},\"screenshot\":{{\"present\":{s},\"format\":\"png\"}},\"commands\":{{\"version\":1,\"count\":{d},\"truncated\":{s}}},\"trace\":{{\"present\":{s},\"format\":\"chrome-trace\"}},\"failure\":{{\"format\":\"text\",\"bytes\":{d},\"truncated\":{s}}},\"replay\":{{\"present\":{s},\"frame_count\":{d},\"truncated\":{s}}},\"environment\":{{\"present\":{s},\"format\":\"json\"}}}}", .{
         schema_version,
+        options.max_bundle_bytes,
+        options.max_session_bundles,
         if (input.canvas != null) "true" else "false",
         input.commands.len,
         if (command_count != input.commands.len) "true" else "false",
@@ -313,4 +384,25 @@ test "diagnostics capture deterministic bounded artifacts" {
     const environment_bytes = try dir.readFileAlloc(std.testing.allocator, "environment.json", 4096);
     defer std.testing.allocator.free(environment_bytes);
     try std.testing.expect(std.mem.indexOf(u8, environment_bytes, "\"renderer\":\"opengl\"") != null);
+}
+
+test "session diagnostics retain newest bounded bundles" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const diagnostics_root = try std.fs.path.join(std.testing.allocator, &.{ root, "sessions" });
+    defer std.testing.allocator.free(diagnostics_root);
+    const first = try captureSessionWithOptions(std.testing.allocator, diagnostics_root, 1, 1, .{ .log = "first" }, .{ .path = "", .max_session_bundles = 1, .max_bundle_bytes = 4096 });
+    defer std.testing.allocator.free(first);
+    const second = try captureSessionWithOptions(std.testing.allocator, diagnostics_root, 2, 1, .{ .log = "second" }, .{ .path = "", .max_session_bundles = 1, .max_bundle_bytes = 4096 });
+    defer std.testing.allocator.free(second);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(first, .{}));
+    try std.fs.cwd().access(second, .{});
+    try std.testing.expectError(error.DiagnosticsBundleExists, captureSessionWithOptions(std.testing.allocator, diagnostics_root, 2, 1, .{}, .{ .path = "", .max_session_bundles = 1 }));
+    try std.testing.expectError(error.InvalidDiagnosticsLimits, captureSessionWithOptions(std.testing.allocator, diagnostics_root, 3, 1, .{}, .{ .path = "", .max_session_bundles = 0 }));
+    try std.testing.expectError(error.DiagnosticsBundleTooLarge, captureSessionWithOptions(std.testing.allocator, diagnostics_root, 3, 1, .{ .log = "too large" }, .{ .path = "", .max_session_bundles = 1, .max_bundle_bytes = 1 }));
+    const oversized = try std.fs.path.join(std.testing.allocator, &.{ diagnostics_root, "session-3-failure-1" });
+    defer std.testing.allocator.free(oversized);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(oversized, .{}));
 }
