@@ -106,8 +106,27 @@ class FakeCanvas {
   }
 }
 
+const scheduledFrames = new Map();
+let nextFrame = 1;
 const canvas = new FakeCanvas();
-const host = createBrowserHost({canvas});
+const host = createBrowserHost({
+  canvas,
+  requestAnimationFrame(callback) {
+    const token = nextFrame;
+    nextFrame += 1;
+    scheduledFrames.set(token, callback);
+    return token;
+  },
+  cancelAnimationFrame(token) {
+    scheduledFrames.delete(token);
+  },
+});
+const frameTimes = [];
+const resizeCalls = [];
+assert.equal(host.attachRuntime({
+  up_browser_frame: (timestamp) => frameTimes.push(timestamp),
+  up_browser_resize: (width, height) => resizeCalls.push([width, height]),
+}), true);
 const env = host.imports.env;
 assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",
@@ -122,6 +141,15 @@ assert.deepEqual(Object.keys(env).sort(), [
 assert.equal(env.up_host_gl_context_create(320, 180), Status.ok);
 assert.equal(canvas.width, 320);
 assert.equal(canvas.height, 180);
+assert.deepEqual(host.lifecycle(), {phase: "active", generation: 0, recoveries: 0, scheduledFrames: 0});
+const firstFrame = env.up_host_schedule_frame();
+const firstCallback = scheduledFrames.get(firstFrame);
+scheduledFrames.delete(firstFrame);
+firstCallback(12.5);
+assert.deepEqual(frameTimes, [12.5]);
+const cancelledFrame = env.up_host_schedule_frame();
+env.up_host_cancel_frame(cancelledFrame);
+assert.equal(scheduledFrames.has(cancelledFrame), false);
 assert.equal(env.up_host_gl_clear(0xff000000), Status.ok);
 assert.equal(env.up_host_gl_draw_rect(1, 2, 3, 4, 0xff0000ff), Status.ok);
 assert.equal(env.up_host_gl_draw_line(0, 0, 4, 3, 0xff0000ff), Status.ok);
@@ -186,16 +214,20 @@ assert.equal(env.up_host_gl_draw_text(0, 1, 20, 20, 0xffffffff), Status.ok);
 assert.ok(canvas.gl.calls.filter(([name]) => name === "drawArrays").length > beforeText);
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
 assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 4);
-env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
-assert.equal(host.resourceCount(), 3);
-assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));
 
 const lost = canvas.dispatch("webglcontextlost");
 assert.equal(lost.prevented, true);
 assert.equal(env.up_host_gl_context_lost(), 1);
-assert.equal(host.resourceCount(), 0);
+assert.equal(host.resourceCount(), 4);
 assert.equal(env.up_host_gl_resource_create(ResourceKind.buffer, 1), 0);
 canvas.dispatch("webglcontextrestored");
-assert.equal(env.up_host_gl_context_create(64, 32), Status.ok);
+assert.equal(env.up_host_gl_context_lost(), 0);
+assert.deepEqual(host.lifecycle(), {phase: "recovered", generation: 1, recoveries: 1, scheduledFrames: 1});
+assert.deepEqual(resizeCalls, [[320, 180]]);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
+env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
+assert.equal(host.resourceCount(), 3);
+assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));
 env.up_host_teardown();
 assert.equal(canvas.listeners.size, 0);
+assert.equal(scheduledFrames.size, 0);

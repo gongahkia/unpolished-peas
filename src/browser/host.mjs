@@ -14,7 +14,13 @@ export const Status = Object.freeze({
   rejected: -3,
 });
 
-export function createBrowserHost({canvas, memory = new WebAssembly.Memory({initial: 32}), console: logger = globalThis.console} = {}) {
+export function createBrowserHost({
+  canvas,
+  memory = new WebAssembly.Memory({initial: 32}),
+  console: logger = globalThis.console,
+  requestAnimationFrame: requestFrame = globalThis.requestAnimationFrame?.bind(globalThis),
+  cancelAnimationFrame: cancelFrame = globalThis.cancelAnimationFrame?.bind(globalThis),
+} = {}) {
   let gl = null;
   let contextLost = false;
   let logicalWidth = 0;
@@ -32,13 +38,19 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
   let presentationMode = 0;
   const effects = [];
   const maxEffects = 8;
+  let runtime = null;
+  const scheduledFrames = new Map();
+  let lifecyclePhase = "idle";
+  let lifecycleGeneration = 0;
+  let recoveryCount = 0;
+  let needsResourceRecovery = false;
   let nextHandle = 1;
   const resources = new Map();
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
     if (!resource) return;
-    if (release && gl) {
+    if (release && gl && resource.value) {
       switch (resource.kind) {
         case ResourceKind.buffer: gl.deleteBuffer(resource.value); break;
         case ResourceKind.texture: gl.deleteTexture(resource.value); break;
@@ -51,6 +63,47 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
 
   function removeAllResources(release) {
     for (const handle of [...resources.keys()]) removeResource(handle, release);
+  }
+
+  function invalidateResourceValues() {
+    for (const resource of resources.values()) resource.value = null;
+  }
+
+  function cancelScheduledFrames() {
+    for (const token of scheduledFrames.keys()) cancelFrame?.(token);
+    scheduledFrames.clear();
+  }
+
+  function scheduleFrame() {
+    if (!requestFrame || contextLost || lifecyclePhase === "destroyed") return 0;
+    let token = 0;
+    token = requestFrame((timestamp) => {
+      scheduledFrames.delete(token);
+      if (!contextLost) runtime?.up_browser_frame?.(timestamp);
+    });
+    if (!Number.isInteger(token) || token < 0) return 0;
+    scheduledFrames.set(token, true);
+    return token;
+  }
+
+  function cancelScheduledFrame(token) {
+    if (!scheduledFrames.delete(token)) return;
+    cancelFrame?.(token);
+  }
+
+  function restoreResources() {
+    for (const resource of resources.values()) {
+      const value = createResourceValue(resource.kind, resource.byteLength);
+      if (!value) return false;
+      resource.value = value;
+      if (resource.kind !== ResourceKind.texture || !resource.pixels) continue;
+      gl.bindTexture(gl.TEXTURE_2D, value);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, resource.sampling === 0 ? gl.NEAREST : gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, resource.sampling === 0 ? gl.NEAREST : gl.LINEAR);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, resource.width, resource.height, 0, gl.RGBA, gl.UNSIGNED_BYTE, resource.pixels);
+    }
+    return true;
   }
 
   function releasePrimitivePipeline(release) {
@@ -416,6 +469,8 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
     texture.width = width;
     texture.height = height;
+    texture.sampling = sampling;
+    texture.pixels = pixels.slice();
     return Status.ok;
   }
 
@@ -718,19 +773,30 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     if (!gl) return Status.unavailable;
     if (gl.isContextLost?.()) {
       contextLost = true;
-      removeAllResources(false);
+      needsResourceRecovery = true;
+      invalidateResourceValues();
       releasePrimitivePipeline(false);
       releaseSpritePipeline(false);
       releaseEffectPipeline(false);
       releaseEffectTargets(false);
+      lifecyclePhase = "context_lost";
       return Status.rejected;
     }
+    if (needsResourceRecovery) {
+      if (!restoreResources()) {
+        invalidateResourceValues();
+        lifecyclePhase = "recovery_failed";
+        return Status.rejected;
+      }
+      needsResourceRecovery = false;
+      recoveryCount += 1;
+      lifecyclePhase = "recovered";
+    } else lifecyclePhase = "active";
     if (effectTargets && (effectTargets.width !== width || effectTargets.height !== height)) releaseEffectTargets(true);
     return Status.ok;
   }
 
-  function createResource(kind, byteLength) {
-    if (!gl || contextLost || !Number.isInteger(byteLength) || byteLength < 0) return 0;
+  function createResourceValue(kind, byteLength) {
     let value = null;
     switch (kind) {
       case ResourceKind.buffer:
@@ -756,20 +822,28 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
       case ResourceKind.framebuffer:
         value = gl.createFramebuffer();
         break;
-      default:
-        return 0;
     }
+    return value;
+  }
+
+  function createResource(kind, byteLength) {
+    if (!gl || contextLost || !Number.isInteger(byteLength) || byteLength < 0) return 0;
+    const value = createResourceValue(kind, byteLength);
     if (!value) return 0;
     const handle = nextHandle;
     nextHandle += 1;
-    resources.set(handle, {kind, value});
+    resources.set(handle, {kind, value, byteLength});
     return handle;
   }
 
   function onContextLost(event) {
     event.preventDefault();
     contextLost = true;
-    removeAllResources(false);
+    needsResourceRecovery = true;
+    lifecycleGeneration += 1;
+    lifecyclePhase = "context_lost";
+    cancelScheduledFrames();
+    invalidateResourceValues();
     releasePrimitivePipeline(false);
     releaseSpritePipeline(false);
     releaseEffectPipeline(false);
@@ -780,22 +854,28 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
   function onContextRestored() {
     contextLost = false;
     gl = null;
+    lifecyclePhase = "restoring";
+    if (logicalWidth === 0 || logicalHeight === 0 || createContext(logicalWidth, logicalHeight) !== Status.ok) return;
+    runtime?.up_browser_resize?.(logicalWidth, logicalHeight);
+    scheduleFrame();
   }
 
   canvas?.addEventListener("webglcontextlost", onContextLost);
   canvas?.addEventListener("webglcontextrestored", onContextRestored);
 
   const env = {
-    up_host_schedule_frame: () => 0,
-    up_host_cancel_frame: () => {},
+    up_host_schedule_frame: scheduleFrame,
+    up_host_cancel_frame: cancelScheduledFrame,
     up_host_gl_context_create: createContext,
     up_host_gl_context_destroy: () => {
+      cancelScheduledFrames();
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       releaseEffectPipeline(!contextLost);
       releaseEffectTargets(!contextLost);
       spriteBatch = null;
+      lifecyclePhase = "destroyed";
       gl = null;
     },
     up_host_gl_resource_create: createResource,
@@ -832,6 +912,7 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     up_host_storage_remove: () => Status.unavailable,
     up_host_diagnostic_emit: () => {},
     up_host_teardown: () => {
+      cancelScheduledFrames();
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
@@ -840,6 +921,8 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);
+      lifecyclePhase = "destroyed";
+      runtime = null;
       gl = null;
     },
   };
@@ -850,6 +933,12 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     memory,
     resourceCount: () => resources.size,
     context: () => gl,
+    attachRuntime: (exports) => {
+      if (!exports || typeof exports.up_browser_frame !== "function") return false;
+      runtime = exports;
+      return true;
+    },
+    lifecycle: () => ({phase: lifecyclePhase, generation: lifecycleGeneration, recoveries: recoveryCount, scheduledFrames: scheduledFrames.size}),
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
