@@ -1,4 +1,5 @@
 import {createBrowserInput} from "./input.mjs";
+import {createBrowserAudio} from "./audio.mjs";
 
 export const AbiVersion = 1;
 
@@ -26,6 +27,7 @@ export function createBrowserHost({
   window: windowRef = globalThis.window,
   navigator: navigatorRef = globalThis.navigator,
   ResizeObserver: ResizeObserverImpl = globalThis.ResizeObserver,
+  AudioContext: AudioContextImpl = globalThis.AudioContext ?? globalThis.webkitAudioContext,
 } = {}) {
   let gl = null;
   let contextLost = false;
@@ -60,6 +62,7 @@ export function createBrowserHost({
     ResizeObserver: ResizeObserverImpl,
     mapCanvas: (x, y) => framebufferToCanvas(x, y, canvas?.width ?? 0, canvas?.height ?? 0),
   });
+  const audio = createBrowserAudio({canvas, window: windowRef, AudioContext: AudioContextImpl});
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
@@ -919,8 +922,8 @@ export function createBrowserHost({
     up_host_gl_effect_append: appendEffect,
     up_host_input_poll: input.poll,
     up_host_input_read: (destination, capacity) => input.read(destination, capacity, memory),
-    up_host_audio_state: () => Status.unavailable,
-    up_host_audio_submit: () => Status.unavailable,
+    up_host_audio_state: audio.state,
+    up_host_audio_submit: (source, byteLength) => audio.submit(memory, source, byteLength),
     up_host_storage_read: () => Status.unavailable,
     up_host_storage_write: () => Status.unavailable,
     up_host_storage_remove: () => Status.unavailable,
@@ -936,6 +939,7 @@ export function createBrowserHost({
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);
       input.teardown();
+      audio.teardown();
       lifecyclePhase = "destroyed";
       runtime = null;
       gl = null;
@@ -957,6 +961,8 @@ export function createBrowserHost({
     input: () => input.snapshot(),
     setActionBindings: input.setActions,
     actionValues: input.actionValues,
+    activateAudio: audio.activate,
+    audio: audio.diagnostic,
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
