@@ -24,7 +24,7 @@
     {"path": "examples/tilemap.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Camera2D", "Color", "Image", "ImageHandle", "TileMap", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/topdown_game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Action", "ActionMap", "Input", "Vec2", "parseInputReplay", "testSupport"]}]},
     {"path": "examples/topdown_scene.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["AssetStore", "Camera2D", "CameraCanvas", "Canvas", "Color", "Image", "Input", "testSupport"]}]},
-    {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["AudioHandle", "Camera2D", "Color", "Image", "ImageHandle", "TileMap"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
+    {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["AudioHandle", "Camera2D", "Color", "Image", "ImageHandle", "TileMap", "ecs", "physics", "ui"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "fixtures/bounce-project/build.zig", "imports": []},
     {"path": "fixtures/bounce-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Canvas", "Color", "Vec2"]}]},
     {"path": "fixtures/downstream/build.zig", "imports": []},
