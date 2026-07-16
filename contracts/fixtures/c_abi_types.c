@@ -26,6 +26,14 @@ static uint32_t (*const event_kind_query)(const minna_san_event *) = minna_san_e
 static uint32_t (*const event_mode_query)(const minna_san_event *) = minna_san_event_mode;
 static uint64_t (*const event_sequence_query)(const minna_san_event *) = minna_san_event_sequence;
 static minna_san_buffer (*const event_payload_query)(const minna_san_event *) = minna_san_event_payload;
+static minna_san_result (*const channel_open_query)(minna_san_sdk *, minna_san_connection *, uint32_t, minna_san_channel **) = minna_san_channel_open;
+static minna_san_result (*const channel_close_query)(minna_san_sdk *, minna_san_channel *) = minna_san_channel_close;
+static minna_san_result (*const channel_mode_query)(minna_san_sdk *, minna_san_channel *, uint32_t *) = minna_san_channel_mode;
+static minna_san_result (*const channel_send_query)(minna_san_sdk *, minna_san_channel *, minna_san_buffer, uint64_t *) = minna_san_channel_send;
+static minna_san_result (*const channel_receive_query)(minna_san_sdk *, minna_san_channel *, minna_san_buffer *, uint64_t *) = minna_san_channel_receive;
+static minna_san_result (*const channel_ack_query)(minna_san_sdk *, minna_san_channel *, uint64_t) = minna_san_channel_acknowledge;
+static minna_san_result (*const channel_last_ack_query)(minna_san_sdk *, minna_san_channel *, uint64_t *) = minna_san_channel_last_acknowledged;
+static minna_san_result (*const sdk_buffer_release_query)(minna_san_sdk *, minna_san_buffer) = minna_san_sdk_buffer_release;
 static minna_san_result (*const transport_init_query)(minna_san_transport_config *) = minna_san_transport_config_init;
 static minna_san_result (*const transport_set_kind_query)(minna_san_transport_config *, uint32_t) = minna_san_transport_config_set_kind;
 static minna_san_result (*const transport_set_local_query)(minna_san_transport_config *, minna_san_address) = minna_san_transport_config_set_local_address;
@@ -58,6 +66,7 @@ int minna_san_c_abi_types_fixture(minna_san_handle *handle, minna_san_event even
         .abi_version = MINNA_SAN_ABI_VERSION,
         .capability_bits = MINNA_SAN_CAPABILITY_TRANSPORT,
         .connection_capacity = 2u,
+        .channel_capacity = 2u,
         .clock_context = 0,
         .now = minna_san_fixture_now,
         .allocator = allocator,
@@ -69,5 +78,5 @@ int minna_san_c_abi_types_fixture(minna_san_handle *handle, minna_san_event even
         .socket_options = { .send_buffer_bytes = 0, .receive_buffer_bytes = 0, .reuse_address = 0, .no_delay = 0, .reserved = { 0, 0 } },
         .control = { .connect_timeout_ns = 0, .idle_timeout_ns = 0, .max_datagram_bytes = 0, .max_in_flight = 0 },
     };
-    return (handle == 0 && event.payload.len == 0 && config.now != 0 && transport.kind == MINNA_SAN_TRANSPORT_UDP && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0 && sdk_validate_query != 0 && sdk_create_query != 0 && sdk_start_query != 0 && sdk_poll_query != 0 && sdk_stop_query != 0 && sdk_destroy_query != 0 && connection_open_query != 0 && connection_close_query != 0 && connection_peer_query != 0 && connection_route_query != 0 && connection_set_route_query != 0 && event_kind_query != 0 && event_mode_query != 0 && event_sequence_query != 0 && event_payload_query != 0 && transport_init_query != 0 && transport_set_kind_query != 0 && transport_set_local_query != 0 && transport_set_remote_query != 0 && transport_set_options_query != 0 && transport_set_control_query != 0 && transport_validate_query != 0) ? 0 : 1;
+    return (handle == 0 && event.payload.len == 0 && config.now != 0 && transport.kind == MINNA_SAN_TRANSPORT_UDP && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0 && sdk_validate_query != 0 && sdk_create_query != 0 && sdk_start_query != 0 && sdk_poll_query != 0 && sdk_stop_query != 0 && sdk_destroy_query != 0 && connection_open_query != 0 && connection_close_query != 0 && connection_peer_query != 0 && connection_route_query != 0 && connection_set_route_query != 0 && event_kind_query != 0 && event_mode_query != 0 && event_sequence_query != 0 && event_payload_query != 0 && channel_open_query != 0 && channel_close_query != 0 && channel_mode_query != 0 && channel_send_query != 0 && channel_receive_query != 0 && channel_ack_query != 0 && channel_last_ack_query != 0 && sdk_buffer_release_query != 0 && transport_init_query != 0 && transport_set_kind_query != 0 && transport_set_local_query != 0 && transport_set_remote_query != 0 && transport_set_options_query != 0 && transport_set_control_query != 0 && transport_validate_query != 0) ? 0 : 1;
 }

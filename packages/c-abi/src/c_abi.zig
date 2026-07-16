@@ -51,10 +51,12 @@ pub const CNowFn = *const fn (?*anyopaque) callconv(.c) core.TimeNs;
 pub const CSdk = opaque {};
 pub const CConnection = opaque {};
 pub const CPeer = opaque {};
+pub const CChannel = opaque {};
 pub const CSdkConfig = extern struct {
     abi_version: CAbiVersion,
     capability_bits: u32,
     connection_capacity: usize,
+    channel_capacity: usize,
     clock_context: ?*anyopaque,
     now: ?CNowFn,
     allocator: CAllocator,
@@ -62,6 +64,10 @@ pub const CSdkConfig = extern struct {
 pub const CRouteState = enum(u32) {
     direct = 1,
     relay = 2,
+};
+pub const CChannelMode = enum(u32) {
+    reliable = 1,
+    sequenced = 2,
 };
 pub const CTransportKind = enum(u32) {
     udp = 1,
@@ -96,6 +102,8 @@ pub const c_transport_udp: u32 = @intFromEnum(CTransportKind.udp);
 pub const c_transport_tcp: u32 = @intFromEnum(CTransportKind.tcp);
 pub const c_route_direct: u32 = @intFromEnum(CRouteState.direct);
 pub const c_route_relay: u32 = @intFromEnum(CRouteState.relay);
+pub const c_channel_reliable: u32 = @intFromEnum(CChannelMode.reliable);
+pub const c_channel_sequenced: u32 = @intFromEnum(CChannelMode.sequenced);
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
 
@@ -151,6 +159,8 @@ const CSdkState = struct {
     connections: runtime.ResourceRegistry,
     peers: runtime.ResourceRegistry,
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
+    channels: runtime.ResourceRegistry,
+    channel_records: std.ArrayListUnmanaged(ChannelRecord),
     started: bool,
 };
 
@@ -158,6 +168,20 @@ const ConnectionRecord = struct {
     connection: *runtime.ResourceHandle,
     peer: *runtime.ResourceHandle,
     route_state: u32,
+};
+
+const PendingMessage = struct {
+    sequence: u64,
+    buffer: CBuffer,
+};
+
+const ChannelRecord = struct {
+    channel: *runtime.ResourceHandle,
+    connection: *runtime.ResourceHandle,
+    mode: u32,
+    next_sequence: u64 = 0,
+    last_acknowledged: ?u64 = null,
+    pending_messages: std.ArrayListUnmanaged(PendingMessage) = .empty,
 };
 
 pub fn is_valid_buffer(buffer: CBuffer) bool {
@@ -236,6 +260,10 @@ pub fn is_valid_route_state(route_state: u32) bool {
     return route_state == c_route_direct or route_state == c_route_relay;
 }
 
+pub fn is_valid_channel_mode(mode: u32) bool {
+    return mode == c_channel_reliable or mode == c_channel_sequenced;
+}
+
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.abi_version != c_abi_version) return .version_mismatch;
@@ -275,6 +303,20 @@ fn find_connection(state: *CSdkState, connection: *CConnection) ?usize {
         if (record.connection == handle) return index;
     }
     return null;
+}
+
+fn find_channel(state: *CSdkState, channel: *CChannel) ?usize {
+    const handle: *runtime.ResourceHandle = @ptrCast(channel);
+    state.channels.validate(handle) catch return null;
+    for (state.channel_records.items, 0..) |record, index| {
+        if (record.channel == handle) return index;
+    }
+    return null;
+}
+
+fn discard_pending_messages(state: *CSdkState, record: *ChannelRecord) void {
+    for (record.pending_messages.items) |message| release_buffer(state.allocator_bridge.c_allocator, message.buffer) catch {};
+    record.pending_messages.clearRetainingCapacity();
 }
 
 pub export fn minna_san_abi_version() CAbiVersion {
@@ -323,7 +365,14 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
     };
+    state.channels = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.channel_capacity) catch {
+        state.peers.deinit();
+        state.connections.deinit();
+        initial_allocator.destroy(state);
+        return @intFromEnum(CResult.resource_exhausted);
+    };
     state.connection_records = .empty;
+    state.channel_records = .empty;
     state.started = false;
     output.* = @ptrCast(state);
     return @intFromEnum(CResult.ok);
@@ -356,6 +405,12 @@ pub export fn minna_san_sdk_stop(sdk: ?*CSdk) c_int {
 pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     const state = state_from_handle(sdk) orelse return;
     const allocator = state.allocator_bridge.allocator();
+    for (state.channel_records.items) |*record| {
+        discard_pending_messages(state, record);
+        record.pending_messages.deinit(allocator);
+    }
+    state.channel_records.deinit(allocator);
+    state.channels.deinit();
     state.connection_records.deinit(allocator);
     state.peers.deinit();
     state.connections.deinit();
@@ -370,6 +425,7 @@ pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_conne
     connection_output.* = null;
     peer_output.* = null;
     if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (!state.sdk.configuration().is_capability_enabled(.transport)) return @intFromEnum(CResult.unsupported);
     if (!is_valid_route_state(route_state)) return @intFromEnum(CResult.invalid_argument);
     const connection = state.connections.acquire() catch return @intFromEnum(CResult.resource_exhausted);
     const peer = state.peers.acquire() catch {
@@ -391,6 +447,10 @@ pub export fn minna_san_connection_close(sdk: ?*CSdk, connection: ?*CConnection)
     if (!state.started) return @intFromEnum(CResult.invalid_state);
     const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const raw_connection: *runtime.ResourceHandle = @ptrCast(handle);
+    for (state.channel_records.items) |record| {
+        if (record.connection == raw_connection) return @intFromEnum(CResult.invalid_state);
+    }
     const record = state.connection_records.items[index];
     state.peers.release(record.peer) catch return @intFromEnum(CResult.invalid_state);
     state.connections.release(record.connection) catch return @intFromEnum(CResult.invalid_state);
@@ -424,6 +484,119 @@ pub export fn minna_san_connection_set_route_state(sdk: ?*CSdk, connection: ?*CC
     const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
     state.connection_records.items[index].route_state = route_state;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_open(sdk: ?*CSdk, connection: ?*CConnection, mode: u32, out_channel: ?*?*CChannel) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_channel orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (!is_valid_channel_mode(mode)) return @intFromEnum(CResult.invalid_argument);
+    const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    _ = find_connection(state, connection_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const channel = state.channels.acquire() catch return @intFromEnum(CResult.resource_exhausted);
+    const raw_connection: *runtime.ResourceHandle = @ptrCast(connection_handle);
+    state.channel_records.append(state.allocator_bridge.allocator(), .{ .channel = channel, .connection = raw_connection, .mode = mode }) catch {
+        state.channels.release(channel) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(channel);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_close(sdk: ?*CSdk, channel: ?*CChannel) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = state.channel_records.items[index];
+    discard_pending_messages(state, &record);
+    record.pending_messages.deinit(state.allocator_bridge.allocator());
+    state.channels.release(record.channel) catch return @intFromEnum(CResult.invalid_state);
+    for (state.channel_records.items[index + 1 ..], index..) |next, destination| state.channel_records.items[destination] = next;
+    state.channel_records.items.len -= 1;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_mode(sdk: ?*CSdk, channel: ?*CChannel, out_mode: ?*u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_mode orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.channel_records.items[index].mode;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_send(sdk: ?*CSdk, channel: ?*CChannel, buffer: CBuffer, out_sequence: ?*u64) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_sequence orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (!is_valid_buffer(buffer)) return @intFromEnum(CResult.invalid_argument);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = &state.channel_records.items[index];
+    const copied = allocate_buffer(state.allocator_bridge.c_allocator, buffer.len) catch return @intFromEnum(CResult.resource_exhausted);
+    if (buffer.len > 0) {
+        const source: [*]const u8 = @ptrCast(buffer.data);
+        const destination: [*]u8 = @ptrCast(copied.data);
+        @memcpy(destination[0..buffer.len], source[0..buffer.len]);
+    }
+    if (record.mode == c_channel_sequenced) discard_pending_messages(state, record);
+    const sequence = record.next_sequence;
+    record.pending_messages.append(state.allocator_bridge.allocator(), .{ .sequence = sequence, .buffer = copied }) catch {
+        release_buffer(state.allocator_bridge.c_allocator, copied) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    record.next_sequence +%= 1;
+    output.* = sequence;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_receive(sdk: ?*CSdk, channel: ?*CChannel, out_buffer: ?*CBuffer, out_sequence: ?*u64) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const buffer_output = out_buffer orelse return @intFromEnum(CResult.invalid_argument);
+    const sequence_output = out_sequence orelse return @intFromEnum(CResult.invalid_argument);
+    buffer_output.* = .{ .data = null, .len = 0 };
+    sequence_output.* = 0;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = &state.channel_records.items[index];
+    if (record.pending_messages.items.len == 0) return @intFromEnum(CResult.would_block);
+    const message = record.pending_messages.items[0];
+    for (record.pending_messages.items[1..], 0..) |next, destination| record.pending_messages.items[destination] = next;
+    record.pending_messages.items.len -= 1;
+    buffer_output.* = message.buffer;
+    sequence_output.* = message.sequence;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_acknowledge(sdk: ?*CSdk, channel: ?*CChannel, sequence: u64) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = &state.channel_records.items[index];
+    if (sequence >= record.next_sequence) return @intFromEnum(CResult.invalid_argument);
+    if (record.last_acknowledged) |last| {
+        if (sequence < last) return @intFromEnum(CResult.invalid_argument);
+    }
+    record.last_acknowledged = sequence;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_channel_last_acknowledged(sdk: ?*CSdk, channel: ?*CChannel, out_sequence: ?*u64) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_sequence orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.channel_records.items[index].last_acknowledged orelse return @intFromEnum(CResult.would_block);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_buffer_release(sdk: ?*CSdk, buffer: CBuffer) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    release_buffer(state.allocator_bridge.c_allocator, buffer) catch return @intFromEnum(CResult.invalid_argument);
     return @intFromEnum(CResult.ok);
 }
 
@@ -597,6 +770,7 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
         .abi_version = c_abi_version,
         .capability_bits = c_capability_transport,
         .connection_capacity = 2,
+        .channel_capacity = 2,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -620,6 +794,35 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_route_state(sdk, connection, &route_state));
     try std.testing.expectEqual(c_route_direct, route_state);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_set_route_state(sdk, connection, c_route_relay));
+    var reliable_channel: ?*CChannel = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_open(sdk, connection, c_channel_reliable, &reliable_channel));
+    var message = [_]u8{ 'o', 'k' };
+    var sent_sequence: u64 = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_send(sdk, reliable_channel, .{ .data = @ptrCast(&message), .len = message.len }, &sent_sequence));
+    var received = CBuffer{ .data = null, .len = 0 };
+    var received_sequence: u64 = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_receive(sdk, reliable_channel, &received, &received_sequence));
+    try std.testing.expectEqual(sent_sequence, received_sequence);
+    const received_bytes: [*]const u8 = @ptrCast(received.data);
+    try std.testing.expectEqualSlices(u8, &message, received_bytes[0..received.len]);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_acknowledge(sdk, reliable_channel, received_sequence));
+    var acknowledged_sequence: u64 = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_last_acknowledged(sdk, reliable_channel, &acknowledged_sequence));
+    try std.testing.expectEqual(received_sequence, acknowledged_sequence);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_buffer_release(sdk, received));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_channel_receive(sdk, reliable_channel, &received, &received_sequence));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, reliable_channel));
+    var sequenced_channel: ?*CChannel = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_open(sdk, connection, c_channel_sequenced, &sequenced_channel));
+    var first = [_]u8{'a'};
+    var second = [_]u8{'b'};
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_send(sdk, sequenced_channel, .{ .data = @ptrCast(&first), .len = first.len }, &sent_sequence));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_send(sdk, sequenced_channel, .{ .data = @ptrCast(&second), .len = second.len }, &sent_sequence));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_receive(sdk, sequenced_channel, &received, &received_sequence));
+    const sequenced_bytes: [*]const u8 = @ptrCast(received.data);
+    try std.testing.expectEqualSlices(u8, &second, sequenced_bytes[0..received.len]);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_buffer_release(sdk, received));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, sequenced_channel));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &route_state));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_sdk_poll(sdk, &event));
@@ -642,6 +845,7 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
         .abi_version = c_abi_version,
         .capability_bits = c_capability_packet_protection,
         .connection_capacity = 0,
+        .channel_capacity = 0,
         .clock_context = null,
         .now = null,
         .allocator = .{ .context = null, .allocate = null, .release = null },
@@ -655,6 +859,7 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
 test "C connection and event accessors reject invalid inputs" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_open(null, c_route_direct, null, null));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_set_route_state(null, null, 0));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_channel_open(null, null, 0, null));
     const event = CEvent{ .kind = @intFromEnum(CEventKind.message), .mode = 2, .sequence = 3, .payload = .{ .data = @ptrFromInt(1), .len = 4 } };
     try std.testing.expectEqual(@intFromEnum(CEventKind.message), minna_san_event_kind(&event));
     try std.testing.expectEqual(@as(u32, 2), minna_san_event_mode(&event));
