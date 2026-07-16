@@ -93,6 +93,22 @@ pub export fn up_browser_present(mode: u32) i32 {
     return contract.present(mode);
 }
 
+pub export fn up_browser_texture_upload(handle: u32, width: u32, height: u32, source: u32, byte_len: u32, sampling: u32) i32 {
+    return contract.uploadTexture(handle, width, height, source, byte_len, sampling);
+}
+
+pub export fn up_browser_draw_sprite(handle: u32, source_x: u32, source_y: u32, source_width: u32, source_height: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32 {
+    return contract.drawSprite(handle, source_x, source_y, source_width, source_height, x, y, width, height, color, sampling);
+}
+
+pub export fn up_browser_flush_sprites() i32 {
+    return contract.flushSprites();
+}
+
+pub export fn up_browser_draw_text(source: u32, byte_len: u32, x: i32, y: i32, color: u32) i32 {
+    return contract.drawText(source, byte_len, x, y, color);
+}
+
 pub export fn up_browser_input_poll() u32 {
     return contract.pollInput();
 }
