@@ -33,6 +33,8 @@ extern "C" {
 #define MINNA_SAN_SECURITY_AEAD 4u
 #define MINNA_SAN_SECURITY_REPLAY_PROTECTION 8u
 #define MINNA_SAN_SECURITY_KEY_ROTATION 16u
+#define MINNA_SAN_ADMISSION_ACCEPT 1u
+#define MINNA_SAN_ADMISSION_REJECT 2u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -103,6 +105,7 @@ typedef struct minna_san_sdk minna_san_sdk;
 typedef struct minna_san_connection minna_san_connection;
 typedef struct minna_san_peer minna_san_peer;
 typedef struct minna_san_channel minna_san_channel;
+typedef struct minna_san_authoritative_session minna_san_authoritative_session;
 typedef struct minna_san_sdk_config {
     minna_san_abi_version_t abi_version;
     uint32_t capability_bits;
@@ -112,6 +115,12 @@ typedef struct minna_san_sdk_config {
     minna_san_now_fn now;
     minna_san_allocator allocator;
 } minna_san_sdk_config;
+typedef uint32_t (*minna_san_admission_fn)(void *context, const minna_san_peer *peer);
+typedef struct minna_san_authoritative_session_config {
+    size_t max_clients;
+    void *admission_context;
+    minna_san_admission_fn admission;
+} minna_san_authoritative_session_config;
 typedef struct minna_san_socket_options {
     uint32_t send_buffer_bytes;
     uint32_t receive_buffer_bytes;
@@ -168,6 +177,13 @@ minna_san_result minna_san_security_config_set_aead_key(minna_san_security_confi
 minna_san_result minna_san_security_config_set_replay_window(minna_san_security_config *config, uint32_t replay_window);
 minna_san_result minna_san_security_config_set_key_rotation(minna_san_security_config *config, minna_san_duration_ns interval_ns, minna_san_duration_ns overlap_ns);
 minna_san_result minna_san_security_config_validate(const minna_san_security_config *config);
+minna_san_result minna_san_authoritative_session_config_init(minna_san_authoritative_session_config *out_config);
+minna_san_result minna_san_authoritative_session_config_validate(const minna_san_authoritative_session_config *config);
+minna_san_result minna_san_authoritative_session_create(minna_san_sdk *sdk, const minna_san_authoritative_session_config *config, minna_san_authoritative_session **out_session);
+minna_san_result minna_san_authoritative_session_destroy(minna_san_sdk *sdk, minna_san_authoritative_session *session);
+minna_san_result minna_san_authoritative_session_client_join(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
+minna_san_result minna_san_authoritative_session_client_leave(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
+minna_san_result minna_san_authoritative_session_client_count(minna_san_sdk *sdk, minna_san_authoritative_session *session, size_t *out_count);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);

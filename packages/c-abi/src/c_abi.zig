@@ -52,6 +52,7 @@ pub const CSdk = opaque {};
 pub const CConnection = opaque {};
 pub const CPeer = opaque {};
 pub const CChannel = opaque {};
+pub const CAuthoritativeSession = opaque {};
 pub const CSdkConfig = extern struct {
     abi_version: CAbiVersion,
     capability_bits: u32,
@@ -68,6 +69,16 @@ pub const CRouteState = enum(u32) {
 pub const CChannelMode = enum(u32) {
     reliable = 1,
     sequenced = 2,
+};
+pub const CAdmissionDecision = enum(u32) {
+    accept = 1,
+    reject = 2,
+};
+pub const CAdmissionFn = *const fn (?*anyopaque, *const CPeer) callconv(.c) u32;
+pub const CAuthoritativeSessionConfig = extern struct {
+    max_clients: usize,
+    admission_context: ?*anyopaque,
+    admission: ?CAdmissionFn,
 };
 pub const CTransportKind = enum(u32) {
     udp = 1,
@@ -118,6 +129,8 @@ pub const c_security_public_key: u32 = 2;
 pub const c_security_aead: u32 = 4;
 pub const c_security_replay_protection: u32 = 8;
 pub const c_security_key_rotation: u32 = 16;
+pub const c_admission_accept: u32 = @intFromEnum(CAdmissionDecision.accept);
+pub const c_admission_reject: u32 = @intFromEnum(CAdmissionDecision.reject);
 const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
@@ -176,6 +189,8 @@ const CSdkState = struct {
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
     channels: runtime.ResourceRegistry,
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
+    sessions: runtime.ResourceRegistry,
+    session_records: std.ArrayListUnmanaged(SessionRecord),
     started: bool,
 };
 
@@ -197,6 +212,14 @@ const ChannelRecord = struct {
     next_sequence: u64 = 0,
     last_acknowledged: ?u64 = null,
     pending_messages: std.ArrayListUnmanaged(PendingMessage) = .empty,
+};
+
+const SessionRecord = struct {
+    session: *runtime.ResourceHandle,
+    max_clients: usize,
+    admission_context: ?*anyopaque,
+    admission: ?CAdmissionFn,
+    clients: std.ArrayListUnmanaged(*runtime.ResourceHandle) = .empty,
 };
 
 pub fn is_valid_buffer(buffer: CBuffer) bool {
@@ -294,6 +317,12 @@ pub fn validate_security_config(config: ?*const CSecurityConfig) CResult {
     return .ok;
 }
 
+pub fn validate_authoritative_session_config(config: ?*const CAuthoritativeSessionConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.max_clients == 0) return .invalid_argument;
+    return .ok;
+}
+
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.abi_version != c_abi_version) return .version_mismatch;
@@ -340,6 +369,15 @@ fn find_channel(state: *CSdkState, channel: *CChannel) ?usize {
     state.channels.validate(handle) catch return null;
     for (state.channel_records.items, 0..) |record, index| {
         if (record.channel == handle) return index;
+    }
+    return null;
+}
+
+fn find_session(state: *CSdkState, session: *CAuthoritativeSession) ?usize {
+    const handle: *runtime.ResourceHandle = @ptrCast(session);
+    state.sessions.validate(handle) catch return null;
+    for (state.session_records.items, 0..) |record, index| {
+        if (record.session == handle) return index;
     }
     return null;
 }
@@ -401,8 +439,16 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
     };
+    state.sessions = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
+        state.channels.deinit();
+        state.peers.deinit();
+        state.connections.deinit();
+        initial_allocator.destroy(state);
+        return @intFromEnum(CResult.resource_exhausted);
+    };
     state.connection_records = .empty;
     state.channel_records = .empty;
+    state.session_records = .empty;
     state.started = false;
     output.* = @ptrCast(state);
     return @intFromEnum(CResult.ok);
@@ -441,6 +487,9 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     }
     state.channel_records.deinit(allocator);
     state.channels.deinit();
+    for (state.session_records.items) |*record| record.clients.deinit(allocator);
+    state.session_records.deinit(allocator);
+    state.sessions.deinit();
     state.connection_records.deinit(allocator);
     state.peers.deinit();
     state.connections.deinit();
@@ -480,6 +529,11 @@ pub export fn minna_san_connection_close(sdk: ?*CSdk, connection: ?*CConnection)
     const raw_connection: *runtime.ResourceHandle = @ptrCast(handle);
     for (state.channel_records.items) |record| {
         if (record.connection == raw_connection) return @intFromEnum(CResult.invalid_state);
+    }
+    for (state.session_records.items) |record| {
+        for (record.clients.items) |client| {
+            if (client == raw_connection) return @intFromEnum(CResult.invalid_state);
+        }
     }
     const record = state.connection_records.items[index];
     state.peers.release(record.peer) catch return @intFromEnum(CResult.invalid_state);
@@ -687,6 +741,90 @@ pub export fn minna_san_security_config_set_key_rotation(config: ?*CSecurityConf
 
 pub export fn minna_san_security_config_validate(config: ?*const CSecurityConfig) c_int {
     return @intFromEnum(validate_security_config(config));
+}
+
+pub export fn minna_san_authoritative_session_config_init(out_config: ?*CAuthoritativeSessionConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .max_clients = 1, .admission_context = null, .admission = null };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_authoritative_session_config_validate(config: ?*const CAuthoritativeSessionConfig) c_int {
+    return @intFromEnum(validate_authoritative_session_config(config));
+}
+
+pub export fn minna_san_authoritative_session_create(sdk: ?*CSdk, config: ?*const CAuthoritativeSessionConfig, out_session: ?*?*CAuthoritativeSession) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_session orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (!state.sdk.configuration().is_capability_enabled(.topology)) return @intFromEnum(CResult.unsupported);
+    if (validate_authoritative_session_config(config) != .ok) return @intFromEnum(validate_authoritative_session_config(config));
+    const handle = state.sessions.acquire() catch return @intFromEnum(CResult.resource_exhausted);
+    const value = config.?;
+    state.session_records.append(state.allocator_bridge.allocator(), .{ .session = handle, .max_clients = value.max_clients, .admission_context = value.admission_context, .admission = value.admission }) catch {
+        state.sessions.release(handle) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(handle);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_authoritative_session_destroy(sdk: ?*CSdk, session: ?*CAuthoritativeSession) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = state.session_records.items[index];
+    record.clients.deinit(state.allocator_bridge.allocator());
+    state.sessions.release(record.session) catch return @intFromEnum(CResult.invalid_state);
+    for (state.session_records.items[index + 1 ..], index..) |next, destination| state.session_records.items[destination] = next;
+    state.session_records.items.len -= 1;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_authoritative_session_client_join(sdk: ?*CSdk, session: ?*CAuthoritativeSession, connection: ?*CConnection) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const session_handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const session_index = find_session(state, session_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const connection_index = find_connection(state, connection_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = &state.session_records.items[session_index];
+    for (record.clients.items) |client| {
+        if (client == @as(*runtime.ResourceHandle, @ptrCast(connection_handle))) return @intFromEnum(CResult.invalid_state);
+    }
+    if (record.clients.items.len == record.max_clients) return @intFromEnum(CResult.resource_exhausted);
+    if (record.admission) |admission| {
+        const peer: *const CPeer = @ptrCast(state.connection_records.items[connection_index].peer);
+        if (admission(record.admission_context, peer) != c_admission_accept) return @intFromEnum(CResult.permission_denied);
+    }
+    record.clients.append(state.allocator_bridge.allocator(), @ptrCast(connection_handle)) catch return @intFromEnum(CResult.resource_exhausted);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_authoritative_session_client_leave(sdk: ?*CSdk, session: ?*CAuthoritativeSession, connection: ?*CConnection) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const session_handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const session_index = find_session(state, session_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const raw_connection: *runtime.ResourceHandle = @ptrCast(connection_handle);
+    var record = &state.session_records.items[session_index];
+    for (record.clients.items, 0..) |client, index| {
+        if (client != raw_connection) continue;
+        for (record.clients.items[index + 1 ..], index..) |next, destination| record.clients.items[destination] = next;
+        record.clients.items.len -= 1;
+        return @intFromEnum(CResult.ok);
+    }
+    return @intFromEnum(CResult.invalid_argument);
+}
+
+pub export fn minna_san_authoritative_session_client_count(sdk: ?*CSdk, session: ?*CAuthoritativeSession, out_count: ?*usize) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_count orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.session_records.items[index].clients.items.len;
+    return @intFromEnum(CResult.ok);
 }
 
 pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
@@ -983,6 +1121,60 @@ test "C security configuration rejects absent keys and invalid controls" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_key_rotation(&config, 0, -1));
     config.flags = c_security_aead;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
+}
+
+test "C authoritative sessions enforce admission and client capacity" {
+    const Fixture = struct {
+        fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
+            const bytes = std.testing.allocator.alloc(u8, len) catch return null;
+            return @ptrCast(bytes.ptr);
+        }
+
+        fn release(_: ?*anyopaque, data: [*c]u8, len: usize) callconv(.c) void {
+            const bytes: [*]u8 = @ptrCast(data);
+            std.testing.allocator.free(bytes[0..len]);
+        }
+
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 0;
+        }
+
+        fn reject(_: ?*anyopaque, _: *const CPeer) callconv(.c) u32 {
+            return c_admission_reject;
+        }
+    };
+    const sdk_config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport | c_capability_topology,
+        .connection_capacity = 1,
+        .channel_capacity = 0,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&sdk_config, &sdk));
+    defer minna_san_sdk_destroy(sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
+    var connection: ?*CConnection = null;
+    var peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &connection, &peer));
+    var session_config = CAuthoritativeSessionConfig{ .max_clients = 1, .admission_context = null, .admission = null };
+    var session: ?*CAuthoritativeSession = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_create(sdk, &session_config, &session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_join(sdk, session, connection));
+    var count: usize = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_count(sdk, session, &count));
+    try std.testing.expectEqual(@as(usize, 1), count);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_client_join(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_leave(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, session));
+    session_config.admission = Fixture.reject;
+    var rejected_session: ?*CAuthoritativeSession = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_create(sdk, &session_config, &rejected_session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.permission_denied)), minna_san_authoritative_session_client_join(sdk, rejected_session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, rejected_session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {
