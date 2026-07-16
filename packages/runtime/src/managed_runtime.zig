@@ -2,7 +2,14 @@ const std = @import("std");
 const event = @import("event.zig");
 const config = @import("sdk_config.zig");
 
-pub const ManagedRuntimeError = error{ AlreadyStarted, NotRunning, QueueFull, ThreadSpawnFailed };
+threadlocal var direct_callback_active: bool = false;
+
+pub const DirectDispatch = struct {
+    context: *anyopaque,
+    callback: *const fn (*anyopaque, *const event.EventEnvelope) void,
+};
+
+pub const ManagedRuntimeError = error{ AlreadyStarted, NotRunning, QueueFull, ThreadSpawnFailed, ReentrantCall };
 
 pub const ManagedRuntime = struct {
     allocator: std.mem.Allocator,
@@ -12,6 +19,7 @@ pub const ManagedRuntime = struct {
     ready: std.Thread.Condition = .{},
     worker: ?std.Thread = null,
     stopping: bool = false,
+    direct_dispatch: ?DirectDispatch = null,
     queue: std.ArrayListUnmanaged(event.EventEnvelope) = .empty,
     processed: u64 = 0,
 
@@ -19,7 +27,12 @@ pub const ManagedRuntime = struct {
         return .{ .allocator = allocator, .sdk = sdk, .capacity = capacity };
     }
 
+    pub fn init_with_direct_dispatch(allocator: std.mem.Allocator, sdk: config.Sdk, capacity: usize, dispatch: DirectDispatch) ManagedRuntime {
+        return .{ .allocator = allocator, .sdk = sdk, .capacity = capacity, .direct_dispatch = dispatch };
+    }
+
     pub fn start(self: *ManagedRuntime) ManagedRuntimeError!void {
+        if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
         defer self.mutex.unlock();
         if (self.worker != null) return error.AlreadyStarted;
@@ -28,6 +41,7 @@ pub const ManagedRuntime = struct {
     }
 
     pub fn submit(self: *ManagedRuntime, envelope: event.EventEnvelope) (std.mem.Allocator.Error || ManagedRuntimeError)!void {
+        if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
         defer self.mutex.unlock();
         if (self.worker == null or self.stopping) return error.NotRunning;
@@ -37,6 +51,7 @@ pub const ManagedRuntime = struct {
     }
 
     pub fn shutdown(self: *ManagedRuntime) ManagedRuntimeError!void {
+        if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
         const worker = self.worker orelse {
             self.mutex.unlock();
@@ -75,6 +90,13 @@ pub const ManagedRuntime = struct {
             self.queue.items.len -= 1;
             self.mutex.unlock();
             var owned = next;
+            if (self.direct_dispatch) |dispatch| {
+                {
+                    direct_callback_active = true;
+                    defer direct_callback_active = false;
+                    dispatch.callback(dispatch.context, &owned);
+                }
+            }
             owned.deinit();
             self.mutex.lock();
             self.processed +%= 1;
@@ -98,6 +120,43 @@ test "managed runtimes have explicit worker lifecycle and bounded submission" {
     var rejected = event.EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .disconnected = {} } };
     defer rejected.deinit();
     try std.testing.expectError(error.NotRunning, runtime.submit(rejected));
+}
+
+test "direct dispatch runs on workers and rejects reentrant runtime mutation" {
+    const Capture = struct {
+        mutex: std.Thread.Mutex = .{},
+        callbacks: usize = 0,
+        reentrant_rejected: bool = false,
+        runtime: ?*ManagedRuntime = null,
+
+        fn callback(context: *anyopaque, _: *const event.EventEnvelope) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            var rejected = event.EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .disconnected = {} } };
+            _ = self.runtime.?.submit(rejected) catch |err| {
+                rejected.deinit();
+                self.mutex.lock();
+                defer self.mutex.unlock();
+                self.callbacks += 1;
+                self.reentrant_rejected = err == error.ReentrantCall;
+                return;
+            };
+            unreachable;
+        }
+    };
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var capture = Capture{};
+    var runtime = ManagedRuntime.init_with_direct_dispatch(std.testing.allocator, sdk, 1, .{ .context = &capture, .callback = Capture.callback });
+    capture.runtime = &runtime;
+    defer runtime.deinit();
+    try runtime.start();
+    try runtime.submit(.{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } });
+    var attempts: usize = 0;
+    while (runtime.processed_count() != 1 and attempts < 100) : (attempts += 1) std.Thread.sleep(std.time.ns_per_ms);
+    capture.mutex.lock();
+    defer capture.mutex.unlock();
+    try std.testing.expectEqual(@as(usize, 1), capture.callbacks);
+    try std.testing.expect(capture.reentrant_rejected);
 }
 
 test "managed runtimes reject submission when their queue is full" {
