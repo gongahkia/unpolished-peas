@@ -9,6 +9,13 @@ pub const brick_count = brick_columns * brick_rows;
 
 pub const Event = struct { paddle: bool = false, brick: bool = false, lost: bool = false, won: bool = false };
 
+pub const Diagnostics = struct {
+    score: u32,
+    lives: u8,
+    active_bricks: usize,
+    won: bool,
+};
+
 pub const Game = struct {
     paddle: up.Rect = .{ .x = 64, .y = 88, .w = 32, .h = 4 },
     ball: up.Rect = .{ .x = 76, .y = 68, .w = 8, .h = 8 },
@@ -72,6 +79,14 @@ pub const Game = struct {
         };
     }
 
+    pub fn diagnostics(self: Game) Diagnostics {
+        var active_bricks: usize = 0;
+        for (self.bricks) |active| {
+            if (active) active_bricks += 1;
+        }
+        return .{ .score = self.score, .lives = self.lives, .active_bricks = active_bricks, .won = self.score == brick_count };
+    }
+
     pub fn drawHeadless(self: Game, canvas: *up.Canvas, ball_image: up.Image) void {
         canvas.clear(up.Color.rgb(10, 14, 26));
         for (self.bricks, 0..) |active, index| {
@@ -81,6 +96,18 @@ pub const Game = struct {
         }
         canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.Color.rgb(225, 232, 240));
         canvas.drawImage(ball_image, @intFromFloat(self.ball.x - 4), @intFromFloat(self.ball.y - 4));
+        canvas.drawText("BREAKOUT", 4, 2, up.Color.white);
+    }
+
+    pub fn drawHeadlessAtlas(self: Game, canvas: *up.Canvas, atlas: up.Atlas, frame: up.AtlasFrameHandle) void {
+        canvas.clear(up.Color.rgb(10, 14, 26));
+        for (self.bricks, 0..) |active, index| {
+            if (!active) continue;
+            const brick = brickRect(index);
+            canvas.fillRect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), brickColor(index));
+        }
+        canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.Color.rgb(225, 232, 240));
+        canvas.drawAtlasFrame(atlas, frame, @intFromFloat(self.ball.x - 4), @intFromFloat(self.ball.y - 4), .{});
         canvas.drawText("BREAKOUT", 4, 2, up.Color.white);
     }
 };
@@ -114,6 +141,34 @@ test "stored Breakout replay has a stable state hash" {
     }
     const hash = replayHash(game);
     try up.testSupport.assertReplayHash(std.testing.allocator, 0x2d407efdf7179fce, hash, &replay, "zig-out/diagnostics/replays/breakout");
+}
+
+test "breakout exposes structured v1 diagnostics" {
+    var game = Game{};
+    game.bricks[0] = false;
+    game.score = 1;
+    const diagnostics = game.diagnostics();
+    try std.testing.expectEqual(@as(u32, 1), diagnostics.score);
+    try std.testing.expectEqual(@as(u8, 3), diagnostics.lives);
+    try std.testing.expectEqual(brick_count - 1, diagnostics.active_bricks);
+    try std.testing.expect(!diagnostics.won);
+}
+
+test "Breakout atlas draw contract preserves headless WebGL coordinates" {
+    const pixels = try std.testing.allocator.alloc(up.Color, 64);
+    defer std.testing.allocator.free(pixels);
+    @memset(pixels, up.Color.rgb(255, 255, 255));
+    var image = up.Image{ .allocator = std.testing.allocator, .width = 8, .height = 8, .pixels = pixels };
+    var atlas = try up.Atlas.init(std.testing.allocator, try image.clone(std.testing.allocator), "memory", &.{.{ .name = "ball", .x = 0, .y = 0, .w = 8, .h = 8 }}, &.{});
+    defer atlas.deinit();
+    var direct = try up.Canvas.init(std.testing.allocator, width, height);
+    defer direct.deinit();
+    var atlas_canvas = try up.Canvas.init(std.testing.allocator, width, height);
+    defer atlas_canvas.deinit();
+    const game = Game{};
+    game.drawHeadless(&direct, image);
+    game.drawHeadlessAtlas(&atlas_canvas, atlas, atlas.findFrame("ball").?);
+    try std.testing.expectEqual(up.testSupport.canvasHash(direct), up.testSupport.canvasHash(atlas_canvas));
 }
 
 fn replayHash(game: Game) u64 {
