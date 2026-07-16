@@ -80,6 +80,39 @@ pub const CAuthoritativeSessionConfig = extern struct {
     admission_context: ?*anyopaque,
     admission: ?CAdmissionFn,
 };
+pub const CCandidateKind = enum(u32) {
+    host = 1,
+    server_reflexive = 2,
+    relay = 3,
+};
+pub const CCandidate = extern struct {
+    kind: u32,
+    address: CAddress,
+    priority: u32,
+    expires_at_ns: CDurationNs,
+};
+pub const CP2PConfig = extern struct {
+    max_peers: usize,
+    shard_id: u32,
+    candidate: CCandidate,
+};
+pub const CStunTurnConfig = extern struct {
+    stun_server: CAddress,
+    turn_server: CAddress,
+    turn_username: CBuffer,
+    turn_password: CBuffer,
+};
+pub const CMigrationConfig = extern struct {
+    enabled: u8,
+    reserved: [3]u8,
+    handoff_timeout_ns: CDurationNs,
+    max_attempts: u32,
+};
+pub const CTopologyConfig = extern struct {
+    p2p: CP2PConfig,
+    stun_turn: CStunTurnConfig,
+    migration: CMigrationConfig,
+};
 pub const CTransportKind = enum(u32) {
     udp = 1,
     tcp = 2,
@@ -131,6 +164,9 @@ pub const c_security_replay_protection: u32 = 8;
 pub const c_security_key_rotation: u32 = 16;
 pub const c_admission_accept: u32 = @intFromEnum(CAdmissionDecision.accept);
 pub const c_admission_reject: u32 = @intFromEnum(CAdmissionDecision.reject);
+pub const c_candidate_host: u32 = @intFromEnum(CCandidateKind.host);
+pub const c_candidate_server_reflexive: u32 = @intFromEnum(CCandidateKind.server_reflexive);
+pub const c_candidate_relay: u32 = @intFromEnum(CCandidateKind.relay);
 const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
@@ -320,6 +356,27 @@ pub fn validate_security_config(config: ?*const CSecurityConfig) CResult {
 pub fn validate_authoritative_session_config(config: ?*const CAuthoritativeSessionConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.max_clients == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn is_valid_candidate_kind(kind: u32) bool {
+    return kind == c_candidate_host or kind == c_candidate_server_reflexive or kind == c_candidate_relay;
+}
+
+pub fn validate_candidate(candidate: CCandidate) CResult {
+    if (!is_valid_candidate_kind(candidate.kind) or !is_valid_address(candidate.address) or candidate.expires_at_ns < 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_topology_config(config: ?*const CTopologyConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.p2p.max_peers == 0) return .invalid_argument;
+    if (validate_candidate(value.p2p.candidate) != .ok) return .invalid_argument;
+    if (!is_valid_address(value.stun_turn.stun_server) or !is_valid_address(value.stun_turn.turn_server)) return .invalid_argument;
+    const turn_enabled = value.stun_turn.turn_server.family != @intFromEnum(CAddressFamily.unspecified);
+    if (turn_enabled != is_nonempty_buffer(value.stun_turn.turn_username) or turn_enabled != is_nonempty_buffer(value.stun_turn.turn_password)) return .invalid_argument;
+    if (value.migration.enabled > 1 or value.migration.handoff_timeout_ns < 0) return .invalid_argument;
+    if (value.migration.enabled == 1 and value.migration.max_attempts == 0) return .invalid_argument;
     return .ok;
 }
 
@@ -827,6 +884,44 @@ pub export fn minna_san_authoritative_session_client_count(sdk: ?*CSdk, session:
     return @intFromEnum(CResult.ok);
 }
 
+pub export fn minna_san_topology_config_init(out_config: ?*CTopologyConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    const unspecified = CAddress{ .family = @intFromEnum(CAddressFamily.unspecified), .bytes = [_]u8{0} ** 16, .port = 0 };
+    output.* = .{
+        .p2p = .{ .max_peers = 1, .shard_id = 0, .candidate = .{ .kind = c_candidate_host, .address = unspecified, .priority = 0, .expires_at_ns = 0 } },
+        .stun_turn = .{ .stun_server = unspecified, .turn_server = unspecified, .turn_username = .{ .data = null, .len = 0 }, .turn_password = .{ .data = null, .len = 0 } },
+        .migration = .{ .enabled = 0, .reserved = .{ 0, 0, 0 }, .handoff_timeout_ns = 0, .max_attempts = 0 },
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_config_set_p2p(config: ?*CTopologyConfig, p2p: CP2PConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (p2p.max_peers == 0 or validate_candidate(p2p.candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.p2p = p2p;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_config_set_stun_turn(config: ?*CTopologyConfig, stun_turn: CStunTurnConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const candidate = CTopologyConfig{ .p2p = value.p2p, .stun_turn = stun_turn, .migration = value.migration };
+    if (validate_topology_config(&candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.stun_turn = stun_turn;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_config_set_migration(config: ?*CTopologyConfig, migration: CMigrationConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const candidate = CTopologyConfig{ .p2p = value.p2p, .stun_turn = value.stun_turn, .migration = migration };
+    if (validate_topology_config(&candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.migration = migration;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_config_validate(config: ?*const CTopologyConfig) c_int {
+    return @intFromEnum(validate_topology_config(config));
+}
+
 pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
     return (event orelse return 0).kind;
 }
@@ -1175,6 +1270,30 @@ test "C authoritative sessions enforce admission and client capacity" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.permission_denied)), minna_san_authoritative_session_client_join(sdk, rejected_session, connection));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, rejected_session));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
+}
+
+test "C topology configuration borrows TURN credentials without traversal side effects" {
+    var config: CTopologyConfig = undefined;
+    var username = [_]u8{'u'};
+    var password = [_]u8{'p'};
+    const address = CAddress{ .family = @intFromEnum(CAddressFamily.ipv4), .bytes = .{ 127, 0, 0, 1 } ++ [_]u8{0} ** 12, .port = 3478 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_config_set_p2p(&config, .{ .max_peers = 2, .shard_id = 3, .candidate = .{ .kind = c_candidate_server_reflexive, .address = address, .priority = 4, .expires_at_ns = 5 } }));
+    const stun_turn = CStunTurnConfig{ .stun_server = address, .turn_server = address, .turn_username = .{ .data = @ptrCast(&username), .len = username.len }, .turn_password = .{ .data = @ptrCast(&password), .len = password.len } };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_config_set_stun_turn(&config, stun_turn));
+    try std.testing.expectEqual(@intFromPtr(stun_turn.turn_password.data), @intFromPtr(config.stun_turn.turn_password.data));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_config_set_migration(&config, .{ .enabled = 1, .reserved = .{ 0, 0, 0 }, .handoff_timeout_ns = 6, .max_attempts = 7 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_config_validate(&config));
+}
+
+test "C topology configuration rejects invalid candidates credentials and migration" {
+    var config: CTopologyConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_init(null));
+    _ = minna_san_topology_config_init(&config);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_set_p2p(&config, .{ .max_peers = 0, .shard_id = 0, .candidate = .{ .kind = 0, .address = config.p2p.candidate.address, .priority = 0, .expires_at_ns = -1 } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_set_migration(&config, .{ .enabled = 1, .reserved = .{ 0, 0, 0 }, .handoff_timeout_ns = 0, .max_attempts = 0 }));
+    config.stun_turn.turn_server.family = @intFromEnum(CAddressFamily.ipv4);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_validate(&config));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {
