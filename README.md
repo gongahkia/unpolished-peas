@@ -185,6 +185,7 @@ Tag pushes run `zig build release-gate`, which explicitly validates the frozen c
 `assets/` contains user-owned raw files. Define atlas frames, animations, and TileMaps directly in Zig beside the game code; there is no engine-owned content format or compiler.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- replay <fixture.upr> [expected-input-hash]` reproduces normalized fixed-step input and reports a deterministic final-state hash or divergence.
+`zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...` creates a local, allowlisted diagnostics export. Text artifacts redact the source path plus configured literal paths and secrets; PNG captures copy unchanged. The command never transmits or uploads data.
 `zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable package through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
