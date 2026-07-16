@@ -36,8 +36,6 @@ pub fn build(b: *std.Build) void {
     const effects = effects_dependency.module("unpolished-peas-effects");
     const ui_dependency = b.lazyDependency("ui", .{ .target = target, .optimize = optimize }) orelse @panic("missing UI package");
     const ui = ui_dependency.module("unpolished-peas-ui");
-    const networking_dependency = b.lazyDependency("networking", .{ .target = target, .optimize = optimize }) orelse @panic("missing networking package");
-    const networking = networking_dependency.module("unpolished-peas-networking");
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -74,9 +72,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     addStb(test_support);
-
-    const services_dependency = b.lazyDependency("services", .{ .target = target, .optimize = optimize }) orelse @panic("missing services package");
-    const services = services_dependency.module("unpolished-peas-services");
 
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
@@ -115,13 +110,11 @@ pub fn build(b: *std.Build) void {
     const primitives_demo = addExample(b, "unpolished-peas-primitives", "examples/primitives.zig", target, optimize, peas, sdl);
     const breakout = addExample(b, "unpolished-peas-breakout", "examples/breakout.zig", target, optimize, peas, null);
     const breakout_sdl = addExample(b, "unpolished-peas-breakout-sdl", "examples/breakout_sdl.zig", target, optimize, peas, sdl);
-    const topdown_sdl = addNetworkingExample(b, "unpolished-peas-topdown-sdl", "examples/topdown_sdl.zig", target, optimize, peas, sdl, networking);
+    const topdown_sdl = addExample(b, "unpolished-peas-topdown-sdl", "examples/topdown_sdl.zig", target, optimize, peas, sdl);
     const package_topdown_sdl = b.step("package-topdown-sdl", "Install the top-down SDL sample and assets");
     package_topdown_sdl.dependOn(&b.addInstallArtifact(topdown_sdl, .{}).step);
     package_topdown_sdl.dependOn(&install_assets.step);
     const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
-    const topdown_multiplayer = addNetworkingExample(b, "unpolished-peas-topdown-multiplayer", "examples/topdown_multiplayer.zig", target, optimize, peas, null, networking);
-    const topdown_host = addNetworkingExample(b, "unpolished-peas-topdown-host", "examples/topdown_host.zig", target, optimize, peas, null, networking);
     const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics }, .{ .name = "unpolished-peas-ui", .module = ui } } }) });
     const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
     package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
@@ -231,19 +224,6 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-breakout", "Run the deterministic Breakout demo", breakout);
     addRunStep(b, "run-breakout-sdl", "Run the unpolished-peas SDL3 Breakout demo", breakout_sdl);
     addRunStep(b, "run-topdown-sdl", "Run the unpolished-peas SDL3 top-down demo", topdown_sdl);
-    const run_topdown_listen_sdl = b.addRunArtifact(topdown_sdl);
-    run_topdown_listen_sdl.addArg("--listen-host");
-    const topdown_listen_sdl_step = b.step("run-topdown-listen-sdl", "Run the in-game top-down listen host");
-    topdown_listen_sdl_step.dependOn(&run_topdown_listen_sdl.step);
-    addRunStep(b, "run-topdown-multiplayer", "Run the seeded authoritative top-down multiplayer smoke", topdown_multiplayer);
-    const run_topdown_dedicated = b.addRunArtifact(topdown_host);
-    run_topdown_dedicated.addArgs(&.{ "dedicated", "--port", "0", "--ticks", "2" });
-    const topdown_dedicated_step = b.step("run-topdown-dedicated", "Run the headless top-down dedicated host sample");
-    topdown_dedicated_step.dependOn(&run_topdown_dedicated.step);
-    const run_topdown_listen = b.addRunArtifact(topdown_host);
-    run_topdown_listen.addArgs(&.{ "listen", "--ticks", "2" });
-    const topdown_listen_step = b.step("run-topdown-listen", "Run the in-process top-down listen host sample");
-    topdown_listen_step.dependOn(&run_topdown_listen.step);
     addRunStep(b, "test-topdown-scene", "Run the deterministic top-down scene", topdown_scene);
     addRunStep(b, "run-platformer-sdl", "Run the unpolished-peas SDL3 platformer", platformer_sdl);
     const breakout_smoke = b.addRunArtifact(breakout_sdl);
@@ -277,7 +257,7 @@ pub fn build(b: *std.Build) void {
     extension_matrix_step.dependOn(&run_extension_matrix.step);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, topdown_multiplayer, topdown_host, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, contentc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, contentc, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
@@ -337,26 +317,11 @@ pub fn build(b: *std.Build) void {
     const run_test_support_tests = b.addRunArtifact(test_support_tests);
     const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
     test_support_step.dependOn(&run_test_support_tests.step);
-    const services_tests = b.addTest(.{ .root_module = services });
-    const run_services_tests = b.addRunArtifact(services_tests);
-    const services_test_step = b.step("test-services", "Run SDL-free online-service contract tests");
-    services_test_step.dependOn(&run_services_tests.step);
-    const module_test_step = b.step("test-modules", "Compile and test independent core, tools, test fixtures, and services modules");
+    const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);
     module_test_step.dependOn(&run_content_tests.step);
     module_test_step.dependOn(&run_test_support_tests.step);
-    module_test_step.dependOn(services_test_step);
-    const fuzz_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/fuzz_targets.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas-networking", .module = networking }},
-    }) });
-    addStb(fuzz_tests.root_module);
-    const run_fuzz_tests = b.addRunArtifact(fuzz_tests);
-    const fuzz_test_step = b.step("test-fuzz", "Run bounded decoder and protocol fuzz corpus");
-    fuzz_test_step.dependOn(&run_fuzz_tests.step);
     const release_gate = b.addSystemCommand(&.{"script/release_gate.sh"});
     release_gate.setCwd(b.path("."));
     const release_gate_step = b.step("release-gate", "Run the v1 release validation gate");
@@ -380,24 +345,6 @@ pub fn build(b: *std.Build) void {
     const run_topdown_tests = b.addRunArtifact(topdown_tests);
     const topdown_test_step = b.step("test-topdown", "Run deterministic top-down tests");
     topdown_test_step.dependOn(&run_topdown_tests.step);
-    const topdown_multiplayer_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("examples/topdown_multiplayer.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-networking", .module = networking } },
-    }) });
-    const run_topdown_multiplayer_tests = b.addRunArtifact(topdown_multiplayer_tests);
-    const topdown_multiplayer_test_step = b.step("test-topdown-multiplayer", "Run seeded authoritative top-down multiplayer tests");
-    topdown_multiplayer_test_step.dependOn(&run_topdown_multiplayer_tests.step);
-    const topdown_host_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("examples/topdown_host.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-networking", .module = networking } },
-    }) });
-    const run_topdown_host_tests = b.addRunArtifact(topdown_host_tests);
-    const topdown_host_test_step = b.step("test-topdown-hosts", "Run dedicated and listen top-down host samples");
-    topdown_host_test_step.dependOn(&run_topdown_host_tests.step);
     const platformer_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("examples/platformer_game.zig"),
         .target = target,
@@ -444,10 +391,6 @@ pub fn build(b: *std.Build) void {
     ecs_conformance.setCwd(b.path("."));
     const ecs_conformance_step = b.step("test-ecs", "Run ECS package and external consumer fixtures");
     ecs_conformance_step.dependOn(&ecs_conformance.step);
-    const networking_conformance = b.addSystemCommand(&.{"script/test_networking_package.sh"});
-    networking_conformance.setCwd(b.path("."));
-    const networking_conformance_step = b.step("test-networking", "Run networking package and external module fixtures");
-    networking_conformance_step.dependOn(&networking_conformance.step);
 
     const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("fixtures/ui-package/src/main.zig"),
@@ -499,33 +442,6 @@ fn addExample(
 ) *std.Build.Step.Compile {
     var imports = std.ArrayList(std.Build.Module.Import).empty;
     imports.append(b.allocator, .{ .name = "unpolished-peas", .module = peas }) catch @panic("OOM");
-    if (sdl) |module| imports.append(b.allocator, .{ .name = "unpolished-peas-sdl3", .module = module }) catch @panic("OOM");
-    const exe = b.addExecutable(.{
-        .name = name,
-        .root_module = b.createModule(.{
-            .root_source_file = b.path(path),
-            .target = target,
-            .optimize = optimize,
-            .imports = imports.items,
-        }),
-    });
-    b.installArtifact(exe);
-    return exe;
-}
-
-fn addNetworkingExample(
-    b: *std.Build,
-    name: []const u8,
-    path: []const u8,
-    target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
-    peas: *std.Build.Module,
-    sdl: ?*std.Build.Module,
-    networking: *std.Build.Module,
-) *std.Build.Step.Compile {
-    var imports = std.ArrayList(std.Build.Module.Import).empty;
-    imports.append(b.allocator, .{ .name = "unpolished-peas", .module = peas }) catch @panic("OOM");
-    imports.append(b.allocator, .{ .name = "unpolished-peas-networking", .module = networking }) catch @panic("OOM");
     if (sdl) |module| imports.append(b.allocator, .{ .name = "unpolished-peas-sdl3", .module = module }) catch @panic("OOM");
     const exe = b.addExecutable(.{
         .name = name,

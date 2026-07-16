@@ -16,14 +16,6 @@
             .path = "packages/physics",
             .lazy = true,
         },
-        .networking = .{
-            .path = "packages/networking",
-            .lazy = true,
-        },
-        .services = .{
-            .path = "packages/services",
-            .lazy = true,
-        },
         .ui = .{
             .path = "packages/ui",
             .lazy = true,
@@ -44,7 +36,6 @@
         "build.zig.zon",
         "src",
         "shaders",
-        "services",
         "templates",
         "vendor",
         "examples",
