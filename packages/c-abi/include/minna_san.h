@@ -35,6 +35,9 @@ extern "C" {
 #define MINNA_SAN_SECURITY_KEY_ROTATION 16u
 #define MINNA_SAN_ADMISSION_ACCEPT 1u
 #define MINNA_SAN_ADMISSION_REJECT 2u
+#define MINNA_SAN_CANDIDATE_HOST 1u
+#define MINNA_SAN_CANDIDATE_SERVER_REFLEXIVE 2u
+#define MINNA_SAN_CANDIDATE_RELAY 3u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -121,6 +124,34 @@ typedef struct minna_san_authoritative_session_config {
     void *admission_context;
     minna_san_admission_fn admission;
 } minna_san_authoritative_session_config;
+typedef struct minna_san_candidate {
+    uint32_t kind;
+    minna_san_address address;
+    uint32_t priority;
+    minna_san_duration_ns expires_at_ns;
+} minna_san_candidate;
+typedef struct minna_san_p2p_config {
+    size_t max_peers;
+    uint32_t shard_id;
+    minna_san_candidate candidate;
+} minna_san_p2p_config;
+typedef struct minna_san_stun_turn_config {
+    minna_san_address stun_server;
+    minna_san_address turn_server;
+    minna_san_buffer turn_username;
+    minna_san_buffer turn_password;
+} minna_san_stun_turn_config;
+typedef struct minna_san_migration_config {
+    uint8_t enabled;
+    uint8_t reserved[3];
+    minna_san_duration_ns handoff_timeout_ns;
+    uint32_t max_attempts;
+} minna_san_migration_config;
+typedef struct minna_san_topology_config {
+    minna_san_p2p_config p2p;
+    minna_san_stun_turn_config stun_turn;
+    minna_san_migration_config migration;
+} minna_san_topology_config;
 typedef struct minna_san_socket_options {
     uint32_t send_buffer_bytes;
     uint32_t receive_buffer_bytes;
@@ -184,6 +215,11 @@ minna_san_result minna_san_authoritative_session_destroy(minna_san_sdk *sdk, min
 minna_san_result minna_san_authoritative_session_client_join(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
 minna_san_result minna_san_authoritative_session_client_leave(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
 minna_san_result minna_san_authoritative_session_client_count(minna_san_sdk *sdk, minna_san_authoritative_session *session, size_t *out_count);
+minna_san_result minna_san_topology_config_init(minna_san_topology_config *out_config);
+minna_san_result minna_san_topology_config_set_p2p(minna_san_topology_config *config, minna_san_p2p_config p2p);
+minna_san_result minna_san_topology_config_set_stun_turn(minna_san_topology_config *config, minna_san_stun_turn_config stun_turn);
+minna_san_result minna_san_topology_config_set_migration(minna_san_topology_config *config, minna_san_migration_config migration);
+minna_san_result minna_san_topology_config_validate(const minna_san_topology_config *config);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
