@@ -27,6 +27,7 @@ class FakeWebGl2 {
   UNPACK_ALIGNMENT = 23;
   RGBA = 24;
   UNSIGNED_BYTE = 25;
+  SCISSOR_TEST = 26;
   lost = false;
   calls = [];
   next = 1;
@@ -62,6 +63,9 @@ class FakeWebGl2 {
   clearColor(...args) { this.calls.push(["clearColor", ...args]); }
   clear(...args) { this.calls.push(["clear", ...args]); }
   flush(...args) { this.calls.push(["flush", ...args]); }
+  disable(...args) { this.calls.push(["disable", ...args]); }
+  scissor(...args) { this.calls.push(["scissor", ...args]); }
+  viewport(...args) { this.calls.push(["viewport", ...args]); }
   pixelStorei(...args) { this.calls.push(["pixelStorei", ...args]); }
   texImage2D(...args) { this.calls.push(["texImage2D", ...args]); }
   activeTexture(...args) { this.calls.push(["activeTexture", ...args]); }
@@ -103,6 +107,7 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_gl_context_create", "up_host_gl_context_destroy", "up_host_gl_context_lost", "up_host_gl_resource_create", "up_host_gl_resource_destroy",
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
   "up_host_gl_texture_upload", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
+  "up_host_gl_push_clip", "up_host_gl_pop_clip", "up_host_gl_push_blend", "up_host_gl_pop_blend", "up_host_gl_set_camera",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
   "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
 ].sort());
@@ -115,6 +120,23 @@ assert.equal(env.up_host_gl_draw_line(0, 0, 4, 3, 0xff0000ff), Status.ok);
 assert.equal(env.up_host_gl_draw_circle(16, 16, 4, 0xff0000ff), Status.ok);
 assert.equal(env.up_host_gl_draw_triangle(1, 1, 4, 1, 2, 3, 0xff0000ff), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").map(([, , , count]) => count), [6, 6, 96, 3]);
+assert.equal(env.up_host_gl_push_clip(8, 4, 16, 12), Status.ok);
+assert.equal(env.up_host_gl_push_clip(12, 8, 16, 12), Status.ok);
+assert.equal(env.up_host_gl_push_blend(1), Status.ok);
+assert.equal(env.up_host_gl_draw_rect(0, 0, 32, 32, 0xffffffff), Status.ok);
+assert.ok(canvas.gl.calls.some(([name, x, y, width, height]) => name === "scissor" && x === 12 && y === 164 && width === 12 && height === 8));
+assert.ok(canvas.gl.calls.some(([name, , destination]) => name === "blendFuncSeparate" && destination === canvas.gl.ONE));
+assert.equal(env.up_host_gl_pop_blend(), Status.ok);
+assert.equal(env.up_host_gl_pop_clip(), Status.ok);
+assert.equal(env.up_host_gl_pop_clip(), Status.ok);
+assert.equal(env.up_host_gl_set_camera(1, 0, 0, 2, 0, 0, 0, 64, 32), Status.ok);
+assert.equal(env.up_host_gl_draw_rect(0, 0, 1, 1, 0xffffffff), Status.ok);
+const cameraVertices = canvas.gl.calls.filter(([name]) => name === "bufferData").at(-1)[2];
+assert.ok(Math.abs(cameraVertices[0] + 0.8) < 0.0001);
+assert.ok(Math.abs(cameraVertices[1] - (1 - 32 / 180)) < 0.0001);
+assert.equal(env.up_host_gl_set_camera(0, 0, 0, 0, 0, 0, 0, 0, 0), Status.ok);
+assert.deepEqual(host.framebufferToCanvas(500, 400, 1000, 800, 2), {x: 160, y: 90});
+assert.equal(host.framebufferToCanvas(10, 10, 1000, 800, 2), null);
 assert.equal(env.up_host_gl_present(0), Status.ok);
 assert.ok(canvas.gl.calls.some(([name]) => name === "flush"));
 

@@ -22,6 +22,12 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
   let primitivePipeline = null;
   let spritePipeline = null;
   let spriteBatch = null;
+  let clip = null;
+  const clipStack = [];
+  let blend = 0;
+  const blendStack = [];
+  let camera = null;
+  let presentationMode = 0;
   let nextHandle = 1;
   const resources = new Map();
 
@@ -178,12 +184,43 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     ];
   }
 
-  function vertex(x, y, color) {
+  function transformPoint(x, y) {
+    if (!camera) return [x, y];
+    const localX = x - camera.x;
+    const localY = y - camera.y;
+    const cos = Math.cos(camera.rotation);
+    const sin = Math.sin(camera.rotation);
+    return [camera.viewportX + camera.viewportWidth / 2 + (cos * localX + sin * localY) * camera.zoom, camera.viewportY + camera.viewportHeight / 2 + (-sin * localX + cos * localY) * camera.zoom];
+  }
+
+  function vertexFromCanvas(x, y, color) {
     return [x * 2 / logicalWidth - 1, 1 - y * 2 / logicalHeight, ...color];
+  }
+
+  function vertex(x, y, color) {
+    return vertexFromCanvas(...transformPoint(x, y), color);
   }
 
   function quad(ax, ay, bx, by, cx, cy, dx, dy, color) {
     return [...vertex(ax, ay, color), ...vertex(bx, by, color), ...vertex(cx, cy, color), ...vertex(ax, ay, color), ...vertex(cx, cy, color), ...vertex(dx, dy, color)];
+  }
+
+  function quadFromCanvas(ax, ay, bx, by, cx, cy, dx, dy, color) {
+    return [...vertexFromCanvas(ax, ay, color), ...vertexFromCanvas(bx, by, color), ...vertexFromCanvas(cx, cy, color), ...vertexFromCanvas(ax, ay, color), ...vertexFromCanvas(cx, cy, color), ...vertexFromCanvas(dx, dy, color)];
+  }
+
+  function applyRenderState() {
+    if (clip) {
+      const x = Math.max(0, Math.min(logicalWidth, clip.x));
+      const y = Math.max(0, Math.min(logicalHeight, clip.y));
+      const right = Math.max(x, Math.min(logicalWidth, clip.x + clip.width));
+      const bottom = Math.max(y, Math.min(logicalHeight, clip.y + clip.height));
+      gl.enable(gl.SCISSOR_TEST);
+      gl.scissor(x, logicalHeight - bottom, right - x, bottom - y);
+    } else gl.disable(gl.SCISSOR_TEST);
+    gl.enable(gl.BLEND);
+    if (blend === 0) gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    else gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
   }
 
   function drawVertices(vertices) {
@@ -200,14 +237,14 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 24, 0);
     gl.enableVertexAttribArray(1);
     gl.vertexAttribPointer(1, 4, gl.FLOAT, false, 24, 8);
-    gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    applyRenderState();
     gl.drawArrays(gl.TRIANGLES, 0, vertices.length / 6);
     return Status.ok;
   }
 
   function spriteVertex(x, y, u, v, color) {
-    return [x * 2 / logicalWidth - 1, 1 - y * 2 / logicalHeight, u, v, ...color];
+    const point = transformPoint(x, y);
+    return [point[0] * 2 / logicalWidth - 1, 1 - point[1] * 2 / logicalHeight, u, v, ...color];
   }
 
   function flushSprites() {
@@ -229,8 +266,7 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 8);
     gl.enableVertexAttribArray(2);
     gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
-    gl.enable(gl.BLEND);
-    gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    applyRenderState();
     gl.uniform1i(pipeline.sampler, 0);
     gl.drawArrays(gl.TRIANGLES, 0, spriteBatch.vertices.length / 8);
     spriteBatch = null;
@@ -354,6 +390,7 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
     spriteBatch = null;
+    gl.disable(gl.SCISSOR_TEST);
     gl.clearColor(...colorFloats(color));
     gl.clear(gl.COLOR_BUFFER_BIT);
     return Status.ok;
@@ -365,13 +402,15 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
   }
 
   function drawLine(x0, y0, x1, y1, color) {
-    const dx = x1 - x0;
-    const dy = y1 - y0;
+    const from = transformPoint(x0, y0);
+    const to = transformPoint(x1, y1);
+    const dx = to[0] - from[0];
+    const dy = to[1] - from[1];
     const length = Math.hypot(dx, dy);
-    if (length === 0) return drawRect(x0 - 0.5, y0 - 0.5, 1, 1, color);
+    if (length === 0) return drawVertices(quadFromCanvas(from[0] - 0.5, from[1] - 0.5, from[0] + 0.5, from[1] - 0.5, from[0] + 0.5, from[1] + 0.5, from[0] - 0.5, from[1] + 0.5, colorFloats(color)));
     const offsetX = -dy / length * 0.5;
     const offsetY = dx / length * 0.5;
-    return drawVertices(quad(x0 + offsetX, y0 + offsetY, x1 + offsetX, y1 + offsetY, x1 - offsetX, y1 - offsetY, x0 - offsetX, y0 - offsetY, colorFloats(color)));
+    return drawVertices(quadFromCanvas(from[0] + offsetX, from[1] + offsetY, to[0] + offsetX, to[1] + offsetY, to[0] - offsetX, to[1] - offsetY, from[0] - offsetX, from[1] - offsetY, colorFloats(color)));
   }
 
   function drawCircle(x, y, radius, color) {
@@ -393,11 +432,83 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
 
   function present(mode) {
     if (!gl) return Status.unavailable;
-    if (contextLost || mode > 2) return Status.rejected;
+    if (contextLost || mode > 2 || clipStack.length !== 0 || blendStack.length !== 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;
+    presentationMode = mode;
+    const destination = presentationDestination(mode, logicalWidth, logicalHeight, canvas.width, canvas.height);
+    gl.viewport(destination.x, canvas.height - destination.y - destination.height, destination.width, destination.height);
     gl.flush();
     return Status.ok;
+  }
+
+  function pushClip(x, y, width, height) {
+    if (width < 0 || height < 0) return Status.invalidArgument;
+    const status = flushSprites();
+    if (status !== Status.ok) return status;
+    clipStack.push(clip);
+    if (!clip) clip = {x, y, width, height};
+    else {
+      const left = Math.max(clip.x, x);
+      const top = Math.max(clip.y, y);
+      const right = Math.min(clip.x + clip.width, x + width);
+      const bottom = Math.min(clip.y + clip.height, y + height);
+      clip = {x: left, y: top, width: Math.max(0, right - left), height: Math.max(0, bottom - top)};
+    }
+    return Status.ok;
+  }
+
+  function popClip() {
+    if (clipStack.length === 0) return Status.rejected;
+    const status = flushSprites();
+    if (status !== Status.ok) return status;
+    clip = clipStack.pop();
+    return Status.ok;
+  }
+
+  function pushBlend(mode) {
+    if (mode > 1) return Status.invalidArgument;
+    const status = flushSprites();
+    if (status !== Status.ok) return status;
+    blendStack.push(blend);
+    blend = mode;
+    return Status.ok;
+  }
+
+  function popBlend() {
+    if (blendStack.length === 0) return Status.rejected;
+    const status = flushSprites();
+    if (status !== Status.ok) return status;
+    blend = blendStack.pop();
+    return Status.ok;
+  }
+
+  function setCamera(enabled, x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight) {
+    if (enabled === 0) {
+      camera = null;
+      return Status.ok;
+    }
+    if (enabled !== 1 || !Number.isFinite(x) || !Number.isFinite(y) || !Number.isFinite(zoom) || !Number.isFinite(rotation) || !Number.isFinite(viewportX) || !Number.isFinite(viewportY) || !Number.isFinite(viewportWidth) || !Number.isFinite(viewportHeight) || zoom <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return Status.invalidArgument;
+    const status = flushSprites();
+    if (status !== Status.ok) return status;
+    camera = {x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight};
+    return Status.ok;
+  }
+
+  function presentationDestination(mode, canvasWidth, canvasHeight, framebufferWidth, framebufferHeight) {
+    if (canvasWidth <= 0 || canvasHeight <= 0 || framebufferWidth <= 0 || framebufferHeight <= 0) return {x: 0, y: 0, width: 0, height: 0};
+    if (mode === 0) return {x: 0, y: 0, width: framebufferWidth, height: framebufferHeight};
+    let scale = Math.min(framebufferWidth / canvasWidth, framebufferHeight / canvasHeight);
+    if (mode === 2 && scale >= 1) scale = Math.floor(scale);
+    const width = canvasWidth * scale;
+    const height = canvasHeight * scale;
+    return {x: (framebufferWidth - width) / 2, y: (framebufferHeight - height) / 2, width, height};
+  }
+
+  function framebufferToCanvas(x, y, framebufferWidth, framebufferHeight, mode = presentationMode) {
+    const destination = presentationDestination(mode, logicalWidth, logicalHeight, framebufferWidth, framebufferHeight);
+    if (destination.width <= 0 || destination.height <= 0 || x < destination.x || y < destination.y || x >= destination.x + destination.width || y >= destination.y + destination.height) return null;
+    return {x: (x - destination.x) * logicalWidth / destination.width, y: (y - destination.y) * logicalHeight / destination.height};
   }
 
   function createContext(width, height) {
@@ -502,6 +613,11 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     up_host_gl_draw_sprite: drawSprite,
     up_host_gl_flush_sprites: flushSprites,
     up_host_gl_draw_text: drawText,
+    up_host_gl_push_clip: pushClip,
+    up_host_gl_pop_clip: popClip,
+    up_host_gl_push_blend: pushBlend,
+    up_host_gl_pop_blend: popBlend,
+    up_host_gl_set_camera: setCamera,
     up_host_input_poll: () => 0,
     up_host_input_read: () => 0,
     up_host_audio_state: () => Status.unavailable,
@@ -527,6 +643,7 @@ export function createBrowserHost({canvas, memory = new WebAssembly.Memory({init
     memory,
     resourceCount: () => resources.size,
     context: () => gl,
+    framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
 }
