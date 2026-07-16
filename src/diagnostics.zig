@@ -21,6 +21,18 @@ pub const Input = struct {
     profiler: ?*const profiler.Profiler = null,
     log: []const u8 = "",
     replay: ?*const replay.Replay = null,
+    environment: ?Environment = null,
+};
+
+pub const Environment = struct {
+    engine_version: []const u8,
+    build_id: []const u8,
+    target: []const u8,
+    renderer: []const u8,
+    driver: []const u8,
+    launch_config: []const u8,
+    asset_root: []const u8,
+    capabilities: []const u8,
 };
 
 pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !void {
@@ -39,7 +51,36 @@ pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !vo
         try value.writeTrace(path);
     }
     if (input.replay) |value| try writeReplay(allocator, options, value);
+    if (input.environment) |value| try writeEnvironment(allocator, options, value);
     try writeMetadata(allocator, options, input);
+}
+
+fn writeEnvironment(allocator: std.mem.Allocator, options: Options, value: Environment) !void {
+    const path = try artifactPath(allocator, options.path, "environment.json");
+    defer allocator.free(path);
+    var file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buffer: [2048]u8 = undefined;
+    var writer = file.writer(&buffer);
+    const out = &writer.interface;
+    try out.writeAll("{\"version\":1,\"engine_version\":");
+    try std.json.Stringify.value(value.engine_version, .{}, out);
+    try out.writeAll(",\"build_id\":");
+    try std.json.Stringify.value(value.build_id, .{}, out);
+    try out.writeAll(",\"target\":");
+    try std.json.Stringify.value(value.target, .{}, out);
+    try out.writeAll(",\"renderer\":");
+    try std.json.Stringify.value(value.renderer, .{}, out);
+    try out.writeAll(",\"driver\":");
+    try std.json.Stringify.value(value.driver, .{}, out);
+    try out.writeAll(",\"launch_config\":");
+    try std.json.Stringify.value(value.launch_config, .{}, out);
+    try out.writeAll(",\"asset_root\":");
+    try std.json.Stringify.value(value.asset_root, .{}, out);
+    try out.writeAll(",\"capabilities\":");
+    try std.json.Stringify.value(value.capabilities, .{}, out);
+    try out.writeAll("}");
+    try out.flush();
 }
 
 fn writeCommands(allocator: std.mem.Allocator, options: Options, commands: []const render.Command) !void {
@@ -170,7 +211,7 @@ fn writeMetadata(allocator: std.mem.Allocator, options: Options, input: Input) !
     const log_count = @min(input.log.len, options.max_log_bytes);
     const replay_frames = if (input.replay) |value| value.frames.len else 0;
     const replay_count = @min(replay_frames, options.max_replay_frames);
-    try out.print("{{\"version\":{d},\"screenshot\":{{\"present\":{s},\"format\":\"png\"}},\"commands\":{{\"version\":1,\"count\":{d},\"truncated\":{s}}},\"trace\":{{\"present\":{s},\"format\":\"chrome-trace\"}},\"failure\":{{\"format\":\"text\",\"bytes\":{d},\"truncated\":{s}}},\"replay\":{{\"present\":{s},\"frame_count\":{d},\"truncated\":{s}}}}}", .{
+    try out.print("{{\"version\":{d},\"screenshot\":{{\"present\":{s},\"format\":\"png\"}},\"commands\":{{\"version\":1,\"count\":{d},\"truncated\":{s}}},\"trace\":{{\"present\":{s},\"format\":\"chrome-trace\"}},\"failure\":{{\"format\":\"text\",\"bytes\":{d},\"truncated\":{s}}},\"replay\":{{\"present\":{s},\"frame_count\":{d},\"truncated\":{s}}},\"environment\":{{\"present\":{s},\"format\":\"json\"}}}}", .{
         schema_version,
         if (input.canvas != null) "true" else "false",
         input.commands.len,
@@ -181,6 +222,7 @@ fn writeMetadata(allocator: std.mem.Allocator, options: Options, input: Input) !
         if (input.replay != null) "true" else "false",
         replay_frames,
         if (replay_count != replay_frames) "true" else "false",
+        if (input.environment != null) "true" else "false",
     });
     try out.flush();
 }
@@ -211,7 +253,7 @@ test "diagnostics capture deterministic bounded artifacts" {
     frame_profiler.scope(.draw).end();
     var input_replay = try replay.parse(std.testing.allocator, "UPR1 60\n2 1\n1 4\n");
     defer input_replay.deinit(std.testing.allocator);
-    try capture(std.testing.allocator, .{ .path = path, .max_commands = 2, .max_text_bytes = 3, .max_log_bytes = 4, .max_replay_frames = 2 }, .{ .canvas = canvas, .commands = &commands, .profiler = &frame_profiler, .log = "failure-log", .replay = &input_replay });
+    try capture(std.testing.allocator, .{ .path = path, .max_commands = 2, .max_text_bytes = 3, .max_log_bytes = 4, .max_replay_frames = 2 }, .{ .canvas = canvas, .commands = &commands, .profiler = &frame_profiler, .log = "failure-log", .replay = &input_replay, .environment = .{ .engine_version = "1.0.0", .build_id = "abc", .target = "macos", .renderer = "opengl", .driver = "test", .launch_config = "--frames 2", .asset_root = "assets", .capabilities = "audio,storage" } });
     var dir = try std.fs.openDirAbsolute(path, .{});
     defer dir.close();
     try dir.access("screenshot.png", .{});
@@ -252,4 +294,8 @@ test "diagnostics capture deterministic bounded artifacts" {
     try std.testing.expectEqual(@as(i64, 4), root_object.get("failure").?.object.get("bytes").?.integer);
     try std.testing.expect(root_object.get("failure").?.object.get("truncated").?.bool);
     try std.testing.expect(root_object.get("replay").?.object.get("truncated").?.bool);
+    try std.testing.expect(root_object.get("environment").?.object.get("present").?.bool);
+    const environment_bytes = try dir.readFileAlloc(std.testing.allocator, "environment.json", 4096);
+    defer std.testing.allocator.free(environment_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, environment_bytes, "\"renderer\":\"opengl\"") != null);
 }
