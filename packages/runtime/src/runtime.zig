@@ -32,6 +32,7 @@ pub const PollRuntimeError = poll_runtime.PollRuntimeError;
 pub const PollRuntime = poll_runtime.PollRuntime;
 pub const ManagedRuntimeError = managed_runtime.ManagedRuntimeError;
 pub const ManagedRuntime = managed_runtime.ManagedRuntime;
+pub const DirectDispatch = managed_runtime.DirectDispatch;
 pub const package_name = "runtime";
 
 comptime {
