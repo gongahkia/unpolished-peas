@@ -9,6 +9,8 @@ pub fn build(b: *std.Build) void {
     }
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const browser_optimize = b.option(std.builtin.OptimizeMode, "browser-optimize", "Optimization mode for the standalone browser Wasm runtime") orelse .ReleaseSmall;
+    const browser_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
     const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 extension") orelse true;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
@@ -61,6 +63,36 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     addStb(test_support);
+
+    const browser_runtime = b.addExecutable(.{
+        .name = "unpolished-peas",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+        }),
+    });
+    browser_runtime.entry = .disabled;
+    browser_runtime.rdynamic = true;
+    browser_runtime.import_memory = true;
+    const install_browser_runtime = b.addInstallArtifact(browser_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "unpolished-peas.wasm",
+    });
+    const browser_step = b.step("browser", "Build the wasm32-freestanding browser runtime in zig-out/web");
+    browser_step.dependOn(&install_browser_runtime.step);
+    const browser_runtime_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/browser/runtime.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+    }) });
+    const run_browser_runtime_tests = b.addRunArtifact(browser_runtime_tests);
+    const browser_runtime_test_step = b.step("test-browser-runtime", "Test the host-independent browser runtime boundary");
+    browser_runtime_test_step.dependOn(&run_browser_runtime_tests.step);
+    const browser_scaffold_test = b.addSystemCommand(&.{"script/test_browser_scaffold.sh"});
+    browser_scaffold_test.setCwd(b.path("."));
+    const browser_scaffold_test_step = b.step("test-browser-scaffold", "Validate browser Wasm artifact layout");
+    browser_scaffold_test_step.dependOn(&browser_scaffold_test.step);
 
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
