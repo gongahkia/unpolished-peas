@@ -73,7 +73,18 @@ test "stable public symbols are exact" {
         "CapabilityConfig",
         "package_name",
     });
-    try expectExactPublicDeclarations(protocol, &.{"package_name"});
+    try expectExactPublicDeclarations(protocol, &.{
+        "WireVersion",
+        "ExtensionRange",
+        "WireEnvelope",
+        "CompatibilityError",
+        "v1_version",
+        "extension_range",
+        "validate_version",
+        "validate_extension",
+        "validate_envelope",
+        "package_name",
+    });
     try expectExactPublicDeclarations(transport, &.{"package_name"});
     try expectExactPublicDeclarations(topology, &.{"package_name"});
     try expectExactPublicDeclarations(state, &.{"package_name"});
