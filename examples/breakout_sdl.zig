@@ -1,6 +1,7 @@
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 const breakout = @import("breakout_game.zig");
+const content = @import("programmatic_content.zig");
 
 const Game = struct {
     pub const config: sdl.Config = .{
@@ -15,12 +16,24 @@ const Game = struct {
     game: breakout.Game = .{},
     ball: up.ImageHandle,
     blip: up.AudioHandle,
+    atlas: *up.Atlas,
+    ball_frame: up.AtlasFrameHandle,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        return .{ .ball = try ctx.loadImage("ball.png"), .blip = try ctx.loadSound("blip.wav") };
+        const ball = try ctx.loadImage("ball.png");
+        const atlas = try ctx.allocator.create(up.Atlas);
+        errdefer ctx.allocator.destroy(atlas);
+        atlas.* = try content.ballAtlas(ctx.allocator, try ctx.assets.tryImage(ball));
+        errdefer atlas.deinit();
+        const ball_frame = atlas.findFrame("tile_a") orelse return error.MissingAtlasFrame;
+        return .{ .ball = ball, .blip = try ctx.loadSound("blip.wav"), .atlas = atlas, .ball_frame = ball_frame };
     }
 
-    pub fn deinit(_: *Game, _: *sdl.Context) void {}
+    pub fn deinit(self: *Game, _: *sdl.Context) void {
+        const allocator = self.atlas.allocator;
+        self.atlas.deinit();
+        allocator.destroy(self.atlas);
+    }
 
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         const axis: f32 = if (ctx.input.isDown(.left)) -1 else if (ctx.input.isDown(.right)) 1 else 0;
@@ -35,7 +48,7 @@ const Game = struct {
             ctx.rect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), breakout.Game.brickColor(index));
         }
         ctx.rect(@intFromFloat(self.game.paddle.x), @intFromFloat(self.game.paddle.y), @intFromFloat(self.game.paddle.w), @intFromFloat(self.game.paddle.h), up.Color.rgb(225, 232, 240));
-        try ctx.image(self.ball, @intFromFloat(self.game.ball.x - 4), @intFromFloat(self.game.ball.y - 4));
+        try ctx.spriteAtlas(self.atlas, self.ball_frame, @intFromFloat(self.game.ball.x - 4), @intFromFloat(self.game.ball.y - 4), .{});
         ctx.text("BREAKOUT", 4, 2, up.Color.white);
         ctx.text("LEFT RIGHT", 104, 2, up.Color.rgb(180, 200, 230));
     }

@@ -1,6 +1,7 @@
 const std = @import("std");
 const up = @import("unpolished-peas");
 const breakout = @import("breakout_game.zig");
+const content = @import("programmatic_content.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -16,6 +17,9 @@ pub fn main() !void {
     var canvas = try up.Canvas.init(allocator, breakout.width, breakout.height);
     defer canvas.deinit();
     var game = breakout.Game{};
+    var atlas = try content.ballAtlas(allocator, try assets.tryImage(ball));
+    defer atlas.deinit();
+    const ball_frame = atlas.findFrame("tile_a") orelse return error.MissingAtlasFrame;
 
     var frame: u32 = 0;
     while (frame < 360) : (frame += 1) {
@@ -24,7 +28,7 @@ pub fn main() !void {
         if (event.brick or event.paddle) _ = try audio.playSound(try assets.trySoundPtr(sound), .{ .volume = 0.2 });
         try audio.mix(&samples);
     }
-    game.drawHeadless(&canvas, try assets.tryImage(ball));
+    game.drawHeadlessAtlas(&canvas, atlas, ball_frame);
     try std.fs.cwd().makePath("zig-out");
     try canvas.writePpmFile("zig-out/breakout.ppm");
 }
