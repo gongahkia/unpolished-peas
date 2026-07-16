@@ -109,6 +109,8 @@ test "stable public symbols are exact" {
         "EventEnvelope",
         "EventOrderError",
         "EventOrder",
+        "PollRuntimeError",
+        "PollRuntime",
         "package_name",
     });
     try expectExactPublicDeclarations(c_abi, &.{"package_name"});
