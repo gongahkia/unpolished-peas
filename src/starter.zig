@@ -33,9 +33,7 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
     try source.copyFile("README.md", output, "README.md", .{});
     try source.copyFile(".gitignore", output, ".gitignore", .{});
     try output.makePath("assets");
-    try source.copyFile("assets/game.upassets", output, "assets/game.upassets", .{});
-    try output.makePath("maps");
-    try source.copyFile("maps/main.upmap", output, "maps/main.upmap", .{});
+    try source.copyFile("assets/.gitkeep", output, "assets/.gitkeep", .{});
     try source.copyFile("src/main.zig", output, "src/main.zig", .{});
 
     const manifest = try std.fmt.allocPrint(allocator,
@@ -55,7 +53,6 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
         \\        "build.zig.zon",
         \\        "src",
         \\        "assets",
-        \\        "maps",
         \\        "README.md",
         \\    }},
         \\}}
@@ -91,25 +88,18 @@ test "starter creates a structured project and rejects invalid destinations" {
     try project.access("build.zig", .{});
     try project.access("build.zig.zon", .{});
     try project.access("src/main.zig", .{});
-    try project.access("assets/game.upassets", .{});
-    try project.access("maps/main.upmap", .{});
+    try project.access("assets/.gitkeep", .{});
     const source = try project.readFileAlloc(std.testing.allocator, "src/main.zig", 8192);
     defer std.testing.allocator.free(source);
-    try std.testing.expect(std.mem.indexOf(u8, source, "const core = @import(\"unpolished-peas\").api.core;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "core.Color") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "core.Vec2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "const up = @import(\"unpolished-peas\");") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "up.Color") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "up.Vec2") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "sdl.playGame(Game)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "up.") == null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "unpolished-peas").? < std.mem.indexOf(u8, source, "up.Color").?);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
     defer std.testing.allocator.free(manifest);
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"assets\"") != null);
-    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"maps\"") != null);
-    const assets = try project.readFileAlloc(std.testing.allocator, "assets/game.upassets", 4096);
-    defer std.testing.allocator.free(assets);
-    try std.testing.expect(std.mem.indexOf(u8, assets, "unpolished-peas-assets") != null);
-    const map = try project.readFileAlloc(std.testing.allocator, "maps/main.upmap", 4096);
-    defer std.testing.allocator.free(map);
-    try std.testing.expect(std.mem.indexOf(u8, map, "unpolished-peas-map") != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "\"maps\"") == null);
     const check_issue = try tools.checkProject(std.testing.allocator, destination);
     try std.testing.expect(check_issue == null);
     try std.testing.expectError(error.DestinationExists, createProject(std.testing.allocator, template_root, destination));

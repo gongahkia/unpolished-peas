@@ -4,7 +4,7 @@ const up = @import("unpolished-peas").api;
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
-const effect_api = @import("unpolished-peas-effects");
+const effect_api = up.effects;
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -75,6 +75,28 @@ pub const RendererCapability = enum {
     available,
 };
 
+pub const RendererFeature = enum {
+    primitives,
+    sprites,
+    text,
+    clip_blend,
+    camera,
+    pixel_effects,
+    screenshots,
+    context_recovery,
+};
+
+pub const RendererFeatures = struct {
+    primitives: RendererCapability,
+    sprites: RendererCapability,
+    text: RendererCapability,
+    clip_blend: RendererCapability,
+    camera: RendererCapability,
+    pixel_effects: RendererCapability,
+    screenshots: RendererCapability,
+    context_recovery: RendererCapability,
+};
+
 pub const RendererRejectionReason = enum {
     window_creation_failed,
     device_creation_failed,
@@ -106,6 +128,7 @@ pub const RendererDiagnostics = struct {
     gpu_shader_format: ?GpuShaderFormat = null,
     rejected: [2]?RendererRejection = .{ null, null },
     recovery_action: RendererRecoveryAction = .none,
+    preflight_failure: ?RendererFeature = null,
 
     pub fn init(requested: RendererPreference) RendererDiagnostics {
         return .{ .requested = requested };
@@ -136,9 +159,49 @@ pub const RendererDiagnostics = struct {
             },
             .opengl => {
                 self.opengl_33 = .available;
-                self.post_processing = .unavailable;
+                self.post_processing = .available;
             },
         }
+    }
+
+    pub fn effectsAvailable(self: RendererDiagnostics) bool {
+        return self.feature(.pixel_effects) == .available;
+    }
+
+    pub fn requireEffects(self: RendererDiagnostics) error{PostProcessingUnsupported}!void {
+        if (!self.effectsAvailable()) return error.PostProcessingUnsupported;
+    }
+
+    pub fn feature(self: RendererDiagnostics, value: RendererFeature) RendererCapability {
+        return switch (value) {
+            .pixel_effects => self.post_processing,
+            .primitives, .sprites, .text, .clip_blend, .camera, .screenshots, .context_recovery => if (self.selected == null) .unknown else .available,
+        };
+    }
+
+    pub fn features(self: RendererDiagnostics) RendererFeatures {
+        return .{
+            .primitives = self.feature(.primitives),
+            .sprites = self.feature(.sprites),
+            .text = self.feature(.text),
+            .clip_blend = self.feature(.clip_blend),
+            .camera = self.feature(.camera),
+            .pixel_effects = self.feature(.pixel_effects),
+            .screenshots = self.feature(.screenshots),
+            .context_recovery = self.feature(.context_recovery),
+        };
+    }
+
+    pub fn requireFeatures(self: RendererDiagnostics, values: []const RendererFeature) !void {
+        for (values) |value| if (self.feature(value) != .available) return error.RendererFeatureUnsupported;
+    }
+
+    pub fn preflightFeatures(self: *RendererDiagnostics, values: []const RendererFeature) !void {
+        self.preflight_failure = null;
+        for (values) |value| if (self.feature(value) != .available) {
+            self.preflight_failure = value;
+            return error.RendererFeatureUnsupported;
+        };
     }
 };
 
@@ -167,7 +230,7 @@ test "SDL3 headers are available" {
 }
 
 test "renderer conformance backend-neutral command corpus" {
-    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 4, 3);
         defer scenario.deinit();
@@ -208,18 +271,11 @@ test "Context returns errors for invalid asset handles" {
     context.assets = &assets;
     const text = up.TextHandle{ .index = 0, .generation = 1 };
     const image = up.ImageHandle{ .index = 0, .generation = 1 };
-    const atlas = up.AtlasHandle{ .index = 0, .generation = 1 };
     const font = up.FontHandle{ .index = 0, .generation = 1 };
-    const map = up.TileMapHandle{ .index = 0, .generation = 1 };
     try std.testing.expectError(error.InvalidHandle, context.textAsset(text));
     try std.testing.expectError(error.InvalidHandle, context.image(image, 0, 0));
-    try std.testing.expectError(error.InvalidHandle, context.sprite(atlas, .{ .index = 0 }, 0, 0, .{}));
     try std.testing.expectError(error.InvalidHandle, context.font(font, "x", 0, 0, up.Color.white));
     try std.testing.expectError(error.InvalidHandle, context.fontAsset(font));
-    try std.testing.expectError(error.StaleHandle, context.atlasFrame(atlas, "frame"));
-    try std.testing.expectError(error.InvalidHandle, context.atlas(atlas));
-    try std.testing.expectError(error.StaleHandle, context.atlasAnimation(atlas, "animation"));
-    try std.testing.expectError(error.StaleHandle, context.tileMap(map));
 }
 
 test "renderer conformance diagnostics name the backend and formats" {
@@ -303,7 +359,7 @@ test "desktop renderer conformance GPU golden capture" {
     };
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
         defer scenario.deinit();
@@ -363,11 +419,14 @@ test "desktop renderers match cross-backend visual golden captures" {
     defer gpu_presenter.deinit(device);
     var gl_presenter = try OpenGlPresenter.init(gl_window, 64, 32);
     defer gl_presenter.deinit();
-    const effects = [_]effect_api.PixelEffect{};
+    const effects = [_]effect_api.PixelEffect{
+        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
+        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
+    };
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect };
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
         defer scenario.deinit();
@@ -388,7 +447,7 @@ test "desktop renderers match cross-backend visual golden captures" {
         defer gl_canvas.deinit();
         var gl_sprites = up.SpriteBatch.init(std.testing.allocator);
         defer gl_sprites.deinit();
-        try gl_presenter.render(gl_canvas, &gl_sprites, scenario.commandSlice());
+        try gl_presenter.renderWithEffects(gl_canvas, &gl_sprites, scenario.commandSlice(), &effects);
         var gl_capture = try gl_presenter.capture(std.testing.allocator);
         defer gl_capture.deinit();
         try scenario.expectCapture(&gl_capture);
@@ -578,6 +637,7 @@ pub const Config = struct {
     resizable: bool = false,
     presentation_mode: up.PresentationMode = .integer_fit,
     renderer: RendererPreference = .auto,
+    required_renderer_features: []const RendererFeature = &.{},
     fixed_hz: u32 = 60,
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
@@ -729,11 +789,36 @@ pub const Context = struct {
     }
 
     pub fn setPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
+        try self.requireEffects();
         self.pixel_effects.replace(try effect_api.PixelEffect.parse(source, params));
     }
 
     pub fn clearPixelEffect(self: *Context) void {
         self.pixel_effects.clear();
+    }
+
+    pub fn effectsAvailable(self: *const Context) bool {
+        return self.renderer_diagnostics.effectsAvailable();
+    }
+
+    pub fn requireEffects(self: *const Context) error{PostProcessingUnsupported}!void {
+        try self.renderer_diagnostics.requireEffects();
+    }
+
+    pub fn ecsRuntime(self: *const Context) up.EcsRuntime {
+        return up.EcsRuntime.init(self.allocator);
+    }
+
+    pub fn uiFrame(self: *Context, state: *up.UiState, layout: up.UiLayout) up.UiFrame {
+        return up.ui.Frame.begin(state, self.input, .{ .hud = self.canvas }, layout);
+    }
+
+    pub fn uiCameraFrame(self: *Context, state: *up.UiState, target_camera: *const up.Camera2D, layout: up.UiLayout) up.UiFrame {
+        return up.ui.Frame.begin(state, self.input, .{ .world = self.camera(target_camera) }, layout);
+    }
+
+    pub fn appendPhysicsDebug(self: *Context, world: *up.PhysicsWorld, target_camera: *const up.Camera2D) !void {
+        try world.appendDebug(self.commands, target_camera, .{ .x = @floatFromInt(self.canvas.width), .y = @floatFromInt(self.canvas.height) });
     }
 
     pub fn registerInspectorPanel(self: *Context, panel: up.InspectorPanel) !void {
@@ -760,6 +845,10 @@ pub const Context = struct {
         return self.renderer_diagnostics.*;
     }
 
+    pub fn rendererFeatures(self: *const Context) RendererFeatures {
+        return self.renderer_diagnostics.features();
+    }
+
     pub fn exportCpuTrace(self: *const Context) !void {
         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "{s}cpu-trace.json", .{self.app_data_path});
@@ -773,10 +862,12 @@ pub const Context = struct {
     }
 
     pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: effect_api.PixelEffectParameters) !void {
+        try self.requireEffects();
         self.pixel_effects.replace(try (try effect_api.ShaderProgram.compile(try self.assets.latestShaderSource(handle))).instantiate(params));
     }
 
     pub fn appendPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
+        try self.requireEffects();
         try self.pixel_effects.append(try effect_api.PixelEffect.parse(source, params));
     }
 
@@ -789,8 +880,7 @@ pub const Context = struct {
         appendImageQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_image, x, y) catch self.canvas.drawImage(source_image.*, x, y);
     }
 
-    pub fn sprite(self: *Context, atlas_handle: up.AtlasHandle, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) !void {
-        const source_atlas = try self.assets.latestAtlasPtr(atlas_handle);
+    pub fn spriteAtlas(self: *Context, source_atlas: *const up.Atlas, frame: up.AtlasFrameHandle, x: i32, y: i32, options: up.DrawSpriteOptions) !void {
         appendAtlasQuad(self.sprite_batch, self.canvas.width, self.canvas.height, source_atlas, frame, x, y, options) catch self.canvas.drawAtlasFrame(source_atlas.*, frame, x, y, options);
     }
 
@@ -798,12 +888,6 @@ pub const Context = struct {
         const timer = self.profile(.asset);
         defer timer.end();
         return self.assets.loadImage(path);
-    }
-
-    pub fn loadAtlas(self: *Context, path: []const u8) !up.AtlasHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadAtlas(path);
     }
 
     pub fn loadFont(self: *Context, path: []const u8, options: up.FontLoadOptions) !up.FontHandle {
@@ -816,36 +900,10 @@ pub const Context = struct {
         return self.assets.latestFontPtr(handle);
     }
 
-    pub fn atlasFrame(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) !?up.AtlasFrameHandle {
-        return (try self.assets.tryAtlas(atlas_handle)).findFrame(name);
-    }
-
-    pub fn atlas(self: *Context, atlas_handle: up.AtlasHandle) !*const up.Atlas {
-        return self.assets.latestAtlasPtr(atlas_handle);
-    }
-
-    pub fn atlasAnimation(self: *Context, atlas_handle: up.AtlasHandle, name: []const u8) !?up.AnimationHandle {
-        return (try self.assets.tryAtlas(atlas_handle)).findAnimation(name);
-    }
-
-    pub fn loadTileMap(self: *Context, path: []const u8, options: up.TileMapAssetOptions) !up.TileMapHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadTileMap(path, options);
-    }
-
     pub fn loadSound(self: *Context, path: []const u8) !up.AudioHandle {
         const timer = self.profile(.asset);
         defer timer.end();
         return self.assets.loadSound(path);
-    }
-
-    pub fn tileMap(self: *Context, handle: up.TileMapHandle) !*const up.TileMap {
-        return self.assets.tryTileMapPtr(handle);
-    }
-
-    pub fn drawTileMap(self: *Context, handle: up.TileMapHandle, target_camera: *const up.Camera2D, time: f32) !void {
-        try self.assets.drawTileMap(handle, target_camera, self.canvas, time);
     }
 
     pub fn loadText(self: *Context, path: []const u8) !up.TextHandle {
@@ -1024,11 +1082,14 @@ const RuntimeRenderer = union(RendererKind) {
     }
 
     fn initWithWindowFlags(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
-        return switch (config.renderer) {
+        var renderer = switch (config.renderer) {
             .sdl_gpu => initGpu(config, diagnostics, additional_window_flags),
             .opengl => initOpenGl(config, diagnostics, additional_window_flags),
             .auto => initGpu(config, diagnostics, additional_window_flags) catch initOpenGl(config, diagnostics, additional_window_flags),
-        };
+        } catch |err| return err;
+        errdefer renderer.deinit();
+        try diagnostics.preflightFeatures(config.required_renderer_features);
+        return renderer;
     }
 
     fn initGpu(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
@@ -1113,9 +1174,8 @@ const RuntimeRenderer = union(RendererKind) {
                 try backend.backend().submit(commands);
             },
             .opengl => |*opengl| {
-                if (effects.len != 0) return error.OpenGlPostProcessingUnsupported;
                 metrics.gpu_frame_ns = null;
-                try opengl.presenter.presentWithPresentation(canvas, sprites, commands, presentation.*);
+                try opengl.presenter.presentWithPresentationEffects(canvas, sprites, commands, effects, presentation.*);
                 if (capture_path) |path| {
                     var captured = try opengl.presenter.capture(allocator);
                     defer captured.deinit();
@@ -1738,9 +1798,16 @@ test "renderer diagnostics retain fallback capabilities and recovery action" {
     try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
     try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.gpu);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
-    try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.post_processing);
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.post_processing);
     try std.testing.expectEqual(RendererRejectionReason.unsupported_shader_format, diagnostics.rejected[0].?.reason);
     try std.testing.expectEqual(RendererRecoveryAction.opengl_context_recreated, diagnostics.recovery_action);
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.feature(.pixel_effects));
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.features().context_recovery);
+    try diagnostics.requireFeatures(&.{ .sprites, .pixel_effects, .screenshots });
+    diagnostics.post_processing = .unavailable;
+    try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.requireFeatures(&.{.pixel_effects}));
+    try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.preflightFeatures(&.{.pixel_effects}));
+    try std.testing.expectEqual(RendererFeature.pixel_effects, diagnostics.preflight_failure.?);
 }
 
 test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
@@ -1751,7 +1818,7 @@ test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
     defer renderer.deinit();
     try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
-    try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.post_processing);
+    try std.testing.expectEqual(RendererCapability.available, diagnostics.post_processing);
 }
 
 test "renderer preferences parse explicit desktop backends" {
@@ -2007,8 +2074,8 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
 
 test "reload overlay bounds retained reload diagnostics" {
     const events = [_]up.ReloadEvent{
-        .{ .path = "one.upmap", .status = .failed, .failure_class = .source, .line = 2, .column = 3, .retained_content = true, .message = "invalid" },
-        .{ .path = "two.upmap", .status = .failed, .failure_class = .dependency, .line = 4, .column = 5, .retained_content = true, .message = "missing" },
+        .{ .path = "one.json", .status = .failed, .failure_class = .source, .line = 2, .column = 3, .retained_content = true, .message = "invalid" },
+        .{ .path = "two.png", .status = .failed, .failure_class = .dependency, .line = 4, .column = 5, .retained_content = true, .message = "missing" },
         .{ .path = "three.png", .status = .failed, .failure_class = .decode, .line = 1, .column = 1, .retained_content = true, .message = "corrupt" },
         .{ .path = "four.wav", .status = .failed, .failure_class = .io, .line = 1, .column = 1, .retained_content = true, .message = "unreadable" },
         .{ .path = "five.fnt", .status = .failed, .failure_class = .source, .line = 8, .column = 9, .retained_content = true, .message = "ignored" },

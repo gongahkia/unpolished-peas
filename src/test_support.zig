@@ -112,6 +112,7 @@ pub const RendererConformance = struct {
     pub const Scenario = enum {
         opaque_rects,
         clipped_rect,
+        clipped_blend,
     };
 
     scenario: Scenario,
@@ -143,6 +144,14 @@ pub const RendererConformance = struct {
             .clipped_rect => {
                 try value.commands.append(.{ .push_clip = .{ .x = 2, .y = @intCast(height - 2), .w = 1, .h = 1 } });
                 try value.commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = @intCast(width), .h = @intCast(height), .color = clipped } });
+                try value.commands.append(.pop_clip);
+            },
+            .clipped_blend => {
+                try value.commands.append(.{ .push_clip = .{ .x = 2, .y = 1, .w = 1, .h = 1 } });
+                try value.commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = @intCast(width), .h = @intCast(height), .color = Color.rgba(255, 0, 0, 128) } });
+                try value.commands.append(.{ .push_blend = .additive });
+                try value.commands.append(.{ .rect = .{ .x = 0, .y = 0, .w = @intCast(width), .h = @intCast(height), .color = Color.rgba(0, 0, 255, 128) } });
+                try value.commands.append(.pop_blend);
                 try value.commands.append(.pop_clip);
             },
         }
@@ -187,6 +196,12 @@ pub const RendererConformance = struct {
             .clipped_rect => {
                 try std.testing.expectEqual(background, canvas.get(2, 0).?);
                 try std.testing.expectEqual(clipped, canvas.get(2, @intCast(self.height - 2)).?);
+            },
+            .clipped_blend => {
+                const alpha = Color.rgba(255, 0, 0, 128).over(background);
+                const additive = Color.rgba(0, 0, 255, 128).add(alpha);
+                try std.testing.expectEqual(background, canvas.get(1, 1).?);
+                try std.testing.expectEqual(additive, canvas.get(2, 1).?);
             },
         }
     }
@@ -288,7 +303,7 @@ test "test support hashes canvases and asserts failures" {
 }
 
 test "renderer conformance scenarios submit canonical command slices" {
-    const scenarios = [_]RendererConformance.Scenario{ .opaque_rects, .clipped_rect };
+    const scenarios = [_]RendererConformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
     for (scenarios) |scenario_kind| {
         var scenario = try RendererConformance.init(std.testing.allocator, scenario_kind, 4, 3);
         defer scenario.deinit();

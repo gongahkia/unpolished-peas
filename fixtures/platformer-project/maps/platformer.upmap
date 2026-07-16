@@ -1,9 +1,0 @@
-.{
-    .format = "unpolished-peas-map",
-    .version = 1,
-    .metadata = .{ .name = "platformer", .projection = .orthogonal, .tile_width = 16, .tile_height = 16, .chunk_size = 8 },
-    .tilesets = .{},
-    .layers = .{
-        .{ .id = "collision", .name = "Collision", .kind = .int_grid, .cells = .{ .{ .x = -2, .y = 2, .int_grid = 1 }, .{ .x = -1, .y = 2, .int_grid = 1 }, .{ .x = 0, .y = 2, .int_grid = 1 } } },
-    },
-}

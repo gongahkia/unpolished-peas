@@ -7,11 +7,7 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 out=${1:-"$tmp/dist"}
 game=${2:-bounce}
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
-case "$game" in
-    bounce|topdown) fixture=topdown ;;
-    platformer) fixture=platformer ;;
-    *) printf '%s\n' 'usage: test_macos_package.sh [output-directory] [bounce|topdown|platformer]' >&2; exit 64 ;;
-esac
+case "$game" in bounce|topdown|platformer) ;; *) printf '%s\n' 'usage: test_macos_package.sh [output-directory] [bounce|topdown|platformer]' >&2; exit 64 ;; esac
 
 cd "$repo"
 zig build peas -- package macos "$out" --game "$game"
@@ -27,8 +23,6 @@ runtime="$package/bin/unpolished-peas-$game"
 test -x "$runtime"
 test -d "$package/assets"
 test -f "$package/docs/api/core.md"
-test -f "$package/content/cache/assets/$fixture.upassets.upc"
-test -f "$package/content/cache/maps/$fixture.upmap.upc"
 test -x "$package/run.sh"
 launcher=$(printf '{"version":1,"platform":"macos-universal","game":"%s","runtime":"bin/unpolished-peas-%s","assets":"assets/","docs":"docs/"}' "$game" "$game")
 grep -Fx "$launcher" "$package/launcher.json"
@@ -39,8 +33,6 @@ grep -Fx 'platform=macos-universal' "$manifest"
 grep -Fx "game=$game" "$manifest"
 grep -Fx "runtime=bin/unpolished-peas-$game" "$manifest"
 grep -Fx 'assets=assets/' "$manifest"
-grep -Fx 'content=content/' "$manifest"
-grep -Fx 'caches=content/cache/' "$manifest"
 grep -Fx 'docs=docs/' "$manifest"
 grep -Fx 'launcher=launcher.json' "$manifest"
 grep -Fx 'bundled-runtime=SDL3:static' "$manifest"
@@ -57,11 +49,6 @@ cd "$tmp/outside-repository"
 "$checker"
 SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer sdl-gpu
 SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer opengl
-corrupt="$tmp/corrupt-cache"
-cp -R "$package" "$corrupt"
-printf '\0' > "$corrupt/content/cache/assets/$fixture.upassets.upc"
-if "$corrupt/bin/unpolished-peas-test-packaged-layout" > "$tmp/corrupt-cache.out" 2>&1; then exit 1; fi
-grep -F 'recovery: restore a checksum-verified package archive' "$tmp/corrupt-cache.out"
 missing="$tmp/missing-assets"
 cp -R "$package" "$missing"
 rm -rf "$missing/assets"
@@ -71,5 +58,5 @@ repeat="$tmp/repeat"
 cd "$repo"
 zig build peas -- package macos "$repeat" --game "$game"
 cmp "$out/SHA256SUMS" "$repeat/SHA256SUMS"
-printf '%s\n' "platform=macos-universal" "game=$game" "archive=$name.zip" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'renderer-sdl-gpu=passed' 'renderer-opengl=passed' 'cache-recovery=passed' > "$out/SMOKE-REPORT.txt"
+printf '%s\n' "platform=macos-universal" "game=$game" "archive=$name.zip" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'renderer-sdl-gpu=passed' 'renderer-opengl=passed' > "$out/SMOKE-REPORT.txt"
 cat "$out/SMOKE-REPORT.txt"

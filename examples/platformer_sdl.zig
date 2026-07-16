@@ -1,37 +1,51 @@
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
-const physics = @import("unpolished-peas-physics").physics(up);
-const ui = @import("unpolished-peas-ui").ui(up);
 const platformer = @import("platformer_game.zig");
+const content = @import("programmatic_content.zig");
 
 const Game = struct {
     pub const config: sdl.Config = .{ .title = "unpolished-peas Platformer", .width = 160, .height = 64, .scale = 5, .fixed_hz = 60, .clear_color = up.Color.rgb(12, 18, 28) };
 
     game: platformer.Game,
-    map: up.TileMapHandle,
+    map: up.TileMap,
     collider: up.TileCollider,
-    atlas: up.AtlasHandle,
+    atlas: *up.Atlas,
     animation: up.AnimationPlayer,
-    world: physics.World,
-    marker: physics.BodyHandle,
+    tile_image: up.ImageHandle,
+    world: up.physics.World,
+    marker: up.physics.BodyHandle,
     jump_sound: up.AudioHandle,
-    ui_state: ui.State = .{},
+    ui_state: up.ui.State = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const map = try ctx.loadTileMap("platformer.upmap", .{});
+        const generated_map = try content.platformerMap(ctx.allocator);
+        var map = generated_map.map;
+        errdefer map.deinit();
         var collider = up.TileCollider.init(ctx.allocator);
         errdefer collider.deinit();
-        try collider.addLayer(try ctx.tileMap(map), 0);
-        const atlas = try ctx.loadAtlas("atlas.json");
-        const animation = (try ctx.atlasAnimation(atlas, "pulse")) orelse return error.MissingAtlasAnimation;
-        var world = physics.World.init(.{ .gravity = .{ .x = 0, .y = 4 } });
+        try collider.addLayer(&map, generated_map.collision_layer);
+        const tile_image = try ctx.loadImage("ball.png");
+        const image = try ctx.assets.tryImage(tile_image);
+        const atlas = try ctx.allocator.create(up.Atlas);
+        errdefer ctx.allocator.destroy(atlas);
+        atlas.* = try content.ballAtlas(ctx.allocator, image);
+        errdefer {
+            atlas.deinit();
+            ctx.allocator.destroy(atlas);
+        }
+        const animation = atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
+        var world = up.physics.World.init(.{ .gravity = .{ .x = 0, .y = 4 } });
         errdefer world.deinit();
         const marker = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 84, .y = 8 } });
         _ = try world.createCircle(marker, .{ .radius = 2 });
-        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(try ctx.atlas(atlas), animation), .world = world, .marker = marker, .jump_sound = try ctx.loadSound("blip.wav") };
+        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(atlas, animation), .tile_image = tile_image, .world = world, .marker = marker, .jump_sound = try ctx.loadSound("blip.wav") };
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         self.collider.deinit();
+        self.map.deinit();
+        const allocator = self.atlas.allocator;
+        self.atlas.deinit();
+        allocator.destroy(self.atlas);
         self.world.deinit();
     }
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
@@ -44,12 +58,13 @@ const Game = struct {
     }
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
-        try ctx.drawTileMap(self.map, &camera, 0);
-        try ctx.sprite(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
-        try self.world.appendDebug(ctx.commands, &camera, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
+        const images = [_]up.Image{try ctx.assets.tryImage(self.tile_image)};
+        self.map.drawImages(ctx.camera(&camera), &images);
+        try ctx.spriteAtlas(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
+        try ctx.appendPhysicsDebug(&self.world, &camera);
         const marker = self.world.bodyPosition(self.marker) catch return;
         ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
-        var frame = ui.Frame.begin(&self.ui_state, ctx.input, .{ .hud = ctx.canvas }, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
+        var frame = ctx.uiFrame(&self.ui_state, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
         _ = frame.button(1, "DEBUG");
         frame.end();
         ctx.text("PLATFORMER", 2, 2, up.Color.white);

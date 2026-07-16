@@ -1,6 +1,7 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const game_mod = @import("topdown_game.zig");
+const content = @import("programmatic_content.zig");
 const expected_hash: u64 = 0x95b619e80d995c40;
 
 pub fn main() !void {
@@ -9,7 +10,8 @@ pub fn main() !void {
     const allocator = gpa.allocator();
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    const map = try assets.loadTileMap("topdown.upmap", .{});
+    var map = try content.topdownMap(allocator);
+    defer map.deinit();
     const player = try assets.loadImage("ball.png");
     var game = game_mod.Game{};
     var input = up.Input{};
@@ -21,7 +23,8 @@ pub fn main() !void {
     defer canvas.deinit();
     canvas.clear(up.Color.rgb(10, 18, 26));
     const camera = up.Camera2D{ .position = .{ .x = 80, .y = 48 }, .zoom = 1 };
-    try assets.drawTileMap(map, &camera, &canvas, 0);
+    const images = [_]up.Image{try assets.tryImage(player)};
+    map.drawImages(up.CameraCanvas.init(&canvas, &camera), &images);
     canvas.drawImage(try assets.tryImage(player), @intFromFloat(game.player.x - 8), @intFromFloat(game.player.y - 8));
     canvas.drawText("TOPDOWN", 4, 4, up.Color.white);
     var buffer: [32]u8 = undefined;

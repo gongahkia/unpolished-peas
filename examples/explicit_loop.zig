@@ -1,4 +1,4 @@
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
 const State = struct {

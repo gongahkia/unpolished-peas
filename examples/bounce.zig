@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 pub const width = 160;
 pub const height = 90;

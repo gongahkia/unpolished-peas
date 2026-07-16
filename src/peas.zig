@@ -1,7 +1,6 @@
 const std = @import("std");
 const tools = @import("unpolished-peas-tools");
-const content = @import("unpolished-peas-content");
-const input_replay = content.input_replay;
+const input_replay = @import("input_replay.zig");
 const starter = @import("starter.zig");
 
 const max_build_output_bytes = 8 * 1024 * 1024;
@@ -19,10 +18,6 @@ pub fn main() !void {
         return;
     }
     const command = tools.parseCommand(argument) orelse {
-        if (removedCommandDiagnostic(argument)) |diagnostic| {
-            std.debug.print("peas: {s}\n", .{diagnostic});
-            return error.RemovedContentFormat;
-        }
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
         return usage();
     };
@@ -43,19 +38,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try checkProject(allocator, args);
             return null;
         },
-        .compile => {
-            try compileProject(allocator, args);
-            return null;
-        },
-        .migrate => {
-            try migrateContent(allocator, args);
-            return null;
-        },
         .run => return try runProject(allocator, args),
-        .host => {
-            try hostRuntime(allocator, args);
-            return null;
-        },
         .@"test" => return try testProject(allocator, args),
         .replay => {
             try replayFixture(allocator, args);
@@ -64,98 +47,6 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
         .package => return try packageProject(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
-}
-
-fn hostRuntime(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
-    var arguments = std.ArrayList([]const u8).empty;
-    defer arguments.deinit(allocator);
-    while (args.next()) |argument| try arguments.append(allocator, argument);
-    const config = tools.parseHostRuntimeConfig(arguments.items) catch return hostUsage();
-    std.debug.print("peas host: validated {s} bind {s}:{d} max-peers {d} ticks {d}\npeas host: sample target `zig build run-topdown-{s}`\n", .{ @tagName(config.mode), config.bind_address, config.port, config.max_peers, config.ticks, @tagName(config.mode) });
-}
-
-fn hostUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]\n", .{});
-    return error.InvalidArguments;
-}
-
-fn migrateContent(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
-    const kind_argument = args.next() orelse return migrateUsage();
-    if (removedMigrationKindDiagnostic(kind_argument)) |diagnostic| {
-        std.debug.print("peas migrate: {s}\n", .{diagnostic});
-        return error.RemovedContentFormat;
-    }
-    const kind = std.meta.stringToEnum(content.migration.Kind, kind_argument) orelse return migrateUsage();
-    const input_path = args.next() orelse return migrateUsage();
-    const output_path = args.next() orelse return migrateUsage();
-    if (args.next() != null) return migrateUsage();
-    if (content.removedContentDiagnostic(input_path)) |diagnostic| {
-        std.debug.print("peas migrate: {s}: {s}\n", .{ input_path, diagnostic });
-        return error.RemovedContentFormat;
-    }
-    const source = try std.fs.cwd().readFileAlloc(allocator, input_path, 64 * 1024 * 1024);
-    defer allocator.free(source);
-    var diagnostic = content.migration.Diagnostic{};
-    var result = content.migration.migrate(allocator, kind, source, &diagnostic) catch |err| {
-        std.debug.print("peas migrate: {s}: {d}:{d}: {s}\n", .{ input_path, diagnostic.line, diagnostic.column, diagnostic.message });
-        return err;
-    };
-    defer result.deinit();
-    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = result.source });
-    std.debug.print("peas migrate: {s} -> {s}: {s}\n", .{ input_path, output_path, if (result.changed) "migrated" else "already current" });
-}
-
-fn migrateUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- migrate <catalog|map> <input> <output>\n", .{});
-    return error.InvalidArguments;
-}
-
-fn removedMigrationKindDiagnostic(kind: []const u8) ?[]const u8 {
-    if (std.ascii.eqlIgnoreCase(kind, "scene")) return content.removedContentDiagnostic("main.upscene");
-    if (std.ascii.eqlIgnoreCase(kind, "tiled")) return content.removedContentDiagnostic("main.tmx");
-    if (std.ascii.eqlIgnoreCase(kind, "ldtk")) return content.removedContentDiagnostic("main.ldtk");
-    return null;
-}
-
-fn removedCommandDiagnostic(command: []const u8) ?[]const u8 {
-    if (std.ascii.eqlIgnoreCase(command, "import-tiled")) return content.removedContentDiagnostic("main.tmx");
-    if (std.ascii.eqlIgnoreCase(command, "import-ldtk")) return content.removedContentDiagnostic("main.ldtk");
-    return null;
-}
-
-fn compileProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
-    const project_path = args.next() orelse ".";
-    const output_argument = args.next();
-    if (args.next() != null) return compileUsage();
-    const project_root = tools.discoverProject(allocator, project_path) catch |err| {
-        std.debug.print("peas compile: no project build.zig found from {s}\n", .{project_path});
-        return err;
-    };
-    defer allocator.free(project_root);
-    const output_root = if (output_argument) |value|
-        try absolutePath(allocator, value)
-    else
-        try std.fs.path.join(allocator, &.{ project_root, "zig-out", "content" });
-    defer allocator.free(output_root);
-    var diagnostic = content.Diagnostic{};
-    defer diagnostic.deinit(allocator);
-    const report = content.compileProject(allocator, project_root, output_root, &diagnostic) catch |err| {
-        if (diagnostic.path) |path| std.debug.print("peas compile: {s}:{d}:{d}: {s}\n", .{ path, diagnostic.line, diagnostic.column, diagnostic.message });
-        return err;
-    };
-    std.debug.print("peas compile: compiled {d}, reused {d}, output {s}\n", .{ report.compiled, report.reused, output_root });
-}
-
-fn absolutePath(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
-    if (std.fs.path.isAbsolute(path)) return allocator.dupe(u8, path);
-    const cwd = try std.fs.cwd().realpathAlloc(allocator, ".");
-    defer allocator.free(cwd);
-    return std.fs.path.join(allocator, &.{ cwd, path });
-}
-
-fn compileUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- compile [project-directory] [output-directory]\n", .{});
-    return error.InvalidArguments;
 }
 
 fn createProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
@@ -259,7 +150,6 @@ fn checkUsage() error{InvalidArguments} {
 fn printCheckRecovery(allocator: std.mem.Allocator, project_root: []const u8, kind: tools.CheckIssueKind) !void {
     const command = switch (kind) {
         .missing_assets => try std.fmt.allocPrint(allocator, "mkdir -p \"{s}/assets\" && zig build peas -- check \"{s}\"", .{ project_root, project_root }),
-        .missing_maps => try std.fmt.allocPrint(allocator, "mkdir -p \"{s}/maps\" && zig build peas -- check \"{s}\"", .{ project_root, project_root }),
         else => try std.fmt.allocPrint(allocator, "zig build peas -- check \"{s}\"", .{project_root}),
     };
     defer allocator.free(command);
@@ -443,21 +333,10 @@ fn printHelp() void {
 test "known commands parse" {
     try std.testing.expectEqual(tools.Command.new, tools.parseCommand("new").?);
     try std.testing.expectEqual(tools.Command.run, tools.parseCommand("run").?);
-    try std.testing.expectEqual(tools.Command.host, tools.parseCommand("host").?);
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
-    try std.testing.expectEqual(tools.Command.compile, tools.parseCommand("compile").?);
-    try std.testing.expectEqual(tools.Command.migrate, tools.parseCommand("migrate").?);
-    try std.testing.expect(tools.parseCommand("import-tiled") == null);
-    try std.testing.expect(tools.parseCommand("import-ldtk") == null);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
-}
-
-test "removed content commands and migration kinds provide recovery diagnostics" {
-    try std.testing.expectEqualStrings("Tiled input is no longer supported; convert it to a native .upmap", removedCommandDiagnostic("import-tiled").?);
-    try std.testing.expectEqualStrings("LDtk input is no longer supported; convert it to a native .upmap", removedCommandDiagnostic("import-ldtk").?);
-    try std.testing.expectEqualStrings(".upscene is no longer supported; use .upassets and .upmap declarations", removedMigrationKindDiagnostic("scene").?);
 }
 
 test "known test selections parse" {

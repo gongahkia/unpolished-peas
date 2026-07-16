@@ -1,8 +1,9 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const bounce = @import("bounce.zig");
 const platformer = @import("platformer_game.zig");
 const topdown = @import("topdown_game.zig");
+const content = @import("programmatic_content.zig");
 
 const golden_path = "headless-reference.png";
 const bounce_golden_path = "proof-bounce-reference.png";
@@ -54,14 +55,16 @@ pub fn main() !void {
 
 fn renderScene(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Canvas {
     const ball = try assets.loadImage("ball.png");
-    const atlas = try assets.loadAtlas("atlas.json");
-    const map = try assets.loadTileMap("topdown.upmap", .{});
-    const source_atlas = try assets.tryAtlas(atlas);
+    var map = try content.topdownMap(allocator);
+    defer map.deinit();
+    var source_atlas = try content.ballAtlas(allocator, try assets.tryImage(ball));
+    defer source_atlas.deinit();
     var canvas = try up.Canvas.init(allocator, 64, 48);
 
     canvas.clear(up.Color.rgb(14, 18, 24));
     const tile_camera = up.Camera2D{ .position = .{ .x = 32, .y = 24 } };
-    try assets.drawTileMap(map, &tile_camera, &canvas, 0);
+    const tile_images = [_]up.Image{try assets.tryImage(ball)};
+    map.drawImages(up.CameraCanvas.init(&canvas, &tile_camera), &tile_images);
     canvas.fillRect(4, 4, 12, 10, up.Color.rgb(255, 198, 74));
     canvas.drawImage(try assets.tryImage(ball), 24, 16);
     canvas.drawAtlasFrame(source_atlas, source_atlas.findFrame("tile_a").?, 48, 4, .{ .scale = 2, .tint = up.Color.rgb(255, 180, 120) });
@@ -106,7 +109,8 @@ fn renderBounce(allocator: std.mem.Allocator) !up.Canvas {
 }
 
 fn renderTopdown(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Canvas {
-    const map = try assets.loadTileMap("topdown.upmap", .{});
+    var map = try content.topdownMap(allocator);
+    defer map.deinit();
     const player = try assets.loadImage("ball.png");
     var game = topdown.Game{};
     var input = up.Input{};
@@ -118,7 +122,8 @@ fn renderTopdown(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Canva
     var canvas = try up.Canvas.init(allocator, topdown.width, topdown.height);
     canvas.clear(up.Color.rgb(10, 18, 26));
     const camera = up.Camera2D{ .position = game.player };
-    try assets.drawTileMap(map, &camera, &canvas, 0);
+    const images = [_]up.Image{try assets.tryImage(player)};
+    map.drawImages(up.CameraCanvas.init(&canvas, &camera), &images);
     canvas.drawImage(try assets.tryImage(player), @intFromFloat(game.player.x - 8), @intFromFloat(game.player.y - 8));
     canvas.drawText("TOPDOWN", 4, 4, up.Color.white);
     canvas.drawText("ARROWS SPACE", 84, 4, up.Color.rgb(180, 205, 230));
@@ -126,14 +131,16 @@ fn renderTopdown(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Canva
 }
 
 fn renderPlatformer(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Canvas {
-    const map = try assets.loadTileMap("platformer.upmap", .{});
+    var generated_map = try content.platformerMap(allocator);
+    defer generated_map.map.deinit();
     var collider = up.TileCollider.init(allocator);
     defer collider.deinit();
-    try collider.addLayer(try assets.tryTileMapPtr(map), 0);
-    const atlas = try assets.loadAtlas("atlas.json");
-    const source_atlas = try assets.tryAtlasPtr(atlas);
+    try collider.addLayer(&generated_map.map, generated_map.collision_layer);
+    const ball = try assets.loadImage("ball.png");
+    var source_atlas = try content.ballAtlas(allocator, try assets.tryImage(ball));
+    defer source_atlas.deinit();
     const animation_handle = source_atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
-    var animation = up.AnimationPlayer.init(source_atlas, animation_handle);
+    var animation = up.AnimationPlayer.init(&source_atlas, animation_handle);
     var game = try platformer.Game.init(.{ .x = 8, .y = 0 });
     var frame: u32 = 0;
     while (frame < 96) : (frame += 1) {
@@ -144,8 +151,9 @@ fn renderPlatformer(allocator: std.mem.Allocator, assets: *up.AssetStore) !up.Ca
     var canvas = try up.Canvas.init(allocator, 160, 64);
     canvas.clear(up.Color.rgb(12, 18, 28));
     const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
-    try assets.drawTileMap(map, &camera, &canvas, 0);
-    canvas.drawAtlasFrame(source_atlas.*, animation.frame(), @intFromFloat(game.controller.bounds.x), @intFromFloat(game.controller.bounds.y), .{ .scale = 2 });
+    const images = [_]up.Image{try assets.tryImage(ball)};
+    generated_map.map.drawImages(up.CameraCanvas.init(&canvas, &camera), &images);
+    canvas.drawAtlasFrame(source_atlas, animation.frame(), @intFromFloat(game.controller.bounds.x), @intFromFloat(game.controller.bounds.y), .{ .scale = 2 });
     canvas.fillCircle(84, 8, 2, up.Color.rgb(255, 198, 74));
     canvas.drawText("PLATFORMER", 2, 2, up.Color.white);
     return canvas;

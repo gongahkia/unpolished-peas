@@ -12,7 +12,6 @@
         "assets",
         "build.zig",
         "build.zig.zon",
-        "maps",
         "scenes",
         "src",
     },

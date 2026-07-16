@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 pub const Input = struct { left: bool = false, right: bool = false, jump: bool = false };
 pub const Game = struct {
@@ -22,11 +22,14 @@ pub const Game = struct {
 };
 
 fn loadCollider(allocator: std.mem.Allocator) !struct { map: up.TileMap, collider: up.TileCollider } {
-    var map = try up.mapSource.loadFile(allocator, "examples/assets/platformer.upmap");
+    var map = try up.TileMap.init(allocator, .{ .x = 16, .y = 16 }, 8);
     errdefer map.deinit();
+    const layer = try map.addLayer("collision", .int_grid, null);
+    var x: i32 = -4;
+    while (x < 16) : (x += 1) try map.setIntGrid(layer, .{ .x = x, .y = 3 }, 1);
     var collider = up.TileCollider.init(allocator);
     errdefer collider.deinit();
-    try collider.addLayer(&map, 0);
+    try collider.addLayer(&map, layer);
     return .{ .map = map, .collider = collider };
 }
 

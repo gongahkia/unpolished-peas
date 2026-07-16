@@ -44,12 +44,10 @@ lipo -create "$stage/aarch64-macos/bin/$source_runtime" "$stage/x86_64-macos/bin
 cp -R "$stage/aarch64-macos/assets" "$package/assets"
 zig build docs
 cp -R zig-out/docs "$package/docs"
-cp -R "fixtures/$fixture" "$package/content"
-zig build contentc -- "$package/content" "$package/content/cache"
 printf '{"version":1,"platform":"macos-universal","game":"%s","runtime":"bin/unpolished-peas-%s","assets":"assets/","docs":"docs/"}\n' "$game" "$game" > "$package/launcher.json"
 printf '%s\n' '#!/bin/sh' "exec \"\$(dirname \"\$0\")/bin/unpolished-peas-$game\" \"\$@\"" > "$package/run.sh"
 chmod +x "$package/run.sh"
-printf '%s\n' 'format=unpolished-peas-package' 'version=1' 'platform=macos-universal' "game=$game" "runtime=bin/unpolished-peas-$game" 'assets=assets/' 'content=content/' 'caches=content/cache/' 'docs=docs/' 'launcher=launcher.json' 'bundled-runtime=SDL3:static' > "$package/PACKAGE-MANIFEST.txt"
+printf '%s\n' 'format=unpolished-peas-package' 'version=1' 'platform=macos-universal' "game=$game" "runtime=bin/unpolished-peas-$game" 'assets=assets/' 'docs=docs/' 'launcher=launcher.json' 'bundled-runtime=SDL3:static' > "$package/PACKAGE-MANIFEST.txt"
 epoch=$(git -C "$repo" log -1 --format=%ct)
 mtime=$(date -u -r "$epoch" +%Y%m%d%H%M.%S)
 find "$package" -exec touch -t "$mtime" {} +

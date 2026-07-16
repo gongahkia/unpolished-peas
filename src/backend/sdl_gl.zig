@@ -1,5 +1,6 @@
 const std = @import("std");
 const up = @import("unpolished-peas").api;
+const effect_api = up.effects;
 const camera_commands = @import("camera_commands.zig");
 const primitive_commands = @import("primitive_commands.zig");
 const c = @cImport({
@@ -35,6 +36,7 @@ const Gl = struct {
     const UseProgram = *const fn (u32) callconv(.c) void;
     const GetUniformLocation = *const fn (u32, [*:0]const u8) callconv(.c) i32;
     const Uniform1i = *const fn (i32, i32) callconv(.c) void;
+    const Uniform1f = *const fn (i32, f32) callconv(.c) void;
     const GenVertexArrays = *const fn (i32, *u32) callconv(.c) void;
     const BindVertexArray = *const fn (u32) callconv(.c) void;
     const DeleteVertexArrays = *const fn (i32, *const u32) callconv(.c) void;
@@ -49,7 +51,13 @@ const Gl = struct {
     const TexParameteri = *const fn (u32, u32, i32) callconv(.c) void;
     const PixelStorei = *const fn (u32, i32) callconv(.c) void;
     const TexImage2D = *const fn (u32, i32, i32, i32, i32, i32, u32, u32, ?*const anyopaque) callconv(.c) void;
+    const CopyTexImage2D = *const fn (u32, i32, u32, i32, i32, i32, i32, i32) callconv(.c) void;
     const DeleteTextures = *const fn (i32, *const u32) callconv(.c) void;
+    const GenFramebuffers = *const fn (i32, *u32) callconv(.c) void;
+    const BindFramebuffer = *const fn (u32, u32) callconv(.c) void;
+    const FramebufferTexture2D = *const fn (u32, u32, u32, u32, i32) callconv(.c) void;
+    const CheckFramebufferStatus = *const fn (u32) callconv(.c) u32;
+    const DeleteFramebuffers = *const fn (i32, *const u32) callconv(.c) void;
     const ActiveTexture = *const fn (u32) callconv(.c) void;
     const DrawArrays = *const fn (u32, i32, i32) callconv(.c) void;
     const ReadPixels = *const fn (i32, i32, i32, i32, u32, u32, ?*anyopaque) callconv(.c) void;
@@ -75,6 +83,7 @@ const Gl = struct {
     use_program: UseProgram,
     get_uniform_location: GetUniformLocation,
     uniform_1i: Uniform1i,
+    uniform_1f: Uniform1f,
     gen_vertex_arrays: GenVertexArrays,
     bind_vertex_array: BindVertexArray,
     delete_vertex_arrays: DeleteVertexArrays,
@@ -89,7 +98,13 @@ const Gl = struct {
     tex_parameter_i: TexParameteri,
     pixel_store_i: PixelStorei,
     tex_image_2d: TexImage2D,
+    copy_tex_image_2d: CopyTexImage2D,
     delete_textures: DeleteTextures,
+    gen_framebuffers: GenFramebuffers,
+    bind_framebuffer: BindFramebuffer,
+    framebuffer_texture_2d: FramebufferTexture2D,
+    check_framebuffer_status: CheckFramebufferStatus,
+    delete_framebuffers: DeleteFramebuffers,
     active_texture: ActiveTexture,
     draw_arrays: DrawArrays,
     read_pixels: ReadPixels,
@@ -117,6 +132,7 @@ const Gl = struct {
             .use_program = try loadProc(UseProgram, "glUseProgram"),
             .get_uniform_location = try loadProc(GetUniformLocation, "glGetUniformLocation"),
             .uniform_1i = try loadProc(Uniform1i, "glUniform1i"),
+            .uniform_1f = try loadProc(Uniform1f, "glUniform1f"),
             .gen_vertex_arrays = try loadProc(GenVertexArrays, "glGenVertexArrays"),
             .bind_vertex_array = try loadProc(BindVertexArray, "glBindVertexArray"),
             .delete_vertex_arrays = try loadProc(DeleteVertexArrays, "glDeleteVertexArrays"),
@@ -131,7 +147,13 @@ const Gl = struct {
             .tex_parameter_i = try loadProc(TexParameteri, "glTexParameteri"),
             .pixel_store_i = try loadProc(PixelStorei, "glPixelStorei"),
             .tex_image_2d = try loadProc(TexImage2D, "glTexImage2D"),
+            .copy_tex_image_2d = try loadProc(CopyTexImage2D, "glCopyTexImage2D"),
             .delete_textures = try loadProc(DeleteTextures, "glDeleteTextures"),
+            .gen_framebuffers = try loadProc(GenFramebuffers, "glGenFramebuffers"),
+            .bind_framebuffer = try loadProc(BindFramebuffer, "glBindFramebuffer"),
+            .framebuffer_texture_2d = try loadProc(FramebufferTexture2D, "glFramebufferTexture2D"),
+            .check_framebuffer_status = try loadProc(CheckFramebufferStatus, "glCheckFramebufferStatus"),
+            .delete_framebuffers = try loadProc(DeleteFramebuffers, "glDeleteFramebuffers"),
             .active_texture = try loadProc(ActiveTexture, "glActiveTexture"),
             .draw_arrays = try loadProc(DrawArrays, "glDrawArrays"),
             .read_pixels = try loadProc(ReadPixels, "glReadPixels"),
@@ -154,11 +176,16 @@ pub const Presenter = struct {
     height: u32,
     sprite_program: u32 = 0,
     primitive_program: u32 = 0,
+    effect_program: u32 = 0,
     sprite_vao: u32 = 0,
     sprite_vbo: u32 = 0,
     primitive_vao: u32 = 0,
     primitive_vbo: u32 = 0,
     canvas_texture: u32 = 0,
+    effect_texture: u32 = 0,
+    effect_target_texture: u32 = 0,
+    effect_framebuffer: u32 = 0,
+    effect_target_framebuffer: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
     recovery_failure: ?anyerror = null,
     viewport: GlViewport,
@@ -233,6 +260,10 @@ pub const Presenter = struct {
         try self.renderToViewport(canvas, sprites, commands, .{ .width = self.width, .height = self.height });
     }
 
+    pub fn renderWithEffects(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect) !void {
+        try self.renderToViewportWithEffects(canvas, sprites, commands, effects, .{ .width = self.width, .height = self.height });
+    }
+
     pub fn present(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand) !void {
         try self.render(canvas, sprites, commands);
         if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
@@ -243,7 +274,16 @@ pub const Presenter = struct {
         if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
     }
 
+    pub fn presentWithPresentationEffects(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, presentation: up.Presentation) !void {
+        try self.renderToViewportWithEffects(canvas, sprites, commands, effects, try viewportForPresentation(presentation));
+        if (!c.SDL_GL_SwapWindow(@ptrCast(self.window))) return error.OpenGlSwapFailed;
+    }
+
     fn renderToViewport(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, viewport: GlViewport) !void {
+        try self.renderToViewportWithEffects(canvas, sprites, commands, &.{}, viewport);
+    }
+
+    fn renderToViewportWithEffects(self: *Presenter, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, viewport: GlViewport) !void {
         if (!self.context_active) return error.OpenGlRecoveryRequired;
         if (canvas.width != self.width or canvas.height != self.height) return error.InvalidRenderCanvas;
         if (!c.SDL_GL_MakeCurrent(@ptrCast(self.window), self.context)) return error.OpenGlContextActivationFailed;
@@ -258,6 +298,7 @@ pub const Presenter = struct {
         try primitive_commands.append(&self.primitive_batch, self.width, self.height, commands);
         try self.renderPrimitives();
         try self.renderSprites(sprites);
+        try self.renderPixelEffects(effects, viewport);
     }
 
     pub fn capture(self: *Presenter, allocator: std.mem.Allocator) !up.Canvas {
@@ -292,27 +333,46 @@ pub const Presenter = struct {
         self.sprite_program = try self.makeProgram(sprite_vertex_source, sprite_fragment_source);
         errdefer self.releaseGpuResources();
         self.primitive_program = try self.makeProgram(primitive_vertex_source, primitive_fragment_source);
+        self.effect_program = try self.makeProgram(sprite_vertex_source, effect_fragment_source);
         self.configureSpriteProgram();
+        self.configureEffectProgram();
         try self.makeBuffers();
         self.gl.gen_textures(1, &self.canvas_texture);
         if (self.canvas_texture == 0) return error.OpenGlTextureCreationFailed;
+        self.gl.gen_textures(1, &self.effect_texture);
+        if (self.effect_texture == 0) return error.OpenGlTextureCreationFailed;
+        self.gl.gen_textures(1, &self.effect_target_texture);
+        if (self.effect_target_texture == 0) return error.OpenGlTextureCreationFailed;
+        self.gl.gen_framebuffers(1, &self.effect_framebuffer);
+        self.gl.gen_framebuffers(1, &self.effect_target_framebuffer);
+        if (self.effect_framebuffer == 0 or self.effect_target_framebuffer == 0) return error.OpenGlFramebufferCreationFailed;
     }
 
     fn releaseGpuResources(self: *Presenter) void {
         if (self.canvas_texture != 0) self.gl.delete_textures(1, &self.canvas_texture);
+        if (self.effect_texture != 0) self.gl.delete_textures(1, &self.effect_texture);
+        if (self.effect_target_texture != 0) self.gl.delete_textures(1, &self.effect_target_texture);
+        if (self.effect_framebuffer != 0) self.gl.delete_framebuffers(1, &self.effect_framebuffer);
+        if (self.effect_target_framebuffer != 0) self.gl.delete_framebuffers(1, &self.effect_target_framebuffer);
         if (self.sprite_vbo != 0) self.gl.delete_buffers(1, &self.sprite_vbo);
         if (self.primitive_vbo != 0) self.gl.delete_buffers(1, &self.primitive_vbo);
         if (self.sprite_vao != 0) self.gl.delete_vertex_arrays(1, &self.sprite_vao);
         if (self.primitive_vao != 0) self.gl.delete_vertex_arrays(1, &self.primitive_vao);
         if (self.sprite_program != 0) self.gl.delete_program(self.sprite_program);
         if (self.primitive_program != 0) self.gl.delete_program(self.primitive_program);
+        if (self.effect_program != 0) self.gl.delete_program(self.effect_program);
         self.canvas_texture = 0;
+        self.effect_texture = 0;
+        self.effect_target_texture = 0;
+        self.effect_framebuffer = 0;
+        self.effect_target_framebuffer = 0;
         self.sprite_vbo = 0;
         self.primitive_vbo = 0;
         self.sprite_vao = 0;
         self.primitive_vao = 0;
         self.sprite_program = 0;
         self.primitive_program = 0;
+        self.effect_program = 0;
     }
 
     fn recordRecoveryFailure(self: *Presenter, err: anyerror) anyerror {
@@ -345,6 +405,12 @@ pub const Presenter = struct {
     fn configureSpriteProgram(self: *Presenter) void {
         self.gl.use_program(self.sprite_program);
         const location = self.gl.get_uniform_location(self.sprite_program, "sprite_texture");
+        if (location >= 0) self.gl.uniform_1i(location, 0);
+    }
+
+    fn configureEffectProgram(self: *Presenter) void {
+        self.gl.use_program(self.effect_program);
+        const location = self.gl.get_uniform_location(self.effect_program, "effect_texture");
         if (location >= 0) self.gl.uniform_1i(location, 0);
     }
 
@@ -401,6 +467,97 @@ pub const Presenter = struct {
             self.gl.bind_texture(gl_texture_2d, texture);
             self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), 6);
         }
+    }
+
+    fn renderPixelEffects(self: *Presenter, effects: []const effect_api.PixelEffect, viewport: GlViewport) !void {
+        var applies_effect = false;
+        for (effects) |effect| if (effect.kind != .passthrough) {
+            applies_effect = true;
+            break;
+        };
+        if (!applies_effect) return;
+        if (self.effect_texture == 0 or self.effect_target_texture == 0 or self.effect_framebuffer == 0 or self.effect_target_framebuffer == 0) return error.OpenGlPixelEffectUnavailable;
+        self.gl.active_texture(gl_texture0);
+        self.gl.bind_texture(gl_texture_2d, self.effect_texture);
+        self.configureEffectTexture();
+        self.gl.copy_tex_image_2d(gl_texture_2d, 0, gl_rgba, try glI32(viewport.x), try glI32(viewport.y), try glI32(viewport.width), try glI32(viewport.height), 0);
+        var source = self.effect_texture;
+        for (effects) |effect| {
+            if (effect.kind == .passthrough) continue;
+            const target = if (source == self.effect_texture) self.effect_target_texture else self.effect_texture;
+            const target_framebuffer = if (source == self.effect_texture) self.effect_target_framebuffer else self.effect_framebuffer;
+            try self.configureEffectTarget(target_framebuffer, target, viewport);
+            self.gl.bind_framebuffer(gl_framebuffer, target_framebuffer);
+            self.gl.viewport(0, 0, try glI32(viewport.width), try glI32(viewport.height));
+            self.gl.clear_color(0, 0, 0, 0);
+            self.gl.clear(gl_color_buffer_bit);
+            try self.drawPixelEffect(source, effect);
+            source = target;
+        }
+        self.gl.bind_framebuffer(gl_framebuffer, 0);
+        self.gl.viewport(try glI32(viewport.x), try glI32(viewport.y), try glI32(viewport.width), try glI32(viewport.height));
+        try self.drawEffectTexture(source);
+    }
+
+    fn configureEffectTarget(self: *Presenter, framebuffer: u32, texture: u32, viewport: GlViewport) !void {
+        self.gl.active_texture(gl_texture0);
+        self.gl.bind_texture(gl_texture_2d, texture);
+        self.configureEffectTexture();
+        self.gl.tex_image_2d(gl_texture_2d, 0, @intCast(gl_rgba), try glI32(viewport.width), try glI32(viewport.height), 0, gl_rgba, gl_unsigned_byte, null);
+        self.gl.bind_framebuffer(gl_framebuffer, framebuffer);
+        self.gl.framebuffer_texture_2d(gl_framebuffer, gl_color_attachment0, gl_texture_2d, texture, 0);
+        if (self.gl.check_framebuffer_status(gl_framebuffer) != gl_framebuffer_complete) return error.OpenGlFramebufferIncomplete;
+    }
+
+    fn configureEffectTexture(self: *Presenter) void {
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_min_filter, @intCast(gl_nearest));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_mag_filter, @intCast(gl_nearest));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_wrap_s, @intCast(gl_clamp_to_edge));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_wrap_t, @intCast(gl_clamp_to_edge));
+    }
+
+    fn effectVertices() [6]up.SpriteBatchVertex {
+        return .{
+            .{ .x = -1, .y = 1, .u = 0, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 },
+            .{ .x = 1, .y = 1, .u = 1, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 },
+            .{ .x = 1, .y = -1, .u = 1, .v = 0, .r = 1, .g = 1, .b = 1, .a = 1 },
+            .{ .x = -1, .y = 1, .u = 0, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 },
+            .{ .x = 1, .y = -1, .u = 1, .v = 0, .r = 1, .g = 1, .b = 1, .a = 1 },
+            .{ .x = -1, .y = -1, .u = 0, .v = 0, .r = 1, .g = 1, .b = 1, .a = 1 },
+        };
+    }
+
+    fn drawPixelEffect(self: *Presenter, source: u32, effect: effect_api.PixelEffect) !void {
+        if (self.effect_program == 0) return error.OpenGlPixelEffectUnavailable;
+        const vertices = effectVertices();
+        self.gl.active_texture(gl_texture0);
+        self.gl.bind_texture(gl_texture_2d, source);
+        try self.uploadSpriteVertices(&vertices);
+        self.gl.disable(gl_blend);
+        defer {
+            self.gl.enable(gl_blend);
+            self.setBlend(.alpha);
+        }
+        self.gl.use_program(self.effect_program);
+        const amount = self.gl.get_uniform_location(self.effect_program, "amount");
+        if (amount >= 0) self.gl.uniform_1f(amount, effect.amount);
+        self.gl.bind_vertex_array(self.sprite_vao);
+        self.gl.draw_arrays(gl_triangles, 0, vertices.len);
+    }
+
+    fn drawEffectTexture(self: *Presenter, texture: u32) !void {
+        const vertices = effectVertices();
+        self.gl.active_texture(gl_texture0);
+        self.gl.bind_texture(gl_texture_2d, texture);
+        try self.uploadSpriteVertices(&vertices);
+        self.gl.disable(gl_blend);
+        defer {
+            self.gl.enable(gl_blend);
+            self.setBlend(.alpha);
+        }
+        self.gl.use_program(self.sprite_program);
+        self.gl.bind_vertex_array(self.sprite_vao);
+        self.gl.draw_arrays(gl_triangles, 0, vertices.len);
     }
 
     fn uploadSpriteVertices(self: *Presenter, vertices: []const up.SpriteBatchVertex) !void {
@@ -548,9 +705,12 @@ const gl_array_buffer: u32 = 0x8892;
 const gl_blend: u32 = 0x0BE2;
 const gl_clamp_to_edge: u32 = 0x812F;
 const gl_color_buffer_bit: u32 = 0x00004000;
+const gl_color_attachment0: u32 = 0x8CE0;
 const gl_compile_status: u32 = 0x8B81;
 const gl_dynamic_draw: u32 = 0x88E8;
 const gl_float: u32 = 0x1406;
+const gl_framebuffer: u32 = 0x8D40;
+const gl_framebuffer_complete: u32 = 0x8CD5;
 const gl_fragment_shader: u32 = 0x8B30;
 const gl_link_status: u32 = 0x8B82;
 const gl_linear: u32 = 0x2601;
@@ -598,6 +758,18 @@ const sprite_fragment_source =
     \\}
 ;
 
+const effect_fragment_source =
+    \\#version 330 core
+    \\uniform sampler2D effect_texture;
+    \\uniform float amount;
+    \\in vec2 out_uv;
+    \\out vec4 out_color;
+    \\void main() {
+    \\    vec4 color = texture(effect_texture, out_uv);
+    \\    out_color = vec4(mix(color.rgb, vec3(1.0) - color.rgb, amount), color.a);
+    \\}
+;
+
 const primitive_vertex_source =
     \\#version 330 core
     \\layout(location = 0) in vec2 in_position;
@@ -635,6 +807,37 @@ test "OpenGL recovery retains presenter failures" {
     const err = presenter.recordRecoveryFailure(error.OpenGlContextCreationFailed);
     try std.testing.expectEqual(error.OpenGlContextCreationFailed, err);
     try std.testing.expectEqual(error.OpenGlContextCreationFailed, presenter.recoveryFailure().?);
+}
+
+test "OpenGL 3.3 presenter applies ordered pixel effects and restores them after recovery" {
+    if (!conformanceEnabled()) return;
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return error.SdlInitializationFailed;
+    defer c.SDL_Quit();
+    try configureContext();
+    const window = c.SDL_CreateWindow("unpolished-peas OpenGL effects", 8, 8, c.SDL_WINDOW_HIDDEN | c.SDL_WINDOW_OPENGL) orelse return error.OpenGlWindowCreationFailed;
+    defer c.SDL_DestroyWindow(window);
+    var presenter = try Presenter.init(window, 8, 8);
+    defer presenter.deinit();
+    var canvas = try up.Canvas.init(std.testing.allocator, 8, 8);
+    defer canvas.deinit();
+    const source = up.Color.rgb(12, 34, 56);
+    canvas.clear(source);
+    var sprites = up.SpriteBatch.init(std.testing.allocator);
+    defer sprites.deinit();
+    const effect = try up.PixelEffect.parse("invert", .{ .amount = 1 });
+    try presenter.renderWithEffects(canvas, &sprites, &.{}, &.{ effect, effect });
+    var captured = try presenter.capture(std.testing.allocator);
+    defer captured.deinit();
+    try std.testing.expectEqual(source, captured.get(4, 4).?);
+    try presenter.renderWithEffects(canvas, &sprites, &.{}, &.{effect});
+    var inverted = try presenter.capture(std.testing.allocator);
+    defer inverted.deinit();
+    try std.testing.expectEqual(effect.apply(source), inverted.get(4, 4).?);
+    try presenter.recover();
+    try presenter.renderWithEffects(canvas, &sprites, &.{}, &.{effect});
+    var recovered = try presenter.capture(std.testing.allocator);
+    defer recovered.deinit();
+    try std.testing.expectEqual(effect.apply(source), recovered.get(4, 4).?);
 }
 
 test "OpenGL 3.3 presenter renders canonical primitives, text, and sprites" {

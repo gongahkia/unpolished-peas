@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 fn landsOnFloor(allocator: std.mem.Allocator) !bool {
     var collider = up.TileCollider.init(allocator);

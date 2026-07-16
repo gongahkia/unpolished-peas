@@ -30,16 +30,6 @@ jobs:
         env:
           UP_EXPECTED_ZIG_VERSION: ${{ matrix.zig }}
 
-  services-migrations:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes postgresql
-      - run: script/test_services_migrations.sh
-
   required-zig-0-15-2:
     strategy:
       matrix:
@@ -55,24 +45,19 @@ jobs:
       - run: script/test_core_without_sdl.sh
       - run: script/test_module_fixture.sh
       - run: script/test_independent_proof_games.sh
-      - run: script/test_services_workspace.sh
       - run: script/check_no_legacy_lifecycle.sh
       - run: script/check_no_removed_content_paths.sh
       - run: script/test_release_validation.sh
       - if: matrix.os == 'ubuntu-latest'
         run: script/validate_wsl.sh
-      - run: zig fmt --check build.zig src examples services templates
+      - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build test-extensions
       - run: zig build test-extension-manifest
-      - run: script/test_extension_hook_fixture.sh
-      - run: zig build test-effects-conformance
-      - run: zig build test-ecs
-      - run: zig build test-networking
-      - run: zig build test-ui-conformance
-      - run: zig build test-physics-conformance
+      - run: zig build test-effects
+      - run: zig build test-ui
+      - run: zig build test-physics
       - run: script/test_extension_matrix.sh
-      - run: zig build test-package-release
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas
@@ -85,7 +70,7 @@ jobs:
       - run: script/check_performance_budgets.sh
       - run: zig build check-examples
       - run: zig build test-sdl
-      - run: zig build test-box2d
+      - run: zig build test-physics
       - run: zig build test-scenes
       - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'

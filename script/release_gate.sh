@@ -45,20 +45,13 @@ run cli-starter zig build test-starter
 run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
 run proof-platformer runtime script/test_proof_game_matrix.sh platformer
-run services zig build test-services
-run services-workspace script/test_services_workspace.sh
-run services-migrations script/test_services_migrations.sh
 run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
 run diagnostics zig build test-support
-run package-release zig build test-package-release
-run effects-conformance zig build test-effects-conformance
-run ecs-conformance zig build test-ecs
-run networking-conformance zig build test-networking
-run ui-conformance zig build test-ui-conformance
-run physics-conformance zig build test-physics-conformance
+run effects zig build test-effects
+run ui zig build test-ui
+run physics zig build test-physics
 run visual-scenes zig build test-scenes
 run backend-comparison zig build test-desktop-backends
-run fuzz zig build test-fuzz
 printf 'release gate passed: logs=%s\n' "$diagnostics"
