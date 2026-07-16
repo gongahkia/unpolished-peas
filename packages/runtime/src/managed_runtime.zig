@@ -9,7 +9,7 @@ pub const DirectDispatch = struct {
     callback: *const fn (*anyopaque, *const event.EventEnvelope) void,
 };
 
-pub const ManagedRuntimeError = error{ AlreadyStarted, NotRunning, QueueFull, ThreadSpawnFailed, ReentrantCall };
+pub const ManagedRuntimeError = error{ AlreadyStarted, NotRunning, QueueFull, ThreadSpawnFailed, ReentrantCall, NotCallerDrained, DrainThreadMismatch };
 
 pub const ManagedRuntime = struct {
     allocator: std.mem.Allocator,
@@ -20,6 +20,8 @@ pub const ManagedRuntime = struct {
     worker: ?std.Thread = null,
     stopping: bool = false,
     direct_dispatch: ?DirectDispatch = null,
+    caller_drained: bool = false,
+    drain_thread: ?std.Thread.Id = null,
     queue: std.ArrayListUnmanaged(event.EventEnvelope) = .empty,
     processed: u64 = 0,
 
@@ -29,6 +31,10 @@ pub const ManagedRuntime = struct {
 
     pub fn init_with_direct_dispatch(allocator: std.mem.Allocator, sdk: config.Sdk, capacity: usize, dispatch: DirectDispatch) ManagedRuntime {
         return .{ .allocator = allocator, .sdk = sdk, .capacity = capacity, .direct_dispatch = dispatch };
+    }
+
+    pub fn init_with_caller_drain(allocator: std.mem.Allocator, sdk: config.Sdk, capacity: usize) ManagedRuntime {
+        return .{ .allocator = allocator, .sdk = sdk, .capacity = capacity, .caller_drained = true };
     }
 
     pub fn start(self: *ManagedRuntime) ManagedRuntimeError!void {
@@ -80,8 +86,32 @@ pub const ManagedRuntime = struct {
         return self.processed;
     }
 
+    pub fn drain(self: *ManagedRuntime) ManagedRuntimeError!?event.EventEnvelope {
+        if (direct_callback_active) return error.ReentrantCall;
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        if (!self.caller_drained) return error.NotCallerDrained;
+        const current_thread = std.Thread.getCurrentId();
+        if (self.drain_thread) |thread_id| {
+            if (thread_id != current_thread) return error.DrainThreadMismatch;
+        } else {
+            self.drain_thread = current_thread;
+        }
+        if (self.queue.items.len == 0) return null;
+        const next = self.queue.items[0];
+        for (self.queue.items[1..], 0..) |queued_event, index| self.queue.items[index] = queued_event;
+        self.queue.items.len -= 1;
+        self.processed +%= 1;
+        return next;
+    }
+
     fn run(self: *ManagedRuntime) void {
         self.mutex.lock();
+        if (self.caller_drained) {
+            while (!self.stopping) self.ready.wait(&self.mutex);
+            self.mutex.unlock();
+            return;
+        }
         while (true) {
             while (!self.stopping and self.queue.items.len == 0) self.ready.wait(&self.mutex);
             if (self.stopping) break;
@@ -120,6 +150,47 @@ test "managed runtimes have explicit worker lifecycle and bounded submission" {
     var rejected = event.EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .disconnected = {} } };
     defer rejected.deinit();
     try std.testing.expectError(error.NotRunning, runtime.submit(rejected));
+}
+
+test "caller-drained runtimes bind deterministic drains to one thread" {
+    const WrongThread = struct {
+        runtime: *ManagedRuntime,
+        mutex: std.Thread.Mutex = .{},
+        result: ?ManagedRuntimeError = null,
+
+        fn run(context: *@This()) void {
+            _ = context.runtime.drain() catch |err| {
+                context.mutex.lock();
+                defer context.mutex.unlock();
+                context.result = err;
+                return;
+            };
+        }
+    };
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = ManagedRuntime.init_with_caller_drain(std.testing.allocator, sdk, 1);
+    defer runtime.deinit();
+    try runtime.start();
+    try std.testing.expect((try runtime.drain()) == null);
+    try runtime.submit(.{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } });
+    var drained = (try runtime.drain()).?;
+    defer drained.deinit();
+    try std.testing.expectEqual(@as(u64, 1), runtime.processed_count());
+    var wrong_thread = WrongThread{ .runtime = &runtime };
+    const worker = try std.Thread.spawn(.{}, WrongThread.run, .{&wrong_thread});
+    worker.join();
+    wrong_thread.mutex.lock();
+    defer wrong_thread.mutex.unlock();
+    try std.testing.expectEqual(error.DrainThreadMismatch, wrong_thread.result.?);
+}
+
+test "non-caller-drained runtimes reject caller draining" {
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = ManagedRuntime.init(std.testing.allocator, sdk, 1);
+    defer runtime.deinit();
+    try std.testing.expectError(error.NotCallerDrained, runtime.drain());
 }
 
 test "direct dispatch runs on workers and rejects reentrant runtime mutation" {
