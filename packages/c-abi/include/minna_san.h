@@ -35,6 +35,13 @@ typedef struct minna_san_buffer {
     uint8_t *data;
     size_t len;
 } minna_san_buffer;
+typedef void *(*minna_san_allocate_fn)(void *context, size_t len);
+typedef void (*minna_san_release_fn)(void *context, uint8_t *data, size_t len);
+typedef struct minna_san_allocator {
+    void *context;
+    minna_san_allocate_fn allocate;
+    minna_san_release_fn release;
+} minna_san_allocator;
 typedef struct minna_san_event {
     uint32_t kind;
     uint32_t mode;
