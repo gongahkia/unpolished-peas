@@ -7,6 +7,7 @@ const endpoint_selection = @import("endpoint_selection.zig");
 const udp_socket = @import("udp_socket.zig");
 const udp_readiness = @import("udp_readiness.zig");
 const tcp_connection = @import("tcp_connection.zig");
+const tcp_listener = @import("tcp_listener.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -39,6 +40,12 @@ pub const UdpReadiness = udp_readiness.UdpReadiness;
 pub const TcpConnectionState = tcp_connection.TcpConnectionState;
 pub const TcpConnectionError = tcp_connection.TcpConnectionError;
 pub const TcpConnection = tcp_connection.TcpConnection;
+pub const TcpListenerState = tcp_listener.TcpListenerState;
+pub const TcpListenerError = tcp_listener.TcpListenerError;
+pub const TcpAdmission = tcp_listener.TcpAdmission;
+pub const TcpPendingConnection = tcp_listener.TcpPendingConnection;
+pub const TcpAdmittedConnection = tcp_listener.TcpAdmittedConnection;
+pub const TcpListener = tcp_listener.TcpListener;
 pub const package_name = "transport";
 
 comptime {
@@ -58,4 +65,5 @@ test {
     _ = @import("udp_socket.zig");
     _ = @import("udp_readiness.zig");
     _ = @import("tcp_connection.zig");
+    _ = @import("tcp_listener.zig");
 }
