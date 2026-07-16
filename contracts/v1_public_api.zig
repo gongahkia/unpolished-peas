@@ -60,6 +60,9 @@ test "stable public symbols are exact" {
         "c_result_for_error",
         "error_for_c_result",
         "c_result_from_code",
+        "Ownership",
+        "BorrowedBuffer",
+        "OwnedBuffer",
         "package_name",
     });
     try expectExactPublicDeclarations(protocol, &.{"package_name"});

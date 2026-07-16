@@ -1,4 +1,5 @@
 const taxonomy = @import("error_taxonomy.zig");
+const ownership = @import("ownership.zig");
 
 pub const ErrorClass = taxonomy.ErrorClass;
 pub const CResult = taxonomy.CResult;
@@ -11,6 +12,9 @@ pub const class_for_c_result = taxonomy.class_for_c_result;
 pub const c_result_for_error = taxonomy.c_result_for_error;
 pub const error_for_c_result = taxonomy.error_for_c_result;
 pub const c_result_from_code = taxonomy.c_result_from_code;
+pub const Ownership = ownership.Ownership;
+pub const BorrowedBuffer = ownership.BorrowedBuffer;
+pub const OwnedBuffer = ownership.OwnedBuffer;
 pub const package_name = "core";
 
 test "core package boundary" {
@@ -19,4 +23,5 @@ test "core package boundary" {
 
 test {
     _ = @import("error_taxonomy.zig");
+    _ = @import("ownership.zig");
 }
