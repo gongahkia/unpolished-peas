@@ -125,6 +125,10 @@ pub fn build(b: *std.Build) void {
     web_package_test.setCwd(b.path("."));
     const web_package_test_step = b.step("test-web-package", "Validate deterministic browser package layout");
     web_package_test_step.dependOn(&web_package_test.step);
+    const browser_chromium_test = b.addSystemCommand(&.{ "script/test_browser_chromium.sh" });
+    browser_chromium_test.setCwd(b.path("."));
+    const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
+    browser_chromium_test_step.dependOn(&browser_chromium_test.step);
     const browser_wasm_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_wasm_host.mjs" });
     browser_wasm_host_test.setCwd(b.path("."));
     browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);
