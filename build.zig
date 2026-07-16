@@ -101,6 +101,10 @@ pub fn build(b: *std.Build) void {
     browser_scaffold_test.setCwd(b.path("."));
     const browser_scaffold_test_step = b.step("test-browser-scaffold", "Validate browser Wasm artifact layout");
     browser_scaffold_test_step.dependOn(&browser_scaffold_test.step);
+    const browser_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_host.mjs" });
+    browser_host_test.setCwd(b.path("."));
+    const browser_host_test_step = b.step("test-browser-host", "Test browser WebGL 2 host bindings");
+    browser_host_test_step.dependOn(&browser_host_test.step);
 
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
