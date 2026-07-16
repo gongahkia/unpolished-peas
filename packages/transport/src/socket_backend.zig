@@ -28,6 +28,10 @@ pub const Socket = struct {
     kind: SocketKind,
 
     pub fn open(kind: SocketKind) SocketError!Socket {
+        return open_with_family(kind, std.posix.AF.INET);
+    }
+
+    pub fn open_with_family(kind: SocketKind, family: u32) SocketError!Socket {
         const socket_type: u32 = switch (kind) {
             .udp => @as(u32, std.posix.SOCK.DGRAM),
             .tcp => @as(u32, std.posix.SOCK.STREAM),
@@ -36,7 +40,7 @@ pub const Socket = struct {
             .udp => @as(u32, std.posix.IPPROTO.UDP),
             .tcp => @as(u32, std.posix.IPPROTO.TCP),
         };
-        const handle = std.posix.socket(std.posix.AF.INET, socket_type, protocol) catch |err| return map_platform_error(err);
+        const handle = std.posix.socket(family, socket_type, protocol) catch |err| return map_platform_error(err);
         return .{ .handle = handle, .kind = kind };
     }
 
