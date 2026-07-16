@@ -88,7 +88,13 @@ test "stable public symbols are exact" {
     try expectExactPublicDeclarations(transport, &.{"package_name"});
     try expectExactPublicDeclarations(topology, &.{"package_name"});
     try expectExactPublicDeclarations(state, &.{"package_name"});
-    try expectExactPublicDeclarations(runtime, &.{"package_name"});
+    try expectExactPublicDeclarations(runtime, &.{
+        "ConfigError",
+        "SdkConfig",
+        "Sdk",
+        "SdkConfigBuilder",
+        "package_name",
+    });
     try expectExactPublicDeclarations(c_abi, &.{"package_name"});
 }
 
