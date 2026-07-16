@@ -164,6 +164,7 @@ zig build new -- ../my-game
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
 `zig build test-desktop-package-matrix` packages and smokes bounce, top-down, and platformer for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
+`zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, and platformer in Chromium from deterministic static Wasm bundles.
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, physics where applicable, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.

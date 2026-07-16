@@ -8,4 +8,7 @@ for (const path of ["index.html", "bootstrap.mjs", "host.mjs", "input.mjs", "aud
 assert.deepEqual([...await readFile(`${root}/unpolished-peas.wasm`)].slice(0, 4), [0, 97, 115, 109]);
 const manifest = JSON.parse(await readFile(`${root}/web-manifest.json`, "utf8"));
 assert.deepEqual(manifest, {version: 1, platform: "web", game: manifest.game, entry: "index.html", runtime: "unpolished-peas.wasm", assets: "assets/"});
-assert.match(await readFile(`${root}/index.html`, "utf8"), /bootstrap\.mjs/);
+assert.ok(["bounce", "topdown", "platformer"].includes(manifest.game));
+const html = await readFile(`${root}/index.html`, "utf8");
+assert.match(html, /bootstrap\.mjs/);
+assert.match(html, new RegExp(`data-game="${manifest.game}"`));
