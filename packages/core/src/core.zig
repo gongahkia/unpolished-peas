@@ -1,6 +1,7 @@
 const taxonomy = @import("error_taxonomy.zig");
 const ownership = @import("ownership.zig");
 const clock = @import("clock.zig");
+const capability = @import("capability.zig");
 
 pub const ErrorClass = taxonomy.ErrorClass;
 pub const CResult = taxonomy.CResult;
@@ -21,6 +22,9 @@ pub const ClockError = clock.ClockError;
 pub const Clock = clock.Clock;
 pub const CheckedClock = clock.CheckedClock;
 pub const ManualClock = clock.ManualClock;
+pub const Capability = capability.Capability;
+pub const CapabilityError = capability.CapabilityError;
+pub const CapabilityConfig = capability.CapabilityConfig;
 pub const package_name = "core";
 
 test "core package boundary" {
@@ -31,4 +35,5 @@ test {
     _ = @import("error_taxonomy.zig");
     _ = @import("ownership.zig");
     _ = @import("clock.zig");
+    _ = @import("capability.zig");
 }
