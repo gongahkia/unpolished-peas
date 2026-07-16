@@ -22,6 +22,11 @@ pub fn main() !void {
         std.debug.print("peas: unknown command '{s}'\n", .{argument});
         return usage();
     };
+    if (command == .doctor) {
+        const code = try doctorEnvironment(gpa.allocator(), &args);
+        if (code != 0) std.process.exit(code);
+        return;
+    }
     const term = try dispatch(gpa.allocator(), command, &args);
     if (term) |value| switch (value) {
         .Exited => |code| if (code != 0) std.process.exit(code),
@@ -52,6 +57,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             return null;
         },
         .docs => return try docsProject(allocator, args),
+        .doctor => unreachable,
     }
 }
 
@@ -339,6 +345,126 @@ fn supportBundleUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+const DoctorCode = enum(u8) {
+    ok = 0,
+    project = 20,
+    zig = 21,
+    target = 22,
+    renderer = 23,
+    assets = 24,
+    browser_host = 25,
+    package = 26,
+};
+
+fn doctorEnvironment(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !u8 {
+    var project_path: []const u8 = ".";
+    var project_path_set = false;
+    var target = tools.defaultDoctorTarget() orelse {
+        printDoctor(.target, "unsupported host target");
+        return @intFromEnum(DoctorCode.target);
+    };
+    var renderer: tools.DoctorRenderer = .auto;
+    var package_target: ?tools.DoctorTarget = null;
+    while (args.next()) |argument| {
+        if (std.mem.eql(u8, argument, "--target")) {
+            target = tools.parseDoctorTarget(args.next() orelse return doctorUsage()) orelse return doctorUsage();
+        } else if (std.mem.eql(u8, argument, "--renderer")) {
+            renderer = tools.parseDoctorRenderer(args.next() orelse return doctorUsage()) orelse return doctorUsage();
+        } else if (std.mem.eql(u8, argument, "--package")) {
+            package_target = tools.parseDoctorTarget(args.next() orelse return doctorUsage()) orelse return doctorUsage();
+        } else if (!project_path_set) {
+            project_path = argument;
+            project_path_set = true;
+        } else return doctorUsage();
+    }
+    const project_root = tools.discoverProject(allocator, project_path) catch {
+        printDoctor(.project, "project build.zig not found");
+        return @intFromEnum(DoctorCode.project);
+    };
+    defer allocator.free(project_root);
+    if (try tools.checkProject(allocator, project_root)) |issue| {
+        var owned = issue;
+        defer owned.deinit(allocator);
+        const code: DoctorCode = switch (owned.kind) {
+            .incompatible_zig => .zig,
+            .missing_assets => .assets,
+            else => .project,
+        };
+        std.debug.print("peas doctor: check={s} status=failed code={d} detail={s}:{d}:{d}: {s}\n", .{ @tagName(code), @intFromEnum(code), owned.path, owned.line, owned.column, owned.message });
+        return @intFromEnum(code);
+    }
+    if (!tools.supportedZigVersion()) {
+        printDoctor(.zig, "unsupported Zig compiler version");
+        return @intFromEnum(DoctorCode.zig);
+    }
+    if (tools.doctorTargetDiagnostic(target)) |diagnostic| {
+        printDoctor(.target, diagnostic);
+        return @intFromEnum(DoctorCode.target);
+    }
+    if (tools.doctorRendererDiagnostic(target, renderer)) |diagnostic| {
+        printDoctor(.renderer, diagnostic);
+        return @intFromEnum(DoctorCode.renderer);
+    }
+    if (!browserHostReady(allocator)) {
+        printDoctor(.browser_host, "node executable is unavailable");
+        return @intFromEnum(DoctorCode.browser_host);
+    }
+    const selected_package = package_target orelse target;
+    if (packagePrerequisiteDiagnostic(allocator, selected_package)) |diagnostic| {
+        printDoctor(.package, diagnostic);
+        return @intFromEnum(DoctorCode.package);
+    }
+    std.debug.print("peas doctor: status=ok zig={s} target={s} renderer={s} browser-host=node package={s}\n", .{ @import("builtin").zig_version_string, @tagName(target), @tagName(renderer), @tagName(selected_package) });
+    return @intFromEnum(DoctorCode.ok);
+}
+
+fn browserHostReady(allocator: std.mem.Allocator) bool {
+    return commandWorks(allocator, &.{ "node", "--version" });
+}
+
+fn packagePrerequisiteDiagnostic(allocator: std.mem.Allocator, target: tools.DoctorTarget) ?[]const u8 {
+    const script_root = std.process.getEnvVarOwned(allocator, "UP_SCRIPT_ROOT") catch return "UP_SCRIPT_ROOT is unavailable";
+    defer allocator.free(script_root);
+    const script_path = std.fs.path.join(allocator, &.{ script_root, target.packageScriptName() }) catch return "package script path is invalid";
+    defer allocator.free(script_path);
+    std.fs.cwd().access(script_path, .{}) catch return "package script is unavailable";
+    switch (target) {
+        .linux => {
+            if (!commandWorks(allocator, &.{ "tar", "--version" })) return "missing GNU tar";
+            if (!commandWorks(allocator, &.{ "gzip", "--version" })) return "missing gzip";
+            if (!commandWorks(allocator, &.{ "sha256sum", "--version" })) return "missing sha256sum";
+        },
+        .macos => {
+            if (!commandWorks(allocator, &.{ "xcrun", "--show-sdk-path" })) return "missing macOS SDK";
+            if (!commandWorks(allocator, &.{ "xcrun", "--find", "lipo" })) return "missing lipo";
+            if (!commandWorks(allocator, &.{ "zip", "-v" })) return "missing zip";
+            if (!commandWorks(allocator, &.{ "shasum", "-a", "256", "/dev/null" })) return "missing shasum";
+        },
+        .windows => if (!commandWorks(allocator, &.{ "powershell.exe", "-NoProfile", "-Command", "$PSVersionTable.PSVersion" })) return "missing PowerShell",
+        .web => if (!browserHostReady(allocator)) return "missing Node browser host",
+    }
+    return null;
+}
+
+fn commandWorks(allocator: std.mem.Allocator, argv: []const []const u8) bool {
+    const result = std.process.Child.run(.{ .allocator = allocator, .argv = argv, .max_output_bytes = 4096 }) catch return false;
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    return switch (result.term) {
+        .Exited => |code| code == 0,
+        else => false,
+    };
+}
+
+fn printDoctor(code: DoctorCode, detail: []const u8) void {
+    std.debug.print("peas doctor: check={s} status=failed code={d} detail={s}\n", .{ @tagName(code), @intFromEnum(code), detail });
+}
+
+fn doctorUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]\n", .{});
+    return error.InvalidArguments;
+}
+
 fn docsProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
     const topic = if (args.next()) |value| tools.parseDocsTopic(value) orelse return docsUsage() else .overview;
     if (args.next() != null) return docsUsage();
@@ -403,6 +529,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.serve, tools.parseCommand("serve").?);
     try std.testing.expectEqual(tools.Command.support_bundle, tools.parseCommand("support-bundle").?);
+    try std.testing.expectEqual(tools.Command.doctor, tools.parseCommand("doctor").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
 }
 
@@ -485,6 +612,17 @@ test "known docs topics parse" {
 
 test "unknown command is rejected" {
     try std.testing.expect(tools.parseCommand("publish") == null);
+}
+
+test "doctor exit codes are stable" {
+    try std.testing.expectEqual(@as(u8, 0), @intFromEnum(DoctorCode.ok));
+    try std.testing.expectEqual(@as(u8, 20), @intFromEnum(DoctorCode.project));
+    try std.testing.expectEqual(@as(u8, 21), @intFromEnum(DoctorCode.zig));
+    try std.testing.expectEqual(@as(u8, 22), @intFromEnum(DoctorCode.target));
+    try std.testing.expectEqual(@as(u8, 23), @intFromEnum(DoctorCode.renderer));
+    try std.testing.expectEqual(@as(u8, 24), @intFromEnum(DoctorCode.assets));
+    try std.testing.expectEqual(@as(u8, 25), @intFromEnum(DoctorCode.browser_host));
+    try std.testing.expectEqual(@as(u8, 26), @intFromEnum(DoctorCode.package));
 }
 
 test "new command rejects invalid destinations" {
