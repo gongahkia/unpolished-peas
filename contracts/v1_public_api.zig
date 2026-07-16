@@ -114,6 +114,10 @@ test "stable public symbols are exact" {
         "Ipv6Error",
         "Ipv6Address",
         "bind_ipv6",
+        "EndpointMode",
+        "PlatformSupport",
+        "EndpointSelectionError",
+        "select_endpoint_mode",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
