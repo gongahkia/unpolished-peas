@@ -132,6 +132,12 @@ test "stable public symbols are exact" {
         "TcpConnectionState",
         "TcpConnectionError",
         "TcpConnection",
+        "TcpListenerState",
+        "TcpListenerError",
+        "TcpAdmission",
+        "TcpPendingConnection",
+        "TcpAdmittedConnection",
+        "TcpListener",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
