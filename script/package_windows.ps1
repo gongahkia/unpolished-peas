@@ -61,8 +61,13 @@ try {
     Set-Content -LiteralPath (Join-Path $package 'run.cmd') -Encoding ascii -Value @('@echo off', ('"%~dp0bin\unpolished-peas-' + $Game + '.exe" %*'))
     Set-Content -LiteralPath (Join-Path $package 'PACKAGE-MANIFEST.txt') -Encoding ascii -Value @('format=unpolished-peas-package', 'version=1', 'platform=windows-x86_64', ('game=' + $Game), ('runtime=bin/unpolished-peas-' + $Game + '.exe'), 'assets=assets/', 'docs=docs/', 'launcher=launcher.json', 'bundled-runtime=SDL3:static', 'shader-compiler=bin/D3DCompiler_47.dll')
 
-    $epoch = [int64](& git -C $repo log -1 --format=%ct)
-    if ($LASTEXITCODE -ne 0) { throw "git log failed: $LASTEXITCODE" }
+    $epoch_text = $env:SOURCE_DATE_EPOCH
+    if ([string]::IsNullOrWhiteSpace($epoch_text)) {
+        $epoch_text = & git -C $repo log -1 --format=%ct
+        if ($LASTEXITCODE -ne 0) { throw "git log failed: $LASTEXITCODE" }
+    }
+    [int64]$epoch = 0
+    if (-not [int64]::TryParse($epoch_text, [ref]$epoch) -or $epoch -lt 0) { throw 'SOURCE_DATE_EPOCH must be an unsigned Unix timestamp' }
     $timestamp = [DateTimeOffset]::FromUnixTimeSeconds($epoch)
     $archive = Join-Path $out ($name + '.zip')
     Add-Type -AssemblyName System.IO.Compression
