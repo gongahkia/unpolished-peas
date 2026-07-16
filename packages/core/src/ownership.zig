@@ -5,6 +5,8 @@ pub const Ownership = enum {
     owned,
 };
 
+pub const TransferError = error{BufferAlreadyTransferred};
+
 pub const BorrowedBuffer = struct {
     bytes: []const u8,
 
@@ -39,6 +41,25 @@ pub const OwnedBuffer = struct {
     }
 };
 
+pub const TransferredBuffer = struct {
+    buffer: ?OwnedBuffer,
+
+    pub fn init(buffer: OwnedBuffer) TransferredBuffer {
+        return .{ .buffer = buffer };
+    }
+
+    pub fn into_owned(self: *TransferredBuffer) TransferError!OwnedBuffer {
+        const buffer = self.buffer orelse return error.BufferAlreadyTransferred;
+        self.buffer = null;
+        return buffer;
+    }
+
+    pub fn deinit(self: *TransferredBuffer) void {
+        if (self.buffer) |*buffer| buffer.deinit();
+        self.* = undefined;
+    }
+};
+
 test "owned buffers copy and release allocator-owned bytes" {
     var owned = try OwnedBuffer.initCopy(std.testing.allocator, "minna-san");
     defer owned.deinit();
@@ -51,4 +72,11 @@ test "owned buffer allocation failure leaves no resource to release" {
     var storage: [1]u8 = undefined;
     var fixed = std.heap.FixedBufferAllocator.init(&storage);
     try std.testing.expectError(error.OutOfMemory, OwnedBuffer.initCopy(fixed.allocator(), "xx"));
+}
+
+test "transferred buffers move ownership exactly once" {
+    var transfer = TransferredBuffer.init(try OwnedBuffer.initCopy(std.testing.allocator, "transfer"));
+    var owned = try transfer.into_owned();
+    defer owned.deinit();
+    try std.testing.expectError(error.BufferAlreadyTransferred, transfer.into_owned());
 }
