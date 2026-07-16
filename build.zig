@@ -113,6 +113,10 @@ pub fn build(b: *std.Build) void {
     browser_audio_test.setCwd(b.path("."));
     const browser_audio_test_step = b.step("test-browser-audio", "Test browser audio bindings");
     browser_audio_test_step.dependOn(&browser_audio_test.step);
+    const browser_storage_test = b.addSystemCommand(&.{ "node", "script/test_browser_storage.mjs" });
+    browser_storage_test.setCwd(b.path("."));
+    const browser_storage_test_step = b.step("test-browser-storage", "Test browser persistence bindings");
+    browser_storage_test_step.dependOn(&browser_storage_test.step);
     const browser_wasm_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_wasm_host.mjs" });
     browser_wasm_host_test.setCwd(b.path("."));
     browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);

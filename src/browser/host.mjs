@@ -1,5 +1,14 @@
 import {createBrowserInput} from "./input.mjs";
 import {createBrowserAudio} from "./audio.mjs";
+import {createBrowserStorage} from "./storage.mjs";
+
+function localStorageOrNull() {
+  try {
+    return globalThis.localStorage;
+  } catch {
+    return null;
+  }
+}
 
 export const AbiVersion = 1;
 
@@ -28,6 +37,8 @@ export function createBrowserHost({
   navigator: navigatorRef = globalThis.navigator,
   ResizeObserver: ResizeObserverImpl = globalThis.ResizeObserver,
   AudioContext: AudioContextImpl = globalThis.AudioContext ?? globalThis.webkitAudioContext,
+  storage: storageRef,
+  storageNamespace = "unpolished-peas:v1",
 } = {}) {
   let gl = null;
   let contextLost = false;
@@ -63,6 +74,7 @@ export function createBrowserHost({
     mapCanvas: (x, y) => framebufferToCanvas(x, y, canvas?.width ?? 0, canvas?.height ?? 0),
   });
   const audio = createBrowserAudio({canvas, window: windowRef, AudioContext: AudioContextImpl});
+  const storage = createBrowserStorage({storage: storageRef === undefined ? localStorageOrNull() : storageRef, namespace: storageNamespace});
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
@@ -924,9 +936,9 @@ export function createBrowserHost({
     up_host_input_read: (destination, capacity) => input.read(destination, capacity, memory),
     up_host_audio_state: audio.state,
     up_host_audio_submit: (source, byteLength) => audio.submit(memory, source, byteLength),
-    up_host_storage_read: () => Status.unavailable,
-    up_host_storage_write: () => Status.unavailable,
-    up_host_storage_remove: () => Status.unavailable,
+    up_host_storage_read: (key, keyLength, destination, capacity) => storage.read(memory, key, keyLength, destination, capacity),
+    up_host_storage_write: (key, keyLength, source, byteLength) => storage.write(memory, key, keyLength, source, byteLength),
+    up_host_storage_remove: (key, keyLength) => storage.remove(memory, key, keyLength),
     up_host_diagnostic_emit: () => {},
     up_host_teardown: () => {
       cancelScheduledFrames();
@@ -963,6 +975,8 @@ export function createBrowserHost({
     actionValues: input.actionValues,
     activateAudio: audio.activate,
     audio: audio.diagnostic,
+    storage: storage.diagnostic,
+    storageKey: storage.key,
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
