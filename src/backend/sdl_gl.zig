@@ -1,4 +1,5 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const up = @import("unpolished-peas").api;
 const effect_api = up.effects;
 const camera_commands = @import("camera_commands.zig");
@@ -14,6 +15,17 @@ const GlViewport = struct {
     height: u32,
 };
 
+const BuiltinShaderSource = enum {
+    sprite_vertex,
+    sprite_fragment,
+    primitive_vertex,
+    primitive_fragment,
+    effect_fragment,
+    sprite_program,
+    primitive_program,
+    effect_program,
+};
+
 const Gl = struct {
     const GetIntegerv = *const fn (u32, *i32) callconv(.c) void;
     const Viewport = *const fn (i32, i32, i32, i32) callconv(.c) void;
@@ -27,11 +39,13 @@ const Gl = struct {
     const ShaderSource = *const fn (u32, i32, [*]const [*]const u8, ?*const i32) callconv(.c) void;
     const CompileShader = *const fn (u32) callconv(.c) void;
     const GetShaderiv = *const fn (u32, u32, *i32) callconv(.c) void;
+    const GetShaderInfoLog = *const fn (u32, i32, ?*i32, [*]u8) callconv(.c) void;
     const DeleteShader = *const fn (u32) callconv(.c) void;
     const CreateProgram = *const fn () callconv(.c) u32;
     const AttachShader = *const fn (u32, u32) callconv(.c) void;
     const LinkProgram = *const fn (u32) callconv(.c) void;
     const GetProgramiv = *const fn (u32, u32, *i32) callconv(.c) void;
+    const GetProgramInfoLog = *const fn (u32, i32, ?*i32, [*]u8) callconv(.c) void;
     const DeleteProgram = *const fn (u32) callconv(.c) void;
     const UseProgram = *const fn (u32) callconv(.c) void;
     const GetUniformLocation = *const fn (u32, [*:0]const u8) callconv(.c) i32;
@@ -74,11 +88,13 @@ const Gl = struct {
     shader_source: ShaderSource,
     compile_shader: CompileShader,
     get_shader_iv: GetShaderiv,
+    get_shader_info_log: GetShaderInfoLog,
     delete_shader: DeleteShader,
     create_program: CreateProgram,
     attach_shader: AttachShader,
     link_program: LinkProgram,
     get_program_iv: GetProgramiv,
+    get_program_info_log: GetProgramInfoLog,
     delete_program: DeleteProgram,
     use_program: UseProgram,
     get_uniform_location: GetUniformLocation,
@@ -123,11 +139,13 @@ const Gl = struct {
             .shader_source = try loadProc(ShaderSource, "glShaderSource"),
             .compile_shader = try loadProc(CompileShader, "glCompileShader"),
             .get_shader_iv = try loadProc(GetShaderiv, "glGetShaderiv"),
+            .get_shader_info_log = try loadProc(GetShaderInfoLog, "glGetShaderInfoLog"),
             .delete_shader = try loadProc(DeleteShader, "glDeleteShader"),
             .create_program = try loadProc(CreateProgram, "glCreateProgram"),
             .attach_shader = try loadProc(AttachShader, "glAttachShader"),
             .link_program = try loadProc(LinkProgram, "glLinkProgram"),
             .get_program_iv = try loadProc(GetProgramiv, "glGetProgramiv"),
+            .get_program_info_log = try loadProc(GetProgramInfoLog, "glGetProgramInfoLog"),
             .delete_program = try loadProc(DeleteProgram, "glDeleteProgram"),
             .use_program = try loadProc(UseProgram, "glUseProgram"),
             .get_uniform_location = try loadProc(GetUniformLocation, "glGetUniformLocation"),
@@ -330,10 +348,10 @@ pub const Presenter = struct {
 
     fn createGpuResources(self: *Presenter) !void {
         try self.requireVersion();
-        self.sprite_program = try self.makeProgram(sprite_vertex_source, sprite_fragment_source);
+        self.sprite_program = try self.makeProgram(.sprite_program, .sprite_vertex, sprite_vertex_source, .sprite_fragment, sprite_fragment_source);
         errdefer self.releaseGpuResources();
-        self.primitive_program = try self.makeProgram(primitive_vertex_source, primitive_fragment_source);
-        self.effect_program = try self.makeProgram(sprite_vertex_source, effect_fragment_source);
+        self.primitive_program = try self.makeProgram(.primitive_program, .primitive_vertex, primitive_vertex_source, .primitive_fragment, primitive_fragment_source);
+        self.effect_program = try self.makeProgram(.effect_program, .sprite_vertex, sprite_vertex_source, .effect_fragment, effect_fragment_source);
         self.configureSpriteProgram();
         self.configureEffectProgram();
         try self.makeBuffers();
@@ -611,10 +629,10 @@ pub const Presenter = struct {
         self.gl.tex_image_2d(gl_texture_2d, 0, @intCast(gl_rgba), try glI32(width), try glI32(height), 0, gl_rgba, gl_unsigned_byte, @ptrCast(bytes.ptr));
     }
 
-    fn makeProgram(self: *Presenter, vertex_source: []const u8, fragment_source: []const u8) !u32 {
-        const vertex = try self.compileShader(gl_vertex_shader, vertex_source);
+    fn makeProgram(self: *Presenter, program_source: BuiltinShaderSource, vertex_source_name: BuiltinShaderSource, vertex_source: []const u8, fragment_source_name: BuiltinShaderSource, fragment_source: []const u8) !u32 {
+        const vertex = try self.compileShader(vertex_source_name, gl_vertex_shader, vertex_source);
         defer self.gl.delete_shader(vertex);
-        const fragment = try self.compileShader(gl_fragment_shader, fragment_source);
+        const fragment = try self.compileShader(fragment_source_name, gl_fragment_shader, fragment_source);
         defer self.gl.delete_shader(fragment);
         const program = self.gl.create_program();
         if (program == 0) return error.OpenGlProgramCreationFailed;
@@ -624,11 +642,14 @@ pub const Presenter = struct {
         self.gl.link_program(program);
         var status: i32 = 0;
         self.gl.get_program_iv(program, gl_link_status, &status);
-        if (status == 0) return error.OpenGlProgramLinkFailed;
+        if (status == 0) {
+            self.reportProgramFailure(program_source, program);
+            return error.OpenGlProgramLinkFailed;
+        }
         return program;
     }
 
-    fn compileShader(self: *Presenter, kind: u32, source: []const u8) !u32 {
+    fn compileShader(self: *Presenter, source_name: BuiltinShaderSource, kind: u32, source: []const u8) !u32 {
         const shader = self.gl.create_shader(kind);
         if (shader == 0) return error.OpenGlShaderCreationFailed;
         errdefer self.gl.delete_shader(shader);
@@ -638,10 +659,45 @@ pub const Presenter = struct {
         self.gl.compile_shader(shader);
         var status: i32 = 0;
         self.gl.get_shader_iv(shader, gl_compile_status, &status);
-        if (status == 0) return error.OpenGlShaderCompileFailed;
+        if (status == 0) {
+            self.reportShaderFailure(source_name, shader);
+            return error.OpenGlShaderCompileFailed;
+        }
         return shader;
     }
+
+    fn reportShaderFailure(self: *Presenter, source: BuiltinShaderSource, shader: u32) void {
+        var log: [512]u8 = undefined;
+        var written: i32 = 0;
+        self.gl.get_shader_info_log(shader, @intCast(log.len), &written, &log);
+        const message = infoLog(log[0..], written);
+        var diagnostic: [768]u8 = undefined;
+        const output = formatShaderFailure(&diagnostic, .compile, source, message) catch "OpenGL shader failure: diagnostic formatting failed";
+        std.debug.print("{s}\n", .{output});
+    }
+
+    fn reportProgramFailure(self: *Presenter, source: BuiltinShaderSource, program: u32) void {
+        var log: [512]u8 = undefined;
+        var written: i32 = 0;
+        self.gl.get_program_info_log(program, @intCast(log.len), &written, &log);
+        const message = infoLog(log[0..], written);
+        var diagnostic: [768]u8 = undefined;
+        const output = formatShaderFailure(&diagnostic, .link, source, message) catch "OpenGL shader failure: diagnostic formatting failed";
+        std.debug.print("{s}\n", .{output});
+    }
 };
+
+const ShaderFailureOperation = enum { compile, link };
+
+fn infoLog(buffer: []const u8, written: i32) []const u8 {
+    if (written <= 0) return "driver returned no log";
+    const length: usize = @intCast(@min(written, @as(i32, @intCast(buffer.len))));
+    return std.mem.trimRight(u8, buffer[0..length], "\x00\r\n");
+}
+
+fn formatShaderFailure(buffer: []u8, operation: ShaderFailureOperation, source: BuiltinShaderSource, message: []const u8) ![]const u8 {
+    return std.fmt.bufPrint(buffer, "OpenGL shader failure: operation={s} platform={s} source={s} log={s}", .{ @tagName(operation), @tagName(builtin.os.tag), @tagName(source), message });
+}
 
 pub const Backend = struct {
     presenter: *Presenter,
@@ -807,6 +863,15 @@ test "OpenGL recovery retains presenter failures" {
     const err = presenter.recordRecoveryFailure(error.OpenGlContextCreationFailed);
     try std.testing.expectEqual(error.OpenGlContextCreationFailed, err);
     try std.testing.expectEqual(error.OpenGlContextCreationFailed, presenter.recoveryFailure().?);
+}
+
+test "OpenGL shader diagnostics identify built-in sources" {
+    var buffer: [256]u8 = undefined;
+    const diagnostic = try formatShaderFailure(&buffer, .compile, .effect_fragment, "syntax error near amount");
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "operation=compile") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "source=effect_fragment") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostic, "log=syntax error near amount") != null);
+    try std.testing.expectEqualStrings("driver returned no log", infoLog("ignored", 0));
 }
 
 test "OpenGL 3.3 presenter applies ordered pixel effects and restores them after recovery" {
