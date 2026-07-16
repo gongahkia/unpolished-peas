@@ -15,6 +15,7 @@ pub const Command = enum {
     replay,
     package,
     serve,
+    support_bundle,
     docs,
 };
 
@@ -110,6 +111,7 @@ pub const CheckIssueKind = enum {
 };
 
 pub fn parseCommand(value: []const u8) ?Command {
+    if (std.mem.eql(u8, value, "support-bundle")) return .support_bundle;
     return std.meta.stringToEnum(Command, value);
 }
 
@@ -162,13 +164,14 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run check test replay package serve docs
+        \\commands: new run check test replay package serve support-bundle docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\replay: zig build peas -- replay <fixture.upr> [expected-input-hash]
         \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]
         \\serve: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]
+        \\support-bundle: zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 

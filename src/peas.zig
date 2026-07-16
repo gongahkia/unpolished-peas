@@ -2,6 +2,7 @@ const std = @import("std");
 const tools = @import("unpolished-peas-tools");
 const input_replay = @import("input_replay.zig");
 const starter = @import("starter.zig");
+const support_bundle = @import("support_bundle.zig");
 
 const max_build_output_bytes = 8 * 1024 * 1024;
 const max_replay_bytes = 1024 * 1024;
@@ -46,6 +47,10 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
         },
         .package => return try packageProject(allocator, args),
         .serve => return try serveBundle(allocator, args),
+        .support_bundle => {
+            try exportSupportBundle(allocator, args);
+            return null;
+        },
         .docs => return try docsProject(allocator, args),
     }
 }
@@ -308,6 +313,32 @@ fn serveUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn exportSupportBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
+    const source_path = args.next() orelse return supportBundleUsage();
+    const output_path = args.next() orelse return supportBundleUsage();
+    var include = std.ArrayList([]const u8).empty;
+    defer include.deinit(allocator);
+    var redact = std.ArrayList([]const u8).empty;
+    defer redact.deinit(allocator);
+    var redact_paths = std.ArrayList([]const u8).empty;
+    defer redact_paths.deinit(allocator);
+    while (args.next()) |argument| {
+        const values = if (std.mem.eql(u8, argument, "--include")) &include else if (std.mem.eql(u8, argument, "--redact")) &redact else if (std.mem.eql(u8, argument, "--redact-path")) &redact_paths else return supportBundleUsage();
+        const value = args.next() orelse return supportBundleUsage();
+        try values.append(allocator, value);
+    }
+    const report = support_bundle.create(allocator, .{ .source_path = source_path, .output_path = output_path, .include = include.items, .redact = redact.items, .redact_paths = redact_paths.items }) catch |err| {
+        std.debug.print("peas support-bundle: failed: {s}\n", .{@errorName(err)});
+        return err;
+    };
+    std.debug.print("peas support-bundle: local export {s}: files={d} redactions={d}\n", .{ output_path, report.files, report.redacted_occurrences });
+}
+
+fn supportBundleUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...\n", .{});
+    return error.InvalidArguments;
+}
+
 fn docsProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
     const topic = if (args.next()) |value| tools.parseDocsTopic(value) orelse return docsUsage() else .overview;
     if (args.next() != null) return docsUsage();
@@ -371,6 +402,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.serve, tools.parseCommand("serve").?);
+    try std.testing.expectEqual(tools.Command.support_bundle, tools.parseCommand("support-bundle").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
 }
 
