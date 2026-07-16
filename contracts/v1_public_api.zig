@@ -129,6 +129,9 @@ test "stable public symbols are exact" {
         "UdpReadinessFailure",
         "UdpReadinessResult",
         "UdpReadiness",
+        "TcpConnectionState",
+        "TcpConnectionError",
+        "TcpConnection",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
