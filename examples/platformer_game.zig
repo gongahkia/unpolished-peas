@@ -2,6 +2,12 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 
 pub const Input = struct { left: bool = false, right: bool = false, jump: bool = false };
+pub const Diagnostics = struct {
+    position: up.Vec2,
+    velocity: up.Vec2,
+    state: up.CharacterState,
+};
+
 pub const Game = struct {
     controller: up.CharacterController,
     velocity: up.Vec2 = .{},
@@ -18,6 +24,10 @@ pub const Game = struct {
         const state = self.controller.move(collider, self.velocity.scale(dt));
         if (state.grounded and self.velocity.y > 0) self.velocity.y = 0;
         return state;
+    }
+
+    pub fn diagnostics(self: Game) Diagnostics {
+        return .{ .position = .{ .x = self.controller.bounds.x, .y = self.controller.bounds.y }, .velocity = self.velocity, .state = .{ .bounds = self.controller.bounds, .grounded = self.controller.grounded, .wall_left = self.controller.wall_left, .wall_right = self.controller.wall_right, .ceiling = self.controller.ceiling } };
     }
 };
 
@@ -54,7 +64,15 @@ test "stored platformer replay has a stable state hash" {
     var game = try Game.init(.{ .x = 8, .y = 0 });
     for (replay.frames) |frame| _ = game.step(&fixture.collider, .{ .left = (frame.buttons & 1) != 0, .right = (frame.buttons & 2) != 0, .jump = (frame.buttons & 4) != 0 }, up.testSupport.frameSeconds(replay.fixed_hz));
     const hash = replayHash(game);
-    try up.testSupport.assertReplayHash(std.testing.allocator, 0xe4499432c1aab5be, hash, &replay, "zig-out/diagnostics/replays/platformer");
+    try up.testSupport.assertReplayHash(std.testing.allocator, 0xa94f6ba5b168f0e6, hash, &replay, "zig-out/diagnostics/replays/platformer");
+}
+
+test "platformer exposes structured v1 diagnostics" {
+    var game = try Game.init(.{ .x = 8, .y = 0 });
+    game.velocity = .{ .x = 12, .y = -4 };
+    const diagnostics = game.diagnostics();
+    try std.testing.expectEqual(@as(f32, 8), diagnostics.position.x);
+    try std.testing.expectEqual(@as(f32, -4), diagnostics.velocity.y);
 }
 
 fn replayHash(game: Game) u64 {
