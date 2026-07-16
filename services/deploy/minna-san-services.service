@@ -1,0 +1,20 @@
+[Unit]
+Description=minna-san online services
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/local/bin/minna-san-services-local --config /etc/minna-san-services/deploy.zon
+EnvironmentFile=-/etc/minna-san-services/environment
+Restart=on-failure
+RestartSec=2
+DynamicUser=yes
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadOnlyPaths=/run/secrets/minna-san-services
+
+[Install]
+WantedBy=multi-user.target
