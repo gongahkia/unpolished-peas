@@ -1,0 +1,11 @@
+.{
+    .name = .minna_san,
+    .version = "0.1.0",
+    .fingerprint = 0xda9111e6a8c8d1e4,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .networking = .{ .path = "packages/networking", .lazy = true },
+        .services = .{ .path = "packages/services", .lazy = true },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "packages", "services" },
+}
