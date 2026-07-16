@@ -196,6 +196,12 @@ pub fn build(b: *std.Build) void {
     const quality_test = b.addSystemCommand(&.{ "sh", "script/test_quality_gate.sh" });
     const quality_test_step = b.step("quality-test", "Test the non-mutating quality gate");
     quality_test_step.dependOn(&quality_test.step);
+    const dependency_check = b.addSystemCommand(&.{ "sh", "script/check_stdlib_only.sh" });
+    const dependency_step = b.step("dependency-policy", "Check v1 sources use only std and first-party modules");
+    dependency_step.dependOn(&dependency_check.step);
+    const dependency_test = b.addSystemCommand(&.{ "sh", "script/test_stdlib_only.sh" });
+    const dependency_test_step = b.step("dependency-policy-test", "Test the v1 dependency policy");
+    dependency_test_step.dependOn(&dependency_test.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -205,6 +211,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_compatibility.step);
     test_step.dependOn(&quality_check.step);
     test_step.dependOn(&quality_test.step);
+    test_step.dependOn(&dependency_check.step);
+    test_step.dependOn(&dependency_test.step);
     test_step.dependOn(&run_naming.step);
     test_step.dependOn(&run_boundary_verifier.step);
     test_step.dependOn(&run_core.step);
