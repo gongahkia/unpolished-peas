@@ -15,6 +15,12 @@ pub const imports = [_]Binding{
     .{ .name = "up_host_gl_resource_create" },
     .{ .name = "up_host_gl_resource_destroy" },
     .{ .name = "up_host_gl_context_lost" },
+    .{ .name = "up_host_gl_clear" },
+    .{ .name = "up_host_gl_draw_rect" },
+    .{ .name = "up_host_gl_draw_line" },
+    .{ .name = "up_host_gl_draw_circle" },
+    .{ .name = "up_host_gl_draw_triangle" },
+    .{ .name = "up_host_gl_present" },
     .{ .name = "up_host_input_poll" },
     .{ .name = "up_host_input_read" },
     .{ .name = "up_host_audio_state" },
@@ -37,6 +43,12 @@ pub const exports = [_]Binding{
     .{ .name = "up_browser_gl_resource_create" },
     .{ .name = "up_browser_gl_resource_destroy" },
     .{ .name = "up_browser_gl_context_lost" },
+    .{ .name = "up_browser_clear" },
+    .{ .name = "up_browser_draw_rect" },
+    .{ .name = "up_browser_draw_line" },
+    .{ .name = "up_browser_draw_circle" },
+    .{ .name = "up_browser_draw_triangle" },
+    .{ .name = "up_browser_present" },
     .{ .name = "up_browser_input_poll" },
     .{ .name = "up_browser_input_read" },
     .{ .name = "up_browser_audio_state" },
@@ -70,6 +82,12 @@ const WasmHost = struct {
     extern "env" fn up_host_gl_resource_create(kind: u32, byte_len: u32) u32;
     extern "env" fn up_host_gl_resource_destroy(kind: u32, handle: u32) void;
     extern "env" fn up_host_gl_context_lost() u32;
+    extern "env" fn up_host_gl_clear(color: u32) i32;
+    extern "env" fn up_host_gl_draw_rect(x: i32, y: i32, width: i32, height: i32, color: u32) i32;
+    extern "env" fn up_host_gl_draw_line(x0: i32, y0: i32, x1: i32, y1: i32, color: u32) i32;
+    extern "env" fn up_host_gl_draw_circle(x: i32, y: i32, radius: i32, color: u32) i32;
+    extern "env" fn up_host_gl_draw_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, color: u32) i32;
+    extern "env" fn up_host_gl_present(mode: u32) i32;
     extern "env" fn up_host_input_poll() u32;
     extern "env" fn up_host_input_read(destination: u32, capacity: u32) u32;
     extern "env" fn up_host_audio_state() i32;
@@ -99,6 +117,30 @@ const NativeHost = struct {
     fn up_host_gl_resource_destroy(_: u32, _: u32) void {}
     fn up_host_gl_context_lost() u32 {
         return 0;
+    }
+
+    fn up_host_gl_clear(_: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_draw_rect(_: i32, _: i32, _: i32, _: i32, _: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_draw_line(_: i32, _: i32, _: i32, _: i32, _: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_draw_circle(_: i32, _: i32, _: i32, _: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_draw_triangle(_: f32, _: f32, _: f32, _: f32, _: f32, _: f32, _: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_present(_: u32) i32 {
+        return @intFromEnum(Status.unavailable);
     }
 
     fn up_host_input_poll() u32 {
@@ -163,6 +205,30 @@ pub fn contextLost() bool {
     return host.up_host_gl_context_lost() != 0;
 }
 
+pub fn clear(color: u32) i32 {
+    return host.up_host_gl_clear(color);
+}
+
+pub fn drawRect(x: i32, y: i32, width: i32, height: i32, color: u32) i32 {
+    return host.up_host_gl_draw_rect(x, y, width, height, color);
+}
+
+pub fn drawLine(x0: i32, y0: i32, x1: i32, y1: i32, color: u32) i32 {
+    return host.up_host_gl_draw_line(x0, y0, x1, y1, color);
+}
+
+pub fn drawCircle(x: i32, y: i32, radius: i32, color: u32) i32 {
+    return host.up_host_gl_draw_circle(x, y, radius, color);
+}
+
+pub fn drawTriangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, color: u32) i32 {
+    return host.up_host_gl_draw_triangle(ax, ay, bx, by, cx, cy, color);
+}
+
+pub fn present(mode: u32) i32 {
+    return host.up_host_gl_present(mode);
+}
+
 pub fn pollInput() u32 {
     return host.up_host_input_poll();
 }
@@ -201,14 +267,15 @@ pub fn teardown() void {
 
 test "browser host contract keeps versioned category coverage" {
     try std.testing.expectEqual(@as(u32, 1), abi_version);
-    try std.testing.expectEqual(@as(usize, 16), imports.len);
-    try std.testing.expectEqual(@as(usize, 19), exports.len);
+    try std.testing.expectEqual(@as(usize, 22), imports.len);
+    try std.testing.expectEqual(@as(usize, 25), exports.len);
     try std.testing.expectEqualStrings("up_host_gl_resource_create", imports[4].name);
-    try std.testing.expectEqualStrings("up_browser_shutdown", exports[18].name);
+    try std.testing.expectEqualStrings("up_browser_shutdown", exports[24].name);
     try std.testing.expectEqual(@as(u32, 0), scheduleFrame());
     try std.testing.expectEqual(@as(i32, -2), createContext(64, 32));
     try std.testing.expectEqual(@as(u32, 0), createResource(.texture, 16));
     try std.testing.expect(!contextLost());
+    try std.testing.expectEqual(@as(i32, -2), drawRect(0, 0, 1, 1, 0));
     try std.testing.expectEqual(@as(i32, -2), audioState());
     try std.testing.expectEqual(@as(i32, -2), writeStorage(0, 0, 0, 0));
 }
