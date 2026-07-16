@@ -110,6 +110,12 @@ pub fn build(b: *std.Build) void {
             .{ .name = c_abi_spec.module_name, .module = c_abi },
         },
     });
+    const compatibility = b.createModule(.{
+        .root_source_file = b.path("contracts/v1_compatibility.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = protocol_spec.module_name, .module = protocol }},
+    });
     const naming = b.createModule(.{
         .root_source_file = b.path("contracts/v1_naming.zig"),
         .target = target,
@@ -129,6 +135,7 @@ pub fn build(b: *std.Build) void {
     const boundary_tests = b.addTest(.{ .root_module = boundary });
     const workspace_graph_tests = b.addTest(.{ .root_module = workspace_graph });
     const public_api_tests = b.addTest(.{ .root_module = public_api });
+    const compatibility_tests = b.addTest(.{ .root_module = compatibility });
     const naming_tests = b.addTest(.{ .root_module = naming });
     const boundary_verifier = b.addExecutable(.{
         .name = "verify-forbidden-import",
@@ -151,6 +158,7 @@ pub fn build(b: *std.Build) void {
     const run_boundary = b.addRunArtifact(boundary_tests);
     const run_workspace_graph = b.addRunArtifact(workspace_graph_tests);
     const run_public_api = b.addRunArtifact(public_api_tests);
+    const run_compatibility = b.addRunArtifact(compatibility_tests);
     const run_naming = b.addRunArtifact(naming_tests);
     const run_boundary_verifier = b.addRunArtifact(boundary_verifier);
     run_boundary_verifier.setCwd(b.path("."));
@@ -179,12 +187,16 @@ pub fn build(b: *std.Build) void {
     workspace_step.dependOn(&run_workspace_graph.step);
     const api_step = b.step("api-contract", "Check the stable v1 public API");
     api_step.dependOn(&run_public_api.step);
+    const compatibility_step = b.step("compatibility-contract", "Check stable API and wire compatibility");
+    compatibility_step.dependOn(&run_public_api.step);
+    compatibility_step.dependOn(&run_compatibility.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
     test_step.dependOn(&run_boundary.step);
     test_step.dependOn(&run_workspace_graph.step);
     test_step.dependOn(&run_public_api.step);
+    test_step.dependOn(&run_compatibility.step);
     test_step.dependOn(&run_naming.step);
     test_step.dependOn(&run_boundary_verifier.step);
     test_step.dependOn(&run_core.step);
