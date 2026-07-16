@@ -94,8 +94,8 @@ pub const ManagedRuntime = struct {
         if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
         defer self.mutex.unlock();
-        if (self.stopping or self.worker == null) return error.NotRunning;
         if (!self.caller_drained) return error.NotCallerDrained;
+        if (self.stopping or self.worker == null) return error.NotRunning;
         const current_thread = std.Thread.getCurrentId();
         if (self.drain_thread) |thread_id| {
             if (thread_id != current_thread) return error.DrainThreadMismatch;
