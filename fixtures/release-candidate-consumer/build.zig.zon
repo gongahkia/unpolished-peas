@@ -1,7 +1,7 @@
 .{
     .name = .release_candidate_consumer,
     .version = "0.0.1",
-    .fingerprint = 0x506562e8b047b1f8,
+    .fingerprint = 0x58a07813c75e4cc9,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .unpolished_peas = .{ .path = "../release" },
