@@ -26,6 +26,8 @@ extern "C" {
 #define MINNA_SAN_TRANSPORT_TCP 2u
 #define MINNA_SAN_ROUTE_DIRECT 1u
 #define MINNA_SAN_ROUTE_RELAY 2u
+#define MINNA_SAN_CHANNEL_RELIABLE 1u
+#define MINNA_SAN_CHANNEL_SEQUENCED 2u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -95,10 +97,12 @@ typedef uint64_t (*minna_san_now_fn)(void *context);
 typedef struct minna_san_sdk minna_san_sdk;
 typedef struct minna_san_connection minna_san_connection;
 typedef struct minna_san_peer minna_san_peer;
+typedef struct minna_san_channel minna_san_channel;
 typedef struct minna_san_sdk_config {
     minna_san_abi_version_t abi_version;
     uint32_t capability_bits;
     size_t connection_capacity;
+    size_t channel_capacity;
     void *clock_context;
     minna_san_now_fn now;
     minna_san_allocator allocator;
@@ -135,6 +139,14 @@ minna_san_result minna_san_sdk_start(minna_san_sdk *sdk);
 minna_san_result minna_san_sdk_poll(minna_san_sdk *sdk, minna_san_event *out_event);
 minna_san_result minna_san_sdk_stop(minna_san_sdk *sdk);
 void minna_san_sdk_destroy(minna_san_sdk *sdk);
+minna_san_result minna_san_channel_open(minna_san_sdk *sdk, minna_san_connection *connection, uint32_t mode, minna_san_channel **out_channel);
+minna_san_result minna_san_channel_close(minna_san_sdk *sdk, minna_san_channel *channel);
+minna_san_result minna_san_channel_mode(minna_san_sdk *sdk, minna_san_channel *channel, uint32_t *out_mode);
+minna_san_result minna_san_channel_send(minna_san_sdk *sdk, minna_san_channel *channel, minna_san_buffer buffer, uint64_t *out_sequence);
+minna_san_result minna_san_channel_receive(minna_san_sdk *sdk, minna_san_channel *channel, minna_san_buffer *out_buffer, uint64_t *out_sequence);
+minna_san_result minna_san_channel_acknowledge(minna_san_sdk *sdk, minna_san_channel *channel, uint64_t sequence);
+minna_san_result minna_san_channel_last_acknowledged(minna_san_sdk *sdk, minna_san_channel *channel, uint64_t *out_sequence);
+minna_san_result minna_san_sdk_buffer_release(minna_san_sdk *sdk, minna_san_buffer buffer);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
