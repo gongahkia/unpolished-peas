@@ -1088,7 +1088,7 @@ const RuntimeRenderer = union(RendererKind) {
             .auto => initGpu(config, diagnostics, additional_window_flags) catch initOpenGl(config, diagnostics, additional_window_flags),
         } catch |err| return err;
         errdefer renderer.deinit();
-        try diagnostics.preflightFeatures(config.required_renderer_features);
+        try validateRendererPreflight(config, diagnostics);
         return renderer;
     }
 
@@ -1215,6 +1215,10 @@ const RuntimeRenderer = union(RendererKind) {
 
 fn windowFlags(config: Config, additional: c.SDL_WindowFlags) c.SDL_WindowFlags {
     return additional | if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
+}
+
+fn validateRendererPreflight(config: Config, diagnostics: *RendererDiagnostics) !void {
+    try diagnostics.preflightFeatures(config.required_renderer_features);
 }
 
 pub fn playGame(comptime Game: type) !void {
@@ -1808,6 +1812,7 @@ test "renderer diagnostics retain fallback capabilities and recovery action" {
     try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.requireFeatures(&.{.pixel_effects}));
     try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.preflightFeatures(&.{.pixel_effects}));
     try std.testing.expectEqual(RendererFeature.pixel_effects, diagnostics.preflight_failure.?);
+    try std.testing.expectError(error.RendererFeatureUnsupported, validateRendererPreflight(.{ .required_renderer_features = &.{.pixel_effects} }, &diagnostics));
 }
 
 test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
@@ -2255,7 +2260,8 @@ const DeveloperTools = struct {
         const first_reason = if (diagnostics.rejected[0]) |rejection| @tagName(rejection.reason) else "none";
         const second_renderer = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.renderer) else "none";
         const second_reason = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.reason) else "none";
-        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} post_processing={s} shader={s} recovery={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), @tagName(diagnostics.post_processing), shader_format, @tagName(diagnostics.recovery_action), first_renderer, first_reason, second_renderer, second_reason }) catch return;
+        const preflight = if (diagnostics.preflight_failure) |feature| @tagName(feature) else "none";
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} post_processing={s} shader={s} recovery={s} preflight={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), @tagName(diagnostics.post_processing), shader_format, @tagName(diagnostics.recovery_action), preflight, first_renderer, first_reason, second_renderer, second_reason }) catch return;
         std.debug.print("{s}", .{line});
         self.note(line);
     }
