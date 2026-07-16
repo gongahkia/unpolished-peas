@@ -68,6 +68,9 @@ test "stable public symbols are exact" {
         "Clock",
         "CheckedClock",
         "ManualClock",
+        "Capability",
+        "CapabilityError",
+        "CapabilityConfig",
         "package_name",
     });
     try expectExactPublicDeclarations(protocol, &.{"package_name"});
