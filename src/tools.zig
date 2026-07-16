@@ -138,6 +138,13 @@ pub fn parseCommand(value: []const u8) ?Command {
     return std.meta.stringToEnum(Command, value);
 }
 
+pub fn commandName(command: Command) []const u8 {
+    return switch (command) {
+        .support_bundle => "support-bundle",
+        else => @tagName(command),
+    };
+}
+
 pub fn parseDoctorTarget(value: []const u8) ?DoctorTarget {
     return std.meta.stringToEnum(DoctorTarget, value);
 }
@@ -220,6 +227,7 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
+        \\global flags: --json --non-interactive
         \\commands: new run check test replay package serve support-bundle doctor docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
@@ -368,6 +376,7 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.replay, parseCommand("replay").?);
     try std.testing.expect(parseCommand("publish") == null);
     try std.testing.expectEqual(Command.docs, parseCommand("docs").?);
+    try std.testing.expectEqualStrings("support-bundle", commandName(.support_bundle));
     try std.testing.expectEqual(Command.doctor, parseCommand("doctor").?);
     try std.testing.expectEqual(DoctorTarget.web, parseDoctorTarget("web").?);
     try std.testing.expectEqual(DoctorRenderer.opengl, parseDoctorRenderer("opengl").?);
