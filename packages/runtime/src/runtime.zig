@@ -5,6 +5,7 @@ const topology = @import("minna-san-topology");
 const state = @import("minna-san-state");
 const sdk_config = @import("sdk_config.zig");
 const resource_handle = @import("resource_handle.zig");
+const buffer_api = @import("buffer_api.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
 pub const SdkConfig = sdk_config.SdkConfig;
@@ -13,6 +14,7 @@ pub const SdkConfigBuilder = sdk_config.SdkConfigBuilder;
 pub const HandleError = resource_handle.HandleError;
 pub const ResourceHandle = resource_handle.ResourceHandle;
 pub const ResourceRegistry = resource_handle.ResourceRegistry;
+pub const SdkBuffer = buffer_api.SdkBuffer;
 pub const package_name = "runtime";
 
 comptime {
@@ -30,4 +32,5 @@ test "runtime package boundary" {
 test {
     _ = @import("sdk_config.zig");
     _ = @import("resource_handle.zig");
+    _ = @import("buffer_api.zig");
 }
