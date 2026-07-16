@@ -45,6 +45,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             return null;
         },
         .package => return try packageProject(allocator, args),
+        .serve => return try serveBundle(allocator, args),
         .docs => return try docsProject(allocator, args),
     }
 }
@@ -270,7 +271,40 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) 
 }
 
 fn packageUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]\n", .{});
+    std.debug.print("usage: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]\n", .{});
+    return error.InvalidArguments;
+}
+
+fn serveBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !std.process.Child.Term {
+    var path: []const u8 = "dist/web/unpolished-peas-bounce-web";
+    var port: []const u8 = "8000";
+    var path_set = false;
+    while (args.next()) |argument| {
+        if (std.mem.eql(u8, argument, "--port")) {
+            const value = args.next() orelse return serveUsage();
+            const parsed = std.fmt.parseInt(u16, value, 10) catch return serveUsage();
+            if (parsed == 0) return serveUsage();
+            port = value;
+        } else if (!path_set) {
+            path = argument;
+            path_set = true;
+        } else return serveUsage();
+    }
+    const root = try std.fs.cwd().realpathAlloc(allocator, path);
+    defer allocator.free(root);
+    const index = try std.fs.path.join(allocator, &.{ root, "index.html" });
+    defer allocator.free(index);
+    std.fs.cwd().access(index, .{}) catch return error.WebBundleMissing;
+    std.debug.print("peas serve: http://127.0.0.1:{s}/\n", .{port});
+    var child = std.process.Child.init(&.{ "python3", "-m", "http.server", port, "--bind", "127.0.0.1", "--directory", root }, allocator);
+    child.stdin_behavior = .Inherit;
+    child.stdout_behavior = .Inherit;
+    child.stderr_behavior = .Inherit;
+    return child.spawnAndWait();
+}
+
+fn serveUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -336,6 +370,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.check, tools.parseCommand("check").?);
     try std.testing.expectEqual(tools.Command.@"test", tools.parseCommand("test").?);
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
+    try std.testing.expectEqual(tools.Command.serve, tools.parseCommand("serve").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
 }
 
@@ -396,6 +431,7 @@ test "known package targets parse" {
     try std.testing.expectEqual(tools.PackageTarget.linux, tools.parsePackageTarget("linux").?);
     try std.testing.expectEqual(tools.PackageTarget.macos, tools.parsePackageTarget("macos").?);
     try std.testing.expectEqual(tools.PackageTarget.windows, tools.parsePackageTarget("windows").?);
+    try std.testing.expectEqual(tools.PackageTarget.web, tools.parsePackageTarget("web").?);
 }
 
 test "known package games parse" {

@@ -14,6 +14,7 @@ pub const Command = enum {
     @"test",
     replay,
     package,
+    serve,
     docs,
 };
 
@@ -37,12 +38,14 @@ pub const PackageTarget = enum {
     linux,
     macos,
     windows,
+    web,
 
     pub fn scriptName(self: PackageTarget) []const u8 {
         return switch (self) {
             .linux => "package_linux.sh",
             .macos => "package_macos.sh",
             .windows => "package_windows.ps1",
+            .web => "package_web.sh",
         };
     }
 };
@@ -159,12 +162,13 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run check test replay package docs
+        \\commands: new run check test replay package serve docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\replay: zig build peas -- replay <fixture.upr> [expected-input-hash]
-        \\package: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]
+        \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]
+        \\serve: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 
