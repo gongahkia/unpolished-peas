@@ -33,6 +33,8 @@ pub const CAllocator = extern struct {
 };
 pub const CAllocatorError = error{ MissingAllocateCallback, AllocationFailed };
 pub const CBufferReleaseError = error{ MissingReleaseCallback, InvalidBuffer };
+pub const CResult = core.CResult;
+pub const CErrorCategory = core.ErrorClass;
 pub const CEventKind = enum(u32) {
     connected = 1,
     disconnected = 2,
@@ -65,12 +67,54 @@ pub fn release_buffer(allocator: CAllocator, buffer: CBuffer) CBufferReleaseErro
     release(allocator.context, buffer.data, buffer.len);
 }
 
+pub fn result_is_known(result_code: c_int) bool {
+    return core.c_result_from_code(result_code) != null;
+}
+
+pub fn result_category(result_code: c_int) CErrorCategory {
+    const result = core.c_result_from_code(result_code) orelse return .internal;
+    return core.class_for_c_result(result);
+}
+
+pub fn result_message(result_code: c_int) [*:0]const u8 {
+    const result = core.c_result_from_code(result_code) orelse return "unknown result code";
+    return switch (result) {
+        .ok => "ok",
+        .invalid_argument => "invalid argument",
+        .invalid_state => "invalid state",
+        .unsupported => "unsupported",
+        .resource_exhausted => "resource exhausted",
+        .timeout => "timeout",
+        .cancelled => "cancelled",
+        .would_block => "would block",
+        .authentication_failed => "authentication failed",
+        .permission_denied => "permission denied",
+        .protocol_violation => "protocol violation",
+        .version_mismatch => "version mismatch",
+        .integrity_failed => "integrity failed",
+        .transport_failure => "transport failure",
+        .internal => "internal",
+    };
+}
+
 pub export fn minna_san_abi_version() CAbiVersion {
     return c_abi_version;
 }
 
 pub export fn minna_san_abi_supports_version(requested_version: CAbiVersion) u8 {
     return @intFromBool(requested_version == c_abi_version);
+}
+
+pub export fn minna_san_result_is_known(result_code: c_int) u8 {
+    return @intFromBool(result_is_known(result_code));
+}
+
+pub export fn minna_san_result_category(result_code: c_int) c_int {
+    return @intFromEnum(result_category(result_code));
+}
+
+pub export fn minna_san_result_message(result_code: c_int) [*:0]const u8 {
+    return result_message(result_code);
 }
 
 pub const package_name = "c_abi";
@@ -135,4 +179,19 @@ test "C ABI allocator bridge rejects missing and failed callbacks" {
     try std.testing.expectError(error.MissingAllocateCallback, allocate_buffer(missing, 1));
     try std.testing.expectError(error.MissingReleaseCallback, release_buffer(missing, .{ .data = @ptrFromInt(1), .len = 1 }));
     try std.testing.expectError(error.InvalidBuffer, release_buffer(missing, .{ .data = null, .len = 1 }));
+}
+
+test "C ABI result inspection preserves stable categories" {
+    try std.testing.expectEqual(@as(c_int, 0), @intFromEnum(CResult.ok));
+    try std.testing.expectEqual(@as(c_int, 11), @intFromEnum(CResult.version_mismatch));
+    try std.testing.expectEqual(@as(c_int, 14), @intFromEnum(CResult.internal));
+    try std.testing.expectEqual(@as(u8, 1), minna_san_result_is_known(11));
+    try std.testing.expectEqual(@as(c_int, 11), minna_san_result_category(11));
+    try std.testing.expectEqualStrings("version mismatch", std.mem.span(minna_san_result_message(11)));
+}
+
+test "C ABI result inspection classifies unknown codes without allocation" {
+    try std.testing.expectEqual(@as(u8, 0), minna_san_result_is_known(-1));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CErrorCategory.internal)), minna_san_result_category(-1));
+    try std.testing.expectEqualStrings("unknown result code", std.mem.span(minna_san_result_message(-1)));
 }
