@@ -65,6 +65,10 @@ pub const Image = struct { // owns decoded pixels allocated by decode; call dein
         self.* = undefined;
     }
 
+    pub fn clone(self: Image, allocator: std.mem.Allocator) !Image {
+        return .{ .allocator = allocator, .width = self.width, .height = self.height, .pixels = try allocator.dupe(Color, self.pixels) };
+    }
+
     pub fn sprite(self: Image) Sprite {
         return .{ .width = self.width, .height = self.height, .pixels = self.pixels };
     }

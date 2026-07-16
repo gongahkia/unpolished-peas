@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 fn rendersBall(allocator: std.mem.Allocator) !bool {
     var canvas = try up.Canvas.init(allocator, 32, 18);

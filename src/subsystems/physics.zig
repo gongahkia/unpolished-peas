@@ -1,4 +1,5 @@
 const std = @import("std");
+
 const c = @cImport({
     @cInclude("box2d/box2d.h");
 });

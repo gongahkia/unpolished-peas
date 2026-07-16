@@ -26,34 +26,18 @@ zig build test-renderer-conformance
 zig build test-opengl
 ```
 
-`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The optional physics package owns its pinned Box2D source and is validated with `zig build test-box2d`.
+`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The engine pins Box2D for its built-in physics subsystem, validated by `zig build test-physics`.
 `test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 `test-opengl` creates an OpenGL 3.3 core context and validates the fallback presenter with a readback fixture.
 `test-renderer-cross-backend` compares SDL GPU and OpenGL readbacks for the shared corpus; captures must have equal dimensions and every RGBA channel may differ by at most one.
 Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--renderer <auto|sdl-gpu|opengl>` overrides it at launch. `sdl.Context.rendererDiagnostics()` reports the requested/selected backend, rejected attempts, shader and OpenGL capabilities, post-processing support, and latest recovery action; the desktop log records the same selection line.
+`Config.required_renderer_features` makes startup fail before game initialization when a requested `RendererFeature` is unavailable. `Context.rendererFeatures()` reports primitive, sprite, text, clip/blend, camera, pixel-effect, screenshot, and context-recovery support for the selected backend.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Published modules are `unpolished-peas` (core), `unpolished-peas-sdl3` (desktop runtime), `unpolished-peas-effects` (GPU resources), `unpolished-peas-ecs` (entity storage), `unpolished-peas-networking` (multiplayer), `unpolished-peas-ui` (immediate UI), `unpolished-peas-tools` (host CLI helpers), `unpolished-peas-test` (deterministic test fixtures), and `unpolished-peas-services` (SDL-free online-service contracts). Tools and services import no desktop runtime; `zig build test-modules` checks the independent core, tools, test fixtures, and services graph.
-
-`services/` is an independent local Zig workspace. Copy `services/config/local.zon.example`, set an absolute `secrets_path`, then run `script/run_local_services.sh <config.zon>`; `--once` binds and exits for local/CI validation. Engine provider contracts contain no database or vendor types; the opt-in local PostgreSQL adapter is isolated behind that boundary.
-`services/config/deploy.zon.example` and `services/deploy/unpolished-peas-services.service` keep database credentials external; `/healthz` reports liveness and `/readyz` probes PostgreSQL plus the configured relay without enabling engine telemetry.
-Run `script/services_bootstrap_db.sh <postgresql-url>` to apply the checksummed, transactional service migrations; rerunning it verifies and preserves the recorded schema version.
-`GuestToken` uses 256-bit random values; `GuestCredentialStore` atomically keeps only active identity/session credentials under the caller-provided app-data directory and removes expired records.
-`ServiceProvider` is the engine-facing, value-only guest-session boundary: use `FakeServiceProvider` in engine tests or `LocalPostgresServiceProvider` for local PostgreSQL. Its only operational dependency is the local `psql` CLI; provider errors are limited to unavailable, invalid-request, and invalid-response. A provider borrows its adapter; deinit the adapter after its provider is no longer used.
-`LobbyService` is the SDL-free guest-backed lobby boundary: create, join, leave, disconnect, expiration, bounded membership, and `inspectorState()` use only validated guest sessions.
-`MatchmakingService` queues active lobby members under bounded timeout/capacity rules and returns an idempotent match bootstrap usable by the P2P runtime.
-`RelayService` derives bounded relay routes from authorized match requests, seals each route ticket to its guest session with XChaCha20-Poly1305, expires leases, and caps concurrent relay connections and transmitted bytes.
-`unpolished-peas-services` owns guest identity, lobby, matchmaking, relay, and PostgreSQL provider APIs; use `@import("unpolished-peas-services")`.
-`unpolished-peas-ecs` owns generation-checked entities, sparse stores, commands, and deterministic queries; use `@import("unpolished-peas-ecs")`.
-`unpolished-peas-networking` owns protocol, transport, sync, peer-to-peer, fault, and replication APIs; use `@import("unpolished-peas-networking").networking(core)` and `@import("unpolished-peas-networking").replication(ecs)`.
-
-[fixtures/modules](fixtures/modules) is a downstream SDL-free import fixture for core, ECS, networking, tools, and services.
-
-`unpolished-peas-physics` is a separate optional Box2D module with explicit `World.init`, body/shape/joint handles, contacts, camera-aware debug commands, `step`, and `deinit`; the core module and generated starter do not link Box2D.
-Use `@import("unpolished-peas-physics").physics(core)` and `@import("unpolished-peas-ui").ui(core)` to bind optional packages to the core API used by the game.
-`World.appendDebug` emits the same core render commands for headless and GPU presentation.
-The SDL runtime wires only `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision, physics, and network panels remain explicitly application-owned. `unpolished-peas-physics` provides `World.inspectorState()` for the optional `InspectorPhysicsPanel`.
+Game code imports `unpolished-peas` and `unpolished-peas-sdl3`. Effects, ECS, UI, and Box2D physics are engine-owned APIs exposed as `up.effects`, `up.ecs`, `up.ui`, and `up.physics`; their direct root aliases cover the common types. `zig build test-modules` checks the core, tooling, and fixture graph.
+`up.EcsWorld` provides generation-checked entities, sparse stores, commands, and deterministic queries. `up.PhysicsWorld` provides explicit world, body, shape, joint, contact, debug-command, step, and deinit APIs. `World.appendDebug` emits the same core render commands for headless and GPU presentation.
+The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision and physics panels remain application-owned.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont(path, options)` loads TrueType/OpenType fonts into a GPU atlas and detects AngelCode `.fnt` descriptors; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `layoutText` shares the same deterministic UTF-8 decoder.
 
@@ -71,15 +55,15 @@ On Debian or Ubuntu, replace the `brew install` command with `sudo apt install l
 ## Tiny Start
 
 ```zig
-const core = @import("unpolished-peas").api.core;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {
     pub const config: sdl.Config = .{ .width = 80, .height = 60, .scale = 6 };
 
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.rect(18, 18, 28, 28, core.Color.rgb(255, 198, 74));
-        ctx.text("HELLO", 8, 8, core.Color.white);
+        ctx.rect(18, 18, 28, 28, up.Color.rgb(255, 198, 74));
+        ctx.text("HELLO", 8, 8, up.Color.white);
     }
 };
 
@@ -132,7 +116,6 @@ zig build test
 zig build test-support
 zig build test-modules
 zig build test-effects
-zig build test-ecs
 zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
@@ -148,14 +131,8 @@ zig build run-breakout-sdl
 zig build smoke-breakout-sdl
 zig build test-breakout
 zig build run-topdown-sdl
-zig build run-topdown-multiplayer
-zig build run-topdown-dedicated
-zig build run-topdown-listen
-zig build run-topdown-listen-sdl
 zig build smoke-topdown-sdl
 zig build test-topdown
-zig build test-topdown-multiplayer
-zig build test-topdown-hosts
 zig build test-topdown-scene
 zig build run-platformer-sdl
 zig build smoke-platformer-sdl
@@ -175,7 +152,7 @@ zig build new -- ../my-game
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
 `run-explicit-loop` opens the caller-owned-state SDL loop demo.
-`run-atlas` opens a JSON atlas/tile scene demo.
+`run-atlas` opens a programmatic atlas/tile scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.
 `run-primitives` opens the GPU primitive and text-quads demo.
@@ -183,53 +160,34 @@ zig build new -- ../my-game
 `run-breakout-sdl` opens Breakout with keyboard paddle input and collision audio.
 `smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
 `test-breakout` runs fixed-step Breakout simulation tests.
-`run-topdown-sdl` opens the action-mapped native-map top-down demo.
-`run-topdown-multiplayer` runs the seeded two-client authoritative top-down smoke.
-`run-topdown-dedicated` runs the core-only UDP dedicated-host sample; `run-topdown-listen` runs the matching loopback listen-host sample; `run-topdown-listen-sdl` opens the in-game listen-host path.
+`run-topdown-sdl` opens the action-mapped programmatic TileMap top-down demo.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
-`test-topdown-multiplayer` verifies two faulted clients converge on the authoritative state.
-`test-topdown-hosts` verifies both host samples use the shared top-down rules.
 `run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
-`script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, network, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
-`fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three. The top-down and platformer projects also provide native reference content: `peas compile` emits map and asset-catalog caches, while their unit/replay/visual/integration targets run through `peas test`.
+`script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, physics where applicable, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
+`fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three.
 `fixtures/external-game` is a standalone callback game that draws a sprite, plays synthesized audio, and consumes normalized input through the public desktop module.
-`fixtures/external-tilemap-game` is a standalone desktop game that loads native asset/map sources, drives movement through configured actions, follows with a camera, and exercises catalog-backed asset reloads.
+`fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, follows with a camera, and reloads a raw shader asset.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`test-extensions` resolves the versioned extension fixture against the frozen core range and compares its deterministic lock; `script/test_extension_matrix.sh` also compiles each resolved external consumer fixture.
-`test-extension-manifest` validates strict extension identity, semver/core range, module, test, and optional build-hook metadata.
-An extension hook is a declared Zig script exporting `name` and `apply(dependency, root_module)`; a game build opts in by calling its package build's `applyHook` with the declared name. Hooks never run automatically.
-`script/test_extension_hook_fixture.sh` validates default and explicit extension-hook builds.
-`script/test_effects_package.sh` builds the isolated effects package and an external consumer fixture.
-`test-effects-conformance` verifies effects fallbacks, source reload validation, and command/headless renderer parity.
-`test-ecs` verifies the ECS package and an external consumer fixture.
-`test-networking` verifies the networking package and an external core-bound consumer.
-`test-ui-conformance` verifies immediate UI pointer, keyboard, gamepad, HUD, and camera-surface behavior through an external consumer.
-`test-physics-conformance` verifies independent Box2D world lifecycle, contacts, inspector state, debug output, and teardown.
-`script/test_extension_matrix.sh` resolves every declared optional package/core pair, then runs that package's focused build target.
-`test-package-release` validates package release metadata, dependency locks, fetched archive contents, and external archive consumers.
+`test-extensions` and `test-extension-manifest` validate versioned desktop extension metadata and its deterministic lock.
+`zig build test-effects`, `zig build test-ui`, and `zig build test-physics` validate the engine-owned effects, UI, and physics subsystems.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
-`test-fuzz` runs bounded asset/map and network-parser corpus mutations plus fixed-seed authoritative/P2P fault matrices; proof packets converge or enter defined failures under loss, duplication, reordering, latency, bandwidth, and malformed input.
 `script/check_performance_budgets.sh` records release-mode engine and bounce/top-down/platformer startup, frame, and allocation metrics, then applies versioned host-target baselines. `zig build test-desktop-backends` combines stored replay hashes, SDL GPU/OpenGL visual comparison, and those budgets with per-stage logs.
 Tag pushes run `zig build release-gate`, which explicitly validates the frozen core API, all proof-game consumers, desktop packages, deterministic diagnostics, visual/replay/fuzz checks, and performance budgets; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
-`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with uniform `bin/`, `assets/`, native `content/` with compiled caches, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, package manifest, and SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository with explicit SDL GPU and OpenGL selections and emit reports.
+`zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable archive with `bin/`, raw `assets/`, `docs/`, `launcher.json`, `run.sh`/`run.cmd`, a package manifest, and a SHA-256 checksum; bounce, top-down, and platformer package smokes run outside the repository and emit reports.
 `test-scenes` compares deterministic headless, bounce, top-down, and platformer renders against committed PNG goldens; `zig build test-scenes -- --update-golden` refreshes all captures intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, assets, and build-manifest layout without replacing an existing destination.
-`zig build peas -- check [project-directory] [--target <linux|macos|windows>]` statically validates the manifest Zig minimum, project build script, `assets/`, `maps/`, and selected runtime target without starting the game; Windows checks require Windows 10/11 x64 with `D3DCompiler_47.dll`; failures include a recovery command.
-`.upassets` is the strict version-1 ZON asset catalog. It requires the `unpolished-peas-assets` format and explicitly lists image, audio, font, atlas, and shader assets by unique ID and safe relative path; `up.assetCatalog.parse`, `load`, and `graph` validate, bind `AssetStore` handles, and expose declared dependencies.
-`up.mapSource` parses strict version-1 ZON native map source with tilesets, sparse signed cells, object geometry, collision properties, and parented layers; invalid references report source locations.
-`zig build contentc -- <project-directory> [output-directory]` emits versioned `.upc` binary caches for `.upassets` files under `assets/` and `.upmap` files under `maps/`; cache headers validate magic, version, kind, size, and source fingerprint before reuse. `zig build peas -- compile [project-directory] [output-directory]` provides the same project workflow.
-`zig build peas -- migrate <catalog|map> <input> <output>` explicitly upgrades supported source versions and writes only the requested output path; unsupported versions include a recovery command.
+`zig build peas -- check [project-directory] [--target <linux|macos|windows>]` statically validates the manifest Zig minimum, project build script, `assets/`, and selected runtime target without starting the game; Windows checks require Windows 10/11 x64 with `D3DCompiler_47.dll`; failures include a recovery command.
+`assets/` contains user-owned raw files. Define atlas frames, animations, and TileMaps directly in Zig beside the game code; there is no engine-owned content format or compiler.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- replay <fixture.upr> [expected-input-hash]` reproduces normalized fixed-step input and reports a deterministic final-state hash or divergence.
 `zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable archive through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
-`zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]` validates a bounded host launch configuration and identifies the matching sample target.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
 
 Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL output reopens after device removal or format changes without resetting mixer playback state.
@@ -254,7 +212,7 @@ GPU command primitives use one logical-pixel strokes, 32-segment circles, and so
 
 `TileCollider.addShape` and `addLayer` are the default collision path. `addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer; failures leave the existing collider unchanged. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
 
-`unpolished-peas-effects` owns shader programs, pixel effects, and post-process chains. `Context.loadShader` loads `.upshader` source; `Context.setShaderEffect` validates and replaces the post-process chain, while `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and `effects.applyPixelEffect` is the headless fallback.
+`up.effects` owns shader programs, pixel effects, and post-process chains. `Context.loadShader` loads `.upshader` source; `Context.setShaderEffect` validates and replaces the post-process chain, while `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and `effects.applyPixelEffect` is the headless fallback.
 
 ## Camera And Presentation
 
@@ -278,15 +236,14 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
-- `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`, `TileMapHandle`
-- `MapSource`, `mapSource`
+- `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`
 - `TileCollider`, `CharacterController`
 - `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`
 - `Image`
 - `Atlas`
-- `AtlasFrameHandle`
+- `AtlasFrameHandle`, `AtlasFrameSpec`, `AtlasAnimationFrameSpec`, `AtlasAnimationSpec`
 - `AnimationPlayer`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`

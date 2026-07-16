@@ -9,12 +9,6 @@ pub fn build(b: *std.Build) void {
         .install_dir = .prefix,
         .install_subdir = "assets",
     });
-    const install_maps = b.addInstallDirectory(.{
-        .source_dir = b.path("maps"),
-        .install_dir = .prefix,
-        .install_subdir = "maps",
-    });
-
     const exe = b.addExecutable(.{
         .name = "bouncing-square",
         .root_module = b.createModule(.{
@@ -29,7 +23,6 @@ pub fn build(b: *std.Build) void {
     });
     b.installArtifact(exe);
     b.getInstallStep().dependOn(&install_assets.step);
-    b.getInstallStep().dependOn(&install_maps.step);
 
     const run = b.addRunArtifact(exe);
     run.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("assets"));

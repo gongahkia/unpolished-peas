@@ -1,9 +1,0 @@
-.{
-    .format = "unpolished-peas-assets",
-    .version = 1,
-    .images = .{},
-    .audio = .{},
-    .fonts = .{},
-    .atlases = .{},
-    .shaders = .{.{ .id = "pulse", .path = "pulse.upshader" }},
-}

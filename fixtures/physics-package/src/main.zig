@@ -1,6 +1,6 @@
 const std = @import("std");
-const core = @import("unpolished-peas").api;
-const physics = @import("unpolished-peas-physics").physics(core);
+const core = @import("unpolished-peas");
+const physics = core.physics;
 
 test "physics package owns Box2D lifecycle and stale handles" {
     var world = physics.World.init(.{ .gravity = .{ .x = 0, .y = 4 } });

@@ -1,5 +1,6 @@
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
+const content = @import("programmatic_content.zig");
 
 const Game = struct {
     pub const config: sdl.Config = .{
@@ -10,23 +11,32 @@ const Game = struct {
         .clear_color = up.Color.rgb(14, 18, 24),
     };
 
-    atlas: up.AtlasHandle,
+    atlas: *up.Atlas,
     tiles: [4]up.AtlasFrameHandle,
     player: up.AnimationPlayer,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const atlas = try ctx.loadAtlas("atlas.json");
-        const animation = (try ctx.atlasAnimation(atlas, "pulse")) orelse return error.MissingAtlasAnimation;
+        const atlas = try ctx.allocator.create(up.Atlas);
+        errdefer ctx.allocator.destroy(atlas);
+        atlas.* = try content.ballAtlas(ctx.allocator, try ctx.assets.tryImage(try ctx.loadImage("ball.png")));
+        errdefer atlas.deinit();
+        const animation = atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
         return .{
             .atlas = atlas,
             .tiles = .{
-                (try ctx.atlasFrame(atlas, "tile_a")) orelse return error.MissingAtlasFrame,
-                (try ctx.atlasFrame(atlas, "tile_b")) orelse return error.MissingAtlasFrame,
-                (try ctx.atlasFrame(atlas, "tile_c")) orelse return error.MissingAtlasFrame,
-                (try ctx.atlasFrame(atlas, "tile_d")) orelse return error.MissingAtlasFrame,
+                atlas.findFrame("tile_a") orelse return error.MissingAtlasFrame,
+                atlas.findFrame("tile_b") orelse return error.MissingAtlasFrame,
+                atlas.findFrame("tile_c") orelse return error.MissingAtlasFrame,
+                atlas.findFrame("tile_d") orelse return error.MissingAtlasFrame,
             },
-            .player = up.AnimationPlayer.init(try ctx.atlas(atlas), animation),
+            .player = up.AnimationPlayer.init(atlas, animation),
         };
+    }
+
+    pub fn deinit(self: *Game, _: *sdl.Context) void {
+        const allocator = self.atlas.allocator;
+        self.atlas.deinit();
+        allocator.destroy(self.atlas);
     }
 
     pub fn update(self: *Game, ctx: *sdl.Context) void {
@@ -43,9 +53,9 @@ const Game = struct {
         for (map, 0..) |tile, i| {
             const x: i32 = @intCast((i % 8) * 8);
             const y: i32 = @intCast((i / 8) * 8);
-            try ctx.sprite(self.atlas, self.tiles[tile], x, y, .{});
+            try ctx.spriteAtlas(self.atlas, self.tiles[tile], x, y, .{});
         }
-        try ctx.sprite(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
+        try ctx.spriteAtlas(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
         ctx.text("ATLAS", 72, 8, up.Color.white);
     }
 };

@@ -11,7 +11,6 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
     const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 extension") orelse true;
-    const with_box2d = b.option(bool, "with_box2d", "Resolve the Box2D extension") orelse true;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
     if (with_sdl and !system_sdl and target.result.os.tag == .linux) _ = b.lazyDependency("sdl_linux_deps", .{});
     const bundled_sdl = if (!with_sdl or system_sdl) null else b.lazyDependency("sdl", .{
@@ -32,23 +31,13 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     addStb(peas);
-    const effects_dependency = b.lazyDependency("effects", .{ .target = target, .optimize = optimize }) orelse @panic("missing effects package");
-    const effects = effects_dependency.module("unpolished-peas-effects");
-    const ui_dependency = b.lazyDependency("ui", .{ .target = target, .optimize = optimize }) orelse @panic("missing UI package");
-    const ui = ui_dependency.module("unpolished-peas-ui");
+    addBox2d(peas, b.dependency("box2d", .{ .target = target, .optimize = optimize }));
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
         .target = b.graph.host,
         .optimize = optimize,
     });
-    const content = b.addModule("unpolished-peas-content", .{
-        .root_source_file = b.path("src/content_compiler.zig"),
-        .target = b.graph.host,
-        .optimize = optimize,
-    });
-    addStb(content);
-
     const public_import_inventory = b.addExecutable(.{
         .name = "public-import-inventory",
         .root_module = b.createModule(.{
@@ -79,14 +68,10 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
-            .{ .name = "unpolished-peas-effects", .module = effects },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
     if (with_sdl and (system_sdl or bundled_sdl != null)) addSdl3(sdl, bundled_sdl, framework_path);
-
-    const physics_dependency = b.lazyDependency("physics", .{ .target = target, .optimize = optimize, .with_box2d = with_box2d }) orelse @panic("missing physics package");
-    const physics = physics_dependency.module("unpolished-peas-physics");
 
     const lib = b.addLibrary(.{
         .name = "unpolished-peas",
@@ -115,7 +100,7 @@ pub fn build(b: *std.Build) void {
     package_topdown_sdl.dependOn(&b.addInstallArtifact(topdown_sdl, .{}).step);
     package_topdown_sdl.dependOn(&install_assets.step);
     const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
-    const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl }, .{ .name = "unpolished-peas-physics", .module = physics }, .{ .name = "unpolished-peas-ui", .module = ui } } }) });
+    const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl } } }) });
     const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
     package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
     package_platformer_sdl.dependOn(&install_assets.step);
@@ -127,15 +112,6 @@ pub fn build(b: *std.Build) void {
     packaged_layout_step.dependOn(&install_packaged_layout.step);
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const proof_benchmark = addExample(b, "unpolished-peas-proof-benchmark", "examples/proof_benchmark.zig", target, optimize, peas, null);
-    const contentc = b.addExecutable(.{
-        .name = "upcontentc",
-        .root_module = b.createModule(.{
-            .root_source_file = b.path("src/contentc.zig"),
-            .target = b.graph.host,
-            .optimize = optimize,
-            .imports = &.{.{ .name = "unpolished-peas-content", .module = content }},
-        }),
-    });
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
     const extension_matrix = b.addExecutable(.{ .name = "unpolished-peas-extension-matrix", .root_module = b.createModule(.{ .root_source_file = b.path("src/extension_matrix.zig"), .target = b.graph.host, .optimize = optimize }) });
 
@@ -145,7 +121,7 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("src/peas.zig"),
             .target = b.graph.host,
             .optimize = optimize,
-            .imports = &.{ .{ .name = "unpolished-peas-tools", .module = tools }, .{ .name = "unpolished-peas-content", .module = content } },
+            .imports = &.{.{ .name = "unpolished-peas-tools", .module = tools }},
         }),
     });
     const run_peas = b.addRunArtifact(peas_cli);
@@ -246,10 +222,6 @@ pub fn build(b: *std.Build) void {
     platformer_smoke_step.dependOn(&platformer_smoke.step);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
-    const run_contentc = b.addRunArtifact(contentc);
-    if (b.args) |args| run_contentc.addArgs(args);
-    const contentc_step = b.step("contentc", "Compile native project content");
-    contentc_step.dependOn(&run_contentc.step);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
     const run_extension_matrix = b.addRunArtifact(extension_matrix);
@@ -257,7 +229,7 @@ pub fn build(b: *std.Build) void {
     extension_matrix_step.dependOn(&run_extension_matrix.step);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, contentc, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
 
@@ -311,8 +283,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&check_public_import_inventory.step);
     const tools_tests = b.addTest(.{ .root_module = tools });
     const run_tools_tests = b.addRunArtifact(tools_tests);
-    const content_tests = b.addTest(.{ .root_module = content });
-    const run_content_tests = b.addRunArtifact(content_tests);
     const test_support_tests = b.addTest(.{ .root_module = test_support });
     const run_test_support_tests = b.addRunArtifact(test_support_tests);
     const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
@@ -320,7 +290,6 @@ pub fn build(b: *std.Build) void {
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);
-    module_test_step.dependOn(&run_content_tests.step);
     module_test_step.dependOn(&run_test_support_tests.step);
     const release_gate = b.addSystemCommand(&.{"script/release_gate.sh"});
     release_gate.setCwd(b.path("."));
@@ -379,56 +348,34 @@ pub fn build(b: *std.Build) void {
     desktop_backend_comparison.setCwd(b.path("."));
     const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays, captures, and budgets");
     desktop_backend_comparison_step.dependOn(&desktop_backend_comparison.step);
-    const effects_tests = b.addTest(.{ .root_module = effects });
+    const effects_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/subsystems/effects/effects.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
     const run_effects_tests = b.addRunArtifact(effects_tests);
-    const effects_test_step = b.step("test-effects", "Test the independent effects package module");
+    const effects_test_step = b.step("test-effects", "Test the engine-owned effects subsystem");
     effects_test_step.dependOn(&run_effects_tests.step);
-    const effects_conformance = b.addSystemCommand(&.{"script/test_effects_package.sh"});
-    effects_conformance.setCwd(b.path("."));
-    const effects_conformance_step = b.step("test-effects-conformance", "Run effects fallback, reload, and renderer conformance fixtures");
-    effects_conformance_step.dependOn(&effects_conformance.step);
-    const ecs_conformance = b.addSystemCommand(&.{"script/test_ecs_package.sh"});
-    ecs_conformance.setCwd(b.path("."));
-    const ecs_conformance_step = b.step("test-ecs", "Run ECS package and external consumer fixtures");
-    ecs_conformance_step.dependOn(&ecs_conformance.step);
 
     const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("fixtures/ui-package/src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "unpolished-peas", .module = peas },
-            .{ .name = "unpolished-peas-ui", .module = ui },
-        },
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
     }) });
     const run_ui_tests = b.addRunArtifact(ui_tests);
-    const ui_test_step = b.step("test-ui", "Test the optional UI package against core contracts");
+    const ui_test_step = b.step("test-ui", "Test the engine-owned UI subsystem");
     ui_test_step.dependOn(&run_ui_tests.step);
-    const ui_conformance = b.addSystemCommand(&.{"script/test_ui_package.sh"});
-    ui_conformance.setCwd(b.path("."));
-    const ui_conformance_step = b.step("test-ui-conformance", "Run immediate UI package and external consumer conformance fixtures");
-    ui_conformance_step.dependOn(&ui_conformance.step);
 
     const box2d_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("fixtures/physics-package/src/main.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = "unpolished-peas", .module = peas },
-            .{ .name = "unpolished-peas-physics", .module = physics },
-        },
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
     }) });
     const run_box2d_tests = b.addRunArtifact(box2d_tests);
-    const box2d_test_step = b.step("test-box2d", "Test the optional physics package against its pinned Box2D dependency");
+    const box2d_test_step = b.step("test-physics", "Test the engine-owned Box2D physics subsystem");
     box2d_test_step.dependOn(&run_box2d_tests.step);
-    const physics_conformance = b.addSystemCommand(&.{"script/test_physics_package.sh"});
-    physics_conformance.setCwd(b.path("."));
-    const physics_conformance_step = b.step("test-physics-conformance", "Run physics lifecycle, contact, debug, and teardown conformance fixtures");
-    physics_conformance_step.dependOn(&physics_conformance.step);
-    const package_release = b.addSystemCommand(&.{"script/test_package_release.sh"});
-    package_release.setCwd(b.path("."));
-    const package_release_step = b.step("test-package-release", "Verify package archive, dependency, and release metadata");
-    package_release_step.dependOn(&package_release.step);
 }
 
 fn addExample(
@@ -454,6 +401,12 @@ fn addExample(
     });
     b.installArtifact(exe);
     return exe;
+}
+
+fn addBox2d(mod: *std.Build.Module, dependency: *std.Build.Dependency) void {
+    mod.link_libc = true;
+    mod.addIncludePath(dependency.path("include"));
+    mod.linkLibrary(dependency.artifact("box2d"));
 }
 
 fn addRunStep(b: *std.Build, name: []const u8, description: []const u8, exe: *std.Build.Step.Compile) void {

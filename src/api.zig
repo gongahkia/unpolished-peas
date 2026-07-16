@@ -53,6 +53,9 @@ pub const assets = struct {
     pub const AudioHandle = @import("assets.zig").AudioHandle;
     pub const Image = @import("image.zig").Image;
     pub const Atlas = @import("atlas.zig").Atlas;
+    pub const AtlasFrameSpec = @import("atlas.zig").FrameSpec;
+    pub const AtlasAnimationFrameSpec = @import("atlas.zig").AnimationFrameSpec;
+    pub const AtlasAnimationSpec = @import("atlas.zig").AnimationSpec;
     pub const Font = @import("font_asset.zig").Font;
     pub const Sound = @import("audio.zig").Sound;
     pub const Music = @import("audio.zig").Music;
@@ -70,26 +73,72 @@ pub const world = struct {
 pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
-test "public API excludes optional package declarations" {
-    try std.testing.expect(!@hasDecl(@This(), "GpuResourceKind"));
-    try std.testing.expect(!@hasDecl(@This(), "GpuResources"));
-    try std.testing.expect(!@hasDecl(@This(), "TextureHandle"));
-    try std.testing.expect(!@hasDecl(@This(), "RenderTargetHandle"));
-    try std.testing.expect(!@hasDecl(@This(), "ShaderHandle"));
-    try std.testing.expect(!@hasDecl(@This(), "PipelineHandle"));
-    try std.testing.expect(!@hasDecl(@This(), "ShaderProgram"));
-    try std.testing.expect(!@hasDecl(@This(), "ShaderReflection"));
-    try std.testing.expect(!@hasDecl(@This(), "ShaderKind"));
-    try std.testing.expect(!@hasDecl(@This(), "PixelEffect"));
-    try std.testing.expect(!@hasDecl(@This(), "PixelEffectParameters"));
-    try std.testing.expect(!@hasDecl(@This(), "PostProcessChain"));
-    try std.testing.expect(!@hasDecl(@This(), "LightingPipeline"));
-    try std.testing.expect(!@hasDecl(@This(), "LightingConfig"));
-    try std.testing.expect(!@hasDecl(@This(), "Light"));
-    try std.testing.expect(!@hasDecl(@This(), "LightOccluder"));
-    try std.testing.expect(!@hasDecl(@This(), "LightingMetrics"));
-    try std.testing.expect(!@hasDecl(@This(), "LightingRenderPath"));
-    try std.testing.expect(!@hasDecl(@This(), "lighting"));
+pub const effects = @import("subsystems/effects/effects.zig");
+pub const ecs = @import("subsystems/ecs.zig");
+pub const Ui = @import("subsystems/ui.zig").ui(@This());
+pub const ui = Ui;
+pub const Physics = @import("subsystems/physics.zig").physics(@This());
+pub const physics = Physics;
+pub const GpuResourceKind = effects.ResourceKind;
+pub const GpuResources = effects.Resources;
+pub const TextureHandle = effects.TextureHandle;
+pub const RenderTargetHandle = effects.RenderTargetHandle;
+pub const ShaderHandle = effects.ShaderHandle;
+pub const PipelineHandle = effects.PipelineHandle;
+pub const ShaderProgram = effects.ShaderProgram;
+pub const ShaderReflection = effects.ShaderReflection;
+pub const ShaderKind = effects.ShaderKind;
+pub const PixelEffect = effects.PixelEffect;
+pub const PixelEffectParameters = effects.PixelEffectParameters;
+pub const PostProcessChain = effects.PostProcessChain;
+pub const lighting = effects.lighting;
+pub const EcsEntity = ecs.Entity;
+pub const EcsWorld = ecs.World;
+pub const EcsCommands = ecs.Commands;
+pub const ComponentStore = ecs.ComponentStore;
+pub const UiFrame = Ui.Frame;
+pub const UiId = Ui.Id;
+pub const UiLayout = Ui.Layout;
+pub const UiResponse = Ui.Response;
+pub const UiState = Ui.State;
+pub const UiStyle = Ui.Style;
+pub const UiSurface = Ui.Surface;
+pub const PhysicsWorld = Physics.World;
+pub const PhysicsConfig = Physics.Config;
+pub const PhysicsBody = Physics.BodyHandle;
+pub const EcsRuntime = struct {
+    world: EcsWorld,
+    commands: EcsCommands,
+
+    pub fn init(allocator: std.mem.Allocator) EcsRuntime {
+        return .{ .world = EcsWorld.init(allocator), .commands = EcsCommands.init(allocator) };
+    }
+
+    pub fn deinit(self: *EcsRuntime) void {
+        self.commands.deinit();
+        self.world.deinit();
+        self.* = undefined;
+    }
+
+    pub fn beginFrame(self: *EcsRuntime) *EcsCommands {
+        return &self.commands;
+    }
+
+    pub fn endFrame(self: *EcsRuntime) !void {
+        try self.commands.apply(&self.world);
+    }
+};
+
+test "public API includes first-class engine subsystems" {
+    try std.testing.expect(@hasDecl(@This(), "effects"));
+    try std.testing.expect(@hasDecl(@This(), "ecs"));
+    try std.testing.expect(@hasDecl(@This(), "ui"));
+    try std.testing.expect(@hasDecl(@This(), "physics"));
+    try std.testing.expect(@hasDecl(@This(), "PixelEffect"));
+    try std.testing.expect(@hasDecl(@This(), "EcsWorld"));
+    try std.testing.expect(@hasDecl(@This(), "EcsRuntime"));
+    try std.testing.expect(@hasDecl(@This(), "UiFrame"));
+    try std.testing.expect(@hasDecl(@This(), "PhysicsWorld"));
     try std.testing.expect(!@hasDecl(@This(), "NetMessage"));
     try std.testing.expect(!@hasDecl(@This(), "NetContract"));
     try std.testing.expect(!@hasDecl(@This(), "NetTransport"));
@@ -99,25 +148,15 @@ test "public API excludes optional package declarations" {
     try std.testing.expect(!@hasDecl(@This(), "netCodec"));
     try std.testing.expect(!@hasDecl(@This(), "InspectorNetworkPanel"));
     try std.testing.expect(!@hasDecl(graphics, "InspectorNetworkPanel"));
-    try std.testing.expect(!@hasDecl(@This(), "EcsEntity"));
-    try std.testing.expect(!@hasDecl(@This(), "EcsWorld"));
-    try std.testing.expect(!@hasDecl(@This(), "EcsCommands"));
-    try std.testing.expect(!@hasDecl(@This(), "ComponentStore"));
-    try std.testing.expect(!@hasDecl(@This(), "UiFrame"));
-    try std.testing.expect(!@hasDecl(@This(), "UiId"));
-    try std.testing.expect(!@hasDecl(@This(), "UiLayout"));
-    try std.testing.expect(!@hasDecl(@This(), "UiResponse"));
-    try std.testing.expect(!@hasDecl(@This(), "UiState"));
-    try std.testing.expect(!@hasDecl(@This(), "UiStyle"));
-    try std.testing.expect(!@hasDecl(@This(), "UiSurface"));
-    try std.testing.expect(!@hasDecl(@This(), "ui"));
-    try std.testing.expect(!@hasDecl(graphics, "UiFrame"));
-    try std.testing.expect(!@hasDecl(graphics, "UiId"));
-    try std.testing.expect(!@hasDecl(graphics, "UiLayout"));
-    try std.testing.expect(!@hasDecl(graphics, "UiResponse"));
-    try std.testing.expect(!@hasDecl(graphics, "UiState"));
-    try std.testing.expect(!@hasDecl(graphics, "UiStyle"));
-    try std.testing.expect(!@hasDecl(graphics, "UiSurface"));
+}
+
+test "ECS runtime owns frame commands without becoming mandatory" {
+    var runtime = EcsRuntime.init(std.testing.allocator);
+    defer runtime.deinit();
+    const entity = try runtime.world.create();
+    try runtime.beginFrame().destroy(entity);
+    try runtime.endFrame();
+    try std.testing.expectError(error.StaleEntity, runtime.world.validate(entity));
 }
 pub const App = @import("app.zig");
 pub const AudioMixer = @import("audio.zig").AudioMixer;
@@ -137,7 +176,9 @@ pub const animationState = @import("animation_state.zig");
 pub const Atlas = @import("atlas.zig").Atlas;
 pub const AtlasFrame = @import("atlas.zig").AtlasFrame;
 pub const AtlasFrameHandle = @import("atlas.zig").AtlasFrameHandle;
-pub const AtlasHandle = @import("assets.zig").AtlasHandle;
+pub const AtlasFrameSpec = @import("atlas.zig").FrameSpec;
+pub const AtlasAnimationFrameSpec = @import("atlas.zig").AnimationFrameSpec;
+pub const AtlasAnimationSpec = @import("atlas.zig").AnimationSpec;
 pub const AudioHandle = @import("assets.zig").AudioHandle;
 pub const AssetFile = @import("assets.zig").AssetFile;
 pub const AssetStore = @import("assets.zig").AssetStore;
@@ -169,14 +210,6 @@ pub const DiagnosticCaptureOptions = @import("diagnostics.zig").Options;
 pub const diagnostics = @import("diagnostics.zig");
 pub const Circle = @import("collision.zig").Circle;
 pub const Segment = @import("collision.zig").Segment;
-pub const AssetCatalog = @import("asset_catalog.zig").Source;
-pub const AssetCatalogDiagnostic = @import("asset_catalog.zig").Diagnostic;
-pub const AssetCatalogGraph = @import("asset_catalog.zig").Graph;
-pub const assetCatalog = @import("asset_catalog.zig");
-pub const contentCache = @import("content_cache.zig");
-pub const MapSource = @import("map_source.zig").Source;
-pub const MapSourceDiagnostic = @import("map_source.zig").Diagnostic;
-pub const mapSource = @import("map_source.zig");
 pub const Polygon = @import("collision.zig").Polygon;
 pub const ParticleEmitter = @import("particles.zig").Emitter;
 pub const ParticleConfig = @import("particles.zig").Config;
@@ -264,8 +297,6 @@ pub const TextAlignment = @import("text_layout.zig").Alignment;
 pub const TextLayoutOptions = @import("text_layout.zig").Options;
 pub const TextLayout = @import("text_layout.zig").Layout;
 pub const layoutText = @import("text_layout.zig").layout;
-pub const TileMapHandle = @import("assets.zig").TileMapHandle;
-pub const TileMapAssetOptions = @import("assets.zig").TileMapAssetOptions;
 pub const Tile = @import("tilemap.zig").Tile;
 pub const TileFlags = @import("tilemap.zig").TileFlags;
 pub const TileMap = @import("tilemap.zig").TileMap;

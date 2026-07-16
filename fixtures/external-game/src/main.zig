@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
 const Game = struct {

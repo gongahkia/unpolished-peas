@@ -1,6 +1,6 @@
 const std = @import("std");
-const core = @import("unpolished-peas").api;
-const ecs = @import("unpolished-peas-ecs");
+const core = @import("unpolished-peas");
+const ecs = core.ecs;
 
 test "ECS package sparse stores and commands remain deterministic" {
     const position = core.Vec2{ .x = 1, .y = 2 };

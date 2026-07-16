@@ -1,4 +1,5 @@
 pub const ResourceKind = @import("gpu.zig").ResourceKind;
+
 pub const Resources = @import("gpu.zig").Resources;
 pub const TextureHandle = @import("gpu.zig").TextureHandle;
 pub const RenderTargetHandle = @import("gpu.zig").RenderTargetHandle;

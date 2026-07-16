@@ -19,6 +19,7 @@ run-examples:
 	zig build run-tilemap -- --renderer sdl-gpu
 	zig build run-tilemap -- --renderer opengl
 	zig build run-primitives -- --renderer sdl-gpu
+	zig build run-primitives -- --renderer opengl
 	zig build run-breakout-sdl -- --renderer sdl-gpu
 	zig build run-breakout-sdl -- --renderer opengl
 	zig build run-topdown-sdl -- --renderer sdl-gpu
@@ -27,4 +28,3 @@ run-examples:
 	zig build run-platformer-sdl -- --renderer opengl
 	zig build stress-audio-sdl -- --renderer sdl-gpu
 	zig build stress-audio-sdl -- --renderer opengl
-	zig build run-topdown-listen-sdl

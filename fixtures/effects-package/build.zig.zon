@@ -5,7 +5,6 @@
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
         .unpolished_peas = .{ .path = "../.." },
-        .unpolished_peas_effects = .{ .path = "../../packages/effects" },
     },
     .paths = .{
         "build.zig",

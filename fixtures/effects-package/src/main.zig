@@ -1,6 +1,6 @@
 const std = @import("std");
-const core = @import("unpolished-peas").api;
-const effects = @import("unpolished-peas-effects");
+const core = @import("unpolished-peas");
+const effects = core.effects;
 const lighting = effects.lighting(core);
 
 test "effects package is independent from core" {

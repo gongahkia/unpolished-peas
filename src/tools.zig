@@ -10,10 +10,7 @@ const ProjectManifest = struct {
 pub const Command = enum {
     new,
     run,
-    host,
     check,
-    compile,
-    migrate,
     @"test",
     replay,
     package,
@@ -34,19 +31,6 @@ pub const TestSelection = enum {
             .integration => "test-modules",
         };
     }
-};
-
-pub const HostMode = enum {
-    dedicated,
-    listen,
-};
-
-pub const HostRuntimeConfig = struct {
-    mode: HostMode,
-    bind_address: []const u8 = "127.0.0.1",
-    port: u16 = 48081,
-    max_peers: u16 = 16,
-    ticks: u32 = 60,
 };
 
 pub const PackageTarget = enum {
@@ -120,45 +104,10 @@ pub const CheckIssueKind = enum {
     missing_build,
     invalid_build,
     missing_assets,
-    missing_maps,
 };
 
 pub fn parseCommand(value: []const u8) ?Command {
     return std.meta.stringToEnum(Command, value);
-}
-
-pub fn parseHostRuntimeConfig(arguments: []const []const u8) !HostRuntimeConfig {
-    if (arguments.len == 0) return error.InvalidHostConfiguration;
-    const mode_argument = arguments[0];
-    var config = HostRuntimeConfig{ .mode = std.meta.stringToEnum(HostMode, mode_argument) orelse return error.InvalidHostConfiguration };
-    var index: usize = 1;
-    var bind_set = false;
-    var port_set = false;
-    var peers_set = false;
-    var ticks_set = false;
-    while (index < arguments.len) : (index += 2) {
-        const value = if (index + 1 < arguments.len) arguments[index + 1] else return error.InvalidHostConfiguration;
-        if (std.mem.eql(u8, arguments[index], "--bind")) {
-            if (bind_set) return error.InvalidHostConfiguration;
-            bind_set = true;
-            config.bind_address = value;
-        } else if (std.mem.eql(u8, arguments[index], "--port")) {
-            if (port_set) return error.InvalidHostConfiguration;
-            port_set = true;
-            config.port = std.fmt.parseInt(u16, value, 10) catch return error.InvalidHostConfiguration;
-        } else if (std.mem.eql(u8, arguments[index], "--max-peers")) {
-            if (peers_set) return error.InvalidHostConfiguration;
-            peers_set = true;
-            config.max_peers = std.fmt.parseInt(u16, value, 10) catch return error.InvalidHostConfiguration;
-        } else if (std.mem.eql(u8, arguments[index], "--ticks")) {
-            if (ticks_set) return error.InvalidHostConfiguration;
-            ticks_set = true;
-            config.ticks = std.fmt.parseInt(u32, value, 10) catch return error.InvalidHostConfiguration;
-        } else return error.InvalidHostConfiguration;
-    }
-    if (config.max_peers == 0 or config.max_peers > 64 or config.ticks == 0 or config.ticks > 100_000) return error.InvalidHostConfiguration;
-    _ = std.net.Address.parseIp(config.bind_address, config.port) catch return error.InvalidHostConfiguration;
-    return config;
 }
 
 pub fn parseTestSelection(value: []const u8) ?TestSelection {
@@ -210,12 +159,9 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run host check compile migrate test replay package docs
+        \\commands: new run check test replay package docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
-        \\compile: zig build peas -- compile [project-directory] [output-directory]
-        \\migrate: zig build peas -- migrate <catalog|map> <input> <output>
         \\run: zig build peas -- run [project-directory] -- [game-args]
-        \\host: zig build peas -- host <dedicated|listen> [--bind <ip>] [--port <u16>] [--max-peers <1..64>] [--ticks <1..100000>]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\replay: zig build peas -- replay <fixture.upr> [expected-input-hash]
         \\package: zig build peas -- package <linux|macos|windows> [output-directory] [--game <bounce|topdown|platformer>]
@@ -292,7 +238,6 @@ pub fn checkProject(allocator: std.mem.Allocator, root: []const u8) !?CheckIssue
 
     if (try checkZigFile(allocator, root, "build.zig", .missing_build, .invalid_build, "missing project build configuration")) |value| return value;
     if (try checkDirectory(allocator, root, "assets", .missing_assets, "missing project assets")) |value| return value;
-    if (try checkDirectory(allocator, root, "maps", .missing_maps, "missing project maps")) |value| return value;
     return null;
 }
 
@@ -359,7 +304,6 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.replay, parseCommand("replay").?);
     try std.testing.expect(parseCommand("publish") == null);
     try std.testing.expectEqual(Command.docs, parseCommand("docs").?);
-    try std.testing.expectEqual(Command.host, parseCommand("host").?);
     try std.testing.expectEqual(TestSelection.replay, parseTestSelection("replay").?);
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
@@ -368,15 +312,6 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expect(parseCheckTarget("web") == null);
     try std.testing.expectEqual(DocsTopic.api, parseDocsTopic("api").?);
     try std.testing.expect(parseDocsTopic("reference") == null);
-}
-
-test "host configuration validates mode, endpoint, and bounded limits" {
-    const config = try parseHostRuntimeConfig(&.{ "dedicated", "--bind", "127.0.0.1", "--port", "48081", "--max-peers", "16", "--ticks", "60" });
-    try std.testing.expectEqual(HostMode.dedicated, config.mode);
-    try std.testing.expectEqual(@as(u16, 16), config.max_peers);
-    try std.testing.expectError(error.InvalidHostConfiguration, parseHostRuntimeConfig(&.{ "listen", "--max-peers", "65" }));
-    try std.testing.expectError(error.InvalidHostConfiguration, parseHostRuntimeConfig(&.{ "listen", "--bind", "not-an-ip" }));
-    try std.testing.expectError(error.InvalidHostConfiguration, parseHostRuntimeConfig(&.{ "listen", "--ticks", "0" }));
 }
 
 test "tools diagnose unsupported Windows setup" {
@@ -464,7 +399,6 @@ test "tools validate project fixture matrix without runtime imports" {
         .{ .name = "invalid-main", .path_suffix = null, .message = null, .kind = null },
         .{ .name = "missing-assets", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
         .{ .name = "asset-file", .path_suffix = "assets", .message = "missing project assets", .kind = .missing_assets },
-        .{ .name = "missing-maps", .path_suffix = "maps", .message = "missing project maps", .kind = .missing_maps },
     };
     for (cases) |case| {
         const fixture_path = try std.fs.path.join(std.testing.allocator, &.{ "fixtures", "peas-check", case.name });

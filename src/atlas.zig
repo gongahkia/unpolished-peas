@@ -2,22 +2,11 @@ const std = @import("std");
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 
-const max_atlas_bytes = 8 * 1024 * 1024;
 const default_frame_duration: f32 = 0.1;
 
-pub const AtlasFrameHandle = struct {
-    index: usize,
-};
-
-pub const AnimationHandle = struct {
-    index: usize,
-};
-
-pub const Origin = enum {
-    top_left,
-    center,
-};
-
+pub const AtlasFrameHandle = struct { index: usize };
+pub const AnimationHandle = struct { index: usize };
+pub const Origin = enum { top_left, center };
 pub const Sampling = enum { nearest, linear };
 
 pub const DrawSpriteOptions = struct {
@@ -44,15 +33,25 @@ pub const AtlasFrame = struct {
     duration: f32 = default_frame_duration,
 };
 
-pub const AnimationFrame = struct {
-    frame: AtlasFrameHandle,
-    duration: f32,
+pub const AnimationFrame = struct { frame: AtlasFrameHandle, duration: f32 };
+pub const Animation = struct { name: []u8, frames: []AnimationFrame };
+
+pub const FrameSpec = struct {
+    name: []const u8,
+    x: i32,
+    y: i32,
+    w: i32,
+    h: i32,
+    source_w: ?i32 = null,
+    source_h: ?i32 = null,
+    offset_x: i32 = 0,
+    offset_y: i32 = 0,
+    rotated: bool = false,
+    duration: f32 = default_frame_duration,
 };
 
-pub const Animation = struct {
-    name: []u8,
-    frames: []AnimationFrame,
-};
+pub const AnimationFrameSpec = struct { frame: []const u8, duration: f32 = default_frame_duration };
+pub const AnimationSpec = struct { name: []const u8, frames: []const AnimationFrameSpec };
 
 pub const AnimationPlayer = struct { // borrows its Atlas; the atlas must outlive the player.
     atlas: *const Atlas,
@@ -75,16 +74,12 @@ pub const AnimationPlayer = struct { // borrows its Atlas; the atlas must outliv
 
     pub fn update(self: *AnimationPlayer, dt: f32) void {
         if (!self.playing or dt <= 0) return;
-        const anim = self.atlas.animation(self.animation);
-        if (anim.frames.len == 0) return;
+        const animation = self.atlas.animation(self.animation);
+        if (animation.frames.len == 0) return;
         self.elapsed += dt;
-        while (self.elapsed >= anim.frames[self.frame_index].duration) {
-            self.elapsed -= anim.frames[self.frame_index].duration;
-            if (self.frame_index + 1 < anim.frames.len) {
-                self.frame_index += 1;
-            } else if (self.loop) {
-                self.frame_index = 0;
-            } else {
+        while (self.elapsed >= animation.frames[self.frame_index].duration) {
+            self.elapsed -= animation.frames[self.frame_index].duration;
+            if (self.frame_index + 1 < animation.frames.len) self.frame_index += 1 else if (self.loop) self.frame_index = 0 else {
                 self.playing = false;
                 self.elapsed = 0;
                 break;
@@ -93,57 +88,53 @@ pub const AnimationPlayer = struct { // borrows its Atlas; the atlas must outliv
     }
 
     pub fn frame(self: AnimationPlayer) AtlasFrameHandle {
-        const anim = self.atlas.animation(self.animation);
-        return anim.frames[self.frame_index].frame;
+        return self.atlas.animation(self.animation).frames[self.frame_index].frame;
     }
 };
 
-pub const Atlas = struct { // owns decoded image, frame, and animation allocations; call deinit once after players are unused.
+pub const Atlas = struct { // owns its image, frame, and animation allocations; call deinit once after players are unused.
     allocator: std.mem.Allocator,
     image: Image,
     image_path: []u8,
     frames: []AtlasFrame,
     animations: []Animation,
 
-    pub fn load(allocator: std.mem.Allocator, json_path: []const u8) !Atlas {
-        const json_bytes = try std.fs.cwd().readFileAlloc(allocator, json_path, max_atlas_bytes);
-        defer allocator.free(json_bytes);
-
-        const image_rel = try imagePathFromJson(allocator, json_bytes);
-        defer allocator.free(image_rel);
-        const image_path = try resolveSiblingPath(allocator, json_path, image_rel);
-        defer allocator.free(image_path);
-
-        const image_bytes = try std.fs.cwd().readFileAlloc(allocator, image_path, 32 * 1024 * 1024);
-        defer allocator.free(image_bytes);
-        return decode(allocator, image_bytes, image_path, json_bytes);
-    }
-
-    pub fn decode(allocator: std.mem.Allocator, image_bytes: []const u8, image_path: []const u8, json_bytes: []const u8) !Atlas {
-        var image = try Image.decode(allocator, image_bytes, .{});
-        errdefer image.deinit();
-        const owned_path = try allocator.dupe(u8, image_path);
-        errdefer allocator.free(owned_path);
-        var parsed = try std.json.parseFromSlice(std.json.Value, allocator, json_bytes, .{});
-        defer parsed.deinit();
-
-        var state = ParseState.init(allocator);
-        defer state.deinitScratch();
-        try state.parse(parsed.value);
-        return .{
-            .allocator = allocator,
-            .image = image,
-            .image_path = owned_path,
-            .frames = try state.frames.toOwnedSlice(allocator),
-            .animations = try state.animations.toOwnedSlice(allocator),
-        };
+    pub fn init(allocator: std.mem.Allocator, image: Image, image_path: []const u8, frame_specs: []const FrameSpec, animation_specs: []const AnimationSpec) !Atlas {
+        if (frame_specs.len == 0) return error.InvalidAtlas;
+        var atlas = Atlas{ .allocator = allocator, .image = image, .image_path = try allocator.dupe(u8, image_path), .frames = &.{}, .animations = &.{} };
+        errdefer atlas.deinit();
+        atlas.frames = try allocator.alloc(AtlasFrame, frame_specs.len);
+        for (atlas.frames) |*entry| entry.* = .{ .name = &.{}, .x = 0, .y = 0, .w = 0, .h = 0, .source_w = 0, .source_h = 0, .offset_x = 0, .offset_y = 0 };
+        for (frame_specs, 0..) |spec, index| {
+            if (spec.name.len == 0 or spec.w <= 0 or spec.h <= 0 or spec.x < 0 or spec.y < 0 or !std.math.isFinite(spec.duration) or spec.duration <= 0) return error.InvalidAtlasFrame;
+            const right = std.math.add(i32, spec.x, spec.w) catch return error.InvalidAtlasFrame;
+            const bottom = std.math.add(i32, spec.y, spec.h) catch return error.InvalidAtlasFrame;
+            if (right > image.width or bottom > image.height) return error.InvalidAtlasFrame;
+            for (frame_specs[0..index]) |prior| if (std.mem.eql(u8, prior.name, spec.name)) return error.DuplicateAtlasFrame;
+            atlas.frames[index] = .{ .name = try allocator.dupe(u8, spec.name), .x = spec.x, .y = spec.y, .w = spec.w, .h = spec.h, .source_w = spec.source_w orelse spec.w, .source_h = spec.source_h orelse spec.h, .offset_x = spec.offset_x, .offset_y = spec.offset_y, .rotated = spec.rotated, .duration = spec.duration };
+        }
+        atlas.animations = try allocator.alloc(Animation, animation_specs.len);
+        for (atlas.animations) |*entry| entry.* = .{ .name = &.{}, .frames = &.{} };
+        for (animation_specs, 0..) |spec, animation_index| {
+            if (spec.name.len == 0 or spec.frames.len == 0) return error.InvalidAnimation;
+            for (animation_specs[0..animation_index]) |prior| if (std.mem.eql(u8, prior.name, spec.name)) return error.DuplicateAnimation;
+            const frames = try allocator.alloc(AnimationFrame, spec.frames.len);
+            errdefer allocator.free(frames);
+            for (spec.frames, 0..) |frame_spec, frame_index| {
+                if (!std.math.isFinite(frame_spec.duration) or frame_spec.duration <= 0) return error.InvalidAnimation;
+                const index = frameSpecIndex(frame_specs, frame_spec.frame) orelse return error.UnknownAnimationFrame;
+                frames[frame_index] = .{ .frame = .{ .index = index }, .duration = frame_spec.duration };
+            }
+            atlas.animations[animation_index] = .{ .name = try allocator.dupe(u8, spec.name), .frames = frames };
+        }
+        return atlas;
     }
 
     pub fn deinit(self: *Atlas) void {
-        for (self.frames) |*slot| self.allocator.free(slot.name);
-        for (self.animations) |*anim| {
-            self.allocator.free(anim.name);
-            self.allocator.free(anim.frames);
+        for (self.frames) |*entry| if (entry.name.len != 0) self.allocator.free(entry.name);
+        for (self.animations) |*entry| {
+            if (entry.name.len != 0) self.allocator.free(entry.name);
+            if (entry.frames.len != 0) self.allocator.free(entry.frames);
         }
         self.allocator.free(self.frames);
         self.allocator.free(self.animations);
@@ -153,16 +144,12 @@ pub const Atlas = struct { // owns decoded image, frame, and animation allocatio
     }
 
     pub fn findFrame(self: Atlas, name: []const u8) ?AtlasFrameHandle {
-        for (self.frames, 0..) |slot, index| {
-            if (std.mem.eql(u8, slot.name, name)) return .{ .index = index };
-        }
+        for (self.frames, 0..) |entry, index| if (std.mem.eql(u8, entry.name, name)) return .{ .index = index };
         return null;
     }
 
     pub fn findAnimation(self: Atlas, name: []const u8) ?AnimationHandle {
-        for (self.animations, 0..) |anim, index| {
-            if (std.mem.eql(u8, anim.name, name)) return .{ .index = index };
-        }
+        for (self.animations, 0..) |entry, index| if (std.mem.eql(u8, entry.name, name)) return .{ .index = index };
         return null;
     }
 
@@ -177,170 +164,9 @@ pub const Atlas = struct { // owns decoded image, frame, and animation allocatio
     }
 };
 
-const ParseState = struct {
-    allocator: std.mem.Allocator,
-    frames: std.ArrayListUnmanaged(AtlasFrame) = .{},
-    animations: std.ArrayListUnmanaged(Animation) = .{},
-
-    fn init(allocator: std.mem.Allocator) ParseState {
-        return .{ .allocator = allocator };
-    }
-
-    fn deinitScratch(self: *ParseState) void {
-        for (self.frames.items) |*frame| self.allocator.free(frame.name);
-        for (self.animations.items) |*anim| {
-            self.allocator.free(anim.name);
-            self.allocator.free(anim.frames);
-        }
-        self.frames.deinit(self.allocator);
-        self.animations.deinit(self.allocator);
-    }
-
-    fn parse(self: *ParseState, root: std.json.Value) !void {
-        const root_obj = try object(root);
-        const frames_value = root_obj.get("frames") orelse return error.InvalidAtlasJson;
-        switch (frames_value) {
-            .object => |frames_obj| try self.parseFramesObject(frames_obj),
-            .array => |frames_array| try self.parseFramesArray(frames_array.items),
-            else => return error.InvalidAtlasJson,
-        }
-        if (self.frames.items.len == 0) return error.InvalidAtlasJson;
-        if (root_obj.get("animations")) |animations| try self.parseAnimationsObject(try object(animations));
-        if (root_obj.get("meta")) |meta_value| {
-            const meta = object(meta_value) catch return;
-            if (meta.get("frameTags")) |tags| try self.parseAsepriteTags(try array(tags));
-        }
-    }
-
-    fn parseFramesObject(self: *ParseState, frames_obj: std.json.ObjectMap) !void {
-        var it = frames_obj.iterator();
-        while (it.next()) |entry| {
-            const fallback_name = entry.key_ptr.*;
-            try self.appendFrame(fallback_name, entry.value_ptr.*);
-        }
-    }
-
-    fn parseFramesArray(self: *ParseState, items: []const std.json.Value) !void {
-        for (items, 0..) |item, index| {
-            const item_obj = try object(item);
-            const fallback = if (item_obj.get("filename")) |name_value| try string(name_value) else try std.fmt.allocPrint(self.allocator, "frame{}", .{index});
-            defer if (item_obj.get("filename") == null) self.allocator.free(fallback);
-            try self.appendFrame(fallback, item);
-        }
-    }
-
-    fn appendFrame(self: *ParseState, fallback_name: []const u8, value: std.json.Value) !void {
-        const value_obj = try object(value);
-        const name = if (value_obj.get("filename")) |name_value| try string(name_value) else fallback_name;
-        const frame_obj = if (value_obj.get("frame")) |frame_value| try object(frame_value) else value_obj;
-        const rect = try readRect(frame_obj);
-        const source: SizeI = if (value_obj.get("sourceSize")) |source_value| try readSize(try object(source_value)) else .{ .w = rect.w, .h = rect.h };
-        const sprite: RectI = if (value_obj.get("spriteSourceSize")) |sprite_value| try readRect(try object(sprite_value)) else .{ .x = 0, .y = 0, .w = rect.w, .h = rect.h };
-        const duration = frameDuration(value_obj);
-        const owned = try self.allocator.dupe(u8, name);
-        errdefer self.allocator.free(owned);
-        try self.frames.append(self.allocator, .{
-            .name = owned,
-            .x = rect.x,
-            .y = rect.y,
-            .w = rect.w,
-            .h = rect.h,
-            .source_w = source.w,
-            .source_h = source.h,
-            .offset_x = sprite.x,
-            .offset_y = sprite.y,
-            .rotated = boolField(value_obj, "rotated") orelse false,
-            .duration = duration,
-        });
-    }
-
-    fn parseAnimationsObject(self: *ParseState, animations_obj: std.json.ObjectMap) !void {
-        var it = animations_obj.iterator();
-        while (it.next()) |entry| {
-            const items = try array(entry.value_ptr.*);
-            var frames = std.ArrayListUnmanaged(AnimationFrame){};
-            errdefer frames.deinit(self.allocator);
-            for (items.items) |item| {
-                switch (item) {
-                    .string => |name| try frames.append(self.allocator, .{ .frame = try self.requireFrame(name), .duration = self.frameDurationByName(name) }),
-                    .object => |item_obj| {
-                        const name = try string(item_obj.get("frame") orelse item_obj.get("name") orelse return error.InvalidAtlasJson);
-                        try frames.append(self.allocator, .{ .frame = try self.requireFrame(name), .duration = secondsField(item_obj, "duration") orelse self.frameDurationByName(name) });
-                    },
-                    else => return error.InvalidAtlasJson,
-                }
-            }
-            try self.appendAnimation(entry.key_ptr.*, try frames.toOwnedSlice(self.allocator));
-        }
-    }
-
-    fn parseAsepriteTags(self: *ParseState, tags: std.json.Array) !void {
-        for (tags.items) |tag_value| {
-            const tag = try object(tag_value);
-            const name = try string(tag.get("name") orelse return error.InvalidAtlasJson);
-            const from = try usizeValue(tag.get("from") orelse return error.InvalidAtlasJson);
-            const to = try usizeValue(tag.get("to") orelse return error.InvalidAtlasJson);
-            if (from >= self.frames.items.len or to >= self.frames.items.len or from > to) return error.InvalidAtlasJson;
-            const direction = if (tag.get("direction")) |value| try string(value) else "forward";
-            var frames = std.ArrayListUnmanaged(AnimationFrame){};
-            errdefer frames.deinit(self.allocator);
-            if (std.mem.eql(u8, direction, "reverse")) {
-                var i = to + 1;
-                while (i > from) {
-                    i -= 1;
-                    try self.appendAnimFrame(&frames, i);
-                }
-            } else {
-                var i = from;
-                while (i <= to) : (i += 1) try self.appendAnimFrame(&frames, i);
-                if (std.mem.eql(u8, direction, "pingpong") and to > from) {
-                    var back = to;
-                    while (back > from + 1) {
-                        back -= 1;
-                        try self.appendAnimFrame(&frames, back);
-                    }
-                }
-            }
-            try self.appendAnimation(name, try frames.toOwnedSlice(self.allocator));
-        }
-    }
-
-    fn appendAnimFrame(self: *ParseState, frames: *std.ArrayListUnmanaged(AnimationFrame), index: usize) !void {
-        try frames.append(self.allocator, .{ .frame = .{ .index = index }, .duration = self.frames.items[index].duration });
-    }
-
-    fn appendAnimation(self: *ParseState, name: []const u8, frames: []AnimationFrame) !void {
-        if (frames.len == 0) return error.InvalidAtlasJson;
-        const owned = try self.allocator.dupe(u8, name);
-        errdefer self.allocator.free(owned);
-        try self.animations.append(self.allocator, .{ .name = owned, .frames = frames });
-    }
-
-    fn requireFrame(self: ParseState, name: []const u8) !AtlasFrameHandle {
-        for (self.frames.items, 0..) |frame, index| {
-            if (std.mem.eql(u8, frame.name, name)) return .{ .index = index };
-        }
-        return error.UnknownAtlasFrame;
-    }
-
-    fn frameDurationByName(self: ParseState, name: []const u8) f32 {
-        for (self.frames.items) |frame| {
-            if (std.mem.eql(u8, frame.name, name)) return frame.duration;
-        }
-        return default_frame_duration;
-    }
-};
-
-pub fn imagePathFromJson(allocator: std.mem.Allocator, json_bytes: []const u8) ![]u8 {
-    var parsed = try std.json.parseFromSlice(std.json.Value, allocator, json_bytes, .{});
-    defer parsed.deinit();
-    const root = try object(parsed.value);
-    if (root.get("image")) |value| return allocator.dupe(u8, try string(value));
-    if (root.get("meta")) |meta_value| {
-        const meta = try object(meta_value);
-        if (meta.get("image")) |value| return allocator.dupe(u8, try string(value));
-    }
-    return error.InvalidAtlasJson;
+fn frameSpecIndex(specs: []const FrameSpec, name: []const u8) ?usize {
+    for (specs, 0..) |spec, index| if (std.mem.eql(u8, spec.name, name)) return index;
+    return null;
 }
 
 pub fn resolveSiblingPath(allocator: std.mem.Allocator, base_path: []const u8, child: []const u8) ![]u8 {
@@ -349,162 +175,12 @@ pub fn resolveSiblingPath(allocator: std.mem.Allocator, base_path: []const u8, c
     return allocator.dupe(u8, child);
 }
 
-const RectI = struct {
-    x: i32,
-    y: i32,
-    w: i32,
-    h: i32,
-};
-
-const SizeI = struct {
-    w: i32,
-    h: i32,
-};
-
-fn object(value: std.json.Value) !std.json.ObjectMap {
-    return switch (value) {
-        .object => |obj| obj,
-        else => error.InvalidAtlasJson,
-    };
-}
-
-fn array(value: std.json.Value) !std.json.Array {
-    return switch (value) {
-        .array => |items| items,
-        else => error.InvalidAtlasJson,
-    };
-}
-
-fn string(value: std.json.Value) ![]const u8 {
-    return switch (value) {
-        .string => |text| text,
-        else => error.InvalidAtlasJson,
-    };
-}
-
-fn readRect(obj: std.json.ObjectMap) !RectI {
-    return .{
-        .x = try intField(obj, "x"),
-        .y = try intField(obj, "y"),
-        .w = try intField(obj, "w"),
-        .h = try intField(obj, "h"),
-    };
-}
-
-fn readSize(obj: std.json.ObjectMap) !SizeI {
-    return .{ .w = try intField(obj, "w"), .h = try intField(obj, "h") };
-}
-
-fn intField(obj: std.json.ObjectMap, key: []const u8) !i32 {
-    return try i32Value(obj.get(key) orelse return error.InvalidAtlasJson);
-}
-
-fn secondsField(obj: std.json.ObjectMap, key: []const u8) ?f32 {
-    const value = obj.get(key) orelse return null;
-    return f32Value(value) catch null;
-}
-
-fn boolField(obj: std.json.ObjectMap, key: []const u8) ?bool {
-    const value = obj.get(key) orelse return null;
-    return switch (value) {
-        .bool => |b| b,
-        else => null,
-    };
-}
-
-fn frameDuration(obj: std.json.ObjectMap) f32 {
-    if (obj.get("duration_ms")) |value| return (f32Value(value) catch 100) / 1000.0;
-    if (obj.get("duration")) |value| return (f32Value(value) catch 100) / 1000.0;
-    return default_frame_duration;
-}
-
-fn i32Value(value: std.json.Value) !i32 {
-    return switch (value) {
-        .integer => |i| std.math.cast(i32, i) orelse error.InvalidAtlasJson,
-        .float => |f| @intFromFloat(f),
-        .number_string => |s| try std.fmt.parseInt(i32, s, 10),
-        else => error.InvalidAtlasJson,
-    };
-}
-
-fn usizeValue(value: std.json.Value) !usize {
-    return switch (value) {
-        .integer => |i| std.math.cast(usize, i) orelse error.InvalidAtlasJson,
-        .float => |f| @intFromFloat(f),
-        .number_string => |s| try std.fmt.parseInt(usize, s, 10),
-        else => error.InvalidAtlasJson,
-    };
-}
-
-fn f32Value(value: std.json.Value) !f32 {
-    return switch (value) {
-        .integer => |i| @floatFromInt(i),
-        .float => |f| @floatCast(f),
-        .number_string => |s| try std.fmt.parseFloat(f32, s),
-        else => error.InvalidAtlasJson,
-    };
-}
-
-test "parses common atlas json variants" {
-    const json =
-        \\{"image":"atlas.png","frames":{"grass":{"x":0,"y":0,"w":8,"h":8},"water":{"frame":{"x":8,"y":0,"w":8,"h":8},"duration":120}},"animations":{"flow":["grass",{"frame":"water","duration":0.2}]}}
-    ;
-    const path = try imagePathFromJson(std.testing.allocator, json);
-    defer std.testing.allocator.free(path);
-    try std.testing.expectEqualStrings("atlas.png", path);
-
-    var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, json, .{});
-    defer parsed.deinit();
-    var state = ParseState.init(std.testing.allocator);
-    defer state.deinitScratch();
-    try state.parse(parsed.value);
-    try std.testing.expectEqual(@as(usize, 2), state.frames.items.len);
-    try std.testing.expectEqual(@as(usize, 1), state.animations.items.len);
-    try std.testing.expectEqual(@as(f32, 0.12), state.frames.items[1].duration);
-}
-
-test "parses aseprite tags" {
-    const json =
-        \\{"meta":{"image":"atlas.png","frameTags":[{"name":"walk","from":0,"to":1,"direction":"pingpong"}]},"frames":[{"filename":"a","frame":{"x":0,"y":0,"w":4,"h":4},"duration":50},{"filename":"b","frame":{"x":4,"y":0,"w":4,"h":4},"duration":75}]}
-    ;
-    var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, json, .{});
-    defer parsed.deinit();
-    var state = ParseState.init(std.testing.allocator);
-    defer state.deinitScratch();
-    try state.parse(parsed.value);
-    try std.testing.expectEqual(@as(usize, 2), state.frames.items.len);
-    try std.testing.expectEqual(@as(usize, 1), state.animations.items.len);
-    try std.testing.expectEqual(@as(f32, 0.05), state.animations.items[0].frames[0].duration);
-}
-
-test "animation player selects deterministic looping and transition frames" {
-    const pixels = try std.testing.allocator.dupe(Color, &.{ Color.white, Color.black });
-    var atlas = Atlas{
-        .allocator = std.testing.allocator,
-        .image = .{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = pixels },
-        .image_path = try std.testing.allocator.dupe(u8, "memory.png"),
-        .frames = try std.testing.allocator.dupe(AtlasFrame, &.{
-            .{ .name = try std.testing.allocator.dupe(u8, "a"), .x = 0, .y = 0, .w = 1, .h = 1, .source_w = 1, .source_h = 1, .offset_x = 0, .offset_y = 0 },
-            .{ .name = try std.testing.allocator.dupe(u8, "b"), .x = 1, .y = 0, .w = 1, .h = 1, .source_w = 1, .source_h = 1, .offset_x = 0, .offset_y = 0 },
-        }),
-        .animations = try std.testing.allocator.dupe(Animation, &.{
-            .{ .name = try std.testing.allocator.dupe(u8, "blink"), .frames = try std.testing.allocator.dupe(AnimationFrame, &.{ .{ .frame = .{ .index = 0 }, .duration = 0.1 }, .{ .frame = .{ .index = 1 }, .duration = 0.1 } }) },
-            .{ .name = try std.testing.allocator.dupe(u8, "idle"), .frames = try std.testing.allocator.dupe(AnimationFrame, &.{.{ .frame = .{ .index = 0 }, .duration = 0.5 }}) },
-        }),
-    };
+test "programmatic atlas validates frames and animations" {
+    const pixels = try std.testing.allocator.dupe(Color, &[_]Color{ Color.white, Color.white, Color.white, Color.white });
+    var atlas = try Atlas.init(std.testing.allocator, .{ .allocator = std.testing.allocator, .width = 2, .height = 2, .pixels = pixels }, "memory", &.{ .{ .name = "a", .x = 0, .y = 0, .w = 1, .h = 1 }, .{ .name = "b", .x = 1, .y = 0, .w = 1, .h = 1 } }, &.{.{ .name = "blink", .frames = &.{ .{ .frame = "a" }, .{ .frame = "b" } } }});
     defer atlas.deinit();
     var player = AnimationPlayer.init(&atlas, atlas.findAnimation("blink").?);
     player.update(0.11);
     try std.testing.expectEqual(@as(usize, 1), player.frame().index);
-    player.update(0.1);
-    try std.testing.expectEqual(@as(usize, 0), player.frame().index);
-    player.loop = false;
-    player.update(0.11);
-    try std.testing.expectEqual(@as(usize, 1), player.frame().index);
-    player.update(0.11);
-    try std.testing.expect(!player.playing);
-    try std.testing.expectEqual(@as(usize, 1), player.frame().index);
-    player.play(atlas.findAnimation("idle").?);
-    try std.testing.expect(player.playing);
-    try std.testing.expectEqual(@as(usize, 0), player.frame().index);
+    try std.testing.expectError(error.UnknownAnimationFrame, Atlas.init(std.testing.allocator, try atlas.image.clone(std.testing.allocator), "memory", &.{.{ .name = "only", .x = 0, .y = 0, .w = 1, .h = 1 }}, &.{.{ .name = "bad", .frames = &.{.{ .frame = "missing" }} }}));
 }

@@ -1,25 +1,9 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
-const max_file_bytes = 64 * 1024 * 1024;
-
-const PackageGame = enum {
-    bounce,
-    topdown,
-    platformer,
-};
-
-const Launcher = struct {
-    game: []const u8,
-};
-
-const ContentFixture = struct {
-    catalog: []const u8,
-    map: []const u8,
-    catalog_cache: []const u8,
-    map_cache: []const u8,
-};
+const PackageGame = enum { bounce, topdown, platformer };
+const Launcher = struct { game: []const u8 };
 
 pub fn main() !void {
     verify() catch |err| {
@@ -32,81 +16,50 @@ fn verify() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
-
     const executable_path = try std.fs.selfExePathAlloc(allocator);
     defer allocator.free(executable_path);
     const bin = std.fs.path.dirname(executable_path) orelse return error.InvalidPackageLayout;
     const package = std.fs.path.dirname(bin) orelse return error.InvalidPackageLayout;
     const game = try packageGame(allocator, package);
-    const fixture = contentFixture(game);
 
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
-    _ = try assets.loadImage("ball.png");
-    _ = try assets.loadAtlas("atlas.json");
-    _ = try assets.loadTileMap("topdown.upmap", .{});
+    const image = try assets.tryImage(try assets.loadImage("ball.png"));
+    if (image.width == 0 or image.height == 0) return error.InvalidRawImage;
     _ = try assets.loadFont("fonts/Basic-Regular.ttf", .{});
     _ = try assets.loadFont("fonts/bitmap.fnt", .{});
-    _ = try assets.loadSound("blip.wav");
+    const sound = try assets.trySound(try assets.loadSound("blip.wav"));
+    if (sound.frames.len == 0) return error.InvalidRawAudio;
     const ogg_path = try assets.assetPath(allocator, "tone.ogg");
     defer allocator.free(ogg_path);
     var music = try up.Music.openOgg(allocator, ogg_path);
     defer music.deinit();
-
-    const catalog_source = try readPackageFile(allocator, package, fixture.catalog);
-    defer allocator.free(catalog_source);
-    const map_source = try readPackageFile(allocator, package, fixture.map);
-    defer allocator.free(map_source);
-
-    var catalog_diagnostic: up.AssetCatalogDiagnostic = .{};
-    var catalog = try up.assetCatalog.parse(allocator, catalog_source, &catalog_diagnostic);
-    defer catalog.deinit(allocator);
-    var map_diagnostic: up.MapSourceDiagnostic = .{};
-    var map = try up.mapSource.parse(allocator, map_source, &map_diagnostic);
-    defer map.deinit(allocator);
-
-    try validateCache(allocator, package, fixture.catalog_cache, .catalog);
-    try validateCache(allocator, package, fixture.map_cache, .map);
+    try rejectNativeContent(allocator, package);
     try probeAppData(allocator, package, game);
 }
 
 fn packageGame(allocator: std.mem.Allocator, package: []const u8) !PackageGame {
-    const launcher_source = try readPackageFile(allocator, package, "launcher.json");
-    defer allocator.free(launcher_source);
-    var launcher = try std.json.parseFromSlice(Launcher, allocator, launcher_source, .{ .ignore_unknown_fields = true });
+    const source = try readPackageFile(allocator, package, "launcher.json");
+    defer allocator.free(source);
+    var launcher = try std.json.parseFromSlice(Launcher, allocator, source, .{ .ignore_unknown_fields = true });
     defer launcher.deinit();
     return std.meta.stringToEnum(PackageGame, launcher.value.game) orelse error.InvalidPackageGame;
-}
-
-fn contentFixture(game: PackageGame) ContentFixture {
-    return switch (game) {
-        .bounce, .topdown => .{
-            .catalog = "content/assets/topdown.upassets",
-            .map = "content/maps/topdown.upmap",
-            .catalog_cache = "content/cache/assets/topdown.upassets.upc",
-            .map_cache = "content/cache/maps/topdown.upmap.upc",
-        },
-        .platformer => .{
-            .catalog = "content/assets/platformer.upassets",
-            .map = "content/maps/platformer.upmap",
-            .catalog_cache = "content/cache/assets/platformer.upassets.upc",
-            .map_cache = "content/cache/maps/platformer.upmap.upc",
-        },
-    };
 }
 
 fn readPackageFile(allocator: std.mem.Allocator, package: []const u8, relative_path: []const u8) ![]u8 {
     const path = try std.fs.path.join(allocator, &.{ package, relative_path });
     defer allocator.free(path);
-    return std.fs.cwd().readFileAlloc(allocator, path, max_file_bytes);
+    return std.fs.cwd().readFileAlloc(allocator, path, 64 * 1024 * 1024);
 }
 
-fn validateCache(allocator: std.mem.Allocator, package: []const u8, relative_path: []const u8, expected_kind: up.contentCache.Kind) !void {
-    const source = try readPackageFile(allocator, package, relative_path);
-    defer allocator.free(source);
-    var decoded = try up.contentCache.decode(allocator, source);
-    defer decoded.deinit();
-    if (decoded.kind != expected_kind) return error.InvalidPackageCache;
+fn rejectNativeContent(allocator: std.mem.Allocator, package: []const u8) !void {
+    const content = try std.fs.path.join(allocator, &.{ package, "content" });
+    defer allocator.free(content);
+    std.fs.cwd().access(content, .{}) catch |err| switch (err) {
+        error.FileNotFound => return,
+        else => return err,
+    };
+    return error.NativeContentShipped;
 }
 
 fn probeAppData(allocator: std.mem.Allocator, package: []const u8, game: PackageGame) !void {

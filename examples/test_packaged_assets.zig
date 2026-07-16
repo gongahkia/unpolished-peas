@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -9,13 +9,13 @@ pub fn main() !void {
     var assets = try up.AssetStore.initExecutable(allocator);
     defer assets.deinit();
 
-    _ = try assets.loadImage("ball.png");
-    _ = try assets.loadAtlas("atlas.json");
-    _ = try assets.loadTileMap("topdown.upmap", .{});
+    const image = try assets.tryImage(try assets.loadImage("ball.png"));
+    if (image.width == 0 or image.height == 0) return error.InvalidRawImage;
     _ = try assets.loadFont("fonts/Basic-Regular.ttf", .{});
     _ = try assets.loadFont("fonts/bitmap.fnt", .{});
 
-    _ = try assets.loadSound("blip.wav");
+    const sound = try assets.trySound(try assets.loadSound("blip.wav"));
+    if (sound.frames.len == 0) return error.InvalidRawAudio;
 
     const ogg_path = try assets.assetPath(allocator, "tone.ogg");
     defer allocator.free(ogg_path);

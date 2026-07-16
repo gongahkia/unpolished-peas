@@ -1,6 +1,6 @@
 const std = @import("std");
-const core = @import("unpolished-peas").api;
-const ui = @import("unpolished-peas-ui").ui(core);
+const core = @import("unpolished-peas");
+const ui = core.ui;
 
 test "UI package pointer focus and toggle paths" {
     var canvas = try core.Canvas.init(std.testing.allocator, 32, 16);

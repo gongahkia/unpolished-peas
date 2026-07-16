@@ -19,10 +19,8 @@ pub const ResourceHandle = union(enum) {
     text: assets.TextHandle,
     image: assets.ImageHandle,
     sound: assets.AudioHandle,
-    atlas: assets.AtlasHandle,
     font: assets.FontHandle,
     shader: assets.ShaderAssetHandle,
-    tile_map: assets.TileMapHandle,
 };
 
 pub const Resource = struct {
@@ -51,8 +49,7 @@ pub const AssetPanel = struct {
         };
         const stats = store.stats();
         lines.line("text={} image={} sound={}", .{ stats.texts, stats.images, stats.sounds }, panel_text);
-        lines.line("atlas={} font={} shader={}", .{ stats.atlases, stats.fonts, stats.shaders }, panel_text);
-        lines.line("map={} reload-events={}", .{ stats.tile_maps, stats.reload_events }, panel_text);
+        lines.line("font={} shader={} reload-events={}", .{ stats.fonts, stats.shaders, stats.reload_events }, panel_text);
         for (self.resources) |resource| {
             const state = resourceState(store, resource.handle);
             lines.line("{s}: {s}", .{ resource.name, state }, if (std.mem.eql(u8, state, "ready")) panel_text else panel_warning);
@@ -237,10 +234,8 @@ fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []cons
         .text => |value| if (store.tryText(value)) |_| "ready" else |_| "stale",
         .image => |value| if (store.tryImage(value)) |_| "ready" else |_| "stale",
         .sound => |value| if (store.trySound(value)) |_| "ready" else |_| "stale",
-        .atlas => |value| if (store.tryAtlas(value)) |_| "ready" else |_| "stale",
         .font => |value| if (store.tryFont(value)) |_| "ready" else |_| "stale",
         .shader => |value| if (store.tryShaderSource(value)) |_| "ready" else |_| "stale",
-        .tile_map => |value| if (store.tryTileMap(value)) |_| "ready" else |_| "stale",
     };
 }
 
@@ -294,21 +289,14 @@ test "metrics panel renders unavailable GPU timing and resource state" {
     try std.testing.expect(@import("test_support.zig").canvasHash(canvas) != 0);
 }
 
-test "core inspector panels expose bounded asset map input and frame state" {
+test "core inspector panels expose bounded raw-asset input and frame state" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
-    const map = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/topdown.upmap", 256 * 1024);
-    defer std.testing.allocator.free(map);
-    const image = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
-    defer std.testing.allocator.free(image);
     try tmp.dir.writeFile(.{ .sub_path = "note.txt", .data = "ok" });
-    try tmp.dir.writeFile(.{ .sub_path = "topdown.upmap", .data = map });
-    try tmp.dir.writeFile(.{ .sub_path = "ball.png", .data = image });
     var store = assets.AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
     _ = try store.loadText("note.txt");
-    _ = try store.loadTileMap("topdown.upmap", .{});
-    try store.events.append(std.testing.allocator, .{ .path = "topdown.upmap", .status = .failed, .failure_class = .source, .line = 2, .column = 4, .retained_content = true, .message = "invalid map" });
+    try store.events.append(std.testing.allocator, .{ .path = "user-metadata.json", .status = .failed, .failure_class = .decode, .message = "invalid metadata" });
 
     var state = input.Input{};
     state.set(.action, true);
@@ -335,7 +323,6 @@ test "core inspector panels expose bounded asset map input and frame state" {
     try input_panel.panel().draw(input_panel.panel().context, &second);
     try metrics_panel.panel().draw(metrics_panel.panel().context, &second);
     try std.testing.expectEqual(@import("test_support.zig").canvasHash(first), @import("test_support.zig").canvasHash(second));
-    try std.testing.expectEqual(@as(usize, 1), store.stats().tile_maps);
     try std.testing.expectEqual(@as(usize, 1), store.stats().reload_events);
     try std.testing.expectEqual(@as(f32, 1), action_map.value(state, "game", "jump"));
     try std.testing.expectEqual(@as(u64, 8), metrics.frame);
