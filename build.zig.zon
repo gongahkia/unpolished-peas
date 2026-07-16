@@ -4,8 +4,16 @@
     .fingerprint = 0xda9111e6a8c8d1e4,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
+        .core = .{ .path = "packages/core", .lazy = true },
         .networking = .{ .path = "packages/networking", .lazy = true },
+        .protocol = .{ .path = "packages/protocol", .lazy = true },
         .services = .{ .path = "packages/services", .lazy = true },
+        .state = .{ .path = "packages/state", .lazy = true },
+        .topology = .{ .path = "packages/topology", .lazy = true },
+        .transport = .{ .path = "packages/transport", .lazy = true },
+        .runtime = .{ .path = "packages/runtime", .lazy = true },
+        .c_abi = .{ .path = "packages/c-abi", .lazy = true },
+        .optional_reference = .{ .path = "packages/optional-reference", .lazy = true },
     },
     .paths = .{ "build.zig", "build.zig.zon", "packages", "services" },
 }

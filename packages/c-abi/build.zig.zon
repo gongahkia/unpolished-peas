@@ -1,0 +1,11 @@
+.{
+    .name = .minna_san_c_abi,
+    .version = "0.1.0",
+    .fingerprint = 0x332908ac004005dd,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .core = .{ .path = "../core", .lazy = true },
+        .runtime = .{ .path = "../runtime", .lazy = true },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}
