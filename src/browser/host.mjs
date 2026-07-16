@@ -1,6 +1,7 @@
 import {createBrowserInput} from "./input.mjs";
 import {createBrowserAudio} from "./audio.mjs";
 import {createBrowserStorage} from "./storage.mjs";
+import {createBrowserArtifacts} from "./artifacts.mjs";
 
 function localStorageOrNull() {
   try {
@@ -75,6 +76,7 @@ export function createBrowserHost({
   });
   const audio = createBrowserAudio({canvas, window: windowRef, AudioContext: AudioContextImpl});
   const storage = createBrowserStorage({storage: storageRef === undefined ? localStorageOrNull() : storageRef, namespace: storageNamespace});
+  const artifacts = createBrowserArtifacts({canvas});
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
@@ -939,7 +941,7 @@ export function createBrowserHost({
     up_host_storage_read: (key, keyLength, destination, capacity) => storage.read(memory, key, keyLength, destination, capacity),
     up_host_storage_write: (key, keyLength, source, byteLength) => storage.write(memory, key, keyLength, source, byteLength),
     up_host_storage_remove: (key, keyLength) => storage.remove(memory, key, keyLength),
-    up_host_diagnostic_emit: () => {},
+    up_host_diagnostic_emit: (source, byteLength) => { artifacts.emit(memory, source, byteLength); },
     up_host_teardown: () => {
       cancelScheduledFrames();
       removeAllResources(!contextLost);
@@ -977,6 +979,10 @@ export function createBrowserHost({
     audio: audio.diagnostic,
     storage: storage.diagnostic,
     storageKey: storage.key,
+    captureFrame: artifacts.captureFrame,
+    recordTrace: artifacts.recordTrace,
+    recordCommand: artifacts.recordCommand,
+    artifacts: artifacts.snapshot,
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
   };
