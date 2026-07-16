@@ -49,12 +49,19 @@ pub const CEvent = extern struct {
 };
 pub const CNowFn = *const fn (?*anyopaque) callconv(.c) core.TimeNs;
 pub const CSdk = opaque {};
+pub const CConnection = opaque {};
+pub const CPeer = opaque {};
 pub const CSdkConfig = extern struct {
     abi_version: CAbiVersion,
     capability_bits: u32,
+    connection_capacity: usize,
     clock_context: ?*anyopaque,
     now: ?CNowFn,
     allocator: CAllocator,
+};
+pub const CRouteState = enum(u32) {
+    direct = 1,
+    relay = 2,
 };
 pub const CTransportKind = enum(u32) {
     udp = 1,
@@ -87,6 +94,8 @@ pub const c_capability_state_replication: u32 = 1 << @intFromEnum(core.Capabilit
 pub const c_capability_capture: u32 = 1 << @intFromEnum(core.Capability.capture);
 pub const c_transport_udp: u32 = @intFromEnum(CTransportKind.udp);
 pub const c_transport_tcp: u32 = @intFromEnum(CTransportKind.tcp);
+pub const c_route_direct: u32 = @intFromEnum(CRouteState.direct);
+pub const c_route_relay: u32 = @intFromEnum(CRouteState.relay);
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
 
@@ -139,7 +148,16 @@ const CSdkState = struct {
     clock_bridge: CClockBridge,
     sdk: runtime.Sdk,
     poll_runtime: runtime.PollRuntime,
+    connections: runtime.ResourceRegistry,
+    peers: runtime.ResourceRegistry,
+    connection_records: std.ArrayListUnmanaged(ConnectionRecord),
     started: bool,
+};
+
+const ConnectionRecord = struct {
+    connection: *runtime.ResourceHandle,
+    peer: *runtime.ResourceHandle,
+    route_state: u32,
 };
 
 pub fn is_valid_buffer(buffer: CBuffer) bool {
@@ -214,6 +232,10 @@ pub fn validate_transport_config(config: ?*const CTransportConfig) CResult {
     return .ok;
 }
 
+pub fn is_valid_route_state(route_state: u32) bool {
+    return route_state == c_route_direct or route_state == c_route_relay;
+}
+
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.abi_version != c_abi_version) return .version_mismatch;
@@ -244,6 +266,15 @@ fn build_sdk(config: *const CSdkConfig, clock: core.Clock) runtime.Sdk {
         if (config.capability_bits & (@as(u32, 1) << @intCast(field.value)) != 0) builder = builder.enable(capability);
     }
     return builder.build() catch unreachable;
+}
+
+fn find_connection(state: *CSdkState, connection: *CConnection) ?usize {
+    const handle: *runtime.ResourceHandle = @ptrCast(connection);
+    state.connections.validate(handle) catch return null;
+    for (state.connection_records.items, 0..) |record, index| {
+        if (record.connection == handle) return index;
+    }
+    return null;
 }
 
 pub export fn minna_san_abi_version() CAbiVersion {
@@ -283,6 +314,16 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.clock_bridge = .{ .context = value.clock_context, .now = value.now.? };
     state.sdk = build_sdk(value, state.clock_bridge.clock());
     state.poll_runtime = runtime.PollRuntime.init(state.allocator_bridge.allocator(), state.sdk);
+    state.connections = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
+        initial_allocator.destroy(state);
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    state.peers = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
+        state.connections.deinit();
+        initial_allocator.destroy(state);
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    state.connection_records = .empty;
     state.started = false;
     output.* = @ptrCast(state);
     return @intFromEnum(CResult.ok);
@@ -315,8 +356,91 @@ pub export fn minna_san_sdk_stop(sdk: ?*CSdk) c_int {
 pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     const state = state_from_handle(sdk) orelse return;
     const allocator = state.allocator_bridge.allocator();
+    state.connection_records.deinit(allocator);
+    state.peers.deinit();
+    state.connections.deinit();
     state.poll_runtime.deinit();
     allocator.destroy(state);
+}
+
+pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_connection: ?*?*CConnection, out_peer: ?*?*CPeer) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const connection_output = out_connection orelse return @intFromEnum(CResult.invalid_argument);
+    const peer_output = out_peer orelse return @intFromEnum(CResult.invalid_argument);
+    connection_output.* = null;
+    peer_output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (!is_valid_route_state(route_state)) return @intFromEnum(CResult.invalid_argument);
+    const connection = state.connections.acquire() catch return @intFromEnum(CResult.resource_exhausted);
+    const peer = state.peers.acquire() catch {
+        state.connections.release(connection) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    state.connection_records.append(state.allocator_bridge.allocator(), .{ .connection = connection, .peer = peer, .route_state = route_state }) catch {
+        state.peers.release(peer) catch {};
+        state.connections.release(connection) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    connection_output.* = @ptrCast(connection);
+    peer_output.* = @ptrCast(peer);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_connection_close(sdk: ?*CSdk, connection: ?*CConnection) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const record = state.connection_records.items[index];
+    state.peers.release(record.peer) catch return @intFromEnum(CResult.invalid_state);
+    state.connections.release(record.connection) catch return @intFromEnum(CResult.invalid_state);
+    for (state.connection_records.items[index + 1 ..], index..) |next, destination| state.connection_records.items[destination] = next;
+    state.connection_records.items.len -= 1;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_connection_peer(sdk: ?*CSdk, connection: ?*CConnection, out_peer: ?*?*CPeer) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_peer orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = @ptrCast(state.connection_records.items[index].peer);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_connection_route_state(sdk: ?*CSdk, connection: ?*CConnection, out_route_state: ?*u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_route_state orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.connection_records.items[index].route_state;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_connection_set_route_state(sdk: ?*CSdk, connection: ?*CConnection, route_state: u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_route_state(route_state)) return @intFromEnum(CResult.invalid_argument);
+    const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    state.connection_records.items[index].route_state = route_state;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
+    return (event orelse return 0).kind;
+}
+
+pub export fn minna_san_event_mode(event: ?*const CEvent) u32 {
+    return (event orelse return 0).mode;
+}
+
+pub export fn minna_san_event_sequence(event: ?*const CEvent) u64 {
+    return (event orelse return 0).sequence;
+}
+
+pub export fn minna_san_event_payload(event: ?*const CEvent) CBuffer {
+    return (event orelse return .{ .data = null, .len = 0 }).payload;
 }
 
 pub export fn minna_san_transport_config_init(out_config: ?*CTransportConfig) c_int {
@@ -451,16 +575,17 @@ test "C ABI result inspection classifies unknown codes without allocation" {
 
 test "C SDK lifecycle creates validates starts polls stops and destroys" {
     const Fixture = struct {
-        var storage: [@sizeOf(CSdkState)]u8 align(@alignOf(CSdkState)) = undefined;
         var released: bool = false;
 
         fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
-            if (len != storage.len) return null;
-            return @ptrCast(&storage);
+            const bytes = std.testing.allocator.alloc(u8, len) catch return null;
+            return @ptrCast(bytes.ptr);
         }
 
-        fn release(_: ?*anyopaque, _: [*c]u8, len: usize) callconv(.c) void {
-            released = len == storage.len;
+        fn release(_: ?*anyopaque, data: [*c]u8, len: usize) callconv(.c) void {
+            const bytes: [*]u8 = @ptrCast(data);
+            std.testing.allocator.free(bytes[0..len]);
+            released = true;
         }
 
         fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
@@ -471,6 +596,7 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     const config = CSdkConfig{
         .abi_version = c_abi_version,
         .capability_bits = c_capability_transport,
+        .connection_capacity = 2,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -483,6 +609,19 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_poll(sdk, &event));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_start(sdk));
+    var connection: ?*CConnection = null;
+    var peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &connection, &peer));
+    try std.testing.expect(connection != null and peer != null);
+    var returned_peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_peer(sdk, connection, &returned_peer));
+    try std.testing.expectEqual(@intFromPtr(peer.?), @intFromPtr(returned_peer.?));
+    var route_state: u32 = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_route_state(sdk, connection, &route_state));
+    try std.testing.expectEqual(c_route_direct, route_state);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_set_route_state(sdk, connection, c_route_relay));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &route_state));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_sdk_poll(sdk, &event));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_stop(sdk));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_stop(sdk));
@@ -502,6 +641,7 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
     const invalid = CSdkConfig{
         .abi_version = c_abi_version,
         .capability_bits = c_capability_packet_protection,
+        .connection_capacity = 0,
         .clock_context = null,
         .now = null,
         .allocator = .{ .context = null, .allocate = null, .release = null },
@@ -510,6 +650,18 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_start(null));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_poll(null, null));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_stop(null));
+}
+
+test "C connection and event accessors reject invalid inputs" {
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_open(null, c_route_direct, null, null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_set_route_state(null, null, 0));
+    const event = CEvent{ .kind = @intFromEnum(CEventKind.message), .mode = 2, .sequence = 3, .payload = .{ .data = @ptrFromInt(1), .len = 4 } };
+    try std.testing.expectEqual(@intFromEnum(CEventKind.message), minna_san_event_kind(&event));
+    try std.testing.expectEqual(@as(u32, 2), minna_san_event_mode(&event));
+    try std.testing.expectEqual(@as(u64, 3), minna_san_event_sequence(&event));
+    try std.testing.expectEqual(@as(usize, 4), minna_san_event_payload(&event).len);
+    try std.testing.expectEqual(@as(u32, 0), minna_san_event_kind(null));
+    try std.testing.expectEqual(@as(usize, 0), minna_san_event_payload(null).len);
 }
 
 test "C transport builders configure valid selection addresses options and controls" {

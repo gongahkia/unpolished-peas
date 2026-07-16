@@ -24,6 +24,8 @@ extern "C" {
 #define MINNA_SAN_CAPABILITY_CAPTURE 16u
 #define MINNA_SAN_TRANSPORT_UDP 1u
 #define MINNA_SAN_TRANSPORT_TCP 2u
+#define MINNA_SAN_ROUTE_DIRECT 1u
+#define MINNA_SAN_ROUTE_RELAY 2u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -91,9 +93,12 @@ typedef struct minna_san_event {
 } minna_san_event;
 typedef uint64_t (*minna_san_now_fn)(void *context);
 typedef struct minna_san_sdk minna_san_sdk;
+typedef struct minna_san_connection minna_san_connection;
+typedef struct minna_san_peer minna_san_peer;
 typedef struct minna_san_sdk_config {
     minna_san_abi_version_t abi_version;
     uint32_t capability_bits;
+    size_t connection_capacity;
     void *clock_context;
     minna_san_now_fn now;
     minna_san_allocator allocator;
@@ -130,6 +135,15 @@ minna_san_result minna_san_sdk_start(minna_san_sdk *sdk);
 minna_san_result minna_san_sdk_poll(minna_san_sdk *sdk, minna_san_event *out_event);
 minna_san_result minna_san_sdk_stop(minna_san_sdk *sdk);
 void minna_san_sdk_destroy(minna_san_sdk *sdk);
+minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
+minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
+minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
+minna_san_result minna_san_connection_route_state(minna_san_sdk *sdk, minna_san_connection *connection, uint32_t *out_route_state);
+minna_san_result minna_san_connection_set_route_state(minna_san_sdk *sdk, minna_san_connection *connection, uint32_t route_state);
+uint32_t minna_san_event_kind(const minna_san_event *event);
+uint32_t minna_san_event_mode(const minna_san_event *event);
+uint64_t minna_san_event_sequence(const minna_san_event *event);
+minna_san_buffer minna_san_event_payload(const minna_san_event *event);
 minna_san_result minna_san_transport_config_init(minna_san_transport_config *out_config);
 minna_san_result minna_san_transport_config_set_kind(minna_san_transport_config *config, uint32_t kind);
 minna_san_result minna_san_transport_config_set_local_address(minna_san_transport_config *config, minna_san_address address);
