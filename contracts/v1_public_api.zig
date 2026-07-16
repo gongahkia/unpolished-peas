@@ -114,6 +114,11 @@ test "stable public symbols are exact" {
         "ManagedRuntimeError",
         "ManagedRuntime",
         "DirectDispatch",
+        "SdkVersion",
+        "runtime_version",
+        "abi_version",
+        "feature_version",
+        "wire_version",
         "package_name",
     });
     try expectExactPublicDeclarations(c_abi, &.{"package_name"});
