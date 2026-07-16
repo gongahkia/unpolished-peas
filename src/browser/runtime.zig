@@ -109,6 +109,26 @@ pub export fn up_browser_draw_text(source: u32, byte_len: u32, x: i32, y: i32, c
     return contract.drawText(source, byte_len, x, y, color);
 }
 
+pub export fn up_browser_push_clip(x: i32, y: i32, width: i32, height: i32) i32 {
+    return contract.pushClip(x, y, width, height);
+}
+
+pub export fn up_browser_pop_clip() i32 {
+    return contract.popClip();
+}
+
+pub export fn up_browser_push_blend(mode: u32) i32 {
+    return contract.pushBlend(mode);
+}
+
+pub export fn up_browser_pop_blend() i32 {
+    return contract.popBlend();
+}
+
+pub export fn up_browser_set_camera(enabled: u32, x: f32, y: f32, zoom: f32, rotation: f32, viewport_x: f32, viewport_y: f32, viewport_width: f32, viewport_height: f32) i32 {
+    return contract.setCamera(enabled, x, y, zoom, rotation, viewport_x, viewport_y, viewport_width, viewport_height);
+}
+
 pub export fn up_browser_input_poll() u32 {
     return contract.pollInput();
 }
