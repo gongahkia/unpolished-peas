@@ -63,6 +63,11 @@ test "stable public symbols are exact" {
         "Ownership",
         "BorrowedBuffer",
         "OwnedBuffer",
+        "TimeNs",
+        "ClockError",
+        "Clock",
+        "CheckedClock",
+        "ManualClock",
         "package_name",
     });
     try expectExactPublicDeclarations(protocol, &.{"package_name"});
