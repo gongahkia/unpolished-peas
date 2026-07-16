@@ -36,4 +36,8 @@ for command in \
     ; do
     require "$command" "$gate"
 done
+if rg --fixed-strings --quiet 'check_performance_budgets.sh' "$gate"; then
+    printf '%s\n' 'release validation found a performance budget gate' >&2
+    exit 1
+fi
 printf '%s\n' 'release validation coverage passed'

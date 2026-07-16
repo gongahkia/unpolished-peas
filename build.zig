@@ -444,7 +444,7 @@ pub fn build(b: *std.Build) void {
     three_backend_renderer_step.dependOn(&three_backend_renderer.step);
     const desktop_backend_comparison = b.addSystemCommand(&.{"script/check_desktop_backend_comparison.sh"});
     desktop_backend_comparison.setCwd(b.path("."));
-    const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays, captures, and budgets");
+    const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays and captures");
     desktop_backend_comparison_step.dependOn(&desktop_backend_comparison.step);
     const effects_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/subsystems/effects/effects.zig"),
