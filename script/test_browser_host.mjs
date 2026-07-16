@@ -11,17 +11,22 @@ class FakeWebGl2 {
   TEXTURE_WRAP_T = 7;
   NEAREST = 8;
   CLAMP_TO_EDGE = 9;
-  VERTEX_SHADER = 10;
-  FRAGMENT_SHADER = 11;
-  COMPILE_STATUS = 12;
-  LINK_STATUS = 13;
-  FLOAT = 14;
-  BLEND = 15;
-  SRC_ALPHA = 16;
-  ONE_MINUS_SRC_ALPHA = 17;
-  ONE = 18;
-  TRIANGLES = 19;
-  COLOR_BUFFER_BIT = 20;
+  LINEAR = 10;
+  VERTEX_SHADER = 11;
+  FRAGMENT_SHADER = 12;
+  COMPILE_STATUS = 13;
+  LINK_STATUS = 14;
+  FLOAT = 15;
+  BLEND = 16;
+  SRC_ALPHA = 17;
+  ONE_MINUS_SRC_ALPHA = 18;
+  ONE = 19;
+  TRIANGLES = 20;
+  COLOR_BUFFER_BIT = 21;
+  TEXTURE0 = 22;
+  UNPACK_ALIGNMENT = 23;
+  RGBA = 24;
+  UNSIGNED_BYTE = 25;
   lost = false;
   calls = [];
   next = 1;
@@ -57,6 +62,11 @@ class FakeWebGl2 {
   clearColor(...args) { this.calls.push(["clearColor", ...args]); }
   clear(...args) { this.calls.push(["clear", ...args]); }
   flush(...args) { this.calls.push(["flush", ...args]); }
+  pixelStorei(...args) { this.calls.push(["pixelStorei", ...args]); }
+  texImage2D(...args) { this.calls.push(["texImage2D", ...args]); }
+  activeTexture(...args) { this.calls.push(["activeTexture", ...args]); }
+  getUniformLocation() { return 0; }
+  uniform1i(...args) { this.calls.push(["uniform1i", ...args]); }
   isContextLost() { return this.lost; }
 }
 
@@ -92,8 +102,9 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",
   "up_host_gl_context_create", "up_host_gl_context_destroy", "up_host_gl_context_lost", "up_host_gl_resource_create", "up_host_gl_resource_destroy",
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
+  "up_host_gl_texture_upload", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
-  "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown",
+  "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
 ].sort());
 assert.equal(env.up_host_gl_context_create(320, 180), Status.ok);
 assert.equal(canvas.width, 320);
@@ -114,6 +125,19 @@ const framebuffer = env.up_host_gl_resource_create(ResourceKind.framebuffer, 0);
 assert.deepEqual([buffer, texture, program, framebuffer], [1, 2, 3, 4]);
 assert.equal(host.resourceCount(), 4);
 assert.ok(canvas.gl.calls.some(([name, , bytes]) => name === "bufferData" && bytes === 64));
+new Uint8Array(host.memory.buffer, 32, 16).fill(255);
+assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 1), Status.ok);
+const beforeSprites = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
+assert.equal(env.up_host_gl_draw_sprite(texture, 0, 0, 1, 1, 4, 5, 8, 9, 0xffffffff, 1), Status.ok);
+assert.equal(env.up_host_gl_draw_sprite(texture, 1, 1, 1, 1, 12, 5, 8, 9, 0xffffffff, 1), Status.ok);
+assert.equal(env.up_host_gl_flush_sprites(), Status.ok);
+assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeSprites).map(([, , , count]) => count), [12]);
+new Uint8Array(host.memory.buffer, 0, 1).set([65]);
+const beforeText = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
+assert.equal(env.up_host_gl_draw_text(0, 1, 20, 20, 0xffffffff), Status.ok);
+assert.ok(canvas.gl.calls.filter(([name]) => name === "drawArrays").length > beforeText);
+assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 2);
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));

@@ -105,6 +105,11 @@ pub fn build(b: *std.Build) void {
     browser_host_test.setCwd(b.path("."));
     const browser_host_test_step = b.step("test-browser-host", "Test browser WebGL 2 host bindings");
     browser_host_test_step.dependOn(&browser_host_test.step);
+    const browser_wasm_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_wasm_host.mjs" });
+    browser_wasm_host_test.setCwd(b.path("."));
+    browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);
+    const browser_wasm_host_test_step = b.step("test-browser-wasm-host", "Instantiate the browser Wasm module against its host ABI");
+    browser_wasm_host_test_step.dependOn(&browser_wasm_host_test.step);
 
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
