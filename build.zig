@@ -208,6 +208,22 @@ pub fn build(b: *std.Build) void {
     const reference_test_step = b.step("reference-test", "Test optional networking and services references");
     reference_test_step.dependOn(&run_networking.step);
     reference_test_step.dependOn(&run_services.step);
+    const c_header_check = b.addSystemCommand(&.{
+        b.graph.zig_exe,
+        "cc",
+        "-std=c11",
+        "-Wall",
+        "-Wextra",
+        "-Werror",
+        "-c",
+        "-o",
+        ".zig-cache/c_abi_types.o",
+        "-I",
+        "packages/c-abi/include",
+        "contracts/fixtures/c_abi_types.c",
+    });
+    const c_header_step = b.step("c-header-contract", "Check stable C ABI declarations compile as C11");
+    c_header_step.dependOn(&c_header_check.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -225,4 +241,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_runtime.step);
     test_step.dependOn(&run_c_abi.step);
     test_step.dependOn(&run_optional_reference.step);
+    test_step.dependOn(&c_header_check.step);
 }

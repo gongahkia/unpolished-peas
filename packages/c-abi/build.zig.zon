@@ -7,5 +7,5 @@
         .core = .{ .path = "../core", .lazy = true },
         .runtime = .{ .path = "../runtime", .lazy = true },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "src" },
+    .paths = .{ "build.zig", "build.zig.zon", "include", "src" },
 }
