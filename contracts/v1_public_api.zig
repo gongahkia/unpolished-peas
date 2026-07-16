@@ -1,4 +1,5 @@
 const std = @import("std");
+const naming = @import("v1_naming.zig");
 const core = @import("minna-san-core");
 const protocol = @import("minna-san-protocol");
 const transport = @import("minna-san-transport");
@@ -54,4 +55,14 @@ test "stable public symbols are exact" {
     try expectExactPublicDeclarations(state, &.{"package_name"});
     try expectExactPublicDeclarations(runtime, &.{"package_name"});
     try expectExactPublicDeclarations(c_abi, &.{"package_name"});
+}
+
+test "stable public symbols follow namespace policy" {
+    try naming.expectZigNamespace(core);
+    try naming.expectZigNamespace(protocol);
+    try naming.expectZigNamespace(transport);
+    try naming.expectZigNamespace(topology);
+    try naming.expectZigNamespace(state);
+    try naming.expectZigNamespace(runtime);
+    try naming.expectZigNamespace(c_abi);
 }
