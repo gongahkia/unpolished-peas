@@ -17,6 +17,11 @@ extern "C" {
 #define MINNA_SAN_EVENT_DISCONNECTED 2u
 #define MINNA_SAN_EVENT_MESSAGE 3u
 #define MINNA_SAN_EVENT_OVERFLOW 4u
+#define MINNA_SAN_CAPABILITY_TRANSPORT 1u
+#define MINNA_SAN_CAPABILITY_PACKET_PROTECTION 2u
+#define MINNA_SAN_CAPABILITY_TOPOLOGY 4u
+#define MINNA_SAN_CAPABILITY_STATE_REPLICATION 8u
+#define MINNA_SAN_CAPABILITY_CAPTURE 16u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -82,12 +87,27 @@ typedef struct minna_san_event {
     uint64_t sequence;
     minna_san_buffer payload;
 } minna_san_event;
+typedef uint64_t (*minna_san_now_fn)(void *context);
+typedef struct minna_san_sdk minna_san_sdk;
+typedef struct minna_san_sdk_config {
+    minna_san_abi_version_t abi_version;
+    uint32_t capability_bits;
+    void *clock_context;
+    minna_san_now_fn now;
+    minna_san_allocator allocator;
+} minna_san_sdk_config;
 
 minna_san_abi_version_t minna_san_abi_version(void);
 uint8_t minna_san_abi_supports_version(minna_san_abi_version_t requested_version);
 uint8_t minna_san_result_is_known(int result_code);
 minna_san_error_category minna_san_result_category(int result_code);
 const char *minna_san_result_message(int result_code);
+minna_san_result minna_san_sdk_validate_config(const minna_san_sdk_config *config);
+minna_san_result minna_san_sdk_create(const minna_san_sdk_config *config, minna_san_sdk **out_sdk);
+minna_san_result minna_san_sdk_start(minna_san_sdk *sdk);
+minna_san_result minna_san_sdk_poll(minna_san_sdk *sdk, minna_san_event *out_event);
+minna_san_result minna_san_sdk_stop(minna_san_sdk *sdk);
+void minna_san_sdk_destroy(minna_san_sdk *sdk);
 
 #ifdef __cplusplus
 }
