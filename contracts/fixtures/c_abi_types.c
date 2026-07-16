@@ -11,6 +11,12 @@ static uint8_t (*const abi_support_query)(minna_san_abi_version_t) = minna_san_a
 static uint8_t (*const result_is_known_query)(int) = minna_san_result_is_known;
 static minna_san_error_category (*const result_category_query)(int) = minna_san_result_category;
 static const char *(*const result_message_query)(int) = minna_san_result_message;
+static minna_san_result (*const sdk_validate_query)(const minna_san_sdk_config *) = minna_san_sdk_validate_config;
+static minna_san_result (*const sdk_create_query)(const minna_san_sdk_config *, minna_san_sdk **) = minna_san_sdk_create;
+static minna_san_result (*const sdk_start_query)(minna_san_sdk *) = minna_san_sdk_start;
+static minna_san_result (*const sdk_poll_query)(minna_san_sdk *, minna_san_event *) = minna_san_sdk_poll;
+static minna_san_result (*const sdk_stop_query)(minna_san_sdk *) = minna_san_sdk_stop;
+static void (*const sdk_destroy_query)(minna_san_sdk *) = minna_san_sdk_destroy;
 
 static void *minna_san_fixture_allocate(void *context, size_t len) {
     return len == 0 ? context : 0;
@@ -22,11 +28,22 @@ static void minna_san_fixture_release(void *context, uint8_t *data, size_t len) 
     (void)len;
 }
 
+static uint64_t minna_san_fixture_now(void *context) {
+    return context == 0 ? 42u : 0u;
+}
+
 int minna_san_c_abi_types_fixture(minna_san_handle *handle, minna_san_event event) {
     const minna_san_allocator allocator = {
         .context = 0,
         .allocate = minna_san_fixture_allocate,
         .release = minna_san_fixture_release,
     };
-    return (handle == 0 && event.payload.len == 0 && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0) ? 0 : 1;
+    const minna_san_sdk_config config = {
+        .abi_version = MINNA_SAN_ABI_VERSION,
+        .capability_bits = MINNA_SAN_CAPABILITY_TRANSPORT,
+        .clock_context = 0,
+        .now = minna_san_fixture_now,
+        .allocator = allocator,
+    };
+    return (handle == 0 && event.payload.len == 0 && config.now != 0 && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0 && sdk_validate_query != 0 && sdk_create_query != 0 && sdk_start_query != 0 && sdk_poll_query != 0 && sdk_stop_query != 0 && sdk_destroy_query != 0) ? 0 : 1;
 }

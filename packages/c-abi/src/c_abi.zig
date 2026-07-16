@@ -47,7 +47,74 @@ pub const CEvent = extern struct {
     sequence: u64,
     payload: CBuffer,
 };
+pub const CNowFn = *const fn (?*anyopaque) callconv(.c) core.TimeNs;
+pub const CSdk = opaque {};
+pub const CSdkConfig = extern struct {
+    abi_version: CAbiVersion,
+    capability_bits: u32,
+    clock_context: ?*anyopaque,
+    now: ?CNowFn,
+    allocator: CAllocator,
+};
+pub const c_capability_transport: u32 = 1 << @intFromEnum(core.Capability.transport);
+pub const c_capability_packet_protection: u32 = 1 << @intFromEnum(core.Capability.packet_protection);
+pub const c_capability_topology: u32 = 1 << @intFromEnum(core.Capability.topology);
+pub const c_capability_state_replication: u32 = 1 << @intFromEnum(core.Capability.state_replication);
+pub const c_capability_capture: u32 = 1 << @intFromEnum(core.Capability.capture);
+const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
+
+const CClockBridge = struct {
+    context: ?*anyopaque,
+    now: CNowFn,
+
+    fn clock(self: *CClockBridge) core.Clock {
+        return .{ .context = self, .now_fn = now_bridge };
+    }
+
+    fn now_bridge(context: *anyopaque) core.TimeNs {
+        const self: *CClockBridge = @ptrCast(@alignCast(context));
+        return self.now(self.context);
+    }
+};
+
+const CAllocatorBridge = struct {
+    c_allocator: CAllocator,
+
+    const vtable = std.mem.Allocator.VTable{
+        .alloc = alloc,
+        .resize = std.mem.Allocator.noResize,
+        .remap = std.mem.Allocator.noRemap,
+        .free = free,
+    };
+
+    fn allocator(self: *CAllocatorBridge) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    fn alloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, _: usize) ?[*]u8 {
+        const self: *CAllocatorBridge = @ptrCast(@alignCast(context));
+        if (len == 0) return @ptrFromInt(alignment.toByteUnits());
+        const buffer = allocate_buffer(self.c_allocator, len) catch return null;
+        const data: [*]u8 = @ptrCast(buffer.data);
+        if (@intFromPtr(data) % alignment.toByteUnits() == 0) return data;
+        release_buffer(self.c_allocator, buffer) catch {};
+        return null;
+    }
+
+    fn free(context: *anyopaque, memory: []u8, _: std.mem.Alignment, _: usize) void {
+        const self: *CAllocatorBridge = @ptrCast(@alignCast(context));
+        release_buffer(self.c_allocator, .{ .data = @ptrCast(memory.ptr), .len = memory.len }) catch {};
+    }
+};
+
+const CSdkState = struct {
+    allocator_bridge: CAllocatorBridge,
+    clock_bridge: CClockBridge,
+    sdk: runtime.Sdk,
+    poll_runtime: runtime.PollRuntime,
+    started: bool,
+};
 
 pub fn is_valid_buffer(buffer: CBuffer) bool {
     return buffer.data != null or buffer.len == 0;
@@ -97,6 +164,38 @@ pub fn result_message(result_code: c_int) [*:0]const u8 {
     };
 }
 
+pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.abi_version != c_abi_version) return .version_mismatch;
+    if (value.now == null or value.allocator.allocate == null or value.allocator.release == null) return .invalid_argument;
+    if (value.capability_bits & ~all_capability_bits != 0) return .invalid_argument;
+    var capabilities = core.CapabilityConfig{};
+    inline for (std.meta.fields(core.Capability)) |field| {
+        const capability: core.Capability = @enumFromInt(field.value);
+        if (value.capability_bits & (@as(u32, 1) << @intCast(field.value)) != 0) capabilities.enable(capability);
+    }
+    capabilities.validate() catch return .unsupported;
+    return .ok;
+}
+
+fn config_result_code(config: ?*const CSdkConfig) c_int {
+    return @intFromEnum(validate_sdk_config(config));
+}
+
+fn state_from_handle(handle: ?*CSdk) ?*CSdkState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn build_sdk(config: *const CSdkConfig, clock: core.Clock) runtime.Sdk {
+    var builder = runtime.SdkConfigBuilder.init().with_clock(clock);
+    inline for (std.meta.fields(core.Capability)) |field| {
+        const capability: core.Capability = @enumFromInt(field.value);
+        if (config.capability_bits & (@as(u32, 1) << @intCast(field.value)) != 0) builder = builder.enable(capability);
+    }
+    return builder.build() catch unreachable;
+}
+
 pub export fn minna_san_abi_version() CAbiVersion {
     return c_abi_version;
 }
@@ -115,6 +214,59 @@ pub export fn minna_san_result_category(result_code: c_int) c_int {
 
 pub export fn minna_san_result_message(result_code: c_int) [*:0]const u8 {
     return result_message(result_code);
+}
+
+pub export fn minna_san_sdk_validate_config(config: ?*const CSdkConfig) c_int {
+    return config_result_code(config);
+}
+
+pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk) c_int {
+    const output = out_sdk orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (validate_sdk_config(config) != .ok) return config_result_code(config);
+    const value = config.?;
+    var initial_allocator_bridge = CAllocatorBridge{ .c_allocator = value.allocator };
+    const initial_allocator = initial_allocator_bridge.allocator();
+    const state = initial_allocator.create(CSdkState) catch return @intFromEnum(CResult.resource_exhausted);
+    errdefer initial_allocator.destroy(state);
+    state.allocator_bridge = .{ .c_allocator = value.allocator };
+    state.clock_bridge = .{ .context = value.clock_context, .now = value.now.? };
+    state.sdk = build_sdk(value, state.clock_bridge.clock());
+    state.poll_runtime = runtime.PollRuntime.init(state.allocator_bridge.allocator(), state.sdk);
+    state.started = false;
+    output.* = @ptrCast(state);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_start(sdk: ?*CSdk) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (state.started) return @intFromEnum(CResult.invalid_state);
+    state.started = true;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_poll(sdk: ?*CSdk, out_event: ?*CEvent) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const output = out_event orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .kind = 0, .mode = 0, .sequence = 0, .payload = .{ .data = null, .len = 0 } };
+    var envelope = state.poll_runtime.poll() catch return @intFromEnum(CResult.internal);
+    if (envelope) |*value| value.deinit();
+    return @intFromEnum(CResult.would_block);
+}
+
+pub export fn minna_san_sdk_stop(sdk: ?*CSdk) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    state.started = false;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
+    const state = state_from_handle(sdk) orelse return;
+    const allocator = state.allocator_bridge.allocator();
+    state.poll_runtime.deinit();
+    allocator.destroy(state);
 }
 
 pub const package_name = "c_abi";
@@ -194,4 +346,67 @@ test "C ABI result inspection classifies unknown codes without allocation" {
     try std.testing.expectEqual(@as(u8, 0), minna_san_result_is_known(-1));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CErrorCategory.internal)), minna_san_result_category(-1));
     try std.testing.expectEqualStrings("unknown result code", std.mem.span(minna_san_result_message(-1)));
+}
+
+test "C SDK lifecycle creates validates starts polls stops and destroys" {
+    const Fixture = struct {
+        var storage: [@sizeOf(CSdkState)]u8 align(@alignOf(CSdkState)) = undefined;
+        var released: bool = false;
+
+        fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
+            if (len != storage.len) return null;
+            return @ptrCast(&storage);
+        }
+
+        fn release(_: ?*anyopaque, _: [*c]u8, len: usize) callconv(.c) void {
+            released = len == storage.len;
+        }
+
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 42;
+        }
+    };
+    Fixture.released = false;
+    const config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_validate_config(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &sdk));
+    try std.testing.expect(sdk != null);
+    var event: CEvent = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_poll(sdk, &event));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_start(sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_sdk_poll(sdk, &event));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_stop(sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_stop(sdk));
+    minna_san_sdk_destroy(sdk);
+    try std.testing.expect(Fixture.released);
+    var mismatched = config;
+    mismatched.abi_version = c_abi_version - 1;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.version_mismatch)), minna_san_sdk_validate_config(&mismatched));
+    mismatched.abi_version = c_abi_version;
+    mismatched.capability_bits = c_capability_packet_protection;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.unsupported)), minna_san_sdk_validate_config(&mismatched));
+}
+
+test "C SDK lifecycle rejects invalid configuration and ordering" {
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_create(null, &sdk));
+    const invalid = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_packet_protection,
+        .clock_context = null,
+        .now = null,
+        .allocator = .{ .context = null, .allocate = null, .release = null },
+    };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_validate_config(&invalid));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_start(null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_poll(null, null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_stop(null));
 }
