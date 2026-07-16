@@ -205,7 +205,7 @@ Bundled read-only assets resolve from `assets/` beside the executable or one dir
 
 Game initialization, event, update, draw, GPU-recovery, and asset-reload errors include their phase and log path in the terminal, are written to the app-data log, then stay in an in-window error state until Escape or close. A GPU reset rebuilds presenter resources and invalidates prior handles; a GPU loss reports a terminal recovery failure. Zig panics remain process failures and require the normal debugger/test workflow.
 
-`Config.cpu_profiler` defaults to Debug builds. The runtime measures callback, update, draw, and asset-reload scopes; use `ctx.profile(.asset)` around game-owned work, inspect `ctx.profileMetrics()`, and call `ctx.exportCpuTrace()` to write Chrome Trace JSON to the app-data directory.
+`Config.cpu_profiler` defaults to Debug builds. The runtime retains a bounded rolling multi-frame trace with frame markers, callback/update/draw/asset scopes, named game scopes from `ctx.profileNamed("name")`, and counters from `ctx.profileCounter("name", value)`. Inspect `ctx.profileMetrics()`, call `ctx.exportCpuTrace()`, or call `ctx.exportCpuTraceNamed("label")` to write Chrome Trace JSON to the app-data directory.
 
 `ctx.runtimeMetrics()` reports the last completed frame's CPU encoder time, pass and batch counts, texture and audio-buffer usage, plus resource/allocation churn. Hardware GPU timing is `null` because this SDL runtime does not issue timestamp queries; the developer inspector renders that state explicitly.
 

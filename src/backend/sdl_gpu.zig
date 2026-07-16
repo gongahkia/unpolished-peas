@@ -263,6 +263,12 @@ test "SDL3 headers are available" {
     _ = c.SDL_INIT_VIDEO;
 }
 
+test "named CPU trace exports require safe file components" {
+    try std.testing.expect(validTraceName("boss-fight_01"));
+    try std.testing.expect(!validTraceName(""));
+    try std.testing.expect(!validTraceName("../trace"));
+}
+
 test "renderer conformance backend-neutral command corpus" {
     const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
     for (scenarios) |scenario_kind| {
@@ -883,6 +889,14 @@ pub const Context = struct {
         return self.profiler.scope(scope);
     }
 
+    pub fn profileNamed(self: *Context, name: []const u8) up.ProfileTimer {
+        return self.profiler.namedScope(name);
+    }
+
+    pub fn profileCounter(self: *Context, name: []const u8, value: f64) void {
+        self.profiler.counter(name, value);
+    }
+
     pub fn profileMetrics(self: *const Context) up.ProfileMetrics {
         return self.profiler.metrics();
     }
@@ -903,6 +917,14 @@ pub const Context = struct {
         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
         const path = try std.fmt.bufPrint(&path_buffer, "{s}cpu-trace.json", .{self.app_data_path});
         try self.profiler.writeTrace(path);
+    }
+
+    pub fn exportCpuTraceNamed(self: *const Context, name: []const u8) ![]u8 {
+        if (!validTraceName(name)) return error.InvalidTraceName;
+        const path = try std.fmt.allocPrint(self.allocator, "{s}cpu-trace-{s}.json", .{ self.app_data_path, name });
+        errdefer self.allocator.free(path);
+        try self.profiler.writeTrace(path);
+        return path;
     }
 
     pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
@@ -3622,6 +3644,12 @@ fn mapKey(key: c.SDL_Keycode) ?up.Key {
         c.SDLK_F12 => .screenshot,
         else => null,
     };
+}
+
+fn validTraceName(name: []const u8) bool {
+    if (name.len == 0 or name.len > 64) return false;
+    for (name) |byte| if (!std.ascii.isAlphanumeric(byte) and byte != '-' and byte != '_') return false;
+    return true;
 }
 
 fn canvasFromRgba(allocator: std.mem.Allocator, width: u32, height: u32, rgba: []const u8) !up.Canvas {

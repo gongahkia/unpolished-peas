@@ -360,7 +360,7 @@ test "diagnostics capture deterministic bounded artifacts" {
     defer std.testing.allocator.free(trace_bytes);
     var trace = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, trace_bytes, .{});
     defer trace.deinit();
-    try std.testing.expectEqual(@as(usize, 1), trace.value.object.get("traceEvents").?.array.items.len);
+    try std.testing.expectEqual(@as(usize, 2), trace.value.object.get("traceEvents").?.array.items.len);
     const log = try dir.readFileAlloc(std.testing.allocator, "failure.log", 64);
     defer std.testing.allocator.free(log);
     try std.testing.expectEqualStrings("-log", log);
