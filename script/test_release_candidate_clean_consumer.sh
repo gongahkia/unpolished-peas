@@ -6,6 +6,7 @@ tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 release="$tmp/release"
 consumer="$tmp/consumer"
+generated="$tmp/generated"
 desktop="$tmp/desktop"
 web="$tmp/web"
 epoch=$(git -C "$repo" log -1 --format=%ct)
@@ -13,10 +14,12 @@ epoch=$(git -C "$repo" log -1 --format=%ct)
 mkdir "$release"
 git -C "$repo" archive --format=tar HEAD | tar -x -C "$release"
 test ! -e "$release/.git"
-(cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$consumer")
-if rg -Fq "$repo" "$consumer"; then exit 1; fi
+(cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$generated")
+test -f "$generated/build.zig.zon"
+if rg -Fq "$repo" "$generated"; then exit 1; fi
+cp -R "$release/fixtures/release-candidate-consumer" "$consumer"
 (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build)
-(cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" SDL_AUDIODRIVER=dummy zig build run -- --frames 2)
+(cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build run)
 (cd "$release" && script/test_independent_proof_games.sh)
 case "$(uname -s)" in
     Darwin) platform=macos; archive=unpolished-peas-bounce-macos-universal.zip; package=unpolished-peas-bounce-macos-universal ;;

@@ -73,6 +73,8 @@
     {"path": "fixtures/physics-package/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Camera2D", "Canvas", "Color", "HeadlessRenderer", "RenderCommandBuffer", "Vec2", "physics"]}]},
     {"path": "fixtures/platformer-project/build.zig", "imports": []},
     {"path": "fixtures/platformer-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["CharacterController", "Rect", "TileCollider"]}]},
+    {"path": "fixtures/release-candidate-consumer/build.zig", "imports": []},
+    {"path": "fixtures/release-candidate-consumer/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["StepClock"]}]},
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Action", "ActionMap", "Input"]}]},
     {"path": "fixtures/ui-package/build.zig", "imports": []},
