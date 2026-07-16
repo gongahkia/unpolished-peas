@@ -16,7 +16,30 @@ pub const Command = enum {
     package,
     serve,
     support_bundle,
+    doctor,
     docs,
+};
+
+pub const DoctorTarget = enum {
+    linux,
+    macos,
+    windows,
+    web,
+
+    pub fn packageScriptName(self: DoctorTarget) []const u8 {
+        return switch (self) {
+            .linux => "package_linux.sh",
+            .macos => "package_macos.sh",
+            .windows => "package_windows.ps1",
+            .web => "package_web.sh",
+        };
+    }
+};
+
+pub const DoctorRenderer = enum {
+    auto,
+    gpu,
+    opengl,
 };
 
 pub const TestSelection = enum {
@@ -115,6 +138,39 @@ pub fn parseCommand(value: []const u8) ?Command {
     return std.meta.stringToEnum(Command, value);
 }
 
+pub fn parseDoctorTarget(value: []const u8) ?DoctorTarget {
+    return std.meta.stringToEnum(DoctorTarget, value);
+}
+
+pub fn parseDoctorRenderer(value: []const u8) ?DoctorRenderer {
+    return std.meta.stringToEnum(DoctorRenderer, value);
+}
+
+pub fn defaultDoctorTarget() ?DoctorTarget {
+    return switch (builtin.os.tag) {
+        .linux => .linux,
+        .macos => .macos,
+        .windows => .windows,
+        else => null,
+    };
+}
+
+pub fn doctorTargetDiagnostic(target: DoctorTarget) ?[]const u8 {
+    return switch (target) {
+        .windows => targetSetupDiagnostic(.windows),
+        else => null,
+    };
+}
+
+pub fn doctorRendererDiagnostic(target: DoctorTarget, renderer: DoctorRenderer) ?[]const u8 {
+    if (target == .web and renderer != .auto) return "web uses the browser WebGL renderer; select --renderer auto";
+    return null;
+}
+
+pub fn supportedZigVersion() bool {
+    return std.mem.eql(u8, builtin.zig_version_string, "0.15.1") or std.mem.eql(u8, builtin.zig_version_string, "0.15.2");
+}
+
 pub fn parseTestSelection(value: []const u8) ?TestSelection {
     return std.meta.stringToEnum(TestSelection, value);
 }
@@ -164,7 +220,7 @@ pub fn diagnosticRemediation(context: DiagnosticContext) ?[]const u8 {
 pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
-        \\commands: new run check test replay package serve support-bundle docs
+        \\commands: new run check test replay package serve support-bundle doctor docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
@@ -172,6 +228,7 @@ pub fn printHelp() void {
         \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]
         \\serve: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]
         \\support-bundle: zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...
+        \\doctor: zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
         \\ 
@@ -311,6 +368,10 @@ test "tools module parses CLI commands without runtime imports" {
     try std.testing.expectEqual(Command.replay, parseCommand("replay").?);
     try std.testing.expect(parseCommand("publish") == null);
     try std.testing.expectEqual(Command.docs, parseCommand("docs").?);
+    try std.testing.expectEqual(Command.doctor, parseCommand("doctor").?);
+    try std.testing.expectEqual(DoctorTarget.web, parseDoctorTarget("web").?);
+    try std.testing.expectEqual(DoctorRenderer.opengl, parseDoctorRenderer("opengl").?);
+    try std.testing.expectEqualStrings("web uses the browser WebGL renderer; select --renderer auto", doctorRendererDiagnostic(.web, .opengl).?);
     try std.testing.expectEqual(TestSelection.replay, parseTestSelection("replay").?);
     try std.testing.expect(parseTestSelection("load") == null);
     try std.testing.expectEqual(PackageTarget.linux, parsePackageTarget("linux").?);
