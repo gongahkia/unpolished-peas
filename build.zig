@@ -389,6 +389,10 @@ pub fn build(b: *std.Build) void {
     release_gate.setCwd(b.path("."));
     const release_gate_step = b.step("release-gate", "Run the v1 release validation gate");
     release_gate_step.dependOn(&release_gate.step);
+    const release_candidate_clean_consumer = b.addSystemCommand(&.{ "script/test_release_candidate_clean_consumer.sh" });
+    release_candidate_clean_consumer.setCwd(b.path("."));
+    const release_candidate_clean_consumer_step = b.step("test-release-candidate-clean-consumer", "Validate a clean released dependency consumer");
+    release_candidate_clean_consumer_step.dependOn(&release_candidate_clean_consumer.step);
 
     const breakout_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("examples/breakout_game.zig"),

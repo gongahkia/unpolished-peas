@@ -45,7 +45,9 @@ printf '{"version":1,"platform":"linux-x86_64","game":"%s","runtime":"bin/unpoli
 printf '%s\n' '#!/bin/sh' "exec \"\$(dirname \"\$0\")/bin/unpolished-peas-$game\" \"\$@\"" > "$package/run.sh"
 chmod +x "$package/run.sh"
 printf '%s\n' 'format=unpolished-peas-package' 'version=1' 'platform=linux-x86_64' "game=$game" "runtime=bin/unpolished-peas-$game" 'assets=assets/' 'docs=docs/' 'launcher=launcher.json' 'bundled-runtime=SDL3:static' > "$package/PACKAGE-MANIFEST.txt"
-epoch=$(git -C "$repo" log -1 --format=%ct)
+epoch=${SOURCE_DATE_EPOCH:-}
+if [ -z "$epoch" ]; then epoch=$(git -C "$repo" log -1 --format=%ct); fi
+case "$epoch" in *[!0-9]*|'') printf '%s\n' 'package_linux.sh: SOURCE_DATE_EPOCH must be an unsigned Unix timestamp' >&2; exit 64 ;; esac
 if date --version >/dev/null 2>&1; then
     mtime=$(date -u -d "@$epoch" +%Y%m%d%H%M.%S)
 else

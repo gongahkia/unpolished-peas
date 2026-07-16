@@ -42,6 +42,7 @@ run api-snapshot zig build test-core-api
 run api-modules zig build test-modules
 run cli zig build test-peas
 run cli-starter zig build test-starter
+run clean-consumer zig build test-release-candidate-clean-consumer
 run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
 run proof-platformer runtime script/test_proof_game_matrix.sh platformer
