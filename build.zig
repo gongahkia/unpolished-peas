@@ -32,8 +32,13 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addStb(peas);
-    addBox2d(peas, b.dependency("box2d", .{ .target = target, .optimize = optimize }));
+    if (target.result.cpu.arch != .wasm32) addStb(peas);
+    const box2d = b.dependency("box2d", .{ .target = target, .optimize = optimize });
+    if (target.result.cpu.arch == .wasm32) {
+        peas.addIncludePath(box2d.path("include"));
+    } else {
+        addBox2d(peas, box2d);
+    }
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -355,6 +360,10 @@ pub fn build(b: *std.Build) void {
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
     core_downstream_fixture_test_step.dependOn(&core_downstream_fixture.step);
+    const facade_consumer_matrix = b.addSystemCommand(&.{ "script/test_facade_consumer_matrix.sh" });
+    facade_consumer_matrix.setCwd(b.path("."));
+    const facade_consumer_matrix_step = b.step("test-facade-consumer-matrix", "Build independent desktop and Wasm facade consumers");
+    facade_consumer_matrix_step.dependOn(&facade_consumer_matrix.step);
     const public_import_inventory_tests = b.addTest(.{ .root_module = public_import_inventory.root_module });
     const run_public_import_inventory_tests = b.addRunArtifact(public_import_inventory_tests);
     const public_import_inventory_test_step = b.step("test-public-import-inventory", "Test public import inventory generation");
