@@ -1,4 +1,5 @@
 const std = @import("std");
+const workspace = @import("contracts/v1_workspace_graph.zig");
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
@@ -8,27 +9,106 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const core_dependency = b.lazyDependency("core", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san core package");
-    const networking_dependency = b.lazyDependency("networking", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san networking package");
-    const protocol_dependency = b.lazyDependency("protocol", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san protocol package");
-    const services_dependency = b.lazyDependency("services", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san services package");
-    const state_dependency = b.lazyDependency("state", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san state package");
-    const topology_dependency = b.lazyDependency("topology", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san topology package");
-    const transport_dependency = b.lazyDependency("transport", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san transport package");
-    const runtime_dependency = b.lazyDependency("runtime", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san runtime package");
-    const c_abi_dependency = b.lazyDependency("c_abi", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san C ABI package");
-    const optional_reference_dependency = b.lazyDependency("optional_reference", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san optional-reference package");
-    const core = core_dependency.module("minna-san-core");
-    const networking = networking_dependency.module("minna-san-networking");
-    const protocol = protocol_dependency.module("minna-san-protocol");
-    const services = services_dependency.module("minna-san-services");
-    const state = state_dependency.module("minna-san-state");
-    const topology = topology_dependency.module("minna-san-topology");
-    const transport = transport_dependency.module("minna-san-transport");
-    const runtime = runtime_dependency.module("minna-san-runtime");
-    const c_abi = c_abi_dependency.module("minna-san-c-abi");
-    const optional_reference = optional_reference_dependency.module("minna-san-optional-reference");
+    const workspace_graph = b.createModule(.{
+        .root_source_file = b.path("contracts/v1_workspace_graph.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const core_spec = workspace.package(.core);
+    const protocol_spec = workspace.package(.protocol);
+    const transport_spec = workspace.package(.transport);
+    const topology_spec = workspace.package(.topology);
+    const state_spec = workspace.package(.state);
+    const runtime_spec = workspace.package(.runtime);
+    const c_abi_spec = workspace.package(.c_abi);
+    const optional_reference_spec = workspace.package(.optional_reference);
+    const core = b.createModule(.{
+        .root_source_file = b.path(core_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+    });
+    const protocol = b.createModule(.{
+        .root_source_file = b.path(protocol_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = core_spec.module_name, .module = core }},
+    });
+    const transport = b.createModule(.{
+        .root_source_file = b.path(transport_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+        },
+    });
+    const topology = b.createModule(.{
+        .root_source_file = b.path(topology_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = transport_spec.module_name, .module = transport },
+        },
+    });
+    const state = b.createModule(.{
+        .root_source_file = b.path(state_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+        },
+    });
+    const runtime = b.createModule(.{
+        .root_source_file = b.path(runtime_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = transport_spec.module_name, .module = transport },
+            .{ .name = topology_spec.module_name, .module = topology },
+            .{ .name = state_spec.module_name, .module = state },
+        },
+    });
+    const c_abi = b.createModule(.{
+        .root_source_file = b.path(c_abi_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+        },
+    });
+    const optional_reference = b.createModule(.{
+        .root_source_file = b.path(optional_reference_spec.root_source_path),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = transport_spec.module_name, .module = transport },
+            .{ .name = topology_spec.module_name, .module = topology },
+            .{ .name = state_spec.module_name, .module = state },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+            .{ .name = c_abi_spec.module_name, .module = c_abi },
+        },
+    });
+    const networking = b.createModule(.{
+        .root_source_file = b.path("packages/networking/src/networking.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const services = b.createModule(.{
+        .root_source_file = b.path("packages/services/src/services.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "minna-san-networking", .module = networking }},
+    });
     const boundary_tests = b.addTest(.{ .root_module = boundary });
+    const workspace_graph_tests = b.addTest(.{ .root_module = workspace_graph });
     const boundary_verifier = b.addExecutable(.{
         .name = "verify-forbidden-import",
         .root_module = b.createModule(.{
@@ -48,6 +128,7 @@ pub fn build(b: *std.Build) void {
     const c_abi_tests = b.addTest(.{ .root_module = c_abi });
     const optional_reference_tests = b.addTest(.{ .root_module = optional_reference });
     const run_boundary = b.addRunArtifact(boundary_tests);
+    const run_workspace_graph = b.addRunArtifact(workspace_graph_tests);
     const run_boundary_verifier = b.addRunArtifact(boundary_verifier);
     run_boundary_verifier.setCwd(b.path("."));
     run_boundary_verifier.addArgs(&.{
@@ -71,8 +152,11 @@ pub fn build(b: *std.Build) void {
     const boundary_step = b.step("contract", "Check the v1 module boundary");
     boundary_step.dependOn(&run_boundary.step);
     boundary_step.dependOn(&run_boundary_verifier.step);
+    const workspace_step = b.step("workspace-graph", "Check the explicit v1 workspace graph");
+    workspace_step.dependOn(&run_workspace_graph.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
     test_step.dependOn(&run_boundary.step);
+    test_step.dependOn(&run_workspace_graph.step);
     test_step.dependOn(&run_boundary_verifier.step);
     test_step.dependOn(&run_core.step);
     test_step.dependOn(&run_networking.step);
