@@ -69,6 +69,30 @@ pub export fn up_browser_gl_context_lost() u32 {
     return @intFromBool(contract.contextLost());
 }
 
+pub export fn up_browser_clear(color: u32) i32 {
+    return contract.clear(color);
+}
+
+pub export fn up_browser_draw_rect(x: i32, y: i32, width: i32, height: i32, color: u32) i32 {
+    return contract.drawRect(x, y, width, height, color);
+}
+
+pub export fn up_browser_draw_line(x0: i32, y0: i32, x1: i32, y1: i32, color: u32) i32 {
+    return contract.drawLine(x0, y0, x1, y1, color);
+}
+
+pub export fn up_browser_draw_circle(x: i32, y: i32, radius: i32, color: u32) i32 {
+    return contract.drawCircle(x, y, radius, color);
+}
+
+pub export fn up_browser_draw_triangle(ax: f32, ay: f32, bx: f32, by: f32, cx: f32, cy: f32, color: u32) i32 {
+    return contract.drawTriangle(ax, ay, bx, by, cx, cy, color);
+}
+
+pub export fn up_browser_present(mode: u32) i32 {
+    return contract.present(mode);
+}
+
 pub export fn up_browser_input_poll() u32 {
     return contract.pollInput();
 }
