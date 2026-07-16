@@ -134,7 +134,14 @@ test "stable public symbols are exact" {
         "wire_version",
         "package_name",
     });
-    try expectExactPublicDeclarations(c_abi, &.{"package_name"});
+    try expectExactPublicDeclarations(c_abi, &.{
+        "CAbiVersion",
+        "CAbiHandle",
+        "c_abi_version",
+        "minna_san_abi_version",
+        "minna_san_abi_supports_version",
+        "package_name",
+    });
 }
 
 test "stable public symbols follow namespace policy" {
