@@ -154,6 +154,26 @@ pub fn build(b: *std.Build) void {
     const transport_tests = b.addTest(.{ .root_module = transport });
     const runtime_tests = b.addTest(.{ .root_module = runtime });
     const c_abi_tests = b.addTest(.{ .root_module = c_abi });
+    const c_abi_library = b.addLibrary(.{
+        .linkage = .static,
+        .name = "minna-san-c-abi-conformance",
+        .root_module = c_abi,
+    });
+    const c_abi_consumer = b.addExecutable(.{
+        .name = "c-abi-conformance",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("contracts/c_abi_consumer.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    c_abi_consumer.addCSourceFile(.{
+        .file = b.path("contracts/fixtures/c_abi_consumer.c"),
+        .flags = &.{ "-std=c11", "-Wall", "-Wextra", "-Werror" },
+    });
+    c_abi_consumer.addIncludePath(b.path("packages/c-abi/include"));
+    c_abi_consumer.linkLibrary(c_abi_library);
+    c_abi_consumer.linkLibC();
     const optional_reference_tests = b.addTest(.{ .root_module = optional_reference });
     const run_boundary = b.addRunArtifact(boundary_tests);
     const run_workspace_graph = b.addRunArtifact(workspace_graph_tests);
@@ -179,6 +199,7 @@ pub fn build(b: *std.Build) void {
     const run_transport = b.addRunArtifact(transport_tests);
     const run_runtime = b.addRunArtifact(runtime_tests);
     const run_c_abi = b.addRunArtifact(c_abi_tests);
+    const run_c_abi_consumer = b.addRunArtifact(c_abi_consumer);
     const run_optional_reference = b.addRunArtifact(optional_reference_tests);
     const boundary_step = b.step("contract", "Check the v1 module boundary");
     boundary_step.dependOn(&run_boundary.step);
@@ -224,6 +245,8 @@ pub fn build(b: *std.Build) void {
     });
     const c_header_step = b.step("c-header-contract", "Check stable C ABI declarations compile as C11");
     c_header_step.dependOn(&c_header_check.step);
+    const c_abi_parity_step = b.step("c-abi-parity", "Compile and run equivalent C ABI consumer workflows");
+    c_abi_parity_step.dependOn(&run_c_abi_consumer.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -240,6 +263,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_transport.step);
     test_step.dependOn(&run_runtime.step);
     test_step.dependOn(&run_c_abi.step);
+    test_step.dependOn(&run_c_abi_consumer.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&c_header_check.step);
 }
