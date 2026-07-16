@@ -93,6 +93,15 @@ pub const CTransportConfig = extern struct {
     socket_options: CSocketOptions,
     control: CTransportControl,
 };
+pub const CSecurityConfig = extern struct {
+    flags: u32,
+    psk: CBuffer,
+    public_key: CBuffer,
+    aead_key: CBuffer,
+    replay_window: u32,
+    rotation_interval_ns: CDurationNs,
+    rotation_overlap_ns: CDurationNs,
+};
 pub const c_capability_transport: u32 = 1 << @intFromEnum(core.Capability.transport);
 pub const c_capability_packet_protection: u32 = 1 << @intFromEnum(core.Capability.packet_protection);
 pub const c_capability_topology: u32 = 1 << @intFromEnum(core.Capability.topology);
@@ -104,6 +113,12 @@ pub const c_route_direct: u32 = @intFromEnum(CRouteState.direct);
 pub const c_route_relay: u32 = @intFromEnum(CRouteState.relay);
 pub const c_channel_reliable: u32 = @intFromEnum(CChannelMode.reliable);
 pub const c_channel_sequenced: u32 = @intFromEnum(CChannelMode.sequenced);
+pub const c_security_psk: u32 = 1;
+pub const c_security_public_key: u32 = 2;
+pub const c_security_aead: u32 = 4;
+pub const c_security_replay_protection: u32 = 8;
+pub const c_security_key_rotation: u32 = 16;
+const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
 
@@ -262,6 +277,21 @@ pub fn is_valid_route_state(route_state: u32) bool {
 
 pub fn is_valid_channel_mode(mode: u32) bool {
     return mode == c_channel_reliable or mode == c_channel_sequenced;
+}
+
+pub fn is_nonempty_buffer(buffer: CBuffer) bool {
+    return is_valid_buffer(buffer) and buffer.len > 0;
+}
+
+pub fn validate_security_config(config: ?*const CSecurityConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.flags & ~all_security_flags != 0) return .invalid_argument;
+    if (value.flags & c_security_psk != 0 and !is_nonempty_buffer(value.psk)) return .invalid_argument;
+    if (value.flags & c_security_public_key != 0 and !is_nonempty_buffer(value.public_key)) return .invalid_argument;
+    if (value.flags & c_security_aead != 0 and !is_nonempty_buffer(value.aead_key)) return .invalid_argument;
+    if (value.flags & c_security_replay_protection != 0 and value.replay_window == 0) return .invalid_argument;
+    if (value.flags & c_security_key_rotation != 0 and (value.rotation_interval_ns <= 0 or value.rotation_overlap_ns < 0)) return .invalid_argument;
+    return .ok;
 }
 
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
@@ -600,6 +630,65 @@ pub export fn minna_san_sdk_buffer_release(sdk: ?*CSdk, buffer: CBuffer) c_int {
     return @intFromEnum(CResult.ok);
 }
 
+pub export fn minna_san_security_config_init(out_config: ?*CSecurityConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{
+        .flags = 0,
+        .psk = .{ .data = null, .len = 0 },
+        .public_key = .{ .data = null, .len = 0 },
+        .aead_key = .{ .data = null, .len = 0 },
+        .replay_window = 0,
+        .rotation_interval_ns = 0,
+        .rotation_overlap_ns = 0,
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_set_psk(config: ?*CSecurityConfig, psk: CBuffer) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_nonempty_buffer(psk)) return @intFromEnum(CResult.invalid_argument);
+    value.flags |= c_security_psk;
+    value.psk = psk;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_set_public_key(config: ?*CSecurityConfig, public_key: CBuffer) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_nonempty_buffer(public_key)) return @intFromEnum(CResult.invalid_argument);
+    value.flags |= c_security_public_key;
+    value.public_key = public_key;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_set_aead_key(config: ?*CSecurityConfig, aead_key: CBuffer) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_nonempty_buffer(aead_key)) return @intFromEnum(CResult.invalid_argument);
+    value.flags |= c_security_aead;
+    value.aead_key = aead_key;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_set_replay_window(config: ?*CSecurityConfig, replay_window: u32) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (replay_window == 0) return @intFromEnum(CResult.invalid_argument);
+    value.flags |= c_security_replay_protection;
+    value.replay_window = replay_window;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_set_key_rotation(config: ?*CSecurityConfig, interval_ns: CDurationNs, overlap_ns: CDurationNs) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (interval_ns <= 0 or overlap_ns < 0) return @intFromEnum(CResult.invalid_argument);
+    value.flags |= c_security_key_rotation;
+    value.rotation_interval_ns = interval_ns;
+    value.rotation_overlap_ns = overlap_ns;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_security_config_validate(config: ?*const CSecurityConfig) c_int {
+    return @intFromEnum(validate_security_config(config));
+}
+
 pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
     return (event orelse return 0).kind;
 }
@@ -867,6 +956,33 @@ test "C connection and event accessors reject invalid inputs" {
     try std.testing.expectEqual(@as(usize, 4), minna_san_event_payload(&event).len);
     try std.testing.expectEqual(@as(u32, 0), minna_san_event_kind(null));
     try std.testing.expectEqual(@as(usize, 0), minna_san_event_payload(null).len);
+}
+
+test "C security configuration borrows caller key buffers without copies" {
+    var config: CSecurityConfig = undefined;
+    var psk = [_]u8{ 1, 2 };
+    var public_key = [_]u8{3};
+    var aead_key = [_]u8{ 4, 5, 6 };
+    const psk_buffer = CBuffer{ .data = @ptrCast(&psk), .len = psk.len };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_psk(&config, psk_buffer));
+    try std.testing.expectEqual(@intFromPtr(psk_buffer.data), @intFromPtr(config.psk.data));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_public_key(&config, .{ .data = @ptrCast(&public_key), .len = public_key.len }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_aead_key(&config, .{ .data = @ptrCast(&aead_key), .len = aead_key.len }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_replay_window(&config, 64));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_key_rotation(&config, 10, 0));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_validate(&config));
+}
+
+test "C security configuration rejects absent keys and invalid controls" {
+    var config: CSecurityConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_init(null));
+    _ = minna_san_security_config_init(&config);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_psk(&config, .{ .data = null, .len = 0 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_replay_window(&config, 0));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_key_rotation(&config, 0, -1));
+    config.flags = c_security_aead;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {

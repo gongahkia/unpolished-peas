@@ -28,6 +28,11 @@ extern "C" {
 #define MINNA_SAN_ROUTE_RELAY 2u
 #define MINNA_SAN_CHANNEL_RELIABLE 1u
 #define MINNA_SAN_CHANNEL_SEQUENCED 2u
+#define MINNA_SAN_SECURITY_PSK 1u
+#define MINNA_SAN_SECURITY_PUBLIC_KEY 2u
+#define MINNA_SAN_SECURITY_AEAD 4u
+#define MINNA_SAN_SECURITY_REPLAY_PROTECTION 8u
+#define MINNA_SAN_SECURITY_KEY_ROTATION 16u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -127,6 +132,15 @@ typedef struct minna_san_transport_config {
     minna_san_socket_options socket_options;
     minna_san_transport_control control;
 } minna_san_transport_config;
+typedef struct minna_san_security_config {
+    uint32_t flags;
+    minna_san_buffer psk;
+    minna_san_buffer public_key;
+    minna_san_buffer aead_key;
+    uint32_t replay_window;
+    minna_san_duration_ns rotation_interval_ns;
+    minna_san_duration_ns rotation_overlap_ns;
+} minna_san_security_config;
 
 minna_san_abi_version_t minna_san_abi_version(void);
 uint8_t minna_san_abi_supports_version(minna_san_abi_version_t requested_version);
@@ -147,6 +161,13 @@ minna_san_result minna_san_channel_receive(minna_san_sdk *sdk, minna_san_channel
 minna_san_result minna_san_channel_acknowledge(minna_san_sdk *sdk, minna_san_channel *channel, uint64_t sequence);
 minna_san_result minna_san_channel_last_acknowledged(minna_san_sdk *sdk, minna_san_channel *channel, uint64_t *out_sequence);
 minna_san_result minna_san_sdk_buffer_release(minna_san_sdk *sdk, minna_san_buffer buffer);
+minna_san_result minna_san_security_config_init(minna_san_security_config *out_config);
+minna_san_result minna_san_security_config_set_psk(minna_san_security_config *config, minna_san_buffer psk);
+minna_san_result minna_san_security_config_set_public_key(minna_san_security_config *config, minna_san_buffer public_key);
+minna_san_result minna_san_security_config_set_aead_key(minna_san_security_config *config, minna_san_buffer aead_key);
+minna_san_result minna_san_security_config_set_replay_window(minna_san_security_config *config, uint32_t replay_window);
+minna_san_result minna_san_security_config_set_key_rotation(minna_san_security_config *config, minna_san_duration_ns interval_ns, minna_san_duration_ns overlap_ns);
+minna_san_result minna_san_security_config_validate(const minna_san_security_config *config);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
