@@ -293,6 +293,10 @@ pub fn build(b: *std.Build) void {
     platformer_smoke.addArgs(&.{ "--frames", "2" });
     const platformer_smoke_step = b.step("smoke-platformer-sdl", "Run a bounded SDL3 platformer smoke");
     platformer_smoke_step.dependOn(&platformer_smoke.step);
+    const desktop_package_matrix = b.addSystemCommand(&.{ "script/test_desktop_package_matrix.sh", @tagName(target.result.os.tag) });
+    desktop_package_matrix.setCwd(b.path("."));
+    const desktop_package_matrix_step = b.step("test-desktop-package-matrix", "Package and smoke every proof game for the host desktop platform");
+    desktop_package_matrix_step.dependOn(&desktop_package_matrix.step);
     addRunStep(b, "stress-audio-sdl", "Run the local unpolished-peas SDL audio stress smoke", audio_stress);
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
