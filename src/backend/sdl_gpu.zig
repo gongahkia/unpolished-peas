@@ -104,6 +104,7 @@ pub const RendererRejectionReason = enum {
     window_claim_failed,
     swapchain_configuration_failed,
     presenter_creation_failed,
+    shader_validation_failed,
     context_configuration_failed,
     context_creation_failed,
 };
@@ -1137,7 +1138,7 @@ const RuntimeRenderer = union(RendererKind) {
         };
         errdefer c.SDL_DestroyWindow(native_window);
         const presenter = OpenGlPresenter.init(native_window, config.width, config.height) catch |err| {
-            diagnostics.reject(.opengl, .context_creation_failed);
+            diagnostics.reject(.opengl, openGlRejectionReason(err));
             return err;
         };
         diagnostics.select(.opengl);
@@ -1212,6 +1213,13 @@ const RuntimeRenderer = union(RendererKind) {
         }
     }
 };
+
+fn openGlRejectionReason(err: anyerror) RendererRejectionReason {
+    return switch (err) {
+        error.OpenGlShaderCompileFailed, error.OpenGlProgramLinkFailed => .shader_validation_failed,
+        else => .context_creation_failed,
+    };
+}
 
 fn windowFlags(config: Config, additional: c.SDL_WindowFlags) c.SDL_WindowFlags {
     return additional | if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
@@ -1813,6 +1821,12 @@ test "renderer diagnostics retain fallback capabilities and recovery action" {
     try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.preflightFeatures(&.{.pixel_effects}));
     try std.testing.expectEqual(RendererFeature.pixel_effects, diagnostics.preflight_failure.?);
     try std.testing.expectError(error.RendererFeatureUnsupported, validateRendererPreflight(.{ .required_renderer_features = &.{.pixel_effects} }, &diagnostics));
+}
+
+test "OpenGL shader failures retain validation diagnostics" {
+    try std.testing.expectEqual(RendererRejectionReason.shader_validation_failed, openGlRejectionReason(error.OpenGlShaderCompileFailed));
+    try std.testing.expectEqual(RendererRejectionReason.shader_validation_failed, openGlRejectionReason(error.OpenGlProgramLinkFailed));
+    try std.testing.expectEqual(RendererRejectionReason.context_creation_failed, openGlRejectionReason(error.OpenGlContextCreationFailed));
 }
 
 test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
