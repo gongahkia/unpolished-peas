@@ -59,6 +59,10 @@ pub const ManagedRuntime = struct {
     pub fn shutdown(self: *ManagedRuntime) ManagedRuntimeError!void {
         if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
+        if (self.stopping) {
+            self.mutex.unlock();
+            return error.NotRunning;
+        }
         const worker = self.worker orelse {
             self.mutex.unlock();
             return error.NotRunning;
@@ -90,6 +94,7 @@ pub const ManagedRuntime = struct {
         if (direct_callback_active) return error.ReentrantCall;
         self.mutex.lock();
         defer self.mutex.unlock();
+        if (self.stopping or self.worker == null) return error.NotRunning;
         if (!self.caller_drained) return error.NotCallerDrained;
         const current_thread = std.Thread.getCurrentId();
         if (self.drain_thread) |thread_id| {
@@ -239,4 +244,56 @@ test "managed runtimes reject submission when their queue is full" {
     var rejected = event.EventEnvelope{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } };
     defer rejected.deinit();
     try std.testing.expectError(error.QueueFull, runtime.submit(rejected));
+}
+
+test "concurrent shutdown has one owner and leaves the runtime stopped" {
+    const Shutdown = struct {
+        runtime: *ManagedRuntime,
+        mutex: std.Thread.Mutex = .{},
+        succeeded: bool = false,
+        result: ?ManagedRuntimeError = null,
+
+        fn run(context: *@This()) void {
+            context.runtime.shutdown() catch |err| {
+                context.mutex.lock();
+                defer context.mutex.unlock();
+                context.result = err;
+                return;
+            };
+            context.mutex.lock();
+            defer context.mutex.unlock();
+            context.succeeded = true;
+        }
+    };
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = ManagedRuntime.init(std.testing.allocator, sdk, 1);
+    defer runtime.deinit();
+    try runtime.start();
+    var first = Shutdown{ .runtime = &runtime };
+    var second = Shutdown{ .runtime = &runtime };
+    const first_thread = try std.Thread.spawn(.{}, Shutdown.run, .{&first});
+    const second_thread = try std.Thread.spawn(.{}, Shutdown.run, .{&second});
+    first_thread.join();
+    second_thread.join();
+    first.mutex.lock();
+    defer first.mutex.unlock();
+    second.mutex.lock();
+    defer second.mutex.unlock();
+    try std.testing.expect(@intFromBool(first.succeeded) + @intFromBool(second.succeeded) == 1);
+    if (!first.succeeded) try std.testing.expectEqual(error.NotRunning, first.result.?);
+    if (!second.succeeded) try std.testing.expectEqual(error.NotRunning, second.result.?);
+    var rejected = event.EventEnvelope{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } };
+    defer rejected.deinit();
+    try std.testing.expectError(error.NotRunning, runtime.submit(rejected));
+}
+
+test "caller draining stops with managed runtime shutdown" {
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = ManagedRuntime.init_with_caller_drain(std.testing.allocator, sdk, 1);
+    defer runtime.deinit();
+    try runtime.start();
+    try runtime.shutdown();
+    try std.testing.expectError(error.NotRunning, runtime.drain());
 }

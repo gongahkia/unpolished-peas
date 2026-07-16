@@ -1,6 +1,7 @@
 .{
     .name = .minna_san_services,
     .version = "0.1.0",
+    .fingerprint = 0x5ed52f1cc19363eb,
     .minimum_zig_version = "0.15.2",
     .dependencies = .{
         .networking = .{ .path = "../networking", .lazy = true },
