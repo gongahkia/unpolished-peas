@@ -8,6 +8,7 @@ const resource_handle = @import("resource_handle.zig");
 const buffer_api = @import("buffer_api.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
+const managed_runtime = @import("managed_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
 pub const SdkConfig = sdk_config.SdkConfig;
@@ -29,6 +30,8 @@ pub const EventOrderError = event.EventOrderError;
 pub const EventOrder = event.EventOrder;
 pub const PollRuntimeError = poll_runtime.PollRuntimeError;
 pub const PollRuntime = poll_runtime.PollRuntime;
+pub const ManagedRuntimeError = managed_runtime.ManagedRuntimeError;
+pub const ManagedRuntime = managed_runtime.ManagedRuntime;
 pub const package_name = "runtime";
 
 comptime {
@@ -49,4 +52,5 @@ test {
     _ = @import("buffer_api.zig");
     _ = @import("event.zig");
     _ = @import("poll_runtime.zig");
+    _ = @import("managed_runtime.zig");
 }
