@@ -113,6 +113,21 @@ pub const CTopologyConfig = extern struct {
     stun_turn: CStunTurnConfig,
     migration: CMigrationConfig,
 };
+pub const CReplicationTemplate = enum(u32) {
+    authoritative = 1,
+    client_prediction = 2,
+    reconciliation = 3,
+};
+pub const CStateTransformFn = *const fn (?*anyopaque, CBuffer, *CBuffer) callconv(.c) c_int;
+pub const CStateTransferConfig = extern struct {
+    context: ?*anyopaque,
+    serialize: ?CStateTransformFn,
+    deserialize: ?CStateTransformFn,
+    max_snapshot_bytes: usize,
+    max_delta_bytes: usize,
+    recovery_timeout_ns: CDurationNs,
+    template_kind: u32,
+};
 pub const CTransportKind = enum(u32) {
     udp = 1,
     tcp = 2,
@@ -167,6 +182,9 @@ pub const c_admission_reject: u32 = @intFromEnum(CAdmissionDecision.reject);
 pub const c_candidate_host: u32 = @intFromEnum(CCandidateKind.host);
 pub const c_candidate_server_reflexive: u32 = @intFromEnum(CCandidateKind.server_reflexive);
 pub const c_candidate_relay: u32 = @intFromEnum(CCandidateKind.relay);
+pub const c_replication_authoritative: u32 = @intFromEnum(CReplicationTemplate.authoritative);
+pub const c_replication_client_prediction: u32 = @intFromEnum(CReplicationTemplate.client_prediction);
+pub const c_replication_reconciliation: u32 = @intFromEnum(CReplicationTemplate.reconciliation);
 const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
@@ -377,6 +395,18 @@ pub fn validate_topology_config(config: ?*const CTopologyConfig) CResult {
     if (turn_enabled != is_nonempty_buffer(value.stun_turn.turn_username) or turn_enabled != is_nonempty_buffer(value.stun_turn.turn_password)) return .invalid_argument;
     if (value.migration.enabled > 1 or value.migration.handoff_timeout_ns < 0) return .invalid_argument;
     if (value.migration.enabled == 1 and value.migration.max_attempts == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn is_valid_replication_template(template_kind: u32) bool {
+    return template_kind == c_replication_authoritative or template_kind == c_replication_client_prediction or template_kind == c_replication_reconciliation;
+}
+
+pub fn validate_state_transfer_config(config: ?*const CStateTransferConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.serialize == null or value.deserialize == null) return .invalid_argument;
+    if (value.max_snapshot_bytes == 0 or value.max_delta_bytes == 0 or value.recovery_timeout_ns < 0) return .invalid_argument;
+    if (!is_valid_replication_template(value.template_kind)) return .invalid_argument;
     return .ok;
 }
 
@@ -922,6 +952,57 @@ pub export fn minna_san_topology_config_validate(config: ?*const CTopologyConfig
     return @intFromEnum(validate_topology_config(config));
 }
 
+pub export fn minna_san_state_transfer_config_init(out_config: ?*CStateTransferConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .context = null, .serialize = null, .deserialize = null, .max_snapshot_bytes = 0, .max_delta_bytes = 0, .recovery_timeout_ns = 0, .template_kind = c_replication_authoritative };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_state_transfer_config_set_callbacks(config: ?*CStateTransferConfig, context: ?*anyopaque, serialize: ?CStateTransformFn, deserialize: ?CStateTransformFn) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (serialize == null or deserialize == null) return @intFromEnum(CResult.invalid_argument);
+    value.context = context;
+    value.serialize = serialize;
+    value.deserialize = deserialize;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_state_transfer_config_set_snapshot_limits(config: ?*CStateTransferConfig, max_snapshot_bytes: usize, max_delta_bytes: usize) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (max_snapshot_bytes == 0 or max_delta_bytes == 0) return @intFromEnum(CResult.invalid_argument);
+    value.max_snapshot_bytes = max_snapshot_bytes;
+    value.max_delta_bytes = max_delta_bytes;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_state_transfer_config_set_recovery(config: ?*CStateTransferConfig, recovery_timeout_ns: CDurationNs, template_kind: u32) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (recovery_timeout_ns < 0 or !is_valid_replication_template(template_kind)) return @intFromEnum(CResult.invalid_argument);
+    value.recovery_timeout_ns = recovery_timeout_ns;
+    value.template_kind = template_kind;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_state_transfer_config_validate(config: ?*const CStateTransferConfig) c_int {
+    return @intFromEnum(validate_state_transfer_config(config));
+}
+
+pub export fn minna_san_state_transfer_serialize(config: ?*const CStateTransferConfig, input: CBuffer, out_snapshot: ?*CBuffer) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_snapshot orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .data = null, .len = 0 };
+    if (validate_state_transfer_config(value) != .ok or !is_valid_buffer(input)) return @intFromEnum(CResult.invalid_argument);
+    return value.serialize.?(value.context, input, output);
+}
+
+pub export fn minna_san_state_transfer_deserialize(config: ?*const CStateTransferConfig, input: CBuffer, out_state: ?*CBuffer) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_state orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .data = null, .len = 0 };
+    if (validate_state_transfer_config(value) != .ok or !is_valid_buffer(input)) return @intFromEnum(CResult.invalid_argument);
+    return value.deserialize.?(value.context, input, output);
+}
+
 pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
     return (event orelse return 0).kind;
 }
@@ -1294,6 +1375,35 @@ test "C topology configuration rejects invalid candidates credentials and migrat
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_set_migration(&config, .{ .enabled = 1, .reserved = .{ 0, 0, 0 }, .handoff_timeout_ns = 0, .max_attempts = 0 }));
     config.stun_turn.turn_server.family = @intFromEnum(CAddressFamily.ipv4);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_validate(&config));
+}
+
+test "C state transfer configuration preserves callback-owned buffers and template controls" {
+    const Fixture = struct {
+        fn transform(_: ?*anyopaque, input: CBuffer, output: *CBuffer) callconv(.c) c_int {
+            output.* = input;
+            return @intFromEnum(CResult.ok);
+        }
+    };
+    var config: CStateTransferConfig = undefined;
+    var bytes = [_]u8{ 1, 2 };
+    const input = CBuffer{ .data = @ptrCast(&bytes), .len = bytes.len };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_config_set_callbacks(&config, null, Fixture.transform, Fixture.transform));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_config_set_snapshot_limits(&config, 3, 4));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_config_set_recovery(&config, 5, c_replication_reconciliation));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_config_validate(&config));
+    var output = CBuffer{ .data = null, .len = 0 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_state_transfer_serialize(&config, input, &output));
+    try std.testing.expectEqual(@intFromPtr(input.data), @intFromPtr(output.data));
+}
+
+test "C state transfer configuration rejects missing callbacks invalid limits and null output" {
+    var config: CStateTransferConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_config_init(null));
+    _ = minna_san_state_transfer_config_init(&config);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_config_validate(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_config_set_snapshot_limits(&config, 0, 1));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_serialize(&config, .{ .data = null, .len = 0 }, null));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {

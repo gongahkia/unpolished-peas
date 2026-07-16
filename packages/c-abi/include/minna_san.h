@@ -38,6 +38,9 @@ extern "C" {
 #define MINNA_SAN_CANDIDATE_HOST 1u
 #define MINNA_SAN_CANDIDATE_SERVER_REFLEXIVE 2u
 #define MINNA_SAN_CANDIDATE_RELAY 3u
+#define MINNA_SAN_REPLICATION_AUTHORITATIVE 1u
+#define MINNA_SAN_REPLICATION_CLIENT_PREDICTION 2u
+#define MINNA_SAN_REPLICATION_RECONCILIATION 3u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -152,6 +155,16 @@ typedef struct minna_san_topology_config {
     minna_san_stun_turn_config stun_turn;
     minna_san_migration_config migration;
 } minna_san_topology_config;
+typedef int (*minna_san_state_transform_fn)(void *context, minna_san_buffer input, minna_san_buffer *output);
+typedef struct minna_san_state_transfer_config {
+    void *context;
+    minna_san_state_transform_fn serialize;
+    minna_san_state_transform_fn deserialize;
+    size_t max_snapshot_bytes;
+    size_t max_delta_bytes;
+    minna_san_duration_ns recovery_timeout_ns;
+    uint32_t template_kind;
+} minna_san_state_transfer_config;
 typedef struct minna_san_socket_options {
     uint32_t send_buffer_bytes;
     uint32_t receive_buffer_bytes;
@@ -220,6 +233,13 @@ minna_san_result minna_san_topology_config_set_p2p(minna_san_topology_config *co
 minna_san_result minna_san_topology_config_set_stun_turn(minna_san_topology_config *config, minna_san_stun_turn_config stun_turn);
 minna_san_result minna_san_topology_config_set_migration(minna_san_topology_config *config, minna_san_migration_config migration);
 minna_san_result minna_san_topology_config_validate(const minna_san_topology_config *config);
+minna_san_result minna_san_state_transfer_config_init(minna_san_state_transfer_config *out_config);
+minna_san_result minna_san_state_transfer_config_set_callbacks(minna_san_state_transfer_config *config, void *context, minna_san_state_transform_fn serialize, minna_san_state_transform_fn deserialize);
+minna_san_result minna_san_state_transfer_config_set_snapshot_limits(minna_san_state_transfer_config *config, size_t max_snapshot_bytes, size_t max_delta_bytes);
+minna_san_result minna_san_state_transfer_config_set_recovery(minna_san_state_transfer_config *config, minna_san_duration_ns recovery_timeout_ns, uint32_t template_kind);
+minna_san_result minna_san_state_transfer_config_validate(const minna_san_state_transfer_config *config);
+minna_san_result minna_san_state_transfer_serialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_snapshot);
+minna_san_result minna_san_state_transfer_deserialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_state);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
