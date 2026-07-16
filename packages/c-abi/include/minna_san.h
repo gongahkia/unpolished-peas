@@ -41,6 +41,11 @@ extern "C" {
 #define MINNA_SAN_REPLICATION_AUTHORITATIVE 1u
 #define MINNA_SAN_REPLICATION_CLIENT_PREDICTION 2u
 #define MINNA_SAN_REPLICATION_RECONCILIATION 3u
+#define MINNA_SAN_LOG_TRACE 1u
+#define MINNA_SAN_LOG_DEBUG 2u
+#define MINNA_SAN_LOG_INFO 3u
+#define MINNA_SAN_LOG_WARNING 4u
+#define MINNA_SAN_LOG_ERROR 5u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -165,6 +170,23 @@ typedef struct minna_san_state_transfer_config {
     minna_san_duration_ns recovery_timeout_ns;
     uint32_t template_kind;
 } minna_san_state_transfer_config;
+typedef struct minna_san_metrics_snapshot {
+    uint64_t polls;
+    size_t active_connections;
+    size_t active_channels;
+    size_t active_sessions;
+} minna_san_metrics_snapshot;
+typedef void (*minna_san_log_fn)(void *context, uint32_t level, const char *message);
+typedef struct minna_san_diagnostics_config {
+    void *log_context;
+    minna_san_log_fn log;
+    uint32_t log_level;
+    uint8_t capture_enabled;
+    uint8_t replay_enabled;
+    uint8_t redact_payloads;
+    uint8_t reserved;
+    size_t max_capture_bytes;
+} minna_san_diagnostics_config;
 typedef struct minna_san_socket_options {
     uint32_t send_buffer_bytes;
     uint32_t receive_buffer_bytes;
@@ -240,6 +262,12 @@ minna_san_result minna_san_state_transfer_config_set_recovery(minna_san_state_tr
 minna_san_result minna_san_state_transfer_config_validate(const minna_san_state_transfer_config *config);
 minna_san_result minna_san_state_transfer_serialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_snapshot);
 minna_san_result minna_san_state_transfer_deserialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_state);
+minna_san_result minna_san_sdk_metrics_snapshot(minna_san_sdk *sdk, minna_san_metrics_snapshot *out_snapshot);
+minna_san_result minna_san_diagnostics_config_init(minna_san_diagnostics_config *out_config);
+minna_san_result minna_san_diagnostics_config_set_logging(minna_san_diagnostics_config *config, void *context, minna_san_log_fn log, uint32_t level);
+minna_san_result minna_san_diagnostics_config_set_capture_replay(minna_san_diagnostics_config *config, uint8_t capture_enabled, uint8_t replay_enabled, uint8_t redact_payloads, size_t max_capture_bytes);
+minna_san_result minna_san_diagnostics_config_validate(const minna_san_diagnostics_config *config);
+minna_san_result minna_san_diagnostics_log(const minna_san_diagnostics_config *config, const char *message);
 minna_san_result minna_san_connection_open(minna_san_sdk *sdk, uint32_t route_state, minna_san_connection **out_connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connection *connection);
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);

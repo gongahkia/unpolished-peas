@@ -128,6 +128,30 @@ pub const CStateTransferConfig = extern struct {
     recovery_timeout_ns: CDurationNs,
     template_kind: u32,
 };
+pub const CMetricsSnapshot = extern struct {
+    polls: u64,
+    active_connections: usize,
+    active_channels: usize,
+    active_sessions: usize,
+};
+pub const CLogLevel = enum(u32) {
+    trace = 1,
+    debug = 2,
+    info = 3,
+    warning = 4,
+    err = 5,
+};
+pub const CLogFn = *const fn (?*anyopaque, u32, [*:0]const u8) callconv(.c) void;
+pub const CDiagnosticsConfig = extern struct {
+    log_context: ?*anyopaque,
+    log: ?CLogFn,
+    log_level: u32,
+    capture_enabled: u8,
+    replay_enabled: u8,
+    redact_payloads: u8,
+    reserved: u8,
+    max_capture_bytes: usize,
+};
 pub const CTransportKind = enum(u32) {
     udp = 1,
     tcp = 2,
@@ -185,6 +209,11 @@ pub const c_candidate_relay: u32 = @intFromEnum(CCandidateKind.relay);
 pub const c_replication_authoritative: u32 = @intFromEnum(CReplicationTemplate.authoritative);
 pub const c_replication_client_prediction: u32 = @intFromEnum(CReplicationTemplate.client_prediction);
 pub const c_replication_reconciliation: u32 = @intFromEnum(CReplicationTemplate.reconciliation);
+pub const c_log_trace: u32 = @intFromEnum(CLogLevel.trace);
+pub const c_log_debug: u32 = @intFromEnum(CLogLevel.debug);
+pub const c_log_info: u32 = @intFromEnum(CLogLevel.info);
+pub const c_log_warning: u32 = @intFromEnum(CLogLevel.warning);
+pub const c_log_error: u32 = @intFromEnum(CLogLevel.err);
 const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
@@ -407,6 +436,18 @@ pub fn validate_state_transfer_config(config: ?*const CStateTransferConfig) CRes
     if (value.serialize == null or value.deserialize == null) return .invalid_argument;
     if (value.max_snapshot_bytes == 0 or value.max_delta_bytes == 0 or value.recovery_timeout_ns < 0) return .invalid_argument;
     if (!is_valid_replication_template(value.template_kind)) return .invalid_argument;
+    return .ok;
+}
+
+pub fn is_valid_log_level(level: u32) bool {
+    return level >= c_log_trace and level <= c_log_error;
+}
+
+pub fn validate_diagnostics_config(config: ?*const CDiagnosticsConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (!is_valid_log_level(value.log_level)) return .invalid_argument;
+    if (value.capture_enabled > 1 or value.replay_enabled > 1 or value.redact_payloads > 1) return .invalid_argument;
+    if (value.capture_enabled == 1 and value.max_capture_bytes == 0) return .invalid_argument;
     return .ok;
 }
 
@@ -1003,6 +1044,57 @@ pub export fn minna_san_state_transfer_deserialize(config: ?*const CStateTransfe
     return value.deserialize.?(value.context, input, output);
 }
 
+pub export fn minna_san_sdk_metrics_snapshot(sdk: ?*CSdk, out_snapshot: ?*CMetricsSnapshot) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_snapshot orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{
+        .polls = state.poll_runtime.poll_count(),
+        .active_connections = state.connection_records.items.len,
+        .active_channels = state.channel_records.items.len,
+        .active_sessions = state.session_records.items.len,
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_diagnostics_config_init(out_config: ?*CDiagnosticsConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .log_context = null, .log = null, .log_level = c_log_info, .capture_enabled = 0, .replay_enabled = 0, .redact_payloads = 0, .reserved = 0, .max_capture_bytes = 0 };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_diagnostics_config_set_logging(config: ?*CDiagnosticsConfig, context: ?*anyopaque, log: ?CLogFn, level: u32) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (log == null or !is_valid_log_level(level)) return @intFromEnum(CResult.invalid_argument);
+    value.log_context = context;
+    value.log = log;
+    value.log_level = level;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_diagnostics_config_set_capture_replay(config: ?*CDiagnosticsConfig, capture_enabled: u8, replay_enabled: u8, redact_payloads: u8, max_capture_bytes: usize) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const candidate = CDiagnosticsConfig{ .log_context = value.log_context, .log = value.log, .log_level = value.log_level, .capture_enabled = capture_enabled, .replay_enabled = replay_enabled, .redact_payloads = redact_payloads, .reserved = 0, .max_capture_bytes = max_capture_bytes };
+    if (validate_diagnostics_config(&candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.capture_enabled = capture_enabled;
+    value.replay_enabled = replay_enabled;
+    value.redact_payloads = redact_payloads;
+    value.max_capture_bytes = max_capture_bytes;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_diagnostics_config_validate(config: ?*const CDiagnosticsConfig) c_int {
+    return @intFromEnum(validate_diagnostics_config(config));
+}
+
+pub export fn minna_san_diagnostics_log(config: ?*const CDiagnosticsConfig, message: ?[*:0]const u8) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const text = message orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_diagnostics_config(value) != .ok) return @intFromEnum(CResult.invalid_argument);
+    const log = value.log orelse return @intFromEnum(CResult.unsupported);
+    log(value.log_context, value.log_level, text);
+    return @intFromEnum(CResult.ok);
+}
+
 pub export fn minna_san_event_kind(event: ?*const CEvent) u32 {
     return (event orelse return 0).kind;
 }
@@ -1197,6 +1289,10 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_route_state(sdk, connection, &route_state));
     try std.testing.expectEqual(c_route_direct, route_state);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_set_route_state(sdk, connection, c_route_relay));
+    var metrics: CMetricsSnapshot = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_metrics_snapshot(sdk, &metrics));
+    try std.testing.expectEqual(@as(usize, 1), metrics.active_connections);
+    try std.testing.expectEqual(@as(usize, 0), metrics.active_channels);
     var reliable_channel: ?*CChannel = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_open(sdk, connection, c_channel_reliable, &reliable_channel));
     var message = [_]u8{ 'o', 'k' };
@@ -1404,6 +1500,33 @@ test "C state transfer configuration rejects missing callbacks invalid limits an
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_config_validate(&config));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_config_set_snapshot_limits(&config, 0, 1));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_state_transfer_serialize(&config, .{ .data = null, .len = 0 }, null));
+}
+
+test "C diagnostics configuration invokes logging without captures and reports SDK metrics" {
+    const Fixture = struct {
+        var logs: usize = 0;
+
+        fn log(_: ?*anyopaque, level: u32, message: [*:0]const u8) callconv(.c) void {
+            if (level == c_log_warning and std.mem.eql(u8, std.mem.span(message), "warning")) logs += 1;
+        }
+    };
+    var config: CDiagnosticsConfig = undefined;
+    Fixture.logs = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_diagnostics_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_diagnostics_config_set_logging(&config, null, Fixture.log, c_log_warning));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_diagnostics_config_set_capture_replay(&config, 1, 0, 1, 1));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_diagnostics_log(&config, "warning"));
+    try std.testing.expectEqual(@as(usize, 1), Fixture.logs);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_metrics_snapshot(null, null));
+}
+
+test "C diagnostics configuration rejects invalid hooks and capture limits" {
+    var config: CDiagnosticsConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_diagnostics_config_init(null));
+    _ = minna_san_diagnostics_config_init(&config);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_diagnostics_config_set_logging(&config, null, null, c_log_info));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_diagnostics_config_set_capture_replay(&config, 1, 0, 0, 0));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.unsupported)), minna_san_diagnostics_log(&config, "missing hook"));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {
