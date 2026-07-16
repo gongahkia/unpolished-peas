@@ -34,6 +34,13 @@ static minna_san_result (*const channel_receive_query)(minna_san_sdk *, minna_sa
 static minna_san_result (*const channel_ack_query)(minna_san_sdk *, minna_san_channel *, uint64_t) = minna_san_channel_acknowledge;
 static minna_san_result (*const channel_last_ack_query)(minna_san_sdk *, minna_san_channel *, uint64_t *) = minna_san_channel_last_acknowledged;
 static minna_san_result (*const sdk_buffer_release_query)(minna_san_sdk *, minna_san_buffer) = minna_san_sdk_buffer_release;
+static minna_san_result (*const security_init_query)(minna_san_security_config *) = minna_san_security_config_init;
+static minna_san_result (*const security_set_psk_query)(minna_san_security_config *, minna_san_buffer) = minna_san_security_config_set_psk;
+static minna_san_result (*const security_set_public_key_query)(minna_san_security_config *, minna_san_buffer) = minna_san_security_config_set_public_key;
+static minna_san_result (*const security_set_aead_key_query)(minna_san_security_config *, minna_san_buffer) = minna_san_security_config_set_aead_key;
+static minna_san_result (*const security_set_replay_query)(minna_san_security_config *, uint32_t) = minna_san_security_config_set_replay_window;
+static minna_san_result (*const security_set_rotation_query)(minna_san_security_config *, minna_san_duration_ns, minna_san_duration_ns) = minna_san_security_config_set_key_rotation;
+static minna_san_result (*const security_validate_query)(const minna_san_security_config *) = minna_san_security_config_validate;
 static minna_san_result (*const transport_init_query)(minna_san_transport_config *) = minna_san_transport_config_init;
 static minna_san_result (*const transport_set_kind_query)(minna_san_transport_config *, uint32_t) = minna_san_transport_config_set_kind;
 static minna_san_result (*const transport_set_local_query)(minna_san_transport_config *, minna_san_address) = minna_san_transport_config_set_local_address;
@@ -78,5 +85,14 @@ int minna_san_c_abi_types_fixture(minna_san_handle *handle, minna_san_event even
         .socket_options = { .send_buffer_bytes = 0, .receive_buffer_bytes = 0, .reuse_address = 0, .no_delay = 0, .reserved = { 0, 0 } },
         .control = { .connect_timeout_ns = 0, .idle_timeout_ns = 0, .max_datagram_bytes = 0, .max_in_flight = 0 },
     };
-    return (handle == 0 && event.payload.len == 0 && config.now != 0 && transport.kind == MINNA_SAN_TRANSPORT_UDP && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0 && sdk_validate_query != 0 && sdk_create_query != 0 && sdk_start_query != 0 && sdk_poll_query != 0 && sdk_stop_query != 0 && sdk_destroy_query != 0 && connection_open_query != 0 && connection_close_query != 0 && connection_peer_query != 0 && connection_route_query != 0 && connection_set_route_query != 0 && event_kind_query != 0 && event_mode_query != 0 && event_sequence_query != 0 && event_payload_query != 0 && channel_open_query != 0 && channel_close_query != 0 && channel_mode_query != 0 && channel_send_query != 0 && channel_receive_query != 0 && channel_ack_query != 0 && channel_last_ack_query != 0 && sdk_buffer_release_query != 0 && transport_init_query != 0 && transport_set_kind_query != 0 && transport_set_local_query != 0 && transport_set_remote_query != 0 && transport_set_options_query != 0 && transport_set_control_query != 0 && transport_validate_query != 0) ? 0 : 1;
+    const minna_san_security_config security = {
+        .flags = 0,
+        .psk = { .data = 0, .len = 0 },
+        .public_key = { .data = 0, .len = 0 },
+        .aead_key = { .data = 0, .len = 0 },
+        .replay_window = 0,
+        .rotation_interval_ns = 0,
+        .rotation_overlap_ns = 0,
+    };
+    return (handle == 0 && event.payload.len == 0 && config.now != 0 && transport.kind == MINNA_SAN_TRANSPORT_UDP && security.flags == 0 && allocator.allocate != 0 && allocator.release != 0 && abi_version_query != 0 && abi_support_query != 0 && result_is_known_query != 0 && result_category_query != 0 && result_message_query != 0 && sdk_validate_query != 0 && sdk_create_query != 0 && sdk_start_query != 0 && sdk_poll_query != 0 && sdk_stop_query != 0 && sdk_destroy_query != 0 && connection_open_query != 0 && connection_close_query != 0 && connection_peer_query != 0 && connection_route_query != 0 && connection_set_route_query != 0 && event_kind_query != 0 && event_mode_query != 0 && event_sequence_query != 0 && event_payload_query != 0 && channel_open_query != 0 && channel_close_query != 0 && channel_mode_query != 0 && channel_send_query != 0 && channel_receive_query != 0 && channel_ack_query != 0 && channel_last_ack_query != 0 && sdk_buffer_release_query != 0 && security_init_query != 0 && security_set_psk_query != 0 && security_set_public_key_query != 0 && security_set_aead_key_query != 0 && security_set_replay_query != 0 && security_set_rotation_query != 0 && security_validate_query != 0 && transport_init_query != 0 && transport_set_kind_query != 0 && transport_set_local_query != 0 && transport_set_remote_query != 0 && transport_set_options_query != 0 && transport_set_control_query != 0 && transport_validate_query != 0) ? 0 : 1;
 }
