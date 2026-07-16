@@ -129,6 +129,10 @@ pub fn build(b: *std.Build) void {
     browser_chromium_test.setCwd(b.path("."));
     const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
     browser_chromium_test_step.dependOn(&browser_chromium_test.step);
+    const web_proof_game_matrix = b.addSystemCommand(&.{ "script/test_web_proof_game_matrix.sh" });
+    web_proof_game_matrix.setCwd(b.path("."));
+    const web_proof_game_matrix_step = b.step("test-web-proof-game-matrix", "Package and smoke every proof game in Chromium");
+    web_proof_game_matrix_step.dependOn(&web_proof_game_matrix.step);
     const browser_wasm_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_wasm_host.mjs" });
     browser_wasm_host_test.setCwd(b.path("."));
     browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);
