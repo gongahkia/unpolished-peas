@@ -18,6 +18,11 @@ pub const stable_modules = [_][]const u8{
     "minna-san-c-abi",
 };
 
+pub const unsupported_reference_modules = [_][]const u8{
+    "minna-san-networking",
+    "minna-san-services",
+};
+
 pub fn isStableModule(name: []const u8) bool {
     for (stable_modules) |module_name| {
         if (std.mem.eql(u8, name, module_name)) return true;
@@ -45,6 +50,14 @@ test "stable module inventory is exact" {
     try std.testing.expect(!isStableModule("minna-san-optional-reference"));
     try std.testing.expect(!isStableModule("minna-san-networking"));
     try std.testing.expect(!isStableModule("minna-san-services"));
+}
+
+test "unsupported references are excluded from the v1 SDK" {
+    try std.testing.expectEqual(@as(usize, 2), unsupported_reference_modules.len);
+    for (unsupported_reference_modules) |module_name| {
+        try std.testing.expect(!isStableModule(module_name));
+        for (stable_modules) |stable_module_name| try std.testing.expect(!std.mem.eql(u8, stable_module_name, module_name));
+    }
 }
 
 test "stable public symbols are exact" {
