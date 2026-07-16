@@ -1,9 +1,0 @@
-.{
-    .bind_address = "127.0.0.1",
-    .port = 0,
-    .secrets_path = "/var/lib/unpolished-peas/local-services.secret",
-    .database_url_environment = "UP_SERVICES_DATABASE_URL",
-    .relay_address = "127.0.0.1",
-    .relay_port = 48081,
-    .engine_runtime_telemetry_enabled = false,
-}

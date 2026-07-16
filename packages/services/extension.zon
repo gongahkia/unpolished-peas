@@ -1,9 +1,0 @@
-.{
-    .format = "unpolished-peas-extension",
-    .version = 1,
-    .name = "services",
-    .package_version = "1.0.0",
-    .core_range = "^1.0.0",
-    .modules = .{ .{ .name = "unpolished-peas-services", .path = "src/services.zig" } },
-    .tests = .{ .{ .name = "services-integration", .target = "test-services", .path = "src/services.zig" } },
-}
