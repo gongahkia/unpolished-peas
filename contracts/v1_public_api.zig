@@ -595,6 +595,13 @@ test "stable public symbols are exact" {
         "StateSnapshotBaseline",
         "StateSnapshotBaselineConfig",
         "StateSnapshotBaselines",
+        "StateRecoveryRequestId",
+        "StateRecoveryReason",
+        "StateDeltaBaseline",
+        "StateFullStateRecoveryRequest",
+        "StateFullStateRecoveryError",
+        "StateFullStateRecoveryConfig",
+        "StateFullStateRecovery",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
