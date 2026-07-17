@@ -19,6 +19,7 @@ const candidate_pair_scheduler = @import("candidate_pair_scheduler.zig");
 const nat_binding_keepalive = @import("nat_binding_keepalive.zig");
 const route_selection = @import("route_selection.zig");
 const route_transition = @import("route_transition.zig");
+const authoritative_session_recovery = @import("authoritative_session_recovery.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -139,6 +140,13 @@ pub const RouteTransitionDiagnostic = route_transition.RouteTransitionDiagnostic
 pub const RouteTransitionError = route_transition.RouteTransitionError;
 pub const RouteTransitionConfig = route_transition.RouteTransitionConfig;
 pub const RouteTransition = route_transition.RouteTransition;
+pub const RecoveryTarget = authoritative_session_recovery.RecoveryTarget;
+pub const RecoveryState = authoritative_session_recovery.RecoveryState;
+pub const RecoveryTerminalReason = authoritative_session_recovery.RecoveryTerminalReason;
+pub const RecoveryEvent = authoritative_session_recovery.RecoveryEvent;
+pub const AuthoritativeRecoveryError = authoritative_session_recovery.AuthoritativeRecoveryError;
+pub const AuthoritativeRecoveryConfig = authoritative_session_recovery.AuthoritativeRecoveryConfig;
+pub const AuthoritativeSessionRecovery = authoritative_session_recovery.AuthoritativeSessionRecovery;
 
 pub const package_name = "topology";
 
@@ -171,4 +179,5 @@ test {
     _ = @import("nat_binding_keepalive.zig");
     _ = @import("route_selection.zig");
     _ = @import("route_transition.zig");
+    _ = @import("authoritative_session_recovery.zig");
 }
