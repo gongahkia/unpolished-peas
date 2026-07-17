@@ -141,6 +141,11 @@ test "stable public symbols are exact" {
         "BaselineCongestionConfig",
         "BaselineCongestionRouteState",
         "BaselineCongestionController",
+        "max_paced_routes",
+        "PacingError",
+        "PacingConfig",
+        "PacingReservation",
+        "PacketPacer",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

@@ -9,6 +9,7 @@ const ack_ranges = @import("ack_ranges.zig");
 const retransmission = @import("retransmission.zig");
 const congestion_controller = @import("congestion_controller.zig");
 const baseline_congestion = @import("baseline_congestion.zig");
+const packet_pacing = @import("packet_pacing.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -62,6 +63,11 @@ pub const BaselineCongestionError = baseline_congestion.BaselineCongestionError;
 pub const BaselineCongestionConfig = baseline_congestion.BaselineCongestionConfig;
 pub const BaselineCongestionRouteState = baseline_congestion.BaselineCongestionRouteState;
 pub const BaselineCongestionController = baseline_congestion.BaselineCongestionController;
+pub const max_paced_routes = packet_pacing.max_paced_routes;
+pub const PacingError = packet_pacing.PacingError;
+pub const PacingConfig = packet_pacing.PacingConfig;
+pub const PacingReservation = packet_pacing.PacingReservation;
+pub const PacketPacer = packet_pacing.PacketPacer;
 pub const package_name = "protocol";
 
 comptime {
@@ -83,4 +89,5 @@ test {
     _ = @import("retransmission.zig");
     _ = @import("congestion_controller.zig");
     _ = @import("baseline_congestion.zig");
+    _ = @import("packet_pacing.zig");
 }
