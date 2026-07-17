@@ -7,6 +7,7 @@ const routed_peer_group = @import("routed_peer_group.zig");
 const peer_group_membership = @import("peer_group_membership.zig");
 const peer_discovery = @import("peer_discovery.zig");
 const nat_candidate = @import("nat_candidate.zig");
+const udp_stun_binding = @import("udp_stun_binding.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -54,6 +55,11 @@ pub const NatCandidate = nat_candidate.NatCandidate;
 pub const NatCandidateError = nat_candidate.NatCandidateError;
 pub const validate_nat_candidate = nat_candidate.validate_nat_candidate;
 pub const candidate_expired = nat_candidate.candidate_expired;
+pub const UdpStunBindingError = udp_stun_binding.UdpStunBindingError;
+pub const UdpStunBindingConfig = udp_stun_binding.UdpStunBindingConfig;
+pub const UdpStunBindingSend = udp_stun_binding.UdpStunBindingSend;
+pub const UdpStunBindingResult = udp_stun_binding.UdpStunBindingResult;
+pub const UdpStunBindingClient = udp_stun_binding.UdpStunBindingClient;
 
 pub const package_name = "topology";
 
@@ -74,4 +80,5 @@ test {
     _ = @import("peer_group_membership.zig");
     _ = @import("peer_discovery.zig");
     _ = @import("nat_candidate.zig");
+    _ = @import("udp_stun_binding.zig");
 }
