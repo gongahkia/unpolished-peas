@@ -432,6 +432,9 @@ pub fn build(b: *std.Build) void {
     const c_sdk_macos_reproducible = b.addSystemCommand(&.{ "sh", "script/test_macos_c_sdk_artifacts.sh" });
     const c_sdk_macos_reproducible_step = b.step("c-sdk-macos-reproducible", "Build reproducible macOS arm64 and x86_64 C SDK libraries");
     c_sdk_macos_reproducible_step.dependOn(&c_sdk_macos_reproducible.step);
+    const c_sdk_desktop_reproducible = b.addSystemCommand(&.{ "sh", "script/test_desktop_c_sdk_artifacts.sh" });
+    const c_sdk_desktop_reproducible_step = b.step("c-sdk-desktop-reproducible", "Build reproducible Linux and Windows C SDK libraries");
+    c_sdk_desktop_reproducible_step.dependOn(&c_sdk_desktop_reproducible.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
