@@ -621,6 +621,13 @@ test "stable public symbols are exact" {
         "StatePredictionError",
         "StatePredictionConfig",
         "StateClientPrediction",
+        "StateReconciliationEvent",
+        "StateReconciliationCorrectionFn",
+        "StateReconciliationReplayFn",
+        "StateReconciliationEventFn",
+        "StateReconciliationError",
+        "StateReconciliationConfig",
+        "StateReconciliation",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
