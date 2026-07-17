@@ -139,8 +139,11 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = core_spec.module_name, .module = core },
             .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = transport_spec.module_name, .module = transport },
             .{ .name = topology_spec.module_name, .module = topology },
             .{ .name = state_spec.module_name, .module = state },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+            .{ .name = c_abi_spec.module_name, .module = c_abi },
         },
     });
     const boundary_tests = b.addTest(.{ .root_module = boundary });
