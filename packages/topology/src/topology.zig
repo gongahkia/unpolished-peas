@@ -21,6 +21,7 @@ const route_selection = @import("route_selection.zig");
 const route_transition = @import("route_transition.zig");
 const authoritative_session_recovery = @import("authoritative_session_recovery.zig");
 const sharded_p2p_scheduler = @import("sharded_p2p_scheduler.zig");
+const peer_liveness = @import("peer_liveness.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -153,6 +154,12 @@ pub const ShardedP2PDispatch = sharded_p2p_scheduler.ShardedP2PDispatch;
 pub const ShardedP2PSchedulerError = sharded_p2p_scheduler.ShardedP2PSchedulerError;
 pub const ShardedP2PSchedulerConfig = sharded_p2p_scheduler.ShardedP2PSchedulerConfig;
 pub const ShardedP2PScheduler = sharded_p2p_scheduler.ShardedP2PScheduler;
+pub const max_liveness_peers = peer_liveness.max_liveness_peers;
+pub const PeerLivenessState = peer_liveness.PeerLivenessState;
+pub const PeerLivenessEvent = peer_liveness.PeerLivenessEvent;
+pub const PeerLivenessError = peer_liveness.PeerLivenessError;
+pub const PeerLivenessConfig = peer_liveness.PeerLivenessConfig;
+pub const PeerLiveness = peer_liveness.PeerLiveness;
 
 pub const package_name = "topology";
 
@@ -187,4 +194,5 @@ test {
     _ = @import("route_transition.zig");
     _ = @import("authoritative_session_recovery.zig");
     _ = @import("sharded_p2p_scheduler.zig");
+    _ = @import("peer_liveness.zig");
 }

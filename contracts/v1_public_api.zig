@@ -516,6 +516,12 @@ test "stable public symbols are exact" {
         "ShardedP2PSchedulerError",
         "ShardedP2PSchedulerConfig",
         "ShardedP2PScheduler",
+        "max_liveness_peers",
+        "PeerLivenessState",
+        "PeerLivenessEvent",
+        "PeerLivenessError",
+        "PeerLivenessConfig",
+        "PeerLiveness",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{
