@@ -98,6 +98,11 @@ test "stable public symbols are exact" {
         "validate_version",
         "validate_extension",
         "validate_envelope",
+        "packet_header_bytes",
+        "max_packet_payload_bytes",
+        "PacketEnvelopeError",
+        "encode_packet",
+        "decode_packet",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
