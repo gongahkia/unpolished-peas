@@ -223,6 +223,12 @@ pub fn build(b: *std.Build) void {
     const release_license_test = b.addSystemCommand(&.{ "sh", "script/test_release_license.sh" });
     const release_license_test_step = b.step("release-license-test", "Test BSL release metadata checks");
     release_license_test_step.dependOn(&release_license_test.step);
+    const license_metadata_check = b.addSystemCommand(&.{ "sh", "script/check_license_metadata.sh" });
+    const license_metadata_step = b.step("license-metadata", "Check BSL SPDX release metadata");
+    license_metadata_step.dependOn(&license_metadata_check.step);
+    const license_metadata_test = b.addSystemCommand(&.{ "sh", "script/test_license_metadata.sh" });
+    const license_metadata_test_step = b.step("license-metadata-test", "Test BSL SPDX metadata checks");
+    license_metadata_test_step.dependOn(&license_metadata_test.step);
     const dependency_check = b.addSystemCommand(&.{ "sh", "script/check_stdlib_only.sh" });
     const dependency_step = b.step("dependency-policy", "Check v1 sources use only std and first-party modules");
     dependency_step.dependOn(&dependency_check.step);
@@ -273,4 +279,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&c_header_check.step);
     test_step.dependOn(&release_license_check.step);
+    test_step.dependOn(&license_metadata_check.step);
 }

@@ -15,5 +15,5 @@
         .c_abi = .{ .path = "packages/c-abi", .lazy = true },
         .optional_reference = .{ .path = "packages/optional-reference", .lazy = true },
     },
-    .paths = .{ "LICENSE", "build.zig", "build.zig.zon", "licenses", "packages", "services" },
+    .paths = .{ "LICENSE", "REUSE.toml", "build.zig", "build.zig.zon", "licenses", "packages", "services" },
 }
