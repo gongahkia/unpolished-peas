@@ -36,6 +36,8 @@ jobs:
         run: zig build benchmark-topology-faults -Doptimize=ReleaseFast
       - name: Benchmark throughput and backpressure
         run: zig build benchmark-throughput -Doptimize=ReleaseFast
+      - name: Benchmark memory and resource ceilings
+        run: zig build benchmark-memory -Doptimize=ReleaseFast
   api-compatibility:
     name: Released public API compatibility
     runs-on: ubuntu-24.04
