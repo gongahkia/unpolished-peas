@@ -57,7 +57,6 @@ pub fn decode_stun_message(input: []const u8, attributes: []StunAttribute) StunC
 }
 
 pub fn encode_xor_address(address: StunAddress, transaction_id: [12]u8, output: []u8) StunCodecError![]u8 {
-    _ = transaction_id;
     const cookie = std.mem.toBytes(std.mem.nativeToBig(u32, stun_magic_cookie));
     switch (address) {
         .ipv4 => |ipv4| {
@@ -68,17 +67,36 @@ pub fn encode_xor_address(address: StunAddress, transaction_id: [12]u8, output: 
             for (ipv4.octets, 0..) |octet, i| output[4 + i] = octet ^ cookie[i];
             return output[0..8];
         },
-        .ipv6 => return error.InvalidAddress,
+        .ipv6 => |ipv6| {
+            if (output.len < 20) return error.BufferTooSmall;
+            output[0] = 0;
+            output[1] = 2;
+            std.mem.writeInt(u16, output[2..4], ipv6.port ^ @as(u16, @truncate(stun_magic_cookie >> 16)), .big);
+            for (ipv6.octets, 0..) |octet, index| output[4 + index] = octet ^ if (index < 4) cookie[index] else transaction_id[index - 4];
+            return output[0..20];
+        },
     }
 }
 
 pub fn decode_xor_address(input: []const u8, transaction_id: [12]u8) StunCodecError!StunAddress {
-    _ = transaction_id;
-    if (input.len != 8 or input[0] != 0 or input[1] != 1) return error.InvalidAddress;
+    if (input.len != 8 and input.len != 20 or input[0] != 0) return error.InvalidAddress;
     const cookie = std.mem.toBytes(std.mem.nativeToBig(u32, stun_magic_cookie));
-    var octets: [4]u8 = undefined;
-    for (&octets, 0..) |*octet, i| octet.* = input[4 + i] ^ cookie[i];
-    return .{ .ipv4 = .{ .octets = octets, .port = std.mem.readInt(u16, input[2..4], .big) ^ @as(u16, @truncate(stun_magic_cookie >> 16)) } };
+    const port = std.mem.readInt(u16, input[2..4], .big) ^ @as(u16, @truncate(stun_magic_cookie >> 16));
+    return switch (input[1]) {
+        1 => blk: {
+            if (input.len != 8) return error.InvalidAddress;
+            var octets: [4]u8 = undefined;
+            for (&octets, 0..) |*octet, index| octet.* = input[4 + index] ^ cookie[index];
+            break :blk .{ .ipv4 = .{ .octets = octets, .port = port } };
+        },
+        2 => blk: {
+            if (input.len != 20) return error.InvalidAddress;
+            var octets: [16]u8 = undefined;
+            for (&octets, 0..) |*octet, index| octet.* = input[4 + index] ^ if (index < 4) cookie[index] else transaction_id[index - 4];
+            break :blk .{ .ipv6 = .{ .octets = octets, .port = port } };
+        },
+        else => error.InvalidAddress,
+    };
 }
 
 pub fn encode_error_code(value: StunErrorCode, output: []u8) StunCodecError![]u8 {
@@ -134,6 +152,9 @@ test "STUN codec encodes bounded headers attributes XOR addresses errors and fin
     var address: [8]u8 = undefined;
     const xor_address = try encode_xor_address(.{ .ipv4 = .{ .octets = .{ 1, 2, 3, 4 }, .port = 3478 } }, header.transaction_id, address[0..]);
     try std.testing.expectEqual(StunAddress{ .ipv4 = .{ .octets = .{ 1, 2, 3, 4 }, .port = 3478 } }, try decode_xor_address(xor_address, header.transaction_id));
+    var ipv6: [20]u8 = undefined;
+    const xor_ipv6 = try encode_xor_address(.{ .ipv6 = .{ .octets = .{0} ** 15 ++ .{1}, .port = 3478 } }, header.transaction_id, ipv6[0..]);
+    try std.testing.expectEqual(StunAddress{ .ipv6 = .{ .octets = .{0} ** 15 ++ .{1}, .port = 3478 } }, try decode_xor_address(xor_ipv6, header.transaction_id));
     var error_bytes: [7]u8 = undefined;
     try std.testing.expectEqual(StunErrorCode{ .code = 400, .reason = "bad" }, try decode_error_code(try encode_error_code(.{ .code = 400, .reason = "bad" }, error_bytes[0..])));
     try verify_stun_fingerprint(encoded, stun_fingerprint(encoded));
