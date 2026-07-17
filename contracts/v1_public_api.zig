@@ -431,6 +431,11 @@ test "stable public symbols are exact" {
         "NatCandidateError",
         "validate_nat_candidate",
         "candidate_expired",
+        "UdpStunBindingError",
+        "UdpStunBindingConfig",
+        "UdpStunBindingSend",
+        "UdpStunBindingResult",
+        "UdpStunBindingClient",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
