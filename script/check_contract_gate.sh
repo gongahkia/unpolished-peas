@@ -18,6 +18,10 @@ grep -Fqx '  contents: read' "$workflow" || fail "workflow must use read-only co
 grep -Fqx '      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10' "$workflow" || fail "workflow must pin checkout"
 grep -Fqx '      - name: Install Zig 0.15.2' "$workflow" || fail "workflow must install Zig 0.15.2"
 grep -Fqx '          echo '\''02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz'\'' | sha256sum --check --status' "$workflow" || fail "workflow must verify the Zig archive"
+grep -Fqx '  windows-sdk:' "$workflow" || fail "workflow must define the Windows SDK job"
+for field in '    runs-on: windows-2025' '        shell: pwsh' '          if ((Get-FileHash zig.zip -Algorithm SHA256).Hash -ne '\''3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c'\'') { throw '\''invalid Zig archive checksum'\'' }' '      - name: Verify native Zig version' '          if ($env:PROCESSOR_ARCHITECTURE -ne '\''AMD64'\'') { throw '\''unexpected Windows architecture'\'' }' '      - name: Build and test SDK artifacts' '      - name: Build C ABI artifact and consumer'; do
+    grep -Fqx "$field" "$workflow" || fail "workflow must retain Windows SDK field: $field"
+done
 grep -Fqx '  macos-sdk:' "$workflow" || fail "workflow must define the macOS SDK matrix"
 grep -Fqx '    runs-on: ${{ matrix.runner }}' "$workflow" || fail "macOS SDK jobs must use their matrix runner"
 grep -Fqx '      fail-fast: false' "$workflow" || fail "macOS SDK matrix must not cancel the other architecture"
