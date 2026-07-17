@@ -356,7 +356,19 @@ test "stable public symbols are exact" {
         "TransportSoakScenario",
         "package_name",
     });
-    try expectExactPublicDeclarations(topology, &.{"package_name"});
+    try expectExactPublicDeclarations(topology, &.{
+        "ShardId",
+        "ShardHealth",
+        "ShardRouteKind",
+        "ShardEndpoint",
+        "ShardRoute",
+        "ShardCapacity",
+        "ShardRegistration",
+        "ShardDirectoryError",
+        "ShardDirectoryConfig",
+        "ShardDirectory",
+        "package_name",
+    });
     try expectExactPublicDeclarations(state, &.{"package_name"});
     try expectExactPublicDeclarations(runtime, &.{
         "ConfigError",
