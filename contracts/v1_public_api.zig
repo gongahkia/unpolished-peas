@@ -200,6 +200,12 @@ test "stable public symbols are exact" {
         "TcpFlowControlError",
         "TcpFlowControlConfig",
         "TcpFlowController",
+        "max_soak_peers",
+        "max_soak_messages_per_peer",
+        "TransportSoakError",
+        "TransportSoakConfig",
+        "TransportSoakEvent",
+        "TransportSoakScenario",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});

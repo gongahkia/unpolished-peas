@@ -21,6 +21,7 @@ const io_failure = @import("io_failure.zig");
 const path_mtu = @import("path_mtu.zig");
 const fragment_handoff = @import("fragment_handoff.zig");
 const tcp_flow_control = @import("tcp_flow_control.zig");
+const soak_harness = @import("soak_harness.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -121,6 +122,12 @@ pub const TransportReassembler = fragment_handoff.TransportReassembler;
 pub const TcpFlowControlError = tcp_flow_control.TcpFlowControlError;
 pub const TcpFlowControlConfig = tcp_flow_control.TcpFlowControlConfig;
 pub const TcpFlowController = tcp_flow_control.TcpFlowController;
+pub const max_soak_peers = soak_harness.max_soak_peers;
+pub const max_soak_messages_per_peer = soak_harness.max_soak_messages_per_peer;
+pub const TransportSoakError = soak_harness.TransportSoakError;
+pub const TransportSoakConfig = soak_harness.TransportSoakConfig;
+pub const TransportSoakEvent = soak_harness.TransportSoakEvent;
+pub const TransportSoakScenario = soak_harness.TransportSoakScenario;
 pub const package_name = "transport";
 
 comptime {
@@ -157,4 +164,5 @@ test {
     _ = @import("transport_conformance.zig");
     _ = @import("ip_integration.zig");
     _ = @import("resource_exhaustion.zig");
+    _ = @import("soak_harness.zig");
 }
