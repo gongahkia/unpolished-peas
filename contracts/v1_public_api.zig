@@ -564,6 +564,14 @@ test "stable public symbols are exact" {
         "StateSerializationCallbacks",
         "StateSerializationConfig",
         "StateSerializationContract",
+        "StateEncodeFailure",
+        "StateEncodeError",
+        "StateEncodeChunk",
+        "StateEncodeStreamFn",
+        "StateEncodeStream",
+        "StateEncodeFailureFn",
+        "StateEncoderConfig",
+        "StateEncoder",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
