@@ -12,6 +12,8 @@ jobs:
   sign:
     runs-on: ubuntu-24.04
     permissions:
+      artifact-metadata: write
+      attestations: write
       contents: read
       id-token: write
     steps:
@@ -32,6 +34,18 @@ jobs:
         run: test "$GITHUB_REF_NAME" = "v$(tr -d '\r\n' < contracts/v1_release_contracts.version)"
       - name: Generate release artifact checksums
         run: zig build release-checksums
+      - name: Verify release provenance
+        run: sh script/check_release_provenance.sh
+      - name: Attest release build provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-path: 'zig-out/minna-san-release-*/**'
+      - name: Attest release compiler and target provenance
+        uses: actions/attest@f7c74d28b9d84cb8768d0b8ca14a4bac6ef463e6
+        with:
+          subject-path: 'zig-out/minna-san-release-*/**'
+          predicate-type: https://minna-san.dev/attestation/release-provenance/v1
+          predicate-path: 'zig-out/minna-san-release-*/provenance.json'
       - name: Sign release artifacts
         env:
           COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release-signing.yml@${{ github.ref }}

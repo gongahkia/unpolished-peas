@@ -20,7 +20,8 @@ for artifact in \
     "c-sdk-headers-$version/metadata.json" \
     "c-sdk-headers-$version/include/minna_san.h" \
     "c-sdk-headers-$version/include/minna_san_sdk_metadata.h" \
-    "minna-san-zig-sdk-$version.tar.gz"; do
+    "minna-san-zig-sdk-$version.tar.gz" \
+    "provenance.json"; do
     test -f "$package/$artifact"
 done
 (
