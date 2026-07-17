@@ -79,3 +79,7 @@ sed '/zig build c-sdk-static-package/d' .github/workflows/v1-contract.yml > "$fi
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
 fi
+sed '/zig build c-sdk-shared-package/d' .github/workflows/v1-contract.yml > "$fixture"
+if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
+    exit 1
+fi
