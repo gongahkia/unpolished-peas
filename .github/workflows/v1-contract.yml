@@ -251,6 +251,8 @@ jobs:
         run: zig build test
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
+      - name: Build reproducible C SDK libraries
+        run: zig build c-sdk-macos-reproducible
   contract:
     runs-on: ubuntu-latest
     steps:
