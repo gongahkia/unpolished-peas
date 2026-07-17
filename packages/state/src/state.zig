@@ -12,6 +12,7 @@ const snapshot_baseline = @import("snapshot_baseline.zig");
 const full_state_recovery = @import("full_state_recovery.zig");
 const replication_template = @import("replication_template.zig");
 const authoritative_replication = @import("authoritative_replication.zig");
+const client_prediction = @import("client_prediction.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -103,6 +104,12 @@ pub const StateAuthoritativeStateFn = authoritative_replication.StateAuthoritati
 pub const StateAuthoritativeReplicationError = authoritative_replication.StateAuthoritativeReplicationError;
 pub const StateAuthoritativeReplicationConfig = authoritative_replication.StateAuthoritativeReplicationConfig;
 pub const StateAuthoritativeReplication = authoritative_replication.StateAuthoritativeReplication;
+pub const StatePredictionSequence = client_prediction.StatePredictionSequence;
+pub const StatePredictionInput = client_prediction.StatePredictionInput;
+pub const StatePredictionSimulationFn = client_prediction.StatePredictionSimulationFn;
+pub const StatePredictionError = client_prediction.StatePredictionError;
+pub const StatePredictionConfig = client_prediction.StatePredictionConfig;
+pub const StateClientPrediction = client_prediction.StateClientPrediction;
 
 pub const package_name = "state";
 
@@ -128,4 +135,5 @@ test {
     _ = @import("full_state_recovery.zig");
     _ = @import("replication_template.zig");
     _ = @import("authoritative_replication.zig");
+    _ = @import("client_prediction.zig");
 }
