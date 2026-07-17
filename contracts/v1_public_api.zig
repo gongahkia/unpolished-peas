@@ -156,6 +156,10 @@ test "stable public symbols are exact" {
         "ResolvedAddress",
         "HostnameResolutionState",
         "HostnameResolution",
+        "TransportConnectionState",
+        "TransportConnectionStateError",
+        "TransportConnectionTracker",
+        "is_transition_allowed",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});

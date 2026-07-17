@@ -11,6 +11,7 @@ const tcp_listener = @import("tcp_listener.zig");
 const tcp_framed = @import("tcp_framed.zig");
 const socket_poller = @import("socket_poller.zig");
 const hostname_resolution = @import("hostname_resolution.zig");
+const connection_state = @import("connection_state.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -67,6 +68,10 @@ pub const HostnameResolutionError = hostname_resolution.HostnameResolutionError;
 pub const ResolvedAddress = hostname_resolution.ResolvedAddress;
 pub const HostnameResolutionState = hostname_resolution.HostnameResolutionState;
 pub const HostnameResolution = hostname_resolution.HostnameResolution;
+pub const TransportConnectionState = connection_state.TransportConnectionState;
+pub const TransportConnectionStateError = connection_state.TransportConnectionStateError;
+pub const TransportConnectionTracker = connection_state.TransportConnectionTracker;
+pub const is_transition_allowed = connection_state.is_transition_allowed;
 pub const package_name = "transport";
 
 comptime {
@@ -90,4 +95,5 @@ test {
     _ = @import("tcp_framed.zig");
     _ = @import("socket_poller.zig");
     _ = @import("hostname_resolution.zig");
+    _ = @import("connection_state.zig");
 }
