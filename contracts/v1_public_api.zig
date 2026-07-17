@@ -210,6 +210,15 @@ test "stable public symbols are exact" {
         "PskChallenge",
         "PskProof",
         "PskAuthenticator",
+        "public_key_identity_bytes",
+        "public_key_signature_bytes",
+        "public_key_session_key_bytes",
+        "PublicKeyRole",
+        "PublicKeyAuthenticationError",
+        "PublicKeyIdentity",
+        "PublicKeyHello",
+        "PublicKeyKeyExchange",
+        "verify_public_key_hello",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
