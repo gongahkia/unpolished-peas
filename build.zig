@@ -332,6 +332,16 @@ pub fn build(b: *std.Build) void {
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
     core_downstream_fixture_test_step.dependOn(&core_downstream_fixture.step);
+    const dependency_ceiling = b.addSystemCommand(&.{ "python3", "script/check_core_dependency_ceiling.py" });
+    dependency_ceiling.setCwd(b.path("."));
+    dependency_ceiling.setEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1");
+    const dependency_ceiling_tests = b.addSystemCommand(&.{ "python3", "script/test_check_core_dependency_ceiling.py" });
+    dependency_ceiling_tests.setCwd(b.path("."));
+    dependency_ceiling_tests.setEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1");
+    const dependency_ceiling_test_step = b.step("test-dependency-ceiling", "Enforce the v0.1 core dependency ceiling");
+    dependency_ceiling_test_step.dependOn(&dependency_ceiling.step);
+    dependency_ceiling_test_step.dependOn(&dependency_ceiling_tests.step);
+    test_step.dependOn(&dependency_ceiling.step);
     const facade_consumer_matrix = b.addSystemCommand(&.{"script/test_facade_consumer_matrix.sh"});
     facade_consumer_matrix.setCwd(b.path("."));
     const facade_consumer_matrix_step = b.step("test-facade-consumer-matrix", "Build independent desktop and Wasm facade consumers");
