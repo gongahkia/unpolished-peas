@@ -142,6 +142,15 @@ test "stable public symbols are exact" {
         "TcpFrameError",
         "TcpFrameReader",
         "TcpFrameWriter",
+        "max_socket_poll_targets",
+        "SocketPollError",
+        "SocketPollTarget",
+        "SocketPollInterest",
+        "SocketPollFailure",
+        "SocketPollEvent",
+        "SocketPollRegistration",
+        "SocketPollResult",
+        "SocketPoller",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
