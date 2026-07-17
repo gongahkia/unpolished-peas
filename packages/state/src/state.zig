@@ -6,6 +6,7 @@ const migration_state_transfer = @import("migration_state_transfer.zig");
 const serialization_contract = @import("serialization_contract.zig");
 const state_encoder = @import("state_encoder.zig");
 const state_decoder = @import("state_decoder.zig");
+const snapshot_publisher = @import("snapshot_publisher.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -60,6 +61,13 @@ pub const StateSchemaCompatibilityFn = state_decoder.StateSchemaCompatibilityFn;
 pub const StateDecodeFailureFn = state_decoder.StateDecodeFailureFn;
 pub const StateDecoderConfig = state_decoder.StateDecoderConfig;
 pub const StateDecoder = state_decoder.StateDecoder;
+pub const StateSnapshotSequence = snapshot_publisher.StateSnapshotSequence;
+pub const StateSnapshotSubscriberId = snapshot_publisher.StateSnapshotSubscriberId;
+pub const StateSnapshotError = snapshot_publisher.StateSnapshotError;
+pub const StateSnapshot = snapshot_publisher.StateSnapshot;
+pub const StateSnapshotSubscriber = snapshot_publisher.StateSnapshotSubscriber;
+pub const StateSnapshotPublisherConfig = snapshot_publisher.StateSnapshotPublisherConfig;
+pub const StateSnapshotPublisher = snapshot_publisher.StateSnapshotPublisher;
 
 pub const package_name = "state";
 
@@ -79,4 +87,5 @@ test {
     _ = @import("serialization_contract.zig");
     _ = @import("state_encoder.zig");
     _ = @import("state_decoder.zig");
+    _ = @import("snapshot_publisher.zig");
 }

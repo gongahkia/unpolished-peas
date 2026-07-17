@@ -578,6 +578,13 @@ test "stable public symbols are exact" {
         "StateDecodeFailureFn",
         "StateDecoderConfig",
         "StateDecoder",
+        "StateSnapshotSequence",
+        "StateSnapshotSubscriberId",
+        "StateSnapshotError",
+        "StateSnapshot",
+        "StateSnapshotSubscriber",
+        "StateSnapshotPublisherConfig",
+        "StateSnapshotPublisher",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
