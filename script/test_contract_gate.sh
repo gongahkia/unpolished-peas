@@ -47,3 +47,7 @@ sed '/zig build benchmark-sharded-p2p/d' .github/workflows/v1-contract.yml > "$f
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
 fi
+sed '/zig build benchmark-topology-faults/d' .github/workflows/v1-contract.yml > "$fixture"
+if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
+    exit 1
+fi

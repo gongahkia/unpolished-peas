@@ -32,6 +32,8 @@ jobs:
         run: zig build benchmark-authoritative -Doptimize=ReleaseFast
       - name: Benchmark sharded P2P 1,000-peer sessions
         run: zig build benchmark-sharded-p2p -Doptimize=ReleaseFast
+      - name: Benchmark topology faults
+        run: zig build benchmark-topology-faults -Doptimize=ReleaseFast
   api-compatibility:
     name: Released public API compatibility
     runs-on: ubuntu-24.04
