@@ -1,6 +1,6 @@
 # Changelog
 
-This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and semantic versioning after its first non-draft release.
+This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and semantic versioning after its first non-draft release. Every non-draft release gets a dated section using Added, Changed, Deprecated, Removed, Fixed, and Security categories; published sections are immutable except for marked factual corrections. See the [release policy](docs/guides/releases.md#changelog-policy).
 
 ## Unreleased
 
