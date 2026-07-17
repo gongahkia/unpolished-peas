@@ -19,6 +19,7 @@ const buffer_pool = @import("buffer_pool.zig");
 const monotonic_clock = @import("monotonic_clock.zig");
 const io_failure = @import("io_failure.zig");
 const path_mtu = @import("path_mtu.zig");
+const fragment_handoff = @import("fragment_handoff.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -111,6 +112,11 @@ pub const max_path_mtu_probes = path_mtu.max_path_mtu_probes;
 pub const PathMtuProbeError = path_mtu.PathMtuProbeError;
 pub const PathMtuProbeConfig = path_mtu.PathMtuProbeConfig;
 pub const PathMtuProber = path_mtu.PathMtuProber;
+pub const max_transport_fragments = fragment_handoff.max_transport_fragments;
+pub const TransportFragmentError = fragment_handoff.TransportFragmentError;
+pub const TransportFragment = fragment_handoff.TransportFragment;
+pub const TransportFragmenter = fragment_handoff.TransportFragmenter;
+pub const TransportReassembler = fragment_handoff.TransportReassembler;
 pub const package_name = "transport";
 
 comptime {
@@ -142,4 +148,5 @@ test {
     _ = @import("monotonic_clock.zig");
     _ = @import("io_failure.zig");
     _ = @import("path_mtu.zig");
+    _ = @import("fragment_handoff.zig");
 }

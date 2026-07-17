@@ -192,6 +192,11 @@ test "stable public symbols are exact" {
         "PathMtuProbeError",
         "PathMtuProbeConfig",
         "PathMtuProber",
+        "max_transport_fragments",
+        "TransportFragmentError",
+        "TransportFragment",
+        "TransportFragmenter",
+        "TransportReassembler",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
