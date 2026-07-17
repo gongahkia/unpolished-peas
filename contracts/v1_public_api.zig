@@ -180,6 +180,13 @@ test "stable public symbols are exact" {
         "max_compression_dictionaries",
         "CompressionDictionaryError",
         "CompressionDictionaryRegistry",
+        "max_payload_budget_routes",
+        "max_route_mtu_bytes",
+        "PayloadBudgetError",
+        "MtuBudgetConfig",
+        "MtuBudgetOffer",
+        "EffectivePayloadBudget",
+        "PayloadBudgetManager",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
