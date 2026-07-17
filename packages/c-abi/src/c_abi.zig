@@ -24,6 +24,10 @@ pub const CBuffer = extern struct {
     data: [*c]u8,
     len: usize,
 };
+pub const CConstBuffer = extern struct {
+    data: [*c]const u8,
+    len: usize,
+};
 pub const CAllocateFn = *const fn (?*anyopaque, usize) callconv(.c) ?*anyopaque;
 pub const CReleaseFn = *const fn (?*anyopaque, [*c]u8, usize) callconv(.c) void;
 pub const CAllocator = extern struct {
@@ -223,6 +227,25 @@ pub const CMetricsSnapshot = extern struct {
     active_channels: usize,
     active_sessions: usize,
 };
+pub const CRuntimeMetricsSnapshot = extern struct {
+    polls: u64,
+    events: u64,
+    connected: u64,
+    disconnected: u64,
+    messages: u64,
+    overflows: u64,
+    dropped_events: u64,
+    active_connections: u64,
+    message_bytes_samples: u64,
+    message_bytes_total: u64,
+    message_bytes_maximum: u64,
+    direct_route_health: u32,
+    relay_route_health: u32,
+    authoritative_route_health: u32,
+    queue_depth: u64,
+    queue_capacity: u64,
+    security_events: [runtime.runtime_security_event_count]u64,
+};
 pub const CLogLevel = enum(u32) {
     trace = 1,
     debug = 2,
@@ -231,6 +254,34 @@ pub const CLogLevel = enum(u32) {
     err = 5,
 };
 pub const CLogFn = *const fn (?*anyopaque, u32, [*:0]const u8) callconv(.c) void;
+pub const CLogCategory = enum(u32) {
+    runtime = 1,
+    connection = 2,
+    message = 3,
+    queue = 4,
+    security = 5,
+    replay = 6,
+};
+pub const CLogRedaction = enum(u32) {
+    none = 0,
+    payload = 1,
+    metadata = 2,
+    all = 3,
+};
+pub const CLogRecord = extern struct {
+    sequence: u64,
+    level: u32,
+    category: u32,
+    redaction: u32,
+    message: CConstBuffer,
+    source_event_sequence: u64,
+    has_source_event_sequence: u8,
+    reserved: [7]u8,
+};
+pub const CLogRecordFn = *const fn (?*anyopaque, *const CLogRecord) callconv(.c) void;
+pub const CLogSubscription = extern struct {
+    id: u64,
+};
 pub const CDiagnosticsConfig = extern struct {
     log_context: ?*anyopaque,
     log: ?CLogFn,
@@ -308,6 +359,16 @@ pub const c_log_debug: u32 = @intFromEnum(CLogLevel.debug);
 pub const c_log_info: u32 = @intFromEnum(CLogLevel.info);
 pub const c_log_warning: u32 = @intFromEnum(CLogLevel.warning);
 pub const c_log_error: u32 = @intFromEnum(CLogLevel.err);
+pub const c_log_category_runtime: u32 = @intFromEnum(CLogCategory.runtime);
+pub const c_log_category_connection: u32 = @intFromEnum(CLogCategory.connection);
+pub const c_log_category_message: u32 = @intFromEnum(CLogCategory.message);
+pub const c_log_category_queue: u32 = @intFromEnum(CLogCategory.queue);
+pub const c_log_category_security: u32 = @intFromEnum(CLogCategory.security);
+pub const c_log_category_replay: u32 = @intFromEnum(CLogCategory.replay);
+pub const c_log_redaction_none: u32 = @intFromEnum(CLogRedaction.none);
+pub const c_log_redaction_payload: u32 = @intFromEnum(CLogRedaction.payload);
+pub const c_log_redaction_metadata: u32 = @intFromEnum(CLogRedaction.metadata);
+pub const c_log_redaction_all: u32 = @intFromEnum(CLogRedaction.all);
 const all_security_flags = c_security_psk | c_security_public_key | c_security_aead | c_security_replay_protection | c_security_key_rotation;
 const all_capability_bits = c_capability_transport | c_capability_packet_protection | c_capability_topology | c_capability_state_replication | c_capability_capture;
 pub const c_abi_version: CAbiVersion = runtime.abi_version();
@@ -356,11 +417,27 @@ const CAllocatorBridge = struct {
     }
 };
 
+const CLogRegistration = struct {
+    state: ?*anyopaque = null,
+    active: bool = false,
+    context: ?*anyopaque = null,
+    callback: ?CLogRecordFn = null,
+    subscription: ?runtime.RuntimeLogSubscription = null,
+    in_flight: usize = 0,
+};
+
 const CSdkState = struct {
     allocator_bridge: CAllocatorBridge,
     clock_bridge: CClockBridge,
     sdk: runtime.Sdk,
     poll_runtime: runtime.PollRuntime,
+    event_bus: runtime.RuntimeEventBus,
+    metrics: runtime.RuntimeMetrics,
+    logger: runtime.RuntimeLogger,
+    next_runtime_event_sequence: u64,
+    log_mutex: std.Thread.Mutex,
+    log_ready: std.Thread.Condition,
+    log_registrations: [runtime.max_runtime_log_callbacks]CLogRegistration,
     connections: runtime.ResourceRegistry,
     peers: runtime.ResourceRegistry,
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
@@ -398,6 +475,49 @@ const SessionRecord = struct {
     admission: ?CAdmissionFn,
     clients: std.ArrayListUnmanaged(*runtime.ResourceHandle) = .empty,
 };
+
+threadlocal var c_log_callback_active: bool = false;
+
+fn emit_runtime_event(state: *CSdkState, event_value: runtime.Event) void {
+    var envelope = runtime.EventEnvelope{ .sequence = state.next_runtime_event_sequence, .mode = .poll, .event = event_value };
+    defer envelope.deinit();
+    state.next_runtime_event_sequence +%= 1;
+    _ = state.event_bus.emit(&envelope) catch {};
+}
+
+fn c_log_bridge(context: ?*anyopaque, record: *const runtime.RuntimeLogRecord) void {
+    const registration: *CLogRegistration = @ptrCast(@alignCast(context.?));
+    const state: *CSdkState = @ptrCast(@alignCast(registration.state.?));
+    state.log_mutex.lock();
+    if (!registration.active) {
+        state.log_mutex.unlock();
+        return;
+    }
+    registration.in_flight += 1;
+    const callback = registration.callback.?;
+    const callback_context = registration.context;
+    state.log_mutex.unlock();
+
+    const message_data: [*c]const u8 = if (record.message.len == 0) null else record.message.ptr;
+    const c_record = CLogRecord{
+        .sequence = record.sequence,
+        .level = c_log_level(record.level),
+        .category = c_log_category(record.category),
+        .redaction = c_log_redaction(record.redaction),
+        .message = .{ .data = message_data, .len = record.message.len },
+        .source_event_sequence = record.source_event_sequence orelse 0,
+        .has_source_event_sequence = @intFromBool(record.source_event_sequence != null),
+        .reserved = .{ 0, 0, 0, 0, 0, 0, 0 },
+    };
+    c_log_callback_active = true;
+    defer c_log_callback_active = false;
+    callback(callback_context, &c_record);
+
+    state.log_mutex.lock();
+    registration.in_flight -= 1;
+    state.log_ready.broadcast();
+    state.log_mutex.unlock();
+}
 
 pub fn is_valid_buffer(buffer: CBuffer) bool {
     return buffer.data != null or buffer.len == 0;
@@ -602,6 +722,77 @@ pub fn is_valid_log_level(level: u32) bool {
     return level >= c_log_trace and level <= c_log_error;
 }
 
+pub fn is_valid_log_category(category: u32) bool {
+    return category >= c_log_category_runtime and category <= c_log_category_replay;
+}
+
+pub fn is_valid_log_redaction(redaction: u32) bool {
+    return redaction >= c_log_redaction_none and redaction <= c_log_redaction_all;
+}
+
+fn runtime_log_level(level: u32) runtime.RuntimeLogLevel {
+    return switch (level) {
+        c_log_trace => .trace,
+        c_log_debug => .debug,
+        c_log_info => .info,
+        c_log_warning => .warning,
+        c_log_error => .err,
+        else => unreachable,
+    };
+}
+
+fn runtime_log_category(category: u32) runtime.RuntimeLogCategory {
+    return switch (category) {
+        c_log_category_runtime => .runtime,
+        c_log_category_connection => .connection,
+        c_log_category_message => .message,
+        c_log_category_queue => .queue,
+        c_log_category_security => .security,
+        c_log_category_replay => .replay,
+        else => unreachable,
+    };
+}
+
+fn runtime_log_redaction(redaction: u32) runtime.RuntimeLogRedaction {
+    return switch (redaction) {
+        c_log_redaction_none => .none,
+        c_log_redaction_payload => .payload,
+        c_log_redaction_metadata => .metadata,
+        c_log_redaction_all => .all,
+        else => unreachable,
+    };
+}
+
+fn c_log_level(level: runtime.RuntimeLogLevel) u32 {
+    return switch (level) {
+        .trace => c_log_trace,
+        .debug => c_log_debug,
+        .info => c_log_info,
+        .warning => c_log_warning,
+        .err => c_log_error,
+    };
+}
+
+fn c_log_category(category: runtime.RuntimeLogCategory) u32 {
+    return switch (category) {
+        .runtime => c_log_category_runtime,
+        .connection => c_log_category_connection,
+        .message => c_log_category_message,
+        .queue => c_log_category_queue,
+        .security => c_log_category_security,
+        .replay => c_log_category_replay,
+    };
+}
+
+fn c_log_redaction(redaction: runtime.RuntimeLogRedaction) u32 {
+    return switch (redaction) {
+        .none => c_log_redaction_none,
+        .payload => c_log_redaction_payload,
+        .metadata => c_log_redaction_metadata,
+        .all => c_log_redaction_all,
+    };
+}
+
 pub fn validate_diagnostics_config(config: ?*const CDiagnosticsConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (!is_valid_log_level(value.log_level)) return .invalid_argument;
@@ -711,6 +902,16 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.clock_bridge = .{ .context = value.clock_context, .now = value.now.? };
     state.sdk = build_sdk(value, state.clock_bridge.clock());
     state.poll_runtime = runtime.PollRuntime.init(state.allocator_bridge.allocator(), state.sdk);
+    state.event_bus = runtime.RuntimeEventBus.init(.{}) catch unreachable;
+    state.metrics = runtime.RuntimeMetrics.init();
+    state.logger = runtime.RuntimeLogger.init(.{}) catch unreachable;
+    _ = state.metrics.attach(&state.event_bus) catch unreachable;
+    _ = state.logger.attach(&state.event_bus) catch unreachable;
+    state.next_runtime_event_sequence = 0;
+    state.log_mutex = .{};
+    state.log_ready = .{};
+    state.log_registrations = [_]CLogRegistration{.{}} ** runtime.max_runtime_log_callbacks;
+    for (&state.log_registrations) |*registration| registration.state = state;
     state.connections = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
@@ -805,6 +1006,7 @@ pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_conne
     };
     connection_output.* = @ptrCast(connection);
     peer_output.* = @ptrCast(peer);
+    emit_runtime_event(state, .{ .connected = {} });
     return @intFromEnum(CResult.ok);
 }
 
@@ -827,6 +1029,7 @@ pub export fn minna_san_connection_close(sdk: ?*CSdk, connection: ?*CConnection)
     state.connections.release(record.connection) catch return @intFromEnum(CResult.invalid_state);
     for (state.connection_records.items[index + 1 ..], index..) |next, destination| state.connection_records.items[destination] = next;
     state.connection_records.items.len -= 1;
+    emit_runtime_event(state, .{ .disconnected = {} });
     return @intFromEnum(CResult.ok);
 }
 
@@ -921,6 +1124,8 @@ pub export fn minna_san_channel_send(sdk: ?*CSdk, channel: ?*CChannel, buffer: C
     };
     record.next_sequence +%= 1;
     output.* = sequence;
+    const payload: []const u8 = if (buffer.len == 0) &.{} else @as([*]const u8, @ptrCast(buffer.data))[0..buffer.len];
+    emit_runtime_event(state, .{ .message = .{ .buffer = .{ .borrowed = .init(payload) } } });
     return @intFromEnum(CResult.ok);
 }
 
@@ -1264,6 +1469,105 @@ pub export fn minna_san_sdk_metrics_snapshot(sdk: ?*CSdk, out_snapshot: ?*CMetri
         .active_channels = state.channel_records.items.len,
         .active_sessions = state.session_records.items.len,
     };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_runtime_metrics_snapshot(sdk: ?*CSdk, out_snapshot: ?*CRuntimeMetricsSnapshot) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_snapshot orelse return @intFromEnum(CResult.invalid_argument);
+    const snapshot_value = state.metrics.snapshot();
+    output.* = .{
+        .polls = state.poll_runtime.poll_count(),
+        .events = snapshot_value.events,
+        .connected = snapshot_value.connected,
+        .disconnected = snapshot_value.disconnected,
+        .messages = snapshot_value.messages,
+        .overflows = snapshot_value.overflows,
+        .dropped_events = snapshot_value.dropped_events,
+        .active_connections = @intCast(snapshot_value.active_connections),
+        .message_bytes_samples = snapshot_value.message_bytes.samples,
+        .message_bytes_total = snapshot_value.message_bytes.total,
+        .message_bytes_maximum = snapshot_value.message_bytes.maximum,
+        .direct_route_health = @intFromEnum(snapshot_value.route_health.direct),
+        .relay_route_health = @intFromEnum(snapshot_value.route_health.relay),
+        .authoritative_route_health = @intFromEnum(snapshot_value.route_health.authoritative),
+        .queue_depth = @intCast(snapshot_value.queue_pressure.depth),
+        .queue_capacity = @intCast(snapshot_value.queue_pressure.capacity),
+        .security_events = snapshot_value.security_events,
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_log_callback_register(sdk: ?*CSdk, context: ?*anyopaque, callback: ?CLogRecordFn, out_subscription: ?*CLogSubscription) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_subscription orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .id = 0 };
+    if (c_log_callback_active) return @intFromEnum(CResult.invalid_state);
+    const value = callback orelse return @intFromEnum(CResult.invalid_argument);
+    state.log_mutex.lock();
+    var registration: ?*CLogRegistration = null;
+    for (&state.log_registrations) |*candidate| {
+        if (candidate.active or candidate.subscription != null) continue;
+        registration = candidate;
+        break;
+    }
+    const selected = registration orelse {
+        state.log_mutex.unlock();
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    selected.context = context;
+    selected.callback = value;
+    const subscription = state.logger.register(.{ .context = selected, .receive = c_log_bridge }) catch {
+        selected.context = null;
+        selected.callback = null;
+        state.log_mutex.unlock();
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    selected.subscription = subscription;
+    selected.active = true;
+    output.* = .{ .id = subscription.id };
+    state.log_mutex.unlock();
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_log_callback_unregister(sdk: ?*CSdk, subscription: CLogSubscription) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (c_log_callback_active) return @intFromEnum(CResult.invalid_state);
+    state.log_mutex.lock();
+    var registration: ?*CLogRegistration = null;
+    for (&state.log_registrations) |*candidate| {
+        if (!candidate.active or candidate.subscription.?.id != subscription.id) continue;
+        registration = candidate;
+        break;
+    }
+    const selected = registration orelse {
+        state.log_mutex.unlock();
+        return @intFromEnum(CResult.invalid_argument);
+    };
+    const runtime_subscription = selected.subscription.?;
+    selected.active = false;
+    state.log_mutex.unlock();
+    state.logger.unregister(runtime_subscription) catch return @intFromEnum(CResult.invalid_state);
+
+    state.log_mutex.lock();
+    while (selected.in_flight != 0) state.log_ready.wait(&state.log_mutex);
+    selected.context = null;
+    selected.callback = null;
+    selected.subscription = null;
+    state.log_mutex.unlock();
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_sdk_log(sdk: ?*CSdk, level: u32, category: u32, redaction: u32, message: CBuffer) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    if (!is_valid_log_level(level) or !is_valid_log_category(category) or !is_valid_log_redaction(redaction) or !is_valid_buffer(message)) return @intFromEnum(CResult.invalid_argument);
+    const message_bytes: []const u8 = if (message.len == 0) &.{} else @as([*]const u8, @ptrCast(message.data))[0..message.len];
+    _ = state.logger.emit(.{
+        .level = runtime_log_level(level),
+        .category = runtime_log_category(category),
+        .redaction = runtime_log_redaction(redaction),
+        .message = message_bytes,
+    }) catch return @intFromEnum(CResult.invalid_state);
     return @intFromEnum(CResult.ok);
 }
 
@@ -1830,6 +2134,92 @@ test "C diagnostics configuration rejects invalid hooks and capture limits" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_diagnostics_config_set_logging(&config, null, null, c_log_info));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_diagnostics_config_set_capture_replay(&config, 1, 0, 0, 0));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.unsupported)), minna_san_diagnostics_log(&config, "missing hook"));
+}
+
+test "C runtime metrics snapshots and log callbacks preserve bounded runtime parity" {
+    const Fixture = struct {
+        var calls: usize = 0;
+        var last_record: ?CLogRecord = null;
+        var sdk: ?*CSdk = null;
+        var subscription: CLogSubscription = .{ .id = 0 };
+        var unregister_during_callback: bool = false;
+        var unregister_result: ?c_int = null;
+
+        fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
+            const bytes = std.testing.allocator.alloc(u8, len) catch return null;
+            return @ptrCast(bytes.ptr);
+        }
+
+        fn release(_: ?*anyopaque, data: [*c]u8, len: usize) callconv(.c) void {
+            const bytes: [*]u8 = @ptrCast(data);
+            std.testing.allocator.free(bytes[0..len]);
+        }
+
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 0;
+        }
+
+        fn receive(_: ?*anyopaque, record: *const CLogRecord) callconv(.c) void {
+            calls += 1;
+            last_record = record.*;
+            if (unregister_during_callback) unregister_result = minna_san_sdk_log_callback_unregister(sdk, subscription);
+        }
+    };
+    const config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport,
+        .connection_capacity = 1,
+        .channel_capacity = 1,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    Fixture.calls = 0;
+    Fixture.last_record = null;
+    Fixture.sdk = null;
+    Fixture.subscription = .{ .id = 0 };
+    Fixture.unregister_during_callback = false;
+    Fixture.unregister_result = null;
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &sdk));
+    defer minna_san_sdk_destroy(sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
+    var subscription: CLogSubscription = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log_callback_register(sdk, null, Fixture.receive, &subscription));
+    Fixture.sdk = sdk;
+    Fixture.subscription = subscription;
+    var secret = [_]u8{ 's', 'e', 'c', 'r', 'e', 't' };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log(sdk, c_log_warning, c_log_category_security, c_log_redaction_payload, .{ .data = @ptrCast(&secret), .len = secret.len }));
+    try std.testing.expectEqual(@as(usize, 1), Fixture.calls);
+    const direct_record = Fixture.last_record.?;
+    try std.testing.expectEqual(c_log_warning, direct_record.level);
+    try std.testing.expectEqual(c_log_category_security, direct_record.category);
+    try std.testing.expectEqual(c_log_redaction_payload, direct_record.redaction);
+    try std.testing.expectEqualStrings("[payload redacted]", direct_record.message.data[0..direct_record.message.len]);
+    try std.testing.expectEqual(@as(u8, 0), direct_record.has_source_event_sequence);
+    Fixture.unregister_during_callback = true;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log(sdk, c_log_info, c_log_category_runtime, c_log_redaction_none, .{ .data = null, .len = 0 }));
+    Fixture.unregister_during_callback = false;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), Fixture.unregister_result.?);
+    var connection: ?*CConnection = null;
+    var peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &connection, &peer));
+    try std.testing.expectEqual(@as(usize, 3), Fixture.calls);
+    const event_record = Fixture.last_record.?;
+    try std.testing.expectEqual(c_log_category_connection, event_record.category);
+    try std.testing.expectEqual(@as(u8, 1), event_record.has_source_event_sequence);
+    try std.testing.expectEqual(@as(u64, 0), event_record.source_event_sequence);
+    var metrics: CRuntimeMetricsSnapshot = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_runtime_metrics_snapshot(sdk, &metrics));
+    try std.testing.expectEqual(@as(u64, 1), metrics.events);
+    try std.testing.expectEqual(@as(u64, 1), metrics.connected);
+    try std.testing.expectEqual(@as(u64, 1), metrics.active_connections);
+    try std.testing.expectEqual(c_log_redaction_payload, @as(u32, @intFromEnum(CLogRedaction.payload)));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log_callback_unregister(sdk, subscription));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log_callback_unregister(sdk, subscription));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log(sdk, c_log_info, 0, c_log_redaction_none, .{ .data = null, .len = 0 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log_callback_register(sdk, null, null, &subscription));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
 }
 
 test "C transport builders configure valid selection addresses options and controls" {
