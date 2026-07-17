@@ -5,6 +5,29 @@ on:
   push:
 
 jobs:
+  capability-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      pull_request: ${{ steps.select.outputs.pull_request }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        run: python3 script/capability_matrix.py --github-output "$GITHUB_OUTPUT"
+
+  stable-core-capability:
+    needs: capability-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.capability-matrix.outputs.pull_request) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: python3 script/capability_matrix.py --check-row "${{ matrix.id }}"
+      - run: ${{ matrix.command }}
+
   downstream-package:
     runs-on: ubuntu-latest
     steps:

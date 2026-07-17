@@ -2,6 +2,7 @@
 
 - [Quickstart](guides/quickstart.md)
 - [Testing](guides/testing.md)
+- [v0.1 capability matrix](guides/capabilities.md)
 - [Releases and support](guides/releases.md)
 - [Core API](api/core.md)
 
