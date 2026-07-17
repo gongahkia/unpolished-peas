@@ -218,4 +218,5 @@ test {
     _ = @import("replay_window.zig");
     _ = @import("key_rotation.zig");
     _ = @import("security_components.zig");
+    _ = @import("security_vectors.zig");
 }
