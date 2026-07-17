@@ -9,6 +9,7 @@ const buffer_api = @import("buffer_api.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const managed_runtime = @import("managed_runtime.zig");
+const authoritative_host = @import("authoritative_host.zig");
 const version = @import("version.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -34,6 +35,15 @@ pub const PollRuntime = poll_runtime.PollRuntime;
 pub const ManagedRuntimeError = managed_runtime.ManagedRuntimeError;
 pub const ManagedRuntime = managed_runtime.ManagedRuntime;
 pub const DirectDispatch = managed_runtime.DirectDispatch;
+pub const HostPeerId = authoritative_host.HostPeerId;
+pub const HostChannelId = authoritative_host.HostChannelId;
+pub const SessionOwner = authoritative_host.SessionOwner;
+pub const RouteDirection = authoritative_host.RouteDirection;
+pub const AuthoritativeHostError = authoritative_host.AuthoritativeHostError;
+pub const AuthoritativeHostConfig = authoritative_host.AuthoritativeHostConfig;
+pub const HostTick = authoritative_host.HostTick;
+pub const RoutedHostMessage = authoritative_host.RoutedHostMessage;
+pub const AuthoritativeHost = authoritative_host.AuthoritativeHost;
 pub const SdkVersion = version.SdkVersion;
 pub const runtime_version = version.runtime_version;
 pub const abi_version = version.abi_version;
@@ -60,5 +70,6 @@ test {
     _ = @import("event.zig");
     _ = @import("poll_runtime.zig");
     _ = @import("managed_runtime.zig");
+    _ = @import("authoritative_host.zig");
     _ = @import("version.zig");
 }
