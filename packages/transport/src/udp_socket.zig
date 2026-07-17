@@ -107,6 +107,27 @@ test "UDP datagrams reject oversized payloads and undersized receive storage" {
     try std.testing.expectError(error.ReceiveBufferTooSmall, socket.receive_from(short_storage[0..]));
 }
 
+test "bounded UDP datagram fuzz corpus retains payload boundaries" {
+    var receiver = try UdpSocket.init(.{});
+    defer receiver.close();
+    try receiver.bind(ipv4.Ipv4Address.wildcard(0));
+    const receiver_address = try ipv4.Ipv4Address.parse("127.0.0.1", (try local_address(&receiver)).port);
+    var sender = try UdpSocket.init(.{});
+    defer sender.close();
+    var storage: [max_ipv4_datagram_bytes]u8 = undefined;
+    var payload: [512]u8 = undefined;
+    var prng = std.Random.DefaultPrng.init(0x9eb5_4d31_7ac8_f602);
+    const random = prng.random();
+    var iteration: usize = 0;
+    while (iteration < 64) : (iteration += 1) {
+        const length = random.uintLessThan(usize, payload.len + 1);
+        random.bytes(payload[0..length]);
+        try std.testing.expectEqual(length, try sender.send_to(payload[0..length], receiver_address));
+        const received = try receive_with_retry(&receiver, storage[0..]);
+        try std.testing.expectEqualSlices(u8, payload[0..length], received.bytes);
+    }
+}
+
 fn local_address(socket: *UdpSocket) !ipv4.Ipv4Address {
     var native = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 0);
     var address_length = native.getOsSockLen();

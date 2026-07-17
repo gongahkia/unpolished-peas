@@ -86,3 +86,34 @@ test "STUN credentials reject missing bounded nonce realm and unsupported algori
     invalid.algorithm = .md5;
     try std.testing.expectError(error.UnsupportedAlgorithm, validate_long_term_credentials(invalid));
 }
+
+test "bounded STUN credential fuzz corpus retains input and integrity limits" {
+    var prng = std.Random.DefaultPrng.init(0xa482_19bd_67e3_c50f);
+    const random = prng.random();
+    var bytes: [max_stun_credential_bytes + 1]u8 = undefined;
+    var expected: [stun_integrity_tag_bytes]u8 = undefined;
+    var received: [stun_integrity_tag_bytes]u8 = undefined;
+    var iteration: usize = 0;
+    while (iteration < 512) : (iteration += 1) {
+        random.bytes(&bytes);
+        random.bytes(&expected);
+        random.bytes(&received);
+        const username = bytes[0..random.uintLessThan(usize, bytes.len + 1)];
+        const password = bytes[0..random.uintLessThan(usize, bytes.len + 1)];
+        const realm = bytes[0..random.uintLessThan(usize, bytes.len + 1)];
+        const nonce = bytes[0..random.uintLessThan(usize, bytes.len + 1)];
+        const short = StunShortTermCredentials{ .username = username, .password = password };
+        const long = StunLongTermCredentials{ .username = username, .password = password, .realm = realm, .nonce = nonce, .algorithm = @enumFromInt(random.int(u16)) };
+        _ = validate_short_term_credentials(short) catch {};
+        _ = validate_long_term_credentials(long) catch {};
+        _ = stun_short_term_integrity(short, bytes[0..random.uintLessThan(usize, bytes.len + 1)]) catch {};
+        _ = stun_long_term_integrity(long, bytes[0..random.uintLessThan(usize, bytes.len + 1)]) catch {};
+        verify_stun_integrity(bytes[0..random.uintLessThan(usize, bytes.len + 1)], expected, received) catch {};
+    }
+    const credentials = StunShortTermCredentials{ .username = "user", .password = "password" };
+    const tag = try stun_short_term_integrity(credentials, "message");
+    try verify_stun_integrity("message", tag, tag);
+    var tampered = tag;
+    tampered[0] +%= 1;
+    try std.testing.expectError(error.IntegrityMismatch, verify_stun_integrity("message", tag, tampered));
+}

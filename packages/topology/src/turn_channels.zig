@@ -87,3 +87,27 @@ test "TURN channels reject invalid bounded collisions and malformed frames" {
     try std.testing.expectError(error.ChannelCapacityExceeded, channels.bind(.{ .number = turn_channel_min + 1, .peer = second }));
     try std.testing.expectError(error.MalformedChannelData, channels.decode(&.{ 0, 1 }));
 }
+
+test "bounded TURN channel-data fuzz corpus retains binding and frame limits" {
+    var channels = try TurnChannels.init(std.testing.allocator, .{ .maximum_channels = 1 });
+    defer channels.deinit();
+    try channels.bind(.{ .number = turn_channel_min, .peer = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, 1 }, .port = 3478 } } });
+    var prng = std.Random.DefaultPrng.init(0xc762_5e18_39ab_d40f);
+    const random = prng.random();
+    var input: [128]u8 = undefined;
+    var iteration: usize = 0;
+    while (iteration < 512) : (iteration += 1) {
+        const length = random.uintLessThan(usize, input.len + 1);
+        random.bytes(input[0..length]);
+        if (channels.decode(input[0..length]) catch null) |frame| {
+            try std.testing.expectEqual(turn_channel_min, frame.number);
+            try std.testing.expectEqual(length - turn_channel_header_bytes, frame.payload.len);
+        }
+    }
+    var encoded: [7]u8 = undefined;
+    const frame = try channels.encode(.{ .number = turn_channel_min, .payload = "abc" }, encoded[0..]);
+    try std.testing.expectEqualStrings("abc", (try channels.decode(frame)).payload);
+    encoded[2] = 0;
+    encoded[3] = 4;
+    try std.testing.expectError(error.MalformedChannelData, channels.decode(encoded[0..]));
+}
