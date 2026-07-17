@@ -234,6 +234,14 @@ test "stable public symbols are exact" {
         "ReplayClassification",
         "ReplayWindowConfig",
         "ReplayWindow",
+        "KeyEpoch",
+        "max_key_rotation_overlap_packets",
+        "KeyRotationError",
+        "KeyRotationControlKind",
+        "KeyRotationConfig",
+        "KeyRotationControl",
+        "RotatingPacketKey",
+        "KeyRotation",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
