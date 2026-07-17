@@ -1,0 +1,7 @@
+version = 1
+
+[[annotations]]
+path = ["REUSE.toml", "build.zig", "build.zig.zon", "licenses/releases/**", "packages/**", "services/**"]
+precedence = "aggregate"
+SPDX-FileCopyrightText = "2026 Gabriel Ong Zhe Mian"
+SPDX-License-Identifier = "BUSL-1.1"
