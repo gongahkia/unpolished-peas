@@ -5,6 +5,7 @@ const shard_directory = @import("shard_directory.zig");
 const shard_handoff = @import("shard_handoff.zig");
 const routed_peer_group = @import("routed_peer_group.zig");
 const peer_group_membership = @import("peer_group_membership.zig");
+const peer_discovery = @import("peer_discovery.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -38,6 +39,12 @@ pub const MembershipEvent = peer_group_membership.MembershipEvent;
 pub const PeerGroupMembershipError = peer_group_membership.PeerGroupMembershipError;
 pub const PeerGroupMembershipConfig = peer_group_membership.PeerGroupMembershipConfig;
 pub const PeerGroupMembership = peer_group_membership.PeerGroupMembership;
+pub const PeerDiscoveryError = peer_discovery.PeerDiscoveryError;
+pub const DiscoveryCandidate = peer_discovery.DiscoveryCandidate;
+pub const DiscoveryRequest = peer_discovery.DiscoveryRequest;
+pub const RendezvousRequest = peer_discovery.RendezvousRequest;
+pub const SignalingMessage = peer_discovery.SignalingMessage;
+pub const PeerDiscoveryHooks = peer_discovery.PeerDiscoveryHooks;
 
 pub const package_name = "topology";
 
@@ -56,4 +63,5 @@ test {
     _ = @import("shard_handoff.zig");
     _ = @import("routed_peer_group.zig");
     _ = @import("peer_group_membership.zig");
+    _ = @import("peer_discovery.zig");
 }
