@@ -10,6 +10,7 @@ const snapshot_publisher = @import("snapshot_publisher.zig");
 const snapshot_client = @import("snapshot_client.zig");
 const snapshot_baseline = @import("snapshot_baseline.zig");
 const full_state_recovery = @import("full_state_recovery.zig");
+const replication_template = @import("replication_template.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -88,6 +89,15 @@ pub const StateFullStateRecoveryRequest = full_state_recovery.StateFullStateReco
 pub const StateFullStateRecoveryError = full_state_recovery.StateFullStateRecoveryError;
 pub const StateFullStateRecoveryConfig = full_state_recovery.StateFullStateRecoveryConfig;
 pub const StateFullStateRecovery = full_state_recovery.StateFullStateRecovery;
+pub const StateReplicationRecipient = replication_template.StateReplicationRecipient;
+pub const StateReplicationInterestFn = replication_template.StateReplicationInterestFn;
+pub const StateReplicationTransportFn = replication_template.StateReplicationTransportFn;
+pub const StateReplicationInterest = replication_template.StateReplicationInterest;
+pub const StateReplicationTransport = replication_template.StateReplicationTransport;
+pub const StateReplicationError = replication_template.StateReplicationError;
+pub const StateReplicationOutcome = replication_template.StateReplicationOutcome;
+pub const StateReplicationTemplateConfig = replication_template.StateReplicationTemplateConfig;
+pub const StateReplicationTemplate = replication_template.StateReplicationTemplate;
 
 pub const package_name = "state";
 
@@ -111,4 +121,5 @@ test {
     _ = @import("snapshot_client.zig");
     _ = @import("snapshot_baseline.zig");
     _ = @import("full_state_recovery.zig");
+    _ = @import("replication_template.zig");
 }
