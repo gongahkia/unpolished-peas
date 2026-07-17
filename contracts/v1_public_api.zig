@@ -506,7 +506,20 @@ test "stable public symbols are exact" {
         "RouteTransition",
         "package_name",
     });
-    try expectExactPublicDeclarations(state, &.{"package_name"});
+    try expectExactPublicDeclarations(state, &.{
+        "max_migration_records",
+        "MigrationTerm",
+        "MigrationHostId",
+        "MigrationRoute",
+        "MigrationHostHealth",
+        "MigrationRecordState",
+        "MigrationPlan",
+        "MigrationRecord",
+        "MigrationCoordinatorError",
+        "MigrationCoordinatorConfig",
+        "MigrationCoordinator",
+        "package_name",
+    });
     try expectExactPublicDeclarations(runtime, &.{
         "ConfigError",
         "SdkConfig",
