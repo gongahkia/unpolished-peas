@@ -180,6 +180,10 @@ test "stable public symbols are exact" {
         "PacketBufferPoolConfig",
         "PacketBufferLease",
         "PacketBufferPool",
+        "DesktopMonotonicClockError",
+        "TransportDeadlineError",
+        "DesktopMonotonicClock",
+        "TransportDeadline",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
