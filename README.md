@@ -254,7 +254,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AtlasFrameHandle`, `AtlasFrameSpec`, `AtlasAnimationFrameSpec`, `AtlasAnimationSpec`
 - `AnimationPlayer`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
-- `ParticleEmitter`, `ParticleConfig`, `ParticleMetrics`, `particles`
 - `FrameProfiler`, `ProfileScope`, `ProfileMetrics`, `profiler`
 - `RuntimeMetrics`, `InspectorMetricsPanel`, `runtimeMetrics`
 

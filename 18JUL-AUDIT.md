@@ -98,7 +98,7 @@ No open issues does not demonstrate reliability when there are no observed outsi
 
 ### Explicit cuts before v0.1
 
-Remove, rather than merely hide, ECS, Box2D physics, immediate-mode UI, effects/shaders/lighting, extension metadata and resolution, particles, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
+Remove, rather than merely hide, ECS, Box2D physics, immediate-mode UI, effects/shaders/lighting, extension metadata and resolution, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
 
 ### Performance and evidence
 

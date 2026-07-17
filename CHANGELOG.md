@@ -9,6 +9,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 ### Removed
 
 - Engine-owned extension manifests, resolution, locks, fixtures, and CI gates. See [v0.1 migrations](docs/guides/migrations.md).
+- Engine-owned particle emitters and their public API.
 
 ## 0.0.3 — withdrawn
 
