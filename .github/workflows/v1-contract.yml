@@ -11,6 +11,27 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  linux-sdk:
+    name: Linux x86_64
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install Zig 0.15.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error --output zig.tar.xz https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
+          echo '02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz' | sha256sum --check --status
+          tar --extract --file zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.15.2" >> "$GITHUB_PATH"
+      - name: Verify native Zig version
+        run: |
+          test "$(uname -m)" = "x86_64"
+          test "$(zig version)" = "0.15.2"
+      - name: Build and test SDK artifacts
+        run: zig build test
+      - name: Build C ABI artifact and consumer
+        run: zig build c-abi-parity
   windows-sdk:
     name: Windows x86_64
     runs-on: windows-2025
