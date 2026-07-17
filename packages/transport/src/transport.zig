@@ -18,6 +18,7 @@ const socket_options = @import("socket_options.zig");
 const buffer_pool = @import("buffer_pool.zig");
 const monotonic_clock = @import("monotonic_clock.zig");
 const io_failure = @import("io_failure.zig");
+const path_mtu = @import("path_mtu.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -106,6 +107,10 @@ pub const TransportIoErrorCategory = io_failure.TransportIoErrorCategory;
 pub const TransportRetryHint = io_failure.TransportRetryHint;
 pub const TransportIoFailure = io_failure.TransportIoFailure;
 pub const normalize_io_failure = io_failure.normalize_io_failure;
+pub const max_path_mtu_probes = path_mtu.max_path_mtu_probes;
+pub const PathMtuProbeError = path_mtu.PathMtuProbeError;
+pub const PathMtuProbeConfig = path_mtu.PathMtuProbeConfig;
+pub const PathMtuProber = path_mtu.PathMtuProber;
 pub const package_name = "transport";
 
 comptime {
@@ -136,4 +141,5 @@ test {
     _ = @import("buffer_pool.zig");
     _ = @import("monotonic_clock.zig");
     _ = @import("io_failure.zig");
+    _ = @import("path_mtu.zig");
 }

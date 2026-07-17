@@ -188,6 +188,10 @@ test "stable public symbols are exact" {
         "TransportRetryHint",
         "TransportIoFailure",
         "normalize_io_failure",
+        "max_path_mtu_probes",
+        "PathMtuProbeError",
+        "PathMtuProbeConfig",
+        "PathMtuProber",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
