@@ -10,6 +10,7 @@ const retransmission = @import("retransmission.zig");
 const congestion_controller = @import("congestion_controller.zig");
 const baseline_congestion = @import("baseline_congestion.zig");
 const packet_pacing = @import("packet_pacing.zig");
+const bandwidth_caps = @import("bandwidth_caps.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -68,6 +69,13 @@ pub const PacingError = packet_pacing.PacingError;
 pub const PacingConfig = packet_pacing.PacingConfig;
 pub const PacingReservation = packet_pacing.PacingReservation;
 pub const PacketPacer = packet_pacing.PacketPacer;
+pub const max_bandwidth_routes = bandwidth_caps.max_bandwidth_routes;
+pub const BandwidthCapError = bandwidth_caps.BandwidthCapError;
+pub const BandwidthDirection = bandwidth_caps.BandwidthDirection;
+pub const TrafficClass = bandwidth_caps.TrafficClass;
+pub const BandwidthDirectionConfig = bandwidth_caps.BandwidthDirectionConfig;
+pub const BandwidthCapConfig = bandwidth_caps.BandwidthCapConfig;
+pub const BandwidthLimiter = bandwidth_caps.BandwidthLimiter;
 pub const package_name = "protocol";
 
 comptime {
@@ -90,4 +98,5 @@ test {
     _ = @import("congestion_controller.zig");
     _ = @import("baseline_congestion.zig");
     _ = @import("packet_pacing.zig");
+    _ = @import("bandwidth_caps.zig");
 }
