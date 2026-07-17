@@ -5,6 +5,7 @@ const capability_negotiation = @import("capability_negotiation.zig");
 const extension_handling = @import("extension_handling.zig");
 const reliable_ordered = @import("reliable_ordered.zig");
 const unreliable_sequenced = @import("unreliable_sequenced.zig");
+const ack_ranges = @import("ack_ranges.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -40,6 +41,10 @@ pub const ReliableOrderedReceiver = reliable_ordered.ReliableOrderedReceiver;
 pub const SequencedReceiveResult = unreliable_sequenced.SequencedReceiveResult;
 pub const UnreliableSequencedReceiver = unreliable_sequenced.UnreliableSequencedReceiver;
 pub const is_newer_sequence = unreliable_sequenced.is_newer_sequence;
+pub const max_ack_ranges = ack_ranges.max_ack_ranges;
+pub const AckRangeError = ack_ranges.AckRangeError;
+pub const AckRange = ack_ranges.AckRange;
+pub const AckRanges = ack_ranges.AckRanges;
 pub const package_name = "protocol";
 
 comptime {
@@ -57,4 +62,5 @@ test {
     _ = @import("extension_handling.zig");
     _ = @import("reliable_ordered.zig");
     _ = @import("unreliable_sequenced.zig");
+    _ = @import("ack_ranges.zig");
 }

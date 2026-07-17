@@ -123,6 +123,10 @@ test "stable public symbols are exact" {
         "SequencedReceiveResult",
         "UnreliableSequencedReceiver",
         "is_newer_sequence",
+        "max_ack_ranges",
+        "AckRangeError",
+        "AckRange",
+        "AckRanges",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
