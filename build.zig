@@ -319,11 +319,13 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
-    const core_api_snapshot_tests = b.addTest(.{ .root_module = b.createModule(.{
+    const core_api_snapshot_module = b.createModule(.{
         .root_source_file = b.path("src/core_api_snapshot.zig"),
         .target = target,
         .optimize = optimize,
-    }) });
+    });
+    addStb(core_api_snapshot_module);
+    const core_api_snapshot_tests = b.addTest(.{ .root_module = core_api_snapshot_module });
     const run_core_api_snapshot_tests = b.addRunArtifact(core_api_snapshot_tests);
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&run_core_api_snapshot_tests.step);

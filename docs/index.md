@@ -2,6 +2,7 @@
 
 - [Quickstart](guides/quickstart.md)
 - [Game protocol](guides/game-protocol.md)
+- [v0.1 core contract](guides/core-contract.md)
 - [Testing](guides/testing.md)
 - [v0.1 capability matrix](guides/capabilities.md)
 - [v0.1 migrations](guides/migrations.md)

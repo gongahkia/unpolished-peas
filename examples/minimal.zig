@@ -7,12 +7,12 @@ const Game = struct {
         .width = 80,
         .height = 60,
         .scale = 6,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.rect(18, 18, 28, 28, up.Color.rgb(255, 198, 74));
-        ctx.text("HELLO", 8, 8, up.Color.white);
+        ctx.rect(18, 18, 28, 28, up.core.Color.rgb(255, 198, 74));
+        ctx.text("HELLO", 8, 8, up.core.Color.white);
     }
 };
 

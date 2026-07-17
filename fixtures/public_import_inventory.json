@@ -11,7 +11,7 @@
     {"path": "examples/camera.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["CameraDirector", "CameraHandle", "CameraRig", "Color", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "GpuCameraCanvas", "playGame"]}]},
     {"path": "examples/dev_bounce.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Color", "ImageHandle", "TextHandle", "Vec2"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/explicit_loop.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Canvas", "Color", "Input"]}]},
-    {"path": "examples/minimal.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
+    {"path": "examples/minimal.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/primitives.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Color"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/programmatic_atlas.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Atlas", "Image"]}]},
     {"path": "examples/proof_benchmark.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["Canvas", "Color", "StepClock"]}]},
