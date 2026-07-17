@@ -2,6 +2,7 @@ const core = @import("minna-san-core");
 const envelope = @import("wire_envelope.zig");
 const packet_envelope = @import("packet_envelope.zig");
 const capability_negotiation = @import("capability_negotiation.zig");
+const extension_handling = @import("extension_handling.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -25,6 +26,10 @@ pub const CapabilityOffer = capability_negotiation.CapabilityOffer;
 pub const NegotiatedCapabilities = capability_negotiation.NegotiatedCapabilities;
 pub const CapabilityNegotiationError = capability_negotiation.CapabilityNegotiationError;
 pub const negotiate_capabilities = capability_negotiation.negotiate_capabilities;
+pub const critical_extension_first = extension_handling.critical_extension_first;
+pub const ExtensionHandling = extension_handling.ExtensionHandling;
+pub const ExtensionHandlingError = extension_handling.ExtensionHandlingError;
+pub const handle_extension = extension_handling.handle_extension;
 pub const package_name = "protocol";
 
 comptime {
@@ -39,4 +44,5 @@ test {
     _ = @import("wire_envelope.zig");
     _ = @import("packet_envelope.zig");
     _ = @import("capability_negotiation.zig");
+    _ = @import("extension_handling.zig");
 }
