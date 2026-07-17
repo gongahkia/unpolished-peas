@@ -182,7 +182,6 @@ pub fn build(b: *std.Build) void {
     const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
-    const tilemap_demo = addExample(b, "unpolished-peas-tilemap", "examples/tilemap.zig", target, optimize, peas, sdl);
     const primitives_demo = addExample(b, "unpolished-peas-primitives", "examples/primitives.zig", target, optimize, peas, sdl);
     const breakout = addExample(b, "unpolished-peas-breakout", "examples/breakout.zig", target, optimize, peas, null);
     const breakout_sdl = addExample(b, "unpolished-peas-breakout-sdl", "examples/breakout_sdl.zig", target, optimize, peas, sdl);
@@ -190,11 +189,6 @@ pub fn build(b: *std.Build) void {
     const package_topdown_sdl = b.step("package-topdown-sdl", "Install the top-down SDL sample and assets");
     package_topdown_sdl.dependOn(&b.addInstallArtifact(topdown_sdl, .{}).step);
     package_topdown_sdl.dependOn(&install_assets.step);
-    const topdown_scene = addExample(b, "unpolished-peas-test-topdown-scene", "examples/topdown_scene.zig", target, optimize, peas, null);
-    const platformer_sdl = b.addExecutable(.{ .name = "unpolished-peas-platformer-sdl", .root_module = b.createModule(.{ .root_source_file = b.path("examples/platformer_sdl.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "unpolished-peas-sdl3", .module = sdl } } }) });
-    const package_platformer_sdl = b.step("package-platformer-sdl", "Install the platformer SDL sample and assets");
-    package_platformer_sdl.dependOn(&b.addInstallArtifact(platformer_sdl, .{}).step);
-    package_platformer_sdl.dependOn(&install_assets.step);
     const audio_stress = addExample(b, "unpolished-peas-stress-audio-sdl", "examples/stress_audio_sdl.zig", target, optimize, peas, sdl);
     const packaged_assets = addExample(b, "unpolished-peas-test-packaged-assets", "examples/test_packaged_assets.zig", target, optimize, peas, null);
     const packaged_layout = addExample(b, "unpolished-peas-test-packaged-layout", "examples/test_packaged_layout.zig", target, optimize, peas, sdl);
@@ -285,13 +279,10 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-audio", "Run the unpolished-peas audio demo", audio_demo);
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
-    addRunStep(b, "run-tilemap", "Run the unpolished-peas tile-map demo", tilemap_demo);
     addRunStep(b, "run-primitives", "Run the unpolished-peas GPU primitive demo", primitives_demo);
     addRunStep(b, "run-breakout", "Run the deterministic Breakout demo", breakout);
     addRunStep(b, "run-breakout-sdl", "Run the unpolished-peas SDL3 Breakout demo", breakout_sdl);
     addRunStep(b, "run-topdown-sdl", "Run the unpolished-peas SDL3 top-down demo", topdown_sdl);
-    addRunStep(b, "test-topdown-scene", "Run the deterministic top-down scene", topdown_scene);
-    addRunStep(b, "run-platformer-sdl", "Run the unpolished-peas SDL3 platformer", platformer_sdl);
     const breakout_smoke = b.addRunArtifact(breakout_sdl);
     breakout_smoke.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("examples/assets"));
     breakout_smoke.setEnvironmentVariable("SDL_AUDIODRIVER", "dummy");
@@ -304,12 +295,6 @@ pub fn build(b: *std.Build) void {
     topdown_smoke.addArgs(&.{ "--frames", "2" });
     const topdown_smoke_step = b.step("smoke-topdown-sdl", "Run a bounded SDL3 top-down smoke");
     topdown_smoke_step.dependOn(&topdown_smoke.step);
-    const platformer_smoke = b.addRunArtifact(platformer_sdl);
-    platformer_smoke.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("examples/assets"));
-    platformer_smoke.setEnvironmentVariable("SDL_AUDIODRIVER", "dummy");
-    platformer_smoke.addArgs(&.{ "--frames", "2" });
-    const platformer_smoke_step = b.step("smoke-platformer-sdl", "Run a bounded SDL3 platformer smoke");
-    platformer_smoke_step.dependOn(&platformer_smoke.step);
     const desktop_package_matrix = b.addSystemCommand(&.{ "script/test_desktop_package_matrix.sh", @tagName(target.result.os.tag) });
     desktop_package_matrix.setCwd(b.path("."));
     const desktop_package_matrix_step = b.step("test-desktop-package-matrix", "Package and smoke every proof game for the host desktop platform");
@@ -324,7 +309,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -395,19 +380,9 @@ pub fn build(b: *std.Build) void {
     const run_topdown_tests = b.addRunArtifact(topdown_tests);
     const topdown_test_step = b.step("test-topdown", "Run deterministic top-down tests");
     topdown_test_step.dependOn(&run_topdown_tests.step);
-    const platformer_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("examples/platformer_game.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
-    }) });
-    const run_platformer_tests = b.addRunArtifact(platformer_tests);
-    const platformer_test_step = b.step("test-platformer", "Run deterministic platformer fixtures");
-    platformer_test_step.dependOn(&run_platformer_tests.step);
     const replay_test_step = b.step("test-replays", "Run stored fixed-step input replays");
     replay_test_step.dependOn(&run_breakout_tests.step);
     replay_test_step.dependOn(&run_topdown_tests.step);
-    replay_test_step.dependOn(&run_platformer_tests.step);
 
     const sdl_tests = b.addTest(.{ .root_module = sdl });
     const run_sdl_tests = b.addRunArtifact(sdl_tests);

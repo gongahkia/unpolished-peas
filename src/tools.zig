@@ -77,7 +77,6 @@ pub const PackageTarget = enum {
 pub const PackageGame = enum {
     bounce,
     topdown,
-    platformer,
 };
 
 pub const CheckTarget = enum {
@@ -233,7 +232,7 @@ pub fn printHelp() void {
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
         \\replay: zig build peas -- replay <fixture.upr> [expected-input-hash]
-        \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]
+        \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown>]
         \\serve: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]
         \\support-bundle: zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...
         \\doctor: zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]

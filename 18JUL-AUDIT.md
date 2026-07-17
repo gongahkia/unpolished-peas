@@ -104,6 +104,8 @@ Networking, relays, hosted services, and Box2D physics are outside the v0.1 core
 
 Effects, shader assets, lighting, and public GPU-resource APIs are also outside the v0.1 core; the historical references above are retained only as audit context.
 
+Tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs are pre-v0.1 cuts; the historical references above are retained only as audit context.
+
 ### Performance and evidence
 
 - Treat 2D rendering performance as a product requirement. Use versioned, representative workload baselines and tolerances per target; block regressions instead of making cross-engine speed claims.

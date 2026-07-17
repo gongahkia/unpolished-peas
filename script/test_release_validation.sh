@@ -29,10 +29,8 @@ for command in \
     'run clean-consumer zig build test-release-candidate-clean-consumer' \
     'run proof-consumers script/test_independent_proof_games.sh' \
     'run proof-topdown runtime script/test_proof_game_matrix.sh topdown' \
-    'run proof-platformer runtime script/test_proof_game_matrix.sh platformer' \
     'run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce' \
     'run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown' \
-    'run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer' \
     'run diagnostics zig build test-support' \
     'run visual-scenes zig build test-scenes' \
     'run backend-comparison zig build test-desktop-backends' \

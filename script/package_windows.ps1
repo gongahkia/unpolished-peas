@@ -1,6 +1,6 @@
 param(
     [string]$OutputDirectory,
-    [ValidateSet('bounce', 'topdown', 'platformer')]
+    [ValidateSet('bounce', 'topdown')]
     [string]$Game = 'bounce'
 )
 
@@ -28,9 +28,8 @@ if ([string]::IsNullOrWhiteSpace($OutputDirectory)) {
 }
 $stage = Join-Path ([IO.Path]::GetTempPath()) ("unpolished-peas-package-" + [guid]::NewGuid().ToString('N'))
 switch ($Game) {
-    'bounce' { $build_step = 'package-bounce-sdl'; $source_runtime = 'unpolished-peas-bounce-sdl.exe'; $fixture = 'topdown-project' }
+    'bounce' { $build_step = 'package-bounce-sdl'; $source_runtime = 'unpolished-peas-bounce-sdl.exe'; $fixture = 'bounce-project' }
     'topdown' { $build_step = 'package-topdown-sdl'; $source_runtime = 'unpolished-peas-topdown-sdl.exe'; $fixture = 'topdown-project' }
-    'platformer' { $build_step = 'package-platformer-sdl'; $source_runtime = 'unpolished-peas-platformer-sdl.exe'; $fixture = 'platformer-project' }
 }
 $name = "unpolished-peas-$Game-windows-x86_64"
 

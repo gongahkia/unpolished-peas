@@ -12,7 +12,7 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
-case "$game" in bounce|topdown|platformer) ;; *) exit 64 ;; esac
+case "$game" in bounce|topdown) ;; *) exit 64 ;; esac
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM

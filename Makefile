@@ -16,15 +16,11 @@ run-examples:
 	zig build run-atlas -- --renderer opengl
 	zig build run-camera -- --renderer sdl-gpu
 	zig build run-camera -- --renderer opengl
-	zig build run-tilemap -- --renderer sdl-gpu
-	zig build run-tilemap -- --renderer opengl
 	zig build run-primitives -- --renderer sdl-gpu
 	zig build run-primitives -- --renderer opengl
 	zig build run-breakout-sdl -- --renderer sdl-gpu
 	zig build run-breakout-sdl -- --renderer opengl
 	zig build run-topdown-sdl -- --renderer sdl-gpu
 	zig build run-topdown-sdl -- --renderer opengl
-	zig build run-platformer-sdl -- --renderer sdl-gpu
-	zig build run-platformer-sdl -- --renderer opengl
 	zig build stress-audio-sdl -- --renderer sdl-gpu
 	zig build stress-audio-sdl -- --renderer opengl

@@ -1,6 +1,6 @@
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
-const content = @import("programmatic_content.zig");
+const atlas_data = @import("programmatic_atlas.zig");
 
 const Game = struct {
     pub const config: sdl.Config = .{
@@ -18,7 +18,7 @@ const Game = struct {
     pub fn init(ctx: *sdl.Context) !Game {
         const atlas = try ctx.allocator.create(up.Atlas);
         errdefer ctx.allocator.destroy(atlas);
-        atlas.* = try content.ballAtlas(ctx.allocator, try ctx.assets.tryImage(try ctx.loadImage("ball.png")));
+        atlas.* = try atlas_data.ballAtlas(ctx.allocator, try ctx.assets.tryImage(try ctx.loadImage("ball.png")));
         errdefer atlas.deinit();
         const animation = atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
         return .{

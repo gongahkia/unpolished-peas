@@ -18,7 +18,7 @@ METRICS = (
     "renderer_allocation_events",
     "renderer_allocated_bytes",
 )
-GAME_NAMES = ("bounce", "topdown", "platformer")
+GAME_NAMES = ("bounce",)
 GAME_METRICS = (
     "startup_ns",
     "startup_allocation_events",
@@ -69,7 +69,7 @@ def validate(baseline: dict, observed: dict) -> str:
     if not isinstance(game_limits, dict) or not isinstance(game_metrics, dict):
         raise ValueError("missing proof-game limits or metrics object")
     if set(game_limits) != set(GAME_NAMES) or set(game_metrics) != set(GAME_NAMES):
-        raise ValueError("proof-game metrics must include bounce, topdown, and platformer")
+        raise ValueError("proof-game metrics must include bounce")
     for game in GAME_NAMES:
         validate_metrics(game_limits[game], game_metrics[game], GAME_METRICS, game)
     return "proof games"

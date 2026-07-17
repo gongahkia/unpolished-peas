@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 game=${1:-bounce}
-case "$game" in bounce|topdown|platformer) ;; *) printf '%s\n' 'usage: test_browser_chromium.sh [bounce|topdown|platformer]' >&2; exit 64 ;; esac
+case "$game" in bounce|topdown) ;; *) printf '%s\n' 'usage: test_browser_chromium.sh [bounce|topdown]' >&2; exit 64 ;; esac
 tmp=$(mktemp -d)
 trap 'if [ "${server:-}" ]; then kill "$server" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT HUP INT TERM
 session=unpolished-peas-browser-harness

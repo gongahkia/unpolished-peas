@@ -1166,7 +1166,7 @@ const RuntimeRenderer = union(RendererKind) {
             },
             .opengl => |*opengl| {
                 metrics.gpu_frame_ns = null;
-                try opengl.presenter.present(canvas, sprites, commands, presentation.*);
+                try opengl.presenter.presentWithPresentation(canvas, sprites, commands, presentation.*);
                 if (capture_path) |path| {
                     var captured = try opengl.presenter.capture(allocator);
                     defer captured.deinit();

@@ -1,7 +1,7 @@
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 const breakout = @import("breakout_game.zig");
-const content = @import("programmatic_content.zig");
+const atlas_data = @import("programmatic_atlas.zig");
 
 const Game = struct {
     pub const config: sdl.Config = .{
@@ -23,7 +23,7 @@ const Game = struct {
         const ball = try ctx.loadImage("ball.png");
         const atlas = try ctx.allocator.create(up.Atlas);
         errdefer ctx.allocator.destroy(atlas);
-        atlas.* = try content.ballAtlas(ctx.allocator, try ctx.assets.tryImage(ball));
+        atlas.* = try atlas_data.ballAtlas(ctx.allocator, try ctx.assets.tryImage(ball));
         errdefer atlas.deinit();
         const ball_frame = atlas.findFrame("tile_a") orelse return error.MissingAtlasFrame;
         return .{ .ball = ball, .blip = try ctx.loadSound("blip.wav"), .atlas = atlas, .ball_frame = ball_frame };

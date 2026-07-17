@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-game="${1:?usage: test_proof_game_matrix.sh <topdown|platformer>}"
+game="${1:?usage: test_proof_game_matrix.sh <topdown>}"
 case "$game" in
-    topdown|platformer) ;;
-    *) printf '%s\n' 'usage: test_proof_game_matrix.sh <topdown|platformer>' >&2; exit 64 ;;
+    topdown) ;;
+    *) printf '%s\n' 'usage: test_proof_game_matrix.sh <topdown>' >&2; exit 64 ;;
 esac
 
 repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -37,12 +37,7 @@ run inspector-reload-profiler zig build test
 
 case "$game" in
     topdown)
-        run headless zig build test-topdown-scene
         run gameplay zig build test-topdown
         run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-topdown-sdl
-        ;;
-    platformer)
-        run headless zig build test-platformer
-        run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-platformer-sdl
         ;;
 esac

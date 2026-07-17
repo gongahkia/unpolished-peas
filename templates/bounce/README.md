@@ -8,7 +8,7 @@ zig build run
 
 Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screenshot from the composed GPU frame to the app-data directory printed at startup. Callback failures are logged there and held in the game window until Escape is pressed.
 
-`assets/` is reserved for user-owned raw files. Define atlas frames, animations, and tile maps directly in Zig beside the game code.
+`assets/` is reserved for user-owned raw files. Define atlas frames and animations directly in Zig beside game code.
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
