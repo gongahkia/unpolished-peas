@@ -113,6 +113,95 @@ pub const CTopologyConfig = extern struct {
     stun_turn: CStunTurnConfig,
     migration: CMigrationConfig,
 };
+pub const CAuthoritativeRecoveryConfig = extern struct {
+    maximum_reconnect_attempts: u8,
+    reserved: [7]u8,
+};
+pub const CShardedP2PConfig = extern struct {
+    maximum_groups: usize,
+    maximum_participants: usize,
+    maximum_dispatches_per_pump: usize,
+    maximum_signal_bytes: usize,
+    maximum_liveness_peers: usize,
+    heartbeat_interval_ns: CDurationNs,
+    idle_timeout_ns: CDurationNs,
+    reconnect_window_ns: CDurationNs,
+    maximum_liveness_events_per_poll: usize,
+};
+pub const CStunConfig = extern struct {
+    udp_server: CAddress,
+    udp_initial_rto_ns: CDurationNs,
+    udp_maximum_retransmissions: usize,
+    udp_maximum_alternate_servers: usize,
+    tcp_server: CAddress,
+    tcp_timeout_ns: CDurationNs,
+    tcp_username: CBuffer,
+    tcp_password: CBuffer,
+};
+pub const CTurnConfig = extern struct {
+    server: CAddress,
+    username: CBuffer,
+    password: CBuffer,
+    realm: CBuffer,
+    nonce: CBuffer,
+    requested_lifetime_seconds: u32,
+    maximum_permissions: usize,
+    permission_lifetime_ns: CDurationNs,
+    maximum_channels: usize,
+    credential_expires_at_ns: CDurationNs,
+    refresh_margin_ns: CDurationNs,
+    maximum_failures: usize,
+};
+pub const CRoutePolicy = enum(u32) {
+    direct_first = 1,
+    relay_first = 2,
+    authoritative_first = 3,
+};
+pub const CConnectivityRole = enum(u32) {
+    controlling = 1,
+    controlled = 2,
+};
+pub const CRouteConfig = extern struct {
+    policy: u32,
+    allow_direct: u8,
+    allow_relay: u8,
+    allow_authoritative: u8,
+    allow_degraded: u8,
+    initial_route: u32,
+    role: u32,
+    reserved: [4]u8,
+    initial_security_epoch: u64,
+    maximum_diagnostics: usize,
+    maximum_pairs: usize,
+    maximum_in_flight: usize,
+    maximum_attempts: u8,
+    maximum_keepalive_failures: u8,
+    maximum_keepalive_sends_per_poll: u8,
+    reserved2: [5]u8,
+    tie_breaker: u64,
+    pace_interval_ns: CDurationNs,
+    retry_interval_ns: CDurationNs,
+    check_timeout_ns: CDurationNs,
+    keepalive_interval_ns: CDurationNs,
+    keepalive_retry_interval_ns: CDurationNs,
+};
+pub const CMigrationTransferConfig = extern struct {
+    initial_host: u64,
+    initial_term: u64,
+    initial_membership_revision: u64,
+    initial_state_revision: u64,
+    maximum_records: usize,
+    maximum_state_bytes: usize,
+    integrity_key: CBuffer,
+};
+pub const CTopologyCapabilitiesConfig = extern struct {
+    authoritative_recovery: CAuthoritativeRecoveryConfig,
+    sharded_p2p: CShardedP2PConfig,
+    stun: CStunConfig,
+    turn: CTurnConfig,
+    route: CRouteConfig,
+    migration_transfer: CMigrationTransferConfig,
+};
 pub const CReplicationTemplate = enum(u32) {
     authoritative = 1,
     client_prediction = 2,
@@ -206,6 +295,11 @@ pub const c_admission_reject: u32 = @intFromEnum(CAdmissionDecision.reject);
 pub const c_candidate_host: u32 = @intFromEnum(CCandidateKind.host);
 pub const c_candidate_server_reflexive: u32 = @intFromEnum(CCandidateKind.server_reflexive);
 pub const c_candidate_relay: u32 = @intFromEnum(CCandidateKind.relay);
+pub const c_route_policy_direct_first: u32 = @intFromEnum(CRoutePolicy.direct_first);
+pub const c_route_policy_relay_first: u32 = @intFromEnum(CRoutePolicy.relay_first);
+pub const c_route_policy_authoritative_first: u32 = @intFromEnum(CRoutePolicy.authoritative_first);
+pub const c_connectivity_controlling: u32 = @intFromEnum(CConnectivityRole.controlling);
+pub const c_connectivity_controlled: u32 = @intFromEnum(CConnectivityRole.controlled);
 pub const c_replication_authoritative: u32 = @intFromEnum(CReplicationTemplate.authoritative);
 pub const c_replication_client_prediction: u32 = @intFromEnum(CReplicationTemplate.client_prediction);
 pub const c_replication_reconciliation: u32 = @intFromEnum(CReplicationTemplate.reconciliation);
@@ -427,6 +521,68 @@ pub fn validate_topology_config(config: ?*const CTopologyConfig) CResult {
     if (turn_enabled != is_nonempty_buffer(value.stun_turn.turn_username) or turn_enabled != is_nonempty_buffer(value.stun_turn.turn_password)) return .invalid_argument;
     if (value.migration.enabled > 1 or value.migration.handoff_timeout_ns < 0) return .invalid_argument;
     if (value.migration.enabled == 1 and value.migration.max_attempts == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn is_valid_ipv4_endpoint(address: CAddress) bool {
+    return is_valid_address(address) and address.family == @intFromEnum(CAddressFamily.ipv4) and address.port != 0;
+}
+
+pub fn is_valid_route_policy(policy: u32) bool {
+    return policy == c_route_policy_direct_first or policy == c_route_policy_relay_first or policy == c_route_policy_authoritative_first;
+}
+
+pub fn is_valid_connectivity_role(role: u32) bool {
+    return role == c_connectivity_controlling or role == c_connectivity_controlled;
+}
+
+pub fn validate_authoritative_recovery_config(config: ?*const CAuthoritativeRecoveryConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.maximum_reconnect_attempts == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_sharded_p2p_config(config: ?*const CShardedP2PConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.maximum_groups == 0 or value.maximum_participants == 0 or value.maximum_participants > 1_000 or value.maximum_dispatches_per_pump == 0 or value.maximum_signal_bytes == 0) return .invalid_argument;
+    if (value.maximum_liveness_peers == 0 or value.maximum_liveness_peers > 1_000 or value.heartbeat_interval_ns <= 0 or value.idle_timeout_ns <= 0 or value.heartbeat_interval_ns > value.idle_timeout_ns or value.reconnect_window_ns <= 0 or value.maximum_liveness_events_per_poll == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_stun_config(config: ?*const CStunConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (!is_valid_ipv4_endpoint(value.udp_server) or value.udp_initial_rto_ns <= 0 or value.udp_maximum_retransmissions == 0) return .invalid_argument;
+    if (!is_valid_ipv4_endpoint(value.tcp_server) or value.tcp_timeout_ns <= 0) return .invalid_argument;
+    if (!is_valid_buffer(value.tcp_username) or !is_valid_buffer(value.tcp_password)) return .invalid_argument;
+    if (is_nonempty_buffer(value.tcp_username) != is_nonempty_buffer(value.tcp_password)) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_turn_config(config: ?*const CTurnConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (!is_valid_ipv4_endpoint(value.server) or !is_nonempty_buffer(value.username) or !is_nonempty_buffer(value.password) or !is_nonempty_buffer(value.realm) or !is_nonempty_buffer(value.nonce)) return .invalid_argument;
+    if (value.requested_lifetime_seconds == 0 or value.maximum_permissions == 0 or value.permission_lifetime_ns <= 0 or value.maximum_channels == 0 or value.credential_expires_at_ns <= 0 or value.refresh_margin_ns <= 0 or value.maximum_failures == 0) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_route_config(config: ?*const CRouteConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (!is_valid_route_policy(value.policy) or value.allow_direct > 1 or value.allow_relay > 1 or value.allow_authoritative > 1 or value.allow_degraded > 1) return .invalid_argument;
+    if (value.allow_direct == 0 and value.allow_relay == 0 and value.allow_authoritative == 0) return .invalid_argument;
+    if (!is_valid_route_state(value.initial_route) or !is_valid_connectivity_role(value.role) or value.maximum_diagnostics == 0 or value.maximum_diagnostics > 16 or value.maximum_pairs == 0 or value.maximum_in_flight == 0 or value.maximum_in_flight > value.maximum_pairs or value.maximum_attempts == 0 or value.tie_breaker == 0) return .invalid_argument;
+    if (value.pace_interval_ns <= 0 or value.retry_interval_ns <= 0 or value.check_timeout_ns <= 0 or value.keepalive_interval_ns <= 0 or value.keepalive_retry_interval_ns <= 0 or value.maximum_keepalive_failures == 0 or value.maximum_keepalive_sends_per_poll == 0 or value.maximum_keepalive_sends_per_poll > 3) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_migration_transfer_config(config: ?*const CMigrationTransferConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (value.initial_host == 0 or value.maximum_records == 0 or value.maximum_records > 16 or value.maximum_state_bytes == 0 or !is_valid_buffer(value.integrity_key) or value.integrity_key.len != 32) return .invalid_argument;
+    return .ok;
+}
+
+pub fn validate_topology_capabilities_config(config: ?*const CTopologyCapabilitiesConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    if (validate_authoritative_recovery_config(&value.authoritative_recovery) != .ok or validate_sharded_p2p_config(&value.sharded_p2p) != .ok or validate_stun_config(&value.stun) != .ok or validate_turn_config(&value.turn) != .ok or validate_route_config(&value.route) != .ok or validate_migration_transfer_config(&value.migration_transfer) != .ok) return .invalid_argument;
     return .ok;
 }
 
@@ -996,6 +1152,58 @@ pub export fn minna_san_topology_config_validate(config: ?*const CTopologyConfig
     return @intFromEnum(validate_topology_config(config));
 }
 
+pub export fn minna_san_topology_capabilities_config_init(out_config: ?*CTopologyCapabilitiesConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = std.mem.zeroes(CTopologyCapabilitiesConfig);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_authoritative_recovery(config: ?*CTopologyCapabilitiesConfig, authoritative_recovery: CAuthoritativeRecoveryConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_authoritative_recovery_config(&authoritative_recovery) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.authoritative_recovery = authoritative_recovery;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_sharded_p2p(config: ?*CTopologyCapabilitiesConfig, sharded_p2p: CShardedP2PConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_sharded_p2p_config(&sharded_p2p) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.sharded_p2p = sharded_p2p;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_stun(config: ?*CTopologyCapabilitiesConfig, stun: CStunConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_stun_config(&stun) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.stun = stun;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_turn(config: ?*CTopologyCapabilitiesConfig, turn: CTurnConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_turn_config(&turn) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.turn = turn;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_route(config: ?*CTopologyCapabilitiesConfig, route: CRouteConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_route_config(&route) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.route = route;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_set_migration_transfer(config: ?*CTopologyCapabilitiesConfig, migration_transfer: CMigrationTransferConfig) c_int {
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_migration_transfer_config(&migration_transfer) != .ok) return @intFromEnum(CResult.invalid_argument);
+    value.migration_transfer = migration_transfer;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_topology_capabilities_config_validate(config: ?*const CTopologyCapabilitiesConfig) c_int {
+    return @intFromEnum(validate_topology_capabilities_config(config));
+}
+
 pub export fn minna_san_state_transfer_config_init(out_config: ?*CStateTransferConfig) c_int {
     const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
     output.* = .{ .context = null, .serialize = null, .deserialize = null, .max_snapshot_bytes = 0, .max_delta_bytes = 0, .recovery_timeout_ns = 0, .template_kind = c_replication_authoritative };
@@ -1483,6 +1691,44 @@ test "C topology configuration rejects invalid candidates credentials and migrat
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_set_migration(&config, .{ .enabled = 1, .reserved = .{ 0, 0, 0 }, .handoff_timeout_ns = 0, .max_attempts = 0 }));
     config.stun_turn.turn_server.family = @intFromEnum(CAddressFamily.ipv4);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_config_validate(&config));
+}
+
+test "C topology capability configuration validates authoritative sharded traversal route and migration controls" {
+    var config: CTopologyCapabilitiesConfig = undefined;
+    var username = [_]u8{'u'};
+    var password = [_]u8{'p'};
+    var realm = [_]u8{'r'};
+    var nonce = [_]u8{'n'};
+    var key = [_]u8{7} ** 32;
+    const buffer = CBuffer{ .data = @ptrCast(&username), .len = username.len };
+    const key_buffer = CBuffer{ .data = @ptrCast(&key), .len = key.len };
+    const endpoint = CAddress{ .family = @intFromEnum(CAddressFamily.ipv4), .bytes = .{ 127, 0, 0, 1 } ++ [_]u8{0} ** 12, .port = 3478 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_authoritative_recovery(&config, .{ .maximum_reconnect_attempts = 2, .reserved = .{ 0, 0, 0, 0, 0, 0, 0 } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_sharded_p2p(&config, .{ .maximum_groups = 2, .maximum_participants = 3, .maximum_dispatches_per_pump = 1, .maximum_signal_bytes = 64, .maximum_liveness_peers = 3, .heartbeat_interval_ns = 1, .idle_timeout_ns = 2, .reconnect_window_ns = 3, .maximum_liveness_events_per_poll = 1 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_stun(&config, .{ .udp_server = endpoint, .udp_initial_rto_ns = 1, .udp_maximum_retransmissions = 2, .udp_maximum_alternate_servers = 1, .tcp_server = endpoint, .tcp_timeout_ns = 2, .tcp_username = buffer, .tcp_password = .{ .data = @ptrCast(&password), .len = password.len } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_turn(&config, .{ .server = endpoint, .username = buffer, .password = .{ .data = @ptrCast(&password), .len = password.len }, .realm = .{ .data = @ptrCast(&realm), .len = realm.len }, .nonce = .{ .data = @ptrCast(&nonce), .len = nonce.len }, .requested_lifetime_seconds = 1, .maximum_permissions = 2, .permission_lifetime_ns = 3, .maximum_channels = 4, .credential_expires_at_ns = 5, .refresh_margin_ns = 1, .maximum_failures = 2 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_route(&config, .{ .policy = c_route_policy_direct_first, .allow_direct = 1, .allow_relay = 1, .allow_authoritative = 1, .allow_degraded = 0, .initial_route = c_route_direct, .role = c_connectivity_controlling, .reserved = .{ 0, 0, 0, 0 }, .initial_security_epoch = 1, .maximum_diagnostics = 1, .maximum_pairs = 2, .maximum_in_flight = 1, .maximum_attempts = 2, .maximum_keepalive_failures = 2, .maximum_keepalive_sends_per_poll = 1, .reserved2 = .{ 0, 0, 0, 0, 0 }, .tie_breaker = 1, .pace_interval_ns = 1, .retry_interval_ns = 2, .check_timeout_ns = 3, .keepalive_interval_ns = 4, .keepalive_retry_interval_ns = 5 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_set_migration_transfer(&config, .{ .initial_host = 1, .initial_term = 2, .initial_membership_revision = 3, .initial_state_revision = 4, .maximum_records = 16, .maximum_state_bytes = 5, .integrity_key = key_buffer }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_validate(&config));
+    try std.testing.expectEqual(@intFromPtr(buffer.data), @intFromPtr(config.stun.tcp_username.data));
+    try std.testing.expectEqual(@intFromPtr(key_buffer.data), @intFromPtr(config.migration_transfer.integrity_key.data));
+}
+
+test "C topology capability configuration rejects invalid group controls" {
+    var config: CTopologyCapabilitiesConfig = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_init(null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_topology_capabilities_config_init(&config));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_authoritative_recovery(&config, .{ .maximum_reconnect_attempts = 0, .reserved = .{ 0, 0, 0, 0, 0, 0, 0 } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_sharded_p2p(&config, .{ .maximum_groups = 1, .maximum_participants = 1_001, .maximum_dispatches_per_pump = 1, .maximum_signal_bytes = 1, .maximum_liveness_peers = 1, .heartbeat_interval_ns = 1, .idle_timeout_ns = 1, .reconnect_window_ns = 1, .maximum_liveness_events_per_poll = 1 }));
+    const endpoint = CAddress{ .family = @intFromEnum(CAddressFamily.ipv6), .bytes = [_]u8{0} ** 16, .port = 3478 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_stun(&config, .{ .udp_server = endpoint, .udp_initial_rto_ns = 1, .udp_maximum_retransmissions = 1, .udp_maximum_alternate_servers = 1, .tcp_server = endpoint, .tcp_timeout_ns = 1, .tcp_username = .{ .data = null, .len = 0 }, .tcp_password = .{ .data = null, .len = 0 } }));
+    const ipv4_endpoint = CAddress{ .family = @intFromEnum(CAddressFamily.ipv4), .bytes = .{ 127, 0, 0, 1 } ++ [_]u8{0} ** 12, .port = 3478 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_turn(&config, .{ .server = ipv4_endpoint, .username = .{ .data = null, .len = 0 }, .password = .{ .data = null, .len = 0 }, .realm = .{ .data = null, .len = 0 }, .nonce = .{ .data = null, .len = 0 }, .requested_lifetime_seconds = 0, .maximum_permissions = 0, .permission_lifetime_ns = 0, .maximum_channels = 0, .credential_expires_at_ns = 0, .refresh_margin_ns = 0, .maximum_failures = 0 }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_route(&config, .{ .policy = 0, .allow_direct = 0, .allow_relay = 0, .allow_authoritative = 0, .allow_degraded = 0, .initial_route = 0, .role = 0, .reserved = .{ 0, 0, 0, 0 }, .initial_security_epoch = 0, .maximum_diagnostics = 0, .maximum_pairs = 0, .maximum_in_flight = 0, .maximum_attempts = 0, .maximum_keepalive_failures = 0, .maximum_keepalive_sends_per_poll = 0, .reserved2 = .{ 0, 0, 0, 0, 0 }, .tie_breaker = 0, .pace_interval_ns = 0, .retry_interval_ns = 0, .check_timeout_ns = 0, .keepalive_interval_ns = 0, .keepalive_retry_interval_ns = 0 }));
+    var short_key = [_]u8{0} ** 31;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_set_migration_transfer(&config, .{ .initial_host = 0, .initial_term = 0, .initial_membership_revision = 0, .initial_state_revision = 0, .maximum_records = 17, .maximum_state_bytes = 0, .integrity_key = .{ .data = @ptrCast(&short_key), .len = short_key.len } }));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_topology_capabilities_config_validate(&config));
 }
 
 test "C state transfer configuration preserves callback-owned buffers and template controls" {
