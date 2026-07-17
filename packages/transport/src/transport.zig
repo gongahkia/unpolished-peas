@@ -17,6 +17,7 @@ const udp_send_batch = @import("udp_send_batch.zig");
 const socket_options = @import("socket_options.zig");
 const buffer_pool = @import("buffer_pool.zig");
 const monotonic_clock = @import("monotonic_clock.zig");
+const io_failure = @import("io_failure.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -101,6 +102,10 @@ pub const DesktopMonotonicClockError = monotonic_clock.DesktopMonotonicClockErro
 pub const TransportDeadlineError = monotonic_clock.TransportDeadlineError;
 pub const DesktopMonotonicClock = monotonic_clock.DesktopMonotonicClock;
 pub const TransportDeadline = monotonic_clock.TransportDeadline;
+pub const TransportIoErrorCategory = io_failure.TransportIoErrorCategory;
+pub const TransportRetryHint = io_failure.TransportRetryHint;
+pub const TransportIoFailure = io_failure.TransportIoFailure;
+pub const normalize_io_failure = io_failure.normalize_io_failure;
 pub const package_name = "transport";
 
 comptime {
@@ -130,4 +135,5 @@ test {
     _ = @import("socket_options.zig");
     _ = @import("buffer_pool.zig");
     _ = @import("monotonic_clock.zig");
+    _ = @import("io_failure.zig");
 }
