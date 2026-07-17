@@ -156,6 +156,12 @@ pub fn build(b: *std.Build) void {
             .{ .name = topology_spec.module_name, .module = topology },
         },
     });
+    const benchmark_harness = b.createModule(.{
+        .root_source_file = b.path("contracts/benchmark_harness.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = core_spec.module_name, .module = core }},
+    });
     const boundary_tests = b.addTest(.{ .root_module = boundary });
     const workspace_graph_tests = b.addTest(.{ .root_module = workspace_graph });
     const public_api_tests = b.addTest(.{ .root_module = public_api });
@@ -175,6 +181,8 @@ pub fn build(b: *std.Build) void {
     const services_tests = b.addTest(.{ .root_module = services });
     const test_harness_tests = b.addTest(.{ .root_module = test_harness });
     const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
+    const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
+    const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
     const state_tests = b.addTest(.{ .root_module = state });
     const topology_tests = b.addTest(.{ .root_module = topology });
     const transport_tests = b.addTest(.{ .root_module = transport });
@@ -222,6 +230,9 @@ pub fn build(b: *std.Build) void {
     const run_services = b.addRunArtifact(services_tests);
     const run_test_harness = b.addRunArtifact(test_harness_tests);
     const run_stun_turn_interop = b.addRunArtifact(stun_turn_interop_tests);
+    const run_benchmark_harness_tests = b.addRunArtifact(benchmark_harness_tests);
+    const run_benchmark_harness = b.addRunArtifact(benchmark_harness_executable);
+    if (b.args) |args| run_benchmark_harness.addArgs(args);
     const run_state = b.addRunArtifact(state_tests);
     const run_topology = b.addRunArtifact(topology_tests);
     const run_transport = b.addRunArtifact(transport_tests);
@@ -285,6 +296,10 @@ pub fn build(b: *std.Build) void {
     test_harness_step.dependOn(&run_test_harness.step);
     const stun_turn_interop_step = b.step("stun-turn-interop", "Run controlled STUN TURN interoperability fixtures");
     stun_turn_interop_step.dependOn(&run_stun_turn_interop.step);
+    const benchmark_harness_step = b.step("benchmark-harness", "Run deterministic benchmark harness");
+    benchmark_harness_step.dependOn(&run_benchmark_harness.step);
+    const benchmark_harness_test_step = b.step("benchmark-harness-test", "Test deterministic benchmark harness");
+    benchmark_harness_test_step.dependOn(&run_benchmark_harness_tests.step);
     const c_header_check = b.addSystemCommand(&.{
         b.graph.zig_exe,
         "cc",
@@ -323,6 +338,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&run_test_harness.step);
     test_step.dependOn(&run_stun_turn_interop.step);
+    test_step.dependOn(&run_benchmark_harness_tests.step);
     test_step.dependOn(&c_header_check.step);
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
