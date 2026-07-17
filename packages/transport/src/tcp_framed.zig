@@ -222,3 +222,34 @@ test "framed TCP writers emit bounded messages and reject malformed frames" {
     try std.testing.expect(malformed);
     try std.testing.expectError(error.InvalidState, malformed_reader.read(&pair.server));
 }
+
+test "bounded TCP frame fuzz corpus retains length and failure limits" {
+    var pair = try connected_pair();
+    defer pair.client.close();
+    defer pair.server.close();
+    var storage: [64]u8 = undefined;
+    var reader = try TcpFrameReader.init(storage[0..]);
+    var prng = std.Random.DefaultPrng.init(0xd5f7_2ca9_608e_b341);
+    const random = prng.random();
+    var wire: [tcp_frame_header_bytes + storage.len]u8 = undefined;
+    var iteration: usize = 0;
+    while (iteration < 64) : (iteration += 1) {
+        const length = random.uintLessThan(usize, storage.len + 1);
+        std.mem.writeInt(u32, wire[0..tcp_frame_header_bytes], @intCast(length), .big);
+        random.bytes(wire[tcp_frame_header_bytes..][0..length]);
+        try send_all(&pair.client, wire[0 .. tcp_frame_header_bytes + length]);
+        try std.testing.expectEqualSlices(u8, wire[tcp_frame_header_bytes..][0..length], try read_with_retry(&reader, &pair.server));
+    }
+    std.mem.writeInt(u32, wire[0..tcp_frame_header_bytes], @intCast(storage.len + random.uintLessThan(usize, storage.len + 1)), .big);
+    try send_all(&pair.client, wire[0..tcp_frame_header_bytes]);
+    var attempts: usize = 0;
+    while (attempts < 100) : (attempts += 1) {
+        _ = reader.read(&pair.server) catch |err| {
+            try std.testing.expectEqual(error.MalformedFrame, err);
+            break;
+        };
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    try std.testing.expect(reader.failed);
+    try std.testing.expectError(error.InvalidState, reader.read(&pair.server));
+}

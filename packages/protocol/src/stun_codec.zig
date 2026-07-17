@@ -159,3 +159,29 @@ test "STUN codec encodes bounded headers attributes XOR addresses errors and fin
     try std.testing.expectEqual(StunErrorCode{ .code = 400, .reason = "bad" }, try decode_error_code(try encode_error_code(.{ .code = 400, .reason = "bad" }, error_bytes[0..])));
     try verify_stun_fingerprint(encoded, stun_fingerprint(encoded));
 }
+
+test "bounded STUN codec fuzz corpus retains parser limits" {
+    var prng = std.Random.DefaultPrng.init(0x4871_9f2c_5a8d_e306);
+    const random = prng.random();
+    var input: [256]u8 = undefined;
+    var attributes: [8]StunAttribute = undefined;
+    var transaction_id: [12]u8 = undefined;
+    var iteration: usize = 0;
+    while (iteration < 512) : (iteration += 1) {
+        const length = random.uintLessThan(usize, input.len + 1);
+        random.bytes(input[0..length]);
+        random.bytes(&transaction_id);
+        if (decode_stun_message(input[0..length], attributes[0..]) catch null) |message| {
+            try std.testing.expect(message.count <= attributes.len);
+            try std.testing.expect(message.header.method <= 0x0fff);
+        }
+        _ = decode_xor_address(input[0..length], transaction_id) catch {};
+        _ = decode_error_code(input[0..length]) catch {};
+        verify_stun_fingerprint(input[0..length], random.int(u32)) catch {};
+    }
+    var encoded: [stun_header_bytes]u8 = undefined;
+    const frame = try encode_stun_message(.{ .method = 1, .class = .request, .transaction_id = .{0} ** 12 }, &.{}, encoded[0..]);
+    try std.testing.expectEqual(@as(usize, 0), (try decode_stun_message(frame, attributes[0..])).count);
+    encoded[4] +%= 1;
+    try std.testing.expectError(error.InvalidCookie, decode_stun_message(encoded[0..], attributes[0..]));
+}
