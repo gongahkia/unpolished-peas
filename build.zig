@@ -263,6 +263,12 @@ pub fn build(b: *std.Build) void {
     const contract_gate_test = b.addSystemCommand(&.{ "sh", "script/test_contract_gate.sh" });
     const contract_gate_test_step = b.step("contract-gate-test", "Test the pull request contract workflow checks");
     contract_gate_test_step.dependOn(&contract_gate_test.step);
+    const public_api_regression_check = b.addSystemCommand(&.{ "sh", "script/check_public_api_regression.sh" });
+    const public_api_regression_step = b.step("public-api-regression", "Check released Zig and C public API contracts");
+    public_api_regression_step.dependOn(&public_api_regression_check.step);
+    const public_api_regression_test = b.addSystemCommand(&.{ "sh", "script/test_public_api_regression.sh" });
+    const public_api_regression_test_step = b.step("public-api-regression-test", "Test released public API contract checks");
+    public_api_regression_test_step.dependOn(&public_api_regression_test.step);
     const dependency_check = b.addSystemCommand(&.{ "sh", "script/check_stdlib_only.sh" });
     const dependency_step = b.step("dependency-policy", "Check v1 sources use only std and first-party modules");
     dependency_step.dependOn(&dependency_check.step);
@@ -321,4 +327,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
     test_step.dependOn(&contract_gate_check.step);
+    test_step.dependOn(&public_api_regression_check.step);
+    test_step.dependOn(&public_api_regression_test.step);
 }
