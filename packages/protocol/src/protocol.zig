@@ -14,6 +14,7 @@ const bandwidth_caps = @import("bandwidth_caps.zig");
 const backpressure = @import("backpressure.zig");
 const compression_provider = @import("compression_provider.zig");
 const lz4_block = @import("lz4_block.zig");
+const compression_dictionaries = @import("compression_dictionaries.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -33,6 +34,9 @@ pub const TransportCapability = capability_negotiation.TransportCapability;
 pub const ChannelCapability = capability_negotiation.ChannelCapability;
 pub const SecurityCapability = capability_negotiation.SecurityCapability;
 pub const CompressionCapability = capability_negotiation.CompressionCapability;
+pub const max_compression_dictionary_ids = capability_negotiation.max_compression_dictionary_ids;
+pub const CompressionDictionaryOfferError = capability_negotiation.CompressionDictionaryOfferError;
+pub const CompressionDictionaryOffer = capability_negotiation.CompressionDictionaryOffer;
 pub const CapabilityOffer = capability_negotiation.CapabilityOffer;
 pub const NegotiatedCapabilities = capability_negotiation.NegotiatedCapabilities;
 pub const CapabilityNegotiationError = capability_negotiation.CapabilityNegotiationError;
@@ -100,6 +104,9 @@ pub const max_lz4_block_bytes = lz4_block.max_lz4_block_bytes;
 pub const Lz4BlockError = lz4_block.Lz4BlockError;
 pub const Lz4BlockConfig = lz4_block.Lz4BlockConfig;
 pub const Lz4BlockCodec = lz4_block.Lz4BlockCodec;
+pub const max_compression_dictionaries = compression_dictionaries.max_compression_dictionaries;
+pub const CompressionDictionaryError = compression_dictionaries.CompressionDictionaryError;
+pub const CompressionDictionaryRegistry = compression_dictionaries.CompressionDictionaryRegistry;
 pub const package_name = "protocol";
 
 comptime {
@@ -126,4 +133,5 @@ test {
     _ = @import("backpressure.zig");
     _ = @import("compression_provider.zig");
     _ = @import("lz4_block.zig");
+    _ = @import("compression_dictionaries.zig");
 }

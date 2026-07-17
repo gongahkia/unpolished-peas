@@ -107,6 +107,9 @@ test "stable public symbols are exact" {
         "ChannelCapability",
         "SecurityCapability",
         "CompressionCapability",
+        "max_compression_dictionary_ids",
+        "CompressionDictionaryOfferError",
+        "CompressionDictionaryOffer",
         "CapabilityOffer",
         "NegotiatedCapabilities",
         "CapabilityNegotiationError",
@@ -174,6 +177,9 @@ test "stable public symbols are exact" {
         "Lz4BlockError",
         "Lz4BlockConfig",
         "Lz4BlockCodec",
+        "max_compression_dictionaries",
+        "CompressionDictionaryError",
+        "CompressionDictionaryRegistry",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
