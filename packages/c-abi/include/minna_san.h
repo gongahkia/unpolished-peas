@@ -38,6 +38,11 @@ extern "C" {
 #define MINNA_SAN_CANDIDATE_HOST 1u
 #define MINNA_SAN_CANDIDATE_SERVER_REFLEXIVE 2u
 #define MINNA_SAN_CANDIDATE_RELAY 3u
+#define MINNA_SAN_ROUTE_POLICY_DIRECT_FIRST 1u
+#define MINNA_SAN_ROUTE_POLICY_RELAY_FIRST 2u
+#define MINNA_SAN_ROUTE_POLICY_AUTHORITATIVE_FIRST 3u
+#define MINNA_SAN_CONNECTIVITY_CONTROLLING 1u
+#define MINNA_SAN_CONNECTIVITY_CONTROLLED 2u
 #define MINNA_SAN_REPLICATION_AUTHORITATIVE 1u
 #define MINNA_SAN_REPLICATION_CLIENT_PREDICTION 2u
 #define MINNA_SAN_REPLICATION_RECONCILIATION 3u
@@ -160,6 +165,86 @@ typedef struct minna_san_topology_config {
     minna_san_stun_turn_config stun_turn;
     minna_san_migration_config migration;
 } minna_san_topology_config;
+typedef struct minna_san_authoritative_recovery_config {
+    uint8_t maximum_reconnect_attempts;
+    uint8_t reserved[7];
+} minna_san_authoritative_recovery_config;
+typedef struct minna_san_sharded_p2p_config {
+    size_t maximum_groups;
+    size_t maximum_participants;
+    size_t maximum_dispatches_per_pump;
+    size_t maximum_signal_bytes;
+    size_t maximum_liveness_peers;
+    minna_san_duration_ns heartbeat_interval_ns;
+    minna_san_duration_ns idle_timeout_ns;
+    minna_san_duration_ns reconnect_window_ns;
+    size_t maximum_liveness_events_per_poll;
+} minna_san_sharded_p2p_config;
+typedef struct minna_san_stun_config {
+    minna_san_address udp_server;
+    minna_san_duration_ns udp_initial_rto_ns;
+    size_t udp_maximum_retransmissions;
+    size_t udp_maximum_alternate_servers;
+    minna_san_address tcp_server;
+    minna_san_duration_ns tcp_timeout_ns;
+    minna_san_buffer tcp_username;
+    minna_san_buffer tcp_password;
+} minna_san_stun_config;
+typedef struct minna_san_turn_config {
+    minna_san_address server;
+    minna_san_buffer username;
+    minna_san_buffer password;
+    minna_san_buffer realm;
+    minna_san_buffer nonce;
+    uint32_t requested_lifetime_seconds;
+    size_t maximum_permissions;
+    minna_san_duration_ns permission_lifetime_ns;
+    size_t maximum_channels;
+    minna_san_duration_ns credential_expires_at_ns;
+    minna_san_duration_ns refresh_margin_ns;
+    size_t maximum_failures;
+} minna_san_turn_config;
+typedef struct minna_san_route_config {
+    uint32_t policy;
+    uint8_t allow_direct;
+    uint8_t allow_relay;
+    uint8_t allow_authoritative;
+    uint8_t allow_degraded;
+    uint32_t initial_route;
+    uint32_t role;
+    uint8_t reserved[4];
+    uint64_t initial_security_epoch;
+    size_t maximum_diagnostics;
+    size_t maximum_pairs;
+    size_t maximum_in_flight;
+    uint8_t maximum_attempts;
+    uint8_t maximum_keepalive_failures;
+    uint8_t maximum_keepalive_sends_per_poll;
+    uint8_t reserved2[5];
+    uint64_t tie_breaker;
+    minna_san_duration_ns pace_interval_ns;
+    minna_san_duration_ns retry_interval_ns;
+    minna_san_duration_ns check_timeout_ns;
+    minna_san_duration_ns keepalive_interval_ns;
+    minna_san_duration_ns keepalive_retry_interval_ns;
+} minna_san_route_config;
+typedef struct minna_san_migration_transfer_config {
+    uint64_t initial_host;
+    uint64_t initial_term;
+    uint64_t initial_membership_revision;
+    uint64_t initial_state_revision;
+    size_t maximum_records;
+    size_t maximum_state_bytes;
+    minna_san_buffer integrity_key;
+} minna_san_migration_transfer_config;
+typedef struct minna_san_topology_capabilities_config {
+    minna_san_authoritative_recovery_config authoritative_recovery;
+    minna_san_sharded_p2p_config sharded_p2p;
+    minna_san_stun_config stun;
+    minna_san_turn_config turn;
+    minna_san_route_config route;
+    minna_san_migration_transfer_config migration_transfer;
+} minna_san_topology_capabilities_config;
 typedef int (*minna_san_state_transform_fn)(void *context, minna_san_buffer input, minna_san_buffer *output);
 typedef struct minna_san_state_transfer_config {
     void *context;
@@ -255,6 +340,14 @@ minna_san_result minna_san_topology_config_set_p2p(minna_san_topology_config *co
 minna_san_result minna_san_topology_config_set_stun_turn(minna_san_topology_config *config, minna_san_stun_turn_config stun_turn);
 minna_san_result minna_san_topology_config_set_migration(minna_san_topology_config *config, minna_san_migration_config migration);
 minna_san_result minna_san_topology_config_validate(const minna_san_topology_config *config);
+minna_san_result minna_san_topology_capabilities_config_init(minna_san_topology_capabilities_config *out_config);
+minna_san_result minna_san_topology_capabilities_config_set_authoritative_recovery(minna_san_topology_capabilities_config *config, minna_san_authoritative_recovery_config authoritative_recovery);
+minna_san_result minna_san_topology_capabilities_config_set_sharded_p2p(minna_san_topology_capabilities_config *config, minna_san_sharded_p2p_config sharded_p2p);
+minna_san_result minna_san_topology_capabilities_config_set_stun(minna_san_topology_capabilities_config *config, minna_san_stun_config stun);
+minna_san_result minna_san_topology_capabilities_config_set_turn(minna_san_topology_capabilities_config *config, minna_san_turn_config turn);
+minna_san_result minna_san_topology_capabilities_config_set_route(minna_san_topology_capabilities_config *config, minna_san_route_config route);
+minna_san_result minna_san_topology_capabilities_config_set_migration_transfer(minna_san_topology_capabilities_config *config, minna_san_migration_transfer_config migration_transfer);
+minna_san_result minna_san_topology_capabilities_config_validate(const minna_san_topology_capabilities_config *config);
 minna_san_result minna_san_state_transfer_config_init(minna_san_state_transfer_config *out_config);
 minna_san_result minna_san_state_transfer_config_set_callbacks(minna_san_state_transfer_config *config, void *context, minna_san_state_transform_fn serialize, minna_san_state_transform_fn deserialize);
 minna_san_result minna_san_state_transfer_config_set_snapshot_limits(minna_san_state_transfer_config *config, size_t max_snapshot_bytes, size_t max_delta_bytes);
