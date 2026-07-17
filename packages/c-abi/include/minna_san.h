@@ -51,6 +51,20 @@ extern "C" {
 #define MINNA_SAN_LOG_INFO 3u
 #define MINNA_SAN_LOG_WARNING 4u
 #define MINNA_SAN_LOG_ERROR 5u
+#define MINNA_SAN_LOG_CATEGORY_RUNTIME 1u
+#define MINNA_SAN_LOG_CATEGORY_CONNECTION 2u
+#define MINNA_SAN_LOG_CATEGORY_MESSAGE 3u
+#define MINNA_SAN_LOG_CATEGORY_QUEUE 4u
+#define MINNA_SAN_LOG_CATEGORY_SECURITY 5u
+#define MINNA_SAN_LOG_CATEGORY_REPLAY 6u
+#define MINNA_SAN_LOG_REDACTION_NONE 0u
+#define MINNA_SAN_LOG_REDACTION_PAYLOAD 1u
+#define MINNA_SAN_LOG_REDACTION_METADATA 2u
+#define MINNA_SAN_LOG_REDACTION_ALL 3u
+#define MINNA_SAN_ROUTE_HEALTH_HEALTHY 0u
+#define MINNA_SAN_ROUTE_HEALTH_DEGRADED 1u
+#define MINNA_SAN_ROUTE_HEALTH_UNAVAILABLE 2u
+#define MINNA_SAN_SECURITY_EVENT_COUNT 4u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -103,6 +117,10 @@ typedef struct minna_san_buffer {
     uint8_t *data;
     size_t len;
 } minna_san_buffer;
+typedef struct minna_san_const_buffer {
+    const uint8_t *data;
+    size_t len;
+} minna_san_const_buffer;
 typedef void *(*minna_san_allocate_fn)(void *context, size_t len);
 typedef void (*minna_san_release_fn)(void *context, uint8_t *data, size_t len);
 typedef struct minna_san_allocator {
@@ -261,7 +279,40 @@ typedef struct minna_san_metrics_snapshot {
     size_t active_channels;
     size_t active_sessions;
 } minna_san_metrics_snapshot;
+typedef struct minna_san_runtime_metrics_snapshot {
+    uint64_t polls;
+    uint64_t events;
+    uint64_t connected;
+    uint64_t disconnected;
+    uint64_t messages;
+    uint64_t overflows;
+    uint64_t dropped_events;
+    uint64_t active_connections;
+    uint64_t message_bytes_samples;
+    uint64_t message_bytes_total;
+    uint64_t message_bytes_maximum;
+    uint32_t direct_route_health;
+    uint32_t relay_route_health;
+    uint32_t authoritative_route_health;
+    uint64_t queue_depth;
+    uint64_t queue_capacity;
+    uint64_t security_events[MINNA_SAN_SECURITY_EVENT_COUNT];
+} minna_san_runtime_metrics_snapshot;
 typedef void (*minna_san_log_fn)(void *context, uint32_t level, const char *message);
+typedef struct minna_san_log_record {
+    uint64_t sequence;
+    uint32_t level;
+    uint32_t category;
+    uint32_t redaction;
+    minna_san_const_buffer message;
+    uint64_t source_event_sequence;
+    uint8_t has_source_event_sequence;
+    uint8_t reserved[7];
+} minna_san_log_record;
+typedef void (*minna_san_log_record_fn)(void *context, const minna_san_log_record *record);
+typedef struct minna_san_log_subscription {
+    uint64_t id;
+} minna_san_log_subscription;
 typedef struct minna_san_diagnostics_config {
     void *log_context;
     minna_san_log_fn log;
@@ -356,6 +407,10 @@ minna_san_result minna_san_state_transfer_config_validate(const minna_san_state_
 minna_san_result minna_san_state_transfer_serialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_snapshot);
 minna_san_result minna_san_state_transfer_deserialize(const minna_san_state_transfer_config *config, minna_san_buffer input, minna_san_buffer *out_state);
 minna_san_result minna_san_sdk_metrics_snapshot(minna_san_sdk *sdk, minna_san_metrics_snapshot *out_snapshot);
+minna_san_result minna_san_sdk_runtime_metrics_snapshot(minna_san_sdk *sdk, minna_san_runtime_metrics_snapshot *out_snapshot);
+minna_san_result minna_san_sdk_log_callback_register(minna_san_sdk *sdk, void *context, minna_san_log_record_fn callback, minna_san_log_subscription *out_subscription);
+minna_san_result minna_san_sdk_log_callback_unregister(minna_san_sdk *sdk, minna_san_log_subscription subscription);
+minna_san_result minna_san_sdk_log(minna_san_sdk *sdk, uint32_t level, uint32_t category, uint32_t redaction, minna_san_buffer message);
 minna_san_result minna_san_diagnostics_config_init(minna_san_diagnostics_config *out_config);
 minna_san_result minna_san_diagnostics_config_set_logging(minna_san_diagnostics_config *config, void *context, minna_san_log_fn log, uint32_t level);
 minna_san_result minna_san_diagnostics_config_set_capture_replay(minna_san_diagnostics_config *config, uint8_t capture_enabled, uint8_t replay_enabled, uint8_t redact_payloads, size_t max_capture_bytes);

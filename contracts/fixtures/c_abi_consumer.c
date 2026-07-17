@@ -35,6 +35,7 @@ int c_abi_consumer_main(void) {
     minna_san_sdk *sdk = 0;
     minna_san_event event;
     minna_san_metrics_snapshot metrics;
+    minna_san_runtime_metrics_snapshot runtime_metrics;
 
     if (minna_san_abi_version() != MINNA_SAN_ABI_VERSION) return 1;
     if (minna_san_abi_supports_version(MINNA_SAN_ABI_VERSION) != 1u) return 2;
@@ -45,7 +46,9 @@ int c_abi_consumer_main(void) {
     if (minna_san_sdk_poll(sdk, &event) != MINNA_SAN_RESULT_WOULD_BLOCK) return 7;
     if (minna_san_sdk_metrics_snapshot(sdk, &metrics) != MINNA_SAN_RESULT_OK) return 8;
     if (metrics.polls != 1u || metrics.active_connections != 0u) return 9;
-    if (minna_san_sdk_stop(sdk) != MINNA_SAN_RESULT_OK) return 10;
+    if (minna_san_sdk_runtime_metrics_snapshot(sdk, &runtime_metrics) != MINNA_SAN_RESULT_OK) return 10;
+    if (runtime_metrics.polls != 1u || runtime_metrics.events != 0u) return 11;
+    if (minna_san_sdk_stop(sdk) != MINNA_SAN_RESULT_OK) return 12;
     minna_san_sdk_destroy(sdk);
     return 0;
 }
