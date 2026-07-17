@@ -18,6 +18,8 @@ A release is breaking when it removes or renames a public core export, changes a
 
 Each generated project pins one public release archive URL and its matching hash in `build.zig.zon`. Upgrade both coordinates together from that release's starter template or release notes; never mix a URL from one tag with a hash from another, and never copy coordinates from `main`. Then run `zig build`, the generated project's test target, and its documented frame smoke before committing the upgrade.
 
+See [v0.1 migrations](migrations.md) before upgrading a pre-v0.1 project.
+
 ## Release contract
 
 A maintainer must complete all of these steps for every new tag:

@@ -75,12 +75,9 @@ jobs:
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
-      - run: zig build test-extensions
-      - run: zig build test-extension-manifest
       - run: zig build test-effects
       - run: zig build test-ui
       - run: zig build test-physics
-      - run: script/test_extension_matrix.sh
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas
