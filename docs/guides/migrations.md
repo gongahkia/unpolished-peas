@@ -7,3 +7,7 @@ v0.1 removes the engine-owned extension manifest, resolver, lock, test matrix, a
 ## Particle emitters removed
 
 v0.1 removes the engine-owned particle emitter runtime and public API. Delete particle-emitter calls and keep any game-specific visual simulation in game code.
+
+## ECS removed
+
+v0.1 removes the engine-owned ECS and its public API. Delete ECS world, entity, component-store, and command usage; keep game-owned data structures in game code.

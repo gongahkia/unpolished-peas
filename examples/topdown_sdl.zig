@@ -11,8 +11,6 @@ const Game = struct {
     player: up.ImageHandle,
     blip: up.AudioHandle,
     camera: up.Camera2D = .{ .position = .{ .x = 80, .y = 48 } },
-    entities: up.ecs.World,
-    player_entity: up.ecs.Entity,
     physics: up.physics.World,
     physics_player: up.physics.BodyHandle,
     ui_state: up.ui.State = .{},
@@ -20,26 +18,21 @@ const Game = struct {
     pub fn init(ctx: *sdl.Context) !Game {
         var map = try content.topdownMap(ctx.allocator);
         errdefer map.deinit();
-        var entities = up.ecs.World.init(ctx.allocator);
-        errdefer entities.deinit();
-        const player_entity = try entities.create();
         var physics = up.physics.World.init(.{ .gravity = .{} });
         errdefer physics.deinit();
         const physics_player = try physics.createBody(.{ .body_type = .kinematic, .position = .{ .x = 80, .y = 48 } });
         _ = try physics.createCircle(physics_player, .{ .radius = 4 });
         const player = try ctx.loadImage("ball.png");
         const blip = try ctx.loadSound("blip.wav");
-        return .{ .map = map, .player = player, .blip = blip, .entities = entities, .player_entity = player_entity, .physics = physics, .physics_player = physics_player };
+        return .{ .map = map, .player = player, .blip = blip, .physics = physics, .physics_player = physics_player };
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         self.map.deinit();
         self.physics.deinit();
-        self.entities.deinit();
     }
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         const event = self.game.step(ctx.input.*, ctx.dt);
         self.camera.position = self.game.player;
-        try self.entities.validate(self.player_entity);
         try self.physics.step(ctx.dt, 1);
         if (event.fired) _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.blip), .{ .volume = 0.3 });
     }
