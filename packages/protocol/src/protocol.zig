@@ -219,4 +219,5 @@ test {
     _ = @import("key_rotation.zig");
     _ = @import("security_components.zig");
     _ = @import("security_vectors.zig");
+    _ = @import("reliability_fault_matrix.zig");
 }
