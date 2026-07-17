@@ -219,6 +219,16 @@ test "stable public symbols are exact" {
         "PublicKeyHello",
         "PublicKeyKeyExchange",
         "verify_public_key_hello",
+        "packet_protection_key_bytes",
+        "packet_protection_nonce_prefix_bytes",
+        "packet_protection_nonce_bytes",
+        "packet_protection_tag_bytes",
+        "packet_protection_frame_header_bytes",
+        "PacketProtectionError",
+        "PacketProtectionKey",
+        "UnprotectedPacket",
+        "PacketProtector",
+        "packet_nonce",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
