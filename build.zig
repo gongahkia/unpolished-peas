@@ -11,6 +11,7 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const browser_optimize = b.option(std.builtin.OptimizeMode, "browser-optimize", "Optimization mode for the standalone browser Wasm runtime") orelse .ReleaseSmall;
     const browser_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
+    const wasi_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .wasi });
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
     const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 runtime") orelse true;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
@@ -33,6 +34,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     if (target.result.cpu.arch != .wasm32) addStb(peas);
+    const wasm_peas = b.addModule("unpolished-peas-wasm-core", .{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = wasi_target,
+        .optimize = browser_optimize,
+    });
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -163,7 +169,16 @@ pub fn build(b: *std.Build) void {
     package_bounce_sdl.dependOn(&install_assets.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
-    const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, sdl);
+    const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, null);
+    const explicit_loop_wasm = b.addExecutable(.{ .name = "unpolished-peas-explicit-loop-wasm", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/explicit_loop.zig"),
+        .target = wasi_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = wasm_peas }},
+    }) });
+    explicit_loop_wasm.entry = .disabled;
+    explicit_loop_wasm.rdynamic = true;
+    explicit_loop_wasm.import_memory = true;
     const audio_demo = addExample(b, "unpolished-peas-audio", "examples/audio.zig", target, optimize, peas, sdl);
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
@@ -266,7 +281,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
     addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
     addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
-    addRunStep(b, "run-explicit-loop", "Run the explicit SDL3 loop demo", explicit_loop_demo);
+    addRunStep(b, "run-explicit-loop", "Run the advanced core explicit-loop example", explicit_loop_demo);
     addRunStep(b, "run-audio", "Run the unpolished-peas audio demo", audio_demo);
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
@@ -309,9 +324,11 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
+    const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
+    explicit_loop_wasm_step.dependOn(&explicit_loop_wasm.step);
 
     const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);

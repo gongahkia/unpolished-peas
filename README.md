@@ -73,7 +73,7 @@ pub fn main() !void {
 
 ## Explicit Loop
 
-sdl.playGame(Game) is the callback-game facade and reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. sdl.run(config, state, callbacks) is the caller-owned escape hatch; [examples/explicit_loop.zig](examples/explicit_loop.zig) compiles without a Game type.
+sdl.playGame(Game) is the callback-game facade and reads window, presentation, developer, asset-root, and lifecycle configuration from Game.config. The [explicit-loop example](examples/explicit_loop.zig) is the advanced path: it owns event, update, and draw ordering with only core primitives and compiles for desktop and Wasm; the starter remains callback-based.
 
 Set Game.config.pause_policy to .unfocused or .minimized to suppress update callbacks while that desktop state applies. Focus, minimize, restore, resize, and close stay ordered Event callbacks; draw continues with ctx.dt set to zero, leaving game state under user control.
 
@@ -120,6 +120,7 @@ zig build run-bounce-sdl
 zig build dev-bounce
 zig build run-minimal
 zig build run-explicit-loop
+zig build test-explicit-loop-wasm
 zig build run-audio
 zig build run-atlas
 zig build run-camera
@@ -149,7 +150,7 @@ zig build new -- ../my-game
 `run-bounce-sdl` opens an SDL3 window.
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
-`run-explicit-loop` opens the caller-owned-state SDL loop demo.
+`run-explicit-loop` runs the advanced core explicit-loop example; `test-explicit-loop-wasm` compiles the same source for Wasm.
 `run-atlas` opens a programmatic atlas/tile scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
 `run-tilemap` opens the sparse tile-map and camera-culling demo.

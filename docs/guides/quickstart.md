@@ -11,4 +11,4 @@ zig build peas -- run ../my-game -- --frames 2
 Runnable references:
 
 - [SDL bouncing square](../../examples/bounce_sdl.zig)
-- [Explicit state loop](../../examples/explicit_loop.zig)
+- [Advanced explicit core loop](../../examples/explicit_loop.zig)
