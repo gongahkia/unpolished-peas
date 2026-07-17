@@ -9,6 +9,7 @@ const peer_discovery = @import("peer_discovery.zig");
 const nat_candidate = @import("nat_candidate.zig");
 const udp_stun_binding = @import("udp_stun_binding.zig");
 const tcp_stun_binding = @import("tcp_stun_binding.zig");
+const turn_allocation = @import("turn_allocation.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -65,6 +66,10 @@ pub const TcpStunBindingError = tcp_stun_binding.TcpStunBindingError;
 pub const TcpStunBindingConfig = tcp_stun_binding.TcpStunBindingConfig;
 pub const TcpStunBindingResult = tcp_stun_binding.TcpStunBindingResult;
 pub const TcpStunBindingClient = tcp_stun_binding.TcpStunBindingClient;
+pub const TurnAllocationError = turn_allocation.TurnAllocationError;
+pub const TurnAllocationConfig = turn_allocation.TurnAllocationConfig;
+pub const TurnAllocation = turn_allocation.TurnAllocation;
+pub const TurnAllocationClient = turn_allocation.TurnAllocationClient;
 
 pub const package_name = "topology";
 
@@ -87,4 +92,5 @@ test {
     _ = @import("nat_candidate.zig");
     _ = @import("udp_stun_binding.zig");
     _ = @import("tcp_stun_binding.zig");
+    _ = @import("turn_allocation.zig");
 }
