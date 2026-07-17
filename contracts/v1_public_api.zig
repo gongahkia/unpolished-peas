@@ -518,6 +518,12 @@ test "stable public symbols are exact" {
         "MigrationCoordinatorError",
         "MigrationCoordinatorConfig",
         "MigrationCoordinator",
+        "HostElectionOrder",
+        "HostElectionMember",
+        "HostElection",
+        "HostElectionError",
+        "HostElectionConfig",
+        "HostElector",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
