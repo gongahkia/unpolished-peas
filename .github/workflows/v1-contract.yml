@@ -11,6 +11,28 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  windows-sdk:
+    name: Windows x86_64
+    runs-on: windows-2025
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install Zig 0.15.2
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          Invoke-WebRequest -Uri https://ziglang.org/download/0.15.2/zig-x86_64-windows-0.15.2.zip -OutFile zig.zip
+          if ((Get-FileHash zig.zip -Algorithm SHA256).Hash -ne '3a0ed1e8799a2f8ce2a6e6290a9ff22e6906f8227865911fb7ddedc3cc14cb0c') { throw 'invalid Zig archive checksum' }
+          Expand-Archive -Path zig.zip -DestinationPath .
+          "$PWD\zig-x86_64-windows-0.15.2" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+      - name: Verify native Zig version
+        shell: pwsh
+        run: |
+          if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'unexpected Windows architecture' }
+          if ((zig version) -ne '0.15.2') { throw 'unexpected Zig version' }
+      - name: Build and test SDK artifacts
+        run: zig build test
+      - name: Build C ABI artifact and consumer
+        run: zig build c-abi-parity
   macos-sdk:
     name: macOS ${{ matrix.arch }}
     runs-on: ${{ matrix.runner }}
