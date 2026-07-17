@@ -6,6 +6,7 @@ const extension_handling = @import("extension_handling.zig");
 const reliable_ordered = @import("reliable_ordered.zig");
 const unreliable_sequenced = @import("unreliable_sequenced.zig");
 const ack_ranges = @import("ack_ranges.zig");
+const retransmission = @import("retransmission.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -45,6 +46,12 @@ pub const max_ack_ranges = ack_ranges.max_ack_ranges;
 pub const AckRangeError = ack_ranges.AckRangeError;
 pub const AckRange = ack_ranges.AckRange;
 pub const AckRanges = ack_ranges.AckRanges;
+pub const max_retransmission_entries = retransmission.max_retransmission_entries;
+pub const RetransmissionError = retransmission.RetransmissionError;
+pub const RetransmissionConfig = retransmission.RetransmissionConfig;
+pub const RetransmissionEntry = retransmission.RetransmissionEntry;
+pub const RetransmissionPollResult = retransmission.RetransmissionPollResult;
+pub const RetransmissionScheduler = retransmission.RetransmissionScheduler;
 pub const package_name = "protocol";
 
 comptime {
@@ -63,4 +70,5 @@ test {
     _ = @import("reliable_ordered.zig");
     _ = @import("unreliable_sequenced.zig");
     _ = @import("ack_ranges.zig");
+    _ = @import("retransmission.zig");
 }
