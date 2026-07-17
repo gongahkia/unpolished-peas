@@ -1,0 +1,49 @@
+name: release-signing
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: read
+
+jobs:
+  sign:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install Zig 0.15.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error --output zig.tar.xz https://ziglang.org/download/0.15.2/zig-x86_64-linux-0.15.2.tar.xz
+          echo '02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz' | sha256sum --check --status
+          tar --extract --file zig.tar.xz
+          echo "$PWD/zig-x86_64-linux-0.15.2" >> "$GITHUB_PATH"
+      - name: Install Cosign
+        uses: sigstore/cosign-installer@ba7bc0a3fef59531c69a25acd34668d6d3fe6f22
+        with:
+          cosign-release: 'v3.0.6'
+      - name: Validate release tag
+        run: test "$GITHUB_REF_NAME" = "v$(tr -d '\r\n' < contracts/v1_release_contracts.version)"
+      - name: Generate release artifact checksums
+        run: zig build release-checksums
+      - name: Sign release artifacts
+        env:
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release-signing.yml@${{ github.ref }}
+          COSIGN_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: sh script/sign_release_artifacts.sh
+      - name: Verify release signatures
+        env:
+          COSIGN_CERTIFICATE_IDENTITY: https://github.com/${{ github.repository }}/.github/workflows/release-signing.yml@${{ github.ref }}
+          COSIGN_OIDC_ISSUER: https://token.actions.githubusercontent.com
+        run: sh script/check_release_signatures.sh
+      - name: Upload signed release artifacts
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        with:
+          name: minna-san-release-${{ github.ref_name }}
+          path: zig-out/minna-san-release-*
