@@ -13,6 +13,7 @@ const full_state_recovery = @import("full_state_recovery.zig");
 const replication_template = @import("replication_template.zig");
 const authoritative_replication = @import("authoritative_replication.zig");
 const client_prediction = @import("client_prediction.zig");
+const reconciliation = @import("reconciliation.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -110,6 +111,13 @@ pub const StatePredictionSimulationFn = client_prediction.StatePredictionSimulat
 pub const StatePredictionError = client_prediction.StatePredictionError;
 pub const StatePredictionConfig = client_prediction.StatePredictionConfig;
 pub const StateClientPrediction = client_prediction.StateClientPrediction;
+pub const StateReconciliationEvent = reconciliation.StateReconciliationEvent;
+pub const StateReconciliationCorrectionFn = reconciliation.StateReconciliationCorrectionFn;
+pub const StateReconciliationReplayFn = reconciliation.StateReconciliationReplayFn;
+pub const StateReconciliationEventFn = reconciliation.StateReconciliationEventFn;
+pub const StateReconciliationError = reconciliation.StateReconciliationError;
+pub const StateReconciliationConfig = reconciliation.StateReconciliationConfig;
+pub const StateReconciliation = reconciliation.StateReconciliation;
 
 pub const package_name = "state";
 
@@ -136,4 +144,5 @@ test {
     _ = @import("replication_template.zig");
     _ = @import("authoritative_replication.zig");
     _ = @import("client_prediction.zig");
+    _ = @import("reconciliation.zig");
 }
