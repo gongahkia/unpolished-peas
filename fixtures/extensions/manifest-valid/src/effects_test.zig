@@ -1,1 +1,0 @@
-test "effects fixture" {}
