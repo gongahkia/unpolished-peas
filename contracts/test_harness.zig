@@ -1,6 +1,8 @@
 const std = @import("std");
 const core = @import("minna-san-core");
 const protocol = @import("minna-san-protocol");
+const topology = @import("minna-san-topology");
+const state = @import("minna-san-state");
 
 pub const DeterministicClock = struct {
     manual: core.ManualClock,
@@ -103,6 +105,96 @@ pub fn expectError(expected_error: anyerror, actual: anytype) !void {
     try std.testing.expectError(expected_error, actual);
 }
 
+pub const PropertyGeneratorError = error{
+    InvalidConfiguration,
+    OutputTooSmall,
+};
+
+pub const PropertyGeneratorConfig = struct {
+    seed: u64,
+    maximum_bytes: usize,
+    maximum_schema_version: state.StateSchemaVersion = 16,
+};
+
+pub const GeneratedState = struct {
+    schema_version: state.StateSchemaVersion,
+    bytes: core.BorrowedBuffer,
+};
+
+pub const PropertyGenerator = struct {
+    config: PropertyGeneratorConfig,
+    random: std.Random.DefaultPrng,
+
+    pub fn init(config: PropertyGeneratorConfig) PropertyGeneratorError!PropertyGenerator {
+        if (config.maximum_bytes == 0 or config.maximum_bytes > protocol.max_packet_payload_bytes or config.maximum_schema_version == 0) return error.InvalidConfiguration;
+        return .{ .config = config, .random = std.Random.DefaultPrng.init(config.seed) };
+    }
+
+    pub fn next_protocol_message(self: *PropertyGenerator, output: []u8) PropertyGeneratorError!protocol.WireEnvelope {
+        const payload = try self.next_bytes(output);
+        const random = self.random.random();
+        const extension_id: u16 = if (random.uintLessThan(u8, 2) == 0) 0 else protocol.extension_range.first + random.uintLessThan(u16, protocol.extension_range.last - protocol.extension_range.first + 1);
+        return .{ .version = protocol.v1_version, .extension_id = extension_id, .payload = payload };
+    }
+
+    pub fn next_address(self: *PropertyGenerator) protocol.StunAddress {
+        const random = self.random.random();
+        if (random.uintLessThan(u8, 2) == 0) {
+            var octets: [4]u8 = undefined;
+            random.bytes(&octets);
+            return .{ .ipv4 = .{ .octets = octets, .port = random.int(u16) } };
+        }
+        var octets: [16]u8 = undefined;
+        random.bytes(&octets);
+        return .{ .ipv6 = .{ .octets = octets, .port = random.int(u16) } };
+    }
+
+    pub fn next_route_capabilities(self: *PropertyGenerator) topology.RouteCapabilities {
+        return .{
+            .direct = self.next_route_availability(),
+            .relay = self.next_route_availability(),
+            .authoritative = self.next_route_availability(),
+        };
+    }
+
+    pub fn next_state(self: *PropertyGenerator, output: []u8) PropertyGeneratorError!GeneratedState {
+        return .{
+            .schema_version = self.random.random().uintLessThan(state.StateSchemaVersion, self.config.maximum_schema_version) + 1,
+            .bytes = .init(try self.next_bytes(output)),
+        };
+    }
+
+    pub fn next_capability_config(self: *PropertyGenerator) core.CapabilityConfig {
+        const random = self.random.random();
+        return .{
+            .transport = random.uintLessThan(u8, 2) != 0,
+            .packet_protection = random.uintLessThan(u8, 2) != 0,
+            .topology = random.uintLessThan(u8, 2) != 0,
+            .state_replication = random.uintLessThan(u8, 2) != 0,
+            .capture = random.uintLessThan(u8, 2) != 0,
+        };
+    }
+
+    pub fn next_valid_capability_config(self: *PropertyGenerator) core.CapabilityConfig {
+        var config = self.next_capability_config();
+        if (config.packet_protection or config.topology or config.state_replication or config.capture) config.transport = true;
+        return config;
+    }
+
+    fn next_bytes(self: *PropertyGenerator, output: []u8) PropertyGeneratorError![]const u8 {
+        if (output.len < self.config.maximum_bytes) return error.OutputTooSmall;
+        const len = self.random.random().uintLessThan(usize, self.config.maximum_bytes + 1);
+        self.random.random().bytes(output[0..len]);
+        return output[0..len];
+    }
+
+    fn next_route_availability(self: *PropertyGenerator) topology.RouteAvailability {
+        const random = self.random.random();
+        const health = [_]topology.ShardHealth{ .healthy, .degraded, .unavailable };
+        return .{ .negotiated = random.uintLessThan(u8, 2) != 0, .health = health[random.uintLessThan(usize, health.len)] };
+    }
+};
+
 test "test harness fixtures preserve deterministic success paths" {
     var clock = DeterministicClock.init(4);
     try clock.advance(6);
@@ -141,4 +233,42 @@ test "test harness fixtures preserve deterministic failure paths" {
     try transport.send("a");
     try expectError(error.QueueFull, transport.send("b"));
     try expectError(error.MessageTooLarge, transport.send("xx"));
+}
+
+test "property generators produce bounded deterministic protocol topology state and capability values" {
+    const config = PropertyGeneratorConfig{ .seed = 7, .maximum_bytes = 8, .maximum_schema_version = 3 };
+    var first = try PropertyGenerator.init(config);
+    var second = try PropertyGenerator.init(config);
+    var first_message_storage: [8]u8 = undefined;
+    var second_message_storage: [8]u8 = undefined;
+    const first_message = try first.next_protocol_message(first_message_storage[0..]);
+    const second_message = try second.next_protocol_message(second_message_storage[0..]);
+    try protocol.validate_envelope(first_message);
+    try std.testing.expectEqual(first_message.extension_id, second_message.extension_id);
+    try expectEqualSlices(u8, first_message.payload, second_message.payload);
+    const address = first.next_address();
+    var encoded_address: [20]u8 = undefined;
+    const transaction_id = [_]u8{0} ** 12;
+    try std.testing.expectEqual(address, try protocol.decode_xor_address(try protocol.encode_xor_address(address, transaction_id, encoded_address[0..]), transaction_id));
+    const routes = first.next_route_capabilities();
+    _ = routes.direct.health;
+    _ = routes.relay.health;
+    _ = routes.authoritative.health;
+    var state_storage: [8]u8 = undefined;
+    const generated_state = try first.next_state(state_storage[0..]);
+    try std.testing.expect(generated_state.schema_version >= 1 and generated_state.schema_version <= config.maximum_schema_version);
+    try std.testing.expect(generated_state.bytes.bytes.len <= config.maximum_bytes);
+    try (first.next_valid_capability_config()).validate();
+}
+
+test "property generators reject invalid bounds and undersized output" {
+    try expectError(error.InvalidConfiguration, PropertyGenerator.init(.{ .seed = 0, .maximum_bytes = 0 }));
+    try expectError(error.InvalidConfiguration, PropertyGenerator.init(.{ .seed = 0, .maximum_bytes = protocol.max_packet_payload_bytes + 1 }));
+    try expectError(error.InvalidConfiguration, PropertyGenerator.init(.{ .seed = 0, .maximum_bytes = 1, .maximum_schema_version = 0 }));
+    var generator = try PropertyGenerator.init(.{ .seed = 1, .maximum_bytes = 2 });
+    var short_output: [1]u8 = undefined;
+    try expectError(error.OutputTooSmall, generator.next_protocol_message(short_output[0..]));
+    try expectError(error.OutputTooSmall, generator.next_state(short_output[0..]));
+    var invalid_capabilities = core.CapabilityConfig{ .capture = true };
+    try expectError(error.UnsupportedCapabilityCombination, invalid_capabilities.validate());
 }
