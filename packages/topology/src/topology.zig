@@ -2,6 +2,7 @@ const core = @import("minna-san-core");
 const protocol = @import("minna-san-protocol");
 const transport = @import("minna-san-transport");
 const shard_directory = @import("shard_directory.zig");
+const shard_handoff = @import("shard_handoff.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -13,6 +14,13 @@ pub const ShardRegistration = shard_directory.ShardRegistration;
 pub const ShardDirectoryError = shard_directory.ShardDirectoryError;
 pub const ShardDirectoryConfig = shard_directory.ShardDirectoryConfig;
 pub const ShardDirectory = shard_directory.ShardDirectory;
+pub const HandoffClientId = shard_handoff.HandoffClientId;
+pub const ShardHandoffId = shard_handoff.ShardHandoffId;
+pub const ShardHandoffRequest = shard_handoff.ShardHandoffRequest;
+pub const ShardHandoff = shard_handoff.ShardHandoff;
+pub const ShardHandoffError = shard_handoff.ShardHandoffError;
+pub const ShardHandoffConfig = shard_handoff.ShardHandoffConfig;
+pub const ShardHandoffCoordinator = shard_handoff.ShardHandoffCoordinator;
 
 pub const package_name = "topology";
 
@@ -28,4 +36,5 @@ test "topology package boundary" {
 
 test {
     _ = @import("shard_directory.zig");
+    _ = @import("shard_handoff.zig");
 }
