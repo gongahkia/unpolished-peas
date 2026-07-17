@@ -3,6 +3,7 @@ const protocol = @import("minna-san-protocol");
 const transport = @import("minna-san-transport");
 const shard_directory = @import("shard_directory.zig");
 const shard_handoff = @import("shard_handoff.zig");
+const routed_peer_group = @import("routed_peer_group.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -21,6 +22,15 @@ pub const ShardHandoff = shard_handoff.ShardHandoff;
 pub const ShardHandoffError = shard_handoff.ShardHandoffError;
 pub const ShardHandoffConfig = shard_handoff.ShardHandoffConfig;
 pub const ShardHandoffCoordinator = shard_handoff.ShardHandoffCoordinator;
+pub const PeerGroupId = routed_peer_group.PeerGroupId;
+pub const PeerGroupPeerId = routed_peer_group.PeerGroupPeerId;
+pub const PeerGroupState = routed_peer_group.PeerGroupState;
+pub const PeerGroupPath = routed_peer_group.PeerGroupPath;
+pub const PeerGroupRoute = routed_peer_group.PeerGroupRoute;
+pub const RoutedPeerGroupError = routed_peer_group.RoutedPeerGroupError;
+pub const RoutedPeerGroupConfig = routed_peer_group.RoutedPeerGroupConfig;
+pub const RoutedPeerGroupInfo = routed_peer_group.RoutedPeerGroupInfo;
+pub const RoutedPeerGroups = routed_peer_group.RoutedPeerGroups;
 
 pub const package_name = "topology";
 
@@ -37,4 +47,5 @@ test "topology package boundary" {
 test {
     _ = @import("shard_directory.zig");
     _ = @import("shard_handoff.zig");
+    _ = @import("routed_peer_group.zig");
 }

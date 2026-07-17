@@ -374,6 +374,15 @@ test "stable public symbols are exact" {
         "ShardHandoffError",
         "ShardHandoffConfig",
         "ShardHandoffCoordinator",
+        "PeerGroupId",
+        "PeerGroupPeerId",
+        "PeerGroupState",
+        "PeerGroupPath",
+        "PeerGroupRoute",
+        "RoutedPeerGroupError",
+        "RoutedPeerGroupConfig",
+        "RoutedPeerGroupInfo",
+        "RoutedPeerGroups",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
