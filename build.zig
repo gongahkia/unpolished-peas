@@ -433,14 +433,6 @@ pub fn build(b: *std.Build) void {
     desktop_backend_comparison.setCwd(b.path("."));
     const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays and captures");
     desktop_backend_comparison_step.dependOn(&desktop_backend_comparison.step);
-    const effects_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/subsystems/effects/effects.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
-    const run_effects_tests = b.addRunArtifact(effects_tests);
-    const effects_test_step = b.step("test-effects", "Test the engine-owned effects subsystem");
-    effects_test_step.dependOn(&run_effects_tests.step);
 }
 
 fn addExample(

@@ -47,8 +47,6 @@ export function createBrowserHost({
   let logicalHeight = 0;
   let primitivePipeline = null;
   let spritePipeline = null;
-  let effectPipeline = null;
-  let effectTargets = null;
   let spriteBatch = null;
   let clip = null;
   const clipStack = [];
@@ -56,8 +54,6 @@ export function createBrowserHost({
   const blendStack = [];
   let camera = null;
   let presentationMode = 0;
-  const effects = [];
-  const maxEffects = 8;
   let runtime = null;
   const scheduledFrames = new Map();
   let lifecyclePhase = "idle";
@@ -153,24 +149,6 @@ export function createBrowserHost({
       gl.deleteProgram(spritePipeline.program);
     }
     spritePipeline = null;
-  }
-
-  function releaseEffectPipeline(release) {
-    if (!effectPipeline) return;
-    if (release && gl) {
-      gl.deleteBuffer(effectPipeline.buffer);
-      gl.deleteProgram(effectPipeline.program);
-    }
-    effectPipeline = null;
-  }
-
-  function releaseEffectTargets(release) {
-    if (!effectTargets) return;
-    if (release && gl) for (const target of [effectTargets.scene, effectTargets.ping]) {
-      gl.deleteTexture(target.texture);
-      gl.deleteFramebuffer(target.framebuffer);
-    }
-    effectTargets = null;
   }
 
   function wasmBytes(pointer, byteLength) {
@@ -281,104 +259,9 @@ export function createBrowserHost({
     return spritePipeline;
   }
 
-  function ensureEffectPipeline() {
-    if (!gl || contextLost) return null;
-    if (effectPipeline) return effectPipeline;
-    const vertex = compileShader(gl.VERTEX_SHADER, `#version 300 es
-      layout(location = 0) in vec2 in_position;
-      layout(location = 1) in vec2 in_uv;
-      out vec2 out_uv;
-      void main() { gl_Position = vec4(in_position, 0.0, 1.0); out_uv = in_uv; }`);
-    if (!vertex) return null;
-    const fragment = compileShader(gl.FRAGMENT_SHADER, `#version 300 es
-      precision mediump float;
-      uniform sampler2D effect_texture;
-      uniform float amount;
-      in vec2 out_uv;
-      out vec4 fragment_color;
-      void main() {
-        vec4 color = texture(effect_texture, out_uv);
-        fragment_color = vec4(mix(color.rgb, vec3(1.0) - color.rgb, amount), color.a);
-      }`);
-    if (!fragment) {
-      gl.deleteShader(vertex);
-      return null;
-    }
-    const program = gl.createProgram();
-    if (!program) {
-      gl.deleteShader(vertex);
-      gl.deleteShader(fragment);
-      return null;
-    }
-    gl.attachShader(program, vertex);
-    gl.attachShader(program, fragment);
-    gl.linkProgram(program);
-    gl.deleteShader(vertex);
-    gl.deleteShader(fragment);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      logger?.error?.(`unpolished-peas browser: WebGL effect link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
-      gl.deleteProgram(program);
-      return null;
-    }
-    const buffer = gl.createBuffer();
-    const sampler = gl.getUniformLocation(program, "effect_texture");
-    const amount = gl.getUniformLocation(program, "amount");
-    if (!buffer || sampler === null || amount === null) {
-      if (buffer) gl.deleteBuffer(buffer);
-      gl.deleteProgram(program);
-      return null;
-    }
-    effectPipeline = {program, buffer, sampler, amount};
-    return effectPipeline;
-  }
-
-  function appliesEffects() {
-    return effects.some(({kind}) => kind === 0);
-  }
-
-  function configureEffectTarget(target) {
-    gl.bindTexture(gl.TEXTURE_2D, target.texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, logicalWidth, logicalHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, target.texture, 0);
-    return gl.checkFramebufferStatus(gl.FRAMEBUFFER) === gl.FRAMEBUFFER_COMPLETE;
-  }
-
-  function ensureEffectTargets() {
-    if (!gl || contextLost || logicalWidth === 0 || logicalHeight === 0) return null;
-    if (effectTargets?.width === logicalWidth && effectTargets.height === logicalHeight) return effectTargets;
-    releaseEffectTargets(true);
-    const scene = {texture: gl.createTexture(), framebuffer: gl.createFramebuffer()};
-    const ping = {texture: gl.createTexture(), framebuffer: gl.createFramebuffer()};
-    if (!scene.texture || !scene.framebuffer || !ping.texture || !ping.framebuffer) {
-      for (const target of [scene, ping]) {
-        if (target.texture) gl.deleteTexture(target.texture);
-        if (target.framebuffer) gl.deleteFramebuffer(target.framebuffer);
-      }
-      return null;
-    }
-    effectTargets = {scene, ping, width: logicalWidth, height: logicalHeight};
-    if (!configureEffectTarget(scene) || !configureEffectTarget(ping)) {
-      releaseEffectTargets(true);
-      return null;
-    }
-    return effectTargets;
-  }
-
   function bindDrawTarget() {
-    if (!appliesEffects()) {
-      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-      gl.viewport(0, 0, canvas.width, canvas.height);
-      return true;
-    }
-    const targets = ensureEffectTargets();
-    if (!targets) return false;
-    gl.bindFramebuffer(gl.FRAMEBUFFER, targets.scene.framebuffer);
-    gl.viewport(0, 0, logicalWidth, logicalHeight);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, canvas.width, canvas.height);
     return true;
   }
 
@@ -642,85 +525,15 @@ export function createBrowserHost({
     return drawVertices([...vertex(ax, ay, rgba), ...vertex(bx, by, rgba), ...vertex(cx, cy, rgba)]);
   }
 
-  function drawEffectPass(texture, amount) {
-    const pipeline = ensureEffectPipeline();
-    if (!pipeline) return false;
-    const vertices = new Float32Array([
-      -1, 1, 0, 1, 1, 1, 1, 1, 1, -1, 1, 0,
-      -1, 1, 0, 1, 1, -1, 1, 0, -1, -1, 0, 0,
-    ]);
-    gl.useProgram(pipeline.program);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.buffer);
-    gl.bufferData(gl.ARRAY_BUFFER, vertices, gl.DYNAMIC_DRAW);
-    gl.enableVertexAttribArray(0);
-    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 16, 0);
-    gl.enableVertexAttribArray(1);
-    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 16, 8);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.disable(gl.BLEND);
-    gl.uniform1i(pipeline.sampler, 0);
-    gl.uniform1f(pipeline.amount, amount);
-    gl.drawArrays(gl.TRIANGLES, 0, 6);
-    return true;
-  }
-
-  function composeEffects(mode) {
-    const targets = ensureEffectTargets();
-    if (!targets) return Status.rejected;
-    let source = targets.scene;
-    for (const effect of effects) {
-      if (effect.kind === 1) continue;
-      const target = source === targets.scene ? targets.ping : targets.scene;
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
-      gl.viewport(0, 0, logicalWidth, logicalHeight);
-      gl.clearColor(0, 0, 0, 0);
-      gl.clear(gl.COLOR_BUFFER_BIT);
-      if (!drawEffectPass(source.texture, effect.amount)) return Status.rejected;
-      source = target;
-    }
-    const destination = presentationDestination(mode, logicalWidth, logicalHeight, canvas.width, canvas.height);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
-    gl.disable(gl.SCISSOR_TEST);
-    gl.clearColor(0, 0, 0, 1);
-    gl.clear(gl.COLOR_BUFFER_BIT);
-    gl.viewport(destination.x, canvas.height - destination.y - destination.height, destination.width, destination.height);
-    if (!drawEffectPass(source.texture, 0)) return Status.rejected;
-    return Status.ok;
-  }
-
   function present(mode) {
     if (!gl) return Status.unavailable;
     if (contextLost || mode > 2 || clipStack.length !== 0 || blendStack.length !== 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;
     presentationMode = mode;
-    if (appliesEffects()) {
-      const effectStatus = composeEffects(mode);
-      if (effectStatus !== Status.ok) return effectStatus;
-      gl.flush();
-      return Status.ok;
-    }
     const destination = presentationDestination(mode, logicalWidth, logicalHeight, canvas.width, canvas.height);
     gl.viewport(destination.x, canvas.height - destination.y - destination.height, destination.width, destination.height);
     gl.flush();
-    return Status.ok;
-  }
-
-  function clearEffects() {
-    if (!gl) return Status.unavailable;
-    if (contextLost) return Status.rejected;
-    effects.length = 0;
-    return Status.ok;
-  }
-
-  function appendEffect(kind, amount) {
-    if (!Number.isInteger(kind) || (kind !== 0 && kind !== 1) || !Number.isFinite(amount) || amount < 0 || amount > 1) return Status.invalidArgument;
-    if (!gl) return Status.unavailable;
-    if (contextLost || effects.length === maxEffects) return Status.rejected;
-    effects.push({kind, amount});
     return Status.ok;
   }
 
@@ -808,8 +621,6 @@ export function createBrowserHost({
       invalidateResourceValues();
       releasePrimitivePipeline(false);
       releaseSpritePipeline(false);
-      releaseEffectPipeline(false);
-      releaseEffectTargets(false);
       lifecyclePhase = "context_lost";
       return Status.rejected;
     }
@@ -823,7 +634,6 @@ export function createBrowserHost({
       recoveryCount += 1;
       lifecyclePhase = "recovered";
     } else lifecyclePhase = "active";
-    if (effectTargets && (effectTargets.width !== width || effectTargets.height !== height)) releaseEffectTargets(true);
     return Status.ok;
   }
 
@@ -877,8 +687,6 @@ export function createBrowserHost({
     invalidateResourceValues();
     releasePrimitivePipeline(false);
     releaseSpritePipeline(false);
-    releaseEffectPipeline(false);
-    releaseEffectTargets(false);
     spriteBatch = null;
   }
 
@@ -903,8 +711,6 @@ export function createBrowserHost({
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
-      releaseEffectPipeline(!contextLost);
-      releaseEffectTargets(!contextLost);
       spriteBatch = null;
       lifecyclePhase = "destroyed";
       gl = null;
@@ -932,8 +738,6 @@ export function createBrowserHost({
     up_host_gl_push_blend: pushBlend,
     up_host_gl_pop_blend: popBlend,
     up_host_gl_set_camera: setCamera,
-    up_host_gl_effect_clear: clearEffects,
-    up_host_gl_effect_append: appendEffect,
     up_host_input_poll: input.poll,
     up_host_input_read: (destination, capacity) => input.read(destination, capacity, memory),
     up_host_audio_state: audio.state,
@@ -947,8 +751,6 @@ export function createBrowserHost({
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
-      releaseEffectPipeline(!contextLost);
-      releaseEffectTargets(!contextLost);
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);

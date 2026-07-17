@@ -21,7 +21,6 @@ pub const ResourceHandle = union(enum) {
     image: assets.ImageHandle,
     sound: assets.AudioHandle,
     font: assets.FontHandle,
-    shader: assets.ShaderAssetHandle,
 };
 
 pub const Resource = struct {
@@ -50,7 +49,7 @@ pub const AssetPanel = struct {
         };
         const stats = store.stats();
         lines.line("text={} image={} sound={}", .{ stats.texts, stats.images, stats.sounds }, panel_text);
-        lines.line("font={} shader={} reload-events={}", .{ stats.fonts, stats.shaders, stats.reload_events }, panel_text);
+        lines.line("font={} reload-events={}", .{ stats.fonts, stats.reload_events }, panel_text);
         for (self.resources) |resource| {
             const state = resourceState(store, resource.handle);
             lines.line("{s}: {s}", .{ resource.name, state }, if (std.mem.eql(u8, state, "ready")) panel_text else panel_warning);
@@ -136,7 +135,6 @@ pub const RendererState = struct {
     selected: []const u8 = "none",
     gpu: []const u8 = "unknown",
     opengl: []const u8 = "unknown",
-    effects: []const u8 = "unknown",
     recovery: []const u8 = "none",
     preflight: []const u8 = "none",
 };
@@ -161,7 +159,7 @@ pub const RendererPanel = struct {
         };
         lines.line("requested={s} selected={s}", .{ state.requested, state.selected }, panel_text);
         lines.line("gpu={s} opengl={s}", .{ state.gpu, state.opengl }, panel_text);
-        lines.line("effects={s} recovery={s}", .{ state.effects, state.recovery }, panel_text);
+        lines.line("recovery={s}", .{state.recovery}, panel_text);
         lines.line("preflight={s}", .{state.preflight}, if (std.mem.eql(u8, state.preflight, "none")) panel_text else panel_warning);
     }
 };
@@ -353,7 +351,6 @@ fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []cons
         .image => |value| if (store.tryImage(value)) |_| "ready" else |_| "stale",
         .sound => |value| if (store.trySound(value)) |_| "ready" else |_| "stale",
         .font => |value| if (store.tryFont(value)) |_| "ready" else |_| "stale",
-        .shader => |value| if (store.tryShaderSource(value)) |_| "ready" else |_| "stale",
     };
 }
 
@@ -419,7 +416,7 @@ test "extended diagnostic panels render navigable runtime state" {
     var frame_profiler = profiler.Profiler.init(true);
     frame_profiler.beginFrame(9);
     frame_profiler.scope(.draw).end();
-    const renderer_state = RendererState{ .requested = "auto", .selected = "opengl", .gpu = "unavailable", .opengl = "available", .effects = "available", .recovery = "none", .preflight = "none" };
+    const renderer_state = RendererState{ .requested = "auto", .selected = "opengl", .gpu = "unavailable", .opengl = "available", .recovery = "none", .preflight = "none" };
     const subsystem_state = SubsystemState{ .app_data_path = "/tmp/peas", .audio_ready = true, .audio_queued_bytes = 2048, .renderer_ready = true };
     var renderer_panel = RendererPanel{ .state = &renderer_state };
     var reload_panel = ReloadPanel{ .store = &store };

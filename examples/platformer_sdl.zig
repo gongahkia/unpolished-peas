@@ -45,7 +45,6 @@ const Game = struct {
         _ = self.game.step(&self.collider, .{ .left = ctx.down(.left), .right = ctx.down(.right), .jump = jump }, ctx.dt);
         if (jump) _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.jump_sound), .{});
         self.animation.update(ctx.dt);
-        if (ctx.down(.action)) try ctx.setPixelEffect("invert", .{ .amount = 0.2 }) else ctx.clearPixelEffect();
     }
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
