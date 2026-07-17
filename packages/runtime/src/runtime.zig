@@ -109,4 +109,5 @@ test {
     _ = @import("interest_management.zig");
     _ = @import("spatial_grid_interest.zig");
     _ = @import("version.zig");
+    _ = @import("topology_fault_scenarios.zig");
 }
