@@ -440,6 +440,10 @@ test "stable public symbols are exact" {
         "TcpStunBindingConfig",
         "TcpStunBindingResult",
         "TcpStunBindingClient",
+        "TurnAllocationError",
+        "TurnAllocationConfig",
+        "TurnAllocation",
+        "TurnAllocationClient",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
