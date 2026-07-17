@@ -252,6 +252,18 @@ pub fn build(b: *std.Build) void {
         .name = "minna-san-c-abi-conformance",
         .root_module = c_abi,
     });
+    const c_sdk_static = b.addLibrary(.{
+        .linkage = .static,
+        .name = "minna-san",
+        .root_module = c_abi,
+    });
+    const c_sdk_shared = b.addLibrary(.{
+        .linkage = .dynamic,
+        .name = "minna-san",
+        .root_module = c_abi,
+    });
+    const install_c_sdk_static = b.addInstallArtifact(c_sdk_static, .{});
+    const install_c_sdk_shared = b.addInstallArtifact(c_sdk_shared, .{});
     const c_abi_consumer = b.addExecutable(.{
         .name = "c-abi-conformance",
         .root_module = b.createModule(.{
@@ -413,6 +425,13 @@ pub fn build(b: *std.Build) void {
     c_header_step.dependOn(&c_header_check.step);
     const c_abi_parity_step = b.step("c-abi-parity", "Compile and run equivalent C ABI consumer workflows");
     c_abi_parity_step.dependOn(&run_c_abi_consumer.step);
+    const c_sdk_static_step = b.step("c-sdk-static", "Build the C SDK static library");
+    c_sdk_static_step.dependOn(&install_c_sdk_static.step);
+    const c_sdk_shared_step = b.step("c-sdk-shared", "Build the C SDK shared library");
+    c_sdk_shared_step.dependOn(&install_c_sdk_shared.step);
+    const c_sdk_macos_reproducible = b.addSystemCommand(&.{ "sh", "script/test_macos_c_sdk_artifacts.sh" });
+    const c_sdk_macos_reproducible_step = b.step("c-sdk-macos-reproducible", "Build reproducible macOS arm64 and x86_64 C SDK libraries");
+    c_sdk_macos_reproducible_step.dependOn(&c_sdk_macos_reproducible.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
