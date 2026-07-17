@@ -1,6 +1,16 @@
 const std = @import("std");
 const up = @import("unpolished-peas");
 
+const ProtocolGame = struct {
+    pub fn init(_: *@This(), _: *up.GameContext) !void {}
+    pub fn update(_: *@This(), _: *up.GameContext, _: f32) !void {}
+    pub fn draw(_: *@This(), _: *up.GameContext) !void {}
+};
+
+comptime {
+    _ = up.GameProtocol(ProtocolGame);
+}
+
 fn probe() bool {
     const point = up.Vec2.init(3, 4);
     const bounds = up.Rect.init(0, 0, 8, 8);
