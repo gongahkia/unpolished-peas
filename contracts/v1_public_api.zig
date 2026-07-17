@@ -127,6 +127,12 @@ test "stable public symbols are exact" {
         "AckRangeError",
         "AckRange",
         "AckRanges",
+        "max_retransmission_entries",
+        "RetransmissionError",
+        "RetransmissionConfig",
+        "RetransmissionEntry",
+        "RetransmissionPollResult",
+        "RetransmissionScheduler",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
