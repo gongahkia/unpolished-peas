@@ -274,6 +274,7 @@ test "property generators reject invalid bounds and undersized output" {
 }
 
 test {
+    _ = @import("allocator_lifecycle.zig");
     _ = @import("fuzz_envelope_codecs.zig");
     _ = @import("fuzz_security_handshakes.zig");
     _ = @import("fuzz_topology_migration.zig");
