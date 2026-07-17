@@ -8,6 +8,7 @@ const state_encoder = @import("state_encoder.zig");
 const state_decoder = @import("state_decoder.zig");
 const snapshot_publisher = @import("snapshot_publisher.zig");
 const snapshot_client = @import("snapshot_client.zig");
+const snapshot_baseline = @import("snapshot_baseline.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -75,6 +76,10 @@ pub const StateSnapshotApplyFn = snapshot_client.StateSnapshotApplyFn;
 pub const StateSnapshotClientError = snapshot_client.StateSnapshotClientError;
 pub const StateSnapshotClientConfig = snapshot_client.StateSnapshotClientConfig;
 pub const StateSnapshotClient = snapshot_client.StateSnapshotClient;
+pub const StateSnapshotBaselineError = snapshot_baseline.StateSnapshotBaselineError;
+pub const StateSnapshotBaseline = snapshot_baseline.StateSnapshotBaseline;
+pub const StateSnapshotBaselineConfig = snapshot_baseline.StateSnapshotBaselineConfig;
+pub const StateSnapshotBaselines = snapshot_baseline.StateSnapshotBaselines;
 
 pub const package_name = "state";
 
@@ -96,4 +101,5 @@ test {
     _ = @import("state_decoder.zig");
     _ = @import("snapshot_publisher.zig");
     _ = @import("snapshot_client.zig");
+    _ = @import("snapshot_baseline.zig");
 }
