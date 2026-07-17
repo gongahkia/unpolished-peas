@@ -43,7 +43,6 @@ case "$game" in
         ;;
     platformer)
         run headless zig build test-platformer
-        run physics zig build test-physics
         run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-platformer-sdl
         ;;
 esac

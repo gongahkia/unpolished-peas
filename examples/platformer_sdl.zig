@@ -12,8 +12,6 @@ const Game = struct {
     atlas: *up.Atlas,
     animation: up.AnimationPlayer,
     tile_image: up.ImageHandle,
-    world: up.physics.World,
-    marker: up.physics.BodyHandle,
     jump_sound: up.AudioHandle,
 
     pub fn init(ctx: *sdl.Context) !Game {
@@ -33,11 +31,7 @@ const Game = struct {
             ctx.allocator.destroy(atlas);
         }
         const animation = atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
-        var world = up.physics.World.init(.{ .gravity = .{ .x = 0, .y = 4 } });
-        errdefer world.deinit();
-        const marker = try world.createBody(.{ .body_type = .dynamic, .position = .{ .x = 84, .y = 8 } });
-        _ = try world.createCircle(marker, .{ .radius = 2 });
-        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(atlas, animation), .tile_image = tile_image, .world = world, .marker = marker, .jump_sound = try ctx.loadSound("blip.wav") };
+        return .{ .game = try .init(.{ .x = 8, .y = 0 }), .map = map, .collider = collider, .atlas = atlas, .animation = up.AnimationPlayer.init(atlas, animation), .tile_image = tile_image, .jump_sound = try ctx.loadSound("blip.wav") };
     }
     pub fn deinit(self: *Game, _: *sdl.Context) void {
         self.collider.deinit();
@@ -45,14 +39,12 @@ const Game = struct {
         const allocator = self.atlas.allocator;
         self.atlas.deinit();
         allocator.destroy(self.atlas);
-        self.world.deinit();
     }
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
         const jump = ctx.input.wasPressed(.action);
         _ = self.game.step(&self.collider, .{ .left = ctx.down(.left), .right = ctx.down(.right), .jump = jump }, ctx.dt);
         if (jump) _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.jump_sound), .{});
         self.animation.update(ctx.dt);
-        try self.world.step(ctx.dt, 4);
         if (ctx.down(.action)) try ctx.setPixelEffect("invert", .{ .amount = 0.2 }) else ctx.clearPixelEffect();
     }
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
@@ -60,9 +52,6 @@ const Game = struct {
         const images = [_]up.Image{try ctx.assets.tryImage(self.tile_image)};
         self.map.drawImages(ctx.camera(&camera), &images);
         try ctx.spriteAtlas(self.atlas, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
-        try ctx.appendPhysicsDebug(&self.world, &camera);
-        const marker = self.world.bodyPosition(self.marker) catch return;
-        ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
         ctx.text("PLATFORMER", 2, 2, up.Color.white);
     }
 };

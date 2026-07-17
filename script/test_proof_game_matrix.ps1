@@ -39,7 +39,6 @@ try {
         Invoke-Scenario 'desktop-smoke' { zig build smoke-topdown-sdl }
     } else {
         Invoke-Scenario 'headless' { zig build test-platformer }
-        Invoke-Scenario 'physics' { zig build test-physics }
         $env:SDL_AUDIODRIVER = 'dummy'
         Invoke-Scenario 'desktop-smoke' { zig build smoke-platformer-sdl }
     }

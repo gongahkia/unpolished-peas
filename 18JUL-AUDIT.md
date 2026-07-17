@@ -100,7 +100,7 @@ No open issues does not demonstrate reliability when there are no observed outsi
 
 Remove, rather than merely hide, Box2D physics, effects/shaders/lighting, extension metadata and resolution, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
 
-Networking, relays, and hosted services were not shipped in this checkout and are outside the v0.1 core; the historical reference above has been corrected accordingly.
+Networking, relays, hosted services, and Box2D physics are outside the v0.1 core; the historical reference above has been corrected accordingly.
 
 ### Performance and evidence
 

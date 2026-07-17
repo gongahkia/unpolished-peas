@@ -19,3 +19,7 @@ v0.1 removes the engine-owned immediate-mode UI subsystem and public API. Delete
 ## Networking and services excluded
 
 Networking, relays, and hosted services were not shipped in this checkout and are not v0.1 core capabilities. Keep any such integration game-owned.
+
+## Box2D physics removed
+
+v0.1 removes the engine-owned Box2D physics subsystem and its public API. Keep physics simulation and collision behavior game-owned.

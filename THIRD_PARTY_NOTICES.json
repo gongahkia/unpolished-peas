@@ -47,19 +47,5 @@
     "source": "https://github.com/castholm/SDL_linux_deps/tree/fd349940b9dbaa0f221703b05df826d745d7ce2a",
     "license": "((AFL-2.0 AND AFL-2.1) OR GPL-2.0-or-later) AND ((GPL-2.0-only WITH Linux-syscall-note) OR MIT) AND HPND AND HPND-sell-variant AND ISC AND LGPL-2.1-or-later AND MIT AND MIT-open-group AND X11",
     "usage": "fetched Linux SDL build dependency"
-  },
-  {
-    "name": "allyourcodebase/box2d",
-    "version": "3.1.1",
-    "source": "https://github.com/allyourcodebase/box2d/tree/0482245bf59bec743a7cb29961a480c3f7497f0c",
-    "license": "MIT",
-    "usage": "fetched Zig build package"
-  },
-  {
-    "name": "Box2D",
-    "version": "3.1.1",
-    "source": "https://github.com/erincatto/box2d/tree/8c661469c9507d3ad6fbd2fea3f1aa71669c2fe3",
-    "license": "MIT",
-    "usage": "fetched optional physics source"
   }
 ]

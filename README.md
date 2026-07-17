@@ -26,7 +26,7 @@ zig build test-renderer-conformance
 zig build test-opengl
 ```
 
-`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`. The engine pins Box2D for its built-in physics subsystem, validated by `zig build test-physics`.
+`zig build test-sdl` uses the pinned SDL3 source in `build.zig.zon`.
 `test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 `test-opengl` creates an OpenGL 3.3 core context and validates the fallback presenter with a readback fixture.
 `test-renderer-cross-backend` compares SDL GPU and OpenGL readbacks for the shared corpus; captures must have equal dimensions and every RGBA channel may differ by at most one.
@@ -36,8 +36,7 @@ Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--rendere
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
 Game code imports `unpolished-peas` and `unpolished-peas-sdl3`. `zig build test-modules` checks the core, tooling, and fixture graph.
-`up.PhysicsWorld` provides explicit world, body, shape, joint, contact, debug-command, step, and deinit APIs. `World.appendDebug` emits the same core render commands for headless and GPU presentation.
-The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision and physics panels remain application-owned.
+The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision panels remain application-owned.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont(path, options)` loads TrueType/OpenType fonts into a GPU atlas and detects AngelCode `.fnt` descriptors; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `layoutText` shares the same deterministic UTF-8 decoder.
 
@@ -164,9 +163,9 @@ zig build new -- ../my-game
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
 `zig build test-desktop-package-matrix` packages and smokes bounce, top-down, and platformer for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
 `zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, and platformer in Chromium from deterministic static Wasm bundles.
-`run-platformer-sdl` runs the TileCollider, Box2D, animation, and shader platformer slice.
+`run-platformer-sdl` runs the TileCollider, animation, and shader platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
-`script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, physics where applicable, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
+`script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
 `fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three.
 `zig build test-facade-consumer-matrix` builds independent desktop and Wasm consumer packages that use only `@import("unpolished-peas")`.
 `zig build test-renderer-three-backend` compares deterministic SDL GPU, OpenGL, and WebGL 2 renderer corpus captures with a one-channel tolerance.
@@ -175,7 +174,7 @@ zig build new -- ../my-game
 `fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, follows with a camera, and reloads a raw shader asset.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`zig build test-effects` and `zig build test-physics` validate the engine-owned effects and physics subsystems.
+`zig build test-effects` validates the engine-owned effects subsystem.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
 Tag pushes run `zig build release-gate`, which validates the frozen core API, a clean released-dependency consumer, proof-game consumers, desktop packages, deterministic diagnostics, and visual/replay checks; every gate writes a local log under `zig-out/diagnostics/release-gate/`.

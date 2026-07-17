@@ -51,7 +51,6 @@ run package-topdown "$package_script" zig-out/release-gate/packages/topdown topd
 run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer
 run diagnostics zig build test-support
 run effects zig build test-effects
-run physics zig build test-physics
 run visual-scenes zig build test-scenes
 run backend-comparison zig build test-desktop-backends
 printf 'release gate passed: logs=%s\n' "$diagnostics"

@@ -853,10 +853,6 @@ pub const Context = struct {
         try self.renderer_diagnostics.requireEffects();
     }
 
-    pub fn appendPhysicsDebug(self: *Context, world: *up.PhysicsWorld, target_camera: *const up.Camera2D) !void {
-        try world.appendDebug(self.commands, target_camera, .{ .x = @floatFromInt(self.canvas.width), .y = @floatFromInt(self.canvas.height) });
-    }
-
     pub fn registerInspectorPanel(self: *Context, panel: up.InspectorPanel) !void {
         try self.inspector.register(panel);
     }

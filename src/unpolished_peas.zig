@@ -7,8 +7,6 @@ pub const world = api.world;
 pub const preview = api.preview;
 pub const testSupport = api.testSupport;
 pub const effects = api.effects;
-pub const Physics = api.Physics;
-pub const physics = api.physics;
 pub const GpuResourceKind = api.GpuResourceKind;
 pub const GpuResources = api.GpuResources;
 pub const TextureHandle = api.TextureHandle;
@@ -22,9 +20,6 @@ pub const PixelEffect = api.PixelEffect;
 pub const PixelEffectParameters = api.PixelEffectParameters;
 pub const PostProcessChain = api.PostProcessChain;
 pub const lighting = api.lighting;
-pub const PhysicsWorld = api.PhysicsWorld;
-pub const PhysicsConfig = api.PhysicsConfig;
-pub const PhysicsBody = api.PhysicsBody;
 pub const App = api.App;
 pub const GameContext = api.GameContext;
 pub const GameProtocol = api.GameProtocol;
@@ -130,8 +125,6 @@ pub const InspectorProfilePanel = api.InspectorProfilePanel;
 pub const InspectorSubsystemPanel = api.InspectorSubsystemPanel;
 pub const InspectorSubsystemState = api.InspectorSubsystemState;
 pub const InspectorCollisionPanel = api.InspectorCollisionPanel;
-pub const InspectorPhysicsPanel = api.InspectorPhysicsPanel;
-pub const InspectorPhysicsState = api.InspectorPhysicsState;
 pub const inspectorPanels = api.inspectorPanels;
 pub const Gamepad = api.Gamepad;
 pub const GamepadButton = api.GamepadButton;
@@ -221,8 +214,8 @@ test {
     _ = @import("test_support.zig");
 }
 
-test "root module exposes the cohesive facade directly" {
+test "root module excludes removed physics" {
     try @import("std").testing.expect(@hasDecl(@This(), "Canvas"));
     try @import("std").testing.expect(@hasDecl(@This(), "effects"));
-    try @import("std").testing.expect(@hasDecl(@This(), "physics"));
+    try @import("std").testing.expect(!@hasDecl(@This(), "physics"));
 }
