@@ -1,18 +1,8 @@
 # Bouncing Square
 
-Requires Zig 0.15.2, SDL3, and `pkg-config`.
-
-macOS:
+Requires Zig 0.15.2. The default dependency fetches its pinned SDL3 source; no system SDL installation is required.
 
 ```sh
-brew install sdl3 pkg-config
-zig build run
-```
-
-Linux:
-
-```sh
-sudo apt install libsdl3-dev pkg-config
 zig build run
 ```
 
@@ -22,4 +12,4 @@ Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screen
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
-This project pins the `unpolished-peas` v0.0.3 release archive. Update the dependency URL and hash together when upgrading the engine.
+`v0.0.3` is withdrawn and must not be used for new projects. A published starter always pins one non-draft engine tag; update its dependency URL and hash together when upgrading.

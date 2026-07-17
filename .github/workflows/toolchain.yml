@@ -75,18 +75,18 @@ jobs:
       - run: zig build test-scenes
       - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers
+        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - run: script/test_topdown_native_fixture.sh
       - run: script/test_external_game_fixture.sh
       - run: script/test_external_tilemap_game_fixture.sh
       - run: script/test_external_animation_game_fixture.sh
       - run: script/compile_shaders.sh
       - if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
+        run: UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime script/run_linux_software_gl.sh zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'macos-latest'
         run: env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
+        run: RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
       - if: matrix.os == 'macos-latest'
         run: env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
       - if: failure()
@@ -154,7 +154,7 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.target == 'linux'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
       - run: ${{ matrix.package_script }} dist/${{ matrix.target }} ${{ matrix.game }}
       - if: success()
         uses: actions/upload-artifact@v4
@@ -196,9 +196,9 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
+        run: UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 script/run_linux_software_gl.sh zig build test-renderer-conformance
       - if: matrix.os == 'macos-15-intel'
         run: env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
       - if: matrix.os == 'windows-latest'
@@ -267,9 +267,9 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'
-        run: xvfb-run -a ${{ matrix.runner }} ${{ matrix.game }}
+        run: script/run_linux_software_gl.sh ${{ matrix.runner }} ${{ matrix.game }}
       - if: matrix.os == 'macos-15-intel'
         run: ${{ matrix.runner }} ${{ matrix.game }}
       - if: matrix.os == 'windows-2022'
@@ -292,8 +292,8 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers
-      - run: xvfb-run -a script/run_sample_smoke.sh ${{ matrix.target }}
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - run: script/run_linux_software_gl.sh script/run_sample_smoke.sh ${{ matrix.target }}
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

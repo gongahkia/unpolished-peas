@@ -21,7 +21,14 @@ COMMON = {
     "layout": "passed",
     "runtime-smoke": "passed",
     "renderer-sdl-gpu": "passed",
-    "renderer-opengl": "passed",
+}
+OPENGL_BY_TARGET = {
+    "linux": "passed",
+    "macos": "passed",
+    # windows-2022 has no supported OpenGL 3.3 context. The package must
+    # report that explicit selection failed as a host capability, not claim a
+    # renderer conformance result it cannot obtain.
+    "windows": "capability-unavailable",
 }
 
 
@@ -42,7 +49,7 @@ def validate(reports: list[dict[str, str]]) -> None:
         if target is None or target in seen:
             raise ValueError(f"unexpected package report: {report}")
         platform, archive = EXPECTED[target]
-        expected = {"platform": platform, "game": target[1], "archive": archive} | COMMON
+        expected = {"platform": platform, "game": target[1], "archive": archive, "renderer-opengl": OPENGL_BY_TARGET[target[0]]} | COMMON
         if report != expected:
             raise ValueError(f"package parity mismatch for {target[0]}/{target[1]}: {report}")
         seen.add(target)
@@ -53,7 +60,7 @@ def validate(reports: list[dict[str, str]]) -> None:
 def sample_reports() -> list[dict[str, str]]:
     reports = []
     for (target, game), (platform, archive) in EXPECTED.items():
-        reports.append({"platform": platform, "game": game, "archive": archive} | COMMON)
+        reports.append({"platform": platform, "game": game, "archive": archive, "renderer-opengl": OPENGL_BY_TARGET[target] } | COMMON)
     return reports
 
 

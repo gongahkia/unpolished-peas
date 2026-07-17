@@ -48,8 +48,8 @@ cp "$checker_stage/bin/unpolished-peas-test-packaged-layout" "$checker"
 mkdir "$tmp/outside-repository"
 cd "$tmp/outside-repository"
 "$checker"
-xvfb-run -a env SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer sdl-gpu
-xvfb-run -a env SDL_VIDEODRIVER=x11 SDL_AUDIODRIVER=dummy "$package/run.sh" --frames 2 --renderer opengl
+script/run_linux_software_gl.sh "$package/run.sh" --frames 2 --renderer sdl-gpu
+script/run_linux_software_gl.sh "$package/run.sh" --frames 2 --renderer opengl
 missing="$tmp/missing-assets"
 cp -R "$package" "$missing"
 rm -rf "$missing/assets"

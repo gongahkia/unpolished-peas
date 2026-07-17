@@ -5,6 +5,7 @@ const source_documents = [_][]const u8{
     "index.md",
     "guides/quickstart.md",
     "guides/testing.md",
+    "guides/releases.md",
 };
 
 pub fn main() !void {

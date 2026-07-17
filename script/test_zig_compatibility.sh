@@ -11,6 +11,6 @@ if [[ "$actual" != "$expected" ]]; then
   printf 'expected Zig %s; found %s\n' "$expected" "$actual" >&2
   exit 1
 fi
-zig build -Dwith_box2d=false -Dwith_sdl=false test
-zig build -Dwith_box2d=false -Dwith_sdl=false test-replays
+zig build -Dwith_sdl=false test
+zig build -Dwith_sdl=false test-replays
 script/test_independent_proof_games.sh

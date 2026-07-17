@@ -17,9 +17,17 @@ test ! -e "$release/.git"
 (cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$generated")
 test -f "$generated/build.zig.zon"
 if rg -Fq "$repo" "$generated"; then exit 1; fi
-cp -R "$release/fixtures/release-candidate-consumer" "$consumer"
+# The unreleased archive cannot depend on itself by URL. Keep the generated
+# build and source intact, but replace only its manifest with the adjacent
+# archive fixture so this is a real clean starter build.
+cp "$release/fixtures/release-candidate-consumer/build.zig.zon" "$generated/build.zig.zon"
+mv "$generated" "$consumer"
 (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build)
-(cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build run)
+case "$(uname -s)" in
+    Linux) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" xvfb-run -a env SDL_VIDEODRIVER=x11 LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy zig build run -- --frames 2) ;;
+    Darwin) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" env SDL_AUDIODRIVER=dummy zig build run -- --frames 2) ;;
+    *) printf 'release candidate gate: unsupported host %s\n' "$(uname -s)" >&2; exit 69 ;;
+esac
 (cd "$release" && script/test_independent_proof_games.sh)
 case "$(uname -s)" in
     Darwin) platform=macos; archive=unpolished-peas-bounce-macos-universal.zip; package=unpolished-peas-bounce-macos-universal ;;
