@@ -18,6 +18,7 @@ const direct_connectivity = @import("direct_connectivity.zig");
 const candidate_pair_scheduler = @import("candidate_pair_scheduler.zig");
 const nat_binding_keepalive = @import("nat_binding_keepalive.zig");
 const route_selection = @import("route_selection.zig");
+const route_transition = @import("route_transition.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -130,6 +131,14 @@ pub const RouteSelectionError = route_selection.RouteSelectionError;
 pub const RouteSelectorConfig = route_selection.RouteSelectorConfig;
 pub const RouteSelector = route_selection.RouteSelector;
 pub const route_availability_for_kind = route_selection.for_kind;
+pub const max_route_transition_diagnostics = route_transition.max_route_transition_diagnostics;
+pub const RouteTransitionRoute = route_transition.RouteTransitionRoute;
+pub const RouteTransitionPacket = route_transition.RouteTransitionPacket;
+pub const RouteTransitionDiagnosticKind = route_transition.RouteTransitionDiagnosticKind;
+pub const RouteTransitionDiagnostic = route_transition.RouteTransitionDiagnostic;
+pub const RouteTransitionError = route_transition.RouteTransitionError;
+pub const RouteTransitionConfig = route_transition.RouteTransitionConfig;
+pub const RouteTransition = route_transition.RouteTransition;
 
 pub const package_name = "topology";
 
@@ -161,4 +170,5 @@ test {
     _ = @import("candidate_pair_scheduler.zig");
     _ = @import("nat_binding_keepalive.zig");
     _ = @import("route_selection.zig");
+    _ = @import("route_transition.zig");
 }
