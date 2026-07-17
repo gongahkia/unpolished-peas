@@ -18,6 +18,10 @@ grep -Fqx '  contents: read' "$workflow" || fail "workflow must use read-only co
 grep -Fqx '      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10' "$workflow" || fail "workflow must pin checkout"
 grep -Fqx '      - name: Install Zig 0.15.2' "$workflow" || fail "workflow must install Zig 0.15.2"
 grep -Fqx '          echo '\''02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz'\'' | sha256sum --check --status' "$workflow" || fail "workflow must verify the Zig archive"
+grep -Fqx '  zig-compatibility:' "$workflow" || fail "workflow must define the Zig compatibility matrix"
+for field in '        channel: [pinned, rolling]' '        if: matrix.channel == '\''pinned'\''' '      - name: Install rolling Zig' '        if: matrix.channel == '\''rolling'\''' '          curl --fail --location --retry 3 --silent --show-error --output zig-index.json https://ziglang.org/download/index.json' '          if url != f"https://ziglang.org/builds/zig-x86_64-linux-{version}.tar.xz":' '          if not re.fullmatch(r"[0-9a-f]{64}", checksum):' '          printf '\''%s  zig.tar.xz\n'\'' "$ZIG_SHA256" | sha256sum --check --status' '      - name: Check source compatibility' '      - name: Check C ABI compatibility'; do
+    grep -Fqx "$field" "$workflow" || fail "workflow must retain Zig compatibility field: $field"
+done
 grep -Fqx '  linux-sdk:' "$workflow" || fail "workflow must define the Linux SDK job"
 for field in '    runs-on: ubuntu-24.04' '          test "$(uname -m)" = "x86_64"' '      - name: Build and test SDK artifacts' '      - name: Build C ABI artifact and consumer'; do
     grep -Fqx "$field" "$workflow" || fail "workflow must retain Linux SDK field: $field"
