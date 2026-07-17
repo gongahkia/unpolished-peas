@@ -120,6 +120,9 @@ test "stable public symbols are exact" {
         "ReliableReceiveResult",
         "ReliableOrderedMessage",
         "ReliableOrderedReceiver",
+        "SequencedReceiveResult",
+        "UnreliableSequencedReceiver",
+        "is_newer_sequence",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
