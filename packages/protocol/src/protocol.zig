@@ -20,6 +20,7 @@ const message_fragmentation = @import("message_fragmentation.zig");
 const message_reassembly = @import("message_reassembly.zig");
 const psk_authentication = @import("psk_authentication.zig");
 const public_key_authentication = @import("public_key_authentication.zig");
+const packet_protection = @import("packet_protection.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -151,6 +152,16 @@ pub const PublicKeyIdentity = public_key_authentication.PublicKeyIdentity;
 pub const PublicKeyHello = public_key_authentication.PublicKeyHello;
 pub const PublicKeyKeyExchange = public_key_authentication.PublicKeyKeyExchange;
 pub const verify_public_key_hello = public_key_authentication.verify_public_key_hello;
+pub const packet_protection_key_bytes = packet_protection.packet_protection_key_bytes;
+pub const packet_protection_nonce_prefix_bytes = packet_protection.packet_protection_nonce_prefix_bytes;
+pub const packet_protection_nonce_bytes = packet_protection.packet_protection_nonce_bytes;
+pub const packet_protection_tag_bytes = packet_protection.packet_protection_tag_bytes;
+pub const packet_protection_frame_header_bytes = packet_protection.packet_protection_frame_header_bytes;
+pub const PacketProtectionError = packet_protection.PacketProtectionError;
+pub const PacketProtectionKey = packet_protection.PacketProtectionKey;
+pub const UnprotectedPacket = packet_protection.UnprotectedPacket;
+pub const PacketProtector = packet_protection.PacketProtector;
+pub const packet_nonce = packet_protection.packet_nonce;
 pub const package_name = "protocol";
 
 comptime {
@@ -183,4 +194,5 @@ test {
     _ = @import("message_reassembly.zig");
     _ = @import("psk_authentication.zig");
     _ = @import("public_key_authentication.zig");
+    _ = @import("packet_protection.zig");
 }
