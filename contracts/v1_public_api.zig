@@ -111,6 +111,10 @@ test "stable public symbols are exact" {
         "NegotiatedCapabilities",
         "CapabilityNegotiationError",
         "negotiate_capabilities",
+        "critical_extension_first",
+        "ExtensionHandling",
+        "ExtensionHandlingError",
+        "handle_extension",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
