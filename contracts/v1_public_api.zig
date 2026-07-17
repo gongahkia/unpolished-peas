@@ -473,6 +473,13 @@ test "stable public symbols are exact" {
         "DirectConnectivityError",
         "DirectConnectivityConfig",
         "DirectConnectivity",
+        "CandidateCheckRoute",
+        "CandidateCheckState",
+        "CandidatePairCheck",
+        "CandidateCheckDispatch",
+        "CandidatePairSchedulerError",
+        "CandidatePairSchedulerConfig",
+        "CandidatePairScheduler",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
