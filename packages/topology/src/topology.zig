@@ -4,6 +4,7 @@ const transport = @import("minna-san-transport");
 const shard_directory = @import("shard_directory.zig");
 const shard_handoff = @import("shard_handoff.zig");
 const routed_peer_group = @import("routed_peer_group.zig");
+const peer_group_membership = @import("peer_group_membership.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -31,6 +32,12 @@ pub const RoutedPeerGroupError = routed_peer_group.RoutedPeerGroupError;
 pub const RoutedPeerGroupConfig = routed_peer_group.RoutedPeerGroupConfig;
 pub const RoutedPeerGroupInfo = routed_peer_group.RoutedPeerGroupInfo;
 pub const RoutedPeerGroups = routed_peer_group.RoutedPeerGroups;
+pub const MembershipEventKind = peer_group_membership.MembershipEventKind;
+pub const MembershipAuthorization = peer_group_membership.MembershipAuthorization;
+pub const MembershipEvent = peer_group_membership.MembershipEvent;
+pub const PeerGroupMembershipError = peer_group_membership.PeerGroupMembershipError;
+pub const PeerGroupMembershipConfig = peer_group_membership.PeerGroupMembershipConfig;
+pub const PeerGroupMembership = peer_group_membership.PeerGroupMembership;
 
 pub const package_name = "topology";
 
@@ -48,4 +55,5 @@ test {
     _ = @import("shard_directory.zig");
     _ = @import("shard_handoff.zig");
     _ = @import("routed_peer_group.zig");
+    _ = @import("peer_group_membership.zig");
 }
