@@ -3,6 +3,10 @@ const std = @import("std");
 pub const core = struct {
     pub const App = @import("app.zig");
     pub const StepClock = @import("app.zig").StepClock;
+    pub const GameContext = @import("app.zig").GameContext;
+    pub const GameProtocol = @import("app.zig").GameProtocol;
+    pub const GamePhase = @import("app.zig").GamePhase;
+    pub const GameFailure = @import("app.zig").GameFailure;
     pub const Color = @import("color.zig").Color;
     pub const Vec2 = @import("math.zig").Vec2;
     pub const Rect = @import("math.zig").Rect;
@@ -159,6 +163,10 @@ test "ECS runtime owns frame commands without becoming mandatory" {
     try std.testing.expectError(error.StaleEntity, runtime.world.validate(entity));
 }
 pub const App = @import("app.zig");
+pub const GameContext = @import("app.zig").GameContext;
+pub const GameProtocol = @import("app.zig").GameProtocol;
+pub const GamePhase = @import("app.zig").GamePhase;
+pub const GameFailure = @import("app.zig").GameFailure;
 pub const AudioMixer = @import("audio.zig").AudioMixer;
 pub const AudioSample = @import("audio.zig").AudioSample;
 pub const Animation = @import("atlas.zig").Animation;

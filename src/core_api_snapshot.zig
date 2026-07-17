@@ -3,13 +3,13 @@ const api = @import("api.zig");
 const app = @import("app.zig");
 const color = @import("color.zig");
 const math = @import("math.zig");
-const expected_declarations = [_][]const u8{ "App", "StepClock", "Color", "Vec2", "Rect" };
-const public_core_symbol_budget: usize = 5;
+const expected_declarations = [_][]const u8{ "App", "StepClock", "GameContext", "GameProtocol", "GamePhase", "GameFailure", "Color", "Vec2", "Rect" };
+const public_core_symbol_budget: usize = 9;
 
 comptime {
     if (!withinSurfaceBudget(api.core, public_core_symbol_budget)) @compileError("core API symbol budget exceeded; reduce src/api.zig api.core declarations");
     if (!matchesDeclarationSnapshot(api.core, &expected_declarations)) @compileError("core API snapshot declarations changed; update src/core_api_snapshot.zig intentionally");
-    if (!matchesType(api.core.App, app) or !matchesType(api.core.StepClock, app.StepClock) or !matchesType(api.core.Color, color.Color) or !matchesType(api.core.Vec2, math.Vec2) or !matchesType(api.core.Rect, math.Rect)) @compileError("core API snapshot declaration types changed; update src/core_api_snapshot.zig intentionally");
+    if (!matchesType(api.core.App, app) or !matchesType(api.core.StepClock, app.StepClock) or !matchesType(api.core.GameContext, app.GameContext) or @TypeOf(api.core.GameProtocol) != @TypeOf(app.GameProtocol) or !matchesType(api.core.GamePhase, app.GamePhase) or !matchesType(api.core.GameFailure, app.GameFailure) or !matchesType(api.core.Color, color.Color) or !matchesType(api.core.Vec2, math.Vec2) or !matchesType(api.core.Rect, math.Rect)) @compileError("core API snapshot declaration types changed; update src/core_api_snapshot.zig intentionally");
 }
 
 fn withinSurfaceBudget(comptime Surface: type, comptime budget: usize) bool {

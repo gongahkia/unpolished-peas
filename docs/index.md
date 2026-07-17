@@ -1,6 +1,7 @@
 # unpolished-peas Docs
 
 - [Quickstart](guides/quickstart.md)
+- [Game protocol](guides/game-protocol.md)
 - [Testing](guides/testing.md)
 - [v0.1 capability matrix](guides/capabilities.md)
 - [Releases and support](guides/releases.md)
