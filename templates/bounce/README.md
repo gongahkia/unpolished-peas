@@ -12,4 +12,4 @@ Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screen
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
-`v0.0.3` is withdrawn and must not be used for new projects. A published starter always pins one non-draft engine tag; update its dependency URL and hash together when upgrading.
+`v0.0.3` is withdrawn and must not be used for new projects. A published starter targets one non-draft engine tag and resolves its exact Zig package hash when the project is generated.

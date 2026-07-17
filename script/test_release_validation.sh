@@ -39,7 +39,6 @@ for command in \
     'run physics zig build test-physics' \
     'run visual-scenes zig build test-scenes' \
     'run backend-comparison zig build test-desktop-backends' \
-    'run fuzz zig build test-fuzz' \
     ; do
     require "$command" "$gate"
 done

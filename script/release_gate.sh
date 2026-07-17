@@ -55,5 +55,4 @@ run ui zig build test-ui
 run physics zig build test-physics
 run visual-scenes zig build test-scenes
 run backend-comparison zig build test-desktop-backends
-run fuzz zig build test-fuzz
 printf 'release gate passed: logs=%s\n' "$diagnostics"

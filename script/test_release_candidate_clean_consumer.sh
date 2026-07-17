@@ -14,7 +14,7 @@ epoch=$(git -C "$repo" log -1 --format=%ct)
 mkdir "$release"
 git -C "$repo" archive --format=tar HEAD | tar -x -C "$release"
 test ! -e "$release/.git"
-(cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$generated")
+(cd "$release" && SOURCE_DATE_EPOCH="$epoch" UP_STARTER_DEPENDENCY_HASH="unpolished_peas-0.0.4-test" zig build peas -- new "$generated")
 test -f "$generated/build.zig.zon"
 if rg -Fq "$repo" "$generated"; then exit 1; fi
 # The unreleased archive cannot depend on itself by URL. Keep the generated
@@ -24,7 +24,7 @@ cp "$release/fixtures/release-candidate-consumer/build.zig.zon" "$generated/buil
 mv "$generated" "$consumer"
 (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build)
 case "$(uname -s)" in
-    Linux) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" xvfb-run -a env SDL_VIDEODRIVER=x11 LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy zig build run -- --frames 2) ;;
+    Linux) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" "$repo/script/run_linux_software_gl.sh" zig build run -- --frames 2) ;;
     Darwin) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" env SDL_AUDIODRIVER=dummy zig build run -- --frames 2) ;;
     *) printf 'release candidate gate: unsupported host %s\n' "$(uname -s)" >&2; exit 69 ;;
 esac
