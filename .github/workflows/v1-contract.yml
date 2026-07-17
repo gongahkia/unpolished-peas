@@ -16,6 +16,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -45,6 +52,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -66,6 +80,14 @@ jobs:
         channel: [pinned, rolling]
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        if: matrix.channel == 'pinned'
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install pinned Zig 0.15.2
         if: matrix.channel == 'pinned'
         shell: bash
@@ -121,6 +143,13 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -147,6 +176,13 @@ jobs:
     runs-on: windows-2025
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: pwsh
         run: |
@@ -187,6 +223,13 @@ jobs:
             sha256: 375b6909fc1495d16fc2c7db9538f707456bfc3373b14ee83fdd3e22b3d43f7f
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -212,6 +255,13 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Cache immutable Zig build inputs
+        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684
+        with:
+          path: |
+            .zig-cache
+            ~/.cache/zig
+          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
