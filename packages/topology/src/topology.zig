@@ -15,6 +15,7 @@ const turn_channels = @import("turn_channels.zig");
 const turn_allocation_lifecycle = @import("turn_allocation_lifecycle.zig");
 const turn_relay_transport = @import("turn_relay_transport.zig");
 const direct_connectivity = @import("direct_connectivity.zig");
+const candidate_pair_scheduler = @import("candidate_pair_scheduler.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -104,6 +105,13 @@ pub const ConnectivitySignaling = direct_connectivity.ConnectivitySignaling;
 pub const DirectConnectivityError = direct_connectivity.DirectConnectivityError;
 pub const DirectConnectivityConfig = direct_connectivity.DirectConnectivityConfig;
 pub const DirectConnectivity = direct_connectivity.DirectConnectivity;
+pub const CandidateCheckRoute = candidate_pair_scheduler.CandidateCheckRoute;
+pub const CandidateCheckState = candidate_pair_scheduler.CandidateCheckState;
+pub const CandidatePairCheck = candidate_pair_scheduler.CandidatePairCheck;
+pub const CandidateCheckDispatch = candidate_pair_scheduler.CandidateCheckDispatch;
+pub const CandidatePairSchedulerError = candidate_pair_scheduler.CandidatePairSchedulerError;
+pub const CandidatePairSchedulerConfig = candidate_pair_scheduler.CandidatePairSchedulerConfig;
+pub const CandidatePairScheduler = candidate_pair_scheduler.CandidatePairScheduler;
 
 pub const package_name = "topology";
 
@@ -132,4 +140,5 @@ test {
     _ = @import("turn_allocation_lifecycle.zig");
     _ = @import("turn_relay_transport.zig");
     _ = @import("direct_connectivity.zig");
+    _ = @import("candidate_pair_scheduler.zig");
 }
