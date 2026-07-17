@@ -1,4 +1,5 @@
 const std = @import("std");
+const Canvas = @import("canvas.zig").Canvas;
 const Input = @import("input.zig").Input;
 
 pub const GamePhase = enum { init, update, draw };
@@ -10,11 +11,20 @@ pub const GameFailure = struct {
 
 pub const GameContext = struct {
     input: *const Input,
+    canvas: ?*Canvas = null,
     elapsed_seconds: f32 = 0,
     interpolation_alpha: f32 = 0,
 
     pub fn init(input: *const Input) GameContext {
         return .{ .input = input };
+    }
+
+    pub fn withRuntime(input: *const Input, canvas: *Canvas) GameContext {
+        return .{ .input = input, .canvas = canvas };
+    }
+
+    pub fn requireCanvas(self: GameContext) !*Canvas {
+        return self.canvas orelse error.CanvasUnavailable;
     }
 };
 
@@ -223,4 +233,14 @@ test "game protocol retains callback phase and original failure" {
     try draw_failure_protocol.init(&context);
     try std.testing.expectError(error.DrawFailed, draw_failure_protocol.draw(&context, 0));
     try std.testing.expectEqual(GamePhase.draw, draw_failure_protocol.lastFailure().?.phase);
+}
+
+test "runtime context exposes a canvas capability" {
+    var canvas = try Canvas.init(std.testing.allocator, 1, 1);
+    defer canvas.deinit();
+    var input = Input{};
+    const context = GameContext.withRuntime(&input, &canvas);
+    try std.testing.expect((try context.requireCanvas()) == &canvas);
+    const bare = GameContext.init(&input);
+    try std.testing.expectError(error.CanvasUnavailable, bare.requireCanvas());
 }

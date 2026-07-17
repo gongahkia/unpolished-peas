@@ -348,6 +348,10 @@ pub fn build(b: *std.Build) void {
     facade_consumer_matrix.setCwd(b.path("."));
     const facade_consumer_matrix_step = b.step("test-facade-consumer-matrix", "Build independent desktop and Wasm facade consumers");
     facade_consumer_matrix_step.dependOn(&facade_consumer_matrix.step);
+    const protocol_desktop_fixture = b.addSystemCommand(&.{"script/test_protocol_desktop_fixture.sh"});
+    protocol_desktop_fixture.setCwd(b.path("."));
+    const protocol_desktop_fixture_test_step = b.step("test-protocol-desktop", "Build and run the stable-protocol desktop fixture");
+    protocol_desktop_fixture_test_step.dependOn(&protocol_desktop_fixture.step);
     const public_import_inventory_tests = b.addTest(.{ .root_module = public_import_inventory.root_module });
     const run_public_import_inventory_tests = b.addRunArtifact(public_import_inventory_tests);
     const public_import_inventory_test_step = b.step("test-public-import-inventory", "Test public import inventory generation");

@@ -93,6 +93,7 @@ jobs:
       - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - run: script/test_topdown_native_fixture.sh
+      - run: script/test_protocol_desktop_fixture.sh
       - run: script/test_external_game_fixture.sh
       - run: script/test_external_animation_game_fixture.sh
       - if: matrix.os == 'ubuntu-latest'
@@ -232,6 +233,8 @@ jobs:
           $env:SDL_AUDIODRIVER = 'dummy'
           $env:UP_DIAGNOSTICS_ROOT = 'zig-out/diagnostics/windows-runtime'
           zig build run-bounce-sdl -- --frames 2
+      - shell: pwsh
+        run: script/test_protocol_desktop_fixture.ps1
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

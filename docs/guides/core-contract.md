@@ -21,7 +21,7 @@ Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetSto
 
 ## Lifecycle and errors
 
-`GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input`. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
+`GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes a checked core canvas capability. The desktop adapter owns asset, audio, and presentation handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
 
 Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. `StepClock` clamps a frame delta to its fixed-step budget and exposes the remaining interpolation fraction through `alpha`.
 
