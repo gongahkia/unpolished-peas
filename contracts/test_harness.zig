@@ -272,3 +272,7 @@ test "property generators reject invalid bounds and undersized output" {
     var invalid_capabilities = core.CapabilityConfig{ .capture = true };
     try expectError(error.UnsupportedCapabilityCombination, invalid_capabilities.validate());
 }
+
+test {
+    _ = @import("fuzz_envelope_codecs.zig");
+}
