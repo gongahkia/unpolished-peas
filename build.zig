@@ -435,6 +435,12 @@ pub fn build(b: *std.Build) void {
     const c_sdk_desktop_reproducible = b.addSystemCommand(&.{ "sh", "script/test_desktop_c_sdk_artifacts.sh" });
     const c_sdk_desktop_reproducible_step = b.step("c-sdk-desktop-reproducible", "Build reproducible Linux and Windows C SDK libraries");
     c_sdk_desktop_reproducible_step.dependOn(&c_sdk_desktop_reproducible.step);
+    const c_sdk_static_package = b.addSystemCommand(&.{ "sh", "script/package_static_c_sdk.sh" });
+    const c_sdk_static_package_step = b.step("c-sdk-static-package", "Package versioned static C SDK libraries");
+    c_sdk_static_package_step.dependOn(&c_sdk_static_package.step);
+    const c_sdk_static_package_test = b.addSystemCommand(&.{ "sh", "script/test_static_c_sdk_package.sh" });
+    const c_sdk_static_package_test_step = b.step("c-sdk-static-package-test", "Test versioned static C SDK packages");
+    c_sdk_static_package_test_step.dependOn(&c_sdk_static_package_test.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -452,6 +458,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_runtime.step);
     test_step.dependOn(&run_c_abi.step);
     test_step.dependOn(&run_c_abi_consumer.step);
+    test_step.dependOn(&c_sdk_static_package_test.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&run_test_harness.step);
     test_step.dependOn(&run_stun_turn_interop.step);

@@ -173,6 +173,8 @@ jobs:
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
         run: zig build c-sdk-desktop-reproducible
+      - name: Package versioned static C SDK libraries
+        run: zig build c-sdk-static-package
   windows-sdk:
     name: Windows x86_64
     runs-on: windows-2025
