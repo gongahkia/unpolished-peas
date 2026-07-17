@@ -162,6 +162,16 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = core_spec.module_name, .module = core }},
     });
+    const benchmark_authoritative = b.createModule(.{
+        .root_source_file = b.path("contracts/benchmark_authoritative.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+        },
+    });
     const boundary_tests = b.addTest(.{ .root_module = boundary });
     const workspace_graph_tests = b.addTest(.{ .root_module = workspace_graph });
     const public_api_tests = b.addTest(.{ .root_module = public_api });
@@ -183,6 +193,8 @@ pub fn build(b: *std.Build) void {
     const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
     const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
     const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
+    const benchmark_authoritative_tests = b.addTest(.{ .root_module = benchmark_authoritative });
+    const benchmark_authoritative_executable = b.addExecutable(.{ .name = "benchmark-authoritative", .root_module = benchmark_authoritative });
     const state_tests = b.addTest(.{ .root_module = state });
     const topology_tests = b.addTest(.{ .root_module = topology });
     const transport_tests = b.addTest(.{ .root_module = transport });
@@ -233,6 +245,8 @@ pub fn build(b: *std.Build) void {
     const run_benchmark_harness_tests = b.addRunArtifact(benchmark_harness_tests);
     const run_benchmark_harness = b.addRunArtifact(benchmark_harness_executable);
     if (b.args) |args| run_benchmark_harness.addArgs(args);
+    const run_benchmark_authoritative_tests = b.addRunArtifact(benchmark_authoritative_tests);
+    const run_benchmark_authoritative = b.addRunArtifact(benchmark_authoritative_executable);
     const run_state = b.addRunArtifact(state_tests);
     const run_topology = b.addRunArtifact(topology_tests);
     const run_transport = b.addRunArtifact(transport_tests);
@@ -300,6 +314,10 @@ pub fn build(b: *std.Build) void {
     benchmark_harness_step.dependOn(&run_benchmark_harness.step);
     const benchmark_harness_test_step = b.step("benchmark-harness-test", "Test deterministic benchmark harness");
     benchmark_harness_test_step.dependOn(&run_benchmark_harness_tests.step);
+    const benchmark_authoritative_step = b.step("benchmark-authoritative", "Run 1,000-peer authoritative benchmark");
+    benchmark_authoritative_step.dependOn(&run_benchmark_authoritative.step);
+    const benchmark_authoritative_test_step = b.step("benchmark-authoritative-test", "Test 1,000-peer authoritative benchmark");
+    benchmark_authoritative_test_step.dependOn(&run_benchmark_authoritative_tests.step);
     const c_header_check = b.addSystemCommand(&.{
         b.graph.zig_exe,
         "cc",
@@ -339,6 +357,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_test_harness.step);
     test_step.dependOn(&run_stun_turn_interop.step);
     test_step.dependOn(&run_benchmark_harness_tests.step);
+    test_step.dependOn(&run_benchmark_authoritative_tests.step);
     test_step.dependOn(&c_header_check.step);
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
