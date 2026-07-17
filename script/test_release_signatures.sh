@@ -15,6 +15,15 @@ chmod +x "$fake_cosign"
 sh script/package_release_artifacts.sh "$fixture/release"
 COSIGN_EXE="$fake_cosign" RELEASE_ARTIFACT_PACKAGE="$fixture/release" sh script/sign_release_artifacts.sh
 COSIGN_EXE="$fake_cosign" COSIGN_CERTIFICATE_IDENTITY="$identity" COSIGN_OIDC_ISSUER="$issuer" COSIGN_TEST_IDENTITY="$identity" COSIGN_TEST_ISSUER="$issuer" RELEASE_ARTIFACT_PACKAGE="$fixture/release" sh script/check_release_signatures.sh
+RELEASE_ARTIFACT_PACKAGE="$fixture/release" RELEASE_ARCHIVE_OUTPUT="$fixture/release.tar.gz" sh script/package_release_archive.sh
+COSIGN_EXE="$fake_cosign" RELEASE_ARCHIVE_OUTPUT="$fixture/release.tar.gz" sh script/sign_release_archive.sh
+COSIGN_EXE="$fake_cosign" COSIGN_CERTIFICATE_IDENTITY="$identity" COSIGN_OIDC_ISSUER="$issuer" COSIGN_TEST_IDENTITY="$identity" COSIGN_TEST_ISSUER="$issuer" RELEASE_ARCHIVE_OUTPUT="$fixture/release.tar.gz" sh script/check_release_archive_signature.sh
+tar --list --gzip --file "$fixture/release.tar.gz" | grep -F 'SHA256SUMS.sigstore.json' >/dev/null
+printf x >> "$fixture/release.tar.gz.sigstore.json"
+if COSIGN_EXE="$fake_cosign" COSIGN_CERTIFICATE_IDENTITY="$identity" COSIGN_OIDC_ISSUER="$issuer" COSIGN_TEST_IDENTITY="$identity" COSIGN_TEST_ISSUER="$issuer" RELEASE_ARCHIVE_OUTPUT="$fixture/release.tar.gz" sh script/check_release_archive_signature.sh >/dev/null 2>&1; then
+    exit 1
+fi
+COSIGN_EXE="$fake_cosign" RELEASE_ARCHIVE_OUTPUT="$fixture/release.tar.gz" sh script/sign_release_archive.sh
 rm "$fixture/release/SHA256SUMS.sigstore.json"
 if COSIGN_EXE="$fake_cosign" COSIGN_CERTIFICATE_IDENTITY="$identity" COSIGN_OIDC_ISSUER="$issuer" COSIGN_TEST_IDENTITY="$identity" COSIGN_TEST_ISSUER="$issuer" RELEASE_ARTIFACT_PACKAGE="$fixture/release" sh script/check_release_signatures.sh >/dev/null 2>&1; then
     exit 1

@@ -471,6 +471,9 @@ pub fn build(b: *std.Build) void {
     const release_provenance_test = b.addSystemCommand(&.{ "sh", "script/test_release_provenance.sh" });
     const release_provenance_test_step = b.step("release-provenance-test", "Test release artifact provenance");
     release_provenance_test_step.dependOn(&release_provenance_test.step);
+    const release_gate_test = b.addSystemCommand(&.{ "sh", "script/test_release_gate_workflow.sh" });
+    const release_gate_test_step = b.step("release-gate-test", "Test the release publication gate");
+    release_gate_test_step.dependOn(&release_gate_test.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -495,6 +498,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&release_checksums_test.step);
     test_step.dependOn(&release_signatures_test.step);
     test_step.dependOn(&release_provenance_test.step);
+    test_step.dependOn(&release_gate_test.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&run_test_harness.step);
     test_step.dependOn(&run_stun_turn_interop.step);
