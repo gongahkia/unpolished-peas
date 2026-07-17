@@ -34,6 +34,8 @@ jobs:
         run: zig build benchmark-sharded-p2p -Doptimize=ReleaseFast
       - name: Benchmark topology faults
         run: zig build benchmark-topology-faults -Doptimize=ReleaseFast
+      - name: Benchmark throughput and backpressure
+        run: zig build benchmark-throughput -Doptimize=ReleaseFast
   api-compatibility:
     name: Released public API compatibility
     runs-on: ubuntu-24.04
