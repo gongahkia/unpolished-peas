@@ -1,0 +1,63 @@
+{
+  "schema_version": 1,
+  "authoritative": {
+    "peers": 1000,
+    "route_operations": 18496,
+    "virtual_latency_ns_max": 1000000,
+    "peak_tracked_bytes_max": 142848,
+    "lost_messages": 496,
+    "recovered_messages": 496,
+    "fanout_messages": 2000,
+    "checksum": 16495300541748710764
+  },
+  "sharded": {
+    "peers": 1000,
+    "groups": 10,
+    "shard_memberships": 1000,
+    "candidate_checks": 1000,
+    "direct_routes_min": 8500,
+    "relay_routes_min": 8500,
+    "signals": 160,
+    "peak_tracked_bytes_max": 272688,
+    "checksum": 16048849693770773261
+  },
+  "topology_faults": {
+    "packets": 64,
+    "delayed_authoritative": 64,
+    "delayed_p2p": 64,
+    "lost_authoritative": 0,
+    "lost_p2p": 0,
+    "reordered_authoritative": 64,
+    "reordered_p2p": 63,
+    "partitioned_authoritative": 0,
+    "partitioned_p2p": 0,
+    "relay_authoritative": 64,
+    "relay_p2p": 64,
+    "relay_fallbacks": 1,
+    "checksum": 13233602555993815232
+  },
+  "throughput": {
+    "payload_admitted_bytes_min": 4480,
+    "throughput_bytes_per_second_min": 70000,
+    "paced_bytes": 16384,
+    "pacing_deferrals": 64,
+    "congestion_window_bytes": 512,
+    "congestion_loss_events": 9,
+    "compressed_wire_bytes_max": 1344,
+    "queue_saturations": 17,
+    "bandwidth_limited_bytes": 11904,
+    "checksum": 17450606014319252544
+  },
+  "memory": {
+    "peers": 1000,
+    "groups": 10,
+    "routes_per_group": 100,
+    "peer_total_bytes_max": 142848,
+    "group_total_bytes_max": 520,
+    "route_total_bytes_max": 22600,
+    "capture_bytes_max": 2656,
+    "replay_bytes_max": 72,
+    "reassembly_bytes_max": 16384,
+    "checksum": 14102868492228699072
+  }
+}

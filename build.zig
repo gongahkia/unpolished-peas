@@ -389,6 +389,12 @@ pub fn build(b: *std.Build) void {
     benchmark_memory_step.dependOn(&run_benchmark_memory.step);
     const benchmark_memory_test_step = b.step("benchmark-memory-test", "Test bounded memory benchmark");
     benchmark_memory_test_step.dependOn(&run_benchmark_memory_tests.step);
+    const benchmark_regression_check = b.addSystemCommand(&.{ "sh", "script/check_benchmark_regressions.sh" });
+    const benchmark_regression_step = b.step("benchmark-regression", "Check benchmark regression thresholds");
+    benchmark_regression_step.dependOn(&benchmark_regression_check.step);
+    const benchmark_regression_test = b.addSystemCommand(&.{ "sh", "script/test_benchmark_regressions.sh" });
+    const benchmark_regression_test_step = b.step("benchmark-regression-test", "Test benchmark regression threshold checks");
+    benchmark_regression_test_step.dependOn(&benchmark_regression_test.step);
     const c_header_check = b.addSystemCommand(&.{
         b.graph.zig_exe,
         "cc",
@@ -433,6 +439,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_benchmark_topology_faults_tests.step);
     test_step.dependOn(&run_benchmark_throughput_tests.step);
     test_step.dependOn(&run_benchmark_memory_tests.step);
+    test_step.dependOn(&benchmark_regression_check.step);
+    test_step.dependOn(&benchmark_regression_test.step);
     test_step.dependOn(&c_header_check.step);
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
