@@ -383,6 +383,12 @@ test "stable public symbols are exact" {
         "RoutedPeerGroupConfig",
         "RoutedPeerGroupInfo",
         "RoutedPeerGroups",
+        "MembershipEventKind",
+        "MembershipAuthorization",
+        "MembershipEvent",
+        "PeerGroupMembershipError",
+        "PeerGroupMembershipConfig",
+        "PeerGroupMembership",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
