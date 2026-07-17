@@ -11,6 +11,7 @@ const udp_stun_binding = @import("udp_stun_binding.zig");
 const tcp_stun_binding = @import("tcp_stun_binding.zig");
 const turn_allocation = @import("turn_allocation.zig");
 const turn_permissions = @import("turn_permissions.zig");
+const turn_channels = @import("turn_channels.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -75,6 +76,14 @@ pub const TurnPermissionError = turn_permissions.TurnPermissionError;
 pub const TurnPermissionConfig = turn_permissions.TurnPermissionConfig;
 pub const TurnPermission = turn_permissions.TurnPermission;
 pub const TurnPermissions = turn_permissions.TurnPermissions;
+pub const turn_channel_min = turn_channels.turn_channel_min;
+pub const turn_channel_max = turn_channels.turn_channel_max;
+pub const turn_channel_header_bytes = turn_channels.turn_channel_header_bytes;
+pub const TurnChannelError = turn_channels.TurnChannelError;
+pub const TurnChannelConfig = turn_channels.TurnChannelConfig;
+pub const TurnChannelBinding = turn_channels.TurnChannelBinding;
+pub const TurnChannelData = turn_channels.TurnChannelData;
+pub const TurnChannels = turn_channels.TurnChannels;
 
 pub const package_name = "topology";
 
@@ -99,4 +108,5 @@ test {
     _ = @import("tcp_stun_binding.zig");
     _ = @import("turn_allocation.zig");
     _ = @import("turn_permissions.zig");
+    _ = @import("turn_channels.zig");
 }
