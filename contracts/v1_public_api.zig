@@ -436,6 +436,10 @@ test "stable public symbols are exact" {
         "UdpStunBindingSend",
         "UdpStunBindingResult",
         "UdpStunBindingClient",
+        "TcpStunBindingError",
+        "TcpStunBindingConfig",
+        "TcpStunBindingResult",
+        "TcpStunBindingClient",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
