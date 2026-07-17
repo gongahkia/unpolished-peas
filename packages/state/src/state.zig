@@ -1,6 +1,7 @@
 const core = @import("minna-san-core");
 const protocol = @import("minna-san-protocol");
 const migration_coordinator = @import("migration_coordinator.zig");
+const host_election = @import("host_election.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -13,6 +14,12 @@ pub const MigrationRecord = migration_coordinator.MigrationRecord;
 pub const MigrationCoordinatorError = migration_coordinator.MigrationCoordinatorError;
 pub const MigrationCoordinatorConfig = migration_coordinator.MigrationCoordinatorConfig;
 pub const MigrationCoordinator = migration_coordinator.MigrationCoordinator;
+pub const HostElectionOrder = host_election.HostElectionOrder;
+pub const HostElectionMember = host_election.HostElectionMember;
+pub const HostElection = host_election.HostElection;
+pub const HostElectionError = host_election.HostElectionError;
+pub const HostElectionConfig = host_election.HostElectionConfig;
+pub const HostElector = host_election.HostElector;
 
 pub const package_name = "state";
 
@@ -27,4 +34,5 @@ test "state package boundary" {
 
 test {
     _ = @import("migration_coordinator.zig");
+    _ = @import("host_election.zig");
 }
