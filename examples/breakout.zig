@@ -1,7 +1,7 @@
 const std = @import("std");
 const up = @import("unpolished-peas");
 const breakout = @import("breakout_game.zig");
-const content = @import("programmatic_content.zig");
+const atlas_data = @import("programmatic_atlas.zig");
 
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
@@ -17,7 +17,7 @@ pub fn main() !void {
     var canvas = try up.Canvas.init(allocator, breakout.width, breakout.height);
     defer canvas.deinit();
     var game = breakout.Game{};
-    var atlas = try content.ballAtlas(allocator, try assets.tryImage(ball));
+    var atlas = try atlas_data.ballAtlas(allocator, try assets.tryImage(ball));
     defer atlas.deinit();
     const ball_frame = atlas.findFrame("tile_a") orelse return error.MissingAtlasFrame;
 

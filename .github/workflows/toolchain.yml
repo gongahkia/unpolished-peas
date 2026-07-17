@@ -93,7 +93,6 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - run: script/test_topdown_native_fixture.sh
       - run: script/test_external_game_fixture.sh
-      - run: script/test_external_tilemap_game_fixture.sh
       - run: script/test_external_animation_game_fixture.sh
       - if: matrix.os == 'ubuntu-latest'
         run: UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime script/run_linux_software_gl.sh zig build run-bounce-sdl -- --frames 2
@@ -148,18 +147,6 @@ jobs:
           - os: windows-2022
             target: windows
             game: topdown
-            package_script: script/test_windows_package.ps1
-          - os: ubuntu-latest
-            target: linux
-            game: platformer
-            package_script: script/test_linux_package.sh
-          - os: macos-15-intel
-            target: macos
-            game: platformer
-            package_script: script/test_macos_package.sh
-          - os: windows-2022
-            target: windows
-            game: platformer
             package_script: script/test_windows_package.ps1
     runs-on: ${{ matrix.os }}
     steps:
@@ -259,20 +246,11 @@ jobs:
           - os: ubuntu-latest
             game: topdown
             runner: script/test_proof_game_matrix.sh
-          - os: ubuntu-latest
-            game: platformer
-            runner: script/test_proof_game_matrix.sh
           - os: macos-15-intel
             game: topdown
             runner: script/test_proof_game_matrix.sh
-          - os: macos-15-intel
-            game: platformer
-            runner: script/test_proof_game_matrix.sh
           - os: windows-2022
             game: topdown
-            runner: script/test_proof_game_matrix.ps1
-          - os: windows-2022
-            game: platformer
             runner: script/test_proof_game_matrix.ps1
     runs-on: ${{ matrix.os }}
     steps:
@@ -300,7 +278,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-tilemap, run-primitives, stress-audio-sdl]
+        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-primitives, stress-audio-sdl]
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2

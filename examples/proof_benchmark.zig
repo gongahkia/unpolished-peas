@@ -2,9 +2,6 @@ const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas");
 const bounce = @import("bounce.zig");
-const platformer = @import("platformer_game.zig");
-const topdown = @import("topdown_game.zig");
-const content = @import("programmatic_content.zig");
 
 const startup_samples: u32 = 16;
 const frame_samples: u32 = 240;
@@ -20,8 +17,6 @@ const GameMetrics = struct {
 
 const Metrics = struct {
     bounce: GameMetrics,
-    topdown: GameMetrics,
-    platformer: GameMetrics,
 };
 
 const CountingAllocator = struct {
@@ -110,100 +105,6 @@ const BounceRuntime = struct {
     }
 };
 
-const TopdownRuntime = struct {
-    assets: up.AssetStore = undefined,
-    map: up.TileMap = undefined,
-    player: up.ImageHandle = undefined,
-    game: topdown.Game = .{},
-    input: up.Input = .{},
-    canvas: up.Canvas = undefined,
-
-    fn init(self: *TopdownRuntime, allocator: std.mem.Allocator) !void {
-        self.assets = try up.AssetStore.initExecutable(allocator);
-        errdefer self.assets.deinit();
-        self.map = try content.topdownMap(allocator);
-        errdefer self.map.deinit();
-        self.player = try self.assets.loadImage("ball.png");
-        self.input.set(.right, true);
-        self.input.set(.down, true);
-        self.canvas = try up.Canvas.init(allocator, topdown.width, topdown.height);
-    }
-
-    fn deinit(self: *TopdownRuntime) void {
-        self.canvas.deinit();
-        self.map.deinit();
-        self.assets.deinit();
-        self.* = undefined;
-    }
-
-    fn frame(self: *TopdownRuntime) !void {
-        _ = self.game.step(self.input, 1.0 / 60.0);
-        self.canvas.clear(up.Color.rgb(10, 18, 26));
-        const camera = up.Camera2D{ .position = self.game.player };
-        const images = [_]up.Image{try self.assets.tryImage(self.player)};
-        self.map.drawImages(up.CameraCanvas.init(&self.canvas, &camera), &images);
-        self.canvas.drawImage(try self.assets.tryImage(self.player), @intFromFloat(self.game.player.x - 8), @intFromFloat(self.game.player.y - 8));
-        self.canvas.drawText("TOPDOWN", 4, 4, up.Color.white);
-        self.canvas.drawText("ARROWS SPACE", 84, 4, up.Color.rgb(180, 205, 230));
-    }
-};
-
-const PlatformerRuntime = struct {
-    assets: up.AssetStore = undefined,
-    map: up.TileMap = undefined,
-    collider: up.TileCollider = undefined,
-    atlas: *up.Atlas = undefined,
-    tile_image: up.ImageHandle = undefined,
-    animation: up.AnimationPlayer = undefined,
-    game: platformer.Game = undefined,
-    frame_index: u32 = 0,
-    canvas: up.Canvas = undefined,
-
-    fn init(self: *PlatformerRuntime, allocator: std.mem.Allocator) !void {
-        self.assets = try up.AssetStore.initExecutable(allocator);
-        errdefer self.assets.deinit();
-        const generated_map = try content.platformerMap(allocator);
-        self.map = generated_map.map;
-        errdefer self.map.deinit();
-        self.collider = up.TileCollider.init(allocator);
-        errdefer self.collider.deinit();
-        try self.collider.addLayer(&self.map, generated_map.collision_layer);
-        self.tile_image = try self.assets.loadImage("ball.png");
-        self.atlas = try allocator.create(up.Atlas);
-        errdefer allocator.destroy(self.atlas);
-        self.atlas.* = try content.ballAtlas(allocator, try self.assets.tryImage(self.tile_image));
-        errdefer self.atlas.deinit();
-        const animation_handle = self.atlas.findAnimation("pulse") orelse return error.MissingAtlasAnimation;
-        self.animation = up.AnimationPlayer.init(self.atlas, animation_handle);
-        self.game = try platformer.Game.init(.{ .x = 8, .y = 0 });
-        self.canvas = try up.Canvas.init(allocator, 160, 64);
-    }
-
-    fn deinit(self: *PlatformerRuntime) void {
-        self.canvas.deinit();
-        self.collider.deinit();
-        self.map.deinit();
-        const allocator = self.atlas.allocator;
-        self.atlas.deinit();
-        allocator.destroy(self.atlas);
-        self.assets.deinit();
-        self.* = undefined;
-    }
-
-    fn frame(self: *PlatformerRuntime) !void {
-        _ = self.game.step(&self.collider, .{ .right = self.frame_index < 48, .jump = self.frame_index == 48 }, 1.0 / 60.0);
-        self.animation.update(1.0 / 60.0);
-        self.frame_index +%= 1;
-        self.canvas.clear(up.Color.rgb(12, 18, 28));
-        const camera = up.Camera2D{ .position = .{ .x = 48, .y = 24 } };
-        const images = [_]up.Image{try self.assets.tryImage(self.tile_image)};
-        self.map.drawImages(up.CameraCanvas.init(&self.canvas, &camera), &images);
-        self.canvas.drawAtlasFrame(self.atlas.*, self.animation.frame(), @intFromFloat(self.game.controller.bounds.x), @intFromFloat(self.game.controller.bounds.y), .{ .scale = 2 });
-        self.canvas.fillCircle(84, 8, 2, up.Color.rgb(255, 198, 74));
-        self.canvas.drawText("PLATFORMER", 2, 2, up.Color.white);
-    }
-};
-
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
@@ -217,9 +118,7 @@ pub fn main() !void {
         \\  "version": 1,
         \\  "target": "{s}-{s}",
         \\  "game_metrics": {{
-        \\    "bounce": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}},
-        \\    "topdown": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}},
-        \\    "platformer": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
+        \\    "bounce": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
         \\  }}
         \\}}
     ,
@@ -232,18 +131,6 @@ pub fn main() !void {
             metrics.bounce.frame_ns,
             metrics.bounce.frame_allocation_events,
             metrics.bounce.frame_allocated_bytes,
-            metrics.topdown.startup_ns,
-            metrics.topdown.startup_allocation_events,
-            metrics.topdown.startup_allocated_bytes,
-            metrics.topdown.frame_ns,
-            metrics.topdown.frame_allocation_events,
-            metrics.topdown.frame_allocated_bytes,
-            metrics.platformer.startup_ns,
-            metrics.platformer.startup_allocation_events,
-            metrics.platformer.startup_allocated_bytes,
-            metrics.platformer.frame_ns,
-            metrics.platformer.frame_allocation_events,
-            metrics.platformer.frame_allocated_bytes,
         },
     );
     try out.flush();
@@ -252,8 +139,6 @@ pub fn main() !void {
 fn measureAll(allocator: std.mem.Allocator) !Metrics {
     return .{
         .bounce = try measure(BounceRuntime, allocator),
-        .topdown = try measure(TopdownRuntime, allocator),
-        .platformer = try measure(PlatformerRuntime, allocator),
     };
 }
 

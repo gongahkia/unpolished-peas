@@ -2,7 +2,7 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
-const PackageGame = enum { bounce, topdown, platformer };
+const PackageGame = enum { bounce, topdown };
 const Launcher = struct { game: []const u8 };
 
 pub fn main() !void {
@@ -68,7 +68,6 @@ fn probeAppData(allocator: std.mem.Allocator, package: []const u8, game: Package
     const app_name = switch (game) {
         .bounce => "bounce-package-smoke",
         .topdown => "topdown-package-smoke",
-        .platformer => "platformer-package-smoke",
     };
     const app_data = try sdl.appDataPath(allocator, "unpolished-peas", app_name);
     defer allocator.free(app_data);

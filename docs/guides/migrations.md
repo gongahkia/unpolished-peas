@@ -27,3 +27,7 @@ v0.1 removes the engine-owned Box2D physics subsystem and its public API. Keep p
 ## Effects, shader assets, lighting, and GPU resources removed
 
 v0.1 removes engine-owned effects, post-processing, shader assets, lighting, and public GPU-resource handles. Keep game-specific rendering extensions and resource ownership in game code; core rendering remains limited to documented 2D primitives, sprites, text, and presentation.
+
+## Tile maps and collision systems removed
+
+v0.1 removes engine-owned tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Keep map formats, collision logic, and movement rules game-owned; `Rect` and `Vec2` remain available for 2D rendering.

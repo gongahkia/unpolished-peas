@@ -1,6 +1,6 @@
 param(
     [string]$OutputDirectory = 'dist/windows',
-    [ValidateSet('bounce', 'topdown', 'platformer')]
+    [ValidateSet('bounce', 'topdown')]
     [string]$Game = 'bounce'
 )
 

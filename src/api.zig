@@ -39,7 +39,6 @@ pub const graphics = struct {
     pub const InspectorAssetPanel = @import("inspector_panels.zig").AssetPanel;
     pub const InspectorResource = @import("inspector_panels.zig").Resource;
     pub const InspectorResourceHandle = @import("inspector_panels.zig").ResourceHandle;
-    pub const InspectorCollisionPanel = @import("inspector_panels.zig").CollisionPanel;
     pub const Presentation = @import("presentation.zig").Presentation;
     pub const PresentationMode = @import("presentation.zig").PresentationMode;
     pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
@@ -63,19 +62,14 @@ pub const assets = struct {
     pub const AssetStats = @import("assets.zig").AssetStats;
 };
 
-pub const world = struct {
-    pub const TileMap = @import("tilemap.zig").TileMap;
-    pub const TileMapLayer = @import("tilemap.zig").TileMapLayer;
-    pub const TileCollider = @import("tile_collision.zig").TileCollider;
-    pub const CharacterController = @import("tile_collision.zig").CharacterController;
-    pub const collision = @import("collision.zig");
-};
-
 pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
 test "public API excludes removed and unsupported systems" {
     inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+        try std.testing.expect(!@hasDecl(@This(), name));
+    }
+    inline for (.{ "world", "TileMap", "TileMapLayer", "TileCollider", "CharacterController", "collision", "Broadphase", "InspectorCollisionPanel" }) |name| {
         try std.testing.expect(!@hasDecl(@This(), name));
     }
     try std.testing.expect(!@hasDecl(@This(), "physics"));
@@ -125,8 +119,6 @@ pub const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
 pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
 pub const BusHandle = @import("audio.zig").BusHandle;
-pub const Broadphase = @import("broadphase.zig").Broadphase;
-pub const BroadphaseProxy = @import("broadphase.zig").Proxy;
 pub const Camera2D = @import("camera.zig").Camera2D;
 pub const CameraBounds = @import("camera.zig").CameraBounds;
 pub const CameraCanvas = @import("camera_canvas.zig").CameraCanvas;
@@ -150,9 +142,6 @@ pub const RuntimeLogEvent = runtime_log.Event;
 pub const RuntimeLogField = runtime_log.Field;
 pub const RuntimeLogLevel = runtime_log.Level;
 pub const RuntimeLogCategory = runtime_log.Category;
-pub const Circle = @import("collision.zig").Circle;
-pub const Segment = @import("collision.zig").Segment;
-pub const Polygon = @import("collision.zig").Polygon;
 pub const FrameProfiler = @import("profiler.zig").Profiler;
 pub const ProfileMetrics = @import("profiler.zig").Metrics;
 pub const ProfileScope = @import("profiler.zig").Scope;
@@ -162,15 +151,6 @@ pub const ProfileTimer = @import("profiler.zig").Timer;
 pub const profiler = @import("profiler.zig");
 pub const RuntimeMetrics = @import("runtime_metrics.zig").Metrics;
 pub const runtimeMetrics = @import("runtime_metrics.zig");
-pub const CollisionContact = @import("collision.zig").Contact;
-pub const CollisionRayHit = @import("collision.zig").RayHit;
-pub const collision = @import("collision.zig");
-pub const CharacterConfig = @import("tile_collision.zig").CharacterConfig;
-pub const CharacterController = @import("tile_collision.zig").CharacterController;
-pub const CharacterState = @import("tile_collision.zig").CharacterState;
-pub const TileCollider = @import("tile_collision.zig").TileCollider;
-pub const TileCollisionHit = @import("tile_collision.zig").Hit;
-pub const TileCollisionShape = @import("tile_collision.zig").Shape;
 pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
 pub const SpriteSampling = @import("atlas.zig").Sampling;
 pub const Image = @import("image.zig").Image;
@@ -194,7 +174,6 @@ pub const InspectorBindingsPanel = @import("inspector_panels.zig").BindingsPanel
 pub const InspectorProfilePanel = @import("inspector_panels.zig").ProfilePanel;
 pub const InspectorSubsystemPanel = @import("inspector_panels.zig").SubsystemPanel;
 pub const InspectorSubsystemState = @import("inspector_panels.zig").SubsystemState;
-pub const InspectorCollisionPanel = @import("inspector_panels.zig").CollisionPanel;
 pub const inspectorPanels = @import("inspector_panels.zig");
 pub const Gamepad = @import("input.zig").Gamepad;
 pub const GamepadButton = @import("input.zig").GamepadButton;
@@ -239,14 +218,4 @@ pub const TextAlignment = @import("text_layout.zig").Alignment;
 pub const TextLayoutOptions = @import("text_layout.zig").Options;
 pub const TextLayout = @import("text_layout.zig").Layout;
 pub const layoutText = @import("text_layout.zig").layout;
-pub const Tile = @import("tilemap.zig").Tile;
-pub const TileFlags = @import("tilemap.zig").TileFlags;
-pub const TileMap = @import("tilemap.zig").TileMap;
-pub const TileMapLayer = @import("tilemap.zig").TileMapLayer;
-pub const TileMapLayerKind = @import("tilemap.zig").LayerKind;
-pub const TileMapObject = @import("tilemap.zig").MapObject;
-pub const TileMapObjectShape = @import("tilemap.zig").ObjectShape;
-pub const TileMapProperty = @import("tilemap.zig").Property;
-pub const TileMapPropertyValue = @import("tilemap.zig").PropertyValue;
-pub const TileSet = @import("tilemap.zig").TileSet;
 pub const Vec2 = @import("math.zig").Vec2;

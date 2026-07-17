@@ -11,9 +11,6 @@ EXPECTED = {
     ("linux", "topdown"): ("linux-x86_64", "unpolished-peas-topdown-linux-x86_64.tar.gz"),
     ("macos", "topdown"): ("macos-universal", "unpolished-peas-topdown-macos-universal.zip"),
     ("windows", "topdown"): ("windows-x86_64", "unpolished-peas-topdown-windows-x86_64.zip"),
-    ("linux", "platformer"): ("linux-x86_64", "unpolished-peas-platformer-linux-x86_64.tar.gz"),
-    ("macos", "platformer"): ("macos-universal", "unpolished-peas-platformer-macos-universal.zip"),
-    ("windows", "platformer"): ("windows-x86_64", "unpolished-peas-platformer-windows-x86_64.zip"),
 }
 
 COMMON = {

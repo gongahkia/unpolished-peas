@@ -7,7 +7,7 @@ trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 out=${1:-"$tmp/dist"}
 game=${2:-bounce}
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
-case "$game" in bounce|topdown|platformer) ;; *) printf '%s\n' 'usage: test_linux_package.sh [output-directory] [bounce|topdown|platformer]' >&2; exit 64 ;; esac
+case "$game" in bounce|topdown) ;; *) printf '%s\n' 'usage: test_linux_package.sh [output-directory] [bounce|topdown]' >&2; exit 64 ;; esac
 
 cd "$repo"
 zig build peas -- package linux "$out" --game "$game"

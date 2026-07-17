@@ -3,7 +3,6 @@ pub const core = api.core;
 pub const input = api.input;
 pub const graphics = api.graphics;
 pub const assets = api.assets;
-pub const world = api.world;
 pub const preview = api.preview;
 pub const testSupport = api.testSupport;
 pub const App = api.App;
@@ -41,8 +40,6 @@ pub const FontLoadOptions = api.FontLoadOptions;
 pub const FontGlyphRange = api.FontGlyphRange;
 pub const FontTextDiagnostics = api.FontTextDiagnostics;
 pub const BusHandle = api.BusHandle;
-pub const Broadphase = api.Broadphase;
-pub const BroadphaseProxy = api.BroadphaseProxy;
 pub const Camera2D = api.Camera2D;
 pub const CameraBounds = api.CameraBounds;
 pub const CameraCanvas = api.CameraCanvas;
@@ -66,9 +63,6 @@ pub const RuntimeLogField = api.RuntimeLogField;
 pub const RuntimeLogLevel = api.RuntimeLogLevel;
 pub const RuntimeLogCategory = api.RuntimeLogCategory;
 pub const DiagnosticEnvironment = api.DiagnosticEnvironment;
-pub const Circle = api.Circle;
-pub const Segment = api.Segment;
-pub const Polygon = api.Polygon;
 pub const FrameProfiler = api.FrameProfiler;
 pub const ProfileMetrics = api.ProfileMetrics;
 pub const ProfileScope = api.ProfileScope;
@@ -78,15 +72,6 @@ pub const ProfileTimer = api.ProfileTimer;
 pub const profiler = api.profiler;
 pub const RuntimeMetrics = api.RuntimeMetrics;
 pub const runtimeMetrics = api.runtimeMetrics;
-pub const CollisionContact = api.CollisionContact;
-pub const CollisionRayHit = api.CollisionRayHit;
-pub const collision = api.collision;
-pub const CharacterConfig = api.CharacterConfig;
-pub const CharacterController = api.CharacterController;
-pub const CharacterState = api.CharacterState;
-pub const TileCollider = api.TileCollider;
-pub const TileCollisionHit = api.TileCollisionHit;
-pub const TileCollisionShape = api.TileCollisionShape;
 pub const DrawSpriteOptions = api.DrawSpriteOptions;
 pub const SpriteSampling = api.SpriteSampling;
 pub const Image = api.Image;
@@ -110,7 +95,6 @@ pub const InspectorBindingsPanel = api.InspectorBindingsPanel;
 pub const InspectorProfilePanel = api.InspectorProfilePanel;
 pub const InspectorSubsystemPanel = api.InspectorSubsystemPanel;
 pub const InspectorSubsystemState = api.InspectorSubsystemState;
-pub const InspectorCollisionPanel = api.InspectorCollisionPanel;
 pub const inspectorPanels = api.inspectorPanels;
 pub const Gamepad = api.Gamepad;
 pub const GamepadButton = api.GamepadButton;
@@ -155,16 +139,6 @@ pub const TextAlignment = api.TextAlignment;
 pub const TextLayoutOptions = api.TextLayoutOptions;
 pub const TextLayout = api.TextLayout;
 pub const layoutText = api.layoutText;
-pub const Tile = api.Tile;
-pub const TileFlags = api.TileFlags;
-pub const TileMap = api.TileMap;
-pub const TileMapLayer = api.TileMapLayer;
-pub const TileMapLayerKind = api.TileMapLayerKind;
-pub const TileMapObject = api.TileMapObject;
-pub const TileMapObjectShape = api.TileMapObjectShape;
-pub const TileMapProperty = api.TileMapProperty;
-pub const TileMapPropertyValue = api.TileMapPropertyValue;
-pub const TileSet = api.TileSet;
 pub const Vec2 = api.Vec2;
 
 test {
@@ -173,7 +147,6 @@ test {
     _ = @import("app.zig");
     _ = @import("actions.zig");
     _ = @import("audio.zig");
-    _ = @import("broadphase.zig");
     _ = @import("atlas.zig");
     _ = @import("camera.zig");
     _ = @import("camera_canvas.zig");
@@ -181,7 +154,6 @@ test {
     _ = @import("canvas.zig");
     _ = @import("color.zig");
     _ = @import("diagnostics.zig");
-    _ = @import("collision.zig");
     _ = @import("font_asset.zig");
     _ = @import("image.zig");
     _ = @import("input.zig");
@@ -193,8 +165,6 @@ test {
     _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
     _ = @import("sprite_batch.zig");
-    _ = @import("tilemap.zig");
-    _ = @import("tile_collision.zig");
     _ = @import("text_layout.zig");
     _ = @import("test_support.zig");
 }
@@ -202,6 +172,9 @@ test {
 test "root module excludes removed systems" {
     try @import("std").testing.expect(@hasDecl(@This(), "Canvas"));
     inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+        try @import("std").testing.expect(!@hasDecl(@This(), name));
+    }
+    inline for (.{ "world", "TileMap", "TileMapLayer", "TileCollider", "CharacterController", "collision", "Broadphase", "InspectorCollisionPanel" }) |name| {
         try @import("std").testing.expect(!@hasDecl(@This(), name));
     }
     try @import("std").testing.expect(!@hasDecl(@This(), "physics"));

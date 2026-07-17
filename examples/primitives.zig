@@ -10,7 +10,7 @@ const Game = struct {
         .clear_color = up.Color.rgb(14, 18, 24),
     };
 
-    pub fn init(ctx: *sdl.Context) !Game {
+    pub fn init(_: *sdl.Context) !Game {
         return .{};
     }
 

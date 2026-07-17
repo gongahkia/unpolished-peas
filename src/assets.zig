@@ -536,7 +536,6 @@ test "asset store exposes canonical loaders only" {
     try std.testing.expect(@hasDecl(AssetStore, "loadFont"));
     try std.testing.expect(@hasDecl(AssetStore, "loadSound"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadAtlas"));
-    try std.testing.expect(!@hasDecl(AssetStore, "loadTileMap"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadPng"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadBitmapFont"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadFontWithOptions"));
@@ -549,7 +548,6 @@ test "asset store exposes checked handle accessors" {
     try std.testing.expect(@hasDecl(AssetStore, "tryFont"));
     try std.testing.expect(@hasDecl(AssetStore, "tryFontPtr"));
     try std.testing.expect(!@hasDecl(AssetStore, "tryAtlas"));
-    try std.testing.expect(!@hasDecl(AssetStore, "tryTileMap"));
     try std.testing.expect(!@hasDecl(AssetStore, "text"));
     try std.testing.expect(!@hasDecl(AssetStore, "image"));
     try std.testing.expect(!@hasDecl(AssetStore, "imagePtr"));

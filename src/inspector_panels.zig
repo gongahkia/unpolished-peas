@@ -7,7 +7,6 @@ const input = @import("input.zig");
 const InspectorPanel = @import("inspector.zig").Panel;
 const profiler = @import("profiler.zig");
 const runtime_metrics = @import("runtime_metrics.zig");
-const tile_collision = @import("tile_collision.zig");
 const Vec2 = @import("math.zig").Vec2;
 
 const panel_background = Color.rgba(12, 18, 28, 210);
@@ -281,37 +280,6 @@ pub const SubsystemPanel = struct {
     }
 };
 
-pub const CollisionPanel = struct {
-    collider: ?*const tile_collision.TileCollider = null,
-    position: Vec2 = .{ .x = 4, .y = 4 },
-    max_rows: usize = 5,
-
-    pub fn panel(self: *CollisionPanel) InspectorPanel {
-        return .{ .name = "collision", .context = self, .draw = draw };
-    }
-
-    fn draw(context: *anyopaque, canvas: *Canvas) !void {
-        const self: *CollisionPanel = @ptrCast(@alignCast(context));
-        var lines = Lines.init(canvas, self.position, self.max_rows);
-        lines.box();
-        lines.line("COLLISION", .{}, panel_title);
-        const collider = self.collider orelse {
-            lines.line("collider unavailable", .{}, panel_warning);
-            return;
-        };
-        var solids: usize = 0;
-        var one_way: usize = 0;
-        var slopes: usize = 0;
-        for (collider.shapes.items) |shape| switch (shape) {
-            .solid => solids += 1,
-            .one_way => one_way += 1,
-            .slope => slopes += 1,
-        };
-        lines.line("shapes={} solid={}", .{ collider.shapes.items.len, solids }, panel_text);
-        lines.line("one-way={} slopes={}", .{ one_way, slopes }, panel_text);
-    }
-};
-
 const Lines = struct {
     canvas: *Canvas,
     x: i32,
@@ -370,29 +338,11 @@ test "inspector panels render unavailable sources safely" {
     var asset = AssetPanel{};
     var input_panel = InputPanel{};
     var metrics_panel = MetricsPanel{};
-    var collision_panel = CollisionPanel{};
     try asset.panel().draw(asset.panel().context, &canvas);
     try input_panel.panel().draw(input_panel.panel().context, &canvas);
     try metrics_panel.panel().draw(metrics_panel.panel().context, &canvas);
-    try collision_panel.panel().draw(collision_panel.panel().context, &canvas);
     const hash = test_support.canvasHash(canvas);
     try std.testing.expect(hash != 0);
-}
-
-test "diagnostic panels render deterministic read-only state" {
-    var collider = tile_collision.TileCollider.init(std.testing.allocator);
-    defer collider.deinit();
-    try collider.addShape(.{ .solid = .{ .x = 0, .y = 0, .w = 8, .h = 8 } });
-    try collider.addShape(.{ .one_way = .{ .x = 8, .y = 0, .w = 8, .h = 8 } });
-    var collision_panel = CollisionPanel{ .collider = &collider };
-    var first = try Canvas.init(std.testing.allocator, 320, 192);
-    defer first.deinit();
-    var second = try Canvas.init(std.testing.allocator, 320, 192);
-    defer second.deinit();
-    try collision_panel.panel().draw(collision_panel.panel().context, &first);
-    try collision_panel.panel().draw(collision_panel.panel().context, &second);
-    try std.testing.expectEqual(@import("test_support.zig").canvasHash(first), @import("test_support.zig").canvasHash(second));
-    try std.testing.expectEqual(@as(usize, 2), collider.shapes.items.len);
 }
 
 test "metrics panel renders unavailable GPU timing and resource state" {

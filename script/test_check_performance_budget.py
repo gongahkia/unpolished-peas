@@ -18,18 +18,18 @@ class PerformanceBudgetTest(unittest.TestCase):
         baseline = {
             "version": 1,
             "target": "test",
-            "game_limits": {game: dict(metrics) for game in ("bounce", "topdown", "platformer")},
+            "game_limits": {game: dict(metrics) for game in ("bounce",)},
         }
         observed = {
             "version": 1,
             "target": "test",
-            "game_metrics": {game: dict(metrics) for game in ("bounce", "topdown", "platformer")},
+            "game_metrics": {game: dict(metrics) for game in ("bounce",)},
         }
         self.assertEqual("proof games", validate(baseline, observed))
 
         regressed = copy.deepcopy(observed)
-        regressed["game_metrics"]["platformer"]["frame_ns"] = 7
-        with self.assertRaisesRegex(ValueError, "platformer: frame_ns=7 exceeds 4"):
+        regressed["game_metrics"]["bounce"]["frame_ns"] = 7
+        with self.assertRaisesRegex(ValueError, "bounce: frame_ns=7 exceeds 4"):
             validate(baseline, regressed)
 
 

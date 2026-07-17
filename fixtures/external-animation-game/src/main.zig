@@ -83,12 +83,11 @@ const Game = struct {
         const direction = up.Vec2{ .x = bindings.value(input, "game", "right") - bindings.value(input, "game", "left") };
         const delta = direction.scale(48 * dt);
         if (delta.lenSq() == 0) return .{};
-        if (up.collision.sweepRect(self.player, delta, self.obstacle)) |hit| {
-            const fraction = @max(0, hit.fraction - 0.001);
-            self.player.x += delta.x * fraction;
-            self.player.y += delta.y * fraction;
-            if (fraction > 0) self.animation.update(dt);
-            return .{ .moved = fraction > 0, .blocked = true };
+        const next_x = self.player.x + delta.x;
+        if (delta.x > 0 and self.player.x + self.player.w <= self.obstacle.x and next_x + self.player.w > self.obstacle.x) {
+            self.player.x = self.obstacle.x - self.player.w;
+            self.animation.update(dt);
+            return .{ .moved = true, .blocked = true };
         }
         self.player.x += delta.x;
         self.player.y += delta.y;
@@ -152,7 +151,7 @@ pub fn main() !void {
     try sdl.playGame(Game);
 }
 
-test "external animation game advances frames, plays audio, prevents collision, and exposes diagnostics" {
+test "external animation game advances frames, plays audio, blocks an obstacle, and exposes diagnostics" {
     var game = try Game.initResources(std.testing.allocator);
     defer game.deinitResources();
     const bindings = up.ActionMap{ .actions = &actions };

@@ -36,7 +36,7 @@ Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--rendere
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
 Game code imports `unpolished-peas` and `unpolished-peas-sdl3`. `zig build test-modules` checks the core, tooling, and fixture graph.
-The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision panels remain application-owned.
+The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont(path, options)` loads TrueType/OpenType fonts into a GPU atlas and detects AngelCode `.fnt` descriptors; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `layoutText` shares the same deterministic UTF-8 decoder.
 
@@ -123,7 +123,6 @@ zig build test-explicit-loop-wasm
 zig build run-audio
 zig build run-atlas
 zig build run-camera
-zig build run-tilemap
 zig build run-primitives
 zig build run-breakout
 zig build run-breakout-sdl
@@ -132,10 +131,6 @@ zig build test-breakout
 zig build run-topdown-sdl
 zig build smoke-topdown-sdl
 zig build test-topdown
-zig build test-topdown-scene
-zig build run-platformer-sdl
-zig build smoke-platformer-sdl
-zig build test-platformer
 zig build test-replays
 zig build benchmark
 zig build benchmark-proofs
@@ -150,46 +145,42 @@ zig build new -- ../my-game
 `dev-bounce` opens a PNG/text live-reload demo.
 `run-audio` opens a WAV/OGG audio demo.
 `run-explicit-loop` runs the advanced core explicit-loop example; `test-explicit-loop-wasm` compiles the same source for Wasm.
-`run-atlas` opens a programmatic atlas/tile scene demo.
+`run-atlas` opens a programmatic atlas scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
-`run-tilemap` opens the sparse tile-map and camera-culling demo.
 `run-primitives` opens the GPU primitive and text-quads demo.
 `run-breakout` writes the deterministic Breakout frame to `zig-out/breakout.ppm`.
-`run-breakout-sdl` opens Breakout with keyboard paddle input and collision audio.
+`run-breakout-sdl` opens Breakout with keyboard paddle input and audio.
 `smoke-breakout-sdl` runs two SDL frames with a dummy audio device.
 `test-breakout` runs fixed-step Breakout simulation tests.
-`run-topdown-sdl` opens the action-mapped programmatic TileMap top-down demo.
+`run-topdown-sdl` opens the action-mapped top-down demo.
 `smoke-topdown-sdl` runs two SDL frames with dummy audio.
-`test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
-`zig build test-desktop-package-matrix` packages and smokes bounce, top-down, and platformer for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
-`zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, and platformer in Chromium from deterministic static Wasm bundles.
-`run-platformer-sdl` runs the TileCollider and animation platformer slice.
-`smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
-`script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
-`fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three.
+`test-topdown` verifies deterministic simulation.
+`zig build test-desktop-package-matrix` packages and smokes bounce and top-down for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
+`zig build test-web-proof-game-matrix` packages and smokes bounce and top-down in Chromium from deterministic static Wasm bundles.
+`script/test_proof_game_matrix.sh <topdown>` runs bounded CLI, inspector, reload, profiler, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
+`fixtures/bounce-project` and `fixtures/topdown-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests both.
 `zig build test-facade-consumer-matrix` builds independent desktop and Wasm consumer packages that use only `@import("unpolished-peas")`.
 `zig build test-renderer-three-backend` compares deterministic SDL GPU, OpenGL, and WebGL 2 renderer corpus captures with a one-channel tolerance.
 `zig build test-cross-target-integrity` validates desktop and Chromium failure artifacts, manifests, redaction, package files, screenshots, and recovery diagnostics.
 `fixtures/external-game` is a standalone callback game that draws a sprite, plays synthesized audio, and consumes normalized input through the public desktop module.
-`fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, and follows with a camera.
-`fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
+`fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
+`test-replays` verifies stored fixed-step input state hashes for Breakout and top-down on CI.
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
 Tag pushes run `zig build release-gate`, which validates the frozen core API, a clean released-dependency consumer, proof-game consumers, desktop packages, deterministic diagnostics, and visual/replay checks; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
-`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
-`test-scenes` compares deterministic headless, bounce, top-down, and platformer renders against committed PNG goldens; `zig build test-scenes -- --update-golden` refreshes all captures intentionally.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
+`test-scenes` compares a deterministic bounce render against its committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, assets, and build-manifest layout without replacing an existing destination.
 `zig build peas -- check [project-directory] [--target <linux|macos|windows>]` statically validates the manifest Zig minimum, project build script, `assets/`, and selected runtime target without starting the game; Windows checks require Windows 10/11 x64 with `D3DCompiler_47.dll`; failures include a recovery command.
-`assets/` contains user-owned raw files. Define atlas frames, animations, and TileMaps directly in Zig beside the game code; there is no engine-owned content format or compiler.
+`assets/` contains user-owned raw files. Define atlas frames and animations directly in Zig beside game code; there is no engine-owned content format or compiler.
 `zig build peas -- test <unit|replay|visual|integration> [project-directory]` runs the selected deterministic test target and identifies its build artifact directory on failure.
 `zig build peas -- replay <fixture.upr> [expected-input-hash]` reproduces normalized fixed-step input and reports a deterministic final-state hash or divergence.
 `zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...` creates a local, allowlisted diagnostics export. Text artifacts redact the source path plus configured literal paths and secrets; PNG captures copy unchanged. The command never transmits or uploads data.
 `zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]` validates project, Zig, target, renderer, assets, Node browser host, and package prerequisites. Exit codes are deterministic: 20 project, 21 Zig, 22 target, 23 renderer, 24 assets, 25 browser host, 26 package.
 Prefix any `peas` workflow with `--json` for one versioned stdout result object (`command`, `status`, `recovery_code`, `non_interactive`); diagnostics remain on stderr. Prefix with `--non-interactive` to disable inherited stdin for child tools; `run` and `serve` reject that mode with exit code 65.
-`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|platformer>]` creates the selected portable package through the project CLI.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown>]` creates the selected portable package through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
@@ -216,8 +207,6 @@ SDL sprite textures upload on first use; changed image or atlas buffers stage a 
 
 GPU command primitives use one logical-pixel strokes, 32-segment circles, and source-over or additive blending. `Context.pushClip`/`popClip` and `pushBlend`/`popBlend` nest and restore command state.
 
-`TileCollider.addShape` and `addLayer` are the default collision path. `addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer; failures leave the existing collider unchanged. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
-
 ## Camera And Presentation
 
 `Camera2D` provides position, zoom limits, rotation, viewport rectangles, world bounds, nearest or bilinear image sampling, pixel snapping, dead-zone follow, spring motion, deterministic shake, coordinate conversion, visibility checks, and parallax copies. `CameraRig` owns an arbitrary number of generation-checked cameras; `CameraDirector` plays deterministic cuts and blended shots.
@@ -240,8 +229,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
 - `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
-- `TileMap`, `TileMapLayer`, `TileMapLayerKind`, `TileMapObject`, `TileMapObjectShape`, `TileMapProperty`, `TileSet`
-- `TileCollider`, `CharacterController`
 - `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`
