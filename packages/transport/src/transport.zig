@@ -154,4 +154,5 @@ test {
     _ = @import("path_mtu.zig");
     _ = @import("fragment_handoff.zig");
     _ = @import("tcp_flow_control.zig");
+    _ = @import("transport_conformance.zig");
 }
