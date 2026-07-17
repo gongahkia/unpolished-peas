@@ -444,6 +444,10 @@ test "stable public symbols are exact" {
         "TurnAllocationConfig",
         "TurnAllocation",
         "TurnAllocationClient",
+        "TurnPermissionError",
+        "TurnPermissionConfig",
+        "TurnPermission",
+        "TurnPermissions",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
