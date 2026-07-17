@@ -496,6 +496,14 @@ test "stable public symbols are exact" {
         "RouteSelectorConfig",
         "RouteSelector",
         "route_availability_for_kind",
+        "max_route_transition_diagnostics",
+        "RouteTransitionRoute",
+        "RouteTransitionPacket",
+        "RouteTransitionDiagnosticKind",
+        "RouteTransitionDiagnostic",
+        "RouteTransitionError",
+        "RouteTransitionConfig",
+        "RouteTransition",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
