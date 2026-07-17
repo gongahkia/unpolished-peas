@@ -456,6 +456,11 @@ test "stable public symbols are exact" {
         "TurnChannelBinding",
         "TurnChannelData",
         "TurnChannels",
+        "TurnAllocationLifecycleError",
+        "TurnAllocationFailure",
+        "TurnAllocationEvent",
+        "TurnAllocationLifecycleConfig",
+        "TurnAllocationLifecycle",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
