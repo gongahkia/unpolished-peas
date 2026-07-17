@@ -7,8 +7,6 @@ pub const world = api.world;
 pub const preview = api.preview;
 pub const testSupport = api.testSupport;
 pub const effects = api.effects;
-pub const Ui = api.Ui;
-pub const ui = api.ui;
 pub const Physics = api.Physics;
 pub const physics = api.physics;
 pub const GpuResourceKind = api.GpuResourceKind;
@@ -24,13 +22,6 @@ pub const PixelEffect = api.PixelEffect;
 pub const PixelEffectParameters = api.PixelEffectParameters;
 pub const PostProcessChain = api.PostProcessChain;
 pub const lighting = api.lighting;
-pub const UiFrame = api.UiFrame;
-pub const UiId = api.UiId;
-pub const UiLayout = api.UiLayout;
-pub const UiResponse = api.UiResponse;
-pub const UiState = api.UiState;
-pub const UiStyle = api.UiStyle;
-pub const UiSurface = api.UiSurface;
 pub const PhysicsWorld = api.PhysicsWorld;
 pub const PhysicsConfig = api.PhysicsConfig;
 pub const PhysicsBody = api.PhysicsBody;
@@ -233,6 +224,5 @@ test {
 test "root module exposes the cohesive facade directly" {
     try @import("std").testing.expect(@hasDecl(@This(), "Canvas"));
     try @import("std").testing.expect(@hasDecl(@This(), "effects"));
-    try @import("std").testing.expect(@hasDecl(@This(), "ui"));
     try @import("std").testing.expect(@hasDecl(@This(), "physics"));
 }

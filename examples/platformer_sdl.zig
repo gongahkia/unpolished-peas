@@ -15,7 +15,6 @@ const Game = struct {
     world: up.physics.World,
     marker: up.physics.BodyHandle,
     jump_sound: up.AudioHandle,
-    ui_state: up.ui.State = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
         const generated_map = try content.platformerMap(ctx.allocator);
@@ -64,9 +63,6 @@ const Game = struct {
         try ctx.appendPhysicsDebug(&self.world, &camera);
         const marker = self.world.bodyPosition(self.marker) catch return;
         ctx.gpuCamera(&camera).fillCircle(marker, 2, up.Color.rgb(255, 198, 74));
-        var frame = ctx.uiFrame(&self.ui_state, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
-        _ = frame.button(1, "DEBUG");
-        frame.end();
         ctx.text("PLATFORMER", 2, 2, up.Color.white);
     }
 };

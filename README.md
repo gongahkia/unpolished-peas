@@ -175,7 +175,7 @@ zig build new -- ../my-game
 `fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, follows with a camera, and reloads a raw shader asset.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`zig build test-effects`, `zig build test-ui`, and `zig build test-physics` validate the engine-owned effects, UI, and physics subsystems.
+`zig build test-effects` and `zig build test-physics` validate the engine-owned effects and physics subsystems.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
 Tag pushes run `zig build release-gate`, which validates the frozen core API, a clean released-dependency consumer, proof-game consumers, desktop packages, deterministic diagnostics, and visual/replay checks; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
@@ -259,7 +259,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 
 `effects.lighting(core).Pipeline.append` emits GPU primitive commands; `render` is the explicit headless fallback selected by `Pipeline.preferredPath`.
 
-`ui(core).Frame` is immediate-only: callers retain `ui(core).State`, emit widgets every frame, and finish with `Frame.end` to resolve navigation.
 - `Sound`
 - `Music`
 - `AudioMixer`

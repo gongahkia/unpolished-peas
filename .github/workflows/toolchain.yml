@@ -76,7 +76,6 @@ jobs:
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build test-effects
-      - run: zig build test-ui
       - run: zig build test-physics
       - run: zig build test-support
       - run: zig build test-modules

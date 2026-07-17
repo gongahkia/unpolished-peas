@@ -11,3 +11,7 @@ v0.1 removes the engine-owned particle emitter runtime and public API. Delete pa
 ## ECS removed
 
 v0.1 removes the engine-owned ECS and its public API. Delete ECS world, entity, component-store, and command usage; keep game-owned data structures in game code.
+
+## Immediate-mode UI removed
+
+v0.1 removes the engine-owned immediate-mode UI subsystem and public API. Delete its frame, widget, layout, and state calls; keep game-specific HUD rendering in game code.
