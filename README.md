@@ -92,7 +92,7 @@ cd ../my-game
 zig build run
 ```
 
-`v0.0.3` is withdrawn: its public archive does not implement the API emitted by the current starter. `main` is an unreleased integration branch; do not distribute a project generated from it until the next non-draft tag is published. The tag workflow validates that future starters build and run from their exact public archive with empty Zig caches. See [releases and support](docs/guides/releases.md).
+`v0.0.3` is withdrawn: its public archive does not implement the API emitted by the current starter. `main` is an unreleased integration branch; do not distribute a project generated from it until the next non-draft tag is published. The tag workflow validates that future starters build and run from their exact public archive with empty Zig caches. See [releases and support](docs/guides/releases.md) and the [v0.1 capability matrix](docs/guides/capabilities.md).
 
 ## Positioning
 
