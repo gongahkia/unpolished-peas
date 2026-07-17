@@ -602,6 +602,15 @@ test "stable public symbols are exact" {
         "StateFullStateRecoveryError",
         "StateFullStateRecoveryConfig",
         "StateFullStateRecovery",
+        "StateReplicationRecipient",
+        "StateReplicationInterestFn",
+        "StateReplicationTransportFn",
+        "StateReplicationInterest",
+        "StateReplicationTransport",
+        "StateReplicationError",
+        "StateReplicationOutcome",
+        "StateReplicationTemplateConfig",
+        "StateReplicationTemplate",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
