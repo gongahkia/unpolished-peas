@@ -156,4 +156,5 @@ test {
     _ = @import("tcp_flow_control.zig");
     _ = @import("transport_conformance.zig");
     _ = @import("ip_integration.zig");
+    _ = @import("resource_exhaustion.zig");
 }
