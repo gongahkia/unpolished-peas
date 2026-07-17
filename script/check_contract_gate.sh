@@ -16,6 +16,15 @@ if grep -Fq 'pull_request_target:' "$workflow"; then
 fi
 grep -Fqx '  contents: read' "$workflow" || fail "workflow must use read-only contents permission"
 grep -Fqx '      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10' "$workflow" || fail "workflow must pin checkout"
+cache_count="$(grep -Fc '        uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684' "$workflow")"
+[ "$cache_count" = 7 ] || fail "workflow must cache immutable Zig build inputs in every pinned SDK job"
+grep -Fqx '      - name: Cache immutable Zig build inputs' "$workflow" || fail "workflow must name immutable Zig caches"
+grep -Fqx '            .zig-cache' "$workflow" || fail "workflow must cache local Zig build inputs"
+grep -Fqx '            ~/.cache/zig' "$workflow" || fail "workflow must cache Zig global inputs"
+grep -Fqx "          key: zig-v1-\${{ runner.os }}-\${{ runner.arch }}-0.15.2-\${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}" "$workflow" || fail "workflow must use immutable Zig cache keys"
+if grep -Fq 'restore-keys:' "$workflow"; then
+    fail "workflow must not restore mutable Zig cache prefixes"
+fi
 grep -Fqx '      - name: Install Zig 0.15.2' "$workflow" || fail "workflow must install Zig 0.15.2"
 grep -Fqx '          echo '\''02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz'\'' | sha256sum --check --status' "$workflow" || fail "workflow must verify the Zig archive"
 grep -Fqx '  benchmark-harness:' "$workflow" || fail "workflow must define the benchmark harness job"

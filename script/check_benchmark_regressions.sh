@@ -4,6 +4,7 @@ set -eu
 root="$(git rev-parse --show-toplevel)"
 thresholds="${BENCHMARK_THRESHOLDS:-$root/contracts/benchmark_regression_thresholds.json}"
 results_dir="${BENCHMARK_RESULTS_DIR:-}"
+zig_exe="${ZIG_EXE:-$(command -v zig)}"
 
 fail() {
     printf '%s\n' "$1" >&2
@@ -14,11 +15,11 @@ fail() {
 if [ -z "$results_dir" ]; then
     results_dir="$(mktemp -d)"
     trap 'rm -rf "$results_dir"' EXIT
-    zig build benchmark-authoritative -Doptimize=ReleaseFast > "$results_dir/authoritative.json"
-    zig build benchmark-sharded-p2p -Doptimize=ReleaseFast > "$results_dir/sharded.json"
-    zig build benchmark-topology-faults -Doptimize=ReleaseFast > "$results_dir/topology_faults.json"
-    zig build benchmark-throughput -Doptimize=ReleaseFast > "$results_dir/throughput.json"
-    zig build benchmark-memory -Doptimize=ReleaseFast > "$results_dir/memory.json"
+    "$zig_exe" build benchmark-authoritative -Doptimize=ReleaseFast > "$results_dir/authoritative.json"
+    "$zig_exe" build benchmark-sharded-p2p -Doptimize=ReleaseFast > "$results_dir/sharded.json"
+    "$zig_exe" build benchmark-topology-faults -Doptimize=ReleaseFast > "$results_dir/topology_faults.json"
+    "$zig_exe" build benchmark-throughput -Doptimize=ReleaseFast > "$results_dir/throughput.json"
+    "$zig_exe" build benchmark-memory -Doptimize=ReleaseFast > "$results_dir/memory.json"
 fi
 
 python3 - "$thresholds" "$results_dir" <<'PY'

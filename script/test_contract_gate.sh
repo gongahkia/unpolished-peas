@@ -27,6 +27,10 @@ sed '/channel: \[pinned, rolling\]/d' .github/workflows/v1-contract.yml > "$fixt
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
 fi
+sed '/actions\/cache@/d' .github/workflows/v1-contract.yml > "$fixture"
+if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
+    exit 1
+fi
 sed '/clang -std=c11/d' .github/workflows/v1-contract.yml > "$fixture"
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
