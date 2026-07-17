@@ -607,6 +607,11 @@ test "stable public symbols are exact" {
         "abi_version",
         "feature_version",
         "wire_version",
+        "max_dedicated_session_participants",
+        "DedicatedScheduledWork",
+        "DedicatedSessionSchedulerError",
+        "DedicatedSessionSchedulerConfig",
+        "DedicatedSessionScheduler",
         "package_name",
     });
     try expectExactPublicDeclarations(c_abi, &.{

@@ -15,6 +15,7 @@ const authoritative_admission = @import("authoritative_admission.zig");
 const interest_management = @import("interest_management.zig");
 const spatial_grid_interest = @import("spatial_grid_interest.zig");
 const version = @import("version.zig");
+const dedicated_session_scheduler = @import("dedicated_session_scheduler.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
 pub const SdkConfig = sdk_config.SdkConfig;
@@ -82,6 +83,11 @@ pub const runtime_version = version.runtime_version;
 pub const abi_version = version.abi_version;
 pub const feature_version = version.feature_version;
 pub const wire_version = version.wire_version;
+pub const max_dedicated_session_participants = dedicated_session_scheduler.max_dedicated_session_participants;
+pub const DedicatedScheduledWork = dedicated_session_scheduler.DedicatedScheduledWork;
+pub const DedicatedSessionSchedulerError = dedicated_session_scheduler.DedicatedSessionSchedulerError;
+pub const DedicatedSessionSchedulerConfig = dedicated_session_scheduler.DedicatedSessionSchedulerConfig;
+pub const DedicatedSessionScheduler = dedicated_session_scheduler.DedicatedSessionScheduler;
 pub const package_name = "runtime";
 
 comptime {
@@ -110,4 +116,5 @@ test {
     _ = @import("spatial_grid_interest.zig");
     _ = @import("version.zig");
     _ = @import("topology_fault_scenarios.zig");
+    _ = @import("dedicated_session_scheduler.zig");
 }
