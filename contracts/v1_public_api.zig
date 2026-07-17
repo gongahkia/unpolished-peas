@@ -448,6 +448,14 @@ test "stable public symbols are exact" {
         "TurnPermissionConfig",
         "TurnPermission",
         "TurnPermissions",
+        "turn_channel_min",
+        "turn_channel_max",
+        "turn_channel_header_bytes",
+        "TurnChannelError",
+        "TurnChannelConfig",
+        "TurnChannelBinding",
+        "TurnChannelData",
+        "TurnChannels",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
