@@ -151,6 +151,11 @@ test "stable public symbols are exact" {
         "SocketPollRegistration",
         "SocketPollResult",
         "SocketPoller",
+        "max_hostname_addresses",
+        "HostnameResolutionError",
+        "ResolvedAddress",
+        "HostnameResolutionState",
+        "HostnameResolution",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
