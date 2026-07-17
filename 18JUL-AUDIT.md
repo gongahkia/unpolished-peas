@@ -12,7 +12,7 @@ The agreed direction replaces the previous broad-engine trajectory: **a small Zi
 
 ## What is already strong
 
-- SDL-free core plus separate desktop runtime and optional ECS, effects, networking, physics, UI, tools, and services packages.
+- SDL-free core plus separate desktop runtime, browser host/runtime, developer tooling, and optional ECS, effects, physics, UI, and extension infrastructure.
 - Deterministic headless rendering, golden images, input replay, fuzzing, downstream fixtures, performance budgets, and release gating.
 - Cross-backend SDL GPU/OpenGL capture comparison and desktop package smoke coverage on macOS, Linux, and Windows.
 - Local runtime diagnostics: screenshots, command JSON, Chrome trace JSON, replay data, metadata, and failure log.
@@ -21,9 +21,11 @@ The agreed direction replaces the previous broad-engine trajectory: **a small Zi
 
 This is unusually good regression and failure evidence for an early engine.
 
-## Logging and debugging audit
+## Historical diagnostics findings
 
-### Current gaps
+The following observations were retained from the original audit for context. They are not the active roadmap: the agreed future direction supersedes their expansion-first priority, and parts of this work now exist in the current tree.
+
+### Original observations
 
 - `unpolished-peas.log` is append-only plain text. It has no timestamps, severity, category, session ID, frame correlation, rotation, or retention cap.
 - Failure bundles contain only the generated failure summary, not a bounded tail of the persistent engine log. The most useful chronological context is therefore absent.
@@ -33,7 +35,7 @@ This is unusually good regression and failure evidence for an early engine.
 - The renderer capability contract is late-failing. For example, `run-primitives --renderer opengl` selects OpenGL and only fails during presentation because it starts with a pixel effect. The platformer can trigger the same error while its action-driven effect is active.
 - The inspector has useful asset/input/metrics panels but no complete interactive diagnosis flow or support-bundle workflow.
 
-### Recommended order
+### Original proposed order
 
 1. **Capability preflight.** Games declare required and optional renderer features. Before opening the loop, select a compatible backend, degrade an optional feature with a visible warning, or fail with a recovery command. Never fail a known capability mismatch in `present`.
 
@@ -54,7 +56,7 @@ This is unusually good regression and failure evidence for an early engine.
 | Area | unpolished-peas | LÖVE | raylib | Ebitengine |
 |---|---|---|---|---|
 | Primary audience | Zig, 2D desktop | Lua, 2D | C plus bindings | Go, 2D |
-| Platform story | macOS/Linux/Windows packages | Desktop, Android, iOS | Desktop, Raspberry Pi, Android, web | Desktop, web, Android, iOS |
+| Platform story | macOS/Linux/Windows packages plus browser host; no release-parity proof | Desktop, Android, iOS | Desktop, Raspberry Pi, Android, web | Desktop, web, Android, iOS |
 | Public ecosystem proof | None yet | Docs/forums/Discord/subreddit | 60+ bindings, tools, examples, games | Go ecosystem, examples, showcase |
 | Public stars, 16 Jul 2026 | 0 | 8.5k | 33.9k | 13.3k |
 | Release history | Draft `v0.0.3` | 17 releases | 25 releases | 163 releases |
@@ -74,10 +76,10 @@ The main comparison failure is not a missing primitive API. It is absent public 
 - Public documentation is shallow: one small Quickstart and testing guide, with no clearly hosted full API reference or learning path.
 - The root project defaults to pinned SDL source while the generated starter requires system SDL3 and `pkg-config`; this increases setup ambiguity.
 - Zig `0.15.1`/`0.15.2` pinning is technically rational but restricts the potential audience while Zig evolves quickly.
-- The scope is broad—services, networking, relay, physics, ECS, effects, UI—before a clear primary user journey is proven. This risks complexity without demand.
+- The scope is broad—physics, ECS, effects, UI, extension infrastructure, and advanced gameplay systems—before a clear primary user journey is proven. This risks complexity without demand.
 - There is no non-draft public release, changelog/migration contract, showcase, external game, community venue, contributor guide, or evidence of independent users.
 - Web search for the engine name does not surface it; results instead foreground other Zig engines and communities. [Source](https://ziggit.dev/t/mutual-help-on-zig-gamedev/12706)
-- Desktop-only distribution limits easy sharing. A web-playable demo is a much stronger discovery and virality mechanism than a repository clone.
+- Browser packaging exists, but a release-grade WebGL2/WebGPU matrix and publicly playable proof games do not. A web-playable demo is a stronger discovery mechanism than a repository clone.
 
 No open issues does not demonstrate reliability when there are no observed outside users.
 
