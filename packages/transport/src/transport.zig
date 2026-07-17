@@ -8,6 +8,7 @@ const udp_socket = @import("udp_socket.zig");
 const udp_readiness = @import("udp_readiness.zig");
 const tcp_connection = @import("tcp_connection.zig");
 const tcp_listener = @import("tcp_listener.zig");
+const tcp_framed = @import("tcp_framed.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -46,6 +47,10 @@ pub const TcpAdmission = tcp_listener.TcpAdmission;
 pub const TcpPendingConnection = tcp_listener.TcpPendingConnection;
 pub const TcpAdmittedConnection = tcp_listener.TcpAdmittedConnection;
 pub const TcpListener = tcp_listener.TcpListener;
+pub const tcp_frame_header_bytes = tcp_framed.tcp_frame_header_bytes;
+pub const TcpFrameError = tcp_framed.TcpFrameError;
+pub const TcpFrameReader = tcp_framed.TcpFrameReader;
+pub const TcpFrameWriter = tcp_framed.TcpFrameWriter;
 pub const package_name = "transport";
 
 comptime {
@@ -66,4 +71,5 @@ test {
     _ = @import("udp_readiness.zig");
     _ = @import("tcp_connection.zig");
     _ = @import("tcp_listener.zig");
+    _ = @import("tcp_framed.zig");
 }
