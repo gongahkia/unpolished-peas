@@ -504,6 +504,13 @@ test "stable public symbols are exact" {
         "RouteTransitionError",
         "RouteTransitionConfig",
         "RouteTransition",
+        "RecoveryTarget",
+        "RecoveryState",
+        "RecoveryTerminalReason",
+        "RecoveryEvent",
+        "AuthoritativeRecoveryError",
+        "AuthoritativeRecoveryConfig",
+        "AuthoritativeSessionRecovery",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{
