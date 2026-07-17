@@ -1756,6 +1756,155 @@ test "C ABI result inspection classifies unknown codes without allocation" {
     try std.testing.expectEqualStrings("unknown result code", std.mem.span(minna_san_result_message(-1)));
 }
 
+test "bounded C ABI fuzz corpus retains safe boundary behavior" {
+    const Fixture = struct {
+        var callback_calls: usize = 0;
+
+        fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
+            const bytes = std.testing.allocator.alloc(u8, len) catch return null;
+            return @ptrCast(bytes.ptr);
+        }
+
+        fn release(_: ?*anyopaque, data: [*c]u8, len: usize) callconv(.c) void {
+            const bytes: [*]u8 = @ptrCast(data);
+            std.testing.allocator.free(bytes[0..len]);
+        }
+
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 42;
+        }
+
+        fn receive(_: ?*anyopaque, _: *const CLogRecord) callconv(.c) void {
+            callback_calls += 1;
+        }
+
+        fn expect_known(result: c_int) !void {
+            try std.testing.expectEqual(@as(u8, 1), minna_san_result_is_known(result));
+        }
+    };
+    const config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport,
+        .connection_capacity = 1,
+        .channel_capacity = 1,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    var prng = std.Random.DefaultPrng.init(0xbc3d_7c82_d5e4_a619);
+    const random = prng.random();
+
+    var iteration: usize = 0;
+    while (iteration < 64) : (iteration += 1) {
+        var candidate = config;
+        candidate.abi_version = if (iteration % 4 == 0) c_abi_version else random.int(u32);
+        candidate.capability_bits = if (iteration % 4 == 1) c_capability_transport else random.int(u32);
+        candidate.connection_capacity = random.uintLessThan(usize, 3);
+        candidate.channel_capacity = random.uintLessThan(usize, 3);
+        if (iteration % 5 == 0) candidate.now = null;
+        if (iteration % 7 == 0) candidate.allocator.allocate = null;
+        if (iteration % 11 == 0) candidate.allocator.release = null;
+        try Fixture.expect_known(minna_san_sdk_validate_config(&candidate));
+    }
+
+    {
+        var sdk: ?*CSdk = null;
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &sdk));
+        defer minna_san_sdk_destroy(sdk);
+        var started = false;
+        iteration = 0;
+        while (iteration < 64) : (iteration += 1) {
+            var event: CEvent = undefined;
+            switch (random.uintLessThan(u2, 3)) {
+                0 => {
+                    const result = minna_san_sdk_start(sdk);
+                    try Fixture.expect_known(result);
+                    try std.testing.expectEqual(if (started) @as(c_int, @intFromEnum(CResult.invalid_state)) else @as(c_int, @intFromEnum(CResult.ok)), result);
+                    started = true;
+                },
+                1 => {
+                    const result = minna_san_sdk_stop(sdk);
+                    try Fixture.expect_known(result);
+                    try std.testing.expectEqual(if (started) @as(c_int, @intFromEnum(CResult.ok)) else @as(c_int, @intFromEnum(CResult.invalid_state)), result);
+                    started = false;
+                },
+                2 => {
+                    const result = minna_san_sdk_poll(sdk, &event);
+                    try Fixture.expect_known(result);
+                    try std.testing.expectEqual(if (started) @as(c_int, @intFromEnum(CResult.would_block)) else @as(c_int, @intFromEnum(CResult.invalid_state)), result);
+                },
+                else => unreachable,
+            }
+        }
+    }
+
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &sdk));
+    defer minna_san_sdk_destroy(sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_open(null, c_route_direct, null, null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log_callback_register(sdk, null, null, null));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log_callback_unregister(sdk, .{ .id = 0 }));
+
+    var payload: [16]u8 = undefined;
+    iteration = 0;
+    while (iteration < 64) : (iteration += 1) {
+        random.bytes(payload[0..]);
+        const route_state = switch (iteration % 4) {
+            0 => c_route_direct,
+            1 => c_route_relay,
+            else => random.int(u32),
+        };
+        var connection: ?*CConnection = null;
+        var peer: ?*CPeer = null;
+        const connection_result = minna_san_connection_open(sdk, route_state, &connection, &peer);
+        try Fixture.expect_known(connection_result);
+        if (connection_result != @intFromEnum(CResult.ok)) continue;
+        const mode = switch (iteration % 4) {
+            0 => c_channel_reliable,
+            1 => c_channel_sequenced,
+            else => random.int(u32),
+        };
+        var channel: ?*CChannel = null;
+        const channel_result = minna_san_channel_open(sdk, connection, mode, &channel);
+        try Fixture.expect_known(channel_result);
+        if (channel_result == @intFromEnum(CResult.ok)) {
+            const buffer = if (iteration % 3 == 0)
+                CBuffer{ .data = null, .len = 1 }
+            else
+                CBuffer{ .data = @ptrCast(&payload), .len = random.uintLessThan(usize, payload.len + 1) };
+            var sequence: u64 = 0;
+            const send_result = minna_san_channel_send(sdk, channel, buffer, &sequence);
+            try Fixture.expect_known(send_result);
+            if (send_result == @intFromEnum(CResult.ok)) {
+                var received = CBuffer{ .data = null, .len = 0 };
+                var received_sequence: u64 = 0;
+                try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_receive(sdk, channel, &received, &received_sequence));
+                try std.testing.expectEqual(sequence, received_sequence);
+                try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_buffer_release(sdk, received));
+            }
+            try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, channel));
+            var stale_mode: u32 = 0;
+            try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_channel_mode(sdk, channel, &stale_mode));
+        }
+
+        var subscription = CLogSubscription{ .id = 0 };
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log_callback_register(sdk, null, Fixture.receive, &subscription));
+        const callback_calls = Fixture.callback_calls;
+        const level = if (iteration % 3 == 0) c_log_trace else random.int(u32);
+        const category = if (iteration % 3 == 0) c_log_category_runtime else random.int(u32);
+        const redaction = if (iteration % 3 == 0) c_log_redaction_none else random.int(u32);
+        const log_result = minna_san_sdk_log(sdk, level, category, redaction, .{ .data = @ptrCast(&payload), .len = payload.len });
+        try Fixture.expect_known(log_result);
+        if (log_result == @intFromEnum(CResult.ok)) try std.testing.expect(Fixture.callback_calls > callback_calls);
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_log_callback_unregister(sdk, subscription));
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_log_callback_unregister(sdk, subscription));
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
+        var stale_route_state: u32 = 0;
+        try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &stale_route_state));
+    }
+}
+
 test "C SDK lifecycle creates validates starts polls stops and destroys" {
     const Fixture = struct {
         var released: bool = false;
