@@ -297,3 +297,187 @@ test "caller draining stops with managed runtime shutdown" {
     try runtime.shutdown();
     try std.testing.expectError(error.NotRunning, runtime.drain());
 }
+
+test "managed workers retain direct callback and queue safety during concurrent shutdown" {
+    const producer_count: usize = 4;
+    const submissions_per_producer: usize = 64;
+    const Stress = struct {
+        runtime: *ManagedRuntime,
+        mutex: std.Thread.Mutex = .{},
+        ready: std.Thread.Condition = .{},
+        phase: u8 = 0,
+        ready_producers: usize = 0,
+        first_submissions: usize = 0,
+        submitted: usize = 0,
+        queue_full: usize = 0,
+        not_running: usize = 0,
+        callbacks: usize = 0,
+        shutdown_error: ?ManagedRuntimeError = null,
+
+        fn callback(context: *anyopaque, _: *const event.EventEnvelope) void {
+            const self: *@This() = @ptrCast(@alignCast(context));
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.callbacks += 1;
+        }
+
+        fn submit(self: *@This(), sequence: u64) void {
+            var envelope = event.EventEnvelope{ .sequence = sequence, .mode = .managed, .event = .{ .connected = {} } };
+            self.runtime.submit(envelope) catch |err| {
+                envelope.deinit();
+                self.mutex.lock();
+                defer self.mutex.unlock();
+                switch (err) {
+                    error.QueueFull => self.queue_full += 1,
+                    error.NotRunning => self.not_running += 1,
+                    error.OutOfMemory => unreachable,
+                    else => unreachable,
+                }
+                return;
+            };
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.submitted += 1;
+        }
+
+        fn producer(self: *@This(), index: usize) void {
+            self.mutex.lock();
+            self.ready_producers += 1;
+            self.ready.broadcast();
+            while (self.phase == 0) self.ready.wait(&self.mutex);
+            self.mutex.unlock();
+            self.submit(index * submissions_per_producer);
+            self.mutex.lock();
+            self.first_submissions += 1;
+            self.ready.broadcast();
+            while (self.phase < 2) self.ready.wait(&self.mutex);
+            self.mutex.unlock();
+            for (1..submissions_per_producer) |offset| self.submit(index * submissions_per_producer + offset);
+        }
+
+        fn shutdown(self: *@This()) void {
+            self.runtime.shutdown() catch |err| {
+                self.mutex.lock();
+                defer self.mutex.unlock();
+                self.shutdown_error = err;
+            };
+        }
+    };
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var stress = Stress{ .runtime = undefined };
+    var runtime = ManagedRuntime.init_with_direct_dispatch(std.testing.allocator, sdk, 8, .{ .context = &stress, .callback = Stress.callback });
+    stress.runtime = &runtime;
+    defer runtime.deinit();
+    try runtime.start();
+    stress.submit(10_000);
+    var attempts: usize = 0;
+    while (runtime.processed_count() == 0 and attempts < 1_000) : (attempts += 1) std.Thread.yield() catch {};
+    try std.testing.expectEqual(@as(u64, 1), runtime.processed_count());
+    var producers: [producer_count]std.Thread = undefined;
+    for (&producers, 0..) |*producer, index| producer.* = try std.Thread.spawn(.{}, Stress.producer, .{ &stress, index });
+    stress.mutex.lock();
+    while (stress.ready_producers != producer_count) stress.ready.wait(&stress.mutex);
+    stress.phase = 1;
+    stress.ready.broadcast();
+    while (stress.first_submissions != producer_count) stress.ready.wait(&stress.mutex);
+    stress.phase = 2;
+    stress.ready.broadcast();
+    stress.mutex.unlock();
+    const stopper = try std.Thread.spawn(.{}, Stress.shutdown, .{&stress});
+    for (producers) |producer| producer.join();
+    stopper.join();
+    stress.mutex.lock();
+    defer stress.mutex.unlock();
+    try std.testing.expect(stress.shutdown_error == null);
+    try std.testing.expectEqual(producer_count * submissions_per_producer + 1, stress.submitted + stress.queue_full + stress.not_running);
+    try std.testing.expectEqual(runtime.processed_count(), stress.callbacks);
+    try std.testing.expect(stress.callbacks >= 1);
+    var rejected = event.EventEnvelope{ .sequence = 20_000, .mode = .managed, .event = .{ .disconnected = {} } };
+    defer rejected.deinit();
+    try std.testing.expectError(error.NotRunning, runtime.submit(rejected));
+}
+
+test "caller-drained runtimes retain single-thread draining under concurrent producers" {
+    const producer_count: usize = 3;
+    const submissions_per_producer: usize = 64;
+    const Stress = struct {
+        runtime: *ManagedRuntime,
+        mutex: std.Thread.Mutex = .{},
+        ready: std.Thread.Condition = .{},
+        started: bool = false,
+        completed: usize = 0,
+        submitted: usize = 0,
+        queue_full: usize = 0,
+
+        fn submit(self: *@This(), sequence: u64) void {
+            var envelope = event.EventEnvelope{ .sequence = sequence, .mode = .managed, .event = .{ .connected = {} } };
+            self.runtime.submit(envelope) catch |err| {
+                envelope.deinit();
+                self.mutex.lock();
+                defer self.mutex.unlock();
+                switch (err) {
+                    error.QueueFull => self.queue_full += 1,
+                    error.NotRunning, error.OutOfMemory => unreachable,
+                    else => unreachable,
+                }
+                return;
+            };
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.submitted += 1;
+        }
+
+        fn producer(self: *@This(), index: usize) void {
+            self.mutex.lock();
+            while (!self.started) self.ready.wait(&self.mutex);
+            self.mutex.unlock();
+            for (0..submissions_per_producer) |offset| self.submit(index * submissions_per_producer + offset + 1);
+            self.mutex.lock();
+            defer self.mutex.unlock();
+            self.completed += 1;
+            self.ready.broadcast();
+        }
+    };
+    var manual = @import("minna-san-core").ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var stress = Stress{ .runtime = undefined };
+    var runtime = ManagedRuntime.init_with_caller_drain(std.testing.allocator, sdk, 1);
+    stress.runtime = &runtime;
+    defer runtime.deinit();
+    try runtime.start();
+    try runtime.submit(.{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } });
+    var full = event.EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .connected = {} } };
+    defer full.deinit();
+    try std.testing.expectError(error.QueueFull, runtime.submit(full));
+    var initial = (try runtime.drain()).?;
+    initial.deinit();
+    var producers: [producer_count]std.Thread = undefined;
+    for (&producers, 0..) |*producer, index| producer.* = try std.Thread.spawn(.{}, Stress.producer, .{ &stress, index });
+    stress.mutex.lock();
+    stress.started = true;
+    stress.ready.broadcast();
+    stress.mutex.unlock();
+    var drained: usize = 1;
+    while (true) {
+        if (try runtime.drain()) |next| {
+            var owned = next;
+            owned.deinit();
+            drained += 1;
+            continue;
+        }
+        stress.mutex.lock();
+        const complete = stress.completed == producer_count;
+        stress.mutex.unlock();
+        if (complete) break;
+        std.Thread.yield() catch {};
+    }
+    for (producers) |producer| producer.join();
+    stress.mutex.lock();
+    try std.testing.expectEqual(submissions_per_producer * producer_count, stress.submitted + stress.queue_full);
+    try std.testing.expectEqual(stress.submitted + 1, drained);
+    try std.testing.expectEqual(@as(u64, @intCast(drained)), runtime.processed_count());
+    stress.mutex.unlock();
+    try runtime.shutdown();
+    try std.testing.expectError(error.NotRunning, runtime.drain());
+}
