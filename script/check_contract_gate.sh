@@ -32,7 +32,7 @@ for field in '      - name: Test result schema and bounds' '        run: zig bui
     grep -Fqx "$field" "$workflow" || fail "workflow must retain benchmark harness field: $field"
 done
 grep -Fqx '  api-compatibility:' "$workflow" || fail "workflow must define the released API compatibility job"
-for field in '      - name: Compare released Zig and C contracts' '        run: zig build public-api-regression' '      - name: Compile public compatibility contracts' '        run: zig build compatibility-contract && zig build c-header-contract'; do
+for field in '      - name: Compare released Zig and C contracts' '        run: zig build public-api-regression' '      - name: Compile public compatibility contracts' '        run: zig build compatibility-contract && zig build c-header-contract' '      - name: Package versioned C SDK headers' '        run: zig build c-sdk-headers-package'; do
     grep -Fqx "$field" "$workflow" || fail "workflow must retain released API compatibility field: $field"
 done
 grep -Fqx '  zig-compatibility:' "$workflow" || fail "workflow must define the Zig compatibility matrix"
