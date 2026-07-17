@@ -115,6 +115,11 @@ test "stable public symbols are exact" {
         "ExtensionHandling",
         "ExtensionHandlingError",
         "handle_extension",
+        "max_reliable_ordered_window",
+        "ReliableOrderedError",
+        "ReliableReceiveResult",
+        "ReliableOrderedMessage",
+        "ReliableOrderedReceiver",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

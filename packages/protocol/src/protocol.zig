@@ -3,6 +3,7 @@ const envelope = @import("wire_envelope.zig");
 const packet_envelope = @import("packet_envelope.zig");
 const capability_negotiation = @import("capability_negotiation.zig");
 const extension_handling = @import("extension_handling.zig");
+const reliable_ordered = @import("reliable_ordered.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -30,6 +31,11 @@ pub const critical_extension_first = extension_handling.critical_extension_first
 pub const ExtensionHandling = extension_handling.ExtensionHandling;
 pub const ExtensionHandlingError = extension_handling.ExtensionHandlingError;
 pub const handle_extension = extension_handling.handle_extension;
+pub const max_reliable_ordered_window = reliable_ordered.max_reliable_ordered_window;
+pub const ReliableOrderedError = reliable_ordered.ReliableOrderedError;
+pub const ReliableReceiveResult = reliable_ordered.ReliableReceiveResult;
+pub const ReliableOrderedMessage = reliable_ordered.ReliableOrderedMessage;
+pub const ReliableOrderedReceiver = reliable_ordered.ReliableOrderedReceiver;
 pub const package_name = "protocol";
 
 comptime {
@@ -45,4 +51,5 @@ test {
     _ = @import("packet_envelope.zig");
     _ = @import("capability_negotiation.zig");
     _ = @import("extension_handling.zig");
+    _ = @import("reliable_ordered.zig");
 }
