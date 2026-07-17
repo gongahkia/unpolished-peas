@@ -395,6 +395,14 @@ test "stable public symbols are exact" {
         "RendezvousRequest",
         "SignalingMessage",
         "PeerDiscoveryHooks",
+        "NatCandidateKind",
+        "NatCandidateTransport",
+        "NatCandidateAddress",
+        "NatCandidateCredentials",
+        "NatCandidate",
+        "NatCandidateError",
+        "validate_nat_candidate",
+        "candidate_expired",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
