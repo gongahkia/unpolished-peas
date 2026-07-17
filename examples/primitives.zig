@@ -11,7 +11,6 @@ const Game = struct {
     };
 
     pub fn init(ctx: *sdl.Context) !Game {
-        try ctx.setPixelEffect("invert", .{ .amount = 0.2 });
         return .{};
     }
 

@@ -134,7 +134,6 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
   "up_host_gl_texture_upload", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
   "up_host_gl_push_clip", "up_host_gl_pop_clip", "up_host_gl_push_blend", "up_host_gl_pop_blend", "up_host_gl_set_camera",
-  "up_host_gl_effect_clear", "up_host_gl_effect_append",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
   "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
 ].sort());
@@ -176,24 +175,6 @@ assert.equal(host.framebufferToCanvas(10, 10, 1000, 800, 2), null);
 assert.equal(env.up_host_gl_present(0), Status.ok);
 assert.ok(canvas.gl.calls.some(([name]) => name === "flush"));
 
-assert.equal(env.up_host_gl_effect_clear(), Status.ok);
-assert.equal(env.up_host_gl_effect_append(2, 1), Status.invalidArgument);
-assert.equal(env.up_host_gl_effect_append(0, -1), Status.invalidArgument);
-assert.equal(env.up_host_gl_effect_append(1, 1), Status.ok);
-assert.equal(env.up_host_gl_effect_append(0, 1), Status.ok);
-assert.equal(env.up_host_gl_effect_append(0, 1), Status.ok);
-const beforeEffects = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
-assert.equal(env.up_host_gl_clear(0xff000000), Status.ok);
-assert.equal(env.up_host_gl_draw_rect(1, 2, 3, 4, 0xff0000ff), Status.ok);
-assert.equal(env.up_host_gl_present(2), Status.ok);
-assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeEffects).map(([, , , count]) => count), [6, 6, 6, 6]);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "framebufferTexture2D").length, 2);
-assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "uniform1f").slice(-3).map(([, , amount]) => amount), [1, 1, 0]);
-assert.equal(env.up_host_gl_effect_clear(), Status.ok);
-for (let index = 0; index < 8; index += 1) assert.equal(env.up_host_gl_effect_append(0, 0.5), Status.ok);
-assert.equal(env.up_host_gl_effect_append(0, 0.5), Status.rejected);
-assert.equal(env.up_host_gl_effect_clear(), Status.ok);
-
 const buffer = env.up_host_gl_resource_create(ResourceKind.buffer, 64);
 const texture = env.up_host_gl_resource_create(ResourceKind.texture, 0);
 const program = env.up_host_gl_resource_create(ResourceKind.program, 0);
@@ -213,7 +194,7 @@ const beforeText = canvas.gl.calls.filter(([name]) => name === "drawArrays").len
 assert.equal(env.up_host_gl_draw_text(0, 1, 20, 20, 0xffffffff), Status.ok);
 assert.ok(canvas.gl.calls.filter(([name]) => name === "drawArrays").length > beforeText);
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 4);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 2);
 
 const lost = canvas.dispatch("webglcontextlost");
 assert.equal(lost.prevented, true);
@@ -224,7 +205,7 @@ canvas.dispatch("webglcontextrestored");
 assert.equal(env.up_host_gl_context_lost(), 0);
 assert.deepEqual(host.lifecycle(), {phase: "recovered", generation: 1, recoveries: 1, scheduledFrames: 1});
 assert.deepEqual(resizeCalls, [[320, 180]]);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 3);
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));

@@ -9,15 +9,11 @@ glslangValidator -V -S vert "$ROOT_DIR/shaders/sprite.vert" -o "$OUT_DIR/sprite.
 glslangValidator -V -S frag "$ROOT_DIR/shaders/sprite.frag" -o "$OUT_DIR/sprite.frag.spv"
 glslangValidator -V -S vert "$ROOT_DIR/shaders/primitive.vert" -o "$OUT_DIR/primitive.vert.spv"
 glslangValidator -V -S frag "$ROOT_DIR/shaders/primitive.frag" -o "$OUT_DIR/primitive.frag.spv"
-glslangValidator -V -S vert "$ROOT_DIR/shaders/effect.vert" -o "$OUT_DIR/effect.vert.spv"
-glslangValidator -V -S frag "$ROOT_DIR/shaders/effect.frag" -o "$OUT_DIR/effect.frag.spv"
 
 spirv-cross "$OUT_DIR/sprite.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.vert.hlsl"
 spirv-cross "$OUT_DIR/sprite.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.frag.hlsl"
 spirv-cross "$OUT_DIR/primitive.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.vert.hlsl"
 spirv-cross "$OUT_DIR/primitive.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.frag.hlsl"
-spirv-cross "$OUT_DIR/effect.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/effect.vert.hlsl"
-spirv-cross "$OUT_DIR/effect.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/effect.frag.hlsl"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   spirv-cross "$OUT_DIR/sprite.vert.spv" --msl --output "$OUT_DIR/sprite.vert.metal"
@@ -30,8 +26,4 @@ if [[ "$(uname -s)" == "Darwin" ]]; then
   xcrun metal -x metal -c "$ROOT_DIR/shaders/primitive.frag.msl" -o "$OUT_DIR/primitive.frag.air"
   xcrun metallib "$OUT_DIR/primitive.vert.air" -o "$OUT_DIR/primitive.vert.metallib"
   xcrun metallib "$OUT_DIR/primitive.frag.air" -o "$OUT_DIR/primitive.frag.metallib"
-  xcrun metal -x metal -c "$ROOT_DIR/shaders/effect.vert.msl" -o "$OUT_DIR/effect.vert.air"
-  xcrun metal -x metal -c "$ROOT_DIR/shaders/effect.frag.msl" -o "$OUT_DIR/effect.frag.air"
-  xcrun metallib "$OUT_DIR/effect.vert.air" -o "$OUT_DIR/effect.vert.metallib"
-  xcrun metallib "$OUT_DIR/effect.frag.air" -o "$OUT_DIR/effect.frag.metallib"
 fi

@@ -23,3 +23,7 @@ Networking, relays, and hosted services were not shipped in this checkout and ar
 ## Box2D physics removed
 
 v0.1 removes the engine-owned Box2D physics subsystem and its public API. Keep physics simulation and collision behavior game-owned.
+
+## Effects, shader assets, lighting, and GPU resources removed
+
+v0.1 removes engine-owned effects, post-processing, shader assets, lighting, and public GPU-resource handles. Keep game-specific rendering extensions and resource ownership in game code; core rendering remains limited to documented 2D primitives, sprites, text, and presentation.

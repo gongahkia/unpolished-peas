@@ -6,20 +6,6 @@ pub const assets = api.assets;
 pub const world = api.world;
 pub const preview = api.preview;
 pub const testSupport = api.testSupport;
-pub const effects = api.effects;
-pub const GpuResourceKind = api.GpuResourceKind;
-pub const GpuResources = api.GpuResources;
-pub const TextureHandle = api.TextureHandle;
-pub const RenderTargetHandle = api.RenderTargetHandle;
-pub const ShaderHandle = api.ShaderHandle;
-pub const PipelineHandle = api.PipelineHandle;
-pub const ShaderProgram = api.ShaderProgram;
-pub const ShaderReflection = api.ShaderReflection;
-pub const ShaderKind = api.ShaderKind;
-pub const PixelEffect = api.PixelEffect;
-pub const PixelEffectParameters = api.PixelEffectParameters;
-pub const PostProcessChain = api.PostProcessChain;
-pub const lighting = api.lighting;
 pub const App = api.App;
 pub const GameContext = api.GameContext;
 pub const GameProtocol = api.GameProtocol;
@@ -153,7 +139,6 @@ pub const RenderCommand = api.RenderCommand;
 pub const RenderCommandBuffer = api.RenderCommandBuffer;
 pub const HeadlessRenderer = api.HeadlessRenderer;
 pub const RendererBackend = api.RendererBackend;
-pub const ShaderAssetHandle = api.ShaderAssetHandle;
 pub const Sound = api.Sound;
 pub const SoundOptions = api.SoundOptions;
 pub const Sprite = api.Sprite;
@@ -214,8 +199,10 @@ test {
     _ = @import("test_support.zig");
 }
 
-test "root module excludes removed physics" {
+test "root module excludes removed systems" {
     try @import("std").testing.expect(@hasDecl(@This(), "Canvas"));
-    try @import("std").testing.expect(@hasDecl(@This(), "effects"));
+    inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+        try @import("std").testing.expect(!@hasDecl(@This(), name));
+    }
     try @import("std").testing.expect(!@hasDecl(@This(), "physics"));
 }

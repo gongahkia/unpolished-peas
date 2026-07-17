@@ -30,8 +30,8 @@ zig build test-opengl
 `test-renderer-conformance` runs the backend-neutral opaque and clipped command corpus plus opt-in GPU captures. CI requires the GPU captures on macOS and Linux; Windows emits its platform, drivers, and shader-format capability report when no compatible GPU backend is available. Windows runtime uses dynamically compiled DXBC shaders for the D3D backend.
 `test-opengl` creates an OpenGL 3.3 core context and validates the fallback presenter with a readback fixture.
 `test-renderer-cross-backend` compares SDL GPU and OpenGL readbacks for the shared corpus; captures must have equal dimensions and every RGBA channel may differ by at most one.
-Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--renderer <auto|sdl-gpu|opengl>` overrides it at launch. `sdl.Context.rendererDiagnostics()` reports the requested/selected backend, rejected attempts, shader and OpenGL capabilities, post-processing support, and latest recovery action; the desktop log records the same selection line.
-`Config.required_renderer_features` makes startup fail before game initialization when a requested `RendererFeature` is unavailable. `Context.rendererFeatures()` reports primitive, sprite, text, clip/blend, camera, pixel-effect, screenshot, and context-recovery support for the selected backend.
+Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--renderer <auto|sdl-gpu|opengl>` overrides it at launch. `sdl.Context.rendererDiagnostics()` reports the requested/selected backend, rejected attempts, shader format and OpenGL capabilities, and latest recovery action; the desktop log records the same selection line.
+`Config.required_renderer_features` makes startup fail before game initialization when a requested `RendererFeature` is unavailable. `Context.rendererFeatures()` reports primitive, sprite, text, clip/blend, camera, screenshot, and context-recovery support for the selected backend.
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
@@ -114,7 +114,6 @@ zig build run
 zig build test
 zig build test-support
 zig build test-modules
-zig build test-effects
 zig build run-bounce
 zig build run-bounce-sdl
 zig build dev-bounce
@@ -164,7 +163,7 @@ zig build new -- ../my-game
 `test-topdown` and `test-topdown-scene` verify deterministic simulation and rendering.
 `zig build test-desktop-package-matrix` packages and smokes bounce, top-down, and platformer for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
 `zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, and platformer in Chromium from deterministic static Wasm bundles.
-`run-platformer-sdl` runs the TileCollider, animation, and shader platformer slice.
+`run-platformer-sdl` runs the TileCollider and animation platformer slice.
 `smoke-platformer-sdl` and `test-platformer` verify its bounded runtime and movement fixture.
 `script/test_proof_game_matrix.sh <topdown|platformer>` runs bounded CLI, inspector, reload, profiler, headless, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
 `fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three.
@@ -172,10 +171,9 @@ zig build new -- ../my-game
 `zig build test-renderer-three-backend` compares deterministic SDL GPU, OpenGL, and WebGL 2 renderer corpus captures with a one-channel tolerance.
 `zig build test-cross-target-integrity` validates desktop and Chromium failure artifacts, manifests, redaction, package files, screenshots, and recovery diagnostics.
 `fixtures/external-game` is a standalone callback game that draws a sprite, plays synthesized audio, and consumes normalized input through the public desktop module.
-`fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, follows with a camera, and reloads a raw shader asset.
+`fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, and follows with a camera.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`zig build test-effects` validates the engine-owned effects subsystem.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
 Tag pushes run `zig build release-gate`, which validates the frozen core API, a clean released-dependency consumer, proof-game consumers, desktop packages, deterministic diagnostics, and visual/replay checks; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
@@ -220,8 +218,6 @@ GPU command primitives use one logical-pixel strokes, 32-segment circles, and so
 
 `TileCollider.addShape` and `addLayer` are the default collision path. `addLayer` derives deterministic solid geometry from an explicit tile, IntGrid, or object layer; failures leave the existing collider unchanged. Object/layer `one_way=true` surfaces are pass-through from below; polygon and polyline edges provide walkable slopes. `CharacterController.move` is a swept, bounded-step controller with grounded, wall, and ceiling state.
 
-`up.effects` owns shader programs, pixel effects, and post-process chains. `Context.loadShader` loads `.upshader` source; `Context.setShaderEffect` validates and replaces the post-process chain, while `Context.appendPixelEffect` appends a pass. Passes execute in declared order through owned ping-pong targets, screenshots capture the final target, and `effects.applyPixelEffect` is the headless fallback.
-
 ## Camera And Presentation
 
 `Camera2D` provides position, zoom limits, rotation, viewport rectangles, world bounds, nearest or bilinear image sampling, pixel snapping, dead-zone follow, spring motion, deterministic shake, coordinate conversion, visibility checks, and parallax copies. `CameraRig` owns an arbitrary number of generation-checked cameras; `CameraDirector` plays deterministic cuts and blended shots.
@@ -256,8 +252,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `AnimationStateMachine`, `AnimationState`, `AnimationTransition`, `animationState`
 - `FrameProfiler`, `ProfileScope`, `ProfileMetrics`, `profiler`
 - `RuntimeMetrics`, `InspectorMetricsPanel`, `runtimeMetrics`
-
-`effects.lighting(core).Pipeline.append` emits GPU primitive commands; `render` is the explicit headless fallback selected by `Pipeline.preferredPath`.
 
 - `Sound`
 - `Music`

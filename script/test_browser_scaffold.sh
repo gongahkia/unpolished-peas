@@ -16,7 +16,6 @@ for symbol in \
     up_host_gl_clear up_host_gl_draw_rect up_host_gl_draw_line up_host_gl_draw_circle up_host_gl_draw_triangle up_host_gl_present \
     up_host_gl_texture_upload up_host_gl_draw_sprite up_host_gl_flush_sprites up_host_gl_draw_text \
     up_host_gl_push_clip up_host_gl_pop_clip up_host_gl_push_blend up_host_gl_pop_blend up_host_gl_set_camera \
-    up_host_gl_effect_clear up_host_gl_effect_append \
     up_host_input_poll up_host_input_read up_host_audio_state up_host_audio_submit \
     up_host_storage_read up_host_storage_write up_host_storage_remove up_host_diagnostic_emit up_host_teardown \
     up_browser_abi_version up_browser_init up_browser_frame up_browser_resize up_browser_cancel_frame \
@@ -24,7 +23,6 @@ for symbol in \
     up_browser_clear up_browser_draw_rect up_browser_draw_line up_browser_draw_circle up_browser_draw_triangle up_browser_present \
     up_browser_texture_upload up_browser_draw_sprite up_browser_flush_sprites up_browser_draw_text \
     up_browser_push_clip up_browser_pop_clip up_browser_push_blend up_browser_pop_blend up_browser_set_camera \
-    up_browser_effect_clear up_browser_effect_append \
     up_browser_input_poll up_browser_input_read up_browser_audio_state up_browser_audio_submit \
     up_browser_storage_read up_browser_storage_write up_browser_storage_remove up_browser_diagnostic_emit up_browser_shutdown
 do

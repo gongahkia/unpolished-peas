@@ -134,14 +134,6 @@ pub export fn up_browser_set_camera(enabled: u32, x: f32, y: f32, zoom: f32, rot
     return contract.setCamera(enabled, x, y, zoom, rotation, viewport_x, viewport_y, viewport_width, viewport_height);
 }
 
-pub export fn up_browser_effect_clear() i32 {
-    return contract.clearEffects();
-}
-
-pub export fn up_browser_effect_append(kind: u32, amount: f32) i32 {
-    return contract.appendEffect(kind, amount);
-}
-
 pub export fn up_browser_input_poll() u32 {
     return contract.pollInput();
 }

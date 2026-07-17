@@ -102,6 +102,8 @@ Remove, rather than merely hide, Box2D physics, effects/shaders/lighting, extens
 
 Networking, relays, hosted services, and Box2D physics are outside the v0.1 core; the historical reference above has been corrected accordingly.
 
+Effects, shader assets, lighting, and public GPU-resource APIs are also outside the v0.1 core; the historical references above are retained only as audit context.
+
 ### Performance and evidence
 
 - Treat 2D rendering performance as a product requirement. Use versioned, representative workload baselines and tolerances per target; block regressions instead of making cross-engine speed claims.

@@ -46,7 +46,6 @@ pub const graphics = struct {
     pub const RendererBackend = @import("render.zig").Backend;
     pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
     pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
-    pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
 };
 
 pub const assets = struct {
@@ -75,23 +74,10 @@ pub const world = struct {
 pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
-pub const effects = @import("subsystems/effects/effects.zig");
-pub const GpuResourceKind = effects.ResourceKind;
-pub const GpuResources = effects.Resources;
-pub const TextureHandle = effects.TextureHandle;
-pub const RenderTargetHandle = effects.RenderTargetHandle;
-pub const ShaderHandle = effects.ShaderHandle;
-pub const PipelineHandle = effects.PipelineHandle;
-pub const ShaderProgram = effects.ShaderProgram;
-pub const ShaderReflection = effects.ShaderReflection;
-pub const ShaderKind = effects.ShaderKind;
-pub const PixelEffect = effects.PixelEffect;
-pub const PixelEffectParameters = effects.PixelEffectParameters;
-pub const PostProcessChain = effects.PostProcessChain;
-pub const lighting = effects.lighting;
 test "public API excludes removed and unsupported systems" {
-    try std.testing.expect(@hasDecl(@This(), "effects"));
-    try std.testing.expect(@hasDecl(@This(), "PixelEffect"));
+    inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+        try std.testing.expect(!@hasDecl(@This(), name));
+    }
     try std.testing.expect(!@hasDecl(@This(), "physics"));
     try std.testing.expect(!@hasDecl(@This(), "PhysicsWorld"));
     try std.testing.expect(!@hasDecl(@This(), "NetMessage"));
@@ -237,7 +223,6 @@ pub const RenderCommand = @import("render.zig").Command;
 pub const RenderCommandBuffer = @import("render.zig").CommandBuffer;
 pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
 pub const RendererBackend = @import("render.zig").Backend;
-pub const ShaderAssetHandle = @import("assets.zig").ShaderAssetHandle;
 pub const Sound = @import("audio.zig").Sound;
 pub const SoundOptions = @import("audio.zig").SoundOptions;
 pub const Sprite = @import("canvas.zig").Sprite;

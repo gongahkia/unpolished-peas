@@ -62,15 +62,6 @@ const Game = struct {
     }
 };
 
-fn replaceAfterMtime(dir: std.fs.Dir, path: []const u8, bytes: []const u8) !void {
-    const previous = try dir.statFile(path);
-    while (true) {
-        try dir.writeFile(.{ .sub_path = path, .data = bytes });
-        if ((try dir.statFile(path)).mtime != previous.mtime) return;
-        std.Thread.sleep(1_000_000_000);
-    }
-}
-
 pub fn main() !void {
     try sdl.playGame(Game);
 }
@@ -84,21 +75,4 @@ test "external tile-map game moves through configured actions and follows with i
     game.advance(bindings, input, 0.5, .{ .x = 96, .y = 64 });
     try std.testing.expectEqual(@as(f32, 48), game.player.x);
     try std.testing.expect(game.camera.position.x > 24);
-}
-
-test "external tile-map game reloads a user-owned shader" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    const shader_source = try std.fs.cwd().readFileAlloc(std.testing.allocator, "assets/pulse.upshader", 64 * 1024);
-    defer std.testing.allocator.free(shader_source);
-    try tmp.dir.writeFile(.{ .sub_path = "pulse.upshader", .data = shader_source });
-    var store = up.AssetStore.init(std.testing.allocator, tmp.dir);
-    defer store.deinit();
-    const pulse = try store.loadShader("pulse.upshader");
-    try replaceAfterMtime(tmp.dir, "pulse.upshader", "effect=passthrough\n");
-    const reloads = try store.reloadChanged();
-    try std.testing.expectEqual(@as(usize, 1), reloads.len);
-    try std.testing.expectEqualStrings("pulse.upshader", reloads[0].path);
-    try std.testing.expectEqual(up.ReloadStatus.changed, reloads[0].status);
-    try std.testing.expectError(error.StaleHandle, store.tryShaderSource(pulse));
 }

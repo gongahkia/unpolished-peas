@@ -55,14 +55,12 @@ pub const TextHandle = struct { index: usize, generation: u32 }; // borrows an A
 pub const ImageHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryImage for stale-handle errors.
 pub const AudioHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use trySound for stale-handle errors.
 pub const FontHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryFont for stale-handle errors.
-pub const ShaderAssetHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryShaderSource for stale-handle errors.
 
 pub const AssetStats = struct {
     texts: usize,
     images: usize,
     sounds: usize,
     fonts: usize,
-    shaders: usize,
     reload_events: usize,
 };
 
@@ -137,15 +135,6 @@ const FontAsset = struct {
     }
 };
 
-const ShaderAsset = struct {
-    file: AssetFile,
-    generation: u32 = 1,
-
-    fn deinit(self: *ShaderAsset) void {
-        self.file.deinit();
-    }
-};
-
 fn nextGeneration(generation: u32) u32 {
     const next = generation +% 1;
     return if (next == 0) 1 else next;
@@ -160,7 +149,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     sounds: std.ArrayListUnmanaged(SoundAsset) = .{},
     fonts: std.ArrayListUnmanaged(FontAsset) = .{},
-    shaders: std.ArrayListUnmanaged(ShaderAsset) = .{},
     events: std.ArrayListUnmanaged(ReloadEvent) = .{},
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
@@ -173,7 +161,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             .images = self.images.items.len,
             .sounds = self.sounds.items.len,
             .fonts = self.fonts.items.len,
-            .shaders = self.shaders.items.len,
             .reload_events = self.events.items.len,
         };
     }
@@ -217,12 +204,10 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         for (self.images.items) |*asset| asset.deinit();
         for (self.sounds.items) |*asset| asset.deinit();
         for (self.fonts.items) |*asset| asset.deinit();
-        for (self.shaders.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.sounds.deinit(self.allocator);
         self.fonts.deinit(self.allocator);
-        self.shaders.deinit(self.allocator);
         self.events.deinit(self.allocator);
         if (self.root_path) |path| self.allocator.free(path);
         if (self.owned_dir) |*dir| dir.close();
@@ -286,17 +271,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
-    pub fn loadShader(self: *AssetStore, path: []const u8) !ShaderAssetHandle {
-        const asset = try self.loadShaderAsset(path);
-        errdefer {
-            var cleanup = asset;
-            cleanup.deinit();
-        }
-        const index = self.shaders.items.len;
-        try self.shaders.append(self.allocator, asset);
-        return .{ .index = index, .generation = 1 };
-    }
-
     pub fn tryText(self: AssetStore, handle: TextHandle) ![]const u8 {
         if (handle.index >= self.texts.items.len or self.texts.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.texts.items[handle.index].file.text();
@@ -345,16 +319,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     pub fn latestFontPtr(self: *AssetStore, handle: FontHandle) !*const Font { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.fonts.items.len) return error.InvalidHandle;
         return &self.fonts.items[handle.index].font;
-    }
-
-    pub fn tryShaderSource(self: AssetStore, handle: ShaderAssetHandle) ![]const u8 {
-        if (handle.index >= self.shaders.items.len or self.shaders.items[handle.index].generation != handle.generation) return error.StaleHandle;
-        return self.shaders.items[handle.index].file.text();
-    }
-
-    pub fn latestShaderSource(self: AssetStore, handle: ShaderAssetHandle) ![]const u8 {
-        if (handle.index >= self.shaders.items.len) return error.InvalidHandle;
-        return self.shaders.items[handle.index].file.text();
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -417,15 +381,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             }
         }
 
-        for (self.shaders.items) |*asset| {
-            if (self.reloadShader(asset) catch |err| {
-                try self.appendReloadFailure(asset.file.path, err, .io);
-                continue;
-            }) {
-                try self.events.append(self.allocator, .{ .path = asset.file.path, .status = .changed });
-            }
-        }
-
         return self.events.items;
     }
 
@@ -474,16 +429,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return true;
     }
 
-    fn reloadShader(self: *AssetStore, asset: *ShaderAsset) !bool {
-        if ((try asset.file.dir.statFile(asset.file.path)).mtime == asset.file.mtime) return false;
-        const next = try self.loadShaderAsset(asset.file.path);
-        const generation = nextGeneration(asset.generation);
-        asset.deinit();
-        asset.* = next;
-        asset.generation = generation;
-        return true;
-    }
-
     fn loadFontAsset(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontAsset {
         const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
         errdefer {
@@ -515,15 +460,6 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             cleanup.deinit();
         }
         return .{ .file = file, .sound = decoded };
-    }
-
-    fn loadShaderAsset(self: *AssetStore, path: []const u8) !ShaderAsset {
-        const file = try AssetFile.load(self.allocator, self.dir, path, 64 * 1024);
-        errdefer {
-            var cleanup = file;
-            cleanup.deinit();
-        }
-        return .{ .file = file };
     }
 
     fn loadBitmapFontAsset(self: *AssetStore, path: []const u8) !FontAsset {
@@ -619,26 +555,6 @@ test "asset store exposes checked handle accessors" {
     try std.testing.expect(!@hasDecl(AssetStore, "imagePtr"));
     try std.testing.expect(!@hasDecl(AssetStore, "font"));
     try std.testing.expect(!@hasDecl(AssetStore, "fontPtr"));
-}
-
-test "shader assets retain source across reloads" {
-    var tmp = std.testing.tmpDir(.{});
-    defer tmp.cleanup();
-    try tmp.dir.writeFile(.{ .sub_path = "effect.upshader", .data = "effect=invert\nuniform amount:f32\n" });
-    var store = AssetStore.init(std.testing.allocator, tmp.dir);
-    defer store.deinit();
-    const handle = try store.loadShader("effect.upshader");
-    try std.testing.expectEqualStrings("effect=invert\nuniform amount:f32\n", try store.tryShaderSource(handle));
-
-    const stat = try tmp.dir.statFile("effect.upshader");
-    std.Thread.sleep(1_100_000_000);
-    try tmp.dir.writeFile(.{ .sub_path = "effect.upshader", .data = "effect=blur\n" });
-    try std.testing.expect((try tmp.dir.statFile("effect.upshader")).mtime != stat.mtime);
-    const changed = try store.reloadChanged();
-    try std.testing.expectEqual(@as(usize, 1), changed.len);
-    try std.testing.expectEqual(ReloadStatus.changed, changed[0].status);
-    try std.testing.expectError(error.StaleHandle, store.tryShaderSource(handle));
-    try std.testing.expectEqualStrings("effect=blur\n", try store.latestShaderSource(handle));
 }
 
 test "image reload keeps last good asset after invalid edit" {

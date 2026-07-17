@@ -4,7 +4,6 @@ const up = @import("unpolished-peas").api;
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
-const effect_api = up.effects;
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -25,12 +24,6 @@ const primitive_vert_msl = sprite_shaders.primitive_vert_msl;
 const primitive_frag_msl = sprite_shaders.primitive_frag_msl;
 const primitive_vert_hlsl = sprite_shaders.primitive_vert_hlsl;
 const primitive_frag_hlsl = sprite_shaders.primitive_frag_hlsl;
-const effect_vert_spirv = sprite_shaders.effect_vert_spirv;
-const effect_frag_spirv = sprite_shaders.effect_frag_spirv;
-const effect_vert_msl = sprite_shaders.effect_vert_msl;
-const effect_frag_msl = sprite_shaders.effect_frag_msl;
-const effect_vert_hlsl = sprite_shaders.effect_vert_hlsl;
-const effect_frag_hlsl = sprite_shaders.effect_frag_hlsl;
 
 pub const GpuShaderFormat = enum {
     msl,
@@ -81,7 +74,6 @@ pub const RendererFeature = enum {
     text,
     clip_blend,
     camera,
-    pixel_effects,
     screenshots,
     context_recovery,
 };
@@ -92,7 +84,6 @@ pub const RendererFeatures = struct {
     text: RendererCapability,
     clip_blend: RendererCapability,
     camera: RendererCapability,
-    pixel_effects: RendererCapability,
     screenshots: RendererCapability,
     context_recovery: RendererCapability,
 };
@@ -125,7 +116,6 @@ pub const RendererDiagnostics = struct {
     selected: ?RendererKind = null,
     gpu: RendererCapability = .unknown,
     opengl_33: RendererCapability = .unknown,
-    post_processing: RendererCapability = .unknown,
     gpu_shader_format: ?GpuShaderFormat = null,
     rejected: [2]?RendererRejection = .{ null, null },
     recovery_action: RendererRecoveryAction = .none,
@@ -156,26 +146,15 @@ pub const RendererDiagnostics = struct {
         switch (renderer) {
             .sdl_gpu => {
                 self.gpu = .available;
-                self.post_processing = .available;
             },
             .opengl => {
                 self.opengl_33 = .available;
-                self.post_processing = .available;
             },
         }
     }
 
-    pub fn effectsAvailable(self: RendererDiagnostics) bool {
-        return self.feature(.pixel_effects) == .available;
-    }
-
-    pub fn requireEffects(self: RendererDiagnostics) error{PostProcessingUnsupported}!void {
-        if (!self.effectsAvailable()) return error.PostProcessingUnsupported;
-    }
-
     pub fn feature(self: RendererDiagnostics, value: RendererFeature) RendererCapability {
         return switch (value) {
-            .pixel_effects => self.post_processing,
             .primitives, .sprites, .text, .clip_blend, .camera, .screenshots, .context_recovery => if (self.selected == null) .unknown else .available,
         };
     }
@@ -187,7 +166,6 @@ pub const RendererDiagnostics = struct {
             .text = self.feature(.text),
             .clip_blend = self.feature(.clip_blend),
             .camera = self.feature(.camera),
-            .pixel_effects = self.feature(.pixel_effects),
             .screenshots = self.feature(.screenshots),
             .context_recovery = self.feature(.context_recovery),
         };
@@ -247,7 +225,6 @@ fn updateInspectorStates(renderer_state: *up.InspectorRendererState, subsystem_s
         .selected = if (diagnostics.selected) |value| @tagName(value) else "none",
         .gpu = @tagName(diagnostics.gpu),
         .opengl = @tagName(diagnostics.opengl_33),
-        .effects = @tagName(diagnostics.post_processing),
         .recovery = @tagName(diagnostics.recovery_action),
         .preflight = if (diagnostics.preflight_failure) |value| @tagName(value) else "none",
     };
@@ -401,10 +378,6 @@ test "desktop renderer conformance GPU golden capture" {
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(opentype), "HÉ", 22, 2, up.Color.rgb(122, 213, 255));
     try appendFontText(&sprites, 64, 32, try assets.tryFontPtr(bitmap), "B", 40, 2, up.Color.white);
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
-    const effects = [_]effect_api.PixelEffect{
-        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
-        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
-    };
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
     const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
@@ -416,7 +389,7 @@ test "desktop renderer conformance GPU golden capture" {
         var expected = try scenario.referenceCanvas(std.testing.allocator);
         defer expected.deinit();
         try scenario.expectCapture(&expected);
-        var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprites, .effects = &effects, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
+        var backend = GpuBackend{ .presenter = &presenter, .device = device, .window = window, .canvas = canvas, .sprites = &sprites, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
         try backend.backend().submit(scenario.commandSlice());
 
         const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
@@ -467,10 +440,6 @@ test "desktop renderers match cross-backend visual golden captures" {
     defer gpu_presenter.deinit(device);
     var gl_presenter = try OpenGlPresenter.init(gl_window, 64, 32);
     defer gl_presenter.deinit();
-    const effects = [_]effect_api.PixelEffect{
-        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
-        try effect_api.PixelEffect.parse("invert", .{ .amount = 1 }),
-    };
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
@@ -482,7 +451,7 @@ test "desktop renderers match cross-backend visual golden captures" {
         defer gpu_canvas.deinit();
         var gpu_sprites = up.SpriteBatch.init(std.testing.allocator);
         defer gpu_sprites.deinit();
-        var gpu_backend = GpuBackend{ .presenter = &gpu_presenter, .device = device, .window = gpu_window, .canvas = gpu_canvas, .sprites = &gpu_sprites, .effects = effects[0..], .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
+        var gpu_backend = GpuBackend{ .presenter = &gpu_presenter, .device = device, .window = gpu_window, .canvas = gpu_canvas, .sprites = &gpu_sprites, .capture_path = capture_path, .presentation = &presentation, .metrics = &metrics };
         try gpu_backend.backend().submit(scenario.commandSlice());
         const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, capture_path, 1024 * 1024);
         defer std.testing.allocator.free(png);
@@ -495,7 +464,7 @@ test "desktop renderers match cross-backend visual golden captures" {
         defer gl_canvas.deinit();
         var gl_sprites = up.SpriteBatch.init(std.testing.allocator);
         defer gl_sprites.deinit();
-        try gl_presenter.renderWithEffects(gl_canvas, &gl_sprites, scenario.commandSlice(), &effects);
+        try gl_presenter.render(gl_canvas, &gl_sprites, scenario.commandSlice());
         var gl_capture = try gl_presenter.capture(std.testing.allocator);
         defer gl_capture.deinit();
         try scenario.expectCapture(&gl_capture);
@@ -749,7 +718,6 @@ pub const Context = struct {
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
-    pixel_effects: *effect_api.PostProcessChain,
     inspector: *up.Inspector,
     profiler: *up.FrameProfiler,
     runtime_metrics: *up.RuntimeMetrics,
@@ -836,23 +804,6 @@ pub const Context = struct {
         self.commands.append(.pop_blend) catch @panic("render command allocation failed");
     }
 
-    pub fn setPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
-        try self.requireEffects();
-        self.pixel_effects.replace(try effect_api.PixelEffect.parse(source, params));
-    }
-
-    pub fn clearPixelEffect(self: *Context) void {
-        self.pixel_effects.clear();
-    }
-
-    pub fn effectsAvailable(self: *const Context) bool {
-        return self.renderer_diagnostics.effectsAvailable();
-    }
-
-    pub fn requireEffects(self: *const Context) error{PostProcessingUnsupported}!void {
-        try self.renderer_diagnostics.requireEffects();
-    }
-
     pub fn registerInspectorPanel(self: *Context, panel: up.InspectorPanel) !void {
         try self.inspector.register(panel);
     }
@@ -909,22 +860,6 @@ pub const Context = struct {
         errdefer self.allocator.free(path);
         try self.profiler.writeTrace(path);
         return path;
-    }
-
-    pub fn loadShader(self: *Context, path: []const u8) !up.ShaderAssetHandle {
-        const timer = self.profile(.asset);
-        defer timer.end();
-        return self.assets.loadShader(path);
-    }
-
-    pub fn setShaderEffect(self: *Context, handle: up.ShaderAssetHandle, params: effect_api.PixelEffectParameters) !void {
-        try self.requireEffects();
-        self.pixel_effects.replace(try (try effect_api.ShaderProgram.compile(try self.assets.latestShaderSource(handle))).instantiate(params));
-    }
-
-    pub fn appendPixelEffect(self: *Context, source: []const u8, params: effect_api.PixelEffectParameters) !void {
-        try self.requireEffects();
-        try self.pixel_effects.append(try effect_api.PixelEffect.parse(source, params));
     }
 
     pub fn captureFrame(self: *Context) void {
@@ -1223,15 +1158,15 @@ const RuntimeRenderer = union(RendererKind) {
         };
     }
 
-    fn present(self: *RuntimeRenderer, allocator: std.mem.Allocator, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+    fn present(self: *RuntimeRenderer, allocator: std.mem.Allocator, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
         switch (self.*) {
             .sdl_gpu => |*gpu| {
-                var backend = GpuBackend{ .presenter = &gpu.presenter, .device = gpu.device, .window = gpu.window, .canvas = canvas, .sprites = sprites, .effects = effects, .capture_path = capture_path, .presentation = presentation, .metrics = metrics };
+                var backend = GpuBackend{ .presenter = &gpu.presenter, .device = gpu.device, .window = gpu.window, .canvas = canvas, .sprites = sprites, .capture_path = capture_path, .presentation = presentation, .metrics = metrics };
                 try backend.backend().submit(commands);
             },
             .opengl => |*opengl| {
                 metrics.gpu_frame_ns = null;
-                try opengl.presenter.presentWithPresentationEffects(canvas, sprites, commands, effects, presentation.*);
+                try opengl.presenter.present(canvas, sprites, commands, presentation.*);
                 if (capture_path) |path| {
                     var captured = try opengl.presenter.capture(allocator);
                     defer captured.deinit();
@@ -1368,7 +1303,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer sprite_batch.deinit();
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
-    var pixel_effects = effect_api.PostProcessChain{};
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
     var runtime_metrics = up.RuntimeMetrics{};
@@ -1409,7 +1343,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .pixel_effects = &pixel_effects, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1457,7 +1391,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (renderer_diagnostics.recovery_action != prior_recovery_action) dev.rendererDiagnostics(&renderer_diagnostics);
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), null, &presentation, &frame_metrics);
+            try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, null, &presentation, &frame_metrics);
             runtime_metrics = frame_metrics;
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
@@ -1545,7 +1479,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             try output.queue(&audio);
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
-        try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, pixel_effects.items(), screenshot_path, &presentation, &frame_metrics);
+        try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, screenshot_path, &presentation, &frame_metrics);
         runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -1870,17 +1804,10 @@ test "renderer diagnostics retain fallback capabilities and recovery action" {
     try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
     try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.gpu);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
-    try std.testing.expectEqual(RendererCapability.available, diagnostics.post_processing);
     try std.testing.expectEqual(RendererRejectionReason.unsupported_shader_format, diagnostics.rejected[0].?.reason);
     try std.testing.expectEqual(RendererRecoveryAction.opengl_context_recreated, diagnostics.recovery_action);
-    try std.testing.expectEqual(RendererCapability.available, diagnostics.feature(.pixel_effects));
     try std.testing.expectEqual(RendererCapability.available, diagnostics.features().context_recovery);
-    try diagnostics.requireFeatures(&.{ .sprites, .pixel_effects, .screenshots });
-    diagnostics.post_processing = .unavailable;
-    try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.requireFeatures(&.{.pixel_effects}));
-    try std.testing.expectError(error.RendererFeatureUnsupported, diagnostics.preflightFeatures(&.{.pixel_effects}));
-    try std.testing.expectEqual(RendererFeature.pixel_effects, diagnostics.preflight_failure.?);
-    try std.testing.expectError(error.RendererFeatureUnsupported, validateRendererPreflight(.{ .required_renderer_features = &.{.pixel_effects} }, &diagnostics));
+    try diagnostics.requireFeatures(&.{ .sprites, .screenshots });
 }
 
 test "OpenGL shader failures retain validation diagnostics" {
@@ -1897,7 +1824,6 @@ test "desktop runtime initializes explicit OpenGL selection with diagnostics" {
     defer renderer.deinit();
     try std.testing.expectEqual(RendererKind.opengl, diagnostics.selected.?);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
-    try std.testing.expectEqual(RendererCapability.available, diagnostics.post_processing);
 }
 
 test "renderer preferences parse explicit desktop backends" {
@@ -2335,7 +2261,7 @@ const DeveloperTools = struct {
         const second_renderer = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.renderer) else "none";
         const second_reason = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.reason) else "none";
         const preflight = if (diagnostics.preflight_failure) |feature| @tagName(feature) else "none";
-        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} post_processing={s} shader={s} recovery={s} preflight={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), @tagName(diagnostics.post_processing), shader_format, @tagName(diagnostics.recovery_action), preflight, first_renderer, first_reason, second_renderer, second_reason }) catch return;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} shader={s} recovery={s} preflight={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), shader_format, @tagName(diagnostics.recovery_action), preflight, first_renderer, first_reason, second_renderer, second_reason }) catch return;
         std.debug.print("{s}", .{line});
         self.note(line);
     }
@@ -2591,7 +2517,6 @@ const GpuBackend = struct {
     window: *c.SDL_Window,
     canvas: up.Canvas,
     sprites: *up.SpriteBatch,
-    effects: []const effect_api.PixelEffect,
     capture_path: ?[]const u8 = null,
     presentation: *up.Presentation,
     metrics: *up.RuntimeMetrics,
@@ -2602,22 +2527,18 @@ const GpuBackend = struct {
 
     fn submit(context: *anyopaque, commands: []const up.RenderCommand) anyerror!void {
         const self: *GpuBackend = @ptrCast(@alignCast(context));
-        try self.presenter.present(self.device, self.window, self.canvas, self.sprites, commands, self.effects, self.capture_path, self.presentation, self.metrics);
+        try self.presenter.present(self.device, self.window, self.canvas, self.sprites, commands, self.capture_path, self.presentation, self.metrics);
     }
 };
 
 const Presenter = struct {
     render_target: *c.SDL_GPUTexture,
-    effect_texture: *c.SDL_GPUTexture,
     transfer: *c.SDL_GPUTransferBuffer,
     width: u32,
     height: u32,
     byte_len: u32,
-    resources: effect_api.Resources,
-    render_target_handle: effect_api.RenderTargetHandle,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
-    effect_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     nearest_sampler: ?*c.SDL_GPUSampler = null,
     linear_sampler: ?*c.SDL_GPUSampler = null,
     vertex_buffer: ?*c.SDL_GPUBuffer = null,
@@ -2670,19 +2591,6 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTexture");
         errdefer c.SDL_ReleaseGPUTexture(device, render_target);
 
-        const effect_texture = c.SDL_CreateGPUTexture(device, &.{
-            .type = c.SDL_GPU_TEXTURETYPE_2D,
-            .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
-            .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER | c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
-            .width = width,
-            .height = height,
-            .layer_count_or_depth = 1,
-            .num_levels = 1,
-            .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
-            .props = 0,
-        }) orelse return sdlFail("SDL_CreateGPUTexture");
-        errdefer c.SDL_ReleaseGPUTexture(device, effect_texture);
-
         const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{
             .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
             .size = byte_len,
@@ -2690,14 +2598,11 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        var resources = effect_api.Resources.init(std.heap.page_allocator);
-        const render_target_handle = try resources.createRenderTarget();
-        var presenter = Presenter{ .render_target = render_target, .effect_texture = effect_texture, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .resources = resources, .render_target_handle = render_target_handle, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
+        var presenter = Presenter{ .render_target = render_target, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
         presenter.sprite_pipeline = try createSpritePipeline(device);
-        presenter.effect_pipeline = try createEffectPipeline(device);
         presenter.primitive_alpha_pipeline = try createPrimitivePipeline(device, .alpha);
         presenter.primitive_additive_pipeline = try createPrimitivePipeline(device, .additive);
         return presenter;
@@ -2705,7 +2610,6 @@ const Presenter = struct {
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
         if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
-        if (self.effect_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.nearest_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
@@ -2725,14 +2629,11 @@ const Presenter = struct {
         }
         self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
-        c.SDL_ReleaseGPUTexture(device, self.effect_texture);
         c.SDL_ReleaseGPUTexture(device, self.render_target);
-        self.resources.invalidateAll();
-        self.resources.deinit();
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, effects: []const effect_api.PixelEffect, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
         var encoder_timer = std.time.Timer.start() catch unreachable;
         var pass_count: u32 = 1;
         self.frame +%= 1;
@@ -2784,15 +2685,9 @@ const Presenter = struct {
             try self.renderSprites(command, sprites);
             pass_count +%= 1;
         }
-        var display_texture = self.render_target;
-        for (effects) |effect| {
-            const target = if (display_texture == self.render_target) self.effect_texture else self.render_target;
-            display_texture = try self.renderPixelEffect(command, display_texture, target, effect);
-            pass_count +%= 1;
-        }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
         if (capture_path != null) {
-            capture_transfer = try self.downloadTexture(device, command, display_texture);
+            capture_transfer = try self.downloadTexture(device, command, self.render_target);
             pass_count +%= 1;
         }
         errdefer if (capture_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
@@ -2811,7 +2706,7 @@ const Presenter = struct {
             const destination = presentation.destination();
             c.SDL_BlitGPUTexture(command, &.{
                 .source = .{
-                    .texture = display_texture,
+                    .texture = self.render_target,
                     .mip_level = 0,
                     .layer_or_depth_plane = 0,
                     .x = 0,
@@ -2853,7 +2748,7 @@ const Presenter = struct {
     }
 
     fn textureCount(self: *const Presenter) u32 {
-        var count: u32 = 2;
+        var count: u32 = 1;
         for (self.sprite_textures.items) |sprite| {
             count +%= 1;
             if (sprite.pending != null) count +%= 1;
@@ -2862,7 +2757,7 @@ const Presenter = struct {
     }
 
     fn textureBytes(self: *const Presenter) u64 {
-        var bytes = @as(u64, self.byte_len) * 2;
+        var bytes = @as(u64, self.byte_len);
         for (self.sprite_textures.items) |sprite| {
             bytes +|= imageBytes(sprite.width, sprite.height);
             if (sprite.pending) |pending| bytes +|= imageBytes(pending.width, pending.height);
@@ -3037,36 +2932,6 @@ const Presenter = struct {
             c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
             c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
         }
-    }
-
-    fn renderPixelEffect(self: *Presenter, command: *c.SDL_GPUCommandBuffer, source: *c.SDL_GPUTexture, target: *c.SDL_GPUTexture, effect: effect_api.PixelEffect) !*c.SDL_GPUTexture {
-        if (effect.kind == .passthrough) return source;
-        const pipeline = self.effect_pipeline orelse return error.PixelEffectUnavailable;
-        const sampler = self.nearest_sampler orelse return error.PixelEffectUnavailable;
-        var color_target = c.SDL_GPUColorTargetInfo{
-            .texture = target,
-            .mip_level = 0,
-            .layer_or_depth_plane = 0,
-            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-            .load_op = c.SDL_GPU_LOADOP_CLEAR,
-            .store_op = c.SDL_GPU_STOREOP_STORE,
-            .resolve_texture = null,
-            .resolve_mip_level = 0,
-            .resolve_layer = 0,
-            .cycle = false,
-            .cycle_resolve_texture = false,
-            .padding1 = 0,
-            .padding2 = 0,
-        };
-        const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
-        defer c.SDL_EndGPURenderPass(pass);
-        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = source, .sampler = sampler };
-        c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
-        const parameters = [_]f32{ effect.amount, 0, 0, 0 };
-        c.SDL_PushGPUFragmentUniformData(command, 0, &parameters, @sizeOf(@TypeOf(parameters)));
-        c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
-        return target;
     }
 
     fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {
@@ -3281,36 +3146,6 @@ fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SD
         .num_uniform_buffers = 0,
         .props = 0,
     }) orelse return sdlFail("SDL_CreateGPUShader");
-}
-
-fn createEffectPipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
-    const vertex_shader = try createEffectShader(device, .vertex);
-    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
-    const fragment_shader = try createEffectShader(device, .fragment);
-    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
-    const target = c.SDL_GPUColorTargetDescription{ .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM, .blend_state = .{ .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .color_blend_op = c.SDL_GPU_BLENDOP_ADD, .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE, .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ZERO, .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD, .color_write_mask = 0xF, .enable_blend = false, .enable_color_write_mask = true, .padding1 = 0, .padding2 = 0 } };
-    return c.SDL_CreateGPUGraphicsPipeline(device, &.{ .vertex_shader = vertex_shader, .fragment_shader = fragment_shader, .vertex_input_state = .{ .vertex_buffer_descriptions = null, .num_vertex_buffers = 0, .vertex_attributes = null, .num_vertex_attributes = 0 }, .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST, .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 }, .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 }, .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 }, .props = 0 }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
-}
-
-fn createEffectShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
-    const shader_format = try selectGpuShaderFormat(device);
-    if (shader_format == .dxbc) return createD3dShader(device, stage, switch (stage) {
-        .vertex => effect_vert_hlsl,
-        .fragment => effect_frag_hlsl,
-    }, if (stage == .fragment) 1 else 0, if (stage == .fragment) 1 else 0);
-    const source: []const u8 = if (shader_format == .msl) switch (stage) {
-        .vertex => effect_vert_msl,
-        .fragment => effect_frag_msl,
-    } else switch (stage) {
-        .vertex => effect_vert_spirv,
-        .fragment => effect_frag_spirv,
-    };
-    const format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
-    const entrypoint: [*:0]const u8 = if (shader_format == .msl) "main0" else "main";
-    return c.SDL_CreateGPUShader(device, &.{ .code_size = source.len, .code = source.ptr, .entrypoint = entrypoint, .format = format, .stage = switch (stage) {
-        .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
-        .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
-    }, .num_samplers = if (stage == .fragment) 1 else 0, .num_storage_textures = 0, .num_storage_buffers = 0, .num_uniform_buffers = if (stage == .fragment) 1 else 0, .props = 0 }) orelse return sdlFail("SDL_CreateGPUShader");
 }
 
 fn createPrimitivePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {
