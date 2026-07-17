@@ -12,6 +12,7 @@ const tcp_framed = @import("tcp_framed.zig");
 const socket_poller = @import("socket_poller.zig");
 const hostname_resolution = @import("hostname_resolution.zig");
 const connection_state = @import("connection_state.zig");
+const udp_batch = @import("udp_batch.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -72,6 +73,11 @@ pub const TransportConnectionState = connection_state.TransportConnectionState;
 pub const TransportConnectionStateError = connection_state.TransportConnectionStateError;
 pub const TransportConnectionTracker = connection_state.TransportConnectionTracker;
 pub const is_transition_allowed = connection_state.is_transition_allowed;
+pub const max_udp_receive_batch = udp_batch.max_udp_receive_batch;
+pub const UdpReceiveBatchError = udp_batch.UdpReceiveBatchError;
+pub const UdpReceiveSlot = udp_batch.UdpReceiveSlot;
+pub const UdpReceiveBatch = udp_batch.UdpReceiveBatch;
+pub const receive_batch = udp_batch.receive_batch;
 pub const package_name = "transport";
 
 comptime {
@@ -96,4 +102,5 @@ test {
     _ = @import("socket_poller.zig");
     _ = @import("hostname_resolution.zig");
     _ = @import("connection_state.zig");
+    _ = @import("udp_batch.zig");
 }

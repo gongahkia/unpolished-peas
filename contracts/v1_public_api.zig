@@ -160,6 +160,11 @@ test "stable public symbols are exact" {
         "TransportConnectionStateError",
         "TransportConnectionTracker",
         "is_transition_allowed",
+        "max_udp_receive_batch",
+        "UdpReceiveBatchError",
+        "UdpReceiveSlot",
+        "UdpReceiveBatch",
+        "receive_batch",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
