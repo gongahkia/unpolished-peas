@@ -18,6 +18,10 @@ grep -Fqx '  contents: read' "$workflow" || fail "workflow must use read-only co
 grep -Fqx '      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10' "$workflow" || fail "workflow must pin checkout"
 grep -Fqx '      - name: Install Zig 0.15.2' "$workflow" || fail "workflow must install Zig 0.15.2"
 grep -Fqx '          echo '\''02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz'\'' | sha256sum --check --status' "$workflow" || fail "workflow must verify the Zig archive"
+grep -Fqx '  benchmark-harness:' "$workflow" || fail "workflow must define the benchmark harness job"
+for field in '      - name: Test result schema and bounds' '        run: zig build benchmark-harness-test' '      - name: Emit deterministic 1,000-peer baseline' '        run: zig build benchmark-harness -- --seed 1 --peers 1000 --groups 10 --steps 64 --payload-bytes 128 --clock-step-ns 1000000'; do
+    grep -Fqx "$field" "$workflow" || fail "workflow must retain benchmark harness field: $field"
+done
 grep -Fqx '  api-compatibility:' "$workflow" || fail "workflow must define the released API compatibility job"
 for field in '      - name: Compare released Zig and C contracts' '        run: zig build public-api-regression' '      - name: Compile public compatibility contracts' '        run: zig build compatibility-contract && zig build c-header-contract'; do
     grep -Fqx "$field" "$workflow" || fail "workflow must retain released API compatibility field: $field"
