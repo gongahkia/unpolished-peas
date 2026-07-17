@@ -87,6 +87,11 @@ jobs:
         run: |
           test "$(uname -m)" = "x86_64"
           test "$(zig version)" = "0.15.2"
+      - name: Compile C ABI smoke sources
+        run: |
+          mkdir -p .c-abi-compiler
+          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c
+          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
       - name: Build and test SDK artifacts
         run: zig build test
       - name: Build C ABI artifact and consumer
@@ -109,6 +114,12 @@ jobs:
         run: |
           if ($env:PROCESSOR_ARCHITECTURE -ne 'AMD64') { throw 'unexpected Windows architecture' }
           if ((zig version) -ne '0.15.2') { throw 'unexpected Zig version' }
+      - name: Compile C ABI smoke sources
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force .c-abi-compiler | Out-Null
+          cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_types.obj contracts\fixtures\c_abi_types.c
+          cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_consumer.obj contracts\fixtures\c_abi_consumer.c
       - name: Build and test SDK artifacts
         run: zig build test
       - name: Build C ABI artifact and consumer
@@ -142,6 +153,11 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           test "$(zig version)" = "0.15.2"
+      - name: Compile C ABI smoke sources
+        run: |
+          mkdir -p .c-abi-compiler
+          clang -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c
+          clang -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
       - name: Build and test SDK artifacts
         run: zig build test
       - name: Build C ABI artifact and consumer
