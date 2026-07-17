@@ -136,6 +136,11 @@ test "stable public symbols are exact" {
         "RouteId",
         "CongestionFeedback",
         "CongestionController",
+        "max_baseline_congestion_routes",
+        "BaselineCongestionError",
+        "BaselineCongestionConfig",
+        "BaselineCongestionRouteState",
+        "BaselineCongestionController",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
