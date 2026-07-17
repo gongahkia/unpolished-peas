@@ -2,6 +2,8 @@ const std = @import("std");
 
 const transport = @import("net_transport.zig");
 
+pub const max_fault_packet_bytes: usize = 65_507;
+
 pub const Config = struct {
     seed: u64,
     latency_ms: u64 = 0,
@@ -11,6 +13,8 @@ pub const Config = struct {
     reorder_per_mille: u16 = 0,
     reorder_delay_ms: u64 = 0,
     bandwidth_bytes_per_second: u64 = 0,
+    partitioned: bool = false,
+    maximum_packet_bytes: usize = max_fault_packet_bytes,
     max_flights: usize = 256,
     max_inbox_packets: usize = 256,
 };
@@ -26,7 +30,7 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
     const Flight = struct { allocator: std.mem.Allocator, from: transport.Peer, to: *Endpoint, deliver_at_ms: u64, bytes: []u8 };
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Network {
-        if (config.loss_per_mille > 1_000 or config.duplicate_per_mille > 1_000 or config.reorder_per_mille > 1_000 or config.max_flights == 0 or config.max_flights > 4_096 or config.max_inbox_packets == 0 or config.max_inbox_packets > 4_096) return error.InvalidFaultConfig;
+        if (config.loss_per_mille > 1_000 or config.duplicate_per_mille > 1_000 or config.reorder_per_mille > 1_000 or config.maximum_packet_bytes == 0 or config.maximum_packet_bytes > max_fault_packet_bytes or config.max_flights == 0 or config.max_flights > 4_096 or config.max_inbox_packets == 0 or config.max_inbox_packets > 4_096) return error.InvalidFaultConfig;
         return .{ .allocator = allocator, .config = config, .random = std.Random.DefaultPrng.init(config.seed) };
     }
 
@@ -42,6 +46,8 @@ pub const Network = struct { // owns queued faulted packets allocated by init; e
     }
 
     fn send(self: *Network, from: transport.Peer, to: *Endpoint, bytes: []const u8) !void {
+        if (bytes.len > self.config.maximum_packet_bytes) return error.FaultPacketTooLarge;
+        if (self.config.partitioned) return;
         if (self.selected(self.config.loss_per_mille)) return;
         try self.schedule(from, to, bytes);
         if (self.selected(self.config.duplicate_per_mille)) try self.schedule(from, to, bytes);
@@ -250,4 +256,26 @@ test "fault network bounds flights and inboxes" {
     try sender.asTransport().send(.{ .id = 2 }, "third");
     network.advance(10);
     try std.testing.expectEqual(@as(usize, 1), receiver.queuedPackets());
+}
+
+test "fault networks model partitions MTU limits and bounded malicious payloads" {
+    try std.testing.expectError(error.InvalidFaultConfig, Network.init(std.testing.allocator, .{ .seed = 5, .maximum_packet_bytes = 0 }));
+    try std.testing.expectError(error.InvalidFaultConfig, Network.init(std.testing.allocator, .{ .seed = 5, .maximum_packet_bytes = max_fault_packet_bytes + 1 }));
+    var network = try Network.init(std.testing.allocator, .{ .seed = 5, .partitioned = true, .maximum_packet_bytes = 4 });
+    defer network.deinit();
+    var sender = Endpoint.init(std.testing.allocator, &network, .{ .id = 1 });
+    defer sender.deinit();
+    var receiver = Endpoint.init(std.testing.allocator, &network, .{ .id = 2 });
+    defer receiver.deinit();
+    Endpoint.pair(&sender, &receiver);
+    try sender.asTransport().send(.{ .id = 2 }, "drop");
+    network.advance(1);
+    try std.testing.expect(receiver.asTransport().receive() == null);
+    network.config.partitioned = false;
+    const malicious = [_]u8{ 0xff, 0x00, 0xa1, 0x7f };
+    try sender.asTransport().send(.{ .id = 2 }, &malicious);
+    var received = receiver.asTransport().receive().?;
+    defer received.deinit(std.testing.allocator);
+    try std.testing.expectEqualSlices(u8, &malicious, received.bytes);
+    try std.testing.expectError(error.FaultPacketTooLarge, sender.asTransport().send(.{ .id = 2 }, "overs"));
 }
