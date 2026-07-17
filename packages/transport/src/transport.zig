@@ -20,6 +20,7 @@ const monotonic_clock = @import("monotonic_clock.zig");
 const io_failure = @import("io_failure.zig");
 const path_mtu = @import("path_mtu.zig");
 const fragment_handoff = @import("fragment_handoff.zig");
+const tcp_flow_control = @import("tcp_flow_control.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -117,6 +118,9 @@ pub const TransportFragmentError = fragment_handoff.TransportFragmentError;
 pub const TransportFragment = fragment_handoff.TransportFragment;
 pub const TransportFragmenter = fragment_handoff.TransportFragmenter;
 pub const TransportReassembler = fragment_handoff.TransportReassembler;
+pub const TcpFlowControlError = tcp_flow_control.TcpFlowControlError;
+pub const TcpFlowControlConfig = tcp_flow_control.TcpFlowControlConfig;
+pub const TcpFlowController = tcp_flow_control.TcpFlowController;
 pub const package_name = "transport";
 
 comptime {
@@ -149,4 +153,5 @@ test {
     _ = @import("io_failure.zig");
     _ = @import("path_mtu.zig");
     _ = @import("fragment_handoff.zig");
+    _ = @import("tcp_flow_control.zig");
 }

@@ -197,6 +197,9 @@ test "stable public symbols are exact" {
         "TransportFragment",
         "TransportFragmenter",
         "TransportReassembler",
+        "TcpFlowControlError",
+        "TcpFlowControlConfig",
+        "TcpFlowController",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
