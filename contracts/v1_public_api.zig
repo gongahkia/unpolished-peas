@@ -389,6 +389,12 @@ test "stable public symbols are exact" {
         "PeerGroupMembershipError",
         "PeerGroupMembershipConfig",
         "PeerGroupMembership",
+        "PeerDiscoveryError",
+        "DiscoveryCandidate",
+        "DiscoveryRequest",
+        "RendezvousRequest",
+        "SignalingMessage",
+        "PeerDiscoveryHooks",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
