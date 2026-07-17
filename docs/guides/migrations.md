@@ -15,3 +15,7 @@ v0.1 removes the engine-owned ECS and its public API. Delete ECS world, entity, 
 ## Immediate-mode UI removed
 
 v0.1 removes the engine-owned immediate-mode UI subsystem and public API. Delete its frame, widget, layout, and state calls; keep game-specific HUD rendering in game code.
+
+## Networking and services excluded
+
+Networking, relays, and hosted services were not shipped in this checkout and are not v0.1 core capabilities. Keep any such integration game-owned.
