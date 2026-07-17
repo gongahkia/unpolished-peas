@@ -585,6 +585,12 @@ test "stable public symbols are exact" {
         "StateSnapshotSubscriber",
         "StateSnapshotPublisherConfig",
         "StateSnapshotPublisher",
+        "StateSnapshotDelivery",
+        "StateSnapshotApplied",
+        "StateSnapshotApplyFn",
+        "StateSnapshotClientError",
+        "StateSnapshotClientConfig",
+        "StateSnapshotClient",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
