@@ -22,6 +22,7 @@ const psk_authentication = @import("psk_authentication.zig");
 const public_key_authentication = @import("public_key_authentication.zig");
 const packet_protection = @import("packet_protection.zig");
 const replay_window = @import("replay_window.zig");
+const key_rotation = @import("key_rotation.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -168,6 +169,14 @@ pub const ReplayWindowError = replay_window.ReplayWindowError;
 pub const ReplayClassification = replay_window.ReplayClassification;
 pub const ReplayWindowConfig = replay_window.ReplayWindowConfig;
 pub const ReplayWindow = replay_window.ReplayWindow;
+pub const KeyEpoch = key_rotation.KeyEpoch;
+pub const max_key_rotation_overlap_packets = key_rotation.max_key_rotation_overlap_packets;
+pub const KeyRotationError = key_rotation.KeyRotationError;
+pub const KeyRotationControlKind = key_rotation.KeyRotationControlKind;
+pub const KeyRotationConfig = key_rotation.KeyRotationConfig;
+pub const KeyRotationControl = key_rotation.KeyRotationControl;
+pub const RotatingPacketKey = key_rotation.RotatingPacketKey;
+pub const KeyRotation = key_rotation.KeyRotation;
 pub const package_name = "protocol";
 
 comptime {
@@ -202,4 +211,5 @@ test {
     _ = @import("public_key_authentication.zig");
     _ = @import("packet_protection.zig");
     _ = @import("replay_window.zig");
+    _ = @import("key_rotation.zig");
 }
