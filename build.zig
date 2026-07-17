@@ -447,6 +447,12 @@ pub fn build(b: *std.Build) void {
     const c_sdk_shared_package_test = b.addSystemCommand(&.{ "sh", "script/test_shared_c_sdk_package.sh" });
     const c_sdk_shared_package_test_step = b.step("c-sdk-shared-package-test", "Test versioned shared C SDK packages");
     c_sdk_shared_package_test_step.dependOn(&c_sdk_shared_package_test.step);
+    const zig_sdk_package = b.addSystemCommand(&.{ "sh", "script/package_zig_sdk.sh" });
+    const zig_sdk_package_step = b.step("zig-sdk-package", "Package the versioned Zig SDK source distribution");
+    zig_sdk_package_step.dependOn(&zig_sdk_package.step);
+    const zig_sdk_package_test = b.addSystemCommand(&.{ "sh", "script/test_zig_sdk_package.sh" });
+    const zig_sdk_package_test_step = b.step("zig-sdk-package-test", "Test the versioned Zig SDK source distribution");
+    zig_sdk_package_test_step.dependOn(&zig_sdk_package_test.step);
     const naming_step = b.step("naming-contract", "Check stable Zig and C naming rules");
     naming_step.dependOn(&run_naming.step);
     const test_step = b.step("test", "Test v1 packages and contracts");
@@ -466,6 +472,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_c_abi_consumer.step);
     test_step.dependOn(&c_sdk_static_package_test.step);
     test_step.dependOn(&c_sdk_shared_package_test.step);
+    test_step.dependOn(&zig_sdk_package_test.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&run_test_harness.step);
     test_step.dependOn(&run_stun_turn_interop.step);

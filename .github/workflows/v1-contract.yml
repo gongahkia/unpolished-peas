@@ -292,3 +292,5 @@ jobs:
         run: zig build quality
       - name: Check dependency policy
         run: zig build dependency-policy
+      - name: Package versioned Zig SDK source
+        run: zig build zig-sdk-package
