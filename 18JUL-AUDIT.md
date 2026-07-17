@@ -12,7 +12,7 @@ The agreed direction replaces the previous broad-engine trajectory: **a small Zi
 
 ## What is already strong
 
-- SDL-free core plus separate desktop runtime, browser host/runtime, developer tooling, and optional effects, physics, UI, and extension infrastructure.
+- SDL-free core plus separate desktop runtime, browser host/runtime, developer tooling, and optional effects, physics, and extension infrastructure.
 - Deterministic headless rendering, golden images, input replay, fuzzing, downstream fixtures, performance budgets, and release gating.
 - Cross-backend SDL GPU/OpenGL capture comparison and desktop package smoke coverage on macOS, Linux, and Windows.
 - Local runtime diagnostics: screenshots, command JSON, Chrome trace JSON, replay data, metadata, and failure log.
@@ -76,7 +76,7 @@ The main comparison failure is not a missing primitive API. It is absent public 
 - Public documentation is shallow: one small Quickstart and testing guide, with no clearly hosted full API reference or learning path.
 - The root project defaults to pinned SDL source while the generated starter requires system SDL3 and `pkg-config`; this increases setup ambiguity.
 - Zig `0.15.1`/`0.15.2` pinning is technically rational but restricts the potential audience while Zig evolves quickly.
-- The scope is broad—physics, effects, UI, extension infrastructure, and advanced gameplay systems—before a clear primary user journey is proven. This risks complexity without demand.
+- The scope is broad—physics, effects, extension infrastructure, and advanced gameplay systems—before a clear primary user journey is proven. This risks complexity without demand.
 - There is no non-draft public release, changelog/migration contract, showcase, external game, community venue, contributor guide, or evidence of independent users.
 - Web search for the engine name does not surface it; results instead foreground other Zig engines and communities. [Source](https://ziggit.dev/t/mutual-help-on-zig-gamedev/12706)
 - Browser packaging exists, but a release-grade WebGL2/WebGPU matrix and publicly playable proof games do not. A web-playable demo is a stronger discovery mechanism than a repository clone.
@@ -98,7 +98,7 @@ No open issues does not demonstrate reliability when there are no observed outsi
 
 ### Explicit cuts before v0.1
 
-Remove, rather than merely hide, Box2D physics, immediate-mode UI, effects/shaders/lighting, extension metadata and resolution, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
+Remove, rather than merely hide, Box2D physics, effects/shaders/lighting, extension metadata and resolution, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
 
 ### Performance and evidence
 

@@ -431,16 +431,6 @@ pub fn build(b: *std.Build) void {
     const effects_test_step = b.step("test-effects", "Test the engine-owned effects subsystem");
     effects_test_step.dependOn(&run_effects_tests.step);
 
-    const ui_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("fixtures/ui-package/src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
-    }) });
-    const run_ui_tests = b.addRunArtifact(ui_tests);
-    const ui_test_step = b.step("test-ui", "Test the engine-owned UI subsystem");
-    ui_test_step.dependOn(&run_ui_tests.step);
-
     const box2d_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("fixtures/physics-package/src/main.zig"),
         .target = target,

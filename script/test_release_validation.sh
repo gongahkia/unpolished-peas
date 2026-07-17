@@ -35,7 +35,6 @@ for command in \
     'run package-platformer "$package_script" zig-out/release-gate/packages/platformer platformer' \
     'run diagnostics zig build test-support' \
     'run effects zig build test-effects' \
-    'run ui zig build test-ui' \
     'run physics zig build test-physics' \
     'run visual-scenes zig build test-scenes' \
     'run backend-comparison zig build test-desktop-backends' \

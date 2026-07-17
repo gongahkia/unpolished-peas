@@ -78,8 +78,6 @@ pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
 pub const effects = @import("subsystems/effects/effects.zig");
-pub const Ui = @import("subsystems/ui.zig").ui(@This());
-pub const ui = Ui;
 pub const Physics = @import("subsystems/physics.zig").physics(@This());
 pub const physics = Physics;
 pub const GpuResourceKind = effects.ResourceKind;
@@ -95,23 +93,14 @@ pub const PixelEffect = effects.PixelEffect;
 pub const PixelEffectParameters = effects.PixelEffectParameters;
 pub const PostProcessChain = effects.PostProcessChain;
 pub const lighting = effects.lighting;
-pub const UiFrame = Ui.Frame;
-pub const UiId = Ui.Id;
-pub const UiLayout = Ui.Layout;
-pub const UiResponse = Ui.Response;
-pub const UiState = Ui.State;
-pub const UiStyle = Ui.Style;
-pub const UiSurface = Ui.Surface;
 pub const PhysicsWorld = Physics.World;
 pub const PhysicsConfig = Physics.Config;
 pub const PhysicsBody = Physics.BodyHandle;
 
 test "public API includes first-class engine subsystems" {
     try std.testing.expect(@hasDecl(@This(), "effects"));
-    try std.testing.expect(@hasDecl(@This(), "ui"));
     try std.testing.expect(@hasDecl(@This(), "physics"));
     try std.testing.expect(@hasDecl(@This(), "PixelEffect"));
-    try std.testing.expect(@hasDecl(@This(), "UiFrame"));
     try std.testing.expect(@hasDecl(@This(), "PhysicsWorld"));
     try std.testing.expect(!@hasDecl(@This(), "NetMessage"));
     try std.testing.expect(!@hasDecl(@This(), "NetContract"));

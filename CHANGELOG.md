@@ -11,6 +11,7 @@ This project follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) an
 - Engine-owned extension manifests, resolution, locks, fixtures, and CI gates. See [v0.1 migrations](docs/guides/migrations.md).
 - Engine-owned particle emitters and their public API.
 - Engine-owned ECS and its public API, examples, fixtures, and tests.
+- Engine-owned immediate-mode UI and its public API, examples, fixtures, and tests.
 
 ## 0.0.3 — withdrawn
 

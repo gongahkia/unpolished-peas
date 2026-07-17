@@ -13,7 +13,6 @@ const Game = struct {
     camera: up.Camera2D = .{ .position = .{ .x = 80, .y = 48 } },
     physics: up.physics.World,
     physics_player: up.physics.BodyHandle,
-    ui_state: up.ui.State = .{},
 
     pub fn init(ctx: *sdl.Context) !Game {
         var map = try content.topdownMap(ctx.allocator);
@@ -41,9 +40,6 @@ const Game = struct {
         self.map.drawImages(ctx.camera(&self.camera), &images);
         try ctx.image(self.player, @intFromFloat(self.game.player.x - 8), @intFromFloat(self.game.player.y - 8));
         try ctx.appendPhysicsDebug(&self.physics, &self.camera);
-        var frame = ctx.uiFrame(&self.ui_state, .{ .cursor = .{ .x = 104, .y = 2 }, .width = 50, .row_height = 10 });
-        _ = frame.button(1, "STATUS");
-        frame.end();
         ctx.text("TOPDOWN", 4, 4, up.Color.white);
         ctx.text("ARROWS SPACE", 84, 4, up.Color.rgb(180, 205, 230));
     }
