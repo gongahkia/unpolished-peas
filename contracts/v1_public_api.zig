@@ -488,6 +488,14 @@ test "stable public symbols are exact" {
         "NatBindingKeepaliveError",
         "NatBindingKeepaliveConfig",
         "NatBindingKeepalives",
+        "RoutePolicy",
+        "RouteAvailability",
+        "RouteCapabilities",
+        "RouteSelection",
+        "RouteSelectionError",
+        "RouteSelectorConfig",
+        "RouteSelector",
+        "route_availability_for_kind",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});

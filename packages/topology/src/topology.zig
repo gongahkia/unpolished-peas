@@ -17,6 +17,7 @@ const turn_relay_transport = @import("turn_relay_transport.zig");
 const direct_connectivity = @import("direct_connectivity.zig");
 const candidate_pair_scheduler = @import("candidate_pair_scheduler.zig");
 const nat_binding_keepalive = @import("nat_binding_keepalive.zig");
+const route_selection = @import("route_selection.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -121,6 +122,14 @@ pub const NatKeepaliveIo = nat_binding_keepalive.NatKeepaliveIo;
 pub const NatBindingKeepaliveError = nat_binding_keepalive.NatBindingKeepaliveError;
 pub const NatBindingKeepaliveConfig = nat_binding_keepalive.NatBindingKeepaliveConfig;
 pub const NatBindingKeepalives = nat_binding_keepalive.NatBindingKeepalives;
+pub const RoutePolicy = route_selection.RoutePolicy;
+pub const RouteAvailability = route_selection.RouteAvailability;
+pub const RouteCapabilities = route_selection.RouteCapabilities;
+pub const RouteSelection = route_selection.RouteSelection;
+pub const RouteSelectionError = route_selection.RouteSelectionError;
+pub const RouteSelectorConfig = route_selection.RouteSelectorConfig;
+pub const RouteSelector = route_selection.RouteSelector;
+pub const route_availability_for_kind = route_selection.for_kind;
 
 pub const package_name = "topology";
 
@@ -151,4 +160,5 @@ test {
     _ = @import("direct_connectivity.zig");
     _ = @import("candidate_pair_scheduler.zig");
     _ = @import("nat_binding_keepalive.zig");
+    _ = @import("route_selection.zig");
 }
