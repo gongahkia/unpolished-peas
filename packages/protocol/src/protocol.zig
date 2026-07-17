@@ -18,6 +18,7 @@ const compression_dictionaries = @import("compression_dictionaries.zig");
 const payload_budget = @import("payload_budget.zig");
 const message_fragmentation = @import("message_fragmentation.zig");
 const message_reassembly = @import("message_reassembly.zig");
+const psk_authentication = @import("psk_authentication.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -131,6 +132,15 @@ pub const MessageReassemblyError = message_reassembly.MessageReassemblyError;
 pub const MessageReassemblyConfig = message_reassembly.MessageReassemblyConfig;
 pub const ReassemblyResult = message_reassembly.ReassemblyResult;
 pub const MessageReassembler = message_reassembly.MessageReassembler;
+pub const min_psk_bytes = psk_authentication.min_psk_bytes;
+pub const max_psk_bytes = psk_authentication.max_psk_bytes;
+pub const psk_challenge_nonce_bytes = psk_authentication.psk_challenge_nonce_bytes;
+pub const psk_proof_bytes = psk_authentication.psk_proof_bytes;
+pub const PskAuthenticationError = psk_authentication.PskAuthenticationError;
+pub const PskKey = psk_authentication.PskKey;
+pub const PskChallenge = psk_authentication.PskChallenge;
+pub const PskProof = psk_authentication.PskProof;
+pub const PskAuthenticator = psk_authentication.PskAuthenticator;
 pub const package_name = "protocol";
 
 comptime {
@@ -161,4 +171,5 @@ test {
     _ = @import("payload_budget.zig");
     _ = @import("message_fragmentation.zig");
     _ = @import("message_reassembly.zig");
+    _ = @import("psk_authentication.zig");
 }

@@ -201,6 +201,15 @@ test "stable public symbols are exact" {
         "MessageReassemblyConfig",
         "ReassemblyResult",
         "MessageReassembler",
+        "min_psk_bytes",
+        "max_psk_bytes",
+        "psk_challenge_nonce_bytes",
+        "psk_proof_bytes",
+        "PskAuthenticationError",
+        "PskKey",
+        "PskChallenge",
+        "PskProof",
+        "PskAuthenticator",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
