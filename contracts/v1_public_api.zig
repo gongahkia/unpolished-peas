@@ -138,6 +138,10 @@ test "stable public symbols are exact" {
         "TcpPendingConnection",
         "TcpAdmittedConnection",
         "TcpListener",
+        "tcp_frame_header_bytes",
+        "TcpFrameError",
+        "TcpFrameReader",
+        "TcpFrameWriter",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
