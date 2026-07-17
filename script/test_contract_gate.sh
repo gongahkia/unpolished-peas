@@ -55,3 +55,7 @@ sed '/zig build benchmark-throughput/d' .github/workflows/v1-contract.yml > "$fi
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
 fi
+sed '/zig build benchmark-memory/d' .github/workflows/v1-contract.yml > "$fixture"
+if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
+    exit 1
+fi

@@ -200,6 +200,17 @@ pub fn build(b: *std.Build) void {
             .{ .name = protocol_spec.module_name, .module = protocol },
         },
     });
+    const benchmark_memory = b.createModule(.{
+        .root_source_file = b.path("contracts/benchmark_memory.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = core_spec.module_name, .module = core },
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = topology_spec.module_name, .module = topology },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+        },
+    });
     const boundary_tests = b.addTest(.{ .root_module = boundary });
     const workspace_graph_tests = b.addTest(.{ .root_module = workspace_graph });
     const public_api_tests = b.addTest(.{ .root_module = public_api });
@@ -229,6 +240,8 @@ pub fn build(b: *std.Build) void {
     const benchmark_topology_faults_executable = b.addExecutable(.{ .name = "benchmark-topology-faults", .root_module = benchmark_topology_faults });
     const benchmark_throughput_tests = b.addTest(.{ .root_module = benchmark_throughput });
     const benchmark_throughput_executable = b.addExecutable(.{ .name = "benchmark-throughput", .root_module = benchmark_throughput });
+    const benchmark_memory_tests = b.addTest(.{ .root_module = benchmark_memory });
+    const benchmark_memory_executable = b.addExecutable(.{ .name = "benchmark-memory", .root_module = benchmark_memory });
     const state_tests = b.addTest(.{ .root_module = state });
     const topology_tests = b.addTest(.{ .root_module = topology });
     const transport_tests = b.addTest(.{ .root_module = transport });
@@ -287,6 +300,8 @@ pub fn build(b: *std.Build) void {
     const run_benchmark_topology_faults = b.addRunArtifact(benchmark_topology_faults_executable);
     const run_benchmark_throughput_tests = b.addRunArtifact(benchmark_throughput_tests);
     const run_benchmark_throughput = b.addRunArtifact(benchmark_throughput_executable);
+    const run_benchmark_memory_tests = b.addRunArtifact(benchmark_memory_tests);
+    const run_benchmark_memory = b.addRunArtifact(benchmark_memory_executable);
     const run_state = b.addRunArtifact(state_tests);
     const run_topology = b.addRunArtifact(topology_tests);
     const run_transport = b.addRunArtifact(transport_tests);
@@ -370,6 +385,10 @@ pub fn build(b: *std.Build) void {
     benchmark_throughput_step.dependOn(&run_benchmark_throughput.step);
     const benchmark_throughput_test_step = b.step("benchmark-throughput-test", "Test bounded throughput benchmark");
     benchmark_throughput_test_step.dependOn(&run_benchmark_throughput_tests.step);
+    const benchmark_memory_step = b.step("benchmark-memory", "Run bounded memory benchmark");
+    benchmark_memory_step.dependOn(&run_benchmark_memory.step);
+    const benchmark_memory_test_step = b.step("benchmark-memory-test", "Test bounded memory benchmark");
+    benchmark_memory_test_step.dependOn(&run_benchmark_memory_tests.step);
     const c_header_check = b.addSystemCommand(&.{
         b.graph.zig_exe,
         "cc",
@@ -413,6 +432,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_benchmark_sharded_p2p_tests.step);
     test_step.dependOn(&run_benchmark_topology_faults_tests.step);
     test_step.dependOn(&run_benchmark_throughput_tests.step);
+    test_step.dependOn(&run_benchmark_memory_tests.step);
     test_step.dependOn(&c_header_check.step);
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
