@@ -171,6 +171,9 @@ test "stable public symbols are exact" {
         "UdpSendSlot",
         "UdpSendBatch",
         "send_batch",
+        "SocketOptionError",
+        "SocketOptionConfig",
+        "apply_socket_options",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
