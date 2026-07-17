@@ -511,6 +511,11 @@ test "stable public symbols are exact" {
         "AuthoritativeRecoveryError",
         "AuthoritativeRecoveryConfig",
         "AuthoritativeSessionRecovery",
+        "max_sharded_p2p_participants",
+        "ShardedP2PDispatch",
+        "ShardedP2PSchedulerError",
+        "ShardedP2PSchedulerConfig",
+        "ShardedP2PScheduler",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{
