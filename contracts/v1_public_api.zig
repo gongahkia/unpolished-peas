@@ -184,6 +184,10 @@ test "stable public symbols are exact" {
         "TransportDeadlineError",
         "DesktopMonotonicClock",
         "TransportDeadline",
+        "TransportIoErrorCategory",
+        "TransportRetryHint",
+        "TransportIoFailure",
+        "normalize_io_failure",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
