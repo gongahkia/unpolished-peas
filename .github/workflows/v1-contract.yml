@@ -296,3 +296,5 @@ jobs:
         run: zig build dependency-policy
       - name: Package versioned Zig SDK source
         run: zig build zig-sdk-package
+      - name: Generate release artifact checksums
+        run: zig build release-checksums
