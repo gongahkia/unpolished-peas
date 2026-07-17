@@ -45,7 +45,7 @@ The following observations were retained from the original audit for context. Th
 
 4. **`peas doctor`.** Validate Zig version, dependency resolution, project assets/maps, selected target prerequisites, SDL setup, GPU/backend capabilities, and known incompatible feature combinations. Emit a machine-readable report plus a short recovery command.
 
-5. **Interactive developer UX.** Make the F3 overlay navigable with tabs for backend capabilities, reload events, bindings, profiler timeline, and network/physics provider states. Add copy-path/copy-report actions and a `peas support-bundle` archive command with configurable redaction.
+5. **Interactive developer UX.** Make the F3 overlay navigable with tabs for backend capabilities, reload events, bindings, profiler timeline, and physics-provider state. Add copy-path/copy-report actions and a `peas support-bundle` archive command with configurable redaction.
 
 6. **Tracing depth.** Support named game scopes, a bounded multi-frame ring buffer, frame markers, custom counters, and optional GPU timing where the backend permits it.
 
@@ -72,7 +72,7 @@ The main comparison failure is not a missing primitive API. It is absent public 
 ## Adoption blockers
 
 - The root description says “Small Zig 2D engine experiment.” That correctly signals maturity but discourages risk-averse users and agents.
-- The README leads with test matrices, backend details, services, and package internals before a newcomer sees a polished result.
+- The README leads with test matrices, backend details, and package internals before a newcomer sees a polished result.
 - Public documentation is shallow: one small Quickstart and testing guide, with no clearly hosted full API reference or learning path.
 - The root project defaults to pinned SDL source while the generated starter requires system SDL3 and `pkg-config`; this increases setup ambiguity.
 - Zig `0.15.1`/`0.15.2` pinning is technically rational but restricts the potential audience while Zig evolves quickly.
@@ -99,6 +99,8 @@ No open issues does not demonstrate reliability when there are no observed outsi
 ### Explicit cuts before v0.1
 
 Remove, rather than merely hide, Box2D physics, effects/shaders/lighting, extension metadata and resolution, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
+
+Networking, relays, and hosted services were not shipped in this checkout and are outside the v0.1 core; the historical reference above has been corrected accordingly.
 
 ### Performance and evidence
 
