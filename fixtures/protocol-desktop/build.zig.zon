@@ -1,0 +1,17 @@
+.{
+    .name = .protocol_desktop_fixture,
+    .version = "0.0.1",
+    .fingerprint = 0x75569c5eddc26b1d,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .path = "../..",
+        },
+    },
+    .paths = .{
+        "assets",
+        "build.zig",
+        "build.zig.zon",
+        "src",
+    },
+}

@@ -1225,7 +1225,11 @@ pub fn playGame(comptime Game: type) !void {
 
     const allocator = gpa.allocator();
     const parsed_config = try configFromArgs(allocator, gameConfig(Game));
-    try playWithAllocator(allocator, parsed_config, Game);
+    if (comptime usesGameProtocol(Game)) {
+        try playProtocolWithAllocator(allocator, parsed_config, Game);
+    } else {
+        try playLegacyWithAllocator(allocator, parsed_config, Game);
+    }
 }
 
 pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
@@ -1237,7 +1241,7 @@ pub fn run(config: Config, state: anytype, comptime callbacks: anytype) !void {
     try runWithAllocator(allocator, parsed_config, state, callbacks);
 }
 
-fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
+fn playLegacyWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
     const Adapter = struct {
         fn init(state: *Game, ctx: *Context) !void {
             state.* = try initGame(Game, ctx);
@@ -1267,6 +1271,40 @@ fn playWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game
         .draw = Adapter.draw,
         .event = Adapter.event,
     });
+}
+
+fn playProtocolWithAllocator(allocator: std.mem.Allocator, config: Config, comptime Game: type) !void {
+    comptime validateProtocolGame(Game);
+    var state = ProtocolAdapter(Game){};
+    try runWithAllocator(allocator, config, &state, .{
+        .init = ProtocolAdapter(Game).init,
+        .update = ProtocolAdapter(Game).update,
+        .draw = ProtocolAdapter(Game).draw,
+    });
+}
+
+fn ProtocolAdapter(comptime Game: type) type {
+    return struct {
+        const Self = @This();
+
+        game: Game = .{},
+        protocol: up.GameProtocol(Game) = undefined,
+        context: up.GameContext = undefined,
+
+        fn init(self: *Self, ctx: *Context) !void {
+            self.context = up.GameContext.withRuntime(ctx.input, ctx.canvas);
+            self.protocol = up.GameProtocol(Game).bind(&self.game);
+            try self.protocol.init(&self.context);
+        }
+
+        fn update(self: *Self, ctx: *Context) !void {
+            try self.protocol.update(&self.context, ctx.dt);
+        }
+
+        fn draw(self: *Self, ctx: *Context) !void {
+            try self.protocol.draw(&self.context, ctx.alpha);
+        }
+    };
 }
 
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
@@ -1501,6 +1539,20 @@ fn validateGame(comptime Game: type) void {
     if (gameContractDiagnostic(Game)) |diagnostic| @compileError(diagnostic);
 }
 
+fn validateProtocolGame(comptime Game: type) void {
+    if (protocolGameContractDiagnostic(Game)) |diagnostic| @compileError(diagnostic);
+    _ = up.GameProtocol(Game);
+}
+
+fn usesGameProtocol(comptime Game: type) bool {
+    if (!@hasDecl(Game, "init")) return false;
+    const info = switch (@typeInfo(@TypeOf(Game.init))) {
+        .@"fn" => |function| function,
+        else => return false,
+    };
+    return info.params.len == 2 and info.params[1].type != null and info.params[1].type.? == *up.GameContext;
+}
+
 fn gameContractDiagnostic(comptime Game: type) ?[]const u8 {
     switch (@typeInfo(Game)) {
         .@"struct" => {},
@@ -1516,8 +1568,28 @@ fn gameContractDiagnostic(comptime Game: type) ?[]const u8 {
     return null;
 }
 
+fn protocolGameContractDiagnostic(comptime Game: type) ?[]const u8 {
+    switch (@typeInfo(Game)) {
+        .@"struct" => {},
+        else => return "Game must be a struct",
+    }
+    if (!@hasDecl(Game, "config")) return "Game must declare pub const config: sdl.Config";
+    if (@TypeOf(Game.config) != Config) return "Game.config must be sdl.Config";
+    inline for (.{ "init", "update", "draw" }) |name| {
+        if (!@hasDecl(Game, name)) return "protocol Game must declare init, update, and draw";
+    }
+    if (callbackDiagnostic(Game, "init", &.{ *Game, *up.GameContext }, void, true)) |_| return "protocol Game.init must be fn (*Game, *up.GameContext) void or !void";
+    if (callbackDiagnostic(Game, "update", &.{ *Game, *up.GameContext, f32 }, void, true)) |_| return "protocol Game.update must be fn (*Game, *up.GameContext, f32) void or !void";
+    if (callbackDiagnostic(Game, "draw", &.{ *Game, *up.GameContext }, void, true)) |_| return "protocol Game.draw must be fn (*Game, *up.GameContext) void or !void";
+    return null;
+}
+
 fn gameConfig(comptime Game: type) Config {
-    comptime validateGame(Game);
+    if (comptime usesGameProtocol(Game)) {
+        comptime validateProtocolGame(Game);
+    } else {
+        comptime validateGame(Game);
+    }
     return Game.config;
 }
 
@@ -1707,6 +1779,82 @@ test "Game contract accepts config with optional lifecycle callbacks" {
     }
     try std.testing.expect(gameContractDiagnostic(Minimal) == null);
     try std.testing.expect(gameContractDiagnostic(Full) == null);
+}
+
+test "playGame selects the stable protocol adapter" {
+    const ProtocolGame = struct {
+        pub const config: Config = .{};
+
+        pub fn init(_: *@This(), _: *up.GameContext) !void {}
+        pub fn update(_: *@This(), _: *up.GameContext, _: f32) !void {}
+        pub fn draw(_: *@This(), _: *up.GameContext) !void {}
+    };
+    const LegacyGame = struct {
+        pub const config: Config = .{};
+
+        pub fn init(_: *Context) @This() {
+            return .{};
+        }
+    };
+    comptime {
+        validateProtocolGame(ProtocolGame);
+        _ = ProtocolAdapter(ProtocolGame);
+    }
+    try std.testing.expect(usesGameProtocol(ProtocolGame));
+    try std.testing.expect(!usesGameProtocol(LegacyGame));
+}
+
+test "protocol adapter preserves init update and draw failure phases" {
+    var input = up.Input{};
+    var canvas = try up.Canvas.init(std.testing.allocator, 1, 1);
+    defer canvas.deinit();
+    var assets = up.AssetStore.init(std.testing.allocator, std.fs.cwd());
+    defer assets.deinit();
+    var audio = try up.AudioMixer.init(std.testing.allocator, .{});
+    defer audio.deinit();
+    var ctx: Context = undefined;
+    ctx.allocator = std.testing.allocator;
+    ctx.input = &input;
+    ctx.canvas = &canvas;
+    ctx.assets = &assets;
+    ctx.audio = &audio;
+    ctx.dt = 1.0 / 60.0;
+    ctx.alpha = 0.5;
+
+    const InitFailureGame = struct {
+        pub fn init(_: *@This(), _: *up.GameContext) !void {
+            return error.InitFailed;
+        }
+        pub fn update(_: *@This(), _: *up.GameContext, _: f32) !void {}
+        pub fn draw(_: *@This(), _: *up.GameContext) !void {}
+    };
+    var init_state = ProtocolAdapter(InitFailureGame){};
+    try std.testing.expectError(error.InitFailed, init_state.init(&ctx));
+    try std.testing.expectEqual(up.GamePhase.init, init_state.protocol.lastFailure().?.phase);
+
+    const UpdateFailureGame = struct {
+        pub fn init(_: *@This(), _: *up.GameContext) !void {}
+        pub fn update(_: *@This(), _: *up.GameContext, _: f32) !void {
+            return error.UpdateFailed;
+        }
+        pub fn draw(_: *@This(), _: *up.GameContext) !void {}
+    };
+    var update_state = ProtocolAdapter(UpdateFailureGame){};
+    try update_state.init(&ctx);
+    try std.testing.expectError(error.UpdateFailed, update_state.update(&ctx));
+    try std.testing.expectEqual(up.GamePhase.update, update_state.protocol.lastFailure().?.phase);
+
+    const DrawFailureGame = struct {
+        pub fn init(_: *@This(), _: *up.GameContext) !void {}
+        pub fn update(_: *@This(), _: *up.GameContext, _: f32) !void {}
+        pub fn draw(_: *@This(), _: *up.GameContext) !void {
+            return error.DrawFailed;
+        }
+    };
+    var draw_state = ProtocolAdapter(DrawFailureGame){};
+    try draw_state.init(&ctx);
+    try std.testing.expectError(error.DrawFailed, draw_state.draw(&ctx));
+    try std.testing.expectEqual(up.GamePhase.draw, draw_state.protocol.lastFailure().?.phase);
 }
 
 test "Game contract reports malformed config and callback declarations" {

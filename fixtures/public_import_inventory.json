@@ -57,6 +57,8 @@
     {"path": "fixtures/peas-check/unsupported-zig/src/main.zig", "imports": []},
     {"path": "fixtures/peas-check/valid/build.zig", "imports": []},
     {"path": "fixtures/peas-check/valid/src/main.zig", "imports": []},
+    {"path": "fixtures/protocol-desktop/build.zig", "imports": []},
+    {"path": "fixtures/protocol-desktop/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "input"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]},
     {"path": "fixtures/release-candidate-consumer/build.zig", "imports": []},
     {"path": "fixtures/release-candidate-consumer/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}]},
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
