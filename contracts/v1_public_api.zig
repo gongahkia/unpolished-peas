@@ -174,6 +174,12 @@ test "stable public symbols are exact" {
         "SocketOptionError",
         "SocketOptionConfig",
         "apply_socket_options",
+        "max_pooled_packet_buffers",
+        "max_fallback_packet_buffers",
+        "PacketBufferPoolError",
+        "PacketBufferPoolConfig",
+        "PacketBufferLease",
+        "PacketBufferPool",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
