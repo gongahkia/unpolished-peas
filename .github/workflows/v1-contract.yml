@@ -38,6 +38,8 @@ jobs:
         run: zig build benchmark-throughput -Doptimize=ReleaseFast
       - name: Benchmark memory and resource ceilings
         run: zig build benchmark-memory -Doptimize=ReleaseFast
+      - name: Enforce benchmark regression thresholds
+        run: zig build benchmark-regression
   api-compatibility:
     name: Released public API compatibility
     runs-on: ubuntu-24.04
