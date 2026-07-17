@@ -12,6 +12,7 @@ const managed_runtime = @import("managed_runtime.zig");
 const authoritative_host = @import("authoritative_host.zig");
 const authoritative_client = @import("authoritative_client.zig");
 const authoritative_admission = @import("authoritative_admission.zig");
+const interest_management = @import("interest_management.zig");
 const version = @import("version.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -60,6 +61,15 @@ pub const AdmissionRequest = authoritative_admission.AdmissionRequest;
 pub const AdmissionAuthorization = authoritative_admission.AdmissionAuthorization;
 pub const AuthoritativeAdmissionConfig = authoritative_admission.AuthoritativeAdmissionConfig;
 pub const AuthoritativeAdmission = authoritative_admission.AuthoritativeAdmission;
+pub const InterestEntityId = interest_management.InterestEntityId;
+pub const InterestSubscriptionId = interest_management.InterestSubscriptionId;
+pub const InterestError = interest_management.InterestError;
+pub const Visibility = interest_management.Visibility;
+pub const InterestSubscription = interest_management.InterestSubscription;
+pub const InterestQuery = interest_management.InterestQuery;
+pub const InterestUpdate = interest_management.InterestUpdate;
+pub const VisibilityChange = interest_management.VisibilityChange;
+pub const InterestManagement = interest_management.InterestManagement;
 pub const SdkVersion = version.SdkVersion;
 pub const runtime_version = version.runtime_version;
 pub const abi_version = version.abi_version;
@@ -89,5 +99,6 @@ test {
     _ = @import("authoritative_host.zig");
     _ = @import("authoritative_client.zig");
     _ = @import("authoritative_admission.zig");
+    _ = @import("interest_management.zig");
     _ = @import("version.zig");
 }
