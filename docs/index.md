@@ -4,6 +4,7 @@
 - [Game protocol](guides/game-protocol.md)
 - [Testing](guides/testing.md)
 - [v0.1 capability matrix](guides/capabilities.md)
+- [v0.1 migrations](guides/migrations.md)
 - [Releases and support](guides/releases.md)
 - [Core API](api/core.md)
 

@@ -222,8 +222,6 @@ test {
     _ = @import("canvas.zig");
     _ = @import("color.zig");
     _ = @import("diagnostics.zig");
-    _ = @import("extension_resolver.zig");
-    _ = @import("extension_manifest.zig");
     _ = @import("collision.zig");
     _ = @import("font_asset.zig");
     _ = @import("image.zig");

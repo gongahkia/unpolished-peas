@@ -12,7 +12,7 @@ pub fn build(b: *std.Build) void {
     const browser_optimize = b.option(std.builtin.OptimizeMode, "browser-optimize", "Optimization mode for the standalone browser Wasm runtime") orelse .ReleaseSmall;
     const browser_target = b.resolveTargetQuery(.{ .cpu_arch = .wasm32, .os_tag = .freestanding });
     const system_sdl = b.option(bool, "system-sdl", "Link SDL3 from pkg-config instead of the pinned source dependency") orelse false;
-    const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 extension") orelse true;
+    const with_sdl = b.option(bool, "with_sdl", "Resolve the SDL3 runtime") orelse true;
     if (b.option([]const u8, "macos-sdk", "macOS SDK path for cross-compilation")) |sdk| b.sysroot = sdk;
     if (with_sdl and !system_sdl and target.result.os.tag == .linux) _ = b.lazyDependency("sdl_linux_deps", .{});
     const bundled_sdl = if (!with_sdl or system_sdl) null else b.lazyDependency("sdl", .{
@@ -195,7 +195,6 @@ pub fn build(b: *std.Build) void {
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const proof_benchmark = addExample(b, "unpolished-peas-proof-benchmark", "examples/proof_benchmark.zig", target, optimize, peas, null);
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
-    const extension_matrix = b.addExecutable(.{ .name = "unpolished-peas-extension-matrix", .root_module = b.createModule(.{ .root_source_file = b.path("src/extension_matrix.zig"), .target = b.graph.host, .optimize = optimize }) });
 
     const peas_cli = b.addExecutable(.{
         .name = "peas",
@@ -314,9 +313,6 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
-    const run_extension_matrix = b.addRunArtifact(extension_matrix);
-    const extension_matrix_step = b.step("extension-matrix", "List resolved extension package test cases");
-    extension_matrix_step.dependOn(&run_extension_matrix.step);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
     for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, atlas_demo, audio_demo, camera_demo, tilemap_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, topdown_scene, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
@@ -336,30 +332,6 @@ pub fn build(b: *std.Build) void {
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&run_core_api_snapshot_tests.step);
     test_step.dependOn(&run_core_api_snapshot_tests.step);
-    const extension_resolver_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/extension_resolver.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
-    const run_extension_resolver_tests = b.addRunArtifact(extension_resolver_tests);
-    const extension_resolver_test_step = b.step("test-extensions", "Resolve versioned extension package locks");
-    extension_resolver_test_step.dependOn(&run_extension_resolver_tests.step);
-    const extension_matrix_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/extension_matrix.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
-    const run_extension_matrix_tests = b.addRunArtifact(extension_matrix_tests);
-    const extension_matrix_test_step = b.step("test-extension-matrix", "Validate extension package test-matrix fixtures");
-    extension_matrix_test_step.dependOn(&run_extension_matrix_tests.step);
-    const extension_manifest_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/extension_manifest.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
-    const run_extension_manifest_tests = b.addRunArtifact(extension_manifest_tests);
-    const extension_manifest_test_step = b.step("test-extension-manifest", "Validate extension package manifests");
-    extension_manifest_test_step.dependOn(&run_extension_manifest_tests.step);
     const core_downstream_fixture = b.addSystemCommand(&.{"script/test_core_downstream_fixture.sh"});
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");

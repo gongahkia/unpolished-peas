@@ -175,7 +175,6 @@ zig build new -- ../my-game
 `fixtures/external-tilemap-game` is a standalone desktop game that defines its TileMap in Zig, drives movement through configured actions, follows with a camera, and reloads a raw shader asset.
 `fixtures/external-animation-game` is a standalone desktop game that animates a generated atlas, plays synthesized audio, uses swept collision, and exposes capture/CPU-trace diagnostic hooks.
 `release-zig-compatibility` runs core tests, replay hashes, and independent proof-game packages on Zig 0.15.1 and 0.15.2.
-`test-extensions` and `test-extension-manifest` validate versioned desktop extension metadata and its deterministic lock.
 `zig build test-effects`, `zig build test-ui`, and `zig build test-physics` validate the engine-owned effects, UI, and physics subsystems.
 `test-replays` verifies stored fixed-step input state hashes for Breakout, top-down, and platformer on CI.
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
