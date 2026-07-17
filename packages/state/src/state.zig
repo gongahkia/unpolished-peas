@@ -9,6 +9,7 @@ const state_decoder = @import("state_decoder.zig");
 const snapshot_publisher = @import("snapshot_publisher.zig");
 const snapshot_client = @import("snapshot_client.zig");
 const snapshot_baseline = @import("snapshot_baseline.zig");
+const full_state_recovery = @import("full_state_recovery.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -80,6 +81,13 @@ pub const StateSnapshotBaselineError = snapshot_baseline.StateSnapshotBaselineEr
 pub const StateSnapshotBaseline = snapshot_baseline.StateSnapshotBaseline;
 pub const StateSnapshotBaselineConfig = snapshot_baseline.StateSnapshotBaselineConfig;
 pub const StateSnapshotBaselines = snapshot_baseline.StateSnapshotBaselines;
+pub const StateRecoveryRequestId = full_state_recovery.StateRecoveryRequestId;
+pub const StateRecoveryReason = full_state_recovery.StateRecoveryReason;
+pub const StateDeltaBaseline = full_state_recovery.StateDeltaBaseline;
+pub const StateFullStateRecoveryRequest = full_state_recovery.StateFullStateRecoveryRequest;
+pub const StateFullStateRecoveryError = full_state_recovery.StateFullStateRecoveryError;
+pub const StateFullStateRecoveryConfig = full_state_recovery.StateFullStateRecoveryConfig;
+pub const StateFullStateRecovery = full_state_recovery.StateFullStateRecovery;
 
 pub const package_name = "state";
 
@@ -102,4 +110,5 @@ test {
     _ = @import("snapshot_publisher.zig");
     _ = @import("snapshot_client.zig");
     _ = @import("snapshot_baseline.zig");
+    _ = @import("full_state_recovery.zig");
 }
