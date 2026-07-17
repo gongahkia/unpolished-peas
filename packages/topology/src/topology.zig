@@ -13,6 +13,7 @@ const turn_allocation = @import("turn_allocation.zig");
 const turn_permissions = @import("turn_permissions.zig");
 const turn_channels = @import("turn_channels.zig");
 const turn_allocation_lifecycle = @import("turn_allocation_lifecycle.zig");
+const turn_relay_transport = @import("turn_relay_transport.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -90,6 +91,10 @@ pub const TurnAllocationFailure = turn_allocation_lifecycle.TurnAllocationFailur
 pub const TurnAllocationEvent = turn_allocation_lifecycle.TurnAllocationEvent;
 pub const TurnAllocationLifecycleConfig = turn_allocation_lifecycle.TurnAllocationLifecycleConfig;
 pub const TurnAllocationLifecycle = turn_allocation_lifecycle.TurnAllocationLifecycle;
+pub const TurnRelayTransportError = turn_relay_transport.TurnRelayTransportError;
+pub const TurnRelayDatagram = turn_relay_transport.TurnRelayDatagram;
+pub const TurnRelayIo = turn_relay_transport.TurnRelayIo;
+pub const TurnRelayTransport = turn_relay_transport.TurnRelayTransport;
 
 pub const package_name = "topology";
 
@@ -116,4 +121,5 @@ test {
     _ = @import("turn_permissions.zig");
     _ = @import("turn_channels.zig");
     _ = @import("turn_allocation_lifecycle.zig");
+    _ = @import("turn_relay_transport.zig");
 }

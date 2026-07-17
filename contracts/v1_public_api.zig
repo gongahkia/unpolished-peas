@@ -461,6 +461,10 @@ test "stable public symbols are exact" {
         "TurnAllocationEvent",
         "TurnAllocationLifecycleConfig",
         "TurnAllocationLifecycle",
+        "TurnRelayTransportError",
+        "TurnRelayDatagram",
+        "TurnRelayIo",
+        "TurnRelayTransport",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
