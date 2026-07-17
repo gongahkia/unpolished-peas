@@ -217,6 +217,12 @@ pub fn build(b: *std.Build) void {
     const quality_test = b.addSystemCommand(&.{ "sh", "script/test_quality_gate.sh" });
     const quality_test_step = b.step("quality-test", "Test the non-mutating quality gate");
     quality_test_step.dependOn(&quality_test.step);
+    const release_license_check = b.addSystemCommand(&.{ "sh", "script/check_release_license.sh" });
+    const release_license_step = b.step("release-license", "Check BSL release metadata");
+    release_license_step.dependOn(&release_license_check.step);
+    const release_license_test = b.addSystemCommand(&.{ "sh", "script/test_release_license.sh" });
+    const release_license_test_step = b.step("release-license-test", "Test BSL release metadata checks");
+    release_license_test_step.dependOn(&release_license_test.step);
     const dependency_check = b.addSystemCommand(&.{ "sh", "script/check_stdlib_only.sh" });
     const dependency_step = b.step("dependency-policy", "Check v1 sources use only std and first-party modules");
     dependency_step.dependOn(&dependency_check.step);
@@ -266,4 +272,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_c_abi_consumer.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&c_header_check.step);
+    test_step.dependOn(&release_license_check.step);
 }
