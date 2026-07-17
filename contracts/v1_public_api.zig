@@ -524,6 +524,13 @@ test "stable public symbols are exact" {
         "HostElectionError",
         "HostElectionConfig",
         "HostElector",
+        "migration_transfer_integrity_tag_bytes",
+        "MigrationStateMetadata",
+        "AcknowledgedMigrationSnapshot",
+        "MigrationStateTransferFrame",
+        "MigrationStateTransferError",
+        "MigrationStateTransferConfig",
+        "MigrationStateTransfer",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
