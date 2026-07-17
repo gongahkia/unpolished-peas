@@ -16,6 +16,7 @@ const compression_provider = @import("compression_provider.zig");
 const lz4_block = @import("lz4_block.zig");
 const compression_dictionaries = @import("compression_dictionaries.zig");
 const payload_budget = @import("payload_budget.zig");
+const message_fragmentation = @import("message_fragmentation.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -115,6 +116,15 @@ pub const MtuBudgetConfig = payload_budget.MtuBudgetConfig;
 pub const MtuBudgetOffer = payload_budget.MtuBudgetOffer;
 pub const EffectivePayloadBudget = payload_budget.EffectivePayloadBudget;
 pub const PayloadBudgetManager = payload_budget.PayloadBudgetManager;
+pub const max_message_fragments = message_fragmentation.max_message_fragments;
+pub const message_fragment_header_bytes = message_fragmentation.message_fragment_header_bytes;
+pub const fragment_authentication_tag_bytes = message_fragmentation.fragment_authentication_tag_bytes;
+pub const MessageFragmentAuthError = message_fragmentation.MessageFragmentAuthError;
+pub const MessageFragmentError = message_fragmentation.MessageFragmentError;
+pub const FragmentAuthenticator = message_fragmentation.FragmentAuthenticator;
+pub const MessageFragment = message_fragmentation.MessageFragment;
+pub const MessageFragmenter = message_fragmentation.MessageFragmenter;
+pub const derive_message_id = message_fragmentation.derive_message_id;
 pub const package_name = "protocol";
 
 comptime {
@@ -143,4 +153,5 @@ test {
     _ = @import("lz4_block.zig");
     _ = @import("compression_dictionaries.zig");
     _ = @import("payload_budget.zig");
+    _ = @import("message_fragmentation.zig");
 }
