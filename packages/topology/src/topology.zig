@@ -14,6 +14,7 @@ const turn_permissions = @import("turn_permissions.zig");
 const turn_channels = @import("turn_channels.zig");
 const turn_allocation_lifecycle = @import("turn_allocation_lifecycle.zig");
 const turn_relay_transport = @import("turn_relay_transport.zig");
+const direct_connectivity = @import("direct_connectivity.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -95,6 +96,14 @@ pub const TurnRelayTransportError = turn_relay_transport.TurnRelayTransportError
 pub const TurnRelayDatagram = turn_relay_transport.TurnRelayDatagram;
 pub const TurnRelayIo = turn_relay_transport.TurnRelayIo;
 pub const TurnRelayTransport = turn_relay_transport.TurnRelayTransport;
+pub const ConnectivityRole = direct_connectivity.ConnectivityRole;
+pub const CandidatePairState = direct_connectivity.CandidatePairState;
+pub const CandidatePair = direct_connectivity.CandidatePair;
+pub const ConnectivitySignal = direct_connectivity.ConnectivitySignal;
+pub const ConnectivitySignaling = direct_connectivity.ConnectivitySignaling;
+pub const DirectConnectivityError = direct_connectivity.DirectConnectivityError;
+pub const DirectConnectivityConfig = direct_connectivity.DirectConnectivityConfig;
+pub const DirectConnectivity = direct_connectivity.DirectConnectivity;
 
 pub const package_name = "topology";
 
@@ -122,4 +131,5 @@ test {
     _ = @import("turn_channels.zig");
     _ = @import("turn_allocation_lifecycle.zig");
     _ = @import("turn_relay_transport.zig");
+    _ = @import("direct_connectivity.zig");
 }
