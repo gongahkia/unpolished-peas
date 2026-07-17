@@ -170,6 +170,10 @@ test "stable public symbols are exact" {
         "CompressionProvider",
         "CompressionSession",
         "decode_compression_frame",
+        "max_lz4_block_bytes",
+        "Lz4BlockError",
+        "Lz4BlockConfig",
+        "Lz4BlockCodec",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

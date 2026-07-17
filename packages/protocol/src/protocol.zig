@@ -13,6 +13,7 @@ const packet_pacing = @import("packet_pacing.zig");
 const bandwidth_caps = @import("bandwidth_caps.zig");
 const backpressure = @import("backpressure.zig");
 const compression_provider = @import("compression_provider.zig");
+const lz4_block = @import("lz4_block.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -95,6 +96,10 @@ pub const CompressionFrame = compression_provider.CompressionFrame;
 pub const CompressionProvider = compression_provider.CompressionProvider;
 pub const CompressionSession = compression_provider.CompressionSession;
 pub const decode_compression_frame = compression_provider.decode_compression_frame;
+pub const max_lz4_block_bytes = lz4_block.max_lz4_block_bytes;
+pub const Lz4BlockError = lz4_block.Lz4BlockError;
+pub const Lz4BlockConfig = lz4_block.Lz4BlockConfig;
+pub const Lz4BlockCodec = lz4_block.Lz4BlockCodec;
 pub const package_name = "protocol";
 
 comptime {
@@ -120,4 +125,5 @@ test {
     _ = @import("bandwidth_caps.zig");
     _ = @import("backpressure.zig");
     _ = @import("compression_provider.zig");
+    _ = @import("lz4_block.zig");
 }
