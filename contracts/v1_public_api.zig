@@ -480,6 +480,14 @@ test "stable public symbols are exact" {
         "CandidatePairSchedulerError",
         "CandidatePairSchedulerConfig",
         "CandidatePairScheduler",
+        "NatBindingKind",
+        "NatBindingState",
+        "NatBindingKeepalive",
+        "NatKeepaliveEvent",
+        "NatKeepaliveIo",
+        "NatBindingKeepaliveError",
+        "NatBindingKeepaliveConfig",
+        "NatBindingKeepalives",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});

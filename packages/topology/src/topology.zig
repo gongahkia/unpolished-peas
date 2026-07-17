@@ -16,6 +16,7 @@ const turn_allocation_lifecycle = @import("turn_allocation_lifecycle.zig");
 const turn_relay_transport = @import("turn_relay_transport.zig");
 const direct_connectivity = @import("direct_connectivity.zig");
 const candidate_pair_scheduler = @import("candidate_pair_scheduler.zig");
+const nat_binding_keepalive = @import("nat_binding_keepalive.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -112,6 +113,14 @@ pub const CandidateCheckDispatch = candidate_pair_scheduler.CandidateCheckDispat
 pub const CandidatePairSchedulerError = candidate_pair_scheduler.CandidatePairSchedulerError;
 pub const CandidatePairSchedulerConfig = candidate_pair_scheduler.CandidatePairSchedulerConfig;
 pub const CandidatePairScheduler = candidate_pair_scheduler.CandidatePairScheduler;
+pub const NatBindingKind = nat_binding_keepalive.NatBindingKind;
+pub const NatBindingState = nat_binding_keepalive.NatBindingState;
+pub const NatBindingKeepalive = nat_binding_keepalive.NatBindingKeepalive;
+pub const NatKeepaliveEvent = nat_binding_keepalive.NatKeepaliveEvent;
+pub const NatKeepaliveIo = nat_binding_keepalive.NatKeepaliveIo;
+pub const NatBindingKeepaliveError = nat_binding_keepalive.NatBindingKeepaliveError;
+pub const NatBindingKeepaliveConfig = nat_binding_keepalive.NatBindingKeepaliveConfig;
+pub const NatBindingKeepalives = nat_binding_keepalive.NatBindingKeepalives;
 
 pub const package_name = "topology";
 
@@ -141,4 +150,5 @@ test {
     _ = @import("turn_relay_transport.zig");
     _ = @import("direct_connectivity.zig");
     _ = @import("candidate_pair_scheduler.zig");
+    _ = @import("nat_binding_keepalive.zig");
 }
