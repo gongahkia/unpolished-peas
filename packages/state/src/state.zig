@@ -11,6 +11,7 @@ const snapshot_client = @import("snapshot_client.zig");
 const snapshot_baseline = @import("snapshot_baseline.zig");
 const full_state_recovery = @import("full_state_recovery.zig");
 const replication_template = @import("replication_template.zig");
+const authoritative_replication = @import("authoritative_replication.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -98,6 +99,10 @@ pub const StateReplicationError = replication_template.StateReplicationError;
 pub const StateReplicationOutcome = replication_template.StateReplicationOutcome;
 pub const StateReplicationTemplateConfig = replication_template.StateReplicationTemplateConfig;
 pub const StateReplicationTemplate = replication_template.StateReplicationTemplate;
+pub const StateAuthoritativeStateFn = authoritative_replication.StateAuthoritativeStateFn;
+pub const StateAuthoritativeReplicationError = authoritative_replication.StateAuthoritativeReplicationError;
+pub const StateAuthoritativeReplicationConfig = authoritative_replication.StateAuthoritativeReplicationConfig;
+pub const StateAuthoritativeReplication = authoritative_replication.StateAuthoritativeReplication;
 
 pub const package_name = "state";
 
@@ -122,4 +127,5 @@ test {
     _ = @import("snapshot_baseline.zig");
     _ = @import("full_state_recovery.zig");
     _ = @import("replication_template.zig");
+    _ = @import("authoritative_replication.zig");
 }

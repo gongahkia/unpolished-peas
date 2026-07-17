@@ -611,6 +611,10 @@ test "stable public symbols are exact" {
         "StateReplicationOutcome",
         "StateReplicationTemplateConfig",
         "StateReplicationTemplate",
+        "StateAuthoritativeStateFn",
+        "StateAuthoritativeReplicationError",
+        "StateAuthoritativeReplicationConfig",
+        "StateAuthoritativeReplication",
         "package_name",
     });
     try expectExactPublicDeclarations(runtime, &.{
