@@ -25,7 +25,7 @@ for artifact in \
 done
 (
     cd "$package"
-    expected="$(find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort)"
+    expected="$(find . -type f ! -name SHA256SUMS ! -name '*.sigstore.json' -print | sed 's#^./##' | LC_ALL=C sort)"
     actual="$(sed -E 's/^.*  //' SHA256SUMS | LC_ALL=C sort)"
     test "$expected" = "$actual"
     shasum -a 256 --check --status SHA256SUMS
