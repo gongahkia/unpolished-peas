@@ -11,3 +11,7 @@ sed 's/  pull_request:/  pull_request_target:/' .github/workflows/v1-contract.ym
 if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
     exit 1
 fi
+sed '/runner: macos-14/d' .github/workflows/v1-contract.yml > "$fixture"
+if CONTRACT_GATE_WORKFLOW="$fixture" sh script/check_contract_gate.sh >/dev/null 2>&1; then
+    exit 1
+fi

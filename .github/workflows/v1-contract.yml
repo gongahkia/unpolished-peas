@@ -11,6 +11,39 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  macos-sdk:
+    name: macOS ${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-14
+            zig_arch: aarch64
+            sha256: 3cc2bab367e185cdfb27501c4b30b1b0653c28d9f73df8dc91488e66ece5fa6b
+          - arch: x86_64
+            runner: macos-15-intel
+            zig_arch: x86_64
+            sha256: 375b6909fc1495d16fc2c7db9538f707456bfc3373b14ee83fdd3e22b3d43f7f
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10
+      - name: Install Zig 0.15.2
+        shell: bash
+        run: |
+          set -euo pipefail
+          curl --fail --location --retry 3 --silent --show-error --output zig.tar.xz https://ziglang.org/download/0.15.2/zig-${{ matrix.zig_arch }}-macos-0.15.2.tar.xz
+          echo '${{ matrix.sha256 }}  zig.tar.xz' | shasum -a 256 --check --status
+          tar --extract --file zig.tar.xz
+          echo "$PWD/zig-${{ matrix.zig_arch }}-macos-0.15.2" >> "$GITHUB_PATH"
+      - name: Verify native Zig version
+        run: |
+          test "$(uname -m)" = "${{ matrix.arch }}"
+          test "$(zig version)" = "0.15.2"
+      - name: Build and test SDK artifacts
+        run: zig build test
+      - name: Build C ABI artifact and consumer
+        run: zig build c-abi-parity
   contract:
     runs-on: ubuntu-latest
     steps:
