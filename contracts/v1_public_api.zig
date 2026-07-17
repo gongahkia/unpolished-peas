@@ -242,6 +242,10 @@ test "stable public symbols are exact" {
         "KeyRotationControl",
         "RotatingPacketKey",
         "KeyRotation",
+        "SecurityComponentError",
+        "SecurityComponents",
+        "validate_security_components",
+        "validate_negotiated_security",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

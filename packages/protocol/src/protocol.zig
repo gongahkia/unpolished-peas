@@ -23,6 +23,7 @@ const public_key_authentication = @import("public_key_authentication.zig");
 const packet_protection = @import("packet_protection.zig");
 const replay_window = @import("replay_window.zig");
 const key_rotation = @import("key_rotation.zig");
+const security_components = @import("security_components.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -177,6 +178,10 @@ pub const KeyRotationConfig = key_rotation.KeyRotationConfig;
 pub const KeyRotationControl = key_rotation.KeyRotationControl;
 pub const RotatingPacketKey = key_rotation.RotatingPacketKey;
 pub const KeyRotation = key_rotation.KeyRotation;
+pub const SecurityComponentError = security_components.SecurityComponentError;
+pub const SecurityComponents = security_components.SecurityComponents;
+pub const validate_security_components = security_components.validate_security_components;
+pub const validate_negotiated_security = security_components.validate_negotiated_security;
 pub const package_name = "protocol";
 
 comptime {
@@ -212,4 +217,5 @@ test {
     _ = @import("packet_protection.zig");
     _ = @import("replay_window.zig");
     _ = @import("key_rotation.zig");
+    _ = @import("security_components.zig");
 }

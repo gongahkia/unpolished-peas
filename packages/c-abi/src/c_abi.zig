@@ -392,9 +392,12 @@ pub fn is_nonempty_buffer(buffer: CBuffer) bool {
 pub fn validate_security_config(config: ?*const CSecurityConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.flags & ~all_security_flags != 0) return .invalid_argument;
+    const authentication_flags = value.flags & (c_security_psk | c_security_public_key);
+    if (authentication_flags == (c_security_psk | c_security_public_key)) return .invalid_argument;
     if (value.flags & c_security_psk != 0 and !is_nonempty_buffer(value.psk)) return .invalid_argument;
     if (value.flags & c_security_public_key != 0 and !is_nonempty_buffer(value.public_key)) return .invalid_argument;
     if (value.flags & c_security_aead != 0 and !is_nonempty_buffer(value.aead_key)) return .invalid_argument;
+    if (value.flags & (c_security_replay_protection | c_security_key_rotation) != 0 and value.flags & c_security_aead == 0) return .invalid_argument;
     if (value.flags & c_security_replay_protection != 0 and value.replay_window == 0) return .invalid_argument;
     if (value.flags & c_security_key_rotation != 0 and (value.rotation_interval_ns <= 0 or value.rotation_overlap_ns < 0)) return .invalid_argument;
     return .ok;
@@ -1371,13 +1374,11 @@ test "C connection and event accessors reject invalid inputs" {
 test "C security configuration borrows caller key buffers without copies" {
     var config: CSecurityConfig = undefined;
     var psk = [_]u8{ 1, 2 };
-    var public_key = [_]u8{3};
     var aead_key = [_]u8{ 4, 5, 6 };
     const psk_buffer = CBuffer{ .data = @ptrCast(&psk), .len = psk.len };
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_init(&config));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_psk(&config, psk_buffer));
     try std.testing.expectEqual(@intFromPtr(psk_buffer.data), @intFromPtr(config.psk.data));
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_public_key(&config, .{ .data = @ptrCast(&public_key), .len = public_key.len }));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_aead_key(&config, .{ .data = @ptrCast(&aead_key), .len = aead_key.len }));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_replay_window(&config, 64));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_security_config_set_key_rotation(&config, 10, 0));
@@ -1392,6 +1393,17 @@ test "C security configuration rejects absent keys and invalid controls" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_replay_window(&config, 0));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_set_key_rotation(&config, 0, -1));
     config.flags = c_security_aead;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
+    config.flags = c_security_psk | c_security_public_key;
+    config.psk = .{ .data = @ptrFromInt(1), .len = 1 };
+    config.public_key = .{ .data = @ptrFromInt(1), .len = 1 };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
+    config.flags = c_security_replay_protection;
+    config.replay_window = 1;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
+    config.flags = c_security_key_rotation;
+    config.rotation_interval_ns = 1;
+    config.rotation_overlap_ns = 0;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_security_config_validate(&config));
 }
 
