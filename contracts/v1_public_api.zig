@@ -103,6 +103,14 @@ test "stable public symbols are exact" {
         "PacketEnvelopeError",
         "encode_packet",
         "decode_packet",
+        "TransportCapability",
+        "ChannelCapability",
+        "SecurityCapability",
+        "CompressionCapability",
+        "CapabilityOffer",
+        "NegotiatedCapabilities",
+        "CapabilityNegotiationError",
+        "negotiate_capabilities",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
