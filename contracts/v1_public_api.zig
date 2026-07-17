@@ -196,6 +196,11 @@ test "stable public symbols are exact" {
         "MessageFragment",
         "MessageFragmenter",
         "derive_message_id",
+        "max_reassembly_messages",
+        "MessageReassemblyError",
+        "MessageReassemblyConfig",
+        "ReassemblyResult",
+        "MessageReassembler",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

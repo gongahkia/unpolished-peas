@@ -17,6 +17,7 @@ const lz4_block = @import("lz4_block.zig");
 const compression_dictionaries = @import("compression_dictionaries.zig");
 const payload_budget = @import("payload_budget.zig");
 const message_fragmentation = @import("message_fragmentation.zig");
+const message_reassembly = @import("message_reassembly.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -125,6 +126,11 @@ pub const FragmentAuthenticator = message_fragmentation.FragmentAuthenticator;
 pub const MessageFragment = message_fragmentation.MessageFragment;
 pub const MessageFragmenter = message_fragmentation.MessageFragmenter;
 pub const derive_message_id = message_fragmentation.derive_message_id;
+pub const max_reassembly_messages = message_reassembly.max_reassembly_messages;
+pub const MessageReassemblyError = message_reassembly.MessageReassemblyError;
+pub const MessageReassemblyConfig = message_reassembly.MessageReassemblyConfig;
+pub const ReassemblyResult = message_reassembly.ReassemblyResult;
+pub const MessageReassembler = message_reassembly.MessageReassembler;
 pub const package_name = "protocol";
 
 comptime {
@@ -154,4 +160,5 @@ test {
     _ = @import("compression_dictionaries.zig");
     _ = @import("payload_budget.zig");
     _ = @import("message_fragmentation.zig");
+    _ = @import("message_reassembly.zig");
 }
