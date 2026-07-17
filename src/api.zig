@@ -40,8 +40,6 @@ pub const graphics = struct {
     pub const InspectorResource = @import("inspector_panels.zig").Resource;
     pub const InspectorResourceHandle = @import("inspector_panels.zig").ResourceHandle;
     pub const InspectorCollisionPanel = @import("inspector_panels.zig").CollisionPanel;
-    pub const InspectorPhysicsPanel = @import("inspector_panels.zig").PhysicsPanel;
-    pub const InspectorPhysicsState = @import("inspector_panels.zig").PhysicsState;
     pub const Presentation = @import("presentation.zig").Presentation;
     pub const PresentationMode = @import("presentation.zig").PresentationMode;
     pub const HeadlessRenderer = @import("render.zig").HeadlessRenderer;
@@ -78,8 +76,6 @@ pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
 pub const effects = @import("subsystems/effects/effects.zig");
-pub const Physics = @import("subsystems/physics.zig").physics(@This());
-pub const physics = Physics;
 pub const GpuResourceKind = effects.ResourceKind;
 pub const GpuResources = effects.Resources;
 pub const TextureHandle = effects.TextureHandle;
@@ -93,15 +89,11 @@ pub const PixelEffect = effects.PixelEffect;
 pub const PixelEffectParameters = effects.PixelEffectParameters;
 pub const PostProcessChain = effects.PostProcessChain;
 pub const lighting = effects.lighting;
-pub const PhysicsWorld = Physics.World;
-pub const PhysicsConfig = Physics.Config;
-pub const PhysicsBody = Physics.BodyHandle;
-
-test "public API includes first-class engine subsystems" {
+test "public API excludes removed and unsupported systems" {
     try std.testing.expect(@hasDecl(@This(), "effects"));
-    try std.testing.expect(@hasDecl(@This(), "physics"));
     try std.testing.expect(@hasDecl(@This(), "PixelEffect"));
-    try std.testing.expect(@hasDecl(@This(), "PhysicsWorld"));
+    try std.testing.expect(!@hasDecl(@This(), "physics"));
+    try std.testing.expect(!@hasDecl(@This(), "PhysicsWorld"));
     try std.testing.expect(!@hasDecl(@This(), "NetMessage"));
     try std.testing.expect(!@hasDecl(@This(), "NetContract"));
     try std.testing.expect(!@hasDecl(@This(), "NetTransport"));
@@ -217,8 +209,6 @@ pub const InspectorProfilePanel = @import("inspector_panels.zig").ProfilePanel;
 pub const InspectorSubsystemPanel = @import("inspector_panels.zig").SubsystemPanel;
 pub const InspectorSubsystemState = @import("inspector_panels.zig").SubsystemState;
 pub const InspectorCollisionPanel = @import("inspector_panels.zig").CollisionPanel;
-pub const InspectorPhysicsPanel = @import("inspector_panels.zig").PhysicsPanel;
-pub const InspectorPhysicsState = @import("inspector_panels.zig").PhysicsState;
 pub const inspectorPanels = @import("inspector_panels.zig");
 pub const Gamepad = @import("input.zig").Gamepad;
 pub const GamepadButton = @import("input.zig").GamepadButton;

@@ -314,41 +314,6 @@ pub const CollisionPanel = struct {
     }
 };
 
-pub const PhysicsState = struct {
-    bodies: u32 = 0,
-    fixtures: u32 = 0,
-    joints: u32 = 0,
-    contact_begins: u32 = 0,
-    contact_ends: u32 = 0,
-    contact_hits: u32 = 0,
-    sensor_begins: u32 = 0,
-    sensor_ends: u32 = 0,
-};
-
-pub const PhysicsPanel = struct {
-    state: ?*const PhysicsState = null,
-    position: Vec2 = .{ .x = 4, .y = 4 },
-    max_rows: usize = 5,
-
-    pub fn panel(self: *PhysicsPanel) InspectorPanel {
-        return .{ .name = "physics", .context = self, .draw = draw };
-    }
-
-    fn draw(context: *anyopaque, canvas: *Canvas) !void {
-        const self: *PhysicsPanel = @ptrCast(@alignCast(context));
-        var lines = Lines.init(canvas, self.position, self.max_rows);
-        lines.box();
-        lines.line("BOX2D", .{}, panel_title);
-        const state = self.state orelse {
-            lines.line("module unavailable", .{}, panel_warning);
-            return;
-        };
-        lines.line("bodies={} fixtures={} joints={}", .{ state.bodies, state.fixtures, state.joints }, panel_text);
-        lines.line("contacts +{} -{} hit={}", .{ state.contact_begins, state.contact_ends, state.contact_hits }, panel_text);
-        lines.line("sensors +{} -{}", .{ state.sensor_begins, state.sensor_ends }, panel_text);
-    }
-};
-
 const Lines = struct {
     canvas: *Canvas,
     x: i32,
@@ -409,12 +374,10 @@ test "inspector panels render unavailable sources safely" {
     var input_panel = InputPanel{};
     var metrics_panel = MetricsPanel{};
     var collision_panel = CollisionPanel{};
-    var physics_panel = PhysicsPanel{};
     try asset.panel().draw(asset.panel().context, &canvas);
     try input_panel.panel().draw(input_panel.panel().context, &canvas);
     try metrics_panel.panel().draw(metrics_panel.panel().context, &canvas);
     try collision_panel.panel().draw(collision_panel.panel().context, &canvas);
-    try physics_panel.panel().draw(physics_panel.panel().context, &canvas);
     const hash = test_support.canvasHash(canvas);
     try std.testing.expect(hash != 0);
 }
@@ -424,17 +387,13 @@ test "diagnostic panels render deterministic read-only state" {
     defer collider.deinit();
     try collider.addShape(.{ .solid = .{ .x = 0, .y = 0, .w = 8, .h = 8 } });
     try collider.addShape(.{ .one_way = .{ .x = 8, .y = 0, .w = 8, .h = 8 } });
-    const physics = PhysicsState{ .bodies = 2, .fixtures = 3, .joints = 1, .contact_begins = 4, .sensor_ends = 1 };
     var collision_panel = CollisionPanel{ .collider = &collider };
-    var physics_panel = PhysicsPanel{ .state = &physics };
     var first = try Canvas.init(std.testing.allocator, 320, 192);
     defer first.deinit();
     var second = try Canvas.init(std.testing.allocator, 320, 192);
     defer second.deinit();
     try collision_panel.panel().draw(collision_panel.panel().context, &first);
-    try physics_panel.panel().draw(physics_panel.panel().context, &first);
     try collision_panel.panel().draw(collision_panel.panel().context, &second);
-    try physics_panel.panel().draw(physics_panel.panel().context, &second);
     try std.testing.expectEqual(@import("test_support.zig").canvasHash(first), @import("test_support.zig").canvasHash(second));
     try std.testing.expectEqual(@as(usize, 2), collider.shapes.items.len);
 }

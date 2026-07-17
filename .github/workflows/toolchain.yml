@@ -76,7 +76,6 @@ jobs:
       - run: zig fmt --check build.zig src examples templates
       - run: zig build test
       - run: zig build test-effects
-      - run: zig build test-physics
       - run: zig build test-support
       - run: zig build test-modules
       - run: zig build test-peas
@@ -89,7 +88,6 @@ jobs:
         run: script/record_performance_artifacts.sh
       - run: zig build check-examples
       - run: zig build test-sdl
-      - run: zig build test-physics
       - run: zig build test-scenes
       - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'

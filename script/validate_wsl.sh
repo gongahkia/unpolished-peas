@@ -13,6 +13,5 @@ zig fmt --check build.zig src examples templates
 zig build test
 zig build check-examples
 zig build test-sdl
-zig build test-physics
 zig build test-scenes
 script/test_downstream_fixture.sh

@@ -33,12 +33,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     if (target.result.cpu.arch != .wasm32) addStb(peas);
-    const box2d = b.dependency("box2d", .{ .target = target, .optimize = optimize });
-    if (target.result.cpu.arch == .wasm32) {
-        peas.addIncludePath(box2d.path("include"));
-    } else {
-        addBox2d(peas, box2d);
-    }
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -430,16 +424,6 @@ pub fn build(b: *std.Build) void {
     const run_effects_tests = b.addRunArtifact(effects_tests);
     const effects_test_step = b.step("test-effects", "Test the engine-owned effects subsystem");
     effects_test_step.dependOn(&run_effects_tests.step);
-
-    const box2d_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("fixtures/physics-package/src/main.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
-    }) });
-    const run_box2d_tests = b.addRunArtifact(box2d_tests);
-    const box2d_test_step = b.step("test-physics", "Test the engine-owned Box2D physics subsystem");
-    box2d_test_step.dependOn(&run_box2d_tests.step);
 }
 
 fn addExample(
@@ -465,12 +449,6 @@ fn addExample(
     });
     b.installArtifact(exe);
     return exe;
-}
-
-fn addBox2d(mod: *std.Build.Module, dependency: *std.Build.Dependency) void {
-    mod.link_libc = true;
-    mod.addIncludePath(dependency.path("include"));
-    mod.linkLibrary(dependency.artifact("box2d"));
 }
 
 fn addRunStep(b: *std.Build, name: []const u8, description: []const u8, exe: *std.Build.Step.Compile) void {
