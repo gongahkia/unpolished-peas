@@ -1,33 +1,51 @@
+const std = @import("std");
 const up = @import("unpolished-peas");
-const sdl = @import("unpolished-peas-sdl3");
 
 const State = struct {
     x: i32 = 18,
     velocity: i32 = 1,
 
-    fn update(self: *State, ctx: *sdl.Context) void {
-        if (ctx.down(.left)) self.velocity = -1;
-        if (ctx.down(.right)) self.velocity = 1;
+    fn event(self: *State, input: up.Input) void {
+        if (input.wasPressed(.left)) self.velocity = -1;
+        if (input.wasPressed(.right)) self.velocity = 1;
+    }
+
+    fn update(self: *State) void {
         self.x += self.velocity;
         if (self.x < 0 or self.x > 52) self.velocity = -self.velocity;
     }
 
-    fn draw(self: *State, ctx: *sdl.Context) void {
-        ctx.rect(self.x, 18, 28, 28, up.Color.rgb(255, 198, 74));
-        ctx.text("EXPLICIT", 8, 8, up.Color.white);
+    fn draw(self: State, canvas: *up.Canvas) void {
+        canvas.clear(up.Color.rgb(14, 18, 24));
+        canvas.fillRect(self.x, 18, 28, 28, up.Color.rgb(255, 198, 74));
     }
 };
 
-pub fn main() !void {
+pub fn run() !up.Color {
+    var pixels: [80 * 60]up.Color = undefined;
+    var canvas = up.Canvas{ .allocator = std.heap.page_allocator, .width = 80, .height = 60, .pixels = pixels[0..] };
     var state = State{};
-    try sdl.run(.{
-        .title = "unpolished-peas explicit loop",
-        .width = 80,
-        .height = 60,
-        .scale = 6,
-        .clear_color = up.Color.rgb(14, 18, 24),
-    }, &state, .{
-        .update = State.update,
-        .draw = State.draw,
-    });
+    var input = up.Input{};
+    var frame: u8 = 0;
+    while (frame < 3) : (frame += 1) {
+        input.beginFrame();
+        if (frame == 0) input.set(.right, true);
+        state.event(input);
+        state.update();
+        state.draw(&canvas);
+    }
+    return canvas.get(state.x, 18) orelse error.MissingDrawnPixel;
+}
+
+pub fn main() !void {
+    if ((try run()).a == 0) return error.ExplicitLoopDidNotDraw;
+}
+
+pub export fn explicit_loop_probe() u32 {
+    const color = run() catch return 0;
+    return (@as(u32, color.r) << 24) | (@as(u32, color.g) << 16) | (@as(u32, color.b) << 8) | color.a;
+}
+
+test "explicit loop owns event update draw ordering" {
+    try std.testing.expectEqual(up.Color.rgb(255, 198, 74), try run());
 }
