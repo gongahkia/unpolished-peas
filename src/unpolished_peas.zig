@@ -1,145 +1,11 @@
-pub const api = @import("api.zig");
+const api = @import("api.zig");
+
 pub const core = api.core;
 pub const input = api.input;
 pub const graphics = api.graphics;
 pub const assets = api.assets;
 pub const preview = api.preview;
 pub const testSupport = api.testSupport;
-pub const App = api.App;
-pub const GameContext = api.GameContext;
-pub const GameProtocol = api.GameProtocol;
-pub const GamePhase = api.GamePhase;
-pub const GameFailure = api.GameFailure;
-pub const AudioMixer = api.AudioMixer;
-pub const AudioSample = api.AudioSample;
-pub const Animation = api.Animation;
-pub const ActionBinding = api.ActionBinding;
-pub const Action = api.Action;
-pub const ActionMap = api.ActionMap;
-pub const AnimationFrame = api.AnimationFrame;
-pub const AnimationHandle = api.AnimationHandle;
-pub const AnimationPlayer = api.AnimationPlayer;
-pub const AnimationStateMachine = api.AnimationStateMachine;
-pub const AnimationState = api.AnimationState;
-pub const AnimationTransition = api.AnimationTransition;
-pub const AnimationStateDiagnostic = api.AnimationStateDiagnostic;
-pub const animationState = api.animationState;
-pub const Atlas = api.Atlas;
-pub const AtlasFrame = api.AtlasFrame;
-pub const AtlasFrameHandle = api.AtlasFrameHandle;
-pub const AtlasFrameSpec = api.AtlasFrameSpec;
-pub const AtlasAnimationFrameSpec = api.AtlasAnimationFrameSpec;
-pub const AtlasAnimationSpec = api.AtlasAnimationSpec;
-pub const AudioHandle = api.AudioHandle;
-pub const AssetFile = api.AssetFile;
-pub const AssetStore = api.AssetStore;
-pub const Font = api.Font;
-pub const FontGlyph = api.FontGlyph;
-pub const FontHandle = api.FontHandle;
-pub const FontLoadOptions = api.FontLoadOptions;
-pub const FontGlyphRange = api.FontGlyphRange;
-pub const FontTextDiagnostics = api.FontTextDiagnostics;
-pub const BusHandle = api.BusHandle;
-pub const Camera2D = api.Camera2D;
-pub const CameraBounds = api.CameraBounds;
-pub const CameraCanvas = api.CameraCanvas;
-pub const CameraDirector = api.CameraDirector;
-pub const CameraFollow = api.CameraFollow;
-pub const CameraHandle = api.CameraHandle;
-pub const CameraRig = api.CameraRig;
-pub const CameraShake = api.CameraShake;
-pub const CameraShot = api.CameraShot;
-pub const CameraViewport = api.CameraViewport;
-pub const Canvas = api.Canvas;
-pub const ClipRect = api.ClipRect;
-pub const BlendMode = api.BlendMode;
-pub const Color = api.Color;
-pub const DiagnosticCapture = api.DiagnosticCapture;
-pub const DiagnosticCaptureOptions = api.DiagnosticCaptureOptions;
-pub const diagnostics = api.diagnostics;
-pub const runtime_log = api.runtime_log;
-pub const RuntimeLogEvent = api.RuntimeLogEvent;
-pub const RuntimeLogField = api.RuntimeLogField;
-pub const RuntimeLogLevel = api.RuntimeLogLevel;
-pub const RuntimeLogCategory = api.RuntimeLogCategory;
-pub const DiagnosticEnvironment = api.DiagnosticEnvironment;
-pub const FrameProfiler = api.FrameProfiler;
-pub const ProfileMetrics = api.ProfileMetrics;
-pub const ProfileScope = api.ProfileScope;
-pub const ProfileScopeMetrics = api.ProfileScopeMetrics;
-pub const ProfileSample = api.ProfileSample;
-pub const ProfileTimer = api.ProfileTimer;
-pub const profiler = api.profiler;
-pub const RuntimeMetrics = api.RuntimeMetrics;
-pub const runtimeMetrics = api.runtimeMetrics;
-pub const DrawSpriteOptions = api.DrawSpriteOptions;
-pub const SpriteSampling = api.SpriteSampling;
-pub const Image = api.Image;
-pub const ImageDecodeOptions = api.ImageDecodeOptions;
-pub const ImageHandle = api.ImageHandle;
-pub const Input = api.Input;
-pub const Inspector = api.Inspector;
-pub const InspectorLogger = api.InspectorLogger;
-pub const InspectorPanel = api.InspectorPanel;
-pub const InspectorVisibility = api.InspectorVisibility;
-pub const inspector = api.inspector;
-pub const InspectorAssetPanel = api.InspectorAssetPanel;
-pub const InspectorInputPanel = api.InspectorInputPanel;
-pub const InspectorResource = api.InspectorResource;
-pub const InspectorResourceHandle = api.InspectorResourceHandle;
-pub const InspectorMetricsPanel = api.InspectorMetricsPanel;
-pub const InspectorRendererPanel = api.InspectorRendererPanel;
-pub const InspectorRendererState = api.InspectorRendererState;
-pub const InspectorReloadPanel = api.InspectorReloadPanel;
-pub const InspectorBindingsPanel = api.InspectorBindingsPanel;
-pub const InspectorProfilePanel = api.InspectorProfilePanel;
-pub const InspectorSubsystemPanel = api.InspectorSubsystemPanel;
-pub const InspectorSubsystemState = api.InspectorSubsystemState;
-pub const inspectorPanels = api.inspectorPanels;
-pub const Gamepad = api.Gamepad;
-pub const GamepadButton = api.GamepadButton;
-pub const GamepadAxis = api.GamepadAxis;
-pub const Key = api.Key;
-pub const Music = api.Music;
-pub const InputReplay = api.InputReplay;
-pub const InputReplayButton = api.InputReplayButton;
-pub const InputReplayRecorder = api.InputReplayRecorder;
-pub const parseInputReplay = api.parseInputReplay;
-pub const MusicOptions = api.MusicOptions;
-pub const PlaybackHandle = api.PlaybackHandle;
-pub const Pointer = api.Pointer;
-pub const PointerButton = api.PointerButton;
-pub const Presentation = api.Presentation;
-pub const PresentationMode = api.PresentationMode;
-pub const PresentationRect = api.PresentationRect;
-pub const PrimitiveBatch = api.PrimitiveBatch;
-pub const PrimitiveBatchDraw = api.PrimitiveBatchDraw;
-pub const PrimitiveBatchPoint = api.PrimitiveBatchPoint;
-pub const PrimitiveBatchVertex = api.PrimitiveBatchVertex;
-pub const Rect = api.Rect;
-pub const ReloadEvent = api.ReloadEvent;
-pub const ReloadStatus = api.ReloadStatus;
-pub const RenderCommand = api.RenderCommand;
-pub const RenderCommandBuffer = api.RenderCommandBuffer;
-pub const HeadlessRenderer = api.HeadlessRenderer;
-pub const RendererBackend = api.RendererBackend;
-pub const Sound = api.Sound;
-pub const SoundOptions = api.SoundOptions;
-pub const Sprite = api.Sprite;
-pub const SpriteBatch = api.SpriteBatch;
-pub const SpriteBatchGroup = api.SpriteBatchGroup;
-pub const SpriteBatchDraw = api.SpriteBatchDraw;
-pub const SpriteSourceRect = api.SpriteSourceRect;
-pub const SpriteBatchPoint = api.SpriteBatchPoint;
-pub const SpriteBatchUv = api.SpriteBatchUv;
-pub const SpriteBatchVertex = api.SpriteBatchVertex;
-pub const StepClock = api.StepClock;
-pub const TextHandle = api.TextHandle;
-pub const TextAlignment = api.TextAlignment;
-pub const TextLayoutOptions = api.TextLayoutOptions;
-pub const TextLayout = api.TextLayout;
-pub const layoutText = api.layoutText;
-pub const Vec2 = api.Vec2;
 
 test {
     _ = @import("api.zig");
@@ -169,13 +35,11 @@ test {
     _ = @import("test_support.zig");
 }
 
-test "root module excludes removed systems" {
-    try @import("std").testing.expect(@hasDecl(@This(), "Canvas"));
-    inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+test "root module exposes only stable namespaces" {
+    inline for (.{ "core", "input", "graphics", "assets", "preview", "testSupport" }) |name| {
+        try @import("std").testing.expect(@hasDecl(@This(), name));
+    }
+    inline for (.{ "Canvas", "Color", "Vec2", "Rect", "App", "AssetStore", "TileMap", "PhysicsWorld", "NetMessage", "PixelEffect" }) |name| {
         try @import("std").testing.expect(!@hasDecl(@This(), name));
     }
-    inline for (.{ "world", "TileMap", "TileMapLayer", "TileCollider", "CharacterController", "collision", "Broadphase", "InspectorCollisionPanel" }) |name| {
-        try @import("std").testing.expect(!@hasDecl(@This(), name));
-    }
-    try @import("std").testing.expect(!@hasDecl(@This(), "physics"));
 }

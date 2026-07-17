@@ -22,7 +22,7 @@ fn verify() !void {
     const package = std.fs.path.dirname(bin) orelse return error.InvalidPackageLayout;
     const game = try packageGame(allocator, package);
 
-    var assets = try up.AssetStore.initExecutable(allocator);
+    var assets = try up.assets.AssetStore.initExecutable(allocator);
     defer assets.deinit();
     const image_handle = try assets.loadImage("ball.png");
     const image = try assets.tryImage(image_handle);
@@ -34,7 +34,7 @@ fn verify() !void {
     if (sound.frames.len == 0) return error.InvalidRawAudio;
     const ogg_path = try assets.assetPath(allocator, "tone.ogg");
     defer allocator.free(ogg_path);
-    var music = try up.Music.openOgg(allocator, ogg_path);
+    var music = try up.assets.Music.openOgg(allocator, ogg_path);
     defer music.deinit();
     try rejectNativeContent(allocator, package);
     try probeAppData(allocator, package, game);

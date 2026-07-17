@@ -10,18 +10,18 @@ const Game = struct {
         .height = breakout.height,
         .scale = 5,
         .fixed_hz = 60,
-        .clear_color = up.Color.rgb(10, 14, 26),
+        .clear_color = up.core.Color.rgb(10, 14, 26),
     };
 
     game: breakout.Game = .{},
-    ball: up.ImageHandle,
-    blip: up.AudioHandle,
-    atlas: *up.Atlas,
-    ball_frame: up.AtlasFrameHandle,
+    ball: up.assets.ImageHandle,
+    blip: up.assets.AudioHandle,
+    atlas: *up.assets.Atlas,
+    ball_frame: up.assets.AtlasFrameHandle,
 
     pub fn init(ctx: *sdl.Context) !Game {
         const ball = try ctx.loadImage("ball.png");
-        const atlas = try ctx.allocator.create(up.Atlas);
+        const atlas = try ctx.allocator.create(up.assets.Atlas);
         errdefer ctx.allocator.destroy(atlas);
         atlas.* = try atlas_data.ballAtlas(ctx.allocator, try ctx.assets.tryImage(ball));
         errdefer atlas.deinit();
@@ -47,10 +47,10 @@ const Game = struct {
             const brick = breakout.Game.brickRect(index);
             ctx.rect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), breakout.Game.brickColor(index));
         }
-        ctx.rect(@intFromFloat(self.game.paddle.x), @intFromFloat(self.game.paddle.y), @intFromFloat(self.game.paddle.w), @intFromFloat(self.game.paddle.h), up.Color.rgb(225, 232, 240));
+        ctx.rect(@intFromFloat(self.game.paddle.x), @intFromFloat(self.game.paddle.y), @intFromFloat(self.game.paddle.w), @intFromFloat(self.game.paddle.h), up.core.Color.rgb(225, 232, 240));
         try ctx.spriteAtlas(self.atlas, self.ball_frame, @intFromFloat(self.game.ball.x - 4), @intFromFloat(self.game.ball.y - 4), .{});
-        ctx.text("BREAKOUT", 4, 2, up.Color.white);
-        ctx.text("LEFT RIGHT", 104, 2, up.Color.rgb(180, 200, 230));
+        ctx.text("BREAKOUT", 4, 2, up.core.Color.white);
+        ctx.text("LEFT RIGHT", 104, 2, up.core.Color.rgb(180, 200, 230));
     }
 };
 

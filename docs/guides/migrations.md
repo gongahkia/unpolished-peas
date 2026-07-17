@@ -1,5 +1,9 @@
 # v0.1 migrations
 
+## Root aliases removed
+
+v0.1 exposes only `core`, `input`, `graphics`, `assets`, `preview`, and `testSupport` from `@import("unpolished-peas")`. Qualify retained names through those namespaces: `up.Color` becomes `up.core.Color`, `up.Canvas` becomes `up.graphics.Canvas`, `up.AssetStore` becomes `up.assets.AssetStore`, and `up.Input` becomes `up.input.Input`. Replay hooks move under `up.preview.developer`.
+
 ## Engine-owned extensions removed
 
 v0.1 removes the engine-owned extension manifest, resolver, lock, test matrix, and CI gates. Delete those engine-specific files from a game or integration. Third-party Zig dependencies remain game-owned: declare and resolve them directly in the game's `build.zig.zon` and `build.zig`.

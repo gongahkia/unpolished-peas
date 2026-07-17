@@ -6,7 +6,7 @@ pub fn main() !void {
     defer std.debug.assert(gpa.deinit() == .ok);
     const allocator = gpa.allocator();
 
-    var assets = try up.AssetStore.initExecutable(allocator);
+    var assets = try up.assets.AssetStore.initExecutable(allocator);
     defer assets.deinit();
 
     const image_handle = try assets.loadImage("ball.png");
@@ -21,6 +21,6 @@ pub fn main() !void {
 
     const ogg_path = try assets.assetPath(allocator, "tone.ogg");
     defer allocator.free(ogg_path);
-    var music = try up.Music.openOgg(allocator, ogg_path);
+    var music = try up.assets.Music.openOgg(allocator, ogg_path);
     defer music.deinit();
 }

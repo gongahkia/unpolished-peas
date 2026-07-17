@@ -3,7 +3,7 @@ const up = @import("unpolished-peas");
 
 pub const width = 160;
 pub const height = 96;
-pub const actions = [_]up.Action{
+pub const actions = [_]up.input.Action{
     .{ .name = "left", .binding = .{ .key = .left } },
     .{ .name = "right", .binding = .{ .key = .right } },
     .{ .name = "up", .binding = .{ .key = .up } },
@@ -12,15 +12,15 @@ pub const actions = [_]up.Action{
 };
 
 pub const Event = struct { fired: bool = false };
-pub const Diagnostics = struct { player: up.Vec2, aim: up.Vec2, shots: u32 };
+pub const Diagnostics = struct { player: up.core.Vec2, aim: up.core.Vec2, shots: u32 };
 pub const Game = struct {
-    player: up.Vec2 = .{ .x = 80, .y = 48 },
-    aim: up.Vec2 = .{ .x = 1, .y = 0 },
+    player: up.core.Vec2 = .{ .x = 80, .y = 48 },
+    aim: up.core.Vec2 = .{ .x = 1, .y = 0 },
     shots: u32 = 0,
 
-    pub fn step(self: *Game, input: up.Input, dt: f32) Event {
-        const bindings = up.ActionMap{ .actions = &actions };
-        var move = up.Vec2{ .x = bindings.value(input, "game", "right") - bindings.value(input, "game", "left"), .y = bindings.value(input, "game", "down") - bindings.value(input, "game", "up") };
+    pub fn step(self: *Game, input: up.input.Input, dt: f32) Event {
+        const bindings = up.input.ActionMap{ .actions = &actions };
+        var move = up.core.Vec2{ .x = bindings.value(input, "game", "right") - bindings.value(input, "game", "left"), .y = bindings.value(input, "game", "down") - bindings.value(input, "game", "up") };
         if (move.lenSq() > 1) move = move.normalized();
         if (move.lenSq() > 0) self.aim = move;
         self.player = self.player.add(move.scale(56 * dt));
@@ -37,7 +37,7 @@ pub const Game = struct {
 };
 
 test "top-down action map drives deterministic bounded movement" {
-    var input = up.Input{};
+    var input = up.input.Input{};
     input.set(.right, true);
     input.set(.down, true);
     var a = Game{};
@@ -54,11 +54,11 @@ test "top-down action map drives deterministic bounded movement" {
 }
 
 test "stored top-down replay has a stable state hash" {
-    var replay = try up.parseInputReplay(std.testing.allocator, @embedFile("replays/topdown.upr"));
+    var replay = try up.preview.developer.parseInputReplay(std.testing.allocator, @embedFile("replays/topdown.upr"));
     defer replay.deinit(std.testing.allocator);
     var game = Game{};
     for (replay.frames) |frame| {
-        var input = up.Input{};
+        var input = up.input.Input{};
         up.testSupport.applyTopDownButtons(&input, frame.buttons);
         _ = game.step(input, up.testSupport.frameSeconds(replay.fixed_hz));
     }

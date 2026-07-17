@@ -10,12 +10,12 @@ const Game = struct {
         .width = width,
         .height = height,
         .scale = 4,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
     ball: Ball = .{},
-    sprite: up.ImageHandle,
-    message: up.TextHandle,
+    sprite: up.assets.ImageHandle,
+    message: up.assets.TextHandle,
 
     pub fn init(ctx: *sdl.Context) !Game {
         return .{
@@ -30,17 +30,17 @@ const Game = struct {
 
     pub fn draw(self: *Game, ctx: *sdl.Context) !void {
         try ctx.image(self.sprite, @intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y));
-        ctx.text(try ctx.textAsset(self.message), 4, 4, up.Color.rgb(225, 232, 240));
-        ctx.text("EDIT assets/message.txt", 4, 76, up.Color.rgb(113, 232, 162));
+        ctx.text(try ctx.textAsset(self.message), 4, 4, up.core.Color.rgb(225, 232, 240));
+        ctx.text("EDIT assets/message.txt", 4, 76, up.core.Color.rgb(113, 232, 162));
     }
 };
 
 const Ball = struct {
-    pos: up.Vec2 = .{ .x = 40, .y = 38 },
-    vel: up.Vec2 = .{ .x = 46, .y = 32 },
+    pos: up.core.Vec2 = .{ .x = 40, .y = 38 },
+    vel: up.core.Vec2 = .{ .x = 46, .y = 32 },
 
     fn update(self: *Ball, ctx: *sdl.Context) void {
-        var accel = up.Vec2{};
+        var accel = up.core.Vec2{};
         if (ctx.down(.left)) accel.x -= 120;
         if (ctx.down(.right)) accel.x += 120;
         if (ctx.down(.up)) accel.y -= 120;

@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const up = @import("unpolished-peas").api;
+const up = @import("api.zig");
 const camera_commands = @import("camera_commands.zig");
 const primitive_commands = @import("primitive_commands.zig");
 const c = @cImport({

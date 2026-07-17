@@ -5,7 +5,7 @@ const State = struct {
     x: i32 = 18,
     velocity: i32 = 1,
 
-    fn event(self: *State, input: up.Input) void {
+    fn event(self: *State, input: up.input.Input) void {
         if (input.wasPressed(.left)) self.velocity = -1;
         if (input.wasPressed(.right)) self.velocity = 1;
     }
@@ -15,17 +15,17 @@ const State = struct {
         if (self.x < 0 or self.x > 52) self.velocity = -self.velocity;
     }
 
-    fn draw(self: State, canvas: *up.Canvas) void {
-        canvas.clear(up.Color.rgb(14, 18, 24));
-        canvas.fillRect(self.x, 18, 28, 28, up.Color.rgb(255, 198, 74));
+    fn draw(self: State, canvas: *up.graphics.Canvas) void {
+        canvas.clear(up.core.Color.rgb(14, 18, 24));
+        canvas.fillRect(self.x, 18, 28, 28, up.core.Color.rgb(255, 198, 74));
     }
 };
 
-pub fn run() !up.Color {
-    var pixels: [80 * 60]up.Color = undefined;
-    var canvas = up.Canvas{ .allocator = std.heap.page_allocator, .width = 80, .height = 60, .pixels = pixels[0..] };
+pub fn run() !up.core.Color {
+    var pixels: [80 * 60]up.core.Color = undefined;
+    var canvas = up.graphics.Canvas{ .allocator = std.heap.page_allocator, .width = 80, .height = 60, .pixels = pixels[0..] };
     var state = State{};
-    var input = up.Input{};
+    var input = up.input.Input{};
     var frame: u8 = 0;
     while (frame < 3) : (frame += 1) {
         input.beginFrame();
@@ -47,5 +47,5 @@ pub export fn explicit_loop_probe() u32 {
 }
 
 test "explicit loop owns event update draw ordering" {
-    try std.testing.expectEqual(up.Color.rgb(255, 198, 74), try run());
+    try std.testing.expectEqual(up.core.Color.rgb(255, 198, 74), try run());
 }

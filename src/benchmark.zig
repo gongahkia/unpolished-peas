@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const up = @import("unpolished-peas").api;
+const up = @import("unpolished-peas");
 
 const startup_samples: u32 = 32;
 const frame_samples: u32 = 240;
@@ -133,12 +133,12 @@ fn measure(allocator: std.mem.Allocator) !Metrics {
     const measured_allocator = counter.allocator();
     const startup_ns = try measureStartup(measured_allocator);
 
-    var canvas = try up.Canvas.init(measured_allocator, 160, 90);
+    var canvas = try up.graphics.Canvas.init(measured_allocator, 160, 90);
     defer canvas.deinit();
-    var commands = up.RenderCommandBuffer.init(measured_allocator);
+    var commands = up.graphics.RenderCommandBuffer.init(measured_allocator);
     defer commands.deinit();
     try appendRendererWorkload(&commands);
-    var renderer = up.HeadlessRenderer.init(measured_allocator, &canvas);
+    var renderer = up.graphics.HeadlessRenderer.init(measured_allocator, &canvas);
     defer renderer.deinit();
     try renderer.submit(commands.commands.items);
 
@@ -184,10 +184,10 @@ fn measureStartup(allocator: std.mem.Allocator) !u64 {
     var sample: u32 = 0;
     while (sample < startup_samples) : (sample += 1) {
         timer.reset();
-        var canvas = try up.Canvas.init(allocator, 160, 90);
-        var commands = up.RenderCommandBuffer.init(allocator);
+        var canvas = try up.graphics.Canvas.init(allocator, 160, 90);
+        var commands = up.graphics.RenderCommandBuffer.init(allocator);
         try appendRendererWorkload(&commands);
-        var renderer = up.HeadlessRenderer.init(allocator, &canvas);
+        var renderer = up.graphics.HeadlessRenderer.init(allocator, &canvas);
         try renderer.submit(commands.commands.items);
         std.mem.doNotOptimizeAway(canvas.pixels);
         renderer.deinit();
@@ -198,7 +198,7 @@ fn measureStartup(allocator: std.mem.Allocator) !u64 {
     return total_ns / startup_samples;
 }
 
-fn measureFrame(canvas: *up.Canvas) !u64 {
+fn measureFrame(canvas: *up.graphics.Canvas) !u64 {
     var timer = try std.time.Timer.start();
     var sample: u32 = 0;
     while (sample < frame_samples) : (sample += 1) {
@@ -210,19 +210,19 @@ fn measureFrame(canvas: *up.Canvas) !u64 {
 }
 
 fn measureProfilerFrame() u64 {
-    var profiler = up.FrameProfiler.init(true);
+    var profiler = up.graphics.FrameProfiler.init(true);
     var timer = std.time.Timer.start() catch unreachable;
     var sample: u32 = 0;
     while (sample < frame_samples) : (sample += 1) {
         profiler.beginFrame(sample);
-        inline for ([_]up.ProfileScope{ .callback, .asset, .update, .draw }) |scope| profiler.scope(scope).end();
+        inline for ([_]up.graphics.ProfileScope{ .callback, .asset, .update, .draw }) |scope| profiler.scope(scope).end();
     }
     std.mem.doNotOptimizeAway(profiler.metrics());
     return timer.read() / frame_samples;
 }
 
 fn measureRuntimeMetricsFrame() u64 {
-    var metrics = up.RuntimeMetrics{};
+    var metrics = up.graphics.RuntimeMetrics{};
     var timer = std.time.Timer.start() catch unreachable;
     var sample: u32 = 0;
     while (sample < frame_samples) : (sample += 1) {
@@ -235,7 +235,7 @@ fn measureRuntimeMetricsFrame() u64 {
     return timer.read() / frame_samples;
 }
 
-fn measureRenderer(canvas: *up.Canvas, renderer: *up.HeadlessRenderer, commands: []const up.RenderCommand) !u64 {
+fn measureRenderer(canvas: *up.graphics.Canvas, renderer: *up.graphics.HeadlessRenderer, commands: []const up.graphics.RenderCommand) !u64 {
     var timer = try std.time.Timer.start();
     var sample: u32 = 0;
     while (sample < frame_samples) : (sample += 1) try renderer.submit(commands);
@@ -244,22 +244,22 @@ fn measureRenderer(canvas: *up.Canvas, renderer: *up.HeadlessRenderer, commands:
     return elapsed / frame_samples;
 }
 
-fn drawFrame(canvas: *up.Canvas, sample: u32) void {
-    canvas.clear(up.Color.rgb(14, 18, 24));
+fn drawFrame(canvas: *up.graphics.Canvas, sample: u32) void {
+    canvas.clear(up.core.Color.rgb(14, 18, 24));
     const offset: i32 = @intCast(sample % 48);
-    canvas.fillRect(8 + offset, 8, 48, 24, up.Color.rgb(91, 166, 210));
-    canvas.strokeRect(4, 4, 152, 82, up.Color.rgb(225, 232, 240));
-    canvas.fillCircle(80, 45, 18, up.Color.rgb(255, 198, 74));
-    canvas.fillTriangle(.{ .x = 16, .y = 72 }, .{ .x = 52, .y = 32 }, .{ .x = 88, .y = 72 }, up.Color.rgb(113, 232, 162));
-    canvas.drawText("PERF", 4, 4, up.Color.white);
+    canvas.fillRect(8 + offset, 8, 48, 24, up.core.Color.rgb(91, 166, 210));
+    canvas.strokeRect(4, 4, 152, 82, up.core.Color.rgb(225, 232, 240));
+    canvas.fillCircle(80, 45, 18, up.core.Color.rgb(255, 198, 74));
+    canvas.fillTriangle(.{ .x = 16, .y = 72 }, .{ .x = 52, .y = 32 }, .{ .x = 88, .y = 72 }, up.core.Color.rgb(113, 232, 162));
+    canvas.drawText("PERF", 4, 4, up.core.Color.white);
 }
 
-fn appendRendererWorkload(commands: *up.RenderCommandBuffer) !void {
-    try commands.append(.{ .begin_frame = up.Color.rgb(14, 18, 24) });
+fn appendRendererWorkload(commands: *up.graphics.RenderCommandBuffer) !void {
+    try commands.append(.{ .begin_frame = up.core.Color.rgb(14, 18, 24) });
     try commands.append(.{ .push_clip = .{ .x = 4, .y = 4, .w = 152, .h = 82 } });
-    try commands.append(.{ .rect = .{ .x = 8, .y = 8, .w = 48, .h = 24, .color = up.Color.rgb(91, 166, 210) } });
-    try commands.append(.{ .circle = .{ .x = 80, .y = 45, .radius = 18, .color = up.Color.rgb(255, 198, 74) } });
-    try commands.append(.{ .triangle = .{ .a = .{ .x = 16, .y = 72 }, .b = .{ .x = 52, .y = 32 }, .c = .{ .x = 88, .y = 72 }, .color = up.Color.rgb(113, 232, 162) } });
+    try commands.append(.{ .rect = .{ .x = 8, .y = 8, .w = 48, .h = 24, .color = up.core.Color.rgb(91, 166, 210) } });
+    try commands.append(.{ .circle = .{ .x = 80, .y = 45, .radius = 18, .color = up.core.Color.rgb(255, 198, 74) } });
+    try commands.append(.{ .triangle = .{ .a = .{ .x = 16, .y = 72 }, .b = .{ .x = 52, .y = 32 }, .c = .{ .x = 88, .y = 72 }, .color = up.core.Color.rgb(113, 232, 162) } });
     try commands.append(.pop_clip);
-    try commands.append(.{ .stroke_rect = .{ .x = 4, .y = 4, .w = 152, .h = 82, .color = up.Color.rgb(225, 232, 240) } });
+    try commands.append(.{ .stroke_rect = .{ .x = 4, .y = 4, .w = 152, .h = 82, .color = up.core.Color.rgb(225, 232, 240) } });
 }

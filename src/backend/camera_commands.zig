@@ -1,4 +1,4 @@
-const up = @import("unpolished-peas").api;
+const up = @import("api.zig");
 
 pub const Canvas = struct {
     commands: *up.RenderCommandBuffer,

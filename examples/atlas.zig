@@ -8,15 +8,15 @@ const Game = struct {
         .width = 128,
         .height = 72,
         .scale = 5,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    atlas: *up.Atlas,
-    tiles: [4]up.AtlasFrameHandle,
-    player: up.AnimationPlayer,
+    atlas: *up.assets.Atlas,
+    tiles: [4]up.assets.AtlasFrameHandle,
+    player: up.assets.AnimationPlayer,
 
     pub fn init(ctx: *sdl.Context) !Game {
-        const atlas = try ctx.allocator.create(up.Atlas);
+        const atlas = try ctx.allocator.create(up.assets.Atlas);
         errdefer ctx.allocator.destroy(atlas);
         atlas.* = try atlas_data.ballAtlas(ctx.allocator, try ctx.assets.tryImage(try ctx.loadImage("ball.png")));
         errdefer atlas.deinit();
@@ -29,7 +29,7 @@ const Game = struct {
                 atlas.findFrame("tile_c") orelse return error.MissingAtlasFrame,
                 atlas.findFrame("tile_d") orelse return error.MissingAtlasFrame,
             },
-            .player = up.AnimationPlayer.init(atlas, animation),
+            .player = up.assets.AnimationPlayer.init(atlas, animation),
         };
     }
 
@@ -55,8 +55,8 @@ const Game = struct {
             const y: i32 = @intCast((i / 8) * 8);
             try ctx.spriteAtlas(self.atlas, self.tiles[tile], x, y, .{});
         }
-        try ctx.spriteAtlas(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
-        ctx.text("ATLAS", 72, 8, up.Color.white);
+        try ctx.spriteAtlas(self.atlas, self.player.frame(), 104, 36, .{ .origin = .center, .scale = 3, .flip_x = true, .tint = up.core.Color.rgb(220, 240, 255), .rotation = 0.2, .sampling = .linear });
+        ctx.text("ATLAS", 72, 8, up.core.Color.white);
     }
 };
 
