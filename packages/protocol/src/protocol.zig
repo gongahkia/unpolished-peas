@@ -8,6 +8,7 @@ const unreliable_sequenced = @import("unreliable_sequenced.zig");
 const ack_ranges = @import("ack_ranges.zig");
 const retransmission = @import("retransmission.zig");
 const congestion_controller = @import("congestion_controller.zig");
+const baseline_congestion = @import("baseline_congestion.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -56,6 +57,11 @@ pub const RetransmissionScheduler = retransmission.RetransmissionScheduler;
 pub const RouteId = congestion_controller.RouteId;
 pub const CongestionFeedback = congestion_controller.CongestionFeedback;
 pub const CongestionController = congestion_controller.CongestionController;
+pub const max_baseline_congestion_routes = baseline_congestion.max_baseline_congestion_routes;
+pub const BaselineCongestionError = baseline_congestion.BaselineCongestionError;
+pub const BaselineCongestionConfig = baseline_congestion.BaselineCongestionConfig;
+pub const BaselineCongestionRouteState = baseline_congestion.BaselineCongestionRouteState;
+pub const BaselineCongestionController = baseline_congestion.BaselineCongestionController;
 pub const package_name = "protocol";
 
 comptime {
@@ -76,4 +82,5 @@ test {
     _ = @import("ack_ranges.zig");
     _ = @import("retransmission.zig");
     _ = @import("congestion_controller.zig");
+    _ = @import("baseline_congestion.zig");
 }
