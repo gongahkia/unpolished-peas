@@ -1,5 +1,6 @@
 const std = @import("std");
 const format = @import("capture_format.zig");
+const redaction = @import("capture_redaction.zig");
 
 pub const max_capture_streams: usize = 16;
 
@@ -96,6 +97,12 @@ pub const CaptureRecorder = struct {
             return err;
         };
         self.records +%= 1;
+    }
+
+    pub fn record_redacted(self: *CaptureRecorder, redactor: redaction.CaptureRedactor, record_value: format.CaptureRecord, fields: []const redaction.CaptureRedactionField, scratch: []u8) (CaptureRecorderError || redaction.CaptureRedactionError)!void {
+        if (!self.enabled) return self.record(record_value);
+        const result = try redactor.redact(record_value, fields, scratch);
+        try self.record(result.record);
     }
 
     pub fn stream_count(self: *const CaptureRecorder) usize {
@@ -208,4 +215,19 @@ test "capture recorders reject invalid capacities and oversize records" {
     try std.testing.expectError(error.PayloadTooLarge, recorder.record(.{ .kind = .configuration, .sequence = 0, .timestamp_ns = 0, .payload = "x" }));
     var output: [0]CaptureStream = .{};
     try std.testing.expectError(error.StreamOutputTooSmall, recorder.list_streams(output[0..]));
+}
+
+test "capture recorders encode redacted records without persisting source bytes" {
+    const stream_bytes = format.capture_stream_header_bytes + format.capture_record_header_bytes + 3;
+    var recorder = try CaptureRecorder.init(std.testing.allocator, .{ .enabled = true, .maximum_stream_bytes = stream_bytes });
+    defer recorder.deinit();
+    const redactor = redaction.CaptureRedactor.init(.{});
+    const fields = [_]redaction.CaptureRedactionField{.{ .class = .credential, .offset = 0, .len = 3 }};
+    var scratch: [3]u8 = undefined;
+    try recorder.record_redacted(redactor, .{ .kind = .configuration, .sequence = 0, .timestamp_ns = 0, .payload = "key" }, fields[0..], scratch[0..]);
+    var streams: [1]CaptureStream = undefined;
+    _ = try recorder.list_streams(streams[0..]);
+    const recorded = try format.decode_capture_record(streams[0].bytes[format.capture_stream_header_bytes..]);
+    try std.testing.expect(recorded.flags.redacted);
+    try std.testing.expectEqualSlices(u8, &[_]u8{ 0, 0, 0 }, recorded.payload);
 }
