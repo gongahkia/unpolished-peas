@@ -13,6 +13,7 @@ const socket_poller = @import("socket_poller.zig");
 const hostname_resolution = @import("hostname_resolution.zig");
 const connection_state = @import("connection_state.zig");
 const udp_batch = @import("udp_batch.zig");
+const udp_send_batch = @import("udp_send_batch.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -78,6 +79,12 @@ pub const UdpReceiveBatchError = udp_batch.UdpReceiveBatchError;
 pub const UdpReceiveSlot = udp_batch.UdpReceiveSlot;
 pub const UdpReceiveBatch = udp_batch.UdpReceiveBatch;
 pub const receive_batch = udp_batch.receive_batch;
+pub const max_udp_send_batch = udp_send_batch.max_udp_send_batch;
+pub const UdpSendBatchError = udp_send_batch.UdpSendBatchError;
+pub const UdpSendStatus = udp_send_batch.UdpSendStatus;
+pub const UdpSendSlot = udp_send_batch.UdpSendSlot;
+pub const UdpSendBatch = udp_send_batch.UdpSendBatch;
+pub const send_batch = udp_send_batch.send_batch;
 pub const package_name = "transport";
 
 comptime {
@@ -103,4 +110,5 @@ test {
     _ = @import("hostname_resolution.zig");
     _ = @import("connection_state.zig");
     _ = @import("udp_batch.zig");
+    _ = @import("udp_send_batch.zig");
 }

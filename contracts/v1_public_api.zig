@@ -165,6 +165,12 @@ test "stable public symbols are exact" {
         "UdpReceiveSlot",
         "UdpReceiveBatch",
         "receive_batch",
+        "max_udp_send_batch",
+        "UdpSendBatchError",
+        "UdpSendStatus",
+        "UdpSendSlot",
+        "UdpSendBatch",
+        "send_batch",
         "package_name",
     });
     try expectExactPublicDeclarations(topology, &.{"package_name"});
