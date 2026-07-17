@@ -1,6 +1,10 @@
 const std = @import("std");
+const core = @import("minna-san-core");
+const protocol = @import("minna-san-protocol");
 const topology = @import("minna-san-topology");
 const state = @import("minna-san-state");
+const authoritative_host = @import("authoritative_host.zig");
+const authoritative_client = @import("authoritative_client.zig");
 
 fn host_candidate() topology.NatCandidate {
     return .{ .kind = .host, .transport = .udp, .address = .{ .ipv4 = .{ .octets = .{ 1, 1, 1, 1 }, .port = 1 } }, .priority = 1, .expires_at_ns = 100 };
@@ -42,4 +46,43 @@ test "deterministic P2P partition and migration faults downgrade route prevent s
     _ = try recovery.resubscribe_result(true);
     _ = try recovery.resync_result(true);
     try std.testing.expectEqual(topology.RecoveryState.recovered, recovery.current_state());
+
+    var clock = core.ManualClock.init(0);
+    var host = try authoritative_host.AuthoritativeHost.init(std.testing.allocator, .{ .owner = .dedicated, .clock = clock.clock(), .maximum_peers = 1, .maximum_channels_per_peer = 2, .tick_interval_ns = 1 });
+    defer host.deinit();
+    var client = try authoritative_client.AuthoritativeClient.init(.{ .local_peer = 2, .host_peer = 1, .input_channel = 10, .event_channel = 11, .maximum_input_bytes = 4 });
+    try host.connect_peer(2);
+    try host.open_channel(2, 10, .reliable);
+    try host.open_channel(2, 11, .reliable);
+    try client.connect();
+    _ = try client.begin_handshake();
+    try client.accept_welcome(.{ .client = 2, .host = 1, .version = protocol.v1_version, .input_channel = 10, .event_channel = 11 });
+    const input = try client.send_input("move");
+    const routed = try host.route(2, input.channel, .inbound, input.payload);
+    try std.testing.expectEqual(protocol.ChannelCapability.reliable, routed.capability);
+    try client.consume_authoritative_event(.{ .sequence = 0, .channel = 11, .payload = "state" });
+
+    const SignalingFixture = struct {
+        signals: usize = 0,
+        fn discover(_: *anyopaque, _: topology.DiscoveryRequest, _: []topology.DiscoveryCandidate) topology.PeerDiscoveryError!usize {
+            return 0;
+        }
+        fn rendezvous(_: *anyopaque, _: topology.RendezvousRequest) topology.PeerDiscoveryError!void {}
+        fn signal(context: *anyopaque, _: topology.SignalingMessage) topology.PeerDiscoveryError!void {
+            @as(*@This(), @ptrCast(@alignCast(context))).signals += 1;
+        }
+    };
+    var signaling = SignalingFixture{};
+    var sharded = try topology.ShardedP2PScheduler.init(std.testing.allocator, .{ .maximum_groups = 1, .maximum_participants = 2, .maximum_dispatches_per_pump = 2, .maximum_signal_bytes = 8, .hooks = .{ .context = &signaling, .discover_fn = SignalingFixture.discover, .rendezvous_fn = SignalingFixture.rendezvous, .signal_fn = SignalingFixture.signal } });
+    defer sharded.deinit();
+    try sharded.register(1, .{ .peer = 1, .path = .{ .direct = 1 } });
+    try sharded.register(1, .{ .peer = 2, .path = .{ .relay = .{ .ingress = 2, .egress = 3 } } });
+    try sharded.set_interest(1, 1, true);
+    try sharded.set_interest(1, 2, true);
+    var dispatches: [2]topology.ShardedP2PDispatch = undefined;
+    try std.testing.expectEqual(@as(usize, 2), sharded.schedule(dispatches[0..]));
+    try std.testing.expectEqual(topology.PeerGroupPath{ .direct = 1 }, dispatches[0].path);
+    try std.testing.expectEqual(topology.PeerGroupPath{ .relay = .{ .ingress = 2, .egress = 3 } }, dispatches[1].path);
+    try sharded.signal(1, 1, 2, "offer");
+    try std.testing.expectEqual(@as(usize, 1), signaling.signals);
 }
