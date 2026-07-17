@@ -1669,6 +1669,51 @@ test "C authoritative sessions enforce admission and client capacity" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
 }
 
+test "C topology workflow joins an authoritative session and transitions direct traffic through relay" {
+    const Fixture = struct {
+        fn allocate(_: ?*anyopaque, len: usize) callconv(.c) ?*anyopaque {
+            const bytes = std.testing.allocator.alloc(u8, len) catch return null;
+            return @ptrCast(bytes.ptr);
+        }
+        fn release(_: ?*anyopaque, data: [*c]u8, len: usize) callconv(.c) void {
+            const bytes: [*]u8 = @ptrCast(data);
+            std.testing.allocator.free(bytes[0..len]);
+        }
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 0;
+        }
+    };
+    const sdk_config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport | c_capability_topology,
+        .connection_capacity = 1,
+        .channel_capacity = 0,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    var sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&sdk_config, &sdk));
+    defer minna_san_sdk_destroy(sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(sdk));
+    var connection: ?*CConnection = null;
+    var peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &connection, &peer));
+    var session: ?*CAuthoritativeSession = null;
+    const session_config = CAuthoritativeSessionConfig{ .max_clients = 1, .admission_context = null, .admission = null };
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_create(sdk, &session_config, &session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_join(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_set_route_state(sdk, connection, c_route_relay));
+    var route_state: u32 = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_route_state(sdk, connection, &route_state));
+    try std.testing.expectEqual(c_route_relay, route_state);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_connection_close(sdk, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_leave(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_stop(sdk));
+}
+
 test "C topology configuration borrows TURN credentials without traversal side effects" {
     var config: CTopologyConfig = undefined;
     var username = [_]u8{'u'};
