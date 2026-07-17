@@ -133,6 +133,9 @@ test "stable public symbols are exact" {
         "RetransmissionEntry",
         "RetransmissionPollResult",
         "RetransmissionScheduler",
+        "RouteId",
+        "CongestionFeedback",
+        "CongestionController",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

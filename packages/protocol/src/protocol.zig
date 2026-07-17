@@ -7,6 +7,7 @@ const reliable_ordered = @import("reliable_ordered.zig");
 const unreliable_sequenced = @import("unreliable_sequenced.zig");
 const ack_ranges = @import("ack_ranges.zig");
 const retransmission = @import("retransmission.zig");
+const congestion_controller = @import("congestion_controller.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -52,6 +53,9 @@ pub const RetransmissionConfig = retransmission.RetransmissionConfig;
 pub const RetransmissionEntry = retransmission.RetransmissionEntry;
 pub const RetransmissionPollResult = retransmission.RetransmissionPollResult;
 pub const RetransmissionScheduler = retransmission.RetransmissionScheduler;
+pub const RouteId = congestion_controller.RouteId;
+pub const CongestionFeedback = congestion_controller.CongestionFeedback;
+pub const CongestionController = congestion_controller.CongestionController;
 pub const package_name = "protocol";
 
 comptime {
@@ -71,4 +75,5 @@ test {
     _ = @import("unreliable_sequenced.zig");
     _ = @import("ack_ranges.zig");
     _ = @import("retransmission.zig");
+    _ = @import("congestion_controller.zig");
 }
