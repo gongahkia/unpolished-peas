@@ -20,6 +20,7 @@ const nat_binding_keepalive = @import("nat_binding_keepalive.zig");
 const route_selection = @import("route_selection.zig");
 const route_transition = @import("route_transition.zig");
 const authoritative_session_recovery = @import("authoritative_session_recovery.zig");
+const sharded_p2p_scheduler = @import("sharded_p2p_scheduler.zig");
 
 pub const ShardId = shard_directory.ShardId;
 pub const ShardHealth = shard_directory.ShardHealth;
@@ -147,6 +148,11 @@ pub const RecoveryEvent = authoritative_session_recovery.RecoveryEvent;
 pub const AuthoritativeRecoveryError = authoritative_session_recovery.AuthoritativeRecoveryError;
 pub const AuthoritativeRecoveryConfig = authoritative_session_recovery.AuthoritativeRecoveryConfig;
 pub const AuthoritativeSessionRecovery = authoritative_session_recovery.AuthoritativeSessionRecovery;
+pub const max_sharded_p2p_participants = sharded_p2p_scheduler.max_sharded_p2p_participants;
+pub const ShardedP2PDispatch = sharded_p2p_scheduler.ShardedP2PDispatch;
+pub const ShardedP2PSchedulerError = sharded_p2p_scheduler.ShardedP2PSchedulerError;
+pub const ShardedP2PSchedulerConfig = sharded_p2p_scheduler.ShardedP2PSchedulerConfig;
+pub const ShardedP2PScheduler = sharded_p2p_scheduler.ShardedP2PScheduler;
 
 pub const package_name = "topology";
 
@@ -180,4 +186,5 @@ test {
     _ = @import("route_selection.zig");
     _ = @import("route_transition.zig");
     _ = @import("authoritative_session_recovery.zig");
+    _ = @import("sharded_p2p_scheduler.zig");
 }
