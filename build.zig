@@ -126,15 +126,15 @@ pub fn build(b: *std.Build) void {
     browser_artifacts_test.setCwd(b.path("."));
     const browser_artifacts_test_step = b.step("test-browser-artifacts", "Test browser diagnostics artifacts");
     browser_artifacts_test_step.dependOn(&browser_artifacts_test.step);
-    const web_package_test = b.addSystemCommand(&.{ "script/test_web_package.sh" });
+    const web_package_test = b.addSystemCommand(&.{"script/test_web_package.sh"});
     web_package_test.setCwd(b.path("."));
     const web_package_test_step = b.step("test-web-package", "Validate deterministic browser package layout");
     web_package_test_step.dependOn(&web_package_test.step);
-    const browser_chromium_test = b.addSystemCommand(&.{ "script/test_browser_chromium.sh" });
+    const browser_chromium_test = b.addSystemCommand(&.{"script/test_browser_chromium.sh"});
     browser_chromium_test.setCwd(b.path("."));
     const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
     browser_chromium_test_step.dependOn(&browser_chromium_test.step);
-    const web_proof_game_matrix = b.addSystemCommand(&.{ "script/test_web_proof_game_matrix.sh" });
+    const web_proof_game_matrix = b.addSystemCommand(&.{"script/test_web_proof_game_matrix.sh"});
     web_proof_game_matrix.setCwd(b.path("."));
     const web_proof_game_matrix_step = b.step("test-web-proof-game-matrix", "Package and smoke every proof game in Chromium");
     web_proof_game_matrix_step.dependOn(&web_proof_game_matrix.step);
@@ -306,7 +306,7 @@ pub fn build(b: *std.Build) void {
     desktop_package_matrix.setCwd(b.path("."));
     const desktop_package_matrix_step = b.step("test-desktop-package-matrix", "Package and smoke every proof game for the host desktop platform");
     desktop_package_matrix_step.dependOn(&desktop_package_matrix.step);
-    const cross_target_integrity = b.addSystemCommand(&.{ "script/test_cross_target_integrity.sh" });
+    const cross_target_integrity = b.addSystemCommand(&.{"script/test_cross_target_integrity.sh"});
     cross_target_integrity.setCwd(b.path("."));
     const cross_target_integrity_step = b.step("test-cross-target-integrity", "Verify desktop and Chromium diagnostics and package integrity");
     cross_target_integrity_step.dependOn(&cross_target_integrity.step);
@@ -364,7 +364,7 @@ pub fn build(b: *std.Build) void {
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
     core_downstream_fixture_test_step.dependOn(&core_downstream_fixture.step);
-    const facade_consumer_matrix = b.addSystemCommand(&.{ "script/test_facade_consumer_matrix.sh" });
+    const facade_consumer_matrix = b.addSystemCommand(&.{"script/test_facade_consumer_matrix.sh"});
     facade_consumer_matrix.setCwd(b.path("."));
     const facade_consumer_matrix_step = b.step("test-facade-consumer-matrix", "Build independent desktop and Wasm facade consumers");
     facade_consumer_matrix_step.dependOn(&facade_consumer_matrix.step);
@@ -389,7 +389,7 @@ pub fn build(b: *std.Build) void {
     release_gate.setCwd(b.path("."));
     const release_gate_step = b.step("release-gate", "Run the v1 release validation gate");
     release_gate_step.dependOn(&release_gate.step);
-    const release_candidate_clean_consumer = b.addSystemCommand(&.{ "script/test_release_candidate_clean_consumer.sh" });
+    const release_candidate_clean_consumer = b.addSystemCommand(&.{"script/test_release_candidate_clean_consumer.sh"});
     release_candidate_clean_consumer.setCwd(b.path("."));
     const release_candidate_clean_consumer_step = b.step("test-release-candidate-clean-consumer", "Validate a clean released dependency consumer");
     release_candidate_clean_consumer_step.dependOn(&release_candidate_clean_consumer.step);
@@ -442,7 +442,7 @@ pub fn build(b: *std.Build) void {
     cross_backend_conformance.setEnvironmentVariable("UP_CROSS_BACKEND_CONFORMANCE", "1");
     const cross_backend_conformance_step = b.step("test-renderer-cross-backend", "Compare SDL GPU and OpenGL renderer captures");
     cross_backend_conformance_step.dependOn(&cross_backend_conformance.step);
-    const three_backend_renderer = b.addSystemCommand(&.{ "script/test_renderer_three_backend.sh" });
+    const three_backend_renderer = b.addSystemCommand(&.{"script/test_renderer_three_backend.sh"});
     three_backend_renderer.setCwd(b.path("."));
     const three_backend_renderer_step = b.step("test-renderer-three-backend", "Compare SDL GPU, OpenGL, and WebGL 2 renderer captures");
     three_backend_renderer_step.dependOn(&three_backend_renderer.step);

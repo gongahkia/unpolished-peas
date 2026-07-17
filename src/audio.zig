@@ -9,6 +9,7 @@ const vorbis = @cImport({
 const max_audio_bytes = 128 * 1024 * 1024;
 const max_ogg_channels = 8;
 const stream_buffer_frames = 16 * 1024;
+const stream_decode_frames = 1024;
 
 pub const AudioSample = struct {
     left: f32 = 0,
@@ -69,7 +70,7 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav/loadOgg; 
     }
 };
 
-pub const Music = struct { // owns source bytes allocated by openWav/openOgg; call deinit after all mixer playback stops.
+pub const Music = struct { // owns source bytes allocated by openWav/openOgg; moving the value is safe, but call deinit only after all mixer playback stops.
     allocator: std.mem.Allocator,
     bytes: []u8,
     kind: MusicKind,
@@ -198,8 +199,8 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
             .pan = options.pan,
             .loop = options.loop,
             .kind = switch (music.kind) {
-                .wav => .{ .wav_music = .{ .music = music } },
-                .ogg => .{ .ogg_music = try OggPlayback.init(self.allocator, music) },
+                .wav => |info| .{ .wav_music = .{ .bytes = music.bytes, .info = info } },
+                .ogg => |info| .{ .ogg_music = try OggPlayback.init(self.allocator, music.bytes, info) },
             },
         };
         errdefer playback.deinit(self.allocator);
@@ -439,25 +440,27 @@ const SoundPlayback = struct {
 };
 
 const WavPlayback = struct {
-    music: *const Music,
+    bytes: []const u8,
+    info: WavInfo,
     pos: f64 = 0,
 };
 
 const OggPlayback = struct {
-    music: *const Music,
+    bytes: []const u8,
+    info: OggInfo,
     decoder: *vorbis.stb_vorbis,
     buffer: std.ArrayListUnmanaged(AudioSample) = .{},
     start: usize = 0,
     pos: f64 = 0,
     eof: bool = false,
 
-    fn init(allocator: std.mem.Allocator, music: *const Music) !OggPlayback {
-        const decoder = try openOggDecoder(music.bytes);
+    fn init(allocator: std.mem.Allocator, bytes: []const u8, info: OggInfo) !OggPlayback {
+        const decoder = try openOggDecoder(bytes);
         errdefer vorbis.stb_vorbis_close(decoder);
         var buffer: std.ArrayListUnmanaged(AudioSample) = .{};
         errdefer buffer.deinit(allocator);
         try buffer.ensureTotalCapacity(allocator, stream_buffer_frames);
-        return .{ .music = music, .decoder = decoder, .buffer = buffer };
+        return .{ .bytes = bytes, .info = info, .decoder = decoder, .buffer = buffer };
     }
 
     fn deinit(self: *OggPlayback, allocator: std.mem.Allocator) void {
@@ -483,18 +486,21 @@ const OggPlayback = struct {
 
     fn decodeMore(self: *OggPlayback, allocator: std.mem.Allocator) !bool {
         _ = allocator;
-        const info = self.music.info();
-        var output: [*c][*c]f32 = undefined;
-        const got = vorbis.stb_vorbis_get_frame_float(self.decoder, null, &output);
+        const info = self.info;
+        const available = self.buffer.capacity - self.buffer.items.len;
+        if (available == 0) return error.StreamBufferFull;
+        const requested_frames = @min(stream_decode_frames, available);
+        var interleaved: [stream_decode_frames * max_ogg_channels]f32 = undefined;
+        const sample_count = requested_frames * @as(usize, info.channels);
+        const got = vorbis.stb_vorbis_get_samples_float_interleaved(self.decoder, @intCast(info.channels), &interleaved, @intCast(sample_count));
         if (got <= 0) {
             self.eof = true;
             return false;
         }
         const frame_count: usize = @intCast(got);
-        if (frame_count > self.buffer.capacity - self.buffer.items.len) return error.StreamBufferFull;
         var frame: usize = 0;
         while (frame < frame_count) : (frame += 1) {
-            self.buffer.appendAssumeCapacity(sampleFromVorbis(output, info.channels, frame));
+            self.buffer.appendAssumeCapacity(sampleFromInterleavedVorbis(&interleaved, info.channels, frame));
         }
         return true;
     }
@@ -521,22 +527,18 @@ fn mixSound(playback: *SoundPlayback, controls: *Playback, mixer_rate: u32, loop
 }
 
 fn mixWavMusic(playback: *WavPlayback, controls: *Playback, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) bool {
-    const wav = switch (playback.music.kind) {
-        .wav => |info| info,
-        else => return false,
-    };
-    const step = rateStep(wav.sample_rate, mixer_rate);
+    const step = rateStep(playback.info.sample_rate, mixer_rate);
     var i: usize = 0;
     while (i < out.len) : (i += 1) {
-        const frame_index = normalizePos(&playback.pos, wav.frames, loop) orelse return false;
-        mixAdd(&out[i], wavFrame(playback.music.bytes, wav, frame_index), controls.nextGain(gain), controls.pan);
+        const frame_index = normalizePos(&playback.pos, playback.info.frames, loop) orelse return false;
+        mixAdd(&out[i], wavFrame(playback.bytes, playback.info, frame_index), controls.nextGain(gain), controls.pan);
         playback.pos += step;
     }
     return true;
 }
 
 fn mixOggMusic(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
-    const info = playback.music.info();
+    const info = playback.info;
     const step = rateStep(info.sample_rate, mixer_rate);
     var i: usize = 0;
     while (i < out.len) : (i += 1) {
@@ -579,6 +581,13 @@ fn mixAdd(out: *AudioSample, sample: AudioSample, gain: f32, pan: f32) void {
 fn sampleFromVorbis(output: [*c][*c]f32, channels: u16, frame: usize) AudioSample {
     const left = output[0][frame];
     const right = if (channels == 1) left else output[1][frame];
+    return .{ .left = left, .right = right };
+}
+
+fn sampleFromInterleavedVorbis(samples: []const f32, channels: u16, frame: usize) AudioSample {
+    const offset = frame * @as(usize, channels);
+    const left = samples[offset];
+    const right = if (channels == 1) left else samples[offset + 1];
     return .{ .left = left, .right = right };
 }
 
@@ -889,7 +898,7 @@ test "ogg music streams through mixer" {
         .ogg_music => |ogg| ogg.buffer.capacity,
         else => unreachable,
     };
-    var out: [32]AudioSample = undefined;
+    var out: [8192]AudioSample = undefined;
     try mixer.mix(&out);
     var nonzero = false;
     for (out) |sample| {
@@ -903,6 +912,24 @@ test "ogg music streams through mixer" {
         else => unreachable,
     };
     try std.testing.expectEqual(capacity, final_capacity);
+}
+
+test "ogg playback retains source data when its Music container moves" {
+    var original = try Music.openOgg(std.testing.allocator, "examples/assets/tone.ogg");
+    var mixer = try AudioMixer.init(std.testing.allocator, .{ .sample_rate = original.info().sample_rate });
+    defer mixer.deinit();
+    _ = try mixer.playMusic(&original, .{ .loop = true });
+    var moved = original;
+    original = undefined;
+    defer moved.deinit();
+
+    var out: [8192]AudioSample = undefined;
+    try mixer.mix(&out);
+    var nonzero = false;
+    for (out) |sample| {
+        if (sample.left != 0 or sample.right != 0) nonzero = true;
+    }
+    try std.testing.expect(nonzero);
 }
 
 test "headless mixer stress keeps handles and buses stable" {

@@ -92,7 +92,7 @@ cd ../my-game
 zig build run
 ```
 
-The generated bouncing-square game includes its own build files and a pinned `unpolished-peas` v0.0.3 release archive dependency.
+`v0.0.3` is withdrawn: its public archive does not implement the API emitted by the current starter. `main` is an unreleased integration branch; do not distribute a project generated from it until the next non-draft tag is published. The tag workflow validates that future starters build and run from their exact public archive with empty Zig caches. See [releases and support](docs/guides/releases.md).
 
 ## Positioning
 
@@ -274,7 +274,6 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 
 ## Next Build Targets
 
-1. Publish future tagged package releases and update the starter dependency URL and hash.
-2. Add gamepad support plus named action mapping, rebinding, and deterministic input tests.
-3. Add a shader API with one strict pixel-effect example and headless fallback coverage.
-4. Add project packaging, desktop release artifacts, and web export after desktop assets, audio, camera, and input are stable.
+1. Publish `v0.0.4` only after the release contract validates the generated starter against its exact public tag archive.
+2. Keep the 2D core and its release contract stable before expanding the public engine surface.
+3. Make additional platform support conditional on reproducible runtime and package coverage.

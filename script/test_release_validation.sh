@@ -16,7 +16,13 @@ require() {
 
 require '    tags: ["v*"]' "$workflow"
 require '      - run: script/test_release_validation.sh' "$workflow"
+require '      - if: startsWith(github.ref, '\''refs/tags/'\'')' "$workflow"
+require '        run: script/test_published_tag_consumer.sh' "$workflow"
 require '      - run: zig build release-gate' "$workflow"
+if rg --fixed-strings --quiet -- '--draft' "$workflow"; then
+    printf '%s\n' 'release validation found a draft release command' >&2
+    exit 1
+fi
 test "$(rg --fixed-strings --line-regexp --count '    needs: release-gate' "$workflow")" -eq 3
 for command in \
     'run api-snapshot zig build test-core-api' \

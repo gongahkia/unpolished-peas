@@ -22,7 +22,14 @@ try {
     foreach ($selection in 'unit', 'replay', 'visual') {
         Invoke-Scenario "cli-test-$selection" { zig build peas -- test $selection $project }
     }
-    Invoke-Scenario 'integration-fixture' { zig test (Join-Path $project 'src/main.zig') }
+    Invoke-Scenario 'integration-fixture' {
+        Push-Location $project
+        try {
+            zig build test
+        } finally {
+            Pop-Location
+        }
+    }
     Invoke-Scenario 'inspector' { zig test src/inspector.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c }
     Invoke-Scenario 'profiler' { zig test src/profiler.zig }
     if ($Game -eq 'topdown') {

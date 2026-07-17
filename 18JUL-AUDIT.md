@@ -1,4 +1,4 @@
-# unpolished-peas audit — 16 Jul 2026
+# unpolished-peas audit — 18 Jul 2026
 
 ## Scope
 
@@ -6,11 +6,9 @@ Static repository audit plus current web research. This is not a usability study
 
 ## Verdict
 
-unpolished-peas is a technically serious pre-1.0 Zig 2D engine, not yet an adoption-ready alternative to LÖVE, raylib, or Ebitengine.
+unpolished-peas has a substantial pre-1.0 implementation, but no public adoption proof. Its first release path is not yet trustworthy: the generated project pins `v0.0.3`, while the clean-consumer CI substitutes a local dependency instead of proving the public archive and hash.
 
-The public repository snapshot has 0 stars, 0 forks, 0 open issues, and 290 commits. The `v0.0.3` release is still a draft. These are adoption signals, not an engineering-quality score. [Source](https://github.com/gongahkia/unpolished-peas)
-
-[Inference] The credible niche is: **a Zig-first 2D engine for small desktop games with deterministic replay, visual CI, and excellent local failure diagnostics.** It should not compete on raylib feature breadth.
+The agreed direction replaces the previous broad-engine trajectory: **a small Zig 2D rendering framework for indie and game-jam developers, with a stable desktop and browser contract.** It will compete on a dependable first game, direct rendering performance, and testability—not engine breadth.
 
 ## What is already strong
 
@@ -83,28 +81,37 @@ The main comparison failure is not a missing primitive API. It is absent public 
 
 No open issues does not demonstrate reliability when there are no observed outside users.
 
-## Recommendation strategy
+## Agreed future direction
 
-Position the project narrowly and honestly:
+### Product contract
 
-> A Zig-first 2D engine for small desktop games, built around deterministic testing and first-class local debugging.
+> A Zig-first, high-performance 2D rendering framework for small indie and game-jam games, with one stable `init`/`update`/`draw` contract across native desktop and browsers.
 
-Then earn trust in this order:
+- **Audience:** Zig indie and game-jam developers.
+- **Stable v0.1 core:** lifecycle, presentation, 2D drawing and text, input, audio, assets, fixed timestep, desktop packaging, browser export, and deterministic headless test hooks.
+- **Platforms:** macOS, Linux, Windows, and evergreen Chromium, Firefox, and Safari. Every target is release-grade.
+- **Browser renderers:** WebGL2 and WebGPU both pass the same stable-core rendering, input, audio, and packaging matrix. Platform-specific capabilities stay outside the stable core.
+- **Primary path:** from a released checkout, `zig build new -- game`, `cd game`, then `zig build run` works from empty Zig caches without a local-path substitution or system SDL dependency.
+- **Advanced path:** explicit control flow remains available, but the starter and learning path use the three callbacks.
 
-1. Ship a non-draft `v0.1.0` with copy-paste dependency installation, binaries/packages, compatibility policy, changelog, and known-limitations matrix.
+### Explicit cuts before v0.1
 
-2. Publish three polished complete games with source, downloadable builds, screenshots/GIFs, tests, and postmortems. These must demonstrate real iteration, packaging, input, audio, asset reload, and failure recovery.
+Remove, rather than merely hide, ECS, Box2D physics, immediate-mode UI, effects/shaders/lighting, extension metadata and resolution, particles, and advanced tile/collision systems. Preserve the removal rationale in Git history and do not add root exports or new engine-owned systems without an approved core-contract revision.
 
-3. Rebuild the README around a 60-second first game. Move CI, services, and architecture depth into dedicated docs.
+### Performance and evidence
 
-4. Host searchable docs and examples. Add agent guidance such as `llms.txt`/`AGENTS.md`: supported Zig versions, exact imports, one verified setup path, expected commands, capability matrix, and known limitations.
+- Treat 2D rendering performance as a product requirement. Use versioned, representative workload baselines and tolerances per target; block regressions instead of making cross-engine speed claims.
+- Split CI into a small required PR suite and capability-defined nightly/release matrices. Green status must correspond to a documented platform/core capability.
+- Publish three complete source-available proof games—puzzle, top-down, and platformer—with packages, browser builds, screenshots, deterministic tests, and short postmortems.
 
-5. Establish a public support loop: Discussions or Discord, issue templates, contribution guide, roadmap, release notes, and regular versioned releases.
+### Priority order
 
-6. Measure activation: clone-to-first-frame success, generated-template success, agent-created-project success, external projects, repeat users, and outside contributions.
-
-[Inference] Coding agents and search systems will not recommend unpolished-peas broadly until its public install path, stable release artifacts, searchable authoritative docs, external examples, and capability limits are easier to verify than alternatives.
+1. Repair and prove the released-checkout first win and release gate.
+2. Define and reduce to the stable v0.1 core API; hard-cut excluded systems.
+3. Achieve release-grade native, WebGL2, and WebGPU parity for that core.
+4. Establish rendering performance workloads, baselines, and regression gates.
+5. Publish concise, versioned docs, copyable examples, and the three proof games.
 
 ## Bottom line
 
-[Inference] The engine has a legitimate technical foundation, but virality and high adoption require a narrower message, stable releases, polished game proof, frictionless onboarding, and visible external trust before more engine breadth.
+The adoption path is a tiny, stable, high-performance 2D framework with a proven first command—not a broad engine ecosystem.
