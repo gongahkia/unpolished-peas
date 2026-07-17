@@ -9,6 +9,7 @@ const udp_readiness = @import("udp_readiness.zig");
 const tcp_connection = @import("tcp_connection.zig");
 const tcp_listener = @import("tcp_listener.zig");
 const tcp_framed = @import("tcp_framed.zig");
+const socket_poller = @import("socket_poller.zig");
 
 pub const SocketKind = socket_backend.SocketKind;
 pub const SocketPlatform = socket_backend.SocketPlatform;
@@ -51,6 +52,15 @@ pub const tcp_frame_header_bytes = tcp_framed.tcp_frame_header_bytes;
 pub const TcpFrameError = tcp_framed.TcpFrameError;
 pub const TcpFrameReader = tcp_framed.TcpFrameReader;
 pub const TcpFrameWriter = tcp_framed.TcpFrameWriter;
+pub const max_socket_poll_targets = socket_poller.max_socket_poll_targets;
+pub const SocketPollError = socket_poller.SocketPollError;
+pub const SocketPollTarget = socket_poller.SocketPollTarget;
+pub const SocketPollInterest = socket_poller.SocketPollInterest;
+pub const SocketPollFailure = socket_poller.SocketPollFailure;
+pub const SocketPollEvent = socket_poller.SocketPollEvent;
+pub const SocketPollRegistration = socket_poller.SocketPollRegistration;
+pub const SocketPollResult = socket_poller.SocketPollResult;
+pub const SocketPoller = socket_poller.SocketPoller;
 pub const package_name = "transport";
 
 comptime {
@@ -72,4 +82,5 @@ test {
     _ = @import("tcp_connection.zig");
     _ = @import("tcp_listener.zig");
     _ = @import("tcp_framed.zig");
+    _ = @import("socket_poller.zig");
 }
