@@ -229,6 +229,11 @@ test "stable public symbols are exact" {
         "UnprotectedPacket",
         "PacketProtector",
         "packet_nonce",
+        "max_replay_window_packets",
+        "ReplayWindowError",
+        "ReplayClassification",
+        "ReplayWindowConfig",
+        "ReplayWindow",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{

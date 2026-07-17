@@ -1,5 +1,6 @@
 const std = @import("std");
 const packet = @import("packet_envelope.zig");
+const replay = @import("replay_window.zig");
 
 const aead = std.crypto.aead.chacha_poly.ChaCha20Poly1305;
 
@@ -8,7 +9,7 @@ pub const packet_protection_nonce_prefix_bytes: usize = aead.nonce_length - @siz
 pub const packet_protection_nonce_bytes: usize = aead.nonce_length;
 pub const packet_protection_tag_bytes: usize = aead.tag_length;
 pub const packet_protection_frame_header_bytes: usize = @sizeOf(u64);
-pub const PacketProtectionError = error{ PayloadTooLarge, OutputTooSmall, MalformedFrame, SequenceExhausted, AuthenticationFailed };
+pub const PacketProtectionError = error{ PayloadTooLarge, OutputTooSmall, MalformedFrame, SequenceExhausted, AuthenticationFailed, DuplicatePacket, TooOldPacket };
 
 pub const PacketProtectionKey = struct {
     key: [packet_protection_key_bytes]u8,
@@ -71,6 +72,21 @@ pub const PacketProtector = struct {
         };
         return .{ .sequence = sequence, .payload = output[0..payload_len] };
     }
+
+    pub fn open_with_replay(self: PacketProtector, window: *replay.ReplayWindow, input: []const u8, output: []u8) PacketProtectionError!UnprotectedPacket {
+        const opened = try self.open(input, output);
+        return switch (window.observe(opened.sequence)) {
+            .accepted => opened,
+            .duplicate => {
+                std.crypto.secureZero(u8, output[0..opened.payload.len]);
+                return error.DuplicatePacket;
+            },
+            .too_old => {
+                std.crypto.secureZero(u8, output[0..opened.payload.len]);
+                return error.TooOldPacket;
+            },
+        };
+    }
 };
 
 pub fn packet_nonce(prefix: [packet_protection_nonce_prefix_bytes]u8, sequence: u64) [packet_protection_nonce_bytes]u8 {
@@ -116,4 +132,23 @@ test "packet protection rejects tampered malformed and exhausted frames" {
     sender.exhausted = false;
     _ = try sender.seal("x", storage[0..]);
     try std.testing.expectError(error.SequenceExhausted, sender.seal("x", storage[0..]));
+}
+
+test "packet protection updates replay state only after authentication" {
+    const key = PacketProtectionKey.init([_]u8{8} ** packet_protection_key_bytes, [_]u8{6} ** packet_protection_nonce_prefix_bytes);
+    var sender = PacketProtector.init(key);
+    defer sender.deinit();
+    var receiver = PacketProtector.init(key);
+    defer receiver.deinit();
+    var window = try replay.ReplayWindow.init(.{});
+    var storage: [packet_protection_frame_header_bytes + 1 + packet_protection_tag_bytes]u8 = undefined;
+    const frame = try sender.seal("x", storage[0..]);
+    const original = storage;
+    storage[packet_protection_frame_header_bytes] +%= 1;
+    var output = [_]u8{9};
+    try std.testing.expectError(error.AuthenticationFailed, receiver.open_with_replay(&window, frame, output[0..]));
+    storage = original;
+    _ = try receiver.open_with_replay(&window, frame, output[0..]);
+    try std.testing.expectError(error.DuplicatePacket, receiver.open_with_replay(&window, frame, output[0..]));
+    try std.testing.expectEqual(@as(u8, 0), output[0]);
 }
