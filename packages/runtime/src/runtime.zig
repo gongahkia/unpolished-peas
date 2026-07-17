@@ -191,6 +191,7 @@ test {
     _ = @import("capture_recorder.zig");
     _ = @import("capture_redaction.zig");
     _ = @import("capture_replay.zig");
+    _ = @import("capture_replay_integration.zig");
     _ = @import("poll_runtime.zig");
     _ = @import("managed_runtime.zig");
     _ = @import("authoritative_host.zig");
