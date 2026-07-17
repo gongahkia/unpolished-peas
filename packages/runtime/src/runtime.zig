@@ -10,6 +10,7 @@ const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const managed_runtime = @import("managed_runtime.zig");
 const authoritative_host = @import("authoritative_host.zig");
+const authoritative_client = @import("authoritative_client.zig");
 const version = @import("version.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -44,6 +45,14 @@ pub const AuthoritativeHostConfig = authoritative_host.AuthoritativeHostConfig;
 pub const HostTick = authoritative_host.HostTick;
 pub const RoutedHostMessage = authoritative_host.RoutedHostMessage;
 pub const AuthoritativeHost = authoritative_host.AuthoritativeHost;
+pub const AuthoritativeClientState = authoritative_client.AuthoritativeClientState;
+pub const AuthoritativeClientError = authoritative_client.AuthoritativeClientError;
+pub const AuthoritativeClientConfig = authoritative_client.AuthoritativeClientConfig;
+pub const ClientHello = authoritative_client.ClientHello;
+pub const HostWelcome = authoritative_client.HostWelcome;
+pub const ClientInput = authoritative_client.ClientInput;
+pub const AuthoritativeEvent = authoritative_client.AuthoritativeEvent;
+pub const AuthoritativeClient = authoritative_client.AuthoritativeClient;
 pub const SdkVersion = version.SdkVersion;
 pub const runtime_version = version.runtime_version;
 pub const abi_version = version.abi_version;
@@ -71,5 +80,6 @@ test {
     _ = @import("poll_runtime.zig");
     _ = @import("managed_runtime.zig");
     _ = @import("authoritative_host.zig");
+    _ = @import("authoritative_client.zig");
     _ = @import("version.zig");
 }
