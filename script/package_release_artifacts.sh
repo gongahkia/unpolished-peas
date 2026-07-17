@@ -12,6 +12,7 @@ sh script/package_static_c_sdk.sh "$output/c-sdk-static-$version"
 sh script/package_shared_c_sdk.sh "$output/c-sdk-shared-$version"
 sh script/package_c_sdk_headers.sh "$output/c-sdk-headers-$version"
 sh script/package_zig_sdk.sh "$output/minna-san-zig-sdk-$version.tar.gz"
+sh script/emit_release_provenance.sh "$output"
 (
     cd "$output"
     find . -type f ! -name SHA256SUMS -print | sed 's#^./##' | LC_ALL=C sort | while IFS= read -r file; do shasum -a 256 "$file"; done > SHA256SUMS
