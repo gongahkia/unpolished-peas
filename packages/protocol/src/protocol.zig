@@ -11,6 +11,7 @@ const congestion_controller = @import("congestion_controller.zig");
 const baseline_congestion = @import("baseline_congestion.zig");
 const packet_pacing = @import("packet_pacing.zig");
 const bandwidth_caps = @import("bandwidth_caps.zig");
+const backpressure = @import("backpressure.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -76,6 +77,14 @@ pub const TrafficClass = bandwidth_caps.TrafficClass;
 pub const BandwidthDirectionConfig = bandwidth_caps.BandwidthDirectionConfig;
 pub const BandwidthCapConfig = bandwidth_caps.BandwidthCapConfig;
 pub const BandwidthLimiter = bandwidth_caps.BandwidthLimiter;
+pub const max_backpressure_targets = backpressure.max_backpressure_targets;
+pub const BackpressureError = backpressure.BackpressureError;
+pub const BackpressureTarget = backpressure.BackpressureTarget;
+pub const BackpressureState = backpressure.BackpressureState;
+pub const BackpressureConfig = backpressure.BackpressureConfig;
+pub const BackpressureSignal = backpressure.BackpressureSignal;
+pub const BackpressureCallback = backpressure.BackpressureCallback;
+pub const BackpressureController = backpressure.BackpressureController;
 pub const package_name = "protocol";
 
 comptime {
@@ -99,4 +108,5 @@ test {
     _ = @import("baseline_congestion.zig");
     _ = @import("packet_pacing.zig");
     _ = @import("bandwidth_caps.zig");
+    _ = @import("backpressure.zig");
 }

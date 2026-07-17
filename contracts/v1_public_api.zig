@@ -153,6 +153,14 @@ test "stable public symbols are exact" {
         "BandwidthDirectionConfig",
         "BandwidthCapConfig",
         "BandwidthLimiter",
+        "max_backpressure_targets",
+        "BackpressureError",
+        "BackpressureTarget",
+        "BackpressureState",
+        "BackpressureConfig",
+        "BackpressureSignal",
+        "BackpressureCallback",
+        "BackpressureController",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
