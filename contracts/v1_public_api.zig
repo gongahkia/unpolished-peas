@@ -146,6 +146,13 @@ test "stable public symbols are exact" {
         "PacingConfig",
         "PacingReservation",
         "PacketPacer",
+        "max_bandwidth_routes",
+        "BandwidthCapError",
+        "BandwidthDirection",
+        "TrafficClass",
+        "BandwidthDirectionConfig",
+        "BandwidthCapConfig",
+        "BandwidthLimiter",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
