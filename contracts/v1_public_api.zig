@@ -187,6 +187,15 @@ test "stable public symbols are exact" {
         "MtuBudgetOffer",
         "EffectivePayloadBudget",
         "PayloadBudgetManager",
+        "max_message_fragments",
+        "message_fragment_header_bytes",
+        "fragment_authentication_tag_bytes",
+        "MessageFragmentAuthError",
+        "MessageFragmentError",
+        "FragmentAuthenticator",
+        "MessageFragment",
+        "MessageFragmenter",
+        "derive_message_id",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
