@@ -1,6 +1,6 @@
 .{
     .name = .unpolished_peas,
-    .version = "0.0.3",
+    .version = "0.0.4",
     .fingerprint = 0x9801f8ecd9290536, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
     .dependencies = .{

@@ -32,8 +32,7 @@ case "$(uname -s)" in
         (
             cd "$consumer"
             ZIG_GLOBAL_CACHE_DIR="$cache/global" ZIG_LOCAL_CACHE_DIR="$cache/local" \
-                xvfb-run -a env SDL_VIDEODRIVER=x11 LIBGL_ALWAYS_SOFTWARE=1 SDL_AUDIODRIVER=dummy \
-                zig build run -- --frames 2
+                "$repo/script/run_linux_software_gl.sh" zig build run -- --frames 2
         )
         ;;
     Darwin)

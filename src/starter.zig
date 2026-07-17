@@ -1,6 +1,9 @@
 const std = @import("std");
 const tools = @import("unpolished-peas-tools");
 
+const release_tag = "v0.0.4";
+const release_url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/" ++ release_tag ++ ".tar.gz";
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
@@ -18,6 +21,12 @@ pub fn main() !void {
 }
 
 pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, destination: []const u8) !void {
+    const dependency_hash = try resolveReleaseHash(allocator);
+    defer allocator.free(dependency_hash);
+    try createProjectWithDependencyHash(allocator, template_root, destination, dependency_hash);
+}
+
+fn createProjectWithDependencyHash(allocator: std.mem.Allocator, template_root: []const u8, destination: []const u8, dependency_hash: []const u8) !void {
     try validateDestination(destination);
     if (std.fs.cwd().access(destination, .{})) |_| return error.DestinationExists else |err| switch (err) {
         error.FileNotFound => {},
@@ -44,8 +53,8 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
         \\    .minimum_zig_version = "0.15.2",
         \\    .dependencies = .{{
         \\        .unpolished_peas = .{{
-        \\            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.3.tar.gz",
-        \\            .hash = "unpolished_peas-0.0.3-NgUp2fkUGwBwIM0m4MCAABnpI0Cf3baA7TFc_SJ71n1S",
+        \\            .url = "{s}",
+        \\            .hash = "{s}",
         \\        }},
         \\    }},
         \\    .paths = .{{
@@ -57,9 +66,37 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
         \\    }},
         \\}}
         \\ 
-    , .{});
+    , .{ release_url, dependency_hash });
     defer allocator.free(manifest);
     try output.writeFile(.{ .sub_path = "build.zig.zon", .data = manifest });
+}
+
+fn resolveReleaseHash(allocator: std.mem.Allocator) ![]u8 {
+    if (std.process.getEnvVarOwned(allocator, "UP_STARTER_DEPENDENCY_HASH") catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => return err,
+    }) |override| {
+        if (!std.mem.startsWith(u8, override, "unpolished_peas-")) {
+            allocator.free(override);
+            return error.InvalidDependencyHash;
+        }
+        return override;
+    }
+
+    const result = try std.process.Child.run(.{
+        .allocator = allocator,
+        .argv = &.{ "zig", "fetch", release_url },
+        .max_output_bytes = 4096,
+    });
+    defer allocator.free(result.stderr);
+    defer allocator.free(result.stdout);
+    switch (result.term) {
+        .Exited => |code| if (code != 0) return error.DependencyFetchFailed,
+        else => return error.DependencyFetchFailed,
+    }
+    const hash = std.mem.trim(u8, result.stdout, " \t\r\n");
+    if (!std.mem.startsWith(u8, hash, "unpolished_peas-")) return error.InvalidDependencyHash;
+    return allocator.dupe(u8, hash);
 }
 
 pub fn validateDestination(destination: []const u8) !void {
@@ -82,7 +119,7 @@ test "starter creates a structured project and rejects invalid destinations" {
     const template_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "templates/bounce");
     defer std.testing.allocator.free(template_root);
 
-    try createProject(std.testing.allocator, template_root, destination);
+    try createProjectWithDependencyHash(std.testing.allocator, template_root, destination, "unpolished_peas-0.0.4-test");
     var project = try std.fs.openDirAbsolute(destination, .{});
     defer project.close();
     try project.access("build.zig", .{});
@@ -98,10 +135,12 @@ test "starter creates a structured project and rejects invalid destinations" {
     try std.testing.expect(std.mem.indexOf(u8, source, "unpolished-peas").? < std.mem.indexOf(u8, source, "up.Color").?);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
     defer std.testing.allocator.free(manifest);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, release_url) != null);
+    try std.testing.expect(std.mem.indexOf(u8, manifest, "unpolished_peas-0.0.4-test") != null);
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"assets\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"maps\"") == null);
     const check_issue = try tools.checkProject(std.testing.allocator, destination);
     try std.testing.expect(check_issue == null);
-    try std.testing.expectError(error.DestinationExists, createProject(std.testing.allocator, template_root, destination));
-    try std.testing.expectError(error.InvalidDestination, createProject(std.testing.allocator, template_root, ""));
+    try std.testing.expectError(error.DestinationExists, createProjectWithDependencyHash(std.testing.allocator, template_root, destination, "unpolished_peas-0.0.4-test"));
+    try std.testing.expectError(error.InvalidDestination, createProjectWithDependencyHash(std.testing.allocator, template_root, "", "unpolished_peas-0.0.4-test"));
 }
