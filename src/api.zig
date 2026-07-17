@@ -78,7 +78,6 @@ pub const preview = @import("preview.zig");
 pub const testSupport = @import("test_support.zig");
 
 pub const effects = @import("subsystems/effects/effects.zig");
-pub const ecs = @import("subsystems/ecs.zig");
 pub const Ui = @import("subsystems/ui.zig").ui(@This());
 pub const ui = Ui;
 pub const Physics = @import("subsystems/physics.zig").physics(@This());
@@ -96,10 +95,6 @@ pub const PixelEffect = effects.PixelEffect;
 pub const PixelEffectParameters = effects.PixelEffectParameters;
 pub const PostProcessChain = effects.PostProcessChain;
 pub const lighting = effects.lighting;
-pub const EcsEntity = ecs.Entity;
-pub const EcsWorld = ecs.World;
-pub const EcsCommands = ecs.Commands;
-pub const ComponentStore = ecs.ComponentStore;
 pub const UiFrame = Ui.Frame;
 pub const UiId = Ui.Id;
 pub const UiLayout = Ui.Layout;
@@ -110,37 +105,12 @@ pub const UiSurface = Ui.Surface;
 pub const PhysicsWorld = Physics.World;
 pub const PhysicsConfig = Physics.Config;
 pub const PhysicsBody = Physics.BodyHandle;
-pub const EcsRuntime = struct {
-    world: EcsWorld,
-    commands: EcsCommands,
-
-    pub fn init(allocator: std.mem.Allocator) EcsRuntime {
-        return .{ .world = EcsWorld.init(allocator), .commands = EcsCommands.init(allocator) };
-    }
-
-    pub fn deinit(self: *EcsRuntime) void {
-        self.commands.deinit();
-        self.world.deinit();
-        self.* = undefined;
-    }
-
-    pub fn beginFrame(self: *EcsRuntime) *EcsCommands {
-        return &self.commands;
-    }
-
-    pub fn endFrame(self: *EcsRuntime) !void {
-        try self.commands.apply(&self.world);
-    }
-};
 
 test "public API includes first-class engine subsystems" {
     try std.testing.expect(@hasDecl(@This(), "effects"));
-    try std.testing.expect(@hasDecl(@This(), "ecs"));
     try std.testing.expect(@hasDecl(@This(), "ui"));
     try std.testing.expect(@hasDecl(@This(), "physics"));
     try std.testing.expect(@hasDecl(@This(), "PixelEffect"));
-    try std.testing.expect(@hasDecl(@This(), "EcsWorld"));
-    try std.testing.expect(@hasDecl(@This(), "EcsRuntime"));
     try std.testing.expect(@hasDecl(@This(), "UiFrame"));
     try std.testing.expect(@hasDecl(@This(), "PhysicsWorld"));
     try std.testing.expect(!@hasDecl(@This(), "NetMessage"));
@@ -152,15 +122,6 @@ test "public API includes first-class engine subsystems" {
     try std.testing.expect(!@hasDecl(@This(), "netCodec"));
     try std.testing.expect(!@hasDecl(@This(), "InspectorNetworkPanel"));
     try std.testing.expect(!@hasDecl(graphics, "InspectorNetworkPanel"));
-}
-
-test "ECS runtime owns frame commands without becoming mandatory" {
-    var runtime = EcsRuntime.init(std.testing.allocator);
-    defer runtime.deinit();
-    const entity = try runtime.world.create();
-    try runtime.beginFrame().destroy(entity);
-    try runtime.endFrame();
-    try std.testing.expectError(error.StaleEntity, runtime.world.validate(entity));
 }
 pub const App = @import("app.zig");
 pub const GameContext = @import("app.zig").GameContext;

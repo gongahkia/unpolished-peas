@@ -35,8 +35,8 @@ Desktop `sdl.Config.renderer` selects `auto`, `sdl_gpu`, or `opengl`; `--rendere
 
 The `unpolished-peas` core module has no SDL3 dependency. Import `unpolished-peas-sdl3` separately only for the desktop runtime.
 
-Game code imports `unpolished-peas` and `unpolished-peas-sdl3`. Effects, ECS, UI, and Box2D physics are engine-owned APIs exposed as `up.effects`, `up.ecs`, `up.ui`, and `up.physics`; their direct root aliases cover the common types. `zig build test-modules` checks the core, tooling, and fixture graph.
-`up.EcsWorld` provides generation-checked entities, sparse stores, commands, and deterministic queries. `up.PhysicsWorld` provides explicit world, body, shape, joint, contact, debug-command, step, and deinit APIs. `World.appendDebug` emits the same core render commands for headless and GPU presentation.
+Game code imports `unpolished-peas` and `unpolished-peas-sdl3`. `zig build test-modules` checks the core, tooling, and fixture graph.
+`up.PhysicsWorld` provides explicit world, body, shape, joint, contact, debug-command, step, and deinit APIs. `World.appendDebug` emits the same core render commands for headless and GPU presentation.
 The SDL runtime wires `InspectorAssetPanel`, `InspectorInputPanel`, and `InspectorMetricsPanel`; disabled developer tools retain no panels and execute no inspector rendering. Collision and physics panels remain application-owned.
 
 `Context.text` uses the built-in 5×7 debug font. `AssetStore.loadFont(path, options)` loads TrueType/OpenType fonts into a GPU atlas and detects AngelCode `.fnt` descriptors; configure `FontLoadOptions.ranges` with one or more Unicode ranges. `Context.font` uses strict UTF-8 replacement and the configured fallback glyph, while `Font.textDiagnostics` exposes invalid UTF-8 and missing/fallback glyph counts. `layoutText` shares the same deterministic UTF-8 decoder.

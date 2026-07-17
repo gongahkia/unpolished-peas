@@ -853,10 +853,6 @@ pub const Context = struct {
         try self.renderer_diagnostics.requireEffects();
     }
 
-    pub fn ecsRuntime(self: *const Context) up.EcsRuntime {
-        return up.EcsRuntime.init(self.allocator);
-    }
-
     pub fn uiFrame(self: *Context, state: *up.UiState, layout: up.UiLayout) up.UiFrame {
         return up.ui.Frame.begin(state, self.input, .{ .hud = self.canvas }, layout);
     }
