@@ -5,6 +5,7 @@ const source_documents = [_][]const u8{
     "index.md",
     "guides/quickstart.md",
     "guides/testing.md",
+    "guides/capabilities.md",
     "guides/releases.md",
 };
 
