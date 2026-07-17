@@ -465,6 +465,14 @@ test "stable public symbols are exact" {
         "TurnRelayDatagram",
         "TurnRelayIo",
         "TurnRelayTransport",
+        "ConnectivityRole",
+        "CandidatePairState",
+        "CandidatePair",
+        "ConnectivitySignal",
+        "ConnectivitySignaling",
+        "DirectConnectivityError",
+        "DirectConnectivityConfig",
+        "DirectConnectivity",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
