@@ -1,4 +1,4 @@
-const core = @import("unpolished-peas");
+const core = @import("unpolished-peas").core;
 
 pub fn main() !void {
     var clock = core.StepClock.init(60);

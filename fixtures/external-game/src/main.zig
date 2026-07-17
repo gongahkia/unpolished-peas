@@ -12,12 +12,12 @@ const Game = struct {
         .scale = 4,
         .fixed_hz = 60,
         .max_frames = 2,
-        .clear_color = up.Color.rgb(12, 18, 28),
+        .clear_color = up.core.Color.rgb(12, 18, 28),
     };
 
-    position: up.Vec2 = .{ .x = 24, .y = 18 },
-    sprite: up.Image,
-    blip: up.Sound,
+    position: up.core.Vec2 = .{ .x = 24, .y = 18 },
+    sprite: up.assets.Image,
+    blip: up.assets.Sound,
 
     pub fn init(ctx: *sdl.Context) !Game {
         return initResources(ctx.allocator);
@@ -34,17 +34,17 @@ const Game = struct {
 
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
         ctx.canvas.drawImage(self.sprite, @intFromFloat(self.position.x), @intFromFloat(self.position.y));
-        ctx.text("ARROWS + SPACE", 2, 2, up.Color.white);
+        ctx.text("ARROWS + SPACE", 2, 2, up.core.Color.white);
     }
 
     fn initResources(allocator: std.mem.Allocator) !Game {
-        const pixels = try allocator.alloc(up.Color, 4);
+        const pixels = try allocator.alloc(up.core.Color, 4);
         errdefer allocator.free(pixels);
-        pixels[0] = up.Color.rgb(255, 198, 74);
-        pixels[1] = up.Color.rgb(113, 232, 162);
-        pixels[2] = up.Color.rgb(113, 232, 162);
-        pixels[3] = up.Color.rgb(255, 198, 74);
-        const frames = try allocator.alloc(up.AudioSample, 2);
+        pixels[0] = up.core.Color.rgb(255, 198, 74);
+        pixels[1] = up.core.Color.rgb(113, 232, 162);
+        pixels[2] = up.core.Color.rgb(113, 232, 162);
+        pixels[3] = up.core.Color.rgb(255, 198, 74);
+        const frames = try allocator.alloc(up.assets.AudioSample, 2);
         errdefer allocator.free(frames);
         frames[0] = .{ .left = 0.2, .right = 0.2 };
         frames[1] = .{ .left = -0.2, .right = -0.2 };
@@ -54,7 +54,7 @@ const Game = struct {
         };
     }
 
-    fn advance(self: *Game, input: up.Input, dt: f32) bool {
+    fn advance(self: *Game, input: up.input.Input, dt: f32) bool {
         const speed: f32 = 40;
         if (input.isDown(.left)) self.position.x -= speed * dt;
         if (input.isDown(.right)) self.position.x += speed * dt;
@@ -74,7 +74,7 @@ test "external fixture advances its sprite and triggers audio from input" {
         game.sprite.deinit();
         game.blip.deinit();
     }
-    var input = up.Input{};
+    var input = up.input.Input{};
     input.set(.right, true);
     input.set(.action, true);
     try std.testing.expect(game.advance(input, 0.5));

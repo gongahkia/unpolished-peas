@@ -1,5 +1,5 @@
 const std = @import("std");
-const up = @import("unpolished-peas").api;
+const up = @import("api.zig");
 const RenderRect = @TypeOf(@as(up.RenderCommand, .{ .rect = undefined }).rect);
 const RenderCircle = @TypeOf(@as(up.RenderCommand, .{ .circle = undefined }).circle);
 const RenderLine = @TypeOf(@as(up.RenderCommand, .{ .line = undefined }).line);

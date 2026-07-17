@@ -7,14 +7,14 @@ pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
-    var assets = try up.AssetStore.initExecutable(allocator);
+    var assets = try up.assets.AssetStore.initExecutable(allocator);
     defer assets.deinit();
     const ball = try assets.loadImage("ball.png");
     const sound = try assets.loadSound("blip.wav");
-    var audio = try up.AudioMixer.init(allocator, .{});
+    var audio = try up.assets.AudioMixer.init(allocator, .{});
     defer audio.deinit();
-    var samples: [128]up.AudioSample = undefined;
-    var canvas = try up.Canvas.init(allocator, breakout.width, breakout.height);
+    var samples: [128]up.assets.AudioSample = undefined;
+    var canvas = try up.graphics.Canvas.init(allocator, breakout.width, breakout.height);
     defer canvas.deinit();
     var game = breakout.Game{};
     var atlas = try atlas_data.ballAtlas(allocator, try assets.tryImage(ball));

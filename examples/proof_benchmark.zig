@@ -77,12 +77,12 @@ const CountingAllocator = struct {
 };
 
 const BounceRuntime = struct {
-    canvas: up.Canvas = undefined,
-    clock: up.StepClock = undefined,
+    canvas: up.graphics.Canvas = undefined,
+    clock: up.core.StepClock = undefined,
     ball: bounce.Ball = .{},
 
     fn init(self: *BounceRuntime, allocator: std.mem.Allocator) !void {
-        self.* = .{ .canvas = try up.Canvas.init(allocator, bounce.width, bounce.height), .clock = up.StepClock.init(60) };
+        self.* = .{ .canvas = try up.graphics.Canvas.init(allocator, bounce.width, bounce.height), .clock = up.core.StepClock.init(60) };
     }
 
     fn deinit(self: *BounceRuntime) void {
@@ -94,14 +94,14 @@ const BounceRuntime = struct {
         const steps = self.clock.push(1.0 / 60.0);
         var step: u32 = 0;
         while (step < steps) : (step += 1) self.ball.update(self.clock.step_seconds, @floatFromInt(self.canvas.width), @floatFromInt(self.canvas.height));
-        self.canvas.clear(up.Color.rgb(14, 18, 24));
+        self.canvas.clear(up.core.Color.rgb(14, 18, 24));
         var x: i32 = 0;
-        while (x < @as(i32, @intCast(self.canvas.width))) : (x += 16) self.canvas.line(x, 0, x, @intCast(self.canvas.height - 1), up.Color.rgb(32, 39, 50));
+        while (x < @as(i32, @intCast(self.canvas.width))) : (x += 16) self.canvas.line(x, 0, x, @intCast(self.canvas.height - 1), up.core.Color.rgb(32, 39, 50));
         var y: i32 = 0;
-        while (y < @as(i32, @intCast(self.canvas.height))) : (y += 16) self.canvas.line(0, y, @intCast(self.canvas.width - 1), y, up.Color.rgb(32, 39, 50));
-        self.canvas.strokeRect(0, 0, @intCast(self.canvas.width), @intCast(self.canvas.height), up.Color.rgb(91, 104, 124));
-        self.canvas.fillCircle(@intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y), self.ball.radius, up.Color.rgb(255, 198, 74));
-        self.canvas.drawText("UNPOLISHED", 4, 4, up.Color.rgb(225, 232, 240));
+        while (y < @as(i32, @intCast(self.canvas.height))) : (y += 16) self.canvas.line(0, y, @intCast(self.canvas.width - 1), y, up.core.Color.rgb(32, 39, 50));
+        self.canvas.strokeRect(0, 0, @intCast(self.canvas.width), @intCast(self.canvas.height), up.core.Color.rgb(91, 104, 124));
+        self.canvas.fillCircle(@intFromFloat(self.ball.pos.x), @intFromFloat(self.ball.pos.y), self.ball.radius, up.core.Color.rgb(255, 198, 74));
+        self.canvas.drawText("UNPOLISHED", 4, 4, up.core.Color.rgb(225, 232, 240));
     }
 };
 

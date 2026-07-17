@@ -14,14 +14,14 @@ const Game = struct {
         .height = height,
         .scale = 5,
         .pause_policy = .unfocused,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    pos: up.Vec2 = .{ .x = 76, .y = 41 },
-    vel: up.Vec2 = .{ .x = 50, .y = 36 },
+    pos: up.core.Vec2 = .{ .x = 76, .y = 41 },
+    vel: up.core.Vec2 = .{ .x = 50, .y = 36 },
 
     pub fn update(self: *Game, ctx: *sdl.Context) void {
-        var accel = up.Vec2{};
+        var accel = up.core.Vec2{};
         if (ctx.down(.left)) accel.x -= 120;
         if (ctx.down(.right)) accel.x += 120;
         if (ctx.down(.up)) accel.y -= 120;
@@ -34,8 +34,8 @@ const Game = struct {
     }
 
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        ctx.rect(@intFromFloat(self.pos.x), @intFromFloat(self.pos.y), 8, 8, up.Color.rgb(255, 198, 74));
-        ctx.text("BOUNCING SQUARE", 4, 4, up.Color.rgb(225, 232, 240));
+        ctx.rect(@intFromFloat(self.pos.x), @intFromFloat(self.pos.y), 8, 8, up.core.Color.rgb(255, 198, 74));
+        ctx.text("BOUNCING SQUARE", 4, 4, up.core.Color.rgb(225, 232, 240));
     }
 };
 

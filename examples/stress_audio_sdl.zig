@@ -10,12 +10,12 @@ const Game = struct {
         .max_frames = 3,
         .audio_buffer_frames = 256,
         .strict_audio = false,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    blip: up.AudioHandle,
-    music: up.Music,
-    music_handle: ?up.PlaybackHandle = null,
+    blip: up.assets.AudioHandle,
+    music: up.assets.Music,
+    music_handle: ?up.assets.PlaybackHandle = null,
     spawned: bool = false,
 
     pub fn init(ctx: *sdl.Context) !Game {
@@ -23,7 +23,7 @@ const Game = struct {
         defer ctx.allocator.free(music_path);
         var game = Game{
             .blip = try ctx.loadSound("blip.wav"),
-            .music = try up.Music.openOgg(ctx.allocator, music_path),
+            .music = try up.assets.Music.openOgg(ctx.allocator, music_path),
         };
         errdefer game.music.deinit();
         game.music_handle = try ctx.audio.playMusic(&game.music, .{ .volume = 0.1, .loop = true });
@@ -41,16 +41,16 @@ const Game = struct {
             while (i < 96) : (i += 1) {
                 _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.blip), .{ .volume = 0.02, .loop = true });
             }
-            try ctx.audio.setBusVolume(up.AudioMixer.sfxBus(), 0.5);
+            try ctx.audio.setBusVolume(up.assets.AudioMixer.sfxBus(), 0.5);
             self.spawned = true;
         }
         if ((ctx.frame % 30) == 0) {
-            try ctx.audio.setBusVolume(up.AudioMixer.masterBus(), if ((ctx.frame % 60) == 0) 0.6 else 0.3);
+            try ctx.audio.setBusVolume(up.assets.AudioMixer.masterBus(), if ((ctx.frame % 60) == 0) 0.6 else 0.3);
         }
     }
 
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.text("AUDIO STRESS", 2, 2, up.Color.white);
+        ctx.text("AUDIO STRESS", 2, 2, up.core.Color.white);
     }
 };
 

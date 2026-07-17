@@ -2,12 +2,12 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 
 fn movesRight(allocator: std.mem.Allocator) !bool {
-    const definitions = [_]up.Action{
+    const definitions = [_]up.input.Action{
         .{ .name = "move_right", .binding = .{ .key = .right } },
     };
-    var actions = try up.ActionMap.init(allocator, &definitions);
+    var actions = try up.input.ActionMap.init(allocator, &definitions);
     defer actions.deinit();
-    var input = up.Input{};
+    var input = up.input.Input{};
     input.set(.right, true);
     actions.update(input);
     return actions.isDown("game", "move_right") and actions.value(input, "game", "move_right") == 1;

@@ -9,17 +9,17 @@ const Game = struct {
         .scale = 6,
         .resizable = true,
         .presentation_mode = .integer_fit,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    rig: up.CameraRig,
-    director: up.CameraDirector,
-    main: up.CameraHandle,
-    inset: up.CameraHandle,
-    target: up.Vec2 = .{ .x = 48, .y = 32 },
+    rig: up.graphics.CameraRig,
+    director: up.graphics.CameraDirector,
+    main: up.graphics.CameraHandle,
+    inset: up.graphics.CameraHandle,
+    target: up.core.Vec2 = .{ .x = 48, .y = 32 },
 
     pub fn init(ctx: *sdl.Context) !Game {
-        var rig = up.CameraRig.init(ctx.allocator);
+        var rig = up.graphics.CameraRig.init(ctx.allocator);
         errdefer rig.deinit();
         const primary = try rig.create(.{
             .position = .{ .x = 48, .y = 32 },
@@ -43,7 +43,7 @@ const Game = struct {
     }
 
     pub fn update(self: *Game, ctx: *sdl.Context) !void {
-        var velocity = up.Vec2{};
+        var velocity = up.core.Vec2{};
         if (ctx.down(.left)) velocity.x -= 42;
         if (ctx.down(.right)) velocity.x += 42;
         if (ctx.down(.up)) velocity.y -= 42;
@@ -74,22 +74,22 @@ const Game = struct {
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
         drawWorld(ctx.gpuCamera(self.rig.getConst(self.main).?), self.target);
         drawWorld(ctx.gpuCamera(self.rig.getConst(self.inset).?), self.target);
-        ctx.canvas.strokeRect(103, 3, 54, 36, up.Color.rgb(222, 236, 255));
-        ctx.text("CAMERA", 4, 4, up.Color.rgb(222, 236, 255));
-        ctx.text("ARROWS/MOUSE", 4, 14, up.Color.rgb(158, 184, 210));
-        ctx.text("SPACE: SHOT", 4, 24, up.Color.rgb(158, 184, 210));
+        ctx.canvas.strokeRect(103, 3, 54, 36, up.core.Color.rgb(222, 236, 255));
+        ctx.text("CAMERA", 4, 4, up.core.Color.rgb(222, 236, 255));
+        ctx.text("ARROWS/MOUSE", 4, 14, up.core.Color.rgb(158, 184, 210));
+        ctx.text("SPACE: SHOT", 4, 24, up.core.Color.rgb(158, 184, 210));
     }
 };
 
-fn drawWorld(world: sdl.GpuCameraCanvas, target: up.Vec2) void {
+fn drawWorld(world: sdl.GpuCameraCanvas, target: up.core.Vec2) void {
     var y: i32 = -16;
-    while (y < 96) : (y += 8) world.line(.{ .x = -16, .y = @floatFromInt(y) }, .{ .x = 144, .y = @floatFromInt(y) }, up.Color.rgb(28, 39, 54));
+    while (y < 96) : (y += 8) world.line(.{ .x = -16, .y = @floatFromInt(y) }, .{ .x = 144, .y = @floatFromInt(y) }, up.core.Color.rgb(28, 39, 54));
     var x: i32 = -16;
-    while (x < 144) : (x += 8) world.line(.{ .x = @floatFromInt(x), .y = -16 }, .{ .x = @floatFromInt(x), .y = 96 }, up.Color.rgb(28, 39, 54));
-    world.fillRect(.init(8, 8, 24, 18), up.Color.rgb(62, 123, 157));
-    world.fillRect(.init(80, 48, 32, 24), up.Color.rgb(183, 91, 73));
-    world.fillCircle(target, 5, up.Color.rgb(255, 204, 92));
-    world.strokeRect(.init(-16, -16, 160, 112), up.Color.rgb(116, 170, 126));
+    while (x < 144) : (x += 8) world.line(.{ .x = @floatFromInt(x), .y = -16 }, .{ .x = @floatFromInt(x), .y = 96 }, up.core.Color.rgb(28, 39, 54));
+    world.fillRect(.init(8, 8, 24, 18), up.core.Color.rgb(62, 123, 157));
+    world.fillRect(.init(80, 48, 32, 24), up.core.Color.rgb(183, 91, 73));
+    world.fillCircle(target, 5, up.core.Color.rgb(255, 204, 92));
+    world.strokeRect(.init(-16, -16, 160, 112), up.core.Color.rgb(116, 170, 126));
 }
 
 pub fn main() !void {

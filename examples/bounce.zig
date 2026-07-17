@@ -5,8 +5,8 @@ pub const width = 160;
 pub const height = 90;
 
 pub const Ball = struct {
-    pos: up.Vec2 = .{ .x = 30, .y = 30 },
-    vel: up.Vec2 = .{ .x = 52, .y = 37 },
+    pos: up.core.Vec2 = .{ .x = 30, .y = 30 },
+    vel: up.core.Vec2 = .{ .x = 52, .y = 37 },
     radius: i32 = 6,
 
     pub fn update(self: *Ball, dt: f32, bounds_w: f32, bounds_h: f32) void {
@@ -37,10 +37,10 @@ pub fn main() !void {
     defer _ = gpa.deinit();
     const allocator = gpa.allocator();
 
-    var canvas = try up.Canvas.init(allocator, width, height);
+    var canvas = try up.graphics.Canvas.init(allocator, width, height);
     defer canvas.deinit();
 
-    var clock = up.StepClock.init(60);
+    var clock = up.core.StepClock.init(60);
     var ball = Ball{};
 
     var frame: u32 = 0;
@@ -51,18 +51,18 @@ pub fn main() !void {
             ball.update(clock.step_seconds, @floatFromInt(canvas.width), @floatFromInt(canvas.height));
         }
 
-        canvas.clear(up.Color.rgb(14, 18, 24));
+        canvas.clear(up.core.Color.rgb(14, 18, 24));
         var x: i32 = 0;
         while (x < @as(i32, @intCast(canvas.width))) : (x += 16) {
-            canvas.line(x, 0, x, @intCast(canvas.height - 1), up.Color.rgb(32, 39, 50));
+            canvas.line(x, 0, x, @intCast(canvas.height - 1), up.core.Color.rgb(32, 39, 50));
         }
         var y: i32 = 0;
         while (y < @as(i32, @intCast(canvas.height))) : (y += 16) {
-            canvas.line(0, y, @intCast(canvas.width - 1), y, up.Color.rgb(32, 39, 50));
+            canvas.line(0, y, @intCast(canvas.width - 1), y, up.core.Color.rgb(32, 39, 50));
         }
-        canvas.strokeRect(0, 0, @intCast(canvas.width), @intCast(canvas.height), up.Color.rgb(91, 104, 124));
-        canvas.fillCircle(@intFromFloat(ball.pos.x), @intFromFloat(ball.pos.y), ball.radius, up.Color.rgb(255, 198, 74));
-        canvas.drawText("UNPOLISHED", 4, 4, up.Color.rgb(225, 232, 240));
+        canvas.strokeRect(0, 0, @intCast(canvas.width), @intCast(canvas.height), up.core.Color.rgb(91, 104, 124));
+        canvas.fillCircle(@intFromFloat(ball.pos.x), @intFromFloat(ball.pos.y), ball.radius, up.core.Color.rgb(255, 198, 74));
+        canvas.drawText("UNPOLISHED", 4, 4, up.core.Color.rgb(225, 232, 240));
     }
 
     try std.fs.cwd().makePath("zig-out");

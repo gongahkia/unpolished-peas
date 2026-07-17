@@ -7,19 +7,19 @@ const Game = struct {
         .width = 128,
         .height = 72,
         .scale = 5,
-        .clear_color = up.Color.rgb(14, 18, 24),
+        .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    blip: up.AudioHandle,
-    music: up.Music,
-    music_handle: ?up.PlaybackHandle = null,
+    blip: up.assets.AudioHandle,
+    music: up.assets.Music,
+    music_handle: ?up.assets.PlaybackHandle = null,
 
     pub fn init(ctx: *sdl.Context) !Game {
         const music_path = try ctx.assetPath("tone.ogg");
         defer ctx.allocator.free(music_path);
         var game = Game{
             .blip = try ctx.loadSound("blip.wav"),
-            .music = try up.Music.openOgg(ctx.allocator, music_path),
+            .music = try up.assets.Music.openOgg(ctx.allocator, music_path),
         };
         errdefer game.music.deinit();
         game.music_handle = try ctx.audio.playMusic(&game.music, .{ .volume = 0.25, .loop = true });
@@ -38,9 +38,9 @@ const Game = struct {
     }
 
     pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.text("AUDIO", 8, 8, up.Color.white);
-        ctx.text("SPACE: SFX", 8, 20, up.Color.rgb(113, 232, 162));
-        ctx.text("MUSIC: OGG LOOP", 8, 32, up.Color.rgb(255, 198, 74));
+        ctx.text("AUDIO", 8, 8, up.core.Color.white);
+        ctx.text("SPACE: SFX", 8, 20, up.core.Color.rgb(113, 232, 162));
+        ctx.text("MUSIC: OGG LOOP", 8, 32, up.core.Color.rgb(255, 198, 74));
     }
 };
 

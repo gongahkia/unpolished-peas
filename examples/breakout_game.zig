@@ -17,9 +17,9 @@ pub const Diagnostics = struct {
 };
 
 pub const Game = struct {
-    paddle: up.Rect = .{ .x = 64, .y = 88, .w = 32, .h = 4 },
-    ball: up.Rect = .{ .x = 76, .y = 68, .w = 8, .h = 8 },
-    velocity: up.Vec2 = .{ .x = 64, .y = -72 },
+    paddle: up.core.Rect = .{ .x = 64, .y = 88, .w = 32, .h = 4 },
+    ball: up.core.Rect = .{ .x = 76, .y = 68, .w = 8, .h = 8 },
+    velocity: up.core.Vec2 = .{ .x = 64, .y = -72 },
     bricks: [brick_count]bool = [_]bool{true} ** brick_count,
     score: u32 = 0,
     lives: u8 = 3,
@@ -37,14 +37,14 @@ pub const Game = struct {
             self.ball.y = 0;
             self.velocity.y = -self.velocity.y;
         }
-        if (self.velocity.y > 0 and up.Rect.intersects(self.ball, self.paddle)) {
+        if (self.velocity.y > 0 and up.core.Rect.intersects(self.ball, self.paddle)) {
             self.ball.y = self.paddle.y - self.ball.h;
             self.velocity.y = -self.velocity.y;
             self.velocity.x += (self.ball.x + self.ball.w / 2 - (self.paddle.x + self.paddle.w / 2)) * 2;
             event.paddle = true;
         }
         for (&self.bricks, 0..) |*active, index| {
-            if (!active.* or !up.Rect.intersects(self.ball, brickRect(index))) continue;
+            if (!active.* or !up.core.Rect.intersects(self.ball, brickRect(index))) continue;
             active.* = false;
             self.score += 1;
             self.velocity.y = -self.velocity.y;
@@ -61,7 +61,7 @@ pub const Game = struct {
         return event;
     }
 
-    pub fn brickRect(index: usize) up.Rect {
+    pub fn brickRect(index: usize) up.core.Rect {
         return .{
             .x = 8 + @as(f32, @floatFromInt(index % brick_columns)) * 15,
             .y = 12 + @as(f32, @floatFromInt(index / brick_columns)) * 7,
@@ -70,12 +70,12 @@ pub const Game = struct {
         };
     }
 
-    pub fn brickColor(index: usize) up.Color {
+    pub fn brickColor(index: usize) up.core.Color {
         return switch (index / brick_columns) {
-            0 => up.Color.rgb(255, 112, 112),
-            1 => up.Color.rgb(255, 198, 74),
-            2 => up.Color.rgb(113, 232, 162),
-            else => up.Color.rgb(91, 166, 210),
+            0 => up.core.Color.rgb(255, 112, 112),
+            1 => up.core.Color.rgb(255, 198, 74),
+            2 => up.core.Color.rgb(113, 232, 162),
+            else => up.core.Color.rgb(91, 166, 210),
         };
     }
 
@@ -87,28 +87,28 @@ pub const Game = struct {
         return .{ .score = self.score, .lives = self.lives, .active_bricks = active_bricks, .won = self.score == brick_count };
     }
 
-    pub fn drawHeadless(self: Game, canvas: *up.Canvas, ball_image: up.Image) void {
-        canvas.clear(up.Color.rgb(10, 14, 26));
+    pub fn drawHeadless(self: Game, canvas: *up.graphics.Canvas, ball_image: up.assets.Image) void {
+        canvas.clear(up.core.Color.rgb(10, 14, 26));
         for (self.bricks, 0..) |active, index| {
             if (!active) continue;
             const brick = brickRect(index);
             canvas.fillRect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), brickColor(index));
         }
-        canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.Color.rgb(225, 232, 240));
+        canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.core.Color.rgb(225, 232, 240));
         canvas.drawImage(ball_image, @intFromFloat(self.ball.x - 4), @intFromFloat(self.ball.y - 4));
-        canvas.drawText("BREAKOUT", 4, 2, up.Color.white);
+        canvas.drawText("BREAKOUT", 4, 2, up.core.Color.white);
     }
 
-    pub fn drawHeadlessAtlas(self: Game, canvas: *up.Canvas, atlas: up.Atlas, frame: up.AtlasFrameHandle) void {
-        canvas.clear(up.Color.rgb(10, 14, 26));
+    pub fn drawHeadlessAtlas(self: Game, canvas: *up.graphics.Canvas, atlas: up.assets.Atlas, frame: up.assets.AtlasFrameHandle) void {
+        canvas.clear(up.core.Color.rgb(10, 14, 26));
         for (self.bricks, 0..) |active, index| {
             if (!active) continue;
             const brick = brickRect(index);
             canvas.fillRect(@intFromFloat(brick.x), @intFromFloat(brick.y), @intFromFloat(brick.w), @intFromFloat(brick.h), brickColor(index));
         }
-        canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.Color.rgb(225, 232, 240));
+        canvas.fillRect(@intFromFloat(self.paddle.x), @intFromFloat(self.paddle.y), @intFromFloat(self.paddle.w), @intFromFloat(self.paddle.h), up.core.Color.rgb(225, 232, 240));
         canvas.drawAtlasFrame(atlas, frame, @intFromFloat(self.ball.x - 4), @intFromFloat(self.ball.y - 4), .{});
-        canvas.drawText("BREAKOUT", 4, 2, up.Color.white);
+        canvas.drawText("BREAKOUT", 4, 2, up.core.Color.white);
     }
 };
 
@@ -132,7 +132,7 @@ test "breakout resolves bricks and fixed-step state deterministically" {
 }
 
 test "stored Breakout replay has a stable state hash" {
-    var replay = try up.parseInputReplay(std.testing.allocator, @embedFile("replays/breakout.upr"));
+    var replay = try up.preview.developer.parseInputReplay(std.testing.allocator, @embedFile("replays/breakout.upr"));
     defer replay.deinit(std.testing.allocator);
     var game = Game{};
     for (replay.frames) |frame| {
@@ -155,15 +155,15 @@ test "breakout exposes structured v1 diagnostics" {
 }
 
 test "Breakout atlas draw contract preserves headless WebGL coordinates" {
-    const pixels = try std.testing.allocator.alloc(up.Color, 64);
+    const pixels = try std.testing.allocator.alloc(up.core.Color, 64);
     defer std.testing.allocator.free(pixels);
-    @memset(pixels, up.Color.rgb(255, 255, 255));
-    var image = up.Image{ .allocator = std.testing.allocator, .width = 8, .height = 8, .pixels = pixels };
-    var atlas = try up.Atlas.init(std.testing.allocator, try image.clone(std.testing.allocator), "memory", &.{.{ .name = "ball", .x = 0, .y = 0, .w = 8, .h = 8 }}, &.{});
+    @memset(pixels, up.core.Color.rgb(255, 255, 255));
+    var image = up.assets.Image{ .allocator = std.testing.allocator, .width = 8, .height = 8, .pixels = pixels };
+    var atlas = try up.assets.Atlas.init(std.testing.allocator, try image.clone(std.testing.allocator), "memory", &.{.{ .name = "ball", .x = 0, .y = 0, .w = 8, .h = 8 }}, &.{});
     defer atlas.deinit();
-    var direct = try up.Canvas.init(std.testing.allocator, width, height);
+    var direct = try up.graphics.Canvas.init(std.testing.allocator, width, height);
     defer direct.deinit();
-    var atlas_canvas = try up.Canvas.init(std.testing.allocator, width, height);
+    var atlas_canvas = try up.graphics.Canvas.init(std.testing.allocator, width, height);
     defer atlas_canvas.deinit();
     const game = Game{};
     game.drawHeadless(&direct, image);

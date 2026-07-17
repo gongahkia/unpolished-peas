@@ -2,7 +2,7 @@
 
 This is the pre-release v0.1 public contract. It is checked by `zig build test-core-api`; a declaration addition or removal in a listed module fails that snapshot until the change is reviewed here and in the release policy.
 
-The root package provides six named capability namespaces. Direct aliases currently exposed at `@import("unpolished-peas")` are transitional pre-v0.1 compatibility surface and are not part of this contract; they will be removed by the root-facade cut. New code must use the namespaces below.
+The root package exposes only the six named capability namespaces below. Direct root aliases are removed; import `unpolished-peas` and qualify every retained declaration through its namespace. `src/core_api_snapshot.zig` is the exact declaration-name snapshot enforced by `zig build test-core-api`.
 
 ## Modules and types
 
@@ -10,12 +10,14 @@ The root package provides six named capability namespaces. Direct aliases curren
 | --- | --- | --- |
 | `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, errors, and basic 2D values |
 | `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized keyboard, pointer, gamepad, and action state |
-| `graphics` | `Canvas`, `Sprite`, `ClipRect`, `BlendMode`, `Camera2D`, `CameraCanvas`, `Inspector`, `InspectorPanel`, `InspectorVisibility`, `InspectorAssetPanel`, `InspectorResource`, `InspectorResourceHandle`, `Presentation`, `PresentationMode`, `HeadlessRenderer`, `RendererBackend`, `FontGlyphRange`, `FontTextDiagnostics` | deterministic 2D drawing, text, presentation, camera, and inspection |
-| `assets` | `AssetStore`, `AssetFile`, `AudioHandle`, `Image`, `Atlas`, `AtlasFrameSpec`, `AtlasAnimationFrameSpec`, `AtlasAnimationSpec`, `Font`, `Sound`, `Music`, `AssetStats` | raw image, font, atlas, and audio loading |
-| `preview.developer` | `InputReplay`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
+| `graphics` | drawing (`Canvas`, `Sprite`, batches, render commands), presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, text, presentation, camera, and inspection |
+| `assets` | asset store, image/font/audio handles and options, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, and audio loading |
+| `preview.developer` | `InputReplay`, `InputReplayButton`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
 | `testSupport` | `TempProject`, `Clock`, `Buttons`, `applyTopDownButtons`, `frameSeconds`, `StateHash`, `GoldenOptions`, `RendererCaptureTolerance`, `cross_backend_renderer_tolerance`, `expectRendererCapturesMatch`, `RendererConformance`, `canvasHash`, `assertGolden`, `assertReplayHash`, `expectError` | deterministic headless, replay, and golden-test hooks |
 
 `unpolished-peas-sdl3` is the desktop adapter, not a core-game import. `unpolished-peas-wasm-core` is the Wasm build of the core namespace. `unpolished-peas-tools` and `zig build peas -- package <target>` provide packaging hooks; `--package web` emits the static browser bundle. Browser renderer availability is governed by the [capability matrix](capabilities.md), not by a game-side browser API.
+
+Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetStore`, `up.preview.developer.InputReplay`, and `up.testSupport.TempProject`; these are the only root namespaces.
 
 ## Lifecycle and errors
 

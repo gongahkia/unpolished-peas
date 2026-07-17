@@ -280,10 +280,10 @@ fn usage() error{InvalidArguments} {
 
 test "inventory records API namespace imports" {
     const source =
-        \\const api = @import("unpolished-peas").api;
-        \\const core = @import("unpolished-peas").api.core;
+        \\const api = @import("unpolished-peas");
+        \\const core = @import("unpolished-peas").core;
         \\const sdl = @import("unpolished-peas-sdl3");
-        \\const point: core.Vec2 = api.Vec2{};
+        \\const point: core.Vec2 = api.core.Vec2{};
         \\try sdl.playGame(Game);
     ;
     var imports = std.ArrayListUnmanaged(Import){};
@@ -294,9 +294,9 @@ test "inventory records API namespace imports" {
     try scanImports(std.testing.allocator, source, &imports);
     try std.testing.expectEqual(@as(usize, 3), imports.items.len);
     try std.testing.expectEqualStrings("unpolished-peas", imports.items[0].module);
-    try std.testing.expectEqualStrings("api", imports.items[0].path);
-    try std.testing.expectEqualStrings("Vec2", imports.items[0].symbols.items[0]);
-    try std.testing.expectEqualStrings("api.core", imports.items[1].path);
+    try std.testing.expectEqualStrings("", imports.items[0].path);
+    try std.testing.expectEqualStrings("core", imports.items[0].symbols.items[0]);
+    try std.testing.expectEqualStrings("core", imports.items[1].path);
     try std.testing.expectEqualStrings("Vec2", imports.items[1].symbols.items[0]);
     try std.testing.expectEqualStrings("unpolished-peas-sdl3", imports.items[2].module);
     try std.testing.expectEqualStrings("playGame", imports.items[2].symbols.items[0]);
@@ -304,8 +304,8 @@ test "inventory records API namespace imports" {
 
 test "inventory ignores comments and strings" {
     const source =
-        \\// const ignored = @import("unpolished-peas").api;
-        \\const api = @import("unpolished-peas").api;
+        \\// const ignored = @import("unpolished-peas").core;
+        \\const api = @import("unpolished-peas").core;
         \\const message = "api.Color";
         \\const color = api.Color;
     ;

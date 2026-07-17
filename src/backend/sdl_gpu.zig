@@ -1,6 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const up = @import("unpolished-peas").api;
+const up = @import("api.zig");
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
