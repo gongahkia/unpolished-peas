@@ -1,4 +1,5 @@
 const std = @import("std");
+const protocol = @import("minna-san-protocol");
 const ipv4 = @import("ipv4.zig");
 const tcp_connection = @import("tcp_connection.zig");
 const tcp_framed = @import("tcp_framed.zig");
@@ -10,6 +11,7 @@ const ConformanceResult = struct {
     bounded_failure: bool,
     caller_owns_receive_buffer: bool,
     shutdown: bool,
+    protocol_valid: bool,
 };
 
 fn local_udp_address(socket: *udp_socket.UdpSocket) !ipv4.Ipv4Address {
@@ -41,6 +43,10 @@ fn run_udp_conformance() !ConformanceResult {
         .bounded_failure = bounded_failure,
         .caller_owns_receive_buffer = received.bytes.ptr == storage[0..].ptr,
         .shutdown = true,
+        .protocol_valid = blk: {
+            protocol.validate_envelope(.{ .version = protocol.v1_version, .extension_id = 0, .payload = received.bytes }) catch break :blk false;
+            break :blk true;
+        },
     };
 }
 
@@ -89,6 +95,10 @@ fn run_tcp_conformance() !ConformanceResult {
         .bounded_failure = bounded_failure,
         .caller_owns_receive_buffer = received.ptr == storage[0..].ptr,
         .shutdown = client.state == .closed,
+        .protocol_valid = blk: {
+            protocol.validate_envelope(.{ .version = protocol.v1_version, .extension_id = 0, .payload = received }) catch break :blk false;
+            break :blk true;
+        },
     };
 }
 
@@ -122,4 +132,12 @@ test "UDP and TCP transports satisfy the common conformance matrix" {
     try std.testing.expect(udp.bounded_failure and tcp.bounded_failure);
     try std.testing.expect(udp.caller_owns_receive_buffer and tcp.caller_owns_receive_buffer);
     try std.testing.expect(udp.shutdown and tcp.shutdown);
+}
+
+test "UDP and framed TCP preserve identical stable protocol envelopes" {
+    const udp = try run_udp_conformance();
+    const tcp = try run_tcp_conformance();
+    try std.testing.expect(udp.protocol_valid and tcp.protocol_valid);
+    try std.testing.expect(udp.sent_and_received == tcp.sent_and_received);
+    try std.testing.expect(udp.bounded_failure == tcp.bounded_failure);
 }
