@@ -367,6 +367,13 @@ test "stable public symbols are exact" {
         "ShardDirectoryError",
         "ShardDirectoryConfig",
         "ShardDirectory",
+        "HandoffClientId",
+        "ShardHandoffId",
+        "ShardHandoffRequest",
+        "ShardHandoff",
+        "ShardHandoffError",
+        "ShardHandoffConfig",
+        "ShardHandoffCoordinator",
         "package_name",
     });
     try expectExactPublicDeclarations(state, &.{"package_name"});
