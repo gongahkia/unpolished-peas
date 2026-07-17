@@ -161,6 +161,15 @@ test "stable public symbols are exact" {
         "BackpressureSignal",
         "BackpressureCallback",
         "BackpressureController",
+        "compression_header_bytes",
+        "CompressionProviderError",
+        "CompressionError",
+        "CompressionConfig",
+        "CompressionDictionary",
+        "CompressionFrame",
+        "CompressionProvider",
+        "CompressionSession",
+        "decode_compression_frame",
         "package_name",
     });
     try expectExactPublicDeclarations(transport, &.{
