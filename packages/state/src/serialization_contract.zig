@@ -110,11 +110,24 @@ pub const StateSerializationContract = struct {
             self.report(.schema_version_mismatch);
             return error.SchemaVersionMismatch;
         }
-        var output = self.config.callbacks.deserialize(self.config.callbacks.context, frame.bytes, version, self.config.allocation) catch |err| {
+        return self.deserialize_version(frame, frame.schema_version, version);
+    }
+
+    pub fn deserialize_compatible(self: StateSerializationContract, frame: *const StateSerializationFrame) StateSerializationError!StateSerializationFrame {
+        const version = try self.schema_version();
+        if (frame.schema_version == 0) {
+            self.report(.schema_version_mismatch);
+            return error.SchemaVersionMismatch;
+        }
+        return self.deserialize_version(frame, frame.schema_version, version);
+    }
+
+    fn deserialize_version(self: StateSerializationContract, frame: *const StateSerializationFrame, source_version: StateSchemaVersion, output_version: StateSchemaVersion) StateSerializationError!StateSerializationFrame {
+        var output = self.config.callbacks.deserialize(self.config.callbacks.context, frame.bytes, source_version, self.config.allocation) catch |err| {
             self.report(failure_for(err));
             return err;
         };
-        return self.validate_output(&output, version, self.config.maximum_deserialized_bytes, .deserialized_output_too_large);
+        return self.validate_output(&output, output_version, self.config.maximum_deserialized_bytes, .deserialized_output_too_large);
     }
 
     pub fn verify_deterministic(self: StateSerializationContract, state: []const u8) StateSerializationError!void {

@@ -5,6 +5,7 @@ const host_election = @import("host_election.zig");
 const migration_state_transfer = @import("migration_state_transfer.zig");
 const serialization_contract = @import("serialization_contract.zig");
 const state_encoder = @import("state_encoder.zig");
+const state_decoder = @import("state_decoder.zig");
 
 pub const max_migration_records = migration_coordinator.max_migration_records;
 pub const MigrationTerm = migration_coordinator.MigrationTerm;
@@ -53,6 +54,12 @@ pub const StateEncodeStream = state_encoder.StateEncodeStream;
 pub const StateEncodeFailureFn = state_encoder.StateEncodeFailureFn;
 pub const StateEncoderConfig = state_encoder.StateEncoderConfig;
 pub const StateEncoder = state_encoder.StateEncoder;
+pub const StateDecodeFailure = state_decoder.StateDecodeFailure;
+pub const StateDecodeError = state_decoder.StateDecodeError;
+pub const StateSchemaCompatibilityFn = state_decoder.StateSchemaCompatibilityFn;
+pub const StateDecodeFailureFn = state_decoder.StateDecodeFailureFn;
+pub const StateDecoderConfig = state_decoder.StateDecoderConfig;
+pub const StateDecoder = state_decoder.StateDecoder;
 
 pub const package_name = "state";
 
@@ -71,4 +78,5 @@ test {
     _ = @import("migration_state_transfer.zig");
     _ = @import("serialization_contract.zig");
     _ = @import("state_encoder.zig");
+    _ = @import("state_decoder.zig");
 }
