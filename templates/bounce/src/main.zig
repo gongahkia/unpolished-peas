@@ -20,22 +20,25 @@ const Game = struct {
     pos: up.core.Vec2 = .{ .x = 76, .y = 41 },
     vel: up.core.Vec2 = .{ .x = 50, .y = 36 },
 
-    pub fn update(self: *Game, ctx: *sdl.Context) void {
-        var accel = up.core.Vec2{};
-        if (ctx.down(.left)) accel.x -= 120;
-        if (ctx.down(.right)) accel.x += 120;
-        if (ctx.down(.up)) accel.y -= 120;
-        if (ctx.down(.down)) accel.y += 120;
+    pub fn init(_: *Game, _: *up.core.GameContext) !void {}
 
-        self.vel = self.vel.add(accel.scale(ctx.dt));
-        self.pos = self.pos.add(self.vel.scale(ctx.dt));
+    pub fn update(self: *Game, ctx: *up.core.GameContext, elapsed_seconds: f32) !void {
+        var accel = up.core.Vec2{};
+        if (ctx.input.isDown(.left)) accel.x -= 120;
+        if (ctx.input.isDown(.right)) accel.x += 120;
+        if (ctx.input.isDown(.up)) accel.y -= 120;
+        if (ctx.input.isDown(.down)) accel.y += 120;
+
+        self.vel = self.vel.add(accel.scale(elapsed_seconds));
+        self.pos = self.pos.add(self.vel.scale(elapsed_seconds));
         if (self.pos.x < 4 or self.pos.x > width - 12) self.vel.x = -self.vel.x;
         if (self.pos.y < 4 or self.pos.y > height - 12) self.vel.y = -self.vel.y;
     }
 
-    pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        ctx.rect(@intFromFloat(self.pos.x), @intFromFloat(self.pos.y), 8, 8, up.core.Color.rgb(255, 198, 74));
-        ctx.text("BOUNCING SQUARE", 4, 4, up.core.Color.rgb(225, 232, 240));
+    pub fn draw(self: *Game, ctx: *up.core.GameContext) !void {
+        const canvas = try ctx.requireCanvas();
+        canvas.fillRect(@intFromFloat(self.pos.x), @intFromFloat(self.pos.y), 8, 8, up.core.Color.rgb(255, 198, 74));
+        canvas.drawText("BOUNCING SQUARE", 4, 4, up.core.Color.rgb(225, 232, 240));
     }
 };
 

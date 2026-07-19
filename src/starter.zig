@@ -131,6 +131,8 @@ test "starter creates a structured project and rejects invalid destinations" {
     try std.testing.expect(std.mem.indexOf(u8, source, "const up = @import(\"unpolished-peas\");") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "up.core.Color") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "up.core.Vec2") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "*up.core.GameContext") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "*sdl.Context") == null);
     try std.testing.expect(std.mem.indexOf(u8, source, "sdl.playGame(Game)") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "unpolished-peas").? < std.mem.indexOf(u8, source, "up.core.Color").?);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);

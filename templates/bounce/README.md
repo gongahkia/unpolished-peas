@@ -6,7 +6,7 @@ Requires Zig 0.15.2. The default dependency fetches its pinned SDL3 source; no s
 zig build run
 ```
 
-Arrow keys steer the square. F3 toggles developer stats. F12 writes a PNG screenshot from the composed GPU frame to the app-data directory printed at startup. Callback failures are logged there and held in the game window until Escape is pressed.
+Arrow keys steer the square. The game callbacks use the stable `GameContext` protocol; source code does not depend on a renderer-specific callback context.
 
 `assets/` is reserved for user-owned raw files. Define atlas frames and animations directly in Zig beside game code.
 

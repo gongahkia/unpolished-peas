@@ -338,6 +338,28 @@ pub fn build(b: *std.Build) void {
     const starter_template_test_step = b.step("test-starter-template", "Compile the starter against the local core API");
     starter_template_test_step.dependOn(&run_starter_template_tests.step);
     starter_test_step.dependOn(&run_starter_template_tests.step);
+    const starter_template_browser = b.addExecutable(.{
+        .name = "starter-template-browser",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("templates/bounce/src/main.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "unpolished-peas-sdl3", .module = b.createModule(.{
+                    .root_source_file = b.path("fixtures/starter-browser-sdl-shim.zig"),
+                    .target = browser_target,
+                    .optimize = browser_optimize,
+                    .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+                }) },
+            },
+        }),
+    });
+    starter_template_browser.entry = .disabled;
+    starter_template_browser.rdynamic = true;
+    starter_template_browser.import_memory = true;
+    const starter_template_browser_step = b.step("test-starter-template-browser", "Compile the starter source for the browser protocol target");
+    starter_template_browser_step.dependOn(&starter_template_browser.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);

@@ -62,9 +62,10 @@
     {"path": "fixtures/protocol-desktop/src/protocol_game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}]},
     {"path": "fixtures/release-candidate-consumer/build.zig", "imports": []},
     {"path": "fixtures/release-candidate-consumer/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}]},
+    {"path": "fixtures/starter-browser-sdl-shim.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}]},
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["input"]}]},
     {"path": "templates/bounce/build.zig", "imports": []},
-    {"path": "templates/bounce/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]}
+    {"path": "templates/bounce/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]}
   ]
 }

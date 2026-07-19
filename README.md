@@ -60,9 +60,14 @@ const sdl = @import("unpolished-peas-sdl3");
 const Game = struct {
     pub const config: sdl.Config = .{ .width = 80, .height = 60, .scale = 6 };
 
-    pub fn draw(_: *Game, ctx: *sdl.Context) void {
-        ctx.rect(18, 18, 28, 28, up.core.Color.rgb(255, 198, 74));
-        ctx.text("HELLO", 8, 8, up.core.Color.white);
+    pub fn init(_: *Game, _: *up.core.GameContext) !void {}
+
+    pub fn update(_: *Game, _: *up.core.GameContext, _: f32) !void {}
+
+    pub fn draw(_: *Game, ctx: *up.core.GameContext) !void {
+        const canvas = try ctx.requireCanvas();
+        canvas.fillRect(18, 18, 28, 28, up.core.Color.rgb(255, 198, 74));
+        canvas.drawText("HELLO", 8, 8, up.core.Color.white);
     }
 };
 
