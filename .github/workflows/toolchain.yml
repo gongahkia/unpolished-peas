@@ -104,6 +104,8 @@ jobs:
         run: RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
       - if: matrix.os == 'macos-latest'
         run: env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
+      - if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+        run: script/test_starter_bundled_sdl.sh
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

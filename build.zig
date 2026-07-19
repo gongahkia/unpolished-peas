@@ -360,6 +360,10 @@ pub fn build(b: *std.Build) void {
     starter_template_browser.import_memory = true;
     const starter_template_browser_step = b.step("test-starter-template-browser", "Compile the starter source for the browser protocol target");
     starter_template_browser_step.dependOn(&starter_template_browser.step);
+    const starter_bundled_sdl = b.addSystemCommand(&.{"script/test_starter_bundled_sdl.sh"});
+    starter_bundled_sdl.setCwd(b.path("."));
+    const starter_bundled_sdl_step = b.step("test-starter-bundled-sdl", "Smoke the generated starter without pkg-config");
+    starter_bundled_sdl_step.dependOn(&starter_bundled_sdl.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
