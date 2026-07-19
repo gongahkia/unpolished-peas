@@ -10,6 +10,8 @@ async function instantiate(url, imports) {
 
 const canvas = document.querySelector("canvas[data-unpolished-peas]");
 if (!canvas) throw new Error("unpolished-peas browser: missing canvas");
+const renderer = new URLSearchParams(globalThis.location?.search ?? "").get("renderer") ?? "webgl2";
+if (renderer !== "webgl2") throw new Error(`unpolished-peas browser: renderer unavailable: ${renderer}`);
 const host = createBrowserHost({canvas});
 const result = await instantiate("./unpolished-peas.wasm", host.imports);
 const runtime = result.instance.exports;
@@ -18,4 +20,4 @@ const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 320))
 const height = Math.max(1, Math.floor(canvas.clientHeight || canvas.height || 180));
 if (runtime.up_browser_gl_context_create(width, height) !== Status.ok) throw new Error("unpolished-peas browser: WebGL 2 unavailable");
 if (runtime.up_browser_init(width, height) !== Status.ok) throw new Error("unpolished-peas browser: runtime initialization failed");
-window.unpolishedPeas = {host, runtime};
+window.unpolishedPeas = {host, runtime, renderer};

@@ -39,6 +39,11 @@ pub fn build(b: *std.Build) void {
         .target = wasi_target,
         .optimize = browser_optimize,
     });
+    const browser_peas = b.addModule("unpolished-peas-browser-core", .{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+    });
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -69,27 +74,90 @@ pub fn build(b: *std.Build) void {
     });
     addStb(test_support);
 
+    const browser_protocol_game = b.createModule(.{
+        .root_source_file = b.path("fixtures/protocol-desktop/src/protocol_game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/browser/runtime.zig"),
             .target = browser_target,
             .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "protocol-game", .module = browser_protocol_game },
+            },
         }),
     });
     browser_runtime.entry = .disabled;
     browser_runtime.rdynamic = true;
     browser_runtime.import_memory = true;
+    const browser_protocol_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-protocol",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/protocol_runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "protocol-game", .module = browser_protocol_game },
+            },
+        }),
+    });
+    browser_protocol_runtime.entry = .disabled;
+    browser_protocol_runtime.rdynamic = true;
+    browser_protocol_runtime.import_memory = true;
+    const install_browser_protocol_runtime = b.addInstallArtifact(browser_protocol_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "unpolished-peas-protocol.wasm",
+    });
+    const browser_protocol_step = b.step("browser-protocol", "Build the browser stable-protocol fixture");
+    browser_protocol_step.dependOn(&install_browser_protocol_runtime.step);
+    const browser_protocol_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/browser/protocol_runtime.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "protocol-game", .module = b.createModule(.{
+                .root_source_file = b.path("fixtures/protocol-desktop/src/protocol_game.zig"),
+                .target = b.graph.host,
+                .optimize = optimize,
+                .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+            }) },
+        },
+    }) });
+    const run_browser_protocol_tests = b.addRunArtifact(browser_protocol_tests);
+    const browser_protocol_test_step = b.step("test-browser-protocol", "Test the browser stable-protocol fixture");
+    browser_protocol_test_step.dependOn(&run_browser_protocol_tests.step);
+    const browser_protocol_host_test = b.addSystemCommand(&.{ "node", "script/test_browser_protocol_host.mjs" });
+    browser_protocol_host_test.setCwd(b.path("."));
+    browser_protocol_host_test.step.dependOn(&install_browser_protocol_runtime.step);
+    const browser_protocol_host_test_step = b.step("test-browser-protocol-host", "Instantiate the browser stable-protocol fixture against the host ABI");
+    browser_protocol_host_test_step.dependOn(&browser_protocol_host_test.step);
     const install_browser_runtime = b.addInstallArtifact(browser_runtime, .{
         .dest_dir = .{ .override = .{ .custom = "web" } },
         .dest_sub_path = "unpolished-peas.wasm",
     });
     const browser_step = b.step("browser", "Build the wasm32-freestanding browser runtime in zig-out/web");
     browser_step.dependOn(&install_browser_runtime.step);
+    const host_protocol_game = b.createModule(.{
+        .root_source_file = b.path("fixtures/protocol-desktop/src/protocol_game.zig"),
+        .target = b.graph.host,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
     const browser_runtime_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/browser/runtime.zig"),
         .target = b.graph.host,
         .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "protocol-game", .module = host_protocol_game },
+        },
     }) });
     const run_browser_runtime_tests = b.addRunArtifact(browser_runtime_tests);
     const browser_runtime_test_step = b.step("test-browser-runtime", "Test the host-independent browser runtime boundary");

@@ -16,7 +16,7 @@ python3 -m http.server 8123 --bind 127.0.0.1 --directory "$bundle" >"$tmp/server
 server=$!
 sleep 1
 cd "$tmp"
-"$pw" -s="$session" open http://127.0.0.1:8123/
+"$pw" -s="$session" open http://127.0.0.1:8123/?renderer=webgl2
 "$pw" -s="$session" snapshot >"$tmp/snapshot.txt"
 "$pw" -s="$session" eval '() => Boolean(document.querySelector("canvas[data-unpolished-peas]"))' | grep -F true
 "$pw" -s="$session" eval "() => document.querySelector('canvas[data-unpolished-peas]').dataset.game === '$game'" | grep -F true
@@ -28,5 +28,9 @@ cd "$tmp"
 "$pw" -s="$session" eval '() => window.unpolishedPeas.host.captureFrame().startsWith("data:image/png")' | grep -F true
 "$pw" -s="$session" eval '() => { const b = new TextEncoder().encode("browser harness"); window.unpolishedPeas.host.memory ? null : null; const memory = window.unpolishedPeas.host.memory; new Uint8Array(memory.buffer, 0, b.length).set(b); window.unpolishedPeas.runtime.up_browser_diagnostic_emit(0, b.length); return window.unpolishedPeas.host.artifacts().some((artifact) => artifact.name === "diagnostics.json" && artifact.data.includes("browser harness")); }' | grep -F true
 "$pw" -s="$session" eval '() => window.unpolishedPeas.host.lifecycle().scheduledFrames > 0' | grep -F true
+"$pw" -s="$session" eval '() => window.unpolishedPeas.renderer' | grep -F webgl2
+"$pw" -s="$session" close
+"$pw" -s="$session" open http://127.0.0.1:8123/?renderer=webgpu
+"$pw" -s="$session" eval '() => Boolean(window.unpolishedPeas)' | grep -F false
 "$pw" -s="$session" close
 printf '%s\n' "browser-chromium passed: game=$game"

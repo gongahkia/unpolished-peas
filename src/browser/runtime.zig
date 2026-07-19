@@ -1,9 +1,16 @@
 const std = @import("std");
 const contract = @import("contract.zig");
+const up = @import("unpolished-peas");
+const protocol_game = @import("protocol-game");
 
 pub const target_triple = "wasm32-freestanding";
 
 var frame_token: u32 = 0;
+var game: protocol_game.Game = .{};
+var input: up.input.Input = .{};
+var game_context: up.core.GameContext = undefined;
+var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
+var protocol_failure: ?up.core.GameFailure = null;
 
 pub const HostCallbacks = struct {
     context: *anyopaque,
@@ -34,12 +41,34 @@ pub export fn up_browser_abi_version() u32 {
 
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
+    input = .{};
+    game = .{};
+    game_context = .init(&input);
+    protocol = .bind(&game);
+    protocol.init(&game_context) catch {
+        protocol_failure = protocol.lastFailure();
+        return @intFromEnum(contract.Status.rejected);
+    };
+    protocol_failure = null;
     frame_token = contract.scheduleFrame();
     return @intFromEnum(contract.Status.ok);
 }
 
 pub export fn up_browser_frame(_: f64) void {
+    protocol.update(&game_context, 1.0 / 60.0) catch {
+        protocol_failure = protocol.lastFailure();
+        return;
+    };
+    protocol.draw(&game_context, 0) catch {
+        protocol_failure = protocol.lastFailure();
+        return;
+    };
+    protocol_failure = null;
     frame_token = contract.scheduleFrame();
+}
+
+pub export fn up_browser_protocol_failure_phase() i32 {
+    return if (protocol_failure) |current| @intFromEnum(current.phase) else -1;
 }
 
 pub export fn up_browser_resize(width: u32, height: u32) i32 {
