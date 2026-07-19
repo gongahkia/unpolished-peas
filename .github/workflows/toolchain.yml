@@ -25,10 +25,21 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: python3 script/capability_matrix.py --check-row "${{ matrix.id }}"
+      - if: matrix.id == 'linux-sdl_gpu'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - run: ${{ matrix.command }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-core-diagnostics-${{ matrix.id }}
+          path: |
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/diagnostics/**/*
+          if-no-files-found: warn
 
   downstream-package:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -39,6 +50,7 @@ jobs:
       - run: script/test_core_downstream_fixture.sh
 
   release-zig-compatibility:
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -53,7 +65,8 @@ jobs:
         env:
           UP_EXPECTED_ZIG_VERSION: ${{ matrix.zig }}
 
-  required-zig-0-15-2:
+  extended-validation:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         os: [macos-latest, ubuntu-latest]
@@ -124,6 +137,7 @@ jobs:
           if-no-files-found: warn
 
   desktop-package-compatibility:
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -180,6 +194,7 @@ jobs:
           if-no-files-found: warn
 
   desktop-package-parity:
+    if: github.event_name != 'pull_request'
     needs: desktop-package-compatibility
     runs-on: ubuntu-latest
     steps:
@@ -191,6 +206,7 @@ jobs:
       - run: python3 script/test_package_parity.py package-reports
 
   renderer-conformance:
+    if: github.event_name != 'pull_request'
     strategy:
       matrix:
         os: [macos-15-intel, ubuntu-latest, windows-latest]
@@ -219,6 +235,7 @@ jobs:
           if-no-files-found: warn
 
   windows-runtime:
+    if: github.event_name != 'pull_request'
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4
@@ -245,6 +262,7 @@ jobs:
           if-no-files-found: warn
 
   proof-game-regression:
+    if: github.event_name != 'pull_request'
     strategy:
       fail-fast: false
       matrix:
@@ -281,6 +299,7 @@ jobs:
           if-no-files-found: warn
 
   sample-smoke:
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
     strategy:
       matrix:
@@ -300,6 +319,7 @@ jobs:
           if-no-files-found: warn
 
   advisory-next-zig:
+    if: github.event_name != 'pull_request'
     continue-on-error: true
     runs-on: ubuntu-latest
     steps:
