@@ -61,7 +61,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "macos-15-intel", "command": "zig build test-core-api"}}
+          "ci": {"pull_request": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}}
         },
         {
           "id": "opengl",
@@ -81,7 +81,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "ubuntu-latest", "command": "zig build test-core-api"}}
+          "ci": {"pull_request": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}}
         },
         {
           "id": "opengl",
@@ -101,7 +101,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "windows-2022", "command": "zig build test-core-api"}}
+          "ci": {"pull_request": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}}
         },
         {
           "id": "opengl",

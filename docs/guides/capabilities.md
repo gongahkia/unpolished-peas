@@ -51,6 +51,6 @@ WebGL 2 and WebGPU deliberately have the same stable-core requirement set. Their
 
 | Matrix row | Runner | Core check |
 | --- | --- | --- |
-| `macos-sdl_gpu` | `macos-15-intel` | `zig build test-core-api` |
-| `linux-sdl_gpu` | `ubuntu-latest` | `zig build test-core-api` |
-| `windows-sdl_gpu` | `windows-2022` | `zig build test-core-api` |
+| `macos-sdl_gpu` | `macos-15-intel` | `bash script/test_stable_core_capability.sh macos-sdl_gpu` |
+| `linux-sdl_gpu` | `ubuntu-latest` | `bash script/test_stable_core_capability.sh linux-sdl_gpu` |
+| `windows-sdl_gpu` | `windows-2022` | `pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu` |
