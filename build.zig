@@ -664,6 +664,15 @@ pub fn build(b: *std.Build) void {
     const run_puzzle_tests = b.addRunArtifact(puzzle_tests);
     const puzzle_test_step = b.step("test-puzzle", "Run deterministic puzzle tests");
     puzzle_test_step.dependOn(&run_puzzle_tests.step);
+    const platformer_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/platformer_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_platformer_tests = b.addRunArtifact(platformer_tests);
+    const platformer_test_step = b.step("test-platformer", "Run deterministic platformer tests");
+    platformer_test_step.dependOn(&run_platformer_tests.step);
     const replay_test_step = b.step("test-replays", "Run stored fixed-step input replays");
     replay_test_step.dependOn(&run_breakout_tests.step);
     replay_test_step.dependOn(&run_topdown_tests.step);
