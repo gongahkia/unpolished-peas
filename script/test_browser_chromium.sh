@@ -52,9 +52,11 @@ cd "$tmp"
 "$pw" -s="$session" eval '() => Boolean(document.querySelector("canvas[data-unpolished-peas]"))' | grep -F true
 "$pw" -s="$session" eval "() => document.querySelector('canvas[data-unpolished-peas]').dataset.game === '$game'" | grep -F true
 "$pw" -s="$session" click 'canvas[data-unpolished-peas]'
+"$pw" --session "$session" mousedown
 "$pw" --session "$session" keydown w
-"$pw" -s="$session" eval '() => Boolean(window.unpolishedPeas && window.unpolishedPeas.runtime && window.unpolishedPeas.host.input().down[0])' | grep -F true
-"$pw" --session "$session" keyup w
+"$pw" -s="$session" eval '() => { const input = window.unpolishedPeas?.host.input(); return Boolean(window.unpolishedPeas?.runtime && input?.down[0] && input.pointerDown[0] && Number.isFinite(input.pointer.canvasX) && Number.isFinite(input.pointer.canvasY)); }' | grep -F true
+"$pw" -s="$session" eval '() => { window.dispatchEvent(new Event("blur")); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0]; }' | grep -F true
+"$pw" --session "$session" mouseup
 "$pw" -s="$session" eval '() => window.unpolishedPeas.host.storage().phase' | grep -F ready
 "$pw" -s="$session" eval '() => { const audio = window.unpolishedPeas.host.audio(); return window.unpolishedPeas.runtime.up_browser_audio_state() === audio.state && typeof audio.phase === "string"; }' | grep -F true
 "$pw" -s="$session" eval '() => window.unpolishedPeas.host.captureFrame().startsWith("data:image/png")' | grep -F true
@@ -86,9 +88,11 @@ esac
 if [ "$webgpu_ready" -eq 1 ]; then
 capture_artifacts webgpu
 "$pw" -s="$session" click 'canvas[data-unpolished-peas]'
+"$pw" --session "$session" mousedown
 "$pw" --session "$session" keydown w
-"$pw" -s="$session" eval '() => Boolean(window.unpolishedPeas.runtime && window.unpolishedPeas.host.input().down[0])' | grep -F true
-"$pw" --session "$session" keyup w
+"$pw" -s="$session" eval '() => { const input = window.unpolishedPeas?.host.input(); return Boolean(window.unpolishedPeas?.runtime && input?.down[0] && input.pointerDown[0] && Number.isFinite(input.pointer.canvasX) && Number.isFinite(input.pointer.canvasY)); }' | grep -F true
+"$pw" -s="$session" eval '() => { window.dispatchEvent(new Event("blur")); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0]; }' | grep -F true
+"$pw" --session "$session" mouseup
 "$pw" -s="$session" eval '() => { const audio = window.unpolishedPeas.host.audio(); return window.unpolishedPeas.runtime.up_browser_audio_state() === audio.state && typeof audio.phase === "string" && window.unpolishedPeas.host.captureFrame().startsWith("data:image/png"); }' | grep -F true
 "$pw" -s="$session" eval 'async () => { if (window.unpolishedPeas?.renderer !== "webgpu") return true; const runtime = window.unpolishedPeas.runtime; const pack = (r, g, b, a = 255) => (r | (g << 8) | (b << 16) | (a << 24)) >>> 0; const results = [runtime.up_browser_gl_context_create(8, 6), runtime.up_browser_clear(pack(19, 37, 61)), runtime.up_browser_draw_rect(1, 1, 4, 3, pack(255, 0, 0, 128)), runtime.up_browser_push_clip(2, 1, 2, 4), runtime.up_browser_draw_rect(0, 0, 8, 6, pack(0, 0, 255, 128)), runtime.up_browser_pop_clip(), runtime.up_browser_present(0)]; if (results.some((status) => status !== 0)) return false; const image = new Image(); image.src = window.unpolishedPeas.host.captureFrame(); await image.decode(); const output = document.createElement("canvas"); output.width = 8; output.height = 6; const context = output.getContext("2d"); context.drawImage(image, 0, 0); const pixel = (x, y) => [...context.getImageData(x, y, 1, 1).data]; return JSON.stringify({outside: pixel(0, 0), red: pixel(1, 1), blend: pixel(2, 1)}) === JSON.stringify({outside: [19, 37, 61, 255], red: [137, 18, 30, 255], blend: [68, 9, 143, 255]}); }' | grep -F true
 "$pw" -s="$session" eval 'async () => { if (window.unpolishedPeas?.renderer !== "webgpu") return true; const runtime = window.unpolishedPeas.runtime; const memory = window.unpolishedPeas.host.memory; const pixels = [12, 34, 56, 255, 78, 90, 12, 255, 34, 56, 78, 255, 90, 12, 34, 255]; new Uint8Array(memory.buffer, 1024, pixels.length).set(pixels); const texture = runtime.up_browser_gl_resource_create(1, 0); const statuses = [runtime.up_browser_gl_context_create(8, 6), runtime.up_browser_clear(0xff000000), runtime.up_browser_texture_upload(texture, 2, 2, 1024, pixels.length, 0), runtime.up_browser_draw_sprite(texture, 0, 0, 2, 2, 3, 2, 2, 2, 0xffffffff, 0), runtime.up_browser_present(0)]; if (statuses.some((status) => status !== 0)) return false; const image = new Image(); image.src = window.unpolishedPeas.host.captureFrame(); await image.decode(); const output = document.createElement("canvas"); output.width = 8; output.height = 6; const context = output.getContext("2d"); context.drawImage(image, 0, 0); const pixel = [...context.getImageData(3, 2, 1, 1).data]; runtime.up_browser_gl_resource_destroy(1, texture); return JSON.stringify(pixel) === JSON.stringify([12, 34, 56, 255]); }' | grep -F true

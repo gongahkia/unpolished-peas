@@ -1,5 +1,6 @@
 const std = @import("std");
 const Vec2 = @import("math.zig").Vec2;
+const keyboard_pointer_fixture = @embedFile("fixtures/input/keyboard-pointer-v1.json");
 
 pub const Key = enum(u8) {
     up,
@@ -134,6 +135,11 @@ pub const Input = struct {
         if (is_down) self.pointer_pressed[index] = true else self.pointer_released[index] = true;
     }
 
+    pub fn releaseAll(self: *Input) void {
+        for (self.down, 0..) |is_down, index| if (is_down) self.set(@enumFromInt(@as(u8, @intCast(index))), false);
+        for (self.pointer_down, 0..) |is_down, index| if (is_down) self.setPointerButton(@enumFromInt(@as(u8, @intCast(index))), false);
+    }
+
     pub fn pointerIsDown(self: Input, button: PointerButton) bool {
         return self.pointer_down[@intFromEnum(button)];
     }
@@ -204,6 +210,36 @@ test "pointer records mapped coordinates and edges" {
     input.beginFrame();
     try std.testing.expectEqual(Vec2.zero, input.pointer.delta);
     try std.testing.expect(!input.pointerWasPressed(.left));
+}
+
+test "shared keyboard pointer fixture releases held input on focus loss" {
+    const Fixture = struct {
+        schema_version: u32,
+        key: []const u8,
+        pointer_button: []const u8,
+        window: [2]f32,
+        framebuffer: [2]f32,
+        canvas: [2]f32,
+    };
+    var parsed = try std.json.parseFromSlice(Fixture, std.testing.allocator, keyboard_pointer_fixture, .{});
+    defer parsed.deinit();
+    const fixture = parsed.value;
+    try std.testing.expectEqual(@as(u32, 1), fixture.schema_version);
+    const key: Key = if (std.mem.eql(u8, fixture.key, "up")) .up else return error.InvalidInputFixture;
+    const button: PointerButton = if (std.mem.eql(u8, fixture.pointer_button, "left")) .left else return error.InvalidInputFixture;
+    var input = Input{};
+    input.set(key, true);
+    input.setPointerPosition(.{ .x = fixture.window[0], .y = fixture.window[1] }, .{ .x = fixture.framebuffer[0], .y = fixture.framebuffer[1] }, .{ .x = fixture.canvas[0], .y = fixture.canvas[1] });
+    input.setPointerButton(button, true);
+    try std.testing.expect(input.isDown(key));
+    try std.testing.expect(input.pointerIsDown(button));
+    try std.testing.expectEqual(Vec2.init(fixture.canvas[0], fixture.canvas[1]), input.pointer.canvas.?);
+    input.beginFrame();
+    input.releaseAll();
+    try std.testing.expect(!input.isDown(key));
+    try std.testing.expect(!input.pointerIsDown(button));
+    try std.testing.expect(input.wasReleased(key));
+    try std.testing.expect(input.pointerWasReleased(button));
 }
 
 test "gamepad add remove and dead-zone transitions" {
