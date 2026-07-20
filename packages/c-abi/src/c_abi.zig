@@ -106,6 +106,19 @@ pub const CAdmissionDecision = enum(u32) {
     accept = 1,
     reject = 2,
 };
+pub const CSessionState = enum(u32) {
+    idle,
+    establishing,
+    ready,
+    draining,
+    closed,
+};
+pub const CSessionTransition = enum(u32) {
+    begin_establishing,
+    mark_ready,
+    begin_draining,
+    close,
+};
 pub const CAdmissionFn = *const fn (?*anyopaque, *const CPeer) callconv(.c) u32;
 pub const CAuthoritativeSessionConfig = extern struct {
     max_clients: usize,
@@ -496,6 +509,7 @@ const ChannelRecord = struct {
 
 const SessionRecord = struct {
     session: *runtime.ResourceHandle,
+    lifecycle: runtime.SessionLifecycle = .{ .state = .ready },
     max_clients: usize,
     admission_context: ?*anyopaque,
     admission: ?CAdmissionFn,
@@ -1010,6 +1024,11 @@ fn find_session(state: *CSdkState, session: *CAuthoritativeSession) ?usize {
     return null;
 }
 
+fn session_transition_from_c(value: u32) ?runtime.SessionTransition {
+    const action = std.meta.intToEnum(CSessionTransition, value) catch return null;
+    return @enumFromInt(@intFromEnum(action));
+}
+
 fn discard_pending_messages(state: *CSdkState, record: *ChannelRecord) void {
     for (record.pending_messages.items) |message| release_sdk_buffer(state, message.buffer) catch {};
     record.pending_messages.clearRetainingCapacity();
@@ -1471,11 +1490,32 @@ pub export fn minna_san_authoritative_session_create(sdk: ?*CSdk, config: ?*cons
     return @intFromEnum(CResult.ok);
 }
 
+pub export fn minna_san_authoritative_session_state(sdk: ?*CSdk, session: ?*CAuthoritativeSession, out_state: ?*u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_state orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = @intFromEnum(state.session_records.items[index].lifecycle.state);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_authoritative_session_transition(sdk: ?*CSdk, session: ?*CAuthoritativeSession, transition: u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const action = session_transition_from_c(transition) orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    var record = &state.session_records.items[index];
+    if (action == .close and record.clients.items.len != 0) return @intFromEnum(CResult.invalid_state);
+    record.lifecycle.transition(action) catch return @intFromEnum(CResult.invalid_state);
+    return @intFromEnum(CResult.ok);
+}
+
 pub export fn minna_san_authoritative_session_destroy(sdk: ?*CSdk, session: ?*CAuthoritativeSession) c_int {
     const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
     const handle = session orelse return @intFromEnum(CResult.invalid_argument);
     const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
     var record = state.session_records.items[index];
+    if (record.lifecycle.state != .closed or record.clients.items.len != 0) return @intFromEnum(CResult.invalid_state);
     record.clients.deinit(state.allocator_bridge.allocator());
     state.resources.release_kind(record.session, .session) catch return @intFromEnum(CResult.invalid_state);
     for (state.session_records.items[index + 1 ..], index..) |next, destination| state.session_records.items[destination] = next;
@@ -1491,6 +1531,7 @@ pub export fn minna_san_authoritative_session_client_join(sdk: ?*CSdk, session: 
     const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     const connection_index = find_connection(state, connection_handle) orelse return @intFromEnum(CResult.invalid_argument);
     var record = &state.session_records.items[session_index];
+    if (record.lifecycle.state != .ready) return @intFromEnum(CResult.invalid_state);
     for (record.clients.items) |client| {
         if (client == @as(*runtime.ResourceHandle, @ptrCast(connection_handle))) return @intFromEnum(CResult.invalid_state);
     }
@@ -1510,6 +1551,7 @@ pub export fn minna_san_authoritative_session_client_leave(sdk: ?*CSdk, session:
     const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     const raw_connection: *runtime.ResourceHandle = @ptrCast(connection_handle);
     var record = &state.session_records.items[session_index];
+    if (record.lifecycle.state != .ready and record.lifecycle.state != .draining) return @intFromEnum(CResult.invalid_state);
     for (record.clients.items, 0..) |client, index| {
         if (client != raw_connection) continue;
         for (record.clients.items[index + 1 ..], index..) |next, destination| record.clients.items[destination] = next;
@@ -2366,17 +2408,29 @@ test "C authoritative sessions enforce admission and client capacity" {
     var session_config = CAuthoritativeSessionConfig{ .max_clients = 1, .admission_context = null, .admission = null };
     var session: ?*CAuthoritativeSession = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_create(sdk, &session_config, &session));
+    var lifecycle_state: u32 = undefined;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_state(sdk, session, &lifecycle_state));
+    try std.testing.expectEqual(@intFromEnum(CSessionState.ready), lifecycle_state);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_authoritative_session_transition(sdk, session, 99));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_destroy(sdk, session));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.close)));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_join(sdk, session, connection));
     var count: usize = 0;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_count(sdk, session, &count));
     try std.testing.expectEqual(@as(usize, 1), count);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_client_join(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.begin_draining)));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_client_join(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.close)));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_leave(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.close)));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, session));
     session_config.admission = Fixture.reject;
     var rejected_session: ?*CAuthoritativeSession = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_create(sdk, &session_config, &rejected_session));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.permission_denied)), minna_san_authoritative_session_client_join(sdk, rejected_session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, rejected_session, @intFromEnum(CSessionTransition.begin_draining)));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, rejected_session, @intFromEnum(CSessionTransition.close)));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, rejected_session));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
 }
@@ -2422,6 +2476,8 @@ test "C topology workflow joins an authoritative session and transitions direct 
     try std.testing.expectEqual(c_route_relay, route_state);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_connection_close(sdk, connection));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_client_leave(sdk, session, connection));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.begin_draining)));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_transition(sdk, session, @intFromEnum(CSessionTransition.close)));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_authoritative_session_destroy(sdk, session));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_stop(sdk));

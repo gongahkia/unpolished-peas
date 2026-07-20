@@ -41,6 +41,15 @@ extern "C" {
 #define MINNA_SAN_SECURITY_KEY_ROTATION 16u
 #define MINNA_SAN_ADMISSION_ACCEPT 1u
 #define MINNA_SAN_ADMISSION_REJECT 2u
+#define MINNA_SAN_SESSION_IDLE 0u
+#define MINNA_SAN_SESSION_ESTABLISHING 1u
+#define MINNA_SAN_SESSION_READY 2u
+#define MINNA_SAN_SESSION_DRAINING 3u
+#define MINNA_SAN_SESSION_CLOSED 4u
+#define MINNA_SAN_SESSION_TRANSITION_BEGIN_ESTABLISHING 0u
+#define MINNA_SAN_SESSION_TRANSITION_MARK_READY 1u
+#define MINNA_SAN_SESSION_TRANSITION_BEGIN_DRAINING 2u
+#define MINNA_SAN_SESSION_TRANSITION_CLOSE 3u
 #define MINNA_SAN_CANDIDATE_HOST 1u
 #define MINNA_SAN_CANDIDATE_SERVER_REFLEXIVE 2u
 #define MINNA_SAN_CANDIDATE_RELAY 3u
@@ -432,6 +441,8 @@ minna_san_result minna_san_security_config_validate(const minna_san_security_con
 minna_san_result minna_san_authoritative_session_config_init(minna_san_authoritative_session_config *out_config);
 minna_san_result minna_san_authoritative_session_config_validate(const minna_san_authoritative_session_config *config);
 minna_san_result minna_san_authoritative_session_create(minna_san_sdk *sdk, const minna_san_authoritative_session_config *config, minna_san_authoritative_session **out_session);
+minna_san_result minna_san_authoritative_session_state(minna_san_sdk *sdk, minna_san_authoritative_session *session, uint32_t *out_state);
+minna_san_result minna_san_authoritative_session_transition(minna_san_sdk *sdk, minna_san_authoritative_session *session, uint32_t transition);
 minna_san_result minna_san_authoritative_session_destroy(minna_san_sdk *sdk, minna_san_authoritative_session *session);
 minna_san_result minna_san_authoritative_session_client_join(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
 minna_san_result minna_san_authoritative_session_client_leave(minna_san_sdk *sdk, minna_san_authoritative_session *session, minna_san_connection *connection);
