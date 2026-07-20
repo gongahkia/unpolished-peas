@@ -172,7 +172,7 @@ test "runtime event buses reject callback reentry" {
 
         fn receive(context: ?*anyopaque, _: *const event.EventEnvelope) void {
             const self: *@This() = @ptrCast(@alignCast(context.?));
-            const nested = event.EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .connected = {} } };
+            const nested = event.EventEnvelope{ .sequence = 1, .mode = .poll, .event = .{ .connected = {} } };
             _ = self.bus.?.emit(&nested) catch |err| {
                 self.result = err;
             };
@@ -181,7 +181,7 @@ test "runtime event buses reject callback reentry" {
     var bus = try RuntimeEventBus.init(.{});
     var fixture = Fixture{ .bus = &bus };
     _ = try bus.register(.{ .destination = .callback, .context = &fixture, .receive = Fixture.receive });
-    const initial = event.EventEnvelope{ .sequence = 0, .mode = .managed, .event = .{ .connected = {} } };
+    const initial = event.EventEnvelope{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } };
     _ = try bus.emit(&initial);
     try std.testing.expectEqual(error.ReentrantEmit, fixture.result.?);
 }
