@@ -2,6 +2,7 @@ const std = @import("std");
 const builtin = @import("builtin");
 const up = @import("unpolished-peas");
 const bounce = @import("bounce.zig");
+const puzzle = @import("puzzle_game.zig");
 
 const startup_samples: u32 = 16;
 const frame_samples: u32 = 240;
@@ -17,6 +18,7 @@ const GameMetrics = struct {
 
 const Metrics = struct {
     bounce: GameMetrics,
+    puzzle: GameMetrics,
 };
 
 const CountingAllocator = struct {
@@ -105,6 +107,36 @@ const BounceRuntime = struct {
     }
 };
 
+const PuzzleRuntime = struct {
+    canvas: up.graphics.Canvas = undefined,
+    game: puzzle.Game = .{},
+    input: up.input.Input = .{},
+    frame_index: u32 = 0,
+
+    fn init(self: *PuzzleRuntime, allocator: std.mem.Allocator) !void {
+        self.* = .{ .canvas = try up.graphics.Canvas.init(allocator, puzzle.width, puzzle.height) };
+    }
+
+    fn deinit(self: *PuzzleRuntime) void {
+        self.canvas.deinit();
+        self.* = undefined;
+    }
+
+    fn frame(self: *PuzzleRuntime) !void {
+        self.input.set(.action, self.frame_index % 60 == 0);
+        _ = self.game.step(self.input);
+        self.frame_index +%= 1;
+        self.canvas.clear(up.core.Color.rgb(13, 18, 30));
+        for (self.game.cells, 0..) |lit, index| {
+            const x = 45 + @as(i32, @intCast(index % puzzle.columns)) * 24;
+            const y = 24 + @as(i32, @intCast(index / puzzle.columns)) * 24;
+            self.canvas.fillRect(x, y, 20, 20, if (lit) up.core.Color.rgb(113, 232, 162) else up.core.Color.rgb(31, 47, 68));
+            self.canvas.strokeRect(x, y, 20, 20, if (index == self.game.selected) up.core.Color.rgb(255, 198, 74) else up.core.Color.rgb(91, 124, 158));
+        }
+        self.canvas.drawText("LIGHTS OUT", 4, 4, up.core.Color.white);
+    }
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
@@ -118,7 +150,8 @@ pub fn main() !void {
         \\  "version": 1,
         \\  "target": "{s}-{s}",
         \\  "game_metrics": {{
-        \\    "bounce": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
+        \\    "bounce": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}},
+        \\    "puzzle": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
         \\  }}
         \\}}
     ,
@@ -131,6 +164,12 @@ pub fn main() !void {
             metrics.bounce.frame_ns,
             metrics.bounce.frame_allocation_events,
             metrics.bounce.frame_allocated_bytes,
+            metrics.puzzle.startup_ns,
+            metrics.puzzle.startup_allocation_events,
+            metrics.puzzle.startup_allocated_bytes,
+            metrics.puzzle.frame_ns,
+            metrics.puzzle.frame_allocation_events,
+            metrics.puzzle.frame_allocated_bytes,
         },
     );
     try out.flush();
@@ -139,6 +178,7 @@ pub fn main() !void {
 fn measureAll(allocator: std.mem.Allocator) !Metrics {
     return .{
         .bounce = try measure(BounceRuntime, allocator),
+        .puzzle = try measure(PuzzleRuntime, allocator),
     };
 }
 
