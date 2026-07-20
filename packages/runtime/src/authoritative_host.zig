@@ -180,7 +180,7 @@ test "dedicated hosts own bounded peer lifecycle channel routing and ticks" {
     try std.testing.expectEqual(protocol.ChannelCapability.reliable, routed.capability);
     try std.testing.expectEqualStrings("input", routed.payload);
     try std.testing.expectError(error.ChannelAlreadyOpen, host.open_channel(7, 1, .reliable));
-    try std.testing.expectError(error.ChannelCapacityExceeded, host.open_channel(7, 2, .unreliable));
+    try std.testing.expectError(error.ChannelCapacityExceeded, host.open_channel(7, 2, .datagram));
     try host.disconnect_peer(7);
     try std.testing.expectError(error.UnknownPeer, host.route(7, 1, .outbound, "state"));
 }
