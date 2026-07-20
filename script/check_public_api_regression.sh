@@ -22,5 +22,6 @@ baseline_version="$(tr -d '\r\n' < "$baseline")"
 [ -f "$metadata_dir/$version.toml" ] || fail "missing release contract metadata"
 grep -Fqx "release = \"$version\"" "$metadata_dir/$version.toml" || fail "release contract metadata version mismatch"
 [ "$(awk '{print $2}' "$manifest")" = "contracts/v1_public_api.zig
-packages/c-abi/include/minna_san.h" ] || fail "invalid public API contract manifest"
+packages/c-abi/include/minna_san.h
+packages/c-abi/include/minna_san_api.h" ] || fail "invalid public API contract manifest"
 (cd "$root" && shasum -a 256 --check --status "contracts/v1_release_contracts.sha256") || fail "released public API contract changed"

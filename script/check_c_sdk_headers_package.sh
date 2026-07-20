@@ -16,9 +16,10 @@ try:
     metadata = json.loads(pathlib.Path(sys.argv[1]).read_text(encoding="utf-8"))
 except (OSError, json.JSONDecodeError) as error:
     raise SystemExit(f"invalid C SDK header metadata: {error}")
-if metadata != {"schema_version": 1, "sdk_version": sys.argv[2], "abi_version": int(sys.argv[3]), "headers": ["minna_san.h", "minna_san_sdk_metadata.h"]}:
+if metadata != {"schema_version": 1, "sdk_version": sys.argv[2], "abi_version": int(sys.argv[3]), "headers": ["minna_san.h", "minna_san_api.h", "minna_san_sdk_metadata.h"]}:
     raise SystemExit("C SDK header metadata mismatch")
 PY
 test -f "$package/include/minna_san.h"
+test -f "$package/include/minna_san_api.h"
 test -f "$package/include/minna_san_sdk_metadata.h"
 "$zig_exe" cc -std=c11 -Wall -Wextra -Werror -c -o /dev/null -I "$package/include" "$root/contracts/fixtures/c_sdk_header_package.c"
