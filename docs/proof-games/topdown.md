@@ -18,10 +18,12 @@ script/test_proof_game_matrix.sh topdown
 
 Desktop packages are selected with `zig build peas -- package <linux|macos|windows> OUT --game topdown`; each package script stages raw assets and the top-down executable. The capability matrix runs the supported desktop lanes on macOS, Linux, and Windows.
 
+`script/package_web.sh OUT --game topdown` builds a top-down-specific Wasm runtime. It parses normalized browser input, advances `examples/topdown_game.zig`, and renders its camera-owned world through the shared WebGL 2 and WebGPU host. `script/test_browser_chromium.sh topdown` checks a top-down player state and rendered frame in both forced renderers.
+
 ## Performance result
 
 `script/check_performance_budgets.sh` measures the versioned 160×90 stable-core workloads and checks their reviewed native limits. The top-down scene exercises the same primitive, sprite, text, and camera paths at 160×96. Its update/draw methods do not call asset-loading APIs. Run the command on the target being evaluated; values are target-specific and are not portable frame-rate claims.
 
 ## Limitations
 
-The game deliberately has no collision, tile map, camera controller, combat system, persistence, or content pipeline. The static web `--game topdown` package currently verifies the shared browser host, renderer, input, audio, capture, and package artifact; it does not bundle `examples/topdown_game.zig` as its browser game. Therefore browser proof-game coverage is not sufficient to claim that the top-down gameplay itself runs in WebGL 2 or WebGPU.
+The game deliberately has no collision, tile map, camera controller, combat system, persistence, or content pipeline. Browser rendering uses rectangles rather than the native sprite and circle draws because the current browser host exposes a stable rectangle path to both renderers. Browser audio is host-level coverage; the top-down sound effect remains desktop-only.
