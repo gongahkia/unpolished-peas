@@ -12,7 +12,7 @@ while [ "$#" -gt 0 ]; do
     esac
     shift
 done
-case "$game" in bounce|topdown|puzzle) ;; *) exit 64 ;; esac
+case "$game" in bounce|topdown|puzzle|platformer) ;; *) exit 64 ;; esac
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
@@ -21,6 +21,7 @@ case "$game" in
     bounce) browser_step=browser ;;
     topdown) browser_step=browser-topdown ;;
     puzzle) browser_step=browser-puzzle ;;
+    platformer) browser_step=browser-platformer ;;
 esac
 zig build "$browser_step" -p "$stage"
 package="$out/unpolished-peas-$game-web"

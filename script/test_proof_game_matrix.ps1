@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('topdown', 'puzzle')]
+    [ValidateSet('topdown', 'puzzle', 'platformer')]
     [string]$Game
 )
 

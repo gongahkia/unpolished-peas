@@ -165,6 +165,28 @@ pub fn build(b: *std.Build) void {
     browser_puzzle_runtime.entry = .disabled;
     browser_puzzle_runtime.rdynamic = true;
     browser_puzzle_runtime.import_memory = true;
+    const browser_platformer_game = b.createModule(.{
+        .root_source_file = b.path("examples/platformer_game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const browser_platformer_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-platformer",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/platformer_runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "platformer-game", .module = browser_platformer_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+            },
+        }),
+    });
+    browser_platformer_runtime.entry = .disabled;
+    browser_platformer_runtime.rdynamic = true;
+    browser_platformer_runtime.import_memory = true;
     const browser_protocol_runtime = b.addExecutable(.{
         .name = "unpolished-peas-protocol",
         .root_module = b.createModule(.{
@@ -226,6 +248,12 @@ pub fn build(b: *std.Build) void {
     });
     const browser_puzzle_step = b.step("browser-puzzle", "Build the puzzle wasm32-freestanding browser runtime in zig-out/web");
     browser_puzzle_step.dependOn(&install_browser_puzzle_runtime.step);
+    const install_browser_platformer_runtime = b.addInstallArtifact(browser_platformer_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "unpolished-peas.wasm",
+    });
+    const browser_platformer_step = b.step("browser-platformer", "Build the platformer wasm32-freestanding browser runtime in zig-out/web");
+    browser_platformer_step.dependOn(&install_browser_platformer_runtime.step);
     const host_protocol_game = b.createModule(.{
         .root_source_file = b.path("fixtures/protocol-desktop/src/protocol_game.zig"),
         .target = b.graph.host,

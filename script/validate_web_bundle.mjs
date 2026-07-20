@@ -9,7 +9,7 @@ for (const path of ["index.html", "bootstrap.mjs", "host.mjs", "input.mjs", "aud
 assert.deepEqual([...await readFile(`${root}/unpolished-peas.wasm`)].slice(0, 4), [0, 97, 115, 109]);
 const manifest = JSON.parse(await readFile(`${root}/web-manifest.json`, "utf8"));
 assert.deepEqual(manifest, {version: 1, platform: "web", game: manifest.game, entry: "index.html", runtime: "unpolished-peas.wasm", assets: "assets/", renderer_selection: "query:auto|webgpu|webgl2"});
-assert.ok(["bounce", "topdown", "puzzle"].includes(manifest.game));
+assert.ok(["bounce", "topdown", "puzzle", "platformer"].includes(manifest.game));
 const workloads = JSON.parse(await readFile(`${root}/workloads-v1.json`, "utf8"));
 assert.equal(workloads.schema_version, 1);
 assert.equal(workloads.workload_version, "v1");

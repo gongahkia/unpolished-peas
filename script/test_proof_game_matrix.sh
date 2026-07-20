@@ -1,10 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-game="${1:?usage: test_proof_game_matrix.sh <topdown|puzzle>}"
+game="${1:?usage: test_proof_game_matrix.sh <topdown|puzzle|platformer>}"
 case "$game" in
-    topdown|puzzle) ;;
-    *) printf '%s\n' 'usage: test_proof_game_matrix.sh <topdown|puzzle>' >&2; exit 64 ;;
+    topdown|puzzle|platformer) ;;
+    *) printf '%s\n' 'usage: test_proof_game_matrix.sh <topdown|puzzle|platformer>' >&2; exit 64 ;;
 esac
 
 repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
@@ -45,5 +45,10 @@ case "$game" in
         run gameplay zig build test-puzzle
         run scene zig build test-puzzle-scene
         run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-puzzle-sdl
+        ;;
+    platformer)
+        run gameplay zig build test-platformer
+        run scene zig build test-platformer-scene
+        run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-platformer-sdl
         ;;
 esac

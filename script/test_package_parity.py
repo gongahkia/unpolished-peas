@@ -14,6 +14,9 @@ EXPECTED = {
     ("linux", "puzzle"): ("linux-x86_64", "unpolished-peas-puzzle-linux-x86_64.tar.gz"),
     ("macos", "puzzle"): ("macos-universal", "unpolished-peas-puzzle-macos-universal.zip"),
     ("windows", "puzzle"): ("windows-x86_64", "unpolished-peas-puzzle-windows-x86_64.zip"),
+    ("linux", "platformer"): ("linux-x86_64", "unpolished-peas-platformer-linux-x86_64.tar.gz"),
+    ("macos", "platformer"): ("macos-universal", "unpolished-peas-platformer-macos-universal.zip"),
+    ("windows", "platformer"): ("windows-x86_64", "unpolished-peas-platformer-windows-x86_64.zip"),
 }
 
 COMMON = {

@@ -10,11 +10,11 @@ while [ "$#" -gt 0 ]; do
     case "$1" in
         --game)
             shift
-            [ "$#" -gt 0 ] || { printf '%s\n' 'usage: package_linux.sh [output-directory] [--game <bounce|topdown|puzzle>]' >&2; exit 64; }
+            [ "$#" -gt 0 ] || { printf '%s\n' 'usage: package_linux.sh [output-directory] [--game <bounce|topdown|puzzle|platformer>]' >&2; exit 64; }
             game=$1
             ;;
         *)
-            [ "$out_set" -eq 0 ] || { printf '%s\n' 'usage: package_linux.sh [output-directory] [--game <bounce|topdown|puzzle>]' >&2; exit 64; }
+            [ "$out_set" -eq 0 ] || { printf '%s\n' 'usage: package_linux.sh [output-directory] [--game <bounce|topdown|puzzle|platformer>]' >&2; exit 64; }
             out=$1
             out_set=1
             ;;
@@ -25,7 +25,8 @@ case "$game" in
     bounce) build_step=package-bounce-sdl; source_runtime=unpolished-peas-bounce-sdl; fixture=bounce-project ;;
     topdown) build_step=package-topdown-sdl; source_runtime=unpolished-peas-topdown-sdl; fixture=topdown-project ;;
     puzzle) build_step=package-puzzle-sdl; source_runtime=unpolished-peas-puzzle-sdl; fixture=puzzle-project ;;
-    *) printf '%s\n' 'package_linux.sh: unsupported game; use bounce, topdown, or puzzle' >&2; exit 64 ;;
+    platformer) build_step=package-platformer-sdl; source_runtime=unpolished-peas-platformer-sdl; fixture=platformer-project ;;
+    *) printf '%s\n' 'package_linux.sh: unsupported game; use bounce, topdown, puzzle, or platformer' >&2; exit 64 ;;
 esac
 case "$out" in /*) ;; *) out="$repo/$out" ;; esac
 stage=$(mktemp -d)
