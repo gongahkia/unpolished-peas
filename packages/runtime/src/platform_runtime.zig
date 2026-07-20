@@ -6,7 +6,7 @@ const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -57,6 +57,11 @@ pub const Runtime = struct {
     pub fn selectRoute(self: *const Runtime, selector: topology.RouteSelector, capabilities: topology.RouteCapabilities) RuntimeError!topology.RouteSelection {
         if (!self.providers.supportsRequirements(selector.config.required_capabilities)) return error.UnsupportedCapabilities;
         return selector.select(capabilities);
+    }
+
+    pub fn selectRouteCandidate(self: *const Runtime, selector: topology.RouteCandidateSelector, candidates: []const topology.RouteCandidate, decisions: []topology.RouteCandidateDecision) RuntimeError!topology.RouteCandidateSelection {
+        if (!self.providers.supportsRequirements(selector.policy.required_capabilities)) return error.UnsupportedCapabilities;
+        return selector.select(candidates, decisions);
     }
 
     pub fn poll(self: *Runtime, input: poll_runtime.PollInput) RuntimeError!RuntimePollResult {
