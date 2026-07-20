@@ -17,6 +17,36 @@ pub fn disposition_for_error(err: ProviderError) core.ErrorDisposition {
 pub const ProviderCapabilityRequirement = core.ProviderCapabilityRequirement;
 pub const ProviderCapabilityDescriptor = core.ProviderCapabilityDescriptor;
 
+pub const ProviderBuffer = union(core.Ownership) {
+    borrowed: core.BorrowedBuffer,
+    owned: core.OwnedBuffer,
+    retained: core.RetainedBuffer,
+    transferred: core.TransferredBuffer,
+
+    pub fn init_owned(transfer: *core.TransferredBuffer) core.TransferError!ProviderBuffer {
+        return .{ .owned = try transfer.into_owned() };
+    }
+
+    pub fn borrow(self: *const ProviderBuffer) core.BorrowedBuffer {
+        return switch (self.*) {
+            .borrowed => |buffer| buffer,
+            .owned => |buffer| buffer.borrow(),
+            .retained => |buffer| buffer.borrow(),
+            .transferred => |buffer| if (buffer.buffer) |owned| owned.borrow() else .init(&.{}),
+        };
+    }
+
+    pub fn deinit(self: *ProviderBuffer) void {
+        switch (self.*) {
+            .borrowed => {},
+            .owned => |*buffer| buffer.deinit(),
+            .retained => |*buffer| buffer.deinit(),
+            .transferred => |*buffer| buffer.deinit(),
+        }
+        self.* = undefined;
+    }
+};
+
 pub const ProviderConfig = struct {
     name: []const u8,
     required_capabilities: ProviderCapabilityRequirement = .{},
@@ -242,6 +272,15 @@ const FakeProvider = struct {
         self.stops += 1;
     }
 };
+
+test "provider buffers make ownership explicit" {
+    var owned = try core.OwnedBuffer.initCopy(std.testing.allocator, "provider");
+    var transfer = try core.TransferredBuffer.init(&owned);
+    var buffer = try ProviderBuffer.init_owned(&transfer);
+    defer buffer.deinit();
+    try std.testing.expectEqual(core.Ownership.owned, std.meta.activeTag(buffer));
+    try std.testing.expectEqualStrings("provider", buffer.borrow().bytes);
+}
 
 test "providers have explicit bounded lifecycle" {
     var fake = FakeProvider{};

@@ -136,6 +136,7 @@ pub const RuntimeMetrics = struct {
 fn message_len(message: event.MessageEvent) u64 {
     const length = switch (message.buffer) {
         .borrowed => |buffer| buffer.bytes.len,
+        .retained => |buffer| buffer.borrow().bytes.len,
         .transferred => |transfer| if (transfer.buffer) |buffer| buffer.bytes.len else 0,
     };
     return @intCast(length);
