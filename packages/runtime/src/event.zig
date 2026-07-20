@@ -7,16 +7,19 @@ pub const EventMode = enum {
 
 pub const EventOwnership = enum {
     borrowed,
+    retained,
     transferred,
 };
 
 pub const EventBuffer = union(EventOwnership) {
     borrowed: core.BorrowedBuffer,
+    retained: core.RetainedBuffer,
     transferred: core.TransferredBuffer,
 
     pub fn deinit(self: *EventBuffer) void {
         switch (self.*) {
             .borrowed => {},
+            .retained => |*buffer| buffer.deinit(),
             .transferred => |*buffer| buffer.deinit(),
         }
         self.* = undefined;
@@ -98,7 +101,8 @@ test "ordered poll and replay events preserve overflow ordering" {
 }
 
 test "event payload ownership and ordering violations are checked" {
-    const transfer = core.TransferredBuffer.init(try core.OwnedBuffer.initCopy(@import("std").testing.allocator, "event"));
+    var owned = try core.OwnedBuffer.initCopy(@import("std").testing.allocator, "event");
+    const transfer = try core.TransferredBuffer.init(&owned);
     var event = EventEnvelope{
         .sequence = 1,
         .mode = .poll,

@@ -179,6 +179,7 @@ pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
 pub const ProviderCapabilityRequirement = provider.ProviderCapabilityRequirement;
 pub const ProviderCapabilityDescriptor = provider.ProviderCapabilityDescriptor;
+pub const ProviderBuffer = provider.ProviderBuffer;
 pub const ProviderConfig = provider.ProviderConfig;
 pub const ProviderPollResult = provider.ProviderPollResult;
 pub const ProviderPollOutput = provider.ProviderPollOutput;

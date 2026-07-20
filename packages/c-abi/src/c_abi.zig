@@ -51,6 +51,7 @@ pub const CAllocator = extern struct {
 };
 pub const CAllocatorError = error{ MissingAllocateCallback, AllocationFailed };
 pub const CBufferReleaseError = error{ MissingReleaseCallback, InvalidBuffer };
+pub const CTrackedBufferError = CAllocatorError || std.mem.Allocator.Error;
 pub const CResult = core.CResult;
 pub const CErrorCategory = core.ErrorClass;
 pub const CRetryability = core.Retryability;
@@ -469,6 +470,7 @@ const CSdkState = struct {
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
     session_records: std.ArrayListUnmanaged(SessionRecord),
+    owned_buffers: std.ArrayListUnmanaged(CBuffer),
     started: bool,
 };
 
@@ -1009,8 +1011,28 @@ fn find_session(state: *CSdkState, session: *CAuthoritativeSession) ?usize {
 }
 
 fn discard_pending_messages(state: *CSdkState, record: *ChannelRecord) void {
-    for (record.pending_messages.items) |message| release_buffer(state.allocator_bridge.c_allocator, message.buffer) catch {};
+    for (record.pending_messages.items) |message| release_sdk_buffer(state, message.buffer) catch {};
     record.pending_messages.clearRetainingCapacity();
+}
+
+fn allocate_sdk_buffer(state: *CSdkState, len: usize) CTrackedBufferError!CBuffer {
+    const buffer = try allocate_buffer(state.allocator_bridge.c_allocator, len);
+    if (len == 0) return buffer;
+    errdefer release_buffer(state.allocator_bridge.c_allocator, buffer) catch {};
+    try state.owned_buffers.append(state.allocator_bridge.allocator(), buffer);
+    return buffer;
+}
+
+fn release_sdk_buffer(state: *CSdkState, buffer: CBuffer) CBufferReleaseError!void {
+    if (!is_valid_buffer(buffer)) return error.InvalidBuffer;
+    if (buffer.len == 0) return;
+    for (state.owned_buffers.items, 0..) |owned, index| {
+        if (@intFromPtr(owned.data) != @intFromPtr(buffer.data) or owned.len != buffer.len) continue;
+        try release_buffer(state.allocator_bridge.c_allocator, buffer);
+        _ = state.owned_buffers.orderedRemove(index);
+        return;
+    }
+    return error.InvalidBuffer;
 }
 
 pub export fn minna_san_abi_version() CAbiVersion {
@@ -1124,6 +1146,7 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.connection_records = .empty;
     state.channel_records = .empty;
     state.session_records = .empty;
+    state.owned_buffers = .empty;
     state.started = false;
     output.* = @ptrCast(state);
     return @intFromEnum(CResult.ok);
@@ -1164,6 +1187,8 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     for (state.session_records.items) |*record| record.clients.deinit(allocator);
     state.session_records.deinit(allocator);
     state.connection_records.deinit(allocator);
+    for (state.owned_buffers.items) |buffer| release_buffer(state.allocator_bridge.c_allocator, buffer) catch {};
+    state.owned_buffers.deinit(allocator);
     state.resources.deinit();
     state.poll_runtime.deinit();
     allocator.destroy(state);
@@ -1294,7 +1319,7 @@ pub export fn minna_san_channel_send(sdk: ?*CSdk, channel: ?*CChannel, buffer: C
     const handle = channel orelse return @intFromEnum(CResult.invalid_argument);
     const index = find_channel(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
     var record = &state.channel_records.items[index];
-    const copied = allocate_buffer(state.allocator_bridge.c_allocator, buffer.len) catch return @intFromEnum(CResult.resource_exhausted);
+    const copied = allocate_sdk_buffer(state, buffer.len) catch return @intFromEnum(CResult.resource_exhausted);
     if (buffer.len > 0) {
         const source: [*]const u8 = @ptrCast(buffer.data);
         const destination: [*]u8 = @ptrCast(copied.data);
@@ -1303,7 +1328,7 @@ pub export fn minna_san_channel_send(sdk: ?*CSdk, channel: ?*CChannel, buffer: C
     if (record.mode == c_channel_sequenced) discard_pending_messages(state, record);
     const sequence = record.next_sequence;
     record.pending_messages.append(state.allocator_bridge.allocator(), .{ .sequence = sequence, .buffer = copied }) catch {
-        release_buffer(state.allocator_bridge.c_allocator, copied) catch {};
+        release_sdk_buffer(state, copied) catch {};
         return @intFromEnum(CResult.resource_exhausted);
     };
     record.next_sequence +%= 1;
@@ -1356,7 +1381,7 @@ pub export fn minna_san_channel_last_acknowledged(sdk: ?*CSdk, channel: ?*CChann
 
 pub export fn minna_san_sdk_buffer_release(sdk: ?*CSdk, buffer: CBuffer) c_int {
     const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
-    release_buffer(state.allocator_bridge.c_allocator, buffer) catch return @intFromEnum(CResult.invalid_argument);
+    release_sdk_buffer(state, buffer) catch return @intFromEnum(CResult.invalid_argument);
     return @intFromEnum(CResult.ok);
 }
 
@@ -2147,6 +2172,7 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
     };
     var sdk: ?*CSdk = null;
+    var foreign_sdk: ?*CSdk = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_validate_config(&config));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &sdk));
     try std.testing.expect(sdk != null);
@@ -2193,6 +2219,7 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_last_acknowledged(sdk, reliable_channel, &acknowledged_sequence));
     try std.testing.expectEqual(received_sequence, acknowledged_sequence);
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_buffer_release(sdk, received));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_buffer_release(sdk, received));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_channel_receive(sdk, reliable_channel, &received, &received_sequence));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, reliable_channel));
     var sequenced_channel: ?*CChannel = null;
@@ -2204,6 +2231,10 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_receive(sdk, sequenced_channel, &received, &received_sequence));
     const sequenced_bytes: [*]const u8 = @ptrCast(received.data);
     try std.testing.expectEqualSlices(u8, &second, sequenced_bytes[0..received.len]);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &foreign_sdk));
+    defer minna_san_sdk_destroy(foreign_sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(foreign_sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_sdk_buffer_release(foreign_sdk, received));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_buffer_release(sdk, received));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, sequenced_channel));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
@@ -2212,10 +2243,6 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     var replacement_peer: ?*CPeer = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &replacement, &replacement_peer));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &route_state));
-    var foreign_sdk: ?*CSdk = null;
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &foreign_sdk));
-    defer minna_san_sdk_destroy(foreign_sdk);
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(foreign_sdk));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(foreign_sdk, replacement, &route_state));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, replacement));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_sdk_poll(sdk, &event));
