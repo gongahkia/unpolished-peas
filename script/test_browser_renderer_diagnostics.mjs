@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import {RendererDiagnosticVersion, browserTarget, rendererDiagnostic} from "../src/browser/renderer_diagnostics.mjs";
+import {RendererDiagnosticVersion, browserTarget, rendererDiagnostic, webGpuDeviceLostDiagnostic} from "../src/browser/renderer_diagnostics.mjs";
 
 assert.equal(RendererDiagnosticVersion, 1);
 assert.equal(browserTarget({userAgent: "Mozilla/5.0 Firefox/140.0"}), "firefox");
@@ -32,3 +32,5 @@ assert.deepEqual(diagnostic, {
 assert.equal("user_agent" in diagnostic, false);
 assert.equal("adapter" in diagnostic, false);
 assert.equal("device" in diagnostic, false);
+const lost = webGpuDeviceLostDiagnostic({...diagnostic, selected_renderer: "webgpu", capabilities: {webgl2: "not_checked", webgpu: "available"}}, "chromium", {phase: "device_lost", generation: 1, recoveries: 0});
+assert.deepEqual(lost, {...diagnostic, selected_renderer: "webgpu", fallback_reason: "device_lost", recovery_instruction: "Reload the package to create a new WebGPU device.", capabilities: {webgl2: "not_checked", webgpu: "available"}, context_status: "device_lost", adapter_status: "ready", device_status: "lost", recovery_state: {phase: "device_lost", generation: 1, recoveries: 0}});

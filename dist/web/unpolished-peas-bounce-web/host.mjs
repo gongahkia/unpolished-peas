@@ -44,6 +44,7 @@ export function createBrowserHost({
 } = {}) {
   let gl = null;
   let webgpu = null;
+  let webgpuDeviceLossHandler = null;
   let contextLost = false;
   let logicalWidth = 0;
   let logicalHeight = 0;
@@ -675,6 +676,7 @@ export function createBrowserHost({
         lifecycleGeneration += 1;
         lifecyclePhase = "device_lost";
         cancelScheduledFrames();
+        webgpuDeviceLossHandler?.();
       },
     });
     if (!backend.resize(width, height)) {
@@ -842,6 +844,7 @@ export function createBrowserHost({
     resourceCount: () => resources.size,
     context: () => gl,
     initializeWebGpu,
+    onWebGpuDeviceLost: (handler) => { webgpuDeviceLossHandler = typeof handler === "function" ? handler : null; },
     webgpu: () => webgpu?.diagnostic() ?? null,
     attachRuntime: (exports) => {
       if (!exports || typeof exports.up_browser_frame !== "function") return false;

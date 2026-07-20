@@ -24,3 +24,19 @@ export function rendererDiagnostic({requestedRenderer, selectedRenderer, fallbac
     recovery_state: {phase: recoveryState.phase, generation: recoveryState.generation, recoveries: recoveryState.recoveries},
   };
 }
+
+export function webGpuDeviceLostDiagnostic(previous, target, recoveryState) {
+  return rendererDiagnostic({
+    requestedRenderer: previous.requested_renderer,
+    selectedRenderer: "webgpu",
+    fallbackReason: "device_lost",
+    recoveryInstruction: "Reload the package to create a new WebGPU device.",
+    target,
+    webgl2Capability: previous.capabilities.webgl2,
+    webgpuCapability: "available",
+    contextStatus: "device_lost",
+    adapterStatus: "ready",
+    deviceStatus: "lost",
+    recoveryState,
+  });
+}

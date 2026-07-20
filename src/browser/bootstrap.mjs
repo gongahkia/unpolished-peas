@@ -1,5 +1,5 @@
 import {createBrowserHost, Status} from "./host.mjs";
-import {browserTarget, rendererDiagnostic} from "./renderer_diagnostics.mjs";
+import {browserTarget, rendererDiagnostic, webGpuDeviceLostDiagnostic} from "./renderer_diagnostics.mjs";
 import {selectRenderer} from "./renderer_selection.mjs";
 
 async function instantiate(url, imports) {
@@ -20,6 +20,13 @@ function publish(diagnostic, runtime = null, selectedRenderer = null) {
   host.setRendererDiagnostic(diagnostic);
   window.unpolishedPeas = {host, runtime, renderer: selectedRenderer, rendererDiagnostic: diagnostic};
 }
+
+host.onWebGpuDeviceLost(() => {
+  const previous = window.unpolishedPeas?.rendererDiagnostic;
+  if (!previous || previous.selected_renderer !== "webgpu") return;
+  const diagnostic = webGpuDeviceLostDiagnostic(previous, target, host.lifecycle());
+  publish(diagnostic, window.unpolishedPeas.runtime, "webgpu");
+});
 
 function unavailable(reason, instruction, contextStatus, webgl2Capability, webgpuCapability = "not_checked", adapterStatus = "not_applicable", deviceStatus = "not_applicable") {
   const diagnostic = rendererDiagnostic({
