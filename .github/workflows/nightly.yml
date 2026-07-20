@@ -31,6 +31,11 @@ jobs:
       - run: ${{ matrix.command }}
         env:
           UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/nightly-${{ matrix.id }}
+      - if: matrix.id == 'macos-sdl_gpu' || matrix.id == 'linux-sdl_gpu'
+        run: script/check_workload_performance.sh
+      - if: matrix.id == 'windows-sdl_gpu'
+        shell: pwsh
+        run: script/check_workload_performance.ps1
       - if: always()
         uses: actions/upload-artifact@v4
         with:

@@ -3,6 +3,8 @@ set -euo pipefail
 
 repo="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 workflow="$repo/.github/workflows/release.yml"
+nightly="$repo/.github/workflows/nightly.yml"
+pull_request="$repo/.github/workflows/toolchain.yml"
 gate="$repo/script/release_gate.sh"
 
 require() {
@@ -45,4 +47,16 @@ if rg --fixed-strings --quiet 'check_performance_budgets.sh' "$gate"; then
     printf '%s\n' 'release validation found a performance budget gate' >&2
     exit 1
 fi
-printf '%s\n' 'release validation coverage passed'
+for performance_workflow in "$nightly" "$workflow"; do
+    require "      - if: matrix.id == 'macos-sdl_gpu' || matrix.id == 'linux-sdl_gpu'" "$performance_workflow"
+    require '        run: script/check_workload_performance.sh' "$performance_workflow"
+    require "      - if: matrix.id == 'windows-sdl_gpu'" "$performance_workflow"
+    require '        shell: pwsh' "$performance_workflow"
+    require '        run: script/check_workload_performance.ps1' "$performance_workflow"
+done
+require '            zig-out/performance/**' "$workflow"
+if rg --fixed-strings --quiet 'check_workload_performance' "$pull_request"; then
+    printf '%s\n' 'release validation found a workload performance gate in pull-request CI' >&2
+    exit 1
+fi
+printf '%s\n' 'release and performance validation coverage passed'

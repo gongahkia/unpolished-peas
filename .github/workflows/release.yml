@@ -37,6 +37,11 @@ jobs:
       - run: ${{ matrix.command }}
         env:
           UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/release-capability-${{ matrix.id }}
+      - if: matrix.id == 'macos-sdl_gpu' || matrix.id == 'linux-sdl_gpu'
+        run: script/check_workload_performance.sh
+      - if: matrix.id == 'windows-sdl_gpu'
+        shell: pwsh
+        run: script/check_workload_performance.ps1
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -45,6 +50,7 @@ jobs:
             zig-out/diagnostics/**
             zig-out/**/*.png
             zig-out/**/*.ppm
+            zig-out/performance/**
           if-no-files-found: warn
   release-gate:
     needs: release-capability

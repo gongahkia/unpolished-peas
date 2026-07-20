@@ -58,6 +58,9 @@ def main() -> None:
         result = invoke(str(CHECK), str(baseline_path), str(slower_path))
         if result.returncode == 0 or "workload=primitive_fill metric=frame_time_ns" not in result.stderr:
             raise AssertionError(f"expected metric failure: {result.stdout}{result.stderr}")
+        for value in ("target=", "baseline=100", "observed=1000000", "tolerance=+"):
+            if value not in result.stderr:
+                raise AssertionError(f"expected regression report field {value!r}: {result.stdout}{result.stderr}")
 
         missing = copy.deepcopy(observed)
         missing["target"]["renderer"] = "other"
