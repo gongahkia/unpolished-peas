@@ -1,0 +1,16 @@
+{
+  "schema_version": 1,
+  "status": "ok",
+  "target": {"os": "browser", "architecture": "browser", "browser": {"name": "chromium", "version": "150.0.0.0"}, "renderer": "webgpu"},
+  "workload_version": "v1",
+  "workloads": [
+    {"id": "primitive_fill", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 187500, "command_count": 82, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}},
+    {"id": "sprite_batching", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 225000, "command_count": 66, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}},
+    {"id": "alpha_blend", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 93750, "command_count": 50, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}},
+    {"id": "clipping", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 81250, "command_count": 54, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}},
+    {"id": "text", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 337500, "command_count": 20, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}},
+    {"id": "mixed_frame", "resolution": {"width": 160, "height": 90}, "warmup_frames": 4, "sample_count": 16, "metrics": {"frame_time_ns": 143750, "command_count": 64, "frame_allocation_events": null, "frame_allocated_bytes": null}, "metric_availability": {"frame_time_ns": "measured_cpu_submission", "command_count": "measured", "frame_allocation_events": "unavailable", "frame_allocated_bytes": "unavailable"}}
+  ],
+  "timer": {"clock": "performance.now", "unit": "nanoseconds", "measurement": "cpu_submission", "limitations": ["frame_time_ns measures JavaScript submission around host calls; it does not wait for GPU completion.", "performance.now resolution and privacy quantization vary by browser and isolation settings.", "background throttling and compositor scheduling can change observed values; run in a foreground browser job."]},
+  "diagnostics": {"total_frames": 120}
+}

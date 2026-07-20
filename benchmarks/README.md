@@ -17,3 +17,19 @@ Baseline changes require a recorded run from the same target and a version incre
 `zig build benchmark-browser-workloads` records `browser-workloads-<browser>-webgl2.json` and `browser-workloads-<browser>-webgpu.json` under `zig-out/performance/`; the matrix-selected Chromium job uploads both. Set `UP_BROWSER=chromium`, `firefox`, or `webkit` to select the Playwright engine and `UP_RENDERERS` to select forced renderers. The artifact keeps the native workload shape while adding browser name/version and actual renderer selection; allocation metrics are `null` with explicit `unavailable` availability because browser JavaScript allocation counters are not portable.
 
 `frame_time_ns` is CPU submission time around browser host calls. It does not wait for GPU completion, and `performance.now()` can be quantized for privacy, throttled in the background, or affected by compositor scheduling. Browser artifacts are therefore comparable only within the same browser, version, renderer, and workload schema; they are not native comparisons.
+
+## Versioned workload baselines
+
+`workload-baselines/v1/` stores reviewed limits, while `workload-artifacts/v1/` stores the exact measured JSON used to create each baseline. A baseline is selected only when its target identity, browser version where present, renderer, workload version, and timer measurement schema match the observed artifact. Its record must name the stored artifact by a baseline-relative path, include its SHA-256, and give a non-empty reason; validation rejects a changed or missing source artifact.
+
+Record a reviewed update with a measured artifact, not hand-edited limits:
+
+```sh
+python3 script/record_workload_baseline.py ARTIFACT RECORDED_ARTIFACT BASELINE 'measured reason for this update'
+```
+
+For example, `ARTIFACT` may be `zig-out/performance/workloads-macos-aarch64.json`, `RECORDED_ARTIFACT` may be `benchmarks/workload-artifacts/v1/macos-aarch64-headless.json`, and `BASELINE` may be `benchmarks/workload-baselines/v1/macos-aarch64-headless.json`. Review the stored artifact, SHA-256, reason, tolerance change, and baseline together.
+
+Validate a single baseline with `python3 script/check_workload_baseline.py BASELINE ARTIFACT`, or select by exact identity with `python3 script/check_workload_baseline.py --directory benchmarks/workload-baselines/v1 ARTIFACT`. `script/check_performance_budgets.sh` records and validates the native workload artifact; `script/check_browser_workload_baselines.sh` does the same for selected browser renderers. `python3 script/check_required_workload_baselines.py` validates the supported desktop registry before release eligibility. If a required or observed identity lacks an exact baseline, validation exits nonzero with `release_eligible=false`; release automation can therefore never silently compare different machines, browsers, renderers, or measurement methods.
+
+Never rewrite a historical baseline schema in place. Add matching `workload-artifacts/vN/` and `workload-baselines/vN/` directories for a new schema or workload version, retaining the prior directory and its checker-compatible JSON for review.

@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "workload_version": "v1",
+  "measurement_schema": {
+    "artifact_schema_version": 1,
+    "timer": {"clock": "std.time.Timer", "unit": "nanoseconds", "measurement": "headless_cpu_render"}
+  },
+  "required_targets": [
+    {"os": "linux", "architecture": "x86_64", "renderer": "headless"},
+    {"os": "macos", "architecture": "x86_64", "renderer": "headless"},
+    {"os": "windows", "architecture": "x86_64", "renderer": "headless"}
+  ]
+}

@@ -261,6 +261,10 @@ pub fn build(b: *std.Build) void {
     browser_workload_artifacts_test.setCwd(b.path("."));
     const browser_workload_artifacts_test_step = b.step("test-browser-workload-artifacts", "Record forced Chromium WebGL 2 and WebGPU workload artifacts");
     browser_workload_artifacts_test_step.dependOn(&browser_workload_artifacts_test.step);
+    const workload_baseline_test = b.addSystemCommand(&.{ "python3", "script/test_workload_baseline.py" });
+    workload_baseline_test.setCwd(b.path("."));
+    const workload_baseline_test_step = b.step("test-workload-baselines", "Test versioned workload baseline validation");
+    workload_baseline_test_step.dependOn(&workload_baseline_test.step);
     const browser_workload_benchmark = b.addSystemCommand(&.{"script/record_browser_workload_artifacts.sh"});
     browser_workload_benchmark.setCwd(b.path("."));
     const browser_workload_benchmark_step = b.step("benchmark-browser-workloads", "Record forced browser workload artifacts");
