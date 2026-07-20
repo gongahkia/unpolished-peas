@@ -1,5 +1,6 @@
 const core = @import("minna-san-core");
 const envelope = @import("wire_envelope.zig");
+const pre_release_compatibility = @import("pre_release_compatibility.zig");
 const packet_envelope = @import("packet_envelope.zig");
 const capability_negotiation = @import("capability_negotiation.zig");
 const extension_handling = @import("extension_handling.zig");
@@ -36,6 +37,14 @@ pub const extension_range = envelope.extension_range;
 pub const validate_version = envelope.validate_version;
 pub const validate_extension = envelope.validate_extension;
 pub const validate_envelope = envelope.validate_envelope;
+pub const PreReleasePhase = pre_release_compatibility.PreReleasePhase;
+pub const PreReleaseVersionComponent = pre_release_compatibility.PreReleaseVersionComponent;
+pub const PreReleaseVersionOffer = pre_release_compatibility.PreReleaseVersionOffer;
+pub const PreReleaseCompatibilityError = pre_release_compatibility.PreReleaseCompatibilityError;
+pub const PreReleaseCompatibility = pre_release_compatibility.PreReleaseCompatibility;
+pub const PreReleaseCompatibilityPolicy = pre_release_compatibility.PreReleaseCompatibilityPolicy;
+pub const default_pre_release_version_offer = pre_release_compatibility.default_pre_release_version_offer;
+pub const validate_negotiated_envelope = pre_release_compatibility.validate_negotiated_envelope;
 pub const packet_header_bytes = packet_envelope.packet_header_bytes;
 pub const max_packet_payload_bytes = packet_envelope.max_packet_payload_bytes;
 pub const PacketEnvelopeError = packet_envelope.PacketEnvelopeError;
@@ -224,6 +233,7 @@ test "protocol package boundary" {
 
 test {
     _ = @import("wire_envelope.zig");
+    _ = @import("pre_release_compatibility.zig");
     _ = @import("packet_envelope.zig");
     _ = @import("capability_negotiation.zig");
     _ = @import("extension_handling.zig");
