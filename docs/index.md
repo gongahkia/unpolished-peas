@@ -9,6 +9,7 @@
 - [Testing](guides/testing.md)
 - [Top-down proof game](proof-games/topdown.md)
 - [Puzzle proof game](proof-games/puzzle.md)
+- [Platformer proof game](proof-games/platformer.md)
 - [CI](guides/ci.md)
 - [Browser renderer diagnostics](guides/browser-diagnostics.md)
 - [v0.1 capability matrix](guides/capabilities.md)
