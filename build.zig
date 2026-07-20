@@ -361,6 +361,9 @@ pub fn build(b: *std.Build) void {
     const public_api_regression_test = b.addSystemCommand(&.{ "sh", "script/test_public_api_regression.sh" });
     const public_api_regression_test_step = b.step("public-api-regression-test", "Test released public API contract checks");
     public_api_regression_test_step.dependOn(&public_api_regression_test.step);
+    const pre_release_api_contract_test = b.addSystemCommand(&.{ "sh", "script/test_pre_release_api_contract.sh" });
+    const pre_release_api_contract_test_step = b.step("pre-release-api-contract-test", "Test pre-release public API extensibility");
+    pre_release_api_contract_test_step.dependOn(&pre_release_api_contract_test.step);
     const dependency_check = b.addSystemCommand(&.{ "sh", "script/check_stdlib_only.sh" });
     const dependency_step = b.step("dependency-policy", "Check v1 sources use only std and first-party modules");
     dependency_step.dependOn(&dependency_check.step);
@@ -516,4 +519,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&contract_gate_check.step);
     test_step.dependOn(&public_api_regression_check.step);
     test_step.dependOn(&public_api_regression_test.step);
+    test_step.dependOn(&pre_release_api_contract_test.step);
 }
