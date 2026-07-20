@@ -152,8 +152,8 @@ test "bounded host-migration fuzz corpus releases every pending handoff" {
     const random = prng.random();
     var directory = try topology.ShardDirectory.init(std.testing.allocator, .{ .maximum_shards = 2 });
     defer directory.deinit();
-    try directory.register(.{ .id = 1, .capacity = .{ .maximum_participants = 4, .active_participants = 4 }, .health = .healthy, .route = .{ .id = 1, .kind = .authoritative, .endpoint = directory.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 }) } });
-    try directory.register(.{ .id = 2, .capacity = .{ .maximum_participants = 4, .active_participants = 0 }, .health = .healthy, .route = .{ .id = 2, .kind = .authoritative, .endpoint = directory.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 2 }, .port = 9001 }) } });
+    try directory.register(.{ .id = 1, .capacity = .{ .maximum_participants = 4, .active_participants = 4 }, .health = .healthy, .route = .{ .id = 1, .kind = .authoritative, .endpoint = topology.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 }) } });
+    try directory.register(.{ .id = 2, .capacity = .{ .maximum_participants = 4, .active_participants = 0 }, .health = .healthy, .route = .{ .id = 2, .kind = .authoritative, .endpoint = topology.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 2 }, .port = 9001 }) } });
     var coordinator = try topology.ShardHandoffCoordinator.init(std.testing.allocator, &directory, .{ .maximum_pending_handoffs = 2, .maximum_state_bytes = 4 });
     defer coordinator.deinit();
     var ids: [2]topology.ShardHandoffId = undefined;
