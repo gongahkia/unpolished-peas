@@ -17,3 +17,5 @@ const Game = struct {
 The browser bundle runs the same callback fixture through its Wasm host. Select `?renderer=webgl2` explicitly; a `webgpu` request fails visibly because WebGPU is unsupported in the current [capability matrix](capabilities.md).
 
 `GameProtocol.init` rejects a second initialization. `update` and `draw` reject calls before a successful initialization. Callback failures preserve their original error and are available through `lastFailure()` with an `init`, `update`, or `draw` phase. The protocol does not call a deinitializer; game-owned resources remain game-owned.
+
+`up.testSupport.HeadlessGameRunner(Game)` runs the same callback contract with scripted `HeadlessFrame` input, a deterministic core canvas capture, and retained shared render commands for tests.
