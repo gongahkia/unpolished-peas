@@ -205,6 +205,10 @@ pub fn build(b: *std.Build) void {
     browser_host_test.setCwd(b.path("."));
     const browser_host_test_step = b.step("test-browser-host", "Test browser WebGL 2 host bindings");
     browser_host_test_step.dependOn(&browser_host_test.step);
+    const browser_webgpu_test = b.addSystemCommand(&.{ "node", "script/test_browser_webgpu.mjs" });
+    browser_webgpu_test.setCwd(b.path("."));
+    const browser_webgpu_test_step = b.step("test-browser-webgpu", "Test browser WebGPU canvas lifecycle");
+    browser_webgpu_test_step.dependOn(&browser_webgpu_test.step);
     const browser_input_test = b.addSystemCommand(&.{ "node", "script/test_browser_input.mjs" });
     browser_input_test.setCwd(b.path("."));
     const browser_input_test_step = b.step("test-browser-input", "Test browser DOM input bindings");
