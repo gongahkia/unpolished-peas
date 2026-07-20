@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const up = @import("unpolished-peas");
 const bounce = @import("bounce.zig");
 const puzzle = @import("puzzle_game.zig");
+const platformer = @import("platformer_game.zig");
 
 const startup_samples: u32 = 16;
 const frame_samples: u32 = 240;
@@ -19,6 +20,7 @@ const GameMetrics = struct {
 const Metrics = struct {
     bounce: GameMetrics,
     puzzle: GameMetrics,
+    platformer: GameMetrics,
 };
 
 const CountingAllocator = struct {
@@ -137,6 +139,38 @@ const PuzzleRuntime = struct {
     }
 };
 
+const PlatformerRuntime = struct {
+    canvas: up.graphics.Canvas = undefined,
+    game: platformer.Game = .{},
+    input: up.input.Input = .{},
+    frame_index: u32 = 0,
+
+    fn init(self: *PlatformerRuntime, allocator: std.mem.Allocator) !void {
+        self.* = .{ .canvas = try up.graphics.Canvas.init(allocator, platformer.width, platformer.height) };
+    }
+
+    fn deinit(self: *PlatformerRuntime) void {
+        self.canvas.deinit();
+        self.* = undefined;
+    }
+
+    fn frame(self: *PlatformerRuntime) !void {
+        self.input.set(.right, true);
+        self.input.set(.action, self.frame_index % 60 == 5);
+        _ = self.game.step(self.input, 1.0 / 60.0);
+        self.frame_index +%= 1;
+        self.canvas.clear(up.core.Color.rgb(15, 23, 38));
+        for (platformer.platforms) |surface| {
+            self.canvas.fillRect(@intFromFloat(surface.x), @intFromFloat(surface.y), @intFromFloat(surface.w), @intFromFloat(surface.h), up.core.Color.rgb(55, 100, 130));
+            self.canvas.strokeRect(@intFromFloat(surface.x), @intFromFloat(surface.y), @intFromFloat(surface.w), @intFromFloat(surface.h), up.core.Color.rgb(113, 232, 162));
+        }
+        self.canvas.fillRect(149, 54, 2, 30, up.core.Color.rgb(225, 232, 240));
+        self.canvas.fillRect(151, 54, 7, 6, up.core.Color.rgb(255, 198, 74));
+        self.canvas.fillRect(@intFromFloat(self.game.player.x), @intFromFloat(self.game.player.y), platformer.player_width, platformer.player_height, up.core.Color.rgb(255, 198, 74));
+        self.canvas.drawText("PLATFORMER", 4, 4, up.core.Color.white);
+    }
+};
+
 pub fn main() !void {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     defer std.debug.assert(gpa.deinit() == .ok);
@@ -151,7 +185,8 @@ pub fn main() !void {
         \\  "target": "{s}-{s}",
         \\  "game_metrics": {{
         \\    "bounce": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}},
-        \\    "puzzle": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
+        \\    "puzzle": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}},
+        \\    "platformer": {{"startup_ns": {d}, "startup_allocation_events": {d}, "startup_allocated_bytes": {d}, "frame_ns": {d}, "frame_allocation_events": {d}, "frame_allocated_bytes": {d}}}
         \\  }}
         \\}}
     ,
@@ -170,6 +205,12 @@ pub fn main() !void {
             metrics.puzzle.frame_ns,
             metrics.puzzle.frame_allocation_events,
             metrics.puzzle.frame_allocated_bytes,
+            metrics.platformer.startup_ns,
+            metrics.platformer.startup_allocation_events,
+            metrics.platformer.startup_allocated_bytes,
+            metrics.platformer.frame_ns,
+            metrics.platformer.frame_allocation_events,
+            metrics.platformer.frame_allocated_bytes,
         },
     );
     try out.flush();
@@ -179,6 +220,7 @@ fn measureAll(allocator: std.mem.Allocator) !Metrics {
     return .{
         .bounce = try measure(BounceRuntime, allocator),
         .puzzle = try measure(PuzzleRuntime, allocator),
+        .platformer = try measure(PlatformerRuntime, allocator),
     };
 }
 

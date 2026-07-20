@@ -140,6 +140,10 @@ zig build run-puzzle-sdl
 zig build smoke-puzzle-sdl
 zig build test-puzzle
 zig build test-puzzle-scene
+zig build run-platformer-sdl
+zig build smoke-platformer-sdl
+zig build test-platformer
+zig build test-platformer-scene
 zig build test-replays
 zig build benchmark
 zig build benchmark-proofs
@@ -167,10 +171,13 @@ zig build new -- ../my-game
 `run-puzzle-sdl` opens the Lights Out puzzle demo.
 `smoke-puzzle-sdl` runs two puzzle frames with dummy audio.
 `test-puzzle` verifies deterministic puzzle rules; `test-puzzle-scene` verifies its committed PNG golden.
-`zig build test-desktop-package-matrix` packages and smokes bounce, top-down, and puzzle for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
-`zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, and puzzle in Chromium from deterministic static Wasm bundles.
-`script/test_proof_game_matrix.sh <topdown|puzzle>` runs bounded CLI, inspector, reload, profiler, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
-`fixtures/bounce-project`, `fixtures/topdown-project`, and `fixtures/puzzle-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all three.
+`run-platformer-sdl` opens the action-mapped platformer demo.
+`smoke-platformer-sdl` runs two platformer frames with dummy audio.
+`test-platformer` verifies deterministic platformer rules; `test-platformer-scene` verifies its committed PNG golden.
+`zig build test-desktop-package-matrix` packages and smokes bounce, top-down, puzzle, and platformer for the host desktop platform from raw `assets/`, with bundled SDL and no generated content cache.
+`zig build test-web-proof-game-matrix` packages and smokes bounce, top-down, puzzle, and platformer in Chromium from deterministic static Wasm bundles.
+`script/test_proof_game_matrix.sh <topdown|puzzle|platformer>` runs bounded CLI, inspector, reload, profiler, and desktop-smoke scenarios; CI runs its Windows equivalent on every supported desktop and retains `zig-out/diagnostics/proof-matrix/` on failure.
+`fixtures/bounce-project`, `fixtures/topdown-project`, `fixtures/puzzle-project`, and `fixtures/platformer-project` are independent consumer packages that import `unpolished-peas` through their own manifests; `script/test_independent_proof_games.sh` builds and tests all four.
 `zig build test-facade-consumer-matrix` builds independent desktop and Wasm consumer packages that use only `@import("unpolished-peas")`.
 `zig build test-renderer-three-backend` compares deterministic SDL GPU, OpenGL, and WebGL 2 renderer corpus captures with a one-channel tolerance.
 `zig build test-cross-target-integrity` validates desktop and Chromium failure artifacts, manifests, redaction, package files, screenshots, and recovery diagnostics.
@@ -181,7 +188,7 @@ zig build new -- ../my-game
 `script/record_performance_artifacts.sh` records release-mode engine and proof-game metrics under `zig-out/performance/` for investigation; `script/check_performance_budgets.sh` remains an optional local baseline check. `zig build test-desktop-backends` combines stored replay hashes and SDL GPU/OpenGL visual comparison with per-stage logs.
 Tag pushes run `zig build release-gate`, which validates the frozen core API, a clean released-dependency consumer, proof-game consumers, desktop packages, deterministic diagnostics, and visual/replay checks; every gate writes a local log under `zig-out/diagnostics/release-gate/`.
 
-`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle|platformer>]` writes a portable package; web emits a static Wasm bundle with host modules, assets, manifest, and SHA-256 inventory, and `zig build peas -- serve [bundle-directory] [--port <1-65535>]` serves it only on localhost.
 `test-scenes` compares a deterministic bounce render against its committed PNG golden; `zig build test-scenes -- --update-golden` refreshes it intentionally.
 `stress-audio-sdl` runs a local SDL audio stress smoke.
 `zig build peas -- new <directory>` creates the bouncing-square starter project; it writes a standalone build, source, assets, and build-manifest layout without replacing an existing destination.
@@ -192,7 +199,7 @@ Tag pushes run `zig build release-gate`, which validates the frozen core API, a 
 `zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...` creates a local, allowlisted diagnostics export. Text artifacts redact the source path plus configured literal paths and secrets; PNG captures copy unchanged. The command never transmits or uploads data.
 `zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]` validates project, Zig, target, renderer, assets, Node browser host, and package prerequisites. Exit codes are deterministic: 20 project, 21 Zig, 22 target, 23 renderer, 24 assets, 25 browser host, 26 package.
 Prefix any `peas` workflow with `--json` for one versioned stdout result object (`command`, `status`, `recovery_code`, `non_interactive`); diagnostics remain on stderr. Prefix with `--non-interactive` to disable inherited stdin for child tools; `run` and `serve` reject that mode with exit code 65.
-`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle>]` creates the selected portable package through the project CLI.
+`zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle|platformer>]` creates the selected portable package through the project CLI.
 `zig build peas -- docs [overview|quickstart|testing|api]` emits offline Markdown documentation and prints its local path; `zig build test-docs` validates runnable-example links.
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
