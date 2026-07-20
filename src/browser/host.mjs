@@ -3,6 +3,7 @@ import {createBrowserAudio} from "./audio.mjs";
 import {createBrowserStorage} from "./storage.mjs";
 import {createBrowserArtifacts} from "./artifacts.mjs";
 import {createDebugFont, debugFontAssetDiagnostic, forEachDebugFontGlyph} from "./debug_font.mjs";
+import {decodeStableImage, stableImageAssetDiagnostic} from "./image_asset.mjs";
 import {createWebGpuBackend} from "./webgpu_backend.mjs";
 
 function localStorageOrNull() {
@@ -818,6 +819,16 @@ export function createBrowserHost({
         return true;
       } catch {
         throw new Error(debugFontAssetDiagnostic);
+      }
+    },
+    async loadStableImageAsset(url) {
+      try {
+        const response = await fetchImpl?.(url);
+        if (!response?.ok) throw new Error(stableImageAssetDiagnostic);
+        return await decodeStableImage(new Uint8Array(await response.arrayBuffer()));
+      } catch (error) {
+        if (error?.code === stableImageAssetDiagnostic) throw error;
+        throw new Error(stableImageAssetDiagnostic);
       }
     },
     onWebGpuDeviceLost: (handler) => { webgpuDeviceLossHandler = typeof handler === "function" ? handler : null; },
