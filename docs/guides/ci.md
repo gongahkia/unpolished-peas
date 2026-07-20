@@ -4,6 +4,8 @@
 
 `stable-core-capability` is the intended required pull-request matrix; `capability-matrix` is its generated-matrix dependency. The matrix is generated from `docs/capabilities/v0.1.json`; it selects only supported desktop SDL GPU rows.
 
+`browser-renderer-parity` is an extended, non-PR matrix from the same catalog. Its Chromium WebGPU row runs forced browser renderer parity and exports forced WebGL 2/WebGPU workload artifacts; Firefox and WebKit automation use the same exporter when their browser jobs are selected.
+
 | Job | Rows | Checks | Execution budget |
 | --- | --- | --- | --- |
 | `capability-matrix` | all selected rows | validates and emits the matrix | 1 minute |

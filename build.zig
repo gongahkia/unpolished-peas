@@ -245,6 +245,18 @@ pub fn build(b: *std.Build) void {
     browser_workloads_test.setCwd(b.path("."));
     const browser_workloads_test_step = b.step("test-browser-workloads", "Run the versioned workload catalog in Chromium WebGL 2");
     browser_workloads_test_step.dependOn(&browser_workloads_test.step);
+    const browser_workload_benchmark_test = b.addSystemCommand(&.{ "node", "script/test_browser_workload_benchmark.mjs" });
+    browser_workload_benchmark_test.setCwd(b.path("."));
+    const browser_workload_benchmark_test_step = b.step("test-browser-workload-benchmark", "Validate browser workload benchmark artifact schema");
+    browser_workload_benchmark_test_step.dependOn(&browser_workload_benchmark_test.step);
+    const browser_workload_artifacts_test = b.addSystemCommand(&.{"script/test_browser_workload_artifacts.sh"});
+    browser_workload_artifacts_test.setCwd(b.path("."));
+    const browser_workload_artifacts_test_step = b.step("test-browser-workload-artifacts", "Record forced Chromium WebGL 2 and WebGPU workload artifacts");
+    browser_workload_artifacts_test_step.dependOn(&browser_workload_artifacts_test.step);
+    const browser_workload_benchmark = b.addSystemCommand(&.{"script/record_browser_workload_artifacts.sh"});
+    browser_workload_benchmark.setCwd(b.path("."));
+    const browser_workload_benchmark_step = b.step("benchmark-browser-workloads", "Record forced browser workload artifacts");
+    browser_workload_benchmark_step.dependOn(&browser_workload_benchmark.step);
     const web_proof_game_matrix = b.addSystemCommand(&.{"script/test_web_proof_game_matrix.sh"});
     web_proof_game_matrix.setCwd(b.path("."));
     const web_proof_game_matrix_step = b.step("test-web-proof-game-matrix", "Package and smoke every proof game in Chromium");
