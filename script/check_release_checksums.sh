@@ -19,6 +19,7 @@ for artifact in \
     "c-sdk-shared-$version/x86_64-windows/bin/minna-san.dll" \
     "c-sdk-headers-$version/metadata.json" \
     "c-sdk-headers-$version/include/minna_san.h" \
+    "c-sdk-headers-$version/include/minna_san_api.h" \
     "c-sdk-headers-$version/include/minna_san_sdk_metadata.h" \
     "minna-san-zig-sdk-$version.tar.gz" \
     "provenance.json"; do

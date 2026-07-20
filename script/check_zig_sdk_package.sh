@@ -21,7 +21,7 @@ except (OSError, tarfile.TarError, TypeError, json.JSONDecodeError) as error:
     raise SystemExit(f"invalid Zig SDK package: {error}")
 if metadata != {"schema_version": 1, "sdk_version": version, "minimum_zig_version": compiler, "modules": ["core", "protocol", "transport", "topology", "state", "runtime", "c_abi"]}:
     raise SystemExit("Zig SDK metadata mismatch")
-for required in ("LICENSE", "REUSE.toml", "build.zig", "build.zig.zon", "packages/core/src/core.zig", "packages/c-abi/include/minna_san.h"):
+for required in ("LICENSE", "REUSE.toml", "build.zig", "build.zig.zon", "packages/core/src/core.zig", "packages/c-abi/include/minna_san.h", "packages/c-abi/include/minna_san_api.h"):
     if prefix + required not in names:
         raise SystemExit(f"missing Zig SDK source: {required}")
 if any(".zig-cache" in name for name in names):

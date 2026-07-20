@@ -418,6 +418,15 @@ pub fn build(b: *std.Build) void {
     c_abi_parity_step.dependOn(&run_c_abi_consumer.step);
     const c_sdk_static_step = b.step("c-sdk-static", "Build the C SDK static library");
     c_sdk_static_step.dependOn(&install_c_sdk_static.step);
+    const c_api_contract_check = b.addSystemCommand(&.{ "sh", "script/check_c_api_contract.sh" });
+    c_api_contract_check.step.dependOn(&install_c_sdk_static.step);
+    c_api_contract_check.step.dependOn(&c_header_check.step);
+    const c_api_contract_step = b.step("c-api-contract", "Check generated C declarations and exported symbols");
+    c_api_contract_step.dependOn(&c_api_contract_check.step);
+    const c_api_contract_test = b.addSystemCommand(&.{ "sh", "script/test_c_api_contract.sh" });
+    c_api_contract_test.step.dependOn(&c_api_contract_check.step);
+    const c_api_contract_test_step = b.step("c-api-contract-test", "Test generated C API declaration checks");
+    c_api_contract_test_step.dependOn(&c_api_contract_test.step);
     const c_sdk_shared_step = b.step("c-sdk-shared", "Build the C SDK shared library");
     c_sdk_shared_step.dependOn(&install_c_sdk_shared.step);
     const c_sdk_macos_reproducible = b.addSystemCommand(&.{ "sh", "script/test_macos_c_sdk_artifacts.sh" });
@@ -502,6 +511,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&benchmark_regression_check.step);
     test_step.dependOn(&benchmark_regression_test.step);
     test_step.dependOn(&c_header_check.step);
+    test_step.dependOn(&c_api_contract_check.step);
+    test_step.dependOn(&c_api_contract_test.step);
     test_step.dependOn(&release_license_check.step);
     test_step.dependOn(&license_metadata_check.step);
     test_step.dependOn(&contract_gate_check.step);
