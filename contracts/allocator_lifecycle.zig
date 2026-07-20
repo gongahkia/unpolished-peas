@@ -94,6 +94,7 @@ fn c_abi_lifecycle(fixture: *CAllocatorFixture) !void {
         .capability_bits = c_abi.c_capability_transport,
         .connection_capacity = 1,
         .channel_capacity = 1,
+        .platform_config = c_abi.default_platform_config,
         .clock_context = null,
         .now = CAllocatorFixture.now,
         .allocator = .{ .context = fixture, .allocate = CAllocatorFixture.allocate, .release = CAllocatorFixture.release },

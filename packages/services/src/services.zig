@@ -1,4 +1,5 @@
 const net = @import("minna-san-networking");
+const core = @import("minna-san-core");
 const guest = @import("guest_credentials.zig");
 const provider = @import("service_provider.zig");
 const lobby = @import("service_lobby.zig");
@@ -27,6 +28,16 @@ pub const RelayConfig = relay.Config;
 pub const RelayBootstrap = relay.Bootstrap;
 pub const RelayRoute = relay.Route;
 pub const RelayLease = relay.Lease;
+
+pub const ServiceConfigError = error{ InvalidPlatformConfiguration, ServiceCapacityDisabled };
+pub const ServiceConfig = struct {
+    platform_config: core.PlatformConfig = .{},
+
+    pub fn validate(self: ServiceConfig) ServiceConfigError!void {
+        self.platform_config.validate() catch return error.InvalidPlatformConfiguration;
+        if (self.platform_config.limits.service_capacity == 0) return error.ServiceCapacityDisabled;
+    }
+};
 
 pub const Endpoint = struct {
     host: []const u8,
@@ -77,6 +88,11 @@ test "services expose an SDL-free provider contract" {
     const provider_contract = fake.provider();
     const credentials = try provider_contract.issueGuestSession(.{ .now_ms = 1, .lifetime_ms = 1 });
     try @import("std").testing.expectEqual(ServiceSessionStatus.active, try provider_contract.validateGuestSession(credentials.session));
+}
+
+test "services share validated platform configuration" {
+    try (ServiceConfig{}).validate();
+    try @import("std").testing.expectError(error.ServiceCapacityDisabled, (ServiceConfig{ .platform_config = .{ .limits = .{ .service_capacity = 0 } } }).validate());
 }
 
 test {

@@ -9,6 +9,7 @@ extern "C" {
 #endif
 
 #define MINNA_SAN_ABI_VERSION 1u
+#define MINNA_SAN_PLATFORM_CONFIG_VERSION 1u
 #define MINNA_SAN_ADDRESS_BYTES 16u
 #define MINNA_SAN_ADDRESS_FAMILY_UNSPECIFIED 0u
 #define MINNA_SAN_ADDRESS_FAMILY_IPV4 4u
@@ -140,11 +141,21 @@ typedef struct minna_san_connection minna_san_connection;
 typedef struct minna_san_peer minna_san_peer;
 typedef struct minna_san_channel minna_san_channel;
 typedef struct minna_san_authoritative_session minna_san_authoritative_session;
+typedef struct minna_san_platform_config {
+    uint32_t version;
+    size_t provider_capacity;
+    size_t service_capacity;
+    size_t session_capacity;
+    size_t channel_capacity;
+    size_t event_capacity;
+    size_t poll_work_budget;
+} minna_san_platform_config;
 typedef struct minna_san_sdk_config {
     minna_san_abi_version_t abi_version;
     uint32_t capability_bits;
     size_t connection_capacity;
     size_t channel_capacity;
+    minna_san_platform_config platform_config;
     void *clock_context;
     minna_san_now_fn now;
     minna_san_allocator allocator;
@@ -358,6 +369,8 @@ uint8_t minna_san_abi_supports_version(minna_san_abi_version_t requested_version
 uint8_t minna_san_result_is_known(int result_code);
 minna_san_error_category minna_san_result_category(int result_code);
 const char *minna_san_result_message(int result_code);
+minna_san_result minna_san_platform_config_init(minna_san_platform_config *out_config);
+minna_san_result minna_san_platform_config_validate(const minna_san_platform_config *config);
 minna_san_result minna_san_sdk_validate_config(const minna_san_sdk_config *config);
 minna_san_result minna_san_sdk_create(const minna_san_sdk_config *config, minna_san_sdk **out_sdk);
 minna_san_result minna_san_sdk_start(minna_san_sdk *sdk);
