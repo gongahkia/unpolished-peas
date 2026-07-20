@@ -56,6 +56,19 @@ pub fn build(b: *std.Build) void {
         .optimize = browser_optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
     });
+    const workload_catalog = b.createModule(.{
+        .root_source_file = b.path("src/workload_catalog.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "workload-catalog-data", .module = b.createModule(.{
+                .root_source_file = b.path("benchmarks/workloads/catalog_data.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) },
+        },
+    });
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -220,6 +233,10 @@ pub fn build(b: *std.Build) void {
     browser_chromium_test.setCwd(b.path("."));
     const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
     browser_chromium_test_step.dependOn(&browser_chromium_test.step);
+    const browser_workloads_test = b.addSystemCommand(&.{"script/test_browser_workloads.sh"});
+    browser_workloads_test.setCwd(b.path("."));
+    const browser_workloads_test_step = b.step("test-browser-workloads", "Run the versioned workload catalog in Chromium WebGL 2");
+    browser_workloads_test_step.dependOn(&browser_workloads_test.step);
     const web_proof_game_matrix = b.addSystemCommand(&.{"script/test_web_proof_game_matrix.sh"});
     web_proof_game_matrix.setCwd(b.path("."));
     const web_proof_game_matrix_step = b.step("test-web-proof-game-matrix", "Package and smoke every proof game in Chromium");
@@ -437,6 +454,11 @@ pub fn build(b: *std.Build) void {
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");
     frame_timing_test_step.dependOn(&run_frame_timing_tests.step);
     test_step.dependOn(&run_frame_timing_tests.step);
+    const workload_catalog_tests = b.addTest(.{ .root_module = workload_catalog });
+    const run_workload_catalog_tests = b.addRunArtifact(workload_catalog_tests);
+    const workload_catalog_test_step = b.step("test-workload-catalog", "Run the versioned native rendering workload catalog");
+    workload_catalog_test_step.dependOn(&run_workload_catalog_tests.step);
+    test_step.dependOn(&run_workload_catalog_tests.step);
     const core_api_snapshot_module = b.createModule(.{
         .root_source_file = b.path("src/core_api_snapshot.zig"),
         .target = target,
