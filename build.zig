@@ -209,6 +209,10 @@ pub fn build(b: *std.Build) void {
     browser_webgpu_test.setCwd(b.path("."));
     const browser_webgpu_test_step = b.step("test-browser-webgpu", "Test browser WebGPU canvas lifecycle");
     browser_webgpu_test_step.dependOn(&browser_webgpu_test.step);
+    const browser_image_asset_test = b.addSystemCommand(&.{ "node", "script/test_browser_image_asset.mjs" });
+    browser_image_asset_test.setCwd(b.path("."));
+    const browser_image_asset_test_step = b.step("test-browser-image-assets", "Test browser stable image decoding and diagnostics");
+    browser_image_asset_test_step.dependOn(&browser_image_asset_test.step);
     const browser_input_test = b.addSystemCommand(&.{ "node", "script/test_browser_input.mjs" });
     browser_input_test.setCwd(b.path("."));
     const browser_input_test_step = b.step("test-browser-input", "Test browser DOM input bindings");

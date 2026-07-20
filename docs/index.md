@@ -4,6 +4,7 @@
 - [Game protocol](guides/game-protocol.md)
 - [v0.1 core contract](guides/core-contract.md)
 - [Stable 2D render contract](guides/rendering.md)
+- [Stable image assets](guides/image-assets.md)
 - [Testing](guides/testing.md)
 - [CI](guides/ci.md)
 - [Browser renderer diagnostics](guides/browser-diagnostics.md)

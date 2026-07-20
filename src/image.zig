@@ -13,6 +13,8 @@ pub const DecodeOptions = struct {
     max_pixels: u64 = 4096 * 4096,
 };
 
+pub const Format = enum { png, jpeg, tga };
+
 pub const Image = struct { // owns decoded pixels allocated by decode; call deinit once after borrowed sprites are unused.
     allocator: std.mem.Allocator,
     width: u32,
@@ -22,6 +24,7 @@ pub const Image = struct { // owns decoded pixels allocated by decode; call dein
     pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, options: DecodeOptions) !Image {
         if (bytes.len == 0) return error.InvalidImage;
         if (bytes.len > options.max_input_bytes or bytes.len > std.math.maxInt(c_int)) return error.ImageInputTooLarge;
+        _ = try detectFormat(bytes);
 
         var w: c_int = 0;
         var h: c_int = 0;
@@ -60,6 +63,13 @@ pub const Image = struct { // owns decoded pixels allocated by decode; call dein
         return decode(allocator, bytes, .{});
     }
 
+    pub fn detectFormat(bytes: []const u8) !Format {
+        if (isPng(bytes)) return .png;
+        if (isJpeg(bytes)) return .jpeg;
+        if (isTga(bytes)) return .tga;
+        return error.UnsupportedImageFormat;
+    }
+
     pub fn deinit(self: *Image) void {
         self.allocator.free(self.pixels);
         self.* = undefined;
@@ -73,6 +83,18 @@ pub const Image = struct { // owns decoded pixels allocated by decode; call dein
         return .{ .width = self.width, .height = self.height, .pixels = self.pixels };
     }
 };
+
+fn isPng(bytes: []const u8) bool {
+    return bytes.len >= 8 and std.mem.eql(u8, bytes[0..8], &.{ 137, 80, 78, 71, 13, 10, 26, 10 });
+}
+
+fn isJpeg(bytes: []const u8) bool {
+    return bytes.len >= 3 and bytes[0] == 0xff and bytes[1] == 0xd8 and bytes[2] == 0xff;
+}
+
+fn isTga(bytes: []const u8) bool {
+    return bytes.len >= 18 and bytes[1] == 0 and bytes[2] == 2 and (bytes[16] == 24 or bytes[16] == 32);
+}
 
 test "decode validates PNG JPEG and TGA fixtures" {
     const png = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/ball.png", 1024 * 1024);
@@ -98,8 +120,15 @@ test "decode validates PNG JPEG and TGA fixtures" {
 }
 
 test "decode rejects malformed and oversized image inputs" {
-    try std.testing.expectError(error.InvalidImage, Image.decode(std.testing.allocator, "not an image", .{}));
+    try std.testing.expectError(error.UnsupportedImageFormat, Image.decode(std.testing.allocator, "not an image", .{}));
     try std.testing.expectError(error.ImageInputTooLarge, Image.decode(std.testing.allocator, "1234", .{ .max_input_bytes = 3 }));
     const oversized_tga = [_]u8{ 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0x10, 1, 0, 24, 0x20 };
     try std.testing.expectError(error.ImageTooLarge, Image.decode(std.testing.allocator, &oversized_tga, .{}));
+}
+
+test "decode admits only the stable PNG JPEG and TGA formats" {
+    try std.testing.expectEqual(Format.png, try Image.detectFormat(&.{ 137, 80, 78, 71, 13, 10, 26, 10 }));
+    try std.testing.expectEqual(Format.jpeg, try Image.detectFormat(&.{ 0xff, 0xd8, 0xff }));
+    try std.testing.expectEqual(Format.tga, try Image.detectFormat(&.{ 0, 0, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 1, 0, 24, 0 }));
+    try std.testing.expectError(error.UnsupportedImageFormat, Image.detectFormat(&.{ 'B', 'M', 0, 0 }));
 }
