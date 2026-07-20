@@ -6,10 +6,7 @@ pub const ShardId = u64;
 pub const ShardHealth = enum { healthy, degraded, unavailable };
 pub const ShardRouteKind = enum { authoritative, direct, relay };
 
-pub const ShardEndpoint = union(enum) {
-    ipv4: transport.Ipv4Address,
-    ipv6: transport.Ipv6Address,
-};
+pub const ShardEndpoint = transport.Endpoint;
 
 pub const ShardRoute = struct {
     id: protocol.RouteId,
@@ -150,13 +147,13 @@ test "shard directory registers deterministic route capacity and health metadata
         .id = 2,
         .capacity = .{ .maximum_participants = 5, .active_participants = 2 },
         .health = .healthy,
-        .route = .{ .id = 2, .kind = .authoritative, .endpoint = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 } } },
+        .route = .{ .id = 2, .kind = .authoritative, .endpoint = transport.Endpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 }) },
     });
     try directory.register(.{
         .id = 1,
         .capacity = .{ .maximum_participants = 4, .active_participants = 1 },
         .health = .healthy,
-        .route = .{ .id = 1, .kind = .relay, .endpoint = .{ .ipv6 = .{ .octets = .{0} ** 15 ++ .{1}, .port = 9001, .scope_id = 0 } } },
+        .route = .{ .id = 1, .kind = .relay, .endpoint = transport.Endpoint.from_ipv6(.{ .octets = .{0} ** 15 ++ .{1}, .port = 9001, .scope_id = 0 }) },
     });
     try std.testing.expectEqual(@as(usize, 2), directory.count());
     try std.testing.expectEqual(@as(usize, 3), try directory.available_capacity(2));
@@ -172,7 +169,7 @@ test "shard directory registers deterministic route capacity and health metadata
     try directory.set_health(1, .unavailable);
     try directory.set_health(2, .degraded);
     try std.testing.expect(directory.find_available(1, null) == null);
-    const direct = ShardRoute{ .id = 3, .kind = .direct, .endpoint = .{ .ipv4 = .{ .octets = .{ 10, 0, 0, 2 }, .port = 9002 } } };
+    const direct = ShardRoute{ .id = 3, .kind = .direct, .endpoint = transport.Endpoint.from_ipv4(.{ .octets = .{ 10, 0, 0, 2 }, .port = 9002 }) };
     try directory.set_route(2, direct);
     try std.testing.expectEqual(direct, directory.lookup(2).?.route);
     try directory.unregister(1);
@@ -184,7 +181,7 @@ test "shard directory rejects invalid bounded and unknown operations" {
         .id = 1,
         .capacity = .{ .maximum_participants = 1, .active_participants = 0 },
         .health = .healthy,
-        .route = .{ .id = 1, .kind = .direct, .endpoint = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, 1 }, .port = 1 } } },
+        .route = .{ .id = 1, .kind = .direct, .endpoint = transport.Endpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 1 }) },
     };
     try std.testing.expectError(error.InvalidConfiguration, ShardDirectory.init(std.testing.allocator, .{ .maximum_shards = 0 }));
     var directory = try ShardDirectory.init(std.testing.allocator, .{ .maximum_shards = 1 });

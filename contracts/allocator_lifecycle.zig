@@ -39,8 +39,8 @@ fn topology_lifecycle(allocator: std.mem.Allocator) !void {
 
     var directory = try topology.ShardDirectory.init(allocator, .{ .maximum_shards = 2 });
     defer directory.deinit();
-    try directory.register(.{ .id = 1, .capacity = .{ .maximum_participants = 1, .active_participants = 1 }, .health = .healthy, .route = .{ .id = 1, .kind = .authoritative, .endpoint = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 } } } });
-    try directory.register(.{ .id = 2, .capacity = .{ .maximum_participants = 1, .active_participants = 0 }, .health = .healthy, .route = .{ .id = 2, .kind = .authoritative, .endpoint = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, 2 }, .port = 9001 } } } });
+    try directory.register(.{ .id = 1, .capacity = .{ .maximum_participants = 1, .active_participants = 1 }, .health = .healthy, .route = .{ .id = 1, .kind = .authoritative, .endpoint = directory.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 }) } });
+    try directory.register(.{ .id = 2, .capacity = .{ .maximum_participants = 1, .active_participants = 0 }, .health = .healthy, .route = .{ .id = 2, .kind = .authoritative, .endpoint = directory.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 2 }, .port = 9001 }) } });
     var handoff = try topology.ShardHandoffCoordinator.init(allocator, &directory, .{ .maximum_pending_handoffs = 1, .maximum_state_bytes = 1 });
     defer handoff.deinit();
     const id = try handoff.prepare(.{ .client = 1, .source = 1, .destination = 2, .state_revision = 1, .state = "x" });

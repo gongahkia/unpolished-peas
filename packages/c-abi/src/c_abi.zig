@@ -20,6 +20,20 @@ pub const CAddress = extern struct {
     bytes: [16]u8,
     port: u16,
 };
+pub const CEndpointKind = enum(u32) {
+    ipv4 = 1,
+    ipv6 = 2,
+    dns = 3,
+    provider = 4,
+};
+pub const CEndpoint = extern struct {
+    kind: u32,
+    port: u16,
+    name_len: u16,
+    scope_id: u32,
+    address: [16]u8,
+    name: [runtime.max_endpoint_hostname_bytes]u8,
+};
 pub const CBuffer = extern struct {
     data: [*c]u8,
     len: usize,
@@ -598,6 +612,46 @@ pub fn is_valid_address(address: CAddress) bool {
     }
 }
 
+pub fn endpoint_from_c(value: CEndpoint) ?runtime.Endpoint {
+    if (value.name_len > runtime.max_endpoint_hostname_bytes) return null;
+    return switch (value.kind) {
+        @intFromEnum(CEndpointKind.ipv4) => blk: {
+            if (value.scope_id != 0 or value.name_len != 0 or !std.mem.allEqual(u8, value.address[4..], 0)) break :blk null;
+            break :blk runtime.Endpoint.from_ipv4(.{ .octets = value.address[0..4].*, .port = value.port });
+        },
+        @intFromEnum(CEndpointKind.ipv6) => blk: {
+            if (value.name_len != 0) break :blk null;
+            break :blk runtime.Endpoint.from_ipv6(.{ .octets = value.address, .port = value.port, .scope_id = value.scope_id });
+        },
+        @intFromEnum(CEndpointKind.dns) => blk: {
+            if (value.scope_id != 0 or !std.mem.allEqual(u8, value.address[0..], 0)) break :blk null;
+            break :blk runtime.Endpoint.from_hostname(value.name[0..value.name_len], value.port) catch null;
+        },
+        @intFromEnum(CEndpointKind.provider) => blk: {
+            if (value.scope_id != 0 or !std.mem.allEqual(u8, value.address[0..], 0)) break :blk null;
+            break :blk runtime.Endpoint.from_provider(value.name[0..value.name_len], value.port) catch null;
+        },
+        else => null,
+    };
+}
+
+pub fn endpoint_to_c(value: runtime.Endpoint) CEndpoint {
+    var output = CEndpoint{
+        .kind = @intFromEnum(value.kind),
+        .port = value.port,
+        .name_len = value.name_len,
+        .scope_id = value.scope_id,
+        .address = value.address,
+        .name = [_]u8{0} ** runtime.max_endpoint_hostname_bytes,
+    };
+    @memcpy(output.name[0..value.name_len], value.name[0..value.name_len]);
+    return output;
+}
+
+pub fn is_valid_endpoint(value: CEndpoint) bool {
+    return endpoint_from_c(value) != null;
+}
+
 pub fn is_valid_socket_options(options: CSocketOptions) bool {
     return options.reuse_address <= 1 and options.no_delay <= 1;
 }
@@ -988,6 +1042,37 @@ pub export fn minna_san_result_operator_category(result_code: c_int) c_int {
 
 pub export fn minna_san_result_message(result_code: c_int) [*:0]const u8 {
     return result_message(result_code);
+}
+
+pub export fn minna_san_endpoint_parse(text: CConstBuffer, port: u16, out_endpoint: ?*CEndpoint) c_int {
+    const output = out_endpoint orelse return @intFromEnum(CResult.invalid_argument);
+    if (text.data == null and text.len != 0) return @intFromEnum(CResult.invalid_argument);
+    const input: []const u8 = if (text.len == 0) &.{} else text.data[0..text.len];
+    const endpoint = runtime.Endpoint.parse(input, port) catch return @intFromEnum(CResult.invalid_argument);
+    output.* = endpoint_to_c(endpoint);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_endpoint_format(endpoint: ?*const CEndpoint, output: CBuffer, out_len: ?*usize) c_int {
+    const input = endpoint orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    if (!is_valid_buffer(output)) return @intFromEnum(CResult.invalid_argument);
+    const value = endpoint_from_c(input.*) orelse return @intFromEnum(CResult.invalid_argument);
+    var formatted: [runtime.max_endpoint_text_bytes]u8 = undefined;
+    const text = value.format(formatted[0..]) catch return @intFromEnum(CResult.invalid_argument);
+    length.* = text.len;
+    if (output.len < text.len) return @intFromEnum(CResult.resource_exhausted);
+    @memcpy(output.data[0..text.len], text);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_endpoint_equal(left: ?*const CEndpoint, right: ?*const CEndpoint) u8 {
+    const left_pointer = left orelse return 0;
+    const right_pointer = right orelse return 0;
+    const left_value = endpoint_from_c(left_pointer.*) orelse return 0;
+    const right_value = endpoint_from_c(right_pointer.*) orelse return 0;
+    return @intFromBool(left_value.eql(right_value));
 }
 
 pub export fn minna_san_platform_config_init(out_config: ?*CPlatformConfig) c_int {
@@ -1817,9 +1902,31 @@ test "C ABI rejects unsupported versions without exposing handle layout" {
 test "C ABI core declarations use C-safe layouts" {
     try std.testing.expectEqual(@as(usize, 6), @sizeOf(CVersion));
     try std.testing.expectEqual(@as(usize, 20), @sizeOf(CAddress));
+    try std.testing.expectEqual(@as(usize, 284), @sizeOf(CEndpoint));
     try std.testing.expectEqual(@as(usize, 16), @sizeOf([16]u8));
     try std.testing.expectEqual(@as(usize, @sizeOf(usize) * 2), @sizeOf(CBuffer));
     try std.testing.expectEqual(@as(usize, 16 + @sizeOf(CBuffer)), @sizeOf(CEvent));
+}
+
+test "C ABI canonical endpoints round-trip equivalent IPv6 and DNS forms" {
+    const ipv6_expanded = "2001:0DB8:0:0:0:0:0:1";
+    const ipv6_short = "[2001:db8::1]";
+    const dns_mixed = "Api.Example.COM.";
+    const dns_canonical = "api.example.com";
+    var first: CEndpoint = undefined;
+    var second: CEndpoint = undefined;
+    var output: [runtime.max_endpoint_text_bytes]u8 = undefined;
+    var output_len: usize = 0;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&ipv6_expanded), .len = ipv6_expanded.len }, 443, &first));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&ipv6_short), .len = ipv6_short.len }, 443, &second));
+    try std.testing.expectEqual(@as(u8, 1), minna_san_endpoint_equal(&first, &second));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_format(&first, .{ .data = @ptrCast(&output), .len = output.len }, &output_len));
+    try std.testing.expectEqualStrings("2001:db8::1", output[0..output_len]);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&dns_mixed), .len = dns_mixed.len }, 443, &first));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&dns_canonical), .len = dns_canonical.len }, 443, &second));
+    try std.testing.expectEqual(@as(u8, 1), minna_san_endpoint_equal(&first, &second));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_format(&first, .{ .data = @ptrCast(&output), .len = output.len }, &output_len));
+    try std.testing.expectEqualStrings("api.example.com", output[0..output_len]);
 }
 
 test "C ABI buffer declarations reject null nonempty data" {

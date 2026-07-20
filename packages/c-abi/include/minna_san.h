@@ -14,6 +14,11 @@ extern "C" {
 #define MINNA_SAN_ADDRESS_FAMILY_UNSPECIFIED 0u
 #define MINNA_SAN_ADDRESS_FAMILY_IPV4 4u
 #define MINNA_SAN_ADDRESS_FAMILY_IPV6 6u
+#define MINNA_SAN_ENDPOINT_HOSTNAME_MAX_BYTES 253u
+#define MINNA_SAN_ENDPOINT_IPV4 1u
+#define MINNA_SAN_ENDPOINT_IPV6 2u
+#define MINNA_SAN_ENDPOINT_DNS 3u
+#define MINNA_SAN_ENDPOINT_PROVIDER 4u
 #define MINNA_SAN_EVENT_CONNECTED 1u
 #define MINNA_SAN_EVENT_DISCONNECTED 2u
 #define MINNA_SAN_EVENT_MESSAGE 3u
@@ -133,6 +138,14 @@ typedef struct minna_san_address {
     uint8_t bytes[MINNA_SAN_ADDRESS_BYTES];
     uint16_t port;
 } minna_san_address;
+typedef struct minna_san_endpoint {
+    uint32_t kind;
+    uint16_t port;
+    uint16_t name_len;
+    uint32_t scope_id;
+    uint8_t address[MINNA_SAN_ADDRESS_BYTES];
+    uint8_t name[MINNA_SAN_ENDPOINT_HOSTNAME_MAX_BYTES];
+} minna_san_endpoint;
 typedef struct minna_san_buffer {
     uint8_t *data;
     size_t len;
@@ -390,6 +403,9 @@ minna_san_error_category minna_san_result_category(int result_code);
 minna_san_retryability minna_san_result_retryability(int result_code);
 minna_san_operator_category minna_san_result_operator_category(int result_code);
 const char *minna_san_result_message(int result_code);
+minna_san_result minna_san_endpoint_parse(minna_san_const_buffer text, uint16_t port, minna_san_endpoint *out_endpoint);
+minna_san_result minna_san_endpoint_format(const minna_san_endpoint *endpoint, minna_san_buffer output, size_t *out_len);
+uint8_t minna_san_endpoint_equal(const minna_san_endpoint *left, const minna_san_endpoint *right);
 minna_san_result minna_san_platform_config_init(minna_san_platform_config *out_config);
 minna_san_result minna_san_platform_config_validate(const minna_san_platform_config *config);
 minna_san_result minna_san_sdk_validate_config(const minna_san_sdk_config *config);
