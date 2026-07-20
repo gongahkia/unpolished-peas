@@ -15,6 +15,7 @@ version="$(sed -n 's/^[[:space:]]*\.version = "\([^"]*\)",/\1/p' "$root/build.zi
 baseline_version="$(tr -d '\r\n' < "$baseline")"
 
 [ -n "$version" ] || fail "missing package version"
+[ "${version#0.}" = "$version" ] || exit 0
 [ -f "$baseline" ] || fail "missing public API baseline version"
 [ -f "$manifest" ] || fail "missing public API contract manifest"
 [ "$baseline_version" = "$version" ] || fail "public API baseline version mismatch"

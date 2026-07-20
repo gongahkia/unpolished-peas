@@ -2,6 +2,7 @@ const taxonomy = @import("error_taxonomy.zig");
 const ownership = @import("ownership.zig");
 const clock = @import("clock.zig");
 const capability = @import("capability.zig");
+const platform_config = @import("platform_config.zig");
 
 pub const ErrorClass = taxonomy.ErrorClass;
 pub const CResult = taxonomy.CResult;
@@ -27,6 +28,15 @@ pub const ManualClock = clock.ManualClock;
 pub const Capability = capability.Capability;
 pub const CapabilityError = capability.CapabilityError;
 pub const CapabilityConfig = capability.CapabilityConfig;
+pub const configuration_version = platform_config.configuration_version;
+pub const max_provider_capacity = platform_config.max_provider_capacity;
+pub const max_service_capacity = platform_config.max_service_capacity;
+pub const max_session_capacity = platform_config.max_session_capacity;
+pub const max_channel_capacity = platform_config.max_channel_capacity;
+pub const max_event_capacity = platform_config.max_event_capacity;
+pub const max_poll_work_budget = platform_config.max_poll_work_budget;
+pub const PlatformLimits = platform_config.PlatformLimits;
+pub const PlatformConfig = platform_config.PlatformConfig;
 pub const package_name = "core";
 
 test "core package boundary" {
@@ -38,4 +48,5 @@ test {
     _ = @import("ownership.zig");
     _ = @import("clock.zig");
     _ = @import("capability.zig");
+    _ = @import("platform_config.zig");
 }
