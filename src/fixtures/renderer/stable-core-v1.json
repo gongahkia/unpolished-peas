@@ -4,9 +4,19 @@
   "width": 64,
   "height": 32,
   "tolerance": {"per_channel": 1},
+  "assets": [
+    {"id": "checker_2x2", "width": 2, "height": 2, "rgba": [255, 128, 0, 255, 0, 255, 100, 128, 20, 160, 255, 192, 255, 0, 200, 255]}
+  ],
   "operations": [
     {"op": "clear", "color": {"r": 19, "g": 37, "b": 61, "a": 255}},
     {"op": "rect", "x": 1, "y": 1, "w": 4, "h": 3, "color": {"r": 255, "g": 198, "b": 74, "a": 255}},
+    {"op": "push_clip", "x": 14, "y": 1, "w": 2, "h": 1},
+    {"op": "image", "asset": "checker_2x2", "x": 14, "y": 1},
+    {"op": "pop_clip"},
+    {"op": "push_blend", "mode": 1},
+    {"op": "image", "asset": "checker_2x2", "x": 17, "y": 1},
+    {"op": "pop_blend"},
+    {"op": "text", "value": "A", "x": 21, "y": 1, "color": {"r": 244, "g": 244, "b": 244, "a": 255}},
     {"op": "push_clip", "x": 2, "y": 2, "w": 8, "h": 6},
     {"op": "push_blend", "mode": 0},
     {"op": "rect", "x": 0, "y": 0, "w": 12, "h": 8, "color": {"r": 255, "g": 0, "b": 0, "a": 128}},

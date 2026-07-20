@@ -2,6 +2,8 @@ const std = @import("std");
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const Sampling = @import("atlas.zig").Sampling;
+const ClipRect = @import("canvas.zig").ClipRect;
+const BlendMode = @import("canvas.zig").BlendMode;
 
 pub const SourceRect = struct { x: u32, y: u32, w: u32, h: u32 };
 pub const Point = struct { x: f32, y: f32 };
@@ -23,6 +25,8 @@ pub const SpriteDraw = struct {
     source: SourceRect,
     vertex_start: u32,
     sampling: Sampling,
+    blend: BlendMode = .alpha,
+    clip: ?ClipRect = null,
 };
 
 pub const Batch = struct {
@@ -58,6 +62,10 @@ pub const SpriteBatch = struct { // owns batch buffers allocated by init and bor
     }
 
     pub fn appendQuad(self: *SpriteBatch, image: *const Image, source: SourceRect, positions: [4]Point, uvs: [4]Uv, tint: Color, sampling: Sampling) !void {
+        try self.appendQuadWithState(image, source, positions, uvs, tint, sampling, .alpha, null);
+    }
+
+    pub fn appendQuadWithState(self: *SpriteBatch, image: *const Image, source: SourceRect, positions: [4]Point, uvs: [4]Uv, tint: Color, sampling: Sampling, blend: BlendMode, clip: ?ClipRect) !void {
         try validate(image, source, positions, uvs);
         if (self.vertices.items.len > std.math.maxInt(u32) - 6) return error.TooManySprites;
         try self.draws.ensureUnusedCapacity(self.allocator, 1);
@@ -70,7 +78,7 @@ pub const SpriteBatch = struct { // owns batch buffers allocated by init and bor
         self.vertices.appendAssumeCapacity(vertex(positions[0], uvs[0], color));
         self.vertices.appendAssumeCapacity(vertex(positions[2], uvs[2], color));
         self.vertices.appendAssumeCapacity(vertex(positions[3], uvs[3], color));
-        self.draws.appendAssumeCapacity(.{ .image = image, .source = source, .vertex_start = vertex_start, .sampling = sampling });
+        self.draws.appendAssumeCapacity(.{ .image = image, .source = source, .vertex_start = vertex_start, .sampling = sampling, .blend = blend, .clip = clip });
     }
 
     pub fn sortByTexture(self: *SpriteBatch) !void {

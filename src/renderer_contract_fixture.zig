@@ -1,5 +1,6 @@
 const std = @import("std");
 const Color = @import("color.zig").Color;
+const Image = @import("image.zig").Image;
 const render = @import("render.zig");
 
 const fixture_bytes = @embedFile("fixtures/renderer/stable-core-v1.json");
@@ -14,11 +15,19 @@ const Fixture = struct {
     width: u32,
     height: u32,
     tolerance: Tolerance,
+    assets: []Asset,
     operations: []Operation,
 };
 
 const Tolerance = struct {
     per_channel: u8,
+};
+
+const Asset = struct {
+    id: []const u8,
+    width: u32,
+    height: u32,
+    rgba: []u8,
 };
 
 const FixtureColor = struct {
@@ -52,21 +61,30 @@ const Operation = struct {
     w: ?i32 = null,
     h: ?i32 = null,
     mode: ?u32 = null,
+    asset: ?[]const u8 = null,
+    value: ?[]const u8 = null,
     camera: ?Camera = null,
 };
 
-pub fn append(allocator: std.mem.Allocator, commands: *render.CommandBuffer) !void {
+pub fn append(allocator: std.mem.Allocator, images: *std.ArrayList(Image), commands: *render.CommandBuffer) !void {
     var parsed = try std.json.parseFromSlice(Fixture, allocator, fixture_bytes, .{});
     defer parsed.deinit();
     const fixture = parsed.value;
     if (fixture.schema_version != 1 or !std.mem.eql(u8, fixture.fixture_version, "v1") or fixture.width != width or fixture.height != height or fixture.tolerance.per_channel != tolerance) return error.InvalidContractFixture;
 
+    try appendAssets(allocator, fixture.assets, images);
     var camera: ?Camera = null;
     for (fixture.operations) |operation| {
         if (std.mem.eql(u8, operation.op, "clear")) {
             try commands.append(.{ .clear = try color(operation.color) });
         } else if (std.mem.eql(u8, operation.op, "rect")) {
             try appendRect(commands, camera, try integer(operation.x), try integer(operation.y), try positive(operation.w), try positive(operation.h), try color(operation.color));
+        } else if (std.mem.eql(u8, operation.op, "image")) {
+            if (camera != null) return error.InvalidContractFixture;
+            try commands.append(.{ .image = .{ .image = try imageForAsset(fixture.assets, images, operation.asset orelse return error.InvalidContractFixture), .x = try integer(operation.x), .y = try integer(operation.y) } });
+        } else if (std.mem.eql(u8, operation.op, "text")) {
+            if (camera != null) return error.InvalidContractFixture;
+            try commands.append(.{ .text = .{ .value = operation.value orelse return error.InvalidContractFixture, .x = try integer(operation.x), .y = try integer(operation.y), .color = try color(operation.color) } });
         } else if (std.mem.eql(u8, operation.op, "push_clip")) {
             try commands.append(.{ .push_clip = .{ .x = try integer(operation.x), .y = try integer(operation.y), .w = try nonnegative(operation.w), .h = try nonnegative(operation.h) } });
         } else if (std.mem.eql(u8, operation.op, "pop_clip")) {
@@ -83,6 +101,29 @@ pub fn append(allocator: std.mem.Allocator, commands: *render.CommandBuffer) !vo
         } else return error.InvalidContractFixture;
     }
     if (camera != null) return error.UnbalancedContractFixture;
+}
+
+fn appendAssets(allocator: std.mem.Allocator, assets: []const Asset, images: *std.ArrayList(Image)) !void {
+    if (images.items.len != 0) return error.InvalidContractFixture;
+    try images.ensureUnusedCapacity(allocator, assets.len);
+    for (assets, 0..) |asset, index| {
+        const pixels_len = std.math.mul(usize, @as(usize, asset.width), @as(usize, asset.height)) catch return error.InvalidContractFixture;
+        const rgba_len = std.math.mul(usize, pixels_len, 4) catch return error.InvalidContractFixture;
+        if (asset.id.len == 0 or asset.width == 0 or asset.height == 0 or asset.rgba.len != rgba_len) return error.InvalidContractFixture;
+        for (assets[0..index]) |prior| if (std.mem.eql(u8, prior.id, asset.id)) return error.InvalidContractFixture;
+        const pixels = try allocator.alloc(Color, pixels_len);
+        errdefer allocator.free(pixels);
+        for (pixels, 0..) |*pixel, pixel_index| {
+            const offset = pixel_index * 4;
+            pixel.* = .{ .r = asset.rgba[offset], .g = asset.rgba[offset + 1], .b = asset.rgba[offset + 2], .a = asset.rgba[offset + 3] };
+        }
+        images.appendAssumeCapacity(.{ .allocator = allocator, .width = asset.width, .height = asset.height, .pixels = pixels });
+    }
+}
+
+fn imageForAsset(assets: []const Asset, images: *std.ArrayList(Image), id: []const u8) !*const Image {
+    for (assets, 0..) |asset, index| if (std.mem.eql(u8, asset.id, id)) return &images.items[index];
+    return error.InvalidContractFixture;
 }
 
 fn appendRect(commands: *render.CommandBuffer, camera: ?Camera, x: i32, y: i32, w: i32, h: i32, value: Color) !void {
@@ -134,6 +175,11 @@ fn color(value: ?FixtureColor) !Color {
 test "stable core renderer fixture expands to balanced commands" {
     var commands = render.CommandBuffer.init(std.testing.allocator);
     defer commands.deinit();
-    try append(std.testing.allocator, &commands);
-    try std.testing.expectEqual(@as(usize, 16), commands.commands.items.len);
+    var images = std.ArrayList(Image).empty;
+    defer {
+        for (images.items) |*image| image.deinit();
+        images.deinit(std.testing.allocator);
+    }
+    try append(std.testing.allocator, &images, &commands);
+    try std.testing.expectEqual(@as(usize, 23), commands.commands.items.len);
 }

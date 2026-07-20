@@ -192,6 +192,7 @@ pub const RendererConformance = struct {
     width: u32,
     height: u32,
     commands: render.CommandBuffer,
+    images: std.ArrayList(Image) = .empty,
 
     const background = Color.rgba(19, 37, 61, 255);
     const first = Color.rgba(1, 2, 3, 255);
@@ -210,7 +211,7 @@ pub const RendererConformance = struct {
         errdefer value.deinit();
         if (scenario == .stable_core) {
             if (width != renderer_contract_fixture.width or height != renderer_contract_fixture.height) return error.InvalidConformanceCanvas;
-            try renderer_contract_fixture.append(allocator, &value.commands);
+            try renderer_contract_fixture.append(allocator, &value.images, &value.commands);
             return value;
         }
         try value.commands.append(.{ .clear = background });
@@ -239,6 +240,9 @@ pub const RendererConformance = struct {
     }
 
     pub fn deinit(self: *RendererConformance) void {
+        const allocator = self.commands.allocator;
+        for (self.images.items) |*image| image.deinit();
+        self.images.deinit(allocator);
         self.commands.deinit();
         self.* = undefined;
     }
