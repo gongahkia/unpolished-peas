@@ -11,6 +11,7 @@ pub const GuestCredentials = guest.Credentials;
 pub const GuestCredentialStore = guest.Store;
 pub const ServiceProvider = provider.Provider;
 pub const ServiceProviderError = provider.Error;
+pub const service_provider_error_disposition = provider.disposition_for_error;
 pub const ServiceSessionRequest = provider.SessionRequest;
 pub const ServiceSessionStatus = provider.SessionStatus;
 pub const FakeServiceProvider = provider.FakeAdapter;

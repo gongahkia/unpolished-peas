@@ -39,6 +39,8 @@ pub const CAllocatorError = error{ MissingAllocateCallback, AllocationFailed };
 pub const CBufferReleaseError = error{ MissingReleaseCallback, InvalidBuffer };
 pub const CResult = core.CResult;
 pub const CErrorCategory = core.ErrorClass;
+pub const CRetryability = core.Retryability;
+pub const COperatorCategory = core.OperatorCategory;
 pub const CEventKind = enum(u32) {
     connected = 1,
     disconnected = 2,
@@ -557,6 +559,16 @@ pub fn result_category(result_code: c_int) CErrorCategory {
     return core.class_for_c_result(result);
 }
 
+pub fn result_retryability(result_code: c_int) CRetryability {
+    const result = core.c_result_from_code(result_code) orelse return .never;
+    return core.disposition_for_c_result(result).retryability;
+}
+
+pub fn result_operator_category(result_code: c_int) COperatorCategory {
+    const result = core.c_result_from_code(result_code) orelse return .internal;
+    return core.disposition_for_c_result(result).operator_category;
+}
+
 pub fn result_message(result_code: c_int) [*:0]const u8 {
     const result = core.c_result_from_code(result_code) orelse return "unknown result code";
     return switch (result) {
@@ -964,6 +976,14 @@ pub export fn minna_san_result_is_known(result_code: c_int) u8 {
 
 pub export fn minna_san_result_category(result_code: c_int) c_int {
     return @intFromEnum(result_category(result_code));
+}
+
+pub export fn minna_san_result_retryability(result_code: c_int) c_int {
+    return @intFromEnum(result_retryability(result_code));
+}
+
+pub export fn minna_san_result_operator_category(result_code: c_int) c_int {
+    return @intFromEnum(result_operator_category(result_code));
 }
 
 pub export fn minna_san_result_message(result_code: c_int) [*:0]const u8 {
@@ -1842,12 +1862,16 @@ test "C ABI result inspection preserves stable categories" {
     try std.testing.expectEqual(@as(c_int, 14), @intFromEnum(CResult.internal));
     try std.testing.expectEqual(@as(u8, 1), minna_san_result_is_known(11));
     try std.testing.expectEqual(@as(c_int, 11), minna_san_result_category(11));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CRetryability.never)), minna_san_result_retryability(11));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(COperatorCategory.protocol)), minna_san_result_operator_category(11));
     try std.testing.expectEqualStrings("version mismatch", std.mem.span(minna_san_result_message(11)));
 }
 
 test "C ABI result inspection classifies unknown codes without allocation" {
     try std.testing.expectEqual(@as(u8, 0), minna_san_result_is_known(-1));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CErrorCategory.internal)), minna_san_result_category(-1));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CRetryability.never)), minna_san_result_retryability(-1));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(COperatorCategory.internal)), minna_san_result_operator_category(-1));
     try std.testing.expectEqualStrings("unknown result code", std.mem.span(minna_san_result_message(-1)));
 }
 

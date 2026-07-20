@@ -10,6 +10,10 @@ pub const ProviderError = error{
     PollFailed,
 };
 
+pub fn disposition_for_error(err: ProviderError) core.ErrorDisposition {
+    return core.disposition_for_any_error(err);
+}
+
 pub const ProviderCapability = enum {
     datagrams,
     streams,
@@ -221,6 +225,25 @@ test "provider start failures become terminal" {
     var provider = try fake.provider();
     try @import("std").testing.expectError(error.PollFailed, provider.start());
     try @import("std").testing.expectEqual(ProviderState.failed, provider.state);
+}
+
+test "equivalent provider failures map to one public class" {
+    var first_fake = FakeProvider{ .fail_start = true };
+    var second_fake = FakeProvider{ .fail_start = true };
+    var first = try first_fake.provider();
+    var second = try second_fake.provider();
+    var first_failure: ?ProviderError = null;
+    first.start() catch |err| {
+        first_failure = err;
+    };
+    var second_failure: ?ProviderError = null;
+    second.start() catch |err| {
+        second_failure = err;
+    };
+    try @import("std").testing.expectEqual(error.PollFailed, first_failure.?);
+    try @import("std").testing.expectEqual(error.PollFailed, second_failure.?);
+    try @import("std").testing.expectEqual(disposition_for_error(first_failure.?), disposition_for_error(second_failure.?));
+    try @import("std").testing.expectEqual(core.ErrorClass.transport_failure, disposition_for_error(first_failure.?).class);
 }
 
 test "provider registries enforce capacity and deterministic budgets" {

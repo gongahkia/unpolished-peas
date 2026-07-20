@@ -104,6 +104,25 @@ typedef enum minna_san_error_category {
     MINNA_SAN_ERROR_CATEGORY_TRANSPORT_FAILURE = 13,
     MINNA_SAN_ERROR_CATEGORY_INTERNAL = 14,
 } minna_san_error_category;
+typedef enum minna_san_retryability {
+    MINNA_SAN_RETRY_NEVER = 0,
+    MINNA_SAN_RETRY_IMMEDIATE = 1,
+    MINNA_SAN_RETRY_BACKOFF = 2,
+} minna_san_retryability;
+typedef enum minna_san_operator_category {
+    MINNA_SAN_OPERATOR_NONE = 0,
+    MINNA_SAN_OPERATOR_CALLER = 1,
+    MINNA_SAN_OPERATOR_LIFECYCLE = 2,
+    MINNA_SAN_OPERATOR_CAPABILITY = 3,
+    MINNA_SAN_OPERATOR_CAPACITY = 4,
+    MINNA_SAN_OPERATOR_SCHEDULING = 5,
+    MINNA_SAN_OPERATOR_AUTHENTICATION = 6,
+    MINNA_SAN_OPERATOR_AUTHORIZATION = 7,
+    MINNA_SAN_OPERATOR_PROTOCOL = 8,
+    MINNA_SAN_OPERATOR_INTEGRITY = 9,
+    MINNA_SAN_OPERATOR_TRANSPORT = 10,
+    MINNA_SAN_OPERATOR_INTERNAL = 11,
+} minna_san_operator_category;
 typedef struct minna_san_version {
     uint16_t major;
     uint16_t minor;
@@ -368,6 +387,8 @@ minna_san_abi_version_t minna_san_abi_version(void);
 uint8_t minna_san_abi_supports_version(minna_san_abi_version_t requested_version);
 uint8_t minna_san_result_is_known(int result_code);
 minna_san_error_category minna_san_result_category(int result_code);
+minna_san_retryability minna_san_result_retryability(int result_code);
+minna_san_operator_category minna_san_result_operator_category(int result_code);
 const char *minna_san_result_message(int result_code);
 minna_san_result minna_san_platform_config_init(minna_san_platform_config *out_config);
 minna_san_result minna_san_platform_config_validate(const minna_san_platform_config *config);

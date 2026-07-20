@@ -1,4 +1,5 @@
 const std = @import("std");
+const core = @import("minna-san-core");
 
 const guest = @import("guest_credentials.zig");
 
@@ -9,6 +10,10 @@ pub const Error = error{
     InvalidResponse,
     Unavailable,
 };
+
+pub fn disposition_for_error(err: Error) core.ErrorDisposition {
+    return core.disposition_for_any_error(err);
+}
 
 pub const SessionRequest = struct {
     now_ms: i64,
@@ -192,6 +197,12 @@ test "engine client runs against a fake provider with bounded failures" {
     try std.testing.expectError(error.Unavailable, provider.validateGuestSession(credentials.session));
     fake.failure = null;
     try std.testing.expectError(error.InvalidRequest, provider.issueGuestSession(.{ .now_ms = 100, .lifetime_ms = 0 }));
+}
+
+test "service provider failures use shared error dispositions" {
+    try std.testing.expectEqual(core.ErrorClass.invalid_argument, disposition_for_error(error.InvalidRequest).class);
+    try std.testing.expectEqual(core.ErrorClass.protocol_violation, disposition_for_error(error.InvalidResponse).class);
+    try std.testing.expectEqual(core.ErrorClass.transport_failure, disposition_for_error(error.Unavailable).class);
 }
 
 test "local PostgreSQL adapter issues and validates a guest session" {
