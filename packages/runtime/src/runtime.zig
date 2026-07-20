@@ -23,6 +23,8 @@ const interest_management = @import("interest_management.zig");
 const spatial_grid_interest = @import("spatial_grid_interest.zig");
 const version = @import("version.zig");
 const dedicated_session_scheduler = @import("dedicated_session_scheduler.zig");
+const provider = @import("provider.zig");
+const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
 pub const SdkConfig = sdk_config.SdkConfig;
@@ -165,6 +167,20 @@ pub const DedicatedScheduledWork = dedicated_session_scheduler.DedicatedSchedule
 pub const DedicatedSessionSchedulerError = dedicated_session_scheduler.DedicatedSessionSchedulerError;
 pub const DedicatedSessionSchedulerConfig = dedicated_session_scheduler.DedicatedSessionSchedulerConfig;
 pub const DedicatedSessionScheduler = dedicated_session_scheduler.DedicatedSessionScheduler;
+pub const max_provider_name_bytes = provider.max_provider_name_bytes;
+pub const ProviderError = provider.ProviderError;
+pub const ProviderCapability = provider.ProviderCapability;
+pub const ProviderCapabilities = provider.ProviderCapabilities;
+pub const ProviderConfig = provider.ProviderConfig;
+pub const ProviderPollResult = provider.ProviderPollResult;
+pub const ProviderVTable = provider.ProviderVTable;
+pub const ProviderState = provider.ProviderState;
+pub const Provider = provider.Provider;
+pub const ProviderRegistryError = provider.ProviderRegistryError;
+pub const ProviderRegistry = provider.ProviderRegistry;
+pub const RuntimeError = platform_runtime.RuntimeError;
+pub const RuntimePollResult = platform_runtime.RuntimePollResult;
+pub const Runtime = platform_runtime.Runtime;
 pub const package_name = "runtime";
 
 comptime {
@@ -202,4 +218,6 @@ test {
     _ = @import("version.zig");
     _ = @import("topology_fault_scenarios.zig");
     _ = @import("dedicated_session_scheduler.zig");
+    _ = @import("provider.zig");
+    _ = @import("platform_runtime.zig");
 }
