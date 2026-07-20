@@ -335,7 +335,7 @@ fn packageProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator, 
 }
 
 fn packageUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle>]\n", .{});
+    std.debug.print("usage: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle|platformer>]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -704,6 +704,7 @@ test "known package games parse and unsupported names fail" {
     try std.testing.expectEqual(tools.PackageGame.bounce, tools.parsePackageGame("bounce").?);
     try std.testing.expectEqual(tools.PackageGame.topdown, tools.parsePackageGame("topdown").?);
     try std.testing.expectEqual(tools.PackageGame.puzzle, tools.parsePackageGame("puzzle").?);
+    try std.testing.expectEqual(tools.PackageGame.platformer, tools.parsePackageGame("platformer").?);
     try std.testing.expect(tools.parsePackageGame("unknown") == null);
 }
 
