@@ -12,72 +12,28 @@ const Game = struct {
         .clear_color = up.core.Color.rgb(14, 18, 24),
     };
 
-    rig: up.graphics.CameraRig,
-    director: up.graphics.CameraDirector,
-    main: up.graphics.CameraHandle,
-    inset: up.graphics.CameraHandle,
+    camera: up.graphics.Camera2D = .{ .position = .{ .x = 48, .y = 32 }, .zoom = 2 },
     target: up.core.Vec2 = .{ .x = 48, .y = 32 },
 
-    pub fn init(ctx: *sdl.Context) !Game {
-        var rig = up.graphics.CameraRig.init(ctx.allocator);
-        errdefer rig.deinit();
-        const primary = try rig.create(.{
-            .position = .{ .x = 48, .y = 32 },
-            .zoom = 2,
-            .bounds = .{ .rect = .init(-16, -16, 160, 112) },
-            .follow = .{ .spring = 7, .dead_zone = .init(56, 36, 48, 18) },
-        });
-        const inset = try rig.create(.{
-            .position = .{ .x = 48, .y = 32 },
-            .zoom = 0.6,
-            .viewport = .{ .x = 104, .y = 4, .w = 52, .h = 34 },
-            .bounds = .{ .rect = .init(-16, -16, 160, 112) },
-            .pixel_snap = .off,
-        });
-        return .{ .rig = rig, .director = .init(ctx.allocator), .main = primary, .inset = inset };
+    pub fn init(_: *sdl.Context) !Game {
+        return .{};
     }
 
-    pub fn deinit(self: *Game, _: *sdl.Context) void {
-        self.director.deinit();
-        self.rig.deinit();
-    }
-
-    pub fn update(self: *Game, ctx: *sdl.Context) !void {
+    pub fn update(self: *Game, ctx: *sdl.Context) void {
         var velocity = up.core.Vec2{};
         if (ctx.down(.left)) velocity.x -= 42;
         if (ctx.down(.right)) velocity.x += 42;
         if (ctx.down(.up)) velocity.y -= 42;
         if (ctx.down(.down)) velocity.y += 42;
         self.target = self.target.add(velocity.scale(ctx.dt));
-        if (ctx.input.pointer.canvas) |canvas_point| {
-            self.target = self.rig.getConst(self.main).?.canvasToWorld(canvas_point, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
-        }
-
-        const primary = self.rig.get(self.main).?;
-        primary.setFollowTarget(self.target);
-        if (ctx.input.pointerWasPressed(.left)) primary.startShake(.{ .x = 3, .y = 2 }, 22, 0.22, ctx.frame);
-        if (ctx.input.wasPressed(.action)) try self.director.play(.{
-            .camera = self.main,
-            .position = self.target,
-            .zoom = 4,
-            .rotation = 0,
-            .duration = 0.25,
-            .easing = .ease_in_out,
-        });
-
-        const inset = self.rig.get(self.inset).?;
-        inset.position = self.target;
-        self.director.update(&self.rig, ctx.dt);
-        self.rig.update(ctx.dt, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
+        if (ctx.input.pointer.canvas) |point| self.target = self.camera.canvasToWorld(point, .{ .x = @floatFromInt(ctx.canvas.width), .y = @floatFromInt(ctx.canvas.height) });
+        self.camera.position = self.target;
     }
 
     pub fn draw(self: *Game, ctx: *sdl.Context) void {
-        drawWorld(ctx.gpuCamera(self.rig.getConst(self.main).?), self.target);
-        drawWorld(ctx.gpuCamera(self.rig.getConst(self.inset).?), self.target);
-        ctx.canvas.strokeRect(103, 3, 54, 36, up.core.Color.rgb(222, 236, 255));
+        drawWorld(ctx.gpuCamera(&self.camera), self.target);
         ctx.text("CAMERA", 4, 4, up.core.Color.rgb(222, 236, 255));
         ctx.text("ARROWS/MOUSE", 4, 14, up.core.Color.rgb(158, 184, 210));
-        ctx.text("SPACE: SHOT", 4, 24, up.core.Color.rgb(158, 184, 210));
     }
 };
 
