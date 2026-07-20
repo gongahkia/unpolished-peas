@@ -173,6 +173,7 @@ pub const ProviderCapability = provider.ProviderCapability;
 pub const ProviderCapabilities = provider.ProviderCapabilities;
 pub const ProviderConfig = provider.ProviderConfig;
 pub const ProviderPollResult = provider.ProviderPollResult;
+pub const ProviderPollOutput = provider.ProviderPollOutput;
 pub const ProviderVTable = provider.ProviderVTable;
 pub const ProviderState = provider.ProviderState;
 pub const Provider = provider.Provider;

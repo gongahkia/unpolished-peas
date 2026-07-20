@@ -87,21 +87,29 @@ const FakeProvider = struct {
     polls: u8 = 0,
 
     fn asProvider(self: *FakeProvider) provider.ProviderError!provider.Provider {
-        return provider.Provider.init(.{ .name = "runtime-fake" }, self, .{ .start = start, .poll = poll, .stop = stop });
+        return provider.Provider.init(.{ .name = "runtime-fake" }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
     }
 
-    fn start(context: *anyopaque) provider.ProviderError!void {
+    fn init(context: ?*anyopaque) callconv(.c) c_int {
         _ = context;
+        return @intFromEnum(core.CResult.ok);
     }
 
-    fn poll(context: *anyopaque, now: core.TimeNs, work_budget: usize) provider.ProviderError!provider.ProviderPollResult {
-        const self: *FakeProvider = @ptrCast(@alignCast(context));
+    fn queryCapabilities(context: ?*anyopaque, out_capabilities: *u16) callconv(.c) c_int {
+        _ = context;
+        out_capabilities.* = 0;
+        return @intFromEnum(core.CResult.ok);
+    }
+
+    fn poll(context: ?*anyopaque, now: core.TimeNs, work_budget: usize, out_result: *provider.ProviderPollOutput) callconv(.c) c_int {
+        const self: *FakeProvider = @ptrCast(@alignCast(context.?));
         _ = now;
         self.polls += 1;
-        return .{ .work_completed = @min(@as(usize, 1), work_budget) };
+        out_result.* = .{ .work_completed = @min(@as(usize, 1), work_budget) };
+        return @intFromEnum(core.CResult.ok);
     }
 
-    fn stop(context: *anyopaque) void {
+    fn teardown(context: ?*anyopaque) callconv(.c) void {
         _ = context;
     }
 };
