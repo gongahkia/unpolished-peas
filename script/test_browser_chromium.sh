@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 game=${1:-bounce}
-case "$game" in bounce|topdown) ;; *) printf '%s\n' 'usage: test_browser_chromium.sh [bounce|topdown]' >&2; exit 64 ;; esac
+case "$game" in bounce|topdown|puzzle) ;; *) printf '%s\n' 'usage: test_browser_chromium.sh [bounce|topdown|puzzle]' >&2; exit 64 ;; esac
 browser=${UP_BROWSER:-chromium}
 case "$browser" in
     chromium) engine=chrome ;;
@@ -57,6 +57,8 @@ cd "$tmp"
 "$pw" -s="$session" eval '() => { const input = window.unpolishedPeas?.host.input(); return Boolean(window.unpolishedPeas?.runtime && input?.down[0] && input.pointerDown[0] && Number.isFinite(input.pointer.canvasX) && Number.isFinite(input.pointer.canvasY)); }' | grep -F true
 if [ "$game" = topdown ]; then
     "$pw" -s="$session" eval '() => { const runtime = window.unpolishedPeas.runtime; return runtime.up_browser_topdown_render_status() === 0 && runtime.up_browser_topdown_player_y() < 48; }' | grep -F true
+elif [ "$game" = puzzle ]; then
+    "$pw" -s="$session" eval 'async () => { for (let frame = 0; frame < 20; frame += 1) { const runtime = window.unpolishedPeas.runtime; if (runtime.up_browser_puzzle_render_status() === 0 && runtime.up_browser_puzzle_selected() < 4 && runtime.up_browser_puzzle_lit() > 0) return true; await new Promise((resolve) => setTimeout(resolve, 16)); } return false; }' | grep -F true
 fi
 "$pw" -s="$session" eval '() => { window.dispatchEvent(new Event("blur")); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0]; }' | grep -F true
 "$pw" --session "$session" mouseup
@@ -92,11 +94,16 @@ if [ "$webgpu_ready" -eq 1 ]; then
 capture_artifacts webgpu
 if [ "$game" = topdown ]; then
     "$pw" -s="$session" eval '() => { const runtime = window.unpolishedPeas.runtime; return runtime.up_browser_topdown_render_status() === 0 && Number.isFinite(runtime.up_browser_topdown_player_x()) && Number.isFinite(runtime.up_browser_topdown_player_y()); }' | grep -F true
+elif [ "$game" = puzzle ]; then
+    "$pw" -s="$session" eval '() => { const runtime = window.unpolishedPeas.runtime; return runtime.up_browser_puzzle_selected() === 4 && runtime.up_browser_puzzle_lit() === 5; }' | grep -F true
 fi
 "$pw" -s="$session" click 'canvas[data-unpolished-peas]'
 "$pw" --session "$session" mousedown
 "$pw" --session "$session" keydown w
 "$pw" -s="$session" eval '() => { const input = window.unpolishedPeas?.host.input(); return Boolean(window.unpolishedPeas?.runtime && input?.down[0] && input.pointerDown[0] && Number.isFinite(input.pointer.canvasX) && Number.isFinite(input.pointer.canvasY)); }' | grep -F true
+if [ "$game" = puzzle ]; then
+    "$pw" -s="$session" eval 'async () => { for (let frame = 0; frame < 20; frame += 1) { if (window.unpolishedPeas.runtime.up_browser_puzzle_selected() < 4) return true; await new Promise((resolve) => setTimeout(resolve, 16)); } return false; }' | grep -F true
+fi
 "$pw" -s="$session" eval '() => { window.dispatchEvent(new Event("blur")); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0]; }' | grep -F true
 "$pw" --session "$session" mouseup
 "$pw" -s="$session" eval '() => { const audio = window.unpolishedPeas.host.audio(); return window.unpolishedPeas.runtime.up_browser_audio_state() === audio.state && typeof audio.phase === "string" && window.unpolishedPeas.host.captureFrame().startsWith("data:image/png"); }' | grep -F true

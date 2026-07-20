@@ -143,6 +143,28 @@ pub fn build(b: *std.Build) void {
     browser_topdown_runtime.entry = .disabled;
     browser_topdown_runtime.rdynamic = true;
     browser_topdown_runtime.import_memory = true;
+    const browser_puzzle_game = b.createModule(.{
+        .root_source_file = b.path("examples/puzzle_game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const browser_puzzle_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-puzzle",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/puzzle_runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "puzzle-game", .module = browser_puzzle_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+            },
+        }),
+    });
+    browser_puzzle_runtime.entry = .disabled;
+    browser_puzzle_runtime.rdynamic = true;
+    browser_puzzle_runtime.import_memory = true;
     const browser_protocol_runtime = b.addExecutable(.{
         .name = "unpolished-peas-protocol",
         .root_module = b.createModule(.{
@@ -198,6 +220,12 @@ pub fn build(b: *std.Build) void {
     });
     const browser_topdown_step = b.step("browser-topdown", "Build the top-down wasm32-freestanding browser runtime in zig-out/web");
     browser_topdown_step.dependOn(&install_browser_topdown_runtime.step);
+    const install_browser_puzzle_runtime = b.addInstallArtifact(browser_puzzle_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "unpolished-peas.wasm",
+    });
+    const browser_puzzle_step = b.step("browser-puzzle", "Build the puzzle wasm32-freestanding browser runtime in zig-out/web");
+    browser_puzzle_step.dependOn(&install_browser_puzzle_runtime.step);
     const host_protocol_game = b.createModule(.{
         .root_source_file = b.path("fixtures/protocol-desktop/src/protocol_game.zig"),
         .target = b.graph.host,
@@ -395,6 +423,7 @@ pub fn build(b: *std.Build) void {
     const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
     peas_step.dependOn(&run_peas.step);
     const peas_tests = b.addTest(.{ .root_module = peas_cli.root_module });
+    addStb(peas_tests.root_module);
     const run_peas_tests = b.addRunArtifact(peas_tests);
     const peas_test_step = b.step("test-peas", "Run the unpolished-peas project CLI tests");
     peas_test_step.dependOn(&run_peas_tests.step);

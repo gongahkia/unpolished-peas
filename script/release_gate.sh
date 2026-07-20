@@ -45,8 +45,10 @@ run cli-starter zig build test-starter
 run clean-consumer zig build test-release-candidate-clean-consumer
 run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
+run proof-puzzle runtime script/test_proof_game_matrix.sh puzzle
 run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
+run package-puzzle "$package_script" zig-out/release-gate/packages/puzzle puzzle
 run diagnostics zig build test-support
 run visual-scenes zig build test-scenes
 run backend-comparison zig build test-desktop-backends
