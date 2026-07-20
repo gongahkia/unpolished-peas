@@ -56,7 +56,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: browser-renderer-parity-${{ matrix.id }}
-          path: zig-out/diagnostics/browser-renderer-parity/**
+          path: |
+            zig-out/diagnostics/browser-renderer-parity/**
+            zig-out/performance/browser-workloads-*.json
           if-no-files-found: warn
 
   downstream-package:
