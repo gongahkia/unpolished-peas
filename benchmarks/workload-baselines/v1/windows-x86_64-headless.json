@@ -1,0 +1,134 @@
+{
+  "baseline_schema_version": 1,
+  "workload_artifact_schema_version": 1,
+  "workload_version": "v1",
+  "target": {
+    "os": "windows",
+    "architecture": "x86_64",
+    "renderer": "headless"
+  },
+  "measurement_schema": {
+    "artifact_schema_version": 1,
+    "timer": {
+      "clock": "std.time.Timer",
+      "unit": "nanoseconds",
+      "measurement": "headless_cpu_render"
+    }
+  },
+  "record": {
+    "source_artifact": "../../workload-artifacts/v1/windows-x86_64-headless.json",
+    "source_artifact_sha256": "a1eb7e4c32bd1a63f1ae358412bfa2253cf83586628dd7b549d6fce0f21a5dc7",
+    "reason": "GitHub Actions Windows 2022 measurement from run 29757662807 at a1027b1",
+    "recorded_at": "2026-07-20"
+  },
+  "tolerances": {
+    "frame_time_ns": {
+      "relative": 0.5,
+      "absolute": 100000
+    },
+    "command_count": {
+      "relative": 0.0,
+      "absolute": 0
+    },
+    "frame_allocation_events": {
+      "relative": 0.0,
+      "absolute": 0
+    },
+    "frame_allocated_bytes": {
+      "relative": 0.0,
+      "absolute": 0
+    }
+  },
+  "workloads": [
+    {
+      "id": "primitive_fill",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 20781,
+        "command_count": 81,
+        "frame_allocation_events": 0,
+        "frame_allocated_bytes": 0
+      }
+    },
+    {
+      "id": "sprite_batching",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 1718,
+        "command_count": 65,
+        "frame_allocation_events": 0,
+        "frame_allocated_bytes": 0
+      }
+    },
+    {
+      "id": "alpha_blend",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 286162,
+        "command_count": 49,
+        "frame_allocation_events": 0,
+        "frame_allocated_bytes": 0
+      }
+    },
+    {
+      "id": "clipping",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 38906,
+        "command_count": 53,
+        "frame_allocation_events": 0,
+        "frame_allocated_bytes": 0
+      }
+    },
+    {
+      "id": "text",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 199950,
+        "command_count": 19,
+        "frame_allocation_events": 576,
+        "frame_allocated_bytes": 51840
+      }
+    },
+    {
+      "id": "mixed_frame",
+      "resolution": {
+        "width": 160,
+        "height": 90
+      },
+      "warmup_frames": 4,
+      "sample_count": 16,
+      "metrics": {
+        "frame_time_ns": 64350,
+        "command_count": 63,
+        "frame_allocation_events": 128,
+        "frame_allocated_bytes": 9984
+      }
+    }
+  ]
+}
