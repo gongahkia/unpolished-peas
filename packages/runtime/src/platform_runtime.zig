@@ -5,11 +5,12 @@ const config = @import("sdk_config.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
+const resource_handle = @import("resource_handle.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -28,6 +29,7 @@ pub const Runtime = struct {
     security_policy: security_policy.RuntimeSecurityPolicy,
     poll_runtime: poll_runtime.PollRuntime,
     providers: provider.ProviderRegistry,
+    resources: resource_handle.ResourceRegistry,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -36,24 +38,41 @@ pub const Runtime = struct {
         platform_config.validate() catch return error.InvalidConfiguration;
         const policy = sdk.configuration().securityPolicy();
         try policy.validate();
+        const resource_capacity = std.math.add(usize, platform_config.limits.session_capacity, platform_config.limits.channel_capacity) catch return error.InvalidConfiguration;
+        var resources = try resource_handle.ResourceRegistry.init(allocator, resource_capacity);
+        errdefer resources.deinit();
+        var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
+        errdefer providers.deinit();
+        var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
+        errdefer services.deinit();
         return .{
             .platform_config = platform_config,
             .security_policy = policy,
             .poll_runtime = poll_runtime.PollRuntime.init(allocator, sdk),
-            .providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity),
-            .services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity }),
+            .providers = providers,
+            .resources = resources,
+            .services = services,
         };
     }
 
     pub fn deinit(self: *Runtime) void {
         self.services.deinit();
         self.providers.deinit();
+        self.resources.deinit();
         self.poll_runtime.deinit();
         self.* = undefined;
     }
 
     pub fn registerProvider(self: *Runtime, item: provider.Provider) provider.ProviderRegistryError!void {
         try self.providers.register(item);
+    }
+
+    pub fn acquireResource(self: *Runtime, kind: resource_handle.ResourceKind) resource_handle.HandleError!*resource_handle.ResourceHandle {
+        return self.resources.acquire_kind(kind);
+    }
+
+    pub fn releaseResource(self: *Runtime, handle: *resource_handle.ResourceHandle, kind: resource_handle.ResourceKind) resource_handle.HandleError!void {
+        try self.resources.release_kind(handle, kind);
     }
 
     pub fn registerService(self: *Runtime, module: service_module.ServiceModule) service_module.ServiceModuleError!service_module.ServiceModuleId {
@@ -187,6 +206,22 @@ test "unified runtimes reject reentrant caller polls" {
     runtime.poll_active = true;
     defer runtime.poll_active = false;
     try std.testing.expectError(error.ReentrantPoll, runtime.poll(.{ .now_ns = manual.clock().now() }));
+}
+
+test "unified runtimes own bounded resource registries and empty teardown" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 2 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        try std.testing.expectEqual(@as(usize, 3), runtime.resources.slots.len);
+        const session = try runtime.acquireResource(.session);
+        try runtime.resources.validate_kind(session, .session);
+        try runtime.releaseResource(session, .session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
 
 test "unified runtimes reject unsupported route features before dialing" {
