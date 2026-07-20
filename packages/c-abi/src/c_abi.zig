@@ -465,12 +465,9 @@ const CSdkState = struct {
     log_mutex: std.Thread.Mutex,
     log_ready: std.Thread.Condition,
     log_registrations: [runtime.max_runtime_log_callbacks]CLogRegistration,
-    connections: runtime.ResourceRegistry,
-    peers: runtime.ResourceRegistry,
+    resources: runtime.ResourceRegistry,
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
-    channels: runtime.ResourceRegistry,
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
-    sessions: runtime.ResourceRegistry,
     session_records: std.ArrayListUnmanaged(SessionRecord),
     started: bool,
 };
@@ -986,7 +983,7 @@ fn build_sdk(config: *const CSdkConfig, clock: core.Clock) runtime.Sdk {
 
 fn find_connection(state: *CSdkState, connection: *CConnection) ?usize {
     const handle: *runtime.ResourceHandle = @ptrCast(connection);
-    state.connections.validate(handle) catch return null;
+    state.resources.validate_kind(handle, .connection) catch return null;
     for (state.connection_records.items, 0..) |record, index| {
         if (record.connection == handle) return index;
     }
@@ -995,7 +992,7 @@ fn find_connection(state: *CSdkState, connection: *CConnection) ?usize {
 
 fn find_channel(state: *CSdkState, channel: *CChannel) ?usize {
     const handle: *runtime.ResourceHandle = @ptrCast(channel);
-    state.channels.validate(handle) catch return null;
+    state.resources.validate_kind(handle, .channel) catch return null;
     for (state.channel_records.items, 0..) |record, index| {
         if (record.channel == handle) return index;
     }
@@ -1004,7 +1001,7 @@ fn find_channel(state: *CSdkState, channel: *CChannel) ?usize {
 
 fn find_session(state: *CSdkState, session: *CAuthoritativeSession) ?usize {
     const handle: *runtime.ResourceHandle = @ptrCast(session);
-    state.sessions.validate(handle) catch return null;
+    state.resources.validate_kind(handle, .session) catch return null;
     for (state.session_records.items, 0..) |record, index| {
         if (record.session == handle) return index;
     }
@@ -1112,25 +1109,15 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.log_ready = .{};
     state.log_registrations = [_]CLogRegistration{.{}} ** runtime.max_runtime_log_callbacks;
     for (&state.log_registrations) |*registration| registration.state = state;
-    state.connections = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
+    const connection_resources = std.math.mul(usize, value.connection_capacity, 3) catch {
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
     };
-    state.peers = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
-        state.connections.deinit();
+    const resource_capacity = std.math.add(usize, connection_resources, value.channel_capacity) catch {
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
     };
-    state.channels = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.channel_capacity) catch {
-        state.peers.deinit();
-        state.connections.deinit();
-        initial_allocator.destroy(state);
-        return @intFromEnum(CResult.resource_exhausted);
-    };
-    state.sessions = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), value.connection_capacity) catch {
-        state.channels.deinit();
-        state.peers.deinit();
-        state.connections.deinit();
+    state.resources = runtime.ResourceRegistry.init(state.allocator_bridge.allocator(), resource_capacity) catch {
         initial_allocator.destroy(state);
         return @intFromEnum(CResult.resource_exhausted);
     };
@@ -1174,13 +1161,10 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
         record.pending_messages.deinit(allocator);
     }
     state.channel_records.deinit(allocator);
-    state.channels.deinit();
     for (state.session_records.items) |*record| record.clients.deinit(allocator);
     state.session_records.deinit(allocator);
-    state.sessions.deinit();
     state.connection_records.deinit(allocator);
-    state.peers.deinit();
-    state.connections.deinit();
+    state.resources.deinit();
     state.poll_runtime.deinit();
     allocator.destroy(state);
 }
@@ -1194,14 +1178,14 @@ pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_conne
     if (!state.started) return @intFromEnum(CResult.invalid_state);
     if (!state.sdk.configuration().is_capability_enabled(.transport)) return @intFromEnum(CResult.unsupported);
     if (!is_valid_route_state(route_state)) return @intFromEnum(CResult.invalid_argument);
-    const connection = state.connections.acquire() catch return @intFromEnum(CResult.resource_exhausted);
-    const peer = state.peers.acquire() catch {
-        state.connections.release(connection) catch {};
+    const connection = state.resources.acquire_kind(.connection) catch return @intFromEnum(CResult.resource_exhausted);
+    const peer = state.resources.acquire_kind(.peer) catch {
+        state.resources.release_kind(connection, .connection) catch {};
         return @intFromEnum(CResult.resource_exhausted);
     };
     state.connection_records.append(state.allocator_bridge.allocator(), .{ .connection = connection, .peer = peer, .route_state = route_state }) catch {
-        state.peers.release(peer) catch {};
-        state.connections.release(connection) catch {};
+        state.resources.release_kind(peer, .peer) catch {};
+        state.resources.release_kind(connection, .connection) catch {};
         return @intFromEnum(CResult.resource_exhausted);
     };
     connection_output.* = @ptrCast(connection);
@@ -1225,8 +1209,8 @@ pub export fn minna_san_connection_close(sdk: ?*CSdk, connection: ?*CConnection)
         }
     }
     const record = state.connection_records.items[index];
-    state.peers.release(record.peer) catch return @intFromEnum(CResult.invalid_state);
-    state.connections.release(record.connection) catch return @intFromEnum(CResult.invalid_state);
+    state.resources.release_kind(record.peer, .peer) catch return @intFromEnum(CResult.invalid_state);
+    state.resources.release_kind(record.connection, .connection) catch return @intFromEnum(CResult.invalid_state);
     for (state.connection_records.items[index + 1 ..], index..) |next, destination| state.connection_records.items[destination] = next;
     state.connection_records.items.len -= 1;
     emit_runtime_event(state, .{ .disconnected = {} });
@@ -1269,10 +1253,10 @@ pub export fn minna_san_channel_open(sdk: ?*CSdk, connection: ?*CConnection, mod
     if (!is_valid_channel_mode(mode)) return @intFromEnum(CResult.invalid_argument);
     const connection_handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     _ = find_connection(state, connection_handle) orelse return @intFromEnum(CResult.invalid_argument);
-    const channel = state.channels.acquire() catch return @intFromEnum(CResult.resource_exhausted);
+    const channel = state.resources.acquire_kind(.channel) catch return @intFromEnum(CResult.resource_exhausted);
     const raw_connection: *runtime.ResourceHandle = @ptrCast(connection_handle);
     state.channel_records.append(state.allocator_bridge.allocator(), .{ .channel = channel, .connection = raw_connection, .mode = mode }) catch {
-        state.channels.release(channel) catch {};
+        state.resources.release_kind(channel, .channel) catch {};
         return @intFromEnum(CResult.resource_exhausted);
     };
     output.* = @ptrCast(channel);
@@ -1287,7 +1271,7 @@ pub export fn minna_san_channel_close(sdk: ?*CSdk, channel: ?*CChannel) c_int {
     var record = state.channel_records.items[index];
     discard_pending_messages(state, &record);
     record.pending_messages.deinit(state.allocator_bridge.allocator());
-    state.channels.release(record.channel) catch return @intFromEnum(CResult.invalid_state);
+    state.resources.release_kind(record.channel, .channel) catch return @intFromEnum(CResult.invalid_state);
     for (state.channel_records.items[index + 1 ..], index..) |next, destination| state.channel_records.items[destination] = next;
     state.channel_records.items.len -= 1;
     return @intFromEnum(CResult.ok);
@@ -1452,10 +1436,10 @@ pub export fn minna_san_authoritative_session_create(sdk: ?*CSdk, config: ?*cons
     if (!state.started) return @intFromEnum(CResult.invalid_state);
     if (!state.sdk.configuration().is_capability_enabled(.topology)) return @intFromEnum(CResult.unsupported);
     if (validate_authoritative_session_config(config) != .ok) return @intFromEnum(validate_authoritative_session_config(config));
-    const handle = state.sessions.acquire() catch return @intFromEnum(CResult.resource_exhausted);
+    const handle = state.resources.acquire_kind(.session) catch return @intFromEnum(CResult.resource_exhausted);
     const value = config.?;
     state.session_records.append(state.allocator_bridge.allocator(), .{ .session = handle, .max_clients = value.max_clients, .admission_context = value.admission_context, .admission = value.admission }) catch {
-        state.sessions.release(handle) catch {};
+        state.resources.release_kind(handle, .session) catch {};
         return @intFromEnum(CResult.resource_exhausted);
     };
     output.* = @ptrCast(handle);
@@ -1468,7 +1452,7 @@ pub export fn minna_san_authoritative_session_destroy(sdk: ?*CSdk, session: ?*CA
     const index = find_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
     var record = state.session_records.items[index];
     record.clients.deinit(state.allocator_bridge.allocator());
-    state.sessions.release(record.session) catch return @intFromEnum(CResult.invalid_state);
+    state.resources.release_kind(record.session, .session) catch return @intFromEnum(CResult.invalid_state);
     for (state.session_records.items[index + 1 ..], index..) |next, destination| state.session_records.items[destination] = next;
     state.session_records.items.len -= 1;
     return @intFromEnum(CResult.ok);
@@ -2174,6 +2158,14 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     var peer: ?*CPeer = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &connection, &peer));
     try std.testing.expect(connection != null and peer != null);
+    var second_connection: ?*CConnection = null;
+    var second_peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &second_connection, &second_peer));
+    var exhausted_connection: ?*CConnection = null;
+    var exhausted_peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.resource_exhausted)), minna_san_connection_open(sdk, c_route_direct, &exhausted_connection, &exhausted_peer));
+    try std.testing.expect(exhausted_connection == null and exhausted_peer == null);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, second_connection));
     var returned_peer: ?*CPeer = null;
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_peer(sdk, connection, &returned_peer));
     try std.testing.expectEqual(@intFromPtr(peer.?), @intFromPtr(returned_peer.?));
@@ -2216,6 +2208,16 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_channel_close(sdk, sequenced_channel));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, connection));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &route_state));
+    var replacement: ?*CConnection = null;
+    var replacement_peer: ?*CPeer = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_open(sdk, c_route_direct, &replacement, &replacement_peer));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(sdk, connection, &route_state));
+    var foreign_sdk: ?*CSdk = null;
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_create(&config, &foreign_sdk));
+    defer minna_san_sdk_destroy(foreign_sdk);
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_start(foreign_sdk));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_argument)), minna_san_connection_route_state(foreign_sdk, replacement, &route_state));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_connection_close(sdk, replacement));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.would_block)), minna_san_sdk_poll(sdk, &event));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_sdk_stop(sdk));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.invalid_state)), minna_san_sdk_stop(sdk));
