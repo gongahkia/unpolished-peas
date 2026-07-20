@@ -126,14 +126,14 @@ jobs:
           path: |
             zig-out/scenes/*.png
             zig-out/*.ppm
-            zig-out/performance/*.json
+            zig-out/performance/*
             zig-out/diagnostics/**/*
           if-no-files-found: warn
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-artifacts-${{ matrix.os }}
-          path: zig-out/performance/*.json
+          path: zig-out/performance/*
           if-no-files-found: warn
 
   desktop-package-compatibility:

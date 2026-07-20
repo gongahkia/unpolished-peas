@@ -11,4 +11,11 @@ esac
 mkdir -p zig-out/performance
 zig build -Doptimize=ReleaseFast benchmark > "zig-out/performance/${target}.json"
 zig build -Doptimize=ReleaseFast benchmark-proofs > "zig-out/performance/proof-games-${target}.json"
+if zig build -Doptimize=ReleaseFast benchmark-workloads > "zig-out/performance/workloads-${target}.json" 2> "zig-out/performance/workloads-${target}.diagnostics.log"; then
+  :
+else
+  status=$?
+  printf 'native workload benchmark failed: diagnostics=zig-out/performance/workloads-%s.diagnostics.log\n' "$target" >&2
+  exit "$status"
+fi
 printf 'performance artifacts recorded: target=%s\n' "$target"
