@@ -14,73 +14,19 @@ pub fn disposition_for_error(err: ProviderError) core.ErrorDisposition {
     return core.disposition_for_any_error(err);
 }
 
-pub const ProviderCapability = enum {
-    datagrams,
-    streams,
-    tls,
-    quic,
-    http1,
-    http2,
-    http3,
-    websocket,
-    stun,
-    turn,
-};
-
-pub const ProviderCapabilities = packed struct(u16) {
-    datagrams: bool = false,
-    streams: bool = false,
-    tls: bool = false,
-    quic: bool = false,
-    http1: bool = false,
-    http2: bool = false,
-    http3: bool = false,
-    websocket: bool = false,
-    stun: bool = false,
-    turn: bool = false,
-    reserved: u6 = 0,
-
-    pub fn supports(self: ProviderCapabilities, capability: ProviderCapability) bool {
-        return switch (capability) {
-            .datagrams => self.datagrams,
-            .streams => self.streams,
-            .tls => self.tls,
-            .quic => self.quic,
-            .http1 => self.http1,
-            .http2 => self.http2,
-            .http3 => self.http3,
-            .websocket => self.websocket,
-            .stun => self.stun,
-            .turn => self.turn,
-        };
-    }
-
-    pub fn bits(self: ProviderCapabilities) u16 {
-        return @bitCast(self);
-    }
-
-    pub fn fromBits(capability_bits: u16) ProviderCapabilities {
-        return @bitCast(capability_bits);
-    }
-
-    pub fn isValid(self: ProviderCapabilities) bool {
-        return self.reserved == 0;
-    }
-
-    pub fn contains(self: ProviderCapabilities, required: ProviderCapabilities) bool {
-        return (self.bits() & required.bits()) == required.bits();
-    }
-};
+pub const ProviderCapabilityRequirement = core.ProviderCapabilityRequirement;
+pub const ProviderCapabilityDescriptor = core.ProviderCapabilityDescriptor;
 
 pub const ProviderConfig = struct {
     name: []const u8,
-    capabilities: ProviderCapabilities = .{},
+    required_capabilities: ProviderCapabilityRequirement = .{},
     poll_work_budget: usize = 1,
 
     pub fn validate(self: ProviderConfig) ProviderError!void {
         if (self.name.len == 0 or self.name.len > max_provider_name_bytes) return error.InvalidName;
         for (self.name) |byte| if (!(byte == '-' or byte == '_' or std.ascii.isAlphanumeric(byte))) return error.InvalidName;
-        if (!self.capabilities.isValid() or self.poll_work_budget == 0 or self.poll_work_budget > core.max_poll_work_budget) return error.InvalidConfiguration;
+        self.required_capabilities.validate() catch return error.InvalidConfiguration;
+        if (self.poll_work_budget == 0 or self.poll_work_budget > core.max_poll_work_budget) return error.InvalidConfiguration;
     }
 };
 
@@ -107,7 +53,7 @@ pub const ProviderPollOutput = extern struct {
 
 pub const ProviderVTable = extern struct {
     init: *const fn (context: ?*anyopaque) callconv(.c) c_int,
-    query_capabilities: *const fn (context: ?*anyopaque, out_capabilities: *u16) callconv(.c) c_int,
+    query_capabilities: *const fn (context: ?*anyopaque, out_capabilities: *ProviderCapabilityDescriptor) callconv(.c) c_int,
     poll: *const fn (context: ?*anyopaque, now: core.TimeNs, work_budget: usize, out_result: *ProviderPollOutput) callconv(.c) c_int,
     teardown: *const fn (context: ?*anyopaque) callconv(.c) void,
 };
@@ -123,7 +69,7 @@ pub const Provider = struct {
     config: ProviderConfig,
     context: ?*anyopaque,
     vtable: ProviderVTable,
-    capabilities: ProviderCapabilities = .{},
+    capabilities: ProviderCapabilityDescriptor = .{},
     state: ProviderState = .registered,
     initialized: bool = false,
     last_failure: ?core.ErrorDisposition = null,
@@ -138,11 +84,14 @@ pub const Provider = struct {
         const init_result = self.vtable.init(self.context);
         if (init_result != @intFromEnum(core.CResult.ok)) return self.fail(init_result);
         self.initialized = true;
-        var capability_bits: u16 = 0;
-        const capability_result = self.vtable.query_capabilities(self.context, &capability_bits);
+        var capabilities = ProviderCapabilityDescriptor{};
+        const capability_result = self.vtable.query_capabilities(self.context, &capabilities);
         if (capability_result != @intFromEnum(core.CResult.ok)) return self.failAndTeardown(capability_result);
-        const capabilities = ProviderCapabilities.fromBits(capability_bits);
-        if (!capabilities.isValid() or !capabilities.contains(self.config.capabilities)) return self.failAndTeardown(@intFromEnum(core.CResult.unsupported));
+        capabilities.validate() catch |err| return self.failAndTeardown(switch (err) {
+            error.InvalidProviderCapabilityVersion => @intFromEnum(core.CResult.version_mismatch),
+            error.InvalidProviderCapabilityBits => @intFromEnum(core.CResult.invalid_argument),
+        });
+        if (!capabilities.supports(self.config.required_capabilities)) return self.failAndTeardown(@intFromEnum(core.CResult.unsupported));
         self.capabilities = capabilities;
         self.state = .active;
     }
@@ -235,6 +184,14 @@ pub const ProviderRegistry = struct {
         return result;
     }
 
+    pub fn supportsRequirements(self: *const ProviderRegistry, required: ProviderCapabilityRequirement) bool {
+        if (required.transport_bits == 0 and required.security_bits == 0 and required.delivery_bits == 0 and required.protocol_bits == 0) return true;
+        for (self.providers.items) |registered| {
+            if (registered.state == .active and registered.capabilities.supports(required)) return true;
+        }
+        return false;
+    }
+
     pub fn remove(self: *ProviderRegistry, name: []const u8) ProviderRegistryError!void {
         for (self.providers.items, 0..) |registered, index| {
             if (!std.mem.eql(u8, registered.config.name, name)) continue;
@@ -255,7 +212,7 @@ const FakeProvider = struct {
     fail_poll: bool = false,
 
     fn provider(self: *FakeProvider) ProviderError!Provider {
-        return Provider.init(.{ .name = "fake", .capabilities = .{ .datagrams = true }, .poll_work_budget = 2 }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
+        return Provider.init(.{ .name = "fake", .required_capabilities = .{ .delivery_bits = core.delivery_capability_bit(.datagrams) }, .poll_work_budget = 2 }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
     }
 
     fn init(context: ?*anyopaque) callconv(.c) c_int {
@@ -265,9 +222,9 @@ const FakeProvider = struct {
         return @intFromEnum(core.CResult.ok);
     }
 
-    fn queryCapabilities(context: ?*anyopaque, out_capabilities: *u16) callconv(.c) c_int {
+    fn queryCapabilities(context: ?*anyopaque, out_capabilities: *ProviderCapabilityDescriptor) callconv(.c) c_int {
         _ = context;
-        out_capabilities.* = (ProviderCapabilities{ .datagrams = true }).bits();
+        out_capabilities.* = .{ .delivery_bits = core.delivery_capability_bit(.datagrams) };
         return @intFromEnum(core.CResult.ok);
     }
 
@@ -291,7 +248,7 @@ test "providers have explicit bounded lifecycle" {
     var provider = try fake.provider();
     try provider.start();
     try @import("std").testing.expectEqual(@as(u8, 1), fake.starts);
-    try @import("std").testing.expect(provider.capabilities.supports(.datagrams));
+    try @import("std").testing.expect(provider.capabilities.supports(.{ .delivery_bits = core.delivery_capability_bit(.datagrams) }));
     try @import("std").testing.expectEqual(@as(usize, 2), (try provider.poll(0)).work_completed);
     provider.stop();
     try @import("std").testing.expectEqual(@as(u8, 1), fake.stops);
