@@ -12,6 +12,7 @@ pub const tolerance: u8 = 1;
 const Fixture = struct {
     schema_version: u32,
     fixture_version: []const u8,
+    font_fixture: []const u8,
     width: u32,
     height: u32,
     tolerance: Tolerance,
@@ -66,11 +67,11 @@ const Operation = struct {
     camera: ?Camera = null,
 };
 
-pub fn append(allocator: std.mem.Allocator, images: *std.ArrayList(Image), commands: *render.CommandBuffer) !void {
+pub fn append(allocator: std.mem.Allocator, images: *std.ArrayList(Image), texts: *std.ArrayList([]u8), commands: *render.CommandBuffer) !void {
     var parsed = try std.json.parseFromSlice(Fixture, allocator, fixture_bytes, .{});
     defer parsed.deinit();
     const fixture = parsed.value;
-    if (fixture.schema_version != 1 or !std.mem.eql(u8, fixture.fixture_version, "v1") or fixture.width != width or fixture.height != height or fixture.tolerance.per_channel != tolerance) return error.InvalidContractFixture;
+    if (fixture.schema_version != 1 or !std.mem.eql(u8, fixture.fixture_version, "v1") or !std.mem.eql(u8, fixture.font_fixture, "debug-5x7-v1") or fixture.width != width or fixture.height != height or fixture.tolerance.per_channel != tolerance) return error.InvalidContractFixture;
 
     try appendAssets(allocator, fixture.assets, images);
     var camera: ?Camera = null;
@@ -84,7 +85,10 @@ pub fn append(allocator: std.mem.Allocator, images: *std.ArrayList(Image), comma
             try commands.append(.{ .image = .{ .image = try imageForAsset(fixture.assets, images, operation.asset orelse return error.InvalidContractFixture), .x = try integer(operation.x), .y = try integer(operation.y) } });
         } else if (std.mem.eql(u8, operation.op, "text")) {
             if (camera != null) return error.InvalidContractFixture;
-            try commands.append(.{ .text = .{ .value = operation.value orelse return error.InvalidContractFixture, .x = try integer(operation.x), .y = try integer(operation.y), .color = try color(operation.color) } });
+            const value = try allocator.dupe(u8, operation.value orelse return error.InvalidContractFixture);
+            errdefer allocator.free(value);
+            try texts.append(allocator, value);
+            try commands.append(.{ .text = .{ .value = value, .x = try integer(operation.x), .y = try integer(operation.y), .color = try color(operation.color) } });
         } else if (std.mem.eql(u8, operation.op, "push_clip")) {
             try commands.append(.{ .push_clip = .{ .x = try integer(operation.x), .y = try integer(operation.y), .w = try nonnegative(operation.w), .h = try nonnegative(operation.h) } });
         } else if (std.mem.eql(u8, operation.op, "pop_clip")) {
@@ -180,6 +184,11 @@ test "stable core renderer fixture expands to balanced commands" {
         for (images.items) |*image| image.deinit();
         images.deinit(std.testing.allocator);
     }
-    try append(std.testing.allocator, &images, &commands);
-    try std.testing.expectEqual(@as(usize, 23), commands.commands.items.len);
+    var texts = std.ArrayList([]u8).empty;
+    defer {
+        for (texts.items) |text| std.testing.allocator.free(text);
+        texts.deinit(std.testing.allocator);
+    }
+    try append(std.testing.allocator, &images, &texts, &commands);
+    try std.testing.expectEqual(@as(usize, 27), commands.commands.items.len);
 }

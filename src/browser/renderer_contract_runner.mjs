@@ -1,4 +1,5 @@
 import {Status} from "./host.mjs";
+import {createDebugFont, forEachDebugFontGlyph} from "./debug_font.mjs";
 
 export const rendererContractTolerance = 1;
 
@@ -45,7 +46,7 @@ function assetMap(fixture) {
 }
 
 export function validateRendererContract(fixture) {
-  if (fixture?.schema_version !== 1 || fixture.fixture_version !== "v1" || fixture.width !== 64 || fixture.height !== 32 || fixture.tolerance?.per_channel !== rendererContractTolerance || !Array.isArray(fixture.operations)) fail("schema");
+  if (fixture?.schema_version !== 1 || fixture.fixture_version !== "v1" || fixture.font_fixture !== "debug-5x7-v1" || fixture.width !== 64 || fixture.height !== 32 || fixture.tolerance?.per_channel !== rendererContractTolerance || !Array.isArray(fixture.operations)) fail("schema");
   const assets = assetMap(fixture);
   let cameraActive = false;
   let clips = 0;
@@ -170,8 +171,14 @@ function transformRect(operation, transform) {
   return {x, y, w, h};
 }
 
-export function referenceRendererContract(fixture) {
+export function referenceRendererContract(fixture, fontFixture) {
   validateRendererContract(fixture);
+  let font;
+  try {
+    font = createDebugFont(fontFixture);
+  } catch {
+    fail("font fixture");
+  }
   const assets = assetMap(fixture);
   const pixels = new Uint8Array(fixture.width * fixture.height * 4);
   let clip = null;
@@ -208,9 +215,9 @@ export function referenceRendererContract(fixture) {
         break;
       }
       case "text": {
-        const glyph = [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001];
-        if (operation.value !== "A") fail("text glyph");
-        for (let y = 0; y < glyph.length; y += 1) for (let x = 0; x < 5; x += 1) if ((glyph[y] & (1 << (4 - x))) !== 0) setPixel(operation.x + x, operation.y + y, operation.color);
+        forEachDebugFontGlyph(font, new TextEncoder().encode(operation.value), operation.x, operation.y, (glyph, glyphX, glyphY) => {
+          for (let y = 0; y < font.glyphHeight; y += 1) for (let x = 0; x < font.glyphWidth; x += 1) if ((glyph.rows[y] & (1 << (font.glyphWidth - 1 - x))) !== 0) setPixel(glyphX + x, glyphY + y, operation.color);
+        });
         break;
       }
       case "push_clip": clips.push(clip); clip = clip ? intersect(clip, operation) : {x: operation.x, y: operation.y, w: operation.w, h: operation.h}; break;
@@ -224,8 +231,8 @@ export function referenceRendererContract(fixture) {
   return {dimensions: {width: fixture.width, height: fixture.height}, pixels: Array.from(pixels)};
 }
 
-export function compareRendererContractCapture(fixture, capture) {
-  const expected = referenceRendererContract(fixture);
+export function compareRendererContractCapture(fixture, capture, fontFixture) {
+  const expected = referenceRendererContract(fixture, fontFixture);
   if (capture?.dimensions?.width !== expected.dimensions.width || capture.dimensions.height !== expected.dimensions.height || !Array.isArray(capture.pixels) || capture.pixels.length !== expected.pixels.length) return {expected, max_delta: null, mismatches: [{reason: "capture_dimensions_mismatch"}]};
   const mismatches = [];
   let maxDelta = 0;

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {Status, createBrowserHost} from "../src/browser/host.mjs";
 import {WebGpuBackendError, createWebGpuBackend} from "../src/browser/webgpu_backend.mjs";
+
+const debugFontFixture = JSON.parse(readFileSync(new URL("../src/fixtures/text/debug-5x7-v1.json", import.meta.url), "utf8"));
 
 class FakeCanvas {
   width = 0;
@@ -49,7 +52,7 @@ const device = {
   createCommandEncoder: () => ({
     beginRenderPass: (descriptor) => {
       passes.push(descriptor);
-      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, draw: (count) => draws.push(count), end() {}};
+      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw: (count) => draws.push(count), end() {}};
     },
     finish: () => "command-buffer",
   }),
@@ -96,6 +99,7 @@ await assert.rejects(() => createWebGpuBackend({canvas}), (error) => error insta
 
 const hostCanvas = new FakeCanvas();
 let resolveHostLost;
+const hostDraws = [];
 const hostDevice = {
   lost: new Promise((resolve) => { resolveHostLost = resolve; }),
   queue: {submit() {}, writeBuffer() {}, writeTexture() {}},
@@ -107,9 +111,9 @@ const hostDevice = {
   createTexture: () => ({createView: () => "texture-view", destroy() {}}),
   createSampler: () => "sampler",
   createBindGroup: () => "bind-group",
-  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, draw() {}, end() {}}), finish: () => "host-command"}),
+  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw(count) { hostDraws.push(count); }, end() {}}), finish: () => "host-command"}),
 };
-const host = createBrowserHost({canvas: hostCanvas, navigator: {gpu: {requestAdapter: async () => ({requestDevice: async () => hostDevice}), getPreferredCanvasFormat: () => "rgba8unorm"}}});
+const host = createBrowserHost({canvas: hostCanvas, fontFixture: debugFontFixture, navigator: {gpu: {requestAdapter: async () => ({requestDevice: async () => hostDevice}), getPreferredCanvasFormat: () => "rgba8unorm"}}});
 let hostLosses = 0;
 host.onWebGpuDeviceLost(() => { hostLosses += 1; });
 assert.deepEqual(await host.initializeWebGpu(64, 32), {adapter_status: "ready", device_status: "ready", canvas_format: "rgba8unorm", logical_width: 64, logical_height: 32});
@@ -122,7 +126,10 @@ assert.equal(host.imports.env.up_host_gl_texture_upload(hostTexture, 2, 2, 0, 16
 assert.equal(host.imports.env.up_host_gl_push_blend(1), Status.ok);
 assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4, 5, 8, 9, 0xffffffff, 0), Status.ok);
 assert.equal(host.imports.env.up_host_gl_pop_blend(), Status.ok);
+new Uint8Array(host.memory.buffer, 32, 3).set([65, 10, 66]);
+assert.equal(host.imports.env.up_host_gl_draw_text(32, 3, 20, 8, 0xffffffff), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
+assert.deepEqual(hostDraws, [6, 12]);
 assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
 resolveHostLost({reason: "destroyed"});
 await Promise.resolve();
