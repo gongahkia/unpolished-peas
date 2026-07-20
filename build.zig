@@ -593,7 +593,7 @@ pub fn build(b: *std.Build) void {
     browser_renderer_parity_step.dependOn(&browser_renderer_parity.step);
     const three_backend_renderer = b.addSystemCommand(&.{"script/test_renderer_three_backend.sh"});
     three_backend_renderer.setCwd(b.path("."));
-    const three_backend_renderer_step = b.step("test-renderer-three-backend", "Compare SDL GPU, OpenGL, WebGL 2, and WebGPU captures");
+    const three_backend_renderer_step = b.step("test-renderer-three-backend", "Compare SDL GPU, WebGL 2, and WebGPU stable-core captures");
     three_backend_renderer_step.dependOn(&three_backend_renderer.step);
     const desktop_backend_comparison = b.addSystemCommand(&.{"script/check_desktop_backend_comparison.sh"});
     desktop_backend_comparison.setCwd(b.path("."));
