@@ -176,6 +176,8 @@ pub const Presenter = struct {
     primitive_vbo: u32 = 0,
     canvas_texture: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
+    command_sprites: up.SpriteBatch,
+    command_operations: std.ArrayList(primitive_commands.Operation) = .empty,
     recovery_failure: ?anyerror = null,
     viewport: GlViewport,
 
@@ -192,6 +194,7 @@ pub const Presenter = struct {
             .width = width,
             .height = height,
             .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator),
+            .command_sprites = up.SpriteBatch.init(std.heap.page_allocator),
             .viewport = .{ .width = width, .height = height },
         };
         errdefer presenter.deinit();
@@ -206,6 +209,8 @@ pub const Presenter = struct {
             _ = c.SDL_GL_DestroyContext(self.context);
         }
         self.primitive_batch.deinit();
+        self.command_sprites.deinit();
+        self.command_operations.deinit(std.heap.page_allocator);
         self.* = undefined;
     }
 
@@ -271,8 +276,10 @@ pub const Presenter = struct {
         self.setBlend(.alpha);
         try self.renderCanvas(canvas);
         self.primitive_batch.clear();
-        try primitive_commands.append(&self.primitive_batch, self.width, self.height, commands);
-        try self.renderPrimitives();
+        self.command_sprites.clear();
+        self.command_operations.clearRetainingCapacity();
+        try primitive_commands.appendOrdered(&self.primitive_batch, &self.command_sprites, &self.command_operations, self.width, self.height, commands);
+        try self.renderCommandOperations();
         try self.renderSprites(sprites);
     }
 
@@ -382,18 +389,30 @@ pub const Presenter = struct {
         self.gl.draw_arrays(gl_triangles, 0, vertices.len);
     }
 
-    fn renderPrimitives(self: *Presenter) !void {
-        if (self.primitive_batch.vertices.items.len == 0) return;
-        try self.uploadBuffer(self.primitive_vbo, std.mem.sliceAsBytes(self.primitive_batch.vertices.items));
-        self.gl.use_program(self.primitive_program);
-        self.gl.bind_vertex_array(self.primitive_vao);
-        for (self.primitive_batch.draws.items) |draw| {
-            self.setBlend(draw.blend);
-            self.applyClip(draw.clip);
-            self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), try glI32(draw.vertex_count));
-        }
+    fn renderCommandOperations(self: *Presenter) !void {
+        if (self.primitive_batch.vertices.items.len != 0) try self.uploadBuffer(self.primitive_vbo, std.mem.sliceAsBytes(self.primitive_batch.vertices.items));
+        if (self.command_sprites.vertices.items.len != 0) try self.uploadSpriteVertices(self.command_sprites.vertices.items);
+        for (self.command_operations.items) |operation| switch (operation) {
+            .clear => |color| self.clearCommandTarget(color),
+            .primitive => |index| try self.renderPrimitiveDraw(self.primitive_batch.draws.items[index]),
+            .sprite => |index| try self.renderSpriteDraw(self.command_sprites.draws.items[index]),
+        };
         self.gl.disable(gl_scissor_test);
         self.setBlend(.alpha);
+    }
+
+    fn clearCommandTarget(self: *Presenter, color: up.Color) void {
+        self.gl.disable(gl_scissor_test);
+        self.gl.clear_color(@as(f32, @floatFromInt(color.r)) / 255, @as(f32, @floatFromInt(color.g)) / 255, @as(f32, @floatFromInt(color.b)) / 255, @as(f32, @floatFromInt(color.a)) / 255);
+        self.gl.clear(gl_color_buffer_bit);
+    }
+
+    fn renderPrimitiveDraw(self: *Presenter, draw: up.PrimitiveBatchDraw) !void {
+        self.gl.use_program(self.primitive_program);
+        self.gl.bind_vertex_array(self.primitive_vao);
+        self.setBlend(draw.blend);
+        self.applyClip(draw.clip);
+        self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), try glI32(draw.vertex_count));
     }
 
     fn renderSprites(self: *Presenter, sprites: *up.SpriteBatch) !void {
@@ -403,20 +422,28 @@ pub const Presenter = struct {
         self.gl.use_program(self.sprite_program);
         self.gl.bind_vertex_array(self.sprite_vao);
         self.gl.active_texture(gl_texture0);
-        for (sprites.sorted.items) |draw_index| {
-            const draw = sprites.draws.items[draw_index];
-            var texture: u32 = 0;
-            self.gl.gen_textures(1, &texture);
-            if (texture == 0) return error.OpenGlTextureCreationFailed;
-            defer self.gl.delete_textures(1, &texture);
-            const filter = switch (draw.sampling) {
-                .nearest => gl_nearest,
-                .linear => gl_linear,
-            };
-            try self.uploadTexture(texture, draw.image.width, draw.image.height, std.mem.sliceAsBytes(draw.image.pixels), filter);
-            self.gl.bind_texture(gl_texture_2d, texture);
-            self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), 6);
-        }
+        for (sprites.sorted.items) |draw_index| try self.renderSpriteDraw(sprites.draws.items[draw_index]);
+        self.gl.disable(gl_scissor_test);
+        self.setBlend(.alpha);
+    }
+
+    fn renderSpriteDraw(self: *Presenter, draw: up.SpriteBatchDraw) !void {
+        var texture: u32 = 0;
+        self.gl.gen_textures(1, &texture);
+        if (texture == 0) return error.OpenGlTextureCreationFailed;
+        defer self.gl.delete_textures(1, &texture);
+        const filter = switch (draw.sampling) {
+            .nearest => gl_nearest,
+            .linear => gl_linear,
+        };
+        try self.uploadTexture(texture, draw.image.width, draw.image.height, std.mem.sliceAsBytes(draw.image.pixels), filter);
+        self.gl.use_program(self.sprite_program);
+        self.gl.bind_vertex_array(self.sprite_vao);
+        self.gl.active_texture(gl_texture0);
+        self.gl.bind_texture(gl_texture_2d, texture);
+        self.setBlend(draw.blend);
+        self.applyClip(draw.clip);
+        self.gl.draw_arrays(gl_triangles, try glI32(draw.vertex_start), 6);
     }
 
     fn uploadSpriteVertices(self: *Presenter, vertices: []const up.SpriteBatchVertex) !void {

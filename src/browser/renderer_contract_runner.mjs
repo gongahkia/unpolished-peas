@@ -33,8 +33,20 @@ function camera(value) {
   return value;
 }
 
+function assetMap(fixture) {
+  if (!Array.isArray(fixture.assets)) fail("assets");
+  const assets = new Map();
+  for (const asset of fixture.assets) {
+    const byteLength = asset?.width * asset?.height * 4;
+    if (!asset || typeof asset.id !== "string" || asset.id.length === 0 || !Number.isInteger(asset.width) || !Number.isInteger(asset.height) || asset.width <= 0 || asset.height <= 0 || !Number.isSafeInteger(byteLength) || !Array.isArray(asset.rgba) || asset.rgba.length !== byteLength || !asset.rgba.every((channel) => Number.isInteger(channel) && channel >= 0 && channel <= 255) || assets.has(asset.id)) fail("asset");
+    assets.set(asset.id, asset);
+  }
+  return assets;
+}
+
 export function validateRendererContract(fixture) {
   if (fixture?.schema_version !== 1 || fixture.fixture_version !== "v1" || fixture.width !== 64 || fixture.height !== 32 || fixture.tolerance?.per_channel !== rendererContractTolerance || !Array.isArray(fixture.operations)) fail("schema");
+  const assets = assetMap(fixture);
   let cameraActive = false;
   let clips = 0;
   let blends = 0;
@@ -45,6 +57,15 @@ export function validateRendererContract(fixture) {
       case "rect":
         integer(operation.x, "rect x"); integer(operation.y, "rect y");
         if (integer(operation.w, "rect w") <= 0 || integer(operation.h, "rect h") <= 0) fail("rect size");
+        color(operation.color);
+        break;
+      case "image":
+        if (!assets.has(operation.asset)) fail("image asset");
+        integer(operation.x, "image x"); integer(operation.y, "image y");
+        break;
+      case "text":
+        if (typeof operation.value !== "string" || operation.value.length === 0) fail("text value");
+        integer(operation.x, "text x"); integer(operation.y, "text y");
         color(operation.color);
         break;
       case "push_clip":
@@ -74,14 +95,49 @@ function call(runtime, host, commands, name, ...args) {
   if (runtime[name](...args) !== Status.ok) throw new Error(`renderer contract command failed: ${name}`);
 }
 
+function uploadContractAssets(runtime, host, commands, fixture) {
+  const assets = assetMap(fixture);
+  const handles = new Map();
+  let offset = 1024;
+  for (const asset of assets.values()) {
+    if (!host?.memory?.buffer || offset > host.memory.buffer.byteLength - asset.rgba.length) fail("asset memory");
+    new Uint8Array(host.memory.buffer, offset, asset.rgba.length).set(asset.rgba);
+    const command = {name: "up_browser_gl_resource_create", args: [1, 0]};
+    commands.push(command);
+    host.recordCommand?.(command);
+    const handle = runtime.up_browser_gl_resource_create(1, 0);
+    if (!Number.isInteger(handle) || handle <= 0) fail("asset texture");
+    call(runtime, host, commands, "up_browser_texture_upload", handle, asset.width, asset.height, offset, asset.rgba.length, 0);
+    handles.set(asset.id, {asset, handle});
+    offset += asset.rgba.length;
+  }
+  return handles;
+}
+
 export function runRendererContract(runtime, host, fixture) {
   validateRendererContract(fixture);
   const commands = [];
   call(runtime, host, commands, "up_browser_gl_context_create", fixture.width, fixture.height);
+  const assets = uploadContractAssets(runtime, host, commands, fixture);
+  let textOffset = 32768;
   for (const operation of fixture.operations) {
     switch (operation.op) {
       case "clear": call(runtime, host, commands, "up_browser_clear", pack(operation.color)); break;
       case "rect": call(runtime, host, commands, "up_browser_draw_rect", operation.x, operation.y, operation.w, operation.h, pack(operation.color)); break;
+      case "image": {
+        const asset = assets.get(operation.asset);
+        if (!asset) fail("image asset");
+        call(runtime, host, commands, "up_browser_draw_sprite", asset.handle, 0, 0, asset.asset.width, asset.asset.height, operation.x, operation.y, asset.asset.width, asset.asset.height, 0xffffffff, 0);
+        break;
+      }
+      case "text": {
+        const bytes = new TextEncoder().encode(operation.value);
+        if (!host?.memory?.buffer || textOffset > host.memory.buffer.byteLength - bytes.length) fail("text memory");
+        new Uint8Array(host.memory.buffer, textOffset, bytes.length).set(bytes);
+        call(runtime, host, commands, "up_browser_draw_text", textOffset, bytes.length, operation.x, operation.y, pack(operation.color));
+        textOffset += bytes.length;
+        break;
+      }
       case "push_clip": call(runtime, host, commands, "up_browser_push_clip", operation.x, operation.y, operation.w, operation.h); break;
       case "pop_clip": call(runtime, host, commands, "up_browser_pop_clip"); break;
       case "push_blend": call(runtime, host, commands, "up_browser_push_blend", operation.mode); break;
@@ -116,6 +172,7 @@ function transformRect(operation, transform) {
 
 export function referenceRendererContract(fixture) {
   validateRendererContract(fixture);
+  const assets = assetMap(fixture);
   const pixels = new Uint8Array(fixture.width * fixture.height * 4);
   let clip = null;
   const clips = [];
@@ -123,7 +180,7 @@ export function referenceRendererContract(fixture) {
   const blends = [];
   let transform = null;
   const setPixel = (x, y, value) => {
-    if (x < 0 || y < 0 || x >= fixture.width || y >= fixture.height) return;
+    if (x < 0 || y < 0 || x >= fixture.width || y >= fixture.height || (clip && (x < clip.x || y < clip.y || x >= clip.x + clip.w || y >= clip.y + clip.h))) return;
     const offset = (y * fixture.width + x) * 4;
     const result = composite(value, {r: pixels[offset], g: pixels[offset + 1], b: pixels[offset + 2], a: pixels[offset + 3]}, blend);
     pixels[offset] = result.r; pixels[offset + 1] = result.g; pixels[offset + 2] = result.b; pixels[offset + 3] = result.a;
@@ -139,6 +196,21 @@ export function referenceRendererContract(fixture) {
         const rect = transformRect(operation, transform);
         const bounded = clip ? intersect(rect, clip) : rect;
         for (let y = bounded.y; y < bounded.y + bounded.h; y += 1) for (let x = bounded.x; x < bounded.x + bounded.w; x += 1) setPixel(x, y, operation.color);
+        break;
+      }
+      case "image": {
+        const asset = assets.get(operation.asset);
+        if (!asset) fail("image asset");
+        for (let y = 0; y < asset.height; y += 1) for (let x = 0; x < asset.width; x += 1) {
+          const offset = (y * asset.width + x) * 4;
+          setPixel(operation.x + x, operation.y + y, {r: asset.rgba[offset], g: asset.rgba[offset + 1], b: asset.rgba[offset + 2], a: asset.rgba[offset + 3]});
+        }
+        break;
+      }
+      case "text": {
+        const glyph = [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001];
+        if (operation.value !== "A") fail("text glyph");
+        for (let y = 0; y < glyph.length; y += 1) for (let x = 0; x < 5; x += 1) if ((glyph[y] & (1 << (4 - x))) !== 0) setPixel(operation.x + x, operation.y + y, operation.color);
         break;
       }
       case "push_clip": clips.push(clip); clip = clip ? intersect(clip, operation) : {x: operation.x, y: operation.y, w: operation.w, h: operation.h}; break;

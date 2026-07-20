@@ -385,6 +385,7 @@ test "desktop renderer conformance GPU golden capture" {
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
         defer scenario.deinit();
+        if (scenario_kind == .stable_core) sprites.clear();
         var canvas = try scenario.initialCanvas(std.testing.allocator);
         defer canvas.deinit();
         var expected = try scenario.referenceCanvas(std.testing.allocator);
@@ -2678,12 +2679,15 @@ const Presenter = struct {
     byte_len: u32,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    sprite_additive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     nearest_sampler: ?*c.SDL_GPUSampler = null,
     linear_sampler: ?*c.SDL_GPUSampler = null,
     vertex_buffer: ?*c.SDL_GPUBuffer = null,
     vertex_transfer: ?*c.SDL_GPUTransferBuffer = null,
     vertex_capacity: u32 = 0,
     primitive_batch: up.PrimitiveBatch,
+    command_sprites: up.SpriteBatch,
+    command_operations: std.ArrayList(primitive_commands.Operation) = .empty,
     primitive_alpha_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     primitive_additive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     primitive_buffer: ?*c.SDL_GPUBuffer = null,
@@ -2737,11 +2741,12 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        var presenter = Presenter{ .render_target = render_target, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator) };
+        var presenter = Presenter{ .render_target = render_target, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator), .command_sprites = up.SpriteBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
-        presenter.sprite_pipeline = try createSpritePipeline(device);
+        presenter.sprite_pipeline = try createSpritePipeline(device, .alpha);
+        presenter.sprite_additive_pipeline = try createSpritePipeline(device, .additive);
         presenter.primitive_alpha_pipeline = try createPrimitivePipeline(device, .alpha);
         presenter.primitive_additive_pipeline = try createPrimitivePipeline(device, .additive);
         return presenter;
@@ -2749,6 +2754,7 @@ const Presenter = struct {
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
         if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.sprite_additive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.nearest_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.linear_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
         if (self.vertex_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
@@ -2758,6 +2764,8 @@ const Presenter = struct {
         if (self.primitive_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.primitive_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         self.primitive_batch.deinit();
+        self.command_sprites.deinit();
+        self.command_operations.deinit(std.heap.page_allocator);
         for (self.sprite_textures.items) |sprite| {
             c.SDL_ReleaseGPUTransferBuffer(device, sprite.transfer);
             c.SDL_ReleaseGPUTexture(device, sprite.texture);
@@ -2779,7 +2787,10 @@ const Presenter = struct {
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         self.primitive_batch.clear();
-        try primitive_commands.append(&self.primitive_batch, self.width, self.height, commands);
+        self.command_sprites.clear();
+        self.command_operations.clearRetainingCapacity();
+        try primitive_commands.appendOrdered(&self.primitive_batch, &self.command_sprites, &self.command_operations, self.width, self.height, commands);
+        for (self.command_sprites.draws.items) |draw| _ = try self.spriteTexture(device, draw.image);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
         var acquired_swapchain = false;
@@ -2812,17 +2823,20 @@ const Presenter = struct {
             }
             if (sprite.pending != null) try self.commitPendingSprite(device, copy_pass, sprite);
         }
-        if (sprites.vertices.items.len != 0) try self.uploadVertices(device, copy_pass, sprites.vertices.items);
+        if (self.command_sprites.vertices.items.len != 0) try self.uploadVertices(device, copy_pass, self.command_sprites.vertices.items);
         if (self.primitive_batch.vertices.items.len != 0) try self.uploadPrimitiveVertices(device, copy_pass, self.primitive_batch.vertices.items);
         c.SDL_EndGPUCopyPass(copy_pass);
 
-        if (self.primitive_batch.vertices.items.len != 0) {
-            try self.renderPrimitives(command);
+        if (self.command_operations.items.len != 0) {
+            try self.renderCommandOperations(command);
             pass_count +%= 1;
         }
         if (sprites.vertices.items.len != 0) {
+            const sprite_copy_pass = c.SDL_BeginGPUCopyPass(command) orelse return sdlFail("SDL_BeginGPUCopyPass");
+            try self.uploadVertices(device, sprite_copy_pass, sprites.vertices.items);
+            c.SDL_EndGPUCopyPass(sprite_copy_pass);
             try self.renderSprites(command, sprites);
-            pass_count +%= 1;
+            pass_count +%= 2;
         }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
         if (capture_path != null) {
@@ -2912,6 +2926,9 @@ const Presenter = struct {
         bytes +|= @as(u64, @intCast(sprites.batches.capacity)) * @sizeOf(up.SpriteBatchGroup);
         bytes +|= @as(u64, @intCast(self.primitive_batch.vertices.capacity)) * @sizeOf(up.PrimitiveBatchVertex);
         bytes +|= @as(u64, @intCast(self.primitive_batch.draws.capacity)) * @sizeOf(up.PrimitiveBatchDraw);
+        bytes +|= @as(u64, @intCast(self.command_sprites.draws.capacity)) * @sizeOf(up.SpriteBatchDraw);
+        bytes +|= @as(u64, @intCast(self.command_sprites.vertices.capacity)) * @sizeOf(up.SpriteBatchVertex);
+        bytes +|= @as(u64, @intCast(self.command_operations.capacity)) * @sizeOf(primitive_commands.Operation);
         return bytes;
     }
 
@@ -2980,13 +2997,28 @@ const Presenter = struct {
         self.primitive_capacity = capacity;
     }
 
-    fn renderPrimitives(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
-        var color_target = c.SDL_GPUColorTargetInfo{
+    fn renderCommandOperations(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
+        var target = self.renderTarget(c.SDL_GPU_LOADOP_LOAD, .{ .r = 0, .g = 0, .b = 0, .a = 0 });
+        var pass = c.SDL_BeginGPURenderPass(command, &target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        for (self.command_operations.items) |operation| switch (operation) {
+            .clear => |color| {
+                c.SDL_EndGPURenderPass(pass);
+                target = self.renderTarget(c.SDL_GPU_LOADOP_CLEAR, colorFloat(color));
+                pass = c.SDL_BeginGPURenderPass(command, &target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+            },
+            .primitive => |index| try self.renderPrimitiveDraw(pass, self.primitive_batch.draws.items[index]),
+            .sprite => |index| try self.renderSpriteDraw(pass, self.command_sprites.draws.items[index]),
+        };
+        c.SDL_EndGPURenderPass(pass);
+    }
+
+    fn renderTarget(self: *Presenter, load_op: c_uint, clear_color: c.SDL_FColor) c.SDL_GPUColorTargetInfo {
+        return .{
             .texture = self.render_target,
             .mip_level = 0,
             .layer_or_depth_plane = 0,
-            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-            .load_op = c.SDL_GPU_LOADOP_LOAD,
+            .clear_color = clear_color,
+            .load_op = load_op,
             .store_op = c.SDL_GPU_STOREOP_STORE,
             .resolve_texture = null,
             .resolve_mip_level = 0,
@@ -2996,21 +3028,19 @@ const Presenter = struct {
             .padding1 = 0,
             .padding2 = 0,
         };
-        const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
-        defer c.SDL_EndGPURenderPass(pass);
-        const buffer = self.primitive_buffer orelse return error.PrimitivePipelineUnavailable;
-        for (self.primitive_batch.draws.items) |draw| {
-            const pipeline = switch (draw.blend) {
-                .alpha => self.primitive_alpha_pipeline orelse return error.PrimitivePipelineUnavailable,
-                .additive => self.primitive_additive_pipeline orelse return error.PrimitivePipelineUnavailable,
-            };
-            c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-            const scissor = primitiveScissor(draw.clip, self.width, self.height);
-            c.SDL_SetGPUScissor(pass, &scissor);
-            const binding = c.SDL_GPUBufferBinding{ .buffer = buffer, .offset = draw.vertex_start * @sizeOf(up.PrimitiveBatchVertex) };
-            c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
-            c.SDL_DrawGPUPrimitives(pass, draw.vertex_count, 1, 0, 0);
-        }
+    }
+
+    fn renderPrimitiveDraw(self: *Presenter, pass: *c.SDL_GPURenderPass, draw: up.PrimitiveBatchDraw) !void {
+        const pipeline = switch (draw.blend) {
+            .alpha => self.primitive_alpha_pipeline orelse return error.PrimitivePipelineUnavailable,
+            .additive => self.primitive_additive_pipeline orelse return error.PrimitivePipelineUnavailable,
+        };
+        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        const scissor = primitiveScissor(draw.clip, self.width, self.height);
+        c.SDL_SetGPUScissor(pass, &scissor);
+        const binding = c.SDL_GPUBufferBinding{ .buffer = self.primitive_buffer orelse return error.PrimitivePipelineUnavailable, .offset = draw.vertex_start * @sizeOf(up.PrimitiveBatchVertex) };
+        c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+        c.SDL_DrawGPUPrimitives(pass, draw.vertex_count, 1, 0, 0);
     }
 
     fn uploadVertices(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, vertices: []const up.SpriteBatchVertex) !void {
@@ -3039,38 +3069,30 @@ const Presenter = struct {
     }
 
     fn renderSprites(self: *Presenter, command: *c.SDL_GPUCommandBuffer, sprites: *up.SpriteBatch) !void {
-        const pipeline = self.sprite_pipeline orelse return error.SpritePipelineUnavailable;
-        var color_target = c.SDL_GPUColorTargetInfo{
-            .texture = self.render_target,
-            .mip_level = 0,
-            .layer_or_depth_plane = 0,
-            .clear_color = .{ .r = 0, .g = 0, .b = 0, .a = 0 },
-            .load_op = c.SDL_GPU_LOADOP_LOAD,
-            .store_op = c.SDL_GPU_STOREOP_STORE,
-            .resolve_texture = null,
-            .resolve_mip_level = 0,
-            .resolve_layer = 0,
-            .cycle = false,
-            .cycle_resolve_texture = false,
-            .padding1 = 0,
-            .padding2 = 0,
-        };
+        var color_target = self.renderTarget(c.SDL_GPU_LOADOP_LOAD, .{ .r = 0, .g = 0, .b = 0, .a = 0 });
         const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
         defer c.SDL_EndGPURenderPass(pass);
+        for (sprites.sorted.items) |draw_index| try self.renderSpriteDraw(pass, sprites.draws.items[draw_index]);
+    }
+
+    fn renderSpriteDraw(self: *Presenter, pass: *c.SDL_GPURenderPass, draw: up.SpriteBatchDraw) !void {
+        const pipeline = switch (draw.blend) {
+            .alpha => self.sprite_pipeline orelse return error.SpritePipelineUnavailable,
+            .additive => self.sprite_additive_pipeline orelse return error.SpritePipelineUnavailable,
+        };
+        const sprite = self.findSprite(draw.image) orelse return error.MissingSpriteTexture;
+        const sampler = switch (draw.sampling) {
+            .nearest => self.nearest_sampler orelse return error.SpritePipelineUnavailable,
+            .linear => self.linear_sampler orelse return error.SpritePipelineUnavailable,
+        };
         c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
-        for (sprites.sorted.items) |draw_index| {
-            const draw = sprites.draws.items[draw_index];
-            const sprite = self.findSprite(draw.image) orelse return error.MissingSpriteTexture;
-            const sampler = switch (draw.sampling) {
-                .nearest => self.nearest_sampler orelse return error.SpritePipelineUnavailable,
-                .linear => self.linear_sampler orelse return error.SpritePipelineUnavailable,
-            };
-            const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = sprite.texture, .sampler = sampler };
-            c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
-            const binding = c.SDL_GPUBufferBinding{ .buffer = self.vertex_buffer orelse return error.SpritePipelineUnavailable, .offset = draw.vertex_start * @sizeOf(up.SpriteBatchVertex) };
-            c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
-            c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
-        }
+        const scissor = primitiveScissor(draw.clip, self.width, self.height);
+        c.SDL_SetGPUScissor(pass, &scissor);
+        const texture_sampler = c.SDL_GPUTextureSamplerBinding{ .texture = sprite.texture, .sampler = sampler };
+        c.SDL_BindGPUFragmentSamplers(pass, 0, &texture_sampler, 1);
+        const binding = c.SDL_GPUBufferBinding{ .buffer = self.vertex_buffer orelse return error.SpritePipelineUnavailable, .offset = draw.vertex_start * @sizeOf(up.SpriteBatchVertex) };
+        c.SDL_BindGPUVertexBuffers(pass, 0, &binding, 1);
+        c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
     }
 
     fn spriteTexture(self: *Presenter, device: *c.SDL_GPUDevice, image: *const up.Image) !usize {
@@ -3182,6 +3204,15 @@ fn primitiveScissor(clip: ?up.ClipRect, width: u32, height: u32) c.SDL_Rect {
     return .{ .x = 0, .y = 0, .w = clampI64ToCInt(limit_x), .h = clampI64ToCInt(limit_y) };
 }
 
+fn colorFloat(color: up.Color) c.SDL_FColor {
+    return .{
+        .r = @as(f32, @floatFromInt(color.r)) / 255,
+        .g = @as(f32, @floatFromInt(color.g)) / 255,
+        .b = @as(f32, @floatFromInt(color.b)) / 255,
+        .a = @as(f32, @floatFromInt(color.a)) / 255,
+    };
+}
+
 fn clampI64ToCInt(value: i64) c_int {
     return @intCast(@max(@as(i64, std.math.minInt(c_int)), @min(@as(i64, std.math.maxInt(c_int)), value)));
 }
@@ -3211,19 +3242,23 @@ fn createSpriteSampler(device: *c.SDL_GPUDevice, sampling: up.SpriteSampling) !*
     }) orelse return sdlFail("SDL_CreateGPUSampler");
 }
 
-fn createSpritePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+fn createSpritePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {
     const vertex_shader = try createSpriteShader(device, .vertex);
     defer c.SDL_ReleaseGPUShader(device, vertex_shader);
     const fragment_shader = try createSpriteShader(device, .fragment);
     defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const destination_factor: c.SDL_GPUBlendFactor = switch (blend) {
+        .alpha => c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .additive => c.SDL_GPU_BLENDFACTOR_ONE,
+    };
     const target = c.SDL_GPUColorTargetDescription{
         .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
         .blend_state = .{
             .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
-            .dst_color_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .dst_color_blendfactor = destination_factor,
             .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
             .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
-            .dst_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .dst_alpha_blendfactor = destination_factor,
             .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
             .color_write_mask = 0xF,
             .enable_blend = true,
