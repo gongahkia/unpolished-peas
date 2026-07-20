@@ -1,11 +1,13 @@
 const core = @import("minna-san-core");
+const security_policy = @import("security_policy.zig");
 
-pub const ConfigError = core.CapabilityError || error{ MissingClock, InvalidPlatformConfiguration };
+pub const ConfigError = core.CapabilityError || security_policy.SecurityPolicyError || error{ MissingClock, InvalidPlatformConfiguration };
 
 pub const SdkConfig = struct {
     clock_value: core.Clock,
     capability_config: core.CapabilityConfig,
     platform_config: core.PlatformConfig,
+    security_policy: security_policy.RuntimeSecurityPolicy,
 
     pub fn clock(self: SdkConfig) core.Clock {
         return self.clock_value;
@@ -17,6 +19,10 @@ pub const SdkConfig = struct {
 
     pub fn platformConfig(self: SdkConfig) core.PlatformConfig {
         return self.platform_config;
+    }
+
+    pub fn securityPolicy(self: SdkConfig) security_policy.RuntimeSecurityPolicy {
+        return self.security_policy;
     }
 };
 
@@ -32,6 +38,7 @@ pub const SdkConfigBuilder = struct {
     clock_value: ?core.Clock = null,
     capability_config: core.CapabilityConfig = .{},
     platform_config: core.PlatformConfig = .{},
+    security_policy: security_policy.RuntimeSecurityPolicy = .{},
 
     pub fn init() SdkConfigBuilder {
         return .{};
@@ -55,11 +62,18 @@ pub const SdkConfigBuilder = struct {
         return next;
     }
 
+    pub fn with_security_policy(self: SdkConfigBuilder, policy: security_policy.RuntimeSecurityPolicy) SdkConfigBuilder {
+        var next = self;
+        next.security_policy = policy;
+        return next;
+    }
+
     pub fn build(self: SdkConfigBuilder) ConfigError!Sdk {
         const clock = self.clock_value orelse return error.MissingClock;
         try self.capability_config.validate();
         self.platform_config.validate() catch return error.InvalidPlatformConfiguration;
-        return .{ .config = .{ .clock_value = clock, .capability_config = self.capability_config, .platform_config = self.platform_config } };
+        try self.security_policy.validate();
+        return .{ .config = .{ .clock_value = clock, .capability_config = self.capability_config, .platform_config = self.platform_config, .security_policy = self.security_policy } };
     }
 };
 

@@ -7,8 +7,9 @@ const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
+const security_policy = @import("security_policy.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -24,6 +25,7 @@ pub const RuntimePollResult = struct {
 
 pub const Runtime = struct {
     platform_config: core.PlatformConfig,
+    security_policy: security_policy.RuntimeSecurityPolicy,
     poll_runtime: poll_runtime.PollRuntime,
     providers: provider.ProviderRegistry,
     services: service_module.ServiceRegistry,
@@ -32,8 +34,11 @@ pub const Runtime = struct {
     pub fn init(allocator: std.mem.Allocator, sdk: config.Sdk) RuntimeError!Runtime {
         const platform_config = sdk.configuration().platformConfig();
         platform_config.validate() catch return error.InvalidConfiguration;
+        const policy = sdk.configuration().securityPolicy();
+        try policy.validate();
         return .{
             .platform_config = platform_config,
+            .security_policy = policy,
             .poll_runtime = poll_runtime.PollRuntime.init(allocator, sdk),
             .providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity),
             .services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity }),
@@ -55,10 +60,12 @@ pub const Runtime = struct {
         return self.services.register(module);
     }
 
-    pub fn start(self: *Runtime) provider.ProviderError!void {
+    pub fn start(self: *Runtime) RuntimeError!void {
+        try self.security_policy.validate();
         try self.providers.start();
+        errdefer for (self.providers.providers.items) |*registered| registered.stop();
+        try self.security_policy.validateProviders(&self.providers);
         self.services.start() catch {
-            for (self.providers.providers.items) |*registered| registered.stop();
             return error.PollFailed;
         };
     }
@@ -123,6 +130,7 @@ pub const Runtime = struct {
 
 const FakeProvider = struct {
     polls: u8 = 0,
+    stops: u8 = 0,
     capabilities: provider.ProviderCapabilityDescriptor = .{},
 
     fn asProvider(self: *FakeProvider) provider.ProviderError!provider.Provider {
@@ -149,7 +157,8 @@ const FakeProvider = struct {
     }
 
     fn teardown(context: ?*anyopaque) callconv(.c) void {
-        _ = context;
+        const self: *FakeProvider = @ptrCast(@alignCast(context.?));
+        self.stops += 1;
     }
 };
 
@@ -230,4 +239,84 @@ test "unified runtimes attach and dispatch bounded service modules" {
     const dispatch = try runtime.dispatchService(.{ .route = "/fixture/request", .credentials = "", .payload = "" });
     try std.testing.expectEqual(@as(usize, 0), dispatch.module);
     try std.testing.expectEqual(@as(usize, 1), fixture.calls);
+}
+
+test "runtime security policies validate production providers and credentials before service startup" {
+    const CredentialFixture = struct {
+        calls: usize = 0,
+
+        fn validate(context: ?*anyopaque, request: security_policy.SecurityCredentialRequest) security_policy.SecurityPolicyError!void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            if (!std.mem.eql(u8, request.provider_name, "runtime-fake")) return error.CredentialRejected;
+            self.calls += 1;
+        }
+    };
+    const ServiceFixture = struct {
+        starts: usize = 0,
+
+        fn initialize(context: ?*anyopaque) service_module.ServiceModuleError!void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.starts += 1;
+        }
+
+        fn route(_: ?*anyopaque, _: service_module.ServiceRequest) service_module.ServiceModuleError!service_module.ServiceRouteResult {
+            return .handled;
+        }
+    };
+    var manual = core.ManualClock.init(0);
+    var credentials = CredentialFixture{};
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_security_policy(.{
+        .environment = .production,
+        .prohibit_plaintext = true,
+        .require_tls = true,
+        .require_credentials = true,
+        .required_cipher_bits = core.cipher_capability_bit(.aes_256_gcm),
+        .credential_context = &credentials,
+        .credential_callback = CredentialFixture.validate,
+    }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var fake = FakeProvider{ .capabilities = .{ .security_bits = core.security_capability_bit(.tls), .cipher_bits = core.cipher_capability_bit(.aes_256_gcm) } };
+    try runtime.registerProvider(try fake.asProvider());
+    var service = ServiceFixture{};
+    _ = try runtime.registerService(.{ .config = .{ .name = "secure", .route_prefix = "/secure", .maximum_state_bytes = 1 }, .context = &service, .hooks = .{ .initialize = ServiceFixture.initialize, .route = ServiceFixture.route } });
+    try runtime.start();
+    try std.testing.expectEqual(@as(usize, 1), credentials.calls);
+    try std.testing.expectEqual(@as(usize, 1), service.starts);
+}
+
+test "runtime security policies stop providers before unsafe services start" {
+    const allow_credentials = struct {
+        fn validate(_: ?*anyopaque, _: security_policy.SecurityCredentialRequest) security_policy.SecurityPolicyError!void {}
+    }.validate;
+    const ServiceFixture = struct {
+        starts: usize = 0,
+
+        fn initialize(context: ?*anyopaque) service_module.ServiceModuleError!void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.starts += 1;
+        }
+
+        fn route(_: ?*anyopaque, _: service_module.ServiceRequest) service_module.ServiceModuleError!service_module.ServiceRouteResult {
+            return .handled;
+        }
+    };
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_security_policy(.{
+        .environment = .production,
+        .prohibit_plaintext = true,
+        .require_tls = true,
+        .require_credentials = true,
+        .required_cipher_bits = core.cipher_capability_bit(.aes_256_gcm),
+        .credential_callback = allow_credentials,
+    }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var fake = FakeProvider{};
+    try runtime.registerProvider(try fake.asProvider());
+    var service = ServiceFixture{};
+    _ = try runtime.registerService(.{ .config = .{ .name = "blocked", .route_prefix = "/blocked", .maximum_state_bytes = 1 }, .context = &service, .hooks = .{ .initialize = ServiceFixture.initialize, .route = ServiceFixture.route } });
+    try std.testing.expectError(error.ProviderConstraintUnsatisfied, runtime.start());
+    try std.testing.expectEqual(@as(u8, 1), fake.stops);
+    try std.testing.expectEqual(@as(usize, 0), service.starts);
 }

@@ -215,7 +215,7 @@ pub const ProviderRegistry = struct {
     }
 
     pub fn supportsRequirements(self: *const ProviderRegistry, required: ProviderCapabilityRequirement) bool {
-        if (required.transport_bits == 0 and required.security_bits == 0 and required.delivery_bits == 0 and required.protocol_bits == 0) return true;
+        if (required.transport_bits == 0 and required.security_bits == 0 and required.cipher_bits == 0 and required.delivery_bits == 0 and required.protocol_bits == 0) return true;
         for (self.providers.items) |registered| {
             if (registered.state == .active and registered.capabilities.supports(required)) return true;
         }
@@ -331,6 +331,9 @@ test "provider registries enforce capacity and deterministic budgets" {
     second_provider.config.name = "second";
     try registry.register(second_provider);
     try registry.start();
+    try @import("std").testing.expect(!registry.supportsRequirements(.{ .cipher_bits = core.cipher_capability_bit(.aes_256_gcm) }));
+    registry.providers.items[0].capabilities.cipher_bits = core.cipher_capability_bit(.aes_256_gcm);
+    try @import("std").testing.expect(registry.supportsRequirements(.{ .cipher_bits = core.cipher_capability_bit(.aes_256_gcm) }));
     try std.testing.expectEqual(@as(usize, 3), (try registry.poll(0, 3)).work_completed);
     try std.testing.expectEqual(@as(usize, 2), first.work_completed);
     try std.testing.expectEqual(@as(usize, 1), second.work_completed);
