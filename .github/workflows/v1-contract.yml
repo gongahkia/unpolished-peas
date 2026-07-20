@@ -67,8 +67,8 @@ jobs:
           echo '02aa270f183da276e5b5920b1dac44a63f1a49e55050ebde3aecc9eb82f93239  zig.tar.xz' | sha256sum --check --status
           tar --extract --file zig.tar.xz
           echo "$PWD/zig-x86_64-linux-0.15.2" >> "$GITHUB_PATH"
-      - name: Compare released Zig and C contracts
-        run: zig build public-api-regression
+      - name: Require approved pre-release API baseline
+        run: zig build api-evolution
       - name: Compile public compatibility contracts
         run: zig build compatibility-contract && zig build c-header-contract
       - name: Package versioned C SDK headers

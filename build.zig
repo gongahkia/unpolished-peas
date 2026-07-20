@@ -392,6 +392,12 @@ pub fn build(b: *std.Build) void {
     const public_api_regression_test = b.addSystemCommand(&.{ "sh", "script/test_public_api_regression.sh" });
     const public_api_regression_test_step = b.step("public-api-regression-test", "Test released public API contract checks");
     public_api_regression_test_step.dependOn(&public_api_regression_test.step);
+    const api_evolution_check = b.addSystemCommand(&.{ "sh", "script/check_pre_release_api_baseline.sh" });
+    const api_evolution_step = b.step("api-evolution", "Require explicit pre-release public API baseline updates");
+    api_evolution_step.dependOn(&api_evolution_check.step);
+    const api_evolution_test = b.addSystemCommand(&.{ "sh", "script/test_pre_release_api_baseline.sh" });
+    const api_evolution_test_step = b.step("api-evolution-test", "Test pre-release public API baseline enforcement");
+    api_evolution_test_step.dependOn(&api_evolution_test.step);
     const pre_release_api_contract_test = b.addSystemCommand(&.{ "sh", "script/test_pre_release_api_contract.sh" });
     const pre_release_api_contract_test_step = b.step("pre-release-api-contract-test", "Test pre-release public API extensibility");
     pre_release_api_contract_test_step.dependOn(&pre_release_api_contract_test.step);
@@ -575,6 +581,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&contract_gate_check.step);
     test_step.dependOn(&public_api_regression_check.step);
     test_step.dependOn(&public_api_regression_test.step);
+    test_step.dependOn(&api_evolution_check.step);
+    test_step.dependOn(&api_evolution_test.step);
     test_step.dependOn(&pre_release_api_contract_test.step);
     test_step.dependOn(&provider_dependency_check.step);
     test_step.dependOn(&provider_dependency_test.step);
