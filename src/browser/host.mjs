@@ -583,6 +583,7 @@ export function createBrowserHost({
   }
 
   function pushBlend(mode) {
+    if (webgpu) return webgpu.pushBlend(mode) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.invalidArgument;
     if (mode > 1) return Status.invalidArgument;
     const status = flushSprites();
     if (status !== Status.ok) return status;
@@ -592,6 +593,7 @@ export function createBrowserHost({
   }
 
   function popBlend() {
+    if (webgpu) return webgpu.popBlend() ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
     if (blendStack.length === 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;

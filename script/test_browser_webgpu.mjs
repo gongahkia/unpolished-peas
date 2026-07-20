@@ -34,11 +34,14 @@ const passes = [];
 const writes = [];
 const textureWrites = [];
 const draws = [];
+const pipelines = [];
 const device = {
   lost,
   queue: {submit: (commands) => submissions.push(commands), writeBuffer: (...args) => writes.push(args), writeTexture: (...args) => textureWrites.push(args)},
   createShaderModule: () => "shader",
-  createRenderPipeline: () => ({getBindGroupLayout: () => "sprite-layout"}),
+  createRenderPipeline: (descriptor) => ({blend: descriptor.fragment.targets[0].blend.color.dstFactor}),
+  createBindGroupLayout: () => "sprite-layout",
+  createPipelineLayout: () => "sprite-pipeline-layout",
   createBuffer: () => ({destroy() { submissions.push("buffer-destroy"); }}),
   createTexture: () => ({createView: () => "texture-view", destroy() { submissions.push("texture-destroy"); }}),
   createSampler: () => "sampler",
@@ -46,7 +49,7 @@ const device = {
   createCommandEncoder: () => ({
     beginRenderPass: (descriptor) => {
       passes.push(descriptor);
-      return {setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, draw: (count) => draws.push(count), end() {}};
+      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, draw: (count) => draws.push(count), end() {}};
     },
     finish: () => "command-buffer",
   }),
@@ -69,12 +72,16 @@ assert.equal(textureWrites.length, 1);
 assert.equal(backend.pushClip(4, 2, 8, 8), true);
 assert.equal(backend.drawRect(0, 0, 16, 16, 0xff0000ff), true);
 assert.equal(backend.popClip(), true);
+assert.equal(backend.pushBlend(1), true);
+assert.equal(backend.drawRect(16, 0, 16, 16, 0xff00ff00), true);
+assert.equal(backend.popBlend(), true);
 assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 8, 4, 16, 16, 0x80ffffff, 0), true);
 assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 24, 4, 16, 16, 0xffffffff, 0), true);
 assert.equal(backend.present(), true);
 assert.deepEqual(submissions, [["command-buffer"]]);
 assert.equal(writes.length, 2);
-assert.deepEqual(draws, [6, 12]);
+assert.deepEqual(draws, [6, 6, 12]);
+assert.deepEqual(pipelines, ["one-minus-src-alpha", "one", "one-minus-src-alpha"]);
 assert.deepEqual(passes[0].colorAttachments[0].clearValue, {r: 16 / 255, g: 32 / 255, b: 64 / 255, a: 128 / 255});
 assert.deepEqual(backend.diagnostic(), {adapter_status: "ready", device_status: "ready", canvas_format: "bgra8unorm", logical_width: 320, logical_height: 180});
 resolveLost({reason: "destroyed"});
@@ -93,7 +100,9 @@ const hostDevice = {
   lost: new Promise((resolve) => { resolveHostLost = resolve; }),
   queue: {submit() {}, writeBuffer() {}, writeTexture() {}},
   createShaderModule: () => "shader",
-  createRenderPipeline: () => ({getBindGroupLayout: () => "sprite-layout"}),
+  createRenderPipeline: () => ({blend: "one-minus-src-alpha"}),
+  createBindGroupLayout: () => "sprite-layout",
+  createPipelineLayout: () => "sprite-pipeline-layout",
   createBuffer: () => ({destroy() {}}),
   createTexture: () => ({createView: () => "texture-view", destroy() {}}),
   createSampler: () => "sampler",
@@ -110,7 +119,9 @@ assert.equal(host.imports.env.up_host_gl_clear(0xff000000), Status.ok);
 const hostTexture = host.imports.env.up_host_gl_resource_create(1, 0);
 new Uint8Array(host.memory.buffer, 0, 16).fill(255);
 assert.equal(host.imports.env.up_host_gl_texture_upload(hostTexture, 2, 2, 0, 16, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_push_blend(1), Status.ok);
 assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4, 5, 8, 9, 0xffffffff, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_pop_blend(), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
 resolveHostLost({reason: "destroyed"});

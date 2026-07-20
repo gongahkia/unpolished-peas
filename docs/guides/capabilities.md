@@ -37,7 +37,7 @@ Browser baseline: current stable evergreen desktop releases of Chromium, Firefox
 | Windows | SDL GPU | `supported` | `stable-core-capability` on `windows-2022` |
 | Windows | OpenGL 3.3 | `preview` | — |
 | Chromium | WebGL 2 | `preview` | — |
-| Chromium | WebGPU | `unsupported` | — |
+| Chromium | WebGPU | `preview` | — |
 | Firefox | WebGL 2 | `preview` | — |
 | Firefox | WebGPU | `unsupported` | — |
 | Safari | WebGL 2 | `preview` | — |
@@ -54,3 +54,11 @@ WebGL 2 and WebGPU deliberately have the same stable-core requirement set. Their
 | `macos-sdl_gpu` | `macos-15-intel` | `bash script/test_stable_core_capability.sh macos-sdl_gpu` |
 | `linux-sdl_gpu` | `ubuntu-latest` | `bash script/test_stable_core_capability.sh linux-sdl_gpu` |
 | `windows-sdl_gpu` | `windows-2022` | `pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu` |
+
+## Extended verification
+
+Preview browser coverage is selected here, separately from the required stable-core pull-request matrix.
+
+| Matrix row | Runner | Renderer check |
+| --- | --- | --- |
+| `chromium-webgpu` | `macos-15-intel` | `zig build test-browser-renderer-parity` |

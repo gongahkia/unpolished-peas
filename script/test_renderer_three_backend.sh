@@ -8,4 +8,4 @@ case "$(uname -s)" in
     *) printf 'renderer corpus: unsupported host %s\n' "$(uname -s)" >&2; exit 69 ;;
 esac
 "$repo/script/test_browser_renderer_corpus.sh"
-printf '%s\n' 'renderer-three-backend passed: sdl-gpu,opengl,webgl2'
+printf '%s\n' 'renderer-three-backend passed: sdl-gpu,opengl,webgl2,webgpu'
