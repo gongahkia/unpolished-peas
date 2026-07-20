@@ -109,8 +109,16 @@ class FakeCanvas {
 const scheduledFrames = new Map();
 let nextFrame = 1;
 const canvas = new FakeCanvas();
+const documentListeners = new Map();
+const documentRef = {
+  activeElement: null,
+  visibilityState: "visible",
+  addEventListener(name, callback) { const callbacks = documentListeners.get(name) ?? new Set(); callbacks.add(callback); documentListeners.set(name, callbacks); },
+  removeEventListener(name, callback) { documentListeners.get(name)?.delete(callback); },
+};
 const host = createBrowserHost({
   canvas,
+  document: documentRef,
   requestAnimationFrame(callback) {
     const token = nextFrame;
     nextFrame += 1;
@@ -121,12 +129,21 @@ const host = createBrowserHost({
     scheduledFrames.delete(token);
   },
 });
+assert.equal(host.abiVersion, 2);
 const frameTimes = [];
 const resizeCalls = [];
+const pauses = [];
 assert.equal(host.attachRuntime({
   up_browser_frame: (timestamp) => frameTimes.push(timestamp),
   up_browser_resize: (width, height) => resizeCalls.push([width, height]),
+  up_browser_set_paused: (value) => pauses.push(value),
 }), true);
+assert.deepEqual(pauses, [0]);
+documentRef.visibilityState = "hidden";
+for (const callback of documentListeners.get("visibilitychange")) callback();
+documentRef.visibilityState = "visible";
+for (const callback of documentListeners.get("visibilitychange")) callback();
+assert.deepEqual(pauses, [0, 1, 0]);
 const env = host.imports.env;
 assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",

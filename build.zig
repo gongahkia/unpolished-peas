@@ -44,6 +44,18 @@ pub fn build(b: *std.Build) void {
         .target = browser_target,
         .optimize = browser_optimize,
     });
+    const frame_timing = b.createModule(.{
+        .root_source_file = b.path("src/frame_timing.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
+    const browser_frame_timing = b.createModule(.{
+        .root_source_file = b.path("src/frame_timing.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
 
     const tools = b.addModule("unpolished-peas-tools", .{
         .root_source_file = b.path("src/tools.zig"),
@@ -89,6 +101,7 @@ pub fn build(b: *std.Build) void {
             .imports = &.{
                 .{ .name = "unpolished-peas", .module = browser_peas },
                 .{ .name = "protocol-game", .module = browser_protocol_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
             },
         }),
     });
@@ -157,6 +170,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
             .{ .name = "protocol-game", .module = host_protocol_game },
+            .{ .name = "frame-timing", .module = frame_timing },
         },
     }) });
     const run_browser_runtime_tests = b.addRunArtifact(browser_runtime_tests);
@@ -218,6 +232,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "frame-timing", .module = frame_timing },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
@@ -413,6 +428,11 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
+    const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
+    const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");
+    frame_timing_test_step.dependOn(&run_frame_timing_tests.step);
+    test_step.dependOn(&run_frame_timing_tests.step);
     const core_api_snapshot_module = b.createModule(.{
         .root_source_file = b.path("src/core_api_snapshot.zig"),
         .target = target,

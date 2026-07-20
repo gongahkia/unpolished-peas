@@ -11,7 +11,7 @@ function localStorageOrNull() {
   }
 }
 
-export const AbiVersion = 1;
+export const AbiVersion = 2;
 
 export const ResourceKind = Object.freeze({
   buffer: 0,
@@ -699,8 +699,13 @@ export function createBrowserHost({
     scheduleFrame();
   }
 
+  function onVisibilityChange() {
+    runtime?.up_browser_set_paused?.(documentRef?.visibilityState === "hidden" ? 1 : 0);
+  }
+
   canvas?.addEventListener("webglcontextlost", onContextLost);
   canvas?.addEventListener("webglcontextrestored", onContextRestored);
+  documentRef?.addEventListener?.("visibilitychange", onVisibilityChange);
 
   const env = {
     up_host_schedule_frame: scheduleFrame,
@@ -754,6 +759,7 @@ export function createBrowserHost({
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);
+      documentRef?.removeEventListener?.("visibilitychange", onVisibilityChange);
       input.teardown();
       audio.teardown();
       lifecyclePhase = "destroyed";
@@ -771,6 +777,7 @@ export function createBrowserHost({
     attachRuntime: (exports) => {
       if (!exports || typeof exports.up_browser_frame !== "function") return false;
       runtime = exports;
+      onVisibilityChange();
       return true;
     },
     lifecycle: () => ({phase: lifecyclePhase, generation: lifecycleGeneration, recoveries: recoveryCount, scheduledFrames: scheduledFrames.size}),
