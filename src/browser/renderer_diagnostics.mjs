@@ -9,7 +9,7 @@ export function browserTarget(navigatorRef = globalThis.navigator) {
   return "unknown";
 }
 
-export function rendererDiagnostic({requestedRenderer, selectedRenderer, fallbackReason, recoveryInstruction, target, webgl2Capability, contextStatus, recoveryState}) {
+export function rendererDiagnostic({requestedRenderer, selectedRenderer, fallbackReason, recoveryInstruction, target, webgl2Capability, webgpuCapability = "unsupported", contextStatus, adapterStatus = "not_applicable", deviceStatus = "not_applicable", recoveryState}) {
   return {
     version: RendererDiagnosticVersion,
     requested_renderer: requestedRenderer,
@@ -17,10 +17,10 @@ export function rendererDiagnostic({requestedRenderer, selectedRenderer, fallbac
     fallback_reason: fallbackReason,
     recovery_instruction: recoveryInstruction,
     browser_target: target,
-    capabilities: {webgl2: webgl2Capability, webgpu: "unsupported"},
+    capabilities: {webgl2: webgl2Capability, webgpu: webgpuCapability},
     context_status: contextStatus,
-    adapter_status: "not_applicable",
-    device_status: "not_applicable",
+    adapter_status: adapterStatus,
+    device_status: deviceStatus,
     recovery_state: {phase: recoveryState.phase, generation: recoveryState.generation, recoveries: recoveryState.recoveries},
   };
 }
