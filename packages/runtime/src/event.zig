@@ -58,6 +58,13 @@ pub const EventEnvelope = struct {
     mode: EventMode,
     event: Event,
 
+    pub fn sequenceSpan(self: *const EventEnvelope) u64 {
+        return switch (self.event) {
+            .overflow => |value| value.dropped_count,
+            else => 1,
+        };
+    }
+
     pub fn deinit(self: *EventEnvelope) void {
         self.event.deinit();
         self.* = undefined;
@@ -71,7 +78,9 @@ pub const EventOrder = struct {
 
     pub fn accept(self: *EventOrder, envelope: *const EventEnvelope) EventOrderError!void {
         if (envelope.sequence != self.next_sequence) return error.OutOfOrderEvent;
-        self.next_sequence += 1;
+        const span = envelope.sequenceSpan();
+        if (span == 0) return error.OutOfOrderEvent;
+        self.next_sequence +%= span;
     }
 };
 
@@ -80,10 +89,10 @@ test "ordered poll and replay events preserve overflow ordering" {
     var poll_event = EventEnvelope{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } };
     defer poll_event.deinit();
     try order.accept(&poll_event);
-    var overflow_event = EventEnvelope{ .sequence = 1, .mode = .poll, .event = .{ .overflow = .{ .dropped_count = 3 } } };
+    var overflow_event = EventEnvelope{ .sequence = 1, .mode = .poll, .event = .{ .overflow = .{ .dropped_count = 2 } } };
     defer overflow_event.deinit();
     try order.accept(&overflow_event);
-    var replay_event = EventEnvelope{ .sequence = 2, .mode = .replay, .event = .{ .disconnected = {} } };
+    var replay_event = EventEnvelope{ .sequence = 3, .mode = .replay, .event = .{ .disconnected = {} } };
     defer replay_event.deinit();
     try order.accept(&replay_event);
 }

@@ -53,7 +53,9 @@ pub const PollRuntime = struct {
     }
 
     pub fn enqueue(self: *PollRuntime, envelope: event.EventEnvelope) std.mem.Allocator.Error!void {
-        try self.events.append(self.allocator, envelope);
+        const capacity = self.sdk.configuration().platformConfig().limits.event_capacity;
+        if (self.events.items.len < capacity) return self.events.append(self.allocator, envelope);
+        self.enqueueOverflow(envelope);
     }
 
     pub fn poll(self: *PollRuntime, input: PollInput) PollRuntimeError!PollOutcome {
@@ -75,6 +77,34 @@ pub const PollRuntime = struct {
 
     pub fn poll_count(self: *const PollRuntime) u64 {
         return self.polls;
+    }
+
+    fn enqueueOverflow(self: *PollRuntime, envelope: event.EventEnvelope) void {
+        if (self.events.items[0].event == .overflow) {
+            if (self.events.items.len == 1) {
+                var dropped = envelope;
+                dropped.deinit();
+            } else {
+                self.events.items[1].deinit();
+                for (self.events.items[2..], 1..) |queued_event, index| self.events.items[index] = queued_event;
+                self.events.items[self.events.items.len - 1] = envelope;
+            }
+            self.events.items[0].event.overflow.dropped_count +%= 1;
+            return;
+        }
+        const first_sequence = self.events.items[0].sequence;
+        const first_mode = self.events.items[0].mode;
+        self.events.items[0].deinit();
+        if (self.events.items.len == 1) {
+            var dropped = envelope;
+            dropped.deinit();
+            self.events.items[0] = .{ .sequence = first_sequence, .mode = first_mode, .event = .{ .overflow = .{ .dropped_count = 2 } } };
+            return;
+        }
+        self.events.items[1].deinit();
+        for (self.events.items[2..], 1..) |queued_event, index| self.events.items[index] = queued_event;
+        self.events.items[0] = .{ .sequence = first_sequence, .mode = first_mode, .event = .{ .overflow = .{ .dropped_count = 2 } } };
+        self.events.items[self.events.items.len - 1] = envelope;
     }
 };
 
@@ -102,6 +132,47 @@ test "poll runtimes preserve event ordering failures for callers" {
     defer runtime.deinit();
     try runtime.enqueue(.{ .sequence = 1, .mode = .poll, .event = .{ .disconnected = {} } });
     try std.testing.expectError(error.OutOfOrderEvent, runtime.poll(.{ .now_ns = manual.clock().now() }));
+}
+
+test "poll runtimes bound queued events and coalesce ordered overflow" {
+    var manual = core.ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 1, .service_capacity = 0, .session_capacity = 1, .channel_capacity = 1, .event_capacity = 2, .poll_work_budget = 1 } }).build();
+    var runtime = PollRuntime.init(std.testing.allocator, sdk);
+    defer runtime.deinit();
+    try runtime.enqueue(.{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } });
+    try runtime.enqueue(.{ .sequence = 1, .mode = .poll, .event = .{ .disconnected = {} } });
+    try runtime.enqueue(.{ .sequence = 2, .mode = .poll, .event = .{ .connected = {} } });
+    try runtime.enqueue(.{ .sequence = 3, .mode = .poll, .event = .{ .disconnected = {} } });
+    try std.testing.expectEqual(@as(usize, 2), runtime.events.items.len);
+    var overflow = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer overflow.deinit();
+    try std.testing.expectEqual(PollProgress.event, overflow.progress);
+    try std.testing.expectEqual(@as(u64, 0), overflow.event.?.sequence);
+    switch (overflow.event.?.event) {
+        .overflow => |value| try std.testing.expectEqual(@as(u64, 3), value.dropped_count),
+        else => return error.TestExpectedEqual,
+    }
+    var retained = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer retained.deinit();
+    try std.testing.expectEqual(@as(u64, 3), retained.event.?.sequence);
+    try std.testing.expect(retained.event.?.event == .disconnected);
+}
+
+test "single-slot poll runtimes retain an overflow summary" {
+    var manual = core.ManualClock.init(0);
+    const sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 1, .service_capacity = 0, .session_capacity = 1, .channel_capacity = 1, .event_capacity = 1, .poll_work_budget = 1 } }).build();
+    var runtime = PollRuntime.init(std.testing.allocator, sdk);
+    defer runtime.deinit();
+    try runtime.enqueue(.{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } });
+    try runtime.enqueue(.{ .sequence = 1, .mode = .poll, .event = .{ .disconnected = {} } });
+    try runtime.enqueue(.{ .sequence = 2, .mode = .poll, .event = .{ .connected = {} } });
+    try std.testing.expectEqual(@as(usize, 1), runtime.events.items.len);
+    var overflow = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer overflow.deinit();
+    switch (overflow.event.?.event) {
+        .overflow => |value| try std.testing.expectEqual(@as(u64, 3), value.dropped_count),
+        else => return error.TestExpectedEqual,
+    }
 }
 
 test "poll runtimes make deterministic deadline and reentrancy outcomes explicit" {
