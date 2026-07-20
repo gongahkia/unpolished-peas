@@ -68,8 +68,8 @@ def validate(baseline: dict, observed: dict) -> str:
     game_metrics = observed.get("game_metrics")
     if not isinstance(game_limits, dict) or not isinstance(game_metrics, dict):
         raise ValueError("missing proof-game limits or metrics object")
-    if set(game_limits) != set(GAME_NAMES) or set(game_metrics) != set(GAME_NAMES):
-        raise ValueError("proof-game metrics must include bounce")
+    if set(game_limits) != set(GAME_NAMES) or not set(game_limits).issubset(game_metrics):
+        raise ValueError("proof-game metrics must include every reviewed game")
     for game in GAME_NAMES:
         validate_metrics(game_limits[game], game_metrics[game], GAME_METRICS, game)
     return "proof games"

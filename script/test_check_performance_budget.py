@@ -27,6 +27,10 @@ class PerformanceBudgetTest(unittest.TestCase):
         }
         self.assertEqual("proof games", validate(baseline, observed))
 
+        observed_with_puzzle = copy.deepcopy(observed)
+        observed_with_puzzle["game_metrics"]["puzzle"] = dict(metrics)
+        self.assertEqual("proof games", validate(baseline, observed_with_puzzle))
+
         regressed = copy.deepcopy(observed)
         regressed["game_metrics"]["bounce"]["frame_ns"] = 7
         with self.assertRaisesRegex(ValueError, "bounce: frame_ns=7 exceeds 4"):
