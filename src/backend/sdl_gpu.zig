@@ -350,6 +350,8 @@ test "desktop renderer conformance GPU golden capture" {
     defer std.testing.allocator.free(temp_path);
     const capture_path = try std.fs.path.join(std.testing.allocator, &.{ temp_path, "capture.png" });
     defer std.testing.allocator.free(capture_path);
+    const contract_capture_path = try optionalEnvPath(std.testing.allocator, "UP_RENDERER_CONTRACT_CAPTURE_PATH");
+    defer if (contract_capture_path) |path| std.testing.allocator.free(path);
 
     if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
     defer c.SDL_Quit();
@@ -402,7 +404,10 @@ test "desktop renderer conformance GPU golden capture" {
         try std.testing.expectEqual(@as(u32, 32), image.height);
         const captured = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
         try scenario.expectCapture(&captured);
-        if (scenario_kind == .stable_core) try scenario.expectReferenceCapture(std.testing.allocator, &captured, "zig-out/diagnostics/renderer-conformance/sdl-gpu", "sdl-gpu");
+        if (scenario_kind == .stable_core) {
+            try scenario.expectReferenceCapture(std.testing.allocator, &captured, "zig-out/diagnostics/renderer-conformance/sdl-gpu", "sdl-gpu");
+            if (contract_capture_path) |path| try writeRendererContractCapture(path, captured, gpuDriverName(device), shader_format, scenario.commandSlice().len);
+        }
         var nontransparent: usize = 0;
         for (image.pixels) |pixel| {
             if (pixel.a != 0) nontransparent += 1;
@@ -3673,6 +3678,37 @@ fn canvasFromRgba(allocator: std.mem.Allocator, width: u32, height: u32, rgba: [
     return canvas;
 }
 
+fn writeRendererContractCapture(path: []const u8, canvas: up.Canvas, driver: []const u8, shader_format: GpuShaderFormat, command_count: usize) !void {
+    var file = try std.fs.cwd().createFile(path, .{});
+    defer file.close();
+    var buffer: [4096]u8 = undefined;
+    var writer = file.writer(&buffer);
+    const out = &writer.interface;
+    try out.writeAll("{\"schema_version\":1,\"fixture\":{\"schema_version\":1,\"fixture_version\":\"v1\",\"command_count\":");
+    try out.print("{d}", .{command_count});
+    try out.writeAll("},\"target\":{\"os\":");
+    try std.json.Stringify.value(@tagName(builtin.os.tag), .{}, out);
+    try out.writeAll(",\"architecture\":");
+    try std.json.Stringify.value(@tagName(builtin.cpu.arch), .{}, out);
+    try out.writeAll(",\"sdl_version\":");
+    try out.print("{d}", .{c.SDL_GetVersion()});
+    try out.writeAll(",\"renderer\":\"sdl-gpu\",\"driver\":");
+    try std.json.Stringify.value(driver, .{}, out);
+    try out.writeAll(",\"shader_format\":");
+    try std.json.Stringify.value(@tagName(shader_format), .{}, out);
+    try out.writeAll("},\"dimensions\":{\"width\":");
+    try out.print("{d}", .{canvas.width});
+    try out.writeAll(",\"height\":");
+    try out.print("{d}", .{canvas.height});
+    try out.writeAll("},\"pixels\":[");
+    for (canvas.pixels, 0..) |pixel, index| {
+        if (index != 0) try out.writeByte(',');
+        try out.print("{d},{d},{d},{d}", .{ pixel.r, pixel.g, pixel.b, pixel.a });
+    }
+    try out.writeAll("]}\n");
+    try out.flush();
+}
+
 fn checkedByteLen(width: u32, height: u32) !u32 {
     const pixels = std.math.mul(u32, width, height) catch return error.CanvasTooLarge;
     return std.math.mul(u32, pixels, 4) catch error.CanvasTooLarge;
@@ -3749,6 +3785,13 @@ fn printGpuDrivers() void {
 
 fn rendererConformanceEnabled() bool {
     return std.process.hasEnvVarConstant("UP_RENDERER_CONFORMANCE") or std.process.hasEnvVarConstant("UP_GPU_CAPTURE_TEST");
+}
+
+fn optionalEnvPath(allocator: std.mem.Allocator, name: []const u8) !?[]u8 {
+    return std.process.getEnvVarOwned(allocator, name) catch |err| switch (err) {
+        error.EnvironmentVariableNotFound => null,
+        else => return err,
+    };
 }
 
 fn crossBackendConformanceEnabled() bool {
