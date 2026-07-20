@@ -1,0 +1,103 @@
+{
+  "schema_version": 1,
+  "workload_version": "v1",
+  "assets": [
+    {"id": "checker_2x2", "width": 2, "height": 2, "rgba": [255, 198, 74, 255, 91, 166, 210, 255, 113, 232, 162, 255, 225, 232, 240, 255]}
+  ],
+  "workloads": [
+    {
+      "id": "primitive_fill",
+      "rationale": "Measures opaque rectangle fill throughput with a deterministic logical-pixel grid.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": [],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "rect_batch", "count": 80, "x": 2, "y": 2, "columns": 10, "w": 12, "h": 8, "step_x": 15, "step_y": 10, "color": 4288897627}
+      ]
+    },
+    {
+      "id": "sprite_batching",
+      "rationale": "Measures repeated deterministic image draws that form one shared sprite batch on GPU hosts.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": ["checker_2x2"],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "sprite_batch", "asset": "checker_2x2", "count": 64, "x": 4, "y": 4, "columns": 8, "w": 2, "h": 2, "step_x": 18, "step_y": 10}
+      ]
+    },
+    {
+      "id": "alpha_blend",
+      "rationale": "Measures source-over alpha composition without effects or shader-specific commands.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": [],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "rect_batch", "count": 24, "x": 8, "y": 8, "columns": 6, "w": 28, "h": 28, "step_x": 22, "step_y": 18, "color": 2164195583},
+        {"op": "rect_batch", "count": 24, "x": 18, "y": 14, "columns": 6, "w": 28, "h": 28, "step_x": 22, "step_y": 18, "color": 2155872512}
+      ]
+    },
+    {
+      "id": "clipping",
+      "rationale": "Measures nested clip setup and bounded primitive work using the stable clip stack.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": [],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "push_clip", "x": 20, "y": 12, "w": 120, "h": 64},
+        {"op": "push_clip", "x": 32, "y": 20, "w": 96, "h": 48},
+        {"op": "rect_batch", "count": 48, "x": 0, "y": 0, "columns": 8, "w": 28, "h": 18, "step_x": 18, "step_y": 12, "color": 4288864369},
+        {"op": "pop_clip"},
+        {"op": "pop_clip"}
+      ]
+    },
+    {
+      "id": "text",
+      "rationale": "Measures the frozen built-in text subset with deterministic ASCII labels.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": [],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "text_batch", "text": "UP V1", "count": 18, "x": 4, "y": 4, "columns": 3, "step_x": 50, "step_y": 14, "color": 4292927712}
+      ]
+    },
+    {
+      "id": "mixed_frame",
+      "rationale": "Measures a representative stable-core frame combining fill, sprites, alpha, clipping, and text.",
+      "width": 160,
+      "height": 90,
+      "warmup_frames": 4,
+      "frame_count": 16,
+      "assets": ["checker_2x2"],
+      "metrics": ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"],
+      "operations": [
+        {"op": "clear", "color": 4279767566},
+        {"op": "rect_batch", "count": 24, "x": 2, "y": 2, "columns": 8, "w": 16, "h": 10, "step_x": 20, "step_y": 12, "color": 4288897627},
+        {"op": "sprite_batch", "asset": "checker_2x2", "count": 24, "x": 8, "y": 48, "columns": 8, "w": 2, "h": 2, "step_x": 18, "step_y": 10},
+        {"op": "push_clip", "x": 96, "y": 12, "w": 56, "h": 44},
+        {"op": "rect_batch", "count": 8, "x": 88, "y": 8, "columns": 4, "w": 28, "h": 18, "step_x": 14, "step_y": 12, "color": 2164195583},
+        {"op": "pop_clip"},
+        {"op": "text_batch", "text": "MIX", "count": 4, "x": 4, "y": 76, "columns": 4, "step_x": 36, "step_y": 0, "color": 4292927712}
+      ]
+    }
+  ]
+}
