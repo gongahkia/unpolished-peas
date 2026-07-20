@@ -1,7 +1,7 @@
 const std = @import("std");
 
 pub const TransportCapability = enum(u8) { udp, tcp };
-pub const ChannelCapability = enum(u8) { unreliable, reliable };
+pub const ChannelCapability = enum(u8) { datagram = 0, reliable = 1, ordered = 2, sequenced = 3, stream = 4 };
 pub const SecurityCapability = enum(u8) { none, psk, public_key };
 pub const CompressionCapability = enum(u8) { none, lz4 };
 pub const max_compression_dictionary_ids: usize = 16;
@@ -91,7 +91,7 @@ fn select(comptime T: type, values: u8) ?T {
 test "capability negotiation deterministically selects common capabilities" {
     const local = CapabilityOffer{
         .transports = bit(TransportCapability, .udp) | bit(TransportCapability, .tcp),
-        .channels = bit(ChannelCapability, .unreliable) | bit(ChannelCapability, .reliable),
+        .channels = bit(ChannelCapability, .datagram) | bit(ChannelCapability, .reliable),
         .security = bit(SecurityCapability, .none) | bit(SecurityCapability, .psk),
         .compression = bit(CompressionCapability, .none) | bit(CompressionCapability, .lz4),
         .extensions = 0b101,
@@ -115,7 +115,7 @@ test "capability negotiation deterministically selects common capabilities" {
 test "capability negotiation rejects missing required capability classes" {
     const offer = CapabilityOffer{
         .transports = bit(TransportCapability, .udp),
-        .channels = bit(ChannelCapability, .unreliable),
+        .channels = bit(ChannelCapability, .datagram),
         .security = bit(SecurityCapability, .none),
         .compression = bit(CompressionCapability, .none),
         .extensions = 0,
@@ -133,7 +133,7 @@ test "compression dictionary offers negotiate deterministic bounded identifiers"
     try remote_dictionaries.insert(9);
     const offer = CapabilityOffer{
         .transports = bit(TransportCapability, .udp),
-        .channels = bit(ChannelCapability, .unreliable),
+        .channels = bit(ChannelCapability, .datagram),
         .security = bit(SecurityCapability, .none),
         .compression = bit(CompressionCapability, .lz4),
         .compression_dictionaries = local_dictionaries,

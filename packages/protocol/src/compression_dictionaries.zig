@@ -79,7 +79,7 @@ test "registered dictionaries produce negotiated identifiers and configure sessi
     try remote.insert(9);
     const negotiated = capability.NegotiatedCapabilities{
         .transport = .udp,
-        .channel = .unreliable,
+        .channel = .datagram,
         .security = .none,
         .compression = .lz4,
         .compression_dictionary_id = 9,

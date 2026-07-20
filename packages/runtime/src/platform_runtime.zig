@@ -5,8 +5,9 @@ const config = @import("sdk_config.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
+const channel_delivery = @import("channel_delivery.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -62,6 +63,16 @@ pub const Runtime = struct {
     pub fn selectRouteCandidate(self: *const Runtime, selector: topology.RouteCandidateSelector, candidates: []const topology.RouteCandidate, decisions: []topology.RouteCandidateDecision) RuntimeError!topology.RouteCandidateSelection {
         if (!self.providers.supportsRequirements(selector.policy.required_capabilities)) return error.UnsupportedCapabilities;
         return selector.select(candidates, decisions);
+    }
+
+    pub fn selectChannel(self: *const Runtime, descriptor: channel_delivery.ChannelDescriptor) RuntimeError!channel_delivery.ChannelBinding {
+        try descriptor.validate();
+        for (self.providers.providers.items, 0..) |registered, provider_index| {
+            if (registered.state != .active) continue;
+            const transport = try channel_delivery.provider_behavior(descriptor, registered.capabilities) orelse continue;
+            return .{ .provider_index = provider_index, .transport = transport, .semantics = descriptor.semantics() };
+        }
+        return error.UnsupportedDelivery;
     }
 
     pub fn poll(self: *Runtime, input: poll_runtime.PollInput) RuntimeError!RuntimePollResult {
@@ -168,4 +179,17 @@ test "unified runtimes reject unsupported route features before dialing" {
         .authoritative = .{ .negotiated = false, .health = .unavailable },
     };
     try std.testing.expectError(error.UnsupportedCapabilities, runtime.selectRoute(selector, candidates));
+}
+
+test "unified runtimes select channel semantics from active provider capabilities" {
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var fake = FakeProvider{ .capabilities = .{ .delivery_bits = core.delivery_capability_bit(.datagrams) } };
+    try runtime.registerProvider(try fake.asProvider());
+    try runtime.start();
+    const binding = try runtime.selectChannel(.{ .delivery = .sequenced, .maximum_payload_bytes = 32, .maximum_in_flight = 2 });
+    try std.testing.expectEqual(channel_delivery.ChannelTransport.datagram, binding.transport);
+    try std.testing.expectError(error.UnsupportedDelivery, runtime.selectChannel(.{ .delivery = .stream, .maximum_payload_bytes = 32 }));
 }
