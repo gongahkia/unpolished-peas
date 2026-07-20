@@ -9,6 +9,8 @@ pub const Package = enum {
     runtime,
     c_abi,
     optional_reference,
+    networking,
+    services,
 };
 
 pub const Import = struct {
@@ -39,6 +41,7 @@ pub const allowed_imports = [_]Import{
     .{ .importer = .optional_reference, .imported = .state },
     .{ .importer = .optional_reference, .imported = .runtime },
     .{ .importer = .optional_reference, .imported = .c_abi },
+    .{ .importer = .services, .imported = .networking },
 };
 
 pub fn allows(importer: Package, imported: Package) bool {
