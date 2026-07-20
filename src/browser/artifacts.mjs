@@ -11,6 +11,7 @@ export function createBrowserArtifacts({canvas} = {}) {
   const trace = [];
   const commands = [];
   let screenshot = null;
+  let rendererDiagnostic = null;
 
   function captureFrame() {
     if (!canvas?.toDataURL) return null;
@@ -36,6 +37,7 @@ export function createBrowserArtifacts({canvas} = {}) {
       {name: "trace.json", type: "application/json", data: JSON.stringify({displayTimeUnit: "ms", traceEvents: trace})},
       {name: "commands.json", type: "application/json", data: JSON.stringify({version: 1, commands})},
     ];
+    if (rendererDiagnostic) values.unshift({name: "renderer-diagnostics.json", type: "application/json", data: JSON.stringify(rendererDiagnostic)});
     if (screenshot) values.unshift({name: "screenshot.png", type: "image/png", data: screenshot});
     return values;
   }
@@ -45,6 +47,7 @@ export function createBrowserArtifacts({canvas} = {}) {
     emit,
     recordTrace: (event) => { trace.push(event); },
     recordCommand: (command) => { commands.push(command); },
+    setRendererDiagnostic: (value) => { rendererDiagnostic = value; },
     snapshot,
   };
 }

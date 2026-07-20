@@ -5,6 +5,7 @@
 - [v0.1 core contract](guides/core-contract.md)
 - [Testing](guides/testing.md)
 - [CI](guides/ci.md)
+- [Browser renderer diagnostics](guides/browser-diagnostics.md)
 - [v0.1 capability matrix](guides/capabilities.md)
 - [v0.1 migrations](guides/migrations.md)
 - [Releases and support](guides/releases.md)

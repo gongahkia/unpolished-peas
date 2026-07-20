@@ -208,6 +208,10 @@ pub fn build(b: *std.Build) void {
     browser_artifacts_test.setCwd(b.path("."));
     const browser_artifacts_test_step = b.step("test-browser-artifacts", "Test browser diagnostics artifacts");
     browser_artifacts_test_step.dependOn(&browser_artifacts_test.step);
+    const browser_renderer_diagnostics_test = b.addSystemCommand(&.{ "node", "script/test_browser_renderer_diagnostics.mjs" });
+    browser_renderer_diagnostics_test.setCwd(b.path("."));
+    const browser_renderer_diagnostics_test_step = b.step("test-browser-renderer-diagnostics", "Test browser renderer diagnostic schema");
+    browser_renderer_diagnostics_test_step.dependOn(&browser_renderer_diagnostics_test.step);
     const web_package_test = b.addSystemCommand(&.{"script/test_web_package.sh"});
     web_package_test.setCwd(b.path("."));
     const web_package_test_step = b.step("test-web-package", "Validate deterministic browser package layout");
