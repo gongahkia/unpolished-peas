@@ -224,7 +224,7 @@ test "runtime loggers consume bus events without exposing payload bytes" {
     var capture = Capture{};
     _ = try logger.register(.{ .context = &capture, .receive = Capture.receive });
     _ = try logger.attach(&bus);
-    const envelope = event.EventEnvelope{ .sequence = 0, .mode = .managed, .event = .{ .message = .{ .buffer = .{ .borrowed = .init("secret") } } } };
+    const envelope = event.EventEnvelope{ .sequence = 0, .mode = .poll, .event = .{ .message = .{ .buffer = .{ .borrowed = .init("secret") } } } };
     _ = try bus.emit(&envelope);
     const record = capture.record.?;
     try std.testing.expectEqual(RuntimeLogLevel.debug, record.level);

@@ -2,7 +2,6 @@ const core = @import("minna-san-core");
 
 pub const EventMode = enum {
     poll,
-    managed,
     replay,
 };
 
@@ -76,14 +75,14 @@ pub const EventOrder = struct {
     }
 };
 
-test "ordered events support every execution mode and overflow reporting" {
+test "ordered poll and replay events preserve overflow ordering" {
     var order = EventOrder{};
     var poll_event = EventEnvelope{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } };
     defer poll_event.deinit();
     try order.accept(&poll_event);
-    var managed_event = EventEnvelope{ .sequence = 1, .mode = .managed, .event = .{ .overflow = .{ .dropped_count = 3 } } };
-    defer managed_event.deinit();
-    try order.accept(&managed_event);
+    var overflow_event = EventEnvelope{ .sequence = 1, .mode = .poll, .event = .{ .overflow = .{ .dropped_count = 3 } } };
+    defer overflow_event.deinit();
+    try order.accept(&overflow_event);
     var replay_event = EventEnvelope{ .sequence = 2, .mode = .replay, .event = .{ .disconnected = {} } };
     defer replay_event.deinit();
     try order.accept(&replay_event);

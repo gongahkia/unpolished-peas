@@ -84,7 +84,9 @@ pub const CaptureReplay = struct {
                 replay_event.deinit();
                 return err;
             };
-            step.event = (try self.config.poll_runtime.poll()) orelse return error.MalformedEvent;
+            var outcome = try self.config.poll_runtime.poll(.{ .now_ns = self.config.manual_clock.now_ns });
+            step.event = outcome.event orelse return error.MalformedEvent;
+            outcome.event = null;
         }
         return step;
     }

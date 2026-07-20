@@ -1049,8 +1049,8 @@ pub export fn minna_san_sdk_poll(sdk: ?*CSdk, out_event: ?*CEvent) c_int {
     if (!state.started) return @intFromEnum(CResult.invalid_state);
     const output = out_event orelse return @intFromEnum(CResult.invalid_argument);
     output.* = .{ .kind = 0, .mode = 0, .sequence = 0, .payload = .{ .data = null, .len = 0 } };
-    var envelope = state.poll_runtime.poll() catch return @intFromEnum(CResult.internal);
-    if (envelope) |*value| value.deinit();
+    var outcome = state.poll_runtime.poll(.{ .now_ns = state.sdk.configuration().clock().now() }) catch return @intFromEnum(CResult.internal);
+    outcome.deinit();
     return @intFromEnum(CResult.would_block);
 }
 
