@@ -1,11 +1,12 @@
 const std = @import("std");
 const core = @import("minna-san-core");
+const topology = @import("minna-san-topology");
 const config = @import("sdk_config.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -53,6 +54,11 @@ pub const Runtime = struct {
         try self.poll_runtime.enqueue(envelope);
     }
 
+    pub fn selectRoute(self: *const Runtime, selector: topology.RouteSelector, capabilities: topology.RouteCapabilities) RuntimeError!topology.RouteSelection {
+        if (!self.providers.supportsRequirements(selector.config.required_capabilities)) return error.UnsupportedCapabilities;
+        return selector.select(capabilities);
+    }
+
     pub fn poll(self: *Runtime, input: poll_runtime.PollInput) RuntimeError!RuntimePollResult {
         try input.validate();
         if (self.poll_active) return error.ReentrantPoll;
@@ -85,6 +91,7 @@ pub const Runtime = struct {
 
 const FakeProvider = struct {
     polls: u8 = 0,
+    capabilities: provider.ProviderCapabilityDescriptor = .{},
 
     fn asProvider(self: *FakeProvider) provider.ProviderError!provider.Provider {
         return provider.Provider.init(.{ .name = "runtime-fake" }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
@@ -95,9 +102,9 @@ const FakeProvider = struct {
         return @intFromEnum(core.CResult.ok);
     }
 
-    fn queryCapabilities(context: ?*anyopaque, out_capabilities: *u16) callconv(.c) c_int {
-        _ = context;
-        out_capabilities.* = 0;
+    fn queryCapabilities(context: ?*anyopaque, out_capabilities: *provider.ProviderCapabilityDescriptor) callconv(.c) c_int {
+        const self: *FakeProvider = @ptrCast(@alignCast(context.?));
+        out_capabilities.* = self.capabilities;
         return @intFromEnum(core.CResult.ok);
     }
 
@@ -139,4 +146,21 @@ test "unified runtimes reject reentrant caller polls" {
     runtime.poll_active = true;
     defer runtime.poll_active = false;
     try std.testing.expectError(error.ReentrantPoll, runtime.poll(.{ .now_ns = manual.clock().now() }));
+}
+
+test "unified runtimes reject unsupported route features before dialing" {
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var fake = FakeProvider{ .capabilities = .{ .delivery_bits = core.delivery_capability_bit(.datagrams) } };
+    try runtime.registerProvider(try fake.asProvider());
+    try runtime.start();
+    const selector = try topology.RouteSelector.init(.{ .policy = .direct_first, .allow_relay = false, .allow_authoritative = false, .required_capabilities = .{ .transport_bits = core.transport_capability_bit(.quic) } });
+    const candidates = topology.RouteCapabilities{
+        .direct = .{ .negotiated = true, .health = .healthy, .capabilities = .{ .transport_bits = core.transport_capability_bit(.quic) } },
+        .relay = .{ .negotiated = false, .health = .unavailable },
+        .authoritative = .{ .negotiated = false, .health = .unavailable },
+    };
+    try std.testing.expectError(error.UnsupportedCapabilities, runtime.selectRoute(selector, candidates));
 }

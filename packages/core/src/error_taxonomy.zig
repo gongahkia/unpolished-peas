@@ -177,7 +177,7 @@ pub fn disposition_for_c_result(result: CResult) ErrorDisposition {
 
 pub fn disposition_for_any_error(err: anyerror) ErrorDisposition {
     const class: ErrorClass = switch (err) {
-        error.InvalidArgument, error.InvalidConfiguration, error.InvalidName, error.InvalidRequest, error.InvalidHostname, error.InvalidIPAddressFormat, error.InvalidPlatformConfiguration => .invalid_argument,
+        error.InvalidArgument, error.InvalidConfiguration, error.InvalidName, error.InvalidRequest, error.InvalidHostname, error.InvalidIPAddressFormat, error.InvalidPlatformConfiguration, error.InvalidProviderCapabilityBits => .invalid_argument,
         error.InvalidState, error.NotStarted, error.NotListening, error.NotReady => .invalid_state,
         error.Unsupported, error.UnsupportedConfiguration, error.UnsupportedOption, error.OperationNotSupported, error.ProtocolNotSupported, error.SocketTypeNotSupported => .unsupported,
         error.OutOfMemory, error.Exhausted, error.ResourceExhausted, error.ProviderCapacityExceeded, error.QueueFull, error.SystemResources, error.ProcessFdQuotaExceeded, error.SystemFdQuotaExceeded => .resource_exhausted,
@@ -187,7 +187,7 @@ pub fn disposition_for_any_error(err: anyerror) ErrorDisposition {
         error.AuthenticationFailed => .authentication_failed,
         error.PermissionDenied, error.AccessDenied => .permission_denied,
         error.InvalidResponse, error.MalformedFrame, error.ProtocolViolation => .protocol_violation,
-        error.VersionMismatch => .version_mismatch,
+        error.VersionMismatch, error.InvalidProviderCapabilityVersion => .version_mismatch,
         error.IntegrityFailed => .integrity_failed,
         error.PollFailed, error.ConnectFailed, error.ConnectionFailed, error.SendFailed, error.ReceiveFailed, error.ResolutionFailed, error.Unavailable, error.TransportFailure, error.NetworkUnreachable, error.NetworkSubsystemFailed, error.TemporaryNameServerFailure, error.ConnectionResetByPeer, error.ConnectionRefused, error.ConnectionAborted, error.SocketNotConnected => .transport_failure,
         else => .internal,
