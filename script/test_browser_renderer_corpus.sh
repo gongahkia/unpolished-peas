@@ -6,7 +6,7 @@ diagnostics=${UP_DIAGNOSTICS_ROOT:-$repo/zig-out/diagnostics/browser-renderer-pa
 tmp=$(mktemp -d)
 trap 'if [ "${server:-}" ]; then kill "$server" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT HUP INT TERM
 session=unpolished-peas-renderer-corpus-$$
-pw=/Users/gongahkia/.codex/skills/playwright/scripts/playwright_cli.sh
+pw=$repo/script/playwright_cli.sh
 
 decode_result() {
     encoded=$(sed -n 's/^"\([A-Za-z0-9+\/=][A-Za-z0-9+\/=]*\)"$/\1/p' "$1" | head -n 1)
