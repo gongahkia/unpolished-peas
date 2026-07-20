@@ -1,4 +1,5 @@
 import {createBrowserHost, Status} from "./host.mjs";
+import {debugFontAssetDiagnostic} from "./debug_font.mjs";
 import {browserTarget, rendererDiagnostic, webGpuDeviceLostDiagnostic} from "./renderer_diagnostics.mjs";
 import {selectRenderer} from "./renderer_selection.mjs";
 
@@ -47,6 +48,7 @@ function unavailable(reason, instruction, contextStatus, webgl2Capability, webgp
 }
 
 try {
+  await host.loadDebugFontFixture("./debug-font-v1.json");
   const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 320));
   const height = Math.max(1, Math.floor(canvas.clientHeight || canvas.height || 180));
   const selection = await selectRenderer(requestedRenderer, host, width, height);
@@ -75,5 +77,6 @@ try {
   publish(diagnostic, runtime, selection.selectedRenderer);
 } catch (error) {
   if (window.unpolishedPeas?.rendererDiagnostic) throw error;
+  if (error instanceof Error && error.message === debugFontAssetDiagnostic) unavailable(debugFontAssetDiagnostic, "Rebuild the browser package from a matching checkout.", "not_initialized", "not_checked");
   unavailable("browser_runtime_load_failed", "Reload the package; if it persists, rebuild from the same checkout.", "not_initialized", "not_checked");
 }

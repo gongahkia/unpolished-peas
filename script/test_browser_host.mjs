@@ -1,5 +1,11 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {debugFontAssetDiagnostic} from "../src/browser/debug_font.mjs";
 import {createBrowserHost, ResourceKind, Status} from "../src/browser/host.mjs";
+
+const debugFontFixture = JSON.parse(readFileSync(new URL("../src/fixtures/text/debug-5x7-v1.json", import.meta.url), "utf8"));
+assert.throws(() => createBrowserHost({fontFixture: {...debugFontFixture, glyphs: debugFontFixture.glyphs.slice(1)}}), new RegExp(debugFontAssetDiagnostic));
+await assert.rejects(createBrowserHost({fetch: async () => ({ok: false})}).loadDebugFontFixture("missing.json"), new RegExp(debugFontAssetDiagnostic));
 
 class FakeWebGl2 {
   ARRAY_BUFFER = 1;
@@ -118,6 +124,7 @@ const documentRef = {
 };
 const host = createBrowserHost({
   canvas,
+  fontFixture: debugFontFixture,
   document: documentRef,
   requestAnimationFrame(callback) {
     const token = nextFrame;
@@ -206,12 +213,13 @@ assert.equal(env.up_host_gl_draw_sprite(texture, 0, 0, 1, 1, 4, 5, 8, 9, 0xfffff
 assert.equal(env.up_host_gl_draw_sprite(texture, 1, 1, 1, 1, 12, 5, 8, 9, 0xffffffff, 1), Status.ok);
 assert.equal(env.up_host_gl_flush_sprites(), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeSprites).map(([, , , count]) => count), [12]);
-new Uint8Array(host.memory.buffer, 0, 1).set([65]);
+new Uint8Array(host.memory.buffer, 0, 5).set([65, 10, 0xc0, 0x80, 66]);
 const beforeText = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
-assert.equal(env.up_host_gl_draw_text(0, 1, 20, 20, 0xffffffff), Status.ok);
-assert.ok(canvas.gl.calls.filter(([name]) => name === "drawArrays").length > beforeText);
+assert.equal(env.up_host_gl_draw_text(0, 5, 20, 20, 0xffffffff), Status.ok);
+assert.equal(env.up_host_gl_flush_sprites(), Status.ok);
+assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeText).map(([, , , count]) => count), [18]);
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 2);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 3);
 
 const lost = canvas.dispatch("webglcontextlost");
 assert.equal(lost.prevented, true);
@@ -222,7 +230,7 @@ canvas.dispatch("webglcontextrestored");
 assert.equal(env.up_host_gl_context_lost(), 0);
 assert.deepEqual(host.lifecycle(), {phase: "recovered", generation: 1, recoveries: 1, scheduledFrames: 1});
 assert.deepEqual(resizeCalls, [[320, 180]]);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 3);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));

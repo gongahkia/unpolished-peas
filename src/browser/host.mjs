@@ -2,6 +2,7 @@ import {createBrowserInput} from "./input.mjs";
 import {createBrowserAudio} from "./audio.mjs";
 import {createBrowserStorage} from "./storage.mjs";
 import {createBrowserArtifacts} from "./artifacts.mjs";
+import {createDebugFont, debugFontAssetDiagnostic, forEachDebugFontGlyph} from "./debug_font.mjs";
 import {createWebGpuBackend} from "./webgpu_backend.mjs";
 
 function localStorageOrNull() {
@@ -39,6 +40,8 @@ export function createBrowserHost({
   navigator: navigatorRef = globalThis.navigator,
   ResizeObserver: ResizeObserverImpl = globalThis.ResizeObserver,
   AudioContext: AudioContextImpl = globalThis.AudioContext ?? globalThis.webkitAudioContext,
+  fetch: fetchImpl = globalThis.fetch?.bind(globalThis),
+  fontFixture,
   storage: storageRef,
   storageNamespace = "unpolished-peas:v1",
 } = {}) {
@@ -65,6 +68,8 @@ export function createBrowserHost({
   let needsResourceRecovery = false;
   let nextHandle = 1;
   const resources = new Map();
+  let debugFont = fontFixture === undefined ? null : createDebugFont(fontFixture);
+  let debugFontTexture = 0;
   const input = createBrowserInput({
     canvas,
     document: documentRef,
@@ -369,11 +374,9 @@ export function createBrowserHost({
     return Status.ok;
   }
 
-  function uploadTexture(handle, width, height, source, byteLength, sampling) {
+  function uploadTexturePixels(handle, width, height, pixels, sampling) {
     const texture = resources.get(handle);
-    const expectedByteLength = width * height * 4;
-    const pixels = wasmBytes(source, byteLength);
-    if (!texture || texture.kind !== ResourceKind.texture || width === 0 || height === 0 || expectedByteLength !== byteLength || !pixels || sampling > 1) return Status.invalidArgument;
+    if (!texture || texture.kind !== ResourceKind.texture || width === 0 || height === 0 || pixels.byteLength !== width * height * 4 || sampling > 1) return Status.invalidArgument;
     if (webgpu) {
       if (contextLost) return Status.rejected;
       if (!webgpu.uploadTexture(handle, width, height, pixels, sampling)) return Status.rejected;
@@ -400,6 +403,12 @@ export function createBrowserHost({
     return Status.ok;
   }
 
+  function uploadTexture(handle, width, height, source, byteLength, sampling) {
+    const pixels = wasmBytes(source, byteLength);
+    if (!pixels || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
+    return uploadTexturePixels(handle, width, height, pixels, sampling);
+  }
+
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
     const texture = resources.get(handle);
     if (!texture || texture.kind !== ResourceKind.texture || !texture.width || !texture.height || sourceWidth === 0 || sourceHeight === 0 || width <= 0 || height <= 0 || sourceX > texture.width - sourceWidth || sourceY > texture.height - sourceHeight || sampling > 1) return Status.invalidArgument;
@@ -423,74 +432,26 @@ export function createBrowserHost({
     return Status.ok;
   }
 
-  const glyphs = Object.freeze({
-    0: [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
-    1: [0b00100, 0b01100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
-    2: [0b01110, 0b10001, 0b00001, 0b00010, 0b00100, 0b01000, 0b11111],
-    3: [0b11110, 0b00001, 0b00001, 0b01110, 0b00001, 0b00001, 0b11110],
-    4: [0b00010, 0b00110, 0b01010, 0b10010, 0b11111, 0b00010, 0b00010],
-    5: [0b11111, 0b10000, 0b10000, 0b11110, 0b00001, 0b00001, 0b11110],
-    6: [0b00110, 0b01000, 0b10000, 0b11110, 0b10001, 0b10001, 0b01110],
-    7: [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b01000, 0b01000],
-    8: [0b01110, 0b10001, 0b10001, 0b01110, 0b10001, 0b10001, 0b01110],
-    9: [0b01110, 0b10001, 0b10001, 0b01111, 0b00001, 0b00010, 0b01100],
-    A: [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
-    B: [0b11110, 0b10001, 0b10001, 0b11110, 0b10001, 0b10001, 0b11110],
-    C: [0b01110, 0b10001, 0b10000, 0b10000, 0b10000, 0b10001, 0b01110],
-    D: [0b11110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b11110],
-    E: [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b11111],
-    F: [0b11111, 0b10000, 0b10000, 0b11110, 0b10000, 0b10000, 0b10000],
-    G: [0b01110, 0b10001, 0b10000, 0b10111, 0b10001, 0b10001, 0b01110],
-    H: [0b10001, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001],
-    I: [0b01110, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b01110],
-    J: [0b00111, 0b00010, 0b00010, 0b00010, 0b10010, 0b10010, 0b01100],
-    K: [0b10001, 0b10010, 0b10100, 0b11000, 0b10100, 0b10010, 0b10001],
-    L: [0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b10000, 0b11111],
-    M: [0b10001, 0b11011, 0b10101, 0b10101, 0b10001, 0b10001, 0b10001],
-    N: [0b10001, 0b11001, 0b10101, 0b10011, 0b10001, 0b10001, 0b10001],
-    O: [0b01110, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
-    P: [0b11110, 0b10001, 0b10001, 0b11110, 0b10000, 0b10000, 0b10000],
-    Q: [0b01110, 0b10001, 0b10001, 0b10001, 0b10101, 0b10010, 0b01101],
-    R: [0b11110, 0b10001, 0b10001, 0b11110, 0b10100, 0b10010, 0b10001],
-    S: [0b01111, 0b10000, 0b10000, 0b01110, 0b00001, 0b00001, 0b11110],
-    T: [0b11111, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100],
-    U: [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01110],
-    V: [0b10001, 0b10001, 0b10001, 0b10001, 0b10001, 0b01010, 0b00100],
-    W: [0b10001, 0b10001, 0b10001, 0b10101, 0b10101, 0b10101, 0b01010],
-    X: [0b10001, 0b10001, 0b01010, 0b00100, 0b01010, 0b10001, 0b10001],
-    Y: [0b10001, 0b10001, 0b01010, 0b00100, 0b00100, 0b00100, 0b00100],
-    Z: [0b11111, 0b00001, 0b00010, 0b00100, 0b01000, 0b10000, 0b11111],
-    "-": [0, 0, 0, 0b11111, 0, 0, 0],
-    _: [0, 0, 0, 0, 0, 0, 0b11111],
-    ".": [0, 0, 0, 0, 0, 0b01100, 0b01100],
-    ":": [0, 0b01100, 0b01100, 0, 0b01100, 0b01100, 0],
-    "/": [0b00001, 0b00010, 0b00010, 0b00100, 0b01000, 0b01000, 0b10000],
-  });
+  function ensureDebugFontTexture() {
+    if (!debugFont) return null;
+    const current = resources.get(debugFontTexture);
+    if (current) return current;
+    const handle = createResource(ResourceKind.texture, 0, true);
+    if (handle === 0 || uploadTexturePixels(handle, debugFont.width, debugFont.height, debugFont.pixels, 0) !== Status.ok) return null;
+    debugFontTexture = handle;
+    return resources.get(handle);
+  }
 
   function drawText(source, byteLength, x, y, color) {
     const bytes = wasmBytes(source, byteLength);
     if (!bytes) return Status.invalidArgument;
-    let cursorX = x;
-    let cursorY = y;
-    for (const byte of bytes) {
-      if (byte === 10) {
-        cursorX = x;
-        cursorY += 8;
-        continue;
-      }
-      if (byte === 32) {
-        cursorX += 6;
-        continue;
-      }
-      const char = String.fromCharCode(byte).toUpperCase();
-      const rows = glyphs[char] ?? [0b11111, 0b10001, 0b00110, 0b00100, 0b00110, 0b10001, 0b11111];
-      for (let row = 0; row < 7; row += 1) for (let column = 0; column < 5; column += 1) if ((rows[row] & (1 << (4 - column))) !== 0) {
-        const status = drawRect(cursorX + column, cursorY + row, 1, 1, color);
-        if (status !== Status.ok) return status;
-      }
-      cursorX += 6;
-    }
-    return Status.ok;
+    const texture = ensureDebugFontTexture();
+    if (!texture || !debugFont) return Status.unavailable;
+    let status = Status.ok;
+    forEachDebugFontGlyph(debugFont, bytes, x, y, (glyph, glyphX, glyphY) => {
+      if (status === Status.ok) status = drawSprite(debugFontTexture, glyph.x, glyph.y, debugFont.glyphWidth, debugFont.glyphHeight, glyphX, glyphY, debugFont.glyphWidth, debugFont.glyphHeight, color, 0);
+    });
+    return status;
   }
 
   function clear(color) {
@@ -723,12 +684,12 @@ export function createBrowserHost({
     return value;
   }
 
-  function createResource(kind, byteLength) {
+  function createResource(kind, byteLength, internal = false) {
     if (webgpu) {
       if (contextLost || kind !== ResourceKind.texture || !Number.isInteger(byteLength) || byteLength < 0) return 0;
       const handle = nextHandle;
       nextHandle += 1;
-      resources.set(handle, {kind, value: null, byteLength});
+      resources.set(handle, {kind, value: null, byteLength, internal});
       return handle;
     }
     if (!gl || contextLost || !Number.isInteger(byteLength) || byteLength < 0) return 0;
@@ -736,7 +697,7 @@ export function createBrowserHost({
     if (!value) return 0;
     const handle = nextHandle;
     nextHandle += 1;
-    resources.set(handle, {kind, value, byteLength});
+    resources.set(handle, {kind, value, byteLength, internal});
     return handle;
   }
 
@@ -779,6 +740,7 @@ export function createBrowserHost({
       webgpu?.destroy();
       webgpu = null;
       removeAllResources(!contextLost);
+      debugFontTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       spriteBatch = null;
@@ -788,7 +750,7 @@ export function createBrowserHost({
     up_host_gl_resource_create: createResource,
     up_host_gl_resource_destroy: (kind, handle) => {
       const resource = resources.get(handle);
-      if (!resource || resource.kind !== kind) return;
+      if (!resource || resource.internal || resource.kind !== kind) return;
       if (webgpu) {
         webgpu.destroyTexture(handle);
         resources.delete(handle);
@@ -826,6 +788,7 @@ export function createBrowserHost({
       webgpu?.destroy();
       webgpu = null;
       removeAllResources(!contextLost);
+      debugFontTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       spriteBatch = null;
@@ -844,9 +807,19 @@ export function createBrowserHost({
     abiVersion: AbiVersion,
     imports: {env: {...env, memory}},
     memory,
-    resourceCount: () => resources.size,
+    resourceCount: () => [...resources.values()].filter((resource) => !resource.internal).length,
     context: () => gl,
     initializeWebGpu,
+    async loadDebugFontFixture(url) {
+      try {
+        const response = await fetchImpl?.(url);
+        if (!response?.ok) throw new Error(debugFontAssetDiagnostic);
+        debugFont = createDebugFont(await response.json());
+        return true;
+      } catch {
+        throw new Error(debugFontAssetDiagnostic);
+      }
+    },
     onWebGpuDeviceLost: (handler) => { webgpuDeviceLossHandler = typeof handler === "function" ? handler : null; },
     webgpu: () => webgpu?.diagnostic() ?? null,
     attachRuntime: (exports) => {

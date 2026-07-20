@@ -1,3 +1,5 @@
+const std = @import("std");
+
 pub const width = 5;
 pub const height = 7;
 
@@ -61,4 +63,36 @@ pub fn glyph(c: u8) [height]u5 {
 fn upper(c: u8) u8 {
     if (c >= 'a' and c <= 'z') return c - 32;
     return c;
+}
+
+test "debug font matches bundled cross-backend fixture" {
+    const GlyphFixture = struct {
+        codepoint: u8,
+        rows: []u5,
+    };
+    const Fixture = struct {
+        schema_version: u32,
+        fixture_version: []const u8,
+        glyph_width: u8,
+        glyph_height: u8,
+        advance: u8,
+        line_height: u8,
+        fallback_codepoint: u8,
+        glyphs: []GlyphFixture,
+    };
+    var parsed = try std.json.parseFromSlice(Fixture, std.testing.allocator, @embedFile("fixtures/text/debug-5x7-v1.json"), .{});
+    defer parsed.deinit();
+    const fixture = parsed.value;
+    try std.testing.expectEqual(@as(u32, 1), fixture.schema_version);
+    try std.testing.expectEqualStrings("debug-5x7-v1", fixture.fixture_version);
+    try std.testing.expectEqual(@as(u8, width), fixture.glyph_width);
+    try std.testing.expectEqual(@as(u8, height), fixture.glyph_height);
+    try std.testing.expectEqual(@as(u8, width + 1), fixture.advance);
+    try std.testing.expectEqual(@as(u8, height + 1), fixture.line_height);
+    for (fixture.glyphs) |fixture_glyph| {
+        const actual = glyph(fixture_glyph.codepoint);
+        try std.testing.expectEqualSlices(u5, fixture_glyph.rows, &actual);
+    }
+    const actual_fallback = glyph(fixture.fallback_codepoint);
+    try std.testing.expectEqualSlices(u5, &fallback, &actual_fallback);
 }

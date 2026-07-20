@@ -1,5 +1,5 @@
 import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from "node:fs";
-import {join} from "node:path";
+import {dirname, join} from "node:path";
 import {compareRendererContractCapture} from "../src/browser/renderer_contract_runner.mjs";
 
 const [webglPath, webgpuPath, diagnosticsRoot, fixturePath] = process.argv.slice(2);
@@ -9,6 +9,7 @@ const tolerance = 1;
 const webgl2 = JSON.parse(readFileSync(webglPath, "utf8"));
 const webgpu = JSON.parse(readFileSync(webgpuPath, "utf8"));
 const fixture = fixturePath ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
+const fontFixture = fixturePath ? JSON.parse(readFileSync(join(dirname(fixturePath), "debug-font-v1.json"), "utf8")) : null;
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -52,8 +53,8 @@ if (!webgl2.ready || !webgpu.ready) {
     mismatches.push({x: pixel % webgl2.dimensions.width, y: Math.floor(pixel / webgl2.dimensions.width), channel: index % 4, webgl2: webgl2.pixels[index], webgpu: webgpu.pixels[index], delta});
   }
   const reference = fixture ? {
-    webgl2: compareRendererContractCapture(fixture, webgl2),
-    webgpu: compareRendererContractCapture(fixture, webgpu),
+    webgl2: compareRendererContractCapture(fixture, webgl2, fontFixture),
+    webgpu: compareRendererContractCapture(fixture, webgpu, fontFixture),
   } : null;
   const referenceSummary = reference ? {
     webgl2: {dimensions: reference.webgl2.expected.dimensions, max_delta: reference.webgl2.max_delta, mismatches: reference.webgl2.mismatches},
