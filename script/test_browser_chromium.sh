@@ -28,7 +28,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 session=unpolished-peas-browser-harness
-pw=/Users/gongahkia/.codex/skills/playwright/scripts/playwright_cli.sh
+pw=$repo/script/playwright_cli.sh
 
 capture_artifacts() {
     renderer=$1

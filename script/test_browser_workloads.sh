@@ -5,7 +5,7 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 trap 'if [ "${server:-}" ]; then kill "$server" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT HUP INT TERM
 session=unpolished-peas-workload-catalog
-pw=/Users/gongahkia/.codex/skills/playwright/scripts/playwright_cli.sh
+pw=$repo/script/playwright_cli.sh
 
 cd "$repo"
 script/package_web.sh "$tmp/package" --game bounce
