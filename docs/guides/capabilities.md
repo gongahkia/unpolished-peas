@@ -41,7 +41,7 @@ Browser baseline: current stable evergreen desktop releases of Chromium, Firefox
 | Firefox | WebGL 2 | `preview` | — |
 | Firefox | WebGPU | `unsupported` | — |
 | Safari | WebGL 2 | `preview` | — |
-| Safari | WebGPU | `unsupported` | — |
+| Safari | WebGPU | `preview` | — |
 
 WebGL 2 and WebGPU deliberately have the same stable-core requirement set. Their status differs only by implementation and release coverage.
 
@@ -66,7 +66,8 @@ Slow platform and browser coverage is selected here, separately from the require
 | `windows-sdl_gpu` | `windows-2022` | `pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu` |
 | `chromium-webgpu` | `macos-15-intel` | `zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads` |
 | `firefox-webgl2` | `macos-15-intel` | `zig build test-browser-firefox` |
-| `safari-webgl2` | `macos-15-intel` | `safaridriver --enable && zig build test-browser-safari` |
+| `safari-webgl2` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 zig build test-browser-safari` |
+| `safari-webgpu` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgpu zig build test-browser-safari` |
 
 ## Release verification
 

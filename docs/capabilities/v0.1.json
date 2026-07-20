@@ -161,13 +161,14 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-15-intel", "command": "safaridriver --enable && zig build test-browser-safari"}}
+          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 zig build test-browser-safari"}}
         },
         {
           "id": "webgpu",
           "label": "WebGPU",
-          "status": "unsupported",
-          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgpu zig build test-browser-safari"}}
         }
       ]
     }
