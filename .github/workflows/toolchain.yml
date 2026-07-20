@@ -58,6 +58,7 @@ jobs:
           name: browser-renderer-parity-${{ matrix.id }}
           path: |
             zig-out/diagnostics/browser-renderer-parity/**
+            zig-out/diagnostics/browser-chromium/**
             zig-out/performance/browser-workloads-*.json
           if-no-files-found: warn
 
