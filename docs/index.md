@@ -7,6 +7,7 @@
 - [Stable image assets](guides/image-assets.md)
 - [Stable audio assets](guides/audio-assets.md)
 - [Testing](guides/testing.md)
+- [Top-down proof game](proof-games/topdown.md)
 - [CI](guides/ci.md)
 - [Browser renderer diagnostics](guides/browser-diagnostics.md)
 - [v0.1 capability matrix](guides/capabilities.md)

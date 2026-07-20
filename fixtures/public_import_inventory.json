@@ -21,7 +21,7 @@
     {"path": "examples/test_scenes.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "testSupport"]}]},
     {"path": "examples/topdown_game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "input", "preview", "testSupport"]}]},
     {"path": "examples/topdown_scene.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "input", "testSupport"]}]},
-    {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
+    {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "GpuCameraCanvas", "playGame"]}]},
     {"path": "fixtures/bounce-project/build.zig", "imports": []},
     {"path": "fixtures/bounce-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics"]}]},
     {"path": "fixtures/downstream/build.zig", "imports": []},

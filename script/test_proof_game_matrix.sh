@@ -38,6 +38,7 @@ run inspector-reload-profiler zig build test
 case "$game" in
     topdown)
         run gameplay zig build test-topdown
+        run scene zig build test-topdown-scene
         run desktop-smoke env SDL_AUDIODRIVER=dummy zig build smoke-topdown-sdl
         ;;
 esac

@@ -33,6 +33,7 @@ try {
     Invoke-Scenario 'inspector' { zig test src/inspector.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c }
     Invoke-Scenario 'profiler' { zig test src/profiler.zig }
     Invoke-Scenario 'gameplay' { zig build test-topdown }
+    Invoke-Scenario 'scene' { zig build test-topdown-scene }
     $env:SDL_AUDIODRIVER = 'dummy'
     Invoke-Scenario 'desktop-smoke' { zig build smoke-topdown-sdl }
 } catch {
