@@ -2,6 +2,8 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 
 const catalog_bytes = @import("workload-catalog-data").bytes;
+const required_workload_ids = [_][]const u8{ "primitive_fill", "sprite_batching", "alpha_blend", "clipping", "text", "mixed_frame" };
+const required_metrics = [_][]const u8{ "frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes" };
 
 const Catalog = struct {
     schema_version: u32,
@@ -54,7 +56,7 @@ pub fn run(allocator: std.mem.Allocator) !Summary {
     var parsed = try std.json.parseFromSlice(Catalog, allocator, catalog_bytes, .{});
     defer parsed.deinit();
     const catalog = parsed.value;
-    if (catalog.schema_version != 1 or !std.mem.eql(u8, catalog.workload_version, "v1") or catalog.workloads.len != 6) return error.InvalidCatalog;
+    try validateCatalog(catalog);
     const checker = findAsset(catalog.assets, "checker_2x2") orelse return error.InvalidCatalog;
     var image = try imageFromAsset(allocator, checker);
     defer image.deinit();
@@ -66,7 +68,7 @@ pub fn run(allocator: std.mem.Allocator) !Summary {
         defer canvas.deinit();
         var commands = up.graphics.RenderCommandBuffer.init(allocator);
         defer commands.deinit();
-        try appendOperations(&commands, workload.operations, &image);
+        try appendOperations(&commands, workload, &image);
         var renderer = up.graphics.HeadlessRenderer.init(allocator, &canvas);
         defer renderer.deinit();
         const iterations = workload.warmup_frames + workload.frame_count;
@@ -78,9 +80,23 @@ pub fn run(allocator: std.mem.Allocator) !Summary {
     return .{ .workload_count = catalog.workloads.len, .frame_count = frame_count, .combined_hash = combined_hash.final() };
 }
 
+fn validateCatalog(catalog: Catalog) !void {
+    if (catalog.schema_version != 1 or !std.mem.eql(u8, catalog.workload_version, "v1") or catalog.workloads.len != required_workload_ids.len) return error.InvalidCatalog;
+    const checker = findAsset(catalog.assets, "checker_2x2") orelse return error.InvalidCatalog;
+    if (catalog.assets.len != 1 or checker.width != 2 or checker.height != 2 or checker.rgba.len != 16) return error.InvalidCatalog;
+    for (required_workload_ids) |id| {
+        var matches: usize = 0;
+        for (catalog.workloads) |workload| {
+            if (std.mem.eql(u8, workload.id, id)) matches += 1;
+        }
+        if (matches != 1) return error.InvalidCatalog;
+    }
+}
+
 fn validateWorkload(workload: Workload) !void {
-    if (workload.id.len == 0 or workload.rationale.len == 0 or workload.width == 0 or workload.height == 0 or workload.frame_count == 0 or workload.metrics.len != 4) return error.InvalidCatalog;
-    if (!std.mem.eql(u8, workload.metrics[0], "frame_time_ns") or !std.mem.eql(u8, workload.metrics[1], "command_count") or !std.mem.eql(u8, workload.metrics[2], "frame_allocation_events") or !std.mem.eql(u8, workload.metrics[3], "frame_allocated_bytes")) return error.InvalidCatalog;
+    if (workload.id.len == 0 or workload.rationale.len == 0 or workload.width == 0 or workload.height == 0 or workload.warmup_frames == 0 or workload.frame_count == 0 or workload.metrics.len != required_metrics.len) return error.InvalidCatalog;
+    for (required_metrics, 0..) |metric, index| if (!std.mem.eql(u8, workload.metrics[index], metric)) return error.InvalidCatalog;
+    for (workload.assets) |asset| if (!std.mem.eql(u8, asset, "checker_2x2")) return error.InvalidCatalog;
 }
 
 fn findAsset(assets: []const Asset, id: []const u8) ?Asset {
@@ -100,14 +116,14 @@ fn imageFromAsset(allocator: std.mem.Allocator, asset: Asset) !up.assets.Image {
     return .{ .allocator = allocator, .width = asset.width, .height = asset.height, .pixels = pixels };
 }
 
-fn appendOperations(commands: *up.graphics.RenderCommandBuffer, operations: []const Operation, image: *const up.assets.Image) !void {
-    for (operations) |operation| {
+fn appendOperations(commands: *up.graphics.RenderCommandBuffer, workload: Workload, image: *const up.assets.Image) !void {
+    for (workload.operations) |operation| {
         if (std.mem.eql(u8, operation.op, "clear")) {
             try commands.append(.{ .clear = try color(operation.color) });
         } else if (std.mem.eql(u8, operation.op, "rect_batch")) {
             try appendRectBatch(commands, operation);
         } else if (std.mem.eql(u8, operation.op, "sprite_batch")) {
-            try appendSpriteBatch(commands, operation, image);
+            try appendSpriteBatch(commands, operation, workload.assets, image);
         } else if (std.mem.eql(u8, operation.op, "text_batch")) {
             try appendTextBatch(commands, operation);
         } else if (std.mem.eql(u8, operation.op, "push_clip")) {
@@ -124,10 +140,15 @@ fn appendRectBatch(commands: *up.graphics.RenderCommandBuffer, operation: Operat
     for (0..batch.count) |index| try commands.append(.{ .rect = .{ .x = batch.x + @as(i32, @intCast(index % batch.columns)) * batch.step_x, .y = batch.y + @as(i32, @intCast(index / batch.columns)) * batch.step_y, .w = batch.w, .h = batch.h, .color = batch.color } });
 }
 
-fn appendSpriteBatch(commands: *up.graphics.RenderCommandBuffer, operation: Operation, image: *const up.assets.Image) !void {
+fn appendSpriteBatch(commands: *up.graphics.RenderCommandBuffer, operation: Operation, assets: []const []const u8, image: *const up.assets.Image) !void {
     const batch = try batchFields(operation);
-    if (operation.asset == null or !std.mem.eql(u8, operation.asset.?, "checker_2x2")) return error.InvalidCatalog;
+    if (operation.asset == null or !std.mem.eql(u8, operation.asset.?, "checker_2x2") or !contains(assets, "checker_2x2")) return error.InvalidCatalog;
     for (0..batch.count) |index| try commands.append(.{ .image = .{ .image = image, .x = batch.x + @as(i32, @intCast(index % batch.columns)) * batch.step_x, .y = batch.y + @as(i32, @intCast(index / batch.columns)) * batch.step_y } });
+}
+
+fn contains(values: []const []const u8, expected: []const u8) bool {
+    for (values) |value| if (std.mem.eql(u8, value, expected)) return true;
+    return false;
 }
 
 fn appendTextBatch(commands: *up.graphics.RenderCommandBuffer, operation: Operation) !void {
