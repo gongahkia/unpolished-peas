@@ -358,6 +358,12 @@ pub fn build(b: *std.Build) void {
     const dependency_test = b.addSystemCommand(&.{ "sh", "script/test_stdlib_only.sh" });
     const dependency_test_step = b.step("dependency-policy-test", "Test the v1 dependency policy");
     dependency_test_step.dependOn(&dependency_test.step);
+    const provider_dependency_check = b.addSystemCommand(&.{ "sh", "script/check_provider_dependencies.sh" });
+    const provider_dependency_step = b.step("provider-dependency-policy", "Check provider licenses, provenance, and checksums");
+    provider_dependency_step.dependOn(&provider_dependency_check.step);
+    const provider_dependency_test = b.addSystemCommand(&.{ "sh", "script/test_provider_dependencies.sh" });
+    const provider_dependency_test_step = b.step("provider-dependency-policy-test", "Test provider dependency policy checks");
+    provider_dependency_test_step.dependOn(&provider_dependency_test.step);
     const hermetic_test = b.addSystemCommand(&.{ "sh", "script/test_hermetic_build.sh" });
     const hermetic_step = b.step("hermetic-test", "Test SDK builds with an empty environment");
     hermetic_step.dependOn(&hermetic_test.step);
@@ -519,4 +525,6 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&public_api_regression_check.step);
     test_step.dependOn(&public_api_regression_test.step);
     test_step.dependOn(&pre_release_api_contract_test.step);
+    test_step.dependOn(&provider_dependency_check.step);
+    test_step.dependOn(&provider_dependency_test.step);
 }
