@@ -613,6 +613,15 @@ pub fn build(b: *std.Build) void {
     const run_topdown_tests = b.addRunArtifact(topdown_tests);
     const topdown_test_step = b.step("test-topdown", "Run deterministic top-down tests");
     topdown_test_step.dependOn(&run_topdown_tests.step);
+    const puzzle_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/puzzle_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_puzzle_tests = b.addRunArtifact(puzzle_tests);
+    const puzzle_test_step = b.step("test-puzzle", "Run deterministic puzzle tests");
+    puzzle_test_step.dependOn(&run_puzzle_tests.step);
     const replay_test_step = b.step("test-replays", "Run stored fixed-step input replays");
     replay_test_step.dependOn(&run_breakout_tests.step);
     replay_test_step.dependOn(&run_topdown_tests.step);
