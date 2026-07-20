@@ -86,8 +86,8 @@ def load_matrix():
             fail(f"browser target {target.get('id')} must define WebGL 2 and WebGPU")
     if {entry["id"] for entry in rows["pull_request"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu"}:
         fail("pull-request CI must select every supported desktop SDL GPU target and no other target")
-    if {entry["id"] for entry in rows["nightly"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu", "chromium-webgpu", "firefox-webgl2", "safari-webgl2"}:
-        fail("nightly CI must select documented desktop, Chromium WebGPU, Firefox WebGL 2, and Safari WebDriver coverage exactly once")
+    if {entry["id"] for entry in rows["nightly"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu", "chromium-webgpu", "firefox-webgl2", "safari-webgl2", "safari-webgpu"}:
+        fail("nightly CI must select documented desktop, Chromium WebGPU, Firefox WebGL 2, and Safari WebGL 2/WebGPU coverage exactly once")
     if {entry["id"] for entry in rows["release"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu"}:
         fail("release CI must select every supported desktop SDL GPU target and no other target")
     for target in targets:

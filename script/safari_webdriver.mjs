@@ -22,6 +22,12 @@ export function validateRenderer(diagnostic, requested) {
   return "unavailable";
 }
 
+export function selectedRenderers(value = "webgl2 webgpu") {
+  const renderers = value.split(/\s+/).filter(Boolean);
+  if (!renderers.length || new Set(renderers).size !== renderers.length || renderers.some((renderer) => renderer !== "webgl2" && renderer !== "webgpu")) fail(`invalid forced renderer selection: ${value}`);
+  return renderers;
+}
+
 export class WebDriver {
   constructor(baseUrl) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
@@ -167,21 +173,19 @@ async function main() {
   const [baseUrl, artifactDirectory] = process.argv.slice(2);
   if (!baseUrl || !artifactDirectory) fail("usage: safari_webdriver.mjs PACKAGE_URL ARTIFACT_DIRECTORY");
   await mkdir(artifactDirectory, {recursive: true});
+  const renderers = selectedRenderers(process.env.UP_SAFARI_RENDERERS);
   const client = new WebDriver(process.env.UP_SAFARI_WEBDRIVER_URL ?? "http://127.0.0.1:4444");
   const driverStatus = await client.status();
   try {
     await client.createSession();
-    await client.navigate(`${baseUrl}?renderer=webgl2`);
-    await smoke(client, "webgl2", artifactDirectory, driverStatus);
-    await client.navigate(`${baseUrl}?renderer=webgpu`);
-    await client.wait(pageReady("webgpu"));
-    const diagnostic = await client.execute("return window.unpolishedPeas?.rendererDiagnostic ?? null;");
-    if (validateRenderer(diagnostic, "webgpu") === "available") await smoke(client, "webgpu", artifactDirectory, driverStatus);
-    else await capture(client, artifactDirectory, "webgpu", driverStatus);
+    for (const renderer of renderers) {
+      await client.navigate(`${baseUrl}?renderer=${renderer}`);
+      await smoke(client, renderer, artifactDirectory, driverStatus);
+    }
   } finally {
     await client.deleteSession();
   }
-  console.log("Safari WebDriver smoke passed: forced-webgl2 and forced-webgpu");
+  console.log(`Safari WebDriver smoke passed: forced-${renderers.join(", forced-")}`);
 }
 
 if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
