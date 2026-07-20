@@ -41,6 +41,10 @@ function intersect(a, b) {
   return {x, y, width: Math.max(0, Math.min(a.x + a.width, b.x + b.width) - x), height: Math.max(0, Math.min(a.y + a.height, b.y + b.height) - y)};
 }
 
+function clipsEqual(a, b) {
+  return a === b || Boolean(a && b && a.x === b.x && a.y === b.y && a.width === b.width && a.height === b.height);
+}
+
 export async function createWebGpuBackend({canvas, navigator: navigatorRef = globalThis.navigator, onDeviceLost} = {}) {
   if (!canvas?.getContext) throw new WebGpuBackendError("canvas_unavailable");
   const gpu = navigatorRef?.gpu;
@@ -83,7 +87,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   const vertexBuffer = device.createBuffer({size: maxRectangles * verticesPerRectangle * floatsPerVertex * 4, usage});
   const spriteBuffer = device.createBuffer({size: maxSprites * verticesPerRectangle * spriteFloatsPerVertex * 4, usage});
   const batches = Array.from({length: maxBatches}, () => ({kind: "", offset: 0, count: 0, texture: null, blend: 0}));
-  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], blend: 0, blends: [], vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, batchCount: 0, textures: new Map()};
+  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], blend: 0, blends: [], camera: null, vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, batchCount: 0, textures: new Map()};
   const reportLoss = (info) => {
     if (state.destroyed) return;
     state.deviceStatus = "lost";
@@ -117,7 +121,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
 
   function appendBatch(kind, offset, texture = null) {
     const previous = state.batchCount === 0 ? null : batches[state.batchCount - 1];
-    if (previous?.kind === kind && previous.texture === texture && previous.blend === state.blend) return previous;
+    if (previous?.kind === kind && previous.texture === texture && previous.blend === state.blend && clipsEqual(previous.clip, state.clip)) return previous;
     if (state.batchCount === maxBatches) return null;
     const batch = batches[state.batchCount];
     state.batchCount += 1;
@@ -126,22 +130,36 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     batch.count = 0;
     batch.texture = texture;
     batch.blend = state.blend;
+    batch.clip = state.clip ? {...state.clip} : null;
     return batch;
+  }
+
+  function transformPoint(x, y) {
+    if (!state.camera) return [x, y];
+    const localX = x - state.camera.x;
+    const localY = y - state.camera.y;
+    const cosine = Math.cos(state.camera.rotation);
+    const sine = Math.sin(state.camera.rotation);
+    return [state.camera.viewportX + state.camera.viewportWidth / 2 + (cosine * localX + sine * localY) * state.camera.zoom, state.camera.viewportY + state.camera.viewportHeight / 2 + (-sine * localX + cosine * localY) * state.camera.zoom];
+  }
+
+  function position(x, y) {
+    const point = transformPoint(x, y);
+    return [point[0] * 2 / state.width - 1, 1 - point[1] * 2 / state.height];
   }
 
   function drawRect(x, y, width, height, color) {
     if (state.destroyed || state.deviceStatus !== "ready" || ![x, y, width, height, color].every(Number.isInteger)) return false;
-    const rect = state.clip ? intersect({x, y, width, height}, state.clip) : {x, y, width, height};
-    if (rect.width <= 0 || rect.height <= 0) return true;
+    if (width <= 0 || height <= 0) return true;
     if (state.vertexCount + verticesPerRectangle > maxRectangles * verticesPerRectangle) return false;
     const batch = appendBatch("primitive", state.vertexCount);
     if (!batch) return false;
     const rgba = colorFromPacked(color);
-    const x0 = rect.x * 2 / state.width - 1;
-    const x1 = (rect.x + rect.width) * 2 / state.width - 1;
-    const y0 = 1 - rect.y * 2 / state.height;
-    const y1 = 1 - (rect.y + rect.height) * 2 / state.height;
-    const points = [x0, y0, x1, y0, x1, y1, x0, y0, x1, y1, x0, y1];
+    const a = position(x, y);
+    const b = position(x + width, y);
+    const c = position(x + width, y + height);
+    const d = position(x, y + height);
+    const points = [...a, ...b, ...c, ...a, ...c, ...d];
     let offset = state.vertexCount * floatsPerVertex;
     for (let index = 0; index < points.length; index += 2) {
       state.vertices[offset] = points[index];
@@ -185,20 +203,18 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
     const texture = state.textures.get(handle);
     if (state.destroyed || state.deviceStatus !== "ready" || !texture || ![sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling].every(Number.isInteger) || sourceWidth <= 0 || sourceHeight <= 0 || width <= 0 || height <= 0 || sourceX < 0 || sourceY < 0 || sourceX > texture.width - sourceWidth || sourceY > texture.height - sourceHeight || sampling !== texture.sampling || state.spriteVertexCount + verticesPerRectangle > maxSprites * verticesPerRectangle) return false;
-    const rect = state.clip ? intersect({x, y, width, height}, state.clip) : {x, y, width, height};
-    if (rect.width <= 0 || rect.height <= 0) return true;
     const batch = appendBatch("sprite", state.spriteVertexCount, texture);
     if (!batch) return false;
-    const x0 = rect.x * 2 / state.width - 1;
-    const x1 = (rect.x + rect.width) * 2 / state.width - 1;
-    const y0 = 1 - rect.y * 2 / state.height;
-    const y1 = 1 - (rect.y + rect.height) * 2 / state.height;
-    const u0 = (sourceX + (rect.x - x) * sourceWidth / width) / texture.width;
-    const v0 = (sourceY + (rect.y - y) * sourceHeight / height) / texture.height;
-    const u1 = (sourceX + (rect.x + rect.width - x) * sourceWidth / width) / texture.width;
-    const v1 = (sourceY + (rect.y + rect.height - y) * sourceHeight / height) / texture.height;
+    const a = position(x, y);
+    const b = position(x + width, y);
+    const c = position(x + width, y + height);
+    const d = position(x, y + height);
+    const u0 = sourceX / texture.width;
+    const v0 = sourceY / texture.height;
+    const u1 = (sourceX + sourceWidth) / texture.width;
+    const v1 = (sourceY + sourceHeight) / texture.height;
     const rgba = colorFromPacked(color);
-    const values = [x0, y0, u0, v0, x1, y0, u1, v0, x1, y1, u1, v1, x0, y0, u0, v0, x1, y1, u1, v1, x0, y1, u0, v1];
+    const values = [...a, u0, v0, ...b, u1, v0, ...c, u1, v1, ...a, u0, v0, ...c, u1, v1, ...d, u0, v1];
     let offset = state.spriteVertexCount * spriteFloatsPerVertex;
     for (let index = 0; index < values.length; index += 4) {
       state.spriteVertices[offset] = values[index];
@@ -242,6 +258,25 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     return true;
   }
 
+  function setCamera(enabled, x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight) {
+    if (state.destroyed) return false;
+    if (enabled === 0) {
+      state.camera = null;
+      return true;
+    }
+    if (enabled !== 1 || ![x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight].every(Number.isFinite) || zoom <= 0 || viewportWidth <= 0 || viewportHeight <= 0) return false;
+    state.camera = {x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight};
+    return true;
+  }
+
+  function applyClip(pass, clip) {
+    const x = Math.max(0, Math.min(state.width, clip?.x ?? 0));
+    const y = Math.max(0, Math.min(state.height, clip?.y ?? 0));
+    const right = Math.max(x, Math.min(state.width, clip ? clip.x + clip.width : state.width));
+    const bottom = Math.max(y, Math.min(state.height, clip ? clip.y + clip.height : state.height));
+    pass.setScissorRect(x, y, right - x, bottom - y);
+  }
+
   function present() {
     if (state.destroyed || state.deviceStatus !== "ready" || state.width === 0 || state.height === 0 || state.clips.length !== 0 || state.blends.length !== 0) return false;
     try {
@@ -251,6 +286,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       if (state.spriteVertexCount > 0) device.queue.writeBuffer(spriteBuffer, 0, state.spriteVertices.buffer, 0, state.spriteVertexCount * spriteFloatsPerVertex * 4);
       for (let index = 0; index < state.batchCount; index += 1) {
         const batch = batches[index];
+        applyClip(pass, batch.clip);
         if (batch.kind === "primitive") {
           pass.setPipeline(pipelines[batch.blend]);
           pass.setVertexBuffer(0, vertexBuffer, batch.offset * floatsPerVertex * 4);
@@ -299,6 +335,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     popClip,
     pushBlend,
     popBlend,
+    setCamera,
     present,
     destroy,
     isLost: () => state.deviceStatus === "lost",

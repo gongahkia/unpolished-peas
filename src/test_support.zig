@@ -6,6 +6,7 @@ const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
 const render = @import("render.zig");
+const renderer_contract_fixture = @import("renderer_contract_fixture.zig");
 const app = @import("app.zig");
 
 pub const TempProject = struct { // owns a temporary project directory and its absolute path; call deinit once.
@@ -184,6 +185,7 @@ pub const RendererConformance = struct {
         opaque_rects,
         clipped_rect,
         clipped_blend,
+        stable_core,
     };
 
     scenario: Scenario,
@@ -206,6 +208,11 @@ pub const RendererConformance = struct {
             .commands = render.CommandBuffer.init(allocator),
         };
         errdefer value.deinit();
+        if (scenario == .stable_core) {
+            if (width != renderer_contract_fixture.width or height != renderer_contract_fixture.height) return error.InvalidConformanceCanvas;
+            try renderer_contract_fixture.append(allocator, &value.commands);
+            return value;
+        }
         try value.commands.append(.{ .clear = background });
         switch (scenario) {
             .opaque_rects => {
@@ -225,6 +232,7 @@ pub const RendererConformance = struct {
                 try value.commands.append(.pop_blend);
                 try value.commands.append(.pop_clip);
             },
+            .stable_core => unreachable,
         }
         try value.commands.append(.{ .rect = .{ .x = @intCast(width - 1), .y = @intCast(height - 1), .w = 1, .h = 1, .color = last } });
         return value;
@@ -256,6 +264,7 @@ pub const RendererConformance = struct {
 
     pub fn expectCapture(self: *const RendererConformance, canvas: *const Canvas) !void {
         if (canvas.width != self.width or canvas.height != self.height) return error.InvalidConformanceCanvas;
+        if (self.scenario == .stable_core) return;
         const bottom_right = canvas.get(@intCast(self.width - 1), @intCast(self.height - 1)) orelse return error.InvalidConformanceCanvas;
         try std.testing.expectEqual(last, bottom_right);
         switch (self.scenario) {
@@ -274,7 +283,21 @@ pub const RendererConformance = struct {
                 try std.testing.expectEqual(background, canvas.get(1, 1).?);
                 try std.testing.expectEqual(additive, canvas.get(2, 1).?);
             },
+            .stable_core => unreachable,
         }
+    }
+
+    pub fn expectReferenceCapture(self: *const RendererConformance, allocator: std.mem.Allocator, actual: *const Canvas, diagnostics_path: []const u8, renderer_name: []const u8) !void {
+        var expected = try self.referenceCanvas(allocator);
+        defer expected.deinit();
+        expectRendererCapturesMatch(&expected, actual, .{ .max_channel_delta = renderer_contract_fixture.tolerance }) catch |err| {
+            const expected_image = Image{ .allocator = allocator, .width = expected.width, .height = expected.height, .pixels = expected.pixels };
+            try writeGoldenDiagnostics(allocator, actual.*, expected_image, diagnostics_path);
+            var log: [160]u8 = undefined;
+            const message = std.fmt.bufPrint(&log, "renderer capture mismatch renderer={s} tolerance={d}\n", .{ renderer_name, renderer_contract_fixture.tolerance }) catch "renderer capture mismatch\n";
+            try diagnostics.capture(allocator, .{ .path = diagnostics_path }, .{ .canvas = actual.*, .commands = self.commandSlice(), .log = message });
+            return err;
+        };
     }
 };
 

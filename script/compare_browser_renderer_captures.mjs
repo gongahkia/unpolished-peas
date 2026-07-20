@@ -1,12 +1,14 @@
 import {mkdirSync, mkdtempSync, readFileSync, writeFileSync} from "node:fs";
 import {join} from "node:path";
+import {compareRendererContractCapture} from "../src/browser/renderer_contract_runner.mjs";
 
-const [webglPath, webgpuPath, diagnosticsRoot] = process.argv.slice(2);
+const [webglPath, webgpuPath, diagnosticsRoot, fixturePath] = process.argv.slice(2);
 if (!webglPath || !webgpuPath || !diagnosticsRoot) throw new Error("usage: compare_browser_renderer_captures.mjs <webgl2.json> <webgpu.json> <diagnostics-root>");
 
 const tolerance = 1;
 const webgl2 = JSON.parse(readFileSync(webglPath, "utf8"));
 const webgpu = JSON.parse(readFileSync(webgpuPath, "utf8"));
+const fixture = fixturePath ? JSON.parse(readFileSync(fixturePath, "utf8")) : null;
 
 function writeJson(path, value) {
   writeFileSync(path, `${JSON.stringify(value, null, 2)}\n`);
@@ -49,11 +51,20 @@ if (!webgl2.ready || !webgpu.ready) {
     const pixel = Math.floor(index / 4);
     mismatches.push({x: pixel % webgl2.dimensions.width, y: Math.floor(pixel / webgl2.dimensions.width), channel: index % 4, webgl2: webgl2.pixels[index], webgpu: webgpu.pixels[index], delta});
   }
-  if (mismatches.length > 0) {
-    const output = preserve("pixel_tolerance_exceeded", {max_delta: maxDelta, mismatches});
+  const reference = fixture ? {
+    webgl2: compareRendererContractCapture(fixture, webgl2),
+    webgpu: compareRendererContractCapture(fixture, webgpu),
+  } : null;
+  const referenceSummary = reference ? {
+    webgl2: {dimensions: reference.webgl2.expected.dimensions, max_delta: reference.webgl2.max_delta, mismatches: reference.webgl2.mismatches},
+    webgpu: {dimensions: reference.webgpu.expected.dimensions, max_delta: reference.webgpu.max_delta, mismatches: reference.webgpu.mismatches},
+  } : null;
+  if (mismatches.length > 0 || reference?.webgl2.mismatches.length > 0 || reference?.webgpu.mismatches.length > 0) {
+    const reason = mismatches.length > 0 ? "pixel_tolerance_exceeded" : "contract_reference_mismatch";
+    const output = preserve(reason, {browser_parity: {max_delta: maxDelta, mismatches}, contract_reference: referenceSummary});
     console.error(`browser renderer parity failed: mismatches=${mismatches.length} max_delta=${maxDelta} diagnostics=${output}`);
     process.exitCode = 1;
   } else {
-    console.log(`browser renderer parity passed: dimensions=${webgl2.dimensions.width}x${webgl2.dimensions.height} tolerance=${tolerance} max_delta=${maxDelta}`);
+    console.log(`browser renderer parity passed: dimensions=${webgl2.dimensions.width}x${webgl2.dimensions.height} tolerance=${tolerance} max_delta=${maxDelta}${reference ? ` reference_max_delta=${Math.max(reference.webgl2.max_delta, reference.webgpu.max_delta)}` : ""}`);
   }
 }

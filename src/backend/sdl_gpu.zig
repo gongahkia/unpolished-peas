@@ -381,7 +381,7 @@ test "desktop renderer conformance GPU golden capture" {
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend, .stable_core };
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
         defer scenario.deinit();
@@ -401,6 +401,7 @@ test "desktop renderer conformance GPU golden capture" {
         try std.testing.expectEqual(@as(u32, 32), image.height);
         const captured = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
         try scenario.expectCapture(&captured);
+        if (scenario_kind == .stable_core) try scenario.expectReferenceCapture(std.testing.allocator, &captured, "zig-out/diagnostics/renderer-conformance/sdl-gpu", "sdl-gpu");
         var nontransparent: usize = 0;
         for (image.pixels) |pixel| {
             if (pixel.a != 0) nontransparent += 1;
@@ -444,7 +445,7 @@ test "desktop renderers match cross-backend visual golden captures" {
     var presentation = up.Presentation.init(.{ .x = 64, .y = 32 }, .{ .x = 64, .y = 32 }, .integer_fit);
     var metrics = up.RuntimeMetrics{};
     metrics.beginFrame(0);
-    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend };
+    const scenarios = [_]renderer_conformance.Scenario{ .opaque_rects, .clipped_rect, .clipped_blend, .stable_core };
     for (scenarios) |scenario_kind| {
         var scenario = try renderer_conformance.init(std.testing.allocator, scenario_kind, 64, 32);
         defer scenario.deinit();
@@ -460,6 +461,7 @@ test "desktop renderers match cross-backend visual golden captures" {
         defer image.deinit();
         const gpu_capture = up.Canvas{ .allocator = std.testing.allocator, .width = image.width, .height = image.height, .pixels = image.pixels };
         try scenario.expectCapture(&gpu_capture);
+        if (scenario_kind == .stable_core) try scenario.expectReferenceCapture(std.testing.allocator, &gpu_capture, "zig-out/diagnostics/renderer-cross-backend/sdl-gpu", "sdl-gpu");
 
         var gl_canvas = try scenario.initialCanvas(std.testing.allocator);
         defer gl_canvas.deinit();
@@ -469,6 +471,7 @@ test "desktop renderers match cross-backend visual golden captures" {
         var gl_capture = try gl_presenter.capture(std.testing.allocator);
         defer gl_capture.deinit();
         try scenario.expectCapture(&gl_capture);
+        if (scenario_kind == .stable_core) try scenario.expectReferenceCapture(std.testing.allocator, &gl_capture, "zig-out/diagnostics/renderer-cross-backend/opengl", "opengl");
         try up.testSupport.expectRendererCapturesMatch(&gpu_capture, &gl_capture, up.testSupport.cross_backend_renderer_tolerance);
     }
 }
