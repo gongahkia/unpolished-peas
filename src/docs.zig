@@ -7,6 +7,7 @@ const source_documents = [_][]const u8{
     "guides/game-protocol.md",
     "guides/core-contract.md",
     "guides/testing.md",
+    "guides/browser-diagnostics.md",
     "guides/capabilities.md",
     "guides/migrations.md",
     "guides/releases.md",

@@ -791,6 +791,7 @@ export function createBrowserHost({
     captureFrame: artifacts.captureFrame,
     recordTrace: artifacts.recordTrace,
     recordCommand: artifacts.recordCommand,
+    setRendererDiagnostic: artifacts.setRendererDiagnostic,
     artifacts: artifacts.snapshot,
     framebufferToCanvas,
     diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
