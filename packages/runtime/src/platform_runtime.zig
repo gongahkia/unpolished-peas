@@ -6,8 +6,9 @@ const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
 const channel_delivery = @import("channel_delivery.zig");
+const service_module = @import("service_module.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -25,6 +26,7 @@ pub const Runtime = struct {
     platform_config: core.PlatformConfig,
     poll_runtime: poll_runtime.PollRuntime,
     providers: provider.ProviderRegistry,
+    services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
     pub fn init(allocator: std.mem.Allocator, sdk: config.Sdk) RuntimeError!Runtime {
@@ -34,10 +36,12 @@ pub const Runtime = struct {
             .platform_config = platform_config,
             .poll_runtime = poll_runtime.PollRuntime.init(allocator, sdk),
             .providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity),
+            .services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity }),
         };
     }
 
     pub fn deinit(self: *Runtime) void {
+        self.services.deinit();
         self.providers.deinit();
         self.poll_runtime.deinit();
         self.* = undefined;
@@ -47,8 +51,20 @@ pub const Runtime = struct {
         try self.providers.register(item);
     }
 
+    pub fn registerService(self: *Runtime, module: service_module.ServiceModule) service_module.ServiceModuleError!service_module.ServiceModuleId {
+        return self.services.register(module);
+    }
+
     pub fn start(self: *Runtime) provider.ProviderError!void {
         try self.providers.start();
+        self.services.start() catch {
+            for (self.providers.providers.items) |*registered| registered.stop();
+            return error.PollFailed;
+        };
+    }
+
+    pub fn dispatchService(self: *Runtime, request: service_module.ServiceRequest) service_module.ServiceModuleError!service_module.ServiceDispatch {
+        return self.services.dispatch(request);
     }
 
     pub fn enqueue(self: *Runtime, envelope: event.EventEnvelope) std.mem.Allocator.Error!void {
@@ -192,4 +208,26 @@ test "unified runtimes select channel semantics from active provider capabilitie
     const binding = try runtime.selectChannel(.{ .delivery = .sequenced, .maximum_payload_bytes = 32, .maximum_in_flight = 2 });
     try std.testing.expectEqual(channel_delivery.ChannelTransport.datagram, binding.transport);
     try std.testing.expectError(error.UnsupportedDelivery, runtime.selectChannel(.{ .delivery = .stream, .maximum_payload_bytes = 32 }));
+}
+
+test "unified runtimes attach and dispatch bounded service modules" {
+    const Fixture = struct {
+        calls: usize = 0,
+
+        fn route(context: ?*anyopaque, _: service_module.ServiceRequest) service_module.ServiceModuleError!service_module.ServiceRouteResult {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.calls += 1;
+            return .handled;
+        }
+    };
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .service_capacity = 1 } }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var fixture = Fixture{};
+    _ = try runtime.registerService(.{ .config = .{ .name = "fixture", .route_prefix = "/fixture", .maximum_state_bytes = 8 }, .context = &fixture, .hooks = .{ .route = Fixture.route } });
+    try runtime.start();
+    const dispatch = try runtime.dispatchService(.{ .route = "/fixture/request", .credentials = "", .payload = "" });
+    try std.testing.expectEqual(@as(usize, 0), dispatch.module);
+    try std.testing.expectEqual(@as(usize, 1), fixture.calls);
 }
