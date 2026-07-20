@@ -229,6 +229,10 @@ pub fn build(b: *std.Build) void {
     browser_renderer_diagnostics_test.setCwd(b.path("."));
     const browser_renderer_diagnostics_test_step = b.step("test-browser-renderer-diagnostics", "Test browser renderer diagnostic schema");
     browser_renderer_diagnostics_test_step.dependOn(&browser_renderer_diagnostics_test.step);
+    const browser_renderer_selection_test = b.addSystemCommand(&.{ "node", "script/test_browser_renderer_selection.mjs" });
+    browser_renderer_selection_test.setCwd(b.path("."));
+    const browser_renderer_selection_test_step = b.step("test-browser-renderer-selection", "Test browser renderer negotiation");
+    browser_renderer_selection_test_step.dependOn(&browser_renderer_selection_test.step);
     const web_package_test = b.addSystemCommand(&.{"script/test_web_package.sh"});
     web_package_test.setCwd(b.path("."));
     const web_package_test_step = b.step("test-web-package", "Validate deterministic browser package layout");

@@ -4,7 +4,7 @@ The browser bundle exposes `window.unpolishedPeas.rendererDiagnostic` and the sa
 
 The object deliberately excludes the raw user agent, hardware adapter name, driver, device ID, and any remote endpoint. It is local diagnostic data for browser/package tests, not telemetry.
 
-`?renderer=webgl2` reports the selected WebGL 2 host after initialization. A forced `?renderer=webgpu` request reports `selected_renderer: null`, `capabilities.webgpu: "unsupported"`, and a recovery instruction to select WebGL 2 because WebGPU is outside the current [capability matrix](capabilities.md).
+`?renderer=webgl2` selects WebGL 2. `?renderer=webgpu` selects WebGPU or fails before the game loop with an adapter/device diagnostic. `?renderer=auto` prefers a ready WebGPU backend and otherwise selects WebGL 2 with a deterministic `*_fallback` reason. The package manifest records this query selection contract; the diagnostic artifact records the actual selection. WebGPU remains outside the current [capability matrix](capabilities.md) until its full stable-core conformance coverage is complete.
 
 The internal WebGPU canvas lifecycle records only adapter/device state, the preferred canvas format, and logical dimensions; it never records hardware names, driver data, or device IDs. Package renderer selection remains governed by the capability matrix.
 
