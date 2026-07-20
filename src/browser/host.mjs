@@ -341,6 +341,7 @@ export function createBrowserHost({
   }
 
   function flushSprites() {
+    if (webgpu) return webgpu.isLost() ? Status.rejected : Status.ok;
     if (!spriteBatch) return Status.ok;
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
@@ -372,6 +373,14 @@ export function createBrowserHost({
     const expectedByteLength = width * height * 4;
     const pixels = wasmBytes(source, byteLength);
     if (!texture || texture.kind !== ResourceKind.texture || width === 0 || height === 0 || expectedByteLength !== byteLength || !pixels || sampling > 1) return Status.invalidArgument;
+    if (webgpu) {
+      if (contextLost) return Status.rejected;
+      if (!webgpu.uploadTexture(handle, width, height, pixels, sampling)) return Status.rejected;
+      texture.width = width;
+      texture.height = height;
+      texture.sampling = sampling;
+      return Status.ok;
+    }
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
     if (spriteBatch?.handle === handle) {
@@ -393,6 +402,7 @@ export function createBrowserHost({
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
     const texture = resources.get(handle);
     if (!texture || texture.kind !== ResourceKind.texture || !texture.width || !texture.height || sourceWidth === 0 || sourceHeight === 0 || width <= 0 || height <= 0 || sourceX > texture.width - sourceWidth || sourceY > texture.height - sourceHeight || sampling > 1) return Status.invalidArgument;
+    if (webgpu) return webgpu.drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
     if (spriteBatch && (spriteBatch.handle !== handle || spriteBatch.sampling !== sampling)) {
@@ -709,6 +719,13 @@ export function createBrowserHost({
   }
 
   function createResource(kind, byteLength) {
+    if (webgpu) {
+      if (contextLost || kind !== ResourceKind.texture || !Number.isInteger(byteLength) || byteLength < 0) return 0;
+      const handle = nextHandle;
+      nextHandle += 1;
+      resources.set(handle, {kind, value: null, byteLength});
+      return handle;
+    }
     if (!gl || contextLost || !Number.isInteger(byteLength) || byteLength < 0) return 0;
     const value = createResourceValue(kind, byteLength);
     if (!value) return 0;
@@ -767,6 +784,11 @@ export function createBrowserHost({
     up_host_gl_resource_destroy: (kind, handle) => {
       const resource = resources.get(handle);
       if (!resource || resource.kind !== kind) return;
+      if (webgpu) {
+        webgpu.destroyTexture(handle);
+        resources.delete(handle);
+        return;
+      }
       if (spriteBatch?.handle === handle) flushSprites();
       removeResource(handle, true);
     },

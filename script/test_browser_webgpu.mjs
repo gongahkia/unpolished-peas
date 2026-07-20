@@ -32,16 +32,21 @@ const lost = new Promise((resolve) => { resolveLost = resolve; });
 const submissions = [];
 const passes = [];
 const writes = [];
+const textureWrites = [];
+const draws = [];
 const device = {
   lost,
-  queue: {submit: (commands) => submissions.push(commands), writeBuffer: (...args) => writes.push(args)},
+  queue: {submit: (commands) => submissions.push(commands), writeBuffer: (...args) => writes.push(args), writeTexture: (...args) => textureWrites.push(args)},
   createShaderModule: () => "shader",
-  createRenderPipeline: () => "pipeline",
+  createRenderPipeline: () => ({getBindGroupLayout: () => "sprite-layout"}),
   createBuffer: () => ({destroy() { submissions.push("buffer-destroy"); }}),
+  createTexture: () => ({createView: () => "texture-view", destroy() { submissions.push("texture-destroy"); }}),
+  createSampler: () => "sampler",
+  createBindGroup: () => "bind-group",
   createCommandEncoder: () => ({
     beginRenderPass: (descriptor) => {
       passes.push(descriptor);
-      return {setPipeline() {}, setVertexBuffer() {}, draw() {}, end() {}};
+      return {setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, draw: (count) => draws.push(count), end() {}};
     },
     finish: () => "command-buffer",
   }),
@@ -58,12 +63,18 @@ assert.deepEqual([canvas.width, canvas.height], [320, 180]);
 assert.deepEqual(canvas.calls[0], ["configure", {device, format: "bgra8unorm", alphaMode: "premultiplied"}]);
 assert.equal(backend.resize(0, 180), false);
 assert.equal(backend.clear(0x80402010), true);
+assert.equal(backend.uploadTexture(1, 2, 2, new Uint8Array(16).fill(255), 0), true);
+assert.equal(backend.uploadTexture(2, 2, 2, new Uint8Array(15), 0), false);
+assert.equal(textureWrites.length, 1);
 assert.equal(backend.pushClip(4, 2, 8, 8), true);
 assert.equal(backend.drawRect(0, 0, 16, 16, 0xff0000ff), true);
 assert.equal(backend.popClip(), true);
+assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 8, 4, 16, 16, 0x80ffffff, 0), true);
+assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 24, 4, 16, 16, 0xffffffff, 0), true);
 assert.equal(backend.present(), true);
 assert.deepEqual(submissions, [["command-buffer"]]);
-assert.equal(writes.length, 1);
+assert.equal(writes.length, 2);
+assert.deepEqual(draws, [6, 12]);
 assert.deepEqual(passes[0].colorAttachments[0].clearValue, {r: 16 / 255, g: 32 / 255, b: 64 / 255, a: 128 / 255});
 assert.deepEqual(backend.diagnostic(), {adapter_status: "ready", device_status: "ready", canvas_format: "bgra8unorm", logical_width: 320, logical_height: 180});
 resolveLost({reason: "destroyed"});
@@ -79,19 +90,27 @@ await assert.rejects(() => createWebGpuBackend({canvas}), (error) => error insta
 const hostCanvas = new FakeCanvas();
 const hostDevice = {
   lost: new Promise(() => {}),
-  queue: {submit() {}, writeBuffer() {}},
+  queue: {submit() {}, writeBuffer() {}, writeTexture() {}},
   createShaderModule: () => "shader",
-  createRenderPipeline: () => "pipeline",
+  createRenderPipeline: () => ({getBindGroupLayout: () => "sprite-layout"}),
   createBuffer: () => ({destroy() {}}),
-  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, draw() {}, end() {}}), finish: () => "host-command"}),
+  createTexture: () => ({createView: () => "texture-view", destroy() {}}),
+  createSampler: () => "sampler",
+  createBindGroup: () => "bind-group",
+  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, draw() {}, end() {}}), finish: () => "host-command"}),
 };
 const host = createBrowserHost({canvas: hostCanvas, navigator: {gpu: {requestAdapter: async () => ({requestDevice: async () => hostDevice}), getPreferredCanvasFormat: () => "rgba8unorm"}}});
 assert.deepEqual(await host.initializeWebGpu(64, 32), {adapter_status: "ready", device_status: "ready", canvas_format: "rgba8unorm", logical_width: 64, logical_height: 32});
 assert.equal(host.imports.env.up_host_gl_context_create(128, 72), Status.ok);
 assert.deepEqual(host.webgpu(), {adapter_status: "ready", device_status: "ready", canvas_format: "rgba8unorm", logical_width: 128, logical_height: 72});
 assert.equal(host.imports.env.up_host_gl_clear(0xff000000), Status.ok);
+const hostTexture = host.imports.env.up_host_gl_resource_create(1, 0);
+new Uint8Array(host.memory.buffer, 0, 16).fill(255);
+assert.equal(host.imports.env.up_host_gl_texture_upload(hostTexture, 2, 2, 0, 16, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4, 5, 8, 9, 0xffffffff, 0), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
+host.imports.env.up_host_gl_resource_destroy(1, hostTexture);
 host.imports.env.up_host_gl_context_destroy();
 assert.equal(host.webgpu(), null);
 console.log("browser-webgpu passed");
