@@ -1,0 +1,7 @@
+{
+  "version": 1,
+  "format": "wav",
+  "valid_wav_base64": "UklGRigAAABXQVZFZm10IBAAAAABAAEAQB8AAIA+AAACABAAZGF0YQQAAAAAAP9/",
+  "invalid_wav_base64": "bm9wZQ==",
+  "outcomes": {"load": "ok", "play": "ok", "stop": "ok", "stop_stale": "rejected", "invalid_load": "rejected"}
+}

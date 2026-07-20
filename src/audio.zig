@@ -6,7 +6,10 @@ const vorbis = @cImport({
     @cInclude("stb_vorbis.c");
 });
 
-const max_audio_bytes = 128 * 1024 * 1024;
+pub const stable_asset_diagnostic = "asset_load_failed:audio_v1";
+pub const stable_max_input_bytes = 32 * 1024 * 1024;
+pub const stable_max_decoded_frames = 4 * 1024 * 1024;
+const max_audio_bytes = stable_max_input_bytes;
 const max_ogg_channels = 8;
 const stream_buffer_frames = 16 * 1024;
 const stream_decode_frames = 1024;
@@ -26,9 +29,7 @@ pub const PlaybackHandle = struct { // borrows an AudioMixer playback; false fro
 };
 
 pub const SoundOptions = struct {
-    bus: ?BusHandle = null,
     volume: f32 = 1,
-    pan: f32 = 0,
     loop: bool = false,
 };
 
@@ -39,7 +40,7 @@ pub const MusicOptions = struct {
     loop: bool = true,
 };
 
-pub const Sound = struct { // owns decoded frames allocated by loadWav/loadOgg; call deinit after all mixer playback stops.
+pub const Sound = struct { // owns decoded frames allocated by loadWav; call deinit after all adapter playback stops.
     allocator: std.mem.Allocator,
     sample_rate: u32,
     frames: []AudioSample,
@@ -50,17 +51,18 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav/loadOgg; 
         return decodeWavSound(allocator, bytes);
     }
 
-    pub fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
+    fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         defer allocator.free(bytes);
         return decodeOggSound(allocator, bytes);
     }
 
     pub fn decodeWav(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+        if (bytes.len > stable_max_input_bytes) return error.AudioTooLarge;
         return decodeWavSound(allocator, bytes);
     }
 
-    pub fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+    fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
         return decodeOggSound(allocator, bytes);
     }
 
@@ -168,9 +170,8 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
 
     pub fn playSound(self: *AudioMixer, sound: *const Sound, options: SoundOptions) !PlaybackHandle {
         try requireVolume(options.volume);
-        try requirePan(options.pan);
         if (sound.frames.len == 0) return error.EmptySound;
-        const bus_handle = options.bus orelse sfxBus();
+        const bus_handle = sfxBus();
         _ = try self.getBus(bus_handle);
         var playback = Playback{
             .id = 0,
@@ -178,7 +179,7 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
             .paused = false,
             .bus = bus_handle,
             .volume = options.volume,
-            .pan = options.pan,
+            .pan = 0,
             .loop = options.loop,
             .kind = .{ .sound = .{ .sound = sound } },
         };
@@ -685,10 +686,12 @@ fn parseWav(bytes: []const u8) !WavInfo {
     }
     if (!fmt_seen or !data_seen) return error.InvalidWav;
     if (sample_rate == 0 or channels == 0 or block_align == 0) return error.InvalidWav;
-    if (channels > max_ogg_channels) return error.UnsupportedWav;
+    if (channels > 2) return error.UnsupportedWav;
     if (!supportedWav(format, bits_per_sample)) return error.UnsupportedWav;
+    if (block_align != channels * (bits_per_sample / 8) or data_len % block_align != 0) return error.InvalidWav;
     const frames = data_len / block_align;
     if (frames == 0) return error.EmptyWav;
+    if (frames > stable_max_decoded_frames) return error.AudioTooLarge;
     return .{
         .sample_rate = sample_rate,
         .channels = channels,
@@ -772,6 +775,47 @@ test "wav decode valid and invalid files" {
     try std.testing.expectError(error.InvalidWav, decodeWavSound(std.testing.allocator, "nope"));
 }
 
+test "stable audio fixture has equivalent load play stop outcomes" {
+    const Fixture = struct {
+        version: u32,
+        format: []const u8,
+        valid_wav_base64: []const u8,
+        invalid_wav_base64: []const u8,
+        outcomes: struct {
+            load: []const u8,
+            play: []const u8,
+            stop: []const u8,
+            stop_stale: []const u8,
+            invalid_load: []const u8,
+        },
+    };
+    var fixture = try std.json.parseFromSlice(Fixture, std.testing.allocator, @embedFile("fixtures/audio/stable-audio-v1.json"), .{});
+    defer fixture.deinit();
+    try std.testing.expectEqual(@as(u32, 1), fixture.value.version);
+    try std.testing.expectEqualStrings("wav", fixture.value.format);
+    try std.testing.expectEqualStrings("ok", fixture.value.outcomes.load);
+    try std.testing.expectEqualStrings("ok", fixture.value.outcomes.play);
+    try std.testing.expectEqualStrings("ok", fixture.value.outcomes.stop);
+    try std.testing.expectEqualStrings("rejected", fixture.value.outcomes.stop_stale);
+    try std.testing.expectEqualStrings("rejected", fixture.value.outcomes.invalid_load);
+    const valid_len = try std.base64.standard.Decoder.calcSizeForSlice(fixture.value.valid_wav_base64);
+    const valid = try std.testing.allocator.alloc(u8, valid_len);
+    defer std.testing.allocator.free(valid);
+    try std.base64.standard.Decoder.decode(valid, fixture.value.valid_wav_base64);
+    var sound = try Sound.decodeWav(std.testing.allocator, valid);
+    defer sound.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+    const handle = try mixer.playSound(&sound, .{});
+    try std.testing.expect(mixer.stop(handle));
+    try std.testing.expect(!mixer.stop(handle));
+    const invalid_len = try std.base64.standard.Decoder.calcSizeForSlice(fixture.value.invalid_wav_base64);
+    const invalid = try std.testing.allocator.alloc(u8, invalid_len);
+    defer std.testing.allocator.free(invalid);
+    try std.base64.standard.Decoder.decode(invalid, fixture.value.invalid_wav_base64);
+    try std.testing.expectError(error.InvalidWav, Sound.decodeWav(std.testing.allocator, invalid));
+}
+
 test "sound playback handle lifecycle and bus volume" {
     const frames = try std.testing.allocator.dupe(AudioSample, &.{.{ .left = 1, .right = 1 }});
     var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
@@ -815,13 +859,14 @@ test "mixer playback survives output recovery boundaries" {
     try std.testing.expectApproxEqAbs(@as(f32, 0.5), resumed[0].left, 0.0001);
 }
 
-test "playback pan and fades are sample-accurate" {
+test "internal playback pan and fades are sample-accurate" {
     const frames = try std.testing.allocator.dupe(AudioSample, &.{.{ .left = 1, .right = 1 }});
     var sound = Sound{ .allocator = std.testing.allocator, .sample_rate = 48_000, .frames = frames };
     defer sound.deinit();
     var mixer = try AudioMixer.init(std.testing.allocator, .{});
     defer mixer.deinit();
-    const handle = try mixer.playSound(&sound, .{ .loop = true, .pan = 1 });
+    const handle = try mixer.playSound(&sound, .{ .loop = true });
+    try std.testing.expect(try mixer.setPlaybackPan(handle, 1));
     var out: [2]AudioSample = undefined;
     try mixer.mix(&out);
     try std.testing.expectEqual(@as(f32, 0), out[0].left);
@@ -874,7 +919,8 @@ test "deterministic mixer hash covers bus pan and fades" {
     var mixer = try AudioMixer.init(std.testing.allocator, .{});
     defer mixer.deinit();
     try mixer.setBusVolume(AudioMixer.sfxBus(), 0.5);
-    const handle = try mixer.playSound(&sound, .{ .loop = true, .pan = -0.5, .volume = 0.8 });
+    const handle = try mixer.playSound(&sound, .{ .loop = true, .volume = 0.8 });
+    try std.testing.expect(try mixer.setPlaybackPan(handle, -0.5));
     try std.testing.expect(try mixer.fadePlayback(handle, 0.2, 3));
     var out: [6]AudioSample = undefined;
     try mixer.mix(&out);

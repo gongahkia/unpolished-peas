@@ -105,10 +105,7 @@ pub const assets = struct {
     pub const AtlasAnimationSpec = @import("atlas.zig").AnimationSpec;
     pub const Font = @import("font_asset.zig").Font;
     pub const Sound = @import("audio.zig").Sound;
-    pub const Music = @import("audio.zig").Music;
     pub const AssetStats = @import("assets.zig").AssetStats;
-    pub const AudioMixer = @import("audio.zig").AudioMixer;
-    pub const AudioSample = @import("audio.zig").AudioSample;
     pub const Animation = @import("atlas.zig").Animation;
     pub const AnimationFrame = @import("atlas.zig").AnimationFrame;
     pub const AnimationHandle = @import("atlas.zig").AnimationHandle;
@@ -120,7 +117,6 @@ pub const assets = struct {
     pub const animationState = @import("animation_state.zig");
     pub const AtlasFrame = @import("atlas.zig").AtlasFrame;
     pub const AtlasFrameHandle = @import("atlas.zig").AtlasFrameHandle;
-    pub const BusHandle = @import("audio.zig").BusHandle;
     pub const DrawSpriteOptions = @import("atlas.zig").DrawSpriteOptions;
     pub const SpriteSampling = @import("atlas.zig").Sampling;
     pub const FontGlyph = @import("font_asset.zig").Glyph;
@@ -128,7 +124,6 @@ pub const assets = struct {
     pub const FontLoadOptions = @import("font_asset.zig").LoadOptions;
     pub const ImageDecodeOptions = @import("image.zig").DecodeOptions;
     pub const ImageHandle = @import("assets.zig").ImageHandle;
-    pub const MusicOptions = @import("audio.zig").MusicOptions;
     pub const PlaybackHandle = @import("audio.zig").PlaybackHandle;
     pub const ReloadEvent = @import("assets.zig").ReloadEvent;
     pub const ReloadStatus = @import("assets.zig").ReloadStatus;
@@ -167,4 +162,9 @@ test "public API excludes removed and unsupported systems" {
     inline for (.{ "CameraBounds", "CameraDirector", "CameraFollow", "CameraHandle", "CameraRig", "CameraShake", "CameraShot", "CameraViewport" }) |name| {
         try std.testing.expect(!@hasDecl(graphics, name));
     }
+    inline for (.{ "Music", "MusicOptions", "AudioMixer", "AudioSample", "BusHandle" }) |name| {
+        try std.testing.expect(!@hasDecl(assets, name));
+    }
+    inline for (.{ "loadOgg", "decodeOgg" }) |name| try std.testing.expect(!@hasDecl(assets.Sound, name));
+    inline for (.{ "bus", "pan" }) |name| try std.testing.expect(!@hasField(assets.SoundOptions, name));
 }

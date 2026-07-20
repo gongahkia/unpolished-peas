@@ -44,13 +44,13 @@ const Game = struct {
         pixels[1] = up.core.Color.rgb(113, 232, 162);
         pixels[2] = up.core.Color.rgb(113, 232, 162);
         pixels[3] = up.core.Color.rgb(255, 198, 74);
-        const frames = try allocator.alloc(up.assets.AudioSample, 2);
-        errdefer allocator.free(frames);
-        frames[0] = .{ .left = 0.2, .right = 0.2 };
-        frames[1] = .{ .left = -0.2, .right = -0.2 };
+        const wav = [_]u8{
+            'R', 'I', 'F', 'F', 40, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, 1, 0,
+            0x80, 0xbb, 0, 0, 0, 0x77, 1, 0, 2, 0, 16, 0, 'd', 'a', 't', 'a', 4, 0, 0, 0, 0x9a, 0x19, 0x66, 0xe6,
+        };
         return .{
             .sprite = .{ .allocator = allocator, .width = 2, .height = 2, .pixels = pixels },
-            .blip = .{ .allocator = allocator, .sample_rate = 48_000, .frames = frames },
+            .blip = try up.assets.Sound.decodeWav(allocator, &wav),
         };
     }
 

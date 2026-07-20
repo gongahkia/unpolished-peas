@@ -19,8 +19,4 @@ pub fn main() !void {
     const sound = try assets.trySound(sound_handle);
     if (sound.frames.len == 0) return error.InvalidRawAudio;
 
-    const ogg_path = try assets.assetPath(allocator, "tone.ogg");
-    defer allocator.free(ogg_path);
-    var music = try up.assets.Music.openOgg(allocator, ogg_path);
-    defer music.deinit();
 }

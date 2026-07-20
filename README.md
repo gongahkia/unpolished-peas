@@ -148,7 +148,7 @@ zig build new -- ../my-game
 `run-bounce` renders `zig-out/bounce.ppm`.
 `run-bounce-sdl` opens an SDL3 window.
 `dev-bounce` opens a PNG/text live-reload demo.
-`run-audio` opens a WAV/OGG audio demo.
+`run-audio` opens a WAV sound demo.
 `run-explicit-loop` runs the advanced core explicit-loop example; `test-explicit-loop-wasm` compiles the same source for Wasm.
 `run-atlas` opens a programmatic atlas scene demo.
 `run-camera` opens the resizable multi-viewport camera demo.
@@ -190,7 +190,7 @@ Prefix any `peas` workflow with `--json` for one versioned stdout result object 
 `zig build peas -- run [project-directory] -- [game-args]` discovers the project from the selected path, validates `assets/`, and starts the Debug runtime with forwarded game arguments.
 When `peas run` or `peas test` encounters a known Zig engine/config diagnostic, it preserves the native text and appends a concise `peas recovery` hint.
 
-Mixer playback supports `pan`, `setPlaybackPan`, and sample-frame `fadePlayback`; OGG music preallocates a bounded decode buffer, and SDL output reopens after device removal or format changes without resetting mixer playback state.
+The [stable audio-asset contract](docs/guides/audio-assets.md) defines WAV source limits, play/stop controls, and browser activation.
 
 Bundled read-only assets resolve from `assets/` beside the executable or one directory above it; `UP_ASSET_ROOT` or absolute `Config.asset_root` override this for development and embedding. Writable data uses `Context.appDataPath`.
 
@@ -246,9 +246,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `RuntimeMetrics`, `InspectorMetricsPanel`, `runtimeMetrics`
 
 - `Sound`
-- `Music`
-- `AudioMixer`
-- `BusHandle`
+- `SoundOptions`
 - `PlaybackHandle`
 - `unpolished-peas-sdl3.playGame`, `unpolished-peas-sdl3.Context`
 - `unpolished-peas-sdl3.run` for lower-level control
