@@ -6,4 +6,6 @@ The object deliberately excludes the raw user agent, hardware adapter name, driv
 
 `?renderer=webgl2` reports the selected WebGL 2 host after initialization. A forced `?renderer=webgpu` request reports `selected_renderer: null`, `capabilities.webgpu: "unsupported"`, and a recovery instruction to select WebGL 2 because WebGPU is outside the current [capability matrix](capabilities.md).
 
+The internal WebGPU canvas lifecycle records only adapter/device state, the preferred canvas format, and logical dimensions; it never records hardware names, driver data, or device IDs. Package renderer selection remains governed by the capability matrix.
+
 Run `zig build test-browser-renderer-diagnostics` for schema checks and `zig build test-browser-chromium` for the packaged artifact path.
