@@ -27,6 +27,9 @@ pub const PlatformConfig = struct {
         if (self.limits.channel_capacity == 0 or self.limits.channel_capacity > max_channel_capacity) return error.InvalidChannelCapacity;
         if (self.limits.event_capacity == 0 or self.limits.event_capacity > max_event_capacity) return error.InvalidEventCapacity;
         if (self.limits.poll_work_budget == 0 or self.limits.poll_work_budget > max_poll_work_budget) return error.InvalidPollWorkBudget;
+        if (self.limits.channel_capacity < self.limits.session_capacity) return error.InvalidChannelCapacity;
+        if (self.limits.event_capacity < self.limits.service_capacity) return error.InvalidEventCapacity;
+        if (self.limits.poll_work_budget > self.limits.event_capacity) return error.InvalidPollWorkBudget;
     }
 };
 
@@ -39,4 +42,7 @@ test "platform configuration rejects unsupported versions and capacities" {
     try @import("std").testing.expectError(error.InvalidProviderCapacity, (PlatformConfig{ .limits = .{ .provider_capacity = 0 } }).validate());
     try @import("std").testing.expectError(error.InvalidSessionCapacity, (PlatformConfig{ .limits = .{ .session_capacity = max_session_capacity + 1 } }).validate());
     try @import("std").testing.expectError(error.InvalidPollWorkBudget, (PlatformConfig{ .limits = .{ .poll_work_budget = 0 } }).validate());
+    try @import("std").testing.expectError(error.InvalidChannelCapacity, (PlatformConfig{ .limits = .{ .session_capacity = 2, .channel_capacity = 1 } }).validate());
+    try @import("std").testing.expectError(error.InvalidEventCapacity, (PlatformConfig{ .limits = .{ .service_capacity = 2, .event_capacity = 1 } }).validate());
+    try @import("std").testing.expectError(error.InvalidPollWorkBudget, (PlatformConfig{ .limits = .{ .event_capacity = 32, .poll_work_budget = 33 } }).validate());
 }

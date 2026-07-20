@@ -20,7 +20,7 @@ pub const packages = [_]PackageSpec{
     .{ .id = .c_abi, .dependency_name = "c_abi", .module_name = "minna-san-c-abi", .root_source_path = "packages/c-abi/src/c_abi.zig", .test_artifact_name = "c-abi-tests", .imports = &.{ .core, .runtime } },
     .{ .id = .optional_reference, .dependency_name = "optional_reference", .module_name = "minna-san-optional-reference", .root_source_path = "packages/optional-reference/src/optional_reference.zig", .test_artifact_name = "optional-reference-tests", .imports = &.{ .core, .protocol, .transport, .topology, .state, .runtime, .c_abi } },
     .{ .id = .networking, .dependency_name = "networking", .module_name = "minna-san-networking", .root_source_path = "packages/networking/src/networking.zig", .test_artifact_name = "networking-tests", .imports = &.{} },
-    .{ .id = .services, .dependency_name = "services", .module_name = "minna-san-services", .root_source_path = "packages/services/src/services.zig", .test_artifact_name = "services-tests", .imports = &.{.networking} },
+    .{ .id = .services, .dependency_name = "services", .module_name = "minna-san-services", .root_source_path = "packages/services/src/services.zig", .test_artifact_name = "services-tests", .imports = &.{ .core, .networking } },
 };
 
 pub fn package(id: boundary.Package) *const PackageSpec {

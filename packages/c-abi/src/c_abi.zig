@@ -57,11 +57,22 @@ pub const CConnection = opaque {};
 pub const CPeer = opaque {};
 pub const CChannel = opaque {};
 pub const CAuthoritativeSession = opaque {};
+pub const CPlatformConfig = extern struct {
+    version: u32,
+    provider_capacity: usize,
+    service_capacity: usize,
+    session_capacity: usize,
+    channel_capacity: usize,
+    event_capacity: usize,
+    poll_work_budget: usize,
+};
+pub const default_platform_config = platform_config_to_c(.{});
 pub const CSdkConfig = extern struct {
     abi_version: CAbiVersion,
     capability_bits: u32,
     connection_capacity: usize,
     channel_capacity: usize,
+    platform_config: CPlatformConfig,
     clock_context: ?*anyopaque,
     now: ?CNowFn,
     allocator: CAllocator,
@@ -801,11 +812,47 @@ pub fn validate_diagnostics_config(config: ?*const CDiagnosticsConfig) CResult {
     return .ok;
 }
 
+pub fn platform_config_from_c(config: CPlatformConfig) core.PlatformConfig {
+    return .{
+        .version = config.version,
+        .limits = .{
+            .provider_capacity = config.provider_capacity,
+            .service_capacity = config.service_capacity,
+            .session_capacity = config.session_capacity,
+            .channel_capacity = config.channel_capacity,
+            .event_capacity = config.event_capacity,
+            .poll_work_budget = config.poll_work_budget,
+        },
+    };
+}
+
+pub fn platform_config_to_c(config: core.PlatformConfig) CPlatformConfig {
+    return .{
+        .version = config.version,
+        .provider_capacity = config.limits.provider_capacity,
+        .service_capacity = config.limits.service_capacity,
+        .session_capacity = config.limits.session_capacity,
+        .channel_capacity = config.limits.channel_capacity,
+        .event_capacity = config.limits.event_capacity,
+        .poll_work_budget = config.limits.poll_work_budget,
+    };
+}
+
+pub fn validate_platform_config(config: ?*const CPlatformConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    platform_config_from_c(value.*).validate() catch return .invalid_argument;
+    return .ok;
+}
+
 pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
     const value = config orelse return .invalid_argument;
     if (value.abi_version != c_abi_version) return .version_mismatch;
     if (value.now == null or value.allocator.allocate == null or value.allocator.release == null) return .invalid_argument;
     if (value.capability_bits & ~all_capability_bits != 0) return .invalid_argument;
+    const platform_config = platform_config_from_c(value.platform_config);
+    platform_config.validate() catch return .invalid_argument;
+    if (value.connection_capacity > platform_config.limits.session_capacity) return .invalid_argument;
+    if (value.channel_capacity > platform_config.limits.channel_capacity) return .invalid_argument;
     var capabilities = core.CapabilityConfig{};
     inline for (std.meta.fields(core.Capability)) |field| {
         const capability: core.Capability = @enumFromInt(field.value);
@@ -813,6 +860,44 @@ pub fn validate_sdk_config(config: ?*const CSdkConfig) CResult {
     }
     capabilities.validate() catch return .unsupported;
     return .ok;
+}
+
+test "C platform configuration maps the bounded core schema" {
+    const mapped = platform_config_from_c(default_platform_config);
+    try mapped.validate();
+    try std.testing.expectEqualDeep(default_platform_config, platform_config_to_c(mapped));
+    var invalid = default_platform_config;
+    invalid.channel_capacity = invalid.session_capacity - 1;
+    try std.testing.expectEqual(CResult.invalid_argument, validate_platform_config(&invalid));
+}
+
+test "C SDK configuration rejects capacities outside the platform schema" {
+    const Fixture = struct {
+        fn allocate(_: ?*anyopaque, _: usize) callconv(.c) ?*anyopaque {
+            return @ptrFromInt(1);
+        }
+
+        fn release(_: ?*anyopaque, _: [*c]u8, _: usize) callconv(.c) void {}
+
+        fn now(_: ?*anyopaque) callconv(.c) core.TimeNs {
+            return 0;
+        }
+    };
+    var config = CSdkConfig{
+        .abi_version = c_abi_version,
+        .capability_bits = c_capability_transport,
+        .connection_capacity = 1,
+        .channel_capacity = 1,
+        .platform_config = default_platform_config,
+        .clock_context = null,
+        .now = Fixture.now,
+        .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
+    };
+    config.connection_capacity = config.platform_config.session_capacity + 1;
+    try std.testing.expectEqual(CResult.invalid_argument, validate_sdk_config(&config));
+    config.connection_capacity = 1;
+    config.channel_capacity = config.platform_config.channel_capacity + 1;
+    try std.testing.expectEqual(CResult.invalid_argument, validate_sdk_config(&config));
 }
 
 fn config_result_code(config: ?*const CSdkConfig) c_int {
@@ -825,7 +910,7 @@ fn state_from_handle(handle: ?*CSdk) ?*CSdkState {
 }
 
 fn build_sdk(config: *const CSdkConfig, clock: core.Clock) runtime.Sdk {
-    var builder = runtime.SdkConfigBuilder.init().with_clock(clock);
+    var builder = runtime.SdkConfigBuilder.init().with_clock(clock).with_platform_config(platform_config_from_c(config.platform_config));
     inline for (std.meta.fields(core.Capability)) |field| {
         const capability: core.Capability = @enumFromInt(field.value);
         if (config.capability_bits & (@as(u32, 1) << @intCast(field.value)) != 0) builder = builder.enable(capability);
@@ -883,6 +968,16 @@ pub export fn minna_san_result_category(result_code: c_int) c_int {
 
 pub export fn minna_san_result_message(result_code: c_int) [*:0]const u8 {
     return result_message(result_code);
+}
+
+pub export fn minna_san_platform_config_init(out_config: ?*CPlatformConfig) c_int {
+    const output = out_config orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = default_platform_config;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_platform_config_validate(config: ?*const CPlatformConfig) c_int {
+    return @intFromEnum(validate_platform_config(config));
 }
 
 pub export fn minna_san_sdk_validate_config(config: ?*const CSdkConfig) c_int {
@@ -1787,6 +1882,7 @@ test "bounded C ABI fuzz corpus retains safe boundary behavior" {
         .capability_bits = c_capability_transport,
         .connection_capacity = 1,
         .channel_capacity = 1,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -1930,6 +2026,7 @@ test "C SDK lifecycle creates validates starts polls stops and destroys" {
         .capability_bits = c_capability_transport,
         .connection_capacity = 2,
         .channel_capacity = 2,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -2009,6 +2106,7 @@ test "C SDK lifecycle rejects invalid configuration and ordering" {
         .capability_bits = c_capability_packet_protection,
         .connection_capacity = 0,
         .channel_capacity = 0,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = null,
         .allocator = .{ .context = null, .allocate = null, .release = null },
@@ -2093,6 +2191,7 @@ test "C authoritative sessions enforce admission and client capacity" {
         .capability_bits = c_capability_transport | c_capability_topology,
         .connection_capacity = 1,
         .channel_capacity = 0,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -2141,6 +2240,7 @@ test "C topology workflow joins an authoritative session and transitions direct 
         .capability_bits = c_capability_transport | c_capability_topology,
         .connection_capacity = 1,
         .channel_capacity = 0,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },
@@ -2319,6 +2419,7 @@ test "C runtime metrics snapshots and log callbacks preserve bounded runtime par
         .capability_bits = c_capability_transport,
         .connection_capacity = 1,
         .channel_capacity = 1,
+        .platform_config = default_platform_config,
         .clock_context = null,
         .now = Fixture.now,
         .allocator = .{ .context = null, .allocate = Fixture.allocate, .release = Fixture.release },

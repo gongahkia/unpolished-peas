@@ -41,6 +41,7 @@ pub const allowed_imports = [_]Import{
     .{ .importer = .optional_reference, .imported = .state },
     .{ .importer = .optional_reference, .imported = .runtime },
     .{ .importer = .optional_reference, .imported = .c_abi },
+    .{ .importer = .services, .imported = .core },
     .{ .importer = .services, .imported = .networking },
 };
 

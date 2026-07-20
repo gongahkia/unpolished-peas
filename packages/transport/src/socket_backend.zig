@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const core = @import("minna-san-core");
 
 pub const SocketKind = enum {
     udp,
@@ -20,6 +21,7 @@ pub const SocketError = error{
     SystemResources,
     ProtocolNotSupported,
     SocketTypeNotSupported,
+    InvalidPlatformConfiguration,
     PlatformFailure,
 };
 
@@ -29,6 +31,11 @@ pub const Socket = struct {
 
     pub fn open(kind: SocketKind) SocketError!Socket {
         return open_with_family(kind, std.posix.AF.INET);
+    }
+
+    pub fn open_with_platform_config(kind: SocketKind, config: core.PlatformConfig) SocketError!Socket {
+        config.validate() catch return error.InvalidPlatformConfiguration;
+        return open(kind);
     }
 
     pub fn open_with_family(kind: SocketKind, family: u32) SocketError!Socket {
@@ -89,4 +96,8 @@ test "socket backend preserves known and unknown platform error classes" {
     } else {
         try std.testing.expectEqual(SocketPlatform.posix, native_platform());
     }
+}
+
+test "socket backend rejects invalid platform configuration before opening" {
+    try std.testing.expectError(error.InvalidPlatformConfiguration, Socket.open_with_platform_config(.udp, .{ .limits = .{ .session_capacity = 2, .channel_capacity = 1 } }));
 }
