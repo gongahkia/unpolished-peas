@@ -59,6 +59,7 @@ jobs:
           path: |
             zig-out/diagnostics/browser-renderer-parity/**
             zig-out/diagnostics/browser-chromium/**
+            zig-out/diagnostics/browser-firefox/**
             zig-out/performance/browser-workloads-*.json
           if-no-files-found: warn
 

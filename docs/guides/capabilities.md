@@ -62,3 +62,4 @@ Preview browser coverage is selected here, separately from the required stable-c
 | Matrix row | Runner | Renderer check |
 | --- | --- | --- |
 | `chromium-webgpu` | `macos-15-intel` | `zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads` |
+| `firefox-webgl2` | `macos-15-intel` | `zig build test-browser-firefox` |

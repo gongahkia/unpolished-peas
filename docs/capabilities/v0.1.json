@@ -140,7 +140,8 @@
           "id": "webgl2",
           "label": "WebGL 2",
           "status": "preview",
-          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"extended": {"runner": "macos-15-intel", "command": "zig build test-browser-firefox"}}
         },
         {
           "id": "webgpu",

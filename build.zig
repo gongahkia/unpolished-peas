@@ -241,6 +241,10 @@ pub fn build(b: *std.Build) void {
     browser_chromium_test.setCwd(b.path("."));
     const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
     browser_chromium_test_step.dependOn(&browser_chromium_test.step);
+    const browser_firefox_test = b.addSystemCommand(&.{"script/test_browser_firefox.sh"});
+    browser_firefox_test.setCwd(b.path("."));
+    const browser_firefox_test_step = b.step("test-browser-firefox", "Run Firefox against the browser bundle");
+    browser_firefox_test_step.dependOn(&browser_firefox_test.step);
     const browser_workloads_test = b.addSystemCommand(&.{"script/test_browser_workloads.sh"});
     browser_workloads_test.setCwd(b.path("."));
     const browser_workloads_test_step = b.step("test-browser-workloads", "Run the versioned workload catalog in Chromium WebGL 2");
