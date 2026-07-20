@@ -18,5 +18,4 @@ pub fn main() !void {
     const sound_handle = try assets.loadSound("blip.wav");
     const sound = try assets.trySound(sound_handle);
     if (sound.frames.len == 0) return error.InvalidRawAudio;
-
 }
