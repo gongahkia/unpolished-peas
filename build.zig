@@ -249,6 +249,14 @@ pub fn build(b: *std.Build) void {
     browser_firefox_test.setCwd(b.path("."));
     const browser_firefox_test_step = b.step("test-browser-firefox", "Run Firefox against the browser bundle");
     browser_firefox_test_step.dependOn(&browser_firefox_test.step);
+    const safari_webdriver_contract_test = b.addSystemCommand(&.{ "node", "script/test_safari_webdriver_contract.mjs" });
+    safari_webdriver_contract_test.setCwd(b.path("."));
+    const safari_webdriver_contract_test_step = b.step("test-safari-webdriver-contract", "Test Safari WebDriver forced-renderer contract checks");
+    safari_webdriver_contract_test_step.dependOn(&safari_webdriver_contract_test.step);
+    const browser_safari_test = b.addSystemCommand(&.{"script/test_browser_safari.sh"});
+    browser_safari_test.setCwd(b.path("."));
+    const browser_safari_test_step = b.step("test-browser-safari", "Run Safari WebDriver against forced browser renderers");
+    browser_safari_test_step.dependOn(&browser_safari_test.step);
     const browser_workloads_test = b.addSystemCommand(&.{"script/test_browser_workloads.sh"});
     browser_workloads_test.setCwd(b.path("."));
     const browser_workloads_test_step = b.step("test-browser-workloads", "Run the versioned workload catalog in Chromium WebGL 2");
