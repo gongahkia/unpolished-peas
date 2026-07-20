@@ -32,6 +32,8 @@ struct Output { @builtin(position) position: vec4f, @location(0) uv: vec2f, @loc
 @vertex fn main(@location(0) position: vec2f, @location(1) uv: vec2f, @location(2) color: vec4f) -> Output { return Output(vec4f(position, 0.0, 1.0), uv, color); }
 @fragment fn fragment(input: Output) -> @location(0) vec4f { return textureSample(image, image_sampler, input.uv) * input.color; }
 `;
+const alphaBlend = {color: {srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}};
+const additiveBlend = {color: {srcFactor: "src-alpha", dstFactor: "one", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}};
 
 function intersect(a, b) {
   const x = Math.max(a.x, b.x);
@@ -58,28 +60,30 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   } catch {
     throw new WebGpuBackendError("device_request_failed");
   }
-  if (!device?.queue?.submit || !device.queue.writeBuffer || !device.queue.writeTexture || !device.createCommandEncoder || !device.createShaderModule || !device.createRenderPipeline || !device.createBuffer || !device.createTexture || !device.createSampler || !device.createBindGroup) throw new WebGpuBackendError("device_unavailable");
+  if (!device?.queue?.submit || !device.queue.writeBuffer || !device.queue.writeTexture || !device.createCommandEncoder || !device.createShaderModule || !device.createRenderPipeline || !device.createBuffer || !device.createTexture || !device.createSampler || !device.createBindGroup || !device.createBindGroupLayout || !device.createPipelineLayout) throw new WebGpuBackendError("device_unavailable");
   const format = gpu.getPreferredCanvasFormat();
   if (typeof format !== "string" || format.length === 0) throw new WebGpuBackendError("canvas_format_unavailable");
   const shader = device.createShaderModule({code: vertexShader});
-  const pipeline = device.createRenderPipeline({
+  const pipelines = [alphaBlend, additiveBlend].map((blend) => device.createRenderPipeline({
     layout: "auto",
     vertex: {module: shader, buffers: [{arrayStride: floatsPerVertex * 4, attributes: [{shaderLocation: 0, offset: 0, format: "float32x2"}, {shaderLocation: 1, offset: 8, format: "float32x4"}]}]},
-    fragment: {module: shader, targets: [{format, blend: {color: {srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}}}]},
+    fragment: {module: shader, targets: [{format, blend}]},
     primitive: {topology: "triangle-list"},
-  });
+  }));
   const spriteModule = device.createShaderModule({code: spriteShader});
-  const spritePipeline = device.createRenderPipeline({
-    layout: "auto",
+  const spriteBindGroupLayout = device.createBindGroupLayout({entries: [{binding: 0, visibility: globalThis.GPUShaderStage?.FRAGMENT ?? 0x2, texture: {}}, {binding: 1, visibility: globalThis.GPUShaderStage?.FRAGMENT ?? 0x2, sampler: {}}]});
+  const spritePipelineLayout = device.createPipelineLayout({bindGroupLayouts: [spriteBindGroupLayout]});
+  const spritePipelines = [alphaBlend, additiveBlend].map((blend) => device.createRenderPipeline({
+    layout: spritePipelineLayout,
     vertex: {module: spriteModule, buffers: [{arrayStride: spriteFloatsPerVertex * 4, attributes: [{shaderLocation: 0, offset: 0, format: "float32x2"}, {shaderLocation: 1, offset: 8, format: "float32x2"}, {shaderLocation: 2, offset: 16, format: "float32x4"}]}]},
-    fragment: {module: spriteModule, targets: [{format, blend: {color: {srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}}}]},
+    fragment: {module: spriteModule, targets: [{format, blend}]},
     primitive: {topology: "triangle-list"},
-  });
+  }));
   const usage = globalThis.GPUBufferUsage?.VERTEX | globalThis.GPUBufferUsage?.COPY_DST || 0x28;
   const vertexBuffer = device.createBuffer({size: maxRectangles * verticesPerRectangle * floatsPerVertex * 4, usage});
   const spriteBuffer = device.createBuffer({size: maxSprites * verticesPerRectangle * spriteFloatsPerVertex * 4, usage});
-  const batches = Array.from({length: maxBatches}, () => ({kind: "", offset: 0, count: 0, texture: null}));
-  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, batchCount: 0, textures: new Map()};
+  const batches = Array.from({length: maxBatches}, () => ({kind: "", offset: 0, count: 0, texture: null, blend: 0}));
+  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], blend: 0, blends: [], vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, batchCount: 0, textures: new Map()};
   const reportLoss = (info) => {
     if (state.destroyed) return;
     state.deviceStatus = "lost";
@@ -113,7 +117,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
 
   function appendBatch(kind, offset, texture = null) {
     const previous = state.batchCount === 0 ? null : batches[state.batchCount - 1];
-    if (previous?.kind === kind && previous.texture === texture) return previous;
+    if (previous?.kind === kind && previous.texture === texture && previous.blend === state.blend) return previous;
     if (state.batchCount === maxBatches) return null;
     const batch = batches[state.batchCount];
     state.batchCount += 1;
@@ -121,6 +125,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     batch.offset = offset;
     batch.count = 0;
     batch.texture = texture;
+    batch.blend = state.blend;
     return batch;
   }
 
@@ -160,7 +165,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       texture = device.createTexture({size: {width, height, depthOrArrayLayers: 1}, format: "rgba8unorm", usage: textureUsage});
       device.queue.writeTexture({texture}, pixels, {bytesPerRow: width * 4, rowsPerImage: height}, {width, height, depthOrArrayLayers: 1});
       const sampler = device.createSampler({magFilter: sampling === 0 ? "nearest" : "linear", minFilter: sampling === 0 ? "nearest" : "linear"});
-      const bindGroup = device.createBindGroup({layout: spritePipeline.getBindGroupLayout(0), entries: [{binding: 0, resource: texture.createView()}, {binding: 1, resource: sampler}]});
+      const bindGroup = device.createBindGroup({layout: spriteBindGroupLayout, entries: [{binding: 0, resource: texture.createView()}, {binding: 1, resource: sampler}]});
       state.textures.set(handle, {texture, bindGroup, width, height, sampling});
       return true;
     } catch {
@@ -224,8 +229,21 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     return true;
   }
 
+  function pushBlend(mode) {
+    if (state.destroyed || !Number.isInteger(mode) || mode < 0 || mode > 1) return false;
+    state.blends.push(state.blend);
+    state.blend = mode;
+    return true;
+  }
+
+  function popBlend() {
+    if (state.destroyed || state.blends.length === 0) return false;
+    state.blend = state.blends.pop();
+    return true;
+  }
+
   function present() {
-    if (state.destroyed || state.deviceStatus !== "ready" || state.width === 0 || state.height === 0) return false;
+    if (state.destroyed || state.deviceStatus !== "ready" || state.width === 0 || state.height === 0 || state.clips.length !== 0 || state.blends.length !== 0) return false;
     try {
       const encoder = device.createCommandEncoder();
       const pass = encoder.beginRenderPass({colorAttachments: [{view: context.getCurrentTexture().createView(), clearValue: state.clear, loadOp: "clear", storeOp: "store"}]});
@@ -234,10 +252,10 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       for (let index = 0; index < state.batchCount; index += 1) {
         const batch = batches[index];
         if (batch.kind === "primitive") {
-          pass.setPipeline(pipeline);
+          pass.setPipeline(pipelines[batch.blend]);
           pass.setVertexBuffer(0, vertexBuffer, batch.offset * floatsPerVertex * 4);
         } else {
-          pass.setPipeline(spritePipeline);
+          pass.setPipeline(spritePipelines[batch.blend]);
           pass.setBindGroup(0, batch.texture.bindGroup);
           pass.setVertexBuffer(0, spriteBuffer, batch.offset * spriteFloatsPerVertex * 4);
         }
@@ -279,6 +297,8 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     drawSprite,
     pushClip,
     popClip,
+    pushBlend,
+    popBlend,
     present,
     destroy,
     isLost: () => state.deviceStatus === "lost",

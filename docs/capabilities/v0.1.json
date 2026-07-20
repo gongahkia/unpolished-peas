@@ -125,8 +125,9 @@
         {
           "id": "webgpu",
           "label": "WebGPU",
-          "status": "unsupported",
-          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"]
+          "status": "preview",
+          "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
+          "ci": {"extended": {"runner": "macos-15-intel", "command": "zig build test-browser-renderer-parity"}}
         }
       ]
     },
