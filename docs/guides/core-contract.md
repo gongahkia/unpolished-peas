@@ -13,7 +13,7 @@ The root package exposes only the six named capability namespaces below. Direct 
 | `graphics` | drawing (`Canvas`, `Sprite`, batches, render commands), presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, text, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, and audio loading |
 | `preview.developer` | `InputReplay`, `InputReplayButton`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
-| `testSupport` | `TempProject`, `Clock`, `Buttons`, `applyTopDownButtons`, `frameSeconds`, `StateHash`, `GoldenOptions`, `RendererCaptureTolerance`, `cross_backend_renderer_tolerance`, `expectRendererCapturesMatch`, `RendererConformance`, `canvasHash`, `assertGolden`, `assertReplayHash`, `expectError` | deterministic headless, replay, and golden-test hooks |
+| `testSupport` | `TempProject`, `Clock`, `HeadlessFrame`, `HeadlessCapture`, `HeadlessGameRunner`, `Buttons`, `applyTopDownButtons`, `frameSeconds`, `StateHash`, `GoldenOptions`, `RendererCaptureTolerance`, `cross_backend_renderer_tolerance`, `expectRendererCapturesMatch`, `RendererConformance`, `canvasHash`, `assertGolden`, `assertReplayHash`, `expectError` | deterministic headless, replay, and golden-test hooks |
 
 `unpolished-peas-sdl3` is the desktop adapter, not a core-game import. `unpolished-peas-wasm-core` is the Wasm build of the core namespace. `unpolished-peas-tools` and `zig build peas -- package <target>` provide packaging hooks; `--package web` emits the static browser bundle. Browser renderer availability is governed by the [capability matrix](capabilities.md), not by a game-side browser API.
 
@@ -29,7 +29,7 @@ Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, `Music`, and `
 
 ## Rendering, input, assets, and determinism
 
-`Canvas` records deterministic 2D primitives, sprites, atlas frames, and built-in text. `Camera2D` is a position-and-zoom transform; games own follow, shake, cuts, and multi-camera behavior. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, renderer-capture comparison, and golden diagnostics.
+`Canvas` records deterministic 2D primitives, sprites, atlas frames, and built-in text. `Camera2D` is a position-and-zoom transform; games own follow, shake, cuts, and multi-camera behavior. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessGameRunner(Game)` runs scripted `HeadlessFrame` values against `GameProtocol`, captures the canvas hash, and retains submitted shared render commands. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, renderer-capture comparison, and golden diagnostics.
 
 `Input` reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. Audio is game-owned data loaded as `Sound` or `Music` and played through the runtime adapter; the core preserves bounded decoding and error returns. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 

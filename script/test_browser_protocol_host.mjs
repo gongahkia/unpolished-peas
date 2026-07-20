@@ -9,3 +9,5 @@ assert.equal(runtime.up_browser_protocol_frame(1 / 60, 0.5), Status.ok);
 assert.equal(runtime.up_browser_protocol_failure_phase(), -1);
 assert.equal(runtime.up_browser_protocol_frame(Number.NaN, 0), Status.rejected);
 assert.equal(runtime.up_browser_protocol_failure_phase(), 1);
+assert.equal(runtime.up_browser_protocol_headless_image_hash(), runtime.up_browser_protocol_headless_expected_image_hash());
+assert.equal(runtime.up_browser_protocol_headless_command_count(), 1);

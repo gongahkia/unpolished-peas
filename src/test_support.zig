@@ -6,6 +6,7 @@ const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
 const render = @import("render.zig");
+const app = @import("app.zig");
 
 pub const TempProject = struct { // owns a temporary project directory and its absolute path; call deinit once.
     allocator: std.mem.Allocator,
@@ -47,6 +48,76 @@ pub const Clock = struct {
         return @as(f32, @floatFromInt(self.now_ms)) / 1_000;
     }
 };
+
+pub const HeadlessFrame = struct {
+    buttons: u8 = 0,
+    elapsed_seconds: f32 = 1.0 / 60.0,
+    interpolation_alpha: f32 = 0,
+};
+
+pub const HeadlessCapture = struct {
+    image_hash: u64,
+    commands: []const render.Command,
+};
+
+pub fn HeadlessGameRunner(comptime Game: type) type {
+    return struct {
+        const Self = @This();
+
+        allocator: std.mem.Allocator,
+        canvas: Canvas,
+        input: Input = .{},
+        context: app.GameContext = undefined,
+        game: Game = .{},
+        protocol: app.GameProtocol(Game) = undefined,
+        renderer: render.HeadlessRenderer = undefined,
+        commands: render.CommandBuffer,
+
+        pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !*Self {
+            const self = try allocator.create(Self);
+            errdefer allocator.destroy(self);
+            self.* = .{
+                .allocator = allocator,
+                .canvas = try Canvas.init(allocator, width, height),
+                .commands = render.CommandBuffer.init(allocator),
+            };
+            errdefer self.canvas.deinit();
+            errdefer self.commands.deinit();
+            self.context = .withRuntime(&self.input, &self.canvas);
+            self.protocol = app.GameProtocol(Game).bind(&self.game);
+            self.renderer = render.HeadlessRenderer.init(allocator, &self.canvas);
+            errdefer self.renderer.deinit();
+            try self.protocol.init(&self.context);
+            return self;
+        }
+
+        pub fn deinit(self: *Self) void {
+            const allocator = self.allocator;
+            self.renderer.deinit();
+            self.commands.deinit();
+            self.canvas.deinit();
+            allocator.destroy(self);
+        }
+
+        pub fn run(self: *Self, frames: []const HeadlessFrame) !void {
+            for (frames) |frame| {
+                applyTopDownButtons(&self.input, frame.buttons);
+                try self.protocol.update(&self.context, frame.elapsed_seconds);
+                try self.protocol.draw(&self.context, frame.interpolation_alpha);
+                self.input.beginFrame();
+            }
+        }
+
+        pub fn submit(self: *Self, commands: []const render.Command) !void {
+            for (commands) |command| try self.commands.append(command);
+            try self.renderer.submit(commands);
+        }
+
+        pub fn capture(self: *const Self) HeadlessCapture {
+            return .{ .image_hash = canvasHash(self.canvas), .commands = self.commands.commands.items };
+        }
+    };
+}
 
 pub const Buttons = struct {
     pub const left: u8 = 1;
@@ -288,6 +359,34 @@ test "test support creates projects and applies deterministic input" {
     try std.testing.expect(input.isDown(.left));
     try std.testing.expect(input.isDown(.action));
     try std.testing.expect(!input.isDown(.right));
+}
+
+test "headless runner executes scripted protocol frames and captures commands" {
+    const Game = struct {
+        x: i32 = 0,
+
+        pub fn init(_: *@This(), _: *app.GameContext) !void {}
+
+        pub fn update(self: *@This(), context: *app.GameContext, _: f32) !void {
+            if (context.input.isDown(.right)) self.x += 1;
+        }
+
+        pub fn draw(self: *@This(), context: *app.GameContext) !void {
+            const canvas = try context.requireCanvas();
+            canvas.clear(Color.black);
+            canvas.fillRect(self.x, 1, 1, 1, Color.white);
+        }
+    };
+    var runner = try HeadlessGameRunner(Game).init(std.testing.allocator, 4, 3);
+    defer runner.deinit();
+    try runner.run(&.{ .{ .buttons = Buttons.right }, .{ .buttons = Buttons.right } });
+    const commands = [_]render.Command{.{ .rect = .{ .x = 0, .y = 0, .w = 1, .h = 1, .color = Color.rgb(255, 198, 74) } }};
+    try runner.submit(&commands);
+    const capture = runner.capture();
+    try std.testing.expectEqual(@as(i32, 2), runner.game.x);
+    try std.testing.expect(capture.image_hash != 0);
+    try std.testing.expectEqual(@as(usize, 1), capture.commands.len);
+    try std.testing.expectEqual(render.Command{ .rect = commands[0].rect }, capture.commands[0]);
 }
 
 test "test support hashes canvases and asserts failures" {
