@@ -12,8 +12,7 @@ cleanup() {
 trap cleanup EXIT
 
 git -C "$root" worktree add --detach --quiet "$worktree" HEAD
-cp "$root/build.zig" "$worktree/build.zig"
-cp "$root/contracts/v1_public_api.zig" "$worktree/contracts/v1_public_api.zig"
+git -C "$root" diff --binary HEAD | git -C "$worktree" apply
 printf '\npub const PreReleaseContractProbe = struct {};\n' >> "$worktree/packages/core/src/core.zig"
 (cd "$worktree" && zig build api-contract)
 PUBLIC_API_COMPATIBILITY_ROOT="$worktree" sh "$root/script/check_public_api_regression.sh"

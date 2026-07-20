@@ -22,80 +22,65 @@ pub fn build(b: *std.Build) void {
     const runtime_spec = workspace.package(.runtime);
     const c_abi_spec = workspace.package(.c_abi);
     const optional_reference_spec = workspace.package(.optional_reference);
+    const networking_spec = workspace.package(.networking);
+    const services_spec = workspace.package(.services);
+    var workspace_modules: [workspace.packages.len]?*std.Build.Module = .{null} ** workspace.packages.len;
     const core = b.createModule(.{
         .root_source_file = b.path(core_spec.root_source_path),
         .target = target,
         .optimize = optimize,
+        .imports = workspace.moduleImports(b, .core, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.core)] = core;
     const protocol = b.createModule(.{
         .root_source_file = b.path(protocol_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = core_spec.module_name, .module = core }},
+        .imports = workspace.moduleImports(b, .protocol, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.protocol)] = protocol;
     const transport = b.createModule(.{
         .root_source_file = b.path(transport_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = protocol_spec.module_name, .module = protocol },
-        },
+        .imports = workspace.moduleImports(b, .transport, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.transport)] = transport;
     const topology = b.createModule(.{
         .root_source_file = b.path(topology_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = protocol_spec.module_name, .module = protocol },
-            .{ .name = transport_spec.module_name, .module = transport },
-        },
+        .imports = workspace.moduleImports(b, .topology, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.topology)] = topology;
     const state = b.createModule(.{
         .root_source_file = b.path(state_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = protocol_spec.module_name, .module = protocol },
-        },
+        .imports = workspace.moduleImports(b, .state, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.state)] = state;
     const runtime = b.createModule(.{
         .root_source_file = b.path(runtime_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = protocol_spec.module_name, .module = protocol },
-            .{ .name = transport_spec.module_name, .module = transport },
-            .{ .name = topology_spec.module_name, .module = topology },
-            .{ .name = state_spec.module_name, .module = state },
-        },
+        .imports = workspace.moduleImports(b, .runtime, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.runtime)] = runtime;
     const c_abi = b.createModule(.{
         .root_source_file = b.path(c_abi_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = runtime_spec.module_name, .module = runtime },
-        },
+        .imports = workspace.moduleImports(b, .c_abi, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.c_abi)] = c_abi;
     const optional_reference = b.createModule(.{
         .root_source_file = b.path(optional_reference_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{
-            .{ .name = core_spec.module_name, .module = core },
-            .{ .name = protocol_spec.module_name, .module = protocol },
-            .{ .name = transport_spec.module_name, .module = transport },
-            .{ .name = topology_spec.module_name, .module = topology },
-            .{ .name = state_spec.module_name, .module = state },
-            .{ .name = runtime_spec.module_name, .module = runtime },
-            .{ .name = c_abi_spec.module_name, .module = c_abi },
-        },
+        .imports = workspace.moduleImports(b, .optional_reference, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.optional_reference)] = optional_reference;
     const public_api = b.createModule(.{
         .root_source_file = b.path("contracts/v1_public_api.zig"),
         .target = target,
@@ -122,16 +107,19 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const networking = b.createModule(.{
-        .root_source_file = b.path("packages/networking/src/networking.zig"),
+        .root_source_file = b.path(networking_spec.root_source_path),
         .target = target,
         .optimize = optimize,
+        .imports = workspace.moduleImports(b, .networking, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.networking)] = networking;
     const services = b.createModule(.{
-        .root_source_file = b.path("packages/services/src/services.zig"),
+        .root_source_file = b.path(services_spec.root_source_path),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "minna-san-networking", .module = networking }},
+        .imports = workspace.moduleImports(b, .services, &workspace_modules),
     });
+    workspace_modules[workspace.moduleSlot(.services)] = services;
     const test_harness = b.createModule(.{
         .root_source_file = b.path("contracts/test_harness.zig"),
         .target = target,
