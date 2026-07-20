@@ -12,6 +12,8 @@ const Game = struct {
 
 `GameContext` exposes read-only normalized `input`. Runtime hosts populate a canvas capability; games obtain it with `requireCanvas`, which fails outside a runtime host. The host owns asset, audio, and presentation handling. This keeps callback signatures backend-neutral while allowing core drawing. During `update`, `elapsed_seconds` and `ctx.elapsed_seconds` are the same non-negative finite fixed simulation step; `ctx.interpolation_alpha` is zero. During `draw`, `ctx.interpolation_alpha` is the remaining fixed-step fraction in `[0, 1]`.
 
+Desktop and browser hosts use an accumulator with a five-step catch-up cap. A non-paused frame clamps elapsed wall time to five fixed steps, runs zero to five `update` calls at the fixed step in seconds, then runs exactly one `draw` with the remaining interpolation fraction. Desktop selects the fixed rate through `sdl.Config.fixed_hz`; the browser rate is 60 Hz. A paused frame runs no updates and draws with zero alpha; its accumulated remainder is retained. Browser visibility changes enter that pause state and reset the timestamp, so time while hidden is discarded rather than replayed on resume.
+
 `sdl.playGame(Game)` dispatches a game with `GameContext` callbacks through this protocol. Legacy `sdl.Context` callbacks remain available for existing games; `sdl.run` remains the explicit-loop escape hatch.
 
 The browser bundle runs the same callback fixture through its Wasm host. Select `?renderer=webgl2` explicitly; a `webgpu` request fails visibly because WebGPU is unsupported in the current [capability matrix](capabilities.md).

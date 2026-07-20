@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const abi_version: u32 = 1;
+pub const abi_version: u32 = 2;
 
 pub const Binding = struct {
     name: []const u8,
@@ -45,6 +45,7 @@ pub const exports = [_]Binding{
     .{ .name = "up_browser_abi_version" },
     .{ .name = "up_browser_init" },
     .{ .name = "up_browser_frame" },
+    .{ .name = "up_browser_set_paused" },
     .{ .name = "up_browser_resize" },
     .{ .name = "up_browser_cancel_frame" },
     .{ .name = "up_browser_gl_context_create" },
@@ -365,11 +366,12 @@ pub fn teardown() void {
 }
 
 test "browser host contract keeps versioned category coverage" {
-    try std.testing.expectEqual(@as(u32, 1), abi_version);
+    try std.testing.expectEqual(@as(u32, 2), abi_version);
     try std.testing.expectEqual(@as(usize, 31), imports.len);
-    try std.testing.expectEqual(@as(usize, 34), exports.len);
+    try std.testing.expectEqual(@as(usize, 35), exports.len);
     try std.testing.expectEqualStrings("up_host_gl_resource_create", imports[4].name);
-    try std.testing.expectEqualStrings("up_browser_shutdown", exports[33].name);
+    try std.testing.expectEqualStrings("up_browser_set_paused", exports[3].name);
+    try std.testing.expectEqualStrings("up_browser_shutdown", exports[34].name);
     try std.testing.expectEqual(@as(u32, 0), scheduleFrame());
     try std.testing.expectEqual(@as(i32, -2), createContext(64, 32));
     try std.testing.expectEqual(@as(u32, 0), createResource(.texture, 16));

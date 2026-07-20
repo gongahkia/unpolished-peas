@@ -4,6 +4,7 @@ const up = @import("api.zig");
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
+const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
@@ -1368,7 +1369,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
         return err;
     }, config.presentation_mode);
-    var clock = up.StepClock.init(config.fixed_hz);
+    var clock = frame_timing.Scheduler.init(config.fixed_hz);
     var actions = try up.ActionMap.init(allocator, config.actions);
     defer actions.deinit();
     actions.attachAppData(data_path);
@@ -1469,10 +1470,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         last_ticks = now;
         const paused = shouldPause(config.pause_policy, desktop_state);
 
-        const timing = frameTiming(&clock, dt, paused);
+        const timing = clock.frame(dt, paused);
         var step: u32 = 0;
         while (step < timing.update_steps) : (step += 1) {
-            ctx.dt = timing.update_dt;
+            ctx.dt = timing.update_seconds;
             ctx.alpha = 0;
             const update_timer = profiler.scope(.update);
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
@@ -1488,7 +1489,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
-        ctx.dt = timing.draw_dt;
+        ctx.dt = timing.draw_seconds;
         ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
         callLoopDraw(state, callbacks, &ctx) catch |err| {
@@ -1503,7 +1504,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
         inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
-        dev.drawOverlay(&canvas, timing.draw_dt, ctx.frame);
+        dev.drawOverlay(&canvas, timing.draw_seconds, ctx.frame);
         var screenshot_path: ?[]u8 = null;
         if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
@@ -2010,17 +2011,17 @@ test "frame timing runs fixed updates before one variable draw" {
             self.count += 1;
         }
     };
-    var clock = up.StepClock.init(10);
-    const timing = frameTiming(&clock, 0.25, false);
+    var clock = frame_timing.Scheduler.init(10);
+    const timing = clock.frame(0.25, false);
     var ctx: Context = undefined;
     var state = State{};
     var step: u32 = 0;
     while (step < timing.update_steps) : (step += 1) {
-        ctx.dt = timing.update_dt;
+        ctx.dt = timing.update_seconds;
         ctx.alpha = 0;
         try callLoopUpdate(&state, .{ .update = State.update }, &ctx);
     }
-    ctx.dt = timing.draw_dt;
+    ctx.dt = timing.draw_seconds;
     ctx.alpha = timing.alpha;
     try callLoopDraw(&state, .{ .draw = State.draw }, &ctx);
     try std.testing.expectEqualSlices(u8, "uud", state.calls[0..state.count]);
@@ -2030,11 +2031,11 @@ test "frame timing runs fixed updates before one variable draw" {
     try std.testing.expectEqual(@as(f32, 0), state.alphas[0]);
     try std.testing.expectEqual(@as(f32, 0), state.alphas[1]);
     try std.testing.expect(std.math.approxEqAbs(f32, 0.5, state.alphas[2], 0.0001));
-    const paused = frameTiming(&clock, 1, true);
+    const paused = clock.frame(1, true);
     try std.testing.expectEqual(@as(u32, 0), paused.update_steps);
-    try std.testing.expectEqual(@as(f32, 0), paused.draw_dt);
+    try std.testing.expectEqual(@as(f32, 0), paused.draw_seconds);
     try std.testing.expectEqual(@as(f32, 0), paused.alpha);
-    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.alpha(), 0.0001));
+    try std.testing.expect(std.math.approxEqAbs(f32, 0.5, clock.clock.alpha(), 0.0001));
 }
 
 test "GPU recovery state bounds reset and loss transitions" {
@@ -2302,19 +2303,6 @@ fn shouldPause(policy: PausePolicy, state: DesktopState) bool {
         .unfocused => !state.focused,
         .minimized => state.minimized,
     };
-}
-
-const FrameTiming = struct {
-    update_steps: u32,
-    update_dt: f32,
-    draw_dt: f32,
-    alpha: f32,
-};
-
-fn frameTiming(clock: *up.StepClock, elapsed: f32, paused: bool) FrameTiming {
-    if (paused) return .{ .update_steps = 0, .update_dt = clock.step_seconds, .draw_dt = 0, .alpha = 0 };
-    const draw_dt = clock.frameDelta(elapsed);
-    return .{ .update_steps = clock.push(draw_dt), .update_dt = clock.step_seconds, .draw_dt = draw_dt, .alpha = clock.alpha() };
 }
 
 const FailurePhase = enum {

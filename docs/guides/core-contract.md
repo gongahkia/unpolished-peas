@@ -23,7 +23,7 @@ Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetSto
 
 `GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes a checked core canvas capability. The desktop adapter owns asset, audio, and presentation handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
 
-Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. `StepClock` clamps a frame delta to its fixed-step budget and exposes the remaining interpolation fraction through `alpha`.
+Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. Hosts clamp elapsed wall time to five fixed steps, run fixed `update` calls before one `draw`, and expose the remaining interpolation fraction through `alpha`. Desktop reads its step rate from `sdl.Config.fixed_hz`; browser uses 60 Hz. Paused frames run no updates with zero alpha, retaining the accumulator remainder; browser visibility pauses discard hidden elapsed time on resume.
 
 Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, `Music`, and `AssetStore` require their documented `deinit` call. Validation and loading failures return errors; the contract does not convert them to successful fallback assets.
 

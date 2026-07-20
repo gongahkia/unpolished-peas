@@ -2,6 +2,7 @@ const std = @import("std");
 const contract = @import("contract.zig");
 const up = @import("unpolished-peas");
 const protocol_game = @import("protocol-game");
+const frame_timing = @import("frame-timing");
 
 pub const target_triple = "wasm32-freestanding";
 
@@ -11,6 +12,9 @@ var input: up.input.Input = .{};
 var game_context: up.core.GameContext = undefined;
 var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
 var protocol_failure: ?up.core.GameFailure = null;
+var scheduler = frame_timing.Scheduler.init(frame_timing.default_fixed_hz);
+var last_timestamp_ms: ?f64 = null;
+var paused = false;
 
 pub const HostCallbacks = struct {
     context: *anyopaque,
@@ -49,22 +53,44 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
         protocol_failure = protocol.lastFailure();
         return @intFromEnum(contract.Status.rejected);
     };
+    scheduler = .init(frame_timing.default_fixed_hz);
+    last_timestamp_ms = null;
     protocol_failure = null;
     frame_token = contract.scheduleFrame();
     return @intFromEnum(contract.Status.ok);
 }
 
-pub export fn up_browser_frame(_: f64) void {
-    protocol.update(&game_context, 1.0 / 60.0) catch {
-        protocol_failure = protocol.lastFailure();
-        return;
-    };
-    protocol.draw(&game_context, 0) catch {
+pub export fn up_browser_frame(timestamp_ms: f64) void {
+    const timing = scheduler.frame(elapsedSeconds(timestamp_ms), paused);
+    var step: u32 = 0;
+    while (step < timing.update_steps) : (step += 1) {
+        protocol.update(&game_context, timing.update_seconds) catch {
+            protocol_failure = protocol.lastFailure();
+            return;
+        };
+    }
+    protocol.draw(&game_context, timing.alpha) catch {
         protocol_failure = protocol.lastFailure();
         return;
     };
     protocol_failure = null;
     frame_token = contract.scheduleFrame();
+}
+
+pub export fn up_browser_set_paused(value: u32) i32 {
+    if (value > 1) return @intFromEnum(contract.Status.invalid_argument);
+    paused = value == 1;
+    last_timestamp_ms = null;
+    return @intFromEnum(contract.Status.ok);
+}
+
+fn elapsedSeconds(timestamp_ms: f64) f32 {
+    if (!std.math.isFinite(timestamp_ms)) return 0;
+    const previous = last_timestamp_ms;
+    last_timestamp_ms = timestamp_ms;
+    if (previous == null) return scheduler.clock.step_seconds;
+    if (timestamp_ms < previous.?) return 0;
+    return @floatCast((timestamp_ms - previous.?) / 1000);
 }
 
 pub export fn up_browser_protocol_failure_phase() i32 {
@@ -219,4 +245,23 @@ test "browser runtime boundary forwards validated resize state" {
     try std.testing.expectEqual(@as(u32, 128), state.width);
     try std.testing.expectEqual(@as(u32, 72), state.height);
     try std.testing.expectError(error.InvalidCanvasSize, runtime.resize(0, 72));
+}
+
+test "browser runtime uses shared fixed-step timing and pause semantics" {
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.invalid_argument)), up_browser_set_paused(2));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_set_paused(0));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_init(64, 48));
+    input.set(.right, true);
+    up_browser_frame(0);
+    up_browser_frame(250);
+    try std.testing.expectEqual(@as(u32, 2), game.draw_calls);
+    try std.testing.expect(std.math.approxEqAbs(f32, 28, game.position.x, 0.0001));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_set_paused(1));
+    up_browser_frame(1_000);
+    try std.testing.expectEqual(@as(u32, 3), game.draw_calls);
+    try std.testing.expect(std.math.approxEqAbs(f32, 28, game.position.x, 0.0001));
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_set_paused(0));
+    up_browser_frame(2_000);
+    try std.testing.expectEqual(@as(u32, 4), game.draw_calls);
+    try std.testing.expect(std.math.approxEqAbs(f32, 28 + 40.0 / 60.0, game.position.x, 0.0001));
 }
