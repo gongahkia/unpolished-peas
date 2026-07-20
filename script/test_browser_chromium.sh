@@ -55,6 +55,9 @@ cd "$tmp"
 "$pw" --session "$session" mousedown
 "$pw" --session "$session" keydown w
 "$pw" -s="$session" eval '() => { const input = window.unpolishedPeas?.host.input(); return Boolean(window.unpolishedPeas?.runtime && input?.down[0] && input.pointerDown[0] && Number.isFinite(input.pointer.canvasX) && Number.isFinite(input.pointer.canvasY)); }' | grep -F true
+if [ "$game" = topdown ]; then
+    "$pw" -s="$session" eval '() => { const runtime = window.unpolishedPeas.runtime; return runtime.up_browser_topdown_render_status() === 0 && runtime.up_browser_topdown_player_y() < 48; }' | grep -F true
+fi
 "$pw" -s="$session" eval '() => { window.dispatchEvent(new Event("blur")); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0]; }' | grep -F true
 "$pw" --session "$session" mouseup
 "$pw" -s="$session" eval '() => window.unpolishedPeas.host.storage().phase' | grep -F ready
@@ -87,6 +90,9 @@ case "$webgpu_state" in
 esac
 if [ "$webgpu_ready" -eq 1 ]; then
 capture_artifacts webgpu
+if [ "$game" = topdown ]; then
+    "$pw" -s="$session" eval '() => { const runtime = window.unpolishedPeas.runtime; return runtime.up_browser_topdown_render_status() === 0 && Number.isFinite(runtime.up_browser_topdown_player_x()) && Number.isFinite(runtime.up_browser_topdown_player_y()); }' | grep -F true
+fi
 "$pw" -s="$session" click 'canvas[data-unpolished-peas]'
 "$pw" --session "$session" mousedown
 "$pw" --session "$session" keydown w

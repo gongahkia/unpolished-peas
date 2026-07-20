@@ -17,7 +17,11 @@ case "$out" in /*) ;; *) out="$repo/$out" ;; esac
 stage=$(mktemp -d)
 trap 'rm -rf "$stage"' EXIT HUP INT TERM
 cd "$repo"
-zig build browser -p "$stage"
+case "$game" in
+    bounce) browser_step=browser ;;
+    topdown) browser_step=browser-topdown ;;
+esac
+zig build "$browser_step" -p "$stage"
 package="$out/unpolished-peas-$game-web"
 rm -rf "$package"
 mkdir -p "$package/assets"
