@@ -13,7 +13,41 @@ permissions:
   contents: write
 
 jobs:
+  capability-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.select.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        run: python3 script/capability_matrix.py --github-output "$GITHUB_OUTPUT"
+  release-capability:
+    needs: capability-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.capability-matrix.outputs.release) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.id == 'linux-sdl_gpu'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - run: ${{ matrix.command }}
+        env:
+          UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/release-capability-${{ matrix.id }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-capability-${{ matrix.id }}
+          path: |
+            zig-out/diagnostics/**
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+          if-no-files-found: warn
   release-gate:
+    needs: release-capability
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

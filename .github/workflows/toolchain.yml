@@ -9,7 +9,6 @@ jobs:
     runs-on: ubuntu-latest
     outputs:
       pull_request: ${{ steps.select.outputs.pull_request }}
-      extended: ${{ steps.select.outputs.extended }}
     steps:
       - uses: actions/checkout@v4
       - id: select
@@ -37,31 +36,6 @@ jobs:
             zig-out/**/*.png
             zig-out/**/*.ppm
             zig-out/diagnostics/**/*
-          if-no-files-found: warn
-
-  browser-renderer-parity:
-    if: github.event_name != 'pull_request'
-    needs: capability-matrix
-    strategy:
-      fail-fast: false
-      matrix: ${{ fromJSON(needs.capability-matrix.outputs.extended) }}
-    runs-on: ${{ matrix.runner }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.15.2
-      - run: ${{ matrix.command }}
-      - if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: browser-renderer-parity-${{ matrix.id }}
-          path: |
-            zig-out/diagnostics/browser-renderer-parity/**
-            zig-out/diagnostics/browser-chromium/**
-            zig-out/diagnostics/browser-firefox/**
-            zig-out/diagnostics/browser-safari/**
-            zig-out/performance/browser-workloads-*.json
           if-no-files-found: warn
 
   downstream-package:
