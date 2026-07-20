@@ -280,6 +280,15 @@ jobs:
           zig build run-bounce-sdl -- --frames 2
       - shell: pwsh
         run: script/test_protocol_desktop_fixture.ps1
+      - if: always()
+        shell: pwsh
+        run: script/record_performance_artifacts.ps1
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-artifacts-windows-2022
+          path: zig-out/performance/*
+          if-no-files-found: warn
       - if: failure()
         uses: actions/upload-artifact@v4
         with:

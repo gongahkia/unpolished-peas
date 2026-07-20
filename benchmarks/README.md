@@ -12,6 +12,8 @@ Baseline changes require a recorded run from the same target and a version incre
 
 `zig build -Doptimize=ReleaseFast benchmark-workloads` emits a bounded (16 KiB) JSON artifact. `script/record_performance_artifacts.sh` records it as `zig-out/performance/workloads-<os>-<architecture>.json` with a same-name `.diagnostics.log` sidecar; an execution failure leaves the sidecar and returns the runner's nonzero status. Schema v1 records the headless renderer, OS, architecture, workload version, per-workload resolution/warm-up/sample count, average frame time, command count, allocation indicators, and a combined canvas hash.
 
+On Windows, run `pwsh -File script/record_performance_artifacts.ps1`; it records the same engine, proof-game, and workload artifacts as `workloads-windows-x86_64.json` without a Unix shell dependency.
+
 ## Browser workload artifacts
 
 `zig build benchmark-browser-workloads` records `browser-workloads-<browser>-webgl2.json` and `browser-workloads-<browser>-webgpu.json` under `zig-out/performance/`; the matrix-selected Chromium job uploads both. Set `UP_BROWSER=chromium`, `firefox`, or `webkit` to select the Playwright engine and `UP_RENDERERS` to select forced renderers. The artifact keeps the native workload shape while adding browser name/version and actual renderer selection; allocation metrics are `null` with explicit `unavailable` availability because browser JavaScript allocation counters are not portable.
