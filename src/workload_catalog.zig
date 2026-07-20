@@ -50,6 +50,76 @@ pub const Summary = struct {
     workload_count: usize,
     frame_count: u64,
     combined_hash: u64,
+    measurements: [required_workload_ids.len]Measurement,
+};
+
+pub const Measurement = struct {
+    workload_index: usize,
+    width: u32,
+    height: u32,
+    warmup_frames: u32,
+    sample_count: u32,
+    frame_time_ns: u64,
+    command_count: usize,
+    frame_allocation_events: u64,
+    frame_allocated_bytes: u64,
+};
+
+const CountingAllocator = struct {
+    parent: std.mem.Allocator,
+    allocation_events: u64 = 0,
+    allocated_bytes: u64 = 0,
+
+    const vtable: std.mem.Allocator.VTable = .{
+        .alloc = alloc,
+        .resize = resize,
+        .remap = remap,
+        .free = free,
+    };
+
+    fn init(parent: std.mem.Allocator) CountingAllocator {
+        return .{ .parent = parent };
+    }
+
+    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+        return .{ .ptr = self, .vtable = &vtable };
+    }
+
+    fn reset(self: *CountingAllocator) void {
+        self.allocation_events = 0;
+        self.allocated_bytes = 0;
+    }
+
+    fn record(self: *CountingAllocator, bytes: usize) void {
+        self.allocation_events +|= 1;
+        self.allocated_bytes +|= bytes;
+    }
+
+    fn alloc(context: *anyopaque, len: usize, alignment: std.mem.Alignment, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(context));
+        const result = self.parent.rawAlloc(len, alignment, ret_addr);
+        if (result != null) self.record(len);
+        return result;
+    }
+
+    fn resize(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) bool {
+        const self: *CountingAllocator = @ptrCast(@alignCast(context));
+        const resized = self.parent.rawResize(memory, alignment, new_len, ret_addr);
+        if (resized and new_len > memory.len) self.record(new_len - memory.len);
+        return resized;
+    }
+
+    fn remap(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, new_len: usize, ret_addr: usize) ?[*]u8 {
+        const self: *CountingAllocator = @ptrCast(@alignCast(context));
+        const result = self.parent.rawRemap(memory, alignment, new_len, ret_addr);
+        if (result != null and new_len > memory.len) self.record(new_len - memory.len);
+        return result;
+    }
+
+    fn free(context: *anyopaque, memory: []u8, alignment: std.mem.Alignment, ret_addr: usize) void {
+        const self: *CountingAllocator = @ptrCast(@alignCast(context));
+        self.parent.rawFree(memory, alignment, ret_addr);
+    }
 };
 
 pub fn run(allocator: std.mem.Allocator) !Summary {
@@ -62,22 +132,49 @@ pub fn run(allocator: std.mem.Allocator) !Summary {
     defer image.deinit();
     var combined_hash = std.hash.Fnv1a_64.init();
     var frame_count: u64 = 0;
+    var measurements: [required_workload_ids.len]Measurement = undefined;
     for (catalog.workloads) |workload| {
         try validateWorkload(workload);
-        var canvas = try up.graphics.Canvas.init(allocator, workload.width, workload.height);
+        var counter = CountingAllocator.init(allocator);
+        const measured_allocator = counter.allocator();
+        var canvas = try up.graphics.Canvas.init(measured_allocator, workload.width, workload.height);
         defer canvas.deinit();
-        var commands = up.graphics.RenderCommandBuffer.init(allocator);
+        var commands = up.graphics.RenderCommandBuffer.init(measured_allocator);
         defer commands.deinit();
         try appendOperations(&commands, workload, &image);
-        var renderer = up.graphics.HeadlessRenderer.init(allocator, &canvas);
+        var renderer = up.graphics.HeadlessRenderer.init(measured_allocator, &canvas);
         defer renderer.deinit();
-        const iterations = workload.warmup_frames + workload.frame_count;
-        for (0..iterations) |_| try renderer.submit(commands.commands.items);
+        for (0..workload.warmup_frames) |_| try renderer.submit(commands.commands.items);
+        counter.reset();
+        var timer = try std.time.Timer.start();
+        for (0..workload.frame_count) |_| try renderer.submit(commands.commands.items);
+        const elapsed = timer.read();
+        const measurement_index = requiredWorkloadIndex(workload.id) orelse return error.InvalidCatalog;
+        measurements[measurement_index] = .{
+            .workload_index = measurement_index,
+            .width = workload.width,
+            .height = workload.height,
+            .warmup_frames = workload.warmup_frames,
+            .sample_count = workload.frame_count,
+            .frame_time_ns = elapsed / workload.frame_count,
+            .command_count = commands.commands.items.len,
+            .frame_allocation_events = counter.allocation_events,
+            .frame_allocated_bytes = counter.allocated_bytes,
+        };
         const hash = up.testSupport.canvasHash(canvas);
         combined_hash.update(std.mem.asBytes(&hash));
-        frame_count += iterations;
+        frame_count += workload.warmup_frames + workload.frame_count;
     }
-    return .{ .workload_count = catalog.workloads.len, .frame_count = frame_count, .combined_hash = combined_hash.final() };
+    return .{ .workload_count = catalog.workloads.len, .frame_count = frame_count, .combined_hash = combined_hash.final(), .measurements = measurements };
+}
+
+pub fn workloadId(index: usize) []const u8 {
+    return required_workload_ids[index];
+}
+
+fn requiredWorkloadIndex(id: []const u8) ?usize {
+    for (required_workload_ids, 0..) |expected, index| if (std.mem.eql(u8, id, expected)) return index;
+    return null;
 }
 
 fn validateCatalog(catalog: Catalog) !void {
@@ -183,4 +280,13 @@ test "versioned catalog runs every stable-core workload headlessly" {
     try std.testing.expectEqual(@as(usize, 6), summary.workload_count);
     try std.testing.expectEqual(@as(u64, 120), summary.frame_count);
     try std.testing.expect(summary.combined_hash != 0);
+    for (summary.measurements, 0..) |measurement, index| {
+        try std.testing.expectEqual(index, measurement.workload_index);
+        try std.testing.expectEqualStrings(workloadId(index), required_workload_ids[index]);
+        try std.testing.expectEqual(@as(u32, 160), measurement.width);
+        try std.testing.expectEqual(@as(u32, 90), measurement.height);
+        try std.testing.expectEqual(@as(u32, 4), measurement.warmup_frames);
+        try std.testing.expectEqual(@as(u32, 16), measurement.sample_count);
+        try std.testing.expect(measurement.command_count > 0);
+    }
 }

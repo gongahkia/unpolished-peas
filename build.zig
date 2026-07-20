@@ -302,6 +302,7 @@ pub fn build(b: *std.Build) void {
     const scene_tests = addExample(b, "unpolished-peas-test-scenes", "examples/test_scenes.zig", target, optimize, peas, null);
     const proof_benchmark = addExample(b, "unpolished-peas-proof-benchmark", "examples/proof_benchmark.zig", target, optimize, peas, null);
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
+    const workload_benchmark = b.addExecutable(.{ .name = "unpolished-peas-workload-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/workload_benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "workload-catalog", .module = workload_catalog }} }) });
 
     const peas_cli = b.addExecutable(.{
         .name = "peas",
@@ -437,9 +438,10 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "test-scenes", "Run deterministic unpolished-peas scene hashes", scene_tests);
     addRunStep(b, "benchmark", "Record deterministic engine performance metrics", benchmark);
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
+    addRunStep(b, "benchmark-workloads", "Record versioned native workload metrics", workload_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, proof_benchmark, benchmark, workload_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -459,6 +461,11 @@ pub fn build(b: *std.Build) void {
     const workload_catalog_test_step = b.step("test-workload-catalog", "Run the versioned native rendering workload catalog");
     workload_catalog_test_step.dependOn(&run_workload_catalog_tests.step);
     test_step.dependOn(&run_workload_catalog_tests.step);
+    const workload_benchmark_tests = b.addTest(.{ .root_module = workload_benchmark.root_module });
+    const run_workload_benchmark_tests = b.addRunArtifact(workload_benchmark_tests);
+    const workload_benchmark_test_step = b.step("test-workload-benchmark", "Validate native workload benchmark artifacts");
+    workload_benchmark_test_step.dependOn(&run_workload_benchmark_tests.step);
+    test_step.dependOn(&run_workload_benchmark_tests.step);
     const core_api_snapshot_module = b.createModule(.{
         .root_source_file = b.path("src/core_api_snapshot.zig"),
         .target = target,
