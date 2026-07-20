@@ -8,4 +8,6 @@ The object deliberately excludes the raw user agent, hardware adapter name, driv
 
 The internal WebGPU canvas lifecycle records only adapter/device state, the preferred canvas format, and logical dimensions; it never records hardware names, driver data, or device IDs. Package renderer selection remains governed by the capability matrix.
 
+On WebGPU device loss, the host cancels scheduled frames, rejects subsequent rendering calls, and replaces the local renderer diagnostic with `context_status: "device_lost"`, `device_status: "lost"`, and `fallback_reason: "device_lost"`. The v0.1 policy is terminal restart: reload the package to create a new device; it does not migrate resources or switch renderers in place. WebGL 2 keeps its independent context-loss/restoration path.
+
 Run `zig build test-browser-renderer-diagnostics` for schema checks and `zig build test-browser-chromium` for the packaged artifact path.
