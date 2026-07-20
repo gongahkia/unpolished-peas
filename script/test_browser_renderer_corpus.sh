@@ -30,7 +30,7 @@ capture_renderer() {
 }
 
 cd "$repo"
-python3 script/capability_matrix.py --check-extended-row chromium-webgpu
+python3 script/capability_matrix.py --check-nightly-row chromium-webgpu
 script/package_web.sh "$tmp/package" --game bounce
 bundle="$tmp/package/unpolished-peas-bounce-web"
 python3 -m http.server 8124 --bind 127.0.0.1 --directory "$bundle" > "$tmp/server.log" 2>&1 &

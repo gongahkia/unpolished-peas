@@ -10,6 +10,7 @@ MATRIX_PATH = ROOT / "docs/capabilities/v0.1.json"
 GUIDE_PATH = ROOT / "docs/guides/capabilities.md"
 STATUSES = {"supported", "preview", "unsupported", "removed"}
 TARGETS = {"macos", "linux", "windows", "chromium", "firefox", "safari"}
+CI_CHANNELS = ("pull_request", "nightly", "release")
 CORE = {
     "lifecycle",
     "drawing_text",
@@ -48,8 +49,7 @@ def load_matrix():
     targets = matrix.get("targets")
     if not isinstance(targets, list) or {entry.get("id") for entry in targets} != TARGETS:
         fail("targets must define macos, linux, windows, chromium, firefox, and safari exactly once")
-    ci_rows = []
-    extended_rows = []
+    rows = {channel: [] for channel in CI_CHANNELS}
     for target in targets:
         if target.get("kind") not in {"desktop", "browser"}:
             fail(f"target {target.get('id')} has invalid kind")
@@ -67,42 +67,39 @@ def load_matrix():
             if set(renderer.get("stable_core", [])) != CORE or len(renderer["stable_core"]) != len(CORE):
                 fail(f"target {target.get('id')}/{renderer_id} must name every stable-core capability exactly once")
             ci = renderer.get("ci", {})
-            if not isinstance(ci, dict) or set(ci) - {"pull_request", "extended"}:
+            if not isinstance(ci, dict) or set(ci) - set(CI_CHANNELS):
                 fail(f"target {target.get('id')}/{renderer_id} has invalid CI entry")
-            pull_request = ci.get("pull_request")
-            if pull_request is not None:
-                if renderer["status"] != "supported":
-                    fail(f"target {target.get('id')}/{renderer_id} has pull-request CI but is not supported")
-                runner = pull_request.get("runner")
-                command = pull_request.get("command")
+            for channel in CI_CHANNELS:
+                entry = ci.get(channel)
+                if entry is None:
+                    continue
+                if channel in {"pull_request", "release"} and renderer["status"] != "supported":
+                    fail(f"target {target.get('id')}/{renderer_id} has {channel} CI but is not supported")
+                if channel == "nightly" and renderer["status"] in {"unsupported", "removed"}:
+                    fail(f"target {target.get('id')}/{renderer_id} has nightly CI but is not available")
+                runner = entry.get("runner")
+                command = entry.get("command")
                 if not isinstance(runner, str) or not isinstance(command, str):
-                    fail(f"target {target.get('id')}/{renderer_id} has invalid pull-request CI entry")
-                ci_rows.append({"id": f"{target['id']}-{renderer_id}", "runner": runner, "command": command})
-            extended = ci.get("extended")
-            if extended is not None:
-                if target["kind"] != "browser" or renderer["status"] != "preview":
-                    fail(f"target {target.get('id')}/{renderer_id} extended CI must be a preview browser renderer")
-                runner = extended.get("runner")
-                command = extended.get("command")
-                if not isinstance(runner, str) or not isinstance(command, str):
-                    fail(f"target {target.get('id')}/{renderer_id} has invalid extended CI entry")
-                extended_rows.append({"id": f"{target['id']}-{renderer_id}", "runner": runner, "command": command})
+                    fail(f"target {target.get('id')}/{renderer_id} has invalid {channel} CI entry")
+                rows[channel].append({"id": f"{target['id']}-{renderer_id}", "runner": runner, "command": command})
         if target["kind"] == "browser" and renderer_ids != {"webgl2", "webgpu"}:
             fail(f"browser target {target.get('id')} must define WebGL 2 and WebGPU")
-    if {entry["id"] for entry in ci_rows} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu"}:
+    if {entry["id"] for entry in rows["pull_request"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu"}:
         fail("pull-request CI must select every supported desktop SDL GPU target and no other target")
-    if {entry["id"] for entry in extended_rows} != {"chromium-webgpu", "firefox-webgl2", "safari-webgl2"}:
-        fail("extended CI must select Chromium WebGPU parity, Firefox WebGL 2 smoke, and Safari WebDriver exactly once")
+    if {entry["id"] for entry in rows["nightly"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu", "chromium-webgpu", "firefox-webgl2", "safari-webgl2"}:
+        fail("nightly CI must select documented desktop, Chromium WebGPU, Firefox WebGL 2, and Safari WebDriver coverage exactly once")
+    if {entry["id"] for entry in rows["release"]} != {"macos-sdl_gpu", "linux-sdl_gpu", "windows-sdl_gpu"}:
+        fail("release CI must select every supported desktop SDL GPU target and no other target")
     for target in targets:
         if target["kind"] != "browser":
             continue
         capabilities = {renderer["id"]: renderer["stable_core"] for renderer in target["renderers"]}
         if capabilities["webgl2"] != capabilities["webgpu"]:
             fail(f"browser target {target['id']} gives WebGL 2 and WebGPU different stable-core requirements")
-    return matrix, ci_rows, extended_rows
+    return matrix, rows
 
 
-def render(matrix, ci_rows, extended_rows):
+def render(matrix, rows):
     lines = [
         "# v0.1 capability matrix",
         "",
@@ -121,7 +118,7 @@ def render(matrix, ci_rows, extended_rows):
     for capability in matrix["stable_core"]:
         lines.append(f"| {capability['label']} | {capability['requirement']} |")
     lines += ["", "## Target and renderer status", "", "| Target | Renderer | Status | Required PR CI |", "| --- | --- | --- | --- |"]
-    ci_by_id = {row["id"]: row for row in ci_rows}
+    ci_by_id = {row["id"]: row for row in rows["pull_request"]}
     for target in matrix["targets"]:
         for renderer in target["renderers"]:
             row = ci_by_id.get(f"{target['id']}-{renderer['id']}")
@@ -138,10 +135,13 @@ def render(matrix, ci_rows, extended_rows):
         "| Matrix row | Runner | Core check |",
         "| --- | --- | --- |",
     ]
-    for row in ci_rows:
+    for row in rows["pull_request"]:
         lines.append(f"| `{row['id']}` | `{row['runner']}` | `{row['command']}` |")
-    lines += ["", "## Extended verification", "", "Preview browser coverage is selected here, separately from the required stable-core pull-request matrix.", "", "| Matrix row | Runner | Renderer check |", "| --- | --- | --- |"]
-    for row in extended_rows:
+    lines += ["", "## Nightly verification", "", "Slow platform and browser coverage is selected here, separately from the required stable-core pull-request matrix.", "", "| Matrix row | Runner | Check |", "| --- | --- | --- |"]
+    for row in rows["nightly"]:
+        lines.append(f"| `{row['id']}` | `{row['runner']}` | `{row['command']}` |")
+    lines += ["", "## Release verification", "", "Tag releases rerun every supported desktop capability before packaging.", "", "| Matrix row | Runner | Check |", "| --- | --- | --- |"]
+    for row in rows["release"]:
         lines.append(f"| `{row['id']}` | `{row['runner']}` | `{row['command']}` |")
     lines.append("")
     return "\n".join(lines)
@@ -151,23 +151,26 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--github-output", type=Path)
     parser.add_argument("--check-row")
-    parser.add_argument("--check-extended-row")
+    parser.add_argument("--check-nightly-row")
+    parser.add_argument("--check-release-row")
     parser.add_argument("--render", action="store_true")
     args = parser.parse_args()
     try:
-        matrix, ci_rows, extended_rows = load_matrix()
-        guide = render(matrix, ci_rows, extended_rows)
+        matrix, rows = load_matrix()
+        guide = render(matrix, rows)
         if args.render:
             sys.stdout.write(guide)
             return
         if GUIDE_PATH.read_text() != guide:
             fail("docs/guides/capabilities.md is not the current rendering of docs/capabilities/v0.1.json")
-        if args.check_row and args.check_row not in {row["id"] for row in ci_rows}:
+        if args.check_row and args.check_row not in {row["id"] for row in rows["pull_request"]}:
             fail(f"unknown pull-request capability row: {args.check_row}")
-        if args.check_extended_row and args.check_extended_row not in {row["id"] for row in extended_rows}:
-            fail(f"unknown extended capability row: {args.check_extended_row}")
+        if args.check_nightly_row and args.check_nightly_row not in {row["id"] for row in rows["nightly"]}:
+            fail(f"unknown nightly capability row: {args.check_nightly_row}")
+        if args.check_release_row and args.check_release_row not in {row["id"] for row in rows["release"]}:
+            fail(f"unknown release capability row: {args.check_release_row}")
         if args.github_output:
-            args.github_output.open("a").write(f"pull_request={json.dumps({'include': ci_rows}, separators=(',', ':'))}\nextended={json.dumps({'include': extended_rows}, separators=(',', ':'))}\n")
+            args.github_output.open("a").write("".join(f"{channel}={json.dumps({'include': rows[channel]}, separators=(',', ':'))}\n" for channel in CI_CHANNELS))
     except (OSError, ValueError) as error:
         print(f"capability matrix: {error}", file=sys.stderr)
         raise SystemExit(1)

@@ -1,0 +1,43 @@
+name: Nightly capability matrix
+
+on:
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  capability-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      nightly: ${{ steps.select.outputs.nightly }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        run: python3 script/capability_matrix.py --github-output "$GITHUB_OUTPUT"
+
+  nightly-capability:
+    needs: capability-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.capability-matrix.outputs.nightly) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.id == 'linux-sdl_gpu'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - run: ${{ matrix.command }}
+        env:
+          UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/nightly-${{ matrix.id }}
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-capability-${{ matrix.id }}
+          path: |
+            zig-out/diagnostics/**
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/performance/**
+          if-no-files-found: warn

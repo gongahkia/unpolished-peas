@@ -61,7 +61,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}}
+          "ci": {"pull_request": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}, "nightly": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}, "release": {"runner": "macos-15-intel", "command": "bash script/test_stable_core_capability.sh macos-sdl_gpu"}}
         },
         {
           "id": "opengl",
@@ -81,7 +81,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}}
+          "ci": {"pull_request": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}, "nightly": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}, "release": {"runner": "ubuntu-latest", "command": "bash script/test_stable_core_capability.sh linux-sdl_gpu"}}
         },
         {
           "id": "opengl",
@@ -101,7 +101,7 @@
           "label": "SDL GPU",
           "status": "supported",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"pull_request": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}}
+          "ci": {"pull_request": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}, "nightly": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}, "release": {"runner": "windows-2022", "command": "pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu"}}
         },
         {
           "id": "opengl",
@@ -127,7 +127,7 @@
           "label": "WebGPU",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"extended": {"runner": "macos-15-intel", "command": "zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads"}}
         }
       ]
     },
@@ -141,7 +141,7 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"extended": {"runner": "macos-15-intel", "command": "zig build test-browser-firefox"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "zig build test-browser-firefox"}}
         },
         {
           "id": "webgpu",
@@ -161,7 +161,7 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"extended": {"runner": "macos-15-intel", "command": "safaridriver --enable && zig build test-browser-safari"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "safaridriver --enable && zig build test-browser-safari"}}
         },
         {
           "id": "webgpu",
