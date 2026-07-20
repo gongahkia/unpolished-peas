@@ -214,7 +214,7 @@ GPU command primitives use one logical-pixel strokes, 32-segment circles, and so
 
 ## Camera And Presentation
 
-`Camera2D` provides position, zoom limits, rotation, viewport rectangles, world bounds, nearest or bilinear image sampling, pixel snapping, dead-zone follow, spring motion, deterministic shake, coordinate conversion, visibility checks, and parallax copies. `CameraRig` owns an arbitrary number of generation-checked cameras; `CameraDirector` plays deterministic cuts and blended shots.
+`Camera2D` is a position-and-zoom transform. Use `worldToCanvas` and `canvasToWorld` for world-space rendering; games own follow, shake, cuts, and multi-camera behavior.
 
 Use `ctx.camera(&camera)` for world rendering. It transforms and clips rectangles, circles, lines, images, atlas frames, and text to the camera viewport. Use the existing `ctx` drawing calls for HUD rendering.
 
@@ -233,7 +233,7 @@ SDL windows support `Config.resizable` and `.stretch`, `.fit`, or `.integer_fit`
 - `Canvas.drawImage`
 - `Canvas.drawAtlasFrame`
 - `Canvas.drawText`
-- `Camera2D`, `CameraCanvas`, `CameraRig`, `CameraDirector`
+- `Camera2D`
 - `Presentation`, `PresentationMode`
 - `AssetFile`
 - `AssetStore`

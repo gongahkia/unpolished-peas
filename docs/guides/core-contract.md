@@ -29,7 +29,7 @@ Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, `Music`, and `
 
 ## Rendering, input, assets, and determinism
 
-`Canvas` records deterministic 2D primitives, sprites, atlas frames, and built-in text. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, renderer-capture comparison, and golden diagnostics.
+`Canvas` records deterministic 2D primitives, sprites, atlas frames, and built-in text. `Camera2D` is a position-and-zoom transform; games own follow, shake, cuts, and multi-camera behavior. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, renderer-capture comparison, and golden diagnostics.
 
 `Input` reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. Audio is game-owned data loaded as `Sound` or `Music` and played through the runtime adapter; the core preserves bounded decoding and error returns. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 

@@ -45,14 +45,6 @@ pub const graphics = struct {
     pub const RendererBackend = @import("render.zig").Backend;
     pub const FontGlyphRange = @import("font_asset.zig").GlyphRange;
     pub const FontTextDiagnostics = @import("font_asset.zig").TextDiagnostics;
-    pub const CameraBounds = @import("camera.zig").CameraBounds;
-    pub const CameraDirector = @import("camera.zig").CameraDirector;
-    pub const CameraFollow = @import("camera.zig").CameraFollow;
-    pub const CameraHandle = @import("camera.zig").CameraHandle;
-    pub const CameraRig = @import("camera.zig").CameraRig;
-    pub const CameraShake = @import("camera.zig").CameraShake;
-    pub const CameraShot = @import("camera.zig").CameraShot;
-    pub const CameraViewport = @import("camera.zig").CameraViewport;
     pub const DiagnosticCapture = @import("diagnostics.zig").Input;
     pub const DiagnosticCaptureOptions = @import("diagnostics.zig").Options;
     pub const DiagnosticEnvironment = @import("diagnostics.zig").Environment;
@@ -172,4 +164,7 @@ test "public API excludes removed and unsupported systems" {
     try std.testing.expect(!@hasDecl(@This(), "netCodec"));
     try std.testing.expect(!@hasDecl(@This(), "InspectorNetworkPanel"));
     try std.testing.expect(!@hasDecl(graphics, "InspectorNetworkPanel"));
+    inline for (.{ "CameraBounds", "CameraDirector", "CameraFollow", "CameraHandle", "CameraRig", "CameraShake", "CameraShot", "CameraViewport" }) |name| {
+        try std.testing.expect(!@hasDecl(graphics, name));
+    }
 }
