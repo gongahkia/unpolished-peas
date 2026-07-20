@@ -120,6 +120,12 @@ pub fn build(b: *std.Build) void {
         .imports = workspace.moduleImports(b, .services, &workspace_modules),
     });
     workspace_modules[workspace.moduleSlot(.services)] = services;
+    const test_support = b.createModule(.{
+        .root_source_file = b.path("contracts/test_support.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = core_spec.module_name, .module = core }},
+    });
     const test_harness = b.createModule(.{
         .root_source_file = b.path("contracts/test_harness.zig"),
         .target = target,
@@ -132,6 +138,25 @@ pub fn build(b: *std.Build) void {
             .{ .name = state_spec.module_name, .module = state },
             .{ .name = runtime_spec.module_name, .module = runtime },
             .{ .name = c_abi_spec.module_name, .module = c_abi },
+            .{ .name = "minna-san-test-support", .module = test_support },
+        },
+    });
+    const fixture_networking = b.createModule(.{
+        .root_source_file = b.path("contracts/fixture_networking.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = networking_spec.module_name, .module = networking },
+            .{ .name = "minna-san-test-support", .module = test_support },
+        },
+    });
+    const fixture_services = b.createModule(.{
+        .root_source_file = b.path("contracts/fixture_services.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = services_spec.module_name, .module = services },
+            .{ .name = "minna-san-test-support", .module = test_support },
         },
     });
     const stun_turn_interop = b.createModule(.{
@@ -216,7 +241,10 @@ pub fn build(b: *std.Build) void {
     const networking_tests = b.addTest(.{ .root_module = networking });
     const protocol_tests = b.addTest(.{ .root_module = protocol });
     const services_tests = b.addTest(.{ .root_module = services });
+    const test_support_tests = b.addTest(.{ .root_module = test_support });
     const test_harness_tests = b.addTest(.{ .root_module = test_harness });
+    const fixture_networking_tests = b.addTest(.{ .root_module = fixture_networking });
+    const fixture_services_tests = b.addTest(.{ .root_module = fixture_services });
     const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
     const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
     const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
@@ -287,7 +315,10 @@ pub fn build(b: *std.Build) void {
     const run_networking = b.addRunArtifact(networking_tests);
     const run_protocol = b.addRunArtifact(protocol_tests);
     const run_services = b.addRunArtifact(services_tests);
+    const run_test_support = b.addRunArtifact(test_support_tests);
     const run_test_harness = b.addRunArtifact(test_harness_tests);
+    const run_fixture_networking = b.addRunArtifact(fixture_networking_tests);
+    const run_fixture_services = b.addRunArtifact(fixture_services_tests);
     const run_stun_turn_interop = b.addRunArtifact(stun_turn_interop_tests);
     const run_benchmark_harness_tests = b.addRunArtifact(benchmark_harness_tests);
     const run_benchmark_harness = b.addRunArtifact(benchmark_harness_executable);
@@ -371,7 +402,10 @@ pub fn build(b: *std.Build) void {
     reference_test_step.dependOn(&run_networking.step);
     reference_test_step.dependOn(&run_services.step);
     const test_harness_step = b.step("test-harness", "Test deterministic SDK test fixtures");
+    test_harness_step.dependOn(&run_test_support.step);
     test_harness_step.dependOn(&run_test_harness.step);
+    test_harness_step.dependOn(&run_fixture_networking.step);
+    test_harness_step.dependOn(&run_fixture_services.step);
     const stun_turn_interop_step = b.step("stun-turn-interop", "Run controlled STUN TURN interoperability fixtures");
     stun_turn_interop_step.dependOn(&run_stun_turn_interop.step);
     const benchmark_harness_step = b.step("benchmark-harness", "Run deterministic benchmark harness");
@@ -507,6 +541,9 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&release_gate_test.step);
     test_step.dependOn(&run_optional_reference.step);
     test_step.dependOn(&run_test_harness.step);
+    test_step.dependOn(&run_test_support.step);
+    test_step.dependOn(&run_fixture_networking.step);
+    test_step.dependOn(&run_fixture_services.step);
     test_step.dependOn(&run_stun_turn_interop.step);
     test_step.dependOn(&run_benchmark_harness_tests.step);
     test_step.dependOn(&run_benchmark_authoritative_tests.step);

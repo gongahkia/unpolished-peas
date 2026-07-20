@@ -3,95 +3,15 @@ const core = @import("minna-san-core");
 const protocol = @import("minna-san-protocol");
 const topology = @import("minna-san-topology");
 const state = @import("minna-san-state");
+const fixtures = @import("minna-san-test-support");
 
-pub const DeterministicClock = struct {
-    manual: core.ManualClock,
-
-    pub fn init(now_ns: core.TimeNs) DeterministicClock {
-        return .{ .manual = core.ManualClock.init(now_ns) };
-    }
-
-    pub fn clock(self: *DeterministicClock) core.Clock {
-        return self.manual.clock();
-    }
-
-    pub fn now(self: *const DeterministicClock) core.TimeNs {
-        return self.manual.now_ns;
-    }
-
-    pub fn advance(self: *DeterministicClock, delta_ns: core.TimeNs) core.ClockError!void {
-        try self.manual.advance(delta_ns);
-    }
-};
-
-pub const FixedAllocatorFixture = struct {
-    fixed: std.heap.FixedBufferAllocator,
-
-    pub fn init(storage: []u8) FixedAllocatorFixture {
-        return .{ .fixed = std.heap.FixedBufferAllocator.init(storage) };
-    }
-
-    pub fn allocator(self: *FixedAllocatorFixture) std.mem.Allocator {
-        return self.fixed.allocator();
-    }
-};
-
-pub const max_transport_messages: usize = 64;
-pub const DeterministicTransportError = error{
-    InvalidConfiguration,
-    MessageTooLarge,
-    QueueFull,
-    InjectedFailure,
-};
-
-pub const DeterministicTransportConfig = struct {
-    maximum_messages: usize,
-    maximum_message_bytes: usize,
-};
-
-pub const DeterministicTransportMessage = struct {
-    sequence: u64,
-    payload: core.BorrowedBuffer,
-};
-
-pub const DeterministicTransport = struct {
-    config: DeterministicTransportConfig,
-    messages: [max_transport_messages]DeterministicTransportMessage = undefined,
-    first: usize = 0,
-    count: usize = 0,
-    next_sequence: u64 = 0,
-    reject_next: bool = false,
-
-    pub fn init(config: DeterministicTransportConfig) DeterministicTransportError!DeterministicTransport {
-        if (config.maximum_messages == 0 or config.maximum_messages > max_transport_messages or config.maximum_message_bytes == 0) return error.InvalidConfiguration;
-        return .{ .config = config };
-    }
-
-    pub fn fail_next(self: *DeterministicTransport) void {
-        self.reject_next = true;
-    }
-
-    pub fn send(self: *DeterministicTransport, payload: []const u8) DeterministicTransportError!void {
-        if (self.reject_next) {
-            self.reject_next = false;
-            return error.InjectedFailure;
-        }
-        if (payload.len > self.config.maximum_message_bytes) return error.MessageTooLarge;
-        if (self.count == self.config.maximum_messages) return error.QueueFull;
-        const index = (self.first + self.count) % self.config.maximum_messages;
-        self.messages[index] = .{ .sequence = self.next_sequence, .payload = .init(payload) };
-        self.next_sequence +%= 1;
-        self.count += 1;
-    }
-
-    pub fn receive(self: *DeterministicTransport) ?DeterministicTransportMessage {
-        if (self.count == 0) return null;
-        const message = self.messages[self.first];
-        self.first = (self.first + 1) % self.config.maximum_messages;
-        self.count -= 1;
-        return message;
-    }
-};
+pub const DeterministicClock = fixtures.DeterministicClock;
+pub const FixedAllocatorFixture = fixtures.FixedAllocatorFixture;
+pub const max_transport_messages = fixtures.max_network_messages;
+pub const DeterministicTransportError = fixtures.DeterministicNetworkError;
+pub const DeterministicTransportConfig = fixtures.DeterministicNetworkConfig;
+pub const DeterministicTransportMessage = fixtures.DeterministicNetworkMessage;
+pub const DeterministicTransport = fixtures.DeterministicNetwork;
 
 pub fn deterministic_identity(seed: u8) protocol.PublicKeyAuthenticationError!protocol.PublicKeyIdentity {
     return protocol.PublicKeyIdentity.init([_]u8{seed} ** std.crypto.sign.Ed25519.KeyPair.seed_length);
