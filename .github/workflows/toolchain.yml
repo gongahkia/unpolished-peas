@@ -107,6 +107,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - run: script/test_topdown_native_fixture.sh
       - run: script/test_puzzle_native_fixture.sh
+      - run: script/test_platformer_native_fixture.sh
       - run: script/test_protocol_desktop_fixture.sh
       - run: script/test_external_game_fixture.sh
       - run: script/test_external_animation_game_fixture.sh
