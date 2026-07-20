@@ -43,6 +43,8 @@ int c_abi_consumer_main(void) {
     if (minna_san_abi_version() != MINNA_SAN_ABI_VERSION) return 2;
     if (minna_san_abi_supports_version(MINNA_SAN_ABI_VERSION) != 1u) return 3;
     if (minna_san_result_category(MINNA_SAN_RESULT_VERSION_MISMATCH) != MINNA_SAN_ERROR_CATEGORY_VERSION_MISMATCH) return 4;
+    if (minna_san_result_retryability(MINNA_SAN_RESULT_TRANSPORT_FAILURE) != MINNA_SAN_RETRY_BACKOFF) return 15;
+    if (minna_san_result_operator_category(MINNA_SAN_RESULT_TRANSPORT_FAILURE) != MINNA_SAN_OPERATOR_TRANSPORT) return 16;
     if (minna_san_platform_config_validate(&platform_config) != MINNA_SAN_RESULT_OK) return 5;
     if (minna_san_sdk_validate_config(&config) != MINNA_SAN_RESULT_OK) return 6;
     if (minna_san_sdk_create(&config, &sdk) != MINNA_SAN_RESULT_OK) return 7;

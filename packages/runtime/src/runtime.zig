@@ -168,6 +168,7 @@ pub const DedicatedSessionSchedulerConfig = dedicated_session_scheduler.Dedicate
 pub const DedicatedSessionScheduler = dedicated_session_scheduler.DedicatedSessionScheduler;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
+pub const provider_error_disposition = provider.disposition_for_error;
 pub const ProviderCapability = provider.ProviderCapability;
 pub const ProviderCapabilities = provider.ProviderCapabilities;
 pub const ProviderConfig = provider.ProviderConfig;
