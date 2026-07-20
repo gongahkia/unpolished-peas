@@ -11,6 +11,9 @@ EXPECTED = {
     ("linux", "topdown"): ("linux-x86_64", "unpolished-peas-topdown-linux-x86_64.tar.gz"),
     ("macos", "topdown"): ("macos-universal", "unpolished-peas-topdown-macos-universal.zip"),
     ("windows", "topdown"): ("windows-x86_64", "unpolished-peas-topdown-windows-x86_64.zip"),
+    ("linux", "puzzle"): ("linux-x86_64", "unpolished-peas-puzzle-linux-x86_64.tar.gz"),
+    ("macos", "puzzle"): ("macos-universal", "unpolished-peas-puzzle-macos-universal.zip"),
+    ("windows", "puzzle"): ("windows-x86_64", "unpolished-peas-puzzle-windows-x86_64.zip"),
 }
 
 COMMON = {

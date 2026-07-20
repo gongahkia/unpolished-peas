@@ -3,7 +3,7 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 game=${1:-bounce}
-case "$game" in bounce|topdown) ;; *) printf '%s\n' 'usage: test_web_package.sh [bounce|topdown]' >&2; exit 64 ;; esac
+case "$game" in bounce|topdown|puzzle) ;; *) printf '%s\n' 'usage: test_web_package.sh [bounce|topdown|puzzle]' >&2; exit 64 ;; esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 cd "$repo"

@@ -1,6 +1,6 @@
 param(
     [Parameter(Mandatory = $true)]
-    [ValidateSet('topdown')]
+    [ValidateSet('topdown', 'puzzle')]
     [string]$Game
 )
 
@@ -32,10 +32,10 @@ try {
     }
     Invoke-Scenario 'inspector' { zig test src/inspector.zig -lc -I vendor/stb -cflags -std=c99 -- src/vendor/stb_image.c -cflags -std=c99 -- src/vendor/stb_truetype.c }
     Invoke-Scenario 'profiler' { zig test src/profiler.zig }
-    Invoke-Scenario 'gameplay' { zig build test-topdown }
-    Invoke-Scenario 'scene' { zig build test-topdown-scene }
+    Invoke-Scenario 'gameplay' { zig build ("test-" + $Game) }
+    Invoke-Scenario 'scene' { zig build ("test-" + $Game + "-scene") }
     $env:SDL_AUDIODRIVER = 'dummy'
-    Invoke-Scenario 'desktop-smoke' { zig build smoke-topdown-sdl }
+    Invoke-Scenario 'desktop-smoke' { zig build ("smoke-" + $Game + "-sdl") }
 } catch {
     New-Item -ItemType Directory -Force -Path $diagnostics | Out-Null
     @("game=$Game", "scenario=$scenario", "error=$($_.Exception.Message)") | Set-Content -LiteralPath (Join-Path $diagnostics 'failure.log') -Encoding ascii

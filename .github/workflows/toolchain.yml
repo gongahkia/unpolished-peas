@@ -167,6 +167,18 @@ jobs:
             target: windows
             game: topdown
             package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: puzzle
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: puzzle
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: puzzle
+            package_script: script/test_windows_package.ps1
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
@@ -285,6 +297,15 @@ jobs:
             runner: script/test_proof_game_matrix.sh
           - os: windows-2022
             game: topdown
+            runner: script/test_proof_game_matrix.ps1
+          - os: ubuntu-latest
+            game: puzzle
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-15-intel
+            game: puzzle
+            runner: script/test_proof_game_matrix.sh
+          - os: windows-2022
+            game: puzzle
             runner: script/test_proof_game_matrix.ps1
     runs-on: ${{ matrix.os }}
     steps:

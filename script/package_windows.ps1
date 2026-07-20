@@ -1,6 +1,6 @@
 param(
     [string]$OutputDirectory,
-    [ValidateSet('bounce', 'topdown')]
+    [ValidateSet('bounce', 'topdown', 'puzzle')]
     [string]$Game = 'bounce'
 )
 
@@ -30,6 +30,7 @@ $stage = Join-Path ([IO.Path]::GetTempPath()) ("unpolished-peas-package-" + [gui
 switch ($Game) {
     'bounce' { $build_step = 'package-bounce-sdl'; $source_runtime = 'unpolished-peas-bounce-sdl.exe'; $fixture = 'bounce-project' }
     'topdown' { $build_step = 'package-topdown-sdl'; $source_runtime = 'unpolished-peas-topdown-sdl.exe'; $fixture = 'topdown-project' }
+    'puzzle' { $build_step = 'package-puzzle-sdl'; $source_runtime = 'unpolished-peas-puzzle-sdl.exe'; $fixture = 'puzzle-project' }
 }
 $name = "unpolished-peas-$Game-windows-x86_64"
 
