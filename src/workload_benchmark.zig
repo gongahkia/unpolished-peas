@@ -27,7 +27,7 @@ pub fn writeArtifact(writer: anytype, summary: catalog.Summary) !void {
         if (index != 0) try writer.writeAll(",");
         try writer.print("{{\"id\":\"{s}\",\"resolution\":{{\"width\":{d},\"height\":{d}}},\"warmup_frames\":{d},\"sample_count\":{d},\"metrics\":{{\"frame_time_ns\":{d},\"command_count\":{d},\"frame_allocation_events\":{d},\"frame_allocated_bytes\":{d}}}}}", .{ catalog.workloadId(measurement.workload_index), measurement.width, measurement.height, measurement.warmup_frames, measurement.sample_count, measurement.frame_time_ns, measurement.command_count, measurement.frame_allocation_events, measurement.frame_allocated_bytes });
     }
-    try writer.print("],\"diagnostics\":{{\"combined_canvas_hash\":\"{x}\"}}}}\n", .{summary.combined_hash});
+    try writer.print("],\"timer\":{{\"clock\":\"std.time.Timer\",\"unit\":\"nanoseconds\",\"measurement\":\"headless_cpu_render\"}},\"diagnostics\":{{\"combined_canvas_hash\":\"{x}\"}}}}\n", .{summary.combined_hash});
 }
 
 test "native workload artifact schema is bounded and complete" {
@@ -44,6 +44,8 @@ test "native workload artifact schema is bounded and complete" {
     try std.testing.expectEqualStrings("ok", root.get("status").?.string);
     try std.testing.expectEqualStrings("headless", root.get("target").?.object.get("renderer").?.string);
     try std.testing.expectEqualStrings("v1", root.get("workload_version").?.string);
+    try std.testing.expectEqualStrings("std.time.Timer", root.get("timer").?.object.get("clock").?.string);
+    try std.testing.expectEqualStrings("headless_cpu_render", root.get("timer").?.object.get("measurement").?.string);
     const workloads = root.get("workloads").?.array.items;
     try std.testing.expectEqual(@as(usize, 6), workloads.len);
     for (workloads, 0..) |workload, index| {
