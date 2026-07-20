@@ -602,6 +602,7 @@ export function createBrowserHost({
   }
 
   function setCamera(enabled, x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight) {
+    if (webgpu) return webgpu.setCamera(enabled, x, y, zoom, rotation, viewportX, viewportY, viewportWidth, viewportHeight) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.invalidArgument;
     if (enabled === 0) {
       camera = null;
       return Status.ok;

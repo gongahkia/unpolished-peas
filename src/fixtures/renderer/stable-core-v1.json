@@ -1,0 +1,26 @@
+{
+  "schema_version": 1,
+  "fixture_version": "v1",
+  "width": 64,
+  "height": 32,
+  "tolerance": {"per_channel": 1},
+  "operations": [
+    {"op": "clear", "color": {"r": 19, "g": 37, "b": 61, "a": 255}},
+    {"op": "rect", "x": 1, "y": 1, "w": 4, "h": 3, "color": {"r": 255, "g": 198, "b": 74, "a": 255}},
+    {"op": "push_clip", "x": 2, "y": 2, "w": 8, "h": 6},
+    {"op": "push_blend", "mode": 0},
+    {"op": "rect", "x": 0, "y": 0, "w": 12, "h": 8, "color": {"r": 255, "g": 0, "b": 0, "a": 128}},
+    {"op": "pop_blend"},
+    {"op": "push_blend", "mode": 1},
+    {"op": "rect", "x": 4, "y": 3, "w": 4, "h": 3, "color": {"r": 0, "g": 0, "b": 255, "a": 128}},
+    {"op": "pop_blend"},
+    {"op": "pop_clip"},
+    {"op": "set_camera", "camera": {"enabled": true, "x": 4, "y": 4, "zoom": 2, "rotation": 0, "viewport_x": 4, "viewport_y": 4, "viewport_w": 8, "viewport_h": 8}},
+    {"op": "push_clip", "x": 6, "y": 6, "w": 6, "h": 4},
+    {"op": "push_clip", "x": 8, "y": 7, "w": 3, "h": 2},
+    {"op": "rect", "x": 3, "y": 3, "w": 3, "h": 2, "color": {"r": 91, "g": 166, "b": 210, "a": 255}},
+    {"op": "pop_clip"},
+    {"op": "pop_clip"},
+    {"op": "set_camera", "camera": {"enabled": false}}
+  ]
+}
