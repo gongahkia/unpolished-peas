@@ -1,7 +1,21 @@
 import {ResourceKind, Status} from "./host.mjs";
 
+const workloadIds = ["primitive_fill", "sprite_batching", "alpha_blend", "clipping", "text", "mixed_frame"];
+const metricIds = ["frame_time_ns", "command_count", "frame_allocation_events", "frame_allocated_bytes"];
+
 function requireStatus(value, operation) {
   if (value !== Status.ok) throw new Error(`browser workload failed: ${operation}`);
+}
+
+function validateCatalog(catalog) {
+  if (catalog?.schema_version !== 1 || catalog.workload_version !== "v1" || !Array.isArray(catalog.assets) || catalog.assets.length !== 1 || !Array.isArray(catalog.workloads) || catalog.workloads.length !== workloadIds.length) throw new Error("browser workload catalog is invalid");
+  const [checker] = catalog.assets;
+  if (checker?.id !== "checker_2x2" || checker.width !== 2 || checker.height !== 2 || !Array.isArray(checker.rgba) || checker.rgba.length !== 16) throw new Error("browser workload catalog asset is invalid");
+  for (const id of workloadIds) if (catalog.workloads.filter((workload) => workload.id === id).length !== 1) throw new Error(`browser workload missing: ${id}`);
+  for (const workload of catalog.workloads) {
+    if (!Number.isInteger(workload.width) || !Number.isInteger(workload.height) || !Number.isInteger(workload.warmup_frames) || !Number.isInteger(workload.frame_count) || workload.width <= 0 || workload.height <= 0 || workload.warmup_frames <= 0 || workload.frame_count <= 0 || !Array.isArray(workload.assets) || !Array.isArray(workload.metrics) || workload.metrics.length !== metricIds.length) throw new Error(`browser workload invalid: ${workload.id}`);
+    if (!workload.metrics.every((metric, index) => metric === metricIds[index]) || !workload.assets.every((asset) => asset === checker.id)) throw new Error(`browser workload schema invalid: ${workload.id}`);
+  }
 }
 
 function batchPoint(operation, index) {
@@ -62,7 +76,7 @@ function runOperation(runtime, host, operation, assets) {
 }
 
 export function runWorkloadCatalog(runtime, host, catalog) {
-  if (catalog?.schema_version !== 1 || catalog.workload_version !== "v1" || !Array.isArray(catalog.workloads) || catalog.workloads.length !== 6) throw new Error("browser workload catalog is invalid");
+  validateCatalog(catalog);
   let frames = 0;
   for (const workload of catalog.workloads) {
     requireStatus(runtime.up_browser_gl_context_create(workload.width, workload.height), "context_create");
