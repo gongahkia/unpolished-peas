@@ -147,7 +147,7 @@ fn registration(id: directory.ShardId, active: usize) directory.ShardRegistratio
         .id = id,
         .capacity = .{ .maximum_participants = 3, .active_participants = active },
         .health = .healthy,
-        .route = .{ .id = id, .kind = .authoritative, .endpoint = .{ .ipv4 = .{ .octets = .{ 127, 0, 0, @intCast(id) }, .port = 9000 } } },
+        .route = .{ .id = id, .kind = .authoritative, .endpoint = directory.ShardEndpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, @intCast(id) }, .port = 9000 }) },
     };
 }
 
