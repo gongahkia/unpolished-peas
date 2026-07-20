@@ -1,5 +1,6 @@
 import {createBrowserInput} from "./input.mjs";
 import {createBrowserAudio} from "./audio.mjs";
+import {stableAudioAssetDiagnostic} from "./audio_asset.mjs";
 import {createBrowserStorage} from "./storage.mjs";
 import {createBrowserArtifacts} from "./artifacts.mjs";
 import {createDebugFont, debugFontAssetDiagnostic, forEachDebugFontGlyph} from "./debug_font.mjs";
@@ -829,6 +830,16 @@ export function createBrowserHost({
       } catch (error) {
         if (error?.code === stableImageAssetDiagnostic) throw error;
         throw new Error(stableImageAssetDiagnostic);
+      }
+    },
+    async loadStableAudioAsset(url) {
+      try {
+        const response = await fetchImpl?.(url);
+        if (!response?.ok) throw new Error(stableAudioAssetDiagnostic);
+        return audio.loadSound(new Uint8Array(await response.arrayBuffer()));
+      } catch (error) {
+        if (error?.code === stableAudioAssetDiagnostic) throw error;
+        throw new Error(stableAudioAssetDiagnostic);
       }
     },
     onWebGpuDeviceLost: (handler) => { webgpuDeviceLossHandler = typeof handler === "function" ? handler : null; },

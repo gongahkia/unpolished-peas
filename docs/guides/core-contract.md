@@ -25,13 +25,13 @@ Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetSto
 
 Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. Hosts clamp elapsed wall time to five fixed steps, run fixed `update` calls before one `draw`, and expose the remaining interpolation fraction through `alpha`. Desktop reads its step rate from `sdl.Config.fixed_hz`; browser uses 60 Hz. Paused frames run no updates with zero alpha, retaining the accumulator remainder; browser visibility pauses discard hidden elapsed time on resume.
 
-Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, `Music`, and `AssetStore` require their documented `deinit` call. Validation and loading failures return errors; the contract does not convert them to successful fallback assets.
+Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, and `AssetStore` require their documented `deinit` call. Validation and loading failures return errors; the contract does not convert them to successful fallback assets.
 
 ## Rendering, input, assets, and determinism
 
 `Canvas` records deterministic 2D primitives, sprites, atlas frames, and built-in text. `Camera2D` is a position, zoom, and rotation transform; games own follow, shake, cuts, and multi-camera behavior. The [stable 2D render contract](rendering.md) defines ordering, clip/blend state, transform, tolerance, fixture, and diagnostics rules. [Stable image assets](image-assets.md) define source formats, limits, decoded pixels, and failures. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessGameRunner(Game)` runs scripted `HeadlessFrame` values against `GameProtocol`, captures the canvas hash, and retains submitted shared render commands. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, renderer-capture comparison, and golden diagnostics.
 
-[`Input`](input.md) reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. Audio is game-owned data loaded as `Sound` or `Music` and played through the runtime adapter; the core preserves bounded decoding and error returns. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
+[`Input`](input.md) reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. [Stable audio assets](audio-assets.md) define WAV sound loading, play/stop controls, browser activation, and recoverable failures. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 
 ## Exclusions and compatibility
 

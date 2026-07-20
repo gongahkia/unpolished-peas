@@ -1,3 +1,5 @@
+import {decodeStableWav} from "./audio_asset.mjs";
+
 export const AudioPcmFormat = Object.freeze({sampleRate: 48_000, channels: 2, bytesPerFrame: 8});
 
 export const AudioStatus = Object.freeze({ok: 0, unavailable: -2, rejected: -3});
@@ -14,6 +16,8 @@ export function createBrowserAudio({
   let nextTime = 0;
   let queuedFrames = 0;
   let lastError = null;
+  let nextPlayback = 1;
+  const playbacks = new Map();
   const listeners = [];
 
   function listen(target, type, callback, options) {
@@ -92,6 +96,59 @@ export function createBrowserAudio({
     }
   }
 
+  function loadSound(bytes) {
+    return decodeStableWav(bytes);
+  }
+
+  function playSound(sound, {volume = 1, loop = false} = {}) {
+    if (!sound || sound.format !== "wav" || !Number.isInteger(sound.sampleRate) || sound.sampleRate <= 0 || !Number.isInteger(sound.frames) || sound.frames <= 0 || !(sound.samples instanceof Float32Array) || sound.samples.length !== sound.frames * 2 || !Number.isFinite(volume) || volume < 0 || volume > 1 || typeof loop !== "boolean") return {status: AudioStatus.rejected, handle: 0};
+    const deviceState = state();
+    if (deviceState !== AudioStatus.ok) return {status: deviceState, handle: 0};
+    try {
+      const buffer = context.createBuffer(2, sound.frames, sound.sampleRate);
+      const left = buffer.getChannelData(0);
+      const right = buffer.getChannelData(1);
+      for (let frame = 0; frame < sound.frames; frame += 1) {
+        left[frame] = sound.samples[frame * 2];
+        right[frame] = sound.samples[frame * 2 + 1];
+      }
+      const node = context.createBufferSource();
+      const gain = context.createGain();
+      node.buffer = buffer;
+      node.loop = loop;
+      gain.gain.value = volume;
+      node.connect(gain);
+      gain.connect(context.destination);
+      const handle = nextPlayback;
+      nextPlayback += 1;
+      const start = Math.max(context.currentTime, nextTime);
+      nextTime = start + sound.frames / sound.sampleRate;
+      const cleanup = () => {
+        playbacks.delete(handle);
+        node.disconnect?.();
+        gain.disconnect?.();
+      };
+      node.onended = cleanup;
+      playbacks.set(handle, {node, gain});
+      node.start(start);
+      return {status: AudioStatus.ok, handle};
+    } catch {
+      lastError = "sound_playback_failed";
+      return {status: AudioStatus.rejected, handle: 0};
+    }
+  }
+
+  function stopSound(handle) {
+    const playback = playbacks.get(handle);
+    if (!playback) return false;
+    playbacks.delete(handle);
+    playback.node.onended = null;
+    try { playback.node.stop(); } catch {}
+    playback.node.disconnect?.();
+    playback.gain.disconnect?.();
+    return true;
+  }
+
   listen(canvas, "pointerdown", activate, {passive: true});
   listen(canvas, "keydown", activate, {passive: true});
   listen(windowRef, "keydown", activate, {passive: true});
@@ -101,9 +158,13 @@ export function createBrowserAudio({
     activate,
     state,
     submit,
+    loadSound,
+    playSound,
+    stopSound,
     diagnostic: () => ({phase, state: state(), sampleRate, queuedFrames, lastError}),
     teardown: () => {
       for (const [target, type, callback, options] of listeners) target?.removeEventListener?.(type, callback, options);
+      for (const handle of playbacks.keys()) stopSound(handle);
       context?.close?.();
       context = null;
       phase = "unavailable";

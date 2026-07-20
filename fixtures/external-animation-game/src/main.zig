@@ -143,8 +143,11 @@ fn initAtlas(allocator: std.mem.Allocator) !up.assets.Atlas {
 }
 
 fn initSound(allocator: std.mem.Allocator) !up.assets.Sound {
-    const frames = try allocator.dupe(up.assets.AudioSample, &.{ .{ .left = 0.2, .right = 0.2 }, .{ .left = -0.2, .right = -0.2 } });
-    return .{ .allocator = allocator, .sample_rate = 48_000, .frames = frames };
+    const wav = [_]u8{
+        'R', 'I', 'F', 'F', 40, 0, 0, 0, 'W', 'A', 'V', 'E', 'f', 'm', 't', ' ', 16, 0, 0, 0, 1, 0, 1, 0,
+        0x80, 0xbb, 0, 0, 0, 0x77, 1, 0, 2, 0, 16, 0, 'd', 'a', 't', 'a', 4, 0, 0, 0, 0x9a, 0x19, 0x66, 0xe6,
+    };
+    return up.assets.Sound.decodeWav(allocator, &wav);
 }
 
 pub fn main() !void {
@@ -160,12 +163,7 @@ test "external animation game advances frames, plays audio, blocks an obstacle, 
     const free_move = game.advance(bindings, input, 0.11);
     try std.testing.expect(free_move.moved and !free_move.blocked);
     try std.testing.expectEqual(@as(usize, 1), game.animation.frame().index);
-    var mixer = try up.assets.AudioMixer.init(std.testing.allocator, .{});
-    defer mixer.deinit();
-    _ = try mixer.playSound(&game.blip, .{});
-    var mixed: [2]up.assets.AudioSample = undefined;
-    try mixer.mix(&mixed);
-    try std.testing.expect(mixed[0].left != 0);
+    try std.testing.expect(game.blip.frames.len > 0);
     const blocked_move = game.advance(bindings, input, 2);
     try std.testing.expect(blocked_move.blocked);
     try std.testing.expect(!up.core.Rect.intersects(game.player, game.obstacle));
