@@ -2,6 +2,7 @@ import {createBrowserInput} from "./input.mjs";
 import {createBrowserAudio} from "./audio.mjs";
 import {createBrowserStorage} from "./storage.mjs";
 import {createBrowserArtifacts} from "./artifacts.mjs";
+import {createWebGpuBackend} from "./webgpu_backend.mjs";
 
 function localStorageOrNull() {
   try {
@@ -42,6 +43,7 @@ export function createBrowserHost({
   storageNamespace = "unpolished-peas:v1",
 } = {}) {
   let gl = null;
+  let webgpu = null;
   let contextLost = false;
   let logicalWidth = 0;
   let logicalHeight = 0;
@@ -481,6 +483,7 @@ export function createBrowserHost({
   }
 
   function clear(color) {
+    if (webgpu) return webgpu.clear(color) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.unavailable;
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
     spriteBatch = null;
@@ -492,6 +495,7 @@ export function createBrowserHost({
   }
 
   function drawRect(x, y, width, height, color) {
+    if (webgpu) return webgpu.drawRect(x, y, width, height, color) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.unavailable;
     if (width <= 0 || height <= 0) return Status.ok;
     return drawVertices(quad(x, y, x + width, y, x + width, y + height, x, y + height, colorFloats(color)));
   }
@@ -526,6 +530,10 @@ export function createBrowserHost({
   }
 
   function present(mode) {
+    if (webgpu) {
+      if (mode !== 0) return Status.unavailable;
+      return webgpu.present() ? Status.ok : webgpu.isLost() ? Status.rejected : Status.unavailable;
+    }
     if (!gl) return Status.unavailable;
     if (contextLost || mode > 2 || clipStack.length !== 0 || blendStack.length !== 0) return Status.rejected;
     const status = flushSprites();
@@ -538,6 +546,7 @@ export function createBrowserHost({
   }
 
   function pushClip(x, y, width, height) {
+    if (webgpu) return webgpu.pushClip(x, y, width, height) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.invalidArgument;
     if (width < 0 || height < 0) return Status.invalidArgument;
     const status = flushSprites();
     if (status !== Status.ok) return status;
@@ -554,6 +563,7 @@ export function createBrowserHost({
   }
 
   function popClip() {
+    if (webgpu) return webgpu.popClip() ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
     if (clipStack.length === 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;
@@ -613,6 +623,14 @@ export function createBrowserHost({
     canvas.height = height;
     logicalWidth = width;
     logicalHeight = height;
+    if (webgpu) {
+      if (!webgpu.resize(width, height)) {
+        lifecyclePhase = webgpu.isLost() ? "device_lost" : "configuration_failed";
+        return webgpu.isLost() ? Status.rejected : Status.unavailable;
+      }
+      lifecyclePhase = "active";
+      return Status.ok;
+    }
     gl ??= canvas.getContext("webgl2", {alpha: true, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false});
     if (!gl) return Status.unavailable;
     if (gl.isContextLost?.()) {
@@ -635,6 +653,29 @@ export function createBrowserHost({
       lifecyclePhase = "recovered";
     } else lifecyclePhase = "active";
     return Status.ok;
+  }
+
+  async function initializeWebGpu(width, height) {
+    if (!canvas || gl || webgpu || width === 0 || height === 0) return null;
+    const backend = await createWebGpuBackend({
+      canvas,
+      navigator: navigatorRef,
+      onDeviceLost: () => {
+        contextLost = true;
+        lifecycleGeneration += 1;
+        lifecyclePhase = "device_lost";
+        cancelScheduledFrames();
+      },
+    });
+    if (!backend.resize(width, height)) {
+      backend.destroy();
+      return null;
+    }
+    logicalWidth = width;
+    logicalHeight = height;
+    webgpu = backend;
+    lifecyclePhase = "active";
+    return backend.diagnostic();
   }
 
   function createResourceValue(kind, byteLength) {
@@ -713,6 +754,8 @@ export function createBrowserHost({
     up_host_gl_context_create: createContext,
     up_host_gl_context_destroy: () => {
       cancelScheduledFrames();
+      webgpu?.destroy();
+      webgpu = null;
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
@@ -727,7 +770,7 @@ export function createBrowserHost({
       if (spriteBatch?.handle === handle) flushSprites();
       removeResource(handle, true);
     },
-    up_host_gl_context_lost: () => Number(contextLost || gl?.isContextLost?.()),
+    up_host_gl_context_lost: () => Number(contextLost || webgpu?.isLost() || gl?.isContextLost?.()),
     up_host_gl_clear: clear,
     up_host_gl_draw_rect: drawRect,
     up_host_gl_draw_line: drawLine,
@@ -753,6 +796,8 @@ export function createBrowserHost({
     up_host_diagnostic_emit: (source, byteLength) => { artifacts.emit(memory, source, byteLength); },
     up_host_teardown: () => {
       cancelScheduledFrames();
+      webgpu?.destroy();
+      webgpu = null;
       removeAllResources(!contextLost);
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
@@ -774,6 +819,8 @@ export function createBrowserHost({
     memory,
     resourceCount: () => resources.size,
     context: () => gl,
+    initializeWebGpu,
+    webgpu: () => webgpu?.diagnostic() ?? null,
     attachRuntime: (exports) => {
       if (!exports || typeof exports.up_browser_frame !== "function") return false;
       runtime = exports;

@@ -495,6 +495,7 @@ export function createBrowserHost({
   }
 
   function drawRect(x, y, width, height, color) {
+    if (webgpu) return webgpu.drawRect(x, y, width, height, color) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.unavailable;
     if (width <= 0 || height <= 0) return Status.ok;
     return drawVertices(quad(x, y, x + width, y, x + width, y + height, x, y + height, colorFloats(color)));
   }
@@ -545,6 +546,7 @@ export function createBrowserHost({
   }
 
   function pushClip(x, y, width, height) {
+    if (webgpu) return webgpu.pushClip(x, y, width, height) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.invalidArgument;
     if (width < 0 || height < 0) return Status.invalidArgument;
     const status = flushSprites();
     if (status !== Status.ok) return status;
@@ -561,6 +563,7 @@ export function createBrowserHost({
   }
 
   function popClip() {
+    if (webgpu) return webgpu.popClip() ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
     if (clipStack.length === 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;

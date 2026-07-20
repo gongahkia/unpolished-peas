@@ -1,5 +1,6 @@
 import {createBrowserHost, Status} from "./host.mjs";
 import {browserTarget, rendererDiagnostic} from "./renderer_diagnostics.mjs";
+import {selectRenderer} from "./renderer_selection.mjs";
 
 async function instantiate(url, imports) {
   try {
@@ -20,7 +21,7 @@ function publish(diagnostic, runtime = null, selectedRenderer = null) {
   window.unpolishedPeas = {host, runtime, renderer: selectedRenderer, rendererDiagnostic: diagnostic};
 }
 
-function unavailable(reason, instruction, contextStatus, webgl2Capability) {
+function unavailable(reason, instruction, contextStatus, webgl2Capability, webgpuCapability = "not_checked", adapterStatus = "not_applicable", deviceStatus = "not_applicable") {
   const diagnostic = rendererDiagnostic({
     requestedRenderer,
     selectedRenderer: null,
@@ -28,37 +29,43 @@ function unavailable(reason, instruction, contextStatus, webgl2Capability) {
     recoveryInstruction: instruction,
     target,
     webgl2Capability,
+    webgpuCapability,
     contextStatus,
+    adapterStatus,
+    deviceStatus,
     recoveryState: host.lifecycle(),
   });
   publish(diagnostic);
   throw new Error(`unpolished-peas browser: ${reason}; ${instruction}`);
 }
 
-if (requestedRenderer !== "webgl2") {
-  if (requestedRenderer === "webgpu") unavailable("forced_renderer_unsupported", "Use ?renderer=webgl2; WebGPU is unsupported by the current v0.1 capability matrix.", "not_checked", "not_checked");
-  unavailable("unknown_renderer_request", "Use ?renderer=webgl2; this package supports only WebGL 2.", "not_checked", "not_checked");
-}
-
 try {
+  const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 320));
+  const height = Math.max(1, Math.floor(canvas.clientHeight || canvas.height || 180));
+  const selection = await selectRenderer(requestedRenderer, host, width, height);
+  if (!selection.selectedRenderer) {
+    const instruction = selection.fallbackReason === "unknown_renderer_request" ? "Use ?renderer=auto, ?renderer=webgpu, or ?renderer=webgl2." : "Use ?renderer=webgl2 or enable WebGPU, then reload.";
+    unavailable(selection.fallbackReason, instruction, "unavailable", "not_checked", selection.webgpuCapability, selection.adapterStatus, selection.deviceStatus);
+  }
   const result = await instantiate("./unpolished-peas.wasm", host.imports);
   const runtime = result.instance.exports;
   if (!host.attachRuntime(runtime)) unavailable("runtime_abi_invalid", "Rebuild the browser package from a matching checkout.", "not_initialized", "not_checked");
-  const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 320));
-  const height = Math.max(1, Math.floor(canvas.clientHeight || canvas.height || 180));
-  if (runtime.up_browser_gl_context_create(width, height) !== Status.ok) unavailable("webgl2_context_unavailable", "Use a browser with WebGL 2 enabled, then reload.", "unavailable", "unavailable");
-  if (runtime.up_browser_init(width, height) !== Status.ok) unavailable("runtime_initialization_failed", "Reload the package; if it persists, rebuild from the same checkout.", "ready", "available");
+  if (runtime.up_browser_gl_context_create(width, height) !== Status.ok) unavailable(`${selection.selectedRenderer}_context_unavailable`, `Use a browser with ${selection.selectedRenderer === "webgpu" ? "WebGPU" : "WebGL 2"} enabled, then reload.`, "unavailable", selection.selectedRenderer === "webgl2" ? "unavailable" : "not_checked", selection.webgpuCapability, selection.adapterStatus, selection.deviceStatus);
+  if (runtime.up_browser_init(width, height) !== Status.ok) unavailable("runtime_initialization_failed", "Reload the package; if it persists, rebuild from the same checkout.", "ready", selection.selectedRenderer === "webgl2" ? "available" : "not_checked", selection.webgpuCapability, selection.adapterStatus, selection.deviceStatus);
   const diagnostic = rendererDiagnostic({
     requestedRenderer,
-    selectedRenderer: "webgl2",
-    fallbackReason: null,
+    selectedRenderer: selection.selectedRenderer,
+    fallbackReason: selection.fallbackReason,
     recoveryInstruction: null,
     target,
-    webgl2Capability: "available",
+    webgl2Capability: selection.selectedRenderer === "webgl2" ? "available" : "not_checked",
+    webgpuCapability: selection.webgpuCapability,
     contextStatus: "ready",
+    adapterStatus: selection.adapterStatus,
+    deviceStatus: selection.deviceStatus,
     recoveryState: host.lifecycle(),
   });
-  publish(diagnostic, runtime, "webgl2");
+  publish(diagnostic, runtime, selection.selectedRenderer);
 } catch (error) {
   if (window.unpolishedPeas?.rendererDiagnostic) throw error;
   unavailable("browser_runtime_load_failed", "Reload the package; if it persists, rebuild from the same checkout.", "not_initialized", "not_checked");
