@@ -3423,6 +3423,21 @@ const d3d_compiler = if (builtin.os.tag == .windows) struct {
     }
 };
 
+fn releaseInputOnFocusLoss(input: *up.Input) void {
+    input.releaseAll();
+}
+
+test "desktop focus loss releases held keyboard and pointer input" {
+    var input = up.Input{};
+    input.set(.up, true);
+    input.setPointerButton(.left, true);
+    releaseInputOnFocusLoss(&input);
+    try std.testing.expect(!input.isDown(.up));
+    try std.testing.expect(!input.pointerIsDown(.left));
+    try std.testing.expect(input.wasReleased(.up));
+    try std.testing.expect(input.pointerWasReleased(.left));
+}
+
 fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery, callback_failure: *?Failure) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
@@ -3439,6 +3454,7 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             },
             c.SDL_EVENT_WINDOW_FOCUS_LOST => {
                 desktop_state.focused = false;
+                releaseInputOnFocusLoss(input);
                 if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .focus_lost, callback_failure);
             },
             c.SDL_EVENT_WINDOW_MINIMIZED => {

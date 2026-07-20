@@ -1,5 +1,13 @@
 import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
 import {createBrowserInput, InputAbi, InputKey} from "../src/browser/input.mjs";
+
+const fixture = JSON.parse(readFileSync(new URL("../src/fixtures/input/keyboard-pointer-v1.json", import.meta.url)));
+assert.equal(fixture.schema_version, 1);
+const fixtureCode = {up: "KeyW"}[fixture.key];
+const fixtureButton = {left: 0}[fixture.pointer_button];
+assert.equal(typeof fixtureCode, "string");
+assert.equal(typeof fixtureButton, "number");
 
 class Events {
   listeners = new Map();
@@ -42,10 +50,10 @@ const input = createBrowserInput({
 
 assert.equal(canvas.tabIndex, 0);
 canvas.emit("focus");
-const keyDown = windowRef.emit("keydown", {code: "KeyW", preventDefault() { this.prevented = true; }});
+const keyDown = windowRef.emit("keydown", {code: fixtureCode, preventDefault() { this.prevented = true; }});
 assert.equal(keyDown.prevented, true);
-canvas.emit("pointerdown", {button: 0, clientX: 90, clientY: 65});
-canvas.emit("wheel", {clientX: 90, clientY: 65, deltaX: 2, deltaY: -3, preventDefault() { this.prevented = true; }});
+canvas.emit("pointerdown", {button: fixtureButton, clientX: fixture.window[0], clientY: fixture.window[1]});
+canvas.emit("wheel", {clientX: fixture.window[0], clientY: fixture.window[1], deltaX: 2, deltaY: -3, preventDefault() { this.prevented = true; }});
 navigatorRef.pads = [{connected: true, index: 7, buttons: Array.from({length: 16}, (_, index) => ({pressed: index === 0, value: index === 0 ? 1 : 0})), axes: [-0.75, 0, 0, 0, 0, 0]}];
 assert.equal(input.setActions([
   {name: "jump", binding: {key: "up"}},
@@ -58,8 +66,8 @@ assert.deepEqual(input.actionValues(), [
   {context: "game", name: "move", value: 0.75},
 ]);
 const state = input.snapshot();
-assert.equal(state.down[InputKey.up], true);
-assert.deepEqual(state.pointer, {windowX: 90, windowY: 65, framebufferX: 160, framebufferY: 90, canvasX: 80, canvasY: 45, deltaX: 0, deltaY: 0, wheelX: 2, wheelY: -3});
+assert.equal(state.down[InputKey[fixture.key]], true);
+assert.deepEqual(state.pointer, {windowX: fixture.window[0], windowY: fixture.window[1], framebufferX: fixture.framebuffer[0], framebufferY: fixture.framebuffer[1], canvasX: fixture.canvas[0], canvasY: fixture.canvas[1], deltaX: 0, deltaY: 0, wheelX: 2, wheelY: -3});
 assert.equal(state.gamepads[0].id, 7);
 assert.equal(state.gamepads[0].buttons[0], true);
 assert.equal(input.poll(), InputAbi.byteLength);
@@ -82,8 +90,10 @@ assert.equal(input.snapshot().gamepads[0].previousAxes[0], -0.75);
 Observer.instances[0].callback();
 assert.equal(input.snapshot().resizeEpoch, 1);
 windowRef.emit("blur");
-assert.equal(input.snapshot().down[InputKey.up], false);
-assert.equal(input.snapshot().pointerDown[0], false);
+assert.equal(input.snapshot().down[InputKey[fixture.key]], false);
+assert.equal(input.snapshot().pointerDown[fixtureButton], false);
+assert.equal(input.snapshot().released[InputKey[fixture.key]], true);
+assert.equal(input.snapshot().pointerReleased[fixtureButton], true);
 documentRef.visibilityState = "hidden";
 documentRef.emit("visibilitychange");
 assert.equal(input.snapshot().visible, false);
