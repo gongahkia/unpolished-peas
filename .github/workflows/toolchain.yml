@@ -76,6 +76,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: ${{ matrix.os != 'macos-latest' }}
       - run: script/check_zig_version.sh
       - run: script/check_third_party_notices.py
       - run: script/test_core_without_sdl.sh
