@@ -33,6 +33,7 @@ const security_components = @import("security_components.zig");
 const stun_codec = @import("stun_codec.zig");
 const stun_credentials = @import("stun_credentials.zig");
 const http_common_parser = @import("http_common_parser.zig");
+const http2_frame_codec = @import("http2_frame_codec.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -288,6 +289,18 @@ pub const HttpHeader = http_common_parser.HttpHeader;
 pub const HttpParserEvent = http_common_parser.HttpParserEvent;
 pub const HttpParserConfig = http_common_parser.HttpParserConfig;
 pub const HttpParser = http_common_parser.HttpParser;
+pub const http2_frame_header_bytes = http2_frame_codec.http2_frame_header_bytes;
+pub const http2_default_max_frame_bytes = http2_frame_codec.http2_default_max_frame_bytes;
+pub const http2_max_frame_bytes = http2_frame_codec.http2_max_frame_bytes;
+pub const Http2FrameError = http2_frame_codec.Http2FrameError;
+pub const Http2FrameType = http2_frame_codec.Http2FrameType;
+pub const Http2Frame = http2_frame_codec.Http2Frame;
+pub const Http2FrameCodecConfig = http2_frame_codec.Http2FrameCodecConfig;
+pub const Http2Setting = http2_frame_codec.Http2Setting;
+pub const encode_http2_frame = http2_frame_codec.encode_http2_frame;
+pub const decode_http2_frame = http2_frame_codec.decode_http2_frame;
+pub const encode_http2_settings = http2_frame_codec.encode_http2_settings;
+pub const decode_http2_settings = http2_frame_codec.decode_http2_settings;
 pub const SecurityComponentError = security_components.SecurityComponentError;
 pub const SecurityComponents = security_components.SecurityComponents;
 pub const validate_security_components = security_components.validate_security_components;
@@ -336,4 +349,5 @@ test {
     _ = @import("security_vectors.zig");
     _ = @import("reliability_fault_matrix.zig");
     _ = @import("http_common_parser.zig");
+    _ = @import("http2_frame_codec.zig");
 }
