@@ -186,7 +186,8 @@ pub fn encode_websocket_frame(config: WebSocketFrameCodecConfig, frame: WebSocke
     const extended: usize = if (frame.payload.len < 126) 0 else if (frame.payload.len <= std.math.maxInt(u16)) 2 else 8;
     const total: usize = 2 + extended + (if (frame.mask_key != null) @as(usize, 4) else @as(usize, 0)) + frame.payload.len;
     if (output.len < total) return error.OutputTooSmall;
-    output[0] = @intFromEnum(frame.opcode) | if (frame.fin) 0x80 else 0;
+    const fin_bit: u8 = if (frame.fin) 0x80 else 0;
+    output[0] = @intFromEnum(frame.opcode) | fin_bit;
     const mask_bit: u8 = if (frame.mask_key != null) 0x80 else 0;
     var offset: usize = 2;
     if (extended == 0) output[1] = mask_bit | @as(u8, @intCast(frame.payload.len)) else if (extended == 2) {

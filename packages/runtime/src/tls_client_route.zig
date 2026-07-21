@@ -107,12 +107,12 @@ pub const TlsClientRoute = struct {
             const sent = std.posix.send(socket, self.write_buffer[self.write_offset..self.write_len], 0) catch |err| switch (err) {
                 error.WouldBlock => break,
                 else => {
-                    self.fail(.write_failed);
+                    _ = self.fail(.write_failed);
                     return error.WriteFailed;
                 },
             };
             if (sent == 0) {
-                self.fail(.write_failed);
+                _ = self.fail(.write_failed);
                 return error.WriteFailed;
             }
             self.write_offset += sent;
@@ -142,7 +142,7 @@ pub const TlsClientRoute = struct {
             return error.ConnectionClosed;
         }
         return self.provider.decrypt(ciphertext[0..received], plaintext) catch |err| {
-            self.fail(.read_failed);
+            _ = self.fail(.read_failed);
             return err;
         };
     }

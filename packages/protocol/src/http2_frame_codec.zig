@@ -119,7 +119,7 @@ test "HTTP2 settings fixtures round trip and malformed frames fail safely" {
     const settings = [_]Http2Setting{ .{ .id = 2, .value = 0 }, .{ .id = 4, .value = 65535 } };
     var encoded: [32]u8 = undefined;
     const wire = try encode_http2_settings(.{}, &settings, encoded[0..]);
-    try std.testing.expectEqualStrings("\x00\x00\x0c\x04\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x04\x00\x00\xff\xff", wire);
+    try std.testing.expectEqualStrings("\x00\x00\x0c\x04\x00\x00\x00\x00\x00\x00\x02\x00\x00\x00\x00\x00\x04\x00\x00\xff\xff", wire);
     const decoded = try decode_http2_frame(.{}, wire);
     try std.testing.expectEqual(Http2FrameType.settings, decoded.frame.frame_type);
     var parsed: [2]Http2Setting = undefined;
