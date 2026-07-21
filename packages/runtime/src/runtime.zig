@@ -62,6 +62,7 @@ const http_client_lifecycle = @import("http_client_lifecycle.zig");
 const http_streaming_body = @import("http_streaming_body.zig");
 const http_service_routing = @import("http_service_routing.zig");
 const http_middleware_pipeline = @import("http_middleware_pipeline.zig");
+const http2_stream_state = @import("http2_stream_state.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -545,6 +546,14 @@ pub const HttpMiddleware = http_middleware_pipeline.HttpMiddleware;
 pub const HttpMiddlewareHandler = http_middleware_pipeline.HttpMiddlewareHandler;
 pub const HttpMiddlewarePipelineConfig = http_middleware_pipeline.HttpMiddlewarePipelineConfig;
 pub const HttpMiddlewarePipeline = http_middleware_pipeline.HttpMiddlewarePipeline;
+pub const Http2StreamError = http2_stream_state.Http2StreamError;
+pub const Http2EndpointRole = http2_stream_state.Http2EndpointRole;
+pub const Http2StreamState = http2_stream_state.Http2StreamState;
+pub const Http2StreamTransition = http2_stream_state.Http2StreamTransition;
+pub const Http2StreamPriority = http2_stream_state.Http2StreamPriority;
+pub const Http2StreamConfig = http2_stream_state.Http2StreamConfig;
+pub const Http2StreamSnapshot = http2_stream_state.Http2StreamSnapshot;
+pub const Http2StreamRegistry = http2_stream_state.Http2StreamRegistry;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -639,5 +648,6 @@ test {
     _ = @import("http_streaming_body.zig");
     _ = @import("http_service_routing.zig");
     _ = @import("http_middleware_pipeline.zig");
+    _ = @import("http2_stream_state.zig");
     _ = @import("platform_runtime.zig");
 }
