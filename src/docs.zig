@@ -6,8 +6,15 @@ const source_documents = [_][]const u8{
     "guides/quickstart.md",
     "guides/game-protocol.md",
     "guides/core-contract.md",
+    "guides/rendering.md",
+    "guides/image-assets.md",
+    "guides/audio-assets.md",
+    "guides/input.md",
     "guides/testing.md",
     "proof-games/topdown.md",
+    "proof-games/puzzle.md",
+    "proof-games/platformer.md",
+    "guides/ci.md",
     "guides/browser-diagnostics.md",
     "guides/capabilities.md",
     "guides/migrations.md",
@@ -130,4 +137,17 @@ test "broken runnable example links fail validation" {
     const docs_root = try std.fs.path.join(std.testing.allocator, &.{ root, "docs" });
     defer std.testing.allocator.free(docs_root);
     try std.testing.expectError(error.BrokenExampleLink, validateExampleLinks(std.testing.allocator, root, docs_root));
+}
+
+test "quickstart declares the published consumer sequence" {
+    const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
+    defer std.testing.allocator.free(quickstart);
+    const commands = [_][]const u8{
+        "git clone --depth 1 --branch v0.0.4 https://github.com/gongahkia/unpolished-peas.git",
+        "export ZIG_GLOBAL_CACHE_DIR=\"$(mktemp -d)\"",
+        "export ZIG_LOCAL_CACHE_DIR=\"$(mktemp -d)\"",
+        "zig build new -- game",
+        "zig build run -- --frames 2",
+    };
+    for (commands) |command| try std.testing.expect(std.mem.indexOf(u8, quickstart, command) != null);
 }
