@@ -22,6 +22,9 @@ pub const TurnPermissions = struct {
     pub fn count(self: TurnPermissions) usize {
         return self.permissions.items.len;
     }
+    pub fn clear(self: *TurnPermissions) void {
+        self.permissions.clearRetainingCapacity();
+    }
     pub fn authorize(self: *TurnPermissions, peer: protocol.StunAddress, now_ns: core.TimeNs) TurnPermissionError!TurnPermission {
         try validate_peer(peer);
         self.expire(now_ns);
