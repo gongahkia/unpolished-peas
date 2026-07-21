@@ -198,4 +198,5 @@ test {
     _ = @import("fuzz_envelope_codecs.zig");
     _ = @import("fuzz_security_handshakes.zig");
     _ = @import("fuzz_topology_migration.zig");
+    _ = @import("fuzz_nat_p2p.zig");
 }
