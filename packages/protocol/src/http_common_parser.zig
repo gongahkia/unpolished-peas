@@ -245,7 +245,7 @@ test "incremental HTTP parser bounds malformed headers and decodes fixed and chu
 }
 
 test "HTTP parser rejects conflicting and oversized framing without unbounded retention" {
-    var parser = try HttpParser.init(.{ .kind = .request, .maximum_start_line_bytes = 8, .maximum_header_bytes = 32, .maximum_headers = 1, .maximum_body_bytes = 2 });
+    var parser = try HttpParser.init(.{ .kind = .request, .maximum_start_line_bytes = 32, .maximum_header_bytes = 32, .maximum_headers = 1, .maximum_body_bytes = 2 });
     _ = try parser.feed("GET / HTTP/1.1\r\n");
     try std.testing.expectError(error.HeaderTooLarge, parser.feed("Long: 123456789012345678901234567890\r\n"));
     var chunked = try HttpParser.init(.{ .kind = .response, .maximum_body_bytes = 2 });

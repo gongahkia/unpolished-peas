@@ -113,7 +113,7 @@ test "HTTP server handlers return two keep-alive responses over one bounded conn
         fn route(context: ?*anyopaque, request: service.ServiceRequest) service.ServiceModuleError!service.ServiceRouteResult {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             self.calls += 1;
-            try std.testing.expectEqualStrings("/public", request.route);
+            if (!std.mem.eql(u8, "/public", request.route)) return error.CallbackFailed;
             return .handled;
         }
     };
@@ -137,6 +137,7 @@ test "HTTP server handlers return two keep-alive responses over one bounded conn
         };
     }
     try std.testing.expectEqual(@as(usize, 2), count);
+    try std.testing.expectEqual(@as(usize, 2), fixture.calls);
     try std.testing.expect(responses[0].keep_alive and responses[1].keep_alive);
     try std.testing.expectEqual(@as(usize, 2), fixture.calls);
     var encoded: [96]u8 = undefined;

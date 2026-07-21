@@ -34,7 +34,7 @@ pub const HttpWebSocketGateway = struct {
     }
 
     pub fn deinit(self: *HttpWebSocketGateway) void {
-        for (self.clients.items) |client| client.detach() catch {};
+        for (self.clients.items) |client| _ = client.detach() catch continue;
         self.clients.deinit(self.allocator);
         self.* = undefined;
     }
@@ -54,7 +54,7 @@ pub const HttpWebSocketGateway = struct {
     }
 
     pub fn broadcast(self: *HttpWebSocketGateway, payload: []const u8) GatewayBroadcast {
-        var result = GatewayBroadcast{};
+        var result = GatewayBroadcast{ .delivered = 0, .backpressured = 0 };
         for (self.clients.items) |client| {
             if (client.state != .open) continue;
             var delivered = true;
@@ -115,7 +115,7 @@ test "gateway upgrades an authorized route and relays bounded runtime messages" 
     var router = try routing.HttpServiceRouter.init(std.testing.allocator, .{ .services = &services, .maximum_routes = 1 });
     defer router.deinit();
     try router.register(.{ .method = .get, .pattern = "/socket", .module = module, .maximum_body_bytes = 1 });
-    var gateway = try HttpWebSocketGateway.init(std.testing.allocator, .{ .router = &router, .maximum_clients = 1 });
+    var gateway = try HttpWebSocketGateway.init(std.testing.allocator, .{ .router = &router, .upgrade_policy = .{}, .maximum_clients = 1 });
     defer gateway.deinit();
     const headers = [_]@import("minna-san-protocol").HttpHeader{ .{ .name = "Upgrade", .value = "websocket" }, .{ .name = "Connection", .value = "Upgrade" }, .{ .name = "Sec-WebSocket-Version", .value = "13" }, .{ .name = "Sec-WebSocket-Key", .value = "dGhlIHNhbXBsZSBub25jZQ==" } };
     _ = try gateway.upgradeClient(.{ .method = "GET", .headers = &headers }, &client);
