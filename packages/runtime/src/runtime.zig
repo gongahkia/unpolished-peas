@@ -61,6 +61,7 @@ const http_server_lifecycle = @import("http_server_lifecycle.zig");
 const http_client_lifecycle = @import("http_client_lifecycle.zig");
 const http_streaming_body = @import("http_streaming_body.zig");
 const http_service_routing = @import("http_service_routing.zig");
+const http_middleware_pipeline = @import("http_middleware_pipeline.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -530,6 +531,20 @@ pub const HttpServiceRouteConfig = http_service_routing.HttpServiceRouteConfig;
 pub const HttpServiceRouterConfig = http_service_routing.HttpServiceRouterConfig;
 pub const HttpRouteDispatch = http_service_routing.HttpRouteDispatch;
 pub const HttpServiceRouter = http_service_routing.HttpServiceRouter;
+pub const max_http_middleware = http_middleware_pipeline.max_http_middleware;
+pub const max_http_middleware_local_bytes = http_middleware_pipeline.max_http_middleware_local_bytes;
+pub const HttpMiddlewarePipelineError = http_middleware_pipeline.HttpMiddlewarePipelineError;
+pub const HttpMiddlewareRequest = http_middleware_pipeline.HttpMiddlewareRequest;
+pub const HttpMiddlewareContext = http_middleware_pipeline.HttpMiddlewareContext;
+pub const HttpMiddlewareAction = http_middleware_pipeline.HttpMiddlewareAction;
+pub const HttpMiddlewareResponse = http_middleware_pipeline.HttpMiddlewareResponse;
+pub const HttpMiddlewareResult = http_middleware_pipeline.HttpMiddlewareResult;
+pub const HttpMiddlewareFn = http_middleware_pipeline.HttpMiddlewareFn;
+pub const HttpMiddlewareHandlerFn = http_middleware_pipeline.HttpMiddlewareHandlerFn;
+pub const HttpMiddleware = http_middleware_pipeline.HttpMiddleware;
+pub const HttpMiddlewareHandler = http_middleware_pipeline.HttpMiddlewareHandler;
+pub const HttpMiddlewarePipelineConfig = http_middleware_pipeline.HttpMiddlewarePipelineConfig;
+pub const HttpMiddlewarePipeline = http_middleware_pipeline.HttpMiddlewarePipeline;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -623,5 +638,6 @@ test {
     _ = @import("http_client_lifecycle.zig");
     _ = @import("http_streaming_body.zig");
     _ = @import("http_service_routing.zig");
+    _ = @import("http_middleware_pipeline.zig");
     _ = @import("platform_runtime.zig");
 }
