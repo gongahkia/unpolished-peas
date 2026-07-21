@@ -49,7 +49,13 @@ pub const SessionRegistry = struct {
     }
 
     pub fn close(self: *SessionRegistry, handle: *resource.ResourceHandle) SessionRegistryError!void {
-        try self.transition(handle, .close);
+        const lifecycle_value = try self.lookup(handle);
+        switch (lifecycle_value.state) {
+            .establishing, .ready => try lifecycle_value.transition(.begin_draining),
+            .idle, .closed => {},
+            .draining => try lifecycle_value.transition(.close),
+        }
+        if (lifecycle_value.state == .draining) try lifecycle_value.transition(.close);
         for (self.entries.items, 0..) |entry, index| {
             if (entry.handle != handle) continue;
             try self.resources.release_kind(handle, .session);

@@ -174,8 +174,8 @@ pub const HttpParser = struct {
     }
 
     fn appendLineByte(self: *HttpParser, byte: u8) HttpParserError!void {
-        if (byte == '\r' and self.line_len + 1 > self.config.maximum_start_line_bytes and self.state == .start_line) return self.fail(error.LineTooLong);
-        if (self.line_len == self.config.maximum_header_bytes) return self.fail(error.HeaderTooLarge);
+        if (self.state == .start_line and self.line_len == self.config.maximum_start_line_bytes) return self.fail(error.LineTooLong);
+        if (self.state != .start_line and self.line_len == self.config.maximum_header_bytes) return self.fail(error.HeaderTooLarge);
         self.storage[self.line_len] = byte;
         self.line_len += 1;
     }

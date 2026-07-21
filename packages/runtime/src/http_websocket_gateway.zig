@@ -63,7 +63,9 @@ pub const HttpWebSocketGateway = struct {
                     result.backpressured += 1;
                     delivered = false;
                 },
-                else => client.beginClose(0, 1011) catch {},
+                else => {
+                    _ = client.beginClose(0, 1011) catch {};
+                },
             };
             if (delivered) result.delivered += 1;
         }

@@ -104,7 +104,8 @@ test "fake TLS providers complete explicit polls with ALPN certificates encrypte
         fn start(context: ?*anyopaque, _: u8, alpn: [*]const u8, alpn_len: usize, server_name: [*]const u8, server_name_len: usize, certificate_context: ?*anyopaque, callback: ?TlsCertificateCallback) callconv(.c) c_int {
             _ = context;
             if (!std.mem.eql(u8, alpn[0..alpn_len], "h2") or !std.mem.eql(u8, server_name[0..server_name_len], "example.test")) return @intFromEnum(core.CResult.invalid_argument);
-            return callback.?(certificate_context, server_name, server_name_len);
+            if (callback.?(certificate_context, server_name, server_name_len) != @intFromEnum(TlsCertificateDecision.accept)) return @intFromEnum(core.CResult.invalid_argument);
+            return @intFromEnum(core.CResult.ok);
         }
         fn poll(context: ?*anyopaque, _: core.TimeNs, output: *TlsPollOutput) callconv(.c) c_int {
             const self: *@This() = @ptrCast(@alignCast(context.?));

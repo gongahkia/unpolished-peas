@@ -66,6 +66,11 @@ pub const HttpServerConnection = struct {
                 if (bytes.len > self.config.parser.maximum_body_bytes - self.body.items.len) return error.RequestBodyTooLarge;
                 try self.body.appendSlice(self.allocator, bytes);
             },
+            .headers_complete => |framing| switch (framing) {
+                .none => return .{ .consumed = parsed.consumed, .event = .{ .response = try self.dispatch() } },
+                .content_length => |length| if (length == 0) return .{ .consumed = parsed.consumed, .event = .{ .response = try self.dispatch() } },
+                .chunked => {},
+            },
             .complete => return .{ .consumed = parsed.consumed, .event = .{ .response = try self.dispatch() } },
             else => {},
         }
@@ -139,7 +144,6 @@ test "HTTP server handlers return two keep-alive responses over one bounded conn
     try std.testing.expectEqual(@as(usize, 2), count);
     try std.testing.expectEqual(@as(usize, 2), fixture.calls);
     try std.testing.expect(responses[0].keep_alive and responses[1].keep_alive);
-    try std.testing.expectEqual(@as(usize, 2), fixture.calls);
     var encoded: [96]u8 = undefined;
     try std.testing.expect(std.mem.startsWith(u8, try HttpServerConnection.encodeResponse(responses[0], encoded[0..]), "HTTP/1.1 200 OK\r\n"));
 }

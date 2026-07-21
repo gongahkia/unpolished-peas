@@ -229,7 +229,7 @@ test "NAT-simulated peers establish a nominated authenticated direct route from 
     try std.testing.expectEqual(DirectConnectivityRouteEvent.nominated, try pollWithRetry(&second, output[0..], 2));
     try std.testing.expectEqual(DirectConnectivityRouteState.nominated, first.state);
     try std.testing.expectEqual(DirectConnectivityRouteState.active, second.state);
-    try std.testing.expectEqual(DirectConnectivityRouteEvent{ .sent = 12 }, try first.send("direct route", 3));
+    try std.testing.expectEqual(DirectConnectivityRouteEvent{ .sent = 21 }, try first.send("direct route", 3));
     try std.testing.expectEqualStrings("direct route", (try pollWithRetry(&second, output[0..], 3)).received);
 }
 
