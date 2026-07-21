@@ -48,6 +48,7 @@ const turn_allocation_provider = @import("turn_allocation_provider.zig");
 const turn_allocation_refresh_scheduler = @import("turn_allocation_refresh_scheduler.zig");
 const turn_relay_datagram_route = @import("turn_relay_datagram_route.zig");
 const candidate_gathering_pipeline = @import("candidate_gathering_pipeline.zig");
+const direct_connectivity_route = @import("direct_connectivity_route.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -391,6 +392,12 @@ pub const max_gathered_candidates = candidate_gathering_pipeline.max_gathered_ca
 pub const CandidateGatheringPipelineError = candidate_gathering_pipeline.CandidateGatheringPipelineError;
 pub const CandidateGatheringPipelineConfig = candidate_gathering_pipeline.CandidateGatheringPipelineConfig;
 pub const CandidateGatheringPipeline = candidate_gathering_pipeline.CandidateGatheringPipeline;
+pub const DirectConnectivityRouteState = direct_connectivity_route.DirectConnectivityRouteState;
+pub const DirectConnectivityRouteError = direct_connectivity_route.DirectConnectivityRouteError;
+pub const DirectConnectivityRouteConfig = direct_connectivity_route.DirectConnectivityRouteConfig;
+pub const DirectConnectivityRouteFailure = direct_connectivity_route.DirectConnectivityRouteFailure;
+pub const DirectConnectivityRouteEvent = direct_connectivity_route.DirectConnectivityRouteEvent;
+pub const DirectConnectivityRoute = direct_connectivity_route.DirectConnectivityRoute;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -471,5 +478,6 @@ test {
     _ = @import("turn_allocation_refresh_scheduler.zig");
     _ = @import("turn_relay_datagram_route.zig");
     _ = @import("candidate_gathering_pipeline.zig");
+    _ = @import("direct_connectivity_route.zig");
     _ = @import("platform_runtime.zig");
 }
