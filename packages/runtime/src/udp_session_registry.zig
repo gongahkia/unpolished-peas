@@ -118,6 +118,10 @@ pub const UdpSessionRegistry = struct {
         return .{ .state = lifecycle.state, .channel = entry.channel };
     }
 
+    pub fn validateSession(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!void {
+        _ = try self.lookup(handle);
+    }
+
     pub fn pollNextReadiness(self: *UdpSessionRegistry) UdpSessionError!?UdpSessionReadiness {
         if (self.entries.items.len == 0) return null;
         var index = if (self.readiness_cursor < self.entries.items.len) self.readiness_cursor else 0;

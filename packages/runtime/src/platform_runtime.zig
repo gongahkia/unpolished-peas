@@ -15,12 +15,13 @@ const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 const tcp_channel_registry = @import("tcp_channel_registry.zig");
+const tcp_fallback_registry = @import("tcp_fallback_registry.zig");
 const tcp_listener_registry = @import("tcp_listener_registry.zig");
 const tcp_session_registry = @import("tcp_session_registry.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const UdpReadinessTarget = union(enum) {
     listener: *resource_handle.ResourceHandle,
@@ -58,6 +59,7 @@ pub const Runtime = struct {
     sessions: *session_registry.SessionRegistry,
     channels: *channel_registry.ChannelRegistry,
     tcp_channels: tcp_channel_registry.TcpChannelRegistry,
+    tcp_fallbacks: tcp_fallback_registry.TcpFallbackRegistry,
     tcp_listeners: tcp_listener_registry.TcpListenerRegistry,
     tcp_sessions: tcp_session_registry.TcpSessionRegistry,
     listeners: udp_listener_registry.UdpListenerRegistry,
@@ -96,6 +98,8 @@ pub const Runtime = struct {
         errdefer tcp_sessions.deinit();
         var tcp_channels = try tcp_channel_registry.TcpChannelRegistry.init(allocator, &tcp_sessions, channels, platform_config.limits.session_capacity);
         errdefer tcp_channels.deinit();
+        var tcp_fallbacks = try tcp_fallback_registry.TcpFallbackRegistry.init(allocator, platform_config.limits.session_capacity);
+        errdefer tcp_fallbacks.deinit();
         var listeners = try udp_listener_registry.UdpListenerRegistry.init(allocator, resources, platform_config.limits.listener_capacity);
         errdefer listeners.deinit();
         var udp_sessions = try udp_session_registry.UdpSessionRegistry.init(allocator, sessions, channels, platform_config.limits.session_capacity);
@@ -115,6 +119,7 @@ pub const Runtime = struct {
             .sessions = sessions,
             .channels = channels,
             .tcp_channels = tcp_channels,
+            .tcp_fallbacks = tcp_fallbacks,
             .tcp_listeners = tcp_listeners,
             .tcp_sessions = tcp_sessions,
             .listeners = listeners,
@@ -131,6 +136,7 @@ pub const Runtime = struct {
         self.providers.deinit();
         self.timers.deinit();
         self.tcp_channels.deinit();
+        self.tcp_fallbacks.deinit();
         self.tcp_sessions.deinit();
         self.udp_sessions.deinit();
         self.listeners.deinit();
@@ -272,7 +278,23 @@ pub const Runtime = struct {
     }
 
     pub fn closeUdpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
+        self.tcp_fallbacks.forget(handle);
         try self.udp_sessions.close(handle);
+    }
+
+    pub fn registerTcpFallback(self: *Runtime, udp_session: *resource_handle.ResourceHandle, policy: topology.RouteCandidatePolicy) RuntimeError!void {
+        try self.udp_sessions.validateSession(udp_session);
+        try self.tcp_fallbacks.register(udp_session, policy);
+    }
+
+    pub fn selectTcpFallback(self: *Runtime, udp_session: *resource_handle.ResourceHandle, failure: tcp_fallback_registry.UdpFallbackFailure, candidates: []const topology.RouteCandidate) RuntimeError!tcp_fallback_registry.TcpFallbackEvent {
+        const policy = try self.tcp_fallbacks.policy(udp_session);
+        if (!self.providers.supportsRequirements(policy.required_capabilities)) return error.UnsupportedCapabilities;
+        return self.tcp_fallbacks.select(udp_session, failure, candidates);
+    }
+
+    pub fn listTcpFallbackTransitions(self: *Runtime, udp_session: *resource_handle.ResourceHandle, output: []tcp_fallback_registry.TcpFallbackTransition) RuntimeError!usize {
+        return self.tcp_fallbacks.listTransitions(udp_session, output);
     }
 
     pub fn pollUdpReceives(self: *Runtime, handle: *resource_handle.ResourceHandle, events: []udp_session_registry.UdpReceiveEvent) udp_session_registry.UdpSessionError!udp_session_registry.UdpReceiveBatch {
@@ -655,6 +677,38 @@ test "unified runtimes establish localhost UDP sessions under explicit polling" 
         try std.testing.expectEqual(session_registry.SessionState.ready, (try second.pollUdpSession(second_session)).state);
         try first.closeUdpSession(first_session);
         try second.closeUdpSession(second_session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes select policy-permitted TCP fallback in ordered session transitions" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        var receiver = try transport_api.UdpSocket.init(.{});
+        defer receiver.close();
+        try receiver.bind(try transport_api.Ipv4Address.parse("127.0.0.1", 0));
+        const receiver_address = local_udp_ipv4_address(&receiver);
+        const udp_session = try runtime.dialUdp(.{ .endpoint = transport_api.Endpoint.from_ipv4(receiver_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 } });
+        try runtime.registerTcpFallback(udp_session, .{ .allowed_transport_bits = topology.route_transport_bit(.udp) | topology.route_transport_bit(.tcp) });
+        const candidates = [_]topology.RouteCandidate{
+            .{ .id = 1, .transport = .udp, .endpoint = transport_api.Endpoint.from_ipv4(receiver_address), .negotiated = true, .health = .healthy },
+            .{ .id = 2, .transport = .tcp, .endpoint = transport_api.Endpoint.from_ipv4(receiver_address), .negotiated = true, .health = .healthy },
+        };
+        const fallback = try runtime.selectTcpFallback(udp_session, .send_failed, candidates[0..]);
+        try std.testing.expectEqual(@as(u64, 1), fallback.sequence);
+        try std.testing.expectEqual(@as(u64, 2), fallback.candidate.candidate.id);
+        var transitions: [2]tcp_fallback_registry.TcpFallbackTransition = undefined;
+        try std.testing.expectEqual(@as(usize, 2), try runtime.listTcpFallbackTransitions(udp_session, transitions[0..]));
+        try std.testing.expectEqual(@as(u64, 0), transitions[0].sequence);
+        try std.testing.expectEqual(tcp_fallback_registry.TcpFallbackTransitionKind.udp_failed, transitions[0].kind);
+        try std.testing.expectEqual(@as(u64, 1), transitions[1].sequence);
+        try std.testing.expectEqual(tcp_fallback_registry.TcpFallbackTransitionKind.downgraded_to_tcp, transitions[1].kind);
+        try runtime.closeUdpSession(udp_session);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
