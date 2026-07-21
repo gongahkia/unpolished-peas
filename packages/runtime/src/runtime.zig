@@ -55,6 +55,7 @@ const tls_provider = @import("tls_provider.zig");
 const tls_alpn = @import("tls_alpn.zig");
 const tls_certificate_callback = @import("tls_certificate_callback.zig");
 const tls_client_route = @import("tls_client_route.zig");
+const http_session_policy = @import("http_session_policy.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -469,6 +470,13 @@ pub const TlsClientRoutePoll = tls_client_route.TlsClientRoutePoll;
 pub const TlsClientRouteWrite = tls_client_route.TlsClientRouteWrite;
 pub const TlsClientRoute = tls_client_route.TlsClientRoute;
 pub const TlsClientChannel = tls_client_route.TlsClientChannel;
+pub const HttpSessionPolicyError = http_session_policy.HttpSessionPolicyError;
+pub const HttpSessionPolicyState = http_session_policy.HttpSessionPolicyState;
+pub const HttpSessionRejection = http_session_policy.HttpSessionRejection;
+pub const HttpRejectionResponse = http_session_policy.HttpRejectionResponse;
+pub const HttpSessionPolicyEvent = http_session_policy.HttpSessionPolicyEvent;
+pub const HttpSessionPolicyConfig = http_session_policy.HttpSessionPolicyConfig;
+pub const HttpSessionPolicy = http_session_policy.HttpSessionPolicy;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -556,5 +564,6 @@ test {
     _ = @import("tls_alpn.zig");
     _ = @import("tls_certificate_callback.zig");
     _ = @import("tls_client_route.zig");
+    _ = @import("http_session_policy.zig");
     _ = @import("platform_runtime.zig");
 }
