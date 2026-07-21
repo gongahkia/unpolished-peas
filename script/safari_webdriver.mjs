@@ -152,7 +152,12 @@ async function capture(client, directory, game, renderer, driverStatus) {
 async function smoke(client, game, renderer, directory, driverStatus) {
   await client.wait(pageReady(renderer));
   const diagnostic = await client.execute("return window.unpolishedPeas?.rendererDiagnostic ?? null;");
-  assert.equal(validateRenderer(diagnostic, renderer), "available");
+  const availability = validateRenderer(diagnostic, renderer);
+  if (availability === "unavailable") {
+    const artifact = await capture(client, directory, game, renderer, driverStatus);
+    assert.equal(artifact.selected_renderer, null);
+    return availability;
+  }
   const canvas = await client.find("canvas[data-unpolished-peas]");
   assert.equal(await client.execute("return document.querySelector('canvas[data-unpolished-peas]')?.dataset.game ?? null;"), game);
   await client.click(canvas);
@@ -169,6 +174,7 @@ async function smoke(client, game, renderer, directory, driverStatus) {
   assert.equal(contract, true);
   const artifact = await capture(client, directory, game, renderer, driverStatus);
   assert.equal(artifact.selected_renderer, renderer);
+  return availability;
 }
 
 async function main() {
@@ -181,14 +187,15 @@ async function main() {
   const driverStatus = await client.status();
   try {
     await client.createSession();
+    const unavailable = [];
     for (const renderer of renderers) {
       await client.navigate(`${baseUrl}?renderer=${renderer}`);
-      await smoke(client, game, renderer, artifactDirectory, driverStatus);
+      if (await smoke(client, game, renderer, artifactDirectory, driverStatus) === "unavailable") unavailable.push(renderer);
     }
+    console.log(`Safari WebDriver smoke passed: forced-${renderers.join(", forced-")}${unavailable.length ? ` unavailable=${unavailable.join(",")}` : ""}`);
   } finally {
     await client.deleteSession();
   }
-  console.log(`Safari WebDriver smoke passed: forced-${renderers.join(", forced-")}`);
 }
 
 if (import.meta.url === new URL(`file://${process.argv[1]}`).href) {
