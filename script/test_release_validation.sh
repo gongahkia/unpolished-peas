@@ -6,6 +6,7 @@ workflow="$repo/.github/workflows/release.yml"
 nightly="$repo/.github/workflows/nightly.yml"
 pull_request="$repo/.github/workflows/toolchain.yml"
 gate="$repo/script/release_gate.sh"
+published_consumer="$repo/script/test_published_tag_consumer.sh"
 
 require() {
     local value=$1
@@ -21,6 +22,13 @@ require '      - run: script/test_release_validation.sh' "$workflow"
 require '      - if: startsWith(github.ref, '\''refs/tags/'\'')' "$workflow"
 require '        run: script/test_published_tag_consumer.sh' "$workflow"
 require '      - run: zig build release-gate' "$workflow"
+require 'curl --fail --location --silent --show-error "$expected_url" --output "$release_archive"' "$published_consumer"
+require '    git clone --depth 1 --branch "$tag" "$repo_url"' "$published_consumer"
+require '    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"' "$published_consumer"
+rg --fixed-strings --quiet 'zig build run -- --frames 2' "$published_consumer" || {
+    printf '%s\n' 'release validation missing published consumer frame smoke' >&2
+    exit 1
+}
 if rg --fixed-strings --quiet -- '--draft' "$workflow"; then
     printf '%s\n' 'release validation found a draft release command' >&2
     exit 1
