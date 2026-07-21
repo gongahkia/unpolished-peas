@@ -55,6 +55,7 @@ pub const max_provider_capacity = platform_config.max_provider_capacity;
 pub const max_service_capacity = platform_config.max_service_capacity;
 pub const max_session_capacity = platform_config.max_session_capacity;
 pub const max_channel_capacity = platform_config.max_channel_capacity;
+pub const max_listener_capacity = platform_config.max_listener_capacity;
 pub const max_event_capacity = platform_config.max_event_capacity;
 pub const max_poll_work_budget = platform_config.max_poll_work_budget;
 pub const PlatformLimits = platform_config.PlatformLimits;
