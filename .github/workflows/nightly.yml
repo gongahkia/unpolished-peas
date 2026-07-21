@@ -26,6 +26,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: ${{ matrix.id != 'windows-sdl_gpu' }}
       - if: matrix.id == 'linux-sdl_gpu'
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - if: matrix.id == 'firefox-webgl2'
