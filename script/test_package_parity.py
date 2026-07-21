@@ -26,12 +26,12 @@ COMMON = {
     "renderer-sdl-gpu": "passed",
 }
 OPENGL_BY_TARGET = {
-    "linux": "passed",
-    "macos": "passed",
+    "linux": ("passed", "capability-unavailable"),
+    "macos": ("passed",),
     # windows-2022 has no supported OpenGL 3.3 context. The package must
     # report that explicit selection failed as a host capability, not claim a
     # renderer conformance result it cannot obtain.
-    "windows": "capability-unavailable",
+    "windows": ("capability-unavailable",),
 }
 
 
@@ -52,7 +52,10 @@ def validate(reports: list[dict[str, str]]) -> None:
         if target is None or target in seen:
             raise ValueError(f"unexpected package report: {report}")
         platform, archive = EXPECTED[target]
-        expected = {"platform": platform, "game": target[1], "archive": archive, "renderer-opengl": OPENGL_BY_TARGET[target[0]]} | COMMON
+        opengl_result = report.get("renderer-opengl")
+        if opengl_result not in OPENGL_BY_TARGET[target[0]]:
+            raise ValueError(f"package parity OpenGL result for {target[0]}/{target[1]}: {report}")
+        expected = {"platform": platform, "game": target[1], "archive": archive, "renderer-opengl": opengl_result} | COMMON
         if report != expected:
             raise ValueError(f"package parity mismatch for {target[0]}/{target[1]}: {report}")
         seen.add(target)
@@ -63,7 +66,7 @@ def validate(reports: list[dict[str, str]]) -> None:
 def sample_reports() -> list[dict[str, str]]:
     reports = []
     for (target, game), (platform, archive) in EXPECTED.items():
-        reports.append({"platform": platform, "game": game, "archive": archive, "renderer-opengl": OPENGL_BY_TARGET[target] } | COMMON)
+        reports.append({"platform": platform, "game": game, "archive": archive, "renderer-opengl": OPENGL_BY_TARGET[target][0]} | COMMON)
     return reports
 
 
@@ -79,6 +82,9 @@ def self_test() -> None:
             path.parent.mkdir()
             path.write_text("".join(f"{key}={value}\n" for key, value in report.items()), encoding="ascii")
         validate(reports_from(root))
+    unavailable = sample_reports()
+    unavailable[0] = unavailable[0] | {"renderer-opengl": "capability-unavailable"}
+    validate(unavailable)
     invalid = sample_reports()
     invalid[0] = invalid[0] | {"layout": "missing"}
     try:
