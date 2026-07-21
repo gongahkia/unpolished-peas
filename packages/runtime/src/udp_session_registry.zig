@@ -8,6 +8,15 @@ const delivery = @import("channel_delivery.zig");
 
 pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || protocol.PacketProtectionError || protocol.ReplayWindowError || protocol.KeyRotationError || protocol.KeyRotationFrameError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
 
+pub const UdpSecurityFailureKind = enum {
+    authentication,
+    decryption,
+    replay,
+    rotation,
+};
+
+pub const udp_security_failure_kind_count = @typeInfo(UdpSecurityFailureKind).@"enum".fields.len;
+
 pub const UdpPacketProtectionConfig = struct {
     send_key: protocol.PacketProtectionKey,
     receive_key: protocol.PacketProtectionKey,
@@ -51,6 +60,7 @@ pub const UdpReceiveEvent = struct {
 pub const UdpReceiveBatch = struct {
     received: usize = 0,
     discarded: usize = 0,
+    security_failures: [udp_security_failure_kind_count]u64 = [_]u64{0} ** udp_security_failure_kind_count,
     would_block: bool = false,
     backpressured: bool = false,
 };
@@ -456,19 +466,19 @@ pub const UdpSessionRegistry = struct {
                 else => return err,
             };
             const payload: []const u8 = if (entry.packet_protection) |*protection| blk: {
-                const opened = protection.open(datagram.bytes, plaintext[0..]) catch {
-                    batch.discarded += 1;
+                const opened = protection.open(datagram.bytes, plaintext[0..]) catch |err| {
+                    record_security_failure(&batch, security_failure_for_packet_error(err));
                     continue;
                 };
                 const frame = protocol.decode_protected_datagram_payload(opened) catch {
-                    batch.discarded += 1;
+                    record_security_failure(&batch, .decryption);
                     continue;
                 };
                 switch (frame) {
                     .application => |value| break :blk value,
                     .key_rotation => |control| {
                         protection.receiveControl(control) catch {
-                            batch.discarded += 1;
+                            record_security_failure(&batch, .rotation);
                             continue;
                         };
                         continue;
@@ -650,6 +660,19 @@ fn application_payload_budget(wire_payload: usize, protected: bool) UdpSessionEr
     if (!protected) return wire_payload;
     if (wire_payload <= protected_datagram_overhead) return error.InvalidConfiguration;
     return wire_payload - protected_datagram_overhead;
+}
+
+fn record_security_failure(batch: *UdpReceiveBatch, failure: UdpSecurityFailureKind) void {
+    batch.discarded += 1;
+    batch.security_failures[@intFromEnum(failure)] +%= 1;
+}
+
+fn security_failure_for_packet_error(err: protocol.PacketProtectionError) UdpSecurityFailureKind {
+    return switch (err) {
+        error.AuthenticationFailed => .authentication,
+        error.DuplicatePacket, error.TooOldPacket => .replay,
+        else => .decryption,
+    };
 }
 
 fn connect(socket: *transport.Socket, address: transport.ResolvedAddress) UdpSessionError!void {
@@ -948,6 +971,7 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         const rejected = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
         try std.testing.expectEqual(@as(usize, 0), rejected.received);
         try std.testing.expectEqual(@as(usize, 1), rejected.discarded);
+        try std.testing.expectEqual(@as(u64, 1), rejected.security_failures[@intFromEnum(UdpSecurityFailureKind.authentication)]);
         try std.testing.expect((try channels.dequeue(handle)) == null);
         var two_plaintext: [protocol.protected_datagram_payload_tag_bytes + 3]u8 = undefined;
         var two_storage: [protected_datagram_overhead + 3]u8 = undefined;
@@ -963,7 +987,9 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         try std.testing.expectEqualStrings("one", received.payload);
         received.deinit(allocator);
         _ = try peer.send_to(one, local_address);
-        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        const duplicate = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), duplicate.discarded);
+        try std.testing.expectEqual(@as(u64, 1), duplicate.security_failures[@intFromEnum(UdpSecurityFailureKind.replay)]);
         try std.testing.expect((try channels.dequeue(handle)) == null);
         var three_plaintext: [protocol.protected_datagram_payload_tag_bytes + 5]u8 = undefined;
         var three_storage: [protected_datagram_overhead + 5]u8 = undefined;
@@ -980,14 +1006,30 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         try std.testing.expectEqualStrings("four", received.payload);
         received.deinit(allocator);
         _ = try peer.send_to(zero, local_address);
-        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        const stale = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), stale.discarded);
+        try std.testing.expectEqual(@as(u64, 1), stale.security_failures[@intFromEnum(UdpSecurityFailureKind.replay)]);
         try std.testing.expect((try channels.dequeue(handle)) == null);
+        var malformed_storage: [protocol.packet_protection_epoch_header_bytes + protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try inbound.seal_with_epoch(0, "bad", malformed_storage[0..]), local_address);
+        const malformed = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), malformed.discarded);
+        try std.testing.expectEqual(@as(u64, 1), malformed.security_failures[@intFromEnum(UdpSecurityFailureKind.decryption)]);
+        var control_plaintext: [protocol.key_rotation_control_frame_bytes]u8 = undefined;
+        var control_storage: [protocol.packet_protection_epoch_header_bytes + protocol.packet_protection_frame_header_bytes + protocol.key_rotation_control_frame_bytes + protocol.packet_protection_tag_bytes]u8 = undefined;
+        const update = protocol.KeyRotationControl{ .kind = .update, .epoch = 1 };
+        _ = try peer.send_to(try inbound.seal_with_epoch(0, try protocol.encode_key_rotation_control(update, control_plaintext[0..]), control_storage[0..]), local_address);
+        const invalid_rotation = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), invalid_rotation.discarded);
+        try std.testing.expectEqual(@as(u64, 1), invalid_rotation.security_failures[@intFromEnum(UdpSecurityFailureKind.rotation)]);
         const next_send_key = protocol.PacketProtectionKey.init([_]u8{5} ** protocol.packet_protection_key_bytes, [_]u8{6} ** protocol.packet_protection_nonce_prefix_bytes);
         const next_receive_key = protocol.PacketProtectionKey.init([_]u8{7} ** protocol.packet_protection_key_bytes, [_]u8{8} ** protocol.packet_protection_nonce_prefix_bytes);
         try std.testing.expectError(error.InvalidConfiguration, udp_sessions.resetPacketProtection(handle, .{ .send_key = next_send_key, .receive_key = next_receive_key, .key_epoch = 0 }));
         try udp_sessions.resetPacketProtection(handle, .{ .send_key = next_send_key, .receive_key = next_receive_key, .replay = .{ .window_size = 2 }, .key_epoch = 1 });
         _ = try peer.send_to(two, local_address);
-        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        const retired_epoch = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), retired_epoch.discarded);
+        try std.testing.expectEqual(@as(u64, 1), retired_epoch.security_failures[@intFromEnum(UdpSecurityFailureKind.authentication)]);
         try std.testing.expect((try channels.dequeue(handle)) == null);
         var next_inbound = protocol.PacketProtector.init(next_receive_key);
         defer next_inbound.deinit();
