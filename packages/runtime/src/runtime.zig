@@ -66,6 +66,7 @@ const http2_stream_state = @import("http2_stream_state.zig");
 const http2_flow_control = @import("http2_flow_control.zig");
 const websocket_upgrade = @import("websocket_upgrade.zig");
 const websocket_session = @import("websocket_session.zig");
+const http_websocket_gateway = @import("http_websocket_gateway.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -579,6 +580,11 @@ pub const WebSocketSessionState = websocket_session.WebSocketSessionState;
 pub const WebSocketSessionEvent = websocket_session.WebSocketSessionEvent;
 pub const WebSocketSessionConfig = websocket_session.WebSocketSessionConfig;
 pub const WebSocketSession = websocket_session.WebSocketSession;
+pub const HttpWebSocketGatewayError = http_websocket_gateway.HttpWebSocketGatewayError;
+pub const WebSocketGatewayAuthorizeFn = http_websocket_gateway.WebSocketGatewayAuthorizeFn;
+pub const HttpWebSocketGatewayConfig = http_websocket_gateway.HttpWebSocketGatewayConfig;
+pub const GatewayBroadcast = http_websocket_gateway.GatewayBroadcast;
+pub const HttpWebSocketGateway = http_websocket_gateway.HttpWebSocketGateway;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -677,5 +683,6 @@ test {
     _ = @import("http2_flow_control.zig");
     _ = @import("websocket_upgrade.zig");
     _ = @import("websocket_session.zig");
+    _ = @import("http_websocket_gateway.zig");
     _ = @import("platform_runtime.zig");
 }
