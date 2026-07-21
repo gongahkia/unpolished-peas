@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 import hashlib
 import io
+import json
 import pathlib
 import sys
 import tarfile
@@ -36,6 +37,14 @@ def require(value: bool) -> None:
 def main() -> None:
     root = pathlib.Path(__file__).resolve().parents[1]
     provider = resolver.load_provider(root / "providers" / "manifest.json")
+    expected_headers = [
+        "include/msquic.h",
+        "include/msquic_posix.h",
+        "include/quic_sal_stub.h",
+        "include/msquic_winuser.h",
+        "include/msquic_winkernel.h",
+    ]
+    require([header["path"] for header in provider["headers"]] == expected_headers)
     require(resolver.select_artifact(provider, "x86_64-linux")["format"] == "deb")
     require(resolver.select_artifact(provider, "x86_64-windows")["format"] == "zip")
     try:
@@ -44,6 +53,32 @@ def main() -> None:
         pass
     else:
         raise AssertionError
+    try:
+        resolver.validate_header_closure([(pathlib.PurePosixPath("include/msquic.h"), b'#include "missing.h"\n')])
+    except resolver.ResolutionError:
+        pass
+    else:
+        raise AssertionError
+    artifact = resolver.select_artifact(provider, "x86_64-linux")
+    header_payloads = {
+        "include/msquic.h": b'#include "msquic_posix.h"\n#include "msquic_winuser.h"\n#include "msquic_winkernel.h"\n',
+        "include/msquic_posix.h": b'#include "quic_sal_stub.h"\n',
+        "include/quic_sal_stub.h": b"",
+        "include/msquic_winuser.h": b"",
+        "include/msquic_winkernel.h": b"",
+    }
+    downloads = {artifact["url"]: deb(data_tar(artifact["library"], b"linux"))}
+    downloads.update({header["url"]: header_payloads[header["path"]] for header in provider["headers"]})
+    original_verified_download = resolver.verified_download
+    resolver.verified_download = lambda url, checksum: downloads[url]
+    try:
+        with tempfile.TemporaryDirectory() as temporary:
+            destination = resolver.resolve(provider, "x86_64-linux", pathlib.Path(temporary))
+            require(json.loads((destination / "manifest.json").read_text(encoding="utf-8"))["headers"] == expected_headers)
+            for path in expected_headers:
+                require((destination / path).read_bytes() == header_payloads[path])
+    finally:
+        resolver.verified_download = original_verified_download
     require(resolver.extract_deb(deb(data_tar("usr/lib/libmsquic.so.2.5.9", b"linux")), "usr/lib/libmsquic.so.2.5.9") == b"linux")
     with tempfile.TemporaryDirectory() as temporary:
         archive_path = pathlib.Path(temporary) / "provider.zip"
