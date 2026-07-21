@@ -101,11 +101,14 @@ jobs:
         continue-on-error: true
         run: script/record_performance_artifacts.sh
       - run: zig build check-examples
-      - run: zig build test-sdl
-      - run: zig build test-scenes
-      - run: script/test_packaged_assets.sh
       - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/run_linux_software_gl.sh zig build test-sdl
+      - if: matrix.os == 'macos-15-intel'
+        run: zig build test-sdl
+      - run: zig build test-scenes
+      - run: script/test_packaged_assets.sh
       - run: script/test_topdown_native_fixture.sh
       - run: script/test_puzzle_native_fixture.sh
       - run: script/test_platformer_native_fixture.sh
@@ -243,6 +246,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
+          use-cache: ${{ matrix.os != 'windows-latest' }}
       - if: matrix.os == 'ubuntu-latest'
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'

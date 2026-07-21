@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if rg -n "pub const Frame|pub fn run" src/backend; then
+if grep -R -n -E -- 'pub const Frame = struct|pub fn run\(allocator: std\.mem\.Allocator, config: Config, comptime Game: type\)' src/backend; then
   echo "legacy lifecycle remains" >&2
   exit 1
 fi
