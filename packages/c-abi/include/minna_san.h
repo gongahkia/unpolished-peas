@@ -182,6 +182,9 @@ typedef struct minna_san_connection minna_san_connection;
 typedef struct minna_san_peer minna_san_peer;
 typedef struct minna_san_channel minna_san_channel;
 typedef struct minna_san_authoritative_session minna_san_authoritative_session;
+typedef struct minna_san_native_runtime minna_san_native_runtime;
+typedef struct minna_san_native_session minna_san_native_session;
+typedef struct minna_san_native_channel minna_san_native_channel;
 typedef struct minna_san_platform_config {
     uint32_t version;
     size_t provider_capacity;
@@ -201,6 +204,12 @@ typedef struct minna_san_sdk_config {
     minna_san_now_fn now;
     minna_san_allocator allocator;
 } minna_san_sdk_config;
+typedef struct minna_san_native_udp_config {
+    minna_san_address local_address;
+    minna_san_address peer_address;
+    size_t maximum_payload_bytes;
+    size_t maximum_in_flight;
+} minna_san_native_udp_config;
 typedef uint32_t (*minna_san_admission_fn)(void *context, const minna_san_peer *peer);
 typedef struct minna_san_authoritative_session_config {
     size_t max_clients;

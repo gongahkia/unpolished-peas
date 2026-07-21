@@ -1,5 +1,6 @@
 #include <minna_san.h>
 #include <stdlib.h>
+#include <string.h>
 
 static void *minna_san_consumer_allocate(void *context, size_t len) {
     (void)context;
@@ -15,6 +16,76 @@ static void minna_san_consumer_release(void *context, uint8_t *data, size_t len)
 static uint64_t minna_san_consumer_now(void *context) {
     (void)context;
     return 42u;
+}
+
+static minna_san_address minna_san_consumer_loopback(uint16_t port) {
+    return (minna_san_address){
+        .family = MINNA_SAN_ADDRESS_FAMILY_IPV4,
+        .bytes = {127u, 0u, 0u, 1u},
+        .port = port,
+    };
+}
+
+static int minna_san_consumer_native_udp_exchange(const minna_san_sdk_config *config) {
+    const uint8_t payload[] = {'u', 'd', 'p'};
+    const minna_san_native_udp_config temporary = {
+        .local_address = minna_san_consumer_loopback(0u),
+        .peer_address = minna_san_consumer_loopback(1u),
+        .maximum_payload_bytes = 32u,
+        .maximum_in_flight = 4u,
+    };
+    minna_san_native_runtime *first_runtime = 0;
+    minna_san_native_runtime *second_runtime = 0;
+    minna_san_native_session *temporary_session = 0;
+    minna_san_native_channel *temporary_channel = 0;
+    minna_san_native_session *first_session = 0;
+    minna_san_native_channel *first_channel = 0;
+    minna_san_native_session *second_session = 0;
+    minna_san_native_channel *second_channel = 0;
+    minna_san_native_channel *received_channel = 0;
+    minna_san_address second_local;
+    minna_san_address first_local;
+    minna_san_buffer received = { .data = 0, .len = 0u };
+    size_t sent = 0u;
+    size_t attempts = 0u;
+    int received_result = MINNA_SAN_RESULT_WOULD_BLOCK;
+    if (minna_san_native_udp_config_validate(&temporary) != MINNA_SAN_RESULT_OK) return 30;
+    if (minna_san_native_runtime_create(config, &first_runtime) != MINNA_SAN_RESULT_OK) return 31;
+    if (minna_san_native_runtime_create(config, &second_runtime) != MINNA_SAN_RESULT_OK) return 32;
+    if (minna_san_native_udp_dial(second_runtime, &temporary, &temporary_session, &temporary_channel) != MINNA_SAN_RESULT_OK) return 33;
+    if (minna_san_native_udp_session_address(second_runtime, temporary_session, &second_local) != MINNA_SAN_RESULT_OK) return 34;
+    if (second_local.family != MINNA_SAN_ADDRESS_FAMILY_IPV4 || second_local.port == 0u) return 35;
+    if (minna_san_native_udp_session_close(second_runtime, temporary_session) != MINNA_SAN_RESULT_OK) return 36;
+    const minna_san_native_udp_config first_config = {
+        .local_address = minna_san_consumer_loopback(0u),
+        .peer_address = second_local,
+        .maximum_payload_bytes = 32u,
+        .maximum_in_flight = 4u,
+    };
+    if (minna_san_native_udp_dial(first_runtime, &first_config, &first_session, &first_channel) != MINNA_SAN_RESULT_OK) return 37;
+    if (minna_san_native_udp_session_address(first_runtime, first_session, &first_local) != MINNA_SAN_RESULT_OK) return 38;
+    const minna_san_native_udp_config second_config = {
+        .local_address = second_local,
+        .peer_address = first_local,
+        .maximum_payload_bytes = 32u,
+        .maximum_in_flight = 4u,
+    };
+    if (minna_san_native_udp_dial(second_runtime, &second_config, &second_session, &second_channel) != MINNA_SAN_RESULT_OK) return 39;
+    if (minna_san_native_udp_poll(first_runtime, first_session, &first_channel) != MINNA_SAN_RESULT_OK) return 40;
+    if (minna_san_native_channel_send(first_runtime, first_channel, (minna_san_const_buffer){ .data = payload, .len = sizeof(payload) }) != MINNA_SAN_RESULT_OK) return 41;
+    if (minna_san_native_udp_flush(first_runtime, first_session, &sent) != MINNA_SAN_RESULT_OK || sent != 1u) return 42;
+    for (attempts = 0u; attempts < 10000u; ++attempts) {
+        received_result = minna_san_native_udp_receive(second_runtime, second_session, &received_channel, &received);
+        if (received_result != MINNA_SAN_RESULT_WOULD_BLOCK) break;
+    }
+    if (received_result != MINNA_SAN_RESULT_OK) return 43;
+    if (received_channel != second_channel || received.len != sizeof(payload) || memcmp(received.data, payload, sizeof(payload)) != 0) return 44;
+    if (minna_san_native_buffer_release(second_runtime, received) != MINNA_SAN_RESULT_OK) return 45;
+    if (minna_san_native_udp_session_close(first_runtime, first_session) != MINNA_SAN_RESULT_OK) return 46;
+    if (minna_san_native_udp_session_close(second_runtime, second_session) != MINNA_SAN_RESULT_OK) return 47;
+    minna_san_native_runtime_destroy(second_runtime);
+    minna_san_native_runtime_destroy(first_runtime);
+    return 0;
 }
 
 int c_abi_consumer_main(void) {
@@ -74,5 +145,6 @@ int c_abi_consumer_main(void) {
     if (runtime_metrics.polls != 1u || runtime_metrics.events != 0u) return 13;
     if (minna_san_sdk_stop(sdk) != MINNA_SAN_RESULT_OK) return 14;
     minna_san_sdk_destroy(sdk);
+    if (minna_san_consumer_native_udp_exchange(&config) != 0) return 48;
     return 0;
 }
