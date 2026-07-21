@@ -65,6 +65,7 @@ pub const UdpReadinessFailure = udp_readiness.UdpReadinessFailure;
 pub const UdpReadinessResult = udp_readiness.UdpReadinessResult;
 pub const UdpReadiness = udp_readiness.UdpReadiness;
 pub const TcpConnectionState = tcp_connection.TcpConnectionState;
+pub const TcpConnectionFailure = tcp_connection.TcpConnectionFailure;
 pub const TcpConnectionError = tcp_connection.TcpConnectionError;
 pub const TcpConnection = tcp_connection.TcpConnection;
 pub const TcpListenerState = tcp_listener.TcpListenerState;

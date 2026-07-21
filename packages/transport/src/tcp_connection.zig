@@ -12,12 +12,18 @@ pub const TcpConnectionState = enum {
     closed,
 };
 
-pub const TcpConnectionError = error{ InvalidState, PollFailed, ConnectFailed, ConnectionFailed, Cancelled, TimedOut };
+pub const TcpConnectionFailure = enum {
+    refused,
+    failed,
+};
+
+pub const TcpConnectionError = error{ InvalidState, PollFailed, ConnectFailed, ConnectionFailed, ConnectionRefused, Cancelled, TimedOut };
 
 pub const TcpConnection = struct {
     socket: ?socket_backend.Socket,
     state: TcpConnectionState = .idle,
     timeout_ms: u32 = 0,
+    failure: ?TcpConnectionFailure = null,
 
     pub fn init() TcpConnectionError!TcpConnection {
         return .{ .socket = socket_backend.Socket.open(.tcp) catch return error.ConnectFailed };
@@ -33,8 +39,12 @@ pub const TcpConnection = struct {
                 self.state = .connecting;
                 return self.state;
             },
+            error.ConnectionRefused => {
+                self.abandon(.failed, .refused);
+                return error.ConnectionRefused;
+            },
             else => {
-                self.abandon(.failed);
+                self.abandon(.failed, .failed);
                 return error.ConnectFailed;
             },
         };
@@ -48,11 +58,11 @@ pub const TcpConnection = struct {
             .connecting => {},
             .cancelled => return error.Cancelled,
             .timed_out => return error.TimedOut,
-            .failed => return error.ConnectionFailed,
+            .failed => return if (self.failure == .refused) error.ConnectionRefused else error.ConnectionFailed,
             else => return error.InvalidState,
         }
         if (elapsed_ms >= self.timeout_ms) {
-            self.abandon(.timed_out);
+            self.abandon(.timed_out, null);
             return error.TimedOut;
         }
         const socket = self.socket orelse return error.InvalidState;
@@ -65,8 +75,12 @@ pub const TcpConnection = struct {
         if (ready_count == 0) return .connecting;
         std.posix.getsockoptError(socket.handle) catch |err| switch (err) {
             error.ConnectionPending => return .connecting,
+            error.ConnectionRefused => {
+                self.abandon(.failed, .refused);
+                return error.ConnectionRefused;
+            },
             else => {
-                self.abandon(.failed);
+                self.abandon(.failed, .failed);
                 return error.ConnectionFailed;
             },
         };
@@ -76,7 +90,7 @@ pub const TcpConnection = struct {
 
     pub fn cancel(self: *TcpConnection) TcpConnectionError!void {
         if (self.state != .connecting) return error.InvalidState;
-        self.abandon(.cancelled);
+        self.abandon(.cancelled, null);
     }
 
     pub fn close(self: *TcpConnection) void {
@@ -88,10 +102,15 @@ pub const TcpConnection = struct {
         self.state = .closed;
     }
 
-    fn abandon(self: *TcpConnection, state: TcpConnectionState) void {
+    pub fn failureReason(self: TcpConnection) ?TcpConnectionFailure {
+        return self.failure;
+    }
+
+    fn abandon(self: *TcpConnection, state: TcpConnectionState, failure: ?TcpConnectionFailure) void {
         if (self.socket) |*socket| socket.close();
         self.socket = null;
         self.state = state;
+        self.failure = failure;
     }
 };
 

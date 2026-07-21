@@ -15,10 +15,11 @@ const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 const tcp_listener_registry = @import("tcp_listener_registry.zig");
+const tcp_session_registry = @import("tcp_session_registry.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_listener_registry.TcpListenerRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const UdpReadinessTarget = union(enum) {
     listener: *resource_handle.ResourceHandle,
@@ -56,6 +57,7 @@ pub const Runtime = struct {
     sessions: *session_registry.SessionRegistry,
     channels: *channel_registry.ChannelRegistry,
     tcp_listeners: tcp_listener_registry.TcpListenerRegistry,
+    tcp_sessions: tcp_session_registry.TcpSessionRegistry,
     listeners: udp_listener_registry.UdpListenerRegistry,
     udp_sessions: udp_session_registry.UdpSessionRegistry,
     payloads: *payload_pool.PayloadPool,
@@ -88,6 +90,8 @@ pub const Runtime = struct {
         errdefer channels.deinit();
         var tcp_listeners = try tcp_listener_registry.TcpListenerRegistry.init(allocator, resources, platform_config.limits.listener_capacity);
         errdefer tcp_listeners.deinit();
+        var tcp_sessions = try tcp_session_registry.TcpSessionRegistry.init(allocator, sessions, platform_config.limits.session_capacity);
+        errdefer tcp_sessions.deinit();
         var listeners = try udp_listener_registry.UdpListenerRegistry.init(allocator, resources, platform_config.limits.listener_capacity);
         errdefer listeners.deinit();
         var udp_sessions = try udp_session_registry.UdpSessionRegistry.init(allocator, sessions, channels, platform_config.limits.session_capacity);
@@ -107,6 +111,7 @@ pub const Runtime = struct {
             .sessions = sessions,
             .channels = channels,
             .tcp_listeners = tcp_listeners,
+            .tcp_sessions = tcp_sessions,
             .listeners = listeners,
             .udp_sessions = udp_sessions,
             .payloads = payloads,
@@ -120,6 +125,7 @@ pub const Runtime = struct {
         self.services.deinit();
         self.providers.deinit();
         self.timers.deinit();
+        self.tcp_sessions.deinit();
         self.udp_sessions.deinit();
         self.listeners.deinit();
         self.tcp_listeners.deinit();
@@ -197,6 +203,22 @@ pub const Runtime = struct {
 
     pub fn closeTcpListener(self: *Runtime, handle: *resource_handle.ResourceHandle) tcp_listener_registry.TcpListenerRegistryError!void {
         try self.tcp_listeners.close(handle);
+    }
+
+    pub fn dialTcp(self: *Runtime, config_value: tcp_session_registry.TcpDialConfig) tcp_session_registry.TcpSessionRegistryError!*resource_handle.ResourceHandle {
+        return self.tcp_sessions.dial(config_value);
+    }
+
+    pub fn pollTcpSession(self: *Runtime, handle: *resource_handle.ResourceHandle, elapsed_ms: u32) tcp_session_registry.TcpSessionRegistryError!tcp_session_registry.TcpSessionPoll {
+        return self.tcp_sessions.poll(handle, elapsed_ms);
+    }
+
+    pub fn cancelTcpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) tcp_session_registry.TcpSessionRegistryError!void {
+        try self.tcp_sessions.cancel(handle);
+    }
+
+    pub fn closeTcpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) tcp_session_registry.TcpSessionRegistryError!void {
+        try self.tcp_sessions.close(handle);
     }
 
     pub fn openUdpListener(self: *Runtime, config_value: udp_listener_registry.UdpListenerConfig) udp_listener_registry.UdpListenerError!*resource_handle.ResourceHandle {
@@ -483,6 +505,37 @@ test "unified runtimes own TCP listener handles and accepted connections" {
         try std.testing.expectEqual([4]u8{ 127, 0, 0, 1 }, connection.peer.octets);
         try runtime.closeTcpListener(listener);
         try std.testing.expectError(error.StaleHandle, runtime.pollTcpListener(listener));
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes establish and close TCP sessions under explicit polling" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        const listener = try runtime.openTcpListener(.{ .endpoint = transport_api.Ipv4Address.wildcard(0), .backlog = 1 });
+        const endpoint = try transport_api.Ipv4Address.parse("127.0.0.1", (try runtime.tcpListenerAddress(listener)).port);
+        const session = try runtime.dialTcp(.{ .endpoint = transport_api.Endpoint.from_ipv4(endpoint), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .timeout_ms = 1_000 });
+        var accepted: ?tcp_listener_registry.TcpListenerAccept = null;
+        defer if (accepted) |*connection| connection.connection.close();
+        var established = false;
+        var elapsed_ms: u32 = 0;
+        while (elapsed_ms < 100) : (elapsed_ms += 1) {
+            if ((try runtime.pollTcpListener(listener)).readable) accepted = try runtime.acceptTcpListener(listener);
+            const result = try runtime.pollTcpSession(session, elapsed_ms);
+            if (result.outcome == .ready) {
+                established = true;
+                break;
+            }
+            std.Thread.sleep(std.time.ns_per_ms);
+        }
+        try std.testing.expect(established);
+        try runtime.closeTcpSession(session);
+        try runtime.closeTcpListener(listener);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
