@@ -299,6 +299,10 @@ pub const Runtime = struct {
         return self.udp_sessions.poll(handle);
     }
 
+    pub fn resetUdpPacketProtection(self: *Runtime, handle: *resource_handle.ResourceHandle, config_value: udp_session_registry.UdpPacketProtectionConfig) udp_session_registry.UdpSessionError!void {
+        try self.udp_sessions.resetPacketProtection(handle, config_value);
+    }
+
     pub fn closeUdpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
         self.transport_retries.forget(&self.timers, handle);
         self.tcp_fallbacks.forget(handle);

@@ -12,6 +12,7 @@ pub const UdpPacketProtectionConfig = struct {
     send_key: protocol.PacketProtectionKey,
     receive_key: protocol.PacketProtectionKey,
     replay: protocol.ReplayWindowConfig = .{},
+    key_epoch: protocol.KeyEpoch = 0,
 };
 
 pub const UdpDialConfig = struct {
@@ -82,9 +83,10 @@ const ProtectedDatagrams = struct {
     sender: protocol.PacketProtector,
     receiver: protocol.PacketProtector,
     replay: protocol.ReplayWindow,
+    key_epoch: protocol.KeyEpoch,
 
     fn init(config: UdpPacketProtectionConfig) protocol.ReplayWindowError!ProtectedDatagrams {
-        return .{ .sender = protocol.PacketProtector.init(config.send_key), .receiver = protocol.PacketProtector.init(config.receive_key), .replay = try protocol.ReplayWindow.init(config.replay) };
+        return .{ .sender = protocol.PacketProtector.init(config.send_key), .receiver = protocol.PacketProtector.init(config.receive_key), .replay = try protocol.ReplayWindow.init(config.replay), .key_epoch = config.key_epoch };
     }
 
     fn deinit(self: *ProtectedDatagrams) void {
@@ -155,6 +157,15 @@ pub const UdpSessionRegistry = struct {
 
     pub fn validateSession(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!void {
         _ = try self.lookup(handle);
+    }
+
+    pub fn resetPacketProtection(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, config: UdpPacketProtectionConfig) UdpSessionError!void {
+        const entry = try self.lookup(handle);
+        const protection = if (entry.packet_protection) |*value| value else return error.InvalidConfiguration;
+        if (config.key_epoch <= protection.key_epoch) return error.InvalidConfiguration;
+        const replacement = try ProtectedDatagrams.init(config);
+        protection.deinit();
+        protection.* = replacement;
     }
 
     pub fn pollNextReadiness(self: *UdpSessionRegistry) UdpSessionError!?UdpSessionReadiness {
@@ -609,7 +620,7 @@ test "UDP path-MTU loss lowers queued channel acceptance before flush" {
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
 
-test "UDP sessions protect owned payloads and discard tampered ciphertext" {
+test "UDP sessions enforce bounded replay windows and epoch resets" {
     var gpa = std.heap.GeneralPurposeAllocator(.{}){};
     const allocator = gpa.allocator();
     {
@@ -629,7 +640,7 @@ test "UDP sessions protect owned payloads and discard tampered ciphertext" {
         defer peer.close();
         try peer.bind(try transport.Ipv4Address.parse("127.0.0.1", 0));
         const peer_address = local_ipv4_address(&peer);
-        const handle = try udp_sessions.dial(.{ .endpoint = transport.Endpoint.from_ipv4(peer_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 }, .packet_protection = .{ .send_key = send_key, .receive_key = receive_key } });
+        const handle = try udp_sessions.dial(.{ .endpoint = transport.Endpoint.from_ipv4(peer_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 }, .packet_protection = .{ .send_key = send_key, .receive_key = receive_key, .replay = .{ .window_size = 2 } } });
         const primary = (try udp_sessions.poll(handle)).channel;
         const local_address = switch (try udp_sessions.localAddress(handle)) {
             .ipv4 => |address| address,
@@ -637,23 +648,71 @@ test "UDP sessions protect owned payloads and discard tampered ciphertext" {
         };
         var inbound = protocol.PacketProtector.init(receive_key);
         defer inbound.deinit();
-        var inbound_storage: [protocol.packet_protection_frame_header_bytes + 2 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        _ = try peer.send_to(try inbound.seal("in", inbound_storage[0..]), local_address);
+        var zero_storage: [protocol.packet_protection_frame_header_bytes + 4 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        const zero = try inbound.seal("zero", zero_storage[0..]);
+        _ = try peer.send_to(zero, local_address);
         var events: [1]UdpReceiveEvent = undefined;
         const accepted = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
         try std.testing.expectEqual(@as(usize, 1), accepted.received);
         try std.testing.expectEqual(@as(usize, 0), accepted.discarded);
         var received = (try channels.dequeue(handle)).?;
-        try std.testing.expectEqualStrings("in", received.payload);
+        try std.testing.expectEqualStrings("zero", received.payload);
         received.deinit(allocator);
-        var tampered_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        const tampered = try inbound.seal("bad", tampered_storage[0..]);
+        var one_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        const one = try inbound.seal("one", one_storage[0..]);
+        var tampered_storage = one_storage;
+        const tampered = tampered_storage[0..one.len];
         tampered_storage[protocol.packet_protection_frame_header_bytes] +%= 1;
         _ = try peer.send_to(tampered, local_address);
         const rejected = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
         try std.testing.expectEqual(@as(usize, 0), rejected.received);
         try std.testing.expectEqual(@as(usize, 1), rejected.discarded);
         try std.testing.expect((try channels.dequeue(handle)) == null);
+        var two_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        const two = try inbound.seal("two", two_storage[0..]);
+        _ = try peer.send_to(two, local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("two", received.payload);
+        received.deinit(allocator);
+        _ = try peer.send_to(one, local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("one", received.payload);
+        received.deinit(allocator);
+        _ = try peer.send_to(one, local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        try std.testing.expect((try channels.dequeue(handle)) == null);
+        var three_storage: [protocol.packet_protection_frame_header_bytes + 5 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try inbound.seal("three", three_storage[0..]), local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("three", received.payload);
+        received.deinit(allocator);
+        var four_storage: [protocol.packet_protection_frame_header_bytes + 4 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try inbound.seal("four", four_storage[0..]), local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("four", received.payload);
+        received.deinit(allocator);
+        _ = try peer.send_to(zero, local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        try std.testing.expect((try channels.dequeue(handle)) == null);
+        const next_send_key = protocol.PacketProtectionKey.init([_]u8{5} ** protocol.packet_protection_key_bytes, [_]u8{6} ** protocol.packet_protection_nonce_prefix_bytes);
+        const next_receive_key = protocol.PacketProtectionKey.init([_]u8{7} ** protocol.packet_protection_key_bytes, [_]u8{8} ** protocol.packet_protection_nonce_prefix_bytes);
+        try std.testing.expectError(error.InvalidConfiguration, udp_sessions.resetPacketProtection(handle, .{ .send_key = next_send_key, .receive_key = next_receive_key, .key_epoch = 0 }));
+        try udp_sessions.resetPacketProtection(handle, .{ .send_key = next_send_key, .receive_key = next_receive_key, .replay = .{ .window_size = 2 }, .key_epoch = 1 });
+        _ = try peer.send_to(two, local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
+        try std.testing.expect((try channels.dequeue(handle)) == null);
+        var next_inbound = protocol.PacketProtector.init(next_receive_key);
+        defer next_inbound.deinit();
+        var reset_storage: [protocol.packet_protection_frame_header_bytes + 5 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try next_inbound.seal("reset", reset_storage[0..]), local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("reset", received.payload);
+        received.deinit(allocator);
         try channels.enqueue(primary, "out");
         var sent_events: [1]UdpSendEvent = undefined;
         const sent = try udp_sessions.flushSends(handle, sent_events[0..]);
@@ -661,7 +720,7 @@ test "UDP sessions protect owned payloads and discard tampered ciphertext" {
         var wire_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
         const wire = try receive_from_with_retry(&peer, wire_storage[0..]);
         try std.testing.expect(!std.mem.eql(u8, wire.bytes, "out"));
-        var outbound = protocol.PacketProtector.init(send_key);
+        var outbound = protocol.PacketProtector.init(next_send_key);
         defer outbound.deinit();
         var plaintext: [3]u8 = undefined;
         try std.testing.expectEqualStrings("out", (try outbound.open(wire.bytes, plaintext[0..])).payload);
