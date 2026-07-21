@@ -50,6 +50,9 @@ def main() -> None:
         result = invoke(str(CHECK), "--directory", str(baseline_path.parent), str(observed_path))
         require(result, "workload baseline pass")
         require(result, "workload=primitive_fill metric=frame_time_ns")
+        recorded_path.write_bytes(recorded_path.read_bytes().replace(b"\n", b"\r\n"))
+        result = invoke(str(CHECK), str(baseline_path), str(observed_path))
+        require(result, "workload baseline pass")
 
         slower = copy.deepcopy(observed)
         slower["workloads"][0]["metrics"]["frame_time_ns"] = 1_000_000
