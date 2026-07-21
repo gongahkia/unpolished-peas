@@ -187,6 +187,14 @@ pub const Runtime = struct {
         try self.udp_sessions.close(handle);
     }
 
+    pub fn pollUdpReceives(self: *Runtime, handle: *resource_handle.ResourceHandle, events: []udp_session_registry.UdpReceiveEvent) udp_session_registry.UdpSessionError!udp_session_registry.UdpReceiveBatch {
+        return self.udp_sessions.pollReceives(handle, events);
+    }
+
+    pub fn udpSessionAddress(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!transport_api.ResolvedAddress {
+        return self.udp_sessions.localAddress(handle);
+    }
+
     pub fn scheduleTimer(self: *Runtime, kind: timer_wheel.TimerKind, deadline_ns: core.TimeNs) timer_wheel.TimerWheelError!timer_wheel.TimerId {
         return self.timers.schedule(kind, deadline_ns);
     }
@@ -417,6 +425,65 @@ test "unified runtimes establish localhost UDP sessions under explicit polling" 
         try second.closeUdpSession(second_session);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes receive ordered UDP batches into owned channels" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 3, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        var sender = try transport_api.UdpSocket.init(.{});
+        defer sender.close();
+        try sender.bind(try transport_api.Ipv4Address.parse("127.0.0.1", 0));
+        const sender_address = local_udp_ipv4_address(&sender);
+        const session = try runtime.dialUdp(.{ .endpoint = transport_api.Endpoint.from_ipv4(sender_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64, .maximum_in_flight = 3 } });
+        _ = try runtime.pollUdpSession(session);
+        const destination = switch (try runtime.udpSessionAddress(session)) {
+            .ipv4 => |address| address,
+            .ipv6 => unreachable,
+        };
+        _ = try sender.send_to("one", destination);
+        _ = try sender.send_to("two", destination);
+        _ = try sender.send_to("three", destination);
+        var events: [3]udp_session_registry.UdpReceiveEvent = undefined;
+        var received: usize = 0;
+        var attempts: usize = 0;
+        while (received < events.len and attempts < 100) : (attempts += 1) {
+            const batch = try runtime.pollUdpReceives(session, events[received..]);
+            received += batch.received;
+            if (batch.would_block) std.Thread.sleep(std.time.ns_per_ms);
+        }
+        try std.testing.expectEqual(events.len, received);
+        for (events, 0..) |item, index| {
+            try std.testing.expectEqual(@as(u64, @intCast(index)), item.sequence);
+            try std.testing.expectEqual(session, item.session);
+            try std.testing.expectEqual(sender_address, switch (item.source) {
+                .ipv4 => |address| address,
+                .ipv6 => unreachable,
+            });
+        }
+        var first = (try runtime.dequeueChannel(session)).?;
+        defer first.deinit(allocator);
+        var second = (try runtime.dequeueChannel(session)).?;
+        defer second.deinit(allocator);
+        var third = (try runtime.dequeueChannel(session)).?;
+        defer third.deinit(allocator);
+        try std.testing.expectEqualStrings("one", first.payload);
+        try std.testing.expectEqualStrings("two", second.payload);
+        try std.testing.expectEqualStrings("three", third.payload);
+        try runtime.closeUdpSession(session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+fn local_udp_ipv4_address(socket: *transport_api.UdpSocket) transport_api.Ipv4Address {
+    var native = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 0);
+    var length = native.getOsSockLen();
+    std.posix.getsockname(socket.socket.handle, &native.any, &length) catch unreachable;
+    return transport_api.Ipv4Address.from_native(native) catch unreachable;
 }
 
 test "unified runtimes store sessions on owned generation handles" {
