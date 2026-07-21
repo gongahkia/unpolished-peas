@@ -209,6 +209,14 @@ pub const Runtime = struct {
         return self.udp_sessions.flushSends(handle, events);
     }
 
+    pub fn nextUdpPathMtuProbe(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!?usize {
+        return self.udp_sessions.nextPathMtuProbe(handle);
+    }
+
+    pub fn recordUdpPathMtuProbe(self: *Runtime, handle: *resource_handle.ResourceHandle, payload: usize, delivered: bool) udp_session_registry.UdpSessionError!usize {
+        return self.udp_sessions.recordPathMtuProbe(handle, payload, delivered);
+    }
+
     pub fn udpSessionAddress(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!transport_api.ResolvedAddress {
         return self.udp_sessions.localAddress(handle);
     }
@@ -533,6 +541,33 @@ test "unified runtimes flush scheduled UDP datagrams by priority" {
         try std.testing.expectEqual(high, events[0].channel);
         try std.testing.expectEqual(primary, events[1].channel);
         try runtime.teardownChannel(high);
+        try runtime.closeUdpSession(session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes apply path-MTU loss before UDP sends" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        var receiver = try transport_api.UdpSocket.init(.{});
+        defer receiver.close();
+        try receiver.bind(try transport_api.Ipv4Address.parse("127.0.0.1", 0));
+        const receiver_address = local_udp_ipv4_address(&receiver);
+        const session = try runtime.dialUdp(.{ .endpoint = transport_api.Endpoint.from_ipv4(receiver_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 128 }, .path_mtu = .{ .minimum_payload = 64, .maximum_payload = 128 } });
+        const primary = (try runtime.pollUdpSession(session)).channel;
+        const oversized = [_]u8{0} ** 97;
+        try runtime.enqueueChannel(primary, &oversized);
+        const probe = (try runtime.nextUdpPathMtuProbe(session)).?;
+        try std.testing.expectEqual(@as(usize, 95), try runtime.recordUdpPathMtuProbe(session, probe, false));
+        try std.testing.expectError(error.PayloadTooLarge, runtime.enqueueChannel(primary, &oversized));
+        var events: [1]udp_session_registry.UdpSendEvent = undefined;
+        try std.testing.expectEqual(@as(usize, 1), (try runtime.flushUdpSends(session, events[0..])).dropped);
+        try std.testing.expectEqual(transport_api.UdpSendStatus.datagram_too_large, events[0].status);
         try runtime.closeUdpSession(session);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
