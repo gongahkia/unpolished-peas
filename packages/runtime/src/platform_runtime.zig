@@ -1,6 +1,7 @@
 const std = @import("std");
 const core = @import("minna-san-core");
 const topology = @import("minna-san-topology");
+const transport_api = @import("minna-san-transport");
 const config = @import("sdk_config.zig");
 const event = @import("event.zig");
 const poll_runtime = @import("poll_runtime.zig");
@@ -13,8 +14,9 @@ const payload_pool = @import("payload_pool.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
+const udp_listener_registry = @import("udp_listener_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || udp_listener_registry.UdpListenerError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -37,6 +39,7 @@ pub const Runtime = struct {
     resources: *resource_handle.ResourceRegistry,
     sessions: *session_registry.SessionRegistry,
     channels: channel_registry.ChannelRegistry,
+    listeners: udp_listener_registry.UdpListenerRegistry,
     payloads: *payload_pool.PayloadPool,
     timers: timer_wheel.TimerWheel,
     services: service_module.ServiceRegistry,
@@ -47,7 +50,8 @@ pub const Runtime = struct {
         platform_config.validate() catch return error.InvalidConfiguration;
         const policy = sdk.configuration().securityPolicy();
         try policy.validate();
-        const resource_capacity = std.math.add(usize, platform_config.limits.session_capacity, platform_config.limits.channel_capacity) catch return error.InvalidConfiguration;
+        const session_and_channel_capacity = std.math.add(usize, platform_config.limits.session_capacity, platform_config.limits.channel_capacity) catch return error.InvalidConfiguration;
+        const resource_capacity = std.math.add(usize, session_and_channel_capacity, platform_config.limits.listener_capacity) catch return error.InvalidConfiguration;
         const resources = try allocator.create(resource_handle.ResourceRegistry);
         errdefer allocator.destroy(resources);
         resources.* = try resource_handle.ResourceRegistry.init(allocator, resource_capacity);
@@ -62,6 +66,8 @@ pub const Runtime = struct {
         errdefer payloads.deinit();
         var channels = try channel_registry.ChannelRegistry.init(allocator, resources, sessions, payloads, platform_config.limits.channel_capacity);
         errdefer channels.deinit();
+        var listeners = try udp_listener_registry.UdpListenerRegistry.init(allocator, resources, platform_config.limits.listener_capacity);
+        errdefer listeners.deinit();
         var timers = try timer_wheel.TimerWheel.init(allocator, platform_config.limits.event_capacity);
         errdefer timers.deinit();
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
@@ -76,6 +82,7 @@ pub const Runtime = struct {
             .resources = resources,
             .sessions = sessions,
             .channels = channels,
+            .listeners = listeners,
             .payloads = payloads,
             .timers = timers,
             .services = services,
@@ -87,6 +94,7 @@ pub const Runtime = struct {
         self.services.deinit();
         self.providers.deinit();
         self.timers.deinit();
+        self.listeners.deinit();
         self.channels.deinit();
         self.payloads.deinit();
         allocator.destroy(self.payloads);
@@ -140,6 +148,22 @@ pub const Runtime = struct {
 
     pub fn teardownChannel(self: *Runtime, handle: *resource_handle.ResourceHandle) channel_registry.ChannelRegistryError!void {
         try self.channels.teardown(handle);
+    }
+
+    pub fn openUdpListener(self: *Runtime, config_value: udp_listener_registry.UdpListenerConfig) udp_listener_registry.UdpListenerError!*resource_handle.ResourceHandle {
+        return self.listeners.open(config_value);
+    }
+
+    pub fn pollUdpListener(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_listener_registry.UdpListenerError!udp_listener_registry.UdpListenerPoll {
+        return self.listeners.poll(handle);
+    }
+
+    pub fn udpListenerAddress(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_listener_registry.UdpListenerError!transport_api.ResolvedAddress {
+        return self.listeners.localAddress(handle);
+    }
+
+    pub fn closeUdpListener(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_listener_registry.UdpListenerError!void {
+        try self.listeners.close(handle);
     }
 
     pub fn scheduleTimer(self: *Runtime, kind: timer_wheel.TimerKind, deadline_ns: core.TimeNs) timer_wheel.TimerWheelError!timer_wheel.TimerId {
@@ -309,13 +333,34 @@ test "unified runtimes own bounded resource registries and empty teardown" {
     const allocator = gpa.allocator();
     {
         var manual = core.ManualClock.init(0);
-        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 2 } }).build();
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 2, .listener_capacity = 1 } }).build();
         var runtime = try Runtime.init(allocator, configured_sdk);
         defer runtime.deinit();
-        try std.testing.expectEqual(@as(usize, 3), runtime.resources.slots.len);
+        try std.testing.expectEqual(@as(usize, 4), runtime.resources.slots.len);
         const session = try runtime.acquireResource(.session);
         try runtime.resources.validate_kind(session, .session);
         try runtime.releaseResource(session, .session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes own UDP listener handles without descriptor leaks" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        const listener = try runtime.openUdpListener(.{ .endpoint = transport_api.Endpoint.from_ipv4(transport_api.Ipv4Address.wildcard(0)) });
+        const local = try runtime.udpListenerAddress(listener);
+        switch (local) {
+            .ipv4 => |address| try std.testing.expect(address.port != 0),
+            .ipv6 => unreachable,
+        }
+        try std.testing.expect(!(try runtime.pollUdpListener(listener)).readable);
+        try runtime.closeUdpListener(listener);
+        try std.testing.expectError(error.StaleHandle, runtime.pollUdpListener(listener));
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }

@@ -32,6 +32,7 @@ const version = @import("version.zig");
 const dedicated_session_scheduler = @import("dedicated_session_scheduler.zig");
 const provider = @import("provider.zig");
 const hostname_resolution_provider = @import("hostname_resolution_provider.zig");
+const udp_listener_registry = @import("udp_listener_registry.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -251,6 +252,10 @@ pub const HostnameResolutionRequestHandle = hostname_resolution_provider.Hostnam
 pub const HostnameResolutionRequestState = hostname_resolution_provider.HostnameResolutionRequestState;
 pub const HostnameResolutionResult = hostname_resolution_provider.HostnameResolutionResult;
 pub const HostnameResolutionProvider = hostname_resolution_provider.HostnameResolutionProvider;
+pub const UdpListenerError = udp_listener_registry.UdpListenerError;
+pub const UdpListenerConfig = udp_listener_registry.UdpListenerConfig;
+pub const UdpListenerPoll = udp_listener_registry.UdpListenerPoll;
+pub const UdpListenerRegistry = udp_listener_registry.UdpListenerRegistry;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -314,5 +319,6 @@ test {
     _ = @import("dedicated_session_scheduler.zig");
     _ = @import("provider.zig");
     _ = @import("hostname_resolution_provider.zig");
+    _ = @import("udp_listener_registry.zig");
     _ = @import("platform_runtime.zig");
 }
