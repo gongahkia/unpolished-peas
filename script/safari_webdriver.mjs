@@ -130,11 +130,12 @@ function pageReady(renderer) {
   return `return Boolean(window.unpolishedPeas?.rendererDiagnostic) && window.unpolishedPeas.rendererDiagnostic.requested_renderer === ${JSON.stringify(renderer)};`;
 }
 
-async function capture(client, directory, renderer, driverStatus) {
+async function capture(client, directory, game, renderer, driverStatus) {
   const page = await client.execute("return {user_agent: navigator.userAgent, platform: navigator.platform, renderer: window.unpolishedPeas?.renderer ?? null, diagnostic: window.unpolishedPeas?.rendererDiagnostic ?? null, artifacts: window.unpolishedPeas?.host?.artifacts?.() ?? []};");
   const screenshot = await client.screenshot();
   const artifact = {
     schema_version: 1,
+    game,
     browser: {name: "safari", version: client.capabilities.browserVersion, user_agent: page.user_agent, platform: page.platform, capabilities: client.capabilities},
     safaridriver: driverStatus,
     renderer,
@@ -148,11 +149,12 @@ async function capture(client, directory, renderer, driverStatus) {
   return artifact;
 }
 
-async function smoke(client, renderer, directory, driverStatus) {
+async function smoke(client, game, renderer, directory, driverStatus) {
   await client.wait(pageReady(renderer));
   const diagnostic = await client.execute("return window.unpolishedPeas?.rendererDiagnostic ?? null;");
   assert.equal(validateRenderer(diagnostic, renderer), "available");
   const canvas = await client.find("canvas[data-unpolished-peas]");
+  assert.equal(await client.execute("return document.querySelector('canvas[data-unpolished-peas]')?.dataset.game ?? null;"), game);
   await client.click(canvas);
   await client.actions([
     {type: "pointer", id: "mouse", parameters: {pointerType: "mouse"}, actions: [{type: "pointerMove", origin: {[elementKey]: canvas}, x: 0, y: 0}, {type: "pointerDown", button: 0}]},
@@ -165,7 +167,7 @@ async function smoke(client, renderer, directory, driverStatus) {
   await client.releaseActions();
   const contract = await client.execute("const api = window.unpolishedPeas; const audio = api.host.audio(); const text = new TextEncoder().encode('safari webdriver'); new Uint8Array(api.host.memory.buffer, 0, text.length).set(text); api.runtime.up_browser_diagnostic_emit(0, text.length); const diagnosticArtifact = api.host.artifacts().find((artifact) => artifact.name === 'renderer-diagnostics.json'); return api.host.storage().phase === 'ready' && api.runtime.up_browser_audio_state() === audio.state && typeof audio.phase === 'string' && api.host.captureFrame().startsWith('data:image/png') && api.host.artifacts().some((artifact) => artifact.name === 'diagnostics.json' && artifact.data.includes('safari webdriver')) && diagnosticArtifact?.data === JSON.stringify(api.rendererDiagnostic) && api.host.lifecycle().scheduledFrames > 0;");
   assert.equal(contract, true);
-  const artifact = await capture(client, directory, renderer, driverStatus);
+  const artifact = await capture(client, directory, game, renderer, driverStatus);
   assert.equal(artifact.selected_renderer, renderer);
 }
 
@@ -173,6 +175,7 @@ async function main() {
   const [baseUrl, artifactDirectory] = process.argv.slice(2);
   if (!baseUrl || !artifactDirectory) fail("usage: safari_webdriver.mjs PACKAGE_URL ARTIFACT_DIRECTORY");
   await mkdir(artifactDirectory, {recursive: true});
+  const game = process.env.UP_SAFARI_GAME ?? "bounce";
   const renderers = selectedRenderers(process.env.UP_SAFARI_RENDERERS);
   const client = new WebDriver(process.env.UP_SAFARI_WEBDRIVER_URL ?? "http://127.0.0.1:4444");
   const driverStatus = await client.status();
@@ -180,7 +183,7 @@ async function main() {
     await client.createSession();
     for (const renderer of renderers) {
       await client.navigate(`${baseUrl}?renderer=${renderer}`);
-      await smoke(client, renderer, artifactDirectory, driverStatus);
+      await smoke(client, game, renderer, artifactDirectory, driverStatus);
     }
   } finally {
     await client.deleteSession();

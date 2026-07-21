@@ -127,7 +127,7 @@
           "label": "WebGPU",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-15-intel", "command": "zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "zig build test-web-proof-game-matrix && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads"}}
         }
       ]
     },
@@ -141,7 +141,7 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-15-intel", "command": "zig build test-browser-firefox"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "UP_BROWSER=firefox zig build test-web-proof-game-matrix"}}
         },
         {
           "id": "webgpu",
@@ -161,14 +161,14 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 zig build test-browser-safari"}}
+          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh"}}
         },
         {
           "id": "webgpu",
           "label": "WebGPU",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgpu zig build test-browser-safari"}}
+          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh"}}
         }
       ]
     }
