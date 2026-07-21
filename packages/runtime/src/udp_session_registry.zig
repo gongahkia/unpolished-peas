@@ -5,7 +5,7 @@ const session = @import("session_registry.zig");
 const channel = @import("channel_registry.zig");
 const delivery = @import("channel_delivery.zig");
 
-pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || transport.EndpointSelectionError || transport.SocketError || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
+pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
 
 pub const UdpDialConfig = struct {
     endpoint: transport.Endpoint,
@@ -13,6 +13,7 @@ pub const UdpDialConfig = struct {
     family_policy: transport.AddressFamilyPolicy = .prefer_ipv6,
     platform_support: transport.PlatformSupport,
     channel: delivery.ChannelDescriptor,
+    local_address: ?transport.ResolvedAddress = null,
     path_mtu: ?transport.PathMtuProbeConfig = null,
 };
 
@@ -102,6 +103,7 @@ pub const UdpSessionRegistry = struct {
         errdefer self.channels.clearSessionDatagramBudget(session_handle) catch {};
         var socket = try route.open(.udp);
         errdefer socket.close();
+        if (config.local_address) |address| try bindLocal(&socket, route.family, address);
         try connect(&socket, route.address);
         try self.entries.append(self.allocator, .{ .session = session_handle, .channel = channel_handle, .socket = socket, .route = route, .path_mtu = path_mtu });
         return session_handle;
@@ -303,6 +305,19 @@ fn connect(socket: *transport.Socket, address: transport.ResolvedAddress) UdpSes
         .ipv6 => |value| value.to_native(),
     };
     std.posix.connect(socket.handle, &native.any, native.getOsSockLen()) catch return error.ConnectFailed;
+}
+
+fn bindLocal(socket: *transport.Socket, family: transport.SocketAddressFamily, address: transport.ResolvedAddress) UdpSessionError!void {
+    switch (address) {
+        .ipv4 => |value| {
+            if (family != .ipv4) return error.InvalidConfiguration;
+            try transport.bind(socket, value);
+        },
+        .ipv6 => |value| {
+            if (family != .ipv6) return error.InvalidConfiguration;
+            try transport.bind_ipv6(socket, value);
+        },
+    }
 }
 
 fn send_datagram(socket: *transport.Socket, payload: []const u8) UdpSessionError!usize {
