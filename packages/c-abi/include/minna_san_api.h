@@ -89,6 +89,13 @@ minna_san_result minna_san_connection_close(minna_san_sdk *sdk, minna_san_connec
 minna_san_result minna_san_connection_peer(minna_san_sdk *sdk, minna_san_connection *connection, minna_san_peer **out_peer);
 minna_san_result minna_san_connection_route_state(minna_san_sdk *sdk, minna_san_connection *connection, uint32_t *out_route_state);
 minna_san_result minna_san_connection_set_route_state(minna_san_sdk *sdk, minna_san_connection *connection, uint32_t route_state);
+minna_san_result minna_san_p2p_session_create(minna_san_sdk *sdk, minna_san_candidate candidate, minna_san_p2p_session **out_session);
+minna_san_result minna_san_p2p_session_destroy(minna_san_sdk *sdk, minna_san_p2p_session *session);
+minna_san_result minna_san_p2p_session_set_candidate(minna_san_sdk *sdk, minna_san_p2p_session *session, minna_san_candidate candidate);
+minna_san_result minna_san_p2p_session_candidate(minna_san_sdk *sdk, minna_san_p2p_session *session, minna_san_candidate *out_candidate);
+minna_san_result minna_san_p2p_session_copy_signaling(minna_san_sdk *sdk, minna_san_p2p_session *session, minna_san_const_buffer signaling, minna_san_buffer *out_copy);
+minna_san_result minna_san_p2p_session_route_state(minna_san_sdk *sdk, minna_san_p2p_session *session, uint32_t *out_route_state);
+minna_san_result minna_san_p2p_session_fallback_relay(minna_san_sdk *sdk, minna_san_p2p_session *session);
 uint32_t minna_san_event_kind(const minna_san_event *event);
 uint32_t minna_san_event_mode(const minna_san_event *event);
 uint64_t minna_san_event_sequence(const minna_san_event *event);

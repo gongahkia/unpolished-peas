@@ -88,6 +88,40 @@ static int minna_san_consumer_native_udp_exchange(const minna_san_sdk_config *co
     return 0;
 }
 
+static int minna_san_consumer_p2p_exchange(minna_san_sdk *sdk) {
+    const uint8_t signaling[] = {'s', 'i', 'g'};
+    const minna_san_candidate first_candidate = {
+        .kind = MINNA_SAN_CANDIDATE_HOST,
+        .address = { .family = MINNA_SAN_ADDRESS_FAMILY_IPV4, .bytes = {127u, 0u, 0u, 1u}, .port = 4000u },
+        .priority = 10u,
+        .expires_at_ns = 100u,
+    };
+    const minna_san_candidate second_candidate = {
+        .kind = MINNA_SAN_CANDIDATE_SERVER_REFLEXIVE,
+        .address = { .family = MINNA_SAN_ADDRESS_FAMILY_IPV4, .bytes = {127u, 0u, 0u, 1u}, .port = 5000u },
+        .priority = 20u,
+        .expires_at_ns = 100u,
+    };
+    minna_san_p2p_session *first = 0;
+    minna_san_p2p_session *second = 0;
+    minna_san_candidate copied = {0};
+    minna_san_buffer copied_signal = { .data = 0, .len = 0u };
+    uint32_t route = 0u;
+    if (minna_san_p2p_session_create(sdk, first_candidate, &first) != MINNA_SAN_RESULT_OK) return 60;
+    if (minna_san_p2p_session_create(sdk, second_candidate, &second) != MINNA_SAN_RESULT_OK) return 61;
+    if (minna_san_p2p_session_set_candidate(sdk, first, second_candidate) != MINNA_SAN_RESULT_OK) return 62;
+    if (minna_san_p2p_session_candidate(sdk, first, &copied) != MINNA_SAN_RESULT_OK || copied.address.port != second_candidate.address.port) return 63;
+    if (minna_san_p2p_session_copy_signaling(sdk, first, (minna_san_const_buffer){ .data = signaling, .len = sizeof(signaling) }, &copied_signal) != MINNA_SAN_RESULT_OK) return 64;
+    if (copied_signal.len != sizeof(signaling) || memcmp(copied_signal.data, signaling, sizeof(signaling)) != 0) return 65;
+    if (minna_san_sdk_buffer_release(sdk, copied_signal) != MINNA_SAN_RESULT_OK) return 66;
+    if (minna_san_p2p_session_route_state(sdk, first, &route) != MINNA_SAN_RESULT_OK || route != MINNA_SAN_ROUTE_DIRECT) return 67;
+    if (minna_san_p2p_session_fallback_relay(sdk, first) != MINNA_SAN_RESULT_OK) return 68;
+    if (minna_san_p2p_session_route_state(sdk, first, &route) != MINNA_SAN_RESULT_OK || route != MINNA_SAN_ROUTE_RELAY) return 69;
+    if (minna_san_p2p_session_destroy(sdk, second) != MINNA_SAN_RESULT_OK) return 70;
+    if (minna_san_p2p_session_destroy(sdk, first) != MINNA_SAN_RESULT_OK) return 71;
+    return 0;
+}
+
 int c_abi_consumer_main(void) {
     minna_san_platform_config platform_config;
     const minna_san_allocator allocator = {
@@ -99,7 +133,7 @@ int c_abi_consumer_main(void) {
     const minna_san_sdk_config config = {
         .abi_version = MINNA_SAN_ABI_VERSION,
         .capability_bits = MINNA_SAN_CAPABILITY_TRANSPORT,
-        .connection_capacity = 1u,
+        .connection_capacity = 2u,
         .channel_capacity = 1u,
         .platform_config = platform_config,
         .clock_context = 0,
@@ -138,6 +172,7 @@ int c_abi_consumer_main(void) {
     if (minna_san_sdk_validate_config(&config) != MINNA_SAN_RESULT_OK) return 6;
     if (minna_san_sdk_create(&config, &sdk) != MINNA_SAN_RESULT_OK) return 7;
     if (minna_san_sdk_start(sdk) != MINNA_SAN_RESULT_OK) return 8;
+    if (minna_san_consumer_p2p_exchange(sdk) != 0) return 59;
     if (minna_san_sdk_poll(sdk, &event) != MINNA_SAN_RESULT_WOULD_BLOCK) return 9;
     if (minna_san_sdk_metrics_snapshot(sdk, &metrics) != MINNA_SAN_RESULT_OK) return 10;
     if (metrics.polls != 1u || metrics.active_connections != 0u) return 11;

@@ -182,6 +182,7 @@ typedef struct minna_san_connection minna_san_connection;
 typedef struct minna_san_peer minna_san_peer;
 typedef struct minna_san_channel minna_san_channel;
 typedef struct minna_san_authoritative_session minna_san_authoritative_session;
+typedef struct minna_san_p2p_session minna_san_p2p_session;
 typedef struct minna_san_native_runtime minna_san_native_runtime;
 typedef struct minna_san_native_session minna_san_native_session;
 typedef struct minna_san_native_channel minna_san_native_channel;
