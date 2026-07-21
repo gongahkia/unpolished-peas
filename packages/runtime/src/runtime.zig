@@ -45,6 +45,7 @@ const udp_session_registry = @import("udp_session_registry.zig");
 const udp_stun_binding_provider = @import("udp_stun_binding_provider.zig");
 const tcp_stun_binding_provider = @import("tcp_stun_binding_provider.zig");
 const turn_allocation_provider = @import("turn_allocation_provider.zig");
+const turn_allocation_refresh_scheduler = @import("turn_allocation_refresh_scheduler.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -371,6 +372,13 @@ pub const TurnAllocationRequestConfig = turn_allocation_provider.TurnAllocationR
 pub const TurnAllocationHandle = turn_allocation_provider.TurnAllocationHandle;
 pub const TurnAllocationState = turn_allocation_provider.TurnAllocationState;
 pub const TurnAllocationProvider = turn_allocation_provider.TurnAllocationProvider;
+pub const max_turn_allocation_refreshes = turn_allocation_refresh_scheduler.max_turn_allocation_refreshes;
+pub const TurnAllocationRefreshSchedulerError = turn_allocation_refresh_scheduler.TurnAllocationRefreshSchedulerError;
+pub const TurnAllocationRefreshSchedulerConfig = turn_allocation_refresh_scheduler.TurnAllocationRefreshSchedulerConfig;
+pub const TurnAllocationRefreshConfig = turn_allocation_refresh_scheduler.TurnAllocationRefreshConfig;
+pub const TurnAllocationRefreshHandle = turn_allocation_refresh_scheduler.TurnAllocationRefreshHandle;
+pub const TurnAllocationRefreshEvent = turn_allocation_refresh_scheduler.TurnAllocationRefreshEvent;
+pub const TurnAllocationRefreshScheduler = turn_allocation_refresh_scheduler.TurnAllocationRefreshScheduler;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -448,5 +456,6 @@ test {
     _ = @import("udp_stun_binding_provider.zig");
     _ = @import("tcp_stun_binding_provider.zig");
     _ = @import("turn_allocation_provider.zig");
+    _ = @import("turn_allocation_refresh_scheduler.zig");
     _ = @import("platform_runtime.zig");
 }
