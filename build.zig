@@ -559,6 +559,16 @@ pub fn build(b: *std.Build) void {
     const provider_dependency_test = b.addSystemCommand(&.{ "sh", "script/test_provider_dependencies.sh" });
     const provider_dependency_test_step = b.step("provider-dependency-policy-test", "Test provider dependency policy checks");
     provider_dependency_test_step.dependOn(&provider_dependency_test.step);
+    const msquic_provider_target = b.option([]const u8, "msquic-target", "Resolve an optional MsQuic provider target");
+    const msquic_provider_output = b.option([]const u8, "msquic-output", "Set the optional MsQuic provider output directory") orelse "zig-out/msquic";
+    const msquic_provider = b.addSystemCommand(&.{ "python3", "script/resolve_msquic_provider.py", "--output", msquic_provider_output });
+    if (msquic_provider_target) |value| msquic_provider.addArgs(&.{ "--target", value });
+    const msquic_provider_step = b.step("msquic-provider", "Resolve one pinned optional MsQuic provider artifact");
+    msquic_provider_step.dependOn(&msquic_provider.step);
+    const msquic_provider_test = b.addSystemCommand(&.{ "python3", "script/test_msquic_provider.py" });
+    msquic_provider_test.setEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1");
+    const msquic_provider_test_step = b.step("msquic-provider-test", "Test optional MsQuic provider resolution");
+    msquic_provider_test_step.dependOn(&msquic_provider_test.step);
     const hermetic_test = b.addSystemCommand(&.{ "sh", "script/test_hermetic_build.sh" });
     const hermetic_step = b.step("hermetic-test", "Test SDK builds with an empty environment");
     hermetic_step.dependOn(&hermetic_test.step);
@@ -744,4 +754,5 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&pre_release_api_contract_test.step);
     test_step.dependOn(&provider_dependency_check.step);
     test_step.dependOn(&provider_dependency_test.step);
+    test_step.dependOn(&msquic_provider_test.step);
 }
