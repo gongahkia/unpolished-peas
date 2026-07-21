@@ -9,7 +9,11 @@ case "$tag" in
 esac
 
 expected_url="https://github.com/gongahkia/unpolished-peas/archive/refs/tags/${tag}.tar.gz"
+repo_url="https://github.com/gongahkia/unpolished-peas.git"
 tmp="$(mktemp -d)"
+release_archive="$tmp/release.tar.gz"
+release_root="$tmp/unpolished-peas-${tag#v}"
+quickstart_checkout="$tmp/unpolished-peas"
 consumer="$tmp/consumer"
 generation_cache="$tmp/generation-cache"
 verification_cache="$tmp/verification-cache"
@@ -25,7 +29,24 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 cd "$repo"
-ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build peas -- new "$consumer"
+curl --fail --location --silent --show-error "$expected_url" --output "$release_archive"
+tar -xzf "$release_archive" -C "$tmp"
+if [ ! -d "$release_root" ]; then
+    printf 'published consumer: release archive did not extract expected root for tag=%s\n' "$tag" >&2
+    exit 1
+fi
+(
+    cd "$tmp"
+    git clone --depth 1 --branch "$tag" "$repo_url"
+)
+if [ ! -f "$quickstart_checkout/build.zig" ]; then
+    printf 'published consumer: released checkout missing build.zig for tag=%s\n' "$tag" >&2
+    exit 1
+fi
+(
+    cd "$release_root"
+    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"
+)
 manifest="$consumer/build.zig.zon"
 rg -Fqx "            .url = \"$expected_url\"," "$manifest"
 archive_hash="$(ZIG_GLOBAL_CACHE_DIR="$verification_cache/global" ZIG_LOCAL_CACHE_DIR="$verification_cache/local" zig fetch "$expected_url")"
@@ -48,7 +69,7 @@ case "$(uname -s)" in
         (
             cd "$consumer"
             ZIG_GLOBAL_CACHE_DIR="$consumer_cache/global" ZIG_LOCAL_CACHE_DIR="$consumer_cache/local" \
-                "$repo/script/run_linux_software_gl.sh" zig build run -- --frames 2
+                "$release_root/script/run_linux_software_gl.sh" zig build run -- --frames 2
         )
         ;;
     Darwin)
