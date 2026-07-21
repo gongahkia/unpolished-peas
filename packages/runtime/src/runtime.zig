@@ -57,6 +57,7 @@ const tls_certificate_callback = @import("tls_certificate_callback.zig");
 const tls_client_route = @import("tls_client_route.zig");
 const tls_server_listener = @import("tls_server_listener.zig");
 const http_session_policy = @import("http_session_policy.zig");
+const http_server_lifecycle = @import("http_server_lifecycle.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -487,6 +488,12 @@ pub const HttpRejectionResponse = http_session_policy.HttpRejectionResponse;
 pub const HttpSessionPolicyEvent = http_session_policy.HttpSessionPolicyEvent;
 pub const HttpSessionPolicyConfig = http_session_policy.HttpSessionPolicyConfig;
 pub const HttpSessionPolicy = http_session_policy.HttpSessionPolicy;
+pub const HttpServerLifecycleError = http_server_lifecycle.HttpServerLifecycleError;
+pub const HttpServerConnectionState = http_server_lifecycle.HttpServerConnectionState;
+pub const HttpServerResponse = http_server_lifecycle.HttpServerResponse;
+pub const HttpServerEvent = http_server_lifecycle.HttpServerEvent;
+pub const HttpServerConfig = http_server_lifecycle.HttpServerConfig;
+pub const HttpServerConnection = http_server_lifecycle.HttpServerConnection;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -576,5 +583,6 @@ test {
     _ = @import("tls_client_route.zig");
     _ = @import("tls_server_listener.zig");
     _ = @import("http_session_policy.zig");
+    _ = @import("http_server_lifecycle.zig");
     _ = @import("platform_runtime.zig");
 }

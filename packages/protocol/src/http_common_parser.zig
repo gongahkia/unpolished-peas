@@ -53,6 +53,11 @@ pub const HttpParser = struct {
         };
     }
 
+    pub fn reset(self: *HttpParser) void {
+        const config = self.config;
+        self.* = .{ .config = config };
+    }
+
     fn feedLine(self: *HttpParser, input: []const u8) HttpParserError!struct { consumed: usize, event: ?HttpParserEvent } {
         var consumed: usize = 0;
         while (consumed < input.len) : (consumed += 1) {
