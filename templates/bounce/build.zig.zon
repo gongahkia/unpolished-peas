@@ -6,7 +6,7 @@
     .dependencies = .{
         .unpolished_peas = .{
             .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.4.tar.gz",
-            .hash = "unpolished_peas-0.0.4-NgUp2e_UJQAcvd14MMsx9tkfeZ54qm1DD2WdNHin3Yi7",
+            .hash = "unpolished_peas-0.0.4-NgUp2SDVJQBDiK29fuv4P4cbxXbjhjALJ2K3vdef_Mhv",
         },
     },
     .paths = .{
