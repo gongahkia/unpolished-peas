@@ -624,12 +624,10 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addStb(core_api_snapshot_module);
-    const core_api_snapshot_tests = b.addTest(.{ .root_module = core_api_snapshot_module });
-    const run_core_api_snapshot_tests = b.addRunArtifact(core_api_snapshot_tests);
+    const core_api_snapshot = b.addObject(.{ .name = "core-api-snapshot", .root_module = core_api_snapshot_module });
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
-    core_api_snapshot_test_step.dependOn(&run_core_api_snapshot_tests.step);
-    test_step.dependOn(&run_core_api_snapshot_tests.step);
+    core_api_snapshot_test_step.dependOn(&core_api_snapshot.step);
+    test_step.dependOn(&core_api_snapshot.step);
     const core_downstream_fixture = b.addSystemCommand(&.{"script/test_core_downstream_fixture.sh"});
     core_downstream_fixture.setCwd(b.path("."));
     const core_downstream_fixture_test_step = b.step("test-core-downstream", "Build the external frozen-core fixture");
