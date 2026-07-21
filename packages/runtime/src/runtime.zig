@@ -46,6 +46,7 @@ const udp_stun_binding_provider = @import("udp_stun_binding_provider.zig");
 const tcp_stun_binding_provider = @import("tcp_stun_binding_provider.zig");
 const turn_allocation_provider = @import("turn_allocation_provider.zig");
 const turn_allocation_refresh_scheduler = @import("turn_allocation_refresh_scheduler.zig");
+const turn_relay_datagram_route = @import("turn_relay_datagram_route.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -379,6 +380,12 @@ pub const TurnAllocationRefreshConfig = turn_allocation_refresh_scheduler.TurnAl
 pub const TurnAllocationRefreshHandle = turn_allocation_refresh_scheduler.TurnAllocationRefreshHandle;
 pub const TurnAllocationRefreshEvent = turn_allocation_refresh_scheduler.TurnAllocationRefreshEvent;
 pub const TurnAllocationRefreshScheduler = turn_allocation_refresh_scheduler.TurnAllocationRefreshScheduler;
+pub const max_turn_relay_route_peers = turn_relay_datagram_route.max_turn_relay_route_peers;
+pub const TurnRelayDatagramRouteError = turn_relay_datagram_route.TurnRelayDatagramRouteError;
+pub const TurnRelayDatagramRouteConfig = turn_relay_datagram_route.TurnRelayDatagramRouteConfig;
+pub const TurnRelayRouteFailure = turn_relay_datagram_route.TurnRelayRouteFailure;
+pub const TurnRelayRouteEvent = turn_relay_datagram_route.TurnRelayRouteEvent;
+pub const TurnRelayDatagramRoute = turn_relay_datagram_route.TurnRelayDatagramRoute;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -457,5 +464,6 @@ test {
     _ = @import("tcp_stun_binding_provider.zig");
     _ = @import("turn_allocation_provider.zig");
     _ = @import("turn_allocation_refresh_scheduler.zig");
+    _ = @import("turn_relay_datagram_route.zig");
     _ = @import("platform_runtime.zig");
 }
