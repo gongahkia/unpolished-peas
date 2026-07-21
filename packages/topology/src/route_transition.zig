@@ -2,7 +2,7 @@ const std = @import("std");
 const protocol = @import("minna-san-protocol");
 
 pub const max_route_transition_diagnostics: usize = 16;
-pub const RouteTransitionRoute = enum { direct, relay };
+pub const RouteTransitionRoute = enum { direct, relay, udp, tcp };
 pub const RouteTransitionPacket = struct { route: RouteTransitionRoute, sequence: u64, security_epoch: protocol.KeyEpoch };
 pub const RouteTransitionDiagnosticKind = enum { began, committed, aborted, epoch_updated };
 pub const RouteTransitionDiagnostic = struct {

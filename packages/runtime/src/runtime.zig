@@ -49,6 +49,7 @@ const turn_allocation_refresh_scheduler = @import("turn_allocation_refresh_sched
 const turn_relay_datagram_route = @import("turn_relay_datagram_route.zig");
 const candidate_gathering_pipeline = @import("candidate_gathering_pipeline.zig");
 const direct_connectivity_route = @import("direct_connectivity_route.zig");
+const session_route_controller = @import("session_route_controller.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -398,6 +399,12 @@ pub const DirectConnectivityRouteConfig = direct_connectivity_route.DirectConnec
 pub const DirectConnectivityRouteFailure = direct_connectivity_route.DirectConnectivityRouteFailure;
 pub const DirectConnectivityRouteEvent = direct_connectivity_route.DirectConnectivityRouteEvent;
 pub const DirectConnectivityRoute = direct_connectivity_route.DirectConnectivityRoute;
+pub const RouteTransitionConsent = session_route_controller.RouteTransitionConsent;
+pub const SessionRouteEventKind = session_route_controller.SessionRouteEventKind;
+pub const SessionRouteEvent = session_route_controller.SessionRouteEvent;
+pub const SessionRouteControllerError = session_route_controller.SessionRouteControllerError;
+pub const SessionRouteControllerConfig = session_route_controller.SessionRouteControllerConfig;
+pub const SessionRouteController = session_route_controller.SessionRouteController;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -479,5 +486,6 @@ test {
     _ = @import("turn_relay_datagram_route.zig");
     _ = @import("candidate_gathering_pipeline.zig");
     _ = @import("direct_connectivity_route.zig");
+    _ = @import("session_route_controller.zig");
     _ = @import("platform_runtime.zig");
 }
