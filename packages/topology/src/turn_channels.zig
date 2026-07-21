@@ -33,6 +33,24 @@ pub const TurnChannels = struct {
         const index = self.index_of(number) orelse return error.UnknownChannel;
         _ = self.bindings.orderedRemove(index);
     }
+    pub fn unbind_peer(self: *TurnChannels, peer: protocol.StunAddress) bool {
+        for (self.bindings.items, 0..) |entry, index| {
+            if (!std.meta.eql(entry.peer, peer)) continue;
+            _ = self.bindings.orderedRemove(index);
+            return true;
+        }
+        return false;
+    }
+    pub fn clear(self: *TurnChannels) void {
+        self.bindings.clearRetainingCapacity();
+    }
+    pub fn count(self: TurnChannels) usize {
+        return self.bindings.items.len;
+    }
+    pub fn binding_for_peer(self: TurnChannels, peer: protocol.StunAddress) ?TurnChannelBinding {
+        for (self.bindings.items) |entry| if (std.meta.eql(entry.peer, peer)) return entry;
+        return null;
+    }
     pub fn binding(self: TurnChannels, number: u16) ?TurnChannelBinding {
         const index = self.index_of(number) orelse return null;
         return self.bindings.items[index];

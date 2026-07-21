@@ -22,9 +22,10 @@ pub const TurnRelayTransport = struct {
         const frame = try self.channels.encode(.{ .number = number, .payload = payload }, output);
         try self.io.send(frame);
     }
-    pub fn receive_channel(self: *TurnRelayTransport, input: []const u8) TurnRelayTransportError!TurnRelayDatagram {
+    pub fn receive_channel(self: *TurnRelayTransport, input: []const u8, now_ns: core.TimeNs) TurnRelayTransportError!TurnRelayDatagram {
         const data = try self.channels.decode(input);
         const binding = self.channels.binding(data.number) orelse return error.UnknownChannel;
+        try self.authorize_peer(binding.peer, now_ns);
         return .{ .peer = binding.peer, .payload = data.payload };
     }
     pub fn authorize_peer(self: *TurnRelayTransport, peer: protocol.StunAddress, now_ns: core.TimeNs) TurnRelayTransportError!void {
@@ -51,7 +52,8 @@ test "TURN relay transport adapts authorized channel data without altering frame
     var output: [7]u8 = undefined;
     try adapter.send_channel(channels.turn_channel_min, "abc", output[0..]);
     try @import("std").testing.expectEqualStrings(output[0..7], fixture.bytes);
-    try @import("std").testing.expectEqual(peer, (try adapter.receive_channel(fixture.bytes)).peer);
+    try @import("std").testing.expectEqual(peer, (try adapter.receive_channel(fixture.bytes, 1)).peer);
     try adapter.authorize_peer(peer, 1);
     try @import("std").testing.expectError(error.UnauthorizedPeer, adapter.authorize_peer(peer, 10));
+    try @import("std").testing.expectError(error.UnauthorizedPeer, adapter.receive_channel(fixture.bytes, 10));
 }
