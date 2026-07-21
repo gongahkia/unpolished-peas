@@ -1,11 +1,18 @@
 const std = @import("std");
+const protocol = @import("minna-san-protocol");
 const transport = @import("minna-san-transport");
 const resource = @import("resource_handle.zig");
 const session = @import("session_registry.zig");
 const channel = @import("channel_registry.zig");
 const delivery = @import("channel_delivery.zig");
 
-pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
+pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || protocol.ReplayWindowError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
+
+pub const UdpPacketProtectionConfig = struct {
+    send_key: protocol.PacketProtectionKey,
+    receive_key: protocol.PacketProtectionKey,
+    replay: protocol.ReplayWindowConfig = .{},
+};
 
 pub const UdpDialConfig = struct {
     endpoint: transport.Endpoint,
@@ -15,6 +22,7 @@ pub const UdpDialConfig = struct {
     channel: delivery.ChannelDescriptor,
     local_address: ?transport.ResolvedAddress = null,
     path_mtu: ?transport.PathMtuProbeConfig = null,
+    packet_protection: ?UdpPacketProtectionConfig = null,
 };
 
 pub const UdpSessionPoll = struct {
@@ -40,6 +48,7 @@ pub const UdpReceiveEvent = struct {
 
 pub const UdpReceiveBatch = struct {
     received: usize = 0,
+    discarded: usize = 0,
     would_block: bool = false,
     backpressured: bool = false,
 };
@@ -66,6 +75,24 @@ const Entry = struct {
     socket: transport.Socket,
     route: transport.DialRoute,
     path_mtu: ?transport.PathMtuProber,
+    packet_protection: ?ProtectedDatagrams = null,
+};
+
+const ProtectedDatagrams = struct {
+    sender: protocol.PacketProtector,
+    receiver: protocol.PacketProtector,
+    replay: protocol.ReplayWindow,
+
+    fn init(config: UdpPacketProtectionConfig) protocol.ReplayWindowError!ProtectedDatagrams {
+        return .{ .sender = protocol.PacketProtector.init(config.send_key), .receiver = protocol.PacketProtector.init(config.receive_key), .replay = try protocol.ReplayWindow.init(config.replay) };
+    }
+
+    fn deinit(self: *ProtectedDatagrams) void {
+        self.sender.deinit();
+        self.receiver.deinit();
+        self.replay.reset();
+        self.* = undefined;
+    }
 };
 
 pub const UdpSessionRegistry = struct {
@@ -92,6 +119,8 @@ pub const UdpSessionRegistry = struct {
     pub fn dial(self: *UdpSessionRegistry, config: UdpDialConfig) UdpSessionError!*resource.ResourceHandle {
         if (self.entries.items.len >= self.capacity) return error.SessionCapacityExceeded;
         if (config.channel.transport() != .datagram) return error.InvalidConfiguration;
+        if (config.packet_protection != null and config.channel.maximum_payload_bytes > maximum_protected_payload_bytes) return error.InvalidConfiguration;
+        if (config.packet_protection != null and config.path_mtu != null and config.path_mtu.?.minimum_payload <= protected_datagram_overhead) return error.InvalidConfiguration;
         const path_mtu = if (config.path_mtu) |value| try transport.PathMtuProber.init(value) else null;
         const route = try transport.select_dial_route(config.endpoint, config.resolved, config.family_policy, config.platform_support);
         const session_handle = try self.sessions.create();
@@ -99,13 +128,17 @@ pub const UdpSessionRegistry = struct {
         try self.sessions.transition(session_handle, .begin_establishing);
         const channel_handle = try self.channels.create(session_handle, config.channel);
         errdefer self.channels.teardown(channel_handle) catch {};
-        if (path_mtu) |prober| try self.channels.setSessionDatagramBudget(session_handle, prober.payload_ceiling());
+        if (path_mtu) |prober| {
+            try self.channels.setSessionDatagramBudget(session_handle, try application_payload_budget(prober.payload_ceiling(), config.packet_protection != null));
+        } else if (config.packet_protection != null) try self.channels.setSessionDatagramBudget(session_handle, maximum_protected_payload_bytes);
         errdefer self.channels.clearSessionDatagramBudget(session_handle) catch {};
         var socket = try route.open(.udp);
         errdefer socket.close();
         if (config.local_address) |address| try bindLocal(&socket, route.family, address);
         try connect(&socket, route.address);
-        try self.entries.append(self.allocator, .{ .session = session_handle, .channel = channel_handle, .socket = socket, .route = route, .path_mtu = path_mtu });
+        var packet_protection = if (config.packet_protection) |value| try ProtectedDatagrams.init(value) else null;
+        errdefer if (packet_protection) |*value| value.deinit();
+        try self.entries.append(self.allocator, .{ .session = session_handle, .channel = channel_handle, .socket = socket, .route = route, .path_mtu = path_mtu, .packet_protection = packet_protection });
         return session_handle;
     }
 
@@ -145,14 +178,16 @@ pub const UdpSessionRegistry = struct {
     pub fn nextPathMtuProbe(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!?usize {
         const entry = try self.lookup(handle);
         const prober = if (entry.path_mtu) |*value| value else return error.PathMtuUnavailable;
-        return prober.next_probe();
+        const wire_payload = try prober.next_probe() orelse return null;
+        return application_payload_budget(wire_payload, entry.packet_protection != null);
     }
 
     pub fn recordPathMtuProbe(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, payload: usize, delivered: bool) UdpSessionError!usize {
         const entry = try self.lookup(handle);
         const prober = if (entry.path_mtu) |*value| value else return error.PathMtuUnavailable;
-        try prober.record_delivery(payload, delivered);
-        const budget = prober.payload_ceiling();
+        const wire_payload = if (entry.packet_protection != null) std.math.add(usize, payload, protected_datagram_overhead) catch return error.DatagramTooLarge else payload;
+        try prober.record_delivery(wire_payload, delivered);
+        const budget = try application_payload_budget(prober.payload_ceiling(), entry.packet_protection != null);
         try self.channels.setSessionDatagramBudget(handle, budget);
         return budget;
     }
@@ -163,6 +198,7 @@ pub const UdpSessionRegistry = struct {
         const entry = try self.lookup(handle);
         if ((try self.sessions.lookup(handle)).state != .ready) return error.InvalidState;
         var storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        var plaintext: [transport.max_ipv4_datagram_bytes]u8 = undefined;
         var batch = UdpReceiveBatch{};
         for (events) |*event| {
             const datagram = receive(&entry.socket, entry.route.family, storage[0..]) catch |err| switch (err) {
@@ -172,11 +208,18 @@ pub const UdpSessionRegistry = struct {
                 },
                 else => return err,
             };
-            self.channels.enqueue(entry.channel, datagram.bytes) catch |err| switch (err) {
+            const payload: []const u8 = if (entry.packet_protection) |*protection| blk: {
+                const opened = protection.receiver.open_with_replay(&protection.replay, datagram.bytes, plaintext[0..]) catch {
+                    batch.discarded += 1;
+                    continue;
+                };
+                break :blk opened.payload;
+            } else datagram.bytes;
+            self.channels.enqueue(entry.channel, payload) catch |err| switch (err) {
                 error.PayloadTooLarge => return error.DatagramTooLarge,
                 else => return err,
             };
-            event.* = .{ .sequence = self.next_receive_sequence, .session = handle, .channel = entry.channel, .source = datagram.source, .payload_len = datagram.bytes.len };
+            event.* = .{ .sequence = self.next_receive_sequence, .session = handle, .channel = entry.channel, .source = datagram.source, .payload_len = payload.len };
             self.next_receive_sequence +%= 1;
             batch.received += 1;
         }
@@ -191,6 +234,7 @@ pub const UdpSessionRegistry = struct {
         if (events.len > transport.max_udp_send_batch) return error.BatchTooLarge;
         const entry = try self.lookup(handle);
         if ((try self.sessions.lookup(handle)).state != .ready) return error.InvalidState;
+        var ciphertext: [transport.max_ipv4_datagram_bytes]u8 = undefined;
         var batch = UdpSendBatch{};
         for (events) |*event| {
             var message = (try self.channels.dequeueDatagram(handle)) orelse break;
@@ -205,7 +249,16 @@ pub const UdpSessionRegistry = struct {
                 },
                 else => return err,
             };
-            const sent = send_datagram(&entry.socket, message.payload) catch |err| switch (err) {
+            const wire_payload = if (entry.packet_protection) |*protection| protection.sender.seal(message.payload, ciphertext[0..]) catch |err| switch (err) {
+                error.PayloadTooLarge, error.OutputTooSmall => {
+                    event.* = self.sendEvent(handle, channel_handle, payload_len, .datagram_too_large);
+                    message.deinit(self.allocator);
+                    batch.dropped += 1;
+                    continue;
+                },
+                else => return error.SendFailed,
+            } else message.payload;
+            const sent = send_datagram(&entry.socket, wire_payload) catch |err| switch (err) {
                 error.WouldBlock => {
                     try self.channels.requeueFront(&message);
                     event.* = self.sendEvent(handle, channel_handle, payload_len, .would_block);
@@ -226,7 +279,7 @@ pub const UdpSessionRegistry = struct {
                     break;
                 },
             };
-            if (sent != payload_len) {
+            if (sent != wire_payload.len) {
                 try self.channels.requeueFront(&message);
                 event.* = self.sendEvent(handle, channel_handle, payload_len, .failed);
                 batch.retryable = true;
@@ -282,6 +335,7 @@ pub const UdpSessionRegistry = struct {
     }
 
     fn closeEntry(self: *UdpSessionRegistry, entry: *Entry) void {
+        if (entry.packet_protection) |*value| value.deinit();
         entry.socket.close();
         self.channels.clearSessionDatagramBudget(entry.session) catch {};
         self.channels.teardown(entry.channel) catch {};
@@ -298,6 +352,15 @@ pub const UdpSessionRegistry = struct {
         self.sessions.close(handle) catch {};
     }
 };
+
+const protected_datagram_overhead = protocol.packet_protection_frame_header_bytes + protocol.packet_protection_tag_bytes;
+const maximum_protected_payload_bytes = transport.max_ipv4_datagram_bytes - protected_datagram_overhead;
+
+fn application_payload_budget(wire_payload: usize, protected: bool) UdpSessionError!usize {
+    if (!protected) return wire_payload;
+    if (wire_payload <= protected_datagram_overhead) return error.InvalidConfiguration;
+    return wire_payload - protected_datagram_overhead;
+}
 
 fn connect(socket: *transport.Socket, address: transport.ResolvedAddress) UdpSessionError!void {
     const native = switch (address) {
@@ -546,6 +609,67 @@ test "UDP path-MTU loss lowers queued channel acceptance before flush" {
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
 
+test "UDP sessions protect owned payloads and discard tampered ciphertext" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var resources = try resource.ResourceRegistry.init(allocator, 2);
+        defer resources.deinit();
+        var sessions = try session.SessionRegistry.init(allocator, &resources, 1);
+        defer sessions.deinit();
+        var payloads = try @import("payload_pool.zig").PayloadPool.init(allocator, 1, 64);
+        defer payloads.deinit();
+        var channels = try channel.ChannelRegistry.init(allocator, &resources, &sessions, &payloads, 1);
+        defer channels.deinit();
+        var udp_sessions = try UdpSessionRegistry.init(allocator, &sessions, &channels, 1);
+        defer udp_sessions.deinit();
+        const send_key = protocol.PacketProtectionKey.init([_]u8{1} ** protocol.packet_protection_key_bytes, [_]u8{2} ** protocol.packet_protection_nonce_prefix_bytes);
+        const receive_key = protocol.PacketProtectionKey.init([_]u8{3} ** protocol.packet_protection_key_bytes, [_]u8{4} ** protocol.packet_protection_nonce_prefix_bytes);
+        var peer = try transport.UdpSocket.init(.{});
+        defer peer.close();
+        try peer.bind(try transport.Ipv4Address.parse("127.0.0.1", 0));
+        const peer_address = local_ipv4_address(&peer);
+        const handle = try udp_sessions.dial(.{ .endpoint = transport.Endpoint.from_ipv4(peer_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 }, .packet_protection = .{ .send_key = send_key, .receive_key = receive_key } });
+        const primary = (try udp_sessions.poll(handle)).channel;
+        const local_address = switch (try udp_sessions.localAddress(handle)) {
+            .ipv4 => |address| address,
+            .ipv6 => unreachable,
+        };
+        var inbound = protocol.PacketProtector.init(receive_key);
+        defer inbound.deinit();
+        var inbound_storage: [protocol.packet_protection_frame_header_bytes + 2 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try inbound.seal("in", inbound_storage[0..]), local_address);
+        var events: [1]UdpReceiveEvent = undefined;
+        const accepted = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), accepted.received);
+        try std.testing.expectEqual(@as(usize, 0), accepted.discarded);
+        var received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("in", received.payload);
+        received.deinit(allocator);
+        var tampered_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
+        const tampered = try inbound.seal("bad", tampered_storage[0..]);
+        tampered_storage[protocol.packet_protection_frame_header_bytes] +%= 1;
+        _ = try peer.send_to(tampered, local_address);
+        const rejected = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 0), rejected.received);
+        try std.testing.expectEqual(@as(usize, 1), rejected.discarded);
+        try std.testing.expect((try channels.dequeue(handle)) == null);
+        try channels.enqueue(primary, "out");
+        var sent_events: [1]UdpSendEvent = undefined;
+        const sent = try udp_sessions.flushSends(handle, sent_events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), sent.sent);
+        var wire_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        const wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        try std.testing.expect(!std.mem.eql(u8, wire.bytes, "out"));
+        var outbound = protocol.PacketProtector.init(send_key);
+        defer outbound.deinit();
+        var plaintext: [3]u8 = undefined;
+        try std.testing.expectEqualStrings("out", (try outbound.open(wire.bytes, plaintext[0..])).payload);
+        try udp_sessions.close(handle);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
 fn local_ipv4_address(socket: *transport.UdpSocket) transport.Ipv4Address {
     var native = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 0);
     var length = native.getOsSockLen();
@@ -565,6 +689,16 @@ fn receive_with_retry(registry: *UdpSessionRegistry, handle: *resource.ResourceH
     }
     if (total.received != events.len) return error.ReceiveFailed;
     return total;
+}
+
+fn protected_receive_with_retry(registry: *UdpSessionRegistry, handle: *resource.ResourceHandle, events: []UdpReceiveEvent) UdpSessionError!UdpReceiveBatch {
+    var attempts: usize = 0;
+    while (attempts < 100) : (attempts += 1) {
+        const batch = try registry.pollReceives(handle, events);
+        if (batch.received != 0 or batch.discarded != 0) return batch;
+        if (batch.would_block) std.Thread.sleep(std.time.ns_per_ms);
+    }
+    return error.ReceiveFailed;
 }
 
 fn receive_from_with_retry(socket: *transport.UdpSocket, storage: []u8) !transport.ReceivedDatagram {

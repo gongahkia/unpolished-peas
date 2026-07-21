@@ -325,6 +325,7 @@ pub const UdpListenerPoll = udp_listener_registry.UdpListenerPoll;
 pub const UdpListenerReadiness = udp_listener_registry.UdpListenerReadiness;
 pub const UdpListenerRegistry = udp_listener_registry.UdpListenerRegistry;
 pub const UdpSessionError = udp_session_registry.UdpSessionError;
+pub const UdpPacketProtectionConfig = udp_session_registry.UdpPacketProtectionConfig;
 pub const UdpDialConfig = udp_session_registry.UdpDialConfig;
 pub const UdpSessionPoll = udp_session_registry.UdpSessionPoll;
 pub const UdpSessionReadiness = udp_session_registry.UdpSessionReadiness;
