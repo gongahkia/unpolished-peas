@@ -14,7 +14,12 @@ function Invoke-Native([string]$Name, [scriptblock]$Command) {
 Invoke-Native 'capability-matrix' { python3 script/capability_matrix.py --check-row $Row }
 Invoke-Native 'format' { zig fmt --check build.zig src examples templates }
 Invoke-Native 'core-api' { zig build test-core-api }
-Invoke-Native 'core' { zig build test }
+Invoke-Native 'core' { zig build test-core }
+Invoke-Native 'frame-timing' { zig build test-frame-timing }
+Invoke-Native 'workload-catalog' { zig build test-workload-catalog }
+Invoke-Native 'workload-benchmark' { zig build test-workload-benchmark }
+Invoke-Native 'dependency-ceiling' { zig build test-dependency-ceiling }
+Invoke-Native 'public-import-inventory' { zig build test-public-import-inventory }
 Invoke-Native 'support' { zig build test-support }
 Invoke-Native 'scenes' { zig build test-scenes }
 Invoke-Native 'starter' { zig build test-starter }
