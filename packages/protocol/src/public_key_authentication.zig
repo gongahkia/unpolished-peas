@@ -38,7 +38,7 @@ pub const PublicKeyIdentity = struct {
         return ed25519.KeyPair.generateDeterministic(self.seed) catch return error.InvalidIdentityKey;
     }
 
-    fn sign(self: PublicKeyIdentity, message: []const u8) PublicKeyAuthenticationError![public_key_signature_bytes]u8 {
+    pub fn sign_message(self: PublicKeyIdentity, message: []const u8) PublicKeyAuthenticationError![public_key_signature_bytes]u8 {
         const signature = (try self.key_pair()).sign(message, null) catch return error.InvalidSignature;
         return signature.toBytes();
     }
@@ -76,7 +76,7 @@ pub const PublicKeyKeyExchange = struct {
             .signature = .{0} ** public_key_signature_bytes,
         };
         const message = hello_message(result);
-        result.signature = try self.identity.sign(&message);
+        result.signature = try self.identity.sign_message(&message);
         return result;
     }
 
@@ -93,10 +93,14 @@ pub fn verify_public_key_hello(session_id: u64, expected_role: PublicKeyRole, ex
     if (hello.session_id != session_id) return error.SessionMismatch;
     if (hello.role != expected_role) return error.UnexpectedPeerRole;
     if (!std.crypto.timing_safe.eql([public_key_identity_bytes]u8, hello.identity_key, expected_identity)) return error.IdentityMismatch;
-    const identity = ed25519.PublicKey.fromBytes(hello.identity_key) catch return error.InvalidIdentityKey;
-    const signature = ed25519.Signature.fromBytes(hello.signature);
     const message = hello_message(hello);
-    signature.verify(&message, identity) catch return error.InvalidSignature;
+    try verify_public_key_signature(hello.identity_key, &message, hello.signature);
+}
+
+pub fn verify_public_key_signature(identity_key: [public_key_identity_bytes]u8, message: []const u8, signature_bytes: [public_key_signature_bytes]u8) PublicKeyAuthenticationError!void {
+    const identity = ed25519.PublicKey.fromBytes(identity_key) catch return error.InvalidIdentityKey;
+    const signature = ed25519.Signature.fromBytes(signature_bytes);
+    signature.verify(message, identity) catch return error.InvalidSignature;
 }
 
 fn opposite_role(role: PublicKeyRole) PublicKeyRole {
