@@ -126,10 +126,10 @@ pub const DirectConnectivityRoute = struct {
         if (opened.payload.len < 9) return .{ .failure = .malformed_frame };
         const kind = std.meta.intToEnum(DirectFrameKind, opened.payload[0]) catch return .{ .failure = .malformed_frame };
         if (std.mem.readInt(u64, opened.payload[1..9], .big) != self.session_intent) return .{ .failure = .session_mismatch };
-        return switch (kind) {
-            .check => self.receiveCheck(opened.payload),
-            .application => self.receiveApplication(opened.payload, output),
-        };
+        switch (kind) {
+            .check => return self.receiveCheck(opened.payload),
+            .application => return try self.receiveApplication(opened.payload, output),
+        }
     }
 
     fn receiveCheck(self: *DirectConnectivityRoute, frame: []const u8) DirectConnectivityRouteEvent {

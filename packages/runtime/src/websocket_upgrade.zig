@@ -49,6 +49,10 @@ pub fn websocketUpgradeStatus(err: WebSocketUpgradeError) u16 {
     };
 }
 
+pub fn websocket_accept_key(key: []const u8) [websocket_accept_key_bytes]u8 {
+    return websocketAcceptKey(key);
+}
+
 pub fn encodeWebSocketUpgrade(response: WebSocketUpgrade, output: []u8) WebSocketUpgradeError![]u8 {
     const prefix = "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: ";
     var stream = std.io.fixedBufferStream(output);

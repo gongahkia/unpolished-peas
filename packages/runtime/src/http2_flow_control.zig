@@ -73,7 +73,7 @@ pub const Http2FlowController = struct {
         const entry = try self.lookup(stream);
         if (bytes > entry.buffered_bytes) return error.WriteCompletionMismatch;
         entry.buffered_bytes -= bytes;
-        return (try self.reservation(entry, .writable, 0)).backpressure;
+        return self.reservation(entry, .writable, 0).backpressure;
     }
 
     pub fn receiveWindowUpdate(self: *Http2FlowController, stream: ?*resource.ResourceHandle, increment: u32) Http2FlowControlError!void {
@@ -124,6 +124,6 @@ test "HTTP2 flow control isolates a stalled stream from separate writable stream
     try std.testing.expectEqual(@as(usize, 0), (try flow.reserve(stalled, 1)).accepted);
     try flow.receiveWindowUpdate(stalled, 8);
     try flow.applyInitialStreamWindow(4);
-    try flow.completeWrite(stalled, 8);
+    _ = try flow.completeWrite(stalled, 8);
     try std.testing.expectEqual(@as(usize, 1), (try flow.reserve(stalled, 1)).accepted);
 }

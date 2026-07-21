@@ -17,6 +17,7 @@ pub const WebSocketFrameCodecConfig = struct {
     }
 };
 pub const WebSocketFrameEvent = union(enum) { frame_start: WebSocketFrameHeader, payload: []const u8, frame_end: WebSocketFrameHeader };
+pub const WebSocketParserFeed = struct { consumed: usize, event: ?WebSocketFrameEvent };
 
 const Utf8State = struct {
     remaining: u8 = 0,
@@ -81,7 +82,7 @@ pub const WebSocketFrameParser = struct {
         self.* = undefined;
     }
 
-    pub fn feed(self: *WebSocketFrameParser, input: []const u8) WebSocketFrameError!struct { consumed: usize, event: ?WebSocketFrameEvent } {
+    pub fn feed(self: *WebSocketFrameParser, input: []const u8) WebSocketFrameError!WebSocketParserFeed {
         if (self.current == null) return self.feedHeader(input);
         if (self.payload_remaining == 0) return .{ .consumed = 0, .event = .{ .frame_end = try self.finishFrame() } };
         if (input.len == 0) return .{ .consumed = 0, .event = null };
@@ -98,7 +99,7 @@ pub const WebSocketFrameParser = struct {
         return .{ .consumed = count, .event = .{ .payload = self.chunk[0..count] } };
     }
 
-    fn feedHeader(self: *WebSocketFrameParser, input: []const u8) WebSocketFrameError!struct { consumed: usize, event: ?WebSocketFrameEvent } {
+    fn feedHeader(self: *WebSocketFrameParser, input: []const u8) WebSocketFrameError!WebSocketParserFeed {
         var consumed: usize = 0;
         while (consumed < input.len and self.header_length < self.header_required) : (consumed += 1) {
             self.header[self.header_length] = input[consumed];
@@ -113,7 +114,7 @@ pub const WebSocketFrameParser = struct {
     fn extendHeader(self: *WebSocketFrameParser) WebSocketFrameError!void {
         const length_code = self.header[1] & 0x7f;
         const masked = self.header[1] & 0x80 != 0;
-        self.header_required = 2 + (if (length_code == 126) 2 else if (length_code == 127) 8 else 0) + (if (masked) 4 else 0);
+        self.header_required = @as(usize, 2) + (if (length_code == 126) @as(usize, 2) else if (length_code == 127) @as(usize, 8) else @as(usize, 0)) + (if (masked) @as(usize, 4) else @as(usize, 0));
     }
 
     fn beginFrame(self: *WebSocketFrameParser) WebSocketFrameError!WebSocketFrameHeader {
@@ -183,7 +184,7 @@ pub fn encode_websocket_frame(config: WebSocketFrameCodecConfig, frame: WebSocke
     if (frame.opcode == .text and !std.unicode.utf8ValidateSlice(frame.payload)) return error.InvalidUtf8;
     if (frame.opcode == .close) try validateClose(frame.payload);
     const extended: usize = if (frame.payload.len < 126) 0 else if (frame.payload.len <= std.math.maxInt(u16)) 2 else 8;
-    const total = 2 + extended + (if (frame.mask_key != null) 4 else 0) + frame.payload.len;
+    const total: usize = 2 + extended + (if (frame.mask_key != null) @as(usize, 4) else @as(usize, 0)) + frame.payload.len;
     if (output.len < total) return error.OutputTooSmall;
     output[0] = @intFromEnum(frame.opcode) | if (frame.fin) 0x80 else 0;
     const mask_bit: u8 = if (frame.mask_key != null) 0x80 else 0;

@@ -122,7 +122,7 @@ pub const HttpBodyWriter = struct {
         if (self.state == .cancelled) return error.Cancelled;
         if (self.state != .open) return error.InvalidState;
         if (self.pending_length != 0) return error.WritePending;
-        if (body.len == 0) return .{ .backpressure = .writable };
+        if (body.len == 0) return .{ .accepted = 0, .pending_bytes = 0, .backpressure = .writable };
         if (body.len > self.maximum_body_bytes - self.body_bytes) return error.BodyTooLarge;
         var length: [20]u8 = undefined;
         const encoded_length = std.fmt.bufPrint(&length, "{x}", .{body.len}) catch unreachable;
@@ -147,7 +147,7 @@ pub const HttpBodyWriter = struct {
         self.pending_offset = 0;
         self.pending_length = 5;
         self.state = .finishing;
-        return .{ .pending_bytes = self.pending_length, .backpressure = .blocked };
+        return .{ .accepted = 0, .pending_bytes = self.pending_length, .backpressure = .blocked };
     }
 
     pub fn pending(self: *const HttpBodyWriter) ?[]const u8 {

@@ -45,7 +45,7 @@ pub const WebSocketSession = struct {
     }
 
     pub fn deinit(self: *WebSocketSession) void {
-        self.detach() catch {};
+        _ = self.detach() catch {};
         self.* = undefined;
     }
 
