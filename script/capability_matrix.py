@@ -29,7 +29,7 @@ def fail(message):
 
 def load_matrix():
     try:
-        matrix = json.loads(MATRIX_PATH.read_text())
+        matrix = json.loads(MATRIX_PATH.read_text(encoding="utf-8"))
     except json.JSONDecodeError as error:
         fail(f"invalid JSON in {MATRIX_PATH}: {error}")
     if matrix.get("schema_version") != 1:
@@ -161,7 +161,7 @@ def main():
         if args.render:
             sys.stdout.write(guide)
             return
-        if GUIDE_PATH.read_text() != guide:
+        if GUIDE_PATH.read_text(encoding="utf-8") != guide:
             fail("docs/guides/capabilities.md is not the current rendering of docs/capabilities/v0.1.json")
         if args.check_row and args.check_row not in {row["id"] for row in rows["pull_request"]}:
             fail(f"unknown pull-request capability row: {args.check_row}")
