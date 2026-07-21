@@ -34,6 +34,7 @@ const stun_codec = @import("stun_codec.zig");
 const stun_credentials = @import("stun_credentials.zig");
 const http_common_parser = @import("http_common_parser.zig");
 const http2_frame_codec = @import("http2_frame_codec.zig");
+const hpack_codec = @import("hpack_codec.zig");
 const websocket_frame_codec = @import("websocket_frame_codec.zig");
 
 pub const WireVersion = envelope.WireVersion;
@@ -305,6 +306,14 @@ pub const encode_http2_frame = http2_frame_codec.encode_http2_frame;
 pub const decode_http2_frame = http2_frame_codec.decode_http2_frame;
 pub const encode_http2_settings = http2_frame_codec.encode_http2_settings;
 pub const decode_http2_settings = http2_frame_codec.decode_http2_settings;
+pub const max_hpack_dynamic_table_bytes = hpack_codec.max_hpack_dynamic_table_bytes;
+pub const max_hpack_header_list_bytes = hpack_codec.max_hpack_header_list_bytes;
+pub const max_hpack_headers = hpack_codec.max_hpack_headers;
+pub const HpackError = hpack_codec.HpackError;
+pub const HpackHeader = hpack_codec.HpackHeader;
+pub const HpackDecoderConfig = hpack_codec.HpackDecoderConfig;
+pub const HpackHeaderList = hpack_codec.HpackHeaderList;
+pub const HpackDecoder = hpack_codec.HpackDecoder;
 pub const max_websocket_frame_bytes = websocket_frame_codec.max_websocket_frame_bytes;
 pub const max_websocket_chunk_bytes = websocket_frame_codec.max_websocket_chunk_bytes;
 pub const WebSocketFrameError = websocket_frame_codec.WebSocketFrameError;
@@ -365,5 +374,6 @@ test {
     _ = @import("reliability_fault_matrix.zig");
     _ = @import("http_common_parser.zig");
     _ = @import("http2_frame_codec.zig");
+    _ = @import("hpack_codec.zig");
     _ = @import("websocket_frame_codec.zig");
 }
