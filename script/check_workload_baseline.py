@@ -53,9 +53,10 @@ def source_artifact(baseline_path: Path, baseline: dict) -> dict:
         content = path.read_bytes()
     except OSError as error:
         raise ValueError(f"recorded source artifact unavailable: {path}: {error}") from error
-    if hashlib.sha256(content).hexdigest() != checksum:
+    canonical_content = content.replace(b"\r\n", b"\n")
+    if hashlib.sha256(canonical_content).hexdigest() != checksum:
         raise ValueError(f"recorded source artifact checksum differs: {path}")
-    value = json.loads(content)
+    value = json.loads(canonical_content)
     if not isinstance(value, dict):
         raise ValueError(f"{path}: expected object")
     return value
