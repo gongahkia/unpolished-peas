@@ -9,8 +9,9 @@ const session_domain = "minna-san/v1/public-key-session";
 pub const public_key_identity_bytes: usize = ed25519.PublicKey.encoded_length;
 pub const public_key_signature_bytes: usize = ed25519.Signature.encoded_length;
 pub const public_key_session_key_bytes: usize = x25519.shared_length;
+pub const public_key_hello_wire_bytes: usize = 8 + 1 + public_key_identity_bytes + x25519.public_length + public_key_signature_bytes;
 pub const PublicKeyRole = enum(u8) { initiator, responder };
-pub const PublicKeyAuthenticationError = error{ InvalidIdentityKey, InvalidEphemeralKey, InvalidSignature, IdentityMismatch, SessionMismatch, UnexpectedPeerRole };
+pub const PublicKeyAuthenticationError = error{ InvalidIdentityKey, InvalidEphemeralKey, InvalidSignature, IdentityMismatch, SessionMismatch, UnexpectedPeerRole, MalformedHello, OutputTooSmall };
 
 pub const PublicKeyIdentity = struct {
     seed: [ed25519.KeyPair.seed_length]u8,
@@ -95,6 +96,33 @@ pub fn verify_public_key_hello(session_id: u64, expected_role: PublicKeyRole, ex
     if (!std.crypto.timing_safe.eql([public_key_identity_bytes]u8, hello.identity_key, expected_identity)) return error.IdentityMismatch;
     const message = hello_message(hello);
     try verify_public_key_signature(hello.identity_key, &message, hello.signature);
+}
+
+pub fn encode_public_key_hello(hello: PublicKeyHello, output: []u8) PublicKeyAuthenticationError![]const u8 {
+    if (output.len < public_key_hello_wire_bytes) return error.OutputTooSmall;
+    std.mem.writeInt(u64, output[0..8], hello.session_id, .big);
+    output[8] = @intFromEnum(hello.role);
+    @memcpy(output[9..][0..public_key_identity_bytes], &hello.identity_key);
+    @memcpy(output[9 + public_key_identity_bytes ..][0..x25519.public_length], &hello.ephemeral_key);
+    @memcpy(output[9 + public_key_identity_bytes + x25519.public_length ..][0..public_key_signature_bytes], &hello.signature);
+    return output[0..public_key_hello_wire_bytes];
+}
+
+pub fn decode_public_key_hello(input: []const u8) PublicKeyAuthenticationError!PublicKeyHello {
+    if (input.len != public_key_hello_wire_bytes) return error.MalformedHello;
+    var identity_key: [public_key_identity_bytes]u8 = undefined;
+    var ephemeral_key: [x25519.public_length]u8 = undefined;
+    var signature: [public_key_signature_bytes]u8 = undefined;
+    @memcpy(&identity_key, input[9..][0..public_key_identity_bytes]);
+    @memcpy(&ephemeral_key, input[9 + public_key_identity_bytes ..][0..x25519.public_length]);
+    @memcpy(&signature, input[9 + public_key_identity_bytes + x25519.public_length ..][0..public_key_signature_bytes]);
+    return .{
+        .session_id = std.mem.readInt(u64, input[0..8], .big),
+        .role = std.meta.intToEnum(PublicKeyRole, input[8]) catch return error.MalformedHello,
+        .identity_key = identity_key,
+        .ephemeral_key = ephemeral_key,
+        .signature = signature,
+    };
 }
 
 pub fn verify_public_key_signature(identity_key: [public_key_identity_bytes]u8, message: []const u8, signature_bytes: [public_key_signature_bytes]u8) PublicKeyAuthenticationError!void {
@@ -184,4 +212,16 @@ test "public-key authentication rejects invalid peer bindings" {
     responder.ephemeral.public_key = .{0} ** x25519.public_length;
     const invalid_ephemeral = try responder.hello();
     try std.testing.expectError(error.InvalidEphemeralKey, initiator.derive_session_key(expected_peer, invalid_ephemeral));
+}
+
+test "public-key hello frames round trip and reject malformed input" {
+    var identity = try PublicKeyIdentity.init([_]u8{5} ** ed25519.KeyPair.seed_length);
+    defer identity.clear();
+    var exchange = PublicKeyKeyExchange.init(identity, 8, .initiator);
+    defer exchange.deinit();
+    const hello = try exchange.hello();
+    var wire: [public_key_hello_wire_bytes]u8 = undefined;
+    const encoded = try encode_public_key_hello(hello, wire[0..]);
+    try std.testing.expectEqual(hello, try decode_public_key_hello(encoded));
+    try std.testing.expectError(error.MalformedHello, decode_public_key_hello(encoded[0 .. encoded.len - 1]));
 }
