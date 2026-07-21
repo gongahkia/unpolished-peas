@@ -58,7 +58,7 @@ pub const TcpListener = struct {
             error.WouldBlock => error.WouldBlock,
             else => error.AcceptFailed,
         };
-        var accepted = socket_backend.Socket{ .handle = handle, .kind = .tcp };
+        var accepted = socket_backend.Socket{ .handle = handle, .kind = .tcp, .family = std.posix.AF.INET };
         errdefer accepted.close();
         return .{
             .socket = accepted,

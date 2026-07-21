@@ -107,6 +107,7 @@ pub const UdpSendSlot = udp_send_batch.UdpSendSlot;
 pub const UdpSendBatch = udp_send_batch.UdpSendBatch;
 pub const send_batch = udp_send_batch.send_batch;
 pub const SocketOptionError = socket_options.SocketOptionError;
+pub const SocketEcnPolicy = socket_options.SocketEcnPolicy;
 pub const SocketOptionConfig = socket_options.SocketOptionConfig;
 pub const apply_socket_options = socket_options.apply_socket_options;
 pub const max_pooled_packet_buffers = buffer_pool.max_pooled_packet_buffers;
