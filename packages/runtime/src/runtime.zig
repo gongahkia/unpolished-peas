@@ -53,6 +53,7 @@ const session_route_controller = @import("session_route_controller.zig");
 const p2p_session_bootstrap = @import("p2p_session_bootstrap.zig");
 const tls_provider = @import("tls_provider.zig");
 const tls_certificate_callback = @import("tls_certificate_callback.zig");
+const tls_client_route = @import("tls_client_route.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -451,6 +452,15 @@ pub const ApplicationTlsCertificateCallback = tls_certificate_callback.Applicati
 pub const TlsCertificateCallbackConfig = tls_certificate_callback.TlsCertificateCallbackConfig;
 pub const TlsCertificateCallbackError = tls_certificate_callback.TlsCertificateCallbackError;
 pub const TlsCertificateCallbackRegistry = tls_certificate_callback.TlsCertificateCallbackRegistry;
+pub const max_tls_client_record_bytes = tls_client_route.max_tls_client_record_bytes;
+pub const TlsClientRouteState = tls_client_route.TlsClientRouteState;
+pub const TlsClientRouteFailure = tls_client_route.TlsClientRouteFailure;
+pub const TlsClientRouteError = tls_client_route.TlsClientRouteError;
+pub const TlsClientRouteConfig = tls_client_route.TlsClientRouteConfig;
+pub const TlsClientRoutePoll = tls_client_route.TlsClientRoutePoll;
+pub const TlsClientRouteWrite = tls_client_route.TlsClientRouteWrite;
+pub const TlsClientRoute = tls_client_route.TlsClientRoute;
+pub const TlsClientChannel = tls_client_route.TlsClientChannel;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -536,5 +546,6 @@ test {
     _ = @import("p2p_session_bootstrap.zig");
     _ = @import("tls_provider.zig");
     _ = @import("tls_certificate_callback.zig");
+    _ = @import("tls_client_route.zig");
     _ = @import("platform_runtime.zig");
 }

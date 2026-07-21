@@ -163,6 +163,13 @@ pub const TlsCertificateCallbackRegistry = struct {
         return self.resolveCallback(index, now_ns, resolution);
     }
 
+    pub fn pollRequest(self: *TlsCertificateCallbackRegistry, id: TlsCertificateRequestId, now_ns: core.TimeNs) ?TlsCertificateResolutionResult {
+        const index = self.pendingIndex(id) orelse return null;
+        if (now_ns >= self.pending.items[index].expires_at_ns) return self.resolve(index, .expired, null);
+        const resolution = self.config.callback.poll(self.config.callback.context, id) orelse return null;
+        return self.resolveCallback(index, now_ns, resolution);
+    }
+
     pub fn pollFailureEvent(self: *TlsCertificateCallbackRegistry) ?TlsCertificateFailureEvent {
         if (self.failure_event_count == 0) return null;
         const result = self.failure_events[0];
@@ -185,6 +192,11 @@ pub const TlsCertificateCallbackRegistry = struct {
 
     fn expiredIndex(self: *const TlsCertificateCallbackRegistry, now_ns: core.TimeNs) ?usize {
         for (self.pending.items, 0..) |pending, index| if (now_ns >= pending.expires_at_ns) return index;
+        return null;
+    }
+
+    fn pendingIndex(self: *const TlsCertificateCallbackRegistry, id: TlsCertificateRequestId) ?usize {
+        for (self.pending.items, 0..) |pending, index| if (pending.id == id) return index;
         return null;
     }
 
