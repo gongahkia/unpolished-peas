@@ -55,6 +55,7 @@ const tls_provider = @import("tls_provider.zig");
 const tls_alpn = @import("tls_alpn.zig");
 const tls_certificate_callback = @import("tls_certificate_callback.zig");
 const tls_client_route = @import("tls_client_route.zig");
+const tls_server_listener = @import("tls_server_listener.zig");
 const http_session_policy = @import("http_session_policy.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
@@ -470,6 +471,15 @@ pub const TlsClientRoutePoll = tls_client_route.TlsClientRoutePoll;
 pub const TlsClientRouteWrite = tls_client_route.TlsClientRouteWrite;
 pub const TlsClientRoute = tls_client_route.TlsClientRoute;
 pub const TlsClientChannel = tls_client_route.TlsClientChannel;
+pub const max_tls_server_connections = tls_server_listener.max_tls_server_connections;
+pub const TlsServerConnectionState = tls_server_listener.TlsServerConnectionState;
+pub const TlsServerConnectionFailure = tls_server_listener.TlsServerConnectionFailure;
+pub const TlsServerListenerError = tls_server_listener.TlsServerListenerError;
+pub const TlsServerProviderFactoryFn = tls_server_listener.TlsServerProviderFactoryFn;
+pub const TlsServerProviderFactory = tls_server_listener.TlsServerProviderFactory;
+pub const TlsServerListenerConfig = tls_server_listener.TlsServerListenerConfig;
+pub const TlsServerConnectionPoll = tls_server_listener.TlsServerConnectionPoll;
+pub const TlsServerListener = tls_server_listener.TlsServerListener;
 pub const HttpSessionPolicyError = http_session_policy.HttpSessionPolicyError;
 pub const HttpSessionPolicyState = http_session_policy.HttpSessionPolicyState;
 pub const HttpSessionRejection = http_session_policy.HttpSessionRejection;
@@ -564,6 +574,7 @@ test {
     _ = @import("tls_alpn.zig");
     _ = @import("tls_certificate_callback.zig");
     _ = @import("tls_client_route.zig");
+    _ = @import("tls_server_listener.zig");
     _ = @import("http_session_policy.zig");
     _ = @import("platform_runtime.zig");
 }
