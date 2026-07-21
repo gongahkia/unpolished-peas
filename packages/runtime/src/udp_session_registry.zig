@@ -5,7 +5,7 @@ const session = @import("session_registry.zig");
 const channel = @import("channel_registry.zig");
 const delivery = @import("channel_delivery.zig");
 
-pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || transport.EndpointSelectionError || transport.SocketError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, DatagramTooLarge, WouldBlock };
+pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || transport.EndpointSelectionError || transport.SocketError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock };
 
 pub const UdpDialConfig = struct {
     endpoint: transport.Endpoint,
@@ -34,6 +34,22 @@ pub const UdpReceiveBatch = struct {
     backpressured: bool = false,
 };
 
+pub const UdpSendEvent = struct {
+    sequence: u64,
+    session: *resource.ResourceHandle,
+    channel: *resource.ResourceHandle,
+    payload_len: usize,
+    status: transport.UdpSendStatus,
+};
+
+pub const UdpSendBatch = struct {
+    sent: usize = 0,
+    dropped: usize = 0,
+    remaining: usize = 0,
+    would_block: bool = false,
+    retryable: bool = false,
+};
+
 const Entry = struct {
     session: *resource.ResourceHandle,
     channel: *resource.ResourceHandle,
@@ -48,6 +64,7 @@ pub const UdpSessionRegistry = struct {
     capacity: usize,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
     next_receive_sequence: u64 = 0,
+    next_send_sequence: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator, sessions: *session.SessionRegistry, channels: *channel.ChannelRegistry, capacity: usize) UdpSessionError!UdpSessionRegistry {
         if (capacity == 0 or capacity > sessions.capacity) return error.InvalidConfiguration;
@@ -62,6 +79,7 @@ pub const UdpSessionRegistry = struct {
 
     pub fn dial(self: *UdpSessionRegistry, config: UdpDialConfig) UdpSessionError!*resource.ResourceHandle {
         if (self.entries.items.len >= self.capacity) return error.SessionCapacityExceeded;
+        if (config.channel.transport() != .datagram) return error.InvalidConfiguration;
         const route = try transport.select_dial_route(config.endpoint, config.resolved, config.family_policy, config.platform_support);
         const session_handle = try self.sessions.create();
         errdefer self.closeSession(session_handle);
@@ -115,6 +133,51 @@ pub const UdpSessionRegistry = struct {
         return batch;
     }
 
+    pub fn flushSends(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, events: []UdpSendEvent) UdpSessionError!UdpSendBatch {
+        if (events.len == 0) return error.EmptyBatch;
+        if (events.len > transport.max_udp_send_batch) return error.BatchTooLarge;
+        const entry = try self.lookup(handle);
+        if ((try self.sessions.lookup(handle)).state != .ready) return error.InvalidState;
+        var batch = UdpSendBatch{};
+        for (events) |*event| {
+            var message = (try self.channels.dequeueDatagram(handle)) orelse break;
+            const channel_handle = message.channel;
+            const payload_len = message.payload.len;
+            const sent = send_datagram(&entry.socket, message.payload) catch |err| switch (err) {
+                error.WouldBlock => {
+                    try self.channels.requeueFront(&message);
+                    event.* = self.sendEvent(handle, channel_handle, payload_len, .would_block);
+                    batch.would_block = true;
+                    batch.retryable = true;
+                    break;
+                },
+                error.DatagramTooLarge => {
+                    event.* = self.sendEvent(handle, channel_handle, payload_len, .datagram_too_large);
+                    message.deinit(self.allocator);
+                    batch.dropped += 1;
+                    continue;
+                },
+                else => {
+                    try self.channels.requeueFront(&message);
+                    event.* = self.sendEvent(handle, channel_handle, payload_len, .failed);
+                    batch.retryable = true;
+                    break;
+                },
+            };
+            if (sent != payload_len) {
+                try self.channels.requeueFront(&message);
+                event.* = self.sendEvent(handle, channel_handle, payload_len, .failed);
+                batch.retryable = true;
+                break;
+            }
+            event.* = self.sendEvent(handle, channel_handle, payload_len, .sent);
+            message.deinit(self.allocator);
+            batch.sent += 1;
+        }
+        batch.remaining = try self.channels.queuedDatagrams(handle);
+        return batch;
+    }
+
     pub fn localAddress(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!transport.ResolvedAddress {
         const entry = try self.lookup(handle);
         return switch (entry.route.family) {
@@ -150,6 +213,12 @@ pub const UdpSessionRegistry = struct {
         return error.UnknownSession;
     }
 
+    fn sendEvent(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, channel_handle: *resource.ResourceHandle, payload_len: usize, status: transport.UdpSendStatus) UdpSendEvent {
+        const result = UdpSendEvent{ .sequence = self.next_send_sequence, .session = handle, .channel = channel_handle, .payload_len = payload_len, .status = status };
+        self.next_send_sequence +%= 1;
+        return result;
+    }
+
     fn closeEntry(self: *UdpSessionRegistry, entry: *Entry) void {
         entry.socket.close();
         self.channels.teardown(entry.channel) catch {};
@@ -173,6 +242,15 @@ fn connect(socket: *transport.Socket, address: transport.ResolvedAddress) UdpSes
         .ipv6 => |value| value.to_native(),
     };
     std.posix.connect(socket.handle, &native.any, native.getOsSockLen()) catch return error.ConnectFailed;
+}
+
+fn send_datagram(socket: *transport.Socket, payload: []const u8) UdpSessionError!usize {
+    if (payload.len > transport.max_ipv4_datagram_bytes) return error.DatagramTooLarge;
+    return std.posix.send(socket.handle, payload, 0) catch |err| switch (err) {
+        error.WouldBlock => error.WouldBlock,
+        error.MessageTooBig => error.DatagramTooLarge,
+        else => error.SendFailed,
+    };
 }
 
 const ReceivedDatagram = struct {
@@ -281,6 +359,57 @@ test "UDP session receive batches preserve source metadata and pool ownership" {
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
 
+test "UDP session send batches preserve priority and report remaining datagrams" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var resources = try resource.ResourceRegistry.init(allocator, 4);
+        defer resources.deinit();
+        var sessions = try session.SessionRegistry.init(allocator, &resources, 1);
+        defer sessions.deinit();
+        var payloads = try @import("payload_pool.zig").PayloadPool.init(allocator, 3, 64);
+        defer payloads.deinit();
+        var channels = try channel.ChannelRegistry.init(allocator, &resources, &sessions, &payloads, 3);
+        defer channels.deinit();
+        var udp_sessions = try UdpSessionRegistry.init(allocator, &sessions, &channels, 1);
+        defer udp_sessions.deinit();
+        var receiver = try transport.UdpSocket.init(.{});
+        defer receiver.close();
+        try receiver.bind(try transport.Ipv4Address.parse("127.0.0.1", 0));
+        const receiver_address = local_ipv4_address(&receiver);
+        const handle = try udp_sessions.dial(.{ .endpoint = transport.Endpoint.from_ipv4(receiver_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .priority = 0, .maximum_payload_bytes = 64 } });
+        const primary = (try udp_sessions.poll(handle)).channel;
+        const low = try channels.create(handle, .{ .delivery = .datagram, .priority = 1, .maximum_payload_bytes = 64 });
+        const high = try channels.create(handle, .{ .delivery = .datagram, .priority = 2, .maximum_payload_bytes = 64 });
+        try channels.enqueue(primary, "primary");
+        try channels.enqueue(low, "low");
+        try channels.enqueue(high, "high");
+        var events: [2]UdpSendEvent = undefined;
+        const first_batch = try udp_sessions.flushSends(handle, events[0..]);
+        try std.testing.expectEqual(@as(usize, 2), first_batch.sent);
+        try std.testing.expectEqual(@as(usize, 1), first_batch.remaining);
+        try std.testing.expectEqual(transport.UdpSendStatus.sent, events[0].status);
+        try std.testing.expectEqual(high, events[0].channel);
+        try std.testing.expectEqual(transport.UdpSendStatus.sent, events[1].status);
+        try std.testing.expectEqual(low, events[1].channel);
+        var first_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        var second_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        try std.testing.expectEqualStrings("high", (try receive_from_with_retry(&receiver, first_storage[0..])).bytes);
+        try std.testing.expectEqualStrings("low", (try receive_from_with_retry(&receiver, second_storage[0..])).bytes);
+        var final_events: [1]UdpSendEvent = undefined;
+        const final_batch = try udp_sessions.flushSends(handle, final_events[0..]);
+        try std.testing.expectEqual(@as(usize, 1), final_batch.sent);
+        try std.testing.expectEqual(@as(usize, 0), final_batch.remaining);
+        try std.testing.expectEqual(primary, final_events[0].channel);
+        var final_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        try std.testing.expectEqualStrings("primary", (try receive_from_with_retry(&receiver, final_storage[0..])).bytes);
+        try channels.teardown(high);
+        try channels.teardown(low);
+        try udp_sessions.close(handle);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
 fn local_ipv4_address(socket: *transport.UdpSocket) transport.Ipv4Address {
     var native = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 0);
     var length = native.getOsSockLen();
@@ -300,4 +429,18 @@ fn receive_with_retry(registry: *UdpSessionRegistry, handle: *resource.ResourceH
     }
     if (total.received != events.len) return error.ReceiveFailed;
     return total;
+}
+
+fn receive_from_with_retry(socket: *transport.UdpSocket, storage: []u8) !transport.ReceivedDatagram {
+    var attempts: usize = 0;
+    while (attempts < 100) : (attempts += 1) {
+        return socket.receive_from(storage) catch |err| switch (err) {
+            error.WouldBlock => {
+                std.Thread.sleep(std.time.ns_per_ms);
+                continue;
+            },
+            else => return err,
+        };
+    }
+    return error.WouldBlock;
 }

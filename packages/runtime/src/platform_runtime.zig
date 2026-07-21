@@ -191,6 +191,10 @@ pub const Runtime = struct {
         return self.udp_sessions.pollReceives(handle, events);
     }
 
+    pub fn flushUdpSends(self: *Runtime, handle: *resource_handle.ResourceHandle, events: []udp_session_registry.UdpSendEvent) udp_session_registry.UdpSessionError!udp_session_registry.UdpSendBatch {
+        return self.udp_sessions.flushSends(handle, events);
+    }
+
     pub fn udpSessionAddress(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!transport_api.ResolvedAddress {
         return self.udp_sessions.localAddress(handle);
     }
@@ -474,6 +478,35 @@ test "unified runtimes receive ordered UDP batches into owned channels" {
         try std.testing.expectEqualStrings("one", first.payload);
         try std.testing.expectEqualStrings("two", second.payload);
         try std.testing.expectEqualStrings("three", third.payload);
+        try runtime.closeUdpSession(session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtimes flush scheduled UDP datagrams by priority" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 2, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        var receiver = try transport_api.UdpSocket.init(.{});
+        defer receiver.close();
+        try receiver.bind(try transport_api.Ipv4Address.parse("127.0.0.1", 0));
+        const receiver_address = local_udp_ipv4_address(&receiver);
+        const session = try runtime.dialUdp(.{ .endpoint = transport_api.Endpoint.from_ipv4(receiver_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .priority = 0, .maximum_payload_bytes = 64 } });
+        const primary = (try runtime.pollUdpSession(session)).channel;
+        const high = try runtime.createChannel(session, .{ .delivery = .datagram, .priority = 1, .maximum_payload_bytes = 64 });
+        try runtime.enqueueChannel(primary, "primary");
+        try runtime.enqueueChannel(high, "high");
+        var events: [2]udp_session_registry.UdpSendEvent = undefined;
+        const batch = try runtime.flushUdpSends(session, events[0..]);
+        try std.testing.expectEqual(@as(usize, 2), batch.sent);
+        try std.testing.expectEqual(@as(usize, 0), batch.remaining);
+        try std.testing.expectEqual(high, events[0].channel);
+        try std.testing.expectEqual(primary, events[1].channel);
+        try runtime.teardownChannel(high);
         try runtime.closeUdpSession(session);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
