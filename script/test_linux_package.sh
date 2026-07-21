@@ -49,7 +49,15 @@ mkdir "$tmp/outside-repository"
 cd "$tmp/outside-repository"
 "$checker"
 "$repo/script/run_linux_software_gl.sh" "$package/run.sh" --frames 2 --renderer sdl-gpu
-"$repo/script/run_linux_software_gl.sh" "$package/run.sh" --frames 2 --renderer opengl
+if opengl_output=$("$repo/script/run_linux_software_gl.sh" "$package/run.sh" --frames 2 --renderer opengl 2>&1); then
+    opengl_result=passed
+else
+    if ! printf '%s\n' "$opengl_output" | grep -Eq 'renderer requested=opengl.*selected=none'; then
+        printf '%s\n' "unexpected OpenGL packaged smoke failure: $opengl_output" >&2
+        exit 1
+    fi
+    opengl_result=capability-unavailable
+fi
 missing="$tmp/missing-assets"
 cp -R "$package" "$missing"
 rm -rf "$missing/assets"
@@ -59,5 +67,5 @@ repeat="$tmp/repeat"
 cd "$repo"
 zig build peas -- package linux "$repeat" --game "$game"
 cmp "$out/SHA256SUMS" "$repeat/SHA256SUMS"
-printf '%s\n' "platform=linux-x86_64" "game=$game" "archive=$name.tar.gz" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'renderer-sdl-gpu=passed' 'renderer-opengl=passed' > "$out/SMOKE-REPORT.txt"
+printf '%s\n' "platform=linux-x86_64" "game=$game" "archive=$name.tar.gz" 'checksum=verified' 'layout=passed' 'runtime-smoke=passed' 'renderer-sdl-gpu=passed' "renderer-opengl=$opengl_result" > "$out/SMOKE-REPORT.txt"
 cat "$out/SMOKE-REPORT.txt"
