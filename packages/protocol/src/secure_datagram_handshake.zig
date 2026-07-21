@@ -1,5 +1,6 @@
 const std = @import("std");
 const psk = @import("psk_authentication.zig");
+const key_derivation = @import("session_key_derivation.zig");
 
 const sha256 = std.crypto.hash.sha2.Sha256;
 const transcript_domain = "minna-san/v1/secure-datagram-handshake";
@@ -10,7 +11,7 @@ pub const secure_datagram_handshake_frame_max_bytes: usize = 1 + @sizeOf(u64) + 
 pub const SecureDatagramHandshakeRole = enum(u8) { initiator, responder };
 pub const SecureDatagramHandshakeState = enum(u8) { idle, awaiting_challenge, awaiting_proof, awaiting_accept, authenticated, rejected, timed_out };
 pub const SecureDatagramHandshakeMessageKind = enum(u8) { hello = 1, challenge = 2, proof = 3, accept = 4 };
-pub const SecureDatagramHandshakeError = psk.PskAuthenticationError || error{ InvalidConfiguration, DeadlineOverflow, DeadlineExpired, UnexpectedMessage, SessionMismatch, TranscriptMismatch, MalformedMessage, OutputTooSmall };
+pub const SecureDatagramHandshakeError = psk.PskAuthenticationError || key_derivation.SessionKeyDerivationError || error{ InvalidConfiguration, DeadlineOverflow, DeadlineExpired, UnexpectedMessage, SessionMismatch, TranscriptMismatch, HandshakeNotAuthenticated, MalformedMessage, OutputTooSmall };
 
 pub const SecureDatagramHandshakeConfig = struct {
     role: SecureDatagramHandshakeRole,
@@ -96,6 +97,11 @@ pub const SecureDatagramHandshake = struct {
 
     pub fn applicationPayload(self: *const SecureDatagramHandshake, payload: []const u8) ?[]const u8 {
         return if (self.state == .authenticated) payload else null;
+    }
+
+    pub fn derivePacketKeys(self: *const SecureDatagramHandshake, key_material: []const u8) SecureDatagramHandshakeError!key_derivation.SessionPacketKeys {
+        if (self.state != .authenticated) return error.HandshakeNotAuthenticated;
+        return key_derivation.derive_session_packet_keys(key_material, self.transcriptHash() orelse return error.HandshakeNotAuthenticated);
     }
 
     fn receiveHello(self: *SecureDatagramHandshake, hello: SecureDatagramHello, now_ns: u64) SecureDatagramHandshakeError!?SecureDatagramHandshakeMessage {
@@ -263,6 +269,7 @@ test "secure datagram handshakes authenticate transcripts before delivering appl
     var responder = try SecureDatagramHandshake.init(.{ .role = .responder, .session_id = 9, .timeout_ns = 10 }, key[0..]);
     defer responder.deinit();
     try std.testing.expect(initiator.applicationPayload("payload") == null);
+    try std.testing.expectError(error.HandshakeNotAuthenticated, initiator.derivePacketKeys(key[0..]));
     const hello = try initiator.begin(1);
     const challenge = (try responder.receive(hello, 1)).?;
     const proof = (try initiator.receive(challenge, 1)).?;
@@ -271,6 +278,11 @@ test "secure datagram handshakes authenticate transcripts before delivering appl
     try std.testing.expectEqual(SecureDatagramHandshakeState.authenticated, initiator.state);
     try std.testing.expectEqual(SecureDatagramHandshakeState.authenticated, responder.state);
     try std.testing.expectEqual(initiator.transcriptHash().?, responder.transcriptHash().?);
+    var initiator_keys = try initiator.derivePacketKeys(key[0..]);
+    defer initiator_keys.clear();
+    var responder_keys = try responder.derivePacketKeys(key[0..]);
+    defer responder_keys.clear();
+    try std.testing.expectEqual(initiator_keys, responder_keys);
     try std.testing.expectEqualStrings("payload", initiator.applicationPayload("payload").?);
 }
 
