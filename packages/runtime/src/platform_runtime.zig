@@ -193,7 +193,8 @@ pub const Runtime = struct {
         return self.channels.create(owner, descriptor);
     }
 
-    pub fn enqueueChannel(self: *Runtime, handle: *resource_handle.ResourceHandle, payload: []const u8) channel_registry.ChannelRegistryError!void {
+    pub fn enqueueChannel(self: *Runtime, handle: *resource_handle.ResourceHandle, payload: []const u8) RuntimeError!void {
+        if (self.tcp_channels.ownsChannel(handle)) return self.tcp_channels.enqueue(handle, payload);
         try self.channels.enqueue(handle, payload);
     }
 
@@ -256,6 +257,10 @@ pub const Runtime = struct {
 
     pub fn flushTcpChannel(self: *Runtime, session_handle: *resource_handle.ResourceHandle) tcp_channel_registry.TcpChannelRegistryError!tcp_channel_registry.TcpChannelFlush {
         return self.tcp_channels.flush(session_handle);
+    }
+
+    pub fn tcpChannelBackpressure(self: *Runtime, channel_handle: *resource_handle.ResourceHandle) tcp_channel_registry.TcpChannelRegistryError!tcp_channel_registry.TcpChannelBackpressure {
+        return self.tcp_channels.backpressure(channel_handle);
     }
 
     pub fn receiveTcpChannel(self: *Runtime, session_handle: *resource_handle.ResourceHandle) tcp_channel_registry.TcpChannelRegistryError!?tcp_channel_registry.TcpChannelReceive {
