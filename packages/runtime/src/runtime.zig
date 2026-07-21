@@ -63,6 +63,7 @@ const http_streaming_body = @import("http_streaming_body.zig");
 const http_service_routing = @import("http_service_routing.zig");
 const http_middleware_pipeline = @import("http_middleware_pipeline.zig");
 const http2_stream_state = @import("http2_stream_state.zig");
+const http2_flow_control = @import("http2_flow_control.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -554,6 +555,12 @@ pub const Http2StreamPriority = http2_stream_state.Http2StreamPriority;
 pub const Http2StreamConfig = http2_stream_state.Http2StreamConfig;
 pub const Http2StreamSnapshot = http2_stream_state.Http2StreamSnapshot;
 pub const Http2StreamRegistry = http2_stream_state.Http2StreamRegistry;
+pub const max_http2_window = http2_flow_control.max_http2_window;
+pub const Http2FlowControlError = http2_flow_control.Http2FlowControlError;
+pub const Http2FlowBackpressure = http2_flow_control.Http2FlowBackpressure;
+pub const Http2FlowReservation = http2_flow_control.Http2FlowReservation;
+pub const Http2FlowControlConfig = http2_flow_control.Http2FlowControlConfig;
+pub const Http2FlowController = http2_flow_control.Http2FlowController;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -649,5 +656,6 @@ test {
     _ = @import("http_service_routing.zig");
     _ = @import("http_middleware_pipeline.zig");
     _ = @import("http2_stream_state.zig");
+    _ = @import("http2_flow_control.zig");
     _ = @import("platform_runtime.zig");
 }
