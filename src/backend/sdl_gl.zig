@@ -621,7 +621,8 @@ fn presentationDimension(value: f32) !u32 {
 }
 
 fn conformanceEnabled() bool {
-    const value = std.posix.getenv("UP_OPENGL_CONFORMANCE") orelse return false;
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, "UP_OPENGL_CONFORMANCE") catch return false;
+    defer std.heap.page_allocator.free(value);
     return std.mem.eql(u8, value, "1");
 }
 
