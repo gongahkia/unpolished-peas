@@ -27,6 +27,11 @@ pub const UdpListenerPoll = struct {
     invalid_socket: bool = false,
 };
 
+pub const UdpListenerReadiness = struct {
+    listener: *resource.ResourceHandle,
+    poll: UdpListenerPoll,
+};
+
 const Entry = struct {
     handle: *resource.ResourceHandle,
     socket: transport.Socket,
@@ -38,6 +43,7 @@ pub const UdpListenerRegistry = struct {
     resources: *resource.ResourceRegistry,
     capacity: usize,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
+    readiness_cursor: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator, resources: *resource.ResourceRegistry, capacity: usize) UdpListenerError!UdpListenerRegistry {
         if (capacity == 0 or capacity > resources.slots.len) return error.InvalidConfiguration;
@@ -72,15 +78,23 @@ pub const UdpListenerRegistry = struct {
 
     pub fn poll(self: *UdpListenerRegistry, handle: *resource.ResourceHandle) UdpListenerError!UdpListenerPoll {
         const entry = try self.lookup(handle);
-        var descriptors = [_]std.posix.pollfd{.{ .fd = entry.socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
-        _ = std.posix.poll(&descriptors, 0) catch return error.PollFailed;
-        const events = descriptors[0].revents;
-        return .{
-            .readable = events & std.posix.POLL.IN != 0,
-            .socket_error = events & std.posix.POLL.ERR != 0,
-            .socket_hangup = events & std.posix.POLL.HUP != 0,
-            .invalid_socket = events & std.posix.POLL.NVAL != 0,
-        };
+        return poll_socket(&entry.socket);
+    }
+
+    pub fn pollNextReadiness(self: *UdpListenerRegistry) UdpListenerError!?UdpListenerReadiness {
+        if (self.entries.items.len == 0) return null;
+        var index = if (self.readiness_cursor < self.entries.items.len) self.readiness_cursor else 0;
+        var checked: usize = 0;
+        while (checked < self.entries.items.len) : (checked += 1) {
+            const entry = &self.entries.items[index];
+            const result = try poll_socket(&entry.socket);
+            index = next_index(index, self.entries.items.len);
+            if (!result.readable and !result.socket_error and !result.socket_hangup and !result.invalid_socket) continue;
+            self.readiness_cursor = index;
+            return .{ .listener = entry.handle, .poll = result };
+        }
+        self.readiness_cursor = index;
+        return null;
     }
 
     pub fn localAddress(self: *UdpListenerRegistry, handle: *resource.ResourceHandle) UdpListenerError!transport.ResolvedAddress {
@@ -119,6 +133,22 @@ pub const UdpListenerRegistry = struct {
         return error.UnknownListener;
     }
 };
+
+fn poll_socket(socket: *transport.Socket) UdpListenerError!UdpListenerPoll {
+    var descriptors = [_]std.posix.pollfd{.{ .fd = socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
+    _ = std.posix.poll(&descriptors, 0) catch return error.PollFailed;
+    const events = descriptors[0].revents;
+    return .{
+        .readable = events & std.posix.POLL.IN != 0,
+        .socket_error = events & std.posix.POLL.ERR != 0,
+        .socket_hangup = events & std.posix.POLL.HUP != 0,
+        .invalid_socket = events & std.posix.POLL.NVAL != 0,
+    };
+}
+
+fn next_index(index: usize, len: usize) usize {
+    return if (index + 1 == len) 0 else index + 1;
+}
 
 fn enable_dual_stack(socket: *transport.Socket) UdpListenerError!void {
     const disabled: c_int = 0;

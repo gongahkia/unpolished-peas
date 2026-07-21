@@ -20,6 +20,7 @@ pub const PollProgress = enum {
     provider,
     event,
     deadline,
+    udp,
 };
 
 pub const PollOutcome = struct {
