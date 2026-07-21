@@ -30,6 +30,11 @@ const Entry = struct {
     }
 };
 
+const SessionDatagramBudget = struct {
+    session: *resource.ResourceHandle,
+    maximum_payload_bytes: usize,
+};
+
 pub const ChannelRegistry = struct {
     allocator: std.mem.Allocator,
     resources: *resource.ResourceRegistry,
@@ -37,6 +42,7 @@ pub const ChannelRegistry = struct {
     payloads: *payload_pool.PayloadPool,
     capacity: usize,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
+    datagram_budgets: std.ArrayListUnmanaged(SessionDatagramBudget) = .empty,
 
     pub fn init(allocator: std.mem.Allocator, resources: *resource.ResourceRegistry, sessions: *session.SessionRegistry, payloads: *payload_pool.PayloadPool, capacity: usize) ChannelRegistryError!ChannelRegistry {
         if (capacity == 0 or capacity > resources.slots.len) return error.InvalidConfiguration;
@@ -49,6 +55,7 @@ pub const ChannelRegistry = struct {
             self.resources.release_kind(entry.handle, .channel) catch {};
         }
         self.entries.deinit(self.allocator);
+        self.datagram_budgets.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -65,6 +72,7 @@ pub const ChannelRegistry = struct {
     pub fn enqueue(self: *ChannelRegistry, handle: *resource.ResourceHandle, payload: []const u8) ChannelRegistryError!void {
         const entry = try self.lookup(handle);
         try entry.descriptor.validate_payload(payload.len);
+        if (entry.descriptor.transport() == .datagram) try self.validateDatagramPayload(entry.session, payload.len);
         if (entry.queue.items.len >= entry.descriptor.maximum_in_flight) return error.QueueFull;
         const lease = self.payloads.copy(payload) catch |err| switch (err) {
             error.PoolExhausted, error.PayloadTooLarge => return error.QueueFull,
@@ -134,6 +142,33 @@ pub const ChannelRegistry = struct {
             result = std.math.add(usize, result, entry.queue.items.len) catch return error.QueueFull;
         }
         return result;
+    }
+
+    pub fn setSessionDatagramBudget(self: *ChannelRegistry, owner: *resource.ResourceHandle, maximum_payload_bytes: usize) ChannelRegistryError!void {
+        _ = try self.sessions.lookup(owner);
+        if (maximum_payload_bytes == 0) return error.InvalidConfiguration;
+        for (self.datagram_budgets.items) |*budget| {
+            if (budget.session != owner) continue;
+            budget.maximum_payload_bytes = maximum_payload_bytes;
+            return;
+        }
+        try self.datagram_budgets.append(self.allocator, .{ .session = owner, .maximum_payload_bytes = maximum_payload_bytes });
+    }
+
+    pub fn clearSessionDatagramBudget(self: *ChannelRegistry, owner: *resource.ResourceHandle) ChannelRegistryError!void {
+        _ = try self.sessions.lookup(owner);
+        for (self.datagram_budgets.items, 0..) |budget, index| {
+            if (budget.session != owner) continue;
+            _ = self.datagram_budgets.orderedRemove(index);
+            return;
+        }
+    }
+
+    pub fn validateDatagramPayload(self: *ChannelRegistry, owner: *resource.ResourceHandle, payload_len: usize) ChannelRegistryError!void {
+        _ = try self.sessions.lookup(owner);
+        for (self.datagram_budgets.items) |budget| {
+            if (budget.session == owner and payload_len > budget.maximum_payload_bytes) return error.PayloadTooLarge;
+        }
     }
 
     fn lookup(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!*Entry {

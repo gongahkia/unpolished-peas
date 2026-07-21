@@ -48,6 +48,10 @@ pub const PathMtuProber = struct {
         return self.minimum_payload;
     }
 
+    pub fn payload_ceiling(self: PathMtuProber) usize {
+        return self.highest_possible;
+    }
+
     pub fn send_probe(self: *PathMtuProber, socket: *udp_socket.UdpSocket, peer: ipv4.Ipv4Address, storage: []const u8) PathMtuProbeError!?usize {
         const payload = try self.next_probe() orelse return null;
         if (storage.len < payload) return error.ProbeStorageTooSmall;
@@ -66,6 +70,7 @@ test "path-MTU probes converge on the highest delivered bounded payload" {
     try prober.record_delivery(second, false);
     while (try prober.next_probe()) |payload| try prober.record_delivery(payload, payload <= 700);
     try std.testing.expectEqual(@as(usize, 700), prober.payload_budget());
+    try std.testing.expectEqual(@as(usize, 700), prober.payload_ceiling());
 }
 
 test "path-MTU probes validate bounded configuration and result matching" {
