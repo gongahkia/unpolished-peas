@@ -48,7 +48,7 @@ pub fn main() !void {
     }
     const existing = try std.fs.cwd().readFileAlloc(allocator, output_path, max_source_bytes);
     defer allocator.free(existing);
-    if (!std.mem.eql(u8, existing, inventory)) {
+    if (!equalNormalizedNewlines(existing, inventory)) {
         std.debug.print("public import inventory is stale: zig build public-import-inventory > {s}\n", .{output_path});
         return error.StaleInventory;
     }
@@ -103,6 +103,28 @@ fn normalizePathSeparators(path: []u8) void {
     for (path) |*byte| {
         if (byte.* == '\\') byte.* = '/';
     }
+}
+
+fn equalNormalizedNewlines(lhs: []const u8, rhs: []const u8) bool {
+    var lhs_index: usize = 0;
+    var rhs_index: usize = 0;
+    while (true) {
+        const lhs_byte = nextNormalizedByte(lhs, &lhs_index);
+        const rhs_byte = nextNormalizedByte(rhs, &rhs_index);
+        if (lhs_byte == null or rhs_byte == null) return lhs_byte == null and rhs_byte == null;
+        if (lhs_byte.? != rhs_byte.?) return false;
+    }
+}
+
+fn nextNormalizedByte(bytes: []const u8, index: *usize) ?u8 {
+    if (index.* == bytes.len) return null;
+    const byte = bytes[index.*];
+    index.* += 1;
+    if (byte == '\r' and index.* < bytes.len and bytes[index.*] == '\n') {
+        index.* += 1;
+        return '\n';
+    }
+    return byte;
 }
 
 fn scanImports(allocator: std.mem.Allocator, source: []const u8, imports: *std.ArrayListUnmanaged(Import)) !void {
@@ -338,4 +360,9 @@ test "inventory normalizes Windows path separators" {
     normalizePathSeparators(&path);
     try std.testing.expectEqualStrings("fixtures/.zig-cache/x.zig", &path);
     try std.testing.expect(ignoredPath(&path));
+}
+
+test "inventory comparison normalizes CRLF" {
+    try std.testing.expect(equalNormalizedNewlines("{\r\n}\r\n", "{\n}\n"));
+    try std.testing.expect(!equalNormalizedNewlines("{\r\n}\r\n", "{\n"));
 }
