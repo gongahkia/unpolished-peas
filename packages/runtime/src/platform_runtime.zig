@@ -7,11 +7,12 @@ const poll_runtime = @import("poll_runtime.zig");
 const provider = @import("provider.zig");
 const resource_handle = @import("resource_handle.zig");
 const session_registry = @import("session_registry.zig");
+const channel_registry = @import("channel_registry.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -32,6 +33,7 @@ pub const Runtime = struct {
     providers: provider.ProviderRegistry,
     resources: resource_handle.ResourceRegistry,
     sessions: session_registry.SessionRegistry,
+    channels: channel_registry.ChannelRegistry,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -45,6 +47,8 @@ pub const Runtime = struct {
         errdefer resources.deinit();
         var sessions = try session_registry.SessionRegistry.init(allocator, &resources, platform_config.limits.session_capacity);
         errdefer sessions.deinit();
+        var channels = try channel_registry.ChannelRegistry.init(allocator, &resources, &sessions, platform_config.limits.channel_capacity);
+        errdefer channels.deinit();
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
         errdefer providers.deinit();
         var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
@@ -56,6 +60,7 @@ pub const Runtime = struct {
             .providers = providers,
             .resources = resources,
             .sessions = sessions,
+            .channels = channels,
             .services = services,
         };
     }
@@ -63,6 +68,7 @@ pub const Runtime = struct {
     pub fn deinit(self: *Runtime) void {
         self.services.deinit();
         self.providers.deinit();
+        self.channels.deinit();
         self.sessions.deinit();
         self.resources.deinit();
         self.poll_runtime.deinit();
@@ -95,6 +101,22 @@ pub const Runtime = struct {
 
     pub fn closeSession(self: *Runtime, handle: *resource_handle.ResourceHandle) session_registry.SessionRegistryError!void {
         try self.sessions.close(handle);
+    }
+
+    pub fn createChannel(self: *Runtime, owner: *resource_handle.ResourceHandle, descriptor: channel_delivery.ChannelDescriptor) channel_registry.ChannelRegistryError!*resource_handle.ResourceHandle {
+        return self.channels.create(owner, descriptor);
+    }
+
+    pub fn enqueueChannel(self: *Runtime, handle: *resource_handle.ResourceHandle, payload: []const u8) channel_registry.ChannelRegistryError!void {
+        try self.channels.enqueue(handle, payload);
+    }
+
+    pub fn dequeueChannel(self: *Runtime, owner: *resource_handle.ResourceHandle) channel_registry.ChannelRegistryError!?channel_registry.QueuedMessage {
+        return self.channels.dequeue(owner);
+    }
+
+    pub fn teardownChannel(self: *Runtime, handle: *resource_handle.ResourceHandle) channel_registry.ChannelRegistryError!void {
+        try self.channels.teardown(handle);
     }
 
     pub fn registerService(self: *Runtime, module: service_module.ServiceModule) service_module.ServiceModuleError!service_module.ServiceModuleId {
