@@ -3,7 +3,7 @@ const core = @import("minna-san-core");
 const candidates = @import("nat_candidate.zig");
 
 pub const CandidateCheckRoute = enum { direct, relay };
-pub const CandidateCheckState = enum { waiting, in_progress, succeeded, failed, expired };
+pub const CandidateCheckState = enum { waiting, in_progress, succeeded, failed, expired, cancelled };
 pub const CandidatePairCheck = struct {
     local: candidates.NatCandidate,
     remote: candidates.NatCandidate,
@@ -15,7 +15,16 @@ pub const CandidatePairCheck = struct {
     deadline_ns: ?core.TimeNs = null,
 };
 pub const CandidateCheckDispatch = struct { pair: usize, route: CandidateCheckRoute, attempt: u8 };
-pub const CandidatePairSchedulerError = std.mem.Allocator.Error || candidates.NatCandidateError || error{ InvalidConfiguration, PairCapacityExceeded, UnknownPair, InvalidState, NoReadyCheck, TimeOverflow };
+pub const CandidateCheckDiagnostic = struct {
+    pair: usize,
+    priority: u64,
+    route: CandidateCheckRoute,
+    state: CandidateCheckState,
+    attempts: u8,
+    next_attempt_at_ns: core.TimeNs,
+    deadline_ns: ?core.TimeNs,
+};
+pub const CandidatePairSchedulerError = std.mem.Allocator.Error || candidates.NatCandidateError || error{ InvalidConfiguration, PairCapacityExceeded, UnknownPair, InvalidState, NoReadyCheck, OutputTooSmall, TimeOverflow };
 pub const CandidatePairSchedulerConfig = struct {
     maximum_pairs: usize,
     maximum_in_flight: usize,
@@ -76,9 +85,18 @@ pub const CandidatePairScheduler = struct {
         }
         try self.retry_or_fail(value, now_ns);
     }
+    pub fn cancel(self: *CandidatePairScheduler, pair: usize) CandidatePairSchedulerError!void {
+        const value = self.pair_ptr(pair) orelse return error.UnknownPair;
+        switch (value.state) {
+            .waiting, .in_progress => {},
+            else => return error.InvalidState,
+        }
+        value.state = .cancelled;
+        value.deadline_ns = null;
+    }
     pub fn expire(self: *CandidatePairScheduler, now_ns: core.TimeNs) CandidatePairSchedulerError!void {
         for (self.pairs.items) |*value| {
-            if (value.state == .expired or value.state == .failed) continue;
+            if (value.state == .expired or value.state == .failed or value.state == .cancelled) continue;
             if (candidates.candidate_expired(value.local, now_ns) or candidates.candidate_expired(value.remote, now_ns)) {
                 value.state = .expired;
                 value.deadline_ns = null;
@@ -90,6 +108,29 @@ pub const CandidatePairScheduler = struct {
     pub fn candidate_pair(self: *const CandidatePairScheduler, index: usize) ?CandidatePairCheck {
         if (index >= self.pairs.items.len) return null;
         return self.pairs.items[index];
+    }
+    pub fn best_succeeded_pair(self: *const CandidatePairScheduler) ?usize {
+        var selected: ?usize = null;
+        for (self.pairs.items, 0..) |value, index| {
+            if (value.state != .succeeded) continue;
+            if (selected == null or value.priority > self.pairs.items[selected.?].priority) selected = index;
+        }
+        return selected;
+    }
+    pub fn diagnostics(self: *const CandidatePairScheduler, output: []CandidateCheckDiagnostic) CandidatePairSchedulerError![]const CandidateCheckDiagnostic {
+        if (output.len < self.pairs.items.len) return error.OutputTooSmall;
+        for (self.pairs.items, 0..) |value, index| {
+            output[index] = .{
+                .pair = index,
+                .priority = value.priority,
+                .route = value.route,
+                .state = value.state,
+                .attempts = value.attempts,
+                .next_attempt_at_ns = value.next_attempt_at_ns,
+                .deadline_ns = value.deadline_ns,
+            };
+        }
+        return output[0..self.pairs.items.len];
     }
     fn retry_or_fail(self: *const CandidatePairScheduler, value: *CandidatePairCheck, now_ns: core.TimeNs) CandidatePairSchedulerError!void {
         if (value.attempts == self.config.maximum_attempts) {
@@ -164,4 +205,26 @@ test "candidate-pair scheduler retries failures and expires stale pairs" {
     try stale.expire(5);
     try std.testing.expectEqual(CandidateCheckState.expired, stale.candidate_pair(0).?.state);
     try std.testing.expectError(error.NoReadyCheck, stale.dispatch(5));
+}
+
+test "candidate-pair scheduler cancels checks and selects the highest viable pair deterministically" {
+    var scheduler = try CandidatePairScheduler.init(std.testing.allocator, .{ .maximum_pairs = 3, .maximum_in_flight = 1, .maximum_attempts = 1, .pace_interval_ns = 1, .retry_interval_ns = 1, .check_timeout_ns = 5 });
+    defer scheduler.deinit();
+    const cancelled = try scheduler.add(candidate(.host, 100), candidate(.host, 100), 30, 0);
+    const high = try scheduler.add(candidate(.host, 100), candidate(.host, 100), 20, 0);
+    const low = try scheduler.add(candidate(.host, 100), candidate(.host, 100), 10, 0);
+    try scheduler.cancel(cancelled);
+    try std.testing.expectEqual(CandidateCheckDispatch{ .pair = high, .route = .direct, .attempt = 1 }, try scheduler.dispatch(0));
+    try scheduler.complete(high, true, 0);
+    try std.testing.expectEqual(CandidateCheckDispatch{ .pair = low, .route = .direct, .attempt = 1 }, try scheduler.dispatch(1));
+    try scheduler.complete(low, true, 1);
+    try std.testing.expectEqual(high, scheduler.best_succeeded_pair().?);
+    var diagnostics: [3]CandidateCheckDiagnostic = undefined;
+    const values = try scheduler.diagnostics(&diagnostics);
+    try std.testing.expectEqual(CandidateCheckState.cancelled, values[cancelled].state);
+    try std.testing.expectEqual(CandidateCheckState.succeeded, values[high].state);
+    try std.testing.expectEqual(@as(u8, 1), values[low].attempts);
+    var too_small: [2]CandidateCheckDiagnostic = undefined;
+    try std.testing.expectError(error.OutputTooSmall, scheduler.diagnostics(&too_small));
+    try std.testing.expectError(error.InvalidState, scheduler.cancel(high));
 }
