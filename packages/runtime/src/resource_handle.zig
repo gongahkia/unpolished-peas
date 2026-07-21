@@ -11,7 +11,7 @@ const max_registry_owners: u32 = (@as(u32, 1) << owner_bits) - 1;
 var next_registry_owner = std.atomic.Value(u32).init(1);
 
 pub const max_resource_slots: usize = @as(usize, 1) << slot_bits;
-pub const ResourceKind = enum(u8) { generic, session, channel, route, listener, service, connection, peer };
+pub const ResourceKind = enum(u8) { generic, session, channel, route, listener, service, connection, peer, stream };
 pub const HandleError = std.mem.Allocator.Error || error{ StaleHandle, WrongResourceKind, HandleCapacityExhausted, InvalidCapacity, RegistryIdentityExhausted };
 pub const ResourceHandle = opaque {};
 
