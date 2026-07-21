@@ -65,6 +65,7 @@ const http_middleware_pipeline = @import("http_middleware_pipeline.zig");
 const http2_stream_state = @import("http2_stream_state.zig");
 const http2_flow_control = @import("http2_flow_control.zig");
 const websocket_upgrade = @import("websocket_upgrade.zig");
+const websocket_session = @import("websocket_session.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -573,6 +574,11 @@ pub const WebSocketUpgradeConfig = websocket_upgrade.WebSocketUpgradeConfig;
 pub const validate_websocket_upgrade = websocket_upgrade.validateWebSocketUpgrade;
 pub const websocket_upgrade_status = websocket_upgrade.websocketUpgradeStatus;
 pub const encode_websocket_upgrade = websocket_upgrade.encodeWebSocketUpgrade;
+pub const WebSocketSessionError = websocket_session.WebSocketSessionError;
+pub const WebSocketSessionState = websocket_session.WebSocketSessionState;
+pub const WebSocketSessionEvent = websocket_session.WebSocketSessionEvent;
+pub const WebSocketSessionConfig = websocket_session.WebSocketSessionConfig;
+pub const WebSocketSession = websocket_session.WebSocketSession;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -670,5 +676,6 @@ test {
     _ = @import("http2_stream_state.zig");
     _ = @import("http2_flow_control.zig");
     _ = @import("websocket_upgrade.zig");
+    _ = @import("websocket_session.zig");
     _ = @import("platform_runtime.zig");
 }
