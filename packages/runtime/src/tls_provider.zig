@@ -1,5 +1,6 @@
 const std = @import("std");
 const core = @import("minna-san-core");
+const tls_alpn = @import("tls_alpn.zig");
 
 pub const max_tls_alpn_bytes: usize = 255;
 pub const TlsRole = enum(u8) { client = 1, server = 2 };
@@ -7,7 +8,7 @@ pub const TlsState = enum(u8) { idle, handshaking, connected, failed, closed };
 pub const TlsAlert = enum(u16) { close_notify = 0, unexpected_message = 10, bad_certificate = 42, handshake_failure = 40, internal_error = 80 };
 pub const TlsCertificateDecision = enum(c_int) { reject = 0, accept = 1 };
 pub const TlsCertificateCallback = *const fn (?*anyopaque, [*]const u8, usize) callconv(.c) c_int;
-pub const TlsProviderError = error{ InvalidConfiguration, InvalidState, CertificateRejected, ProviderFailed, BufferTooSmall };
+pub const TlsProviderError = tls_alpn.TlsAlpnError || error{ InvalidConfiguration, InvalidState, CertificateRejected, ProviderFailed, BufferTooSmall };
 pub const TlsProviderConfig = struct {
     role: TlsRole,
     alpn: []const u8,
@@ -48,6 +49,12 @@ pub const TlsProvider = struct {
         if (self.state != .idle) return error.InvalidState;
         if (self.vtable.start(self.context, @intFromEnum(self.config.role), self.config.alpn.ptr, self.config.alpn.len, self.config.server_name.ptr, self.config.server_name.len, self.config.certificate_context, self.config.certificate_callback) != @intFromEnum(core.CResult.ok)) return self.fail(.handshake_failure);
         self.state = .handshaking;
+    }
+    pub fn selectAlpn(self: *TlsProvider, offered: []const []const u8, policy: tls_alpn.TlsAlpnRoutePolicy) TlsProviderError![]const u8 {
+        if (self.state != .idle) return error.InvalidState;
+        const selected = try tls_alpn.select_tls_alpn(offered, policy);
+        self.config.alpn = selected;
+        return selected;
     }
     pub fn poll(self: *TlsProvider, now_ns: core.TimeNs) TlsProviderError!usize {
         if (self.state != .handshaking) return error.InvalidState;
@@ -116,7 +123,8 @@ test "fake TLS providers complete explicit polls with ALPN certificates encrypte
         }
     };
     var fake = Fake{};
-    var provider = try TlsProvider.init(.{ .role = .client, .alpn = "h2", .server_name = "example.test", .certificate_context = &fake, .certificate_callback = Fake.certificate }, &fake, .{ .start = Fake.start, .poll = Fake.poll, .encrypt = Fake.io, .decrypt = Fake.io, .teardown = Fake.teardown });
+    var provider = try TlsProvider.init(.{ .role = .client, .alpn = "http/1.1", .server_name = "example.test", .certificate_context = &fake, .certificate_callback = Fake.certificate }, &fake, .{ .start = Fake.start, .poll = Fake.poll, .encrypt = Fake.io, .decrypt = Fake.io, .teardown = Fake.teardown });
+    try std.testing.expectEqualStrings("h2", try provider.selectAlpn(&.{ "http/1.1", "h2" }, .{ .supported = &.{ "h2", "http/1.1" } }));
     try provider.start();
     try std.testing.expectEqual(@as(usize, 1), try provider.poll(0));
     try std.testing.expectEqual(@as(usize, 1), try provider.poll(1));
