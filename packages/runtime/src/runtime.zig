@@ -44,6 +44,7 @@ const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 const udp_stun_binding_provider = @import("udp_stun_binding_provider.zig");
 const tcp_stun_binding_provider = @import("tcp_stun_binding_provider.zig");
+const turn_allocation_provider = @import("turn_allocation_provider.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -361,6 +362,15 @@ pub const TcpStunBindingRequestConfig = tcp_stun_binding_provider.TcpStunBinding
 pub const TcpStunBindingRequestHandle = tcp_stun_binding_provider.TcpStunBindingRequestHandle;
 pub const TcpStunBindingRequestState = tcp_stun_binding_provider.TcpStunBindingRequestState;
 pub const TcpStunBindingProvider = tcp_stun_binding_provider.TcpStunBindingProvider;
+pub const max_turn_allocations = turn_allocation_provider.max_turn_allocations;
+pub const max_turn_allocation_response_bytes = turn_allocation_provider.max_turn_allocation_response_bytes;
+pub const max_turn_allocation_request_bytes = turn_allocation_provider.max_turn_allocation_request_bytes;
+pub const TurnAllocationProviderError = turn_allocation_provider.TurnAllocationProviderError;
+pub const TurnAllocationProviderConfig = turn_allocation_provider.TurnAllocationProviderConfig;
+pub const TurnAllocationRequestConfig = turn_allocation_provider.TurnAllocationRequestConfig;
+pub const TurnAllocationHandle = turn_allocation_provider.TurnAllocationHandle;
+pub const TurnAllocationState = turn_allocation_provider.TurnAllocationState;
+pub const TurnAllocationProvider = turn_allocation_provider.TurnAllocationProvider;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -437,5 +447,6 @@ test {
     _ = @import("udp_session_registry.zig");
     _ = @import("udp_stun_binding_provider.zig");
     _ = @import("tcp_stun_binding_provider.zig");
+    _ = @import("turn_allocation_provider.zig");
     _ = @import("platform_runtime.zig");
 }

@@ -321,11 +321,13 @@ pub fn build(b: *std.Build) void {
         .name = "minna-san",
         .root_module = c_abi,
     });
+    c_sdk_static.linkLibC();
     const c_sdk_shared = b.addLibrary(.{
         .linkage = .dynamic,
         .name = "minna-san",
         .root_module = c_abi,
     });
+    c_sdk_shared.linkLibC();
     const install_c_sdk_static = b.addInstallArtifact(c_sdk_static, .{});
     const install_c_sdk_shared = b.addInstallArtifact(c_sdk_shared, .{});
     const c_abi_consumer = b.addExecutable(.{

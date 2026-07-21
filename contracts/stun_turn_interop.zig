@@ -123,7 +123,7 @@ fn readTcpStun(connection: *transport.TcpConnection, storage: []u8) ![]u8 {
 }
 
 fn fixtureResponse(request: []const u8, mapped: protocol.StunAddress, reject_allocate: bool, output: []u8) ![]u8 {
-    var attributes: [4]protocol.StunAttribute = undefined;
+    var attributes: [5]protocol.StunAttribute = undefined;
     const decoded = try protocol.decode_stun_message(request, attributes[0..]);
     if (decoded.header.class != .request) return error.UnexpectedMessage;
     return switch (decoded.header.method) {
