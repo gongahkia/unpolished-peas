@@ -87,8 +87,21 @@ fn collectPaths(allocator: std.mem.Allocator, root: []const u8, directory: []con
     var walker = try dir.walk(allocator);
     defer walker.deinit();
     while (try walker.next()) |entry| {
-        if (entry.kind != .file or ignoredPath(entry.path) or !std.mem.endsWith(u8, entry.path, ".zig")) continue;
-        try paths.append(allocator, try std.fs.path.join(allocator, &.{ directory, entry.path }));
+        if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".zig")) continue;
+        const path = try std.fs.path.join(allocator, &.{ directory, entry.path });
+        errdefer allocator.free(path);
+        normalizePathSeparators(path);
+        if (ignoredPath(path)) {
+            allocator.free(path);
+            continue;
+        }
+        try paths.append(allocator, path);
+    }
+}
+
+fn normalizePathSeparators(path: []u8) void {
+    for (path) |*byte| {
+        if (byte.* == '\\') byte.* = '/';
     }
 }
 
@@ -318,4 +331,11 @@ test "inventory ignores comments and strings" {
     try std.testing.expectEqual(@as(usize, 1), imports.items.len);
     try std.testing.expectEqual(@as(usize, 1), imports.items[0].symbols.items.len);
     try std.testing.expectEqualStrings("Color", imports.items[0].symbols.items[0]);
+}
+
+test "inventory normalizes Windows path separators" {
+    var path = [_]u8{ 'f', 'i', 'x', 't', 'u', 'r', 'e', 's', '\\', '.', 'z', 'i', 'g', '-', 'c', 'a', 'c', 'h', 'e', '\\', 'x', '.', 'z', 'i', 'g' };
+    normalizePathSeparators(&path);
+    try std.testing.expectEqualStrings("fixtures/.zig-cache/x.zig", &path);
+    try std.testing.expect(ignoredPath(&path));
 }
