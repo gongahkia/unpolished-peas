@@ -166,6 +166,7 @@ pub const ProviderRegistry = struct {
     allocator: std.mem.Allocator,
     providers: std.ArrayListUnmanaged(Provider) = .empty,
     capacity: usize,
+    next_provider_index: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator, capacity: usize) ProviderError!ProviderRegistry {
         if (capacity == 0 or capacity > core.max_provider_capacity) return error.InvalidConfiguration;
@@ -201,8 +202,12 @@ pub const ProviderRegistry = struct {
         if (work_budget == 0) return error.InvalidConfiguration;
         var remaining = work_budget;
         var result = ProviderPollResult{};
-        for (self.providers.items) |*provider| {
+        const provider_count = self.providers.items.len;
+        var visited: usize = 0;
+        while (visited < provider_count) : (visited += 1) {
             if (remaining == 0) break;
+            const index = (self.next_provider_index + visited) % provider_count;
+            const provider = &self.providers.items[index];
             const provider_budget = @min(remaining, provider.config.poll_work_budget);
             const provider_result = try provider.pollWithBudget(now, provider_budget);
             result.work_completed += provider_result.work_completed;
@@ -211,6 +216,7 @@ pub const ProviderRegistry = struct {
                 if (result.next_deadline == null or deadline < result.next_deadline.?) result.next_deadline = deadline;
             }
         }
+        if (provider_count > 0) self.next_provider_index = (self.next_provider_index + 1) % provider_count;
         return result;
     }
 

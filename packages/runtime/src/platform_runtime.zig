@@ -20,6 +20,7 @@ pub const RuntimePollResult = struct {
     provider_work_completed: usize = 0,
     next_deadline: ?core.TimeNs = null,
     event: ?event.EventEnvelope = null,
+    timer: ?timer_wheel.Timer = null,
 
     pub fn deinit(self: *RuntimePollResult) void {
         if (self.event) |*event_envelope| event_envelope.deinit();
@@ -180,25 +181,20 @@ pub const Runtime = struct {
         if (self.poll_active) return error.ReentrantPoll;
         self.poll_active = true;
         defer self.poll_active = false;
-        if (input.deadline_ns) |deadline| {
-            if (input.now_ns >= deadline) {
-                const outcome = try self.poll_runtime.poll(input);
-                return .{ .progress = .deadline, .next_deadline = outcome.next_deadline };
-            }
-        }
         const provider_result = try self.providers.poll(input.now_ns, @min(input.work_budget, self.platform_config.limits.poll_work_budget));
+        const timer = try self.timers.advance(input.now_ns);
         var outcome = try self.poll_runtime.poll(input);
         errdefer outcome.deinit();
-        const next_deadline = if (provider_result.next_deadline) |provider_deadline| blk: {
-            if (outcome.next_deadline) |event_deadline| break :blk @min(provider_deadline, event_deadline);
-            break :blk provider_deadline;
-        } else outcome.next_deadline;
-        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else .idle;
+        var next_deadline = outcome.next_deadline;
+        if (provider_result.next_deadline) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
+        if (self.timers.nextDeadline()) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
+        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else if (timer != null) .deadline else .idle;
         const result = RuntimePollResult{
             .progress = progress,
             .provider_work_completed = provider_result.work_completed,
             .next_deadline = next_deadline,
             .event = outcome.event,
+            .timer = timer,
         };
         outcome.event = null;
         return result;
@@ -206,12 +202,13 @@ pub const Runtime = struct {
 };
 
 const FakeProvider = struct {
+    name: []const u8 = "runtime-fake",
     polls: u8 = 0,
     stops: u8 = 0,
     capabilities: provider.ProviderCapabilityDescriptor = .{},
 
     fn asProvider(self: *FakeProvider) provider.ProviderError!provider.Provider {
-        return provider.Provider.init(.{ .name = "runtime-fake" }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
+        return provider.Provider.init(.{ .name = self.name }, self, .{ .init = init, .query_capabilities = queryCapabilities, .poll = poll, .teardown = teardown });
     }
 
     fn init(context: ?*anyopaque) callconv(.c) c_int {
@@ -264,6 +261,27 @@ test "unified runtimes reject reentrant caller polls" {
     runtime.poll_active = true;
     defer runtime.poll_active = false;
     try std.testing.expectError(error.ReentrantPoll, runtime.poll(.{ .now_ns = manual.clock().now() }));
+}
+
+test "unified runtimes rotate bounded provider work and expose due timers" {
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 2, .poll_work_budget = 1 } }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var first = FakeProvider{ .name = "first" };
+    var second = FakeProvider{ .name = "second" };
+    try runtime.registerProvider(try first.asProvider());
+    try runtime.registerProvider(try second.asProvider());
+    try runtime.start();
+    _ = try runtime.scheduleTimer(.session, 1);
+    var initial = try runtime.poll(.{ .now_ns = 0, .work_budget = 1 });
+    defer initial.deinit();
+    try std.testing.expectEqual(@as(u8, 1), first.polls);
+    try std.testing.expectEqual(@as(u8, 0), second.polls);
+    var due = try runtime.poll(.{ .now_ns = 1, .work_budget = 1 });
+    defer due.deinit();
+    try std.testing.expectEqual(@as(u8, 1), second.polls);
+    try std.testing.expectEqual(timer_wheel.TimerKind.session, due.timer.?.kind);
 }
 
 test "unified runtimes own bounded resource registries and empty teardown" {
