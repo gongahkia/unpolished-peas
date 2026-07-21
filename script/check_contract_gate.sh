@@ -45,6 +45,9 @@ grep -Fqx '  linux-sdk:' "$workflow" || fail "workflow must define the Linux SDK
 core_contract_command='        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke'
 core_contract_count="$(grep -Fcx "$core_contract_command" "$workflow")"
 [ "$core_contract_count" = 3 ] || fail "every native SDK job must build and test core contracts"
+p2p_route_matrix_command='        run: zig build p2p-route-matrix'
+p2p_route_matrix_count="$(grep -Fcx "$p2p_route_matrix_command" "$workflow")"
+[ "$p2p_route_matrix_count" = 3 ] || fail "every native SDK job must run the cross-process P2P route matrix"
 for field in '    runs-on: ubuntu-24.04' '          test "$(uname -m)" = "x86_64"' '      - name: Compile C ABI smoke sources' '          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c' '          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c' '      - name: Build and test core contracts' '        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke' '      - name: Build C ABI artifact and consumer' '      - name: Build reproducible C SDK libraries' '        run: zig build c-sdk-desktop-reproducible' '      - name: Package versioned static C SDK libraries' '        run: zig build c-sdk-static-package' '      - name: Package versioned shared C SDK libraries' '        run: zig build c-sdk-shared-package'; do
     grep -Fqx "$field" "$workflow" || fail "workflow must retain Linux SDK field: $field"
 done

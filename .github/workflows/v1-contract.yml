@@ -171,6 +171,8 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
       - name: Build and test core contracts
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
+      - name: Run cross-process P2P route matrix
+        run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
@@ -212,6 +214,8 @@ jobs:
           cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_consumer.obj contracts\fixtures\c_abi_consumer.c
       - name: Build and test core contracts
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
+      - name: Run cross-process P2P route matrix
+        run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
   macos-sdk:
@@ -257,6 +261,8 @@ jobs:
           clang -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
       - name: Build and test core contracts
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
+      - name: Run cross-process P2P route matrix
+        run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
