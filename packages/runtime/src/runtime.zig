@@ -42,6 +42,7 @@ const tcp_session_registry = @import("tcp_session_registry.zig");
 const transport_retry_controller = @import("transport_retry_controller.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
+const udp_stun_binding_provider = @import("udp_stun_binding_provider.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -342,6 +343,14 @@ pub const UdpReceiveBatch = udp_session_registry.UdpReceiveBatch;
 pub const UdpSendEvent = udp_session_registry.UdpSendEvent;
 pub const UdpSendBatch = udp_session_registry.UdpSendBatch;
 pub const UdpSessionRegistry = udp_session_registry.UdpSessionRegistry;
+pub const max_udp_stun_binding_requests = udp_stun_binding_provider.max_udp_stun_binding_requests;
+pub const max_udp_stun_binding_request_bytes = udp_stun_binding_provider.max_udp_stun_binding_request_bytes;
+pub const UdpStunBindingProviderError = udp_stun_binding_provider.UdpStunBindingProviderError;
+pub const UdpStunBindingProviderConfig = udp_stun_binding_provider.UdpStunBindingProviderConfig;
+pub const UdpStunBindingRequestConfig = udp_stun_binding_provider.UdpStunBindingRequestConfig;
+pub const UdpStunBindingRequestHandle = udp_stun_binding_provider.UdpStunBindingRequestHandle;
+pub const UdpStunBindingRequestState = udp_stun_binding_provider.UdpStunBindingRequestState;
+pub const UdpStunBindingProvider = udp_stun_binding_provider.UdpStunBindingProvider;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -416,5 +425,6 @@ test {
     _ = @import("transport_retry_controller.zig");
     _ = @import("udp_listener_registry.zig");
     _ = @import("udp_session_registry.zig");
+    _ = @import("udp_stun_binding_provider.zig");
     _ = @import("platform_runtime.zig");
 }
