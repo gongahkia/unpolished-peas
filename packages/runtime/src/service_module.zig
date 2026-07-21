@@ -146,7 +146,15 @@ pub const ServiceRegistry = struct {
         if (!self.started) return error.InvalidState;
         try request.validate();
         const module = self.find_route(request.route) orelse return error.RouteNotFound;
+        return self.dispatchModule(module, request);
+    }
+
+    pub fn dispatchModule(self: *ServiceRegistry, module: ServiceModuleId, request: ServiceRequest) ServiceModuleError!ServiceDispatch {
+        if (!self.started) return error.InvalidState;
+        try request.validate();
+        if (module >= self.entries.items.len) return error.RouteNotFound;
         var entry = &self.entries.items[module];
+        if (entry.state != .active) return error.RouteNotFound;
         if (entry.hooks.authorize) |authorize| {
             const decision = authorize(entry.context, request) catch return error.CallbackFailed;
             if (decision == .deny) return error.CredentialRejected;

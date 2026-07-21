@@ -60,6 +60,7 @@ const http_session_policy = @import("http_session_policy.zig");
 const http_server_lifecycle = @import("http_server_lifecycle.zig");
 const http_client_lifecycle = @import("http_client_lifecycle.zig");
 const http_streaming_body = @import("http_streaming_body.zig");
+const http_service_routing = @import("http_service_routing.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -520,6 +521,15 @@ pub const HttpBodyWriter = http_streaming_body.HttpBodyWriter;
 pub const HttpStreamingSessionEvent = http_streaming_body.HttpStreamingSessionEvent;
 pub const HttpStreamingSessionConfig = http_streaming_body.HttpStreamingSessionConfig;
 pub const HttpStreamingSession = http_streaming_body.HttpStreamingSession;
+pub const max_http_route_parameters = http_service_routing.max_http_route_parameters;
+pub const HttpServiceRoutingError = http_service_routing.HttpServiceRoutingError;
+pub const HttpRouteMethod = http_service_routing.HttpRouteMethod;
+pub const HttpPathParameter = http_service_routing.HttpPathParameter;
+pub const HttpRouteRequest = http_service_routing.HttpRouteRequest;
+pub const HttpServiceRouteConfig = http_service_routing.HttpServiceRouteConfig;
+pub const HttpServiceRouterConfig = http_service_routing.HttpServiceRouterConfig;
+pub const HttpRouteDispatch = http_service_routing.HttpRouteDispatch;
+pub const HttpServiceRouter = http_service_routing.HttpServiceRouter;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -610,5 +620,8 @@ test {
     _ = @import("tls_server_listener.zig");
     _ = @import("http_session_policy.zig");
     _ = @import("http_server_lifecycle.zig");
+    _ = @import("http_client_lifecycle.zig");
+    _ = @import("http_streaming_body.zig");
+    _ = @import("http_service_routing.zig");
     _ = @import("platform_runtime.zig");
 }
