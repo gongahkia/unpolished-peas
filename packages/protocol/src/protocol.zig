@@ -32,6 +32,7 @@ const key_rotation_frame = @import("key_rotation_frame.zig");
 const security_components = @import("security_components.zig");
 const stun_codec = @import("stun_codec.zig");
 const stun_credentials = @import("stun_credentials.zig");
+const http_common_parser = @import("http_common_parser.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -274,6 +275,19 @@ pub const validate_long_term_credentials = stun_credentials.validate_long_term_c
 pub const stun_short_term_integrity = stun_credentials.stun_short_term_integrity;
 pub const stun_long_term_integrity = stun_credentials.stun_long_term_integrity;
 pub const verify_stun_integrity = stun_credentials.verify_stun_integrity;
+pub const max_http_start_line_bytes = http_common_parser.max_http_start_line_bytes;
+pub const max_http_header_bytes = http_common_parser.max_http_header_bytes;
+pub const max_http_headers = http_common_parser.max_http_headers;
+pub const max_http_body_bytes = http_common_parser.max_http_body_bytes;
+pub const HttpParserError = http_common_parser.HttpParserError;
+pub const HttpMessageKind = http_common_parser.HttpMessageKind;
+pub const HttpBodyFraming = http_common_parser.HttpBodyFraming;
+pub const HttpRequestLine = http_common_parser.HttpRequestLine;
+pub const HttpStatusLine = http_common_parser.HttpStatusLine;
+pub const HttpHeader = http_common_parser.HttpHeader;
+pub const HttpParserEvent = http_common_parser.HttpParserEvent;
+pub const HttpParserConfig = http_common_parser.HttpParserConfig;
+pub const HttpParser = http_common_parser.HttpParser;
 pub const SecurityComponentError = security_components.SecurityComponentError;
 pub const SecurityComponents = security_components.SecurityComponents;
 pub const validate_security_components = security_components.validate_security_components;
@@ -321,4 +335,5 @@ test {
     _ = @import("security_components.zig");
     _ = @import("security_vectors.zig");
     _ = @import("reliability_fault_matrix.zig");
+    _ = @import("http_common_parser.zig");
 }
