@@ -69,14 +69,14 @@ jobs:
     if: github.event_name != 'pull_request'
     strategy:
       matrix:
-        os: [macos-latest, ubuntu-latest]
+        os: [macos-15-intel, ubuntu-latest]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-          use-cache: ${{ matrix.os != 'macos-latest' }}
+          use-cache: ${{ matrix.os != 'macos-15-intel' }}
       - run: script/check_zig_version.sh
       - run: script/check_third_party_notices.py
       - run: script/test_core_without_sdl.sh
@@ -114,13 +114,13 @@ jobs:
       - run: script/test_external_animation_game_fixture.sh
       - if: matrix.os == 'ubuntu-latest'
         run: UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime script/run_linux_software_gl.sh zig build run-bounce-sdl -- --frames 2
-      - if: matrix.os == 'macos-latest'
+      - if: matrix.os == 'macos-15-intel'
         run: env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
       - if: matrix.os == 'ubuntu-latest'
         run: RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
-      - if: matrix.os == 'macos-latest'
+      - if: matrix.os == 'macos-15-intel'
         run: env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
-      - if: matrix.os == 'macos-latest' || matrix.os == 'ubuntu-latest'
+      - if: matrix.os == 'macos-15-intel' || matrix.os == 'ubuntu-latest'
         run: script/test_starter_bundled_sdl.sh
       - if: failure()
         uses: actions/upload-artifact@v4

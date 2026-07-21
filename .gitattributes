@@ -1,3 +1,4 @@
 *.zig text eol=lf
+*.zon text eol=lf
 build.zig text eol=lf
 templates/bounce/build.zig.zon export-ignore
