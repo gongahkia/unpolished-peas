@@ -280,7 +280,8 @@ test "TLS client routes verify fixture trust then exchange encrypted stream byte
 
         fn start(_: ?*anyopaque, _: u8, _: [*]const u8, _: usize, _: [*]const u8, _: usize, certificate_context: ?*anyopaque, callback: ?tls_provider.TlsCertificateCallback) callconv(.c) c_int {
             const name = "fixture.test";
-            return callback.?(certificate_context, name.ptr, name.len);
+            if (callback.?(certificate_context, name.ptr, name.len) != @intFromEnum(tls_provider.TlsCertificateDecision.accept)) return @intFromEnum(core.CResult.invalid_argument);
+            return @intFromEnum(core.CResult.ok);
         }
 
         fn poll(context: ?*anyopaque, _: core.TimeNs, output: *tls_provider.TlsPollOutput) callconv(.c) c_int {

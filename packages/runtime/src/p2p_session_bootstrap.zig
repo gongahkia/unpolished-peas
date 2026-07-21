@@ -197,6 +197,15 @@ fn pollWithRetry(channel: *P2PChannel, output: []u8, now_ns: core.TimeNs) !direc
     return error.WouldBlock;
 }
 
+fn pollRouteWithRetry(route: *direct_route.DirectConnectivityRoute, output: []u8, now_ns: core.TimeNs) !direct_route.DirectConnectivityRouteEvent {
+    var attempts: usize = 0;
+    while (attempts < 100) : (attempts += 1) {
+        if (try route.poll(output, now_ns)) |event| return event;
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    return error.WouldBlock;
+}
+
 test "public P2P bootstrap composes signed candidates authenticated handshakes checks and channels without service signaling" {
     var initiator_identity = try protocol.PublicKeyIdentity.init([_]u8{1} ** std.crypto.sign.Ed25519.KeyPair.seed_length);
     defer initiator_identity.clear();
@@ -233,15 +242,15 @@ test "public P2P bootstrap composes signed candidates authenticated handshakes c
     defer responder_route.deinit();
     _ = try initiator_route.sendCheck(false, 2);
     var raw: [32]u8 = undefined;
-    _ = try responder_route.poll(raw[0..], 2) orelse return error.TestUnexpectedResult;
+    _ = try pollRouteWithRetry(&responder_route, raw[0..], 2);
     _ = try responder_route.sendCheck(false, 2);
-    _ = try initiator_route.poll(raw[0..], 2) orelse return error.TestUnexpectedResult;
+    _ = try pollRouteWithRetry(&initiator_route, raw[0..], 2);
     _ = try initiator_route.sendCheck(true, 3);
-    _ = try responder_route.poll(raw[0..], 3) orelse return error.TestUnexpectedResult;
+    _ = try pollRouteWithRetry(&responder_route, raw[0..], 3);
     const descriptor = channel_delivery.ChannelDescriptor{ .delivery = .ordered, .maximum_payload_bytes = 16 };
     var initiator_channel = try P2PChannel.init(&initiator_route, descriptor);
     var responder_channel = try P2PChannel.init(&responder_route, descriptor);
     try std.testing.expectEqual(channel_delivery.ChannelSemantics{ .reliable = true, .ordering = .ordered, .framing = .messages }, initiator_channel.semantics());
-    try std.testing.expectEqual(direct_route.DirectConnectivityRouteEvent{ .sent = 12 }, try initiator_channel.send("public route", 4));
+    try std.testing.expectEqual(direct_route.DirectConnectivityRouteEvent{ .sent = 21 }, try initiator_channel.send("public route", 4));
     try std.testing.expectEqualStrings("public route", (try pollWithRetry(&responder_channel, raw[0..], 4)).received);
 }

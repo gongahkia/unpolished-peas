@@ -149,7 +149,7 @@ test "runtime metrics collect bounded event counters gauges and histograms" {
     const connected = event.EventEnvelope{ .sequence = 0, .mode = .poll, .event = .{ .connected = {} } };
     const message = event.EventEnvelope{ .sequence = 1, .mode = .poll, .event = .{ .message = .{ .buffer = .{ .borrowed = .init("metric") } } } };
     const overflow = event.EventEnvelope{ .sequence = 2, .mode = .poll, .event = .{ .overflow = .{ .dropped_count = 3 } } };
-    const disconnected = event.EventEnvelope{ .sequence = 3, .mode = .poll, .event = .{ .disconnected = {} } };
+    const disconnected = event.EventEnvelope{ .sequence = 5, .mode = .poll, .event = .{ .disconnected = {} } };
     _ = try bus.emit(&connected);
     _ = try bus.emit(&message);
     _ = try bus.emit(&overflow);

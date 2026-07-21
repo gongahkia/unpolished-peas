@@ -67,7 +67,7 @@ pub const Runtime = struct {
     tcp_channels: tcp_channel_registry.TcpChannelRegistry,
     tcp_fallbacks: tcp_fallback_registry.TcpFallbackRegistry,
     tcp_listeners: tcp_listener_registry.TcpListenerRegistry,
-    tcp_sessions: tcp_session_registry.TcpSessionRegistry,
+    tcp_sessions: *tcp_session_registry.TcpSessionRegistry,
     listeners: udp_listener_registry.UdpListenerRegistry,
     udp_sessions: udp_session_registry.UdpSessionRegistry,
     payloads: *payload_pool.PayloadPool,
@@ -103,9 +103,11 @@ pub const Runtime = struct {
         errdefer channels.deinit();
         var tcp_listeners = try tcp_listener_registry.TcpListenerRegistry.init(allocator, resources, platform_config.limits.listener_capacity);
         errdefer tcp_listeners.deinit();
-        var tcp_sessions = try tcp_session_registry.TcpSessionRegistry.init(allocator, sessions, platform_config.limits.session_capacity);
+        const tcp_sessions = try allocator.create(tcp_session_registry.TcpSessionRegistry);
+        errdefer allocator.destroy(tcp_sessions);
+        tcp_sessions.* = try tcp_session_registry.TcpSessionRegistry.init(allocator, sessions, platform_config.limits.session_capacity);
         errdefer tcp_sessions.deinit();
-        var tcp_channels = try tcp_channel_registry.TcpChannelRegistry.init(allocator, &tcp_sessions, channels, platform_config.limits.session_capacity);
+        var tcp_channels = try tcp_channel_registry.TcpChannelRegistry.init(allocator, tcp_sessions, channels, platform_config.limits.session_capacity);
         errdefer tcp_channels.deinit();
         var tcp_fallbacks = try tcp_fallback_registry.TcpFallbackRegistry.init(allocator, platform_config.limits.session_capacity);
         errdefer tcp_fallbacks.deinit();
@@ -158,6 +160,7 @@ pub const Runtime = struct {
         self.tcp_channels.deinit();
         self.tcp_fallbacks.deinit();
         self.tcp_sessions.deinit();
+        allocator.destroy(self.tcp_sessions);
         self.udp_sessions.deinit();
         self.listeners.deinit();
         self.tcp_listeners.deinit();

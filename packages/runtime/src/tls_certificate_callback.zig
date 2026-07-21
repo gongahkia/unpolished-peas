@@ -242,15 +242,15 @@ pub const TlsCertificateCallbackRegistry = struct {
     }
 
     fn resolveInvalid(self: *TlsCertificateCallbackRegistry, index: usize) TlsCertificateResolutionResult {
-        const pending = self.pending.swapRemove(index);
-        if (self.pending.items.len == 0) self.poll_cursor = 0 else self.poll_cursor %= self.pending.items.len;
+        const pending = self.pending.orderedRemove(index);
+        if (self.pending.items.len == 0) self.poll_cursor = 0 else self.poll_cursor = index % self.pending.items.len;
         self.recordFailure(pending.id, pending.kind, .invalid_resolution);
         return .{ .id = pending.id, .kind = pending.kind, .resolution = .{ .rejected = .invalid_identity } };
     }
 
     fn resolve(self: *TlsCertificateCallbackRegistry, index: usize, resolution: TlsCertificateResolution, rotation: ?TlsCertificateRotation) TlsCertificateResolutionResult {
-        const pending = self.pending.swapRemove(index);
-        if (self.pending.items.len == 0) self.poll_cursor = 0 else self.poll_cursor %= self.pending.items.len;
+        const pending = self.pending.orderedRemove(index);
+        if (self.pending.items.len == 0) self.poll_cursor = 0 else self.poll_cursor = index % self.pending.items.len;
         const result = TlsCertificateResolutionResult{ .id = pending.id, .kind = pending.kind, .resolution = resolution, .rotation = rotation };
         switch (resolution) {
             .accepted => {},

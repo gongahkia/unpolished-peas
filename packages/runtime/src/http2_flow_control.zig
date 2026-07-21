@@ -18,7 +18,7 @@ pub const Http2FlowControlConfig = struct {
     }
 };
 
-const Entry = struct { stream: *resource.ResourceHandle, window: u32, buffered_bytes: usize = 0 };
+const Entry = struct { stream: *resource.ResourceHandle, window: i64, buffered_bytes: usize = 0 };
 
 pub const Http2FlowController = struct {
     allocator: std.mem.Allocator,
@@ -52,15 +52,15 @@ pub const Http2FlowController = struct {
         if (snapshot.state == .closed) return self.reservation(entry, .closed, 0);
         if (bytes > self.maximum_buffered_bytes_per_stream - entry.buffered_bytes) return self.reservation(entry, .buffer_full, 0);
         if (self.connection_window == 0) return self.reservation(entry, .connection_window, 0);
-        if (entry.window == 0) return self.reservation(entry, .stream_window, 0);
-        const accepted = @min(bytes, @min(@as(usize, self.connection_window), @as(usize, entry.window)));
+        if (entry.window <= 0) return self.reservation(entry, .stream_window, 0);
+        const accepted = @min(bytes, @min(@as(usize, self.connection_window), @as(usize, @intCast(entry.window))));
         if (accepted == 0) return self.reservation(entry, if (self.connection_window == 0) .connection_window else .stream_window, 0);
         self.connection_window -= @intCast(accepted);
         entry.window -= @intCast(accepted);
         entry.buffered_bytes += accepted;
         const backpressure: Http2FlowBackpressure = if (self.connection_window == 0)
             .connection_window
-        else if (entry.window == 0)
+        else if (entry.window <= 0)
             .stream_window
         else if (entry.buffered_bytes == self.maximum_buffered_bytes_per_stream)
             .buffer_full
@@ -80,7 +80,7 @@ pub const Http2FlowController = struct {
         if (increment == 0 or increment > max_http2_window) return error.InvalidWindowIncrement;
         if (stream) |handle| {
             const entry = try self.lookup(handle);
-            if (increment > max_http2_window - entry.window) return error.WindowOverflow;
+            if (@as(i64, increment) > @as(i64, max_http2_window) - entry.window) return error.WindowOverflow;
             entry.window += increment;
         } else {
             if (increment > max_http2_window - self.connection_window) return error.WindowOverflow;
@@ -92,7 +92,7 @@ pub const Http2FlowController = struct {
         if (next == 0 or next > max_http2_window) return error.InvalidConfiguration;
         for (self.entries.items) |*entry| {
             const adjusted = @as(i64, entry.window) + @as(i64, next) - @as(i64, self.initial_stream_window);
-            if (adjusted < 0 or adjusted > max_http2_window) return error.WindowOverflow;
+            if (adjusted > max_http2_window) return error.WindowOverflow;
             entry.window = @intCast(adjusted);
         }
         self.initial_stream_window = next;
@@ -104,7 +104,7 @@ pub const Http2FlowController = struct {
     }
 
     fn reservation(self: *const Http2FlowController, entry: *const Entry, backpressure: Http2FlowBackpressure, accepted: usize) Http2FlowReservation {
-        return .{ .accepted = accepted, .backpressure = backpressure, .connection_window = self.connection_window, .stream_window = entry.window, .buffered_bytes = entry.buffered_bytes };
+        return .{ .accepted = accepted, .backpressure = backpressure, .connection_window = self.connection_window, .stream_window = @intCast(@max(entry.window, 0)), .buffered_bytes = entry.buffered_bytes };
     }
 };
 

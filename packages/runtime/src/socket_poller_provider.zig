@@ -217,7 +217,7 @@ fn localUdpAddress(socket: *transport.UdpSocket) !transport.Ipv4Address {
     var native = std.net.Address.initIp4(.{ 0, 0, 0, 0 }, 0);
     var length = native.getOsSockLen();
     try std.posix.getsockname(socket.socket.handle, &native.any, &length);
-    return transport.Ipv4Address.from_native(native);
+    return transport.Ipv4Address.parse("127.0.0.1", (try transport.Ipv4Address.from_native(native)).port);
 }
 
 fn waitForReadable(handle: std.posix.socket_t) !void {
@@ -258,6 +258,7 @@ test "socket poller providers deliver mixed readiness through deterministic runt
         var sender = try transport.UdpSocket.init(.{});
         defer sender.close();
         _ = try sender.send_to("ready", try localUdpAddress(&udp));
+        try waitForReadable(udp.socket.handle);
         var outcome = try runtime.poll(.{ .now_ns = manual.clock().now(), .work_budget = 2 });
         defer outcome.deinit();
         try std.testing.expectEqual(@import("poll_runtime.zig").PollProgress.provider, outcome.progress);
@@ -276,7 +277,7 @@ test "socket poller providers validate interest updates and stale registrations"
     var manual = core.ManualClock.init(0);
     const sdk = try @import("sdk_config.zig").SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 1 } }).build();
     var runtime = try @import("platform_runtime.zig").Runtime.init(std.testing.allocator, sdk);
-    var socket_provider = try SocketPollerProvider.init(.{ .maximum_registrations = 1 });
+    var socket_provider = try SocketPollerProvider.init(.{ .maximum_registrations = 1, .maximum_events = 1 });
     defer {
         runtime.deinit();
         socket_provider.deinit();
