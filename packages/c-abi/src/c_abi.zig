@@ -74,6 +74,9 @@ pub const CConnection = opaque {};
 pub const CPeer = opaque {};
 pub const CChannel = opaque {};
 pub const CAuthoritativeSession = opaque {};
+pub const CNativeRuntime = opaque {};
+pub const CNativeSession = opaque {};
+pub const CNativeChannel = opaque {};
 pub const CPlatformConfig = extern struct {
     version: u32,
     provider_capacity: usize,
@@ -93,6 +96,12 @@ pub const CSdkConfig = extern struct {
     clock_context: ?*anyopaque,
     now: ?CNowFn,
     allocator: CAllocator,
+};
+pub const CNativeUdpConfig = extern struct {
+    local_address: CAddress,
+    peer_address: CAddress,
+    maximum_payload_bytes: usize,
+    maximum_in_flight: usize,
 };
 pub const CRouteState = enum(u32) {
     direct = 1,
@@ -484,7 +493,15 @@ const CSdkState = struct {
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
     session_records: std.ArrayListUnmanaged(SessionRecord),
     owned_buffers: std.ArrayListUnmanaged(CBuffer),
+    connection_capacity: usize,
     started: bool,
+};
+
+const CNativeRuntimeState = struct {
+    allocator_bridge: CAllocatorBridge,
+    clock_bridge: CClockBridge,
+    runtime: runtime.Runtime,
+    owned_buffers: std.ArrayListUnmanaged(CBuffer),
 };
 
 const ConnectionRecord = struct {
@@ -988,6 +1005,93 @@ fn state_from_handle(handle: ?*CSdk) ?*CSdkState {
     return @ptrCast(@alignCast(value));
 }
 
+fn native_state_from_handle(handle: ?*CNativeRuntime) ?*CNativeRuntimeState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn ipv4_from_c(address: CAddress) ?runtime.Ipv4Address {
+    if (address.family != @intFromEnum(CAddressFamily.ipv4) or !std.mem.allEqual(u8, address.bytes[4..], 0)) return null;
+    return .{ .octets = address.bytes[0..4].*, .port = address.port };
+}
+
+fn ipv4_to_c(address: runtime.Ipv4Address) CAddress {
+    var result = CAddress{ .family = @intFromEnum(CAddressFamily.ipv4), .bytes = [_]u8{0} ** 16, .port = address.port };
+    @memcpy(result.bytes[0..4], &address.octets);
+    return result;
+}
+
+fn validate_native_udp_config(config: ?*const CNativeUdpConfig) CResult {
+    const value = config orelse return .invalid_argument;
+    const local = ipv4_from_c(value.local_address) orelse return .invalid_argument;
+    _ = local;
+    const peer = ipv4_from_c(value.peer_address) orelse return .invalid_argument;
+    if (peer.port == 0 or value.maximum_payload_bytes == 0 or value.maximum_in_flight == 0) return .invalid_argument;
+    return .ok;
+}
+
+fn native_input(buffer: CConstBuffer) ?[]const u8 {
+    if (buffer.data == null and buffer.len != 0) return null;
+    return if (buffer.len == 0) &.{} else buffer.data[0..buffer.len];
+}
+
+fn native_copy_buffer(state: *CNativeRuntimeState, input: []const u8) CTrackedBufferError!CBuffer {
+    const output = try allocate_buffer(state.allocator_bridge.c_allocator, input.len);
+    if (input.len == 0) return output;
+    errdefer release_buffer(state.allocator_bridge.c_allocator, output) catch {};
+    try state.owned_buffers.append(state.allocator_bridge.allocator(), output);
+    @memcpy(output.data[0..input.len], input);
+    return output;
+}
+
+fn native_release_buffer(state: *CNativeRuntimeState, buffer: CBuffer) CBufferReleaseError!void {
+    if (!is_valid_buffer(buffer)) return error.InvalidBuffer;
+    if (buffer.len == 0) return;
+    for (state.owned_buffers.items, 0..) |owned, index| {
+        if (@intFromPtr(owned.data) != @intFromPtr(buffer.data) or owned.len != buffer.len) continue;
+        try release_buffer(state.allocator_bridge.c_allocator, buffer);
+        _ = state.owned_buffers.orderedRemove(index);
+        return;
+    }
+    return error.InvalidBuffer;
+}
+
+fn native_result(error_value: anyerror) CResult {
+    return switch (error_value) {
+        error.InvalidConfiguration,
+        error.InvalidState,
+        error.StaleHandle,
+        error.WrongResourceKind,
+        error.UnknownSession,
+        error.UnknownChannel,
+        error.InvalidDescriptor,
+        error.PayloadTooLarge,
+        error.DatagramTooLarge,
+        error.BatchTooLarge,
+        error.EmptyBatch,
+        error.InvalidArgument,
+        => .invalid_argument,
+        error.QueueFull,
+        error.PoolExhausted,
+        error.SessionCapacityExceeded,
+        error.ChannelCapacityExceeded,
+        error.HandleCapacityExhausted,
+        error.WriteQueueFull,
+        => .resource_exhausted,
+        error.WouldBlock => .would_block,
+        error.UnsupportedDelivery,
+        error.UnsupportedCapabilities,
+        => .unsupported,
+        error.ConnectFailed,
+        error.SendFailed,
+        error.ReceiveFailed,
+        error.ConnectionFailed,
+        error.ConnectionRefused,
+        => .transport_failure,
+        else => .internal,
+    };
+}
+
 fn build_sdk(config: *const CSdkConfig, clock: core.Clock) runtime.Sdk {
     var builder = runtime.SdkConfigBuilder.init().with_clock(clock).with_platform_config(platform_config_from_c(config.platform_config));
     inline for (std.meta.fields(core.Capability)) |field| {
@@ -1166,6 +1270,7 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.channel_records = .empty;
     state.session_records = .empty;
     state.owned_buffers = .empty;
+    state.connection_capacity = value.connection_capacity;
     state.started = false;
     output.* = @ptrCast(state);
     return @intFromEnum(CResult.ok);
@@ -1213,6 +1318,137 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     allocator.destroy(state);
 }
 
+pub export fn minna_san_native_runtime_create(config: ?*const CSdkConfig, out_runtime: ?*?*CNativeRuntime) c_int {
+    const output = out_runtime orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (validate_sdk_config(config) != .ok) return config_result_code(config);
+    const value = config.?;
+    var initial_allocator_bridge = CAllocatorBridge{ .c_allocator = value.allocator };
+    const allocator = initial_allocator_bridge.allocator();
+    const state = allocator.create(CNativeRuntimeState) catch return @intFromEnum(CResult.resource_exhausted);
+    state.* = undefined;
+    state.allocator_bridge = .{ .c_allocator = value.allocator };
+    state.clock_bridge = .{ .context = value.clock_context, .now = value.now.? };
+    state.owned_buffers = .empty;
+    state.runtime = runtime.Runtime.init(state.allocator_bridge.allocator(), build_sdk(value, state.clock_bridge.clock())) catch |err| {
+        allocator.destroy(state);
+        return @intFromEnum(native_result(err));
+    };
+    output.* = @ptrCast(state);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_runtime_destroy(native_runtime: ?*CNativeRuntime) void {
+    const state = native_state_from_handle(native_runtime) orelse return;
+    const allocator = state.allocator_bridge.allocator();
+    for (state.owned_buffers.items) |buffer| release_buffer(state.allocator_bridge.c_allocator, buffer) catch {};
+    state.owned_buffers.deinit(allocator);
+    state.runtime.deinit();
+    allocator.destroy(state);
+}
+
+pub export fn minna_san_native_udp_config_validate(config: ?*const CNativeUdpConfig) c_int {
+    return @intFromEnum(validate_native_udp_config(config));
+}
+
+pub export fn minna_san_native_udp_dial(native_runtime: ?*CNativeRuntime, config: ?*const CNativeUdpConfig, out_session: ?*?*CNativeSession, out_channel: ?*?*CNativeChannel) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const session_output = out_session orelse return @intFromEnum(CResult.invalid_argument);
+    const channel_output = out_channel orelse return @intFromEnum(CResult.invalid_argument);
+    session_output.* = null;
+    channel_output.* = null;
+    if (validate_native_udp_config(config) != .ok) return @intFromEnum(validate_native_udp_config(config));
+    const value = config.?;
+    const local = ipv4_from_c(value.local_address) orelse return @intFromEnum(CResult.invalid_argument);
+    const peer = ipv4_from_c(value.peer_address) orelse return @intFromEnum(CResult.invalid_argument);
+    const session = state.runtime.dialUdp(.{
+        .endpoint = runtime.Endpoint.from_ipv4(peer),
+        .family_policy = .ipv4_only,
+        .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false },
+        .channel = .{ .delivery = .datagram, .maximum_payload_bytes = value.maximum_payload_bytes, .maximum_in_flight = value.maximum_in_flight },
+        .local_address = .{ .ipv4 = local },
+    }) catch |err| return @intFromEnum(native_result(err));
+    const poll = state.runtime.pollUdpSession(session) catch |err| {
+        state.runtime.closeUdpSession(session) catch {};
+        return @intFromEnum(native_result(err));
+    };
+    session_output.* = @ptrCast(session);
+    channel_output.* = @ptrCast(poll.channel);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_udp_poll(native_runtime: ?*CNativeRuntime, session: ?*CNativeSession, out_channel: ?*?*CNativeChannel) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_channel orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    const handle: *runtime.ResourceHandle = @ptrCast(session orelse return @intFromEnum(CResult.invalid_argument));
+    const poll = state.runtime.pollUdpSession(handle) catch |err| return @intFromEnum(native_result(err));
+    output.* = @ptrCast(poll.channel);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_udp_session_address(native_runtime: ?*CNativeRuntime, session: ?*CNativeSession, out_address: ?*CAddress) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_address orelse return @intFromEnum(CResult.invalid_argument);
+    const handle: *runtime.ResourceHandle = @ptrCast(session orelse return @intFromEnum(CResult.invalid_argument));
+    const address = state.runtime.udpSessionAddress(handle) catch |err| return @intFromEnum(native_result(err));
+    output.* = switch (address) {
+        .ipv4 => |value| ipv4_to_c(value),
+        .ipv6 => return @intFromEnum(CResult.unsupported),
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_channel_send(native_runtime: ?*CNativeRuntime, channel: ?*CNativeChannel, payload: CConstBuffer) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const input = native_input(payload) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle: *runtime.ResourceHandle = @ptrCast(channel orelse return @intFromEnum(CResult.invalid_argument));
+    state.runtime.enqueueChannel(handle, input) catch |err| return @intFromEnum(native_result(err));
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_udp_flush(native_runtime: ?*CNativeRuntime, session: ?*CNativeSession, out_sent: ?*usize) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_sent orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = 0;
+    const handle: *runtime.ResourceHandle = @ptrCast(session orelse return @intFromEnum(CResult.invalid_argument));
+    var events: [1]runtime.UdpSendEvent = undefined;
+    const batch = state.runtime.flushUdpSends(handle, events[0..]) catch |err| return @intFromEnum(native_result(err));
+    output.* = batch.sent;
+    return @intFromEnum(if (batch.would_block) CResult.would_block else CResult.ok);
+}
+
+pub export fn minna_san_native_udp_receive(native_runtime: ?*CNativeRuntime, session: ?*CNativeSession, out_channel: ?*?*CNativeChannel, out_payload: ?*CBuffer) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const channel_output = out_channel orelse return @intFromEnum(CResult.invalid_argument);
+    const payload_output = out_payload orelse return @intFromEnum(CResult.invalid_argument);
+    channel_output.* = null;
+    payload_output.* = .{ .data = null, .len = 0 };
+    const handle: *runtime.ResourceHandle = @ptrCast(session orelse return @intFromEnum(CResult.invalid_argument));
+    var events: [1]runtime.UdpReceiveEvent = undefined;
+    const batch = state.runtime.pollUdpReceives(handle, events[0..]) catch |err| return @intFromEnum(native_result(err));
+    if (batch.received == 0) return @intFromEnum(CResult.would_block);
+    var message = (state.runtime.dequeueChannel(handle) catch |err| return @intFromEnum(native_result(err))) orelse return @intFromEnum(CResult.internal);
+    defer message.deinit(state.allocator_bridge.allocator());
+    const buffer = native_copy_buffer(state, message.payload) catch |err| return @intFromEnum(native_result(err));
+    channel_output.* = @ptrCast(message.channel);
+    payload_output.* = buffer;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_buffer_release(native_runtime: ?*CNativeRuntime, buffer: CBuffer) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    native_release_buffer(state, buffer) catch return @intFromEnum(CResult.invalid_argument);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_native_udp_session_close(native_runtime: ?*CNativeRuntime, session: ?*CNativeSession) c_int {
+    const state = native_state_from_handle(native_runtime) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle: *runtime.ResourceHandle = @ptrCast(session orelse return @intFromEnum(CResult.invalid_argument));
+    state.runtime.closeUdpSession(handle) catch |err| return @intFromEnum(native_result(err));
+    return @intFromEnum(CResult.ok);
+}
+
 pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_connection: ?*?*CConnection, out_peer: ?*?*CPeer) c_int {
     const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
     const connection_output = out_connection orelse return @intFromEnum(CResult.invalid_argument);
@@ -1222,6 +1458,7 @@ pub export fn minna_san_connection_open(sdk: ?*CSdk, route_state: u32, out_conne
     if (!state.started) return @intFromEnum(CResult.invalid_state);
     if (!state.sdk.configuration().is_capability_enabled(.transport)) return @intFromEnum(CResult.unsupported);
     if (!is_valid_route_state(route_state)) return @intFromEnum(CResult.invalid_argument);
+    if (state.connection_records.items.len == state.connection_capacity) return @intFromEnum(CResult.resource_exhausted);
     const connection = state.resources.acquire_kind(.connection) catch return @intFromEnum(CResult.resource_exhausted);
     const peer = state.resources.acquire_kind(.peer) catch {
         state.resources.release_kind(connection, .connection) catch {};
@@ -1968,13 +2205,13 @@ test "C ABI canonical endpoints round-trip equivalent IPv6 and DNS forms" {
     var second: CEndpoint = undefined;
     var output: [runtime.max_endpoint_text_bytes]u8 = undefined;
     var output_len: usize = 0;
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&ipv6_expanded), .len = ipv6_expanded.len }, 443, &first));
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&ipv6_short), .len = ipv6_short.len }, 443, &second));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = ipv6_expanded.ptr, .len = ipv6_expanded.len }, 443, &first));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = ipv6_short.ptr, .len = ipv6_short.len }, 443, &second));
     try std.testing.expectEqual(@as(u8, 1), minna_san_endpoint_equal(&first, &second));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_format(&first, .{ .data = @ptrCast(&output), .len = output.len }, &output_len));
     try std.testing.expectEqualStrings("2001:db8::1", output[0..output_len]);
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&dns_mixed), .len = dns_mixed.len }, 443, &first));
-    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = @ptrCast(&dns_canonical), .len = dns_canonical.len }, 443, &second));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = dns_mixed.ptr, .len = dns_mixed.len }, 443, &first));
+    try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_parse(.{ .data = dns_canonical.ptr, .len = dns_canonical.len }, 443, &second));
     try std.testing.expectEqual(@as(u8, 1), minna_san_endpoint_equal(&first, &second));
     try std.testing.expectEqual(@as(c_int, @intFromEnum(CResult.ok)), minna_san_endpoint_format(&first, .{ .data = @ptrCast(&output), .len = output.len }, &output_len));
     try std.testing.expectEqualStrings("api.example.com", output[0..output_len]);
