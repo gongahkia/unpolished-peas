@@ -604,8 +604,6 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
-    const core_test_step = b.step("test-core", "Run the core unpolished-peas test suite");
-    core_test_step.dependOn(&run_tests.step);
     const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
     const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");
