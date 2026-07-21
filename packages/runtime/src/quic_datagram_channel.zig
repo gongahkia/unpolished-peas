@@ -44,7 +44,7 @@ pub const QuicDatagramChannelConfig = struct {
     peer_maximum_datagram_bytes: ?usize = null,
     fallback: QuicDatagramFallback = .reject,
 
-    pub fn validate(self: QuicDatagramChannelConfig) error{ InvalidConfiguration, ProviderCapabilityUnsupported }!void {
+    pub fn validate(self: QuicDatagramChannelConfig) (delivery.ChannelDeliveryError || core.ProviderCapabilityDescriptorError || error{ InvalidConfiguration, ProviderCapabilityUnsupported })!void {
         try self.descriptor.validate();
         try self.provider_capabilities.validate();
         if (self.descriptor.delivery != .datagram or !self.provider_capabilities.supports(.{ .transport_bits = core.transport_capability_bit(.quic), .delivery_bits = core.delivery_capability_bit(.datagrams) })) return error.ProviderCapabilityUnsupported;
