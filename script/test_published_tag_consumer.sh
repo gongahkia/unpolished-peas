@@ -35,16 +35,20 @@ if [ ! -d "$release_root" ]; then
     printf 'published consumer: release archive did not extract expected root for tag=%s\n' "$tag" >&2
     exit 1
 fi
+if [ -e "$release_root/templates/bounce/build.zig.zon" ]; then
+    printf 'published consumer: release archive retained generated manifest for tag=%s\n' "$tag" >&2
+    exit 1
+fi
 (
     cd "$tmp"
     git clone --depth 1 --branch "$tag" "$repo_url"
 )
-if [ ! -f "$quickstart_checkout/build.zig" ]; then
-    printf 'published consumer: released checkout missing build.zig for tag=%s\n' "$tag" >&2
+if [ ! -f "$quickstart_checkout/templates/bounce/build.zig.zon" ]; then
+    printf 'published consumer: released checkout missing generated manifest for tag=%s\n' "$tag" >&2
     exit 1
 fi
 (
-    cd "$release_root"
+    cd "$quickstart_checkout"
     ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"
 )
 manifest="$consumer/build.zig.zon"
@@ -69,7 +73,7 @@ case "$(uname -s)" in
         (
             cd "$consumer"
             ZIG_GLOBAL_CACHE_DIR="$consumer_cache/global" ZIG_LOCAL_CACHE_DIR="$consumer_cache/local" \
-                "$release_root/script/run_linux_software_gl.sh" zig build run -- --frames 2
+                "$quickstart_checkout/script/run_linux_software_gl.sh" zig build run -- --frames 2
         )
         ;;
     Darwin)

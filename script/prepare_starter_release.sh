@@ -25,6 +25,10 @@ if grep -F -q -- '"templates/bounce/build.zig.zon"' build.zig.zon; then
     printf '%s\n' 'starter release preparation requires the generated manifest excluded from package paths' >&2
     exit 65
 fi
+if ! grep -F -x -q -- 'templates/bounce/build.zig.zon export-ignore' .gitattributes; then
+    printf '%s\n' 'starter release preparation requires the generated manifest excluded from release archives' >&2
+    exit 65
+fi
 
 tmp="$(mktemp -d)"
 archive="$tmp/unpolished-peas-$version.tar.gz"
