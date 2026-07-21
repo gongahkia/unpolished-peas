@@ -64,10 +64,10 @@ Slow platform and browser coverage is selected here, separately from the require
 | `macos-sdl_gpu` | `macos-15-intel` | `bash script/test_stable_core_capability.sh macos-sdl_gpu` |
 | `linux-sdl_gpu` | `ubuntu-latest` | `bash script/test_stable_core_capability.sh linux-sdl_gpu` |
 | `windows-sdl_gpu` | `windows-2022` | `pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu` |
-| `chromium-webgpu` | `macos-15-intel` | `zig build test-browser-chromium && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads` |
-| `firefox-webgl2` | `macos-15-intel` | `zig build test-browser-firefox` |
-| `safari-webgl2` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 zig build test-browser-safari` |
-| `safari-webgpu` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgpu zig build test-browser-safari` |
+| `chromium-webgpu` | `macos-15-intel` | `zig build test-web-proof-game-matrix && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads` |
+| `firefox-webgl2` | `macos-15-intel` | `UP_BROWSER=firefox zig build test-web-proof-game-matrix` |
+| `safari-webgl2` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh` |
+| `safari-webgpu` | `macos-26` | `safaridriver --enable && UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh` |
 
 ## Release verification
 
