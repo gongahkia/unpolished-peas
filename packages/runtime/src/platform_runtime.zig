@@ -34,8 +34,8 @@ pub const Runtime = struct {
     security_policy: security_policy.RuntimeSecurityPolicy,
     poll_runtime: poll_runtime.PollRuntime,
     providers: provider.ProviderRegistry,
-    resources: resource_handle.ResourceRegistry,
-    sessions: session_registry.SessionRegistry,
+    resources: *resource_handle.ResourceRegistry,
+    sessions: *session_registry.SessionRegistry,
     channels: channel_registry.ChannelRegistry,
     payloads: *payload_pool.PayloadPool,
     timers: timer_wheel.TimerWheel,
@@ -48,15 +48,19 @@ pub const Runtime = struct {
         const policy = sdk.configuration().securityPolicy();
         try policy.validate();
         const resource_capacity = std.math.add(usize, platform_config.limits.session_capacity, platform_config.limits.channel_capacity) catch return error.InvalidConfiguration;
-        var resources = try resource_handle.ResourceRegistry.init(allocator, resource_capacity);
+        const resources = try allocator.create(resource_handle.ResourceRegistry);
+        errdefer allocator.destroy(resources);
+        resources.* = try resource_handle.ResourceRegistry.init(allocator, resource_capacity);
         errdefer resources.deinit();
-        var sessions = try session_registry.SessionRegistry.init(allocator, &resources, platform_config.limits.session_capacity);
+        const sessions = try allocator.create(session_registry.SessionRegistry);
+        errdefer allocator.destroy(sessions);
+        sessions.* = try session_registry.SessionRegistry.init(allocator, resources, platform_config.limits.session_capacity);
         errdefer sessions.deinit();
         const payloads = try allocator.create(payload_pool.PayloadPool);
         errdefer allocator.destroy(payloads);
         payloads.* = try payload_pool.PayloadPool.init(allocator, platform_config.limits.channel_capacity, platform_config.limits.payload_pool_bytes);
         errdefer payloads.deinit();
-        var channels = try channel_registry.ChannelRegistry.init(allocator, &resources, &sessions, payloads, platform_config.limits.channel_capacity);
+        var channels = try channel_registry.ChannelRegistry.init(allocator, resources, sessions, payloads, platform_config.limits.channel_capacity);
         errdefer channels.deinit();
         var timers = try timer_wheel.TimerWheel.init(allocator, platform_config.limits.event_capacity);
         errdefer timers.deinit();
@@ -79,14 +83,17 @@ pub const Runtime = struct {
     }
 
     pub fn deinit(self: *Runtime) void {
+        const allocator = self.resources.allocator;
         self.services.deinit();
         self.providers.deinit();
         self.timers.deinit();
         self.channels.deinit();
         self.payloads.deinit();
-        self.resources.allocator.destroy(self.payloads);
+        allocator.destroy(self.payloads);
         self.sessions.deinit();
+        allocator.destroy(self.sessions);
         self.resources.deinit();
+        allocator.destroy(self.resources);
         self.poll_runtime.deinit();
         self.* = undefined;
     }

@@ -247,7 +247,7 @@ test "hostname resolution providers expose bounded pollable results" {
     var manual = core.ManualClock.init(0);
     const sdk = try @import("sdk_config.zig").SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 1, .session_capacity = 1, .channel_capacity = 1, .poll_work_budget = 1 } }).build();
     var runtime = try @import("platform_runtime.zig").Runtime.init(std.testing.allocator, sdk);
-    var resolver = try HostnameResolutionProvider.init(std.testing.allocator, &runtime.sessions, .{ .max_requests = 1, .poll_work_budget = 1 });
+    var resolver = try HostnameResolutionProvider.init(std.testing.allocator, runtime.sessions, .{ .max_requests = 1, .poll_work_budget = 1 });
     defer {
         runtime.deinit();
         resolver.deinit();
@@ -279,7 +279,7 @@ test "cancelled and stale hostname results never mutate sessions" {
     var manual = core.ManualClock.init(0);
     const sdk = try @import("sdk_config.zig").SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .provider_capacity = 1, .session_capacity = 1, .channel_capacity = 1, .poll_work_budget = 1 } }).build();
     var runtime = try @import("platform_runtime.zig").Runtime.init(std.testing.allocator, sdk);
-    var resolver = try HostnameResolutionProvider.init(std.testing.allocator, &runtime.sessions, .{ .max_requests = 1, .poll_work_budget = 1 });
+    var resolver = try HostnameResolutionProvider.init(std.testing.allocator, runtime.sessions, .{ .max_requests = 1, .poll_work_budget = 1 });
     defer {
         runtime.deinit();
         resolver.deinit();
