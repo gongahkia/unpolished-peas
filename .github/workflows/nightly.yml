@@ -28,6 +28,10 @@ jobs:
           version: 0.15.2
       - if: matrix.id == 'linux-sdl_gpu'
         run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - if: matrix.id == 'firefox-webgl2'
+        run: npx --yes --package @playwright/cli playwright-cli install-browser firefox
+      - if: matrix.id == 'safari-webgl2' || matrix.id == 'safari-webgpu'
+        run: sudo safaridriver --enable
       - run: ${{ matrix.command }}
         env:
           UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/nightly-${{ matrix.id }}
