@@ -22,7 +22,7 @@ except (OSError, json.JSONDecodeError) as error:
     raise SystemExit(f"invalid provider manifest: {error}")
 if not re.fullmatch(r"[0-9a-f]{64}", locked) or locked != hashlib.sha256(source).hexdigest():
     raise SystemExit("provider manifest checksum mismatch")
-if set(metadata) != {"schema_version", "allowed_licenses", "providers"} or metadata["schema_version"] != 2:
+if set(metadata) != {"schema_version", "allowed_licenses", "providers"} or metadata["schema_version"] != 3:
     raise SystemExit("invalid provider manifest schema")
 known_licenses = {"Apache-2.0", "BSD-2-Clause", "BSD-3-Clause", "ISC", "MIT", "Zlib"}
 allowed_licenses = metadata["allowed_licenses"]
@@ -53,17 +53,22 @@ for provider in providers:
         raise SystemExit("provider provenance must use a pinned revision")
     if not isinstance(version, str) or not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", version):
         raise SystemExit("provider version must be pinned")
-    if not isinstance(headers, dict) or set(headers) != {"url", "path", "sha256"}:
+    if not isinstance(headers, list) or not headers:
         raise SystemExit("invalid provider headers")
-    header_url = headers["url"]
-    header_path = pathlib.PurePosixPath(headers["path"]) if isinstance(headers["path"], str) else None
-    header_checksum = headers["sha256"]
-    if not isinstance(header_url, str) or not re.fullmatch(r"https://[^\s]+", header_url) or f"/{revision}/" not in header_url:
-        raise SystemExit("provider headers must use the pinned revision")
-    if header_path is None or header_path.is_absolute() or ".." in header_path.parts or header_path == pathlib.PurePosixPath("."):
-        raise SystemExit("invalid provider header path")
-    if not isinstance(header_checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", header_checksum):
-        raise SystemExit("invalid provider header checksum")
+    header_paths = set()
+    for header in headers:
+        if not isinstance(header, dict) or set(header) != {"url", "path", "sha256"}:
+            raise SystemExit("invalid provider header")
+        header_url = header["url"]
+        header_path = pathlib.PurePosixPath(header["path"]) if isinstance(header["path"], str) else None
+        header_checksum = header["sha256"]
+        if not isinstance(header_url, str) or not re.fullmatch(r"https://[^\s]+", header_url) or f"/{revision}/" not in header_url:
+            raise SystemExit("provider headers must use the pinned revision")
+        if header_path is None or header_path.is_absolute() or ".." in header_path.parts or header_path == pathlib.PurePosixPath(".") or header_path in header_paths:
+            raise SystemExit("invalid provider header path")
+        header_paths.add(header_path)
+        if not isinstance(header_checksum, str) or not re.fullmatch(r"[0-9a-f]{64}", header_checksum):
+            raise SystemExit("invalid provider header checksum")
     if not isinstance(artifacts, list) or not artifacts:
         raise SystemExit("provider must define artifacts")
     targets = set()

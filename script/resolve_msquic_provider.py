@@ -18,6 +18,7 @@ import zipfile
 
 MAX_DOWNLOAD_BYTES = 64 * 1024 * 1024
 TARGET_PATTERN = re.compile(r"(?:x86_64|aarch64)-(?:linux|windows|macos)")
+QUOTED_HEADER_INCLUDE = re.compile(rb'^\s*#\s*include\s+"([^"\\]+)"', re.MULTILINE)
 
 
 class ResolutionError(Exception):
@@ -38,7 +39,7 @@ def load_provider(manifest_path: pathlib.Path) -> dict:
         metadata = json.loads(manifest_path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError) as error:
         raise ResolutionError(f"invalid provider manifest: {error}") from error
-    if metadata.get("schema_version") != 2 or not isinstance(metadata.get("providers"), list):
+    if metadata.get("schema_version") != 3 or not isinstance(metadata.get("providers"), list):
         raise ResolutionError("unsupported provider manifest")
     providers = [item for item in metadata["providers"] if isinstance(item, dict) and item.get("name") == "msquic"]
     if len(providers) != 1:
@@ -51,12 +52,19 @@ def load_provider(manifest_path: pathlib.Path) -> dict:
     if not re.fullmatch(r"[0-9]+\.[0-9]+\.[0-9]+", provider["version"]):
         raise ResolutionError("invalid MsQuic version")
     headers = provider["headers"]
-    if not isinstance(headers, dict) or set(headers) != {"url", "path", "sha256"}:
+    if not isinstance(headers, list) or not headers:
         raise ResolutionError("invalid MsQuic headers")
-    if not isinstance(headers["url"], str) or f"/{provider['revision']}/" not in headers["url"]:
-        raise ResolutionError("MsQuic headers are not revision pinned")
-    safe_path(headers["path"])
-    require_checksum(headers["sha256"])
+    header_paths = set()
+    for header in headers:
+        if not isinstance(header, dict) or set(header) != {"url", "path", "sha256"}:
+            raise ResolutionError("invalid MsQuic header")
+        if not isinstance(header["url"], str) or f"/{provider['revision']}/" not in header["url"]:
+            raise ResolutionError("MsQuic headers are not revision pinned")
+        path = safe_path(header["path"])
+        if path in header_paths:
+            raise ResolutionError("duplicate MsQuic header path")
+        header_paths.add(path)
+        require_checksum(header["sha256"])
     if not isinstance(provider["artifacts"], list) or not provider["artifacts"]:
         raise ResolutionError("missing MsQuic artifacts")
     targets = set()
@@ -131,6 +139,16 @@ def verified_download(url: str, checksum: str) -> bytes:
     return payload
 
 
+def validate_header_closure(headers: list[tuple[pathlib.PurePosixPath, bytes]]) -> None:
+    paths = {path for path, _ in headers}
+    for path, payload in headers:
+        for match in QUOTED_HEADER_INCLUDE.finditer(payload):
+            included = match.group(1).decode("ascii", "strict")
+            included_path = safe_path(included)
+            if path.parent / included_path not in paths:
+                raise ResolutionError(f"missing MsQuic transitive header: {included}")
+
+
 def extract_zip(payload: bytes, member_path: str) -> bytes:
     expected = safe_path(member_path).as_posix()
     try:
@@ -202,22 +220,24 @@ def write_atomic(path: pathlib.Path, payload: bytes, mode: int) -> None:
 def resolve(provider: dict, target: str, output: pathlib.Path) -> pathlib.Path:
     artifact = select_artifact(provider, target)
     library_archive = verified_download(artifact["url"], artifact["sha256"])
-    header = verified_download(provider["headers"]["url"], provider["headers"]["sha256"])
+    headers = [(safe_path(header["path"]), verified_download(header["url"], header["sha256"])) for header in provider["headers"]]
+    validate_header_closure(headers)
     library = extract_deb(library_archive, artifact["library"]) if artifact["format"] == "deb" else extract_zip(library_archive, artifact["library"])
     if not library:
         raise ResolutionError("provider library is empty")
     destination = output / target
-    header_path = destination / safe_path(provider["headers"]["path"])
     library_path = destination / "lib" / pathlib.PurePosixPath(artifact["library"]).name
     metadata_path = destination / "manifest.json"
     metadata = {
+        "headers": [path.as_posix() for path, _ in headers],
         "library": library_path.relative_to(destination).as_posix(),
         "name": provider["name"],
         "revision": provider["revision"],
         "target": target,
         "version": provider["version"],
     }
-    write_atomic(header_path, header, 0o644)
+    for path, header in headers:
+        write_atomic(destination / path, header, 0o644)
     write_atomic(library_path, library, 0o755)
     write_atomic(metadata_path, (json.dumps(metadata, sort_keys=True, separators=(",", ":")) + "\n").encode(), 0o644)
     return destination
