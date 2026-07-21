@@ -3,6 +3,7 @@ const core = @import("minna-san-core");
 const provider = @import("provider.zig");
 
 pub const max_msquic_provider_events: usize = core.max_event_capacity;
+pub const max_msquic_provider_diagnostics: usize = core.max_event_capacity;
 
 pub const MsQuicCallbackKind = enum(u32) {
     registration_opened = 1,
@@ -32,6 +33,29 @@ pub const MsQuicRuntimeEvent = struct {
 
 pub const MsQuicCallback = *const fn (?*anyopaque, *const MsQuicCallbackEvent) callconv(.c) c_int;
 
+pub const MsQuicRouteHealth = enum(u8) {
+    unavailable,
+    degraded,
+    healthy,
+};
+
+pub const MsQuicProviderDiagnostic = extern struct {
+    connection_id: u64 = 0,
+    stream_id: u64 = 0,
+    smoothed_rtt_ns: u64 = 0,
+    congestion_window_bytes: u64 = 0,
+    bytes_in_flight: u64 = 0,
+    path_mtu: u32 = 0,
+    route_health: MsQuicRouteHealth = .unavailable,
+};
+
+pub const MsQuicDiagnosticCallback = *const fn (?*anyopaque, *const MsQuicProviderDiagnostic) void;
+
+pub const MsQuicDiagnosticSink = struct {
+    context: ?*anyopaque,
+    report: *const fn (?*anyopaque, *const MsQuicProviderDiagnostic) callconv(.c) c_int,
+};
+
 pub const MsQuicProviderVTable = extern struct {
     open: *const fn (?*anyopaque, ?*anyopaque, MsQuicCallback) callconv(.c) c_int,
     close: *const fn (?*anyopaque) callconv(.c) void,
@@ -53,10 +77,13 @@ pub const msquic_required_capabilities = provider.ProviderCapabilityRequirement{
 
 pub const MsQuicProviderConfig = struct {
     maximum_events: usize = 64,
+    maximum_diagnostics: usize = 64,
     poll_work_budget: usize = 1,
+    diagnostic_context: ?*anyopaque = null,
+    diagnostic_callback: ?MsQuicDiagnosticCallback = null,
 
     pub fn validate(self: MsQuicProviderConfig) error{InvalidConfiguration}!void {
-        if (self.maximum_events == 0 or self.maximum_events > max_msquic_provider_events or self.poll_work_budget == 0 or self.poll_work_budget > core.max_poll_work_budget) return error.InvalidConfiguration;
+        if (self.maximum_events == 0 or self.maximum_events > max_msquic_provider_events or self.maximum_diagnostics == 0 or self.maximum_diagnostics > max_msquic_provider_diagnostics or self.poll_work_budget == 0 or self.poll_work_budget > core.max_poll_work_budget) return error.InvalidConfiguration;
     }
 };
 
@@ -83,6 +110,9 @@ pub const MsQuicProvider = struct {
     runtime_events: []MsQuicRuntimeEvent,
     runtime_start: usize = 0,
     runtime_count: usize = 0,
+    diagnostics: []MsQuicProviderDiagnostic,
+    diagnostic_start: usize = 0,
+    diagnostic_count: usize = 0,
     next_sequence: u64 = 0,
     state: State = .idle,
 
@@ -91,6 +121,8 @@ pub const MsQuicProvider = struct {
         const pending_events = try allocator.alloc(MsQuicRuntimeEvent, config.maximum_events);
         errdefer allocator.free(pending_events);
         const runtime_events = try allocator.alloc(MsQuicRuntimeEvent, config.maximum_events);
+        errdefer allocator.free(runtime_events);
+        const diagnostics = try allocator.alloc(MsQuicProviderDiagnostic, config.maximum_diagnostics);
         return .{
             .allocator = allocator,
             .config = config,
@@ -98,6 +130,7 @@ pub const MsQuicProvider = struct {
             .vtable = vtable,
             .pending_events = pending_events,
             .runtime_events = runtime_events,
+            .diagnostics = diagnostics,
         };
     }
 
@@ -105,6 +138,7 @@ pub const MsQuicProvider = struct {
         self.stop();
         self.allocator.free(self.pending_events);
         self.allocator.free(self.runtime_events);
+        self.allocator.free(self.diagnostics);
         self.* = undefined;
     }
 
@@ -132,6 +166,16 @@ pub const MsQuicProvider = struct {
         self.mutex.lock();
         defer self.mutex.unlock();
         return self.runtime_count;
+    }
+
+    pub fn diagnosticSink(self: *MsQuicProvider) MsQuicDiagnosticSink {
+        return .{ .context = self, .report = recordDiagnostic };
+    }
+
+    pub fn queuedDiagnosticCount(self: *MsQuicProvider) usize {
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        return self.diagnostic_count;
     }
 
     fn providerInit(context: ?*anyopaque) callconv(.c) c_int {
@@ -165,9 +209,19 @@ pub const MsQuicProvider = struct {
         const self: *MsQuicProvider = @ptrCast(@alignCast(context orelse return @intFromEnum(core.CResult.invalid_argument)));
         _ = now;
         self.mutex.lock();
-        defer self.mutex.unlock();
-        if (self.state != .active) return @intFromEnum(core.CResult.invalid_state);
-        out_result.* = .{ .work_completed = self.movePendingToRuntime(work_budget) };
+        if (self.state != .active) {
+            self.mutex.unlock();
+            return @intFromEnum(core.CResult.invalid_state);
+        }
+        var work_completed = self.movePendingToRuntime(work_budget);
+        const diagnostic = if (work_completed < work_budget) self.nextDiagnostic() else null;
+        self.mutex.unlock();
+        if (diagnostic) |value| {
+            const callback_fn = self.config.diagnostic_callback orelse unreachable;
+            callback_fn(self.config.diagnostic_context, &value);
+            work_completed += 1;
+        }
+        out_result.* = .{ .work_completed = work_completed };
         return @intFromEnum(core.CResult.ok);
     }
 
@@ -189,6 +243,22 @@ pub const MsQuicProvider = struct {
         self.pending_events[index] = .{ .sequence = self.next_sequence, .callback = event.* };
         self.next_sequence +%= 1;
         self.pending_count += 1;
+        return @intFromEnum(core.CResult.ok);
+    }
+
+    fn recordDiagnostic(context: ?*anyopaque, diagnostic: *const MsQuicProviderDiagnostic) callconv(.c) c_int {
+        const self: *MsQuicProvider = @ptrCast(@alignCast(context orelse return @intFromEnum(core.CResult.invalid_argument)));
+        self.mutex.lock();
+        defer self.mutex.unlock();
+        switch (self.state) {
+            .opening, .active => {},
+            else => return @intFromEnum(core.CResult.invalid_state),
+        }
+        if (self.config.diagnostic_callback == null) return @intFromEnum(core.CResult.ok);
+        if (self.diagnostic_count == self.config.maximum_diagnostics) return @intFromEnum(core.CResult.resource_exhausted);
+        const index = (self.diagnostic_start + self.diagnostic_count) % self.config.maximum_diagnostics;
+        self.diagnostics[index] = diagnostic.*;
+        self.diagnostic_count += 1;
         return @intFromEnum(core.CResult.ok);
     }
 
@@ -220,11 +290,21 @@ pub const MsQuicProvider = struct {
         return work_completed;
     }
 
+    fn nextDiagnostic(self: *MsQuicProvider) ?MsQuicProviderDiagnostic {
+        if (self.diagnostic_count == 0) return null;
+        const value = self.diagnostics[self.diagnostic_start];
+        self.diagnostic_start = (self.diagnostic_start + 1) % self.config.maximum_diagnostics;
+        self.diagnostic_count -= 1;
+        return value;
+    }
+
     fn clearQueues(self: *MsQuicProvider) void {
         self.pending_start = 0;
         self.pending_count = 0;
         self.runtime_start = 0;
         self.runtime_count = 0;
+        self.diagnostic_start = 0;
+        self.diagnostic_count = 0;
     }
 };
 
@@ -327,4 +407,55 @@ test "MsQuic adapters report bounded callback queues to native bridges" {
     try std.testing.expectEqual(@as(usize, 1), (try registered.poll(0)).work_completed);
     try std.testing.expectEqual(@as(u64, 0), adapter.nextRuntimeEvent().?.sequence);
     registered.stop();
+}
+
+test "MsQuic diagnostics copy route health before local callbacks and do not hold teardown" {
+    const FakeMsQuic = struct {
+        closes: usize = 0,
+
+        fn open(_: ?*anyopaque, _: ?*anyopaque, _: MsQuicCallback) callconv(.c) c_int {
+            return @intFromEnum(core.CResult.ok);
+        }
+
+        fn close(context: ?*anyopaque) callconv(.c) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.closes += 1;
+        }
+    };
+    const Capture = struct {
+        provider_instance: ?*provider.Provider = null,
+        diagnostic: ?MsQuicProviderDiagnostic = null,
+
+        fn receive(context: ?*anyopaque, diagnostic: *const MsQuicProviderDiagnostic) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.diagnostic = diagnostic.*;
+            self.provider_instance.?.stop();
+        }
+    };
+
+    var fake = FakeMsQuic{};
+    var capture = Capture{};
+    var adapter = try MsQuicProvider.init(std.testing.allocator, .{ .maximum_diagnostics = 1, .diagnostic_context = &capture, .diagnostic_callback = Capture.receive }, &fake, .{ .open = FakeMsQuic.open, .close = FakeMsQuic.close });
+    defer adapter.deinit();
+    var registered = try adapter.asProvider();
+    try registered.start();
+    capture.provider_instance = &registered;
+    const sink = adapter.diagnosticSink();
+    var source = MsQuicProviderDiagnostic{ .connection_id = 7, .stream_id = 9, .smoothed_rtt_ns = 2_000, .congestion_window_bytes = 8_192, .bytes_in_flight = 1_024, .path_mtu = 1_280, .route_health = .healthy };
+    try std.testing.expectEqual(@intFromEnum(core.CResult.ok), sink.report(sink.context, &source));
+    source.route_health = .unavailable;
+    try std.testing.expectEqual(@intFromEnum(core.CResult.resource_exhausted), sink.report(sink.context, &source));
+    try std.testing.expectEqual(@as(usize, 1), adapter.queuedDiagnosticCount());
+    try std.testing.expectEqual(@as(usize, 1), (try registered.poll(0)).work_completed);
+    try std.testing.expectEqual(@as(usize, 1), fake.closes);
+    try std.testing.expectEqual(provider.ProviderState.stopped, registered.state);
+    try std.testing.expectEqual(@as(usize, 0), adapter.queuedDiagnosticCount());
+    const observed = capture.diagnostic.?;
+    try std.testing.expectEqual(@as(u64, 7), observed.connection_id);
+    try std.testing.expectEqual(@as(u64, 9), observed.stream_id);
+    try std.testing.expectEqual(@as(u64, 2_000), observed.smoothed_rtt_ns);
+    try std.testing.expectEqual(@as(u64, 8_192), observed.congestion_window_bytes);
+    try std.testing.expectEqual(@as(u64, 1_024), observed.bytes_in_flight);
+    try std.testing.expectEqual(@as(u32, 1_280), observed.path_mtu);
+    try std.testing.expectEqual(MsQuicRouteHealth.healthy, observed.route_health);
 }
