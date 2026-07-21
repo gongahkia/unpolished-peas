@@ -17,11 +17,11 @@ if git rev-parse -q --verify "refs/tags/$tag" > /dev/null || git ls-remote --exi
     printf 'starter release preparation refused existing tag: %s\n' "$tag" >&2
     exit 65
 fi
-if ! rg -Fqx "    .version = \"$version\"," build.zig.zon; then
+if ! grep -F -x -q -- "    .version = \"$version\"," build.zig.zon; then
     printf 'starter release preparation requires build.zig.zon version %s\n' "$version" >&2
     exit 65
 fi
-if rg -Fq '"templates/bounce/build.zig.zon"' build.zig.zon; then
+if grep -F -q -- '"templates/bounce/build.zig.zon"' build.zig.zon; then
     printf '%s\n' 'starter release preparation requires the generated manifest excluded from package paths' >&2
     exit 65
 fi
