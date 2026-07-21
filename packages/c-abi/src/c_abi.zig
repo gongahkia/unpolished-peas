@@ -74,6 +74,7 @@ pub const CConnection = opaque {};
 pub const CPeer = opaque {};
 pub const CChannel = opaque {};
 pub const CAuthoritativeSession = opaque {};
+pub const CP2PSession = opaque {};
 pub const CNativeRuntime = opaque {};
 pub const CNativeSession = opaque {};
 pub const CNativeChannel = opaque {};
@@ -492,6 +493,7 @@ const CSdkState = struct {
     connection_records: std.ArrayListUnmanaged(ConnectionRecord),
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
     session_records: std.ArrayListUnmanaged(SessionRecord),
+    p2p_records: std.ArrayListUnmanaged(P2PSessionRecord),
     owned_buffers: std.ArrayListUnmanaged(CBuffer),
     connection_capacity: usize,
     started: bool,
@@ -531,6 +533,12 @@ const SessionRecord = struct {
     admission_context: ?*anyopaque,
     admission: ?CAdmissionFn,
     clients: std.ArrayListUnmanaged(*runtime.ResourceHandle) = .empty,
+};
+
+const P2PSessionRecord = struct {
+    session: *runtime.ResourceHandle,
+    candidate: CCandidate,
+    route_state: u32 = c_route_direct,
 };
 
 threadlocal var c_log_callback_active: bool = false;
@@ -1128,6 +1136,15 @@ fn find_session(state: *CSdkState, session: *CAuthoritativeSession) ?usize {
     return null;
 }
 
+fn find_p2p_session(state: *CSdkState, session: *CP2PSession) ?usize {
+    const handle: *runtime.ResourceHandle = @ptrCast(session);
+    state.resources.validate_kind(handle, .service) catch return null;
+    for (state.p2p_records.items, 0..) |record, index| {
+        if (record.session == handle) return index;
+    }
+    return null;
+}
+
 fn session_transition_from_c(value: u32) ?runtime.SessionTransition {
     const action = std.meta.intToEnum(CSessionTransition, value) catch return null;
     return @enumFromInt(@intFromEnum(action));
@@ -1269,6 +1286,7 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.connection_records = .empty;
     state.channel_records = .empty;
     state.session_records = .empty;
+    state.p2p_records = .empty;
     state.owned_buffers = .empty;
     state.connection_capacity = value.connection_capacity;
     state.started = false;
@@ -1310,6 +1328,7 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     state.channel_records.deinit(allocator);
     for (state.session_records.items) |*record| record.clients.deinit(allocator);
     state.session_records.deinit(allocator);
+    state.p2p_records.deinit(allocator);
     state.connection_records.deinit(allocator);
     for (state.owned_buffers.items) |buffer| release_buffer(state.allocator_bridge.c_allocator, buffer) catch {};
     state.owned_buffers.deinit(allocator);
@@ -1523,6 +1542,80 @@ pub export fn minna_san_connection_set_route_state(sdk: ?*CSdk, connection: ?*CC
     const handle = connection orelse return @intFromEnum(CResult.invalid_argument);
     const index = find_connection(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
     state.connection_records.items[index].route_state = route_state;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_create(sdk: ?*CSdk, candidate: CCandidate, out_session: ?*?*CP2PSession) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_session orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    if (validate_candidate(candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    if (state.p2p_records.items.len == state.connection_capacity) return @intFromEnum(CResult.resource_exhausted);
+    const handle = state.resources.acquire_kind(.service) catch return @intFromEnum(CResult.resource_exhausted);
+    state.p2p_records.append(state.allocator_bridge.allocator(), .{ .session = handle, .candidate = candidate }) catch {
+        state.resources.release_kind(handle, .service) catch {};
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(handle);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_destroy(sdk: ?*CSdk, session: ?*CP2PSession) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const record = state.p2p_records.items[index];
+    state.resources.release_kind(record.session, .service) catch return @intFromEnum(CResult.invalid_state);
+    _ = state.p2p_records.orderedRemove(index);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_set_candidate(sdk: ?*CSdk, session: ?*CP2PSession, candidate: CCandidate) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    if (validate_candidate(candidate) != .ok) return @intFromEnum(CResult.invalid_argument);
+    state.p2p_records.items[index].candidate = candidate;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_candidate(sdk: ?*CSdk, session: ?*CP2PSession, out_candidate: ?*CCandidate) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_candidate orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.p2p_records.items[index].candidate;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_copy_signaling(sdk: ?*CSdk, session: ?*CP2PSession, signaling: CConstBuffer, out_copy: ?*CBuffer) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_copy orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = .{ .data = null, .len = 0 };
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    _ = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const input = native_input(signaling) orelse return @intFromEnum(CResult.invalid_argument);
+    const copy = allocate_sdk_buffer(state, input.len) catch return @intFromEnum(CResult.resource_exhausted);
+    if (input.len > 0) @memcpy(copy.data[0..input.len], input);
+    output.* = copy;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_route_state(sdk: ?*CSdk, session: ?*CP2PSession, out_route_state: ?*u32) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_route_state orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = state.p2p_records.items[index].route_state;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_p2p_session_fallback_relay(sdk: ?*CSdk, session: ?*CP2PSession) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const handle = session orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_p2p_session(state, handle) orelse return @intFromEnum(CResult.invalid_argument);
+    state.p2p_records.items[index].route_state = c_route_relay;
     return @intFromEnum(CResult.ok);
 }
 
