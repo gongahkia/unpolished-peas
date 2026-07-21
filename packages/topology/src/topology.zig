@@ -120,6 +120,7 @@ pub const CandidateCheckRoute = candidate_pair_scheduler.CandidateCheckRoute;
 pub const CandidateCheckState = candidate_pair_scheduler.CandidateCheckState;
 pub const CandidatePairCheck = candidate_pair_scheduler.CandidatePairCheck;
 pub const CandidateCheckDispatch = candidate_pair_scheduler.CandidateCheckDispatch;
+pub const CandidateCheckDiagnostic = candidate_pair_scheduler.CandidateCheckDiagnostic;
 pub const CandidatePairSchedulerError = candidate_pair_scheduler.CandidatePairSchedulerError;
 pub const CandidatePairSchedulerConfig = candidate_pair_scheduler.CandidatePairSchedulerConfig;
 pub const CandidatePairScheduler = candidate_pair_scheduler.CandidatePairScheduler;
