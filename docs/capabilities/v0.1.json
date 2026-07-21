@@ -161,14 +161,14 @@
           "label": "WebGL 2",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh"}}
         },
         {
           "id": "webgpu",
           "label": "WebGPU",
           "status": "preview",
           "stable_core": ["lifecycle", "drawing_text", "keyboard_pointer", "audio", "assets", "fixed_timestep", "packaging", "deterministic_hooks"],
-          "ci": {"nightly": {"runner": "macos-26", "command": "safaridriver --enable && UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh"}}
+          "ci": {"nightly": {"runner": "macos-15-intel", "command": "UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh"}}
         }
       ]
     }
