@@ -2,15 +2,17 @@ const std = @import("std");
 const resource = @import("resource_handle.zig");
 const session = @import("session_registry.zig");
 const delivery = @import("channel_delivery.zig");
+const payload_pool = @import("payload_pool.zig");
 
-pub const ChannelRegistryError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, ChannelCapacityExceeded, UnknownChannel, QueueFull };
+pub const ChannelRegistryError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || delivery.ChannelDeliveryError || payload_pool.PayloadPoolError || error{ InvalidConfiguration, ChannelCapacityExceeded, UnknownChannel, QueueFull };
 
 pub const QueuedMessage = struct {
     channel: *resource.ResourceHandle,
     payload: []u8,
+    lease: payload_pool.Lease,
 
-    pub fn deinit(self: *QueuedMessage, allocator: std.mem.Allocator) void {
-        allocator.free(self.payload);
+    pub fn deinit(self: *QueuedMessage, _: std.mem.Allocator) void {
+        self.lease.release() catch {};
         self.* = undefined;
     }
 };
@@ -19,10 +21,10 @@ const Entry = struct {
     handle: *resource.ResourceHandle,
     session: *resource.ResourceHandle,
     descriptor: delivery.ChannelDescriptor,
-    queue: std.ArrayListUnmanaged([]u8) = .empty,
+    queue: std.ArrayListUnmanaged(payload_pool.Lease) = .empty,
 
     fn deinit(self: *Entry, allocator: std.mem.Allocator) void {
-        for (self.queue.items) |payload| allocator.free(payload);
+        for (self.queue.items) |*lease| lease.release() catch {};
         self.queue.deinit(allocator);
         self.* = undefined;
     }
@@ -32,12 +34,13 @@ pub const ChannelRegistry = struct {
     allocator: std.mem.Allocator,
     resources: *resource.ResourceRegistry,
     sessions: *session.SessionRegistry,
+    payloads: *payload_pool.PayloadPool,
     capacity: usize,
     entries: std.ArrayListUnmanaged(Entry) = .empty,
 
-    pub fn init(allocator: std.mem.Allocator, resources: *resource.ResourceRegistry, sessions: *session.SessionRegistry, capacity: usize) ChannelRegistryError!ChannelRegistry {
+    pub fn init(allocator: std.mem.Allocator, resources: *resource.ResourceRegistry, sessions: *session.SessionRegistry, payloads: *payload_pool.PayloadPool, capacity: usize) ChannelRegistryError!ChannelRegistry {
         if (capacity == 0 or capacity > resources.slots.len) return error.InvalidConfiguration;
-        return .{ .allocator = allocator, .resources = resources, .sessions = sessions, .capacity = capacity };
+        return .{ .allocator = allocator, .resources = resources, .sessions = sessions, .payloads = payloads, .capacity = capacity };
     }
 
     pub fn deinit(self: *ChannelRegistry) void {
@@ -63,7 +66,15 @@ pub const ChannelRegistry = struct {
         const entry = try self.lookup(handle);
         try entry.descriptor.validate_payload(payload.len);
         if (entry.queue.items.len >= entry.descriptor.maximum_in_flight) return error.QueueFull;
-        try entry.queue.append(self.allocator, try self.allocator.dupe(u8, payload));
+        const lease = self.payloads.copy(payload) catch |err| switch (err) {
+            error.PoolExhausted, error.PayloadTooLarge => return error.QueueFull,
+            else => return err,
+        };
+        errdefer {
+            var returned = lease;
+            returned.release() catch {};
+        }
+        try entry.queue.append(self.allocator, lease);
     }
 
     pub fn dequeue(self: *ChannelRegistry, owner: *resource.ResourceHandle) ChannelRegistryError!?QueuedMessage {
@@ -75,7 +86,8 @@ pub const ChannelRegistry = struct {
         }
         const index = selected orelse return null;
         const entry = &self.entries.items[index];
-        return .{ .channel = entry.handle, .payload = entry.queue.orderedRemove(0) };
+        const lease = entry.queue.orderedRemove(0);
+        return .{ .channel = entry.handle, .payload = lease.bytes, .lease = lease };
     }
 
     pub fn teardown(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!void {
@@ -106,8 +118,10 @@ test "channel registries dequeue by priority and reject queue overflow determini
     defer resources.deinit();
     var sessions = try session.SessionRegistry.init(std.testing.allocator, &resources, 1);
     defer sessions.deinit();
+    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 2, 8);
+    defer payloads.deinit();
     const owner = try sessions.create();
-    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, 2);
+    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, &payloads, 2);
     defer channels.deinit();
     const low = try channels.create(owner, .{ .delivery = .datagram, .priority = 1, .maximum_payload_bytes = 4, .maximum_in_flight = 1 });
     const high = try channels.create(owner, .{ .delivery = .datagram, .priority = 2, .maximum_payload_bytes = 4, .maximum_in_flight = 1 });
@@ -130,11 +144,30 @@ test "channel registries release queued payloads and handles on teardown" {
     defer resources.deinit();
     var sessions = try session.SessionRegistry.init(std.testing.allocator, &resources, 1);
     defer sessions.deinit();
+    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 1, 4);
+    defer payloads.deinit();
     const owner = try sessions.create();
-    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, 1);
+    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, &payloads, 1);
     defer channels.deinit();
     const handle = try channels.create(owner, .{ .delivery = .datagram, .maximum_payload_bytes = 4, .maximum_in_flight = 1 });
     try channels.enqueue(handle, "data");
     try channels.teardown(handle);
     try std.testing.expectError(error.StaleHandle, channels.queued(handle));
+}
+
+test "channel registries report pool exhaustion as bounded backpressure" {
+    var resources = try resource.ResourceRegistry.init(std.testing.allocator, 3);
+    defer resources.deinit();
+    var sessions = try session.SessionRegistry.init(std.testing.allocator, &resources, 1);
+    defer sessions.deinit();
+    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 1, 4);
+    defer payloads.deinit();
+    const owner = try sessions.create();
+    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, &payloads, 2);
+    defer channels.deinit();
+    const first = try channels.create(owner, .{ .delivery = .datagram, .maximum_payload_bytes = 4, .maximum_in_flight = 1 });
+    const second = try channels.create(owner, .{ .delivery = .datagram, .maximum_payload_bytes = 4, .maximum_in_flight = 1 });
+    try channels.enqueue(first, "one");
+    try std.testing.expectError(error.QueueFull, channels.enqueue(second, "two"));
+    try std.testing.expectEqual(@as(usize, 1), payloads.pressure().in_use_slots);
 }

@@ -9,6 +9,7 @@ const resource_handle = @import("resource_handle.zig");
 const session_registry = @import("session_registry.zig");
 const channel_registry = @import("channel_registry.zig");
 const timer_wheel = @import("timer_wheel.zig");
+const payload_pool = @import("payload_pool.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
@@ -36,6 +37,7 @@ pub const Runtime = struct {
     resources: resource_handle.ResourceRegistry,
     sessions: session_registry.SessionRegistry,
     channels: channel_registry.ChannelRegistry,
+    payloads: *payload_pool.PayloadPool,
     timers: timer_wheel.TimerWheel,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
@@ -50,7 +52,11 @@ pub const Runtime = struct {
         errdefer resources.deinit();
         var sessions = try session_registry.SessionRegistry.init(allocator, &resources, platform_config.limits.session_capacity);
         errdefer sessions.deinit();
-        var channels = try channel_registry.ChannelRegistry.init(allocator, &resources, &sessions, platform_config.limits.channel_capacity);
+        const payloads = try allocator.create(payload_pool.PayloadPool);
+        errdefer allocator.destroy(payloads);
+        payloads.* = try payload_pool.PayloadPool.init(allocator, platform_config.limits.channel_capacity, platform_config.limits.payload_pool_bytes);
+        errdefer payloads.deinit();
+        var channels = try channel_registry.ChannelRegistry.init(allocator, &resources, &sessions, payloads, platform_config.limits.channel_capacity);
         errdefer channels.deinit();
         var timers = try timer_wheel.TimerWheel.init(allocator, platform_config.limits.event_capacity);
         errdefer timers.deinit();
@@ -66,6 +72,7 @@ pub const Runtime = struct {
             .resources = resources,
             .sessions = sessions,
             .channels = channels,
+            .payloads = payloads,
             .timers = timers,
             .services = services,
         };
@@ -76,6 +83,8 @@ pub const Runtime = struct {
         self.providers.deinit();
         self.timers.deinit();
         self.channels.deinit();
+        self.payloads.deinit();
+        self.resources.allocator.destroy(self.payloads);
         self.sessions.deinit();
         self.resources.deinit();
         self.poll_runtime.deinit();
@@ -132,6 +141,10 @@ pub const Runtime = struct {
 
     pub fn cancelTimer(self: *Runtime, id: timer_wheel.TimerId) timer_wheel.TimerWheelError!void {
         try self.timers.cancel(id);
+    }
+
+    pub fn payloadPressure(self: *const Runtime) payload_pool.PayloadPoolPressure {
+        return self.payloads.pressure();
     }
 
     pub fn registerService(self: *Runtime, module: service_module.ServiceModule) service_module.ServiceModuleError!service_module.ServiceModuleId {
