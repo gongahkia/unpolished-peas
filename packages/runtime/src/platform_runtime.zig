@@ -15,6 +15,7 @@ const channel_delivery = @import("channel_delivery.zig");
 const credential_callback = @import("credential_callback.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
+const security_failure_events = @import("security_failure_events.zig");
 const tcp_channel_registry = @import("tcp_channel_registry.zig");
 const tcp_fallback_registry = @import("tcp_fallback_registry.zig");
 const tcp_listener_registry = @import("tcp_listener_registry.zig");
@@ -23,7 +24,7 @@ const transport_retry_controller = @import("transport_retry_controller.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || transport_retry_controller.TransportRetryControllerError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || credential_callback.CredentialCallbackError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ ReentrantPoll, CredentialCallbackRequired };
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || transport_retry_controller.TransportRetryControllerError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || credential_callback.CredentialCallbackError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || security_failure_events.RuntimeSecurityFailureEventRegistryError || error{ ReentrantPoll, CredentialCallbackRequired };
 
 pub const UdpReadinessTarget = union(enum) {
     listener: *resource_handle.ResourceHandle,
@@ -47,6 +48,7 @@ pub const RuntimePollResult = struct {
     transport_retry: ?transport_retry_controller.TransportRetryEvent = null,
     udp_readiness: ?UdpReadinessEvent = null,
     credential: ?credential_callback.CredentialPollResult = null,
+    security_failure: ?security_failure_events.RuntimeSecurityFailureEvent = null,
 
     pub fn deinit(self: *RuntimePollResult) void {
         if (self.event) |*event_envelope| event_envelope.deinit();
@@ -72,6 +74,7 @@ pub const Runtime = struct {
     timers: timer_wheel.TimerWheel,
     transport_retries: transport_retry_controller.TransportRetryController,
     credentials: ?credential_callback.CredentialCallbackRegistry = null,
+    security_failures: security_failure_events.RuntimeSecurityFailureEventRegistry,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -117,6 +120,7 @@ pub const Runtime = struct {
         var credentials: ?credential_callback.CredentialCallbackRegistry = null;
         if (sdk.configuration().credentialCallbackConfig()) |callback| credentials = try credential_callback.CredentialCallbackRegistry.init(allocator, callback);
         errdefer if (credentials) |*value| value.deinit();
+        const security_failures = try security_failure_events.RuntimeSecurityFailureEventRegistry.init(@min(platform_config.limits.event_capacity, security_failure_events.max_runtime_security_failure_events));
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
         errdefer providers.deinit();
         var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
@@ -139,6 +143,7 @@ pub const Runtime = struct {
             .timers = timers,
             .transport_retries = transport_retries,
             .credentials = credentials,
+            .security_failures = security_failures,
             .services = services,
         };
     }
@@ -300,15 +305,24 @@ pub const Runtime = struct {
     }
 
     pub fn resetUdpPacketProtection(self: *Runtime, handle: *resource_handle.ResourceHandle, config_value: udp_session_registry.UdpPacketProtectionConfig) udp_session_registry.UdpSessionError!void {
-        try self.udp_sessions.resetPacketProtection(handle, config_value);
+        self.udp_sessions.resetPacketProtection(handle, config_value) catch |err| {
+            self.recordSecurityFailure(.rotation);
+            return err;
+        };
     }
 
     pub fn forceUdpPacketKeyRotation(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
-        try self.udp_sessions.forcePacketKeyRotation(handle);
+        self.udp_sessions.forcePacketKeyRotation(handle) catch |err| {
+            self.recordSecurityFailure(.rotation);
+            return err;
+        };
     }
 
     pub fn rollbackUdpPacketKeyRotation(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
-        try self.udp_sessions.rollbackPacketKeyRotation(handle);
+        self.udp_sessions.rollbackPacketKeyRotation(handle) catch |err| {
+            self.recordSecurityFailure(.rotation);
+            return err;
+        };
     }
 
     pub fn closeUdpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
@@ -351,7 +365,9 @@ pub const Runtime = struct {
     }
 
     pub fn pollUdpReceives(self: *Runtime, handle: *resource_handle.ResourceHandle, events: []udp_session_registry.UdpReceiveEvent) udp_session_registry.UdpSessionError!udp_session_registry.UdpReceiveBatch {
-        return self.udp_sessions.pollReceives(handle, events);
+        const batch = try self.udp_sessions.pollReceives(handle, events);
+        self.recordUdpSecurityFailures(batch);
+        return batch;
     }
 
     pub fn flushUdpSends(self: *Runtime, handle: *resource_handle.ResourceHandle, events: []udp_session_registry.UdpSendEvent) udp_session_registry.UdpSessionError!udp_session_registry.UdpSendBatch {
@@ -397,10 +413,16 @@ pub const Runtime = struct {
     }
 
     pub fn start(self: *Runtime) RuntimeError!void {
-        try self.security_policy.validate();
+        self.security_policy.validate() catch |err| {
+            self.recordSecurityFailure(.policy);
+            return err;
+        };
         try self.providers.start();
         errdefer for (self.providers.providers.items) |*registered| registered.stop();
-        try self.security_policy.validateProviders(&self.providers);
+        self.security_policy.validateProviders(&self.providers) catch |err| {
+            self.recordSecurityFailure(.policy);
+            return err;
+        };
         self.services.start() catch {
             return error.PollFailed;
         };
@@ -428,6 +450,18 @@ pub const Runtime = struct {
 
     pub fn enqueue(self: *Runtime, envelope: event.EventEnvelope) std.mem.Allocator.Error!void {
         try self.poll_runtime.enqueue(envelope);
+    }
+
+    fn recordSecurityFailure(self: *Runtime, failure: security_failure_events.RuntimeSecurityFailureClass) void {
+        self.security_failures.record(failure);
+    }
+
+    pub fn securityFailureCounters(self: *const Runtime) security_failure_events.RuntimeSecurityFailureCounters {
+        return self.security_failures.counters();
+    }
+
+    pub fn pollSecurityFailure(self: *Runtime) ?security_failure_events.RuntimeSecurityFailureEvent {
+        return self.security_failures.poll();
     }
 
     pub fn selectRoute(self: *const Runtime, selector: topology.RouteSelector, capabilities: topology.RouteCapabilities) RuntimeError!topology.RouteSelection {
@@ -460,6 +494,7 @@ pub const Runtime = struct {
         const transport_retry = if (timer) |value| try self.transport_retries.onTimer(value) else null;
         const udp_readiness = try self.pollUdpReadiness();
         const credential = if (self.credentials) |*value| value.poll(input.now_ns) else null;
+        const security_failure = self.pollSecurityFailure();
         var outcome = try self.poll_runtime.poll(input);
         errdefer outcome.deinit();
         var next_deadline = outcome.next_deadline;
@@ -478,9 +513,22 @@ pub const Runtime = struct {
             .transport_retry = transport_retry,
             .udp_readiness = udp_readiness,
             .credential = credential,
+            .security_failure = security_failure,
         };
         outcome.event = null;
         return result;
+    }
+
+    fn recordUdpSecurityFailures(self: *Runtime, batch: udp_session_registry.UdpReceiveBatch) void {
+        inline for ([_]udp_session_registry.UdpSecurityFailureKind{ .authentication, .decryption, .replay, .rotation }) |failure| {
+            var remaining = batch.security_failures[@intFromEnum(failure)];
+            while (remaining != 0) : (remaining -= 1) self.recordSecurityFailure(switch (failure) {
+                .authentication => .authentication,
+                .decryption => .decryption,
+                .replay => .replay,
+                .rotation => .rotation,
+            });
+        }
     }
 };
 
@@ -1146,6 +1194,29 @@ test "unified runtimes poll application credential callbacks without blocking" {
     try std.testing.expectEqual(credential_callback.CredentialRejectionCause.timed_out, timed_out.credential.?.decision.rejected);
 }
 
+test "unified runtimes expose bounded redacted security failure events" {
+    var manual = core.ManualClock.init(0);
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .service_capacity = 0, .event_capacity = 2, .poll_work_budget = 2 } }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    var udp_failures = udp_session_registry.UdpReceiveBatch{};
+    inline for ([_]udp_session_registry.UdpSecurityFailureKind{ .authentication, .decryption, .replay, .rotation }) |failure| udp_failures.security_failures[@intFromEnum(failure)] = 1;
+    runtime.recordUdpSecurityFailures(udp_failures);
+    runtime.recordSecurityFailure(.policy);
+    const counters = runtime.securityFailureCounters();
+    inline for ([_]security_failure_events.RuntimeSecurityFailureClass{ .authentication, .decryption, .replay, .policy, .rotation }) |failure| try std.testing.expectEqual(@as(u64, 1), counters.failures[@intFromEnum(failure)]);
+    try std.testing.expectEqual(@as(u64, 3), counters.dropped_events);
+    var first = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer first.deinit();
+    try std.testing.expectEqual(security_failure_events.RuntimeSecurityFailureEvent{ .sequence = 0, .failure = .authentication }, first.security_failure.?);
+    var second = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer second.deinit();
+    try std.testing.expectEqual(security_failure_events.RuntimeSecurityFailureEvent{ .sequence = 1, .failure = .decryption }, second.security_failure.?);
+    var empty = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer empty.deinit();
+    try std.testing.expect(empty.security_failure == null);
+}
+
 test "runtime security policies validate production providers and credentials before service startup" {
     const CredentialFixture = struct {
         calls: usize = 0,
@@ -1224,4 +1295,5 @@ test "runtime security policies stop providers before unsafe services start" {
     try std.testing.expectError(error.ProviderConstraintUnsatisfied, runtime.start());
     try std.testing.expectEqual(@as(u8, 1), fake.stops);
     try std.testing.expectEqual(@as(usize, 0), service.starts);
+    try std.testing.expectEqual(security_failure_events.RuntimeSecurityFailureClass.policy, runtime.pollSecurityFailure().?.failure);
 }
