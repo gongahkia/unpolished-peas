@@ -111,6 +111,24 @@ pub const ChannelRegistry = struct {
         return .{ .channel = entry.handle, .payload = lease.bytes, .lease = lease };
     }
 
+    pub fn dequeueExact(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!?QueuedMessage {
+        const entry = try self.lookup(handle);
+        if (entry.queue.items.len == 0) return null;
+        const lease = entry.queue.orderedRemove(0);
+        return .{ .channel = handle, .payload = lease.bytes, .lease = lease };
+    }
+
+    pub fn copyMessage(self: *ChannelRegistry, handle: *resource.ResourceHandle, payload: []const u8) ChannelRegistryError!QueuedMessage {
+        const entry = try self.lookup(handle);
+        try entry.descriptor.validate_payload(payload.len);
+        if (entry.descriptor.transport() == .datagram) try self.validateDatagramPayload(entry.session, payload.len);
+        const lease = self.payloads.copy(payload) catch |err| switch (err) {
+            error.PoolExhausted, error.PayloadTooLarge => return error.QueueFull,
+            else => return err,
+        };
+        return .{ .channel = handle, .payload = lease.bytes, .lease = lease };
+    }
+
     pub fn requeueFront(self: *ChannelRegistry, message: *QueuedMessage) ChannelRegistryError!void {
         const entry = try self.lookup(message.channel);
         if (entry.queue.items.len >= entry.descriptor.maximum_in_flight) return error.QueueFull;
