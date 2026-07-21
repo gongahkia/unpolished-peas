@@ -13,11 +13,12 @@ pub fn main() !void {
     const destination = args.next() orelse return usage();
     if (args.next() != null) return usage();
 
-    try createProject(template_root, destination);
+    try createProject(allocator, template_root, destination);
     std.debug.print("created unpolished-peas project: {s}\n", .{destination});
 }
 
-pub fn createProject(template_root: []const u8, destination: []const u8) !void {
+pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, destination: []const u8) !void {
+    _ = allocator;
     try validateDestination(destination);
     if (std.fs.cwd().access(destination, .{})) |_| return error.DestinationExists else |err| switch (err) {
         error.FileNotFound => {},
@@ -58,7 +59,7 @@ test "starter creates a structured project and rejects invalid destinations" {
     const template_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "templates/bounce");
     defer std.testing.allocator.free(template_root);
 
-    try createProject(template_root, destination);
+    try createProject(std.testing.allocator, template_root, destination);
     var project = try std.fs.openDirAbsolute(destination, .{});
     defer project.close();
     try project.access("build.zig", .{});
@@ -83,6 +84,6 @@ test "starter creates a structured project and rejects invalid destinations" {
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"maps\"") == null);
     const check_issue = try tools.checkProject(std.testing.allocator, destination);
     try std.testing.expect(check_issue == null);
-    try std.testing.expectError(error.DestinationExists, createProject(template_root, destination));
-    try std.testing.expectError(error.InvalidDestination, createProject(template_root, ""));
+    try std.testing.expectError(error.DestinationExists, createProject(std.testing.allocator, template_root, destination));
+    try std.testing.expectError(error.InvalidDestination, createProject(std.testing.allocator, template_root, ""));
 }
