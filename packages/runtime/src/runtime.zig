@@ -31,6 +31,7 @@ const spatial_grid_interest = @import("spatial_grid_interest.zig");
 const version = @import("version.zig");
 const dedicated_session_scheduler = @import("dedicated_session_scheduler.zig");
 const provider = @import("provider.zig");
+const hostname_resolution_provider = @import("hostname_resolution_provider.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -243,6 +244,13 @@ pub const max_endpoint_text_bytes = transport.max_endpoint_text_bytes;
 pub const EndpointKind = transport.EndpointKind;
 pub const EndpointError = transport.EndpointError;
 pub const Endpoint = transport.Endpoint;
+pub const max_hostname_resolution_requests = hostname_resolution_provider.max_hostname_resolution_requests;
+pub const HostnameResolutionProviderError = hostname_resolution_provider.HostnameResolutionProviderError;
+pub const HostnameResolutionProviderConfig = hostname_resolution_provider.HostnameResolutionProviderConfig;
+pub const HostnameResolutionRequestHandle = hostname_resolution_provider.HostnameResolutionRequestHandle;
+pub const HostnameResolutionRequestState = hostname_resolution_provider.HostnameResolutionRequestState;
+pub const HostnameResolutionResult = hostname_resolution_provider.HostnameResolutionResult;
+pub const HostnameResolutionProvider = hostname_resolution_provider.HostnameResolutionProvider;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -305,5 +313,6 @@ test {
     _ = @import("topology_fault_scenarios.zig");
     _ = @import("dedicated_session_scheduler.zig");
     _ = @import("provider.zig");
+    _ = @import("hostname_resolution_provider.zig");
     _ = @import("platform_runtime.zig");
 }
