@@ -24,7 +24,7 @@ See [v0.1 migrations](migrations.md) before upgrading a pre-v0.1 project.
 
 A maintainer must complete all of these steps for every new tag:
 
-1. Update `src/starter.zig`, `templates/bounce/README.md`, and the root README with the exact new tag URL. The generator resolves the archive hash with `zig fetch` and pins that result in each generated manifest.
+1. With a clean tree, run `script/prepare_starter_release.sh vMAJOR.MINOR.PATCH`; review and commit the updated `templates/bounce/build.zig.zon`. Its archive URL and hash are one release artifact and must change together.
 2. Run the required local checks in `CONTRIBUTING.md`, including the clean archive starter test.
 3. Push an immutable `vMAJOR.MINOR.PATCH` tag only after CI is green.
 4. Let the tag workflow generate, build, and run a project from that exact public archive with empty Zig caches. The workflow rejects a local path dependency or a tag mismatch.

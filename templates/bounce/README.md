@@ -12,4 +12,4 @@ Arrow keys steer the square. The game callbacks use the stable `GameContext` pro
 
 Before shipping, replace `organization`, `application`, and `title` in `src/main.zig` with stable game-specific values.
 
-`v0.0.3` is withdrawn and must not be used for new projects. A published starter targets one non-draft engine tag and resolves its exact Zig package hash when the project is generated.
+`v0.0.3` is withdrawn and must not be used for new projects. A published starter copies one reviewed manifest template with a public engine tag URL and its matching Zig package hash; update both coordinates together for every release.
