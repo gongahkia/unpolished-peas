@@ -18,10 +18,11 @@ const tcp_channel_registry = @import("tcp_channel_registry.zig");
 const tcp_fallback_registry = @import("tcp_fallback_registry.zig");
 const tcp_listener_registry = @import("tcp_listener_registry.zig");
 const tcp_session_registry = @import("tcp_session_registry.zig");
+const transport_retry_controller = @import("transport_retry_controller.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || transport_retry_controller.TransportRetryControllerError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const UdpReadinessTarget = union(enum) {
     listener: *resource_handle.ResourceHandle,
@@ -42,6 +43,7 @@ pub const RuntimePollResult = struct {
     next_deadline: ?core.TimeNs = null,
     event: ?event.EventEnvelope = null,
     timer: ?timer_wheel.Timer = null,
+    transport_retry: ?transport_retry_controller.TransportRetryEvent = null,
     udp_readiness: ?UdpReadinessEvent = null,
 
     pub fn deinit(self: *RuntimePollResult) void {
@@ -66,6 +68,7 @@ pub const Runtime = struct {
     udp_sessions: udp_session_registry.UdpSessionRegistry,
     payloads: *payload_pool.PayloadPool,
     timers: timer_wheel.TimerWheel,
+    transport_retries: transport_retry_controller.TransportRetryController,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -106,6 +109,8 @@ pub const Runtime = struct {
         errdefer udp_sessions.deinit();
         var timers = try timer_wheel.TimerWheel.init(allocator, platform_config.limits.event_capacity);
         errdefer timers.deinit();
+        var transport_retries = try transport_retry_controller.TransportRetryController.init(allocator, platform_config.limits.session_capacity);
+        errdefer transport_retries.deinit();
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
         errdefer providers.deinit();
         var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
@@ -126,6 +131,7 @@ pub const Runtime = struct {
             .udp_sessions = udp_sessions,
             .payloads = payloads,
             .timers = timers,
+            .transport_retries = transport_retries,
             .services = services,
         };
     }
@@ -134,6 +140,7 @@ pub const Runtime = struct {
         const allocator = self.resources.allocator;
         self.services.deinit();
         self.providers.deinit();
+        self.transport_retries.deinit();
         self.timers.deinit();
         self.tcp_channels.deinit();
         self.tcp_fallbacks.deinit();
@@ -178,6 +185,7 @@ pub const Runtime = struct {
     }
 
     pub fn closeSession(self: *Runtime, handle: *resource_handle.ResourceHandle) session_registry.SessionRegistryError!void {
+        self.transport_retries.forget(&self.timers, handle);
         try self.sessions.close(handle);
     }
 
@@ -234,6 +242,7 @@ pub const Runtime = struct {
             error.UnknownSession => {},
             else => return err,
         };
+        self.transport_retries.forget(&self.timers, handle);
         try self.tcp_sessions.close(handle);
     }
 
@@ -278,8 +287,27 @@ pub const Runtime = struct {
     }
 
     pub fn closeUdpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
+        self.transport_retries.forget(&self.timers, handle);
         self.tcp_fallbacks.forget(handle);
         try self.udp_sessions.close(handle);
+    }
+
+    pub fn registerTransportRetry(self: *Runtime, session_handle: *resource_handle.ResourceHandle, candidate: topology.RouteCandidate, policy: topology.RouteCandidatePolicy, retry_config: transport_retry_controller.TransportRetryConfig) RuntimeError!void {
+        _ = try self.sessions.lookup(session_handle);
+        if (!self.providers.supportsRequirements(policy.required_capabilities)) return error.UnsupportedCapabilities;
+        try self.transport_retries.register(session_handle, candidate, policy, retry_config);
+    }
+
+    pub fn recordTransportFailure(self: *Runtime, session_handle: *resource_handle.ResourceHandle, failure: transport_api.TransportIoFailure, now_ns: core.TimeNs) RuntimeError!transport_retry_controller.TransportRetryEvent {
+        return self.transport_retries.recordFailure(&self.timers, session_handle, failure, now_ns);
+    }
+
+    pub fn transportRetryStatus(self: *Runtime, session_handle: *resource_handle.ResourceHandle) RuntimeError!transport_retry_controller.TransportRetryStatus {
+        return self.transport_retries.status(session_handle);
+    }
+
+    pub fn cancelTransportRetry(self: *Runtime, session_handle: *resource_handle.ResourceHandle) RuntimeError!transport_retry_controller.TransportRetryEvent {
+        return self.transport_retries.cancel(&self.timers, session_handle);
     }
 
     pub fn registerTcpFallback(self: *Runtime, udp_session: *resource_handle.ResourceHandle, policy: topology.RouteCandidatePolicy) RuntimeError!void {
@@ -388,6 +416,7 @@ pub const Runtime = struct {
         defer self.poll_active = false;
         const provider_result = try self.providers.poll(input.now_ns, @min(input.work_budget, self.platform_config.limits.poll_work_budget));
         const timer = try self.timers.advance(input.now_ns);
+        const transport_retry = if (timer) |value| try self.transport_retries.onTimer(value) else null;
         const udp_readiness = try self.pollUdpReadiness();
         var outcome = try self.poll_runtime.poll(input);
         errdefer outcome.deinit();
@@ -401,6 +430,7 @@ pub const Runtime = struct {
             .next_deadline = next_deadline,
             .event = outcome.event,
             .timer = timer,
+            .transport_retry = transport_retry,
             .udp_readiness = udp_readiness,
         };
         outcome.event = null;
@@ -489,6 +519,44 @@ test "unified runtimes rotate bounded provider work and expose due timers" {
     defer due.deinit();
     try std.testing.expectEqual(@as(u8, 1), second.polls);
     try std.testing.expectEqual(timer_wheel.TimerKind.session, due.timer.?.kind);
+}
+
+test "unified runtimes reschedule transport retries only through due timers" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        const session_handle = try runtime.createSession();
+        const candidate = topology.RouteCandidate{ .id = 1, .transport = .udp, .endpoint = transport_api.Endpoint.from_ipv4(.{ .octets = .{ 127, 0, 0, 1 }, .port = 9000 }), .negotiated = true, .health = .healthy };
+        try runtime.registerTransportRetry(session_handle, candidate, .{ .allowed_transport_bits = topology.route_transport_bit(.udp) }, .{ .maximum_attempts = 3, .initial_cooldown_ns = 5, .maximum_cooldown_ns = 20 });
+        const failure = transport_api.normalize_io_failure(error.ConnectionResetByPeer);
+        const first = try runtime.recordTransportFailure(session_handle, failure, 0);
+        try std.testing.expectEqual(@as(core.TimeNs, 5), first.retry_scheduled.deadline_ns);
+        var early = try runtime.poll(.{ .now_ns = 4 });
+        defer early.deinit();
+        try std.testing.expect(early.transport_retry == null);
+        var first_due = try runtime.poll(.{ .now_ns = 5 });
+        defer first_due.deinit();
+        try std.testing.expectEqual(timer_wheel.TimerKind.retransmission, first_due.timer.?.kind);
+        try std.testing.expectEqual(@as(u8, 1), first_due.transport_retry.?.retry_ready.attempt);
+        const second = try runtime.recordTransportFailure(session_handle, failure, 5);
+        try std.testing.expectEqual(@as(core.TimeNs, 15), second.retry_scheduled.deadline_ns);
+        var second_due = try runtime.poll(.{ .now_ns = 15 });
+        defer second_due.deinit();
+        try std.testing.expectEqual(@as(u8, 2), second_due.transport_retry.?.retry_ready.attempt);
+        const terminal = try runtime.recordTransportFailure(session_handle, failure, 15);
+        try std.testing.expectEqual(@as(u8, 3), terminal.terminal_failure.attempt);
+        try std.testing.expectEqual(transport_retry_controller.TransportRetryState.terminal, (try runtime.transportRetryStatus(session_handle)).state);
+        var idle = try runtime.poll(.{ .now_ns = 100 });
+        defer idle.deinit();
+        try std.testing.expect(idle.timer == null);
+        try std.testing.expect(idle.transport_retry == null);
+        try runtime.closeSession(session_handle);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }
 
 test "unified runtimes own bounded resource registries and empty teardown" {
