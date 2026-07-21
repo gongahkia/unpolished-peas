@@ -62,12 +62,12 @@ pub const TcpSessionRegistry = struct {
         const session_handle = try self.sessions.create();
         errdefer self.closeSession(session_handle);
         try self.sessions.transition(session_handle, .begin_establishing);
-        var connection = try transport.TcpConnection.init();
-        _ = connection.start_connect(peer, config.timeout_ms) catch |err| switch (err) {
+        var tcp_connection = try transport.TcpConnection.init();
+        _ = tcp_connection.start_connect(peer, config.timeout_ms) catch |err| switch (err) {
             error.ConnectionRefused, error.ConnectFailed => transport.TcpConnectionState.failed,
             else => return err,
         };
-        try self.entries.append(self.allocator, .{ .session = session_handle, .connection = connection, .route = route });
+        try self.entries.append(self.allocator, .{ .session = session_handle, .connection = tcp_connection, .route = route });
         return session_handle;
     }
 
@@ -111,6 +111,21 @@ pub const TcpSessionRegistry = struct {
         if (lifecycle.state != .establishing) return error.InvalidState;
         try entry.connection.cancel();
         try lifecycle.transition(.begin_draining);
+    }
+
+    pub fn connection(self: *TcpSessionRegistry, handle: *resource.ResourceHandle) TcpSessionRegistryError!*transport.TcpConnection {
+        return &(try self.lookup(handle)).connection;
+    }
+
+    pub fn adopt(self: *TcpSessionRegistry, accepted_connection: *transport.TcpConnection, peer: transport.Ipv4Address) TcpSessionRegistryError!*resource.ResourceHandle {
+        if (self.entries.items.len >= self.capacity or accepted_connection.state != .connected) return error.InvalidConfiguration;
+        const session_handle = try self.sessions.create();
+        errdefer self.closeSession(session_handle);
+        try self.sessions.transition(session_handle, .begin_establishing);
+        try self.sessions.transition(session_handle, .mark_ready);
+        try self.entries.append(self.allocator, .{ .session = session_handle, .connection = accepted_connection.*, .route = .{ .family = .ipv4, .address = .{ .ipv4 = peer } } });
+        accepted_connection.* = undefined;
+        return session_handle;
     }
 
     pub fn close(self: *TcpSessionRegistry, handle: *resource.ResourceHandle) TcpSessionRegistryError!void {
