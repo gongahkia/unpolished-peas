@@ -91,7 +91,7 @@ pub const TlsClientRoute = struct {
         if (plaintext.len > self.maximum_plaintext_bytes) return error.PayloadTooLarge;
         if (self.write_len != 0) return error.WritePending;
         const encrypted = self.provider.encrypt(plaintext, self.write_buffer) catch |err| {
-            self.fail(.write_failed);
+            _ = self.fail(.write_failed);
             return err;
         };
         self.write_len = encrypted.len;
@@ -133,12 +133,12 @@ pub const TlsClientRoute = struct {
         const received = std.posix.recv(socket, ciphertext, 0) catch |err| switch (err) {
             error.WouldBlock => return null,
             else => {
-                self.fail(.read_failed);
+                _ = self.fail(.read_failed);
                 return error.ReadFailed;
             },
         };
         if (received == 0) {
-            self.fail(.peer_closed);
+            _ = self.fail(.peer_closed);
             return error.ConnectionClosed;
         }
         return self.provider.decrypt(ciphertext[0..received], plaintext) catch |err| {

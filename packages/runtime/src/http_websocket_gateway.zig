@@ -110,7 +110,7 @@ test "gateway upgrades an authorized route and relays bounded runtime messages" 
     defer client.deinit();
     var services = try service.ServiceRegistry.init(std.testing.allocator, .{ .maximum_modules = 1 });
     defer services.deinit();
-    const module = try services.register(.{ .config = .{ .name = "gateway", .route_prefix = "/", .maximum_state_bytes = 1 }, .hooks = .{ .route = Fixture.route } });
+    const module = try services.register(.{ .config = .{ .name = "gateway", .route_prefix = "/", .maximum_state_bytes = 1 }, .context = null, .hooks = .{ .route = Fixture.route } });
     try services.start();
     var router = try routing.HttpServiceRouter.init(std.testing.allocator, .{ .services = &services, .maximum_routes = 1 });
     defer router.deinit();

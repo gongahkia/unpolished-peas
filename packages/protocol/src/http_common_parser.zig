@@ -11,6 +11,7 @@ pub const HttpRequestLine = struct { method: []const u8, target: []const u8 };
 pub const HttpStatusLine = struct { status: u16, reason: []const u8 };
 pub const HttpHeader = struct { name: []const u8, value: []const u8 };
 pub const HttpParserEvent = union(enum) { request_line: HttpRequestLine, status_line: HttpStatusLine, header: HttpHeader, headers_complete: HttpBodyFraming, body: []const u8, complete: void };
+pub const HttpParserFeed = struct { consumed: usize, event: ?HttpParserEvent };
 pub const HttpParserConfig = struct {
     kind: HttpMessageKind,
     maximum_start_line_bytes: usize = max_http_start_line_bytes,
@@ -42,7 +43,7 @@ pub const HttpParser = struct {
         return .{ .config = config };
     }
 
-    pub fn feed(self: *HttpParser, input: []const u8) HttpParserError!struct { consumed: usize, event: ?HttpParserEvent } {
+    pub fn feed(self: *HttpParser, input: []const u8) HttpParserError!HttpParserFeed {
         if (self.state == .failed) return error.InvalidState;
         if (self.state == .complete) return .{ .consumed = 0, .event = .complete };
         return switch (self.state) {
@@ -58,7 +59,7 @@ pub const HttpParser = struct {
         self.* = .{ .config = config };
     }
 
-    fn feedLine(self: *HttpParser, input: []const u8) HttpParserError!struct { consumed: usize, event: ?HttpParserEvent } {
+    fn feedLine(self: *HttpParser, input: []const u8) HttpParserError!HttpParserFeed {
         var consumed: usize = 0;
         while (consumed < input.len) : (consumed += 1) {
             const byte = input[consumed];
@@ -74,7 +75,7 @@ pub const HttpParser = struct {
         return .{ .consumed = consumed, .event = null };
     }
 
-    fn feedBody(self: *HttpParser, input: []const u8) HttpParserError!struct { consumed: usize, event: ?HttpParserEvent } {
+    fn feedBody(self: *HttpParser, input: []const u8) HttpParserError!HttpParserFeed {
         if (input.len == 0) return .{ .consumed = 0, .event = null };
         const count = @min(input.len, self.body_remaining);
         const body = input[0..count];
@@ -83,7 +84,7 @@ pub const HttpParser = struct {
         return .{ .consumed = count, .event = .{ .body = body } };
     }
 
-    fn feedChunkCrlf(self: *HttpParser, input: []const u8) HttpParserError!struct { consumed: usize, event: ?HttpParserEvent } {
+    fn feedChunkCrlf(self: *HttpParser, input: []const u8) HttpParserError!HttpParserFeed {
         if (input.len < 2) return .{ .consumed = 0, .event = null };
         if (!std.mem.eql(u8, input[0..2], "\r\n")) return self.fail(error.MalformedChunk);
         self.state = .chunk_size;

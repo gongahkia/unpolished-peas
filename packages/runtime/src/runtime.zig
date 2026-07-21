@@ -67,6 +67,7 @@ const http2_flow_control = @import("http2_flow_control.zig");
 const websocket_upgrade = @import("websocket_upgrade.zig");
 const websocket_session = @import("websocket_session.zig");
 const http_websocket_gateway = @import("http_websocket_gateway.zig");
+const websocket_client = @import("websocket_client.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -585,6 +586,14 @@ pub const WebSocketGatewayAuthorizeFn = http_websocket_gateway.WebSocketGatewayA
 pub const HttpWebSocketGatewayConfig = http_websocket_gateway.HttpWebSocketGatewayConfig;
 pub const GatewayBroadcast = http_websocket_gateway.GatewayBroadcast;
 pub const HttpWebSocketGateway = http_websocket_gateway.HttpWebSocketGateway;
+pub const max_websocket_uri_bytes = websocket_client.max_websocket_uri_bytes;
+pub const max_websocket_client_subprotocols = websocket_client.max_websocket_client_subprotocols;
+pub const WebSocketClientError = websocket_client.WebSocketClientError;
+pub const WebSocketClientState = websocket_client.WebSocketClientState;
+pub const WebSocketUri = websocket_client.WebSocketUri;
+pub const WebSocketClientConfig = websocket_client.WebSocketClientConfig;
+pub const WebSocketClient = websocket_client.WebSocketClient;
+pub const parse_websocket_uri = websocket_client.parseWebSocketUri;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -684,5 +693,6 @@ test {
     _ = @import("websocket_upgrade.zig");
     _ = @import("websocket_session.zig");
     _ = @import("http_websocket_gateway.zig");
+    _ = @import("websocket_client.zig");
     _ = @import("platform_runtime.zig");
 }

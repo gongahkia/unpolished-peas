@@ -113,7 +113,6 @@ test "HTTP server handlers return two keep-alive responses over one bounded conn
         fn route(context: ?*anyopaque, request: service.ServiceRequest) service.ServiceModuleError!service.ServiceRouteResult {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             self.calls += 1;
-            try std.testing.expectEqualStrings("GET", "GET");
             try std.testing.expectEqualStrings("/public", request.route);
             return .handled;
         }
