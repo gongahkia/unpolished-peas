@@ -90,6 +90,26 @@ pub const ChannelRegistry = struct {
         return .{ .channel = entry.handle, .payload = lease.bytes, .lease = lease };
     }
 
+    pub fn dequeueDatagram(self: *ChannelRegistry, owner: *resource.ResourceHandle) ChannelRegistryError!?QueuedMessage {
+        _ = try self.sessions.lookup(owner);
+        var selected: ?usize = null;
+        for (self.entries.items, 0..) |entry, index| {
+            if (entry.session != owner or entry.descriptor.transport() != .datagram or entry.queue.items.len == 0) continue;
+            if (selected == null or entry.descriptor.priority > self.entries.items[selected.?].descriptor.priority) selected = index;
+        }
+        const index = selected orelse return null;
+        const entry = &self.entries.items[index];
+        const lease = entry.queue.orderedRemove(0);
+        return .{ .channel = entry.handle, .payload = lease.bytes, .lease = lease };
+    }
+
+    pub fn requeueFront(self: *ChannelRegistry, message: *QueuedMessage) ChannelRegistryError!void {
+        const entry = try self.lookup(message.channel);
+        if (entry.queue.items.len >= entry.descriptor.maximum_in_flight) return error.QueueFull;
+        entry.queue.insertAssumeCapacity(0, message.lease);
+        message.* = undefined;
+    }
+
     pub fn teardown(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!void {
         try self.resources.validate_kind(handle, .channel);
         for (self.entries.items, 0..) |_, index| {
@@ -104,6 +124,16 @@ pub const ChannelRegistry = struct {
 
     pub fn queued(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!usize {
         return (try self.lookup(handle)).queue.items.len;
+    }
+
+    pub fn queuedDatagrams(self: *ChannelRegistry, owner: *resource.ResourceHandle) ChannelRegistryError!usize {
+        _ = try self.sessions.lookup(owner);
+        var result: usize = 0;
+        for (self.entries.items) |entry| {
+            if (entry.session != owner or entry.descriptor.transport() != .datagram) continue;
+            result = std.math.add(usize, result, entry.queue.items.len) catch return error.QueueFull;
+        }
+        return result;
     }
 
     fn lookup(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!*Entry {
@@ -170,4 +200,31 @@ test "channel registries report pool exhaustion as bounded backpressure" {
     try channels.enqueue(first, "one");
     try std.testing.expectError(error.QueueFull, channels.enqueue(second, "two"));
     try std.testing.expectEqual(@as(usize, 1), payloads.pressure().in_use_slots);
+}
+
+test "channel registries schedule only datagrams and retain retry payloads" {
+    var resources = try resource.ResourceRegistry.init(std.testing.allocator, 4);
+    defer resources.deinit();
+    var sessions = try session.SessionRegistry.init(std.testing.allocator, &resources, 1);
+    defer sessions.deinit();
+    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 3, 8);
+    defer payloads.deinit();
+    const owner = try sessions.create();
+    var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, &payloads, 3);
+    defer channels.deinit();
+    const low = try channels.create(owner, .{ .delivery = .datagram, .priority = 1, .maximum_payload_bytes = 8 });
+    const stream = try channels.create(owner, .{ .delivery = .stream, .priority = 3, .maximum_payload_bytes = 8 });
+    const high = try channels.create(owner, .{ .delivery = .datagram, .priority = 2, .maximum_payload_bytes = 8 });
+    try channels.enqueue(low, "low");
+    try channels.enqueue(stream, "stream");
+    try channels.enqueue(high, "high");
+    var first = (try channels.dequeueDatagram(owner)).?;
+    try std.testing.expectEqual(high, first.channel);
+    try std.testing.expectEqualStrings("high", first.payload);
+    try channels.requeueFront(&first);
+    var retried = (try channels.dequeueDatagram(owner)).?;
+    defer retried.deinit(std.testing.allocator);
+    try std.testing.expectEqual(high, retried.channel);
+    try std.testing.expectEqualStrings("high", retried.payload);
+    try std.testing.expectEqual(@as(usize, 1), try channels.queuedDatagrams(owner));
 }
