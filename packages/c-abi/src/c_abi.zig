@@ -78,6 +78,60 @@ pub const CP2PSession = opaque {};
 pub const CNativeRuntime = opaque {};
 pub const CNativeSession = opaque {};
 pub const CNativeChannel = opaque {};
+pub const CHttpClient = opaque {};
+pub const CHttpStream = opaque {};
+pub const CTlsCertificateRegistry = opaque {};
+pub const CWebSocketClient = opaque {};
+pub const CHttpHeader = extern struct {
+    name: CConstBuffer,
+    value: CConstBuffer,
+};
+pub const CHttpRequest = extern struct {
+    method: CConstBuffer,
+    target: CConstBuffer,
+    authority: CConstBuffer,
+    headers: [*c]const CHttpHeader,
+    header_count: usize,
+    body: CConstBuffer,
+    close_after_response: u8,
+    reserved: [7]u8,
+};
+pub const CHttpResponse = extern struct {
+    sequence: u64,
+    status: u16,
+    keep_alive: u8,
+    redirect_not_followed: u8,
+    body: CConstBuffer,
+};
+pub const CTlsCertificateRequest = extern struct {
+    id: u64,
+    kind: u32,
+    server_name: CConstBuffer,
+    peer_certificate_chain_id: u64,
+    has_peer_certificate_chain_id: u8,
+    reserved: [7]u8,
+    issued_at_ns: CDurationNs,
+    expires_at_ns: CDurationNs,
+};
+pub const CTlsCertificateDecision = enum(u32) {
+    pending = 0,
+    accept = 1,
+    reject = 2,
+};
+pub const CTlsCertificateBeginFn = *const fn (?*anyopaque, *const CTlsCertificateRequest) callconv(.c) void;
+pub const CTlsCertificatePollFn = *const fn (?*anyopaque, u64) callconv(.c) u32;
+pub const CTlsCertificateCallbacks = extern struct {
+    context: ?*anyopaque,
+    begin: ?CTlsCertificateBeginFn,
+    poll: ?CTlsCertificatePollFn,
+    maximum_pending: usize,
+};
+pub const CWebSocketClientConfig = extern struct {
+    uri: CConstBuffer,
+    subprotocol: CConstBuffer,
+    maximum_message_bytes: usize,
+    maximum_in_flight_messages: usize,
+};
 pub const CPlatformConfig = extern struct {
     version: u32,
     provider_capacity: usize,
@@ -477,6 +531,36 @@ const CLogRegistration = struct {
     in_flight: usize = 0,
 };
 
+const CHttpClientState = struct {
+    owner: *CSdkState,
+    client: runtime.HttpClientConnection,
+};
+
+const CHttpStreamState = struct {
+    owner: *CSdkState,
+    writer: runtime.HttpBodyWriter,
+};
+
+const CTlsCertificateRegistryState = struct {
+    owner: *CSdkState,
+    callbacks: CTlsCertificateCallbacks,
+    registry: runtime.TlsCertificateCallbackRegistry,
+};
+
+const CWebSocketClientState = struct {
+    owner: *CSdkState,
+    uri: []u8,
+    subprotocol: []u8,
+    subprotocols: [1][]const u8,
+    resources: runtime.ResourceRegistry,
+    sessions: runtime.SessionRegistry,
+    payloads: runtime.PayloadPool,
+    channels: runtime.ChannelRegistry,
+    timers: runtime.TimerWheel,
+    session: runtime.WebSocketSession,
+    client: runtime.WebSocketClient,
+};
+
 const CSdkState = struct {
     allocator_bridge: CAllocatorBridge,
     clock_bridge: CClockBridge,
@@ -494,6 +578,10 @@ const CSdkState = struct {
     channel_records: std.ArrayListUnmanaged(ChannelRecord),
     session_records: std.ArrayListUnmanaged(SessionRecord),
     p2p_records: std.ArrayListUnmanaged(P2PSessionRecord),
+    http_clients: std.ArrayListUnmanaged(*CHttpClientState),
+    http_streams: std.ArrayListUnmanaged(*CHttpStreamState),
+    tls_certificate_registries: std.ArrayListUnmanaged(*CTlsCertificateRegistryState),
+    websocket_clients: std.ArrayListUnmanaged(*CWebSocketClientState),
     owned_buffers: std.ArrayListUnmanaged(CBuffer),
     connection_capacity: usize,
     started: bool,
@@ -1175,6 +1263,189 @@ fn release_sdk_buffer(state: *CSdkState, buffer: CBuffer) CBufferReleaseError!vo
     return error.InvalidBuffer;
 }
 
+fn time_from_c(value: CDurationNs) ?core.TimeNs {
+    if (value < 0) return null;
+    return @intCast(value);
+}
+
+fn const_buffer(bytes: []const u8) CConstBuffer {
+    return .{ .data = if (bytes.len == 0) null else bytes.ptr, .len = bytes.len };
+}
+
+fn mutable_buffer(buffer: CBuffer) ?[]u8 {
+    if (!is_valid_buffer(buffer)) return null;
+    return if (buffer.len == 0) &.{} else buffer.data[0..buffer.len];
+}
+
+fn http_client_state_from_handle(handle: ?*CHttpClient) ?*CHttpClientState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn http_stream_state_from_handle(handle: ?*CHttpStream) ?*CHttpStreamState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn tls_certificate_registry_state_from_handle(handle: ?*CTlsCertificateRegistry) ?*CTlsCertificateRegistryState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn websocket_client_state_from_handle(handle: ?*CWebSocketClient) ?*CWebSocketClientState {
+    const value = handle orelse return null;
+    return @ptrCast(@alignCast(value));
+}
+
+fn find_http_client(state: *CSdkState, client: *CHttpClientState) ?usize {
+    for (state.http_clients.items, 0..) |item, index| if (item == client) return index;
+    return null;
+}
+
+fn find_http_stream(state: *CSdkState, stream: *CHttpStreamState) ?usize {
+    for (state.http_streams.items, 0..) |item, index| if (item == stream) return index;
+    return null;
+}
+
+fn find_tls_certificate_registry(state: *CSdkState, registry: *CTlsCertificateRegistryState) ?usize {
+    for (state.tls_certificate_registries.items, 0..) |item, index| if (item == registry) return index;
+    return null;
+}
+
+fn find_websocket_client(state: *CSdkState, client: *CWebSocketClientState) ?usize {
+    for (state.websocket_clients.items, 0..) |item, index| if (item == client) return index;
+    return null;
+}
+
+fn destroy_http_client(state: *CSdkState, client: *CHttpClientState) void {
+    client.client.deinit();
+    state.allocator_bridge.allocator().destroy(client);
+}
+
+fn destroy_http_stream(state: *CSdkState, stream: *CHttpStreamState) void {
+    stream.writer.deinit();
+    state.allocator_bridge.allocator().destroy(stream);
+}
+
+fn destroy_tls_certificate_registry(state: *CSdkState, registry: *CTlsCertificateRegistryState) void {
+    registry.registry.deinit();
+    state.allocator_bridge.allocator().destroy(registry);
+}
+
+fn destroy_websocket_client(state: *CSdkState, client: *CWebSocketClientState) void {
+    client.client.deinit();
+    client.session.deinit();
+    client.timers.deinit();
+    client.channels.deinit();
+    client.payloads.deinit();
+    client.sessions.deinit();
+    client.resources.deinit();
+    state.allocator_bridge.allocator().free(client.uri);
+    state.allocator_bridge.allocator().free(client.subprotocol);
+    state.allocator_bridge.allocator().destroy(client);
+}
+
+fn tls_certificate_begin_bridge(context: ?*anyopaque, request: runtime.TlsCertificateRequest) void {
+    const state: *CTlsCertificateRegistryState = @ptrCast(@alignCast(context.?));
+    const callback = state.callbacks.begin orelse return;
+    const output = CTlsCertificateRequest{
+        .id = request.id,
+        .kind = @intFromEnum(request.kind),
+        .server_name = const_buffer(request.server_name),
+        .peer_certificate_chain_id = request.peer_certificate_chain_id orelse 0,
+        .has_peer_certificate_chain_id = @intFromBool(request.peer_certificate_chain_id != null),
+        .reserved = .{ 0, 0, 0, 0, 0, 0, 0 },
+        .issued_at_ns = @intCast(request.issued_at_ns),
+        .expires_at_ns = @intCast(request.expires_at_ns),
+    };
+    callback(state.callbacks.context, &output);
+}
+
+fn tls_certificate_poll_bridge(context: ?*anyopaque, id: runtime.TlsCertificateRequestId) ?runtime.TlsCertificateResolution {
+    const state: *CTlsCertificateRegistryState = @ptrCast(@alignCast(context.?));
+    const callback = state.callbacks.poll orelse return null;
+    return switch (callback(state.callbacks.context, id)) {
+        @intFromEnum(CTlsCertificateDecision.pending) => null,
+        @intFromEnum(CTlsCertificateDecision.accept) => .{ .accepted = .client_trust },
+        else => .{ .rejected = .application_rejected },
+    };
+}
+
+fn http_result(error_value: anyerror) CResult {
+    return switch (error_value) {
+        error.InvalidConfiguration,
+        error.InvalidRequest,
+        error.InvalidUri,
+        error.InvalidArgument,
+        => .invalid_argument,
+        error.InvalidState,
+        error.Cancelled,
+        => .invalid_state,
+        error.HandshakeRejected,
+        error.InvalidHandshake,
+        error.SubprotocolRejected,
+        error.HttpMalformed,
+        error.HttpLimitExceeded,
+        error.WebSocketProtocolViolation,
+        => .protocol_violation,
+        error.RequestTooLarge,
+        error.ResponseBodyTooLarge,
+        error.PayloadTooLarge,
+        error.MessageTooLarge,
+        error.QueueFull,
+        error.PoolExhausted,
+        error.OutOfMemory,
+        => .resource_exhausted,
+        error.WouldBlock => .would_block,
+        else => native_result(error_value),
+    };
+}
+
+fn init_websocket_client_state(state: *CSdkState, uri_input: []const u8, subprotocol_input: []const u8, maximum_message_bytes: usize, maximum_in_flight_messages: usize) !*CWebSocketClientState {
+    if (maximum_message_bytes == 0 or maximum_in_flight_messages == 0) return error.InvalidConfiguration;
+    const allocator = state.allocator_bridge.allocator();
+    const value = try allocator.create(CWebSocketClientState);
+    errdefer allocator.destroy(value);
+    const uri = try allocator.dupe(u8, uri_input);
+    errdefer allocator.free(uri);
+    const subprotocol = try allocator.dupe(u8, subprotocol_input);
+    errdefer allocator.free(subprotocol);
+    value.owner = state;
+    value.uri = uri;
+    value.subprotocol = subprotocol;
+    value.subprotocols = .{subprotocol};
+    value.resources = try runtime.ResourceRegistry.init(allocator, 3);
+    errdefer value.resources.deinit();
+    value.sessions = try runtime.SessionRegistry.init(allocator, &value.resources, 1);
+    errdefer value.sessions.deinit();
+    const owner = try value.sessions.create();
+    try value.sessions.transition(owner, .begin_establishing);
+    try value.sessions.transition(owner, .mark_ready);
+    value.payloads = try runtime.PayloadPool.init(allocator, 2, maximum_message_bytes);
+    errdefer value.payloads.deinit();
+    value.channels = try runtime.ChannelRegistry.init(allocator, &value.resources, &value.sessions, &value.payloads, 2);
+    errdefer value.channels.deinit();
+    value.timers = try runtime.TimerWheel.init(allocator, 2);
+    errdefer value.timers.deinit();
+    value.session = try runtime.WebSocketSession.init(.{
+        .channels = &value.channels,
+        .timers = &value.timers,
+        .owner = owner,
+        .maximum_message_bytes = maximum_message_bytes,
+        .maximum_in_flight_messages = maximum_in_flight_messages,
+        .ping_interval_ns = 1,
+        .close_timeout_ns = 1,
+    }, 0);
+    errdefer value.session.deinit();
+    value.client = try runtime.WebSocketClient.init(.{
+        .uri = value.uri,
+        .subprotocols = if (value.subprotocol.len == 0) &.{} else value.subprotocols[0..],
+        .session = &value.session,
+        .allocator = allocator,
+    });
+    return value;
+}
+
 pub export fn minna_san_abi_version() CAbiVersion {
     return c_abi_version;
 }
@@ -1287,6 +1558,10 @@ pub export fn minna_san_sdk_create(config: ?*const CSdkConfig, out_sdk: ?*?*CSdk
     state.channel_records = .empty;
     state.session_records = .empty;
     state.p2p_records = .empty;
+    state.http_clients = .empty;
+    state.http_streams = .empty;
+    state.tls_certificate_registries = .empty;
+    state.websocket_clients = .empty;
     state.owned_buffers = .empty;
     state.connection_capacity = value.connection_capacity;
     state.started = false;
@@ -1321,6 +1596,14 @@ pub export fn minna_san_sdk_stop(sdk: ?*CSdk) c_int {
 pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     const state = state_from_handle(sdk) orelse return;
     const allocator = state.allocator_bridge.allocator();
+    for (state.websocket_clients.items) |client| destroy_websocket_client(state, client);
+    state.websocket_clients.deinit(allocator);
+    for (state.tls_certificate_registries.items) |registry| destroy_tls_certificate_registry(state, registry);
+    state.tls_certificate_registries.deinit(allocator);
+    for (state.http_streams.items) |stream| destroy_http_stream(state, stream);
+    state.http_streams.deinit(allocator);
+    for (state.http_clients.items) |client| destroy_http_client(state, client);
+    state.http_clients.deinit(allocator);
     for (state.channel_records.items) |*record| {
         discard_pending_messages(state, record);
         record.pending_messages.deinit(allocator);
@@ -1335,6 +1618,312 @@ pub export fn minna_san_sdk_destroy(sdk: ?*CSdk) void {
     state.resources.deinit();
     state.poll_runtime.deinit();
     allocator.destroy(state);
+}
+
+pub export fn minna_san_http_client_create(sdk: ?*CSdk, out_client: ?*?*CHttpClient) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_client orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const allocator = state.allocator_bridge.allocator();
+    const client = allocator.create(CHttpClientState) catch return @intFromEnum(CResult.resource_exhausted);
+    errdefer allocator.destroy(client);
+    client.* = .{ .owner = state, .client = runtime.HttpClientConnection.init(allocator, .{}) catch |err| return @intFromEnum(http_result(err)) };
+    state.http_clients.append(allocator, client) catch {
+        client.client.deinit();
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(client);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_client_destroy(sdk: ?*CSdk, client_handle: ?*CHttpClient) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const client = http_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_http_client(state, client) orelse return @intFromEnum(CResult.invalid_argument);
+    _ = state.http_clients.orderedRemove(index);
+    destroy_http_client(state, client);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_client_begin(client_handle: ?*CHttpClient, request: ?*const CHttpRequest, output: CBuffer, out_len: ?*usize) c_int {
+    const client = http_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const value = request orelse return @intFromEnum(CResult.invalid_argument);
+    const output_value = mutable_buffer(output) orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    if (value.close_after_response > 1 or (value.header_count != 0 and value.headers == null)) return @intFromEnum(CResult.invalid_argument);
+    const method = native_input(value.method) orelse return @intFromEnum(CResult.invalid_argument);
+    const target = native_input(value.target) orelse return @intFromEnum(CResult.invalid_argument);
+    const authority = native_input(value.authority) orelse return @intFromEnum(CResult.invalid_argument);
+    const body = native_input(value.body) orelse return @intFromEnum(CResult.invalid_argument);
+    const allocator = client.owner.allocator_bridge.allocator();
+    const headers: []runtime.HttpClientHeader = if (value.header_count == 0) &.{} else allocator.alloc(runtime.HttpClientHeader, value.header_count) catch return @intFromEnum(CResult.resource_exhausted);
+    defer if (value.header_count != 0) allocator.free(headers);
+    if (value.header_count != 0) for (headers, value.headers[0..value.header_count]) |*header, input| {
+        header.* = .{
+            .name = native_input(input.name) orelse return @intFromEnum(CResult.invalid_argument),
+            .value = native_input(input.value) orelse return @intFromEnum(CResult.invalid_argument),
+        };
+    };
+    const wire = client.client.begin(.{ .method = method, .target = target, .authority = authority, .headers = headers, .body = body, .close_after_response = value.close_after_response == 1 }) catch |err| return @intFromEnum(http_result(err));
+    if (wire.len > output_value.len) return @intFromEnum(CResult.resource_exhausted);
+    @memcpy(output_value[0..wire.len], wire);
+    length.* = wire.len;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_client_feed(client_handle: ?*CHttpClient, input: CConstBuffer, out_consumed: ?*usize, out_completed: ?*u8) c_int {
+    const client = http_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = native_input(input) orelse return @intFromEnum(CResult.invalid_argument);
+    const consumed = out_consumed orelse return @intFromEnum(CResult.invalid_argument);
+    const completed = out_completed orelse return @intFromEnum(CResult.invalid_argument);
+    consumed.* = 0;
+    completed.* = 0;
+    while (true) {
+        const remaining: []const u8 = if (consumed.* < bytes.len) bytes[consumed.*..] else &.{};
+        const result = client.client.feed(remaining) catch |err| return @intFromEnum(http_result(err));
+        consumed.* += result.consumed;
+        if (result.event) |event| switch (event) {
+            .response => {
+                completed.* = 1;
+                break;
+            },
+            else => {},
+        };
+        if (consumed.* == bytes.len and result.consumed == 0) break;
+    }
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_client_response(client_handle: ?*CHttpClient, out_response: ?*CHttpResponse) c_int {
+    const client = http_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_response orelse return @intFromEnum(CResult.invalid_argument);
+    const response = client.client.response() orelse return @intFromEnum(CResult.would_block);
+    output.* = .{
+        .sequence = response.sequence,
+        .status = response.status,
+        .keep_alive = @intFromBool(response.keep_alive),
+        .redirect_not_followed = @intFromBool(response.redirect_not_followed),
+        .body = const_buffer(response.body),
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_client_cancel(client_handle: ?*CHttpClient) c_int {
+    const client = http_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    client.client.cancel();
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_create(sdk: ?*CSdk, maximum_buffer_bytes: usize, maximum_body_bytes: usize, out_stream: ?*?*CHttpStream) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_stream orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const allocator = state.allocator_bridge.allocator();
+    const stream = allocator.create(CHttpStreamState) catch return @intFromEnum(CResult.resource_exhausted);
+    errdefer allocator.destroy(stream);
+    stream.* = .{ .owner = state, .writer = runtime.HttpBodyWriter.init(allocator, .{ .maximum_buffer_bytes = maximum_buffer_bytes, .maximum_body_bytes = maximum_body_bytes }) catch |err| return @intFromEnum(http_result(err)) };
+    state.http_streams.append(allocator, stream) catch {
+        stream.writer.deinit();
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(stream);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_destroy(sdk: ?*CSdk, stream_handle: ?*CHttpStream) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const stream = http_stream_state_from_handle(stream_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_http_stream(state, stream) orelse return @intFromEnum(CResult.invalid_argument);
+    _ = state.http_streams.orderedRemove(index);
+    destroy_http_stream(state, stream);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_write(stream_handle: ?*CHttpStream, input: CConstBuffer, out_accepted: ?*usize, out_pending_bytes: ?*usize) c_int {
+    const stream = http_stream_state_from_handle(stream_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = native_input(input) orelse return @intFromEnum(CResult.invalid_argument);
+    const accepted = out_accepted orelse return @intFromEnum(CResult.invalid_argument);
+    const pending = out_pending_bytes orelse return @intFromEnum(CResult.invalid_argument);
+    const result = stream.writer.write(bytes) catch |err| return @intFromEnum(http_result(err));
+    accepted.* = result.accepted;
+    pending.* = result.pending_bytes;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_pending(stream_handle: ?*CHttpStream, output: CBuffer, out_len: ?*usize) c_int {
+    const stream = http_stream_state_from_handle(stream_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = mutable_buffer(output) orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    const pending = stream.writer.pending() orelse return @intFromEnum(CResult.would_block);
+    if (pending.len > bytes.len) return @intFromEnum(CResult.resource_exhausted);
+    @memcpy(bytes[0..pending.len], pending);
+    length.* = pending.len;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_consume(stream_handle: ?*CHttpStream, count: usize, out_closed: ?*u8) c_int {
+    const stream = http_stream_state_from_handle(stream_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const closed = out_closed orelse return @intFromEnum(CResult.invalid_argument);
+    const result = stream.writer.consumeWritten(count) catch |err| return @intFromEnum(http_result(err));
+    closed.* = @intFromBool(result == .closed);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_http_stream_finish(stream_handle: ?*CHttpStream, out_pending_bytes: ?*usize) c_int {
+    const stream = http_stream_state_from_handle(stream_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const pending = out_pending_bytes orelse return @intFromEnum(CResult.invalid_argument);
+    const result = stream.writer.finish() catch |err| return @intFromEnum(http_result(err));
+    pending.* = result.pending_bytes;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_tls_certificate_registry_create(sdk: ?*CSdk, callbacks: ?*const CTlsCertificateCallbacks, out_registry: ?*?*CTlsCertificateRegistry) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const config = callbacks orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_registry orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started or config.begin == null or config.poll == null) return @intFromEnum(CResult.invalid_argument);
+    const allocator = state.allocator_bridge.allocator();
+    const registry = allocator.create(CTlsCertificateRegistryState) catch return @intFromEnum(CResult.resource_exhausted);
+    errdefer allocator.destroy(registry);
+    registry.owner = state;
+    registry.callbacks = config.*;
+    registry.registry = runtime.TlsCertificateCallbackRegistry.init(allocator, .{
+        .callback = .{ .context = registry, .begin = tls_certificate_begin_bridge, .poll = tls_certificate_poll_bridge },
+        .maximum_pending = config.maximum_pending,
+        .maximum_server_identities = 1,
+        .failure_event_capacity = 1,
+    }) catch |err| return @intFromEnum(http_result(err));
+    state.tls_certificate_registries.append(allocator, registry) catch {
+        registry.registry.deinit();
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(registry);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_tls_certificate_registry_destroy(sdk: ?*CSdk, registry_handle: ?*CTlsCertificateRegistry) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const registry = tls_certificate_registry_state_from_handle(registry_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_tls_certificate_registry(state, registry) orelse return @intFromEnum(CResult.invalid_argument);
+    _ = state.tls_certificate_registries.orderedRemove(index);
+    destroy_tls_certificate_registry(state, registry);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_tls_certificate_client_trust_begin(registry_handle: ?*CTlsCertificateRegistry, server_name: CConstBuffer, peer_certificate_chain_id: u64, issued_at_ns: CDurationNs, expires_at_ns: CDurationNs, out_request_id: ?*u64) c_int {
+    const registry = tls_certificate_registry_state_from_handle(registry_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const name = native_input(server_name) orelse return @intFromEnum(CResult.invalid_argument);
+    const issued = time_from_c(issued_at_ns) orelse return @intFromEnum(CResult.invalid_argument);
+    const expires = time_from_c(expires_at_ns) orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_request_id orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = registry.registry.begin(.{ .kind = .client_trust, .server_name = name, .peer_certificate_chain_id = peer_certificate_chain_id, .issued_at_ns = issued, .expires_at_ns = expires }) catch |err| return @intFromEnum(http_result(err));
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_tls_certificate_registry_poll(registry_handle: ?*CTlsCertificateRegistry, now_ns: CDurationNs, out_request_id: ?*u64, out_decision: ?*u32) c_int {
+    const registry = tls_certificate_registry_state_from_handle(registry_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const now = time_from_c(now_ns) orelse return @intFromEnum(CResult.invalid_argument);
+    const request_id = out_request_id orelse return @intFromEnum(CResult.invalid_argument);
+    const decision = out_decision orelse return @intFromEnum(CResult.invalid_argument);
+    request_id.* = 0;
+    decision.* = @intFromEnum(CTlsCertificateDecision.pending);
+    const result = registry.registry.poll(now) orelse return @intFromEnum(CResult.would_block);
+    request_id.* = result.id;
+    decision.* = switch (result.resolution) {
+        .accepted => @intFromEnum(CTlsCertificateDecision.accept),
+        .rejected, .expired => @intFromEnum(CTlsCertificateDecision.reject),
+    };
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_create(sdk: ?*CSdk, config: ?*const CWebSocketClientConfig, out_client: ?*?*CWebSocketClient) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const value = config orelse return @intFromEnum(CResult.invalid_argument);
+    const output = out_client orelse return @intFromEnum(CResult.invalid_argument);
+    output.* = null;
+    if (!state.started) return @intFromEnum(CResult.invalid_state);
+    const uri = native_input(value.uri) orelse return @intFromEnum(CResult.invalid_argument);
+    const subprotocol = native_input(value.subprotocol) orelse return @intFromEnum(CResult.invalid_argument);
+    const client = init_websocket_client_state(state, uri, subprotocol, value.maximum_message_bytes, value.maximum_in_flight_messages) catch |err| return @intFromEnum(http_result(err));
+    state.websocket_clients.append(state.allocator_bridge.allocator(), client) catch {
+        destroy_websocket_client(state, client);
+        return @intFromEnum(CResult.resource_exhausted);
+    };
+    output.* = @ptrCast(client);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_destroy(sdk: ?*CSdk, client_handle: ?*CWebSocketClient) c_int {
+    const state = state_from_handle(sdk) orelse return @intFromEnum(CResult.invalid_argument);
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const index = find_websocket_client(state, client) orelse return @intFromEnum(CResult.invalid_argument);
+    _ = state.websocket_clients.orderedRemove(index);
+    destroy_websocket_client(state, client);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_begin(client_handle: ?*CWebSocketClient, output: CBuffer, out_len: ?*usize) c_int {
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = mutable_buffer(output) orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    const wire = client.client.begin(bytes) catch |err| return @intFromEnum(http_result(err));
+    length.* = wire.len;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_expected_accept(client_handle: ?*CWebSocketClient, output: CBuffer, out_len: ?*usize) c_int {
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = mutable_buffer(output) orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    if (client.client.state != .awaiting_handshake) return @intFromEnum(CResult.invalid_state);
+    if (client.client.expected_accept.len > bytes.len) return @intFromEnum(CResult.resource_exhausted);
+    @memcpy(bytes[0..client.client.expected_accept.len], &client.client.expected_accept);
+    length.* = client.client.expected_accept.len;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_feed(client_handle: ?*CWebSocketClient, input: CConstBuffer, out_consumed: ?*usize, out_handshake_completed: ?*u8) c_int {
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = native_input(input) orelse return @intFromEnum(CResult.invalid_argument);
+    const consumed = out_consumed orelse return @intFromEnum(CResult.invalid_argument);
+    const handshake_completed = out_handshake_completed orelse return @intFromEnum(CResult.invalid_argument);
+    consumed.* = 0;
+    handshake_completed.* = 0;
+    while (true) {
+        const remaining: []const u8 = if (consumed.* < bytes.len) bytes[consumed.*..] else &.{};
+        const result = client.client.feed(remaining) catch |err| return @intFromEnum(http_result(err));
+        consumed.* += result.consumed;
+        _ = result.event;
+        if (consumed.* == bytes.len and result.consumed == 0) break;
+    }
+    handshake_completed.* = @intFromBool(client.client.state == .open);
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_receive(client_handle: ?*CWebSocketClient, output: CBuffer, out_len: ?*usize) c_int {
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    const bytes = mutable_buffer(output) orelse return @intFromEnum(CResult.invalid_argument);
+    const length = out_len orelse return @intFromEnum(CResult.invalid_argument);
+    length.* = 0;
+    var message = (client.client.pollIncoming() catch |err| return @intFromEnum(http_result(err))) orelse return @intFromEnum(CResult.would_block);
+    defer message.deinit(client.owner.allocator_bridge.allocator());
+    if (message.payload.len > bytes.len) return @intFromEnum(CResult.resource_exhausted);
+    @memcpy(bytes[0..message.payload.len], message.payload);
+    length.* = message.payload.len;
+    return @intFromEnum(CResult.ok);
+}
+
+pub export fn minna_san_websocket_client_cancel(client_handle: ?*CWebSocketClient) c_int {
+    const client = websocket_client_state_from_handle(client_handle) orelse return @intFromEnum(CResult.invalid_argument);
+    client.client.cancel();
+    return @intFromEnum(CResult.ok);
 }
 
 pub export fn minna_san_native_runtime_create(config: ?*const CSdkConfig, out_runtime: ?*?*CNativeRuntime) c_int {
