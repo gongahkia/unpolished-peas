@@ -21,6 +21,7 @@ pub const PollProgress = enum {
     event,
     deadline,
     udp,
+    credential,
 };
 
 pub const PollOutcome = struct {

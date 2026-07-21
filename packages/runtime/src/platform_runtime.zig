@@ -12,6 +12,7 @@ const channel_registry = @import("channel_registry.zig");
 const timer_wheel = @import("timer_wheel.zig");
 const payload_pool = @import("payload_pool.zig");
 const channel_delivery = @import("channel_delivery.zig");
+const credential_callback = @import("credential_callback.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 const tcp_channel_registry = @import("tcp_channel_registry.zig");
@@ -22,7 +23,7 @@ const transport_retry_controller = @import("transport_retry_controller.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || transport_retry_controller.TransportRetryControllerError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || tcp_channel_registry.TcpChannelRegistryError || tcp_fallback_registry.TcpFallbackRegistryError || tcp_listener_registry.TcpListenerRegistryError || tcp_session_registry.TcpSessionRegistryError || transport_retry_controller.TransportRetryControllerError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || credential_callback.CredentialCallbackError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ ReentrantPoll, CredentialCallbackRequired };
 
 pub const UdpReadinessTarget = union(enum) {
     listener: *resource_handle.ResourceHandle,
@@ -45,6 +46,7 @@ pub const RuntimePollResult = struct {
     timer: ?timer_wheel.Timer = null,
     transport_retry: ?transport_retry_controller.TransportRetryEvent = null,
     udp_readiness: ?UdpReadinessEvent = null,
+    credential: ?credential_callback.CredentialPollResult = null,
 
     pub fn deinit(self: *RuntimePollResult) void {
         if (self.event) |*event_envelope| event_envelope.deinit();
@@ -69,6 +71,7 @@ pub const Runtime = struct {
     payloads: *payload_pool.PayloadPool,
     timers: timer_wheel.TimerWheel,
     transport_retries: transport_retry_controller.TransportRetryController,
+    credentials: ?credential_callback.CredentialCallbackRegistry = null,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -111,6 +114,9 @@ pub const Runtime = struct {
         errdefer timers.deinit();
         var transport_retries = try transport_retry_controller.TransportRetryController.init(allocator, platform_config.limits.session_capacity);
         errdefer transport_retries.deinit();
+        var credentials: ?credential_callback.CredentialCallbackRegistry = null;
+        if (sdk.configuration().credentialCallbackConfig()) |callback| credentials = try credential_callback.CredentialCallbackRegistry.init(allocator, callback);
+        errdefer if (credentials) |*value| value.deinit();
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
         errdefer providers.deinit();
         var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
@@ -132,6 +138,7 @@ pub const Runtime = struct {
             .payloads = payloads,
             .timers = timers,
             .transport_retries = transport_retries,
+            .credentials = credentials,
             .services = services,
         };
     }
@@ -140,6 +147,7 @@ pub const Runtime = struct {
         const allocator = self.resources.allocator;
         self.services.deinit();
         self.providers.deinit();
+        if (self.credentials) |*credentials| credentials.deinit();
         self.transport_retries.deinit();
         self.timers.deinit();
         self.tcp_channels.deinit();
@@ -390,6 +398,22 @@ pub const Runtime = struct {
         return self.services.dispatch(request);
     }
 
+    pub fn beginCredentialChallenge(self: *Runtime, input: credential_callback.CredentialChallengeInput) RuntimeError!credential_callback.CredentialChallengeId {
+        const credentials = if (self.credentials) |*value| value else return error.CredentialCallbackRequired;
+        return credentials.begin(input);
+    }
+
+    pub fn beginPeerCredentialChallenge(self: *Runtime, peer: u64, credentials: []const u8, expires_at_ns: core.TimeNs) RuntimeError!credential_callback.CredentialChallengeId {
+        const now_ns = self.poll_runtime.sdk.configuration().clock().now();
+        return self.beginCredentialChallenge(.{ .target = .{ .peer = peer }, .credentials = credentials, .issued_at_ns = now_ns, .expires_at_ns = expires_at_ns });
+    }
+
+    pub fn beginServiceCredentialChallenge(self: *Runtime, request: service_module.ServiceRequest, expires_at_ns: core.TimeNs) RuntimeError!credential_callback.CredentialChallengeId {
+        try request.validate();
+        const now_ns = self.poll_runtime.sdk.configuration().clock().now();
+        return self.beginCredentialChallenge(.{ .target = .service, .service_route = request.route, .credentials = request.credentials, .issued_at_ns = now_ns, .expires_at_ns = expires_at_ns });
+    }
+
     pub fn enqueue(self: *Runtime, envelope: event.EventEnvelope) std.mem.Allocator.Error!void {
         try self.poll_runtime.enqueue(envelope);
     }
@@ -423,12 +447,16 @@ pub const Runtime = struct {
         const timer = try self.timers.advance(input.now_ns);
         const transport_retry = if (timer) |value| try self.transport_retries.onTimer(value) else null;
         const udp_readiness = try self.pollUdpReadiness();
+        const credential = if (self.credentials) |*value| value.poll(input.now_ns) else null;
         var outcome = try self.poll_runtime.poll(input);
         errdefer outcome.deinit();
         var next_deadline = outcome.next_deadline;
         if (provider_result.next_deadline) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
         if (self.timers.nextDeadline()) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
-        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else if (timer != null) .deadline else if (udp_readiness != null) .udp else .idle;
+        if (self.credentials) |*value| {
+            if (value.nextDeadline()) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
+        }
+        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else if (timer != null) .deadline else if (udp_readiness != null) .udp else if (credential != null) .credential else .idle;
         const result = RuntimePollResult{
             .progress = progress,
             .provider_work_completed = provider_result.work_completed,
@@ -437,6 +465,7 @@ pub const Runtime = struct {
             .timer = timer,
             .transport_retry = transport_retry,
             .udp_readiness = udp_readiness,
+            .credential = credential,
         };
         outcome.event = null;
         return result;
@@ -1057,6 +1086,52 @@ test "unified runtimes attach and dispatch bounded service modules" {
     const dispatch = try runtime.dispatchService(.{ .route = "/fixture/request", .credentials = "", .payload = "" });
     try std.testing.expectEqual(@as(usize, 0), dispatch.module);
     try std.testing.expectEqual(@as(usize, 1), fixture.calls);
+}
+
+test "unified runtimes poll application credential callbacks without blocking" {
+    const Fixture = struct {
+        begins: usize = 0,
+
+        fn begin(context: ?*anyopaque, challenge: credential_callback.CredentialChallenge) void {
+            const self: *@This() = @ptrCast(@alignCast(context.?));
+            self.begins += 1;
+            if (challenge.target == .service) std.debug.assert(std.mem.eql(u8, challenge.service_route, "/service"));
+        }
+
+        fn poll(_: ?*anyopaque, id: credential_callback.CredentialChallengeId) ?credential_callback.CredentialDecision {
+            if (id == 1) return .{ .accepted = {} };
+            if (id == 2) return .{ .rejected = .unauthorized };
+            return null;
+        }
+    };
+    var manual = core.ManualClock.init(1);
+    var fixture = Fixture{};
+    const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_credential_callback(.{ .callback = .{ .context = &fixture, .begin = Fixture.begin, .poll = Fixture.poll }, .maximum_pending = 3, .maximum_credential_bytes = 16 }).build();
+    var runtime = try Runtime.init(std.testing.allocator, configured_sdk);
+    defer runtime.deinit();
+    try runtime.start();
+    const accepted = try runtime.beginPeerCredentialChallenge(7, "peer", 10);
+    const rejected = try runtime.beginServiceCredentialChallenge(.{ .route = "/service", .credentials = "service", .payload = "" }, 10);
+    const pending = try runtime.beginPeerCredentialChallenge(9, "pending", 10);
+    try std.testing.expectEqual(@as(usize, 3), fixture.begins);
+    var first = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer first.deinit();
+    try std.testing.expectEqual(poll_runtime.PollProgress.credential, first.progress);
+    try std.testing.expectEqual(accepted, first.credential.?.id);
+    try std.testing.expect(first.credential.?.decision == .accepted);
+    var second = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer second.deinit();
+    try std.testing.expectEqual(rejected, second.credential.?.id);
+    try std.testing.expectEqual(credential_callback.CredentialRejectionCause.unauthorized, second.credential.?.decision.rejected);
+    var waiting = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer waiting.deinit();
+    try std.testing.expect(waiting.credential == null);
+    try std.testing.expectEqual(@as(?core.TimeNs, 10), waiting.next_deadline);
+    try manual.advance(9);
+    var timed_out = try runtime.poll(.{ .now_ns = manual.clock().now() });
+    defer timed_out.deinit();
+    try std.testing.expectEqual(pending, timed_out.credential.?.id);
+    try std.testing.expectEqual(credential_callback.CredentialRejectionCause.timed_out, timed_out.credential.?.decision.rejected);
 }
 
 test "runtime security policies validate production providers and credentials before service startup" {
