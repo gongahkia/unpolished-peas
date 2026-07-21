@@ -22,7 +22,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -58,7 +58,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -89,7 +89,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install pinned Zig 0.15.2
         if: matrix.channel == 'pinned'
         shell: bash
@@ -151,7 +151,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -171,6 +171,8 @@ jobs:
           gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
       - name: Build and test core contracts
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
+      - name: Resolve verified MsQuic provider
+        run: zig build msquic-provider -Dmsquic-target=x86_64-linux
       - name: Run cross-process P2P route matrix
         run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
@@ -192,7 +194,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: pwsh
         run: |
@@ -214,6 +216,8 @@ jobs:
           cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_consumer.obj contracts\fixtures\c_abi_consumer.c
       - name: Build and test core contracts
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
+      - name: Resolve verified MsQuic provider
+        run: python script/resolve_msquic_provider.py --target x86_64-windows --output zig-out/msquic
       - name: Run cross-process P2P route matrix
         run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
@@ -241,7 +245,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -277,7 +281,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**', 'providers/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
