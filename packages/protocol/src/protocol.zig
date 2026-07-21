@@ -34,6 +34,7 @@ const stun_codec = @import("stun_codec.zig");
 const stun_credentials = @import("stun_credentials.zig");
 const http_common_parser = @import("http_common_parser.zig");
 const http2_frame_codec = @import("http2_frame_codec.zig");
+const websocket_frame_codec = @import("websocket_frame_codec.zig");
 
 pub const WireVersion = envelope.WireVersion;
 pub const ExtensionRange = envelope.ExtensionRange;
@@ -301,6 +302,17 @@ pub const encode_http2_frame = http2_frame_codec.encode_http2_frame;
 pub const decode_http2_frame = http2_frame_codec.decode_http2_frame;
 pub const encode_http2_settings = http2_frame_codec.encode_http2_settings;
 pub const decode_http2_settings = http2_frame_codec.decode_http2_settings;
+pub const max_websocket_frame_bytes = websocket_frame_codec.max_websocket_frame_bytes;
+pub const max_websocket_chunk_bytes = websocket_frame_codec.max_websocket_chunk_bytes;
+pub const WebSocketFrameError = websocket_frame_codec.WebSocketFrameError;
+pub const WebSocketEndpoint = websocket_frame_codec.WebSocketEndpoint;
+pub const WebSocketOpcode = websocket_frame_codec.WebSocketOpcode;
+pub const WebSocketFrameHeader = websocket_frame_codec.WebSocketFrameHeader;
+pub const WebSocketFrame = websocket_frame_codec.WebSocketFrame;
+pub const WebSocketFrameCodecConfig = websocket_frame_codec.WebSocketFrameCodecConfig;
+pub const WebSocketFrameEvent = websocket_frame_codec.WebSocketFrameEvent;
+pub const WebSocketFrameParser = websocket_frame_codec.WebSocketFrameParser;
+pub const encode_websocket_frame = websocket_frame_codec.encode_websocket_frame;
 pub const SecurityComponentError = security_components.SecurityComponentError;
 pub const SecurityComponents = security_components.SecurityComponents;
 pub const validate_security_components = security_components.validate_security_components;
@@ -350,4 +362,5 @@ test {
     _ = @import("reliability_fault_matrix.zig");
     _ = @import("http_common_parser.zig");
     _ = @import("http2_frame_codec.zig");
+    _ = @import("websocket_frame_codec.zig");
 }
