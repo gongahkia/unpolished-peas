@@ -179,6 +179,29 @@ pub fn build(b: *std.Build) void {
             .{ .name = "minna-san-virtual-network-provider", .module = virtual_network_provider },
         },
     });
+    const udp_cross_process_common = b.createModule(.{
+        .root_source_file = b.path("contracts/udp_cross_process_common.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = runtime_spec.module_name, .module = runtime }},
+    });
+    const udp_cross_process_server = b.createModule(.{
+        .root_source_file = b.path("contracts/udp_cross_process_server.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "udp-cross-process-common", .module = udp_cross_process_common }},
+    });
+    const udp_cross_process_client = b.createModule(.{
+        .root_source_file = b.path("contracts/udp_cross_process_client.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "udp-cross-process-common", .module = udp_cross_process_common }},
+    });
+    const udp_cross_process_test = b.createModule(.{
+        .root_source_file = b.path("contracts/udp_cross_process_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const stun_turn_interop = b.createModule(.{
         .root_source_file = b.path("contracts/stun_turn_interop.zig"),
         .target = target,
@@ -267,6 +290,9 @@ pub fn build(b: *std.Build) void {
     const fixture_services_tests = b.addTest(.{ .root_module = fixture_services });
     const virtual_network_provider_tests = b.addTest(.{ .root_module = virtual_network_provider });
     const platform_composition_smoke_executable = b.addExecutable(.{ .name = "platform-composition-smoke", .root_module = platform_composition_smoke });
+    const udp_cross_process_server_executable = b.addExecutable(.{ .name = "udp-cross-process-server", .root_module = udp_cross_process_server });
+    const udp_cross_process_client_executable = b.addExecutable(.{ .name = "udp-cross-process-client", .root_module = udp_cross_process_client });
+    const udp_cross_process_test_executable = b.addExecutable(.{ .name = "udp-cross-process-test", .root_module = udp_cross_process_test });
     const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
     const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
     const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
@@ -343,6 +369,9 @@ pub fn build(b: *std.Build) void {
     const run_fixture_services = b.addRunArtifact(fixture_services_tests);
     const run_virtual_network_provider = b.addRunArtifact(virtual_network_provider_tests);
     const run_platform_composition_smoke = b.addRunArtifact(platform_composition_smoke_executable);
+    const run_udp_cross_process = b.addRunArtifact(udp_cross_process_test_executable);
+    run_udp_cross_process.addArtifactArg(udp_cross_process_server_executable);
+    run_udp_cross_process.addArtifactArg(udp_cross_process_client_executable);
     const run_stun_turn_interop = b.addRunArtifact(stun_turn_interop_tests);
     const run_benchmark_harness_tests = b.addRunArtifact(benchmark_harness_tests);
     const run_benchmark_harness = b.addRunArtifact(benchmark_harness_executable);
@@ -439,6 +468,8 @@ pub fn build(b: *std.Build) void {
     test_harness_step.dependOn(&run_virtual_network_provider.step);
     const platform_composition_smoke_step = b.step("platform-composition-smoke", "Run the platform composition smoke executable");
     platform_composition_smoke_step.dependOn(&run_platform_composition_smoke.step);
+    const udp_cross_process_step = b.step("udp-cross-process", "Run the native UDP cross-process integration executables");
+    udp_cross_process_step.dependOn(&run_udp_cross_process.step);
     const stun_turn_interop_step = b.step("stun-turn-interop", "Run controlled STUN TURN interoperability fixtures");
     stun_turn_interop_step.dependOn(&run_stun_turn_interop.step);
     const benchmark_harness_step = b.step("benchmark-harness", "Run deterministic benchmark harness");
@@ -579,6 +610,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_fixture_services.step);
     test_step.dependOn(&run_virtual_network_provider.step);
     test_step.dependOn(&run_platform_composition_smoke.step);
+    test_step.dependOn(&run_udp_cross_process.step);
     test_step.dependOn(&run_stun_turn_interop.step);
     test_step.dependOn(&run_benchmark_harness_tests.step);
     test_step.dependOn(&run_benchmark_authoritative_tests.step);
