@@ -64,6 +64,7 @@ const http_service_routing = @import("http_service_routing.zig");
 const http_middleware_pipeline = @import("http_middleware_pipeline.zig");
 const http2_stream_state = @import("http2_stream_state.zig");
 const http2_flow_control = @import("http2_flow_control.zig");
+const websocket_upgrade = @import("websocket_upgrade.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -561,6 +562,17 @@ pub const Http2FlowBackpressure = http2_flow_control.Http2FlowBackpressure;
 pub const Http2FlowReservation = http2_flow_control.Http2FlowReservation;
 pub const Http2FlowControlConfig = http2_flow_control.Http2FlowControlConfig;
 pub const Http2FlowController = http2_flow_control.Http2FlowController;
+pub const max_websocket_origins = websocket_upgrade.max_websocket_origins;
+pub const max_websocket_subprotocols = websocket_upgrade.max_websocket_subprotocols;
+pub const websocket_accept_key_bytes = websocket_upgrade.websocket_accept_key_bytes;
+pub const WebSocketUpgradeError = websocket_upgrade.WebSocketUpgradeError;
+pub const WebSocketUpgradeCallback = websocket_upgrade.WebSocketUpgradeCallback;
+pub const WebSocketUpgradeRequest = websocket_upgrade.WebSocketUpgradeRequest;
+pub const WebSocketUpgrade = websocket_upgrade.WebSocketUpgrade;
+pub const WebSocketUpgradeConfig = websocket_upgrade.WebSocketUpgradeConfig;
+pub const validate_websocket_upgrade = websocket_upgrade.validateWebSocketUpgrade;
+pub const websocket_upgrade_status = websocket_upgrade.websocketUpgradeStatus;
+pub const encode_websocket_upgrade = websocket_upgrade.encodeWebSocketUpgrade;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -657,5 +669,6 @@ test {
     _ = @import("http_middleware_pipeline.zig");
     _ = @import("http2_stream_state.zig");
     _ = @import("http2_flow_control.zig");
+    _ = @import("websocket_upgrade.zig");
     _ = @import("platform_runtime.zig");
 }
