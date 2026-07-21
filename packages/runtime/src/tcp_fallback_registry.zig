@@ -63,7 +63,7 @@ pub const TcpFallbackRegistry = struct {
         _ = try record(entry, .udp_failed, failure, null, null);
         const tcp_bit = topology.route_transport_bit(.tcp);
         if (entry.policy.allowed_transport_bits & tcp_bit == 0) {
-            try record(entry, .downgrade_rejected, failure, null, .tcp_not_permitted);
+            _ = try record(entry, .downgrade_rejected, failure, null, .tcp_not_permitted);
             return error.TcpFallbackDisallowed;
         }
         try validate_candidate_ids(candidates);
@@ -76,17 +76,17 @@ pub const TcpFallbackRegistry = struct {
             tcp_count += 1;
         }
         if (tcp_count == 0) {
-            try record(entry, .downgrade_rejected, failure, null, .no_tcp_candidate);
+            _ = try record(entry, .downgrade_rejected, failure, null, .no_tcp_candidate);
             return error.NoTcpFallback;
         }
         const selector = try topology.RouteCandidateSelector.init(entry.policy);
         const selected = selector.select(tcp_candidates[0..tcp_count], tcp_decisions[0..tcp_count]) catch |err| switch (err) {
             error.NoRoute => {
-                try record(entry, .downgrade_rejected, failure, null, .no_eligible_tcp);
+                _ = try record(entry, .downgrade_rejected, failure, null, .no_eligible_tcp);
                 return error.NoTcpFallback;
             },
             error.UnsupportedCapabilities => {
-                try record(entry, .downgrade_rejected, failure, null, .unsupported_capabilities);
+                _ = try record(entry, .downgrade_rejected, failure, null, .unsupported_capabilities);
                 return err;
             },
             else => return err,
