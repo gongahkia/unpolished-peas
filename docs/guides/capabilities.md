@@ -66,8 +66,8 @@ Slow platform and browser coverage is selected here, separately from the require
 | `windows-sdl_gpu` | `windows-2022` | `pwsh -File script/test_stable_core_capability.ps1 windows-sdl_gpu` |
 | `chromium-webgpu` | `macos-15-intel` | `zig build test-web-proof-game-matrix && zig build test-browser-renderer-parity && zig build benchmark-browser-workloads` |
 | `firefox-webgl2` | `macos-15-intel` | `UP_BROWSER=firefox zig build test-web-proof-game-matrix` |
-| `safari-webgl2` | `macos-15-intel` | `UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh` |
-| `safari-webgpu` | `macos-15-intel` | `UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh` |
+| `safari-webgl2` | `macos-15` | `UP_SAFARI_RENDERERS=webgl2 script/test_safari_proof_game_matrix.sh` |
+| `safari-webgpu` | `macos-15` | `UP_SAFARI_RENDERERS=webgpu script/test_safari_proof_game_matrix.sh` |
 
 ## Release verification
 
