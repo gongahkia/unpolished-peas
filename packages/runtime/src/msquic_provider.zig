@@ -349,7 +349,7 @@ test "MsQuic adapters deliver fake callback traces only through explicit runtime
     try std.testing.expectEqual(@as(usize, 1), fake.opens);
     try std.testing.expectEqual(@as(usize, 3), adapter.queuedCallbackCount());
     try std.testing.expectEqual(@as(usize, 0), adapter.queuedRuntimeEventCount());
-    try std.testing.expect(runtime.providers.providers[0].capabilities.supports(msquic_required_capabilities));
+    try std.testing.expect(runtime.providers.providers.items[0].capabilities.supports(msquic_required_capabilities));
 
     var first = try runtime.poll(.{ .now_ns = manual.clock().now(), .work_budget = 2 });
     defer first.deinit();
@@ -371,7 +371,7 @@ test "MsQuic adapters deliver fake callback traces only through explicit runtime
     try std.testing.expectEqual(@as(u64, 2), shutdown_complete.sequence);
     try std.testing.expectEqual(MsQuicCallbackKind.connection_shutdown_complete, shutdown_complete.callback.callbackKind().?);
     try std.testing.expect(adapter.nextRuntimeEvent() == null);
-    runtime.providers.providers[0].stop();
+    runtime.providers.providers.items[0].stop();
     try std.testing.expectEqual(@as(usize, 1), fake.closes);
     const stopped = adapter.nextRuntimeEvent().?;
     try std.testing.expectEqual(@as(u64, 3), stopped.sequence);

@@ -6,6 +6,7 @@ pub const ChannelDelivery = protocol.ChannelCapability;
 pub const ChannelOrdering = enum(u8) { unordered, ordered, sequenced };
 pub const ChannelFraming = enum(u8) { messages, bytes };
 pub const ChannelTransport = enum(u8) { stream, datagram };
+pub const ChannelReplaySafety = enum(u8) { replay_safe, replay_sensitive };
 pub const ChannelBackpressure = enum(u8) { writable, queue_full, transport_blocked, closed };
 pub const ChannelDeliveryError = core.ProviderCapabilityDescriptorError || error{ InvalidDescriptor, PayloadTooLarge, UnsupportedDelivery };
 
@@ -20,6 +21,7 @@ pub const ChannelDescriptor = struct {
     priority: u8 = 128,
     maximum_payload_bytes: usize,
     maximum_in_flight: usize = 1,
+    replay_safety: ChannelReplaySafety = .replay_safe,
 
     pub fn validate(self: ChannelDescriptor) ChannelDeliveryError!void {
         if (self.maximum_payload_bytes == 0 or self.maximum_in_flight == 0) return error.InvalidDescriptor;
