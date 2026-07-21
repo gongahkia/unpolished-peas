@@ -2,12 +2,13 @@ const std = @import("std");
 const transport = @import("minna-san-transport");
 const resource = @import("resource_handle.zig");
 
-pub const UdpListenerError = std.mem.Allocator.Error || resource.HandleError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || error{ InvalidConfiguration, InvalidEndpoint, InvalidRoute, ListenerCapacityExceeded, UnknownListener, PollFailed };
+pub const UdpListenerError = std.mem.Allocator.Error || resource.HandleError || transport.EndpointSelectionError || transport.SocketError || transport.SocketOptionError || transport.Ipv4Error || transport.Ipv6Error || error{ InvalidConfiguration, InvalidEndpoint, InvalidRoute, ListenerCapacityExceeded, UnknownListener, PollFailed };
 
 pub const UdpListenerConfig = struct {
     endpoint: transport.Endpoint,
     mode: transport.EndpointMode = .ipv4,
     platform_support: transport.PlatformSupport = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false },
+    socket_options: transport.SocketOptionConfig = .{},
 
     pub fn route(self: UdpListenerConfig) UdpListenerError!transport.ListenRoute {
         if (!self.endpoint.is_valid()) return error.InvalidEndpoint;
@@ -66,7 +67,9 @@ pub const UdpListenerRegistry = struct {
         errdefer self.resources.release_kind(handle, .listener) catch {};
         var socket = try route.open(.udp);
         errdefer socket.close();
+        if (route.dual_stack and config.socket_options.ipv6_only == true) return error.InvalidRoute;
         if (route.dual_stack) try enable_dual_stack(&socket);
+        try transport.apply_socket_options(&socket, config.socket_options);
         switch (config.endpoint.kind) {
             .ipv4 => try transport.bind(&socket, config.endpoint.to_ipv4() orelse return error.InvalidEndpoint),
             .ipv6 => try transport.bind_ipv6(&socket, config.endpoint.to_ipv6() orelse return error.InvalidEndpoint),
@@ -186,4 +189,15 @@ test "UDP listener registries enforce selected route and listener capacity" {
     try std.testing.expectError(error.InvalidRoute, listeners.open(.{ .endpoint = endpoint, .mode = .ipv6, .platform_support = .{ .ipv4 = true, .ipv6 = true, .dual_stack = false } }));
     _ = try listeners.open(.{ .endpoint = endpoint });
     try std.testing.expectError(error.ListenerCapacityExceeded, listeners.open(.{ .endpoint = endpoint }));
+}
+
+test "UDP listener registries reject unsupported socket policy before retaining handles" {
+    var resources = try resource.ResourceRegistry.init(std.testing.allocator, 1);
+    defer resources.deinit();
+    var listeners = try UdpListenerRegistry.init(std.testing.allocator, &resources, 1);
+    defer listeners.deinit();
+    const endpoint = transport.Endpoint.from_ipv4(transport.Ipv4Address.wildcard(0));
+    try std.testing.expectError(error.UnsupportedOption, listeners.open(.{ .endpoint = endpoint, .socket_options = .{ .ipv6_only = true } }));
+    const handle = try listeners.open(.{ .endpoint = endpoint, .socket_options = .{ .reuse_address = true, .receive_buffer_bytes = 4_096, .send_buffer_bytes = 4_096, .ecn = .optional } });
+    try listeners.close(handle);
 }

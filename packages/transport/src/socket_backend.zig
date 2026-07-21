@@ -28,6 +28,7 @@ pub const SocketError = error{
 pub const Socket = struct {
     handle: std.posix.socket_t,
     kind: SocketKind,
+    family: u32,
 
     pub fn open(kind: SocketKind) SocketError!Socket {
         return open_with_family(kind, std.posix.AF.INET);
@@ -48,7 +49,7 @@ pub const Socket = struct {
             .tcp => @as(u32, std.posix.IPPROTO.TCP),
         };
         const handle = std.posix.socket(family, socket_type, protocol) catch |err| return map_platform_error(err);
-        return .{ .handle = handle, .kind = kind };
+        return .{ .handle = handle, .kind = kind, .family = family };
     }
 
     pub fn close(self: *Socket) void {
