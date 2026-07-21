@@ -276,6 +276,7 @@ pub const SocketPollerProvider = socket_poller_provider.SocketPollerProvider;
 pub const TcpChannelRegistryError = tcp_channel_registry.TcpChannelRegistryError;
 pub const TcpChannelFlush = tcp_channel_registry.TcpChannelFlush;
 pub const TcpChannelReceive = tcp_channel_registry.TcpChannelReceive;
+pub const TcpChannelBackpressure = tcp_channel_registry.TcpChannelBackpressure;
 pub const TcpChannelRegistry = tcp_channel_registry.TcpChannelRegistry;
 pub const max_tcp_fallback_transitions = tcp_fallback_registry.max_tcp_fallback_transitions;
 pub const UdpFallbackFailure = tcp_fallback_registry.UdpFallbackFailure;
