@@ -19,12 +19,26 @@ const udp_session_registry = @import("udp_session_registry.zig");
 
 pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || udp_listener_registry.UdpListenerError || udp_session_registry.UdpSessionError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
+pub const UdpReadinessTarget = union(enum) {
+    listener: *resource_handle.ResourceHandle,
+    session: *resource_handle.ResourceHandle,
+};
+
+pub const UdpReadinessEvent = struct {
+    target: UdpReadinessTarget,
+    readable: bool = false,
+    socket_error: bool = false,
+    socket_hangup: bool = false,
+    invalid_socket: bool = false,
+};
+
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
     provider_work_completed: usize = 0,
     next_deadline: ?core.TimeNs = null,
     event: ?event.EventEnvelope = null,
     timer: ?timer_wheel.Timer = null,
+    udp_readiness: ?UdpReadinessEvent = null,
 
     pub fn deinit(self: *RuntimePollResult) void {
         if (self.event) |*event_envelope| event_envelope.deinit();
@@ -199,6 +213,16 @@ pub const Runtime = struct {
         return self.udp_sessions.localAddress(handle);
     }
 
+    pub fn pollUdpReadiness(self: *Runtime) RuntimeError!?UdpReadinessEvent {
+        if (try self.listeners.pollNextReadiness()) |value| {
+            return .{ .target = .{ .listener = value.listener }, .readable = value.poll.readable, .socket_error = value.poll.socket_error, .socket_hangup = value.poll.socket_hangup, .invalid_socket = value.poll.invalid_socket };
+        }
+        if (try self.udp_sessions.pollNextReadiness()) |value| {
+            return .{ .target = .{ .session = value.session }, .readable = value.readable, .socket_error = value.socket_error, .socket_hangup = value.socket_hangup, .invalid_socket = value.invalid_socket };
+        }
+        return null;
+    }
+
     pub fn scheduleTimer(self: *Runtime, kind: timer_wheel.TimerKind, deadline_ns: core.TimeNs) timer_wheel.TimerWheelError!timer_wheel.TimerId {
         return self.timers.schedule(kind, deadline_ns);
     }
@@ -260,18 +284,20 @@ pub const Runtime = struct {
         defer self.poll_active = false;
         const provider_result = try self.providers.poll(input.now_ns, @min(input.work_budget, self.platform_config.limits.poll_work_budget));
         const timer = try self.timers.advance(input.now_ns);
+        const udp_readiness = try self.pollUdpReadiness();
         var outcome = try self.poll_runtime.poll(input);
         errdefer outcome.deinit();
         var next_deadline = outcome.next_deadline;
         if (provider_result.next_deadline) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
         if (self.timers.nextDeadline()) |deadline| next_deadline = if (next_deadline) |current| @min(current, deadline) else deadline;
-        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else if (timer != null) .deadline else .idle;
+        const progress: poll_runtime.PollProgress = if (outcome.event != null) .event else if (provider_result.work_completed > 0) .provider else if (timer != null) .deadline else if (udp_readiness != null) .udp else .idle;
         const result = RuntimePollResult{
             .progress = progress,
             .provider_work_completed = provider_result.work_completed,
             .next_deadline = next_deadline,
             .event = outcome.event,
             .timer = timer,
+            .udp_readiness = udp_readiness,
         };
         outcome.event = null;
         return result;
@@ -508,6 +534,100 @@ test "unified runtimes flush scheduled UDP datagrams by priority" {
         try std.testing.expectEqual(primary, events[1].channel);
         try runtime.teardownChannel(high);
         try runtime.closeUdpSession(session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtime polls UDP readiness without receiving datagrams" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        var sender = try transport_api.UdpSocket.init(.{});
+        defer sender.close();
+        try sender.bind(try transport_api.Ipv4Address.parse("127.0.0.1", 0));
+        const sender_address = local_udp_ipv4_address(&sender);
+        const session = try runtime.dialUdp(.{ .endpoint = transport_api.Endpoint.from_ipv4(sender_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 } });
+        _ = try runtime.pollUdpSession(session);
+        var idle = try runtime.poll(.{ .now_ns = manual.clock().now() });
+        defer idle.deinit();
+        try std.testing.expectEqual(poll_runtime.PollProgress.idle, idle.progress);
+        try std.testing.expect(idle.udp_readiness == null);
+        const destination = switch (try runtime.udpSessionAddress(session)) {
+            .ipv4 => |address| address,
+            .ipv6 => unreachable,
+        };
+        _ = try sender.send_to("ready", destination);
+        var woke = false;
+        var attempts: usize = 0;
+        while (attempts < 100) : (attempts += 1) {
+            var result = try runtime.poll(.{ .now_ns = manual.clock().now() });
+            const progress = result.progress;
+            const readiness = result.udp_readiness;
+            result.deinit();
+            if (readiness) |value| {
+                try std.testing.expectEqual(poll_runtime.PollProgress.udp, progress);
+                switch (value.target) {
+                    .session => |handle| try std.testing.expectEqual(session, handle),
+                    .listener => unreachable,
+                }
+                try std.testing.expect(value.readable);
+                woke = true;
+                break;
+            }
+            std.Thread.sleep(std.time.ns_per_ms);
+        }
+        try std.testing.expect(woke);
+        var events: [1]udp_session_registry.UdpReceiveEvent = undefined;
+        try std.testing.expectEqual(@as(usize, 1), (try runtime.pollUdpReceives(session, events[0..])).received);
+        var message = (try runtime.dequeueChannel(session)).?;
+        defer message.deinit(allocator);
+        try std.testing.expectEqualStrings("ready", message.payload);
+        try runtime.closeUdpSession(session);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "unified runtime polls UDP listener readiness" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var manual = core.ManualClock.init(0);
+        const configured_sdk = try config.SdkConfigBuilder.init().with_clock(manual.clock()).with_platform_config(.{ .limits = .{ .session_capacity = 1, .channel_capacity = 1, .listener_capacity = 1 } }).build();
+        var runtime = try Runtime.init(allocator, configured_sdk);
+        defer runtime.deinit();
+        const listener = try runtime.openUdpListener(.{ .endpoint = transport_api.Endpoint.from_ipv4(transport_api.Ipv4Address.wildcard(0)) });
+        const address = switch (try runtime.udpListenerAddress(listener)) {
+            .ipv4 => |value| try transport_api.Ipv4Address.parse("127.0.0.1", value.port),
+            .ipv6 => unreachable,
+        };
+        var sender = try transport_api.UdpSocket.init(.{});
+        defer sender.close();
+        _ = try sender.send_to("ready", address);
+        var woke = false;
+        var attempts: usize = 0;
+        while (attempts < 100) : (attempts += 1) {
+            var result = try runtime.poll(.{ .now_ns = manual.clock().now() });
+            const progress = result.progress;
+            const readiness = result.udp_readiness;
+            result.deinit();
+            if (readiness) |value| {
+                try std.testing.expectEqual(poll_runtime.PollProgress.udp, progress);
+                switch (value.target) {
+                    .listener => |handle| try std.testing.expectEqual(listener, handle),
+                    .session => unreachable,
+                }
+                try std.testing.expect(value.readable);
+                woke = true;
+                break;
+            }
+            std.Thread.sleep(std.time.ns_per_ms);
+        }
+        try std.testing.expect(woke);
+        try runtime.closeUdpListener(listener);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
 }

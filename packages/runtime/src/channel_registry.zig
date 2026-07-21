@@ -207,7 +207,7 @@ test "channel registries schedule only datagrams and retain retry payloads" {
     defer resources.deinit();
     var sessions = try session.SessionRegistry.init(std.testing.allocator, &resources, 1);
     defer sessions.deinit();
-    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 3, 8);
+    var payloads = try payload_pool.PayloadPool.init(std.testing.allocator, 3, 24);
     defer payloads.deinit();
     const owner = try sessions.create();
     var channels = try ChannelRegistry.init(std.testing.allocator, &resources, &sessions, &payloads, 3);

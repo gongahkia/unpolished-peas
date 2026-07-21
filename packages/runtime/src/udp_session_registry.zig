@@ -20,6 +20,14 @@ pub const UdpSessionPoll = struct {
     channel: *resource.ResourceHandle,
 };
 
+pub const UdpSessionReadiness = struct {
+    session: *resource.ResourceHandle,
+    readable: bool = false,
+    socket_error: bool = false,
+    socket_hangup: bool = false,
+    invalid_socket: bool = false,
+};
+
 pub const UdpReceiveEvent = struct {
     sequence: u64,
     session: *resource.ResourceHandle,
@@ -65,6 +73,7 @@ pub const UdpSessionRegistry = struct {
     entries: std.ArrayListUnmanaged(Entry) = .empty,
     next_receive_sequence: u64 = 0,
     next_send_sequence: u64 = 0,
+    readiness_cursor: usize = 0,
 
     pub fn init(allocator: std.mem.Allocator, sessions: *session.SessionRegistry, channels: *channel.ChannelRegistry, capacity: usize) UdpSessionError!UdpSessionRegistry {
         if (capacity == 0 or capacity > sessions.capacity) return error.InvalidConfiguration;
@@ -102,6 +111,24 @@ pub const UdpSessionRegistry = struct {
             else => return error.InvalidState,
         }
         return .{ .state = lifecycle.state, .channel = entry.channel };
+    }
+
+    pub fn pollNextReadiness(self: *UdpSessionRegistry) UdpSessionError!?UdpSessionReadiness {
+        if (self.entries.items.len == 0) return null;
+        var index = if (self.readiness_cursor < self.entries.items.len) self.readiness_cursor else 0;
+        var checked: usize = 0;
+        while (checked < self.entries.items.len) : (checked += 1) {
+            const entry = &self.entries.items[index];
+            const lifecycle = try self.sessions.lookup(entry.session);
+            index = next_index(index, self.entries.items.len);
+            if (lifecycle.state != .ready) continue;
+            const result = try poll_socket(&entry.socket);
+            if (!result.readable and !result.socket_error and !result.socket_hangup and !result.invalid_socket) continue;
+            self.readiness_cursor = index;
+            return .{ .session = entry.session, .readable = result.readable, .socket_error = result.socket_error, .socket_hangup = result.socket_hangup, .invalid_socket = result.invalid_socket };
+        }
+        self.readiness_cursor = index;
+        return null;
     }
 
     pub fn pollReceives(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, events: []UdpReceiveEvent) UdpSessionError!UdpReceiveBatch {
@@ -251,6 +278,29 @@ fn send_datagram(socket: *transport.Socket, payload: []const u8) UdpSessionError
         error.MessageTooBig => error.DatagramTooLarge,
         else => error.SendFailed,
     };
+}
+
+const SocketReadiness = struct {
+    readable: bool = false,
+    socket_error: bool = false,
+    socket_hangup: bool = false,
+    invalid_socket: bool = false,
+};
+
+fn poll_socket(socket: *transport.Socket) UdpSessionError!SocketReadiness {
+    var descriptors = [_]std.posix.pollfd{.{ .fd = socket.handle, .events = std.posix.POLL.IN, .revents = 0 }};
+    _ = std.posix.poll(&descriptors, 0) catch return error.ReceiveFailed;
+    const events = descriptors[0].revents;
+    return .{
+        .readable = events & std.posix.POLL.IN != 0,
+        .socket_error = events & std.posix.POLL.ERR != 0,
+        .socket_hangup = events & std.posix.POLL.HUP != 0,
+        .invalid_socket = events & std.posix.POLL.NVAL != 0,
+    };
+}
+
+fn next_index(index: usize, len: usize) usize {
+    return if (index + 1 == len) 0 else index + 1;
 }
 
 const ReceivedDatagram = struct {
