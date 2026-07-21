@@ -11,7 +11,7 @@ published_consumer="$repo/script/test_published_tag_consumer.sh"
 require() {
     local value=$1
     local path=$2
-    rg --fixed-strings --line-regexp --quiet "$value" "$path" || {
+    grep -F -x -q -- "$value" "$path" || {
         printf 'release validation missing: %s: %s\n' "$path" "$value" >&2
         exit 1
     }
@@ -29,11 +29,11 @@ rg --fixed-strings --quiet 'zig build run -- --frames 2' "$published_consumer" |
     printf '%s\n' 'release validation missing published consumer frame smoke' >&2
     exit 1
 }
-if rg --fixed-strings --quiet -- '--draft' "$workflow"; then
+if grep -F -q -- '--draft' "$workflow"; then
     printf '%s\n' 'release validation found a draft release command' >&2
     exit 1
 fi
-test "$(rg --fixed-strings --line-regexp --count '    needs: release-gate' "$workflow")" -eq 3
+test "$(grep -F -x -c -- '    needs: release-gate' "$workflow")" -eq 3
 for command in \
     'run api-snapshot zig build test-core-api' \
     'run clean-consumer zig build test-release-candidate-clean-consumer' \
@@ -51,7 +51,7 @@ for command in \
     ; do
     require "$command" "$gate"
 done
-if rg --fixed-strings --quiet 'check_performance_budgets.sh' "$gate"; then
+if grep -F -q -- 'check_performance_budgets.sh' "$gate"; then
     printf '%s\n' 'release validation found a performance budget gate' >&2
     exit 1
 fi
@@ -63,7 +63,7 @@ for performance_workflow in "$nightly" "$workflow"; do
     require '        run: script/check_workload_performance.ps1' "$performance_workflow"
 done
 require '            zig-out/performance/**' "$workflow"
-if rg --fixed-strings --quiet 'check_workload_performance' "$pull_request"; then
+if grep -F -q -- 'check_workload_performance' "$pull_request"; then
     printf '%s\n' 'release validation found a workload performance gate in pull-request CI' >&2
     exit 1
 fi

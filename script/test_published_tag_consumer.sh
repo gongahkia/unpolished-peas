@@ -48,14 +48,14 @@ fi
     ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"
 )
 manifest="$consumer/build.zig.zon"
-rg -Fqx "            .url = \"$expected_url\"," "$manifest"
+grep -F -x -q -- "            .url = \"$expected_url\"," "$manifest"
 archive_hash="$(ZIG_GLOBAL_CACHE_DIR="$verification_cache/global" ZIG_LOCAL_CACHE_DIR="$verification_cache/local" zig fetch "$expected_url")"
 case "$archive_hash" in
     unpolished_peas-*) ;;
     *) printf 'published consumer: public archive returned invalid hash for tag=%s\n' "$tag" >&2; exit 1 ;;
 esac
-rg -Fqx "            .hash = \"$archive_hash\"," "$manifest"
-if rg -Fq '.path =' "$manifest"; then
+grep -F -x -q -- "            .hash = \"$archive_hash\"," "$manifest"
+if grep -F -q -- '.path =' "$manifest"; then
     printf '%s\n' 'published consumer: generated manifest must use the public tag archive, not a local path' >&2
     exit 1
 fi
