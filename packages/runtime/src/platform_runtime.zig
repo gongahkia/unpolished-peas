@@ -8,11 +8,12 @@ const provider = @import("provider.zig");
 const resource_handle = @import("resource_handle.zig");
 const session_registry = @import("session_registry.zig");
 const channel_registry = @import("channel_registry.zig");
+const timer_wheel = @import("timer_wheel.zig");
 const channel_delivery = @import("channel_delivery.zig");
 const service_module = @import("service_module.zig");
 const security_policy = @import("security_policy.zig");
 
-pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
+pub const RuntimeError = std.mem.Allocator.Error || poll_runtime.PollRuntimeError || provider.ProviderRegistryError || resource_handle.HandleError || session_registry.SessionRegistryError || channel_registry.ChannelRegistryError || timer_wheel.TimerWheelError || topology.RouteSelectionError || topology.RouteCandidateSelectionError || channel_delivery.ChannelDeliveryError || service_module.ServiceModuleError || security_policy.SecurityPolicyError || error{ReentrantPoll};
 
 pub const RuntimePollResult = struct {
     progress: poll_runtime.PollProgress = .idle,
@@ -34,6 +35,7 @@ pub const Runtime = struct {
     resources: resource_handle.ResourceRegistry,
     sessions: session_registry.SessionRegistry,
     channels: channel_registry.ChannelRegistry,
+    timers: timer_wheel.TimerWheel,
     services: service_module.ServiceRegistry,
     poll_active: bool = false,
 
@@ -49,6 +51,8 @@ pub const Runtime = struct {
         errdefer sessions.deinit();
         var channels = try channel_registry.ChannelRegistry.init(allocator, &resources, &sessions, platform_config.limits.channel_capacity);
         errdefer channels.deinit();
+        var timers = try timer_wheel.TimerWheel.init(allocator, platform_config.limits.event_capacity);
+        errdefer timers.deinit();
         var providers = try provider.ProviderRegistry.init(allocator, platform_config.limits.provider_capacity);
         errdefer providers.deinit();
         var services = try service_module.ServiceRegistry.init(allocator, .{ .maximum_modules = platform_config.limits.service_capacity });
@@ -61,6 +65,7 @@ pub const Runtime = struct {
             .resources = resources,
             .sessions = sessions,
             .channels = channels,
+            .timers = timers,
             .services = services,
         };
     }
@@ -68,6 +73,7 @@ pub const Runtime = struct {
     pub fn deinit(self: *Runtime) void {
         self.services.deinit();
         self.providers.deinit();
+        self.timers.deinit();
         self.channels.deinit();
         self.sessions.deinit();
         self.resources.deinit();
@@ -117,6 +123,14 @@ pub const Runtime = struct {
 
     pub fn teardownChannel(self: *Runtime, handle: *resource_handle.ResourceHandle) channel_registry.ChannelRegistryError!void {
         try self.channels.teardown(handle);
+    }
+
+    pub fn scheduleTimer(self: *Runtime, kind: timer_wheel.TimerKind, deadline_ns: core.TimeNs) timer_wheel.TimerWheelError!timer_wheel.TimerId {
+        return self.timers.schedule(kind, deadline_ns);
+    }
+
+    pub fn cancelTimer(self: *Runtime, id: timer_wheel.TimerId) timer_wheel.TimerWheelError!void {
+        try self.timers.cancel(id);
     }
 
     pub fn registerService(self: *Runtime, module: service_module.ServiceModule) service_module.ServiceModuleError!service_module.ServiceModuleId {
