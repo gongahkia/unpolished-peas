@@ -80,6 +80,9 @@ extern "C" {
 #define MINNA_SAN_ROUTE_HEALTH_DEGRADED 1u
 #define MINNA_SAN_ROUTE_HEALTH_UNAVAILABLE 2u
 #define MINNA_SAN_SECURITY_EVENT_COUNT 4u
+#define MINNA_SAN_TLS_CERTIFICATE_PENDING 0u
+#define MINNA_SAN_TLS_CERTIFICATE_ACCEPT 1u
+#define MINNA_SAN_TLS_CERTIFICATE_REJECT 2u
 
 typedef uint32_t minna_san_abi_version_t;
 typedef int64_t minna_san_duration_ns;
@@ -186,6 +189,55 @@ typedef struct minna_san_p2p_session minna_san_p2p_session;
 typedef struct minna_san_native_runtime minna_san_native_runtime;
 typedef struct minna_san_native_session minna_san_native_session;
 typedef struct minna_san_native_channel minna_san_native_channel;
+typedef struct minna_san_http_client minna_san_http_client;
+typedef struct minna_san_http_stream minna_san_http_stream;
+typedef struct minna_san_tls_certificate_registry minna_san_tls_certificate_registry;
+typedef struct minna_san_websocket_client minna_san_websocket_client;
+typedef struct minna_san_http_header {
+    minna_san_const_buffer name;
+    minna_san_const_buffer value;
+} minna_san_http_header;
+typedef struct minna_san_http_request {
+    minna_san_const_buffer method;
+    minna_san_const_buffer target;
+    minna_san_const_buffer authority;
+    const minna_san_http_header *headers;
+    size_t header_count;
+    minna_san_const_buffer body;
+    uint8_t close_after_response;
+    uint8_t reserved[7];
+} minna_san_http_request;
+typedef struct minna_san_http_response {
+    uint64_t sequence;
+    uint16_t status;
+    uint8_t keep_alive;
+    uint8_t redirect_not_followed;
+    minna_san_const_buffer body;
+} minna_san_http_response;
+typedef struct minna_san_tls_certificate_request {
+    uint64_t id;
+    uint32_t kind;
+    minna_san_const_buffer server_name;
+    uint64_t peer_certificate_chain_id;
+    uint8_t has_peer_certificate_chain_id;
+    uint8_t reserved[7];
+    minna_san_duration_ns issued_at_ns;
+    minna_san_duration_ns expires_at_ns;
+} minna_san_tls_certificate_request;
+typedef void (*minna_san_tls_certificate_begin_fn)(void *context, const minna_san_tls_certificate_request *request);
+typedef uint32_t (*minna_san_tls_certificate_poll_fn)(void *context, uint64_t request_id);
+typedef struct minna_san_tls_certificate_callbacks {
+    void *context;
+    minna_san_tls_certificate_begin_fn begin;
+    minna_san_tls_certificate_poll_fn poll;
+    size_t maximum_pending;
+} minna_san_tls_certificate_callbacks;
+typedef struct minna_san_websocket_client_config {
+    minna_san_const_buffer uri;
+    minna_san_const_buffer subprotocol;
+    size_t maximum_message_bytes;
+    size_t maximum_in_flight_messages;
+} minna_san_websocket_client_config;
 typedef struct minna_san_platform_config {
     uint32_t version;
     size_t provider_capacity;

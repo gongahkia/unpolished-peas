@@ -1,4 +1,5 @@
 #include <minna_san.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -122,6 +123,102 @@ static int minna_san_consumer_p2p_exchange(minna_san_sdk *sdk) {
     return 0;
 }
 
+typedef struct minna_san_consumer_tls_fixture {
+    uint8_t saw_request;
+} minna_san_consumer_tls_fixture;
+
+static void minna_san_consumer_tls_begin(void *context, const minna_san_tls_certificate_request *request) {
+    minna_san_consumer_tls_fixture *fixture = context;
+    if (request->kind == 1u && request->peer_certificate_chain_id == 9u && request->has_peer_certificate_chain_id == 1u && request->server_name.len == sizeof("fixture.test") - 1u && memcmp(request->server_name.data, "fixture.test", request->server_name.len) == 0) fixture->saw_request = 1u;
+}
+
+static uint32_t minna_san_consumer_tls_poll(void *context, uint64_t request_id) {
+    (void)context;
+    return request_id == 0u ? MINNA_SAN_TLS_CERTIFICATE_PENDING : MINNA_SAN_TLS_CERTIFICATE_ACCEPT;
+}
+
+static int minna_san_consumer_http_websocket_exchange(minna_san_sdk *sdk) {
+    static const uint8_t method[] = {'G', 'E', 'T'};
+    static const uint8_t target[] = {'/', 'f', 'i', 'x', 't', 'u', 'r', 'e'};
+    static const uint8_t authority[] = {'f', 'i', 'x', 't', 'u', 'r', 'e', '.', 't', 'e', 's', 't'};
+    static const uint8_t response_bytes[] = "HTTP/1.1 200 OK\r\nContent-Length: 2\r\n\r\nok";
+    static const uint8_t stream_input[] = {'o', 'k'};
+    static const uint8_t websocket_uri[] = "wss://fixture.test/socket";
+    static const uint8_t websocket_subprotocol[] = "chat";
+    const minna_san_http_request request = {
+        .method = { .data = method, .len = sizeof(method) },
+        .target = { .data = target, .len = sizeof(target) },
+        .authority = { .data = authority, .len = sizeof(authority) },
+        .headers = 0,
+        .header_count = 0u,
+        .body = { .data = 0, .len = 0u },
+        .close_after_response = 0u,
+        .reserved = {0},
+    };
+    minna_san_http_client *http = 0;
+    minna_san_http_stream *stream = 0;
+    minna_san_tls_certificate_registry *tls = 0;
+    minna_san_websocket_client *websocket = 0;
+    uint8_t wire[512];
+    uint8_t stream_wire[32];
+    uint8_t accept[64];
+    uint8_t message[8];
+    char handshake[256];
+    size_t wire_len = 0u;
+    size_t consumed = 0u;
+    size_t accepted = 0u;
+    size_t pending = 0u;
+    size_t stream_len = 0u;
+    size_t accept_len = 0u;
+    size_t message_len = 0u;
+    uint8_t complete = 0u;
+    uint8_t closed = 0u;
+    uint64_t certificate_id = 0u;
+    uint64_t resolved_id = 0u;
+    uint32_t decision = MINNA_SAN_TLS_CERTIFICATE_PENDING;
+    minna_san_http_response response = {0};
+    minna_san_consumer_tls_fixture tls_fixture = {0};
+    const minna_san_tls_certificate_callbacks callbacks = {
+        .context = &tls_fixture,
+        .begin = minna_san_consumer_tls_begin,
+        .poll = minna_san_consumer_tls_poll,
+        .maximum_pending = 1u,
+    };
+    const minna_san_websocket_client_config websocket_config = {
+        .uri = { .data = websocket_uri, .len = sizeof(websocket_uri) - 1u },
+        .subprotocol = { .data = websocket_subprotocol, .len = sizeof(websocket_subprotocol) - 1u },
+        .maximum_message_bytes = sizeof(message),
+        .maximum_in_flight_messages = 1u,
+    };
+    if (minna_san_http_client_create(sdk, &http) != MINNA_SAN_RESULT_OK) return 80;
+    if (minna_san_http_client_begin(http, &request, (minna_san_buffer){ .data = wire, .len = sizeof(wire) }, &wire_len) != MINNA_SAN_RESULT_OK || wire_len == 0u) return 81;
+    if (minna_san_http_client_feed(http, (minna_san_const_buffer){ .data = response_bytes, .len = sizeof(response_bytes) - 1u }, &consumed, &complete) != MINNA_SAN_RESULT_OK || consumed != sizeof(response_bytes) - 1u || complete != 1u) return 82;
+    if (minna_san_http_client_response(http, &response) != MINNA_SAN_RESULT_OK || response.status != 200u || response.body.len != 2u || memcmp(response.body.data, "ok", 2u) != 0) return 83;
+    if (minna_san_http_client_destroy(sdk, http) != MINNA_SAN_RESULT_OK) return 84;
+    if (minna_san_http_stream_create(sdk, sizeof(stream_wire), sizeof(stream_input), &stream) != MINNA_SAN_RESULT_OK) return 85;
+    if (minna_san_http_stream_write(stream, (minna_san_const_buffer){ .data = stream_input, .len = sizeof(stream_input) }, &accepted, &pending) != MINNA_SAN_RESULT_OK || accepted != sizeof(stream_input) || pending == 0u) return 86;
+    if (minna_san_http_stream_pending(stream, (minna_san_buffer){ .data = stream_wire, .len = sizeof(stream_wire) }, &stream_len) != MINNA_SAN_RESULT_OK || stream_len != pending || memcmp(stream_wire, "2\r\nok\r\n", stream_len) != 0) return 87;
+    if (minna_san_http_stream_consume(stream, stream_len, &closed) != MINNA_SAN_RESULT_OK || closed != 0u) return 88;
+    if (minna_san_http_stream_finish(stream, &pending) != MINNA_SAN_RESULT_OK || pending != 5u) return 89;
+    if (minna_san_http_stream_consume(stream, pending, &closed) != MINNA_SAN_RESULT_OK || closed != 1u) return 90;
+    if (minna_san_http_stream_destroy(sdk, stream) != MINNA_SAN_RESULT_OK) return 91;
+    if (minna_san_tls_certificate_registry_create(sdk, &callbacks, &tls) != MINNA_SAN_RESULT_OK) return 92;
+    if (minna_san_tls_certificate_client_trust_begin(tls, (minna_san_const_buffer){ .data = authority, .len = sizeof(authority) }, 9u, 0, 10, &certificate_id) != MINNA_SAN_RESULT_OK || certificate_id == 0u || tls_fixture.saw_request != 1u) return 93;
+    if (minna_san_tls_certificate_registry_poll(tls, 1, &resolved_id, &decision) != MINNA_SAN_RESULT_OK || resolved_id != certificate_id || decision != MINNA_SAN_TLS_CERTIFICATE_ACCEPT) return 94;
+    if (minna_san_tls_certificate_registry_destroy(sdk, tls) != MINNA_SAN_RESULT_OK) return 95;
+    if (minna_san_websocket_client_create(sdk, &websocket_config, &websocket) != MINNA_SAN_RESULT_OK) return 96;
+    if (minna_san_websocket_client_begin(websocket, (minna_san_buffer){ .data = wire, .len = sizeof(wire) }, &wire_len) != MINNA_SAN_RESULT_OK || wire_len == 0u) return 97;
+    if (minna_san_websocket_client_expected_accept(websocket, (minna_san_buffer){ .data = accept, .len = sizeof(accept) }, &accept_len) != MINNA_SAN_RESULT_OK || accept_len == 0u) return 98;
+    const int handshake_len = snprintf(handshake, sizeof(handshake), "HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\nSec-WebSocket-Accept: %.*s\r\nSec-WebSocket-Protocol: chat\r\n\r\n", (int)accept_len, (const char *)accept);
+    if (handshake_len <= 0 || (size_t)handshake_len >= sizeof(handshake)) return 99;
+    if (minna_san_websocket_client_feed(websocket, (minna_san_const_buffer){ .data = (const uint8_t *)handshake, .len = (size_t)handshake_len }, &consumed, &complete) != MINNA_SAN_RESULT_OK || consumed != (size_t)handshake_len || complete != 1u) return 100;
+    const uint8_t frame[] = {0x82u, 0x02u, 0x01u, 0x02u};
+    if (minna_san_websocket_client_feed(websocket, (minna_san_const_buffer){ .data = frame, .len = sizeof(frame) }, &consumed, &complete) != MINNA_SAN_RESULT_OK || consumed != sizeof(frame)) return 101;
+    if (minna_san_websocket_client_receive(websocket, (minna_san_buffer){ .data = message, .len = sizeof(message) }, &message_len) != MINNA_SAN_RESULT_OK || message_len != 2u || message[0] != 1u || message[1] != 2u) return 102;
+    if (minna_san_websocket_client_destroy(sdk, websocket) != MINNA_SAN_RESULT_OK) return 103;
+    return 0;
+}
+
 int c_abi_consumer_main(void) {
     minna_san_platform_config platform_config;
     const minna_san_allocator allocator = {
@@ -172,6 +269,8 @@ int c_abi_consumer_main(void) {
     if (minna_san_sdk_validate_config(&config) != MINNA_SAN_RESULT_OK) return 6;
     if (minna_san_sdk_create(&config, &sdk) != MINNA_SAN_RESULT_OK) return 7;
     if (minna_san_sdk_start(sdk) != MINNA_SAN_RESULT_OK) return 8;
+    const int http_websocket_result = minna_san_consumer_http_websocket_exchange(sdk);
+    if (http_websocket_result != 0) return http_websocket_result;
     if (minna_san_consumer_p2p_exchange(sdk) != 0) return 59;
     if (minna_san_sdk_poll(sdk, &event) != MINNA_SAN_RESULT_WOULD_BLOCK) return 9;
     if (minna_san_sdk_metrics_snapshot(sdk, &metrics) != MINNA_SAN_RESULT_OK) return 10;
