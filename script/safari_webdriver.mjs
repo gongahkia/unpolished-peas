@@ -11,7 +11,7 @@ function fail(message) {
 export function validateRenderer(diagnostic, requested) {
   if (!diagnostic || diagnostic.version !== 1 || diagnostic.browser_target !== "safari" || diagnostic.requested_renderer !== requested) fail(`invalid ${requested} renderer diagnostic`);
   if (requested === "webgl2") {
-    if (diagnostic.selected_renderer !== "webgl2" || diagnostic.fallback_reason !== null || diagnostic.capabilities?.webgl2 !== "available" || diagnostic.context_status !== "ready") fail("forced WebGL 2 was not selected")
+    if (diagnostic.selected_renderer !== "webgl2" || diagnostic.fallback_reason !== null || diagnostic.capabilities?.webgl2 !== "available" || diagnostic.context_status !== "ready") fail(`forced WebGL 2 was not selected: ${JSON.stringify(diagnostic)}`)
     return "available";
   }
   if (diagnostic.selected_renderer === "webgpu") {
