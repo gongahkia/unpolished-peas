@@ -303,6 +303,14 @@ pub const Runtime = struct {
         try self.udp_sessions.resetPacketProtection(handle, config_value);
     }
 
+    pub fn forceUdpPacketKeyRotation(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
+        try self.udp_sessions.forcePacketKeyRotation(handle);
+    }
+
+    pub fn rollbackUdpPacketKeyRotation(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
+        try self.udp_sessions.rollbackPacketKeyRotation(handle);
+    }
+
     pub fn closeUdpSession(self: *Runtime, handle: *resource_handle.ResourceHandle) udp_session_registry.UdpSessionError!void {
         self.transport_retries.forget(&self.timers, handle);
         self.tcp_fallbacks.forget(handle);

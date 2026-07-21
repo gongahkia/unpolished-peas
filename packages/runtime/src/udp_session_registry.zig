@@ -6,13 +6,14 @@ const session = @import("session_registry.zig");
 const channel = @import("channel_registry.zig");
 const delivery = @import("channel_delivery.zig");
 
-pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || protocol.ReplayWindowError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
+pub const UdpSessionError = std.mem.Allocator.Error || resource.HandleError || session.SessionRegistryError || channel.ChannelRegistryError || protocol.PacketProtectionError || protocol.ReplayWindowError || protocol.KeyRotationError || protocol.KeyRotationFrameError || transport.EndpointSelectionError || transport.SocketError || transport.Ipv4Error || transport.Ipv6Error || transport.PathMtuProbeError || delivery.ChannelDeliveryError || error{ InvalidConfiguration, InvalidState, ConnectFailed, UnknownSession, EmptyBatch, BatchTooLarge, ReceiveFailed, SendFailed, DatagramTooLarge, WouldBlock, PathMtuUnavailable };
 
 pub const UdpPacketProtectionConfig = struct {
     send_key: protocol.PacketProtectionKey,
     receive_key: protocol.PacketProtectionKey,
     replay: protocol.ReplayWindowConfig = .{},
     key_epoch: protocol.KeyEpoch = 0,
+    key_rotation: ?protocol.KeyRotationConfig = null,
 };
 
 pub const UdpDialConfig = struct {
@@ -79,21 +80,244 @@ const Entry = struct {
     packet_protection: ?ProtectedDatagrams = null,
 };
 
-const ProtectedDatagrams = struct {
-    sender: protocol.PacketProtector,
-    receiver: protocol.PacketProtector,
-    replay: protocol.ReplayWindow,
-    key_epoch: protocol.KeyEpoch,
+const EpochSender = struct {
+    epoch: protocol.KeyEpoch,
+    protector: protocol.PacketProtector,
 
-    fn init(config: UdpPacketProtectionConfig) protocol.ReplayWindowError!ProtectedDatagrams {
-        return .{ .sender = protocol.PacketProtector.init(config.send_key), .receiver = protocol.PacketProtector.init(config.receive_key), .replay = try protocol.ReplayWindow.init(config.replay), .key_epoch = config.key_epoch };
+    fn init(epoch: protocol.KeyEpoch, key: protocol.PacketProtectionKey) EpochSender {
+        return .{ .epoch = epoch, .protector = protocol.PacketProtector.init(key) };
+    }
+
+    fn deinit(self: *EpochSender) void {
+        self.protector.deinit();
+        self.* = undefined;
+    }
+};
+
+const EpochReceiver = struct {
+    epoch: protocol.KeyEpoch,
+    protector: protocol.PacketProtector,
+    replay: protocol.ReplayWindow,
+
+    fn init(epoch: protocol.KeyEpoch, key: protocol.PacketProtectionKey, replay_config: protocol.ReplayWindowConfig) protocol.ReplayWindowError!EpochReceiver {
+        return .{ .epoch = epoch, .protector = protocol.PacketProtector.init(key), .replay = try protocol.ReplayWindow.init(replay_config) };
+    }
+
+    fn deinit(self: *EpochReceiver) void {
+        self.protector.deinit();
+        self.replay.reset();
+        self.* = undefined;
+    }
+};
+
+const PendingRotationControl = struct {
+    control: protocol.KeyRotationControl,
+    epoch: protocol.KeyEpoch,
+    switch_sender_after: bool,
+};
+
+const DatagramKeyRotation = struct {
+    send: protocol.KeyRotation,
+    receive: protocol.KeyRotation,
+    pending_sender: ?EpochSender = null,
+    previous_sender: ?EpochSender = null,
+    pending_control: ?PendingRotationControl = null,
+
+    fn deinit(self: *DatagramKeyRotation) void {
+        self.send.deinit();
+        self.receive.deinit();
+        if (self.pending_sender) |*value| value.deinit();
+        if (self.previous_sender) |*value| value.deinit();
+        self.pending_sender = null;
+        self.previous_sender = null;
+        self.pending_control = null;
+        self.* = undefined;
+    }
+};
+
+const ProtectedDatagrams = struct {
+    sender: EpochSender,
+    receiver: EpochReceiver,
+    previous_receiver: ?EpochReceiver = null,
+    key_rotation: ?DatagramKeyRotation = null,
+    replay_config: protocol.ReplayWindowConfig,
+
+    fn init(config: UdpPacketProtectionConfig) UdpSessionError!ProtectedDatagrams {
+        if (config.key_rotation != null and config.key_epoch != 0) return error.InvalidConfiguration;
+        var value = ProtectedDatagrams{
+            .sender = EpochSender.init(config.key_epoch, config.send_key),
+            .receiver = try EpochReceiver.init(config.key_epoch, config.receive_key, config.replay),
+            .replay_config = config.replay,
+        };
+        errdefer value.deinit();
+        if (config.key_rotation) |rotation_config| {
+            var send_rotation = try protocol.KeyRotation.init_packet_key(config.send_key, rotation_config);
+            errdefer send_rotation.deinit();
+            var receive_rotation = try protocol.KeyRotation.init_packet_key(config.receive_key, rotation_config);
+            errdefer receive_rotation.deinit();
+            value.key_rotation = .{ .send = send_rotation, .receive = receive_rotation };
+        }
+        return value;
     }
 
     fn deinit(self: *ProtectedDatagrams) void {
         self.sender.deinit();
         self.receiver.deinit();
-        self.replay.reset();
+        if (self.previous_receiver) |*value| value.deinit();
+        if (self.key_rotation) |*value| value.deinit();
         self.* = undefined;
+    }
+
+    fn open(self: *ProtectedDatagrams, input: []const u8, output: []u8) protocol.PacketProtectionError![]const u8 {
+        const epoch = try protocol.protected_packet_epoch(input);
+        if (epoch == self.receiver.epoch) return openEpoch(&self.receiver, input, output);
+        const previous = if (self.previous_receiver) |*value| value else return error.AuthenticationFailed;
+        if (epoch != previous.epoch) return error.AuthenticationFailed;
+        const payload = try openEpoch(previous, input, output);
+        if (self.key_rotation) |*rotation| {
+            rotation.receive.confirm_received(epoch) catch return error.AuthenticationFailed;
+            var retained = rotation.receive.receive_key(epoch) catch {
+                previous.deinit();
+                self.previous_receiver = null;
+                return payload;
+            };
+            retained.clear();
+        }
+        return payload;
+    }
+
+    fn forceRotation(self: *ProtectedDatagrams) UdpSessionError!void {
+        const rotation = if (self.key_rotation) |*value| value else return error.InvalidConfiguration;
+        if (rotation.previous_sender) |*value| value.deinit();
+        rotation.previous_sender = null;
+        const update = try rotation.send.initiate();
+        const receive_update = rotation.receive.initiate() catch |err| {
+            _ = rotation.send.recover_failed_rotation() catch {};
+            return err;
+        };
+        if (receive_update.kind != update.kind or receive_update.epoch != update.epoch) return error.InvalidConfiguration;
+        var receive_key = rotation.receive.current_key();
+        defer receive_key.clear();
+        try self.advanceReceiver(receive_key.key, update.epoch);
+        var send_key = rotation.send.current_key();
+        defer send_key.clear();
+        if (rotation.pending_sender) |*value| value.deinit();
+        rotation.pending_sender = EpochSender.init(update.epoch, send_key.key);
+        rotation.pending_control = .{ .control = update, .epoch = self.sender.epoch, .switch_sender_after = false };
+    }
+
+    fn rollbackRotation(self: *ProtectedDatagrams) UdpSessionError!void {
+        const rotation = if (self.key_rotation) |*value| value else return error.InvalidConfiguration;
+        const rollback = try rotation.send.recover_failed_rotation();
+        const receive_rollback = rotation.receive.recover_failed_rotation() catch |err| return err;
+        if (receive_rollback.kind != rollback.kind or receive_rollback.epoch != rollback.epoch) return error.InvalidConfiguration;
+        try self.restoreReceiver(rollback.epoch);
+        if (rotation.pending_sender) |*value| value.deinit();
+        rotation.pending_sender = null;
+        rotation.pending_control = .{ .control = rollback, .epoch = self.sender.epoch, .switch_sender_after = false };
+    }
+
+    fn receiveControl(self: *ProtectedDatagrams, control: protocol.KeyRotationControl) UdpSessionError!void {
+        const rotation = if (self.key_rotation) |*value| value else return error.InvalidConfiguration;
+        switch (control.kind) {
+            .update => {
+                const duplicate = control.epoch == rotation.send.current_epoch() and control.epoch == rotation.receive.current_epoch();
+                const acknowledgement = try rotation.send.receive_update(control);
+                const receive_acknowledgement = try rotation.receive.receive_update(control);
+                if (acknowledgement.kind != receive_acknowledgement.kind or acknowledgement.epoch != receive_acknowledgement.epoch) return error.InvalidConfiguration;
+                if (duplicate) {
+                    rotation.pending_control = .{ .control = acknowledgement, .epoch = self.sender.epoch, .switch_sender_after = false };
+                    return;
+                }
+                var receive_key = rotation.receive.current_key();
+                defer receive_key.clear();
+                try self.advanceReceiver(receive_key.key, control.epoch);
+                var send_key = rotation.send.current_key();
+                defer send_key.clear();
+                if (rotation.pending_sender) |*value| value.deinit();
+                rotation.pending_sender = EpochSender.init(control.epoch, send_key.key);
+                rotation.pending_control = .{ .control = acknowledgement, .epoch = self.sender.epoch, .switch_sender_after = true };
+            },
+            .acknowledge => {
+                try rotation.send.receive_acknowledgement(control);
+                try rotation.receive.receive_acknowledgement(control);
+                try self.activatePendingSender(rotation);
+            },
+            .rollback => {
+                try rotation.send.receive_rollback(control);
+                try rotation.receive.receive_rollback(control);
+                try self.restoreReceiver(control.epoch);
+                if (rotation.previous_sender) |previous| {
+                    if (previous.epoch != control.epoch) return error.InvalidState;
+                    self.sender.deinit();
+                    self.sender = previous;
+                    rotation.previous_sender = null;
+                } else if (self.sender.epoch != control.epoch) {
+                    return error.InvalidState;
+                }
+                if (rotation.pending_sender) |*value| value.deinit();
+                rotation.pending_sender = null;
+                rotation.pending_control = null;
+            },
+        }
+    }
+
+    fn hasPendingControl(self: *const ProtectedDatagrams) bool {
+        return if (self.key_rotation) |value| value.pending_control != null else false;
+    }
+
+    fn sealPendingControl(self: *ProtectedDatagrams, plaintext: []u8, output: []u8) UdpSessionError![]u8 {
+        const rotation = if (self.key_rotation) |*value| value else return error.InvalidConfiguration;
+        const pending = rotation.pending_control orelse return error.InvalidState;
+        if (pending.epoch != self.sender.epoch) return error.InvalidState;
+        const payload = try protocol.encode_key_rotation_control(pending.control, plaintext);
+        return self.sender.protector.seal_with_epoch(pending.epoch, payload, output);
+    }
+
+    fn commitPendingControl(self: *ProtectedDatagrams) UdpSessionError!void {
+        const rotation = if (self.key_rotation) |*value| value else return error.InvalidConfiguration;
+        const pending = rotation.pending_control orelse return error.InvalidState;
+        rotation.pending_control = null;
+        if (pending.switch_sender_after) try self.activatePendingSender(rotation);
+    }
+
+    fn openEpoch(receiver: *EpochReceiver, input: []const u8, output: []u8) protocol.PacketProtectionError![]const u8 {
+        const opened = try receiver.protector.open_with_epoch(input, output);
+        if (opened.epoch != receiver.epoch) return error.AuthenticationFailed;
+        return switch (receiver.replay.observe(opened.sequence)) {
+            .accepted => opened.payload,
+            .duplicate => {
+                std.crypto.secureZero(u8, output[0..opened.payload.len]);
+                return error.DuplicatePacket;
+            },
+            .too_old => {
+                std.crypto.secureZero(u8, output[0..opened.payload.len]);
+                return error.TooOldPacket;
+            },
+        };
+    }
+
+    fn advanceReceiver(self: *ProtectedDatagrams, key: protocol.PacketProtectionKey, epoch: protocol.KeyEpoch) UdpSessionError!void {
+        const replacement = try EpochReceiver.init(epoch, key, self.replay_config);
+        if (self.previous_receiver) |*value| value.deinit();
+        self.previous_receiver = self.receiver;
+        self.receiver = replacement;
+    }
+
+    fn restoreReceiver(self: *ProtectedDatagrams, epoch: protocol.KeyEpoch) UdpSessionError!void {
+        const previous = if (self.previous_receiver) |value| value else return error.InvalidState;
+        if (previous.epoch != epoch) return error.InvalidState;
+        self.receiver.deinit();
+        self.receiver = previous;
+        self.previous_receiver = null;
+    }
+
+    fn activatePendingSender(self: *ProtectedDatagrams, rotation: *DatagramKeyRotation) UdpSessionError!void {
+        const pending = rotation.pending_sender orelse return error.InvalidState;
+        if (rotation.previous_sender) |*value| value.deinit();
+        rotation.previous_sender = self.sender;
+        self.sender = pending;
+        rotation.pending_sender = null;
     }
 };
 
@@ -162,10 +386,22 @@ pub const UdpSessionRegistry = struct {
     pub fn resetPacketProtection(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, config: UdpPacketProtectionConfig) UdpSessionError!void {
         const entry = try self.lookup(handle);
         const protection = if (entry.packet_protection) |*value| value else return error.InvalidConfiguration;
-        if (config.key_epoch <= protection.key_epoch) return error.InvalidConfiguration;
+        if (protection.key_rotation != null or config.key_rotation != null or config.key_epoch <= protection.sender.epoch) return error.InvalidConfiguration;
         const replacement = try ProtectedDatagrams.init(config);
         protection.deinit();
         protection.* = replacement;
+    }
+
+    pub fn forcePacketKeyRotation(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!void {
+        const entry = try self.lookup(handle);
+        const protection = if (entry.packet_protection) |*value| value else return error.InvalidConfiguration;
+        try protection.forceRotation();
+    }
+
+    pub fn rollbackPacketKeyRotation(self: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!void {
+        const entry = try self.lookup(handle);
+        const protection = if (entry.packet_protection) |*value| value else return error.InvalidConfiguration;
+        try protection.rollbackRotation();
     }
 
     pub fn pollNextReadiness(self: *UdpSessionRegistry) UdpSessionError!?UdpSessionReadiness {
@@ -190,7 +426,7 @@ pub const UdpSessionRegistry = struct {
         const entry = try self.lookup(handle);
         const prober = if (entry.path_mtu) |*value| value else return error.PathMtuUnavailable;
         const wire_payload = try prober.next_probe() orelse return null;
-        return application_payload_budget(wire_payload, entry.packet_protection != null);
+        return try application_payload_budget(wire_payload, entry.packet_protection != null);
     }
 
     pub fn recordPathMtuProbe(self: *UdpSessionRegistry, handle: *resource.ResourceHandle, payload: usize, delivered: bool) UdpSessionError!usize {
@@ -220,11 +456,24 @@ pub const UdpSessionRegistry = struct {
                 else => return err,
             };
             const payload: []const u8 = if (entry.packet_protection) |*protection| blk: {
-                const opened = protection.receiver.open_with_replay(&protection.replay, datagram.bytes, plaintext[0..]) catch {
+                const opened = protection.open(datagram.bytes, plaintext[0..]) catch {
                     batch.discarded += 1;
                     continue;
                 };
-                break :blk opened.payload;
+                const frame = protocol.decode_protected_datagram_payload(opened) catch {
+                    batch.discarded += 1;
+                    continue;
+                };
+                switch (frame) {
+                    .application => |value| break :blk value,
+                    .key_rotation => |control| {
+                        protection.receiveControl(control) catch {
+                            batch.discarded += 1;
+                            continue;
+                        };
+                        continue;
+                    },
+                }
             } else datagram.bytes;
             self.channels.enqueue(entry.channel, payload) catch |err| switch (err) {
                 error.PayloadTooLarge => return error.DatagramTooLarge,
@@ -245,8 +494,27 @@ pub const UdpSessionRegistry = struct {
         if (events.len > transport.max_udp_send_batch) return error.BatchTooLarge;
         const entry = try self.lookup(handle);
         if ((try self.sessions.lookup(handle)).state != .ready) return error.InvalidState;
+        var protected_plaintext: [transport.max_ipv4_datagram_bytes]u8 = undefined;
         var ciphertext: [transport.max_ipv4_datagram_bytes]u8 = undefined;
         var batch = UdpSendBatch{};
+        if (entry.packet_protection) |*protection| if (protection.hasPendingControl()) {
+            const wire_payload = protection.sealPendingControl(protected_plaintext[0..], ciphertext[0..]) catch return error.SendFailed;
+            const sent = send_datagram(&entry.socket, wire_payload) catch |err| switch (err) {
+                error.WouldBlock => {
+                    batch.would_block = true;
+                    batch.retryable = true;
+                    batch.remaining = try self.channels.queuedDatagrams(handle);
+                    return batch;
+                },
+                else => return error.SendFailed,
+            };
+            if (sent != wire_payload.len) {
+                batch.retryable = true;
+                batch.remaining = try self.channels.queuedDatagrams(handle);
+                return batch;
+            }
+            try protection.commitPendingControl();
+        };
         for (events) |*event| {
             var message = (try self.channels.dequeueDatagram(handle)) orelse break;
             const channel_handle = message.channel;
@@ -260,14 +528,25 @@ pub const UdpSessionRegistry = struct {
                 },
                 else => return err,
             };
-            const wire_payload = if (entry.packet_protection) |*protection| protection.sender.seal(message.payload, ciphertext[0..]) catch |err| switch (err) {
-                error.PayloadTooLarge, error.OutputTooSmall => {
-                    event.* = self.sendEvent(handle, channel_handle, payload_len, .datagram_too_large);
-                    message.deinit(self.allocator);
-                    batch.dropped += 1;
-                    continue;
-                },
-                else => return error.SendFailed,
+            const wire_payload = if (entry.packet_protection) |*protection| blk: {
+                const framed = protocol.encode_protected_datagram_application(message.payload, protected_plaintext[0..]) catch |err| switch (err) {
+                    error.OutputTooSmall => {
+                        event.* = self.sendEvent(handle, channel_handle, payload_len, .datagram_too_large);
+                        message.deinit(self.allocator);
+                        batch.dropped += 1;
+                        continue;
+                    },
+                    else => return error.SendFailed,
+                };
+                break :blk protection.sender.protector.seal_with_epoch(protection.sender.epoch, framed, ciphertext[0..]) catch |err| switch (err) {
+                    error.PayloadTooLarge, error.OutputTooSmall => {
+                        event.* = self.sendEvent(handle, channel_handle, payload_len, .datagram_too_large);
+                        message.deinit(self.allocator);
+                        batch.dropped += 1;
+                        continue;
+                    },
+                    else => return error.SendFailed,
+                };
             } else message.payload;
             const sent = send_datagram(&entry.socket, wire_payload) catch |err| switch (err) {
                 error.WouldBlock => {
@@ -364,7 +643,7 @@ pub const UdpSessionRegistry = struct {
     }
 };
 
-const protected_datagram_overhead = protocol.packet_protection_frame_header_bytes + protocol.packet_protection_tag_bytes;
+const protected_datagram_overhead = protocol.packet_protection_epoch_header_bytes + protocol.packet_protection_frame_header_bytes + protocol.packet_protection_tag_bytes + protocol.protected_datagram_payload_tag_bytes;
 const maximum_protected_payload_bytes = transport.max_ipv4_datagram_bytes - protected_datagram_overhead;
 
 fn application_payload_budget(wire_payload: usize, protected: bool) UdpSessionError!usize {
@@ -648,8 +927,9 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         };
         var inbound = protocol.PacketProtector.init(receive_key);
         defer inbound.deinit();
-        var zero_storage: [protocol.packet_protection_frame_header_bytes + 4 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        const zero = try inbound.seal("zero", zero_storage[0..]);
+        var zero_plaintext: [protocol.protected_datagram_payload_tag_bytes + 4]u8 = undefined;
+        var zero_storage: [protected_datagram_overhead + 4]u8 = undefined;
+        const zero = try seal_protected_application(&inbound, 0, "zero", zero_plaintext[0..], zero_storage[0..]);
         _ = try peer.send_to(zero, local_address);
         var events: [1]UdpReceiveEvent = undefined;
         const accepted = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
@@ -658,18 +938,20 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         var received = (try channels.dequeue(handle)).?;
         try std.testing.expectEqualStrings("zero", received.payload);
         received.deinit(allocator);
-        var one_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        const one = try inbound.seal("one", one_storage[0..]);
+        var one_plaintext: [protocol.protected_datagram_payload_tag_bytes + 3]u8 = undefined;
+        var one_storage: [protected_datagram_overhead + 3]u8 = undefined;
+        const one = try seal_protected_application(&inbound, 0, "one", one_plaintext[0..], one_storage[0..]);
         var tampered_storage = one_storage;
         const tampered = tampered_storage[0..one.len];
-        tampered_storage[protocol.packet_protection_frame_header_bytes] +%= 1;
+        tampered_storage[protocol.packet_protection_epoch_header_bytes + protocol.packet_protection_frame_header_bytes] +%= 1;
         _ = try peer.send_to(tampered, local_address);
         const rejected = try protected_receive_with_retry(&udp_sessions, handle, events[0..]);
         try std.testing.expectEqual(@as(usize, 0), rejected.received);
         try std.testing.expectEqual(@as(usize, 1), rejected.discarded);
         try std.testing.expect((try channels.dequeue(handle)) == null);
-        var two_storage: [protocol.packet_protection_frame_header_bytes + 3 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        const two = try inbound.seal("two", two_storage[0..]);
+        var two_plaintext: [protocol.protected_datagram_payload_tag_bytes + 3]u8 = undefined;
+        var two_storage: [protected_datagram_overhead + 3]u8 = undefined;
+        const two = try seal_protected_application(&inbound, 0, "two", two_plaintext[0..], two_storage[0..]);
         _ = try peer.send_to(two, local_address);
         try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
         received = (try channels.dequeue(handle)).?;
@@ -683,14 +965,16 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         _ = try peer.send_to(one, local_address);
         try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).discarded);
         try std.testing.expect((try channels.dequeue(handle)) == null);
-        var three_storage: [protocol.packet_protection_frame_header_bytes + 5 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        _ = try peer.send_to(try inbound.seal("three", three_storage[0..]), local_address);
+        var three_plaintext: [protocol.protected_datagram_payload_tag_bytes + 5]u8 = undefined;
+        var three_storage: [protected_datagram_overhead + 5]u8 = undefined;
+        _ = try peer.send_to(try seal_protected_application(&inbound, 0, "three", three_plaintext[0..], three_storage[0..]), local_address);
         try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
         received = (try channels.dequeue(handle)).?;
         try std.testing.expectEqualStrings("three", received.payload);
         received.deinit(allocator);
-        var four_storage: [protocol.packet_protection_frame_header_bytes + 4 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        _ = try peer.send_to(try inbound.seal("four", four_storage[0..]), local_address);
+        var four_plaintext: [protocol.protected_datagram_payload_tag_bytes + 4]u8 = undefined;
+        var four_storage: [protected_datagram_overhead + 4]u8 = undefined;
+        _ = try peer.send_to(try seal_protected_application(&inbound, 0, "four", four_plaintext[0..], four_storage[0..]), local_address);
         try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
         received = (try channels.dequeue(handle)).?;
         try std.testing.expectEqualStrings("four", received.payload);
@@ -707,8 +991,9 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         try std.testing.expect((try channels.dequeue(handle)) == null);
         var next_inbound = protocol.PacketProtector.init(next_receive_key);
         defer next_inbound.deinit();
-        var reset_storage: [protocol.packet_protection_frame_header_bytes + 5 + protocol.packet_protection_tag_bytes]u8 = undefined;
-        _ = try peer.send_to(try next_inbound.seal("reset", reset_storage[0..]), local_address);
+        var reset_plaintext: [protocol.protected_datagram_payload_tag_bytes + 5]u8 = undefined;
+        var reset_storage: [protected_datagram_overhead + 5]u8 = undefined;
+        _ = try peer.send_to(try seal_protected_application(&next_inbound, 1, "reset", reset_plaintext[0..], reset_storage[0..]), local_address);
         try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, events[0..])).received);
         received = (try channels.dequeue(handle)).?;
         try std.testing.expectEqualStrings("reset", received.payload);
@@ -722,11 +1007,135 @@ test "UDP sessions enforce bounded replay windows and epoch resets" {
         try std.testing.expect(!std.mem.eql(u8, wire.bytes, "out"));
         var outbound = protocol.PacketProtector.init(next_send_key);
         defer outbound.deinit();
-        var plaintext: [3]u8 = undefined;
-        try std.testing.expectEqualStrings("out", (try outbound.open(wire.bytes, plaintext[0..])).payload);
+        var plaintext: [protocol.protected_datagram_payload_tag_bytes + 3]u8 = undefined;
+        const opened = try outbound.open_with_epoch(wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), opened.epoch);
+        try std.testing.expectEqualStrings("out", (try protocol.decode_protected_datagram_payload(opened.payload)).application);
         try udp_sessions.close(handle);
     }
     try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+test "UDP sessions rotate packet keys across overlap and rollback" {
+    var gpa = std.heap.GeneralPurposeAllocator(.{}){};
+    const allocator = gpa.allocator();
+    {
+        var resources = try resource.ResourceRegistry.init(allocator, 2);
+        defer resources.deinit();
+        var sessions = try session.SessionRegistry.init(allocator, &resources, 1);
+        defer sessions.deinit();
+        var payloads = try @import("payload_pool.zig").PayloadPool.init(allocator, 1, 64);
+        defer payloads.deinit();
+        var channels = try channel.ChannelRegistry.init(allocator, &resources, &sessions, &payloads, 1);
+        defer channels.deinit();
+        var udp_sessions = try UdpSessionRegistry.init(allocator, &sessions, &channels, 1);
+        defer udp_sessions.deinit();
+        const send_key = protocol.PacketProtectionKey.init([_]u8{1} ** protocol.packet_protection_key_bytes, [_]u8{2} ** protocol.packet_protection_nonce_prefix_bytes);
+        const receive_key = protocol.PacketProtectionKey.init([_]u8{3} ** protocol.packet_protection_key_bytes, [_]u8{4} ** protocol.packet_protection_nonce_prefix_bytes);
+        var peer = try transport.UdpSocket.init(.{});
+        defer peer.close();
+        try peer.bind(try transport.Ipv4Address.parse("127.0.0.1", 0));
+        const peer_address = local_ipv4_address(&peer);
+        const handle = try udp_sessions.dial(.{ .endpoint = transport.Endpoint.from_ipv4(peer_address), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .channel = .{ .delivery = .datagram, .maximum_payload_bytes = 64 }, .packet_protection = .{ .send_key = send_key, .receive_key = receive_key, .key_rotation = .{ .overlap_packets = 2 } } });
+        const primary = (try udp_sessions.poll(handle)).channel;
+        const local_address = switch (try udp_sessions.localAddress(handle)) {
+            .ipv4 => |address| address,
+            .ipv6 => unreachable,
+        };
+        var peer_receiver = protocol.PacketProtector.init(send_key);
+        defer peer_receiver.deinit();
+        var peer_sender = protocol.PacketProtector.init(receive_key);
+        defer peer_sender.deinit();
+        var peer_send_rotation = try protocol.KeyRotation.init_packet_key(receive_key, .{ .overlap_packets = 2 });
+        defer peer_send_rotation.deinit();
+        var peer_receive_rotation = try protocol.KeyRotation.init_packet_key(send_key, .{ .overlap_packets = 2 });
+        defer peer_receive_rotation.deinit();
+        try udp_sessions.forcePacketKeyRotation(handle);
+        try channels.enqueue(primary, "during");
+        var send_events: [1]UdpSendEvent = undefined;
+        try std.testing.expectEqual(@as(usize, 1), (try udp_sessions.flushSends(handle, send_events[0..])).sent);
+        var wire_storage: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        var plaintext: [transport.max_ipv4_datagram_bytes]u8 = undefined;
+        const update_wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        const update_opened = try peer_receiver.open_with_epoch(update_wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 0), update_opened.epoch);
+        const update = (try protocol.decode_protected_datagram_payload(update_opened.payload)).key_rotation;
+        try std.testing.expectEqual(protocol.KeyRotationControlKind.update, update.kind);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), update.epoch);
+        const acknowledgement = try peer_send_rotation.receive_update(update);
+        _ = try peer_receive_rotation.receive_update(update);
+        var next_peer_send_key = peer_send_rotation.current_key();
+        defer next_peer_send_key.clear();
+        var next_peer_sender = protocol.PacketProtector.init(next_peer_send_key.key);
+        defer next_peer_sender.deinit();
+        var next_peer_receive_key = peer_receive_rotation.current_key();
+        defer next_peer_receive_key.clear();
+        var next_peer_receiver = protocol.PacketProtector.init(next_peer_receive_key.key);
+        defer next_peer_receiver.deinit();
+        const during_wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        const during_opened = try peer_receiver.open_with_epoch(during_wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 0), during_opened.epoch);
+        try std.testing.expectEqualStrings("during", (try protocol.decode_protected_datagram_payload(during_opened.payload)).application);
+        var acknowledgement_plaintext: [protocol.key_rotation_control_frame_bytes]u8 = undefined;
+        var acknowledgement_wire: [protocol.packet_protection_epoch_header_bytes + protocol.packet_protection_frame_header_bytes + protocol.key_rotation_control_frame_bytes + protocol.packet_protection_tag_bytes]u8 = undefined;
+        _ = try peer.send_to(try peer_sender.seal_with_epoch(0, try protocol.encode_key_rotation_control(acknowledgement, acknowledgement_plaintext[0..]), acknowledgement_wire[0..]), local_address);
+        try process_protected_control_with_retry(&udp_sessions, handle);
+        var overlap_plaintext: [protocol.protected_datagram_payload_tag_bytes + 7]u8 = undefined;
+        var overlap_wire: [protected_datagram_overhead + 7]u8 = undefined;
+        _ = try peer.send_to(try seal_protected_application(&peer_sender, 0, "overlap", overlap_plaintext[0..], overlap_wire[0..]), local_address);
+        var receive_events: [1]UdpReceiveEvent = undefined;
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, receive_events[0..])).received);
+        var received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("overlap", received.payload);
+        received.deinit(allocator);
+        var current_plaintext: [protocol.protected_datagram_payload_tag_bytes + 7]u8 = undefined;
+        var current_wire: [protected_datagram_overhead + 7]u8 = undefined;
+        _ = try peer.send_to(try seal_protected_application(&next_peer_sender, 1, "current", current_plaintext[0..], current_wire[0..]), local_address);
+        try std.testing.expectEqual(@as(usize, 1), (try protected_receive_with_retry(&udp_sessions, handle, receive_events[0..])).received);
+        received = (try channels.dequeue(handle)).?;
+        try std.testing.expectEqualStrings("current", received.payload);
+        received.deinit(allocator);
+        try channels.enqueue(primary, "after");
+        try std.testing.expectEqual(@as(usize, 1), (try udp_sessions.flushSends(handle, send_events[0..])).sent);
+        const after_wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        const after_opened = try next_peer_receiver.open_with_epoch(after_wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), after_opened.epoch);
+        try std.testing.expectEqualStrings("after", (try protocol.decode_protected_datagram_payload(after_opened.payload)).application);
+        try udp_sessions.forcePacketKeyRotation(handle);
+        try udp_sessions.rollbackPacketKeyRotation(handle);
+        try channels.enqueue(primary, "rollback");
+        try std.testing.expectEqual(@as(usize, 1), (try udp_sessions.flushSends(handle, send_events[0..])).sent);
+        const rollback_control_wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        const rollback_control_opened = try next_peer_receiver.open_with_epoch(rollback_control_wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), rollback_control_opened.epoch);
+        const rollback = (try protocol.decode_protected_datagram_payload(rollback_control_opened.payload)).key_rotation;
+        try std.testing.expectEqual(protocol.KeyRotationControlKind.rollback, rollback.kind);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), rollback.epoch);
+        const rollback_wire = try receive_from_with_retry(&peer, wire_storage[0..]);
+        const rollback_opened = try next_peer_receiver.open_with_epoch(rollback_wire.bytes, plaintext[0..]);
+        try std.testing.expectEqual(@as(protocol.KeyEpoch, 1), rollback_opened.epoch);
+        try std.testing.expectEqualStrings("rollback", (try protocol.decode_protected_datagram_payload(rollback_opened.payload)).application);
+        try udp_sessions.close(handle);
+    }
+    try std.testing.expectEqual(std.heap.Check.ok, gpa.deinit());
+}
+
+fn seal_protected_application(protector: *protocol.PacketProtector, epoch: protocol.KeyEpoch, payload: []const u8, plaintext: []u8, output: []u8) ![]u8 {
+    return protector.seal_with_epoch(epoch, try protocol.encode_protected_datagram_application(payload, plaintext), output);
+}
+
+fn process_protected_control_with_retry(registry: *UdpSessionRegistry, handle: *resource.ResourceHandle) UdpSessionError!void {
+    var events: [1]UdpReceiveEvent = undefined;
+    var attempts: usize = 0;
+    while (attempts < 100) : (attempts += 1) {
+        const batch = try registry.pollReceives(handle, events[0..]);
+        if (!batch.would_block) {
+            if (batch.received != 0 or batch.discarded != 0) return error.ReceiveFailed;
+            return;
+        }
+        std.Thread.sleep(std.time.ns_per_ms);
+    }
+    return error.ReceiveFailed;
 }
 
 fn local_ipv4_address(socket: *transport.UdpSocket) transport.Ipv4Address {

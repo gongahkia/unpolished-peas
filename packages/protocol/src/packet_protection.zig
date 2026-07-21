@@ -7,6 +7,7 @@ const aead = std.crypto.aead.chacha_poly.ChaCha20Poly1305;
 pub const packet_protection_key_bytes: usize = aead.key_length;
 pub const packet_protection_nonce_prefix_bytes: usize = aead.nonce_length - @sizeOf(u64);
 pub const packet_protection_nonce_bytes: usize = aead.nonce_length;
+pub const packet_protection_epoch_header_bytes: usize = @sizeOf(u32);
 pub const packet_protection_tag_bytes: usize = aead.tag_length;
 pub const packet_protection_frame_header_bytes: usize = @sizeOf(u64);
 pub const PacketProtectionError = error{ PayloadTooLarge, OutputTooSmall, MalformedFrame, SequenceExhausted, AuthenticationFailed, DuplicatePacket, TooOldPacket };
@@ -26,6 +27,12 @@ pub const PacketProtectionKey = struct {
 };
 
 pub const UnprotectedPacket = struct {
+    sequence: u64,
+    payload: []const u8,
+};
+
+pub const EpochUnprotectedPacket = struct {
+    epoch: u32,
     sequence: u64,
     payload: []const u8,
 };
@@ -73,6 +80,39 @@ pub const PacketProtector = struct {
         return .{ .sequence = sequence, .payload = output[0..payload_len] };
     }
 
+    pub fn seal_with_epoch(self: *PacketProtector, epoch: u32, payload: []const u8, output: []u8) PacketProtectionError![]u8 {
+        if (self.exhausted) return error.SequenceExhausted;
+        if (payload.len > packet.max_packet_payload_bytes) return error.PayloadTooLarge;
+        const header_bytes = packet_protection_epoch_header_bytes + packet_protection_frame_header_bytes;
+        const total = header_bytes + payload.len + packet_protection_tag_bytes;
+        if (output.len < total) return error.OutputTooSmall;
+        const sequence = self.next_sequence;
+        std.mem.writeInt(u32, output[0..packet_protection_epoch_header_bytes], epoch, .big);
+        std.mem.writeInt(u64, output[packet_protection_epoch_header_bytes..header_bytes], sequence, .big);
+        const ciphertext = output[header_bytes..][0..payload.len];
+        const tag: *[packet_protection_tag_bytes]u8 = @ptrCast(output[header_bytes + payload.len .. total].ptr);
+        aead.encrypt(ciphertext, tag, payload, output[0..header_bytes], packet_nonce(self.key.nonce_prefix, sequence), self.key.key);
+        if (sequence == std.math.maxInt(u64)) self.exhausted = true else self.next_sequence += 1;
+        return output[0..total];
+    }
+
+    pub fn open_with_epoch(self: PacketProtector, input: []const u8, output: []u8) PacketProtectionError!EpochUnprotectedPacket {
+        const header_bytes = packet_protection_epoch_header_bytes + packet_protection_frame_header_bytes;
+        if (input.len < header_bytes + packet_protection_tag_bytes) return error.MalformedFrame;
+        const payload_len = input.len - header_bytes - packet_protection_tag_bytes;
+        if (payload_len > packet.max_packet_payload_bytes) return error.PayloadTooLarge;
+        if (output.len < payload_len) return error.OutputTooSmall;
+        const epoch = std.mem.readInt(u32, input[0..packet_protection_epoch_header_bytes], .big);
+        const sequence = std.mem.readInt(u64, input[packet_protection_epoch_header_bytes..header_bytes], .big);
+        const ciphertext = input[header_bytes..][0..payload_len];
+        const tag: *const [packet_protection_tag_bytes]u8 = @ptrCast(input[input.len - packet_protection_tag_bytes ..].ptr);
+        aead.decrypt(output[0..payload_len], ciphertext, tag.*, input[0..header_bytes], packet_nonce(self.key.nonce_prefix, sequence), self.key.key) catch {
+            std.crypto.secureZero(u8, output[0..payload_len]);
+            return error.AuthenticationFailed;
+        };
+        return .{ .epoch = epoch, .sequence = sequence, .payload = output[0..payload_len] };
+    }
+
     pub fn open_with_replay(self: PacketProtector, window: *replay.ReplayWindow, input: []const u8, output: []u8) PacketProtectionError!UnprotectedPacket {
         const opened = try self.open(input, output);
         return switch (window.observe(opened.sequence)) {
@@ -88,6 +128,11 @@ pub const PacketProtector = struct {
         };
     }
 };
+
+pub fn protected_packet_epoch(input: []const u8) PacketProtectionError!u32 {
+    if (input.len < packet_protection_epoch_header_bytes + packet_protection_frame_header_bytes + packet_protection_tag_bytes) return error.MalformedFrame;
+    return std.mem.readInt(u32, input[0..packet_protection_epoch_header_bytes], .big);
+}
 
 pub fn packet_nonce(prefix: [packet_protection_nonce_prefix_bytes]u8, sequence: u64) [packet_protection_nonce_bytes]u8 {
     var nonce: [packet_protection_nonce_bytes]u8 = undefined;
@@ -151,4 +196,21 @@ test "packet protection updates replay state only after authentication" {
     _ = try receiver.open_with_replay(&window, frame, output[0..]);
     try std.testing.expectError(error.DuplicatePacket, receiver.open_with_replay(&window, frame, output[0..]));
     try std.testing.expectEqual(@as(u8, 0), output[0]);
+}
+
+test "packet protection authenticates epochs with packet headers" {
+    const key = PacketProtectionKey.init([_]u8{4} ** packet_protection_key_bytes, [_]u8{9} ** packet_protection_nonce_prefix_bytes);
+    var sender = PacketProtector.init(key);
+    defer sender.deinit();
+    var receiver = PacketProtector.init(key);
+    defer receiver.deinit();
+    var storage: [packet_protection_epoch_header_bytes + packet_protection_frame_header_bytes + 1 + packet_protection_tag_bytes]u8 = undefined;
+    const frame = try sender.seal_with_epoch(7, "x", storage[0..]);
+    try std.testing.expectEqual(@as(u32, 7), try protected_packet_epoch(frame));
+    var output: [1]u8 = undefined;
+    const opened = try receiver.open_with_epoch(frame, output[0..]);
+    try std.testing.expectEqual(@as(u32, 7), opened.epoch);
+    try std.testing.expectEqual(@as(u64, 0), opened.sequence);
+    storage[0] +%= 1;
+    try std.testing.expectError(error.AuthenticationFailed, receiver.open_with_epoch(frame, output[0..]));
 }

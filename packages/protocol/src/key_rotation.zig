@@ -51,6 +51,11 @@ pub const KeyRotation = struct {
         return .{ .config = config, .current = derive_epoch_state(initial_secret, 0) };
     }
 
+    pub fn init_packet_key(initial_key: protection.PacketProtectionKey, config: KeyRotationConfig) KeyRotationError!KeyRotation {
+        if (config.overlap_packets > max_key_rotation_overlap_packets) return error.InvalidConfiguration;
+        return .{ .config = config, .current = .{ .epoch = 0, .secret = initial_key.key, .key = initial_key } };
+    }
+
     pub fn deinit(self: *KeyRotation) void {
         self.current.clear();
         if (self.previous) |*previous| previous.clear();
