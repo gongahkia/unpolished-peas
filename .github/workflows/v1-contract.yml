@@ -22,7 +22,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -58,7 +58,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -89,7 +89,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install pinned Zig 0.15.2
         if: matrix.channel == 'pinned'
         shell: bash
@@ -151,7 +151,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -169,8 +169,8 @@ jobs:
           mkdir -p .c-abi-compiler
           gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c
           gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
-      - name: Build and test SDK artifacts
-        run: zig build test
+      - name: Build and test core contracts
+        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
@@ -190,7 +190,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: pwsh
         run: |
@@ -210,8 +210,8 @@ jobs:
           New-Item -ItemType Directory -Force .c-abi-compiler | Out-Null
           cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_types.obj contracts\fixtures\c_abi_types.c
           cl /nologo /std:c11 /W4 /WX /c /I packages\c-abi\include /Fo.c-abi-compiler\c_abi_consumer.obj contracts\fixtures\c_abi_consumer.c
-      - name: Build and test SDK artifacts
-        run: zig build test
+      - name: Build and test core contracts
+        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
   macos-sdk:
@@ -237,7 +237,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
@@ -255,8 +255,8 @@ jobs:
           mkdir -p .c-abi-compiler
           clang -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c
           clang -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c
-      - name: Build and test SDK artifacts
-        run: zig build test
+      - name: Build and test core contracts
+        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
@@ -271,7 +271,7 @@ jobs:
           path: |
             .zig-cache
             ~/.cache/zig
-          key: zig-v1-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
+          key: zig-v2-${{ runner.os }}-${{ runner.arch }}-0.15.2-${{ hashFiles('build.zig', 'build.zig.zon', 'packages/**', 'contracts/**', 'script/**') }}
       - name: Install Zig 0.15.2
         shell: bash
         run: |
