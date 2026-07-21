@@ -2,11 +2,12 @@ const std = @import("std");
 const core = @import("minna-san-core");
 
 pub const NatBindingKind = enum { host, stun, relay };
-pub const NatBindingState = enum { active, failed };
+pub const NatBindingState = enum { active, failed, idle };
 pub const NatBindingKeepalive = struct {
     kind: NatBindingKind,
     state: NatBindingState = .active,
     failures: u8 = 0,
+    last_activity_at_ns: core.TimeNs,
     next_due_at_ns: core.TimeNs,
 };
 pub const NatKeepaliveEvent = struct { kind: NatBindingKind, success: bool, retired: bool };
@@ -23,6 +24,7 @@ pub const NatBindingKeepaliveConfig = struct {
     retry_interval_ns: core.TimeNs,
     maximum_failures: u8,
     maximum_sends_per_poll: u8,
+    idle_timeout_ns: core.TimeNs = 0,
     io: NatKeepaliveIo,
 };
 
@@ -35,7 +37,7 @@ pub const NatBindingKeepalives = struct {
         return .{ .config = config };
     }
     pub fn activate(self: *NatBindingKeepalives, kind: NatBindingKind, now_ns: core.TimeNs) void {
-        self.bindings[binding_index(kind)] = .{ .kind = kind, .next_due_at_ns = now_ns };
+        self.bindings[binding_index(kind)] = .{ .kind = kind, .last_activity_at_ns = now_ns, .next_due_at_ns = now_ns };
     }
     pub fn deactivate(self: *NatBindingKeepalives, kind: NatBindingKind) NatBindingKeepaliveError!void {
         if (self.bindings[binding_index(kind)] == null) return error.BindingNotActive;
@@ -45,9 +47,11 @@ pub const NatBindingKeepalives = struct {
         const binding = if (self.bindings[binding_index(kind)]) |*active| active else return error.BindingNotActive;
         if (binding.state != .active) return error.BindingNotActive;
         binding.failures = 0;
+        binding.last_activity_at_ns = now_ns;
         binding.next_due_at_ns = try add_time(now_ns, self.config.interval_ns);
     }
     pub fn poll(self: *NatBindingKeepalives, now_ns: core.TimeNs, output: []NatKeepaliveEvent) NatBindingKeepaliveError!usize {
+        _ = self.shutdown_idle(now_ns);
         var count: usize = 0;
         const maximum = @min(output.len, @as(usize, self.config.maximum_sends_per_poll));
         for (&self.bindings) |*slot| {
@@ -68,6 +72,17 @@ pub const NatBindingKeepalives = struct {
                 binding.next_due_at_ns = retry_due_at_ns;
                 output[count] = .{ .kind = binding.kind, .success = false, .retired = retired };
             }
+            count += 1;
+        }
+        return count;
+    }
+    pub fn shutdown_idle(self: *NatBindingKeepalives, now_ns: core.TimeNs) usize {
+        if (self.config.idle_timeout_ns == 0) return 0;
+        var count: usize = 0;
+        for (&self.bindings) |*slot| {
+            const binding = if (slot.*) |*active| active else continue;
+            if (binding.state != .active or now_ns < binding.last_activity_at_ns or now_ns - binding.last_activity_at_ns < self.config.idle_timeout_ns) continue;
+            binding.state = .idle;
             count += 1;
         }
         return count;
@@ -131,4 +146,27 @@ test "NAT binding keepalives retry failures then retire and deactivate bindings"
     try std.testing.expectEqual(@as(usize, 0), try keepalives.poll(6, events[0..]));
     try keepalives.deactivate(.host);
     try std.testing.expectError(error.BindingNotActive, keepalives.deactivate(.host));
+}
+
+test "NAT binding keepalives stop after idle shutdown and route close without exceeding the send cap" {
+    const Fixture = struct {
+        sends: usize = 0,
+        fn send(context: *anyopaque, _: NatBindingKind) bool {
+            @as(*@This(), @ptrCast(@alignCast(context))).sends += 1;
+            return true;
+        }
+    };
+    var fixture = Fixture{};
+    var keepalives = try NatBindingKeepalives.init(.{ .interval_ns = 2, .retry_interval_ns = 1, .maximum_failures = 1, .maximum_sends_per_poll = 1, .idle_timeout_ns = 5, .io = .{ .context = &fixture, .send_fn = Fixture.send } });
+    keepalives.activate(.host, 0);
+    keepalives.activate(.relay, 0);
+    var events: [1]NatKeepaliveEvent = undefined;
+    try std.testing.expectEqual(@as(usize, 1), try keepalives.poll(0, events[0..]));
+    try std.testing.expectEqual(@as(usize, 1), fixture.sends);
+    try keepalives.deactivate(.relay);
+    try std.testing.expectEqual(@as(usize, 1), keepalives.shutdown_idle(5));
+    try std.testing.expectEqual(NatBindingState.idle, keepalives.binding_state(.host).?.state);
+    try std.testing.expectEqual(@as(usize, 0), try keepalives.poll(10, events[0..]));
+    try std.testing.expectEqual(@as(usize, 1), fixture.sends);
+    try std.testing.expectError(error.BindingNotActive, keepalives.record_activity(.host, 10));
 }
