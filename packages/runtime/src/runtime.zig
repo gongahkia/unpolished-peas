@@ -43,6 +43,7 @@ const transport_retry_controller = @import("transport_retry_controller.zig");
 const udp_listener_registry = @import("udp_listener_registry.zig");
 const udp_session_registry = @import("udp_session_registry.zig");
 const udp_stun_binding_provider = @import("udp_stun_binding_provider.zig");
+const tcp_stun_binding_provider = @import("tcp_stun_binding_provider.zig");
 const platform_runtime = @import("platform_runtime.zig");
 
 pub const ConfigError = sdk_config.ConfigError;
@@ -351,6 +352,15 @@ pub const UdpStunBindingRequestConfig = udp_stun_binding_provider.UdpStunBinding
 pub const UdpStunBindingRequestHandle = udp_stun_binding_provider.UdpStunBindingRequestHandle;
 pub const UdpStunBindingRequestState = udp_stun_binding_provider.UdpStunBindingRequestState;
 pub const UdpStunBindingProvider = udp_stun_binding_provider.UdpStunBindingProvider;
+pub const max_tcp_stun_binding_requests = tcp_stun_binding_provider.max_tcp_stun_binding_requests;
+pub const max_tcp_stun_binding_frame_bytes = tcp_stun_binding_provider.max_tcp_stun_binding_frame_bytes;
+pub const max_tcp_stun_binding_request_bytes = tcp_stun_binding_provider.max_tcp_stun_binding_request_bytes;
+pub const TcpStunBindingProviderError = tcp_stun_binding_provider.TcpStunBindingProviderError;
+pub const TcpStunBindingProviderConfig = tcp_stun_binding_provider.TcpStunBindingProviderConfig;
+pub const TcpStunBindingRequestConfig = tcp_stun_binding_provider.TcpStunBindingRequestConfig;
+pub const TcpStunBindingRequestHandle = tcp_stun_binding_provider.TcpStunBindingRequestHandle;
+pub const TcpStunBindingRequestState = tcp_stun_binding_provider.TcpStunBindingRequestState;
+pub const TcpStunBindingProvider = tcp_stun_binding_provider.TcpStunBindingProvider;
 pub const max_provider_name_bytes = provider.max_provider_name_bytes;
 pub const ProviderError = provider.ProviderError;
 pub const provider_error_disposition = provider.disposition_for_error;
@@ -426,5 +436,6 @@ test {
     _ = @import("udp_listener_registry.zig");
     _ = @import("udp_session_registry.zig");
     _ = @import("udp_stun_binding_provider.zig");
+    _ = @import("tcp_stun_binding_provider.zig");
     _ = @import("platform_runtime.zig");
 }
