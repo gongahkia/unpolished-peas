@@ -1,0 +1,19 @@
+.{
+    .name = .unpolished_peas_game,
+    .version = "0.0.1",
+    .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{
+            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.4.tar.gz",
+            .hash = "unpolished_peas-0.0.4-NgUp2e_UJQAcvd14MMsx9tkfeZ54qm1DD2WdNHin3Yi7",
+        },
+    },
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "src",
+        "assets",
+        "README.md",
+    },
+}
