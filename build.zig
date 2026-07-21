@@ -185,6 +185,17 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = runtime_spec.module_name, .module = runtime }},
     });
+    const p2p_cross_process_common = b.createModule(.{
+        .root_source_file = b.path("contracts/p2p_cross_process_common.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = protocol_spec.module_name, .module = protocol },
+            .{ .name = runtime_spec.module_name, .module = runtime },
+            .{ .name = topology_spec.module_name, .module = topology },
+            .{ .name = transport_spec.module_name, .module = transport },
+        },
+    });
     const udp_cross_process_server = b.createModule(.{
         .root_source_file = b.path("contracts/udp_cross_process_server.zig"),
         .target = target,
@@ -197,8 +208,25 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "udp-cross-process-common", .module = udp_cross_process_common }},
     });
+    const p2p_cross_process_server = b.createModule(.{
+        .root_source_file = b.path("contracts/p2p_cross_process_server.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "p2p-cross-process-common", .module = p2p_cross_process_common }},
+    });
+    const p2p_cross_process_client = b.createModule(.{
+        .root_source_file = b.path("contracts/p2p_cross_process_client.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "p2p-cross-process-common", .module = p2p_cross_process_common }},
+    });
     const udp_cross_process_test = b.createModule(.{
         .root_source_file = b.path("contracts/udp_cross_process_test.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const p2p_cross_process_test = b.createModule(.{
+        .root_source_file = b.path("contracts/p2p_cross_process_test.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -293,6 +321,9 @@ pub fn build(b: *std.Build) void {
     const udp_cross_process_server_executable = b.addExecutable(.{ .name = "udp-cross-process-server", .root_module = udp_cross_process_server });
     const udp_cross_process_client_executable = b.addExecutable(.{ .name = "udp-cross-process-client", .root_module = udp_cross_process_client });
     const udp_cross_process_test_executable = b.addExecutable(.{ .name = "udp-cross-process-test", .root_module = udp_cross_process_test });
+    const p2p_cross_process_server_executable = b.addExecutable(.{ .name = "p2p-cross-process-server", .root_module = p2p_cross_process_server });
+    const p2p_cross_process_client_executable = b.addExecutable(.{ .name = "p2p-cross-process-client", .root_module = p2p_cross_process_client });
+    const p2p_cross_process_test_executable = b.addExecutable(.{ .name = "p2p-cross-process-test", .root_module = p2p_cross_process_test });
     const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
     const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
     const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
@@ -374,6 +405,9 @@ pub fn build(b: *std.Build) void {
     const run_udp_cross_process = b.addRunArtifact(udp_cross_process_test_executable);
     run_udp_cross_process.addArtifactArg(udp_cross_process_server_executable);
     run_udp_cross_process.addArtifactArg(udp_cross_process_client_executable);
+    const run_p2p_cross_process = b.addRunArtifact(p2p_cross_process_test_executable);
+    run_p2p_cross_process.addArtifactArg(p2p_cross_process_server_executable);
+    run_p2p_cross_process.addArtifactArg(p2p_cross_process_client_executable);
     const run_stun_turn_interop = b.addRunArtifact(stun_turn_interop_tests);
     const run_benchmark_harness_tests = b.addRunArtifact(benchmark_harness_tests);
     const run_benchmark_harness = b.addRunArtifact(benchmark_harness_executable);
@@ -472,6 +506,8 @@ pub fn build(b: *std.Build) void {
     platform_composition_smoke_step.dependOn(&run_platform_composition_smoke.step);
     const udp_cross_process_step = b.step("udp-cross-process", "Run the native UDP cross-process integration executables");
     udp_cross_process_step.dependOn(&run_udp_cross_process.step);
+    const p2p_cross_process_step = b.step("p2p-cross-process", "Run the public direct P2P cross-process integration executables");
+    p2p_cross_process_step.dependOn(&run_p2p_cross_process.step);
     const stun_turn_interop_step = b.step("stun-turn-interop", "Run controlled STUN TURN interoperability fixtures");
     stun_turn_interop_step.dependOn(&run_stun_turn_interop.step);
     const benchmark_harness_step = b.step("benchmark-harness", "Run deterministic benchmark harness");
@@ -613,6 +649,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_virtual_network_provider.step);
     test_step.dependOn(&run_platform_composition_smoke.step);
     test_step.dependOn(&run_udp_cross_process.step);
+    test_step.dependOn(&run_p2p_cross_process.step);
     test_step.dependOn(&run_stun_turn_interop.step);
     test_step.dependOn(&run_benchmark_harness_tests.step);
     test_step.dependOn(&run_benchmark_authoritative_tests.step);
