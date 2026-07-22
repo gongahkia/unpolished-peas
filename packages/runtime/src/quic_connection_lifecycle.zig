@@ -32,7 +32,7 @@ pub const QuicConnectionProviderEvent = extern struct {
 pub const QuicConnectionCallback = *const fn (?*anyopaque, *const QuicConnectionProviderEvent) callconv(.c) c_int;
 
 pub const QuicConnectionProviderVTable = extern struct {
-    open: *const fn (?*anyopaque, u64, ?*anyopaque, QuicConnectionCallback) callconv(.c) c_int,
+    open: *const fn (?*anyopaque, u64, QuicConnectionRole, ?*anyopaque, QuicConnectionCallback) callconv(.c) c_int,
     shutdown: *const fn (?*anyopaque, u64) callconv(.c) void,
 };
 
@@ -104,7 +104,7 @@ pub const QuicConnectionLifecycle = struct {
         const connection_id = self.nextConnectionId();
         try self.entries.append(self.allocator, .{ .session_handle = session_handle, .connection_id = connection_id, .config = connection_config, .opened_at_ns = now_ns, .last_activity_ns = now_ns });
         errdefer _ = self.entries.pop();
-        if (self.vtable.open(self.context, connection_id, self, callback) != @intFromEnum(core.CResult.ok)) return error.ProviderFailed;
+        if (self.vtable.open(self.context, connection_id, connection_config.role, self, callback) != @intFromEnum(core.CResult.ok)) return error.ProviderFailed;
         return session_handle;
     }
 
@@ -233,7 +233,7 @@ test "QUIC connection lifecycles map copied provider callbacks through explicit 
         opens: usize = 0,
         shutdowns: usize = 0,
 
-        fn open(context: ?*anyopaque, _: u64, callback_context: ?*anyopaque, callback_fn: QuicConnectionCallback) callconv(.c) c_int {
+        fn open(context: ?*anyopaque, _: u64, _: QuicConnectionRole, callback_context: ?*anyopaque, callback_fn: QuicConnectionCallback) callconv(.c) c_int {
             const self: *@This() = @ptrCast(@alignCast(context.?));
             self.callback_context = callback_context;
             self.callback_fn = callback_fn;
