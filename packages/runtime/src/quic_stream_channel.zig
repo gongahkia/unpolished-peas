@@ -226,7 +226,7 @@ pub const QuicStreamChannelRegistry = struct {
             .opened = true,
             .send_open = direction == .bidirectional,
             .receive_open = true,
-            .read_ready = true,
+            .read_ready = false,
             .write_ready = direction == .bidirectional,
         });
         return handle;
@@ -503,6 +503,9 @@ test "QUIC stream channels progress independent writable streams through another
     try std.testing.expectEqual(QuicStreamState.closed, (try registry.snapshot(high)).state);
 
     const incoming = try registry.accept(owner, .{ .delivery = .stream, .maximum_payload_bytes = 8 }, 24, .unidirectional);
+    try std.testing.expectError(error.InvalidState, registry.receive(incoming, "peer"));
+    try std.testing.expectEqual(@intFromEnum(core.CResult.ok), stream_provider.emit((try lifecycle.connectionId(owner)), 24, .readable));
+    _ = try registry.poll(1);
     var received = try registry.receive(incoming, "peer");
     defer received.deinit(std.testing.allocator);
     try std.testing.expectEqualStrings("peer", received.payload);
