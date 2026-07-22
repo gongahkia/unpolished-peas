@@ -15,6 +15,10 @@ git -C "$root" worktree add --detach --quiet "$worktree" HEAD
 if ! git -C "$root" diff --quiet HEAD; then
     git -C "$root" diff --binary HEAD | git -C "$worktree" apply
 fi
+git -C "$root" ls-files --others --exclude-standard | while IFS= read -r path; do
+    mkdir -p "$worktree/$(dirname "$path")"
+    cp "$root/$path" "$worktree/$path"
+done
 printf '\npub const PreReleaseContractProbe = struct {};\n' >> "$worktree/packages/core/src/core.zig"
 (cd "$worktree" && zig build api-contract)
 PUBLIC_API_COMPATIBILITY_ROOT="$worktree" sh "$root/script/check_public_api_regression.sh"

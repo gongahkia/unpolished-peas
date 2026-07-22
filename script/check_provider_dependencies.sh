@@ -97,3 +97,5 @@ for provider in providers:
         if target_os == "windows" and (archive_format != "zip" or library_path.name != "msquic.dll"):
             raise SystemExit("invalid Windows provider artifact")
 PY
+
+python3 script/resolve_openssl_source.py --check

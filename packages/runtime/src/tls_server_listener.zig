@@ -175,9 +175,17 @@ test "TLS server listeners select distinct SNI fixture identities without listen
         fn io(_: ?*anyopaque, _: [*]const u8, _: usize, _: [*]u8, _: usize, _: *tls_provider.TlsIoOutput) callconv(.c) c_int {
             return @intFromEnum(core.CResult.ok);
         }
+        fn receiveRecord(_: ?*anyopaque, _: [*]const u8, input_len: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{ .bytes = input_len };
+            return @intFromEnum(core.CResult.ok);
+        }
+        fn drainRecord(_: ?*anyopaque, _: [*]u8, _: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{};
+            return @intFromEnum(core.CResult.ok);
+        }
         fn teardown(_: ?*anyopaque) callconv(.c) void {}
         fn create(_: ?*anyopaque, _: tls_callbacks.TlsServerIdentity, name: []const u8) ?tls_provider.TlsProvider {
-            return tls_provider.TlsProvider.init(.{ .role = .server, .alpn = "http/1.1", .server_name = name }, null, .{ .start = start, .poll = pollProvider, .encrypt = io, .decrypt = io, .teardown = teardown }) catch null;
+            return tls_provider.TlsProvider.init(.{ .role = .server, .alpn = "http/1.1", .server_name = name }, null, .{ .start = start, .poll = pollProvider, .encrypt = io, .decrypt = io, .receive_record = receiveRecord, .drain_record = drainRecord, .teardown = teardown }) catch null;
         }
     };
     var resources = try resource.ResourceRegistry.init(std.testing.allocator, 4);

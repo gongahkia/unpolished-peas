@@ -101,6 +101,10 @@ pub const TlsClientRoute = struct {
 
     pub fn flush(self: *TlsClientRoute) TlsClientRouteError!TlsClientRouteWrite {
         if (self.state != .ready) return error.InvalidState;
+        return self.flushCiphertext();
+    }
+
+    fn flushCiphertext(self: *TlsClientRoute) TlsClientRouteError!TlsClientRouteWrite {
         const socket = try self.socketHandle();
         var sent_total: usize = 0;
         while (self.write_offset < self.write_len) {
@@ -202,7 +206,19 @@ pub const TlsClientRoute = struct {
 
     fn pollHandshake(self: *TlsClientRoute, now_ns: core.TimeNs) TlsClientRoutePoll {
         if (now_ns >= self.handshake_deadline_ns.?) return self.fail(.tls_timeout);
-        const work_completed = self.provider.poll(now_ns) catch return self.fail(.tls_handshake);
+        var work_completed = self.provider.poll(now_ns) catch return self.fail(.tls_handshake);
+        work_completed += self.drainProviderRecords() catch return self.fail(.write_failed);
+        var ciphertext: [max_tls_client_record_bytes]u8 = undefined;
+        const socket = self.socketHandle() catch return self.fail(.read_failed);
+        const received = std.posix.recv(socket, ciphertext[0..], 0) catch |err| switch (err) {
+            error.WouldBlock => 0,
+            else => return self.fail(.read_failed),
+        };
+        if (received != 0) {
+            work_completed += self.provider.receiveRecord(ciphertext[0..received]) catch return self.fail(.tls_handshake);
+            work_completed += self.provider.poll(now_ns) catch return self.fail(.tls_handshake);
+            work_completed += self.drainProviderRecords() catch return self.fail(.write_failed);
+        }
         return switch (self.provider.state) {
             .handshaking => .{ .state = .handshaking, .tls_work_completed = work_completed },
             .connected => blk: {
@@ -211,6 +227,21 @@ pub const TlsClientRoute = struct {
             },
             else => self.fail(.tls_handshake),
         };
+    }
+
+    fn drainProviderRecords(self: *TlsClientRoute) TlsClientRouteError!usize {
+        var work_completed: usize = 0;
+        if (self.write_len != 0) {
+            const flushed = try self.flushCiphertext();
+            work_completed += flushed.sent_ciphertext_bytes;
+            if (flushed.pending_ciphertext_bytes != 0) return work_completed;
+        }
+        const record = try self.provider.drainRecord(self.write_buffer);
+        if (record.len == 0) return work_completed;
+        self.write_len = record.len;
+        self.write_offset = 0;
+        const flushed = try self.flushCiphertext();
+        return work_completed + flushed.sent_ciphertext_bytes;
     }
 
     fn socketHandle(self: *TlsClientRoute) TlsClientRouteError!std.posix.socket_t {
@@ -306,6 +337,16 @@ test "TLS client routes verify fixture trust then exchange encrypted stream byte
             return @intFromEnum(core.CResult.ok);
         }
 
+        fn receiveRecord(_: ?*anyopaque, _: [*]const u8, input_len: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{ .bytes = input_len };
+            return @intFromEnum(core.CResult.ok);
+        }
+
+        fn drainRecord(_: ?*anyopaque, _: [*]u8, _: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{};
+            return @intFromEnum(core.CResult.ok);
+        }
+
         fn teardown(context: ?*anyopaque) callconv(.c) void {
             @as(*@This(), @ptrCast(@alignCast(context.?))).torn_down = true;
         }
@@ -324,7 +365,7 @@ test "TLS client routes verify fixture trust then exchange encrypted stream byte
     defer callbacks.deinit();
     const session = try tcp.dial(.{ .endpoint = transport.Endpoint.from_ipv4(endpoint), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .timeout_ms = 1_000 });
     var fake = FakeProvider{};
-    var route = try TlsClientRoute.init(std.testing.allocator, .{ .tcp_sessions = &tcp, .session = session, .provider = try tls_provider.TlsProvider.init(.{ .role = .client, .alpn = "fixture", .server_name = "fixture.test", .certificate_context = &fake, .certificate_callback = FakeProvider.certificate }, &fake, .{ .start = FakeProvider.start, .poll = FakeProvider.poll, .encrypt = FakeProvider.encrypt, .decrypt = FakeProvider.decrypt, .teardown = FakeProvider.teardown }), .certificate_callbacks = &callbacks, .peer_certificate_chain_id = 9, .handshake_timeout_ns = 100, .maximum_plaintext_bytes = 32, .maximum_ciphertext_bytes = 64 });
+    var route = try TlsClientRoute.init(std.testing.allocator, .{ .tcp_sessions = &tcp, .session = session, .provider = try tls_provider.TlsProvider.init(.{ .role = .client, .alpn = "fixture", .server_name = "fixture.test", .certificate_context = &fake, .certificate_callback = FakeProvider.certificate }, &fake, .{ .start = FakeProvider.start, .poll = FakeProvider.poll, .encrypt = FakeProvider.encrypt, .decrypt = FakeProvider.decrypt, .receive_record = FakeProvider.receiveRecord, .drain_record = FakeProvider.drainRecord, .teardown = FakeProvider.teardown }), .certificate_callbacks = &callbacks, .peer_certificate_chain_id = 9, .handshake_timeout_ns = 100, .maximum_plaintext_bytes = 32, .maximum_ciphertext_bytes = 64 });
     defer route.deinit();
     var server: ?transport.TcpConnection = null;
     var tick: u64 = 0;

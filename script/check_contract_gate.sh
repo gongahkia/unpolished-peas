@@ -48,6 +48,12 @@ core_contract_count="$(grep -Fcx "$core_contract_command" "$workflow")"
 p2p_route_matrix_command='        run: zig build p2p-route-matrix'
 p2p_route_matrix_count="$(grep -Fcx "$p2p_route_matrix_command" "$workflow")"
 [ "$p2p_route_matrix_count" = 3 ] || fail "every native SDK job must run the cross-process P2P route matrix"
+openssl_interop_command='        run: zig build openssl-tls-interop'
+openssl_interop_count="$(grep -Fcx "$openssl_interop_command" "$workflow")"
+[ "$openssl_interop_count" = 2 ] || fail "Linux and macOS SDK jobs must run the signed OpenSSL interoperability matrix"
+node_fixture_action='        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020'
+node_fixture_count="$(grep -Fcx "$node_fixture_action" "$workflow")"
+[ "$node_fixture_count" = 2 ] || fail "Linux and macOS SDK jobs must pin the Node fixture runtime"
 for field in '    runs-on: ubuntu-24.04' '          test "$(uname -m)" = "x86_64"' '      - name: Compile C ABI smoke sources' '          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_types.o -I packages/c-abi/include contracts/fixtures/c_abi_types.c' '          gcc -std=c11 -Wall -Wextra -Werror -c -o .c-abi-compiler/c_abi_consumer.o -I packages/c-abi/include contracts/fixtures/c_abi_consumer.c' '      - name: Build and test core contracts' '        run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke' '      - name: Resolve verified MsQuic provider' '        run: zig build msquic-provider -Dmsquic-target=x86_64-linux' '      - name: Build C ABI artifact and consumer' '      - name: Build reproducible C SDK libraries' '        run: zig build c-sdk-desktop-reproducible' '      - name: Package versioned static C SDK libraries' '        run: zig build c-sdk-static-package' '      - name: Package versioned shared C SDK libraries' '        run: zig build c-sdk-shared-package'; do
     grep -Fqx "$field" "$workflow" || fail "workflow must retain Linux SDK field: $field"
 done
