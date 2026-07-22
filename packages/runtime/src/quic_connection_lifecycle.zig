@@ -141,6 +141,10 @@ pub const QuicConnectionLifecycle = struct {
         };
     }
 
+    pub fn connectionId(self: *QuicConnectionLifecycle, session_handle: *resource.ResourceHandle) QuicConnectionLifecycleError!u64 {
+        return (try self.lookup(session_handle)).connection_id;
+    }
+
     pub fn queuedProviderEvents(self: *QuicConnectionLifecycle) usize {
         self.event_mutex.lock();
         defer self.event_mutex.unlock();

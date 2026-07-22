@@ -152,6 +152,10 @@ pub const ChannelRegistry = struct {
         return (try self.lookup(handle)).queue.items.len;
     }
 
+    pub fn maximumInFlight(self: *ChannelRegistry, handle: *resource.ResourceHandle) ChannelRegistryError!usize {
+        return (try self.lookup(handle)).descriptor.maximum_in_flight;
+    }
+
     pub fn queuedDatagrams(self: *ChannelRegistry, owner: *resource.ResourceHandle) ChannelRegistryError!usize {
         _ = try self.sessions.lookup(owner);
         var result: usize = 0;
