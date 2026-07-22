@@ -14,6 +14,9 @@ pub const Http3ErrorCode = enum(u64) {
     excessive_load = 0x0107,
     settings_error = 0x0109,
     missing_settings = 0x010a,
+    request_cancelled = 0x010c,
+    request_incomplete = 0x010d,
+    message_error = 0x010e,
 };
 
 pub const Http3ControlSessionState = enum(u8) {
