@@ -164,6 +164,8 @@ jobs:
         run: |
           test "$(uname -m)" = "x86_64"
           test "$(zig version)" = "0.15.2"
+      - name: Install MsQuic runtime dependencies
+        run: sudo apt-get update && sudo apt-get install --yes libxdp1 libbpf1 libnl-3-200 libnl-route-3-200 libnuma1
       - name: Compile C ABI smoke sources
         run: |
           mkdir -p .c-abi-compiler
@@ -173,6 +175,8 @@ jobs:
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
       - name: Resolve verified MsQuic provider
         run: zig build msquic-provider -Dmsquic-target=x86_64-linux
+      - name: Run MsQuic lifecycle integration
+        run: zig build msquic-connection-lifecycle -Dmsquic-target=x86_64-linux
       - name: Run cross-process P2P route matrix
         run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer

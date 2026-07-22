@@ -569,6 +569,25 @@ pub fn build(b: *std.Build) void {
     msquic_provider_test.setEnvironmentVariable("PYTHONDONTWRITEBYTECODE", "1");
     const msquic_provider_test_step = b.step("msquic-provider-test", "Test optional MsQuic provider resolution");
     msquic_provider_test_step.dependOn(&msquic_provider_test.step);
+    const msquic_connection_lifecycle = b.createModule(.{
+        .root_source_file = b.path("contracts/msquic_connection_lifecycle.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = runtime_spec.module_name, .module = runtime }},
+    });
+    const msquic_linux_root = b.pathJoin(&.{ msquic_provider_output, "x86_64-linux" });
+    const msquic_connection_lifecycle_executable = b.addExecutable(.{ .name = "msquic-connection-lifecycle", .root_module = msquic_connection_lifecycle });
+    msquic_connection_lifecycle_executable.addIncludePath(b.path("contracts/fixtures"));
+    msquic_connection_lifecycle_executable.addIncludePath(b.path(b.pathJoin(&.{ msquic_linux_root, "include" })));
+    msquic_connection_lifecycle_executable.addCSourceFile(.{ .file = b.path("contracts/fixtures/msquic_lifecycle_native.c"), .flags = &.{ "-std=c11", "-Wall", "-Wextra", "-Werror" } });
+    msquic_connection_lifecycle_executable.addObjectFile(b.path(b.pathJoin(&.{ msquic_linux_root, "lib", "libmsquic.so.2.5.9" })));
+    msquic_connection_lifecycle_executable.linkLibC();
+    msquic_connection_lifecycle_executable.step.dependOn(&msquic_provider.step);
+    const run_msquic_connection_lifecycle = b.addSystemCommand(&.{ "bash", "contracts/run_msquic_connection_lifecycle.sh" });
+    run_msquic_connection_lifecycle.addArtifactArg(msquic_connection_lifecycle_executable);
+    run_msquic_connection_lifecycle.addFileArg(b.path(b.pathJoin(&.{ msquic_linux_root, "lib", "libmsquic.so.2.5.9" })));
+    const msquic_connection_lifecycle_step = b.step("msquic-connection-lifecycle", "Run the pinned Linux MsQuic lifecycle integration");
+    msquic_connection_lifecycle_step.dependOn(&run_msquic_connection_lifecycle.step);
     const hermetic_test = b.addSystemCommand(&.{ "sh", "script/test_hermetic_build.sh" });
     const hermetic_step = b.step("hermetic-test", "Test SDK builds with an empty environment");
     hermetic_step.dependOn(&hermetic_test.step);
