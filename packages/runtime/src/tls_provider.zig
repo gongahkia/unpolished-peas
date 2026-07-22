@@ -26,11 +26,14 @@ pub const TlsPollOutput = extern struct {
     work_completed: usize = 0,
 };
 pub const TlsIoOutput = extern struct { bytes: usize = 0, alert: u16 = 0 };
+pub const TlsRecordOutput = extern struct { bytes: usize = 0, alert: u16 = 0 };
 pub const TlsProviderVTable = extern struct {
     start: *const fn (?*anyopaque, u8, [*]const u8, usize, [*]const u8, usize, ?*anyopaque, ?TlsCertificateCallback) callconv(.c) c_int,
     poll: *const fn (?*anyopaque, core.TimeNs, *TlsPollOutput) callconv(.c) c_int,
     encrypt: *const fn (?*anyopaque, [*]const u8, usize, [*]u8, usize, *TlsIoOutput) callconv(.c) c_int,
     decrypt: *const fn (?*anyopaque, [*]const u8, usize, [*]u8, usize, *TlsIoOutput) callconv(.c) c_int,
+    receive_record: *const fn (?*anyopaque, [*]const u8, usize, *TlsRecordOutput) callconv(.c) c_int,
+    drain_record: *const fn (?*anyopaque, [*]u8, usize, *TlsRecordOutput) callconv(.c) c_int,
     teardown: *const fn (?*anyopaque) callconv(.c) void,
 };
 
@@ -71,6 +74,22 @@ pub const TlsProvider = struct {
     }
     pub fn decrypt(self: *TlsProvider, input: []const u8, output: []u8) TlsProviderError![]u8 {
         return self.io(self.vtable.decrypt, input, output);
+    }
+    pub fn receiveRecord(self: *TlsProvider, input: []const u8) TlsProviderError!usize {
+        if (self.state != .handshaking and self.state != .connected) return error.InvalidState;
+        var result = TlsRecordOutput{};
+        if (self.vtable.receive_record(self.context, input.ptr, input.len, &result) != @intFromEnum(core.CResult.ok)) return self.fail(.internal_error);
+        if (result.bytes > input.len) return self.fail(.internal_error);
+        if (result.alert != 0) self.last_alert = std.meta.intToEnum(TlsAlert, result.alert) catch return self.fail(.internal_error);
+        return result.bytes;
+    }
+    pub fn drainRecord(self: *TlsProvider, output: []u8) TlsProviderError![]u8 {
+        if (self.state != .handshaking and self.state != .connected) return error.InvalidState;
+        var result = TlsRecordOutput{};
+        if (self.vtable.drain_record(self.context, output.ptr, output.len, &result) != @intFromEnum(core.CResult.ok)) return self.fail(.internal_error);
+        if (result.bytes > output.len) return self.fail(.internal_error);
+        if (result.alert != 0) self.last_alert = std.meta.intToEnum(TlsAlert, result.alert) catch return self.fail(.internal_error);
+        return output[0..result.bytes];
     }
     pub fn close(self: *TlsProvider) void {
         if (self.state != .closed) self.vtable.teardown(self.context);
@@ -119,12 +138,20 @@ test "fake TLS providers complete explicit polls with ALPN certificates encrypte
             result.* = .{ .bytes = input_len };
             return @intFromEnum(core.CResult.ok);
         }
+        fn receiveRecord(_: ?*anyopaque, _: [*]const u8, input_len: usize, result: *TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{ .bytes = input_len };
+            return @intFromEnum(core.CResult.ok);
+        }
+        fn drainRecord(_: ?*anyopaque, _: [*]u8, _: usize, result: *TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{};
+            return @intFromEnum(core.CResult.ok);
+        }
         fn teardown(context: ?*anyopaque) callconv(.c) void {
             @as(*@This(), @ptrCast(@alignCast(context.?))).torn_down = true;
         }
     };
     var fake = Fake{};
-    var provider = try TlsProvider.init(.{ .role = .client, .alpn = "http/1.1", .server_name = "example.test", .certificate_context = &fake, .certificate_callback = Fake.certificate }, &fake, .{ .start = Fake.start, .poll = Fake.poll, .encrypt = Fake.io, .decrypt = Fake.io, .teardown = Fake.teardown });
+    var provider = try TlsProvider.init(.{ .role = .client, .alpn = "http/1.1", .server_name = "example.test", .certificate_context = &fake, .certificate_callback = Fake.certificate }, &fake, .{ .start = Fake.start, .poll = Fake.poll, .encrypt = Fake.io, .decrypt = Fake.io, .receive_record = Fake.receiveRecord, .drain_record = Fake.drainRecord, .teardown = Fake.teardown });
     try std.testing.expectEqualStrings("h2", try provider.selectAlpn(&.{ "http/1.1", "h2" }, .{ .supported = &.{ "h2", "http/1.1" } }));
     try provider.start();
     try std.testing.expectEqual(@as(usize, 1), try provider.poll(0));
@@ -132,6 +159,8 @@ test "fake TLS providers complete explicit polls with ALPN certificates encrypte
     var output: [8]u8 = undefined;
     try std.testing.expectEqualStrings("tls", try provider.encrypt("tls", output[0..]));
     try std.testing.expectEqualStrings("tls", try provider.decrypt("tls", output[0..]));
+    try std.testing.expectEqual(@as(usize, 3), try provider.receiveRecord("tls"));
+    try std.testing.expectEqual(@as(usize, 0), (try provider.drainRecord(output[0..])).len);
     provider.close();
     try std.testing.expect(fake.certificate_checked and fake.torn_down);
 }

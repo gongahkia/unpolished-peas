@@ -389,6 +389,14 @@ test "WebSocket clients exchange text and binary frames with an external TLS fix
             result.* = .{ .bytes = input_len - 1 };
             return @intFromEnum(core.CResult.ok);
         }
+        fn receiveRecord(_: ?*anyopaque, _: [*]const u8, input_len: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{ .bytes = input_len };
+            return @intFromEnum(core.CResult.ok);
+        }
+        fn drainRecord(_: ?*anyopaque, _: [*]u8, _: usize, result: *tls_provider.TlsRecordOutput) callconv(.c) c_int {
+            result.* = .{};
+            return @intFromEnum(core.CResult.ok);
+        }
 
         fn teardown(context: ?*anyopaque) callconv(.c) void {
             @as(*@This(), @ptrCast(@alignCast(context.?))).torn_down = true;
@@ -418,7 +426,7 @@ test "WebSocket clients exchange text and binary frames with an external TLS fix
     defer callbacks.deinit();
     const tcp_session = try tcp.dial(.{ .endpoint = transport.Endpoint.from_ipv4(endpoint), .family_policy = .ipv4_only, .platform_support = .{ .ipv4 = true, .ipv6 = false, .dual_stack = false }, .timeout_ms = 1_000 });
     var fake = FakeProvider{};
-    var route = try tls.TlsClientRoute.init(std.testing.allocator, .{ .tcp_sessions = &tcp, .session = tcp_session, .provider = try tls_provider.TlsProvider.init(.{ .role = .client, .alpn = "http/1.1", .server_name = "fixture.test", .certificate_context = &fake, .certificate_callback = FakeProvider.certificate }, &fake, .{ .start = FakeProvider.start, .poll = FakeProvider.poll, .encrypt = FakeProvider.encrypt, .decrypt = FakeProvider.decrypt, .teardown = FakeProvider.teardown }), .certificate_callbacks = &callbacks, .peer_certificate_chain_id = 1, .handshake_timeout_ns = 100, .maximum_plaintext_bytes = 256, .maximum_ciphertext_bytes = 512 });
+    var route = try tls.TlsClientRoute.init(std.testing.allocator, .{ .tcp_sessions = &tcp, .session = tcp_session, .provider = try tls_provider.TlsProvider.init(.{ .role = .client, .alpn = "http/1.1", .server_name = "fixture.test", .certificate_context = &fake, .certificate_callback = FakeProvider.certificate }, &fake, .{ .start = FakeProvider.start, .poll = FakeProvider.poll, .encrypt = FakeProvider.encrypt, .decrypt = FakeProvider.decrypt, .receive_record = FakeProvider.receiveRecord, .drain_record = FakeProvider.drainRecord, .teardown = FakeProvider.teardown }), .certificate_callbacks = &callbacks, .peer_certificate_chain_id = 1, .handshake_timeout_ns = 100, .maximum_plaintext_bytes = 256, .maximum_ciphertext_bytes = 512 });
     defer route.deinit();
     var server: ?transport.TcpConnection = null;
     var tick: u64 = 0;

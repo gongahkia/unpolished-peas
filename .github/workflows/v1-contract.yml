@@ -166,6 +166,11 @@ jobs:
           test "$(zig version)" = "0.15.2"
       - name: Install MsQuic runtime dependencies
         run: sudo apt-get update && sudo apt-get install --yes libxdp1 libbpf1 libnl-3-200 libnl-route-3-200 libnuma1
+      - name: Install pinned Node fixture runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.15.0
+          check-latest: false
       - name: Compile C ABI smoke sources
         run: |
           mkdir -p .c-abi-compiler
@@ -177,6 +182,8 @@ jobs:
         run: zig build msquic-provider -Dmsquic-target=x86_64-linux
       - name: Run MsQuic lifecycle integration
         run: zig build msquic-connection-lifecycle -Dmsquic-target=x86_64-linux
+      - name: Run signed OpenSSL HTTP interoperability matrix
+        run: zig build openssl-tls-interop
       - name: Run cross-process P2P route matrix
         run: zig build p2p-route-matrix
       - name: Build C ABI artifact and consumer
@@ -262,6 +269,13 @@ jobs:
         run: |
           test "$(uname -m)" = "${{ matrix.arch }}"
           test "$(zig version)" = "0.15.2"
+      - name: Install pinned Node fixture runtime
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020
+        with:
+          node-version: 22.15.0
+          check-latest: false
+      - name: Require GnuPG for signed OpenSSL source
+        run: command -v gpg >/dev/null || brew install gnupg
       - name: Compile C ABI smoke sources
         run: |
           mkdir -p .c-abi-compiler
@@ -271,6 +285,8 @@ jobs:
         run: zig build contract && zig build workspace-graph && zig build api-contract && zig build test-harness && zig build platform-composition-smoke
       - name: Run cross-process P2P route matrix
         run: zig build p2p-route-matrix
+      - name: Run signed OpenSSL HTTP interoperability matrix
+        run: zig build openssl-tls-interop
       - name: Build C ABI artifact and consumer
         run: zig build c-abi-parity
       - name: Build reproducible C SDK libraries
