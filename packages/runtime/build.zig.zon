@@ -1,0 +1,14 @@
+.{
+    .name = .minna_san_runtime,
+    .version = "0.1.0",
+    .fingerprint = 0x3087f484cac19a96,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .core = .{ .path = "../core", .lazy = true },
+        .protocol = .{ .path = "../protocol", .lazy = true },
+        .state = .{ .path = "../state", .lazy = true },
+        .topology = .{ .path = "../topology", .lazy = true },
+        .transport = .{ .path = "../transport", .lazy = true },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

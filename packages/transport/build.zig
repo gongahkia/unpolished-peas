@@ -1,0 +1,21 @@
+const std = @import("std");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const core_dependency = b.lazyDependency("core", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san core package");
+    const protocol_dependency = b.lazyDependency("protocol", .{ .target = target, .optimize = optimize }) orelse @panic("missing minna-san protocol package");
+    const module = b.addModule("minna-san-transport", .{
+        .root_source_file = b.path("src/transport.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "minna-san-core", .module = core_dependency.module("minna-san-core") },
+            .{ .name = "minna-san-protocol", .module = protocol_dependency.module("minna-san-protocol") },
+        },
+    });
+    const tests = b.addTest(.{ .root_module = module });
+    const run = b.addRunArtifact(tests);
+    const test_step = b.step("test", "Test the minna-san transport package");
+    test_step.dependOn(&run.step);
+}

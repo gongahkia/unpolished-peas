@@ -1,0 +1,8 @@
+.{
+    .name = .minna_san_protocol,
+    .version = "0.1.0",
+    .fingerprint = 0xe52772394aca8bd4,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{ .core = .{ .path = "../core", .lazy = true } },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}
