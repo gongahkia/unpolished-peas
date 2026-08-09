@@ -9,5 +9,5 @@ Status is only recorded after the corresponding code and tests exist.
 - [x] Browser build page, command, and CI configuration.
 - [ ] Extend encounter variety, boss commands, and playtest pacing.
 - [x] Record and verify full-run route choices in replay files.
-- [ ] Native launch smoke test on a host with Ebitengine system libraries.
-- [ ] Full playability and documentation audit.
+- [x] Native launch smoke test on a host with Ebitengine system libraries.
+- [x] Full playability and documentation audit.

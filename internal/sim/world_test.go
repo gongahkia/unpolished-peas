@@ -143,6 +143,35 @@ func TestLancerAndHexerHaveDistinctAttackRules(t *testing.T) {
 	}
 }
 
+func TestTigerBreaksArmorAndGiantResistsKnockback(t *testing.T) {
+	world := NewWorld(44)
+	brute := world.SpawnEnemy(EnemyBrute, world.Player.Pos.Add(Vec{X: 25}))
+	world.Player.Form = FormTiger
+	world.resolveStaffAttack(world.Player.Pos, world.Player.Facing, world.Player.attackSpec(), make(map[int]bool), false)
+	if brute.Armor != 0 || brute.Stagger < 20 {
+		t.Fatalf("tiger did not break armor: armor=%d stagger=%d", brute.Armor, brute.Stagger)
+	}
+	world.Player.Form = FormGiant
+	world.damagePlayer(10, Vec{X: 10}, false)
+	if world.Player.Velocity.X != 3.5 || world.Player.Stagger != 4 {
+		t.Fatalf("giant knockback resistance incorrect: velocity=%+v stagger=%d", world.Player.Velocity, world.Player.Stagger)
+	}
+}
+
+func TestShortStaffDeflectsMeleeStrike(t *testing.T) {
+	world := NewWorld(45)
+	enemy := world.SpawnEnemy(EnemyYaoguai, world.Player.Pos.Add(Vec{X: 20}))
+	world.Player.Staff = StaffShort
+	world.Player.Action = ActionAttack
+	world.Player.ActionTick = world.Player.attackSpec().Startup
+	world.Player.LastAttackSpec = world.Player.attackSpec()
+	before := world.Player.HP
+	world.enemyAttack(enemy, world.Player.Pos, nil)
+	if world.Player.HP != before || enemy.Stagger < 20 {
+		t.Fatalf("short-staff deflect failed: hp=%d stagger=%d", world.Player.HP, enemy.Stagger)
+	}
+}
+
 func TestSameSeedAndInputFramesProduceSameState(t *testing.T) {
 	left, right := NewWorld(99), NewWorld(99)
 	for _, world := range []*World{left, right} {
