@@ -102,9 +102,21 @@ func (w *World) SpawnClone() {
 		return
 	}
 	position := clampArena(p.Pos.Sub(p.Facing.Scale(22)), p.radius())
-	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Facing: p.Facing, Radius: 7, TicksRemaining: 300, HitIDs: make(map[int]bool)})
+	w.spawnCloneAt(position, p.Facing)
+	if w.Companion == CompanionBajie {
+		perpendicular := Vec{X: -p.Facing.Y, Y: p.Facing.X}
+		w.spawnCloneAt(clampArena(position.Add(perpendicular.Scale(20)), p.radius()), p.Facing)
+	}
 	p.CloneCooldown = 120
 	w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: position, Radius: 16, TicksRemaining: 16})
+}
+
+func (w *World) spawnCloneAt(position, facing Vec) {
+	ticks := 300
+	if w.Companion == CompanionBajie {
+		ticks = 360
+	}
+	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Facing: facing, Radius: 7, TicksRemaining: ticks, HitIDs: make(map[int]bool)})
 }
 
 func (w *World) Step(input InputFrame) {
@@ -248,6 +260,21 @@ func (w *World) startDodge(input InputFrame) {
 	}
 	p.Invulnerable = 8
 	p.Velocity = direction.Scale(7.5)
+	if w.Companion == CompanionWujing {
+		w.clearNearbyProjectiles(p.Pos, 36)
+	}
+}
+
+func (w *World) clearNearbyProjectiles(position Vec, radius float64) {
+	live := w.Projectiles[:0]
+	for _, projectile := range w.Projectiles {
+		if projectile.FromEnemy && projectile.Pos.Distance(position) <= radius+projectile.Radius {
+			w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: projectile.Pos, Radius: 10, TicksRemaining: 6})
+			continue
+		}
+		live = append(live, projectile)
+	}
+	w.Projectiles = live
 }
 
 func (w *World) startAttack() {
@@ -354,18 +381,24 @@ func (w *World) updateEnemies() {
 			w.updateBoss(enemy)
 		}
 		if enemy.Stagger > 0 {
+			enemy.AIState = "staggered"
 			enemy.Stagger--
 			enemy.Pos = clampArena(enemy.Pos.Add(enemy.Velocity), enemy.Radius)
 			enemy.Velocity = enemy.Velocity.Scale(0.76)
 			continue
 		}
-		target, clone := w.enemyTarget(enemy)
+		target, clone, canTarget := w.enemyTarget(enemy)
+		if !canTarget {
+			enemy.AIState = "searching"
+			continue
+		}
 		toTarget := target.Sub(enemy.Pos)
 		distance := toTarget.Length()
 		if distance > 0 {
 			enemy.Facing = toTarget.Scale(1 / distance)
 		}
 		if enemy.Windup > 0 {
+			enemy.AIState = "windup"
 			enemy.Windup--
 			if enemy.Windup == 0 {
 				w.enemyAttack(enemy, target, clone)
@@ -376,28 +409,32 @@ func (w *World) updateEnemies() {
 			enemy.AttackCooldown--
 		}
 		if distance <= enemy.AttackRange && enemy.AttackCooldown == 0 {
+			enemy.AIState = "telegraph"
 			enemy.Windup = 18
 			w.Effects = append(w.Effects, Effect{Kind: EffectTelegraph, Pos: target, Radius: enemy.AttackRange, TicksRemaining: 18})
 			continue
 		}
 		if distance > enemy.AttackRange*0.78 {
+			enemy.AIState = "chase"
 			enemy.Velocity = enemy.Facing.Scale(enemy.MoveSpeed)
 			enemy.Pos = clampArena(enemy.Pos.Add(enemy.Velocity), enemy.Radius)
 		}
 	}
 }
 
-func (w *World) enemyTarget(enemy *Enemy) (Vec, *Clone) {
-	if !rulesFor(w.Player.Form).Untargetable {
-		for _, clone := range w.Clones {
-			if enemy.Pos.Distance(clone.Pos) < enemy.Pos.Distance(w.Player.Pos)*1.25 {
-				enemy.TargetCloneID = clone.ID
-				return clone.Pos, clone
-			}
+func (w *World) enemyTarget(enemy *Enemy) (Vec, *Clone, bool) {
+	for _, clone := range w.Clones {
+		if rulesFor(w.Player.Form).Untargetable || enemy.Pos.Distance(clone.Pos) < enemy.Pos.Distance(w.Player.Pos)*1.25 {
+			enemy.TargetCloneID = clone.ID
+			return clone.Pos, clone, true
 		}
 	}
+	if rulesFor(w.Player.Form).Untargetable {
+		enemy.TargetCloneID = -1
+		return Vec{}, nil, false
+	}
 	enemy.TargetCloneID = -1
-	return w.Player.Pos, nil
+	return w.Player.Pos, nil, true
 }
 
 func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {

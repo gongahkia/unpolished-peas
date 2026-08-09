@@ -18,6 +18,10 @@ go run ./cmd/game
 go test ./...
 ```
 
+To make a browser build, run `make wasm`, then serve `dist` over HTTP (for
+example, `cd dist && python3 -m http.server`). Open the resulting local URL;
+opening the file directly prevents the browser from fetching the WASM module.
+
 Controls: `WASD`/arrows move, `J` attacks, `K` dashes, `1`/`2`/`3` select
 short/medium/long staff, `Q` tiger, `E` sparrow, `R` mantis, `F` cicada,
 `G` giant, `T` statue, `0` monkey, `C` hair clone, `Tab` toggles debug, and

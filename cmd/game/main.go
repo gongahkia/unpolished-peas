@@ -317,6 +317,11 @@ func drawDebug(screen *ebiten.Image, snapshot sim.RenderSnapshot) {
 	for _, enemy := range snapshot.Enemies {
 		vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Radius), 1, color.RGBA{R: 80, G: 225, B: 255, A: 255}, false)
 		vector.StrokeLine(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Pos.X+enemy.Velocity.X*6), float32(enemy.Pos.Y+enemy.Velocity.Y*6), 1, color.RGBA{R: 80, G: 225, B: 255, A: 255}, false)
+		label := enemy.AIState
+		if enemy.TargetCloneID >= 0 {
+			label += fmt.Sprintf(" → clone:%d", enemy.TargetCloneID)
+		}
+		text.Draw(screen, label, basicfont.Face7x13, int(enemy.Pos.X)-12, int(enemy.Pos.Y-enemy.Radius-18), color.RGBA{R: 80, G: 225, B: 255, A: 255})
 	}
 	vector.StrokeCircle(screen, float32(snapshot.Player.Pos.X), float32(snapshot.Player.Pos.Y), float32(snapshot.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
 	info := fmt.Sprintf("DEBUG  seed=%x rng=%x hitstop=%d boss=%s", snapshot.Seed, snapshot.Debug.RNG, snapshot.Debug.Hitstop, snapshot.Debug.BossPhase)

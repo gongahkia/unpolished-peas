@@ -75,6 +75,30 @@ func TestCloneRepeatsAttack(t *testing.T) {
 	}
 }
 
+func TestAttackPressedLateInRecoveryBuffersNextStrike(t *testing.T) {
+	world := NewWorld(41)
+	world.Step(InputFrame{Attack: true})
+	for world.Player.ActionTick < 14 {
+		world.Step(InputFrame{})
+	}
+	world.Step(InputFrame{Attack: true})
+	for range 7 {
+		world.Step(InputFrame{})
+	}
+	if world.Player.Action != ActionAttack || world.Player.ActionTick > 2 {
+		t.Fatalf("late recovery input was not buffered into another attack: action=%s tick=%d", world.Player.Action, world.Player.ActionTick)
+	}
+}
+
+func TestCloneDrawsEnemyTargeting(t *testing.T) {
+	world := NewWorld(42)
+	enemy := world.SpawnEnemy(EnemyYaoguai, world.Player.Pos.Sub(Vec{X: 50}))
+	world.Step(InputFrame{Clone: true})
+	if enemy.TargetCloneID < 0 {
+		t.Fatal("nearby clone did not draw enemy targeting")
+	}
+}
+
 func TestSparrowIgnoresHazardsAndStatueCannotMove(t *testing.T) {
 	world := NewWorld(5)
 	world.Player.Form = FormSparrow
@@ -88,6 +112,19 @@ func TestSparrowIgnoresHazardsAndStatueCannotMove(t *testing.T) {
 	world.Step(InputFrame{MoveX: 1})
 	if world.Player.Pos != position {
 		t.Fatalf("statue moved from %+v to %+v", position, world.Player.Pos)
+	}
+}
+
+func TestCicadaClearsNormalEnemyTargeting(t *testing.T) {
+	world := NewWorld(6)
+	enemy := world.SpawnEnemy(EnemyYaoguai, world.Player.Pos.Add(Vec{X: 50}))
+	world.Player.Form = FormCicada
+	world.Step(InputFrame{})
+	if enemy.AIState != "searching" {
+		t.Fatalf("cicada left enemy in %q rather than searching", enemy.AIState)
+	}
+	if enemy.Windup != 0 {
+		t.Fatalf("cicada allowed enemy to start an attack: %d", enemy.Windup)
 	}
 }
 
