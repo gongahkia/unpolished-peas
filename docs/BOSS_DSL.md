@@ -1,3 +1,3 @@
-# Boss DSL archive
+# Dormant boss DSL
 
-`data/bosses/warden.boss` and `internal/bossdsl` remain lintable historical tooling. They are not loaded or executed by the movement laboratory.
+`data/bosses/warden.boss` and `internal/bossdsl` remain lintable historical tooling. They are not loaded or executed by the danger playground.

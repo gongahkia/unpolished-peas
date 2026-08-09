@@ -1,16 +1,16 @@
 # 72
 
-`72` is currently a deterministic movement laboratory. It is a compact, seed-generated platforming world for testing how one player body, terrain, and physical objects fit together. Its first visual pass gives that player an animated pixel-art texture atlas; terrain and objects remain deliberately schematic. Combat, enemies, bosses, Echo, staff modes, and Wukong transformations are intentionally inactive.
+`72` is a deterministic procedural platforming prototype. Each short run recombines ten authored room topologies with readable enemies, throwable objects, breakable terrain, hazards, and optional treasure. The player sprite is animated pixel art; all other visuals remain deliberately schematic.
 
 It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
 
-## Run the laboratory
+## Playtest
 
 ```sh
-go run ./cmd/game
+go run ./cmd/game --mode=playtest
 ```
 
-`F1` restarts the same seed. `F2` creates a new seed. `Enter` restarts after a hazard or completing the exit. `F6` saves a deterministic replay, which can be checked with:
+`F1` restarts the same seed. `F2` creates a new seed. `Enter` restarts after death or completing the exit. `F6` saves a deterministic replay, which can be checked with:
 
 ```sh
 go run ./cmd/replaydump 72.replay.json
@@ -18,18 +18,19 @@ go run ./cmd/replaydump 72.replay.json
 
 ## Controls
 
-The movement bindings follow a Dead Cells-style keyboard layout: `A`/`D` run; `W`/`Space` jump; `S` crouches, and `S`+jump drops through a one-way platform or starts a downward smash in the air; `Shift` rolls. Wall-slide by holding toward a wall, then wall-jump with jump. A ledge briefly catches the player: hold toward it or press jump to climb, or hold `S` to drop. `E` interacts, carries/drops objects, activates vines, switches, and teleporters. `J` throws; `F` toggles the tether probe; arrows aim throws and the probe. `Tab` shows deterministic lab state and links.
+`A`/`D` run; `W`/`Space` jumps; `S` crouches, drops through a one-way platform with jump, or starts a downward smash in the air; `Shift` rolls. Hold toward a wall to slide, then jump to wall-jump. A ledge briefly catches the player: hold toward it or press jump to mantle, or hold `S` to drop. `E` carries/drops nearby crates and rocks; `J` throws the held object; arrows aim throws. `Tab` shows run topology and links.
 
-Gamepad: left stick moves and lowers, right stick aims; buttons `0`, `1`, `2`, `3`, and `6` map to jump, roll, interact, throw, and tether respectively.
+Gamepad: left stick moves and lowers, right stick aims; buttons `0`, `1`, `2`, and `3` map to jump, roll, interact, and throw.
 
-## What the lab tests
+## Core loop
 
-- Variable jump height, coyote time, jump buffering, double jump, wall slide/jump with a brief input grace window, ledge grabs, crouch, drop-through, and ground/air roll.
-- Downward smash breaks marked floors; activated vines, paired teleporters, and the bounded tether probe create alternate routes.
-- Crates and rocks can be pushed, carried, dropped, thrown, and used on pressure plates to open linked doors.
-- Every seed contains the same required movement syllabus, but platform heights, object positions, and trial geometry vary deterministically.
+- Read a room and start moving immediately along its reliable route.
+- Choose whether to climb toward a visible treasure, use a breakable shortcut, or leave safely.
+- Avoid, stomp, bait, or throw objects at chargers, hoppers, and divers.
+- Use rocks/crates, pressure plates, doors, spikes, and fragile walls to recover from mistakes or create a shortcut.
+- Death and completion restart immediately; a new seed produces a different but reproducible run.
 
-See [the lab layout](docs/ARENA.md), [movement rules](docs/COMBAT.md), [procedural model](docs/PROCEDURAL.md), and [replay contract](docs/REPLAY.md).
+See [the room layout](docs/ARENA.md), [interaction rules](docs/COMBAT.md), [procedural model](docs/PROCEDURAL.md), and [replay contract](docs/REPLAY.md).
 
 ## Verification
 
