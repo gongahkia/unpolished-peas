@@ -10,6 +10,8 @@ const (
 	doubleJumpVelocity = 9.8
 	coyoteTicks        = 7
 	jumpBufferTicks    = 7
+	wallJumpGraceTicks = 5
+	ledgeGrabTicks     = 12
 )
 
 type TraversalState uint8
@@ -21,6 +23,7 @@ const (
 	TraversalRolling
 	TraversalClimbing
 	TraversalDiving
+	TraversalLedgeGrab
 	TraversalMantling
 )
 
@@ -34,6 +37,8 @@ func (s TraversalState) String() string {
 		return "climb"
 	case TraversalDiving:
 		return "dive"
+	case TraversalLedgeGrab:
+		return "ledge grab"
 	case TraversalMantling:
 		return "mantle"
 	case TraversalAirborne:
@@ -49,29 +54,31 @@ type TetherState struct {
 }
 
 type Player struct {
-	Pos, Velocity Vec
-	Aim           Vec
-	Facing        int8
-	Grounded      bool
-	State         TraversalState
-	Coyote        int
-	JumpBuffer    int
-	AirJumps      int
-	WallDirection int8
-	RollTicks     int
-	RollCooldown  int
-	Crouching     bool
-	DropTicks     int
-	MantleTicks   int
-	ClimbObjectID int
-	HeldObjectID  int
-	Bombs         int
-	Ropes         int
-	Tether        TetherState
+	Pos, Velocity  Vec
+	Aim            Vec
+	Facing         int8
+	Grounded       bool
+	State          TraversalState
+	Coyote         int
+	JumpBuffer     int
+	AirJumps       int
+	WallDirection  int8
+	WallTicks      int
+	RollTicks      int
+	RollCooldown   int
+	Crouching      bool
+	DropTicks      int
+	LedgeTicks     int
+	LedgeDirection int8
+	LedgeTarget    Vec
+	MantleTicks    int
+	ClimbObjectID  int
+	HeldObjectID   int
+	Tether         TetherState
 }
 
 func newPlayer() Player {
-	return Player{Aim: Vec{X: 1}, Facing: 1, AirJumps: 1, HeldObjectID: -1, ClimbObjectID: -1, Bombs: 3, Ropes: 3}
+	return Player{Aim: Vec{X: 1}, Facing: 1, AirJumps: 1, HeldObjectID: -1, ClimbObjectID: -1}
 }
 
 func (p Player) halfHeight() float64 {

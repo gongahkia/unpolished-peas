@@ -32,7 +32,7 @@ func TestMovementLabsAreDeterministicAndComplete(t *testing.T) {
 	}
 	for seed := uint64(1); seed <= 1024; seed++ {
 		layout := GenerateMovementLab(seed)
-		if !layout.Valid || len(layout.Modules) != 9 || len(layout.Objects) < 8 {
+		if !layout.Valid || len(layout.Modules) != 8 || len(layout.Objects) < 8 {
 			t.Fatalf("seed %d generated an invalid movement lab: %+v", seed, layout)
 		}
 	}
@@ -75,6 +75,11 @@ func TestRollFitsLowTunnelAndDropPassesPlatform(t *testing.T) {
 		Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 160, Y: 460, W: 110, H: 22}},
 		Terrain{ID: 3, Kind: TerrainPlatform, Bounds: Rect{X: 310, Y: 440, W: 120, H: 16}},
 	)
+	world.Step(InputFrame{Down: true})
+	if !world.Player.Crouching || world.Player.Pos.Y != 493 {
+		t.Fatalf("down did not lower the player collision body: %+v", world.Player)
+	}
+	world.Step(InputFrame{})
 	step(world, InputFrame{MoveX: 1, Roll: true}, 35)
 	if world.Player.Pos.X <= 270 {
 		t.Fatalf("roll did not pass the low tunnel: %+v", world.Player)
@@ -88,7 +93,7 @@ func TestRollFitsLowTunnelAndDropPassesPlatform(t *testing.T) {
 	}
 }
 
-func TestWallClingMantleAndClimbableObjects(t *testing.T) {
+func TestWallSlideLedgeGrabAndClimbableObjects(t *testing.T) {
 	world := testTraversalWorld()
 	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 360, W: 24, H: 140}})
 	world.Player.Pos, world.Player.Grounded, world.Player.Velocity = Vec{X: 172, Y: 440}, false, Vec{Y: 3}
@@ -96,27 +101,47 @@ func TestWallClingMantleAndClimbableObjects(t *testing.T) {
 	if world.Player.State != TraversalWallCling || world.Player.WallDirection != 1 {
 		t.Fatalf("wall contact did not enter cling state: %+v", world.Player)
 	}
-	world.Objects = append(world.Objects, WorldObject{ID: 1, Kind: ObjectRope, Pos: Vec{X: 240, Y: 440}, Size: Vec{X: 10, Y: 120}})
+	world.Step(InputFrame{})
+	world.Step(InputFrame{Jump: true})
+	if world.Player.Velocity.X >= 0 || world.Player.Velocity.Y >= 0 || world.Player.WallTicks != 0 {
+		t.Fatalf("wall-jump grace did not preserve a late jump: %+v", world.Player)
+	}
+	world.Objects = append(world.Objects, WorldObject{ID: 1, Kind: ObjectVine, Pos: Vec{X: 240, Y: 440}, Size: Vec{X: 10, Y: 120}})
 	world.Player.Pos, world.Player.Velocity, world.Player.Grounded = Vec{X: 240, Y: 450}, Vec{}, false
 	world.Step(InputFrame{Jump: true})
 	if world.Player.State != TraversalClimbing || world.Player.ClimbObjectID != 1 {
-		t.Fatalf("rope did not enter climb state: %+v", world.Player)
+		t.Fatalf("vine did not enter climb state: %+v", world.Player)
 	}
 	world = testTraversalWorld()
 	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 420, W: 36, H: 80}})
 	world.Player.Pos, world.Player.Velocity, world.Player.Grounded = Vec{X: 170, Y: 430}, Vec{Y: 3}, false
-	if !world.tryMantle(1) || world.Player.MantleTicks == 0 {
-		t.Fatalf("ledge contact did not mantle: %+v", world.Player)
+	if !world.tryGrabLedge(1) || world.Player.State != TraversalLedgeGrab || world.Player.LedgeTicks == 0 {
+		t.Fatalf("ledge contact did not enter a readable grab state: %+v", world.Player)
+	}
+	world.Step(InputFrame{Jump: true})
+	step(world, InputFrame{}, 5)
+	if !world.Player.Grounded || world.Player.State != TraversalGrounded || world.Player.Pos != (Vec{X: 170, Y: 409}) {
+		t.Fatalf("ledge grab did not mantle to its stored landing position: %+v", world.Player)
+	}
+}
+
+func TestDownJumpStartsSmash(t *testing.T) {
+	world := testTraversalWorld()
+	world.Player.Pos, world.Player.Grounded, world.Player.State, world.Player.Velocity = Vec{X: 120, Y: 400}, false, TraversalAirborne, Vec{}
+	world.Step(InputFrame{Down: true, Jump: true})
+	if world.Player.State != TraversalDiving || world.Player.Velocity.Y < 6 || world.Player.JumpBuffer != 0 {
+		t.Fatalf("down+jump did not start a committed downward smash: %+v", world.Player)
 	}
 }
 
 func TestDiveBreaksFloorAndVineActivates(t *testing.T) {
 	world := testTraversalWorld()
-	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainBreakable, Bounds: Rect{X: 100, Y: 500, W: 60, H: 30}, HP: 1})
+	world.Terrain = []Terrain{{ID: 2, Kind: TerrainBreakable, Bounds: Rect{X: 100, Y: 500, W: 60, H: 30}, HP: 1}}
 	world.Player.Pos, world.Player.Velocity, world.Player.State = Vec{X: 120, Y: 480}, Vec{Y: 7}, TraversalDiving
-	world.breakFloorBelow()
-	if world.Terrain[1].HP != 0 {
-		t.Fatalf("dive did not break marked floor: %+v", world.Terrain[1])
+	world.Player.Grounded = false
+	step(world, InputFrame{}, 3)
+	if world.Terrain[0].HP != 0 || world.Player.Grounded {
+		t.Fatalf("dive did not break through marked floor: terrain=%+v player=%+v", world.Terrain[0], world.Player)
 	}
 
 	world = NewLabWorld(5)
@@ -137,7 +162,7 @@ func TestDiveBreaksFloorAndVineActivates(t *testing.T) {
 	}
 }
 
-func TestObjectsLinkCarryThrowBombAndTether(t *testing.T) {
+func TestObjectsLinkCarryThrowTeleportAndTether(t *testing.T) {
 	world := NewLabWorld(7)
 	var crate, plate, door, teleporter, remote *WorldObject
 	for index := range world.Objects {
@@ -177,12 +202,6 @@ func TestObjectsLinkCarryThrowBombAndTether(t *testing.T) {
 		t.Fatalf("throw did not release carried object: player=%+v crate=%+v", world.Player, crate)
 	}
 
-	breakable := &world.Terrain[0]
-	breakable.Kind, breakable.HP, breakable.Bounds = TerrainBreakable, 1, Rect{X: 300, Y: 500, W: 40, H: 30}
-	world.explode(Vec{X: 320, Y: 510})
-	if breakable.HP != 0 {
-		t.Fatalf("bomb blast did not break terrain: %+v", breakable)
-	}
 	world.Player.Pos = teleporter.Pos
 	world.Step(InputFrame{Interact: true})
 	if world.Player.Pos == teleporter.Pos {
@@ -197,7 +216,7 @@ func TestObjectsLinkCarryThrowBombAndTether(t *testing.T) {
 	}
 }
 
-func TestRopeAndReplayStayDeterministic(t *testing.T) {
+func TestMovementReplayStaysDeterministic(t *testing.T) {
 	world := NewLabWorld(99)
 	replay := NewReplay(world.Seed)
 	for tick := 0; tick < 90; tick++ {
@@ -206,7 +225,7 @@ func TestRopeAndReplayStayDeterministic(t *testing.T) {
 			input.Jump = true
 		}
 		if tick == 30 {
-			input.Rope = true
+			input.Down, input.Jump = true, true
 		}
 		if tick == 40 {
 			input.Tether = true
@@ -215,9 +234,6 @@ func TestRopeAndReplayStayDeterministic(t *testing.T) {
 	}
 	if _, err := replay.PlayLab(); err != nil {
 		t.Fatalf("movement replay diverged: %v", err)
-	}
-	if world.Player.Ropes != 2 {
-		t.Fatalf("rope tool was not consumed: %+v", world.Player)
 	}
 	before := world.StateHash()
 	for range 10 {

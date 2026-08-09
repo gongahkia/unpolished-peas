@@ -11,8 +11,6 @@ type InputFrame struct {
 	Roll       bool
 	Interact   bool
 	Throw      bool
-	Bomb       bool
-	Rope       bool
 	Tether     bool
 	DebugStep  bool
 }

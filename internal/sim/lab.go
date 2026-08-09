@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-const GeneratorVersion = "72-lab-1"
+const GeneratorVersion = "72-lab-2"
 
 type LabModule uint8
 
@@ -17,7 +17,6 @@ const (
 	ModuleCarry
 	ModuleTeleport
 	ModuleSlam
-	ModuleRope
 	ModuleTether
 )
 
@@ -37,8 +36,6 @@ func (m LabModule) String() string {
 		return "teleport"
 	case ModuleSlam:
 		return "slam"
-	case ModuleRope:
-		return "rope"
 	default:
 		return "tether"
 	}
@@ -59,10 +56,8 @@ const (
 	ObjectDoor
 	ObjectVineNode
 	ObjectVine
-	ObjectRope
 	ObjectTeleporter
 	ObjectSwitch
-	ObjectBomb
 	ObjectExit
 )
 
@@ -80,21 +75,17 @@ func (k ObjectKind) String() string {
 		return "vine node"
 	case ObjectVine:
 		return "vine"
-	case ObjectRope:
-		return "rope"
 	case ObjectTeleporter:
 		return "teleporter"
 	case ObjectSwitch:
 		return "switch"
-	case ObjectBomb:
-		return "bomb"
 	default:
 		return "exit"
 	}
 }
 
 // WorldObject is deterministic physical or linked lab geometry. Pos is its
-// centre except ropes/vines, whose Size supplies their climbable extent.
+// centre except vines, whose Size supplies their climbable extent.
 type WorldObject struct {
 	ID       int
 	Kind     ObjectKind
@@ -103,7 +94,6 @@ type WorldObject struct {
 	LinkID   int
 	Active   bool
 	Held     bool
-	Fuse     int
 }
 
 func (o WorldObject) bounds() Rect {
@@ -111,7 +101,7 @@ func (o WorldObject) bounds() Rect {
 }
 
 func (o WorldObject) movable() bool   { return o.Kind == ObjectCrate || o.Kind == ObjectRock }
-func (o WorldObject) climbable() bool { return o.Kind == ObjectRope || o.Kind == ObjectVine }
+func (o WorldObject) climbable() bool { return o.Kind == ObjectVine }
 
 type LabLayout struct {
 	Seed    uint64
@@ -217,7 +207,6 @@ func generateMovementLab(seed uint64) LabLayout {
 	addTerrain(TerrainSolid, Rect{X: 2020, Y: 692, W: 72, H: 28}, 0)
 
 	variant = rng.intn(3)
-	addModule(ModuleRope, RoomW*3, variant)
 	addModule(ModuleTether, RoomW*4, (variant+1)%3)
 	addTerrain(TerrainSolid, Rect{X: 2204, Y: 386, W: 42, H: 264}, 0)
 	addTerrain(TerrainPlatform, Rect{X: 2282, Y: 430 + float64(variant)*14, W: 122, H: 16}, 0)
