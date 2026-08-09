@@ -33,7 +33,7 @@ go run ./cmd/replaydump 72.replay.json
 
 The Warden first demands a charged long-staff guard break, then switches to an Echo-only seal. Water, pillars, and the cracked wall create routes, cover, and form-specific opportunities. See `docs/COMBAT.md` for the exact interactions.
 
-Staff visibility is stateful: the held staff is brown when ready, its planned range is orange and dashed during windup, its damaging line is bright yellow only during active frames, and recovery returns it to muted blue-grey. Long charge shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
+Staff visibility is stateful: a compact side-carried staff is brown when ready, its planned range is orange and dashed during windup, and its damaging line is bright yellow only during active frames. Recovery returns the staff to a compact muted blue-grey carry position. Long charge is orange—not damaging—and shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
 
 ## Verification
 
