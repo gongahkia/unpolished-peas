@@ -260,6 +260,7 @@ func (w *World) movePlayer(delta Vec) int8 {
 	p := &w.Player
 	position := p.Pos
 	blocked := int8(0)
+	blockingBounds := Rect{}
 	next := position
 	next.X = clamp(position.X+delta.X, playerHalfW, ArenaW-playerHalfW)
 	for _, solid := range w.solidRects() {
@@ -269,13 +270,15 @@ func (w *World) movePlayer(delta Vec) int8 {
 		if delta.X > 0 {
 			next.X = solid.X - playerHalfW
 			blocked = 1
+			blockingBounds = solid
 		} else if delta.X < 0 {
 			next.X = solid.X + solid.W + playerHalfW
 			blocked = -1
+			blockingBounds = solid
 		}
 		p.Velocity.X = 0
 	}
-	if blocked != 0 && !p.Grounded && p.State != TraversalDiving && p.RollTicks == 0 && w.tryGrabLedge(blocked) {
+	if blocked != 0 && !p.Grounded && p.State != TraversalDiving && p.RollTicks == 0 && w.tryGrabLedge(blocked, blockingBounds) {
 		return blocked
 	}
 
@@ -312,13 +315,16 @@ func (w *World) movePlayer(delta Vec) int8 {
 	return blocked
 }
 
-func (w *World) tryGrabLedge(direction int8) bool {
+func (w *World) tryGrabLedge(direction int8, blockingBounds Rect) bool {
 	p := &w.Player
 	if p.Velocity.Y < 0 {
 		return false
 	}
 	for _, terrain := range w.Terrain {
-		if !terrain.solid() || terrain.Bounds.Y >= p.Pos.Y || p.Pos.Y-terrain.Bounds.Y > 28 {
+		// A ledge grab belongs to the terrain that stopped horizontal movement.
+		// Selecting any terrain at a similar height can move the player to a
+		// distant platform in the procedural arena.
+		if !terrain.solid() || terrain.Bounds != blockingBounds || terrain.Bounds.Y >= p.Pos.Y || p.Pos.Y-terrain.Bounds.Y > 28 {
 			continue
 		}
 		edge := terrain.Bounds.X
