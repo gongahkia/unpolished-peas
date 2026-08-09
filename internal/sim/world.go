@@ -8,7 +8,7 @@ import (
 	"sort"
 )
 
-const SimulationVersion = "72-platform-1"
+const SimulationVersion = "72-run-1"
 
 // World is the renderer-independent, deterministic 72 arena simulation.
 type World struct {
@@ -19,6 +19,9 @@ type World struct {
 	Projectiles     []*Projectile
 	Effects         []Effect
 	Terrain         []Terrain
+	Run             RunLayout
+	RoomThreat      []int
+	ActivatedRooms  []bool
 	Hitstop         int
 	SlowTicks       int
 	Trauma          float64
@@ -37,16 +40,27 @@ func NewWorld(seed uint64) *World {
 	return &World{Seed: seed, RNG: seed, Player: newPlayer(), nextID: 1}
 }
 
-// NewValidationWorld creates the single fast-restart combat-design encounter.
-func NewValidationWorld(seed uint64) *World {
+// NewRunWorld creates the whole deterministic five-room combat run.
+func NewRunWorld(seed uint64) *World {
 	w := NewWorld(seed)
-	w.Terrain = validationTerrain()
-	w.Player.Pos = Vec{X: 150, Y: 500}
-	w.SpawnArenaBoss(Vec{X: 1060, Y: 339})
+	w.Run = GenerateRun(seed)
+	w.Terrain = append([]Terrain(nil), w.Run.Terrain...)
+	w.RoomThreat = make([]int, len(w.Run.Rooms))
+	w.ActivatedRooms = make([]bool, len(w.Run.Rooms))
+	for index, room := range w.Run.Rooms {
+		w.RoomThreat[index] = room.ThreatBudget
+	}
+	w.Player.Pos = w.Run.Rooms[0].Entry
+	w.SpawnArenaBoss(w.Run.WardenPos)
+	w.activateRoom(0)
 	return w
 }
 
-func (w *World) ResetEncounter() { *w = *NewValidationWorld(w.Seed) }
+// NewValidationWorld is retained as a compatibility entry point for tools and
+// tests; it now creates the generated run rather than a fixed arena.
+func NewValidationWorld(seed uint64) *World { return NewRunWorld(seed) }
+
+func (w *World) ResetEncounter() { *w = *NewRunWorld(w.Seed) }
 
 func (w *World) nextEntityID() int { id := w.nextID; w.nextID++; return id }
 
@@ -58,9 +72,32 @@ func (w *World) Random() uint64 {
 }
 
 func (w *World) SpawnArenaBoss(position Vec) *Enemy {
-	e := &Enemy{ID: w.nextEntityID(), Kind: EnemyBoss, Name: "warden", Pos: position, Facing: Vec{X: -1}, Radius: 21, HP: 520, MaxHP: 520, Damage: 18, MoveSpeed: 1.05, AttackRange: 42, TargetCloneID: -1, Boss: newArenaBoss()}
+	e := &Enemy{ID: w.nextEntityID(), Kind: EnemyBoss, Name: "warden", Pos: position, Facing: Vec{X: -1}, Radius: 21, HP: 520, MaxHP: 520, Damage: 18, MoveSpeed: 1.05, AttackRange: 42, TargetCloneID: -1, Room: RoomCount - 1, Boss: newArenaBoss()}
 	w.Enemies = append(w.Enemies, e)
 	return e
+}
+
+func (w *World) SpawnRunEnemy(spawn EnemySpawn) *Enemy {
+	rules := archetypeRules(spawn.Archetype)
+	enemy := &Enemy{
+		ID:            w.nextEntityID(),
+		Kind:          EnemyTarget,
+		Archetype:     spawn.Archetype,
+		Room:          spawn.Room,
+		Name:          spawn.Archetype.String(),
+		Pos:           spawn.Pos,
+		Facing:        Vec{X: -1},
+		Radius:        rules.Radius,
+		HP:            rules.HP,
+		MaxHP:         rules.HP,
+		Armor:         rules.Armor,
+		Damage:        rules.Damage,
+		MoveSpeed:     rules.MoveSpeed,
+		AttackRange:   rules.AttackRange,
+		TargetCloneID: -1,
+	}
+	w.Enemies = append(w.Enemies, enemy)
+	return enemy
 }
 
 func (w *World) Step(input InputFrame) {
@@ -92,12 +129,34 @@ func (w *World) Step(input InputFrame) {
 	}
 	w.handleInput(input)
 	w.updatePlayer(input)
+	w.activateRoom(w.currentRoom())
 	w.updateClones()
 	w.updateEnemies()
 	w.updateProjectiles()
 	w.resolveBodyCollisions()
 	w.removeDead()
 	w.prevInput = input
+}
+
+func (w *World) currentRoom() int {
+	if len(w.Run.Rooms) == 0 {
+		return 0
+	}
+	return int(clamp(math.Floor(w.Player.Pos.X/RoomW), 0, float64(len(w.Run.Rooms)-1)))
+}
+
+func (w *World) activateRoom(index int) {
+	if index < 0 || index >= len(w.ActivatedRooms) || w.ActivatedRooms[index] {
+		return
+	}
+	w.ActivatedRooms[index] = true
+	for _, spawn := range w.Run.Spawns {
+		if spawn.Room != index || spawn.Cost > w.RoomThreat[index] {
+			continue
+		}
+		w.SpawnRunEnemy(spawn)
+		w.RoomThreat[index] -= spawn.Cost
+	}
 }
 
 func (w *World) recordInput(input InputFrame) {
@@ -492,6 +551,10 @@ func (w *World) updateEnemies() {
 		if enemy.Boss != nil {
 			w.updateBoss(enemy)
 		}
+		if enemy.Archetype == EnemyKite {
+			w.updateKite(enemy)
+			continue
+		}
 		if enemy.Stagger > 0 {
 			enemy.Stagger--
 			w.moveEnemyPhysics(enemy, enemy.Velocity.X)
@@ -523,13 +586,105 @@ func (w *World) updateEnemies() {
 			w.moveEnemyPhysics(enemy, 0)
 			continue
 		}
+		if enemy.Archetype == EnemyGuardian && math.Abs(toTarget.X) > enemy.AttackRange*2 && math.Abs(toTarget.X) < 190 && enemy.AttackCooldown == 0 && enemy.Grounded {
+			enemy.AIState = "charge"
+			enemy.Velocity.X = enemy.Facing.X * 7.2
+			enemy.AttackCooldown = 76
+			w.moveEnemyPhysics(enemy, 0)
+			continue
+		}
 		enemy.AIState = "chase"
-		if enemy.Grounded && target.Y+48 < enemy.Pos.Y {
+		goal := w.nextGroundGoal(enemy.Pos, target)
+		if goal.X != enemy.Pos.X {
+			enemy.Facing = Vec{X: math.Copysign(1, goal.X-enemy.Pos.X)}
+		}
+		if enemy.Grounded && goal.Y+48 < enemy.Pos.Y {
 			enemy.Velocity.Y = -8.2
 			enemy.Grounded = false
 		}
 		w.moveEnemyPhysics(enemy, enemy.Facing.X*enemy.MoveSpeed)
 	}
+}
+
+// nextGroundGoal follows the generated platform graph. It deliberately falls
+// back to the target for isolated test arenas and short local pursuits.
+func (w *World) nextGroundGoal(position, target Vec) Vec {
+	if len(w.Run.NavNodes) == 0 || math.Abs(target.X-position.X) < 110 {
+		return target
+	}
+	start, end := nearestNavNode(w.Run.NavNodes, position), nearestNavNode(w.Run.NavNodes, target)
+	if start < 0 || end < 0 || start == end {
+		return target
+	}
+	edges := make([][]int, len(w.Run.NavNodes))
+	for _, link := range w.Run.NavLinks {
+		if link.From >= 0 && link.From < len(edges) {
+			edges[link.From] = append(edges[link.From], link.To)
+		}
+	}
+	previous := make([]int, len(w.Run.NavNodes))
+	for index := range previous {
+		previous[index] = -1
+	}
+	previous[start] = start
+	queue := []int{start}
+	for len(queue) > 0 && previous[end] == -1 {
+		current := queue[0]
+		queue = queue[1:]
+		for _, next := range edges[current] {
+			if previous[next] == -1 {
+				previous[next] = current
+				queue = append(queue, next)
+			}
+		}
+	}
+	if previous[end] == -1 {
+		return target
+	}
+	step := end
+	for previous[step] != start && previous[step] != step {
+		step = previous[step]
+	}
+	return w.Run.NavNodes[step].Pos
+}
+
+func (w *World) updateKite(enemy *Enemy) {
+	if enemy.Stagger > 0 {
+		enemy.Stagger--
+		enemy.Pos = clampArena(enemy.Pos.Add(enemy.Velocity), enemy.Radius)
+		enemy.Velocity = enemy.Velocity.Scale(0.78)
+		return
+	}
+	decrement(&enemy.AttackCooldown)
+	target, clone := w.enemyTarget(enemy)
+	toTarget := target.Sub(enemy.Pos)
+	if toTarget.LengthSq() > 0 {
+		enemy.Facing = Vec{X: math.Copysign(1, toTarget.X)}
+	}
+	if enemy.Windup > 0 {
+		enemy.AIState = "telegraph"
+		enemy.Windup--
+		if enemy.Windup == 0 {
+			w.enemyAttack(enemy, target, clone)
+		}
+		return
+	}
+	if math.Abs(toTarget.X) <= enemy.AttackRange && math.Abs(toTarget.Y) <= 46 && enemy.AttackCooldown == 0 {
+		enemy.Windup, enemy.AIState = 12, "dive telegraph"
+		w.Effects = append(w.Effects, Effect{Kind: EffectTelegraph, Pos: target, Radius: enemy.AttackRange, TicksRemaining: 12})
+		return
+	}
+	// Kites seek a point above their target while oscillating horizontally;
+	// the motion is simulation-authoritative but contains no visual randomness.
+	desired := target.Add(Vec{X: math.Sin(float64(w.Tick+uint64(enemy.ID))*0.11) * 58, Y: -72})
+	velocity := desired.Sub(enemy.Pos).Normalized().Scale(enemy.MoveSpeed)
+	next := clampArena(enemy.Pos.Add(velocity), enemy.Radius)
+	for _, terrain := range w.Terrain {
+		if terrain.solid() && terrain.Bounds.overlapsCircle(next, enemy.Radius) {
+			next.Y = clamp(next.Y-4, enemy.Radius, ArenaH-enemy.Radius)
+		}
+	}
+	enemy.Velocity, enemy.Pos, enemy.Grounded, enemy.AIState = velocity, next, false, "hover"
 }
 
 func (w *World) enemyTarget(enemy *Enemy) (Vec, *Clone) {
@@ -832,14 +987,21 @@ func decrement(value *int) {
 func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	p := w.Player
-	_, _ = fmt.Fprintf(h, "%s/t%d/r%d/n%d/h%d/s%d/l%d/w%d", SimulationVersion, w.Tick, w.RNG, w.nextID, w.Hitstop, w.SlowTicks, boolHash(w.Won), boolHash(w.Lost))
+	_, _ = fmt.Fprintf(h, "%s/g%s/seed%d/a%d/t%d/r%d/n%d/h%d/s%d/l%d/w%d", SimulationVersion, GeneratorVersion, w.Run.Seed, w.Run.Attempt, w.Tick, w.RNG, w.nextID, w.Hitstop, w.SlowTicks, boolHash(w.Won), boolHash(w.Lost))
+	for index, room := range w.Run.Rooms {
+		_, _ = fmt.Fprintf(h, "/room%d/%d/%d,%d,%d,%d/%d,%d/%d,%d/th%d/v%d/b%d/tg%d/ac%d", room.Index, room.Role, q(room.Bounds.X), q(room.Bounds.Y), q(room.Bounds.W), q(room.Bounds.H), q(room.Entry.X), q(room.Entry.Y), q(room.Exit.X), q(room.Exit.Y), room.ThreatBudget, room.Variant, boolHash(room.BirdShortcut), boolHash(room.TigerShortcut), boolHash(index < len(w.ActivatedRooms) && w.ActivatedRooms[index]))
+		if index < len(w.RoomThreat) {
+			_, _ = fmt.Fprintf(h, "/left%d", w.RoomThreat[index])
+		}
+	}
+	_, _ = fmt.Fprintf(h, "/warden%d,%d/valid%d", q(w.Run.WardenPos.X), q(w.Run.WardenPos.Y), boolHash(w.Run.Valid))
 	_, _ = fmt.Fprintf(h, "/p%d,%d/%d,%d/%d,%d/hp%d/f%d/st%d/a%d/at%d/c%d/b%d/d%d/i%d/t%d/cl%d/g%d/cw%d/lc%d/lr%d/bm%d/gr%d", q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.HP, p.Form, p.Staff, p.Action, p.ActionTick, p.Combo, p.AttackBuffer, p.DodgeCooldown, p.Invulnerable, p.TransformCooldown, p.CloneCooldown, p.Stagger, p.CounterWindow, p.LongCharge, q(p.LongRange), p.BirdMomentum, boolHash(p.Grounded))
 	hashHitIDs(h, p.AttackHitIDs)
 	for _, terrain := range w.Terrain {
-		_, _ = fmt.Fprintf(h, "/t%d/%d/%d", terrain.ID, terrain.Kind, terrain.HP)
+		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
 	}
 	for _, enemy := range w.Enemies {
-		_, _ = fmt.Fprintf(h, "/e%d/k%d/h%d/p%d,%d/v%d,%d/f%d,%d/gr%d/a%d/ac%d/w%d/st%d/wp%d/fl%d/i%d/target%d/ai%s", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), q(enemy.Facing.X), q(enemy.Facing.Y), boolHash(enemy.Grounded), enemy.Armor, enemy.AttackCooldown, enemy.Windup, enemy.Stagger, enemy.WeakPoint, enemy.Flash, enemy.Invulnerable, enemy.TargetCloneID, enemy.AIState)
+		_, _ = fmt.Fprintf(h, "/e%d/k%d/ar%d/room%d/h%d/p%d,%d/v%d,%d/f%d,%d/gr%d/a%d/ac%d/w%d/st%d/wp%d/fl%d/i%d/target%d/ai%s", enemy.ID, enemy.Kind, enemy.Archetype, enemy.Room, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), q(enemy.Facing.X), q(enemy.Facing.Y), boolHash(enemy.Grounded), enemy.Armor, enemy.AttackCooldown, enemy.Windup, enemy.Stagger, enemy.WeakPoint, enemy.Flash, enemy.Invulnerable, enemy.TargetCloneID, enemy.AIState)
 		if enemy.Boss != nil {
 			boss := enemy.Boss
 			_, _ = fmt.Fprintf(h, "/b%d/%s/%d/%d/%d/%d/%d", boss.Phase, boss.PhaseName, boss.Timer, boolHash(boss.Shielded), boolHash(boss.EchoSeal), boss.TelegraphTicks, boss.VulnerableTicks)
