@@ -1,6 +1,6 @@
 # 72
 
-`72` is currently a deterministic ASCII movement laboratory. It is a compact, seed-generated platforming world for testing how one player body, terrain, and physical objects fit together. Combat, enemies, bosses, Echo, staff modes, and Wukong transformations are intentionally inactive.
+`72` is currently a deterministic movement laboratory. It is a compact, seed-generated platforming world for testing how one player body, terrain, and physical objects fit together. Its first visual pass gives that player an animated pixel-art texture atlas; terrain and objects remain deliberately schematic. Combat, enemies, bosses, Echo, staff modes, and Wukong transformations are intentionally inactive.
 
 It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
 

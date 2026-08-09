@@ -20,19 +20,24 @@ const (
 )
 
 type game struct {
-	world    *sim.World
-	replay   *sim.Replay
-	scene    *ebiten.Image
-	seed     uint64
-	nextSeed uint64
-	paused   bool
-	status   string
+	world     *sim.World
+	replay    *sim.Replay
+	scene     *ebiten.Image
+	playerArt *playerArt
+	seed      uint64
+	nextSeed  uint64
+	paused    bool
+	status    string
 }
 
-func newGame() *game {
-	g := &game{seed: runSeed(0x72, 0), nextSeed: 1, scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH))}
+func newGame() (*game, error) {
+	art, err := loadPlayerArt()
+	if err != nil {
+		return nil, err
+	}
+	g := &game{seed: runSeed(0x72, 0), nextSeed: 1, scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH)), playerArt: art}
 	g.resetSameSeed()
-	return g
+	return g, nil
 }
 
 func (g *game) resetSameSeed() {
@@ -152,7 +157,7 @@ func axis(value float64) int8 {
 func (g *game) Draw(screen *ebiten.Image) {
 	snapshot := g.world.Snapshot()
 	g.scene.Clear()
-	drawScene(g.scene, snapshot)
+	drawScene(g.scene, snapshot, g.playerArt)
 	screen.Fill(color.RGBA{R: 8, G: 10, B: 15, A: 255})
 	camera := followCamera(snapshot.Player.Pos)
 	shake := snapshot.Trauma * 6
@@ -171,7 +176,7 @@ func followCamera(position sim.Vec) sim.Vec {
 	return sim.Vec{X: math.Max(0, math.Min(position.X-float64(logicalW)/2, sim.ArenaW-float64(logicalW))), Y: math.Max(0, math.Min(position.Y-float64(logicalH)/2, sim.ArenaH-float64(logicalH)))}
 }
 
-func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot) {
+func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *playerArt) {
 	screen.Fill(color.RGBA{R: 14, G: 18, B: 27, A: 255})
 	for _, terrain := range snapshot.Terrain {
 		terrainColor := color.RGBA{R: 63, G: 70, B: 84, A: 255}
@@ -200,15 +205,8 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot) {
 		vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Tether.Pos.X), float32(p.Tether.Pos.Y), 1, color.RGBA{R: 116, G: 228, B: 246, A: 255}, true)
 		vector.DrawFilledCircle(screen, float32(p.Tether.Pos.X), float32(p.Tether.Pos.Y), 3, color.RGBA{R: 168, G: 244, B: 253, A: 255}, true)
 	}
-	playerColor := color.RGBA{R: 246, G: 220, B: 116, A: 255}
-	if p.State == sim.TraversalRolling {
-		playerColor = color.RGBA{R: 133, G: 221, B: 255, A: 255}
-	}
-	if p.State == sim.TraversalWallCling || p.State == sim.TraversalClimbing || p.State == sim.TraversalLedgeGrab {
-		playerColor = color.RGBA{R: 151, G: 242, B: 161, A: 255}
-	}
-	drawGlyph(screen, "@", p.Pos, playerColor)
 	vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Pos.X+p.Aim.X*18), float32(p.Pos.Y+p.Aim.Y*18), 1, color.RGBA{R: 88, G: 216, B: 251, A: 255}, true)
+	playerArt.draw(screen, p, snapshot.Tick)
 }
 
 func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
@@ -307,7 +305,11 @@ func aimLabel(aim sim.Vec) string {
 func main() {
 	ebiten.SetWindowSize(logicalW*2, logicalH*2)
 	ebiten.SetWindowTitle("72 — movement laboratory")
-	if err := ebiten.RunGame(newGame()); err != nil {
+	game, err := newGame()
+	if err != nil {
+		log.Fatal(err)
+	}
+	if err := ebiten.RunGame(game); err != nil {
 		log.Fatal(err)
 	}
 }
