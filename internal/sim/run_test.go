@@ -32,6 +32,53 @@ func TestRunKeepsEntrancesAndExitsSafe(t *testing.T) {
 	}
 }
 
+func TestRunWorldCollectsTreasureAndKeepsRunStateInTheHash(t *testing.T) {
+	world := NewRunWorld(0x72)
+	var treasure *WorldObject
+	for index := range world.Objects {
+		if world.Objects[index].Kind == ObjectTreasure {
+			treasure = &world.Objects[index]
+			break
+		}
+	}
+	if treasure == nil {
+		t.Fatal("run omitted treasure")
+	}
+	world.Player.Pos = treasure.Pos
+	world.Player.Grounded = false
+	world.Step(InputFrame{})
+	if world.Stats.Treasure != 1 {
+		t.Fatalf("treasure was not collected: stats=%+v", world.Stats)
+	}
+	left, right := NewRunWorld(0x73), NewRunWorld(0x73)
+	left.Stats.Treasure++
+	if left.StateHash() == right.StateHash() {
+		t.Fatal("state hash ignored future-visible run statistics")
+	}
+}
+
+func TestRunReplayStaysDeterministic(t *testing.T) {
+	world := NewRunWorld(99)
+	replay := NewReplay(world.Seed)
+	for tick := 0; tick < 180; tick++ {
+		input := InputFrame{MoveX: 1}
+		if tick == 8 || tick == 56 || tick == 124 {
+			input.Jump = true
+		}
+		if tick == 92 {
+			input.Roll = true
+		}
+		replay.Record(world, input)
+	}
+	played, err := replay.PlayRun()
+	if err != nil {
+		t.Fatalf("run replay diverged: %v", err)
+	}
+	if played.StateHash() != world.StateHash() {
+		t.Fatalf("final hash mismatch: got %x want %x", played.StateHash(), world.StateHash())
+	}
+}
+
 func runFingerprint(layout RunLayout) string {
 	fingerprint := layout.String()
 	for _, room := range layout.Rooms {

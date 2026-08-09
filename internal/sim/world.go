@@ -15,12 +15,15 @@ type World struct {
 	Player     Player
 	Terrain    []Terrain
 	Objects    []WorldObject
+	Enemies    []Enemy
 	Lab        LabLayout
 	Run        RunLayout
 	Stats      RunStats
 	Won, Lost  bool
 	Debug      bool
 	Trauma     float64
+	Impact     ImpactState
+	Hitstop    int
 	nextID     int
 	prevInput  InputFrame
 }
@@ -44,6 +47,9 @@ func NewRunWorld(seed uint64) *World {
 	}
 	run := GenerateRun(seed)
 	w := &World{Seed: seed, Run: run, Terrain: append([]Terrain(nil), run.Terrain...), Objects: append([]WorldObject(nil), run.Objects...), nextID: len(run.Objects) + 1}
+	for _, spawn := range run.Spawns {
+		w.Enemies = append(w.Enemies, newEnemy(w.nextObjectID(), spawn))
+	}
 	w.Player = newPlayer()
 	w.Player.Pos = run.Start
 	w.Player.Grounded = true
@@ -59,6 +65,12 @@ func (w *World) Step(input InputFrame) {
 	if input.DebugStep && !w.prevInput.DebugStep {
 		w.Debug = !w.Debug
 	}
+	decrement(&w.Impact.Ticks)
+	if w.Hitstop > 0 {
+		w.Hitstop--
+		w.prevInput = input
+		return
+	}
 	if w.Lost || w.Won {
 		w.prevInput = input
 		return
@@ -72,6 +84,7 @@ func (w *World) Step(input InputFrame) {
 	w.updateTether(input)
 	w.updateHeldObject()
 	w.updateObjects()
+	w.updateEnemies()
 	w.updateLinks()
 	w.collectTreasure()
 	w.applyHazards()
@@ -545,23 +558,22 @@ func (w *World) throwHeldObject() {
 	object.Held = false
 	object.Vel = p.Aim.Scale(8.5).Add(Vec{Y: -1.2})
 	p.HeldObjectID = -1
+	w.Stats.ObjectsThrown++
 }
 
 func (w *World) updateObjects() {
-	live := w.Objects[:0]
 	for index := range w.Objects {
-		object := w.Objects[index]
+		object := &w.Objects[index]
 		switch object.Kind {
 		case ObjectCrate, ObjectRock:
 			if !object.Held {
 				object.Vel.Y = min(12, object.Vel.Y+Gravity)
-				object.Pos = w.moveObject(object, object.Vel)
+				w.moveObject(object)
+				w.objectHitsEnemies(object)
 				object.Vel.X *= 0.75
 			}
 		}
-		live = append(live, object)
 	}
-	w.Objects = live
 }
 
 func (w *World) collectTreasure() {
@@ -591,26 +603,67 @@ func (w *World) updateRunStats() {
 	}
 }
 
-func (w *World) moveObject(object WorldObject, delta Vec) Vec {
-	next := object.Pos.Add(delta)
-	for _, solid := range w.solidRects() {
-		if !object.boundsAt(next).overlaps(solid) {
+func (w *World) moveObject(object *WorldObject) {
+	delta := object.Vel
+	next := object.Pos
+	next.X += delta.X
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if !terrain.solid() || !object.boundsAt(next).overlaps(terrain.Bounds) {
+			continue
+		}
+		if terrain.Kind == TerrainBreakable && delta.Length() > 5.5 {
+			w.destroyBreakable(index, .2)
 			continue
 		}
 		if delta.X > 0 {
-			next.X = solid.X - object.Size.X/2
+			next.X = terrain.Bounds.X - object.Size.X/2
 		} else if delta.X < 0 {
-			next.X = solid.X + solid.W + object.Size.X/2
+			next.X = terrain.Bounds.X + terrain.Bounds.W + object.Size.X/2
+		}
+		object.Vel.X = 0
+	}
+	for index := range w.Objects {
+		door := &w.Objects[index]
+		if door.ID == object.ID || door.Kind != ObjectDoor || door.Active || !object.boundsAt(next).overlaps(door.bounds()) {
+			continue
+		}
+		if delta.X > 0 {
+			next.X = door.bounds().X - object.Size.X/2
+		} else if delta.X < 0 {
+			next.X = door.bounds().X + door.bounds().W + object.Size.X/2
+		}
+		object.Vel.X = 0
+	}
+
+	next.Y = object.Pos.Y + delta.Y
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if !terrain.solid() || !object.boundsAt(next).overlaps(terrain.Bounds) {
+			continue
+		}
+		if terrain.Kind == TerrainBreakable && delta.Length() > 5.5 {
+			w.destroyBreakable(index, .2)
+			continue
 		}
 		if delta.Y > 0 {
-			next.Y = solid.Y - object.Size.Y/2
-			object.Vel.Y = 0
+			next.Y, object.Vel.Y = terrain.Bounds.Y-object.Size.Y/2, 0
 		} else if delta.Y < 0 {
-			next.Y = solid.Y + solid.H + object.Size.Y/2
-			object.Vel.Y = 0
+			next.Y, object.Vel.Y = terrain.Bounds.Y+terrain.Bounds.H+object.Size.Y/2, 0
 		}
 	}
-	return next
+	for index := range w.Objects {
+		door := &w.Objects[index]
+		if door.ID == object.ID || door.Kind != ObjectDoor || door.Active || !object.boundsAt(next).overlaps(door.bounds()) {
+			continue
+		}
+		if delta.Y > 0 {
+			next.Y, object.Vel.Y = door.bounds().Y-object.Size.Y/2, 0
+		} else if delta.Y < 0 {
+			next.Y, object.Vel.Y = door.bounds().Y+door.bounds().H+object.Size.Y/2, 0
+		}
+	}
+	object.Pos = next
 }
 
 func (w *World) breakFloorBelow(fallSpeed float64) bool {
@@ -618,12 +671,59 @@ func (w *World) breakFloorBelow(fallSpeed float64) bool {
 	for index := range w.Terrain {
 		terrain := &w.Terrain[index]
 		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && p.Pos.X >= terrain.Bounds.X && p.Pos.X <= terrain.Bounds.X+terrain.Bounds.W && p.Pos.Y+p.halfHeight() <= terrain.Bounds.Y+18 && fallSpeed > 5 {
-			terrain.HP = 0
-			w.Trauma = 0.2
+			w.destroyBreakable(index, .2)
 			return true
 		}
 	}
 	return false
+}
+
+func (w *World) breakTerrainAgainst(bounds Rect, force float64) bool {
+	if force < 5 {
+		return false
+	}
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && bounds.overlaps(terrain.Bounds) {
+			w.destroyBreakable(index, .24)
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) destroyBreakable(index int, trauma float64) {
+	terrain := &w.Terrain[index]
+	if terrain.Kind != TerrainBreakable || terrain.HP == 0 {
+		return
+	}
+	terrain.HP = 0
+	w.Stats.TerrainBroken++
+	w.punctuate(terrain.Bounds.center(), trauma, 2)
+}
+
+func (w *World) punctuate(position Vec, trauma float64, hitstop int) {
+	w.Trauma = max(w.Trauma, trauma)
+	if w.Impact.Ticks < 8 {
+		w.Impact = ImpactState{Pos: position, Ticks: 8, Strength: trauma}
+	}
+	w.Hitstop = max(w.Hitstop, hitstop)
+}
+
+func (w *World) objectHitsEnemies(object *WorldObject) {
+	if object.Vel.Length() < 5.5 {
+		return
+	}
+	for index := range w.Enemies {
+		enemy := &w.Enemies[index]
+		if enemy.Dead || !object.bounds().overlaps(enemy.bounds()) {
+			continue
+		}
+		w.defeatEnemy(enemy)
+		object.Vel = Vec{X: -object.Vel.X * .2, Y: -2.4}
+		w.Trauma = max(w.Trauma, .2)
+		return
+	}
 }
 
 func (w *World) updateLinks() {
@@ -669,6 +769,35 @@ func (w *World) applyHazards() {
 			return
 		}
 	}
+	for index := range w.Enemies {
+		enemy := &w.Enemies[index]
+		if enemy.Dead {
+			continue
+		}
+		for _, terrain := range w.Terrain {
+			if (terrain.Kind == TerrainWater || terrain.Kind == TerrainSpike || terrain.Kind == TerrainPit) && enemy.bounds().overlaps(terrain.Bounds) {
+				w.defeatEnemy(enemy)
+				w.Trauma = max(w.Trauma, .24)
+				break
+			}
+		}
+	}
+	live := w.Objects[:0]
+	for _, object := range w.Objects {
+		destroyed := false
+		if object.movable() && !object.Held {
+			for _, terrain := range w.Terrain {
+				if (terrain.Kind == TerrainWater || terrain.Kind == TerrainSpike || terrain.Kind == TerrainPit) && object.bounds().overlaps(terrain.Bounds) {
+					destroyed = true
+					break
+				}
+			}
+		}
+		if !destroyed {
+			live = append(live, object)
+		}
+	}
+	w.Objects = live
 }
 
 func (w *World) checkExit() {
@@ -693,12 +822,15 @@ func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	q := func(value float64) int64 { return int64(math.Round(value * 1000)) }
 	p := w.Player
-	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
+	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/hit%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Hitstop, w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
 	for _, terrain := range w.Terrain {
 		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
 	}
 	for _, object := range w.Objects {
 		_, _ = fmt.Fprintf(h, "/o%d/%d/%d,%d/%d,%d/%d,%d/l%d/a%d/h%d", object.ID, object.Kind, q(object.Pos.X), q(object.Pos.Y), q(object.Vel.X), q(object.Vel.Y), q(object.Size.X), q(object.Size.Y), object.LinkID, boolHash(object.Active), boolHash(object.Held))
+	}
+	for _, enemy := range w.Enemies {
+		_, _ = fmt.Fprintf(h, "/e%d/%d/%d/%d,%d/%d,%d/f%d/g%d/t%d/fl%d/d%d", enemy.ID, enemy.Archetype, enemy.State, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Vel.X), q(enemy.Vel.Y), enemy.Facing, boolHash(enemy.Grounded), enemy.Timer, enemy.Flash, boolHash(enemy.Dead))
 	}
 	return h.Sum64()
 }

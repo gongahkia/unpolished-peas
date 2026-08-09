@@ -8,9 +8,12 @@ type RenderSnapshot struct {
 	Player  PlayerSnapshot
 	Terrain []TerrainSnapshot
 	Objects []ObjectSnapshot
+	Enemies []EnemySnapshot
 	Lab     LabSnapshot
+	Run     RunSnapshot
 	Debug   bool
 	Trauma  float64
+	Impact  ImpactState
 	Won     bool
 	Lost    bool
 	Stats   RunStats
@@ -51,10 +54,24 @@ type ObjectSnapshot struct {
 	Held   bool
 }
 
+type EnemySnapshot struct {
+	ID        int
+	Archetype EnemyArchetype
+	State     EnemyState
+	Pos, Size Vec
+	Facing    int8
+	Timer     int
+	Flash     int
+}
+
 type LabSnapshot struct {
 	Seed    uint64
 	Modules []LabModuleInfo
 	Exit    Vec
+}
+
+type RunSnapshot struct {
+	Rooms []RunRoom
 }
 
 func (w *World) Snapshot() RenderSnapshot {
@@ -64,8 +81,10 @@ func (w *World) Snapshot() RenderSnapshot {
 		Seed:   w.Seed,
 		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Crouching: p.Crouching, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
 		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
+		Run:    RunSnapshot{Rooms: append([]RunRoom(nil), w.Run.Rooms...)},
 		Debug:  w.Debug,
 		Trauma: w.Trauma,
+		Impact: w.Impact,
 		Won:    w.Won,
 		Lost:   w.Lost,
 		Stats:  w.Stats,
@@ -75,6 +94,9 @@ func (w *World) Snapshot() RenderSnapshot {
 	}
 	for _, object := range w.Objects {
 		snapshot.Objects = append(snapshot.Objects, ObjectSnapshot{ID: object.ID, Kind: object.Kind, Pos: object.Pos, Size: object.Size, LinkID: object.LinkID, Active: object.Active, Held: object.Held})
+	}
+	for _, enemy := range w.Enemies {
+		snapshot.Enemies = append(snapshot.Enemies, EnemySnapshot{ID: enemy.ID, Archetype: enemy.Archetype, State: enemy.State, Pos: enemy.Pos, Size: enemy.Size, Facing: enemy.Facing, Timer: enemy.Timer, Flash: enemy.Flash})
 	}
 	return snapshot
 }
