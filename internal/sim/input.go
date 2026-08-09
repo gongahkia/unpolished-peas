@@ -3,9 +3,9 @@ package sim
 // InputFrame is the deterministic intent sampled for one simulation tick.
 // Movement and Aim deliberately remain separate all the way into combat.
 type InputFrame struct {
-	MoveX, MoveY int8
-	AimX, AimY   int8
-	Jump         bool
+	MoveX      int8
+	AimX, AimY int8
+	Jump       bool
 	Attack       bool
 	Dodge        bool
 	Clone        bool

@@ -73,12 +73,7 @@ func readInput() sim.InputFrame {
 	if ebiten.IsKeyPressed(ebiten.KeyD) {
 		in.MoveX++
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyW) {
-		in.MoveY--
-	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) {
-		in.MoveY++
-	}
+	in.Jump = ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeySpace)
 	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
 		in.AimX--
 	}
@@ -98,9 +93,7 @@ func readInput() sim.InputFrame {
 		if in.MoveX == 0 {
 			in.MoveX = moveX
 		}
-		if in.MoveY == 0 {
-			in.MoveY = moveY
-		}
+		in.Jump = in.Jump || moveY < 0
 		if in.AimX == 0 {
 			in.AimX = aimX
 		}
@@ -339,6 +332,8 @@ func drawArena(screen *ebiten.Image, terrain []sim.TerrainSnapshot) {
 			c = color.RGBA{R: 112, G: 102, B: 119, A: 255}
 		case sim.TerrainBreakable:
 			c = color.RGBA{R: 156, G: 109, B: 67, A: 255}
+		case sim.TerrainPlatform:
+			c = color.RGBA{R: 192, G: 174, B: 118, A: 255}
 		}
 		vector.DrawFilledRect(screen, float32(t.Bounds.X), float32(t.Bounds.Y), float32(t.Bounds.W), float32(t.Bounds.H), c, false)
 	}
@@ -407,7 +402,7 @@ func formColor(f sim.FormID) color.Color {
 	}
 }
 func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec, paused bool, status string) {
-	text.Draw(screen, "72  |  WASD move  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
+	text.Draw(screen, "72  |  A/D move  W/space jump  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
 	text.Draw(screen, "AIM "+aimLabel(s.Player.Aim), basicfont.Face7x13, 580, 15, color.RGBA{R: 102, G: 228, B: 255, A: 255})
 	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
 	text.Draw(screen, fmt.Sprintf("%s | %s", s.Player.Form, staffReadout(s.Player)), basicfont.Face7x13, 8, 342, staffReadoutColor(s.Player))
@@ -469,6 +464,8 @@ func drawMinimap(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec) {
 			c = color.RGBA{R: 150, G: 137, B: 157, A: 255}
 		case sim.TerrainBreakable:
 			c = color.RGBA{R: 191, G: 134, B: 78, A: 255}
+		case sim.TerrainPlatform:
+			c = color.RGBA{R: 192, G: 174, B: 118, A: 255}
 		}
 		vector.DrawFilledRect(screen, mapX+float32(terrain.Bounds.X/sim.ArenaW)*mapW, mapY+float32(terrain.Bounds.Y/sim.ArenaH)*mapH, float32(terrain.Bounds.W/sim.ArenaW)*mapW, float32(terrain.Bounds.H/sim.ArenaH)*mapH, c, false)
 	}
@@ -536,12 +533,12 @@ func drawDebugWorld(screen *ebiten.Image, s sim.RenderSnapshot) {
 		vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(end.X), float32(end.Y), float32(s.Player.AttackWidth*2), color.RGBA{R: 95, G: 214, B: 247, A: 72}, false)
 	}
 	for _, c := range s.Clones {
-		text.Draw(screen, fmt.Sprintf("echo %d/%d m%d,%d a%d,%d atk=%t form=%s", max(0, c.EchoIndex), c.EchoLength, c.ReplayInput.MoveX, c.ReplayInput.MoveY, c.ReplayInput.AimX, c.ReplayInput.AimY, c.ReplayInput.Attack, c.ReplayInput.Transform), basicfont.Face7x13, int(c.Pos.X)-64, int(c.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
+		text.Draw(screen, fmt.Sprintf("echo %d/%d m%d jump=%t a%d,%d atk=%t form=%s", max(0, c.EchoIndex), c.EchoLength, c.ReplayInput.MoveX, c.ReplayInput.Jump, c.ReplayInput.AimX, c.ReplayInput.AimY, c.ReplayInput.Attack, c.ReplayInput.Transform), basicfont.Face7x13, int(c.Pos.X)-64, int(c.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
 	}
 }
 
 func drawDebugHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec) {
-	info := fmt.Sprintf("DEBUG camera=(%.0f,%.0f) aim=(%.0f,%.0f) hitstop=%d slow=%d boss=%s", camera.X, camera.Y, s.Player.Aim.X, s.Player.Aim.Y, s.Debug.Hitstop, s.Debug.SlowTicks, s.Debug.BossPhase)
+	info := fmt.Sprintf("DEBUG camera=(%.0f,%.0f) aim=(%.0f,%.0f) grounded=%t vy=%.1f hitstop=%d slow=%d boss=%s", camera.X, camera.Y, s.Player.Aim.X, s.Player.Aim.Y, s.Player.Grounded, s.Player.Velocity.Y, s.Debug.Hitstop, s.Debug.SlowTicks, s.Debug.BossPhase)
 	text.Draw(screen, info, basicfont.Face7x13, 8, 356, color.RGBA{R: 100, G: 230, B: 242, A: 255})
 }
 func main() {
