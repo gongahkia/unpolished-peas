@@ -1,155 +1,74 @@
 package sim
 
-// RenderSnapshot is a renderer-only projection. Visual randomness is derived
-// from Tick and never mutates World.RNG.
+// RenderSnapshot is a read-only projection of deterministic lab state. The
+// renderer may animate from Tick but cannot modify the simulation.
 type RenderSnapshot struct {
-	Tick            uint64
-	Player          PlayerSnapshot
-	Enemies         []EnemySnapshot
-	Clones          []CloneSnapshot
-	Projectiles     []ProjectileSnapshot
-	Effects         []EffectSnapshot
-	Terrain         []TerrainSnapshot
-	Run             RunSnapshot
-	Debug           DebugSnapshot
-	Trauma          float64
-	TraumaDirection Vec
-	Won, Lost       bool
+	Tick    uint64
+	Player  PlayerSnapshot
+	Terrain []TerrainSnapshot
+	Objects []ObjectSnapshot
+	Lab     LabSnapshot
+	Debug   bool
+	Trauma  float64
+	Won     bool
+	Lost    bool
 }
 
 type PlayerSnapshot struct {
-	Pos, Velocity  Vec
-	Aim            Vec
-	Radius         float64
-	HP, MaxHP      int
-	Form           FormID
-	Staff          StaffLength
-	Action         Action
-	ActionTick     int
-	LongRange      float64
-	LongCharge     int
-	AttackRange    float64
-	AttackWidth    float64
-	AttackStartup  int
-	AttackActive   int
-	AttackRecovery int
-	Invulnerable   bool
-	Grounded       bool
+	Pos, Velocity Vec
+	Aim           Vec
+	Facing        int8
+	Grounded      bool
+	State         TraversalState
+	Coyote        int
+	AirJumps      int
+	WallDirection int8
+	RollTicks     int
+	HeldObjectID  int
+	Bombs, Ropes  int
+	Tether        TetherState
 }
 
-type EnemySnapshot struct {
-	ID              int
-	Kind            EnemyKind
-	Archetype       EnemyArchetype
-	Room            int
-	Name            string
-	Pos, Velocity   Vec
-	Facing          Vec
-	Radius          float64
-	Grounded        bool
-	HP, MaxHP       int
-	Windup, Stagger int
-	WeakPoint       int
-	Flash           int
-	TargetCloneID   int
-	AIState         string
-	Boss            *BossSnapshot
-}
-
-type RoomSnapshot struct {
-	Index           int
-	Role            RoomRole
-	Bounds          Rect
-	ThreatRemaining int
-	Activated       bool
-}
-
-type RunSnapshot struct {
-	Seed, Attempt uint64
-	CurrentRoom   int
-	Rooms         []RoomSnapshot
-	NavNodes      []NavNode
-	NavLinks      []NavLink
-}
-
-type BossSnapshot struct {
-	PhaseName      string
-	Phase          int
-	Shielded       bool
-	EchoSeal       bool
-	Telegraph      string
-	TelegraphTicks int
-}
-
-type CloneSnapshot struct {
-	ID               int
-	Pos, Aim         Vec
-	Radius           float64
-	Grounded         bool
-	Delay, EchoIndex int
-	EchoLength       int
-	TicksRemaining   int
-	Action           Action
-	LongRange        float64
-	ReplayInput      InputFrame
-}
-
-type ProjectileSnapshot struct {
-	Pos    Vec
-	Radius float64
-	Hazard bool
-}
-type EffectSnapshot struct {
-	Kind              EffectKind
-	Pos, Direction    Vec
-	Radius, Intensity float64
-	TicksRemaining    int
-}
 type TerrainSnapshot struct {
 	ID     int
 	Kind   TerrainKind
 	Bounds Rect
 	HP     int
 }
-type DebugSnapshot struct {
-	Enabled            bool
-	Hitstop, SlowTicks int
-	BossPhase          string
+
+type ObjectSnapshot struct {
+	ID     int
+	Kind   ObjectKind
+	Pos    Vec
+	Size   Vec
+	LinkID int
+	Active bool
+	Held   bool
+	Fuse   int
+}
+
+type LabSnapshot struct {
+	Seed    uint64
+	Modules []LabModuleInfo
+	Exit    Vec
 }
 
 func (w *World) Snapshot() RenderSnapshot {
-	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, LongCharge: w.Player.LongCharge, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, AttackStartup: w.Player.LastAttackSpec.Startup, AttackActive: w.Player.LastAttackSpec.Active, AttackRecovery: w.Player.LastAttackSpec.Recovery, Invulnerable: w.Player.Invulnerable > 0, Grounded: w.Player.Grounded}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}, Run: RunSnapshot{Seed: w.Run.Seed, Attempt: uint64(w.Run.Attempt), CurrentRoom: w.currentRoom(), NavNodes: append([]NavNode(nil), w.Run.NavNodes...), NavLinks: append([]NavLink(nil), w.Run.NavLinks...)}}
-	for index, room := range w.Run.Rooms {
-		threat := 0
-		if index < len(w.RoomThreat) {
-			threat = w.RoomThreat[index]
-		}
-		activated := index < len(w.ActivatedRooms) && w.ActivatedRooms[index]
-		s.Run.Rooms = append(s.Run.Rooms, RoomSnapshot{Index: room.Index, Role: room.Role, Bounds: room.Bounds, ThreatRemaining: threat, Activated: activated})
+	p := w.Player
+	snapshot := RenderSnapshot{
+		Tick:   w.Tick,
+		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, RollTicks: p.RollTicks, HeldObjectID: p.HeldObjectID, Bombs: p.Bombs, Ropes: p.Ropes, Tether: p.Tether},
+		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
+		Debug:  w.Debug,
+		Trauma: w.Trauma,
+		Won:    w.Won,
+		Lost:   w.Lost,
 	}
 	for _, terrain := range w.Terrain {
-		s.Terrain = append(s.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
+		snapshot.Terrain = append(snapshot.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
 	}
-	for _, enemy := range w.Enemies {
-		e := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Archetype: enemy.Archetype, Room: enemy.Room, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Facing: enemy.Facing, Radius: enemy.Radius, Grounded: enemy.Grounded, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, WeakPoint: enemy.WeakPoint, Flash: enemy.Flash, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
-		if enemy.Boss != nil {
-			e.Boss = &BossSnapshot{PhaseName: enemy.Boss.PhaseName, Phase: enemy.Boss.Phase, Shielded: enemy.Boss.Shielded, EchoSeal: enemy.Boss.EchoSeal, Telegraph: enemy.Boss.Telegraph, TelegraphTicks: enemy.Boss.TelegraphTicks}
-			s.Debug.BossPhase = enemy.Boss.PhaseName
-		}
-		s.Enemies = append(s.Enemies, e)
+	for _, object := range w.Objects {
+		snapshot.Objects = append(snapshot.Objects, ObjectSnapshot{ID: object.ID, Kind: object.Kind, Pos: object.Pos, Size: object.Size, LinkID: object.LinkID, Active: object.Active, Held: object.Held, Fuse: object.Fuse})
 	}
-	for _, clone := range w.Clones {
-		input := InputFrame{}
-		if clone.EchoIndex >= 0 && clone.EchoIndex < len(clone.Frames) {
-			input = clone.Frames[clone.EchoIndex]
-		}
-		s.Clones = append(s.Clones, CloneSnapshot{ID: clone.ID, Pos: clone.Pos, Aim: clone.Aim, Radius: clone.Radius, Grounded: clone.Grounded, Delay: clone.Delay, EchoIndex: clone.EchoIndex, EchoLength: len(clone.Frames), TicksRemaining: clone.TicksRemaining, Action: clone.Action, LongRange: clone.LongRange, ReplayInput: input})
-	}
-	for _, projectile := range w.Projectiles {
-		s.Projectiles = append(s.Projectiles, ProjectileSnapshot{Pos: projectile.Pos, Radius: projectile.Radius, Hazard: projectile.Hazard})
-	}
-	for _, effect := range w.Effects {
-		s.Effects = append(s.Effects, EffectSnapshot{Kind: effect.Kind, Pos: effect.Pos, Direction: effect.Direction, Radius: effect.Radius, Intensity: effect.Intensity, TicksRemaining: effect.TicksRemaining})
-	}
-	return s
+	return snapshot
 }

@@ -1,5 +1,5 @@
 # Replay
 
-`72.replay.json` stores the validation seed, every `InputFrame`, and the state hash after every frame. An input frame includes horizontal movement, jump, independent aim, staff selection, forms, attack, dodge, Echo, restart, and debug toggles.
+`72.replay.json` stores a movement-lab seed, every `InputFrame`, and a state hash after every tick. Replay version `72-lab-1` reconstructs `NewLabWorld(seed)` and stops at the first mismatched hash.
 
-`go run ./cmd/replaydump 72.replay.json` reconstructs a fresh 1280×720 platform stage and rejects a recording at the first mismatched hash. Follow-camera position, minimap drawing, and camera shake are renderer-derived and cannot influence the deterministic random stream.
+The hash includes generated geometry, mutable breakables, all object positions/links/fuses, player traversal state, tools, and tether state. Rendering, camera position, and debug presentation are excluded.

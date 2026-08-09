@@ -21,7 +21,7 @@ func main() {
 	if len(replay.Hashes) > 0 {
 		last = replay.Hashes[len(replay.Hashes)-1]
 	}
-	if _, err := replay.PlayValidation(); err != nil {
+	if _, err := replay.PlayLab(); err != nil {
 		fmt.Fprintf(os.Stderr, "replay verification failed: %v\n", err)
 		os.Exit(1)
 	}
