@@ -17,22 +17,22 @@ type RenderSnapshot struct {
 }
 
 type PlayerSnapshot struct {
-	Pos, Velocity Vec
-	Aim           Vec
-	Radius        float64
-	HP, MaxHP     int
-	Form          FormID
-	Staff         StaffLength
-	Action        Action
-	ActionTick    int
-	LongRange     float64
-	LongCharge    int
-	AttackRange   float64
-	AttackWidth   float64
-	AttackStartup int
-	AttackActive  int
+	Pos, Velocity  Vec
+	Aim            Vec
+	Radius         float64
+	HP, MaxHP      int
+	Form           FormID
+	Staff          StaffLength
+	Action         Action
+	ActionTick     int
+	LongRange      float64
+	LongCharge     int
+	AttackRange    float64
+	AttackWidth    float64
+	AttackStartup  int
+	AttackActive   int
 	AttackRecovery int
-	Invulnerable  bool
+	Invulnerable   bool
 }
 
 type EnemySnapshot struct {
