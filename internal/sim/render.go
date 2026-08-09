@@ -33,6 +33,7 @@ type PlayerSnapshot struct {
 	AttackActive   int
 	AttackRecovery int
 	Invulnerable   bool
+	Grounded       bool
 }
 
 type EnemySnapshot struct {
@@ -41,6 +42,7 @@ type EnemySnapshot struct {
 	Name            string
 	Pos, Velocity   Vec
 	Radius          float64
+	Grounded        bool
 	HP, MaxHP       int
 	Windup, Stagger int
 	WeakPoint       int
@@ -63,6 +65,7 @@ type CloneSnapshot struct {
 	ID               int
 	Pos, Aim         Vec
 	Radius           float64
+	Grounded         bool
 	Delay, EchoIndex int
 	EchoLength       int
 	TicksRemaining   int
@@ -95,12 +98,12 @@ type DebugSnapshot struct {
 }
 
 func (w *World) Snapshot() RenderSnapshot {
-	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, LongCharge: w.Player.LongCharge, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, AttackStartup: w.Player.LastAttackSpec.Startup, AttackActive: w.Player.LastAttackSpec.Active, AttackRecovery: w.Player.LastAttackSpec.Recovery, Invulnerable: w.Player.Invulnerable > 0}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}}
+	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, LongCharge: w.Player.LongCharge, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, AttackStartup: w.Player.LastAttackSpec.Startup, AttackActive: w.Player.LastAttackSpec.Active, AttackRecovery: w.Player.LastAttackSpec.Recovery, Invulnerable: w.Player.Invulnerable > 0, Grounded: w.Player.Grounded}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}}
 	for _, terrain := range w.Terrain {
 		s.Terrain = append(s.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
 	}
 	for _, enemy := range w.Enemies {
-		e := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, WeakPoint: enemy.WeakPoint, Flash: enemy.Flash, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
+		e := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, Grounded: enemy.Grounded, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, WeakPoint: enemy.WeakPoint, Flash: enemy.Flash, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
 		if enemy.Boss != nil {
 			e.Boss = &BossSnapshot{PhaseName: enemy.Boss.PhaseName, Phase: enemy.Boss.Phase, Shielded: enemy.Boss.Shielded, EchoSeal: enemy.Boss.EchoSeal, Telegraph: enemy.Boss.Telegraph, TelegraphTicks: enemy.Boss.TelegraphTicks}
 			s.Debug.BossPhase = enemy.Boss.PhaseName
@@ -112,7 +115,7 @@ func (w *World) Snapshot() RenderSnapshot {
 		if clone.EchoIndex >= 0 && clone.EchoIndex < len(clone.Frames) {
 			input = clone.Frames[clone.EchoIndex]
 		}
-		s.Clones = append(s.Clones, CloneSnapshot{ID: clone.ID, Pos: clone.Pos, Aim: clone.Aim, Radius: clone.Radius, Delay: clone.Delay, EchoIndex: clone.EchoIndex, EchoLength: len(clone.Frames), TicksRemaining: clone.TicksRemaining, Action: clone.Action, LongRange: clone.LongRange, ReplayInput: input})
+		s.Clones = append(s.Clones, CloneSnapshot{ID: clone.ID, Pos: clone.Pos, Aim: clone.Aim, Radius: clone.Radius, Grounded: clone.Grounded, Delay: clone.Delay, EchoIndex: clone.EchoIndex, EchoLength: len(clone.Frames), TicksRemaining: clone.TicksRemaining, Action: clone.Action, LongRange: clone.LongRange, ReplayInput: input})
 	}
 	for _, projectile := range w.Projectiles {
 		s.Projectiles = append(s.Projectiles, ProjectileSnapshot{Pos: projectile.Pos, Radius: projectile.Radius, Hazard: projectile.Hazard})

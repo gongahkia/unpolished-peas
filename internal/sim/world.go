@@ -8,7 +8,7 @@ import (
 	"sort"
 )
 
-const SimulationVersion = "72-combat-1"
+const SimulationVersion = "72-platform-1"
 
 // World is the renderer-independent, deterministic 72 arena simulation.
 type World struct {
@@ -42,7 +42,7 @@ func NewValidationWorld(seed uint64) *World {
 	w := NewWorld(seed)
 	w.Terrain = validationTerrain()
 	w.Player.Pos = Vec{X: 150, Y: 500}
-	w.SpawnArenaBoss(Vec{X: 1050, Y: 250})
+	w.SpawnArenaBoss(Vec{X: 1060, Y: 319})
 	return w
 }
 
@@ -124,7 +124,7 @@ func (w *World) handleInput(input InputFrame) {
 		if wasBird && p.Form != FormBird {
 			p.BirdMomentum = 12
 		} else if !wasBird {
-			p.Velocity = Vec{}
+			p.Velocity.X = 0
 		}
 		w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: p.Pos, Radius: 24, TicksRemaining: 14, Intensity: 0.5})
 		w.addTrauma(0.16)
@@ -134,6 +134,15 @@ func (w *World) handleInput(input InputFrame) {
 	}
 	if input.Dodge && !w.prevInput.Dodge && p.DodgeCooldown == 0 && p.Form != FormTiger && p.Action != ActionMantisStance {
 		w.startDodge(input)
+	}
+	if input.Jump && !w.prevInput.Jump && (p.Grounded || p.Form == FormBird) && p.Action != ActionTigerPounce {
+		jump := JumpSpeed
+		if p.Form == FormBird {
+			jump = 7.4
+		}
+		p.Velocity.Y = -jump
+		p.Grounded = false
+		w.Effects = append(w.Effects, Effect{Kind: EffectAfterimage, Pos: p.Pos, Direction: Vec{Y: -1}, Radius: 10, TicksRemaining: 5, Intensity: 0.18})
 	}
 	if input.Attack && !w.prevInput.Attack {
 		p.AttackBuffer = 7
@@ -173,13 +182,16 @@ func (w *World) startPlayerAction() {
 
 func (w *World) startDodge(input InputFrame) {
 	p := &w.Player
-	direction := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
-	if direction.LengthSq() == 0 {
-		direction = p.Aim
+	direction := float64(input.MoveX)
+	if direction == 0 {
+		direction = p.Aim.X
+	}
+	if direction == 0 {
+		direction = 1
 	}
 	p.Action, p.ActionTick, p.DodgeCooldown, p.Invulnerable = ActionDodge, 0, 28, 8
-	p.Velocity = direction.Normalized().Scale(8.0)
-	w.Effects = append(w.Effects, Effect{Kind: EffectAfterimage, Pos: p.Pos, Direction: p.Velocity.Normalized(), Radius: 14, TicksRemaining: 8, Intensity: 0.25})
+	p.Velocity.X = direction * 8.0
+	w.Effects = append(w.Effects, Effect{Kind: EffectAfterimage, Pos: p.Pos, Direction: Vec{X: direction}, Radius: 14, TicksRemaining: 8, Intensity: 0.25})
 }
 
 func (w *World) updatePlayer(input InputFrame) {
@@ -193,30 +205,27 @@ func (w *World) updatePlayer(input InputFrame) {
 	}
 	if p.Stagger > 0 {
 		p.Stagger--
-		w.movePlayer(p.Velocity)
-		p.Velocity = p.Velocity.Scale(0.76)
+		w.movePlayerPhysics(p.Velocity.X)
+		p.Velocity.X *= 0.76
 		return
 	}
-	move := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
-	if move.LengthSq() > 1 {
-		move = move.Normalized()
-	}
+	moveX := float64(input.MoveX)
 	switch p.Action {
 	case ActionDodge:
-		w.movePlayer(p.Velocity)
+		w.movePlayerPhysics(p.Velocity.X)
 		p.ActionTick++
 		if p.ActionTick >= 9 {
-			p.Action, p.Velocity = ActionIdle, Vec{}
+			p.Action, p.Velocity.X = ActionIdle, 0
 		}
 		return
 	case ActionLongCharge:
 		p.LongCharge = min(48, p.LongCharge+1)
 		p.LongRange = 28 + float64(p.LongCharge)*2.25
-		w.movePlayer(move.Scale(rulesFor(p.Form).MoveSpeed * 0.32))
+		w.movePlayerPhysics(moveX * rulesFor(p.Form).MoveSpeed * 0.32)
 		w.Effects = append(w.Effects, Effect{Kind: EffectCharge, Pos: p.Pos, Direction: p.Aim, Radius: p.LongRange, TicksRemaining: 2, Intensity: float64(p.LongCharge) / 48})
 		return
 	case ActionBirdDive:
-		w.movePlayer(p.Velocity)
+		w.movePlayerDirect(p.Velocity)
 		if p.ActionTick >= 3 && p.ActionTick < 9 {
 			w.resolveAttack(p.Pos, p.Aim, AttackSpec{Range: 18, Width: 18, Damage: 15, Knockback: 7, Heavy: true}, p.AttackHitIDs, false, p.Form)
 		}
@@ -228,8 +237,8 @@ func (w *World) updatePlayer(input InputFrame) {
 		return
 	case ActionTigerPounce:
 		start := p.Pos
-		w.breakTerrainAlong(start, clampArena(start.Add(p.Velocity), p.radius()))
-		w.movePlayer(p.Velocity)
+		w.breakTerrainAlong(start, start.Add(p.Velocity))
+		w.movePlayerDirect(p.Velocity)
 		if p.ActionTick >= 2 && p.ActionTick < 12 {
 			w.resolveAttack(p.Pos, p.Aim, AttackSpec{Range: 22, Width: 18, Damage: 25, Knockback: 12, Heavy: true}, p.AttackHitIDs, false, p.Form)
 		}
@@ -240,6 +249,7 @@ func (w *World) updatePlayer(input InputFrame) {
 		}
 		return
 	case ActionMantisStance:
+		w.movePlayerPhysics(0)
 		p.CounterWindow--
 		p.ActionTick++
 		if p.CounterWindow <= 0 {
@@ -249,8 +259,8 @@ func (w *World) updatePlayer(input InputFrame) {
 	}
 	speed := rulesFor(p.Form).MoveSpeed
 	if p.BirdMomentum > 0 && p.Form != FormBird {
-		w.movePlayer(p.Velocity)
-		p.Velocity = p.Velocity.Scale(0.84)
+		moveX += p.Velocity.X
+		p.Velocity.X *= 0.84
 		p.BirdMomentum--
 	}
 	if p.Action == ActionShort {
@@ -259,10 +269,7 @@ func (w *World) updatePlayer(input InputFrame) {
 	if p.Action == ActionMedium {
 		speed *= 0.45
 	}
-	w.movePlayer(move.Scale(speed))
-	if p.Form == FormBird {
-		p.Velocity = move.Scale(speed)
-	}
+	w.movePlayerPhysics(moveX * speed)
 	if p.Action == ActionIdle && p.AttackBuffer > 0 {
 		w.startPlayerAction()
 	}
@@ -309,7 +316,7 @@ func (w *World) SpawnEcho() {
 	}
 	frames := append([]InputFrame(nil), w.inputHistory[max(0, len(w.inputHistory)-120):]...)
 	position := clampArena(p.Pos.Sub(p.Aim.Scale(24)), 7)
-	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Aim: p.Aim, Radius: rulesFor(FormMonkey).Radius, Form: FormMonkey, Delay: 20, EchoIndex: -20, Frames: frames, Staff: p.Staff, HitIDs: make(map[int]bool), TicksRemaining: len(frames) + 20})
+	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Aim: p.Aim, Radius: rulesFor(FormMonkey).Radius, Form: FormMonkey, Grounded: p.Grounded, Delay: 20, EchoIndex: -20, Frames: frames, Staff: p.Staff, HitIDs: make(map[int]bool), TicksRemaining: len(frames) + 20})
 	p.CloneCooldown = 150
 	w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: position, Radius: 22, TicksRemaining: 16, Intensity: 0.6})
 }
@@ -343,12 +350,15 @@ func (w *World) stepEcho(c *Clone, input InputFrame) {
 		c.Form = input.Transform
 		c.Radius = rulesFor(c.Form).Radius
 	}
-	move := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
-	if move.LengthSq() > 1 {
-		move = move.Normalized()
+	if input.Jump && !c.Previous.Jump && (c.Grounded || c.Form == FormBird) && c.Action != ActionTigerPounce {
+		jump := JumpSpeed
+		if c.Form == FormBird {
+			jump = 7.4
+		}
+		c.Velocity.Y, c.Grounded = -jump, false
 	}
 	if c.Action != ActionBirdDive && c.Action != ActionTigerPounce && c.Action != ActionMantisStance {
-		c.Pos = w.moveEcho(c.Pos, move.Scale(rulesFor(c.Form).MoveSpeed), c.Radius, c.Form)
+		w.moveEchoPhysics(c, float64(input.MoveX)*rulesFor(c.Form).MoveSpeed)
 	}
 	pressed := input.Attack && !c.Previous.Attack
 	if pressed && c.Action == ActionIdle {
@@ -375,7 +385,7 @@ func (w *World) stepEcho(c *Clone, input InputFrame) {
 		}
 	}
 	if c.Action == ActionBirdDive {
-		c.Pos = w.moveEcho(c.Pos, c.Velocity, c.Radius, FormBird)
+		w.moveEchoDirect(c, c.Velocity)
 		if c.ActionTick >= 3 && c.ActionTick < 9 {
 			w.resolveAttack(c.Pos, c.Aim, AttackSpec{Range: 16, Width: 16, Damage: 10, Knockback: 6, Heavy: true}, c.HitIDs, true, c.Form)
 		}
@@ -386,8 +396,8 @@ func (w *World) stepEcho(c *Clone, input InputFrame) {
 	}
 	if c.Action == ActionTigerPounce {
 		start := c.Pos
-		w.breakTerrainAlong(start, clampArena(start.Add(c.Velocity), c.Radius))
-		c.Pos = w.moveEcho(c.Pos, c.Velocity, c.Radius, c.Form)
+		w.breakTerrainAlong(start, start.Add(c.Velocity))
+		w.moveEchoDirect(c, c.Velocity)
 		if c.ActionTick >= 2 && c.ActionTick < 12 {
 			w.resolveAttack(c.Pos, c.Aim, AttackSpec{Range: 20, Width: 16, Damage: 17, Knockback: 10, Heavy: true}, c.HitIDs, true, c.Form)
 		}
@@ -397,6 +407,7 @@ func (w *World) stepEcho(c *Clone, input InputFrame) {
 		}
 	}
 	if c.Action == ActionMantisStance {
+		w.moveEchoPhysics(c, 0)
 		c.ActionTick++
 		if c.ActionTick >= 10 {
 			c.Action = ActionIdle
@@ -479,31 +490,41 @@ func (w *World) updateEnemies() {
 		}
 		if enemy.Stagger > 0 {
 			enemy.Stagger--
-			w.moveEnemy(enemy, enemy.Velocity)
-			enemy.Velocity = enemy.Velocity.Scale(0.75)
+			w.moveEnemyPhysics(enemy, enemy.Velocity.X)
+			enemy.Velocity.X *= 0.75
 			continue
 		}
 		target, clone := w.enemyTarget(enemy)
 		toTarget := target.Sub(enemy.Pos)
 		if toTarget.LengthSq() > 0 {
-			enemy.Facing = toTarget.Normalized()
+			enemy.Facing = Vec{X: math.Copysign(1, toTarget.X)}
 		}
 		if enemy.Windup > 0 {
 			enemy.AIState = "windup"
 			enemy.Windup--
+			w.moveEnemyPhysics(enemy, 0)
 			if enemy.Windup == 0 {
 				w.enemyAttack(enemy, target, clone)
 			}
 			continue
 		}
 		decrement(&enemy.AttackCooldown)
-		if toTarget.Length() <= enemy.AttackRange && enemy.AttackCooldown == 0 {
+		if math.Abs(toTarget.X) <= enemy.AttackRange && math.Abs(toTarget.Y) <= 46 && enemy.AttackCooldown == 0 {
 			enemy.AIState, enemy.Windup = "telegraph", 18
 			w.Effects = append(w.Effects, Effect{Kind: EffectTelegraph, Pos: target, Radius: enemy.AttackRange, TicksRemaining: 18})
 			continue
 		}
+		if enemy.Boss != nil && math.Abs(toTarget.X) > 175 {
+			enemy.AIState = "guard"
+			w.moveEnemyPhysics(enemy, 0)
+			continue
+		}
 		enemy.AIState = "chase"
-		w.moveEnemy(enemy, enemy.Facing.Scale(enemy.MoveSpeed))
+		if enemy.Grounded && target.Y+48 < enemy.Pos.Y {
+			enemy.Velocity.Y = -8.2
+			enemy.Grounded = false
+		}
+		w.moveEnemyPhysics(enemy, enemy.Facing.X*enemy.MoveSpeed)
 	}
 }
 
@@ -604,29 +625,104 @@ func (w *World) damagePlayer(damage int, knockback Vec, hazard bool) {
 	}
 }
 
-func (w *World) movePlayer(delta Vec) {
-	w.Player.Pos = w.moveForForm(w.Player.Pos, delta, w.Player.radius(), w.Player.Form)
+func (w *World) movePlayerPhysics(horizontal float64) {
+	p := &w.Player
+	p.Velocity.Y = min(14, p.Velocity.Y+rulesFor(p.Form).Gravity)
+	w.movePlayerDirect(Vec{X: horizontal + p.Velocity.X, Y: p.Velocity.Y})
+	p.Velocity.X *= 0.74
+	w.applyPlayerHazard()
 }
-func (w *World) moveEcho(position, delta Vec, radius float64, form FormID) Vec {
-	return w.moveForForm(position, delta, radius, form)
-}
-func (w *World) moveEnemy(enemy *Enemy, delta Vec) {
-	next := w.moveForForm(enemy.Pos, delta, enemy.Radius, FormMonkey)
-	if next == enemy.Pos && delta.LengthSq() > 0 {
-		enemy.Stagger = max(enemy.Stagger, 12)
-		enemy.HP -= max(1, int(delta.Length()/2))
-		w.heavyFeedback(enemy.Pos, delta.Normalized())
+
+func (w *World) movePlayerDirect(delta Vec) {
+	p := &w.Player
+	next, grounded := w.moveBody(p.Pos, delta, p.radius(), p.Form)
+	p.Pos, p.Grounded = next, grounded
+	if grounded && p.Velocity.Y > 0 {
+		p.Velocity.Y = 0
 	}
-	enemy.Pos = next
 }
-func (w *World) moveForForm(position, delta Vec, radius float64, form FormID) Vec {
-	next := clampArena(position.Add(delta), radius)
+
+func (w *World) moveEchoPhysics(clone *Clone, horizontal float64) {
+	clone.Velocity.Y = min(14, clone.Velocity.Y+rulesFor(clone.Form).Gravity)
+	w.moveEchoDirect(clone, Vec{X: horizontal + clone.Velocity.X, Y: clone.Velocity.Y})
+	clone.Velocity.X *= 0.74
+}
+
+func (w *World) moveEchoDirect(clone *Clone, delta Vec) {
+	next, grounded := w.moveBody(clone.Pos, delta, clone.Radius, clone.Form)
+	clone.Pos, clone.Grounded = next, grounded
+	if grounded && clone.Velocity.Y > 0 {
+		clone.Velocity.Y = 0
+	}
+}
+
+func (w *World) moveEnemyPhysics(enemy *Enemy, horizontal float64) {
+	enemy.Velocity.Y = min(14, enemy.Velocity.Y+Gravity)
+	next, grounded := w.moveBody(enemy.Pos, Vec{X: horizontal + enemy.Velocity.X, Y: enemy.Velocity.Y}, enemy.Radius, FormMonkey)
+	blocked := next.X == enemy.Pos.X && math.Abs(horizontal+enemy.Velocity.X) > 0.1
+	enemy.Pos, enemy.Grounded = next, grounded
+	if grounded && enemy.Velocity.Y > 0 {
+		enemy.Velocity.Y = 0
+	}
+	if blocked && math.Abs(enemy.Velocity.X) > 5 {
+		enemy.Stagger = max(enemy.Stagger, 12)
+		enemy.HP -= max(1, int(math.Abs(enemy.Velocity.X)/2))
+		w.heavyFeedback(enemy.Pos, Vec{X: enemy.Velocity.X})
+	}
+}
+
+// moveBody is the side-view collision authority. Walls, pillars, and intact
+// cracked walls are full solids; platforms catch a falling body only from above.
+func (w *World) moveBody(position, delta Vec, radius float64, form FormID) (Vec, bool) {
+	next := position
+	next.X = clamp(position.X+delta.X, radius, ArenaW-radius)
 	for _, terrain := range w.Terrain {
-		if terrain.blocks(form) && terrain.Bounds.overlapsCircle(next, radius) {
-			return position
+		if !terrain.solid() || !terrain.Bounds.overlapsCircle(next, radius) {
+			continue
+		}
+		if delta.X > 0 {
+			next.X = min(next.X, terrain.Bounds.X-radius)
+		} else if delta.X < 0 {
+			next.X = max(next.X, terrain.Bounds.X+terrain.Bounds.W+radius)
 		}
 	}
-	return next
+
+	grounded := false
+	previousY := position.Y
+	next.Y = clamp(position.Y+delta.Y, radius, ArenaH-radius)
+	for _, terrain := range w.Terrain {
+		bounds := terrain.Bounds
+		if terrain.Kind == TerrainPlatform {
+			if delta.Y >= 0 && previousY+radius <= bounds.Y+1 && next.Y+radius >= bounds.Y && next.X+radius > bounds.X && next.X-radius < bounds.X+bounds.W {
+				next.Y = bounds.Y - radius
+				grounded = true
+			}
+			continue
+		}
+		if !terrain.solid() || !bounds.overlapsCircle(next, radius) {
+			continue
+		}
+		if delta.Y > 0 && previousY+radius <= bounds.Y+radius {
+			next.Y = min(next.Y, bounds.Y-radius)
+			grounded = true
+		} else if delta.Y < 0 && previousY-radius >= bounds.Y+bounds.H-radius {
+			next.Y = max(next.Y, bounds.Y+bounds.H+radius)
+		}
+	}
+	if next.Y >= ArenaH-radius {
+		grounded = true
+	}
+	return next, grounded
+}
+
+func (w *World) applyPlayerHazard() {
+	p := &w.Player
+	for _, terrain := range w.Terrain {
+		if terrain.Kind == TerrainWater && terrain.Bounds.overlapsCircle(p.Pos, p.radius()) {
+			w.damagePlayer(12, Vec{Y: -6}, true)
+			return
+		}
+	}
 }
 func (w *World) firstTerrainBlock(start, end Vec) (bool, Vec) {
 	for step := 1; step <= 20; step++ {
@@ -662,8 +758,10 @@ func (w *World) resolveBodyCollisions() {
 		minDistance := w.Player.radius() + enemy.Radius
 		if distance > 0 && distance < minDistance {
 			push := delta.Scale((minDistance - distance) / distance)
-			w.Player.Pos = w.moveForForm(w.Player.Pos, push.Scale(0.55), w.Player.radius(), w.Player.Form)
-			enemy.Pos = w.moveForForm(enemy.Pos, push.Scale(-0.45), enemy.Radius, FormMonkey)
+		playerPos, playerGrounded := w.moveBody(w.Player.Pos, Vec{X: push.X * 0.55}, w.Player.radius(), w.Player.Form)
+		enemyPos, enemyGrounded := w.moveBody(enemy.Pos, Vec{X: -push.X * 0.45}, enemy.Radius, FormMonkey)
+		w.Player.Pos, w.Player.Grounded = playerPos, playerGrounded
+		enemy.Pos, enemy.Grounded = enemyPos, enemyGrounded
 		}
 	}
 }

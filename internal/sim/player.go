@@ -69,6 +69,7 @@ type Player struct {
 	LongCharge        int
 	LongRange         float64
 	BirdMomentum      int
+	Grounded          bool
 	LastAttackSpec    AttackSpec
 	AttackHitIDs      map[int]bool
 	Deaths            int

@@ -5,6 +5,7 @@ package sim
 type InputFrame struct {
 	MoveX, MoveY int8
 	AimX, AimY   int8
+	Jump         bool
 	Attack       bool
 	Dodge        bool
 	Clone        bool
