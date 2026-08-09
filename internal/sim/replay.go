@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Replay records the complete deterministic validation encounter input stream.
+// Replay records the complete deterministic movement-lab input stream.
 type Replay struct {
 	Version string       `json:"version"`
 	Seed    uint64       `json:"seed"`
@@ -51,8 +51,8 @@ func (r *Replay) Play(world *World) error {
 	return nil
 }
 
-func (r *Replay) PlayValidation() (*World, error) {
-	w := NewValidationWorld(r.Seed)
+func (r *Replay) PlayLab() (*World, error) {
+	w := NewLabWorld(r.Seed)
 	return w, r.Play(w)
 }
 
