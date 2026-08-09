@@ -1,17 +1,15 @@
 # Combat
 
-The arena is designed for movement and aim to be separate. Move with `WASD` while arrows continuously set the attack line. Short, medium, and long are different commitments, not a shared attack with altered range.
+`72` is a side-view platform brawler. Horizontal movement and staff aim are separate deterministic inputs: `A`/`D` run, `W`/`Space` jump, and arrow keys continuously set a two-dimensional attack direction. The simulation never derives aim from running direction.
 
-| tool | timing | use |
+| tool | timing | platform-brawler use |
 | --- | --- | --- |
-| short | 2 startup, 3 active, 4 recovery; 34 range | close reactive pressure and a precise melee deflect window |
-| medium | 5 startup, 5 active, 10 recovery; three escalating sweeps | general combo pressure, multi-target coverage, and clearing clustered projectile fans |
-| long | hold up to 48 ticks; 28–136 range; 24 recovery on release | directional control, long guard breaks, knockback, and attacks across water |
+| Short | 2 startup, 3 active, 4 recovery; 34 range | reactive point-blank strike and precise melee deflection |
+| Medium | 5 startup, 5 active, 10 recovery; three escalating sweeps | grounded or aerial general-purpose chain; clears clustered projectile fans |
+| Long | hold up to 48 ticks; 28–136 range; 24 recovery on release | directional lane control across water/platform gaps, guard breaking, and heavy knockback |
 
-While charging long, movement is reduced to 32%. Missing is deliberately much more expensive than with the other two modes.
+Long reduces horizontal running to 32% while charging. Its orange extension and endpoint show current length; it is non-damaging until release. Solid cover blocks all staff lines; water does not.
 
-The renderer always draws a compact cyan chevron ahead of the player and an `AIM` compass label in the HUD; these alone communicate direction and never damage. The ready or recovering staff stays compactly carried beside Monkey, never projecting it as attack reach. Orange dashed lines forecast windup reach, bright yellow full-length lines with endpoint chevrons denote damaging frames, and an orange long line denotes a non-damaging charge. The bottom readout names `READY`, `WINDUP`, `ACTIVE`, `RECOVERY`, or `CHARGING`; forms label the staff as replaced rather than implying an unavailable attack is active.
+The cyan chevron and HUD `AIM` label always show direction without implying an attack. Monkey carries a short diagonal staff when ready or recovering. Orange dashed reach is windup only; bright yellow full-length staff is active damage; the bottom HUD spells out `READY`, `WINDUP`, `ACTIVE`, `RECOVERY`, or `CHARGING`. Transformations state that staff has been replaced rather than showing a false attack line.
 
-The authored 1280×720 arena begins with Warden beyond the first viewport. It contains water, three projectile-blocking pillars, a cracked wall, and solid walls. Water blocks normal ground movement but Bird crosses it. Pillars stop staff lines and projectiles. Tiger pounces through the cracked wall; knockback into solid terrain damages and staggers enemies. Long attacks are straight-line tools that can operate over water but stop on solid cover. The minimap shows terrain, Warden, player, and the current camera window.
-
-Feedback has central tiers: ordinary hits apply two ticks of hitstop, a small impact and restrained trauma; heavy hits apply five ticks, stronger knockback and a larger burst; counters and phase transitions add slow motion and major trauma. Effects feed one trauma value rather than writing camera offsets directly.
+Combat feedback is tiered and centralized: ordinary hits apply two ticks of hitstop, a small burst, knockback, and restrained camera trauma. Heavy hits use five ticks and a larger burst. Mantis counters, guard breaks, armor breaks, and phase transitions add slow motion and major trauma. Rendering derives shake from the snapshot, so visual randomness cannot affect replay state.

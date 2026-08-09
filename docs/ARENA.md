@@ -1,28 +1,14 @@
-# Validation arena
+# Validation stage
 
-`72` has one authored, bounded combat world. Its simulation bounds are
-1280×720; the camera shows a 640×360 follow viewport. There are no adjacent
-maps, procedural rooms, or open-world systems.
+`72` has one authored, bounded side-view stage. Simulation bounds are 1280×720 and the camera is a 640×360 follow viewport. There are no adjacent maps, procedural rooms, or open-world systems.
 
-The player starts at `(150, 500)` and Warden starts at `(1050, 250)`, outside
-the opening viewport. The minimap is the authoritative overview: terrain is
-shown in colour, green marks the player, red marks Warden, and the white frame
-shows the current viewport.
+The player starts on the west shelf at `(150, 500)`. Warden starts on the raised east platform at `(1060, 319)`, outside the opening viewport. The minimap shows terrain in colour, the player in green, Warden in red, and the active camera frame in white.
 
 ## Terrain layout
 
-- The central water region spans `(300, 210)` to `(700, 390)`. Monkey, Tiger,
-  and Mantis must route around it; Bird can cross it directly and ignores
-  hazard damage.
-- The north and south edges around the water provide ordinary ground routes.
-  The starting position is south of the water and Warden is north-east of it.
-- The cracked wall at the water’s east lip spans `(700, 305)` to `(734, 417)`.
-  Tiger pounces can break it, opening a more direct central-east line.
-- Pillars at `(490, 84)`, `(900, 212)`, and `(875, 492)` block projectile and
-  staff lines. They give cover while approaching or fighting Warden.
-- Solid walls at `(118, 575)` and `(770, 142)` shape the outer routes and make
-  knockback positioning consequential.
+- Solid ground occupies `x=0–280` and `x=720–1280` from `y=650` down. Water fills the floor gap at `x=280–720`; it damages normal forms but Bird ignores it.
+- One-way landing platforms sit at `(70, 530)`, `(330, 500)`, `(545, 420)`, `(760, 510)`, and `(945, 340)`. They catch falling bodies but can be jumped through from below.
+- The cracked wall at `(700, 500)` is two hits of Tiger pounce away from opening the direct east route.
+- The pillar at `(875, 390)` and the east wall at `(1200, 430)` are full solids. They block staff/projectile lines and make knockback placement matter; one-way landing platforms do not block combat lines.
 
-Long staff attacks cross water but stop on pillars, walls, and intact cracked
-walls. Warden’s projectile fans and sweep make route choice matter before the
-player reaches melee range.
+Long staff can strike over the water gap but stops at a pillar, wall, or intact cracked wall. Bird’s small, gliding route avoids the hazard. Tiger converts the wall into a route. The ordinary route is a sequence of jumps and landings, so the stage tests platform control before and during Warden pressure.

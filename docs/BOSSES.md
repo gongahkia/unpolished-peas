@@ -1,11 +1,9 @@
 # Warden validation encounter
 
-The Warden is the only boss in this prototype. It begins north-east of the
-player, outside the opening viewport, and is an interaction check rather than
-a health race. The minimap makes its approach route visible.
+Warden is the only boss. It waits on the raised east platform beyond the first camera view and is an interaction check, not a health race.
 
-In **measure**, the Warden raises a guard that only an actual long-staff release can open. It follows with projectile fans that Medium can sweep clear or pillars can block, then a sweep that Short can deflect or Mantis can counter; Bird can instead route through water.
+In **measure**, Warden raises a guard that only an actual charged Long release opens. Projectile fans reward Medium or solid cover. Its crushing sweep uses the same counter rules as ordinary melee: Short can deflect it and Mantis can expose a weak point. Bird can take the water route while keeping distance.
 
-Below 55% health, **echo trial** replaces that guard with an Echo seal: player attacks cannot break it, while an Echo attack can. The phase also signals a pounce lane toward the cracked wall, creating a Tiger shortcut and an opportunity to set up replayed crossfire. Phase changes, guard breaks and Mantis counters have deliberately stronger hitstop, trauma and effects.
+Below 55% health, **echo trial** raises an Echo seal: player attacks cannot open it; an Echo attack can. The phase also calls out the cracked wall/pounce lane, making Tiger an alternate approach and an Echo crossfire setup useful. Guard breaks, counters, and phase transitions have stronger hitstop, trauma, and effects.
 
-Restart the encounter with `F1` for rapid repeated playtests.
+Use `F1` to restart the full stage immediately for repeated playtests.
