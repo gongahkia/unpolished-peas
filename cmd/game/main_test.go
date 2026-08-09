@@ -17,3 +17,19 @@ func TestFollowCameraClampsToWorldBounds(t *testing.T) {
 		t.Fatalf("camera did not center inside the world: %+v", camera)
 	}
 }
+
+func TestAimLabelUsesCompassDirections(t *testing.T) {
+	for _, test := range []struct {
+		aim  sim.Vec
+		want string
+	}{
+		{sim.Vec{X: 1}, "E"},
+		{sim.Vec{Y: -1}, "N"},
+		{sim.Vec{X: -1, Y: 1}, "SW"},
+		{sim.Vec{}, "E"},
+	} {
+		if got := aimLabel(test.aim); got != test.want {
+			t.Fatalf("aimLabel(%+v) = %q, want %q", test.aim, got, test.want)
+		}
+	}
+}

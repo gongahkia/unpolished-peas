@@ -33,7 +33,7 @@ go run ./cmd/replaydump 72.replay.json
 
 The Warden begins beyond the starting viewport, so reaching the fight means choosing around water, through cover, or with a form-specific shortcut. It first demands a charged long-staff guard break, then switches to an Echo-only seal. Water, pillars, and the cracked wall create routes, cover, and form-specific opportunities. See `docs/ARENA.md` for the terrain layout and `docs/COMBAT.md` for the exact interactions.
 
-Staff visibility is stateful: a compact side-carried staff is brown when ready, its planned range is orange and dashed during windup, and its damaging line is bright yellow only during active frames. Recovery returns the staff to a compact muted blue-grey carry position. Long charge is orange—not damaging—and shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
+Staff visibility is stateful: a persistent cyan chevron and `AIM` compass label show direction independently of staff state. A compact side-carried staff is brown when ready, its planned range is orange and dashed during windup, and its damaging line is bright yellow only during active frames. Recovery returns the staff to a compact muted blue-grey carry position. Long charge is orange—not damaging—and shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
 
 ## Verification
 

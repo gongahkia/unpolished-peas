@@ -215,6 +215,7 @@ func drawScene(screen *ebiten.Image, s sim.RenderSnapshot) {
 	}
 	drawPlayerStaff(screen, s.Player)
 	drawGlyph(screen, formGlyph(s.Player.Form), s.Player.Pos, pc)
+	drawAimIndicator(screen, s.Player)
 	drawHealth(screen, s.Player.Pos.Add(sim.Vec{X: -20, Y: -28}), 40, s.Player.HP, s.Player.MaxHP, color.RGBA{R: 93, G: 230, B: 136, A: 255})
 	if s.Debug.Enabled {
 		drawDebugWorld(screen, s)
@@ -227,7 +228,6 @@ func drawPlayerStaff(screen *ebiten.Image, player sim.PlayerSnapshot) {
 		aim = sim.Vec{X: 1}
 	}
 	if player.Form != sim.FormMonkey {
-		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(player.Pos.X+aim.X*15), float32(player.Pos.Y+aim.Y*15), 1, color.RGBA{R: 126, G: 139, B: 157, A: 180}, true)
 		return
 	}
 	if player.Action == sim.ActionLongCharge {
@@ -236,6 +236,7 @@ func drawPlayerStaff(screen *ebiten.Image, player sim.PlayerSnapshot) {
 		end := player.Pos.Add(aim.Scale(player.LongRange))
 		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 4, color.RGBA{R: 246, G: 171, B: 83, A: 255}, true)
 		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 5, 1, color.RGBA{R: 255, G: 205, B: 92, A: 255}, true)
+		drawDirectionChevron(screen, end, aim, 8, color.RGBA{R: 255, G: 205, B: 92, A: 255}, 2)
 		return
 	}
 
@@ -253,9 +254,28 @@ func drawPlayerStaff(screen *ebiten.Image, player sim.PlayerSnapshot) {
 	case "active":
 		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), float32(max(3, int(player.AttackWidth/3))), color.RGBA{R: 255, G: 240, B: 154, A: 255}, true)
 		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 4, 1, color.RGBA{R: 255, G: 248, B: 205, A: 255}, true)
+		drawDirectionChevron(screen, end, aim, 8, color.RGBA{R: 255, G: 248, B: 205, A: 255}, 2)
 	case "recovery":
 		drawCarriedStaff(screen, player.Pos, aim, rest, color.RGBA{R: 112, G: 125, B: 145, A: 235}, 3)
 	}
+}
+
+func drawAimIndicator(screen *ebiten.Image, player sim.PlayerSnapshot) {
+	aim := player.Aim
+	if aim.LengthSq() == 0 {
+		aim = sim.Vec{X: 1}
+	}
+	tip := player.Pos.Add(aim.Scale(22))
+	drawDirectionChevron(screen, tip, aim, 8, color.RGBA{R: 102, G: 228, B: 255, A: 255}, 2)
+}
+
+func drawDirectionChevron(screen *ebiten.Image, tip, direction sim.Vec, size float64, c color.Color, width float32) {
+	side := sim.Vec{X: -direction.Y, Y: direction.X}
+	base := tip.Add(direction.Scale(-size))
+	left := base.Add(side.Scale(size * 0.55))
+	right := base.Add(side.Scale(-size * 0.55))
+	vector.StrokeLine(screen, float32(tip.X), float32(tip.Y), float32(left.X), float32(left.Y), width, c, true)
+	vector.StrokeLine(screen, float32(tip.X), float32(tip.Y), float32(right.X), float32(right.Y), width, c, true)
 }
 
 func drawCarriedStaff(screen *ebiten.Image, origin, aim sim.Vec, length float64, c color.Color, width float32) {
@@ -388,6 +408,7 @@ func formColor(f sim.FormID) color.Color {
 }
 func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec, paused bool, status string) {
 	text.Draw(screen, "72  |  WASD move  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
+	text.Draw(screen, "AIM "+aimLabel(s.Player.Aim), basicfont.Face7x13, 580, 15, color.RGBA{R: 102, G: 228, B: 255, A: 255})
 	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
 	text.Draw(screen, fmt.Sprintf("%s | %s", s.Player.Form, staffReadout(s.Player)), basicfont.Face7x13, 8, 342, staffReadoutColor(s.Player))
 	drawMinimap(screen, s, camera)
@@ -408,6 +429,24 @@ func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec, paused 
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
+}
+
+func aimLabel(aim sim.Vec) string {
+	if aim.LengthSq() == 0 {
+		return "E"
+	}
+	x, y := "", ""
+	if aim.X > 0.1 {
+		x = "E"
+	} else if aim.X < -0.1 {
+		x = "W"
+	}
+	if aim.Y > 0.1 {
+		y = "S"
+	} else if aim.Y < -0.1 {
+		y = "N"
+	}
+	return y + x
 }
 
 func drawMinimap(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec) {
