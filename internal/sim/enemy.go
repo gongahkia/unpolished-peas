@@ -21,6 +21,7 @@ type Enemy struct {
 	Kind           EnemyKind
 	Name           string
 	Pos, Velocity  Vec
+	Grounded       bool
 	Facing         Vec
 	Radius         float64
 	HP, MaxHP      int

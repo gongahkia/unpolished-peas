@@ -9,6 +9,8 @@ const (
 	ViewportH = 360
 	ArenaW    = 1280.0
 	ArenaH    = 720.0
+	Gravity   = 0.58
+	JumpSpeed = 10.2
 )
 
 // Vec is a simulation-space vector measured in logical pixels.

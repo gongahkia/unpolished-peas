@@ -8,6 +8,7 @@ type Clone struct {
 	Radius           float64
 	Form             FormID
 	Velocity         Vec
+	Grounded         bool
 	Delay, EchoIndex int
 	Frames           []InputFrame
 	Previous         InputFrame
