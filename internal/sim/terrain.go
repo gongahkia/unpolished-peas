@@ -34,7 +34,9 @@ func (t Terrain) solid() bool {
 }
 
 func (t Terrain) blocksProjectile() bool {
-	return t.Kind != TerrainWater && (t.Kind != TerrainBreakable || t.HP > 0)
+	// Landing platforms are permeable combat geometry. Full solids, rather
+	// than every walkable surface, create readable cover and line breaks.
+	return t.solid()
 }
 
 func validationTerrain() []Terrain {

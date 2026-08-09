@@ -1,6 +1,6 @@
 # 72
 
-`72` is a deterministic ASCII combat prototype built around one replayable 1280×720 arena and one boss. The 640×360 follow viewport and minimap make it a bounded combat world with routes and distance, not a campaign or open-world expansion.
+`72` is a deterministic ASCII Wukong platform-brawler prototype. It contains one bounded 1280×720 side-view stage, a 640×360 follow camera, and one replayable boss encounter. It is deliberately a combat slice, not a campaign, open world, or content framework.
 
 ## Run the validation encounter
 
@@ -11,7 +11,7 @@ sudo dnf install libXcursor-devel libXinerama-devel libXrandr-devel libXi-devel 
 go run ./cmd/game
 ```
 
-The application opens directly in the validation arena. `F1` restarts it immediately; `Enter` also retries after defeat. `F6` saves a deterministic recording to `72.replay.json`, which can be verified with:
+The game opens directly in the Warden validation stage. `F1` restarts it immediately; `Enter` retries after defeat. `F6` saves `72.replay.json`, which can be checked with:
 
 ```sh
 go run ./cmd/replaydump 72.replay.json
@@ -19,21 +19,23 @@ go run ./cmd/replaydump 72.replay.json
 
 ## Controls
 
-`WASD` moves. Arrow keys set combat aim independently, so movement does not turn the staff. `J` attacks and holds/releases the long staff; `K` dodges; `C` summons Echo. `1`/`2`/`3` select short, medium, or long staff. `Q` is Bird, `E` Tiger, `R` Mantis, and `0` returns to Monkey. `Tab` toggles combat debugging; `P` pauses and `.` advances one simulation tick. A connected gamepad uses the left stick for movement and right stick for aim.
+`A`/`D` run. `W` or `Space` jumps. Arrow keys aim the staff independently of movement: run one way while holding any attack direction. `J` attacks and holds/releases Long; `K` dodges; `C` summons Echo. `1`/`2`/`3` select Short, Medium, or Long. `Q` is Bird, `E` Tiger, `R` Mantis, and `0` returns to Monkey. `Tab` toggles collision/aim/Echo debug data; `P` pauses and `.` advances one tick.
 
-## The combat slice
+A gamepad uses the left stick to run and jump upward, and the right stick to aim. Attack/dodge still have to be mapped by the host or keyboard for now.
 
-- Short staff is a quick close-range deflecting strike with minimal recovery.
-- Medium staff is a three-step sweeping chain with growing coverage that can clear clustered projectile fans.
-- Long staff charges an extending line while movement is constrained, then releases a high-knockback attack with long recovery.
-- Bird crosses water, becomes tiny and fast, replaces staff attacks with a dive, and carries momentum back to Monkey.
-- Tiger replaces dodge/staff with a committed pounce that breaks armor and cracked walls.
-- Mantis replaces staff with a counter stance that exposes a long weak-point.
-- Echo waits briefly, then deterministically replays the previous two seconds of movement, aim, staff choices, transformations, and attacks from its own spawn point.
+## The platform-brawler slice
 
-The Warden begins beyond the starting viewport, so reaching the fight means choosing around water, through cover, or with a form-specific shortcut. It first demands a charged long-staff guard break, then switches to an Echo-only seal. Water, pillars, and the cracked wall create routes, cover, and form-specific opportunities. See `docs/ARENA.md` for the terrain layout and `docs/COMBAT.md` for the exact interactions.
+- Short is a fast close strike with a small, precise deflection window.
+- Medium is the conventional three-part Wukong sweep chain, useful for projectile fans and crowd space.
+- Long is a held directional extension. It constrains running while charging, then commits to a strong thrust/sweep with long recovery. It crosses water but stops at solid cover.
+- Bird replaces staff combat with a dive, has a tiny collision body, can repeatedly flap-jump and glide over water, and preserves flight momentum when returning to Monkey.
+- Tiger replaces staff and dodge with a committed pounce that breaks armor and cracked walls.
+- Mantis replaces staff combat with a precision counter stance that staggers and exposes a weak point.
+- Echo waits 20 ticks then deterministically replays the last two seconds of movement, jumps, aim, staff selections, forms, and attacks from its spawn position.
 
-Staff visibility is stateful: a persistent cyan chevron and `AIM` compass label show direction independently of staff state. A compact side-carried staff is brown when ready, its planned range is orange and dashed during windup, and its damaging line is bright yellow only during active frames. Recovery returns the staff to a compact muted blue-grey carry position. Long charge is orange—not damaging—and shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
+The stage is a vertical route across a water gap: landing platforms give the ordinary route, Bird can bypass the hazard, Tiger can open the cracked wall, pillars block lines, and the raised east platform holds the Warden. The Warden first requires a charged Long guard break and later an Echo strike. See [the arena layout](docs/ARENA.md) and [combat rules](docs/COMBAT.md).
+
+Combat visuals distinguish information from damage: the cyan chevron and `AIM` label are always-safe direction indicators; the compact brown/grey staff is only carried; orange dashes forecast windup; bright yellow full-length staff is damaging; orange Long extension is charging and non-damaging. The bottom readout names `READY`, `WINDUP`, `ACTIVE`, `RECOVERY`, or `CHARGING`.
 
 ## Verification
 
@@ -49,8 +51,8 @@ make wasm
 
 ## Layout
 
-- `cmd/game`: direct validation-arena input adapter and primitive renderer.
-- `internal/sim`: deterministic 60 Hz arena simulation and replay hashing.
+- `cmd/game`: direct validation-stage input adapter and ASCII/primitive renderer.
+- `internal/sim`: deterministic 60 Hz platform physics, combat, and replay hashing.
 - `data/bosses`: the single linted Warden encounter contract.
 - `internal/bossdsl`: parser and validator retained for `bosslint`.
-- `docs`: current arena, mechanics, replay, and verification notes.
+- `docs`: current stage, mechanics, replay, and verification notes.

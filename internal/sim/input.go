@@ -6,13 +6,13 @@ type InputFrame struct {
 	MoveX      int8
 	AimX, AimY int8
 	Jump       bool
-	Attack       bool
-	Dodge        bool
-	Clone        bool
-	Staff        StaffLength
-	Transform    FormID
-	Restart      bool
-	DebugStep    bool
+	Attack     bool
+	Dodge      bool
+	Clone      bool
+	Staff      StaffLength
+	Transform  FormID
+	Restart    bool
+	DebugStep  bool
 }
 
 type StaffLength uint8

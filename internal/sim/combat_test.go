@@ -61,6 +61,22 @@ func TestPlatformLandingAndJump(t *testing.T) {
 	}
 }
 
+func TestOneWayPlatformCatchesBodiesWithoutBlockingCombatLines(t *testing.T) {
+	world := NewWorld(22)
+	world.Terrain = []Terrain{
+		{ID: 1, Kind: TerrainWall, Bounds: Rect{X: 0, Y: 650, W: ArenaW, H: 70}},
+		{ID: 2, Kind: TerrainPlatform, Bounds: Rect{X: 80, Y: 500, W: 220, H: 20}},
+	}
+	world.Player.Pos = Vec{X: 140, Y: 400}
+	step(world, InputFrame{}, 20)
+	if !world.Player.Grounded || world.Player.Pos.Y != 491 {
+		t.Fatalf("one-way platform did not catch falling player: pos=%+v grounded=%t", world.Player.Pos, world.Player.Grounded)
+	}
+	if blocked, _ := world.firstProjectileBlock(Vec{X: 90, Y: 510}, Vec{X: 290, Y: 510}); blocked {
+		t.Fatal("one-way platform incorrectly blocked a combat line")
+	}
+}
+
 func TestStaffLengthsHaveDistinctTimingAndReach(t *testing.T) {
 	if short, medium := shortSpec(), mediumSpec(0); short.Total() >= medium.Total() || short.Range >= medium.Range || short.Recovery >= medium.Recovery {
 		t.Fatalf("short staff is not a fast close tool: short=%+v medium=%+v", short, medium)
