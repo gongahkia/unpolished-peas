@@ -2,6 +2,7 @@ package sim
 
 import (
 	"fmt"
+	"path/filepath"
 	"testing"
 )
 
@@ -17,6 +18,13 @@ func TestRunsAreDeterministicReadableAndComplete(t *testing.T) {
 		layout := GenerateRun(seed)
 		if !layout.Valid || len(layout.Rooms) != RoomCount || len(layout.Spawns) < RoomCount-1 {
 			t.Fatalf("seed %d generated an invalid run: %+v", seed, layout)
+		}
+		seen := [3]bool{}
+		for _, spawn := range layout.Spawns {
+			seen[spawn.Archetype] = true
+		}
+		if !seen[EnemyCharger] || !seen[EnemyHopper] || !seen[EnemyDiver] {
+			t.Fatalf("seed %d omitted an enemy archetype: %v", seed, seen)
 		}
 	}
 }
@@ -79,10 +87,53 @@ func TestRunReplayStaysDeterministic(t *testing.T) {
 	}
 }
 
+func TestRunReplayPersistsAndVerifiesFromDisk(t *testing.T) {
+	world := NewRunWorld(0x75)
+	replay := NewReplay(world.Seed)
+	for tick := 0; tick < 90; tick++ {
+		input := InputFrame{MoveX: 1, AimX: 1}
+		if tick == 8 || tick == 46 {
+			input.Jump = true
+		}
+		replay.Record(world, input)
+	}
+	path := filepath.Join(t.TempDir(), "run.replay.json")
+	if err := SaveReplay(path, replay); err != nil {
+		t.Fatalf("SaveReplay: %v", err)
+	}
+	loaded, err := LoadReplay(path)
+	if err != nil {
+		t.Fatalf("LoadReplay: %v", err)
+	}
+	played, err := loaded.PlayRun()
+	if err != nil {
+		t.Fatalf("saved run replay diverged: %v", err)
+	}
+	if played.StateHash() != world.StateHash() {
+		t.Fatalf("loaded replay final hash mismatch: got %x want %x", played.StateHash(), world.StateHash())
+	}
+}
+
+func TestStateHashCoversStoredAimAndEdgeInput(t *testing.T) {
+	left, right := NewRunWorld(0x73), NewRunWorld(0x73)
+	left.Player.Aim = Vec{X: -1}
+	if left.StateHash() == right.StateHash() {
+		t.Fatal("state hash ignored stored throw aim")
+	}
+
+	left, right = NewRunWorld(0x74), NewRunWorld(0x74)
+	left.Hitstop, right.Hitstop = 1, 1
+	left.Step(InputFrame{Throw: true})
+	right.Step(InputFrame{})
+	if left.StateHash() == right.StateHash() {
+		t.Fatal("state hash ignored prior edge-trigger input during hitstop")
+	}
+}
+
 func runFingerprint(layout RunLayout) string {
 	fingerprint := layout.String()
 	for _, room := range layout.Rooms {
-		fingerprint += fmt.Sprintf("/r%d/%d/%d/%d", room.Index, room.Template, room.Variant, room.ThreatBudget)
+		fingerprint += fmt.Sprintf("/r%d/%d/%d", room.Index, room.Template, room.ThreatBudget)
 	}
 	for _, terrain := range layout.Terrain {
 		fingerprint += fmt.Sprintf("/t%d/%d/%d,%d,%d,%d", terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
@@ -95,3 +146,5 @@ func runFingerprint(layout RunLayout) string {
 	}
 	return fingerprint
 }
+
+func q(value float64) int64 { return int64(value * 1000) }

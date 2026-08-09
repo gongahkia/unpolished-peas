@@ -17,7 +17,6 @@ func TestPlayerVisualMapsEveryTraversalStateToItsOwnPose(t *testing.T) {
 		{sim.TraversalAirborne, 4},
 		{sim.TraversalWallCling, 10},
 		{sim.TraversalRolling, 8},
-		{sim.TraversalClimbing, 12},
 		{sim.TraversalDiving, 15},
 		{sim.TraversalLedgeGrab, 13},
 		{sim.TraversalMantling, 14},

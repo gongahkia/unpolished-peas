@@ -1,14 +1,12 @@
 package sim
 
-import (
-	"fmt"
-	"testing"
-)
+import "testing"
 
 func testTraversalWorld() *World {
-	w := NewLabWorld(99)
+	w := NewRunWorld(99)
 	w.Terrain = []Terrain{{ID: 1, Kind: TerrainSolid, Bounds: Rect{X: 0, Y: 500, W: ArenaW, H: 220}}}
 	w.Objects = nil
+	w.Enemies = nil
 	w.Player = newPlayer()
 	w.Player.Pos = Vec{X: 120, Y: 489}
 	w.Player.Grounded = true
@@ -22,27 +20,11 @@ func step(world *World, input InputFrame, count int) {
 	}
 }
 
-func TestMovementLabsAreDeterministicAndComplete(t *testing.T) {
-	first, second := GenerateMovementLab(0x72), GenerateMovementLab(0x72)
-	if !first.Valid || labFingerprint(first) != labFingerprint(second) {
-		t.Fatalf("same seed did not generate a stable valid lab: %s / %s", first, second)
-	}
-	if labFingerprint(first) == labFingerprint(GenerateMovementLab(0x73)) {
-		t.Fatal("different seeds produced identical lab geometry")
-	}
-	for seed := uint64(1); seed <= 1024; seed++ {
-		layout := GenerateMovementLab(seed)
-		if !layout.Valid || len(layout.Modules) != 8 || len(layout.Objects) < 8 {
-			t.Fatalf("seed %d generated an invalid movement lab: %+v", seed, layout)
-		}
-	}
-}
-
-func TestFreshLabHasASafeIdleStart(t *testing.T) {
-	world := NewLabWorld(0x72)
+func TestFreshRunHasASafeIdleStart(t *testing.T) {
+	world := NewRunWorld(0x72)
 	step(world, InputFrame{}, 180)
 	if world.Lost || world.Won || !world.Player.Grounded {
-		t.Fatalf("fresh movement lab did not preserve a safe idle start: player=%+v lost=%t won=%t", world.Player, world.Lost, world.Won)
+		t.Fatalf("fresh run did not preserve a safe idle start: player=%+v lost=%t won=%t", world.Player, world.Lost, world.Won)
 	}
 }
 
@@ -93,7 +75,7 @@ func TestRollFitsLowTunnelAndDropPassesPlatform(t *testing.T) {
 	}
 }
 
-func TestWallSlideLedgeGrabAndClimbableObjects(t *testing.T) {
+func TestWallSlideAndLedgeGrabStayPredictable(t *testing.T) {
 	world := testTraversalWorld()
 	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 360, W: 24, H: 140}})
 	world.Player.Pos, world.Player.Grounded, world.Player.Velocity = Vec{X: 172, Y: 440}, false, Vec{Y: 3}
@@ -106,12 +88,7 @@ func TestWallSlideLedgeGrabAndClimbableObjects(t *testing.T) {
 	if world.Player.Velocity.X >= 0 || world.Player.Velocity.Y >= 0 || world.Player.WallTicks != 0 {
 		t.Fatalf("wall-jump grace did not preserve a late jump: %+v", world.Player)
 	}
-	world.Objects = append(world.Objects, WorldObject{ID: 1, Kind: ObjectVine, Pos: Vec{X: 240, Y: 440}, Size: Vec{X: 10, Y: 120}})
-	world.Player.Pos, world.Player.Velocity, world.Player.Grounded = Vec{X: 240, Y: 450}, Vec{}, false
-	world.Step(InputFrame{Jump: true})
-	if world.Player.State != TraversalClimbing || world.Player.ClimbObjectID != 1 {
-		t.Fatalf("vine did not enter climb state: %+v", world.Player)
-	}
+
 	world = testTraversalWorld()
 	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 420, W: 36, H: 80}})
 	world.Player.Pos, world.Player.Velocity, world.Player.Grounded = Vec{X: 170, Y: 430}, Vec{Y: 3}, false
@@ -145,17 +122,15 @@ func TestLedgeGrabUsesTheWallThatBlockedMovement(t *testing.T) {
 	}
 }
 
-func TestDownJumpStartsSmash(t *testing.T) {
+func TestDownJumpStartsSmashAndBreaksFloor(t *testing.T) {
 	world := testTraversalWorld()
 	world.Player.Pos, world.Player.Grounded, world.Player.State, world.Player.Velocity = Vec{X: 120, Y: 400}, false, TraversalAirborne, Vec{}
 	world.Step(InputFrame{Down: true, Jump: true})
 	if world.Player.State != TraversalDiving || world.Player.Velocity.Y < 6 || world.Player.JumpBuffer != 0 {
 		t.Fatalf("down+jump did not start a committed downward smash: %+v", world.Player)
 	}
-}
 
-func TestDiveBreaksFloorAndVineActivates(t *testing.T) {
-	world := testTraversalWorld()
+	world = testTraversalWorld()
 	world.Terrain = []Terrain{{ID: 2, Kind: TerrainBreakable, Bounds: Rect{X: 100, Y: 500, W: 60, H: 30}, HP: 1}}
 	world.Player.Pos, world.Player.Velocity, world.Player.State = Vec{X: 120, Y: 480}, Vec{Y: 7}, TraversalDiving
 	world.Player.Grounded = false
@@ -163,51 +138,16 @@ func TestDiveBreaksFloorAndVineActivates(t *testing.T) {
 	if world.Terrain[0].HP != 0 || world.Player.Grounded {
 		t.Fatalf("dive did not break through marked floor: terrain=%+v player=%+v", world.Terrain[0], world.Player)
 	}
-
-	world = NewLabWorld(5)
-	var node *WorldObject
-	for index := range world.Objects {
-		if world.Objects[index].Kind == ObjectVineNode {
-			node = &world.Objects[index]
-			break
-		}
-	}
-	if node == nil {
-		t.Fatal("lab omitted vine node")
-	}
-	world.Player.Pos = node.Pos
-	world.Step(InputFrame{Interact: true})
-	if !node.Active || world.nearClimbable(node.Pos) == nil {
-		t.Fatalf("vine interaction did not create a climbable route: node=%+v objects=%+v", node, world.Objects)
-	}
 }
 
-func TestObjectsLinkCarryThrowTeleportAndTether(t *testing.T) {
-	world := NewLabWorld(7)
-	var crate, plate, door, teleporter, remote *WorldObject
-	for index := range world.Objects {
-		object := &world.Objects[index]
-		switch object.Kind {
-		case ObjectCrate:
-			crate = object
-		case ObjectPlate:
-			plate = object
-		case ObjectDoor:
-			if door == nil {
-				door = object
-			}
-		case ObjectTeleporter:
-			teleporter = object
-		case ObjectSwitch:
-			remote = object
-		}
-	}
-	if crate == nil || plate == nil || door == nil || teleporter == nil || remote == nil {
-		t.Fatalf("required lab objects missing: %+v", world.Objects)
-	}
-	crate.Pos = plate.Pos
+func TestObjectsLinkCarryAndThrow(t *testing.T) {
+	world := testTraversalWorld()
+	crate := WorldObject{ID: 1, Kind: ObjectCrate, Pos: Vec{X: 200, Y: 486}, Size: Vec{X: 22, Y: 28}}
+	plate := WorldObject{ID: 2, Kind: ObjectPlate, Pos: Vec{X: 200, Y: 496}, Size: Vec{X: 42, Y: 8}}
+	door := WorldObject{ID: 3, Kind: ObjectDoor, Pos: Vec{X: 270, Y: 462}, Size: Vec{X: 28, Y: 76}, LinkID: plate.ID}
+	world.Objects = []WorldObject{crate, plate, door}
 	world.updateLinks()
-	if !door.Active {
+	if !world.Objects[2].Active {
 		t.Fatal("pressure plate did not open linked door")
 	}
 
@@ -218,26 +158,13 @@ func TestObjectsLinkCarryThrowTeleportAndTether(t *testing.T) {
 	}
 	world.Step(InputFrame{})
 	world.Step(InputFrame{Throw: true, AimX: 1})
-	if world.Player.HeldObjectID >= 0 || crate.Held || crate.Vel.X <= 0 {
-		t.Fatalf("throw did not release carried object: player=%+v crate=%+v", world.Player, crate)
-	}
-
-	world.Player.Pos = teleporter.Pos
-	world.Step(InputFrame{Interact: true})
-	if world.Player.Pos == teleporter.Pos {
-		t.Fatal("teleporter did not move player")
-	}
-	world.Player.Pos = remote.Pos
-	world.Player.Tether = TetherState{Active: true, Pos: remote.Pos}
-	world.Step(InputFrame{})
-	world.Step(InputFrame{Interact: true})
-	if !remote.Active {
-		t.Fatal("tether did not activate remote switch")
+	if world.Player.HeldObjectID >= 0 || world.Objects[0].Held || world.Objects[0].Vel.X <= 0 || world.Stats.ObjectsThrown != 1 {
+		t.Fatalf("throw did not release carried object: player=%+v crate=%+v stats=%+v", world.Player, world.Objects[0], world.Stats)
 	}
 }
 
-func TestMovementReplayStaysDeterministic(t *testing.T) {
-	world := NewLabWorld(99)
+func TestTraversalReplayStaysDeterministic(t *testing.T) {
+	world := NewRunWorld(99)
 	replay := NewReplay(world.Seed)
 	for tick := 0; tick < 90; tick++ {
 		input := InputFrame{MoveX: 1, AimX: 1}
@@ -247,35 +174,16 @@ func TestMovementReplayStaysDeterministic(t *testing.T) {
 		if tick == 30 {
 			input.Down, input.Jump = true, true
 		}
-		if tick == 40 {
-			input.Tether = true
-		}
 		replay.Record(world, input)
 	}
-	if _, err := replay.PlayLab(); err != nil {
-		t.Fatalf("movement replay diverged: %v", err)
+	if _, err := replay.PlayRun(); err != nil {
+		t.Fatalf("traversal replay diverged: %v", err)
 	}
 	before := world.StateHash()
 	for range 10 {
 		_ = world.Snapshot()
 	}
 	if world.StateHash() != before {
-		t.Fatal("render snapshots mutated deterministic lab state")
+		t.Fatal("render snapshots mutated deterministic run state")
 	}
 }
-
-func labFingerprint(layout LabLayout) string {
-	fingerprint := layout.String()
-	for _, module := range layout.Modules {
-		fingerprint += fmt.Sprintf("/m%d/%d/%d", module.Kind, q(module.Bounds.X), module.Variant)
-	}
-	for _, terrain := range layout.Terrain {
-		fingerprint += fmt.Sprintf("/t%d/%d/%d,%d,%d,%d", terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
-	}
-	for _, object := range layout.Objects {
-		fingerprint += fmt.Sprintf("/o%d/%d/%d,%d/%d,%d/%d", object.ID, object.Kind, q(object.Pos.X), q(object.Pos.Y), q(object.Size.X), q(object.Size.Y), object.LinkID)
-	}
-	return fingerprint
-}
-
-func q(value float64) int64 { return int64(value * 1000) }
