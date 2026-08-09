@@ -1,7 +1,7 @@
-# Procedural movement labs
+# Procedural runs
 
-`GenerateMovementLab(seed)` uses a local RNG that is separate from simulation state. The generator creates a fixed movement syllabus rather than unconstrained noise: every lab contains all eight trial modules and a safe start/exit, while variants move ledges, nodes, teleport endpoints, and local obstacles.
+`GenerateRun(seed)` uses a local RNG that is separate from simulation state. It shuffles ten authored room templates, chooses controlled room variants and encounter archetypes, then places objects and optional treasure. It does not synthesize arbitrary tiles or precision challenges.
 
-Validation rejects malformed bounds, absent module types, invalid object dimensions, unresolved door links, and an invalid start/exit. Regression tests generate and validate 1,024 seeds, then compare same-seed fingerprints.
+Validation rejects malformed room bounds, absent templates, unsafe object/enemy positions, unresolved door-to-plate links, missing floor routes, inadequate treasure coverage, and an invalid final exit. Regression tests generate and validate 1,024 seeds, compare same-seed fingerprints, and check entry/exit safety across 128 seeds.
 
-This deliberately favors comprehensible test variation over a content-expanding campaign generator. The important question is whether a physics change makes every generated relationship more or less interesting.
+This deliberately favors readable variation over content volume. The generator guarantees a basic route; the player-authored decision is whether to take the higher, riskier opportunity around it.

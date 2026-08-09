@@ -1,9 +1,9 @@
-# Movement-lab playtest focus
+# Danger-playground playtest focus
 
-Do not restore combat, transformations, enemies, bosses, loot, or progression until repeated human tests answer these questions:
+Do not add bosses, transformations, weapons, progression, more biomes, or production art until repeated human tests answer these questions:
 
-- Does the run/jump/double-jump/wall-slide/ledge-grab/roll system feel precise without becoming automatic?
-- Are crouching, roll tunnels, platform drops, downward smashes, vines, and teleporters individually legible?
-- Do crates, rocks, pressure plates, doors, and the tether produce deliberate physical solutions rather than busywork?
-- Do seed variations remain recognizable enough to compare movement changes?
-- Does the debug HUD explain a failure without replacing player-facing readability?
+- Does the player start moving immediately and understand room danger without pausing to solve a puzzle?
+- Do chargers, hoppers, and divers have distinct readable behavior before they become overwhelming?
+- Does optional treasure create temptation rather than compulsory cleanup?
+- Do rocks, crates, fragile walls, spikes, plates, and doors produce useful improvisation?
+- Does restarting a new seed feel worth doing with no metaprogression?

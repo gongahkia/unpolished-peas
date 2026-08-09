@@ -1,7 +1,7 @@
 .PHONY: run test vet fmt build wasm bosslint
 
 run:
-	go run ./cmd/game
+	go run ./cmd/game --mode=playtest
 
 test:
 	go test ./...

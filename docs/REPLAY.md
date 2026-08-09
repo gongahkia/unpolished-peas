@@ -1,5 +1,5 @@
 # Replay
 
-`72.replay.json` stores a movement-lab seed, every `InputFrame`, and a state hash after every tick. Replay version `72-lab-2` reconstructs `NewLabWorld(seed)` and stops at the first mismatched hash. Earlier replay files are deliberately rejected because the input contract and traversal state changed.
+`72.replay.json` stores a run seed, every `InputFrame`, and a state hash after every tick. Replay version `72-run-2` reconstructs `NewRunWorld(seed)` and stops at the first mismatched hash. Earlier movement-lab and run replay files are deliberately rejected because the generator and simulation contract changed.
 
-The hash includes generated geometry, mutable breakables, all object positions/links, player traversal state (including wall grace and ledge targets), carried-object state, and tether state. Rendering, camera position, and debug presentation are excluded.
+The hash includes generated geometry, mutable breakables, object positions/links, all enemy state, player traversal state (including wall grace and ledge targets), run statistics, carried-object state, and hitstop. Rendering, camera position, impact-burst presentation, and debug presentation are excluded.

@@ -1,7 +1,7 @@
-# Movement laboratory
+# Danger playground
 
-The playable world is a continuous 3200×720 laboratory under a 640×360 follow camera. It has a safe ground route plus optional physical trials above or beside it, so a failed movement experiment is quickly repeatable instead of ending a full run.
+The playable world is a continuous 6400×720, ten-room run under a 640×360 follow camera. Every room has an immediately readable floor-level route and a safe entrance/exit area; elevated platforms, fragile walls, spikes, enemies, and treasure create optional risk.
 
-The seed produces a required sequence of jump, roll, wall/ledge, vine, carry, teleport, slam, and tether modules. It varies platform heights, object offsets, and local lane geometry while preserving a start, exit, and valid linked-object references.
+The generator shuffles ten authored topology types: open, stairs, split, ridge, hazard bridge, breakout, column, pocket, descent, and finale. Population then adds a small encounter budget, physical objects, and greed opportunities. The final room contains the exit.
 
-The course includes low tunnels, one-way platforms, wall-slide and ledge-grab routes, activated vines, movable crates/rocks, pressure plates and doors, breakable floors, teleport pairs, water/pit hazards, a remote switch, and a final exit. These are functional world rules, not decoration.
+The active terrain vocabulary is solid, platform, breakable, and spike hazard. Crates and rocks can be carried, thrown, knocked by chargers, used on plates, or lost to hazards. These are functional world rules, not decoration.
