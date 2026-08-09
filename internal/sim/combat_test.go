@@ -65,6 +65,22 @@ func TestStaffLengthsHaveDistinctTimingAndReach(t *testing.T) {
 	}
 }
 
+func TestSnapshotExposesStaffPhaseAndChargeForecast(t *testing.T) {
+	world := NewWorld(14)
+	world.Step(InputFrame{Staff: StaffShort, AimX: 1, Attack: true})
+	snapshot := world.Snapshot().Player
+	if snapshot.Action != ActionShort || snapshot.AttackStartup != shortSpec().Startup || snapshot.AttackActive != shortSpec().Active || snapshot.AttackRecovery != shortSpec().Recovery {
+		t.Fatalf("snapshot omitted short-staff phase information: %+v", snapshot)
+	}
+
+	world = NewWorld(15)
+	world.Step(InputFrame{Staff: StaffLong, AimX: 1, Attack: true})
+	snapshot = world.Snapshot().Player
+	if snapshot.Action != ActionLongCharge || snapshot.LongCharge == 0 || snapshot.LongRange <= 28 {
+		t.Fatalf("snapshot omitted long-staff charge forecast: %+v", snapshot)
+	}
+}
+
 func TestMediumBuffersIntoItsNextSweep(t *testing.T) {
 	world := NewWorld(10)
 	world.Step(InputFrame{Staff: StaffMedium, AimX: 1, Attack: true})
