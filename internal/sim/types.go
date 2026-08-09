@@ -14,12 +14,12 @@ type Vec struct {
 	X, Y float64
 }
 
-func (v Vec) Add(other Vec) Vec      { return Vec{v.X + other.X, v.Y + other.Y} }
-func (v Vec) Sub(other Vec) Vec      { return Vec{v.X - other.X, v.Y - other.Y} }
-func (v Vec) Scale(s float64) Vec    { return Vec{v.X * s, v.Y * s} }
-func (v Vec) Dot(other Vec) float64  { return v.X*other.X + v.Y*other.Y }
-func (v Vec) LengthSq() float64      { return v.Dot(v) }
-func (v Vec) Length() float64        { return math.Sqrt(v.LengthSq()) }
+func (v Vec) Add(other Vec) Vec          { return Vec{v.X + other.X, v.Y + other.Y} }
+func (v Vec) Sub(other Vec) Vec          { return Vec{v.X - other.X, v.Y - other.Y} }
+func (v Vec) Scale(s float64) Vec        { return Vec{v.X * s, v.Y * s} }
+func (v Vec) Dot(other Vec) float64      { return v.X*other.X + v.Y*other.Y }
+func (v Vec) LengthSq() float64          { return v.Dot(v) }
+func (v Vec) Length() float64            { return math.Sqrt(v.LengthSq()) }
 func (v Vec) Distance(other Vec) float64 { return v.Sub(other).Length() }
 
 func (v Vec) Normalized() Vec {

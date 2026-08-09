@@ -2,15 +2,15 @@ package sim
 
 // FormRules are gameplay rules, intentionally not merely damage modifiers.
 type FormRules struct {
-	Radius          float64
-	MoveMultiplier  float64
-	StaffScale      float64
+	Radius           float64
+	MoveMultiplier   float64
+	StaffScale       float64
 	DamageMultiplier float64
-	HazardImmune    bool
-	Untargetable    bool
-	CanMove         bool
-	CanAttack       bool
-	CounterTicks    int
+	HazardImmune     bool
+	Untargetable     bool
+	CanMove          bool
+	CanAttack        bool
+	CounterTicks     int
 }
 
 func rulesFor(form FormID) FormRules {

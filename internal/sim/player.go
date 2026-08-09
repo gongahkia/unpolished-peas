@@ -36,34 +36,34 @@ func (a AttackSpec) Total() int { return a.Startup + a.Active + a.Recovery }
 
 // Player is the complete mutable state for Wukong.
 type Player struct {
-	Pos, Velocity       Vec
-	Facing              Vec
-	HP, MaxHP           int
-	Form                FormID
-	Staff               StaffLength
-	Action              Action
-	ActionTick          int
-	Combo               int
-	AttackBuffer        int
-	DodgeCooldown       int
-	Invulnerable        int
-	TransformCooldown   int
-	CloneCooldown       int
-	Stagger             int
-	CounterWindow       int
-	LastAttackSpec      AttackSpec
-	AttackHitIDs        map[int]bool
-	Deaths              int
+	Pos, Velocity     Vec
+	Facing            Vec
+	HP, MaxHP         int
+	Form              FormID
+	Staff             StaffLength
+	Action            Action
+	ActionTick        int
+	Combo             int
+	AttackBuffer      int
+	DodgeCooldown     int
+	Invulnerable      int
+	TransformCooldown int
+	CloneCooldown     int
+	Stagger           int
+	CounterWindow     int
+	LastAttackSpec    AttackSpec
+	AttackHitIDs      map[int]bool
+	Deaths            int
 }
 
 func newPlayer() Player {
 	return Player{
-		Pos:         Vec{X: ArenaW / 2, Y: ArenaH / 2},
-		Facing:      Vec{X: 1},
-		HP:          100,
-		MaxHP:       100,
-		Form:        FormMonkey,
-		Staff:       StaffMedium,
+		Pos:          Vec{X: ArenaW / 2, Y: ArenaH / 2},
+		Facing:       Vec{X: 1},
+		HP:           100,
+		MaxHP:        100,
+		Form:         FormMonkey,
+		Staff:        StaffMedium,
 		AttackHitIDs: make(map[int]bool),
 	}
 }
