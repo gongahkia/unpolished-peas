@@ -1,6 +1,8 @@
 # Warden validation encounter
 
-The Warden is the only boss in this prototype. It is an interaction check, not a health race.
+The Warden is the only boss in this prototype. It begins north-east of the
+player, outside the opening viewport, and is an interaction check rather than
+a health race. The minimap makes its approach route visible.
 
 In **measure**, the Warden raises a guard that only an actual long-staff release can open. It follows with projectile fans that Medium can sweep clear or pillars can block, then a sweep that Short can deflect or Mantis can counter; Bird can instead route through water.
 
