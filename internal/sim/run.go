@@ -5,7 +5,7 @@ import (
 	"math"
 )
 
-const RunVersion = "72-run-1"
+const RunVersion = "72-run-2"
 
 type RoomTemplate uint8
 
@@ -152,9 +152,15 @@ func GenerateRun(seed uint64) RunLayout {
 		layout.Terrain = append(layout.Terrain, Terrain{ID: nextTerrainID, Kind: kind, Bounds: bounds, HP: hp})
 		nextTerrainID++
 	}
-	addObject := func(kind ObjectKind, pos, size Vec) {
+	addObject := func(kind ObjectKind, pos, size Vec) int {
+		id := nextObjectID
 		layout.Objects = append(layout.Objects, WorldObject{ID: nextObjectID, Kind: kind, Pos: pos, Size: size})
 		nextObjectID++
+		return id
+	}
+	linkObjects := func(sourceID, targetID int) {
+		layout.Objects[sourceID-1].LinkID = targetID
+		layout.Objects[targetID-1].LinkID = sourceID
 	}
 	addSpawn := func(room int, archetype EnemyArchetype, pos Vec) {
 		layout.Spawns = append(layout.Spawns, EnemySpawn{Room: room, Archetype: archetype, Pos: pos})
@@ -172,7 +178,7 @@ func GenerateRun(seed uint64) RunLayout {
 			ThreatBudget: runThreatBudget(index, template),
 		}
 		layout.Rooms = append(layout.Rooms, room)
-		populateRoom(room, addTerrain, addObject, addSpawn)
+		populateRoom(room, addTerrain, addObject, linkObjects, addSpawn)
 		populateRoomEncounters(room, rng, layout.Terrain, addSpawn)
 	}
 	addObject(ObjectExit, layout.Exit, Vec{X: 34, Y: 48})
@@ -193,7 +199,7 @@ func runThreatBudget(index int, template RoomTemplate) int {
 	return 2
 }
 
-func populateRoom(room RunRoom, addTerrain func(TerrainKind, Rect, int), addObject func(ObjectKind, Vec, Vec), addSpawn func(int, EnemyArchetype, Vec)) {
+func populateRoom(room RunRoom, addTerrain func(TerrainKind, Rect, int), addObject func(ObjectKind, Vec, Vec) int, linkObjects func(int, int), addSpawn func(int, EnemyArchetype, Vec)) {
 	x := room.Bounds.X
 	platform := func(localX, y, width float64) {
 		addTerrain(TerrainPlatform, Rect{X: x + localX, Y: y, W: width, H: 16}, 0)
@@ -263,6 +269,9 @@ func populateRoom(room RunRoom, addTerrain func(TerrainKind, Rect, int), addObje
 		spikes(436, 558, 54)
 		treasure(466, 456)
 		crate(346)
+		plateID := addObject(ObjectPlate, Vec{X: x + 394, Y: 646}, Vec{X: 42, Y: 8})
+		doorID := addObject(ObjectDoor, Vec{X: x + 550, Y: 612}, Vec{X: 28, Y: 76})
+		linkObjects(plateID, doorID)
 	case RoomDescent:
 		platform(168, 556, 110)
 		platform(330, 600, 92)
@@ -330,12 +339,19 @@ func runValidationIssue(layout *RunLayout) string {
 			return fmt.Sprintf("missing template %s", template)
 		}
 	}
+	objects := make(map[int]WorldObject, len(layout.Objects))
 	for _, object := range layout.Objects {
 		if object.ID == 0 || object.Size.X <= 0 || object.Size.Y <= 0 || object.Pos.X < 0 || object.Pos.X > ArenaW || !runPositionClear(layout.Terrain, object.Pos) {
 			return fmt.Sprintf("object %d (%s) is invalid at %+v", object.ID, object.Kind, object.Pos)
 		}
+		objects[object.ID] = object
 		if object.Kind == ObjectTreasure {
 			treasureRooms[int(object.Pos.X/RoomW)] = true
+		}
+	}
+	for _, object := range layout.Objects {
+		if object.Kind == ObjectDoor && objects[object.LinkID].Kind != ObjectPlate {
+			return fmt.Sprintf("door %d has no linked plate", object.ID)
 		}
 	}
 	if len(treasureRooms) < RoomCount-2 {

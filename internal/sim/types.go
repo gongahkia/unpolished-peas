@@ -22,6 +22,14 @@ type Vec struct {
 	X, Y float64
 }
 
+// ImpactState is presentation data copied from deterministic collision events.
+// It never changes movement, generation, or replay outcomes.
+type ImpactState struct {
+	Pos      Vec
+	Ticks    int
+	Strength float64
+}
+
 func (v Vec) Add(other Vec) Vec          { return Vec{v.X + other.X, v.Y + other.Y} }
 func (v Vec) Sub(other Vec) Vec          { return Vec{v.X - other.X, v.Y - other.Y} }
 func (v Vec) Scale(s float64) Vec        { return Vec{v.X * s, v.Y * s} }

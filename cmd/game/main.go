@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"image/color"
 	"log"
@@ -200,6 +201,10 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *pla
 	for _, object := range snapshot.Objects {
 		drawObject(screen, object)
 	}
+	for _, enemy := range snapshot.Enemies {
+		drawEnemy(screen, enemy, snapshot.Tick)
+	}
+	drawImpact(screen, snapshot.Impact, snapshot.Tick)
 	p := snapshot.Player
 	if p.Tether.Active {
 		vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Tether.Pos.X), float32(p.Tether.Pos.Y), 1, color.RGBA{R: 116, G: 228, B: 246, A: 255}, true)
@@ -239,9 +244,52 @@ func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
 		}
 	case sim.ObjectExit:
 		c, glyph = color.RGBA{R: 108, G: 240, B: 158, A: 255}, ">"
+	case sim.ObjectTreasure:
+		c, glyph = color.RGBA{R: 255, G: 204, B: 89, A: 255}, "*"
 	}
 	vector.DrawFilledRect(screen, float32(bounds.X), float32(bounds.Y), float32(bounds.W), float32(bounds.H), c, false)
 	drawGlyph(screen, glyph, object.Pos, color.RGBA{R: 15, G: 17, B: 21, A: 255})
+}
+
+func drawEnemy(screen *ebiten.Image, enemy sim.EnemySnapshot, tick uint64) {
+	bounds := sim.Rect{X: enemy.Pos.X - enemy.Size.X/2, Y: enemy.Pos.Y - enemy.Size.Y/2, W: enemy.Size.X, H: enemy.Size.Y}
+	c := color.RGBA{R: 235, G: 116, B: 94, A: 255}
+	glyph := ">"
+	switch enemy.Archetype {
+	case sim.EnemyHopper:
+		c, glyph = color.RGBA{R: 139, G: 235, B: 122, A: 255}, "^"
+		vector.DrawFilledCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Size.X/2), c, true)
+	case sim.EnemyDiver:
+		c, glyph = color.RGBA{R: 192, G: 130, B: 246, A: 255}, "v"
+		vector.DrawFilledCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Size.X/2), c, true)
+	default:
+		vector.DrawFilledRect(screen, float32(bounds.X), float32(bounds.Y), float32(bounds.W), float32(bounds.H), c, false)
+	}
+	if enemy.Flash > 0 {
+		vector.StrokeRect(screen, float32(bounds.X-2), float32(bounds.Y-2), float32(bounds.W+4), float32(bounds.H+4), 1, color.RGBA{R: 255, G: 246, B: 204, A: 255}, true)
+	}
+	if enemy.State == sim.EnemyTelegraph {
+		pulse := float32(3 + tick%12/3)
+		vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Size.X/2)+pulse, 1, color.RGBA{R: 255, G: 228, B: 129, A: 255}, true)
+	}
+	if enemy.State == sim.EnemyCharge || enemy.State == sim.EnemyDive {
+		direction := float64(enemy.Facing)
+		vector.StrokeLine(screen, float32(enemy.Pos.X-direction*18), float32(enemy.Pos.Y), float32(enemy.Pos.X-direction*5), float32(enemy.Pos.Y), 2, color.RGBA{R: 255, G: 173, B: 111, A: 180}, true)
+	}
+	drawGlyph(screen, glyph, enemy.Pos, color.RGBA{R: 19, G: 22, B: 31, A: 255})
+}
+
+func drawImpact(screen *ebiten.Image, impact sim.ImpactState, tick uint64) {
+	if impact.Ticks == 0 {
+		return
+	}
+	strength := impact.Strength * 48
+	for index := range 7 {
+		angle := float64(index)*math.Pi*2/7 + float64(tick%6)*.11
+		start := sim.Vec{X: math.Cos(angle) * strength * .18, Y: math.Sin(angle) * strength * .18}
+		end := sim.Vec{X: math.Cos(angle) * strength * .45, Y: math.Sin(angle) * strength * .45}
+		vector.StrokeLine(screen, float32(impact.Pos.X+start.X), float32(impact.Pos.Y+start.Y), float32(impact.Pos.X+end.X), float32(impact.Pos.Y+end.Y), 1, color.RGBA{R: 255, G: 220, B: 137, A: 210}, true)
+	}
 }
 
 func drawGlyph(screen *ebiten.Image, glyph string, position sim.Vec, color color.Color) {
@@ -250,10 +298,10 @@ func drawGlyph(screen *ebiten.Image, glyph string, position sim.Vec, color color
 
 func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool, status string) {
 	p := snapshot.Player
-	text.Draw(screen, "72 movement lab  |  A/D move  W/space jump  S crouch  Shift roll", basicfont.Face7x13, 8, 15, color.RGBA{R: 229, G: 233, B: 240, A: 255})
-	text.Draw(screen, "S+jump: platform drop/air smash  |  ledge: toward/jump climb, S drop  |  E/J/F arrows", basicfont.Face7x13, 8, 30, color.RGBA{R: 189, G: 207, B: 225, A: 255})
-	text.Draw(screen, "F1 same seed  F2 new seed  Tab debug  F6 save replay", basicfont.Face7x13, 8, 45, color.RGBA{R: 189, G: 207, B: 225, A: 255})
-	text.Draw(screen, fmt.Sprintf("seed %x  room:%d/%d  treasure:%d  %s", snapshot.Seed, snapshot.Stats.RoomsReached, sim.RoomCount, snapshot.Stats.Treasure, p.State), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
+	text.Draw(screen, "72 danger playground  |  A/D move  W/space jump  S down  Shift roll", basicfont.Face7x13, 8, 15, color.RGBA{R: 229, G: 233, B: 240, A: 255})
+	text.Draw(screen, "E carry/drop  J throw  |  stomp, bait chargers, and take optional treasure", basicfont.Face7x13, 8, 30, color.RGBA{R: 189, G: 207, B: 225, A: 255})
+	text.Draw(screen, "F1 same seed  F2 new seed  Enter restart  Tab debug  F6 save replay", basicfont.Face7x13, 8, 45, color.RGBA{R: 189, G: 207, B: 225, A: 255})
+	text.Draw(screen, fmt.Sprintf("seed %x  room:%d/%d  treasure:%d  enemies:%d  breaks:%d  %s", snapshot.Seed, snapshot.Stats.RoomsReached, sim.RoomCount, snapshot.Stats.Treasure, snapshot.Stats.EnemiesDefeated, snapshot.Stats.TerrainBroken, p.State), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
 	if p.HeldObjectID >= 0 {
 		text.Draw(screen, fmt.Sprintf("holding object %d", p.HeldObjectID), basicfont.Face7x13, 430, 342, color.RGBA{R: 253, G: 213, B: 119, A: 255})
 	}
@@ -264,7 +312,7 @@ func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool, sta
 		text.Draw(screen, "RESET — Enter or F1 repeats this seed", basicfont.Face7x13, 172, 180, color.RGBA{R: 255, G: 107, B: 108, A: 255})
 	}
 	if snapshot.Won {
-		text.Draw(screen, "LAB COMPLETE — Enter/F1 repeats, F2 varies", basicfont.Face7x13, 156, 180, color.RGBA{R: 113, G: 242, B: 160, A: 255})
+		text.Draw(screen, "RUN COMPLETE — Enter/F1 repeats, F2 varies", basicfont.Face7x13, 156, 180, color.RGBA{R: 113, G: 242, B: 160, A: 255})
 	}
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 219, B: 137, A: 255})
@@ -272,8 +320,11 @@ func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool, sta
 }
 
 func drawDebug(screen *ebiten.Image, snapshot sim.RenderSnapshot, camera sim.Vec) {
+	for _, room := range snapshot.Run.Rooms {
+		text.Draw(screen, room.Template.String(), basicfont.Face7x13, int(room.Bounds.X-camera.X)+8, 82, color.RGBA{R: 130, G: 180, B: 255, A: 255})
+	}
 	for _, module := range snapshot.Lab.Modules {
-		text.Draw(screen, module.Kind.String(), basicfont.Face7x13, int(module.Bounds.X-camera.X)+8, 82, color.RGBA{R: 130, G: 180, B: 255, A: 255})
+		text.Draw(screen, module.Kind.String(), basicfont.Face7x13, int(module.Bounds.X-camera.X)+8, 96, color.RGBA{R: 130, G: 180, B: 255, A: 255})
 	}
 	for _, object := range snapshot.Objects {
 		if object.LinkID != 0 {
@@ -303,8 +354,13 @@ func aimLabel(aim sim.Vec) string {
 }
 
 func main() {
+	mode := flag.String("mode", "playtest", "playtest mode")
+	flag.Parse()
+	if *mode != "playtest" {
+		log.Fatalf("unsupported mode %q; use playtest", *mode)
+	}
 	ebiten.SetWindowSize(logicalW*2, logicalH*2)
-	ebiten.SetWindowTitle("72 — movement laboratory")
+	ebiten.SetWindowTitle("72 — danger playground")
 	game, err := newGame()
 	if err != nil {
 		log.Fatal(err)
