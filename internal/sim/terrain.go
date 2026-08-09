@@ -49,10 +49,10 @@ func validationTerrain() []Terrain {
 		{ID: 4, Kind: TerrainPlatform, Bounds: Rect{X: 70, Y: 530, W: 220, H: 20}},
 		{ID: 5, Kind: TerrainPlatform, Bounds: Rect{X: 330, Y: 500, W: 180, H: 20}},
 		{ID: 6, Kind: TerrainPlatform, Bounds: Rect{X: 545, Y: 420, W: 180, H: 20}},
-		{ID: 7, Kind: TerrainBreakable, Bounds: Rect{X: 700, Y: 500, W: 34, H: 150}, HP: 2},
+		{ID: 7, Kind: TerrainBreakable, Bounds: Rect{X: 700, Y: 390, W: 34, H: 260}, HP: 2},
 		{ID: 8, Kind: TerrainPlatform, Bounds: Rect{X: 760, Y: 510, W: 170, H: 20}},
-		{ID: 9, Kind: TerrainPillar, Bounds: Rect{X: 875, Y: 390, W: 48, H: 120}},
-		{ID: 10, Kind: TerrainPlatform, Bounds: Rect{X: 945, Y: 340, W: 250, H: 20}},
+		{ID: 9, Kind: TerrainPillar, Bounds: Rect{X: 875, Y: 430, W: 48, H: 80}},
+		{ID: 10, Kind: TerrainPlatform, Bounds: Rect{X: 945, Y: 360, W: 250, H: 20}},
 		{ID: 11, Kind: TerrainWall, Bounds: Rect{X: 1200, Y: 430, W: 28, H: 220}},
 	}
 }
