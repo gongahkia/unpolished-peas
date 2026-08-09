@@ -115,13 +115,33 @@ func TestWallSlideLedgeGrabAndClimbableObjects(t *testing.T) {
 	world = testTraversalWorld()
 	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 420, W: 36, H: 80}})
 	world.Player.Pos, world.Player.Velocity, world.Player.Grounded = Vec{X: 170, Y: 430}, Vec{Y: 3}, false
-	if !world.tryGrabLedge(1) || world.Player.State != TraversalLedgeGrab || world.Player.LedgeTicks == 0 {
+	if !world.tryGrabLedge(1, world.Terrain[1].Bounds) || world.Player.State != TraversalLedgeGrab || world.Player.LedgeTicks == 0 {
 		t.Fatalf("ledge contact did not enter a readable grab state: %+v", world.Player)
 	}
 	world.Step(InputFrame{Jump: true})
 	step(world, InputFrame{}, 5)
 	if !world.Player.Grounded || world.Player.State != TraversalGrounded || world.Player.Pos != (Vec{X: 170, Y: 409}) {
 		t.Fatalf("ledge grab did not mantle to its stored landing position: %+v", world.Player)
+	}
+}
+
+func TestLedgeGrabUsesTheWallThatBlockedMovement(t *testing.T) {
+	world := testTraversalWorld()
+	remote := Terrain{ID: 2, Kind: TerrainSolid, Bounds: Rect{X: 1000, Y: 420, W: 36, H: 80}}
+	local := Terrain{ID: 3, Kind: TerrainSolid, Bounds: Rect{X: 180, Y: 420, W: 36, H: 80}}
+	world.Terrain = append(world.Terrain, remote, local)
+	world.Player.Pos = Vec{X: 170, Y: 430}
+	world.Player.Velocity = Vec{X: 4, Y: 3}
+	world.Player.Grounded = false
+	world.Player.State = TraversalAirborne
+
+	world.Step(InputFrame{})
+
+	if world.Player.State != TraversalLedgeGrab {
+		t.Fatalf("local wall contact did not enter ledge grab: %+v", world.Player)
+	}
+	if want := (Vec{X: 170, Y: 428}); world.Player.Pos != want {
+		t.Fatalf("ledge grab moved to %+v, want local ledge %+v", world.Player.Pos, want)
 	}
 }
 
