@@ -1,0 +1,9 @@
+boss erlang_mirror {
+  phase reflection {
+    repeat 3 { telegraph mirror_seal 50; wait 50; attack mirror_burst; wait 115; }
+  }
+  phase third_eye when hp < 50 {
+    parallel { spawn mirror_clone 2; attack mirror_burst; }
+    wait 75;
+  }
+}

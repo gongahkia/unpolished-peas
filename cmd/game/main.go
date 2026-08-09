@@ -20,22 +20,31 @@ const (
 )
 
 type game struct {
-	world  *sim.World
-	paused bool
+	run           *sim.Run
+	world         *sim.World
+	paused        bool
+	routeChoice   int
+	statusMessage string
 }
 
 func newGame() *game {
-	w := sim.NewWorld(0x5EEDC0DE)
-	w.SpawnEnemy(sim.EnemyYaoguai, sim.Vec{X: 140, Y: 100})
-	w.SpawnEnemy(sim.EnemyArcher, sim.Vec{X: 500, Y: 100})
-	w.SpawnEnemy(sim.EnemyBrute, sim.Vec{X: 510, Y: 265})
-	w.SpawnBoss("yellow_wind_sage", "Yellow Wind Sage", sim.Vec{X: 460, Y: 225}, 280)
-	return &game{world: w}
+	run := sim.NewRun(0x5EEDC0DE)
+	return &game{run: run, world: run.World}
 }
 
 func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.paused = !g.paused
+	}
+	if g.world.Lost && inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		g.run.RestartCurrent()
+		g.world = g.run.World
+		g.statusMessage = "encounter restarted"
+		return nil
+	}
+	if g.world.Won {
+		g.handleRouteInput()
+		return nil
 	}
 	if g.paused && !inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
 		return nil
@@ -90,9 +99,47 @@ func readInput() sim.InputFrame {
 	return input
 }
 
+func (g *game) handleRouteInput() {
+	node := g.run.CurrentNode()
+	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
+		g.routeChoice = 0
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyX) && len(node.Next) > 1 {
+		g.routeChoice = 1
+	}
+	if node.Kind == sim.EncounterShrine {
+		var vow sim.Vow
+		switch {
+		case inpututil.IsKeyJustPressed(ebiten.Key1):
+			vow = sim.VowSilence
+		case inpututil.IsKeyJustPressed(ebiten.Key2):
+			vow = sim.VowHumility
+		case inpututil.IsKeyJustPressed(ebiten.Key3):
+			vow = sim.VowCloudbound
+		}
+		if vow != sim.VowNone {
+			if err := g.run.ChooseVow(vow); err != nil {
+				g.statusMessage = err.Error()
+			} else {
+				g.statusMessage = "vow of " + vow.String() + " accepted"
+			}
+		}
+	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
+		if err := g.run.Advance(g.routeChoice); err != nil {
+			g.statusMessage = err.Error()
+			return
+		}
+		g.world = g.run.World
+		g.routeChoice = 0
+		g.statusMessage = ""
+	}
+}
+
 func (g *game) Draw(screen *ebiten.Image) {
 	snapshot := g.world.Snapshot()
 	drawScene(screen, snapshot, g.paused)
+	drawRunHUD(screen, g.run, g.routeChoice, g.statusMessage)
 }
 
 func (g *game) Layout(_, _ int) (int, int) { return logicalW, logicalH }
@@ -242,8 +289,27 @@ func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool) {
 	if snapshot.Lost {
 		text.Draw(screen, "FALLEN — press Enter to restart", basicfont.Face7x13, 215, 180, color.RGBA{R: 255, G: 110, B: 110, A: 255})
 	}
-	if snapshot.Won {
-		text.Draw(screen, "ENCOUNTER CLEARED", basicfont.Face7x13, 240, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
+}
+
+func drawRunHUD(screen *ebiten.Image, run *sim.Run, choice int, status string) {
+	node := run.CurrentNode()
+	line := fmt.Sprintf("pilgrimage: %s [%s] — %s", node.Name, node.Kind, node.Description)
+	text.Draw(screen, line, basicfont.Face7x13, 8, 50, color.RGBA{R: 187, G: 210, B: 248, A: 255})
+	if run.World.Won {
+		prompt := "CLEARED — Enter continues"
+		if len(node.Next) > 1 {
+			prompt = fmt.Sprintf("CLEARED — Z/X choose route (%d), Enter continues", choice+1)
+		}
+		if node.Kind == sim.EncounterShrine {
+			prompt = "SHRINE — 1 silence: no clones/fast forms; 2 humility: no giant/counter heal; 3 cloudbound: swift phasing dodge; Enter continues"
+		}
+		text.Draw(screen, prompt, basicfont.Face7x13, 35, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
+	}
+	if run.Completed {
+		text.Draw(screen, "PILGRIMAGE COMPLETE — the road opens again.", basicfont.Face7x13, 175, 198, color.RGBA{R: 255, G: 226, B: 112, A: 255})
+	}
+	if status != "" {
+		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
 }
 
