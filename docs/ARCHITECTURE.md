@@ -1,14 +1,7 @@
 # Architecture
 
-The game advances in 60 deterministic simulation ticks per second. The
-Ebitengine adapter samples physical input into `sim.InputFrame`; it never
-mutates combat state directly. `sim.World.Step` owns player actions, collision,
-damage, AI, boss patterns, run state, and seeded random decisions. It returns a
-`RenderSnapshot` that is consumed by the glyph renderer.
+`internal/sim` is the single deterministic authority. It advances at 60 Hz from `InputFrame`; each frame contains independent `MoveX/MoveY` and `AimX/AimY` vectors. The simulation never derives aim from movement.
 
-Simulation packages must not import Ebitengine. Rendering randomness is kept
-outside the simulation, and all gameplay randomness comes from `World.RNG`.
-That makes an ordered input stream replayable and allows headless tests.
+`World` owns the validation arena, Warden, terrain, player, Echo frames, projectiles, effects, hitstop, slow motion, and camera trauma. `RenderSnapshot` copies only renderer-facing state. The Ebitengine layer reads controls and draws ASCII glyphs and primitives; it cannot modify the simulation.
 
-This prototype intentionally uses an explicit world/entity model rather than
-an ECS: `World` owns a `Player`, enemies, projectiles, clones, and effects.
+Simulation randomness uses `World.RNG`. Renderer motion is derived from the snapshot tick, so screen shake and effect variation cannot perturb replays. `Replay` records every input and a state hash after each step; playback checks every recorded hash against a fresh validation world with the same seed.

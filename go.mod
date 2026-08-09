@@ -1,4 +1,4 @@
-module github.com/gongahkia/journey-roguelite
+module github.com/gongahkia/72
 
 go 1.25.0
 

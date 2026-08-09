@@ -1,9 +1,5 @@
 # Replay
 
-A run replay stores the simulation version, seed, ordered input frames, route
-choices, vows, retries, and a state hash per frame. `RunReplay.Play` recreates
-the entire pilgrimage from these values; `World.StateHash` excludes renderer
-state and detects divergence at the earliest possible tick.
+`72.replay.json` stores the validation seed, every `InputFrame`, and the state hash after every frame. The input frame includes independent movement and aim, staff selection, forms, attack, dodge, Echo, restart, and debug toggles.
 
-`cmd/replaydump` verifies and inspects a JSON run replay. `SaveRunReplay` and
-`LoadRunReplay` enforce explicit version and frame/hash consistency checks.
+`go run ./cmd/replaydump 72.replay.json` reconstructs a fresh validation arena and rejects the replay at the first mismatched hash. Visual camera shake is not part of the state and cannot influence the deterministic random stream.

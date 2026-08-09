@@ -1,19 +1,9 @@
 # Transformations
 
-Forms are rule changes, not stat upgrades. Each form exposes a collision
-radius, movement multiplier, attack grammar, and interaction flags.
+Only three transformed forms remain in `72`. Each replaces a normal rule; none is a damage or movement multiplier layered on top of staff combat.
 
-- Monkey is the balanced variable-staff baseline.
-- Tiger turns attacks into short, heavy armor-breaking bites and slows motion.
-- Sparrow has a tiny body, very high speed, and ignores hazards.
-- Mantis changes attack into a seven-tick counter window.
-- Cicada becomes small, fast, hazard-immune, and untargetable to normal AI.
-- Giant has a large body, slow movement, much wider/stronger staff geometry.
-- Statue cannot move or attack but halves incoming damage.
+- **Bird**: normal staff attacks become a dive. It has a small body, crosses water and hazards, moves rapidly, and retains its latest flight velocity for a short time after returning to Monkey.
+- **Tiger**: dodge and normal staff are unavailable. Attack becomes a high-commitment pounce that strips armor, knocks hard, and destroys cracked walls on contact.
+- **Mantis**: attack becomes a stationary precision stance. If it catches a melee strike during the short window, the attacker is staggered and marked with a long weak-point instead of merely taking damage.
 
-The intended sequence is to attack, reposition as sparrow, return to monkey
-for a long-staff sweep, commit as tiger, then use mantis to answer an attack.
-
-At run start, Bajie doubles each hair-clone cast into a small formation, while
-Wujing's cloud dodge clears nearby hostile projectiles. They are companion
-rules around Wukong rather than alternative player characters.
+`0` returns to Monkey, whose staff and dodge rules are conventional.

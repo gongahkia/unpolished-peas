@@ -1,9 +1,0 @@
-boss golden_horn {
-  phase jade_ward {
-    repeat 3 { telegraph form_ward 45; wait 45; attack jade_radial; wait 105; }
-  }
-  phase furnace when hp < 50 {
-    parallel { spawn fire_orb 4; move player; }
-    wait 90;
-  }
-}

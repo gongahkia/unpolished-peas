@@ -1,10 +1,10 @@
 package sim
 
-// InputFrame is the complete player intent for one deterministic tick.
-// Boolean values are edge-detected by World so replay recordings can contain
-// the direct controller state rather than UI events.
+// InputFrame is the deterministic intent sampled for one simulation tick.
+// Movement and Aim deliberately remain separate all the way into combat.
 type InputFrame struct {
 	MoveX, MoveY int8
+	AimX, AimY   int8
 	Attack       bool
 	Dodge        bool
 	Clone        bool
@@ -17,7 +17,7 @@ type InputFrame struct {
 type StaffLength uint8
 
 const (
-	StaffNone StaffLength = iota // no selection in this input frame
+	StaffNone StaffLength = iota
 	StaffShort
 	StaffMedium
 	StaffLong
@@ -27,10 +27,10 @@ func (s StaffLength) String() string {
 	switch s {
 	case StaffShort:
 		return "short"
-	case StaffLong:
-		return "long"
 	case StaffMedium:
 		return "medium"
+	case StaffLong:
+		return "long"
 	default:
 		return "none"
 	}
@@ -39,32 +39,23 @@ func (s StaffLength) String() string {
 type FormID uint8
 
 const (
-	FormNone FormID = iota // no selection in this input frame
+	FormNone FormID = iota
 	FormMonkey
+	FormBird
 	FormTiger
-	FormSparrow
 	FormMantis
-	FormCicada
-	FormGiant
-	FormStatue
 )
 
 func (f FormID) String() string {
 	switch f {
-	case FormMonkey:
-		return "monkey"
+	case FormBird:
+		return "bird"
 	case FormTiger:
 		return "tiger"
-	case FormSparrow:
-		return "sparrow"
 	case FormMantis:
 		return "mantis"
-	case FormCicada:
-		return "cicada"
-	case FormGiant:
-		return "giant"
-	case FormStatue:
-		return "statue"
+	case FormMonkey:
+		return "monkey"
 	default:
 		return "none"
 	}

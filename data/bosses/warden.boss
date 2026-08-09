@@ -1,0 +1,26 @@
+boss warden {
+  phase measure {
+    repeat 3 {
+      telegraph long_water_line;
+      wait 48;
+      attack water_fan;
+      wait 56;
+      telegraph counter_sweep;
+      wait 34;
+      attack sweep;
+      wait 71;
+    }
+  }
+  phase echo_trial when hp < 55 {
+    repeat 4 {
+      telegraph echo_seal;
+      wait 58;
+      attack radial_burst;
+      wait 57;
+      telegraph pounce_lane;
+      wait 38;
+      attack sweep;
+      wait 58;
+    }
+  }
+}

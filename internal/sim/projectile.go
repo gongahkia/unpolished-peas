@@ -19,6 +19,9 @@ const (
 	EffectTransform
 	EffectDeath
 	EffectCounter
+	EffectAfterimage
+	EffectHeavyImpact
+	EffectCharge
 )
 
 type Effect struct {
@@ -26,4 +29,5 @@ type Effect struct {
 	Pos, Direction Vec
 	Radius         float64
 	TicksRemaining int
+	Intensity      float64
 }
