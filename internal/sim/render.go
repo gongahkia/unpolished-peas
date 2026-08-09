@@ -20,6 +20,7 @@ type PlayerSnapshot struct {
 	Facing        int8
 	Grounded      bool
 	State         TraversalState
+	Crouching     bool
 	Coyote        int
 	AirJumps      int
 	WallDirection int8
@@ -58,7 +59,7 @@ func (w *World) Snapshot() RenderSnapshot {
 	p := w.Player
 	snapshot := RenderSnapshot{
 		Tick:   w.Tick,
-		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
+		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Crouching: p.Crouching, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
 		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
 		Debug:  w.Debug,
 		Trauma: w.Trauma,
