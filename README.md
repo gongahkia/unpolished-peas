@@ -31,7 +31,7 @@ go run ./cmd/replaydump 72.replay.json
 - Mantis replaces staff with a counter stance that exposes a long weak-point.
 - Echo waits briefly, then deterministically replays the previous two seconds of movement, aim, staff choices, transformations, and attacks from its own spawn point.
 
-The Warden begins beyond the starting viewport, so reaching the fight means choosing around water, through cover, or with a form-specific shortcut. It first demands a charged long-staff guard break, then switches to an Echo-only seal. Water, pillars, and the cracked wall create routes, cover, and form-specific opportunities. See `docs/COMBAT.md` for the exact interactions.
+The Warden begins beyond the starting viewport, so reaching the fight means choosing around water, through cover, or with a form-specific shortcut. It first demands a charged long-staff guard break, then switches to an Echo-only seal. Water, pillars, and the cracked wall create routes, cover, and form-specific opportunities. See `docs/ARENA.md` for the terrain layout and `docs/COMBAT.md` for the exact interactions.
 
 Staff visibility is stateful: a compact side-carried staff is brown when ready, its planned range is orange and dashed during windup, and its damaging line is bright yellow only during active frames. Recovery returns the staff to a compact muted blue-grey carry position. Long charge is orange—not damaging—and shows both its current extension and the maximum forecast; transformed forms explicitly show that staff actions are replaced.
 
@@ -53,4 +53,4 @@ make wasm
 - `internal/sim`: deterministic 60 Hz arena simulation and replay hashing.
 - `data/bosses`: the single linted Warden encounter contract.
 - `internal/bossdsl`: parser and validator retained for `bosslint`.
-- `docs`: current mechanics and verification notes.
+- `docs`: current arena, mechanics, replay, and verification notes.
