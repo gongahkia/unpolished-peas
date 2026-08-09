@@ -38,6 +38,7 @@ type Enemy struct {
 	Stagger            int
 	Invulnerable       int
 	TargetCloneID      int
+	AIState            string
 	Boss               *BossState
 	LastDamagedByClone bool
 }

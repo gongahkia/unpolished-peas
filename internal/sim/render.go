@@ -33,6 +33,8 @@ type EnemySnapshot struct {
 	Radius          float64
 	HP, MaxHP       int
 	Windup, Stagger int
+	TargetCloneID   int
+	AIState         string
 	Boss            *BossSnapshot
 }
 
@@ -81,7 +83,7 @@ func (w *World) Snapshot() RenderSnapshot {
 		Debug:  DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, RNG: w.RNG, Action: w.Player.Action},
 	}
 	for _, enemy := range w.Enemies {
-		entry := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger}
+		entry := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
 		if enemy.Boss != nil {
 			entry.Boss = &BossSnapshot{ID: enemy.Boss.ID, PhaseName: enemy.Boss.PhaseName, Phase: enemy.Boss.Phase, Shielded: enemy.Boss.Shielded, Telegraph: enemy.Boss.Telegraph, RequiredForm: enemy.Boss.RequiredForm, RequiredStaff: enemy.Boss.RequiredStaff}
 			snapshot.Debug.BossPhase = enemy.Boss.PhaseName

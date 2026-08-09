@@ -13,3 +13,7 @@ radius, movement multiplier, attack grammar, and interaction flags.
 
 The intended sequence is to attack, reposition as sparrow, return to monkey
 for a long-staff sweep, commit as tiger, then use mantis to answer an attack.
+
+At run start, Bajie doubles each hair-clone cast into a small formation, while
+Wujing's cloud dodge clears nearby hostile projectiles. They are companion
+rules around Wukong rather than alternative player characters.
