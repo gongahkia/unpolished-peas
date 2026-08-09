@@ -42,7 +42,7 @@ func NewValidationWorld(seed uint64) *World {
 	w := NewWorld(seed)
 	w.Terrain = validationTerrain()
 	w.Player.Pos = Vec{X: 150, Y: 500}
-	w.SpawnArenaBoss(Vec{X: 1060, Y: 319})
+	w.SpawnArenaBoss(Vec{X: 1060, Y: 339})
 	return w
 }
 

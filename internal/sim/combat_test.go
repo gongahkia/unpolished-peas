@@ -266,6 +266,31 @@ func TestValidationStageUsesPlatformsAndExceedsViewport(t *testing.T) {
 	}
 }
 
+func TestValidationStageHasAMonkeyClimbToWardenPlatform(t *testing.T) {
+	world := NewValidationWorld(23)
+	world.Enemies = nil // isolate authored traversal from Warden's combat loop.
+
+	// The player can run from the east landing shelf onto the pillar top.
+	world.Player.Pos = Vec{X: 828, Y: 501}
+	world.Player.Grounded = true
+	world.Step(InputFrame{MoveX: 1, Jump: true})
+	step(world, InputFrame{MoveX: 1}, 20)
+	step(world, InputFrame{}, 5)
+	if !world.Player.Grounded || world.Player.Pos.Y != 421 || world.Player.Pos.X <= 875 {
+		t.Fatalf("monkey could not clear the pillar step: pos=%+v grounded=%t", world.Player.Pos, world.Player.Grounded)
+	}
+
+	// From the pillar top, the raised Warden platform is one normal jump away.
+	world.Player.Pos = Vec{X: 900, Y: 421}
+	world.Player.Grounded = true
+	world.Step(InputFrame{MoveX: 1, Jump: true})
+	step(world, InputFrame{MoveX: 1}, 16)
+	step(world, InputFrame{}, 8)
+	if !world.Player.Grounded || world.Player.Pos.Y != 351 || world.Player.Pos.X < 945 {
+		t.Fatalf("monkey could not reach Warden's platform: pos=%+v grounded=%t", world.Player.Pos, world.Player.Grounded)
+	}
+}
+
 func TestBossGatesUseLongStaffThenEcho(t *testing.T) {
 	world := NewValidationWorld(18)
 	boss := world.Enemies[0]
