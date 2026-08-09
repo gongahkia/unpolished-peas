@@ -16,9 +16,52 @@ func (k EnemyKind) String() string {
 	}
 }
 
+// EnemyArchetype selects deterministic locomotion and combat rules. Bosses
+// retain their authored state machine rather than participating in the room
+// encounter director.
+type EnemyArchetype uint8
+
+const (
+	EnemyArchetypeNone EnemyArchetype = iota
+	EnemyStalker
+	EnemyKite
+	EnemyGuardian
+)
+
+func (a EnemyArchetype) String() string {
+	switch a {
+	case EnemyStalker:
+		return "stalker"
+	case EnemyKite:
+		return "kite"
+	case EnemyGuardian:
+		return "guardian"
+	default:
+		return "none"
+	}
+}
+
+type EnemyRules struct {
+	Radius, MoveSpeed, AttackRange float64
+	HP, Damage, Armor              int
+}
+
+func archetypeRules(archetype EnemyArchetype) EnemyRules {
+	switch archetype {
+	case EnemyKite:
+		return EnemyRules{Radius: 8, MoveSpeed: 2.8, AttackRange: 30, HP: 36, Damage: 9}
+	case EnemyGuardian:
+		return EnemyRules{Radius: 16, MoveSpeed: 1.35, AttackRange: 34, HP: 90, Damage: 20, Armor: 8}
+	default:
+		return EnemyRules{Radius: 11, MoveSpeed: 2.15, AttackRange: 32, HP: 48, Damage: 12}
+	}
+}
+
 type Enemy struct {
 	ID             int
 	Kind           EnemyKind
+	Archetype      EnemyArchetype
+	Room           int
 	Name           string
 	Pos, Velocity  Vec
 	Grounded       bool
