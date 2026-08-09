@@ -64,15 +64,15 @@ type EnemySpawn struct {
 // RunLayout is generated once from its seed. World owns the mutable terrain
 // health and activation state; this structure remains the reproducible plan.
 type RunLayout struct {
-	Seed       uint64
-	Attempt    int
-	Rooms      []RoomInfo
-	Terrain    []Terrain
-	Spawns     []EnemySpawn
-	NavNodes   []NavNode
-	NavLinks   []NavLink
-	WardenPos  Vec
-	Valid      bool
+	Seed      uint64
+	Attempt   int
+	Rooms     []RoomInfo
+	Terrain   []Terrain
+	Spawns    []EnemySpawn
+	NavNodes  []NavNode
+	NavLinks  []NavLink
+	WardenPos Vec
+	Valid     bool
 }
 
 type layoutRNG struct{ state uint64 }
@@ -221,7 +221,7 @@ func roomSpawns(room RoomInfo) []EnemySpawn {
 		return []EnemySpawn{
 			{Room: room.Index, Archetype: EnemyStalker, Pos: Vec{X: offset + 404, Y: 638}, Cost: 2},
 			{Room: room.Index, Archetype: EnemyKite, Pos: Vec{X: offset + 560, Y: 390}, Cost: 2},
-			{Room: room.Index, Archetype: EnemyGuardian, Pos: Vec{X: offset + 594, Y: 636}, Cost: 3},
+			{Room: room.Index, Archetype: EnemyGuardian, Pos: Vec{X: offset + 594, Y: 634}, Cost: 3},
 		}
 	default:
 		return nil

@@ -21,22 +21,25 @@ const (
 )
 
 type game struct {
-	world  *sim.World
-	replay *sim.Replay
-	paused bool
-	scene  *ebiten.Image
-	status string
+	world    *sim.World
+	replay   *sim.Replay
+	paused   bool
+	scene    *ebiten.Image
+	status   string
+	baseSeed uint64
+	runIndex uint64
 }
 
 func newGame() *game {
-	w := sim.NewValidationWorld(0x72)
-	return &game{world: w, replay: sim.NewReplay(w.Seed), scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH))}
+	g := &game{baseSeed: 0x72, scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH))}
+	g.reset()
+	return g
 }
 
 func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
 		g.reset()
-		g.status = "validation arena reset"
+		g.status = fmt.Sprintf("new run %x", g.world.Seed)
 		return nil
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
@@ -61,8 +64,23 @@ func (g *game) Update() error {
 }
 
 func (g *game) reset() {
-	g.world = sim.NewValidationWorld(0x72)
+	seed := runSeed(g.baseSeed, g.runIndex)
+	g.runIndex++
+	g.world = sim.NewRunWorld(seed)
 	g.replay = sim.NewReplay(g.world.Seed)
+}
+
+func runSeed(base, index uint64) uint64 {
+	seed := base + index*0x9e3779b97f4a7c15
+	seed ^= seed >> 30
+	seed *= 0xbf58476d1ce4e5b9
+	seed ^= seed >> 27
+	seed *= 0x94d049bb133111eb
+	seed ^= seed >> 31
+	if seed == 0 {
+		return 1
+	}
+	return seed
 }
 
 func readInput() sim.InputFrame {
@@ -193,7 +211,7 @@ func drawScene(screen *ebiten.Image, s sim.RenderSnapshot) {
 		if enemy.WeakPoint > 0 {
 			c = color.RGBA{R: 255, G: 238, B: 106, A: 255}
 		}
-		drawGlyph(screen, "B", enemy.Pos, c)
+		drawEnemyRig(screen, enemy, s.Tick, s.Terrain, c)
 		drawHealth(screen, enemy.Pos.Add(sim.Vec{X: -22, Y: -enemy.Radius - 14}), 44, enemy.HP, enemy.MaxHP, color.RGBA{R: 227, G: 75, B: 78, A: 255})
 		if enemy.Boss != nil && enemy.Boss.Shielded {
 			vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Radius+8), 2, color.RGBA{R: 191, G: 111, B: 245, A: 255}, true)
@@ -371,6 +389,61 @@ func drawEffect(screen *ebiten.Image, e sim.EffectSnapshot) {
 func drawGlyph(screen *ebiten.Image, glyph string, p sim.Vec, c color.Color) {
 	text.Draw(screen, glyph, basicfont.Face7x13, int(math.Round(p.X))-4, int(math.Round(p.Y))+5, c)
 }
+
+// drawEnemyRig is intentionally renderer-only. The simulation supplies a
+// collision body, velocity, and combat state; this derives responsive limbs
+// and tails/wings from that snapshot without touching simulation randomness.
+func drawEnemyRig(screen *ebiten.Image, enemy sim.EnemySnapshot, tick uint64, terrain []sim.TerrainSnapshot, c color.Color) {
+	phase := float64(tick+uint64(enemy.ID)*17) * 0.19
+	lean := clampFloat(enemy.Velocity.X*0.45, -4, 4)
+	body := enemy.Pos.Add(sim.Vec{X: lean, Y: math.Abs(math.Sin(phase)) * minFloat(2, math.Abs(enemy.Velocity.X))})
+	ground := enemyGroundY(enemy, terrain)
+	switch enemy.Archetype {
+	case sim.EnemyKite:
+		wing := 13 + math.Sin(phase*1.4)*5
+		vector.StrokeLine(screen, float32(body.X-2), float32(body.Y), float32(body.X-wing), float32(body.Y+math.Abs(math.Sin(phase))*7), 2, c, true)
+		vector.StrokeLine(screen, float32(body.X+2), float32(body.Y), float32(body.X+wing), float32(body.Y+math.Abs(math.Cos(phase))*7), 2, c, true)
+		vector.StrokeLine(screen, float32(body.X), float32(body.Y+3), float32(body.X-enemy.Facing.X*10), float32(body.Y+8), 1, c, true)
+		drawGlyph(screen, "v", body, c)
+	case sim.EnemyGuardian:
+		drawLeg(screen, body.Add(sim.Vec{X: -5, Y: 4}), sim.Vec{X: body.X - 10 + math.Sin(phase)*5, Y: ground}, 3, c)
+		drawLeg(screen, body.Add(sim.Vec{X: 5, Y: 4}), sim.Vec{X: body.X + 10 - math.Sin(phase)*5, Y: ground}, 3, c)
+		vector.StrokeLine(screen, float32(body.X-enemy.Facing.X*4), float32(body.Y-3), float32(body.X-enemy.Facing.X*17), float32(body.Y-6), 3, c, true)
+		drawGlyph(screen, "G", body, c)
+	default:
+		step := math.Sin(phase) * 8
+		drawLeg(screen, body.Add(sim.Vec{X: -4, Y: 3}), sim.Vec{X: body.X - 9 + step, Y: ground}, 2, c)
+		drawLeg(screen, body.Add(sim.Vec{X: 4, Y: 3}), sim.Vec{X: body.X + 9 - step, Y: ground}, 2, c)
+		drawLeg(screen, body.Add(sim.Vec{X: -3, Y: 4}), sim.Vec{X: body.X - 13 - step, Y: ground}, 1, c)
+		vector.StrokeLine(screen, float32(body.X-enemy.Facing.X*5), float32(body.Y+2), float32(body.X-enemy.Facing.X*18), float32(body.Y+7+math.Sin(phase)*3), 2, c, true)
+		drawGlyph(screen, "S", body, c)
+	}
+}
+
+func drawLeg(screen *ebiten.Image, hip, foot sim.Vec, width float32, c color.Color) {
+	knee := sim.Vec{X: (hip.X + foot.X) / 2, Y: math.Min(foot.Y-4, hip.Y+8)}
+	vector.StrokeLine(screen, float32(hip.X), float32(hip.Y), float32(knee.X), float32(knee.Y), width, c, true)
+	vector.StrokeLine(screen, float32(knee.X), float32(knee.Y), float32(foot.X), float32(foot.Y), width, c, true)
+}
+
+func enemyGroundY(enemy sim.EnemySnapshot, terrain []sim.TerrainSnapshot) float64 {
+	ground := enemy.Pos.Y + enemy.Radius
+	if !enemy.Grounded {
+		return ground
+	}
+	for _, feature := range terrain {
+		if feature.Kind == sim.TerrainWater || (feature.Kind == sim.TerrainBreakable && feature.HP == 0) {
+			continue
+		}
+		if enemy.Pos.X >= feature.Bounds.X-enemy.Radius && enemy.Pos.X <= feature.Bounds.X+feature.Bounds.W+enemy.Radius && feature.Bounds.Y >= enemy.Pos.Y-enemy.Radius && feature.Bounds.Y <= ground+12 {
+			ground = math.Min(ground, feature.Bounds.Y)
+		}
+	}
+	return ground
+}
+
+func minFloat(left, right float64) float64        { return math.Min(left, right) }
+func clampFloat(value, low, high float64) float64 { return math.Max(low, math.Min(value, high)) }
 func drawHealth(screen *ebiten.Image, p sim.Vec, w float64, value, maxv int, c color.Color) {
 	vector.DrawFilledRect(screen, float32(p.X), float32(p.Y), float32(w), 3, color.RGBA{R: 35, G: 36, B: 43, A: 255}, false)
 	if maxv > 0 {
@@ -405,25 +478,44 @@ func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec, paused 
 	text.Draw(screen, "72  |  A/D move  W/space jump  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
 	text.Draw(screen, "AIM "+aimLabel(s.Player.Aim), basicfont.Face7x13, 580, 15, color.RGBA{R: 102, G: 228, B: 255, A: 255})
 	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
+	text.Draw(screen, fmt.Sprintf("RUN %x  ROOM %d/%d %s  threat %d", s.Run.Seed, s.Run.CurrentRoom+1, len(s.Run.Rooms), roomRole(s.Run), roomThreat(s.Run)), basicfont.Face7x13, 8, 50, color.RGBA{R: 177, G: 203, B: 242, A: 255})
 	text.Draw(screen, fmt.Sprintf("%s | %s", s.Player.Form, staffReadout(s.Player)), basicfont.Face7x13, 8, 342, staffReadoutColor(s.Player))
 	drawMinimap(screen, s, camera)
 	for _, e := range s.Enemies {
 		if e.Boss != nil {
-			text.Draw(screen, "WARDEN — "+e.Boss.PhaseName+" | "+e.Boss.Telegraph, basicfont.Face7x13, 8, 50, color.RGBA{R: 252, G: 171, B: 171, A: 255})
+			text.Draw(screen, "WARDEN — "+e.Boss.PhaseName+" | "+e.Boss.Telegraph, basicfont.Face7x13, 8, 65, color.RGBA{R: 252, G: 171, B: 171, A: 255})
 		}
 	}
 	if paused {
 		text.Draw(screen, "PAUSED — P resumes, . steps", basicfont.Face7x13, 220, 180, color.RGBA{R: 255, G: 243, B: 168, A: 255})
 	}
 	if s.Lost {
-		text.Draw(screen, "FALLEN — Enter or F1 retries", basicfont.Face7x13, 210, 180, color.RGBA{R: 255, G: 110, B: 110, A: 255})
+		text.Draw(screen, "FALLEN — Enter or F1 starts a new seed", basicfont.Face7x13, 178, 180, color.RGBA{R: 255, G: 110, B: 110, A: 255})
 	}
 	if s.Won {
-		text.Draw(screen, "WARDEN BROKEN — F1 replay", basicfont.Face7x13, 220, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
+		text.Draw(screen, "RUN COMPLETE — F1 starts a new seed", basicfont.Face7x13, 184, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
 	}
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
+}
+
+func roomRole(run sim.RunSnapshot) string {
+	for _, room := range run.Rooms {
+		if room.Index == run.CurrentRoom {
+			return room.Role.String()
+		}
+	}
+	return "entry"
+}
+
+func roomThreat(run sim.RunSnapshot) int {
+	for _, room := range run.Rooms {
+		if room.Index == run.CurrentRoom {
+			return room.ThreatRemaining
+		}
+	}
+	return 0
 }
 
 func aimLabel(aim sim.Vec) string {
@@ -521,6 +613,21 @@ func staffReadoutColor(player sim.PlayerSnapshot) color.Color {
 	return color.RGBA{R: 183, G: 193, B: 207, A: 255}
 }
 func drawDebugWorld(screen *ebiten.Image, s sim.RenderSnapshot) {
+	for _, room := range s.Run.Rooms {
+		c := color.RGBA{R: 78, G: 128, B: 202, A: 110}
+		if room.Index == s.Run.CurrentRoom {
+			c = color.RGBA{R: 116, G: 225, B: 247, A: 210}
+		}
+		vector.StrokeRect(screen, float32(room.Bounds.X+1), 1, float32(room.Bounds.W-2), float32(room.Bounds.H-2), 1, c, false)
+		text.Draw(screen, fmt.Sprintf("%d %s t%d", room.Index+1, room.Role, room.ThreatRemaining), basicfont.Face7x13, int(room.Bounds.X)+8, 78, c)
+	}
+	for _, link := range s.Run.NavLinks {
+		if link.From < 0 || link.From >= len(s.Run.NavNodes) || link.To < 0 || link.To >= len(s.Run.NavNodes) {
+			continue
+		}
+		from, to := s.Run.NavNodes[link.From].Pos, s.Run.NavNodes[link.To].Pos
+		vector.StrokeLine(screen, float32(from.X), float32(from.Y), float32(to.X), float32(to.Y), 1, color.RGBA{R: 116, G: 166, B: 247, A: 40}, false)
+	}
 	vector.StrokeCircle(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
 	for _, terrain := range s.Terrain {
 		if terrain.Kind == sim.TerrainBreakable && terrain.HP == 0 {
@@ -534,6 +641,9 @@ func drawDebugWorld(screen *ebiten.Image, s sim.RenderSnapshot) {
 	}
 	for _, c := range s.Clones {
 		text.Draw(screen, fmt.Sprintf("echo %d/%d m%d jump=%t a%d,%d atk=%t form=%s", max(0, c.EchoIndex), c.EchoLength, c.ReplayInput.MoveX, c.ReplayInput.Jump, c.ReplayInput.AimX, c.ReplayInput.AimY, c.ReplayInput.Attack, c.ReplayInput.Transform), basicfont.Face7x13, int(c.Pos.X)-64, int(c.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
+	}
+	for _, enemy := range s.Enemies {
+		text.Draw(screen, fmt.Sprintf("%s %s r%d", enemy.Archetype, enemy.AIState, enemy.Room+1), basicfont.Face7x13, int(enemy.Pos.X)-28, int(enemy.Pos.Y)-int(enemy.Radius)-16, color.RGBA{R: 255, G: 175, B: 130, A: 255})
 	}
 }
 
