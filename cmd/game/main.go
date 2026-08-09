@@ -386,10 +386,11 @@ func formColor(f sim.FormID) color.Color {
 		return color.RGBA{R: 252, G: 215, B: 85, A: 255}
 	}
 }
-func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status string) {
+func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec, paused bool, status string) {
 	text.Draw(screen, "72  |  WASD move  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
 	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
 	text.Draw(screen, fmt.Sprintf("%s | %s", s.Player.Form, staffReadout(s.Player)), basicfont.Face7x13, 8, 342, staffReadoutColor(s.Player))
+	drawMinimap(screen, s, camera)
 	for _, e := range s.Enemies {
 		if e.Boss != nil {
 			text.Draw(screen, "WARDEN — "+e.Boss.PhaseName+" | "+e.Boss.Telegraph, basicfont.Face7x13, 8, 50, color.RGBA{R: 252, G: 171, B: 171, A: 255})
@@ -407,6 +408,40 @@ func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status str
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
+}
+
+func drawMinimap(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec) {
+	const (
+		mapX = 510
+		mapY = 62
+		mapW = 122
+		mapH = 70
+	)
+	vector.DrawFilledRect(screen, mapX, mapY, mapW, mapH, color.RGBA{R: 8, G: 12, B: 18, A: 220}, false)
+	for _, terrain := range s.Terrain {
+		if terrain.Kind == sim.TerrainBreakable && terrain.HP == 0 {
+			continue
+		}
+		c := color.RGBA{R: 92, G: 101, B: 113, A: 255}
+		switch terrain.Kind {
+		case sim.TerrainWater:
+			c = color.RGBA{R: 46, G: 112, B: 164, A: 255}
+		case sim.TerrainPillar:
+			c = color.RGBA{R: 150, G: 137, B: 157, A: 255}
+		case sim.TerrainBreakable:
+			c = color.RGBA{R: 191, G: 134, B: 78, A: 255}
+		}
+		vector.DrawFilledRect(screen, mapX+float32(terrain.Bounds.X/sim.ArenaW)*mapW, mapY+float32(terrain.Bounds.Y/sim.ArenaH)*mapH, float32(terrain.Bounds.W/sim.ArenaW)*mapW, float32(terrain.Bounds.H/sim.ArenaH)*mapH, c, false)
+	}
+	vector.StrokeRect(screen, mapX+float32(camera.X/sim.ArenaW)*mapW, mapY+float32(camera.Y/sim.ArenaH)*mapH, float32(float64(logicalW)/sim.ArenaW)*mapW, float32(float64(logicalH)/sim.ArenaH)*mapH, 1, color.RGBA{R: 232, G: 237, B: 244, A: 230}, false)
+	vector.DrawFilledCircle(screen, mapX+float32(s.Player.Pos.X/sim.ArenaW)*mapW, mapY+float32(s.Player.Pos.Y/sim.ArenaH)*mapH, 2, color.RGBA{R: 96, G: 235, B: 143, A: 255}, true)
+	for _, enemy := range s.Enemies {
+		if enemy.Boss != nil {
+			vector.DrawFilledCircle(screen, mapX+float32(enemy.Pos.X/sim.ArenaW)*mapW, mapY+float32(enemy.Pos.Y/sim.ArenaH)*mapH, 2, color.RGBA{R: 244, G: 98, B: 106, A: 255}, true)
+		}
+	}
+	vector.StrokeRect(screen, mapX, mapY, mapW, mapH, 1, color.RGBA{R: 143, G: 157, B: 176, A: 255}, false)
+	text.Draw(screen, "WORLD", basicfont.Face7x13, mapX, mapY-4, color.RGBA{R: 183, G: 193, B: 207, A: 255})
 }
 
 func staffReadout(player sim.PlayerSnapshot) string {
@@ -449,7 +484,7 @@ func staffReadoutColor(player sim.PlayerSnapshot) color.Color {
 	}
 	return color.RGBA{R: 183, G: 193, B: 207, A: 255}
 }
-func drawDebug(screen *ebiten.Image, s sim.RenderSnapshot) {
+func drawDebugWorld(screen *ebiten.Image, s sim.RenderSnapshot) {
 	vector.StrokeCircle(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
 	for _, terrain := range s.Terrain {
 		if terrain.Kind == sim.TerrainBreakable && terrain.HP == 0 {
@@ -464,7 +499,10 @@ func drawDebug(screen *ebiten.Image, s sim.RenderSnapshot) {
 	for _, c := range s.Clones {
 		text.Draw(screen, fmt.Sprintf("echo %d/%d m%d,%d a%d,%d atk=%t form=%s", max(0, c.EchoIndex), c.EchoLength, c.ReplayInput.MoveX, c.ReplayInput.MoveY, c.ReplayInput.AimX, c.ReplayInput.AimY, c.ReplayInput.Attack, c.ReplayInput.Transform), basicfont.Face7x13, int(c.Pos.X)-64, int(c.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
 	}
-	info := fmt.Sprintf("DEBUG aim=(%.0f,%.0f) hitstop=%d slow=%d boss=%s", s.Player.Aim.X, s.Player.Aim.Y, s.Debug.Hitstop, s.Debug.SlowTicks, s.Debug.BossPhase)
+}
+
+func drawDebugHUD(screen *ebiten.Image, s sim.RenderSnapshot, camera sim.Vec) {
+	info := fmt.Sprintf("DEBUG camera=(%.0f,%.0f) aim=(%.0f,%.0f) hitstop=%d slow=%d boss=%s", camera.X, camera.Y, s.Player.Aim.X, s.Player.Aim.Y, s.Debug.Hitstop, s.Debug.SlowTicks, s.Debug.BossPhase)
 	text.Draw(screen, info, basicfont.Face7x13, 8, 356, color.RGBA{R: 100, G: 230, B: 242, A: 255})
 }
 func main() {
