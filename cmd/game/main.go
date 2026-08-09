@@ -223,34 +223,34 @@ func drawPlayerStaff(screen *ebiten.Image, player sim.PlayerSnapshot) {
 		forecast := player.Pos.Add(aim.Scale(136))
 		drawStaffForecast(screen, player.Pos, forecast, color.RGBA{R: 255, G: 205, B: 92, A: 100})
 		end := player.Pos.Add(aim.Scale(player.LongRange))
-		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 4, color.RGBA{R: 255, G: 214, B: 86, A: 255}, true)
-		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 5, 1, color.RGBA{R: 255, G: 237, B: 132, A: 255}, true)
+		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 4, color.RGBA{R: 246, G: 171, B: 83, A: 255}, true)
+		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 5, 1, color.RGBA{R: 255, G: 205, B: 92, A: 255}, true)
 		return
 	}
 
 	rest := staffRestLength(player.Staff)
 	if !staffAction(player.Action) {
-		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 157, G: 124, B: 84, A: 255}, 3)
+		drawCarriedStaff(screen, player.Pos, aim, rest, color.RGBA{R: 157, G: 124, B: 84, A: 255}, 3)
 		return
 	}
 
 	end := player.Pos.Add(aim.Scale(player.AttackRange))
 	switch staffPhase(player) {
 	case "windup":
-		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 246, G: 171, B: 83, A: 255}, 3)
+		drawCarriedStaff(screen, player.Pos, aim, rest, color.RGBA{R: 246, G: 171, B: 83, A: 255}, 3)
 		drawStaffForecast(screen, player.Pos, end, color.RGBA{R: 246, G: 171, B: 83, A: 150})
 	case "active":
 		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), float32(max(3, int(player.AttackWidth/3))), color.RGBA{R: 255, G: 240, B: 154, A: 255}, true)
 		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 4, 1, color.RGBA{R: 255, G: 248, B: 205, A: 255}, true)
 	case "recovery":
-		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 112, G: 125, B: 145, A: 235}, 3)
-		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 1, color.RGBA{R: 112, G: 125, B: 145, A: 95}, false)
+		drawCarriedStaff(screen, player.Pos, aim, rest, color.RGBA{R: 112, G: 125, B: 145, A: 235}, 3)
 	}
 }
 
-func drawHeldStaff(screen *ebiten.Image, origin, aim sim.Vec, length float64, c color.Color, width float32) {
-	start := origin.Add(aim.Scale(-length * 0.22))
-	end := origin.Add(aim.Scale(length * 0.78))
+func drawCarriedStaff(screen *ebiten.Image, origin, aim sim.Vec, length float64, c color.Color, width float32) {
+	side := sim.Vec{X: -aim.Y, Y: aim.X}
+	start := origin.Add(aim.Scale(-length * 0.20)).Add(side.Scale(-length * 0.28))
+	end := origin.Add(aim.Scale(-length * 0.08)).Add(side.Scale(length * 0.28))
 	vector.StrokeLine(screen, float32(start.X), float32(start.Y), float32(end.X), float32(end.Y), width, c, true)
 	vector.DrawFilledCircle(screen, float32(end.X), float32(end.Y), width, c, true)
 }
@@ -408,15 +408,22 @@ func staffReadout(player sim.PlayerSnapshot) string {
 		return "MANTIS — staff replaced by counter"
 	}
 	if player.Action == sim.ActionLongCharge {
-		return fmt.Sprintf("STAFF CHARGING — long %d/48", player.LongCharge)
+		return fmt.Sprintf("STAFF CHARGING (not active) — long %d/48", player.LongCharge)
 	}
 	if staffAction(player.Action) {
-		return fmt.Sprintf("STAFF %s — %s %d/%d", strings.ToUpper(staffPhase(player)), player.Staff, player.ActionTick+1, player.AttackStartup+player.AttackActive+player.AttackRecovery)
+		phase := staffPhase(player)
+		if phase == "windup" {
+			return fmt.Sprintf("STAFF WINDUP (not active) — %s %d/%d", player.Staff, player.ActionTick+1, player.AttackStartup+player.AttackActive+player.AttackRecovery)
+		}
+		if phase == "recovery" {
+			return fmt.Sprintf("STAFF RECOVERY (cannot hit) — %s %d/%d", player.Staff, player.ActionTick+1, player.AttackStartup+player.AttackActive+player.AttackRecovery)
+		}
+		return fmt.Sprintf("STAFF %s — %s %d/%d", strings.ToUpper(phase), player.Staff, player.ActionTick+1, player.AttackStartup+player.AttackActive+player.AttackRecovery)
 	}
 	if player.Action == sim.ActionDodge {
 		return "STAFF NOT ACTIVE — dodging"
 	}
-	return fmt.Sprintf("STAFF READY — %s", player.Staff)
+	return fmt.Sprintf("STAFF READY (carried) — %s", player.Staff)
 }
 
 func staffReadoutColor(player sim.PlayerSnapshot) color.Color {

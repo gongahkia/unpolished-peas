@@ -10,7 +10,7 @@ The arena is designed for movement and aim to be separate. Move with `WASD` whil
 
 While charging long, movement is reduced to 32%. Missing is deliberately much more expensive than with the other two modes.
 
-The renderer keeps a physical staff visible when Monkey is ready. Orange dashed lines forecast windup reach, bright yellow full-length lines denote damaging frames, and muted blue-grey lines denote recovery. The bottom readout names `READY`, `WINDUP`, `ACTIVE`, `RECOVERY`, or `CHARGING`; forms label the staff as replaced rather than implying an unavailable attack is active.
+The renderer keeps the ready or recovering staff compactly carried beside Monkey, never projecting it as attack reach. Orange dashed lines forecast windup reach, bright yellow full-length lines denote damaging frames, and an orange long line denotes a non-damaging charge. The bottom readout names `READY`, `WINDUP`, `ACTIVE`, `RECOVERY`, or `CHARGING`; forms label the staff as replaced rather than implying an unavailable attack is active.
 
 The authored arena contains water, two projectile-blocking pillars, a cracked wall, and a solid wall. Water blocks normal ground movement but Bird crosses it. Pillars stop staff lines and projectiles. Tiger pounces through the cracked wall; knockback into solid terrain damages and staggers enemies. Long attacks are straight-line tools that can operate over water but stop on solid cover.
 
