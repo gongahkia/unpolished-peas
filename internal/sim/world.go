@@ -2,71 +2,54 @@ package sim
 
 import (
 	"fmt"
+	"hash"
 	"hash/fnv"
+	"math"
+	"sort"
 )
 
-const SimulationVersion = "0.1.0"
+const SimulationVersion = "72-combat-1"
 
-// World is an explicit, deterministic ownership boundary for an encounter.
+// World is the renderer-independent, deterministic 72 arena simulation.
 type World struct {
-	Seed        uint64
-	Tick        uint64
-	RNG         uint64
-	Player      Player
-	Enemies     []*Enemy
-	Clones      []*Clone
-	Projectiles []*Projectile
-	Effects     []Effect
-	Hitstop     int
-	Won         bool
-	Lost        bool
-	Debug       bool
-	Vows        map[Vow]bool
-	Companion   Companion
-	nextID      int
-	prevInput   InputFrame
+	Seed, Tick, RNG uint64
+	Player          Player
+	Enemies         []*Enemy
+	Clones          []*Clone
+	Projectiles     []*Projectile
+	Effects         []Effect
+	Terrain         []Terrain
+	Hitstop         int
+	SlowTicks       int
+	Trauma          float64
+	TraumaDirection Vec
+	Won, Lost       bool
+	Debug           bool
+	inputHistory    []InputFrame
+	nextID          int
+	prevInput       InputFrame
 }
 
 func NewWorld(seed uint64) *World {
 	if seed == 0 {
 		seed = 1
 	}
-	w := &World{Seed: seed, RNG: seed, Player: newPlayer(), nextID: 1, Vows: make(map[Vow]bool)}
+	return &World{Seed: seed, RNG: seed, Player: newPlayer(), nextID: 1}
+}
+
+// NewValidationWorld creates the single fast-restart combat-design encounter.
+func NewValidationWorld(seed uint64) *World {
+	w := NewWorld(seed)
+	w.Terrain = validationTerrain()
+	w.Player.Pos = Vec{X: 135, Y: 185}
+	w.SpawnArenaBoss(Vec{X: 520, Y: 174})
 	return w
 }
 
-// BeginEncounter clears transient combat state while preserving the run's HP,
-// vows, companion, and learned forms.
-func (w *World) BeginEncounter() {
-	w.Enemies = nil
-	w.Clones = nil
-	w.Projectiles = nil
-	w.Effects = nil
-	w.Hitstop = 0
-	w.Won = false
-	w.Lost = false
-	w.Player.Pos = Vec{X: ArenaW / 2, Y: ArenaH / 2}
-	w.Player.Velocity = Vec{}
-	w.Player.Action = ActionIdle
-	w.Player.ActionTick = 0
-	w.Player.AttackBuffer = 0
-	w.Player.Stagger = 0
-	w.Player.Invulnerable = 0
-	w.prevInput = InputFrame{}
-}
+func (w *World) ResetEncounter() { *w = *NewValidationWorld(w.Seed) }
 
-func (w *World) ResetEncounter() {
-	seed := w.Seed
-	*w = *NewWorld(seed)
-}
+func (w *World) nextEntityID() int { id := w.nextID; w.nextID++; return id }
 
-func (w *World) nextEntityID() int {
-	id := w.nextID
-	w.nextID++
-	return id
-}
-
-// Random returns deterministic pseudo-random bits for gameplay decisions.
 func (w *World) Random() uint64 {
 	w.RNG ^= w.RNG << 13
 	w.RNG ^= w.RNG >> 7
@@ -74,54 +57,10 @@ func (w *World) Random() uint64 {
 	return w.RNG
 }
 
-func (w *World) SpawnEnemy(kind EnemyKind, position Vec) *Enemy {
-	e := &Enemy{ID: w.nextEntityID(), Kind: kind, Pos: position, Facing: Vec{X: -1}, TargetCloneID: -1}
-	switch kind {
-	case EnemyArcher:
-		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "spitting yaoguai", 8, 34, 8, 1.2, 150
-	case EnemyBrute:
-		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "iron-hide demon", 14, 80, 16, 0.75, 31
-		e.Armor = 6
-	case EnemyLancer:
-		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "wind-lance demon", 9, 54, 13, 1.75, 70
-	case EnemyHexer:
-		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "sutra hexer", 8, 48, 9, 0.9, 125
-	default:
-		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "mountain yaoguai", 10, 42, 10, 1.35, 27
-	}
-	e.HP = e.MaxHP
+func (w *World) SpawnArenaBoss(position Vec) *Enemy {
+	e := &Enemy{ID: w.nextEntityID(), Kind: EnemyBoss, Name: "warden", Pos: position, Facing: Vec{X: -1}, Radius: 21, HP: 520, MaxHP: 520, Damage: 18, MoveSpeed: 1.05, AttackRange: 42, TargetCloneID: -1, Boss: newArenaBoss()}
 	w.Enemies = append(w.Enemies, e)
 	return e
-}
-
-func (w *World) SpawnBoss(id, name string, position Vec, hp int) *Enemy {
-	e := &Enemy{ID: w.nextEntityID(), Kind: EnemyBoss, Name: name, Pos: position, Facing: Vec{X: -1}, Radius: 22, HP: hp, MaxHP: hp, Damage: 18, MoveSpeed: 1.0, AttackRange: 45, TargetCloneID: -1}
-	e.Boss = newBossState(id)
-	w.Enemies = append(w.Enemies, e)
-	return e
-}
-
-func (w *World) SpawnClone() {
-	p := &w.Player
-	if p.CloneCooldown > 0 || p.Action == ActionDead || w.Vows[VowSilence] {
-		return
-	}
-	position := clampArena(p.Pos.Sub(p.Facing.Scale(22)), p.radius())
-	w.spawnCloneAt(position, p.Facing)
-	if w.Companion == CompanionBajie {
-		perpendicular := Vec{X: -p.Facing.Y, Y: p.Facing.X}
-		w.spawnCloneAt(clampArena(position.Add(perpendicular.Scale(20)), p.radius()), p.Facing)
-	}
-	p.CloneCooldown = 120
-	w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: position, Radius: 16, TicksRemaining: 16})
-}
-
-func (w *World) spawnCloneAt(position, facing Vec) {
-	ticks := 300
-	if w.Companion == CompanionBajie {
-		ticks = 360
-	}
-	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Facing: facing, Radius: 7, TicksRemaining: ticks, HitIDs: make(map[int]bool)})
 }
 
 func (w *World) Step(input InputFrame) {
@@ -130,19 +69,28 @@ func (w *World) Step(input InputFrame) {
 		return
 	}
 	w.Tick++
+	w.recordInput(input)
 	if input.Staff != StaffNone {
 		w.Player.Staff = input.Staff
 	}
 	if input.DebugStep && !w.prevInput.DebugStep {
 		w.Debug = !w.Debug
 	}
-	w.handleInput(input)
 	w.updateEffects()
+	w.Trauma *= 0.87
 	if w.Hitstop > 0 {
 		w.Hitstop--
 		w.prevInput = input
 		return
 	}
+	if w.SlowTicks > 0 {
+		w.SlowTicks--
+		if w.Tick%2 == 1 {
+			w.prevInput = input
+			return
+		}
+	}
+	w.handleInput(input)
 	w.updatePlayer(input)
 	w.updateClones()
 	w.updateEnemies()
@@ -152,100 +100,73 @@ func (w *World) Step(input InputFrame) {
 	w.prevInput = input
 }
 
-func (w *World) handleInput(input InputFrame) {
-	p := &w.Player
-	if input.Attack && !w.prevInput.Attack {
-		p.AttackBuffer = 8
-	}
-	if input.Dodge && !w.prevInput.Dodge && p.DodgeCooldown == 0 {
-		if p.Action == ActionIdle || p.attackRecovering() {
-			w.startDodge(input)
-		}
-	}
-	if input.Clone && !w.prevInput.Clone {
-		w.SpawnClone()
-	}
-	if input.Transform != FormNone && input.Transform != p.Form && p.TransformCooldown == 0 {
-		if w.Vows[VowHumility] && input.Transform == FormGiant {
-			return
-		}
-		p.Form = input.Transform
-		p.TransformCooldown = 15
-		if w.Vows[VowSilence] {
-			p.TransformCooldown = 7
-		}
-		p.Velocity = Vec{}
-		w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: p.Pos, Radius: p.radius() + 8, TicksRemaining: 14})
+func (w *World) recordInput(input InputFrame) {
+	w.inputHistory = append(w.inputHistory, input)
+	if len(w.inputHistory) > 150 {
+		copy(w.inputHistory, w.inputHistory[len(w.inputHistory)-150:])
+		w.inputHistory = w.inputHistory[:150]
 	}
 }
 
-func (w *World) updatePlayer(input InputFrame) {
+func (w *World) handleInput(input InputFrame) {
 	p := &w.Player
-	decrement := func(value *int) {
-		if *value > 0 {
-			*value--
-		}
+	aim := Vec{X: float64(input.AimX), Y: float64(input.AimY)}
+	if aim.LengthSq() > 1 {
+		aim = aim.Normalized()
 	}
-	decrement(&p.DodgeCooldown)
-	decrement(&p.Invulnerable)
-	decrement(&p.TransformCooldown)
-	decrement(&p.CloneCooldown)
-	decrement(&p.AttackBuffer)
-	if p.Action == ActionDead {
-		return
+	if aim.LengthSq() > 0 {
+		p.Aim = aim
 	}
-	if p.Stagger > 0 {
-		p.Stagger--
-		p.Pos = clampArena(p.Pos.Add(p.Velocity), p.radius())
-		p.Velocity = p.Velocity.Scale(0.78)
-		return
-	}
-	if p.Action == ActionDodge {
-		p.Pos = clampArena(p.Pos.Add(p.Velocity), p.radius())
-		p.ActionTick++
-		if p.ActionTick >= 9 {
-			p.Action = ActionIdle
+	if input.Transform != FormNone && input.Transform != p.Form && p.TransformCooldown == 0 {
+		wasBird := p.Form == FormBird
+		p.Form = input.Transform
+		p.TransformCooldown = 12
+		if wasBird && p.Form != FormBird {
+			p.BirdMomentum = 12
+		} else if !wasBird {
 			p.Velocity = Vec{}
 		}
-		return
+		w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: p.Pos, Radius: 24, TicksRemaining: 14, Intensity: 0.5})
+		w.addTrauma(0.16)
 	}
-	if p.Action == ActionCounter {
-		p.ActionTick++
-		p.CounterWindow--
-		if p.ActionTick >= 12 {
-			p.Action = ActionIdle
+	if input.Clone && !w.prevInput.Clone {
+		w.SpawnEcho()
+	}
+	if input.Dodge && !w.prevInput.Dodge && p.DodgeCooldown == 0 && p.Form != FormTiger && p.Action != ActionMantisStance {
+		w.startDodge(input)
+	}
+	if input.Attack && !w.prevInput.Attack {
+		p.AttackBuffer = 7
+		if p.Action == ActionIdle {
+			w.startPlayerAction()
 		}
-		return
 	}
-	rules := rulesFor(p.Form)
-	move := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
-	if move.LengthSq() > 1 {
-		move = move.Normalized()
+	if p.Action == ActionLongCharge && !input.Attack {
+		w.releaseLong(nil)
 	}
-	if move.LengthSq() > 0 {
-		p.Facing = move
-	}
-	if rules.CanMove && p.Action != ActionAttack {
-		p.Velocity = move.Scale(3.2 * rules.MoveMultiplier)
-		p.Pos = clampArena(p.Pos.Add(p.Velocity), p.radius())
-	} else {
-		p.Velocity = p.Velocity.Scale(0.65)
-	}
-	if p.Action == ActionIdle && p.AttackBuffer > 0 && rules.CanAttack {
-		w.startAttack()
-	}
-	if p.Action == ActionAttack {
-		if p.attackActive() {
-			w.resolveStaffAttack(p.Pos, p.Facing, p.LastAttackSpec, p.AttackHitIDs, false)
-		}
-		p.ActionTick++
-		if p.ActionTick >= p.LastAttackSpec.Total() {
-			p.Action = ActionIdle
-			if p.Combo >= 2 || p.Staff != StaffMedium {
-				p.Combo = 0
-			} else {
-				p.Combo++
-			}
+}
+
+func (w *World) startPlayerAction() {
+	p := &w.Player
+	p.AttackBuffer = 0
+	p.ActionTick = 0
+	p.AttackHitIDs = make(map[int]bool)
+	switch p.Form {
+	case FormBird:
+		p.Action, p.Velocity = ActionBirdDive, p.Aim.Scale(8.4)
+	case FormTiger:
+		p.Action, p.Velocity = ActionTigerPounce, p.Aim.Scale(9.2)
+	case FormMantis:
+		p.Action, p.CounterWindow = ActionMantisStance, 10
+	default:
+		switch p.Staff {
+		case StaffShort:
+			p.Action, p.LastAttackSpec = ActionShort, shortSpec()
+		case StaffLong:
+			p.Action, p.LongCharge, p.LongRange = ActionLongCharge, 0, 28
+			w.Effects = append(w.Effects, Effect{Kind: EffectCharge, Pos: p.Pos, Direction: p.Aim, Radius: p.LongRange, TicksRemaining: 3})
+		default:
+			p.Action, p.LastAttackSpec = ActionMedium, mediumSpec(p.Combo)
 		}
 	}
 }
@@ -254,133 +175,295 @@ func (w *World) startDodge(input InputFrame) {
 	p := &w.Player
 	direction := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
 	if direction.LengthSq() == 0 {
-		direction = p.Facing
+		direction = p.Aim
 	}
-	direction = direction.Normalized()
-	p.Action = ActionDodge
-	p.ActionTick = 0
-	p.DodgeCooldown = 30
-	if w.Vows[VowCloudbound] {
-		p.DodgeCooldown = 18
-	}
-	p.Invulnerable = 8
-	p.Velocity = direction.Scale(7.5)
-	if w.Companion == CompanionWujing {
-		w.clearNearbyProjectiles(p.Pos, 36)
-	}
+	p.Action, p.ActionTick, p.DodgeCooldown, p.Invulnerable = ActionDodge, 0, 28, 8
+	p.Velocity = direction.Normalized().Scale(8.0)
+	w.Effects = append(w.Effects, Effect{Kind: EffectAfterimage, Pos: p.Pos, Direction: p.Velocity.Normalized(), Radius: 14, TicksRemaining: 8, Intensity: 0.25})
 }
 
-func (w *World) clearNearbyProjectiles(position Vec, radius float64) {
-	live := w.Projectiles[:0]
-	for _, projectile := range w.Projectiles {
-		if projectile.FromEnemy && projectile.Pos.Distance(position) <= radius+projectile.Radius {
-			w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: projectile.Pos, Radius: 10, TicksRemaining: 6})
-			continue
-		}
-		live = append(live, projectile)
-	}
-	w.Projectiles = live
-}
-
-func (w *World) startAttack() {
+func (w *World) updatePlayer(input InputFrame) {
 	p := &w.Player
-	if p.Form == FormMantis {
-		p.Action, p.ActionTick, p.CounterWindow = ActionCounter, 0, rulesFor(p.Form).CounterTicks
-		p.AttackBuffer = 0
+	decrement(&p.DodgeCooldown)
+	decrement(&p.Invulnerable)
+	decrement(&p.TransformCooldown)
+	decrement(&p.CloneCooldown)
+	if p.Action == ActionDead {
 		return
 	}
-	p.Action = ActionAttack
-	p.ActionTick = 0
-	p.AttackBuffer = 0
-	p.LastAttackSpec = p.attackSpec()
-	p.AttackHitIDs = make(map[int]bool)
-	for _, clone := range w.Clones {
-		if clone.PendingAttack == 0 {
-			clone.PendingAttack = 12
-			clone.AttackSpec = p.LastAttackSpec
-			clone.AttackSpec.Damage = max(1, int(float64(clone.AttackSpec.Damage)*0.6))
-			clone.HitIDs = make(map[int]bool)
-			clone.Facing = p.Facing
+	if p.Stagger > 0 {
+		p.Stagger--
+		w.movePlayer(p.Velocity)
+		p.Velocity = p.Velocity.Scale(0.76)
+		return
+	}
+	move := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
+	if move.LengthSq() > 1 {
+		move = move.Normalized()
+	}
+	switch p.Action {
+	case ActionDodge:
+		w.movePlayer(p.Velocity)
+		p.ActionTick++
+		if p.ActionTick >= 9 {
+			p.Action, p.Velocity = ActionIdle, Vec{}
 		}
+		return
+	case ActionLongCharge:
+		p.LongCharge = min(48, p.LongCharge+1)
+		p.LongRange = 28 + float64(p.LongCharge)*2.25
+		w.movePlayer(move.Scale(rulesFor(p.Form).MoveSpeed * 0.32))
+		w.Effects = append(w.Effects, Effect{Kind: EffectCharge, Pos: p.Pos, Direction: p.Aim, Radius: p.LongRange, TicksRemaining: 2, Intensity: float64(p.LongCharge) / 48})
+		return
+	case ActionBirdDive:
+		w.movePlayer(p.Velocity)
+		if p.ActionTick >= 3 && p.ActionTick < 9 {
+			w.resolveAttack(p.Pos, p.Aim, AttackSpec{Range: 18, Width: 18, Damage: 15, Knockback: 7, Heavy: true}, p.AttackHitIDs, false, p.Form)
+		}
+		p.ActionTick++
+		if p.ActionTick >= 14 {
+			p.Action = ActionIdle
+			p.Velocity = p.Velocity.Scale(0.45)
+		}
+		return
+	case ActionTigerPounce:
+		start := p.Pos
+		w.breakTerrainAlong(start, clampArena(start.Add(p.Velocity), p.radius()))
+		w.movePlayer(p.Velocity)
+		if p.ActionTick >= 2 && p.ActionTick < 12 {
+			w.resolveAttack(p.Pos, p.Aim, AttackSpec{Range: 22, Width: 18, Damage: 25, Knockback: 12, Heavy: true}, p.AttackHitIDs, false, p.Form)
+		}
+		p.ActionTick++
+		if p.ActionTick >= 16 {
+			p.Action = ActionIdle
+			p.Velocity = Vec{}
+		}
+		return
+	case ActionMantisStance:
+		p.CounterWindow--
+		p.ActionTick++
+		if p.CounterWindow <= 0 {
+			p.Action = ActionIdle
+		}
+		return
+	}
+	speed := rulesFor(p.Form).MoveSpeed
+	if p.BirdMomentum > 0 && p.Form != FormBird {
+		w.movePlayer(p.Velocity)
+		p.Velocity = p.Velocity.Scale(0.84)
+		p.BirdMomentum--
+	}
+	if p.Action == ActionShort {
+		speed *= 0.95
+	}
+	if p.Action == ActionMedium {
+		speed *= 0.45
+	}
+	w.movePlayer(move.Scale(speed))
+	if p.Form == FormBird {
+		p.Velocity = move.Scale(speed)
+	}
+	if p.Action == ActionIdle && p.AttackBuffer > 0 {
+		w.startPlayerAction()
+	}
+	if p.Action == ActionShort || p.Action == ActionMedium || p.Action == ActionLongRelease {
+		if p.actionActive() {
+			w.resolveAttack(p.Pos, p.Aim, p.LastAttackSpec, p.AttackHitIDs, false, p.Form)
+		}
+		p.ActionTick++
+		if p.ActionTick >= p.LastAttackSpec.Total() {
+			if p.Action == ActionMedium && p.Combo < 2 {
+				p.Combo++
+			} else {
+				p.Combo = 0
+			}
+			p.Action = ActionIdle
+		}
+	}
+	if p.Action != ActionIdle {
+		decrement(&p.AttackBuffer)
 	}
 }
 
-func (w *World) resolveStaffAttack(origin, facing Vec, spec AttackSpec, hitIDs map[int]bool, fromClone bool) {
-	start := origin.Add(facing.Scale(6))
-	end := origin.Add(facing.Scale(spec.Range))
-	w.Effects = append(w.Effects, Effect{Kind: EffectStaffTrail, Pos: origin, Direction: facing, Radius: spec.Range, TicksRemaining: 3})
+func (w *World) releaseLong(clone *Clone) {
+	p := &w.Player
+	charge := p.LongCharge
+	if clone != nil {
+		charge = clone.LongCharge
+	}
+	spec := AttackSpec{Startup: 2, Active: 5, Recovery: 24, Range: 28 + float64(charge)*2.25, Width: 13 + float64(charge)/7, Damage: 18 + charge/3, Knockback: 10 + float64(charge)/8, Heavy: charge >= 24}
+	if clone != nil {
+		clone.Action, clone.ActionTick, clone.AttackSpec, clone.HitIDs = ActionLongRelease, 0, spec, make(map[int]bool)
+		return
+	}
+	p.Action, p.ActionTick, p.LastAttackSpec, p.AttackHitIDs = ActionLongRelease, 0, spec, make(map[int]bool)
+	if charge >= 24 {
+		w.addTrauma(0.18)
+	}
+}
+
+func (w *World) SpawnEcho() {
+	p := &w.Player
+	if p.CloneCooldown > 0 || p.Action == ActionDead || len(w.inputHistory) < 20 {
+		return
+	}
+	frames := append([]InputFrame(nil), w.inputHistory[max(0, len(w.inputHistory)-120):]...)
+	position := clampArena(p.Pos.Sub(p.Aim.Scale(24)), 7)
+	w.Clones = append(w.Clones, &Clone{ID: w.nextEntityID(), Pos: position, Aim: p.Aim, Radius: rulesFor(FormMonkey).Radius, Form: FormMonkey, Delay: 20, EchoIndex: -20, Frames: frames, Staff: p.Staff, HitIDs: make(map[int]bool), TicksRemaining: len(frames) + 20})
+	p.CloneCooldown = 150
+	w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: position, Radius: 22, TicksRemaining: 16, Intensity: 0.6})
+}
+
+func (w *World) updateClones() {
+	live := w.Clones[:0]
+	for _, c := range w.Clones {
+		c.TicksRemaining--
+		c.EchoIndex++
+		if c.EchoIndex >= 0 && c.EchoIndex < len(c.Frames) {
+			w.stepEcho(c, c.Frames[c.EchoIndex])
+		}
+		if c.TicksRemaining > 0 {
+			live = append(live, c)
+		} else {
+			w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: c.Pos, Radius: 18, TicksRemaining: 10, Intensity: 0.35})
+		}
+	}
+	w.Clones = live
+}
+
+func (w *World) stepEcho(c *Clone, input InputFrame) {
+	if input.Staff != StaffNone {
+		c.Staff = input.Staff
+	}
+	aim := Vec{X: float64(input.AimX), Y: float64(input.AimY)}
+	if aim.LengthSq() > 0 {
+		c.Aim = aim.Normalized()
+	}
+	if input.Transform != FormNone && input.Transform != c.Form {
+		c.Form = input.Transform
+		c.Radius = rulesFor(c.Form).Radius
+	}
+	move := Vec{X: float64(input.MoveX), Y: float64(input.MoveY)}
+	if move.LengthSq() > 1 {
+		move = move.Normalized()
+	}
+	if c.Action != ActionBirdDive && c.Action != ActionTigerPounce && c.Action != ActionMantisStance {
+		c.Pos = w.moveEcho(c.Pos, move.Scale(rulesFor(c.Form).MoveSpeed), c.Radius, c.Form)
+	}
+	pressed := input.Attack && !c.Previous.Attack
+	if pressed && c.Action == ActionIdle {
+		c.ActionTick, c.HitIDs = 0, make(map[int]bool)
+		if c.Form == FormBird {
+			c.Action, c.Velocity = ActionBirdDive, c.Aim.Scale(7.4)
+		} else if c.Form == FormTiger {
+			c.Action, c.Velocity = ActionTigerPounce, c.Aim.Scale(8.2)
+		} else if c.Form == FormMantis {
+			c.Action, c.ActionTick = ActionMantisStance, 0
+		} else if c.Staff == StaffLong {
+			c.Action, c.LongCharge, c.LongRange = ActionLongCharge, 0, 28
+		} else if c.Staff == StaffShort {
+			c.Action, c.AttackSpec = ActionShort, shortSpec()
+		} else {
+			c.Action, c.AttackSpec = ActionMedium, mediumSpec(0)
+		}
+	}
+	if c.Action == ActionLongCharge {
+		c.LongCharge++
+		c.LongRange = 28 + float64(c.LongCharge)*2.25
+		if !input.Attack {
+			w.releaseLong(c)
+		}
+	}
+	if c.Action == ActionBirdDive {
+		c.Pos = w.moveEcho(c.Pos, c.Velocity, c.Radius, FormBird)
+		if c.ActionTick >= 3 && c.ActionTick < 9 {
+			w.resolveAttack(c.Pos, c.Aim, AttackSpec{Range: 16, Width: 16, Damage: 10, Knockback: 6, Heavy: true}, c.HitIDs, true, c.Form)
+		}
+		c.ActionTick++
+		if c.ActionTick >= 14 {
+			c.Action = ActionIdle
+		}
+	}
+	if c.Action == ActionTigerPounce {
+		start := c.Pos
+		w.breakTerrainAlong(start, clampArena(start.Add(c.Velocity), c.Radius))
+		c.Pos = w.moveEcho(c.Pos, c.Velocity, c.Radius, c.Form)
+		if c.ActionTick >= 2 && c.ActionTick < 12 {
+			w.resolveAttack(c.Pos, c.Aim, AttackSpec{Range: 20, Width: 16, Damage: 17, Knockback: 10, Heavy: true}, c.HitIDs, true, c.Form)
+		}
+		c.ActionTick++
+		if c.ActionTick >= 16 {
+			c.Action = ActionIdle
+		}
+	}
+	if c.Action == ActionMantisStance {
+		c.ActionTick++
+		if c.ActionTick >= 10 {
+			c.Action = ActionIdle
+		}
+	}
+	if c.Action == ActionShort || c.Action == ActionMedium || c.Action == ActionLongRelease {
+		if c.ActionTick >= c.AttackSpec.Startup && c.ActionTick < c.AttackSpec.Startup+c.AttackSpec.Active {
+			w.resolveAttack(c.Pos, c.Aim, c.AttackSpec, c.HitIDs, true, c.Form)
+		}
+		c.ActionTick++
+		if c.ActionTick >= c.AttackSpec.Total() {
+			c.Action = ActionIdle
+		}
+	}
+	c.Previous = input
+}
+
+func (w *World) resolveAttack(origin, aim Vec, spec AttackSpec, hitIDs map[int]bool, fromEcho bool, attackerForm FormID) {
+	start, end := origin.Add(aim.Scale(5)), origin.Add(aim.Scale(spec.Range))
+	if blocked, at := w.firstTerrainBlock(start, end); blocked {
+		end = at
+	}
+	w.Effects = append(w.Effects, Effect{Kind: EffectStaffTrail, Pos: origin, Direction: aim, Radius: start.Distance(end), TicksRemaining: 4, Intensity: map[bool]float64{true: 0.85, false: 0.3}[spec.Heavy]})
+	for _, projectile := range w.Projectiles {
+		if !projectile.FromEnemy || projectile.TicksRemaining <= 0 || projectile.Pos.Distance(nearestPointOnSegment(projectile.Pos, start, end)) > spec.Width+projectile.Radius {
+			continue
+		}
+		projectile.TicksRemaining = 0
+		w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: projectile.Pos, Direction: aim, Radius: 8, TicksRemaining: 5, Intensity: 0.2})
+	}
 	for _, enemy := range w.Enemies {
 		if !enemy.alive() || hitIDs[enemy.ID] || enemy.Invulnerable > 0 {
 			continue
 		}
-		nearest := nearestPointOnSegment(enemy.Pos, start, end)
-		if enemy.Pos.Distance(nearest) > spec.Width+enemy.Radius {
+		if enemy.Pos.Distance(nearestPointOnSegment(enemy.Pos, start, end)) > spec.Width+enemy.Radius {
+			continue
+		}
+		if enemy.Boss != nil && !w.tryOpenBoss(enemy, fromEcho) {
 			continue
 		}
 		damage := spec.Damage
-		if enemy.Boss != nil && enemy.Boss.Shielded {
-			w.tryOpenBoss(enemy, fromClone)
-			if enemy.Boss.Shielded {
-				damage = 0
-			}
+		if fromEcho {
+			damage = max(1, damage*2/3)
 		}
-		if damage == 0 {
-			w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: enemy.Pos, Radius: 9, TicksRemaining: 6})
-			continue
+		if enemy.WeakPoint > 0 {
+			damage *= 2
 		}
 		if enemy.Armor > 0 {
-			if w.Player.Form == FormTiger {
+			if attackerForm == FormTiger || spec.Heavy {
 				enemy.Armor = 0
-				enemy.Stagger = max(enemy.Stagger, 24)
-				w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: enemy.Pos, Radius: 22, TicksRemaining: 10})
+				enemy.Stagger = max(enemy.Stagger, 32)
+				w.heavyFeedback(enemy.Pos, aim)
 			} else {
 				damage = max(1, damage-enemy.Armor)
 			}
 		}
 		enemy.HP -= damage
-		enemy.Velocity = enemy.Velocity.Add(facing.Scale(spec.Knockback))
+		enemy.Flash = 5
+		enemy.Velocity = enemy.Velocity.Add(aim.Scale(spec.Knockback))
 		enemy.Stagger = max(enemy.Stagger, 5)
-		enemy.LastDamagedByClone = fromClone
 		hitIDs[enemy.ID] = true
-		w.Hitstop = max(w.Hitstop, 3)
-		w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: enemy.Pos, Radius: 13, TicksRemaining: 8})
-	}
-}
-
-func (w *World) tryOpenBoss(enemy *Enemy, fromClone bool) {
-	boss := enemy.Boss
-	opened := false
-	switch boss.ID {
-	case "yellow_wind_sage":
-		opened = w.Player.Staff == StaffLong
-	case "golden_horn":
-		opened = w.Player.Form == boss.RequiredForm
-	case "erlang_mirror":
-		opened = fromClone
-	}
-	if opened {
-		boss.Shielded = false
-		boss.Vulnerable = 90
-		boss.Telegraph = "opened"
-		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: enemy.Pos, Radius: enemy.Radius + 18, TicksRemaining: 18})
-	}
-}
-
-func (w *World) updateClones() {
-	live := w.Clones[:0]
-	for _, clone := range w.Clones {
-		clone.TicksRemaining--
-		if clone.PendingAttack > 0 {
-			clone.PendingAttack--
-			if clone.PendingAttack == 0 {
-				w.resolveStaffAttack(clone.Pos, clone.Facing, clone.AttackSpec, clone.HitIDs, true)
-			}
-		}
-		if clone.TicksRemaining > 0 {
-			live = append(live, clone)
+		if spec.Heavy {
+			w.heavyFeedback(enemy.Pos, aim)
+		} else {
+			w.hitFeedback(enemy.Pos, aim)
 		}
 	}
-	w.Clones = live
 }
 
 func (w *World) updateEnemies() {
@@ -388,28 +471,22 @@ func (w *World) updateEnemies() {
 		if !enemy.alive() {
 			continue
 		}
-		if enemy.Invulnerable > 0 {
-			enemy.Invulnerable--
-		}
+		decrement(&enemy.Flash)
+		decrement(&enemy.Invulnerable)
+		decrement(&enemy.WeakPoint)
 		if enemy.Boss != nil {
 			w.updateBoss(enemy)
 		}
 		if enemy.Stagger > 0 {
-			enemy.AIState = "staggered"
 			enemy.Stagger--
-			enemy.Pos = clampArena(enemy.Pos.Add(enemy.Velocity), enemy.Radius)
-			enemy.Velocity = enemy.Velocity.Scale(0.76)
+			w.moveEnemy(enemy, enemy.Velocity)
+			enemy.Velocity = enemy.Velocity.Scale(0.75)
 			continue
 		}
-		target, clone, canTarget := w.enemyTarget(enemy)
-		if !canTarget {
-			enemy.AIState = "searching"
-			continue
-		}
+		target, clone := w.enemyTarget(enemy)
 		toTarget := target.Sub(enemy.Pos)
-		distance := toTarget.Length()
-		if distance > 0 {
-			enemy.Facing = toTarget.Scale(1 / distance)
+		if toTarget.LengthSq() > 0 {
+			enemy.Facing = toTarget.Normalized()
 		}
 		if enemy.Windup > 0 {
 			enemy.AIState = "windup"
@@ -419,89 +496,70 @@ func (w *World) updateEnemies() {
 			}
 			continue
 		}
-		if enemy.AttackCooldown > 0 {
-			enemy.AttackCooldown--
-		}
-		if distance <= enemy.AttackRange && enemy.AttackCooldown == 0 {
-			enemy.AIState = "telegraph"
-			enemy.Windup = 18
+		decrement(&enemy.AttackCooldown)
+		if toTarget.Length() <= enemy.AttackRange && enemy.AttackCooldown == 0 {
+			enemy.AIState, enemy.Windup = "telegraph", 18
 			w.Effects = append(w.Effects, Effect{Kind: EffectTelegraph, Pos: target, Radius: enemy.AttackRange, TicksRemaining: 18})
 			continue
 		}
-		if distance > enemy.AttackRange*0.78 {
-			enemy.AIState = "chase"
-			enemy.Velocity = enemy.Facing.Scale(enemy.MoveSpeed)
-			enemy.Pos = clampArena(enemy.Pos.Add(enemy.Velocity), enemy.Radius)
-		}
+		enemy.AIState = "chase"
+		w.moveEnemy(enemy, enemy.Facing.Scale(enemy.MoveSpeed))
 	}
 }
 
-func (w *World) enemyTarget(enemy *Enemy) (Vec, *Clone, bool) {
+func (w *World) enemyTarget(enemy *Enemy) (Vec, *Clone) {
 	for _, clone := range w.Clones {
-		if rulesFor(w.Player.Form).Untargetable || enemy.Pos.Distance(clone.Pos) < enemy.Pos.Distance(w.Player.Pos)*1.25 {
+		if enemy.Pos.Distance(clone.Pos) < enemy.Pos.Distance(w.Player.Pos)*1.25 {
 			enemy.TargetCloneID = clone.ID
-			return clone.Pos, clone, true
+			return clone.Pos, clone
 		}
 	}
-	if rulesFor(w.Player.Form).Untargetable {
-		enemy.TargetCloneID = -1
-		return Vec{}, nil, false
-	}
 	enemy.TargetCloneID = -1
-	return w.Player.Pos, nil, true
+	return w.Player.Pos, nil
 }
 
 func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
-	enemy.AttackCooldown = 45
-	if enemy.Kind == EnemyArcher {
-		direction := target.Sub(enemy.Pos).Normalized()
-		w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: enemy.Pos, Velocity: direction.Scale(4), Radius: 5, Damage: enemy.Damage, TicksRemaining: 120, FromEnemy: true})
-		return
-	}
-	if enemy.Kind == EnemyHexer {
-		direction := target.Sub(enemy.Pos).Normalized()
-		perpendicular := Vec{X: -direction.Y, Y: direction.X}
-		for _, offset := range []float64{-0.28, 0, 0.28} {
-			velocity := direction.Add(perpendicular.Scale(offset)).Normalized().Scale(3.2)
-			w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: enemy.Pos, Velocity: velocity, Radius: 4, Damage: enemy.Damage, TicksRemaining: 130, FromEnemy: true, Hazard: true})
-		}
-		return
-	}
-	if enemy.Kind == EnemyLancer {
-		enemy.Pos = clampArena(enemy.Pos.Add(enemy.Facing.Scale(28)), enemy.Radius)
-	}
+	enemy.AttackCooldown = 46
 	if clone != nil {
 		clone.TicksRemaining = 0
-		w.Effects = append(w.Effects, Effect{Kind: EffectDeath, Pos: clone.Pos, Radius: 12, TicksRemaining: 10})
 		return
 	}
-	if w.Player.Form == FormMantis && w.Player.Action == ActionCounter && w.Player.CounterWindow > 0 {
-		enemy.Stagger = 45
-		enemy.HP -= 18
-		if w.Vows[VowHumility] {
-			w.Player.HP = min(w.Player.MaxHP, w.Player.HP+4)
+	p := &w.Player
+	if p.Form == FormMantis && p.Action == ActionMantisStance && p.CounterWindow > 0 {
+		enemy.Stagger, enemy.WeakPoint, enemy.Velocity = 72, 180, enemy.Facing.Scale(-13)
+		if enemy.Boss != nil {
+			enemy.Boss.Shielded = false
+			enemy.Boss.VulnerableTicks = 180
+			enemy.Boss.Telegraph = "weak point exposed"
 		}
-		enemy.Velocity = enemy.Facing.Scale(-8)
-		w.Hitstop = max(w.Hitstop, 5)
-		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: w.Player.Pos, Radius: 32, TicksRemaining: 14})
+		w.Hitstop, w.SlowTicks = max(w.Hitstop, 8), 10
+		w.addTrauma(1)
+		w.Effects = append(w.Effects, Effect{Kind: EffectHeavyImpact, Pos: p.Pos, Radius: 48, TicksRemaining: 20, Intensity: 1})
 		return
 	}
-	if w.Player.Form == FormMonkey && w.Player.Staff == StaffShort && w.Player.Action == ActionAttack && w.Player.attackActive() {
-		enemy.Stagger = max(enemy.Stagger, 20)
-		enemy.HP -= 6
-		enemy.Velocity = enemy.Facing.Scale(-6)
-		w.Hitstop = max(w.Hitstop, 3)
-		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: w.Player.Pos, Radius: 24, TicksRemaining: 10})
+	if p.Form == FormMonkey && p.Staff == StaffShort && p.Action == ActionShort && p.ActionTick >= 2 && p.ActionTick < 5 {
+		enemy.Stagger, enemy.Velocity = 32, enemy.Facing.Scale(-8)
+		w.Hitstop = max(w.Hitstop, 4)
+		w.addTrauma(0.45)
+		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: p.Pos, Radius: 27, TicksRemaining: 12, Intensity: 0.7})
 		return
 	}
-	w.damagePlayer(enemy.Damage, enemy.Facing.Scale(5), false)
+	w.damagePlayer(enemy.Damage, enemy.Facing.Scale(6), false)
 }
 
 func (w *World) updateProjectiles() {
 	live := w.Projectiles[:0]
 	for _, projectile := range w.Projectiles {
+		if projectile.TicksRemaining <= 0 {
+			continue
+		}
+		previous := projectile.Pos
 		projectile.Pos = projectile.Pos.Add(projectile.Velocity)
 		projectile.TicksRemaining--
+		if blocked, _ := w.firstProjectileBlock(previous, projectile.Pos); blocked {
+			w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: projectile.Pos, Radius: 8, TicksRemaining: 6})
+			continue
+		}
 		if projectile.FromEnemy && projectile.Pos.Distance(w.Player.Pos) <= projectile.Radius+w.Player.radius() {
 			w.damagePlayer(projectile.Damage, projectile.Velocity.Normalized().Scale(4), projectile.Hazard)
 			continue
@@ -513,25 +571,31 @@ func (w *World) updateProjectiles() {
 	w.Projectiles = live
 }
 
+func (w *World) spawnAimedFan(origin, target Vec, count int, speed float64, damage int) {
+	direction := target.Sub(origin).Normalized()
+	perpendicular := Vec{X: -direction.Y, Y: direction.X}
+	for i := range count {
+		offset := (float64(i) - float64(count-1)/2) * 0.24
+		w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: origin, Velocity: direction.Add(perpendicular.Scale(offset)).Normalized().Scale(speed), Radius: 5, Damage: damage, TicksRemaining: 130, FromEnemy: true, Hazard: true})
+	}
+}
+
+func (w *World) spawnRadial(origin Vec, count int, speed float64, damage int) {
+	for i := range count {
+		angle := float64(i) * 6.28318530718 / float64(count)
+		w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: origin, Velocity: Vec{X: cos(angle) * speed, Y: sin(angle) * speed}, Radius: 6, Damage: damage, TicksRemaining: 120, FromEnemy: true, Hazard: true})
+	}
+}
+
 func (w *World) damagePlayer(damage int, knockback Vec, hazard bool) {
 	p := &w.Player
-	if p.Action == ActionDead || p.Invulnerable > 0 || (hazard && rulesFor(p.Form).HazardImmune) {
+	if p.Action == ActionDead || p.Invulnerable > 0 || (hazard && p.Form == FormBird) {
 		return
-	}
-	if p.Form == FormStatue {
-		damage = (damage + 1) / 2
-	}
-	if p.Form == FormGiant {
-		knockback = knockback.Scale(0.35)
 	}
 	p.HP -= damage
 	p.Velocity = knockback
-	p.Stagger = 9
-	if p.Form == FormGiant {
-		p.Stagger = 4
-	}
-	p.Invulnerable = 18
-	w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: p.Pos, Radius: 16, TicksRemaining: 10})
+	p.Stagger, p.Invulnerable = 10, 18
+	w.hitFeedback(p.Pos, knockback.Normalized())
 	if p.HP <= 0 {
 		p.HP = 0
 		p.Action = ActionDead
@@ -540,26 +604,86 @@ func (w *World) damagePlayer(damage int, knockback Vec, hazard bool) {
 	}
 }
 
-func (w *World) resolveBodyCollisions() {
-	p := &w.Player
-	if p.Action == ActionDodge && w.Vows[VowCloudbound] {
-		return
+func (w *World) movePlayer(delta Vec) {
+	w.Player.Pos = w.moveForForm(w.Player.Pos, delta, w.Player.radius(), w.Player.Form)
+}
+func (w *World) moveEcho(position, delta Vec, radius float64, form FormID) Vec {
+	return w.moveForForm(position, delta, radius, form)
+}
+func (w *World) moveEnemy(enemy *Enemy, delta Vec) {
+	next := w.moveForForm(enemy.Pos, delta, enemy.Radius, FormMonkey)
+	if next == enemy.Pos && delta.LengthSq() > 0 {
+		enemy.Stagger = max(enemy.Stagger, 12)
+		enemy.HP -= max(1, int(delta.Length()/2))
+		w.heavyFeedback(enemy.Pos, delta.Normalized())
 	}
+	enemy.Pos = next
+}
+func (w *World) moveForForm(position, delta Vec, radius float64, form FormID) Vec {
+	next := clampArena(position.Add(delta), radius)
+	for _, terrain := range w.Terrain {
+		if terrain.blocks(form) && terrain.Bounds.overlapsCircle(next, radius) {
+			return position
+		}
+	}
+	return next
+}
+func (w *World) firstTerrainBlock(start, end Vec) (bool, Vec) {
+	for step := 1; step <= 20; step++ {
+		point := start.Add(end.Sub(start).Scale(float64(step) / 20))
+		for _, terrain := range w.Terrain {
+			if terrain.blocksProjectile() && terrain.Bounds.contains(point) {
+				return true, point
+			}
+		}
+	}
+	return false, end
+}
+func (w *World) firstProjectileBlock(start, end Vec) (bool, Vec) {
+	return w.firstTerrainBlock(start, end)
+}
+func (w *World) breakTerrainAlong(start, end Vec) {
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && (terrain.Bounds.contains(start) || terrain.Bounds.contains(end) || terrain.Bounds.overlapsCircle(end, 14)) {
+			terrain.HP--
+			w.heavyFeedback(Vec{X: terrain.Bounds.X + terrain.Bounds.W/2, Y: terrain.Bounds.Y + terrain.Bounds.H/2}, end.Sub(start).Normalized())
+		}
+	}
+}
+
+func (w *World) resolveBodyCollisions() {
 	for _, enemy := range w.Enemies {
 		if !enemy.alive() {
 			continue
 		}
-		delta := p.Pos.Sub(enemy.Pos)
+		delta := w.Player.Pos.Sub(enemy.Pos)
 		distance := delta.Length()
-		minimum := p.radius() + enemy.Radius
-		if distance == 0 {
-			delta, distance = Vec{X: 1}, 1
+		minDistance := w.Player.radius() + enemy.Radius
+		if distance > 0 && distance < minDistance {
+			push := delta.Scale((minDistance - distance) / distance)
+			w.Player.Pos = w.moveForForm(w.Player.Pos, push.Scale(0.55), w.Player.radius(), w.Player.Form)
+			enemy.Pos = w.moveForForm(enemy.Pos, push.Scale(-0.45), enemy.Radius, FormMonkey)
 		}
-		if distance < minimum {
-			push := delta.Scale((minimum - distance) / distance)
-			p.Pos = clampArena(p.Pos.Add(push.Scale(0.55)), p.radius())
-			enemy.Pos = clampArena(enemy.Pos.Sub(push.Scale(0.45)), enemy.Radius)
-		}
+	}
+}
+
+func (w *World) hitFeedback(position, direction Vec) {
+	w.Hitstop = max(w.Hitstop, 2)
+	w.addTraumaAt(0.16, direction)
+	w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: position, Direction: direction, Radius: 13, TicksRemaining: 8, Intensity: 0.3})
+}
+func (w *World) heavyFeedback(position, direction Vec) {
+	w.Hitstop = max(w.Hitstop, 5)
+	w.addTraumaAt(0.58, direction)
+	w.Effects = append(w.Effects, Effect{Kind: EffectHeavyImpact, Pos: position, Direction: direction, Radius: 26, TicksRemaining: 15, Intensity: 0.9})
+}
+func (w *World) addTrauma(value float64) { w.Trauma = min(1.25, w.Trauma+value) }
+
+func (w *World) addTraumaAt(value float64, direction Vec) {
+	w.addTrauma(value)
+	if direction.LengthSq() > 0 {
+		w.TraumaDirection = w.TraumaDirection.Add(direction.Normalized().Scale(value)).Normalized()
 	}
 }
 
@@ -567,7 +691,8 @@ func (w *World) removeDead() {
 	live := w.Enemies[:0]
 	for _, enemy := range w.Enemies {
 		if enemy.HP <= 0 {
-			w.Effects = append(w.Effects, Effect{Kind: EffectDeath, Pos: enemy.Pos, Radius: enemy.Radius + 6, TicksRemaining: 18})
+			w.Effects = append(w.Effects, Effect{Kind: EffectDeath, Pos: enemy.Pos, Radius: enemy.Radius + 10, TicksRemaining: 18, Intensity: 0.7})
+			w.heavyFeedback(enemy.Pos, Vec{X: 1})
 			continue
 		}
 		live = append(live, enemy)
@@ -577,7 +702,6 @@ func (w *World) removeDead() {
 		w.Won = true
 	}
 }
-
 func (w *World) updateEffects() {
 	live := w.Effects[:0]
 	for _, effect := range w.Effects {
@@ -588,24 +712,61 @@ func (w *World) updateEffects() {
 	}
 	w.Effects = live
 }
+func decrement(value *int) {
+	if *value > 0 {
+		*value--
+	}
+}
 
-// StateHash is a diagnostics hash for deterministic regression tests.
 func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
-	_, _ = fmt.Fprintf(h, "%s/%d/%d/%t/%t/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", SimulationVersion, w.Tick, w.RNG, w.Won, w.Lost, w.Player.HP, w.Player.Form, w.Player.Staff, w.Player.Action, w.Player.ActionTick, w.Player.Combo, w.Player.DodgeCooldown, w.Player.Invulnerable, w.Player.TransformCooldown, w.Player.CloneCooldown, w.Player.Stagger, q(w.Player.Pos.X), q(w.Player.Pos.Y), q(w.Player.Velocity.X))
+	p := w.Player
+	_, _ = fmt.Fprintf(h, "%s/t%d/r%d/n%d/h%d/s%d/l%d/w%d", SimulationVersion, w.Tick, w.RNG, w.nextID, w.Hitstop, w.SlowTicks, boolHash(w.Won), boolHash(w.Lost))
+	_, _ = fmt.Fprintf(h, "/p%d,%d/%d,%d/%d,%d/hp%d/f%d/st%d/a%d/at%d/c%d/b%d/d%d/i%d/t%d/cl%d/g%d/cw%d/lc%d/lr%d/bm%d", q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.HP, p.Form, p.Staff, p.Action, p.ActionTick, p.Combo, p.AttackBuffer, p.DodgeCooldown, p.Invulnerable, p.TransformCooldown, p.CloneCooldown, p.Stagger, p.CounterWindow, p.LongCharge, q(p.LongRange), p.BirdMomentum)
+	hashHitIDs(h, p.AttackHitIDs)
+	for _, terrain := range w.Terrain {
+		_, _ = fmt.Fprintf(h, "/t%d/%d/%d", terrain.ID, terrain.Kind, terrain.HP)
+	}
 	for _, enemy := range w.Enemies {
-		_, _ = fmt.Fprintf(h, "/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), enemy.AttackCooldown, enemy.Windup, enemy.Stagger)
+		_, _ = fmt.Fprintf(h, "/e%d/k%d/h%d/p%d,%d/v%d,%d/f%d,%d/a%d/ac%d/w%d/st%d/wp%d/fl%d/i%d/target%d/ai%s", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), q(enemy.Facing.X), q(enemy.Facing.Y), enemy.Armor, enemy.AttackCooldown, enemy.Windup, enemy.Stagger, enemy.WeakPoint, enemy.Flash, enemy.Invulnerable, enemy.TargetCloneID, enemy.AIState)
 		if enemy.Boss != nil {
-			_, _ = fmt.Fprintf(h, "/b/%s/%d/%d/%d/%t/%t", enemy.Boss.ID, enemy.Boss.Phase, enemy.Boss.PatternTick, enemy.Boss.Vulnerable, enemy.Boss.Shielded, enemy.Boss.Enraged)
+			boss := enemy.Boss
+			_, _ = fmt.Fprintf(h, "/b%d/%s/%d/%d/%d/%d/%d", boss.Phase, boss.PhaseName, boss.Timer, boolHash(boss.Shielded), boolHash(boss.EchoSeal), boss.TelegraphTicks, boss.VulnerableTicks)
 		}
 	}
 	for _, clone := range w.Clones {
-		_, _ = fmt.Fprintf(h, "/c%d/%d/%d/%d/%d", clone.ID, clone.TicksRemaining, clone.PendingAttack, q(clone.Pos.X), q(clone.Pos.Y))
+		_, _ = fmt.Fprintf(h, "/c%d/%d,%d/%d,%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", clone.ID, q(clone.Pos.X), q(clone.Pos.Y), q(clone.Aim.X), q(clone.Aim.Y), clone.Form, clone.Staff, clone.Action, clone.ActionTick, clone.LongCharge, q(clone.LongRange), clone.EchoIndex, clone.TicksRemaining, len(clone.Frames))
+		hashHitIDs(h, clone.HitIDs)
 	}
 	for _, projectile := range w.Projectiles {
-		_, _ = fmt.Fprintf(h, "/p%d/%d/%d/%d/%d/%t/%t", projectile.ID, q(projectile.Pos.X), q(projectile.Pos.Y), q(projectile.Velocity.X), q(projectile.Velocity.Y), projectile.FromEnemy, projectile.Hazard)
+		_, _ = fmt.Fprintf(h, "/r%d/%d,%d/%d,%d/%d/%d/%d/%d/%d", projectile.ID, q(projectile.Pos.X), q(projectile.Pos.Y), q(projectile.Velocity.X), q(projectile.Velocity.Y), q(projectile.Radius), projectile.Damage, projectile.TicksRemaining, boolHash(projectile.FromEnemy), boolHash(projectile.Hazard))
+	}
+	for _, input := range w.inputHistory {
+		_, _ = fmt.Fprintf(h, "/i%d,%d,%d,%d/%d/%d/%d/%d/%d/%d/%d", input.MoveX, input.MoveY, input.AimX, input.AimY, boolHash(input.Attack), boolHash(input.Dodge), boolHash(input.Clone), input.Staff, input.Transform, boolHash(input.Restart), boolHash(input.DebugStep))
 	}
 	return h.Sum64()
 }
 
-func q(value float64) int64 { return int64(value * 1000) }
+func hashHitIDs(h hash.Hash, hitIDs map[int]bool) {
+	ids := make([]int, 0, len(hitIDs))
+	for id, hit := range hitIDs {
+		if hit {
+			ids = append(ids, id)
+		}
+	}
+	sort.Ints(ids)
+	for _, id := range ids {
+		_, _ = fmt.Fprintf(h, "/x%d", id)
+	}
+}
+
+func boolHash(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+func q(value float64) int64     { return int64(value * 1000) }
+func sin(value float64) float64 { return math.Sin(value) }
+func cos(value float64) float64 { return math.Cos(value) }

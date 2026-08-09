@@ -1,27 +1,33 @@
 package sim
 
-// RenderSnapshot is a read-only projection of World for any renderer. It has
-// no Ebitengine types so headless simulations stay independent of graphics.
+// RenderSnapshot is a renderer-only projection. Visual randomness is derived
+// from Tick and never mutates World.RNG.
 type RenderSnapshot struct {
-	Tick        uint64
-	Seed        uint64
-	Player      PlayerSnapshot
-	Enemies     []EnemySnapshot
-	Clones      []CloneSnapshot
-	Projectiles []ProjectileSnapshot
-	Effects     []EffectSnapshot
-	Debug       DebugSnapshot
-	Won, Lost   bool
+	Tick            uint64
+	Player          PlayerSnapshot
+	Enemies         []EnemySnapshot
+	Clones          []CloneSnapshot
+	Projectiles     []ProjectileSnapshot
+	Effects         []EffectSnapshot
+	Terrain         []TerrainSnapshot
+	Debug           DebugSnapshot
+	Trauma          float64
+	TraumaDirection Vec
+	Won, Lost       bool
 }
 
 type PlayerSnapshot struct {
 	Pos, Velocity Vec
+	Aim           Vec
 	Radius        float64
 	HP, MaxHP     int
 	Form          FormID
 	Staff         StaffLength
 	Action        Action
 	ActionTick    int
+	LongRange     float64
+	AttackRange   float64
+	AttackWidth   float64
 	Invulnerable  bool
 }
 
@@ -33,26 +39,32 @@ type EnemySnapshot struct {
 	Radius          float64
 	HP, MaxHP       int
 	Windup, Stagger int
+	WeakPoint       int
+	Flash           int
 	TargetCloneID   int
 	AIState         string
 	Boss            *BossSnapshot
 }
 
 type BossSnapshot struct {
-	ID, PhaseName string
-	Phase         int
-	Shielded      bool
-	Telegraph     string
-	RequiredForm  FormID
-	RequiredStaff StaffLength
+	PhaseName      string
+	Phase          int
+	Shielded       bool
+	EchoSeal       bool
+	Telegraph      string
+	TelegraphTicks int
 }
 
 type CloneSnapshot struct {
-	ID             int
-	Pos, Facing    Vec
-	Radius         float64
-	TicksRemaining int
-	PendingAttack  int
+	ID               int
+	Pos, Aim         Vec
+	Radius           float64
+	Delay, EchoIndex int
+	EchoLength       int
+	TicksRemaining   int
+	Action           Action
+	LongRange        float64
+	ReplayInput      InputFrame
 }
 
 type ProjectileSnapshot struct {
@@ -60,44 +72,49 @@ type ProjectileSnapshot struct {
 	Radius float64
 	Hazard bool
 }
-
 type EffectSnapshot struct {
-	Kind           EffectKind
-	Pos, Direction Vec
-	Radius         float64
-	TicksRemaining int
+	Kind              EffectKind
+	Pos, Direction    Vec
+	Radius, Intensity float64
+	TicksRemaining    int
 }
-
+type TerrainSnapshot struct {
+	ID     int
+	Kind   TerrainKind
+	Bounds Rect
+	HP     int
+}
 type DebugSnapshot struct {
-	Enabled   bool
-	Hitstop   int
-	RNG       uint64
-	Action    Action
-	BossPhase string
+	Enabled            bool
+	Hitstop, SlowTicks int
+	BossPhase          string
 }
 
 func (w *World) Snapshot() RenderSnapshot {
-	snapshot := RenderSnapshot{
-		Tick: w.Tick, Seed: w.Seed, Won: w.Won, Lost: w.Lost,
-		Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, Invulnerable: w.Player.Invulnerable > 0},
-		Debug:  DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, RNG: w.RNG, Action: w.Player.Action},
+	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, Invulnerable: w.Player.Invulnerable > 0}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}}
+	for _, terrain := range w.Terrain {
+		s.Terrain = append(s.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
 	}
 	for _, enemy := range w.Enemies {
-		entry := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
+		e := EnemySnapshot{ID: enemy.ID, Kind: enemy.Kind, Name: enemy.Name, Pos: enemy.Pos, Velocity: enemy.Velocity, Radius: enemy.Radius, HP: enemy.HP, MaxHP: enemy.MaxHP, Windup: enemy.Windup, Stagger: enemy.Stagger, WeakPoint: enemy.WeakPoint, Flash: enemy.Flash, TargetCloneID: enemy.TargetCloneID, AIState: enemy.AIState}
 		if enemy.Boss != nil {
-			entry.Boss = &BossSnapshot{ID: enemy.Boss.ID, PhaseName: enemy.Boss.PhaseName, Phase: enemy.Boss.Phase, Shielded: enemy.Boss.Shielded, Telegraph: enemy.Boss.Telegraph, RequiredForm: enemy.Boss.RequiredForm, RequiredStaff: enemy.Boss.RequiredStaff}
-			snapshot.Debug.BossPhase = enemy.Boss.PhaseName
+			e.Boss = &BossSnapshot{PhaseName: enemy.Boss.PhaseName, Phase: enemy.Boss.Phase, Shielded: enemy.Boss.Shielded, EchoSeal: enemy.Boss.EchoSeal, Telegraph: enemy.Boss.Telegraph, TelegraphTicks: enemy.Boss.TelegraphTicks}
+			s.Debug.BossPhase = enemy.Boss.PhaseName
 		}
-		snapshot.Enemies = append(snapshot.Enemies, entry)
+		s.Enemies = append(s.Enemies, e)
 	}
 	for _, clone := range w.Clones {
-		snapshot.Clones = append(snapshot.Clones, CloneSnapshot{ID: clone.ID, Pos: clone.Pos, Facing: clone.Facing, Radius: clone.Radius, TicksRemaining: clone.TicksRemaining, PendingAttack: clone.PendingAttack})
+		input := InputFrame{}
+		if clone.EchoIndex >= 0 && clone.EchoIndex < len(clone.Frames) {
+			input = clone.Frames[clone.EchoIndex]
+		}
+		s.Clones = append(s.Clones, CloneSnapshot{ID: clone.ID, Pos: clone.Pos, Aim: clone.Aim, Radius: clone.Radius, Delay: clone.Delay, EchoIndex: clone.EchoIndex, EchoLength: len(clone.Frames), TicksRemaining: clone.TicksRemaining, Action: clone.Action, LongRange: clone.LongRange, ReplayInput: input})
 	}
 	for _, projectile := range w.Projectiles {
-		snapshot.Projectiles = append(snapshot.Projectiles, ProjectileSnapshot{Pos: projectile.Pos, Radius: projectile.Radius, Hazard: projectile.Hazard})
+		s.Projectiles = append(s.Projectiles, ProjectileSnapshot{Pos: projectile.Pos, Radius: projectile.Radius, Hazard: projectile.Hazard})
 	}
 	for _, effect := range w.Effects {
-		snapshot.Effects = append(snapshot.Effects, EffectSnapshot{Kind: effect.Kind, Pos: effect.Pos, Direction: effect.Direction, Radius: effect.Radius, TicksRemaining: effect.TicksRemaining})
+		s.Effects = append(s.Effects, EffectSnapshot{Kind: effect.Kind, Pos: effect.Pos, Direction: effect.Direction, Radius: effect.Radius, Intensity: effect.Intensity, TicksRemaining: effect.TicksRemaining})
 	}
-	return snapshot
+	return s
 }

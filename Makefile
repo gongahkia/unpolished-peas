@@ -10,14 +10,14 @@ vet:
 	go vet ./...
 
 fmt:
-	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
+	gofmt -w $$(rg --files -g '*.go')
 
 build:
 	go build ./cmd/game
 
 wasm:
 	mkdir -p dist
-	GOOS=js GOARCH=wasm go build -o dist/journey.wasm ./cmd/game
+	GOOS=js GOARCH=wasm go build -o dist/72.wasm ./cmd/game
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm_exec.js
 	cp web/index.html dist/index.html
 

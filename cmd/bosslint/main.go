@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/gongahkia/journey-roguelite/internal/bossdsl"
+	"github.com/gongahkia/72/internal/bossdsl"
 )
 
 func main() {

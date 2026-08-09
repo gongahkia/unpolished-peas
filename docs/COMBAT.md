@@ -1,20 +1,15 @@
 # Combat
 
-Attacks use startup, active, and recovery ticks. A short input buffer permits
-an attack pressed during recovery to begin the next legal action. Dodges have
-invulnerability ticks and can cancel selected recoveries. Hitstop freezes
-normal action progression briefly after a confirmed hit.
+The arena is designed for movement and aim to be separate. Move with `WASD` while arrows continuously set the attack line. Short, medium, and long are different commitments, not a shared attack with altered range.
 
-Ruyi Jingu Bang has three deliberately different geometries. Short is a quick
-counter-friendly jab; medium is the normal three-strike string; long is a
-slow, broad sweep that controls space and can reach across boss hazards.
+| tool | timing | use |
+| --- | --- | --- |
+| short | 2 startup, 3 active, 4 recovery; 34 range | close reactive pressure and a precise melee deflect window |
+| medium | 5 startup, 5 active, 10 recovery; three escalating sweeps | general combo pressure, multi-target coverage, and clearing clustered projectile fans |
+| long | hold up to 48 ticks; 28–136 range; 24 recovery on release | directional control, long guard breaks, knockback, and attacks across water |
 
-Short staff is also a brief deflect during active frames, while tiger attacks
-break an armored brute's iron hide. Giant form takes much less knockback and
-stagger, reinforcing its role as a committed spatial-control form.
+While charging long, movement is reduced to 32%. Missing is deliberately much more expensive than with the other two modes.
 
-Normal encounters mix five focused enemies: melee yaoguai, ranged spitters,
-iron-hide brutes, wind-lance demons that lunge after their telegraph, and
-sutra hexers that throw an aimed three-projectile fan. Each has the same clear
-windup language, so movement, forms, and clones stay more important than raw
-reaction to visual detail.
+The authored arena contains water, two projectile-blocking pillars, a cracked wall, and a solid wall. Water blocks normal ground movement but Bird crosses it. Pillars stop staff lines and projectiles. Tiger pounces through the cracked wall; knockback into solid terrain damages and staggers enemies. Long attacks are straight-line tools that can operate over water but stop on solid cover.
+
+Feedback has central tiers: ordinary hits apply two ticks of hitstop, a small impact and restrained trauma; heavy hits apply five ticks, stronger knockback and a larger burst; counters and phase transitions add slow motion and major trauma. Effects feed one trauma value rather than writing camera offsets directly.

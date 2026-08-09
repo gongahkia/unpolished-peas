@@ -1,8 +1,0 @@
-boss yellow_wind_sage {
-  phase opening {
-    repeat 3 { telegraph wind_wall 54; wait 54; attack radial_wind; wait 120; }
-  }
-  phase storm when hp < 50 {
-    repeat 4 { telegraph wind_wall 42; wait 42; attack radial_wind; spawn yaoguai 1; wait 90; }
-  }
-}

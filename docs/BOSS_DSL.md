@@ -1,18 +1,3 @@
-# Boss pattern DSL
+# Warden encounter contract
 
-Boss sources are compiled from a deliberately small language:
-
-```text
-boss yellow_wind_sage {
-  phase opening {
-    repeat 3 { telegraph sweep 24; attack sweep; wait 18; }
-  }
-}
-```
-
-The pipeline is lexer → parser → AST → semantic validation → compiled pattern.
-Its structural commands are `sequence`, `parallel`, and `repeat [count]`; its
-atomic commands are `wait`, `attack`, `move`/`movement`/`dash`, `spawn`,
-`telegraph`, and `transition`. The compiler reports source positions for
-malformed blocks, unknown commands, and empty phases. `go run ./cmd/bosslint
-./data/bosses` validates all sources.
+`data/bosses/warden.boss` is the single linted pacing contract for the validation encounter. Run `make bosslint` to parse, validate, and compile it. The deterministic runtime keeps mechanism-specific guard, terrain, Echo, and counter rules in `internal/sim/boss.go`; the contract documents the authored phase order and named telegraphs that the runtime exposes.

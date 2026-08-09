@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 
-	"github.com/gongahkia/journey-roguelite/internal/bossdsl"
+	"github.com/gongahkia/72/internal/bossdsl"
 )
 
 //go:embed *.boss

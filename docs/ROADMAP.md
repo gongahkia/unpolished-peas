@@ -1,13 +1,10 @@
-# Roadmap
+# Playtest focus
 
-Status is only recorded after the corresponding code and tests exist.
+The current scope is one arena, one Warden, three staff modes, three forms and Echo. Do not add bosses, campaigns, forms, art assets, or a parallel combat mode before repeated human tests answer these questions:
 
-- [x] Core combat vertical slice: movement, dodge, staff, damage, forms, clone.
-- [x] Three authored bosses and branching pilgrimage route.
-- [x] Replay, deterministic tests, Go boss runtime, and text DSL.
-- [x] Initial vows and lightweight companion selection.
-- [x] Browser build page, command, and CI configuration.
-- [ ] Extend encounter variety, boss commands, and playtest pacing.
-- [x] Record and verify full-run route choices in replay files.
-- [x] Native launch smoke test on a host with Ebitengine system libraries.
-- [x] Full playability and documentation audit.
+- Is the short deflect legible enough to invite close play?
+- Does the medium chain feel fluid without overcommitting the player?
+- Does charged long create useful spatial control rather than a safe default?
+- Do Bird routes, Tiger wall breaks and Mantis counters occur naturally?
+- Can players intentionally prepare and read an Echo sequence before summoning?
+- Do Warden gates teach the required mechanic without textual reliance?

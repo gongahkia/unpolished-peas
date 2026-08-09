@@ -6,7 +6,7 @@ import (
 	"log"
 	"math"
 
-	"github.com/gongahkia/journey-roguelite/internal/sim"
+	"github.com/gongahkia/72/internal/sim"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -20,333 +20,329 @@ const (
 )
 
 type game struct {
-	run           *sim.Run
-	replay        *sim.RunReplay
-	world         *sim.World
-	paused        bool
-	routeChoice   int
-	statusMessage string
+	world  *sim.World
+	replay *sim.Replay
+	paused bool
+	scene  *ebiten.Image
+	status string
 }
 
 func newGame() *game {
-	run := sim.NewRun(0x5EEDC0DE)
-	return &game{run: run, replay: sim.NewRunReplay(run.Seed), world: run.World}
+	w := sim.NewValidationWorld(0x72)
+	return &game{world: w, replay: sim.NewReplay(w.Seed), scene: ebiten.NewImage(logicalW, logicalH)}
 }
 
 func (g *game) Update() error {
+	if inpututil.IsKeyJustPressed(ebiten.KeyF1) {
+		g.reset()
+		g.status = "validation arena reset"
+		return nil
+	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.paused = !g.paused
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
-		if err := sim.SaveRunReplay("last-run.replay.json", g.replay); err != nil {
-			g.statusMessage = err.Error()
+		if err := sim.SaveReplay("72.replay.json", g.replay); err != nil {
+			g.status = err.Error()
 		} else {
-			g.statusMessage = "saved last-run.replay.json"
+			g.status = "saved 72.replay.json"
 		}
 	}
 	if g.world.Lost && inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		if g.recordFrame(sim.RunFrame{Restart: true}) {
-			g.statusMessage = "encounter restarted"
-		}
-		return nil
-	}
-	if g.world.Won {
-		g.handleRouteInput()
+		g.reset()
 		return nil
 	}
 	if g.paused && !inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
 		return nil
 	}
-	g.recordFrame(sim.RunFrame{Input: readInput()})
+	g.replay.Record(g.world, readInput())
 	return nil
 }
 
-func (g *game) recordFrame(frame sim.RunFrame) bool {
-	if err := g.replay.Record(g.run, frame); err != nil {
-		g.statusMessage = err.Error()
-		return false
-	}
-	g.world = g.run.World
-	return true
+func (g *game) reset() {
+	g.world = sim.NewValidationWorld(0x72)
+	g.replay = sim.NewReplay(g.world.Seed)
 }
 
 func readInput() sim.InputFrame {
-	input := sim.InputFrame{}
-	if ebiten.IsKeyPressed(ebiten.KeyA) || ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
-		input.MoveX--
+	in := sim.InputFrame{}
+	if ebiten.IsKeyPressed(ebiten.KeyA) {
+		in.MoveX--
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyD) || ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
-		input.MoveX++
+	if ebiten.IsKeyPressed(ebiten.KeyD) {
+		in.MoveX++
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyW) || ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
-		input.MoveY--
+	if ebiten.IsKeyPressed(ebiten.KeyW) {
+		in.MoveY--
 	}
-	if ebiten.IsKeyPressed(ebiten.KeyS) || ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
-		input.MoveY++
+	if ebiten.IsKeyPressed(ebiten.KeyS) {
+		in.MoveY++
 	}
-	input.Attack = ebiten.IsKeyPressed(ebiten.KeyJ) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
-	input.Dodge = ebiten.IsKeyPressed(ebiten.KeyK) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
-	input.Clone = ebiten.IsKeyPressed(ebiten.KeyC)
-	input.Restart = ebiten.IsKeyPressed(ebiten.KeyEnter)
-	input.DebugStep = ebiten.IsKeyPressed(ebiten.KeyTab)
+	if ebiten.IsKeyPressed(ebiten.KeyArrowLeft) {
+		in.AimX--
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowRight) {
+		in.AimX++
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowUp) {
+		in.AimY--
+	}
+	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
+		in.AimY++
+	}
+	if ids := ebiten.AppendGamepadIDs(nil); len(ids) > 0 {
+		id := ids[0]
+		moveX, moveY := axis(ebiten.GamepadAxisValue(id, 0)), axis(ebiten.GamepadAxisValue(id, 1))
+		aimX, aimY := axis(ebiten.GamepadAxisValue(id, 2)), axis(ebiten.GamepadAxisValue(id, 3))
+		if in.MoveX == 0 {
+			in.MoveX = moveX
+		}
+		if in.MoveY == 0 {
+			in.MoveY = moveY
+		}
+		if in.AimX == 0 {
+			in.AimX = aimX
+		}
+		if in.AimY == 0 {
+			in.AimY = aimY
+		}
+	}
+	in.Attack = ebiten.IsKeyPressed(ebiten.KeyJ) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonLeft)
+	in.Dodge = ebiten.IsKeyPressed(ebiten.KeyK) || ebiten.IsMouseButtonPressed(ebiten.MouseButtonRight)
+	in.Clone, in.Restart, in.DebugStep = ebiten.IsKeyPressed(ebiten.KeyC), ebiten.IsKeyPressed(ebiten.KeyEnter), ebiten.IsKeyPressed(ebiten.KeyTab)
 	switch {
 	case ebiten.IsKeyPressed(ebiten.Key1):
-		input.Staff = sim.StaffShort
+		in.Staff = sim.StaffShort
 	case ebiten.IsKeyPressed(ebiten.Key2):
-		input.Staff = sim.StaffMedium
+		in.Staff = sim.StaffMedium
 	case ebiten.IsKeyPressed(ebiten.Key3):
-		input.Staff = sim.StaffLong
+		in.Staff = sim.StaffLong
 	}
 	switch {
 	case ebiten.IsKeyPressed(ebiten.KeyQ):
-		input.Transform = sim.FormTiger
+		in.Transform = sim.FormBird
 	case ebiten.IsKeyPressed(ebiten.KeyE):
-		input.Transform = sim.FormSparrow
+		in.Transform = sim.FormTiger
 	case ebiten.IsKeyPressed(ebiten.KeyR):
-		input.Transform = sim.FormMantis
-	case ebiten.IsKeyPressed(ebiten.KeyF):
-		input.Transform = sim.FormCicada
-	case ebiten.IsKeyPressed(ebiten.KeyG):
-		input.Transform = sim.FormGiant
-	case ebiten.IsKeyPressed(ebiten.KeyT):
-		input.Transform = sim.FormStatue
+		in.Transform = sim.FormMantis
 	case ebiten.IsKeyPressed(ebiten.Key0):
-		input.Transform = sim.FormMonkey
+		in.Transform = sim.FormMonkey
 	}
-	return input
+	return in
 }
-
-func (g *game) handleRouteInput() {
-	node := g.run.CurrentNode()
-	if inpututil.IsKeyJustPressed(ebiten.KeyZ) {
-		g.routeChoice = 0
+func axis(value float64) int8 {
+	if value > .35 {
+		return 1
 	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyX) && len(node.Next) > 1 {
-		g.routeChoice = 1
+	if value < -.35 {
+		return -1
 	}
-	if node.Kind == sim.EncounterShrine {
-		var vow sim.Vow
-		switch {
-		case inpututil.IsKeyJustPressed(ebiten.Key1):
-			vow = sim.VowSilence
-		case inpututil.IsKeyJustPressed(ebiten.Key2):
-			vow = sim.VowHumility
-		case inpututil.IsKeyJustPressed(ebiten.Key3):
-			vow = sim.VowCloudbound
-		}
-		if vow != sim.VowNone {
-			if g.recordFrame(sim.RunFrame{Vow: vow}) {
-				g.statusMessage = "vow of " + vow.String() + " accepted"
-			}
-		}
-	}
-	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		if g.recordFrame(sim.RunFrame{Advance: true, RouteChoice: g.routeChoice}) {
-			g.routeChoice = 0
-			g.statusMessage = ""
-		}
-	}
+	return 0
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
-	snapshot := g.world.Snapshot()
-	drawScene(screen, snapshot, g.paused)
-	drawRunHUD(screen, g.run, g.routeChoice, g.statusMessage)
+	s := g.world.Snapshot()
+	g.scene.Clear()
+	drawScene(g.scene, s, g.paused, g.status)
+	screen.Fill(color.RGBA{R: 8, G: 10, B: 15, A: 255})
+	shake := s.Trauma * 7
+	x := math.Sin(float64(s.Tick)*1.91)*shake + s.TraumaDirection.X*s.Trauma*3
+	y := math.Cos(float64(s.Tick)*2.37)*shake + s.TraumaDirection.Y*s.Trauma*3
+	op := &ebiten.DrawImageOptions{}
+	op.GeoM.Translate(x, y)
+	screen.DrawImage(g.scene, op)
 }
-
 func (g *game) Layout(_, _ int) (int, int) { return logicalW, logicalH }
 
-func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool) {
+func drawScene(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status string) {
 	screen.Fill(color.RGBA{R: 15, G: 18, B: 24, A: 255})
-	drawArena(screen)
-	for _, effect := range snapshot.Effects {
+	drawArena(screen, s.Terrain)
+	for _, effect := range s.Effects {
 		drawEffect(screen, effect)
 	}
-	for _, projectile := range snapshot.Projectiles {
-		projectileColor := color.RGBA{R: 255, G: 185, B: 78, A: 255}
+	for _, projectile := range s.Projectiles {
+		c := color.RGBA{R: 255, G: 180, B: 82, A: 255}
 		if projectile.Hazard {
-			projectileColor = color.RGBA{R: 210, G: 80, B: 180, A: 255}
+			c = color.RGBA{R: 224, G: 91, B: 187, A: 255}
 		}
-		vector.DrawFilledCircle(screen, float32(projectile.Pos.X), float32(projectile.Pos.Y), float32(projectile.Radius), projectileColor, true)
+		vector.DrawFilledCircle(screen, float32(projectile.Pos.X), float32(projectile.Pos.Y), float32(projectile.Radius), c, true)
 	}
-	for _, clone := range snapshot.Clones {
-		drawGlyph(screen, "@", clone.Pos, color.RGBA{R: 126, G: 222, B: 246, A: 255})
-		vector.StrokeLine(screen, float32(clone.Pos.X), float32(clone.Pos.Y), float32(clone.Pos.X+clone.Facing.X*26), float32(clone.Pos.Y+clone.Facing.Y*26), 1.5, color.RGBA{R: 126, G: 222, B: 246, A: 255}, true)
-	}
-	for _, enemy := range snapshot.Enemies {
-		glyph, glyphColor := enemyGlyph(enemy)
-		if enemy.Windup > 0 {
-			glyphColor = color.RGBA{R: 255, G: 120, B: 80, A: 255}
+	for _, clone := range s.Clones {
+		drawGlyph(screen, "E", clone.Pos, color.RGBA{R: 110, G: 224, B: 255, A: 255})
+		vector.StrokeCircle(screen, float32(clone.Pos.X), float32(clone.Pos.Y), float32(clone.Radius+4), 1, color.RGBA{R: 110, G: 224, B: 255, A: 255}, false)
+		if clone.Action == sim.ActionLongCharge {
+			vector.StrokeLine(screen, float32(clone.Pos.X), float32(clone.Pos.Y), float32(clone.Pos.X+clone.Aim.X*clone.LongRange), float32(clone.Pos.Y+clone.Aim.Y*clone.LongRange), 2, color.RGBA{R: 110, G: 224, B: 255, A: 210}, true)
 		}
-		drawGlyph(screen, glyph, enemy.Pos, glyphColor)
-		drawHealth(screen, enemy.Pos.Add(sim.Vec{X: -16, Y: -enemy.Radius - 13}), 32, enemy.HP, enemy.MaxHP, color.RGBA{R: 218, G: 75, B: 78, A: 255})
+		label := fmt.Sprintf("echo %d/%d", max(0, clone.EchoIndex), clone.EchoLength)
+		if clone.EchoIndex < 0 {
+			label = fmt.Sprintf("echo in %d", -clone.EchoIndex)
+		}
+		text.Draw(screen, label, basicfont.Face7x13, int(clone.Pos.X)-20, int(clone.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
+	}
+	for _, enemy := range s.Enemies {
+		c := color.RGBA{R: 240, G: 105, B: 110, A: 255}
+		if enemy.Flash > 0 {
+			c = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+		}
+		if enemy.WeakPoint > 0 {
+			c = color.RGBA{R: 255, G: 238, B: 106, A: 255}
+		}
+		drawGlyph(screen, "B", enemy.Pos, c)
+		drawHealth(screen, enemy.Pos.Add(sim.Vec{X: -22, Y: -enemy.Radius - 14}), 44, enemy.HP, enemy.MaxHP, color.RGBA{R: 227, G: 75, B: 78, A: 255})
 		if enemy.Boss != nil && enemy.Boss.Shielded {
-			vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Radius+7), 1.5, color.RGBA{R: 190, G: 110, B: 245, A: 255}, true)
+			vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Radius+8), 2, color.RGBA{R: 191, G: 111, B: 245, A: 255}, true)
+		}
+		if enemy.Boss != nil && enemy.Stagger > 15 {
+			text.Draw(screen, "STAGGER", basicfont.Face7x13, int(enemy.Pos.X)-23, int(enemy.Pos.Y)-int(enemy.Radius)-23, color.RGBA{R: 255, G: 238, B: 106, A: 255})
 		}
 	}
-	playerColor := formColor(snapshot.Player.Form)
-	if snapshot.Player.Invulnerable && snapshot.Tick%4 < 2 {
-		playerColor = color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	pc := formColor(s.Player.Form)
+	if s.Player.Invulnerable && s.Tick%4 < 2 {
+		pc = color.White
 	}
-	drawGlyph(screen, formGlyph(snapshot.Player.Form), snapshot.Player.Pos, playerColor)
-	drawHealth(screen, snapshot.Player.Pos.Add(sim.Vec{X: -20, Y: -26}), 40, snapshot.Player.HP, snapshot.Player.MaxHP, color.RGBA{R: 90, G: 226, B: 130, A: 255})
-	drawHUD(screen, snapshot, paused)
-	if snapshot.Debug.Enabled {
-		drawDebug(screen, snapshot)
+	drawGlyph(screen, formGlyph(s.Player.Form), s.Player.Pos, pc)
+	vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Pos.X+s.Player.Aim.X*22), float32(s.Player.Pos.Y+s.Player.Aim.Y*22), 1.5, color.RGBA{R: 255, G: 237, B: 125, A: 255}, true)
+	if s.Player.Action == sim.ActionLongCharge {
+		vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Pos.X+s.Player.Aim.X*s.Player.LongRange), float32(s.Player.Pos.Y+s.Player.Aim.Y*s.Player.LongRange), 4, color.RGBA{R: 255, G: 214, B: 86, A: 230}, true)
+		vector.StrokeCircle(screen, float32(s.Player.Pos.X+s.Player.Aim.X*s.Player.LongRange), float32(s.Player.Pos.Y+s.Player.Aim.Y*s.Player.LongRange), 5, 1, color.RGBA{R: 255, G: 214, B: 86, A: 255}, true)
+	}
+	drawHealth(screen, s.Player.Pos.Add(sim.Vec{X: -20, Y: -28}), 40, s.Player.HP, s.Player.MaxHP, color.RGBA{R: 93, G: 230, B: 136, A: 255})
+	drawHUD(screen, s, paused, status)
+	if s.Debug.Enabled {
+		drawDebug(screen, s)
 	}
 }
 
-func drawArena(screen *ebiten.Image) {
+func drawArena(screen *ebiten.Image, terrain []sim.TerrainSnapshot) {
 	for x := 0; x <= logicalW; x += 32 {
-		vector.StrokeLine(screen, float32(x), 0, float32(x), logicalH, 1, color.RGBA{R: 29, G: 37, B: 48, A: 255}, false)
+		vector.StrokeLine(screen, float32(x), 0, float32(x), logicalH, 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
 	}
 	for y := 0; y <= logicalH; y += 32 {
-		vector.StrokeLine(screen, 0, float32(y), logicalW, float32(y), 1, color.RGBA{R: 29, G: 37, B: 48, A: 255}, false)
+		vector.StrokeLine(screen, 0, float32(y), logicalW, float32(y), 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
+	}
+	for _, t := range terrain {
+		if t.Kind == sim.TerrainBreakable && t.HP == 0 {
+			continue
+		}
+		c := color.RGBA{R: 82, G: 91, B: 105, A: 255}
+		switch t.Kind {
+		case sim.TerrainWater:
+			c = color.RGBA{R: 38, G: 94, B: 140, A: 255}
+		case sim.TerrainPillar:
+			c = color.RGBA{R: 112, G: 102, B: 119, A: 255}
+		case sim.TerrainBreakable:
+			c = color.RGBA{R: 156, G: 109, B: 67, A: 255}
+		}
+		vector.DrawFilledRect(screen, float32(t.Bounds.X), float32(t.Bounds.Y), float32(t.Bounds.W), float32(t.Bounds.H), c, false)
 	}
 	vector.StrokeRect(screen, 1, 1, logicalW-2, logicalH-2, 2, color.RGBA{R: 80, G: 90, B: 108, A: 255}, false)
 }
-
-func drawEffect(screen *ebiten.Image, effect sim.EffectSnapshot) {
-	switch effect.Kind {
-	case sim.EffectStaffTrail:
-		vector.StrokeLine(screen, float32(effect.Pos.X), float32(effect.Pos.Y), float32(effect.Pos.X+effect.Direction.X*effect.Radius), float32(effect.Pos.Y+effect.Direction.Y*effect.Radius), 3, color.RGBA{R: 245, G: 210, B: 94, A: 190}, true)
-	case sim.EffectTelegraph:
-		vector.StrokeCircle(screen, float32(effect.Pos.X), float32(effect.Pos.Y), float32(effect.Radius), 1.5, color.RGBA{R: 248, G: 78, B: 78, A: 210}, true)
-	case sim.EffectCounter:
-		vector.StrokeCircle(screen, float32(effect.Pos.X), float32(effect.Pos.Y), float32(effect.Radius), 2.5, color.RGBA{R: 120, G: 245, B: 230, A: 255}, true)
-	default:
-		vector.StrokeCircle(screen, float32(effect.Pos.X), float32(effect.Pos.Y), float32(effect.Radius), 2, color.RGBA{R: 255, G: 235, B: 150, A: 230}, true)
+func drawEffect(screen *ebiten.Image, e sim.EffectSnapshot) {
+	c := color.RGBA{R: 255, G: 232, B: 150, A: 230}
+	width := float32(2)
+	if e.Kind == sim.EffectHeavyImpact {
+		c = color.RGBA{R: 255, G: 132, B: 81, A: 255}
+		width = 4
+	}
+	if e.Kind == sim.EffectStaffTrail || e.Kind == sim.EffectCharge {
+		vector.StrokeLine(screen, float32(e.Pos.X), float32(e.Pos.Y), float32(e.Pos.X+e.Direction.X*e.Radius), float32(e.Pos.Y+e.Direction.Y*e.Radius), width, c, true)
+		return
+	}
+	if e.Kind == sim.EffectAfterimage {
+		drawGlyph(screen, "@", e.Pos, color.RGBA{R: 164, G: 216, B: 255, A: 140})
+		return
+	}
+	vector.StrokeCircle(screen, float32(e.Pos.X), float32(e.Pos.Y), float32(e.Radius), width, c, true)
+	if e.Kind == sim.EffectImpact || e.Kind == sim.EffectHeavyImpact || e.Kind == sim.EffectCounter {
+		direction := e.Direction.Normalized()
+		if direction.LengthSq() == 0 {
+			direction = sim.Vec{X: 1}
+		}
+		perpendicular := sim.Vec{X: -direction.Y, Y: direction.X}
+		for _, sign := range []float64{-1, 1} {
+			start := e.Pos.Add(perpendicular.Scale(e.Radius * sign * 0.35))
+			end := start.Add(direction.Scale(e.Radius * (0.75 + e.Intensity)))
+			vector.StrokeLine(screen, float32(start.X), float32(start.Y), float32(end.X), float32(end.Y), width, c, true)
+		}
 	}
 }
-
-func enemyGlyph(enemy sim.EnemySnapshot) (string, color.Color) {
-	if enemy.Boss != nil {
-		return "B", color.RGBA{R: 240, G: 98, B: 103, A: 255}
-	}
-	switch enemy.Kind {
-	case sim.EnemyBrute:
-		return "G", color.RGBA{R: 235, G: 157, B: 73, A: 255}
-	case sim.EnemyLancer:
-		return "l", color.RGBA{R: 246, G: 196, B: 89, A: 255}
-	case sim.EnemyHexer:
-		return "h", color.RGBA{R: 187, G: 119, B: 245, A: 255}
-	case sim.EnemyArcher:
-		return "*", color.RGBA{R: 216, G: 109, B: 214, A: 255}
-	default:
-		return "g", color.RGBA{R: 228, G: 110, B: 111, A: 255}
+func drawGlyph(screen *ebiten.Image, glyph string, p sim.Vec, c color.Color) {
+	text.Draw(screen, glyph, basicfont.Face7x13, int(math.Round(p.X))-4, int(math.Round(p.Y))+5, c)
+}
+func drawHealth(screen *ebiten.Image, p sim.Vec, w float64, value, maxv int, c color.Color) {
+	vector.DrawFilledRect(screen, float32(p.X), float32(p.Y), float32(w), 3, color.RGBA{R: 35, G: 36, B: 43, A: 255}, false)
+	if maxv > 0 {
+		vector.DrawFilledRect(screen, float32(p.X), float32(p.Y), float32(w*float64(max(0, value))/float64(maxv)), 3, c, false)
 	}
 }
-
-func formGlyph(form sim.FormID) string {
-	switch form {
+func formGlyph(f sim.FormID) string {
+	switch f {
+	case sim.FormBird:
+		return "^"
 	case sim.FormTiger:
 		return "T"
-	case sim.FormSparrow:
-		return "^"
 	case sim.FormMantis:
 		return "M"
-	case sim.FormCicada:
-		return "c"
-	case sim.FormGiant:
-		return "O"
-	case sim.FormStatue:
-		return "#"
 	default:
 		return "@"
 	}
 }
-
-func formColor(form sim.FormID) color.Color {
-	switch form {
+func formColor(f sim.FormID) color.Color {
+	switch f {
+	case sim.FormBird:
+		return color.RGBA{R: 130, G: 217, B: 255, A: 255}
 	case sim.FormTiger:
 		return color.RGBA{R: 255, G: 168, B: 63, A: 255}
-	case sim.FormSparrow:
-		return color.RGBA{R: 130, G: 217, B: 255, A: 255}
 	case sim.FormMantis:
 		return color.RGBA{R: 104, G: 245, B: 142, A: 255}
-	case sim.FormCicada:
-		return color.RGBA{R: 219, G: 137, B: 250, A: 255}
-	case sim.FormGiant:
-		return color.RGBA{R: 245, G: 112, B: 91, A: 255}
-	case sim.FormStatue:
-		return color.RGBA{R: 172, G: 179, B: 188, A: 255}
 	default:
 		return color.RGBA{R: 252, G: 215, B: 85, A: 255}
 	}
 }
-
-func drawGlyph(screen *ebiten.Image, glyph string, position sim.Vec, glyphColor color.Color) {
-	text.Draw(screen, glyph, basicfont.Face7x13, int(math.Round(position.X))-4, int(math.Round(position.Y))+5, glyphColor)
-}
-
-func drawHealth(screen *ebiten.Image, position sim.Vec, width float64, value, maximum int, fill color.Color) {
-	vector.DrawFilledRect(screen, float32(position.X), float32(position.Y), float32(width), 3, color.RGBA{R: 35, G: 36, B: 43, A: 255}, false)
-	if maximum > 0 {
-		vector.DrawFilledRect(screen, float32(position.X), float32(position.Y), float32(width*float64(max(0, value))/float64(maximum)), 3, fill, false)
-	}
-}
-
-func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool) {
-	text.Draw(screen, "JOURNEY OF THE CLOUD-BORN  |  J strike  K cloud dodge  C hair clone", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
-	status := fmt.Sprintf("form: %s  staff: %s  action: %s  tick: %d", snapshot.Player.Form, snapshot.Player.Staff, snapshot.Player.Action, snapshot.Tick)
-	text.Draw(screen, status, basicfont.Face7x13, 8, 339, color.RGBA{R: 183, G: 193, B: 207, A: 255})
-	for _, enemy := range snapshot.Enemies {
-		if enemy.Boss != nil {
-			boss := fmt.Sprintf("%s — %s", enemy.Name, enemy.Boss.PhaseName)
-			if enemy.Boss.Telegraph != "" {
-				boss += " | " + enemy.Boss.Telegraph
-			}
-			text.Draw(screen, boss, basicfont.Face7x13, 8, 32, color.RGBA{R: 252, G: 171, B: 171, A: 255})
+func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status string) {
+	text.Draw(screen, "72  |  WASD move  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
+	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
+	line := fmt.Sprintf("%s | %s | %s", s.Player.Form, s.Player.Staff, s.Player.Action)
+	text.Draw(screen, line, basicfont.Face7x13, 8, 342, color.RGBA{R: 183, G: 193, B: 207, A: 255})
+	for _, e := range s.Enemies {
+		if e.Boss != nil {
+			text.Draw(screen, "WARDEN — "+e.Boss.PhaseName+" | "+e.Boss.Telegraph, basicfont.Face7x13, 8, 50, color.RGBA{R: 252, G: 171, B: 171, A: 255})
 		}
 	}
 	if paused {
-		text.Draw(screen, "PAUSED — P resumes, . advances one tick", basicfont.Face7x13, 190, 177, color.RGBA{R: 255, G: 243, B: 168, A: 255})
+		text.Draw(screen, "PAUSED — P resumes, . steps", basicfont.Face7x13, 220, 180, color.RGBA{R: 255, G: 243, B: 168, A: 255})
 	}
-	if snapshot.Lost {
-		text.Draw(screen, "FALLEN — press Enter to restart", basicfont.Face7x13, 215, 180, color.RGBA{R: 255, G: 110, B: 110, A: 255})
+	if s.Lost {
+		text.Draw(screen, "FALLEN — Enter or F1 retries", basicfont.Face7x13, 210, 180, color.RGBA{R: 255, G: 110, B: 110, A: 255})
 	}
-}
-
-func drawRunHUD(screen *ebiten.Image, run *sim.Run, choice int, status string) {
-	node := run.CurrentNode()
-	line := fmt.Sprintf("pilgrimage: %s [%s] — %s", node.Name, node.Kind, node.Description)
-	text.Draw(screen, line, basicfont.Face7x13, 8, 50, color.RGBA{R: 187, G: 210, B: 248, A: 255})
-	if run.World.Won {
-		prompt := "CLEARED — Enter continues"
-		if len(node.Next) > 1 {
-			prompt = fmt.Sprintf("CLEARED — Z/X choose route (%d), Enter continues", choice+1)
-		}
-		if node.Kind == sim.EncounterShrine {
-			prompt = "SHRINE — 1 silence: no clones/fast forms; 2 humility: no giant/counter heal; 3 cloudbound: swift phasing dodge; Enter continues"
-		}
-		text.Draw(screen, prompt, basicfont.Face7x13, 35, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
-	}
-	if run.Completed {
-		text.Draw(screen, "PILGRIMAGE COMPLETE — the road opens again.", basicfont.Face7x13, 175, 198, color.RGBA{R: 255, G: 226, B: 112, A: 255})
+	if s.Won {
+		text.Draw(screen, "WARDEN BROKEN — F1 replay", basicfont.Face7x13, 220, 180, color.RGBA{R: 127, G: 248, B: 151, A: 255})
 	}
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
 }
-
-func drawDebug(screen *ebiten.Image, snapshot sim.RenderSnapshot) {
-	for _, enemy := range snapshot.Enemies {
-		vector.StrokeCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Radius), 1, color.RGBA{R: 80, G: 225, B: 255, A: 255}, false)
-		vector.StrokeLine(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Pos.X+enemy.Velocity.X*6), float32(enemy.Pos.Y+enemy.Velocity.Y*6), 1, color.RGBA{R: 80, G: 225, B: 255, A: 255}, false)
-		label := enemy.AIState
-		if enemy.TargetCloneID >= 0 {
-			label += fmt.Sprintf(" → clone:%d", enemy.TargetCloneID)
+func drawDebug(screen *ebiten.Image, s sim.RenderSnapshot) {
+	vector.StrokeCircle(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
+	for _, terrain := range s.Terrain {
+		if terrain.Kind == sim.TerrainBreakable && terrain.HP == 0 {
+			continue
 		}
-		text.Draw(screen, label, basicfont.Face7x13, int(enemy.Pos.X)-12, int(enemy.Pos.Y-enemy.Radius-18), color.RGBA{R: 80, G: 225, B: 255, A: 255})
+		vector.StrokeRect(screen, float32(terrain.Bounds.X), float32(terrain.Bounds.Y), float32(terrain.Bounds.W), float32(terrain.Bounds.H), 1, color.RGBA{R: 95, G: 214, B: 247, A: 180}, false)
 	}
-	vector.StrokeCircle(screen, float32(snapshot.Player.Pos.X), float32(snapshot.Player.Pos.Y), float32(snapshot.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
-	info := fmt.Sprintf("DEBUG  seed=%x rng=%x hitstop=%d boss=%s", snapshot.Seed, snapshot.Debug.RNG, snapshot.Debug.Hitstop, snapshot.Debug.BossPhase)
-	text.Draw(screen, info, basicfont.Face7x13, 8, 354, color.RGBA{R: 100, G: 230, B: 242, A: 255})
+	if s.Player.AttackRange > 0 {
+		end := s.Player.Pos.Add(s.Player.Aim.Scale(s.Player.AttackRange))
+		vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(end.X), float32(end.Y), float32(s.Player.AttackWidth*2), color.RGBA{R: 95, G: 214, B: 247, A: 72}, false)
+	}
+	for _, c := range s.Clones {
+		text.Draw(screen, fmt.Sprintf("echo %d/%d m%d,%d a%d,%d atk=%t form=%s", max(0, c.EchoIndex), c.EchoLength, c.ReplayInput.MoveX, c.ReplayInput.MoveY, c.ReplayInput.AimX, c.ReplayInput.AimY, c.ReplayInput.Attack, c.ReplayInput.Transform), basicfont.Face7x13, int(c.Pos.X)-64, int(c.Pos.Y)-16, color.RGBA{R: 110, G: 224, B: 255, A: 255})
+	}
+	info := fmt.Sprintf("DEBUG aim=(%.0f,%.0f) hitstop=%d slow=%d boss=%s", s.Player.Aim.X, s.Player.Aim.Y, s.Debug.Hitstop, s.Debug.SlowTicks, s.Debug.BossPhase)
+	text.Draw(screen, info, basicfont.Face7x13, 8, 356, color.RGBA{R: 100, G: 230, B: 242, A: 255})
 }
-
 func main() {
 	ebiten.SetWindowSize(logicalW*2, logicalH*2)
-	ebiten.SetWindowTitle("Journey of the Cloud-Born")
+	ebiten.SetWindowTitle("72")
 	ebiten.SetTPS(sim.TickRate)
 	if err := ebiten.RunGame(newGame()); err != nil {
 		log.Fatal(err)
