@@ -113,11 +113,9 @@ func readInput() sim.InputFrame {
 	if ebiten.IsKeyPressed(ebiten.KeyArrowDown) {
 		in.AimY++
 	}
-	in.Roll = ebiten.IsKeyPressed(ebiten.KeyK)
+	in.Roll = ebiten.IsKeyPressed(ebiten.KeyShift)
 	in.Interact = ebiten.IsKeyPressed(ebiten.KeyE)
 	in.Throw = ebiten.IsKeyPressed(ebiten.KeyJ)
-	in.Bomb = ebiten.IsKeyPressed(ebiten.KeyQ)
-	in.Rope = ebiten.IsKeyPressed(ebiten.KeyR)
 	in.Tether = ebiten.IsKeyPressed(ebiten.KeyF)
 	in.DebugStep = ebiten.IsKeyPressed(ebiten.KeyTab)
 	if ids := ebiten.AppendGamepadIDs(nil); len(ids) > 0 {
@@ -136,8 +134,6 @@ func readInput() sim.InputFrame {
 		in.Roll = in.Roll || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton1)
 		in.Interact = in.Interact || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton2)
 		in.Throw = in.Throw || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton3)
-		in.Bomb = in.Bomb || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton4)
-		in.Rope = in.Rope || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton5)
 		in.Tether = in.Tether || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton6)
 	}
 	return in
@@ -208,7 +204,7 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot) {
 	if p.State == sim.TraversalRolling {
 		playerColor = color.RGBA{R: 133, G: 221, B: 255, A: 255}
 	}
-	if p.State == sim.TraversalWallCling || p.State == sim.TraversalClimbing {
+	if p.State == sim.TraversalWallCling || p.State == sim.TraversalClimbing || p.State == sim.TraversalLedgeGrab {
 		playerColor = color.RGBA{R: 151, G: 242, B: 161, A: 255}
 	}
 	drawGlyph(screen, "@", p.Pos, playerColor)
@@ -236,9 +232,6 @@ func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
 	case sim.ObjectVine:
 		vector.StrokeLine(screen, float32(object.Pos.X), float32(bounds.Y), float32(object.Pos.X), float32(bounds.Y+bounds.H), 3, color.RGBA{R: 97, G: 226, B: 120, A: 255}, true)
 		return
-	case sim.ObjectRope:
-		vector.StrokeLine(screen, float32(object.Pos.X), float32(bounds.Y), float32(object.Pos.X), float32(bounds.Y+bounds.H), 2, color.RGBA{R: 223, G: 194, B: 130, A: 255}, true)
-		return
 	case sim.ObjectTeleporter:
 		c, glyph = color.RGBA{R: 178, G: 121, B: 242, A: 255}, "O"
 	case sim.ObjectSwitch:
@@ -246,8 +239,6 @@ func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
 		if object.Active {
 			c = color.RGBA{R: 242, G: 250, B: 156, A: 255}
 		}
-	case sim.ObjectBomb:
-		c, glyph = color.RGBA{R: 238, G: 111, B: 95, A: 255}, "*"
 	case sim.ObjectExit:
 		c, glyph = color.RGBA{R: 108, G: 240, B: 158, A: 255}, ">"
 	}
@@ -261,10 +252,10 @@ func drawGlyph(screen *ebiten.Image, glyph string, position sim.Vec, color color
 
 func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool, status string) {
 	p := snapshot.Player
-	text.Draw(screen, "72 movement lab  |  A/D move  W/space jump  S drop/dive  K roll", basicfont.Face7x13, 8, 15, color.RGBA{R: 229, G: 233, B: 240, A: 255})
-	text.Draw(screen, "E interact/carry  J throw  Q bomb  R rope  F tether  arrows aim", basicfont.Face7x13, 8, 30, color.RGBA{R: 189, G: 207, B: 225, A: 255})
+	text.Draw(screen, "72 movement lab  |  A/D move  W/space jump  S crouch  Shift roll", basicfont.Face7x13, 8, 15, color.RGBA{R: 229, G: 233, B: 240, A: 255})
+	text.Draw(screen, "S+jump: platform drop/air smash  |  ledge: toward/jump climb, S drop  |  E/J/F arrows", basicfont.Face7x13, 8, 30, color.RGBA{R: 189, G: 207, B: 225, A: 255})
 	text.Draw(screen, "F1 same seed  F2 new seed  Tab debug  F6 save replay", basicfont.Face7x13, 8, 45, color.RGBA{R: 189, G: 207, B: 225, A: 255})
-	text.Draw(screen, fmt.Sprintf("seed %x  %s  jump:%d  coyote:%d  bombs:%d ropes:%d  aim:%s", snapshot.Lab.Seed, p.State, p.AirJumps, p.Coyote, p.Bombs, p.Ropes, aimLabel(p.Aim)), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
+	text.Draw(screen, fmt.Sprintf("seed %x  %s  jump:%d  coyote:%d  wall:%d  aim:%s", snapshot.Lab.Seed, p.State, p.AirJumps, p.Coyote, p.WallTicks, aimLabel(p.Aim)), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
 	if p.HeldObjectID >= 0 {
 		text.Draw(screen, fmt.Sprintf("holding object %d", p.HeldObjectID), basicfont.Face7x13, 430, 342, color.RGBA{R: 253, G: 213, B: 119, A: 255})
 	}
@@ -292,7 +283,7 @@ func drawDebug(screen *ebiten.Image, snapshot sim.RenderSnapshot, camera sim.Vec
 		}
 	}
 	p := snapshot.Player
-	text.Draw(screen, fmt.Sprintf("state=%s grounded=%t wall=%d roll=%d tether=%t", p.State, p.Grounded, p.WallDirection, p.RollTicks, p.Tether.Active), basicfont.Face7x13, 8, 62, color.RGBA{R: 239, G: 241, B: 245, A: 255})
+	text.Draw(screen, fmt.Sprintf("state=%s grounded=%t wall=%d/%d ledge=%d roll=%d tether=%t", p.State, p.Grounded, p.WallDirection, p.WallTicks, p.LedgeTicks, p.RollTicks, p.Tether.Active), basicfont.Face7x13, 8, 62, color.RGBA{R: 239, G: 241, B: 245, A: 255})
 }
 
 func aimLabel(aim sim.Vec) string {

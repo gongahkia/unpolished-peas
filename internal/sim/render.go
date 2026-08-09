@@ -23,9 +23,11 @@ type PlayerSnapshot struct {
 	Coyote        int
 	AirJumps      int
 	WallDirection int8
+	WallTicks     int
 	RollTicks     int
+	LedgeTicks    int
+	LedgeTarget   Vec
 	HeldObjectID  int
-	Bombs, Ropes  int
 	Tether        TetherState
 }
 
@@ -44,7 +46,6 @@ type ObjectSnapshot struct {
 	LinkID int
 	Active bool
 	Held   bool
-	Fuse   int
 }
 
 type LabSnapshot struct {
@@ -57,7 +58,7 @@ func (w *World) Snapshot() RenderSnapshot {
 	p := w.Player
 	snapshot := RenderSnapshot{
 		Tick:   w.Tick,
-		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, RollTicks: p.RollTicks, HeldObjectID: p.HeldObjectID, Bombs: p.Bombs, Ropes: p.Ropes, Tether: p.Tether},
+		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
 		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
 		Debug:  w.Debug,
 		Trauma: w.Trauma,
@@ -68,7 +69,7 @@ func (w *World) Snapshot() RenderSnapshot {
 		snapshot.Terrain = append(snapshot.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
 	}
 	for _, object := range w.Objects {
-		snapshot.Objects = append(snapshot.Objects, ObjectSnapshot{ID: object.ID, Kind: object.Kind, Pos: object.Pos, Size: object.Size, LinkID: object.LinkID, Active: object.Active, Held: object.Held, Fuse: object.Fuse})
+		snapshot.Objects = append(snapshot.Objects, ObjectSnapshot{ID: object.ID, Kind: object.Kind, Pos: object.Pos, Size: object.Size, LinkID: object.LinkID, Active: object.Active, Held: object.Held})
 	}
 	return snapshot
 }

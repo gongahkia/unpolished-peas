@@ -6,7 +6,7 @@ import (
 	"math"
 )
 
-const SimulationVersion = "72-lab-1"
+const SimulationVersion = "72-lab-2"
 
 // World is the deterministic authority for the movement laboratory. Combat
 // state intentionally does not exist in this slice.
@@ -51,7 +51,7 @@ func (w *World) Step(input InputFrame) {
 	w.updateAim(input)
 	w.beginTraversalInput(input)
 	w.handleInteraction(input)
-	w.handleTools(input)
+	w.handleObjectActions(input)
 	w.updateTraversal(input)
 	w.updateTether(input)
 	w.updateHeldObject()
@@ -84,6 +84,7 @@ func (w *World) beginTraversalInput(input InputFrame) {
 	decrement(&p.JumpBuffer)
 	decrement(&p.RollCooldown)
 	decrement(&p.DropTicks)
+	decrement(&p.WallTicks)
 	if input.Jump && !w.prevInput.Jump {
 		p.JumpBuffer = jumpBufferTicks
 	}
@@ -92,13 +93,23 @@ func (w *World) beginTraversalInput(input InputFrame) {
 		p.Grounded, p.JumpBuffer, p.Coyote = false, 0, 0
 		p.Velocity.Y = 1.6
 	}
-	if input.Roll && !w.prevInput.Roll && p.RollCooldown == 0 && p.ClimbObjectID < 0 {
+	if input.Down && input.Jump && !w.prevInput.Jump && !p.Grounded && p.ClimbObjectID < 0 && p.State != TraversalLedgeGrab && !p.Tether.Active {
+		p.JumpBuffer, p.Coyote = 0, 0
+		p.State = TraversalDiving
+		p.Velocity.Y = max(6, p.Velocity.Y+5)
+	}
+	if p.Grounded && input.Down && p.RollTicks == 0 && !p.Crouching {
+		p.Pos.Y += playerStandHalfH - playerCrouchHalfH
+		p.Crouching = true
+	}
+	if input.Roll && !w.prevInput.Roll && p.RollCooldown == 0 && p.ClimbObjectID < 0 && p.State != TraversalLedgeGrab {
 		direction := p.Facing
 		if input.MoveX != 0 {
 			direction = input.MoveX
 		}
+		wasCrouching := p.Crouching
 		p.Facing, p.RollTicks, p.RollCooldown, p.Crouching = direction, 11, 20, true
-		if p.Grounded {
+		if p.Grounded && !wasCrouching {
 			p.Pos.Y += playerStandHalfH - playerCrouchHalfH
 		}
 		p.Velocity.X = float64(direction) * 7.4
@@ -131,6 +142,25 @@ func (w *World) tryStand() {
 
 func (w *World) updateTraversal(input InputFrame) {
 	p := &w.Player
+	if p.State == TraversalLedgeGrab {
+		if input.Down {
+			p.State, p.LedgeTicks = TraversalAirborne, 0
+			p.Velocity.Y = 1.6
+			return
+		}
+		if (input.Jump && !w.prevInput.Jump) || input.MoveX == p.LedgeDirection {
+			p.Pos, p.Velocity = p.LedgeTarget, Vec{}
+			p.LedgeTicks, p.MantleTicks = 0, 5
+			p.State = TraversalMantling
+			return
+		}
+		decrement(&p.LedgeTicks)
+		if p.LedgeTicks == 0 {
+			p.State = TraversalAirborne
+			p.Velocity.Y = 1.6
+		}
+		return
+	}
 	if p.MantleTicks > 0 {
 		p.MantleTicks--
 		p.State = TraversalMantling
@@ -168,19 +198,14 @@ func (w *World) updateTraversal(input InputFrame) {
 		case p.Grounded || p.Coyote > 0:
 			p.Velocity.Y, p.Grounded, p.Coyote, p.JumpBuffer = -jumpVelocity, false, 0, 0
 			p.State = TraversalAirborne
-		case p.WallDirection != 0:
+		case p.WallDirection != 0 && p.WallTicks > 0:
 			p.Velocity = Vec{X: float64(-p.WallDirection) * 6.4, Y: -9.7}
-			p.WallDirection, p.JumpBuffer, p.AirJumps = 0, 0, 1
+			p.WallDirection, p.WallTicks, p.JumpBuffer, p.AirJumps = 0, 0, 0, 1
 			p.State = TraversalAirborne
 		case p.AirJumps > 0:
 			p.Velocity.Y, p.AirJumps, p.JumpBuffer = -doubleJumpVelocity, p.AirJumps-1, 0
 			p.State = TraversalAirborne
 		}
-	}
-
-	if input.Down && !p.Grounded && p.Velocity.Y > 1.5 && !p.Tether.Active {
-		p.State = TraversalDiving
-		p.Velocity.Y = min(15, p.Velocity.Y+1.45)
 	}
 
 	direction := float64(input.MoveX)
@@ -199,24 +224,30 @@ func (w *World) updateTraversal(input InputFrame) {
 		p.Velocity.X = clamp(p.Velocity.X, -moveTopSpeed, moveTopSpeed)
 	}
 	p.Velocity.Y = min(15, p.Velocity.Y+Gravity)
+	fallSpeed, wasDiving := p.Velocity.Y, p.State == TraversalDiving
 	wall := w.movePlayer(Vec{X: p.Velocity.X, Y: p.Velocity.Y})
-	if wall != 0 && !p.Grounded && p.Velocity.Y > 0 && input.MoveX == wall {
-		p.WallDirection = wall
+	if p.State == TraversalLedgeGrab {
+		return
+	}
+	brokeFloor := wasDiving && w.breakFloorBelow(fallSpeed)
+	if brokeFloor {
+		p.Grounded, p.Velocity.Y = false, fallSpeed
+	}
+	wallSliding := wall != 0 && !p.Grounded && p.Velocity.Y > 0 && input.MoveX == wall && p.State != TraversalDiving
+	if wallSliding {
+		p.WallDirection, p.WallTicks = wall, wallJumpGraceTicks
 		p.Velocity.Y = min(p.Velocity.Y, 1.35)
 		p.State = TraversalWallCling
-	} else {
+	} else if p.WallTicks == 0 {
 		p.WallDirection = 0
 	}
-	if p.Grounded {
-		p.State, p.AirJumps, p.Coyote = TraversalGrounded, 1, coyoteTicks
-	} else if p.State != TraversalWallCling && p.State != TraversalDiving && p.RollTicks == 0 {
+	if p.Grounded && !brokeFloor {
+		p.State, p.AirJumps, p.Coyote, p.WallDirection, p.WallTicks = TraversalGrounded, 1, coyoteTicks, 0, 0
+	} else if !wallSliding && p.State != TraversalDiving && p.RollTicks == 0 {
 		p.State = TraversalAirborne
 	}
 	if p.RollTicks == 0 && p.State == TraversalRolling {
 		p.State = TraversalAirborne
-	}
-	if p.State == TraversalDiving {
-		w.breakFloorBelow()
 	}
 	if !p.Grounded && p.ClimbObjectID < 0 && (input.Jump || input.Down) {
 		if object := w.nearClimbable(p.Pos); object != nil {
@@ -244,7 +275,7 @@ func (w *World) movePlayer(delta Vec) int8 {
 		}
 		p.Velocity.X = 0
 	}
-	if blocked != 0 && !p.Grounded && w.tryMantle(blocked) {
+	if blocked != 0 && !p.Grounded && p.State != TraversalDiving && p.RollTicks == 0 && w.tryGrabLedge(blocked) {
 		return blocked
 	}
 
@@ -281,7 +312,7 @@ func (w *World) movePlayer(delta Vec) int8 {
 	return blocked
 }
 
-func (w *World) tryMantle(direction int8) bool {
+func (w *World) tryGrabLedge(direction int8) bool {
 	p := &w.Player
 	if p.Velocity.Y < 0 {
 		return false
@@ -294,9 +325,12 @@ func (w *World) tryMantle(direction int8) bool {
 		if direction < 0 {
 			edge = terrain.Bounds.X + terrain.Bounds.W
 		}
-		target := Vec{X: edge - float64(direction)*(playerHalfW+2), Y: terrain.Bounds.Y - p.halfHeight()}
-		if !w.boundsBlocked(p.boundsAt(target)) {
-			p.Pos, p.Velocity, p.MantleTicks = target, Vec{}, 5
+		stand := Vec{X: edge - float64(direction)*(playerHalfW+2), Y: terrain.Bounds.Y - p.halfHeight()}
+		hang := Vec{X: stand.X, Y: terrain.Bounds.Y + playerStandHalfH - 3}
+		if !w.boundsBlocked(p.boundsAt(stand)) && !w.boundsBlocked(p.boundsAt(hang)) {
+			p.Pos, p.Velocity = hang, Vec{}
+			p.LedgeDirection, p.LedgeTarget, p.LedgeTicks = direction, stand, ledgeGrabTicks
+			p.State, p.WallDirection, p.WallTicks = TraversalLedgeGrab, 0, 0
 			return true
 		}
 	}
@@ -456,18 +490,9 @@ func (w *World) updateHeldObject() {
 	object.Pos = p.Pos.Add(Vec{X: float64(p.Facing) * 16, Y: -12})
 }
 
-func (w *World) handleTools(input InputFrame) {
-	p := &w.Player
+func (w *World) handleObjectActions(input InputFrame) {
 	if input.Throw && !w.prevInput.Throw {
 		w.throwHeldObject()
-	}
-	if input.Bomb && !w.prevInput.Bomb && p.Bombs > 0 {
-		p.Bombs--
-		w.Objects = append(w.Objects, WorldObject{ID: w.nextObjectID(), Kind: ObjectBomb, Pos: p.Pos, Size: Vec{X: 16, Y: 16}, Vel: p.Aim.Scale(4.5).Add(Vec{Y: -2.5}), Fuse: 60})
-	}
-	if input.Rope && !w.prevInput.Rope && p.Ropes > 0 {
-		p.Ropes--
-		w.Objects = append(w.Objects, WorldObject{ID: w.nextObjectID(), Kind: ObjectRope, Pos: p.Pos.Add(Vec{Y: -66}), Size: Vec{X: 10, Y: 132}})
 	}
 }
 
@@ -503,14 +528,6 @@ func (w *World) updateObjects() {
 	for index := range w.Objects {
 		object := w.Objects[index]
 		switch object.Kind {
-		case ObjectBomb:
-			object.Fuse--
-			if object.Fuse <= 0 {
-				w.explode(object.Pos)
-				continue
-			}
-			object.Vel.Y = min(12, object.Vel.Y+Gravity)
-			object.Pos = w.moveObject(object, object.Vel)
 		case ObjectCrate, ObjectRock:
 			if !object.Held {
 				object.Vel.Y = min(12, object.Vel.Y+Gravity)
@@ -545,31 +562,17 @@ func (w *World) moveObject(object WorldObject, delta Vec) Vec {
 	return next
 }
 
-func (w *World) explode(position Vec) {
-	for index := range w.Terrain {
-		terrain := &w.Terrain[index]
-		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && terrain.Bounds.center().Distance(position) < 64 {
-			terrain.HP = 0
-		}
-	}
-	for index := range w.Objects {
-		object := &w.Objects[index]
-		if object.movable() && object.Pos.Distance(position) < 64 {
-			object.Vel = object.Pos.Sub(position).Normalized().Scale(8).Add(Vec{Y: -4})
-		}
-	}
-	w.Trauma = 0.34
-}
-
-func (w *World) breakFloorBelow() {
+func (w *World) breakFloorBelow(fallSpeed float64) bool {
 	p := &w.Player
 	for index := range w.Terrain {
 		terrain := &w.Terrain[index]
-		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && p.Pos.X >= terrain.Bounds.X && p.Pos.X <= terrain.Bounds.X+terrain.Bounds.W && p.Pos.Y+p.halfHeight() <= terrain.Bounds.Y+18 && p.Velocity.Y > 5 {
+		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && p.Pos.X >= terrain.Bounds.X && p.Pos.X <= terrain.Bounds.X+terrain.Bounds.W && p.Pos.Y+p.halfHeight() <= terrain.Bounds.Y+18 && fallSpeed > 5 {
 			terrain.HP = 0
 			w.Trauma = 0.2
+			return true
 		}
 	}
+	return false
 }
 
 func (w *World) updateLinks() {
@@ -639,12 +642,12 @@ func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	q := func(value float64) int64 { return int64(math.Round(value * 1000)) }
 	p := w.Player
-	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/roll%d/%d/crouch%d/drop%d/m%d/cl%d/held%d/b%d/r%d/te%d/%d,%d", SimulationVersion, GeneratorVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, p.Bombs, p.Ropes, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
+	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, GeneratorVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
 	for _, terrain := range w.Terrain {
 		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
 	}
 	for _, object := range w.Objects {
-		_, _ = fmt.Fprintf(h, "/o%d/%d/%d,%d/%d,%d/%d,%d/l%d/a%d/h%d/f%d", object.ID, object.Kind, q(object.Pos.X), q(object.Pos.Y), q(object.Vel.X), q(object.Vel.Y), q(object.Size.X), q(object.Size.Y), object.LinkID, boolHash(object.Active), boolHash(object.Held), object.Fuse)
+		_, _ = fmt.Fprintf(h, "/o%d/%d/%d,%d/%d,%d/%d,%d/l%d/a%d/h%d", object.ID, object.Kind, q(object.Pos.X), q(object.Pos.Y), q(object.Vel.X), q(object.Vel.Y), q(object.Size.X), q(object.Size.Y), object.LinkID, boolHash(object.Active), boolHash(object.Held))
 	}
 	return h.Sum64()
 }
