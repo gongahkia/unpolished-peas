@@ -21,6 +21,8 @@ type World struct {
 	Won         bool
 	Lost        bool
 	Debug       bool
+	Vows        map[Vow]bool
+	Companion   Companion
 	nextID      int
 	prevInput   InputFrame
 }
@@ -29,8 +31,28 @@ func NewWorld(seed uint64) *World {
 	if seed == 0 {
 		seed = 1
 	}
-	w := &World{Seed: seed, RNG: seed, Player: newPlayer(), nextID: 1}
+	w := &World{Seed: seed, RNG: seed, Player: newPlayer(), nextID: 1, Vows: make(map[Vow]bool)}
 	return w
+}
+
+// BeginEncounter clears transient combat state while preserving the run's HP,
+// vows, companion, and learned forms.
+func (w *World) BeginEncounter() {
+	w.Enemies = nil
+	w.Clones = nil
+	w.Projectiles = nil
+	w.Effects = nil
+	w.Hitstop = 0
+	w.Won = false
+	w.Lost = false
+	w.Player.Pos = Vec{X: ArenaW / 2, Y: ArenaH / 2}
+	w.Player.Velocity = Vec{}
+	w.Player.Action = ActionIdle
+	w.Player.ActionTick = 0
+	w.Player.AttackBuffer = 0
+	w.Player.Stagger = 0
+	w.Player.Invulnerable = 0
+	w.prevInput = InputFrame{}
 }
 
 func (w *World) ResetEncounter() {
@@ -69,14 +91,14 @@ func (w *World) SpawnEnemy(kind EnemyKind, position Vec) *Enemy {
 
 func (w *World) SpawnBoss(id, name string, position Vec, hp int) *Enemy {
 	e := &Enemy{ID: w.nextEntityID(), Kind: EnemyBoss, Name: name, Pos: position, Facing: Vec{X: -1}, Radius: 22, HP: hp, MaxHP: hp, Damage: 18, MoveSpeed: 1.0, AttackRange: 45, TargetCloneID: -1}
-	e.Boss = &BossState{ID: id, PhaseName: "opening", RequiredStaff: StaffMedium}
+	e.Boss = newBossState(id)
 	w.Enemies = append(w.Enemies, e)
 	return e
 }
 
 func (w *World) SpawnClone() {
 	p := &w.Player
-	if p.CloneCooldown > 0 || p.Action == ActionDead {
+	if p.CloneCooldown > 0 || p.Action == ActionDead || w.Vows[VowSilence] {
 		return
 	}
 	position := clampArena(p.Pos.Sub(p.Facing.Scale(22)), p.radius())
@@ -127,8 +149,14 @@ func (w *World) handleInput(input InputFrame) {
 		w.SpawnClone()
 	}
 	if input.Transform != FormNone && input.Transform != p.Form && p.TransformCooldown == 0 {
+		if w.Vows[VowHumility] && input.Transform == FormGiant {
+			return
+		}
 		p.Form = input.Transform
 		p.TransformCooldown = 15
+		if w.Vows[VowSilence] {
+			p.TransformCooldown = 7
+		}
 		p.Velocity = Vec{}
 		w.Effects = append(w.Effects, Effect{Kind: EffectTransform, Pos: p.Pos, Radius: p.radius() + 8, TicksRemaining: 14})
 	}
@@ -215,6 +243,9 @@ func (w *World) startDodge(input InputFrame) {
 	p.Action = ActionDodge
 	p.ActionTick = 0
 	p.DodgeCooldown = 30
+	if w.Vows[VowCloudbound] {
+		p.DodgeCooldown = 18
+	}
 	p.Invulnerable = 8
 	p.Velocity = direction.Scale(7.5)
 }
@@ -384,6 +415,9 @@ func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
 	if w.Player.Form == FormMantis && w.Player.Action == ActionCounter && w.Player.CounterWindow > 0 {
 		enemy.Stagger = 45
 		enemy.HP -= 18
+		if w.Vows[VowHumility] {
+			w.Player.HP = min(w.Player.MaxHP, w.Player.HP+4)
+		}
 		enemy.Velocity = enemy.Facing.Scale(-8)
 		w.Hitstop = max(w.Hitstop, 5)
 		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: w.Player.Pos, Radius: 32, TicksRemaining: 14})
@@ -431,6 +465,9 @@ func (w *World) damagePlayer(damage int, knockback Vec, hazard bool) {
 
 func (w *World) resolveBodyCollisions() {
 	p := &w.Player
+	if p.Action == ActionDodge && w.Vows[VowCloudbound] {
+		return
+	}
 	for _, enemy := range w.Enemies {
 		if !enemy.alive() {
 			continue
@@ -478,12 +515,18 @@ func (w *World) updateEffects() {
 // StateHash is a diagnostics hash for deterministic regression tests.
 func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
-	_, _ = fmt.Fprintf(h, "%s/%d/%d/%d/%d/%d/%d/%d/%d", SimulationVersion, w.Tick, w.RNG, w.Player.HP, w.Player.Form, w.Player.Staff, w.Player.Action, q(w.Player.Pos.X), q(w.Player.Pos.Y))
+	_, _ = fmt.Fprintf(h, "%s/%d/%d/%t/%t/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", SimulationVersion, w.Tick, w.RNG, w.Won, w.Lost, w.Player.HP, w.Player.Form, w.Player.Staff, w.Player.Action, w.Player.ActionTick, w.Player.Combo, w.Player.DodgeCooldown, w.Player.Invulnerable, w.Player.TransformCooldown, w.Player.CloneCooldown, w.Player.Stagger, q(w.Player.Pos.X), q(w.Player.Pos.Y), q(w.Player.Velocity.X))
 	for _, enemy := range w.Enemies {
-		_, _ = fmt.Fprintf(h, "/%d/%d/%d/%d/%d", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y))
+		_, _ = fmt.Fprintf(h, "/%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), enemy.AttackCooldown, enemy.Windup, enemy.Stagger)
+		if enemy.Boss != nil {
+			_, _ = fmt.Fprintf(h, "/b/%s/%d/%d/%d/%t/%t", enemy.Boss.ID, enemy.Boss.Phase, enemy.Boss.PatternTick, enemy.Boss.Vulnerable, enemy.Boss.Shielded, enemy.Boss.Enraged)
+		}
 	}
 	for _, clone := range w.Clones {
-		_, _ = fmt.Fprintf(h, "/c%d/%d/%d/%d", clone.ID, clone.TicksRemaining, q(clone.Pos.X), q(clone.Pos.Y))
+		_, _ = fmt.Fprintf(h, "/c%d/%d/%d/%d/%d", clone.ID, clone.TicksRemaining, clone.PendingAttack, q(clone.Pos.X), q(clone.Pos.Y))
+	}
+	for _, projectile := range w.Projectiles {
+		_, _ = fmt.Fprintf(h, "/p%d/%d/%d/%d/%d/%t/%t", projectile.ID, q(projectile.Pos.X), q(projectile.Pos.Y), q(projectile.Velocity.X), q(projectile.Velocity.Y), projectile.FromEnemy, projectile.Hazard)
 	}
 	return h.Sum64()
 }

@@ -11,5 +11,8 @@ boss yellow_wind_sage {
 ```
 
 The pipeline is lexer → parser → AST → semantic validation → compiled pattern.
-The compiler reports source positions for malformed blocks, unknown attacks,
-and empty phases. `go run ./cmd/bosslint ./data/bosses` validates all sources.
+Its structural commands are `sequence`, `parallel`, and `repeat [count]`; its
+atomic commands are `wait`, `attack`, `move`/`movement`/`dash`, `spawn`,
+`telegraph`, and `transition`. The compiler reports source positions for
+malformed blocks, unknown commands, and empty phases. `go run ./cmd/bosslint
+./data/bosses` validates all sources.
