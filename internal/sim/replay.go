@@ -6,7 +6,7 @@ import (
 	"os"
 )
 
-// Replay records the complete deterministic movement-lab input stream.
+// Replay records the complete deterministic procedural-run input stream.
 type Replay struct {
 	Version string       `json:"version"`
 	Seed    uint64       `json:"seed"`
@@ -49,11 +49,6 @@ func (r *Replay) Play(world *World) error {
 		}
 	}
 	return nil
-}
-
-func (r *Replay) PlayLab() (*World, error) {
-	w := NewLabWorld(r.Seed)
-	return w, r.Play(w)
 }
 
 func (r *Replay) PlayRun() (*World, error) {

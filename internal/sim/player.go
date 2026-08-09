@@ -21,7 +21,6 @@ const (
 	TraversalAirborne
 	TraversalWallCling
 	TraversalRolling
-	TraversalClimbing
 	TraversalDiving
 	TraversalLedgeGrab
 	TraversalMantling
@@ -33,8 +32,6 @@ func (s TraversalState) String() string {
 		return "wall cling"
 	case TraversalRolling:
 		return "roll"
-	case TraversalClimbing:
-		return "climb"
 	case TraversalDiving:
 		return "dive"
 	case TraversalLedgeGrab:
@@ -46,11 +43,6 @@ func (s TraversalState) String() string {
 	default:
 		return "ground"
 	}
-}
-
-type TetherState struct {
-	Active bool
-	Pos    Vec
 }
 
 type Player struct {
@@ -72,13 +64,11 @@ type Player struct {
 	LedgeDirection int8
 	LedgeTarget    Vec
 	MantleTicks    int
-	ClimbObjectID  int
 	HeldObjectID   int
-	Tether         TetherState
 }
 
 func newPlayer() Player {
-	return Player{Aim: Vec{X: 1}, Facing: 1, AirJumps: 1, HeldObjectID: -1, ClimbObjectID: -1}
+	return Player{Aim: Vec{X: 1}, Facing: 1, AirJumps: 1, HeldObjectID: -1}
 }
 
 func (p Player) halfHeight() float64 {

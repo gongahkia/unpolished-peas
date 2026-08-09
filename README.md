@@ -25,7 +25,7 @@ Gamepad: left stick moves and lowers, right stick aims; buttons `0`, `1`, `2`, a
 ## Core loop
 
 - Read a room and start moving immediately along its reliable route.
-- Choose whether to climb toward a visible treasure, use a breakable shortcut, or leave safely.
+- Choose whether to take an upper route for visible treasure, use a breakable shortcut, or leave safely.
 - Avoid, stomp, bait, or throw objects at chargers, hoppers, and divers.
 - Use rocks/crates, pressure plates, doors, spikes, and fragile walls to recover from mistakes or create a shortcut.
 - Death and completion restart immediately; a new seed produces a different but reproducible run.

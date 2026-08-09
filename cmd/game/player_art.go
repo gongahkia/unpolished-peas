@@ -83,8 +83,6 @@ func playerVisualFor(player sim.PlayerSnapshot, tick uint64) playerVisual {
 		visual.frame, visual.scaleX, visual.scaleY, visual.tilt = 8, .61, .50, -.13
 	case sim.TraversalWallCling:
 		visual.frame, visual.facing, visual.scaleX, visual.scaleY, visual.offsetY = 10, player.WallDirection, .55, .58, bob(tick, 14, 1.2)
-	case sim.TraversalClimbing:
-		visual.frame, visual.scaleX, visual.scaleY, visual.offsetY = alternatingFrame(tick, 12, 12, 10), .55, .58, bob(tick, 12, 1.4)
 	case sim.TraversalDiving:
 		visual.frame, visual.scaleX, visual.scaleY = 15, .53, .62
 	case sim.TraversalLedgeGrab:

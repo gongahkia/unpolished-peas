@@ -66,6 +66,9 @@ func (w *World) updateEnemies() {
 	for index := range w.Enemies {
 		enemy := &w.Enemies[index]
 		if enemy.Dead {
+			if enemy.Flash > 0 {
+				enemy.Flash--
+			}
 			continue
 		}
 		if enemy.Flash > 0 {
@@ -290,7 +293,7 @@ func (w *World) defeatEnemy(enemy *Enemy) {
 func (w *World) removeDeadEnemies() {
 	live := w.Enemies[:0]
 	for _, enemy := range w.Enemies {
-		if !enemy.Dead {
+		if !enemy.Dead || enemy.Flash > 0 {
 			live = append(live, enemy)
 		}
 	}

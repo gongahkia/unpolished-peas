@@ -62,6 +62,26 @@ func TestRockImpactAndHazardDefeatEnemies(t *testing.T) {
 	}
 }
 
+func TestChargerCanKickARockIntoAnotherEnemy(t *testing.T) {
+	world := testActionWorld()
+	rock := WorldObject{ID: 1, Kind: ObjectRock, Pos: Vec{X: 140, Y: 490}, Size: Vec{X: 18, Y: 20}}
+	charger := newEnemy(2, EnemySpawn{Archetype: EnemyCharger, Pos: Vec{X: 120, Y: 488}})
+	charger.State, charger.Timer, charger.Facing, charger.Grounded = EnemyCharge, 10, 1, true
+	target := newEnemy(3, EnemySpawn{Archetype: EnemyHopper, Pos: Vec{X: 155, Y: 489}})
+	target.Grounded = true
+	world.Objects = []WorldObject{rock}
+	world.Enemies = []Enemy{charger, target}
+
+	world.updateEnemies()
+	if world.Objects[0].Vel.X <= 0 {
+		t.Fatalf("charger did not kick the rock: %+v", world.Objects[0])
+	}
+	world.updateObjects()
+	if !world.Enemies[1].Dead || world.Stats.EnemiesDefeated != 1 {
+		t.Fatalf("kicked rock did not defeat the second enemy: enemies=%+v stats=%+v", world.Enemies, world.Stats)
+	}
+}
+
 func TestHopperAndDiverUseReadableTelegraphs(t *testing.T) {
 	world := testActionWorld()
 	hopper := newEnemy(1, EnemySpawn{Archetype: EnemyHopper, Pos: Vec{X: 180, Y: 490}})

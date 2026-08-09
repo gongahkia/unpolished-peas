@@ -122,7 +122,6 @@ func readInput() sim.InputFrame {
 	in.Roll = ebiten.IsKeyPressed(ebiten.KeyShift)
 	in.Interact = ebiten.IsKeyPressed(ebiten.KeyE)
 	in.Throw = ebiten.IsKeyPressed(ebiten.KeyJ)
-	in.Tether = ebiten.IsKeyPressed(ebiten.KeyF)
 	in.DebugStep = ebiten.IsKeyPressed(ebiten.KeyTab)
 	if ids := ebiten.AppendGamepadIDs(nil); len(ids) > 0 {
 		id := ids[0]
@@ -140,7 +139,6 @@ func readInput() sim.InputFrame {
 		in.Roll = in.Roll || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton1)
 		in.Interact = in.Interact || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton2)
 		in.Throw = in.Throw || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton3)
-		in.Tether = in.Tether || ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton6)
 	}
 	return in
 }
@@ -189,12 +187,8 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *pla
 				continue
 			}
 			terrainColor = color.RGBA{R: 183, G: 121, B: 78, A: 255}
-		case sim.TerrainWater:
-			terrainColor = color.RGBA{R: 47, G: 116, B: 177, A: 255}
 		case sim.TerrainSpike:
 			terrainColor = color.RGBA{R: 208, G: 86, B: 94, A: 255}
-		case sim.TerrainPit:
-			terrainColor = color.RGBA{R: 4, G: 5, B: 8, A: 255}
 		}
 		vector.DrawFilledRect(screen, float32(terrain.Bounds.X), float32(terrain.Bounds.Y), float32(terrain.Bounds.W), float32(terrain.Bounds.H), terrainColor, false)
 	}
@@ -206,10 +200,6 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *pla
 	}
 	drawImpact(screen, snapshot.Impact, snapshot.Tick)
 	p := snapshot.Player
-	if p.Tether.Active {
-		vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Tether.Pos.X), float32(p.Tether.Pos.Y), 1, color.RGBA{R: 116, G: 228, B: 246, A: 255}, true)
-		vector.DrawFilledCircle(screen, float32(p.Tether.Pos.X), float32(p.Tether.Pos.Y), 3, color.RGBA{R: 168, G: 244, B: 253, A: 255}, true)
-	}
 	vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Pos.X+p.Aim.X*18), float32(p.Pos.Y+p.Aim.Y*18), 1, color.RGBA{R: 88, G: 216, B: 251, A: 255}, true)
 	playerArt.draw(screen, p, snapshot.Tick)
 }
@@ -230,18 +220,6 @@ func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
 			return
 		}
 		c, glyph = color.RGBA{R: 220, G: 111, B: 89, A: 255}, "|"
-	case sim.ObjectVineNode:
-		c, glyph = color.RGBA{R: 104, G: 218, B: 124, A: 255}, "v"
-	case sim.ObjectVine:
-		vector.StrokeLine(screen, float32(object.Pos.X), float32(bounds.Y), float32(object.Pos.X), float32(bounds.Y+bounds.H), 3, color.RGBA{R: 97, G: 226, B: 120, A: 255}, true)
-		return
-	case sim.ObjectTeleporter:
-		c, glyph = color.RGBA{R: 178, G: 121, B: 242, A: 255}, "O"
-	case sim.ObjectSwitch:
-		c, glyph = color.RGBA{R: 112, G: 244, B: 210, A: 255}, "!"
-		if object.Active {
-			c = color.RGBA{R: 242, G: 250, B: 156, A: 255}
-		}
 	case sim.ObjectExit:
 		c, glyph = color.RGBA{R: 108, G: 240, B: 158, A: 255}, ">"
 	case sim.ObjectTreasure:
@@ -323,16 +301,13 @@ func drawDebug(screen *ebiten.Image, snapshot sim.RenderSnapshot, camera sim.Vec
 	for _, room := range snapshot.Run.Rooms {
 		text.Draw(screen, room.Template.String(), basicfont.Face7x13, int(room.Bounds.X-camera.X)+8, 82, color.RGBA{R: 130, G: 180, B: 255, A: 255})
 	}
-	for _, module := range snapshot.Lab.Modules {
-		text.Draw(screen, module.Kind.String(), basicfont.Face7x13, int(module.Bounds.X-camera.X)+8, 96, color.RGBA{R: 130, G: 180, B: 255, A: 255})
-	}
 	for _, object := range snapshot.Objects {
 		if object.LinkID != 0 {
 			text.Draw(screen, fmt.Sprintf("%s#%d -> %d", object.Kind, object.ID, object.LinkID), basicfont.Face7x13, int(object.Pos.X-camera.X)-26, int(object.Pos.Y-camera.Y)-16, color.RGBA{R: 244, G: 183, B: 116, A: 255})
 		}
 	}
 	p := snapshot.Player
-	text.Draw(screen, fmt.Sprintf("state=%s grounded=%t wall=%d/%d ledge=%d roll=%d tether=%t", p.State, p.Grounded, p.WallDirection, p.WallTicks, p.LedgeTicks, p.RollTicks, p.Tether.Active), basicfont.Face7x13, 8, 62, color.RGBA{R: 239, G: 241, B: 245, A: 255})
+	text.Draw(screen, fmt.Sprintf("state=%s grounded=%t wall=%d/%d ledge=%d roll=%d", p.State, p.Grounded, p.WallDirection, p.WallTicks, p.LedgeTicks, p.RollTicks), basicfont.Face7x13, 8, 62, color.RGBA{R: 239, G: 241, B: 245, A: 255})
 }
 
 func aimLabel(aim sim.Vec) string {

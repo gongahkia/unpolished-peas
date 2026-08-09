@@ -1,6 +1,6 @@
 package sim
 
-// RenderSnapshot is a read-only projection of deterministic lab state. The
+// RenderSnapshot is a read-only projection of deterministic run state. The
 // renderer may animate from Tick but cannot modify the simulation.
 type RenderSnapshot struct {
 	Tick    uint64
@@ -9,7 +9,6 @@ type RenderSnapshot struct {
 	Terrain []TerrainSnapshot
 	Objects []ObjectSnapshot
 	Enemies []EnemySnapshot
-	Lab     LabSnapshot
 	Run     RunSnapshot
 	Debug   bool
 	Trauma  float64
@@ -34,7 +33,6 @@ type PlayerSnapshot struct {
 	LedgeTicks    int
 	LedgeTarget   Vec
 	HeldObjectID  int
-	Tether        TetherState
 }
 
 type TerrainSnapshot struct {
@@ -64,12 +62,6 @@ type EnemySnapshot struct {
 	Flash     int
 }
 
-type LabSnapshot struct {
-	Seed    uint64
-	Modules []LabModuleInfo
-	Exit    Vec
-}
-
 type RunSnapshot struct {
 	Rooms []RunRoom
 }
@@ -79,8 +71,7 @@ func (w *World) Snapshot() RenderSnapshot {
 	snapshot := RenderSnapshot{
 		Tick:   w.Tick,
 		Seed:   w.Seed,
-		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Crouching: p.Crouching, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
-		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
+		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Crouching: p.Crouching, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID},
 		Run:    RunSnapshot{Rooms: append([]RunRoom(nil), w.Run.Rooms...)},
 		Debug:  w.Debug,
 		Trauma: w.Trauma,

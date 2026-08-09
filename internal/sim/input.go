@@ -1,8 +1,7 @@
 package sim
 
-// InputFrame is every deterministic player intent sampled for one tick of the
-// traversal lab. Aim is reserved for throws and the tether probe; it is not
-// derived from movement.
+// InputFrame is every deterministic player intent sampled for one tick of a
+// procedural run. Aim is reserved for throws; it is not derived from movement.
 type InputFrame struct {
 	MoveX      int8
 	AimX, AimY int8
@@ -11,6 +10,5 @@ type InputFrame struct {
 	Roll       bool
 	Interact   bool
 	Throw      bool
-	Tether     bool
 	DebugStep  bool
 }

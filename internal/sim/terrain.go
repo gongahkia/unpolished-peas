@@ -6,9 +6,7 @@ const (
 	TerrainSolid TerrainKind = iota
 	TerrainPlatform
 	TerrainBreakable
-	TerrainWater
 	TerrainSpike
-	TerrainPit
 )
 
 func (k TerrainKind) String() string {
@@ -17,12 +15,8 @@ func (k TerrainKind) String() string {
 		return "platform"
 	case TerrainBreakable:
 		return "breakable"
-	case TerrainWater:
-		return "water"
 	case TerrainSpike:
 		return "spike"
-	case TerrainPit:
-		return "pit"
 	default:
 		return "solid"
 	}

@@ -16,7 +16,6 @@ type World struct {
 	Terrain    []Terrain
 	Objects    []WorldObject
 	Enemies    []Enemy
-	Lab        LabLayout
 	Run        RunLayout
 	Stats      RunStats
 	Won, Lost  bool
@@ -26,19 +25,6 @@ type World struct {
 	Hitstop    int
 	nextID     int
 	prevInput  InputFrame
-}
-
-func NewLabWorld(seed uint64) *World {
-	if seed == 0 {
-		seed = 1
-	}
-	lab := GenerateMovementLab(seed)
-	w := &World{Seed: seed, Lab: lab, Terrain: append([]Terrain(nil), lab.Terrain...), Objects: append([]WorldObject(nil), lab.Objects...), nextID: len(lab.Objects) + 1}
-	w.Player = newPlayer()
-	w.Player.Pos = lab.Start
-	w.Player.Grounded = true
-	w.Player.State = TraversalGrounded
-	return w
 }
 
 func NewRunWorld(seed uint64) *World {
@@ -81,7 +67,6 @@ func (w *World) Step(input InputFrame) {
 	w.handleInteraction(input)
 	w.handleObjectActions(input)
 	w.updateTraversal(input)
-	w.updateTether(input)
 	w.updateHeldObject()
 	w.updateObjects()
 	w.updateEnemies()
@@ -124,7 +109,7 @@ func (w *World) beginTraversalInput(input InputFrame) {
 		p.Grounded, p.JumpBuffer, p.Coyote = false, 0, 0
 		p.Velocity.Y = 1.6
 	}
-	if input.Down && input.Jump && !w.prevInput.Jump && !p.Grounded && p.ClimbObjectID < 0 && p.State != TraversalLedgeGrab && !p.Tether.Active {
+	if input.Down && input.Jump && !w.prevInput.Jump && !p.Grounded && p.State != TraversalLedgeGrab {
 		p.JumpBuffer, p.Coyote = 0, 0
 		p.State = TraversalDiving
 		p.Velocity.Y = max(6, p.Velocity.Y+5)
@@ -133,7 +118,7 @@ func (w *World) beginTraversalInput(input InputFrame) {
 		p.Pos.Y += playerStandHalfH - playerCrouchHalfH
 		p.Crouching = true
 	}
-	if input.Roll && !w.prevInput.Roll && p.RollCooldown == 0 && p.ClimbObjectID < 0 && p.State != TraversalLedgeGrab {
+	if input.Roll && !w.prevInput.Roll && p.RollCooldown == 0 && p.State != TraversalLedgeGrab {
 		direction := p.Facing
 		if input.MoveX != 0 {
 			direction = input.MoveX
@@ -145,10 +130,6 @@ func (w *World) beginTraversalInput(input InputFrame) {
 		}
 		p.Velocity.X = float64(direction) * 7.4
 		p.State = TraversalRolling
-	}
-	if input.Tether && !w.prevInput.Tether {
-		p.Tether.Active = !p.Tether.Active
-		p.Tether.Pos = p.Pos
 	}
 	if !input.Jump && w.prevInput.Jump && p.Velocity.Y < -4.2 {
 		p.Velocity.Y = -4.2 // variable jump height
@@ -200,30 +181,6 @@ func (w *World) updateTraversal(input InputFrame) {
 		}
 		return
 	}
-	if p.ClimbObjectID >= 0 {
-		if !w.climbInput(input) {
-			p.ClimbObjectID = -1
-		} else {
-			p.State = TraversalClimbing
-			vertical := 0.0
-			if input.Jump {
-				vertical -= 3.8
-			}
-			if input.Down {
-				vertical += 3.2
-			}
-			p.Pos.Y += vertical
-			p.Velocity = Vec{}
-			p.Grounded = false
-			if input.Jump && !w.prevInput.Jump && input.MoveX != 0 {
-				p.ClimbObjectID = -1
-				p.Velocity = Vec{X: float64(input.MoveX) * 6.1, Y: -9.2}
-				p.AirJumps = 1
-			}
-			return
-		}
-	}
-
 	if p.JumpBuffer > 0 {
 		switch {
 		case p.Grounded || p.Coyote > 0:
@@ -279,11 +236,6 @@ func (w *World) updateTraversal(input InputFrame) {
 	}
 	if p.RollTicks == 0 && p.State == TraversalRolling {
 		p.State = TraversalAirborne
-	}
-	if !p.Grounded && p.ClimbObjectID < 0 && (input.Jump || input.Down) {
-		if object := w.nearClimbable(p.Pos); object != nil {
-			p.ClimbObjectID, p.State, p.Velocity = object.ID, TraversalClimbing, Vec{}
-		}
 	}
 }
 
@@ -431,31 +383,11 @@ func (o WorldObject) boundsAt(pos Vec) Rect {
 	return Rect{X: pos.X - o.Size.X/2, Y: pos.Y - o.Size.Y/2, W: o.Size.X, H: o.Size.Y}
 }
 
-func (w *World) climbInput(input InputFrame) bool {
-	if w.objectByID(w.Player.ClimbObjectID) == nil {
-		return false
-	}
-	return input.Jump || input.Down || input.MoveX == 0
-}
-
-func (w *World) nearClimbable(position Vec) *WorldObject {
-	for index := range w.Objects {
-		object := &w.Objects[index]
-		if object.climbable() && math.Abs(object.Pos.X-position.X) <= 18 && math.Abs(object.Pos.Y-position.Y) <= object.Size.Y/2+20 {
-			return object
-		}
-	}
-	return nil
-}
-
 func (w *World) handleInteraction(input InputFrame) {
 	if !input.Interact || w.prevInput.Interact {
 		return
 	}
 	p := &w.Player
-	if p.Tether.Active && w.activateSwitchAt(p.Tether.Pos) {
-		return
-	}
 	if p.HeldObjectID >= 0 {
 		w.dropHeldObject()
 		return
@@ -469,39 +401,8 @@ func (w *World) handleInteraction(input InputFrame) {
 		case ObjectCrate, ObjectRock:
 			object.Held, p.HeldObjectID = true, object.ID
 			return
-		case ObjectVineNode:
-			w.activateVine(object)
-			return
-		case ObjectTeleporter:
-			w.useTeleporter(object)
-			return
-		case ObjectSwitch:
-			object.Active = true
-			return
 		}
 	}
-}
-
-func (w *World) activateVine(node *WorldObject) {
-	if node.Active {
-		return
-	}
-	node.Active = true
-	w.Objects = append(w.Objects, WorldObject{ID: w.nextObjectID(), Kind: ObjectVine, Pos: node.Pos.Add(Vec{Y: -78}), Size: Vec{X: 10, Y: 156}})
-}
-
-func (w *World) useTeleporter(source *WorldObject) {
-	if source.Active {
-		return
-	}
-	target := w.objectByID(source.LinkID)
-	if target == nil {
-		return
-	}
-	w.Player.Pos = target.Pos.Add(Vec{Y: -target.Size.Y/2 - w.Player.halfHeight()})
-	w.Player.Velocity = Vec{}
-	source.Active, target.Active = true, true
-	w.Trauma = 0.22
 }
 
 func (w *World) dropHeldObject() {
@@ -530,22 +431,6 @@ func (w *World) updateHeldObject() {
 func (w *World) handleObjectActions(input InputFrame) {
 	if input.Throw && !w.prevInput.Throw {
 		w.throwHeldObject()
-	}
-}
-
-func (w *World) updateTether(input InputFrame) {
-	p := &w.Player
-	if !p.Tether.Active {
-		return
-	}
-	step := p.Aim.Scale(4.2)
-	candidate := p.Tether.Pos.Add(step)
-	if candidate.Distance(p.Pos) > 142 {
-		candidate = p.Pos.Add(candidate.Sub(p.Pos).Normalized().Scale(142))
-	}
-	probe := Rect{X: candidate.X - 2, Y: candidate.Y - 2, W: 4, H: 4}
-	if !w.boundsBlocked(probe) {
-		p.Tether.Pos = candidate
 	}
 }
 
@@ -749,21 +634,10 @@ func (w *World) updateLinks() {
 	}
 }
 
-func (w *World) activateSwitchAt(position Vec) bool {
-	for index := range w.Objects {
-		object := &w.Objects[index]
-		if object.Kind == ObjectSwitch && object.Pos.Distance(position) < 18 {
-			object.Active = true
-			return true
-		}
-	}
-	return false
-}
-
 func (w *World) applyHazards() {
 	bounds := w.Player.boundsAt(w.Player.Pos)
 	for _, terrain := range w.Terrain {
-		if (terrain.Kind == TerrainWater || terrain.Kind == TerrainSpike || terrain.Kind == TerrainPit) && bounds.overlaps(terrain.Bounds) {
+		if terrain.Kind == TerrainSpike && bounds.overlaps(terrain.Bounds) {
 			w.Lost = true
 			w.Trauma = 0.36
 			return
@@ -775,7 +649,7 @@ func (w *World) applyHazards() {
 			continue
 		}
 		for _, terrain := range w.Terrain {
-			if (terrain.Kind == TerrainWater || terrain.Kind == TerrainSpike || terrain.Kind == TerrainPit) && enemy.bounds().overlaps(terrain.Bounds) {
+			if terrain.Kind == TerrainSpike && enemy.bounds().overlaps(terrain.Bounds) {
 				w.defeatEnemy(enemy)
 				w.Trauma = max(w.Trauma, .24)
 				break
@@ -787,7 +661,7 @@ func (w *World) applyHazards() {
 		destroyed := false
 		if object.movable() && !object.Held {
 			for _, terrain := range w.Terrain {
-				if (terrain.Kind == TerrainWater || terrain.Kind == TerrainSpike || terrain.Kind == TerrainPit) && object.bounds().overlaps(terrain.Bounds) {
+				if terrain.Kind == TerrainSpike && object.bounds().overlaps(terrain.Bounds) {
 					destroyed = true
 					break
 				}
@@ -822,7 +696,7 @@ func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	q := func(value float64) int64 { return int64(math.Round(value * 1000)) }
 	p := w.Player
-	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/hit%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Hitstop, w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
+	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/hit%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/aim%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/held%d/in%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Hitstop, w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.HeldObjectID, inputEdgeMask(w.prevInput))
 	for _, terrain := range w.Terrain {
 		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
 	}
@@ -840,4 +714,23 @@ func boolHash(value bool) int {
 		return 1
 	}
 	return 0
+}
+
+// inputEdgeMask covers only prior-frame inputs that alter a future simulation
+// transition. Debug input is presentation-only and deliberately omitted.
+func inputEdgeMask(input InputFrame) int {
+	mask := 0
+	if input.Jump {
+		mask |= 1
+	}
+	if input.Roll {
+		mask |= 2
+	}
+	if input.Interact {
+		mask |= 4
+	}
+	if input.Throw {
+		mask |= 8
+	}
+	return mask
 }

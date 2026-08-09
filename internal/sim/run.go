@@ -5,7 +5,9 @@ import (
 	"math"
 )
 
-const RunVersion = "72-run-2"
+// RunVersion invalidates older replay files whose movement-lab state included
+// retired tether, vine, teleporter, and switch mechanics.
+const RunVersion = "72-run-3"
 
 type RoomTemplate uint8
 
@@ -52,7 +54,6 @@ type RunRoom struct {
 	Template     RoomTemplate
 	Bounds       Rect
 	Entry, Exit  Vec
-	Variant      int
 	ThreatBudget int
 }
 
@@ -145,6 +146,20 @@ func GenerateRun(seed uint64) RunLayout {
 	templates := []RoomTemplate{RoomOpen, RoomStairs, RoomSplit, RoomRidge, RoomHazardBridge, RoomBreakout, RoomColumn, RoomPocket, RoomDescent}
 	rng.shuffle(templates)
 	templates = append(templates, RoomFinale)
+	mandatoryArchetypes := []EnemyArchetype{EnemyCharger, EnemyHopper, EnemyDiver}
+	for index := len(mandatoryArchetypes) - 1; index > 0; index-- {
+		other := rng.intn(index + 1)
+		mandatoryArchetypes[index], mandatoryArchetypes[other] = mandatoryArchetypes[other], mandatoryArchetypes[index]
+	}
+	spawnIndex := 0
+	nextArchetype := func() EnemyArchetype {
+		if spawnIndex < len(mandatoryArchetypes) {
+			archetype := mandatoryArchetypes[spawnIndex]
+			spawnIndex++
+			return archetype
+		}
+		return EnemyArchetype(rng.intn(3))
+	}
 
 	layout := RunLayout{Seed: seed, Start: Vec{X: 52, Y: 639}, Exit: Vec{X: ArenaW - 42, Y: 626}}
 	nextTerrainID, nextObjectID := 1, 1
@@ -174,12 +189,11 @@ func GenerateRun(seed uint64) RunLayout {
 			Bounds:       Rect{X: offset, Y: 0, W: RoomW, H: ArenaH},
 			Entry:        Vec{X: offset + 48, Y: 639},
 			Exit:         Vec{X: offset + RoomW - 48, Y: 639},
-			Variant:      rng.intn(3),
 			ThreatBudget: runThreatBudget(index, template),
 		}
 		layout.Rooms = append(layout.Rooms, room)
 		populateRoom(room, addTerrain, addObject, linkObjects, addSpawn)
-		populateRoomEncounters(room, rng, layout.Terrain, addSpawn)
+		populateRoomEncounters(room, rng, layout.Terrain, nextArchetype, addSpawn)
 	}
 	addObject(ObjectExit, layout.Exit, Vec{X: 34, Y: 48})
 	layout.Valid = validateRunLayout(&layout)
@@ -191,7 +205,7 @@ func runThreatBudget(index int, template RoomTemplate) int {
 		return 0
 	}
 	if template == RoomFinale {
-		return 3
+		return 2
 	}
 	if index < 3 {
 		return 1
@@ -288,7 +302,7 @@ func populateRoom(room RunRoom, addTerrain func(TerrainKind, Rect, int), addObje
 	}
 }
 
-func populateRoomEncounters(room RunRoom, rng *runRNG, terrain []Terrain, addSpawn func(int, EnemyArchetype, Vec)) {
+func populateRoomEncounters(room RunRoom, rng *runRNG, terrain []Terrain, nextArchetype func() EnemyArchetype, addSpawn func(int, EnemyArchetype, Vec)) {
 	if room.ThreatBudget == 0 {
 		return
 	}
@@ -309,12 +323,12 @@ func populateRoomEncounters(room RunRoom, rng *runRNG, terrain []Terrain, addSpa
 		}
 		return Vec{X: x + 200, Y: ys[0]}
 	}
-	first := EnemyArchetype(rng.intn(3))
+	first := nextArchetype()
 	addSpawn(room.Index, first, spawnPosition(first, 370+float64(rng.intn(3))*36))
 	if room.ThreatBudget < 2 {
 		return
 	}
-	second := EnemyArchetype((int(first) + 1 + rng.intn(2)) % 3)
+	second := nextArchetype()
 	addSpawn(room.Index, second, spawnPosition(second, 500))
 }
 
@@ -328,6 +342,7 @@ func runValidationIssue(layout *RunLayout) string {
 	}
 	seenTemplates := make(map[RoomTemplate]bool, RoomCount)
 	treasureRooms := make(map[int]bool, RoomCount)
+	seenArchetypes := [3]bool{}
 	for _, room := range layout.Rooms {
 		if room.Index < 0 || room.Index >= RoomCount || room.Bounds.W != RoomW || room.Bounds.H != ArenaH || room.Entry.X >= room.Exit.X || !hasGroundRoute(layout.Terrain, room) {
 			return fmt.Sprintf("room %d has no safe ground route", room.Index)
@@ -360,6 +375,19 @@ func runValidationIssue(layout *RunLayout) string {
 	for _, spawn := range layout.Spawns {
 		if spawn.Room < 0 || spawn.Room >= RoomCount || !runPositionClear(layout.Terrain, spawn.Pos) {
 			return fmt.Sprintf("spawn %s in room %d is invalid at %+v", spawn.Archetype, spawn.Room, spawn.Pos)
+		}
+		room := layout.Rooms[spawn.Room]
+		if spawn.Pos.Distance(room.Entry) < 100 || spawn.Pos.Distance(room.Exit) < 64 {
+			return fmt.Sprintf("spawn %s in room %d is too close to a transition", spawn.Archetype, spawn.Room)
+		}
+		if spawn.Archetype > EnemyDiver {
+			return fmt.Sprintf("unknown enemy archetype %d", spawn.Archetype)
+		}
+		seenArchetypes[spawn.Archetype] = true
+	}
+	for archetype, seen := range seenArchetypes {
+		if !seen {
+			return fmt.Sprintf("missing enemy archetype %s", EnemyArchetype(archetype))
 		}
 	}
 	if math.Abs(layout.Exit.X-(ArenaW-42)) >= .01 {
