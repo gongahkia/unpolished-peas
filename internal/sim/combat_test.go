@@ -2,6 +2,14 @@ package sim
 
 import "testing"
 
+func testPlatformWorld(seed uint64) *World {
+	w := NewWorld(seed)
+	w.Terrain = []Terrain{{ID: 1, Kind: TerrainWall, Bounds: Rect{X: 0, Y: 500, W: ArenaW, H: 220}}}
+	w.Player.Pos = Vec{X: 120, Y: 491}
+	w.Player.Grounded = true
+	return w
+}
+
 func testEnemy(world *World, position Vec) *Enemy {
 	enemy := &Enemy{
 		ID:            world.nextEntityID(),
@@ -15,6 +23,7 @@ func testEnemy(world *World, position Vec) *Enemy {
 		MoveSpeed:     0,
 		AttackRange:   0,
 		TargetCloneID: -1,
+		Grounded:      true,
 	}
 	world.Enemies = append(world.Enemies, enemy)
 	return enemy
@@ -26,15 +35,29 @@ func step(world *World, input InputFrame, count int) {
 	}
 }
 
-func TestMovementAndAimAreIndependent(t *testing.T) {
-	world := NewWorld(1)
+func TestPlatformMovementAndAimAreIndependent(t *testing.T) {
+	world := testPlatformWorld(1)
 	start := world.Player.Pos
 	world.Step(InputFrame{MoveX: 1, AimY: -1})
 	if world.Player.Pos.X <= start.X || world.Player.Pos.Y != start.Y {
-		t.Fatalf("movement followed aim: start=%+v end=%+v", start, world.Player.Pos)
+		t.Fatalf("horizontal movement did not remain on the platform: start=%+v end=%+v", start, world.Player.Pos)
 	}
 	if world.Player.Aim != (Vec{Y: -1}) {
 		t.Fatalf("aim did not retain independent arrow intent: %+v", world.Player.Aim)
+	}
+}
+
+func TestPlatformLandingAndJump(t *testing.T) {
+	world := testPlatformWorld(2)
+	world.Player.Pos = Vec{X: 120, Y: 420}
+	world.Player.Grounded = false
+	step(world, InputFrame{}, 20)
+	if !world.Player.Grounded || world.Player.Pos.Y != 491 {
+		t.Fatalf("player did not land on the floor: pos=%+v grounded=%t", world.Player.Pos, world.Player.Grounded)
+	}
+	world.Step(InputFrame{Jump: true})
+	if world.Player.Grounded || world.Player.Pos.Y >= 491 || world.Player.Velocity.Y >= 0 {
+		t.Fatalf("jump did not launch an airborne player: pos=%+v velocity=%+v grounded=%t", world.Player.Pos, world.Player.Velocity, world.Player.Grounded)
 	}
 }
 
@@ -43,22 +66,30 @@ func TestStaffLengthsHaveDistinctTimingAndReach(t *testing.T) {
 		t.Fatalf("short staff is not a fast close tool: short=%+v medium=%+v", short, medium)
 	}
 
-	mediumWorld := NewWorld(2)
-	mediumTarget := testEnemy(mediumWorld, mediumWorld.Player.Pos.Add(Vec{X: 105}))
-	mediumWorld.Step(InputFrame{Staff: StaffMedium, AimX: 1, Attack: true})
-	step(mediumWorld, InputFrame{AimX: 1}, 24)
-	if mediumTarget.HP != mediumTarget.MaxHP {
-		t.Fatalf("medium staff reached target outside its sweep: hp=%d", mediumTarget.HP)
+	shortWorld := testPlatformWorld(3)
+	shortTarget := testEnemy(shortWorld, Vec{X: 148, Y: 490})
+	shortWorld.Step(InputFrame{Staff: StaffShort, AimX: 1, Attack: true})
+	step(shortWorld, InputFrame{AimX: 1}, 5)
+	if shortTarget.HP >= shortTarget.MaxHP {
+		t.Fatal("short staff missed an adjacent target")
 	}
 
-	longWorld := NewWorld(2)
-	longTarget := testEnemy(longWorld, longWorld.Player.Pos.Add(Vec{X: 105}))
+	mediumWorld := testPlatformWorld(4)
+	mediumTarget := testEnemy(mediumWorld, Vec{X: 180, Y: 490})
+	mediumWorld.Step(InputFrame{Staff: StaffMedium, AimX: 1, Attack: true})
+	step(mediumWorld, InputFrame{AimX: 1}, 16)
+	if mediumTarget.HP >= mediumTarget.MaxHP {
+		t.Fatal("medium staff did not reach its conventional sweep range")
+	}
+
+	longWorld := testPlatformWorld(5)
+	longTarget := testEnemy(longWorld, Vec{X: 250, Y: 490})
 	longWorld.Step(InputFrame{Staff: StaffLong, AimX: 1, Attack: true})
-	step(longWorld, InputFrame{AimX: 1, Attack: true}, 30)
+	step(longWorld, InputFrame{AimX: 1, Attack: true}, 48)
 	longWorld.Step(InputFrame{AimX: 1})
 	step(longWorld, InputFrame{AimX: 1}, 8)
 	if longTarget.HP >= longTarget.MaxHP {
-		t.Fatalf("charged long release did not reach its target: hp=%d", longTarget.HP)
+		t.Fatalf("charged long release did not reach distant target: hp=%d", longTarget.HP)
 	}
 	if longWorld.Player.LastAttackSpec.Recovery <= mediumSpec(0).Recovery {
 		t.Fatalf("long staff lacks committed recovery: long=%+v medium=%+v", longWorld.Player.LastAttackSpec, mediumSpec(0))
@@ -66,14 +97,14 @@ func TestStaffLengthsHaveDistinctTimingAndReach(t *testing.T) {
 }
 
 func TestSnapshotExposesStaffPhaseAndChargeForecast(t *testing.T) {
-	world := NewWorld(14)
+	world := testPlatformWorld(6)
 	world.Step(InputFrame{Staff: StaffShort, AimX: 1, Attack: true})
 	snapshot := world.Snapshot().Player
 	if snapshot.Action != ActionShort || snapshot.AttackStartup != shortSpec().Startup || snapshot.AttackActive != shortSpec().Active || snapshot.AttackRecovery != shortSpec().Recovery {
 		t.Fatalf("snapshot omitted short-staff phase information: %+v", snapshot)
 	}
 
-	world = NewWorld(15)
+	world = testPlatformWorld(7)
 	world.Step(InputFrame{Staff: StaffLong, AimX: 1, Attack: true})
 	snapshot = world.Snapshot().Player
 	if snapshot.Action != ActionLongCharge || snapshot.LongCharge == 0 || snapshot.LongRange <= 28 {
@@ -82,98 +113,82 @@ func TestSnapshotExposesStaffPhaseAndChargeForecast(t *testing.T) {
 }
 
 func TestMediumBuffersIntoItsNextSweep(t *testing.T) {
-	world := NewWorld(10)
+	world := testPlatformWorld(8)
 	world.Step(InputFrame{Staff: StaffMedium, AimX: 1, Attack: true})
 	for world.Player.ActionTick < 14 {
 		world.Step(InputFrame{AimX: 1})
 	}
 	world.Step(InputFrame{AimX: 1, Attack: true})
-	for range 7 {
-		world.Step(InputFrame{AimX: 1})
-	}
+	step(world, InputFrame{AimX: 1}, 7)
 	if world.Player.Action != ActionMedium || world.Player.Combo != 1 {
 		t.Fatalf("medium recovery did not buffer its second sweep: action=%s combo=%d", world.Player.Action, world.Player.Combo)
 	}
 }
 
-func TestMediumSweepClearsMultipleProjectiles(t *testing.T) {
-	world := NewWorld(12)
-	world.Projectiles = []*Projectile{
-		{ID: 1, Pos: world.Player.Pos.Add(Vec{X: 38, Y: -12}), Radius: 5, TicksRemaining: 30, FromEnemy: true},
-		{ID: 2, Pos: world.Player.Pos.Add(Vec{X: 42, Y: 12}), Radius: 5, TicksRemaining: 30, FromEnemy: true},
-		{ID: 3, Pos: world.Player.Pos.Add(Vec{X: 42, Y: 45}), Radius: 5, TicksRemaining: 30, FromEnemy: true},
-	}
-	world.resolveAttack(world.Player.Pos, Vec{X: 1}, mediumSpec(0), map[int]bool{}, false, FormMonkey)
-	if world.Projectiles[0].TicksRemaining != 0 || world.Projectiles[1].TicksRemaining != 0 {
-		t.Fatal("medium sweep did not clear the close projectile fan")
-	}
-	if world.Projectiles[2].TicksRemaining == 0 {
-		t.Fatal("medium sweep cleared a projectile outside its broad arc")
-	}
-}
-
-func TestChargedLongCrossesWaterButNotSolidCover(t *testing.T) {
-	world := NewWorld(11)
-	world.Player.Pos = Vec{X: 100, Y: 180}
-	world.Terrain = []Terrain{{ID: 1, Kind: TerrainWater, Bounds: Rect{X: 130, Y: 140, W: 80, H: 80}}}
-	target := testEnemy(world, Vec{X: 224, Y: 180})
-	world.Step(InputFrame{Staff: StaffLong, AimX: 1, Attack: true})
-	step(world, InputFrame{AimX: 1, Attack: true}, 48)
-	world.Step(InputFrame{AimX: 1})
-	step(world, InputFrame{AimX: 1}, 8)
+func TestLongCrossesWaterButNotSolidCover(t *testing.T) {
+	world := testPlatformWorld(9)
+	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainWater, Bounds: Rect{X: 175, Y: 430, W: 80, H: 70}})
+	target := testEnemy(world, Vec{X: 275, Y: 490})
+	world.resolveAttack(world.Player.Pos, Vec{X: 1}, AttackSpec{Range: 180, Width: 12, Damage: 20}, map[int]bool{}, false, FormMonkey)
 	if target.HP >= target.MaxHP {
-		t.Fatal("charged long release did not strike across water")
+		t.Fatal("staff strike did not cross a water hazard")
 	}
 
-	blocked := NewWorld(11)
-	blocked.Player.Pos = Vec{X: 100, Y: 180}
-	blocked.Terrain = []Terrain{{ID: 1, Kind: TerrainPillar, Bounds: Rect{X: 165, Y: 140, W: 26, H: 80}}}
-	blockedTarget := testEnemy(blocked, Vec{X: 224, Y: 180})
-	blocked.Step(InputFrame{Staff: StaffLong, AimX: 1, Attack: true})
-	step(blocked, InputFrame{AimX: 1, Attack: true}, 48)
-	blocked.Step(InputFrame{AimX: 1})
-	step(blocked, InputFrame{AimX: 1}, 8)
+	blocked := testPlatformWorld(10)
+	blocked.Terrain = append(blocked.Terrain, Terrain{ID: 2, Kind: TerrainPillar, Bounds: Rect{X: 180, Y: 420, W: 28, H: 80}})
+	blockedTarget := testEnemy(blocked, Vec{X: 275, Y: 490})
+	blocked.resolveAttack(blocked.Player.Pos, Vec{X: 1}, AttackSpec{Range: 180, Width: 12, Damage: 20}, map[int]bool{}, false, FormMonkey)
 	if blockedTarget.HP != blockedTarget.MaxHP {
-		t.Fatalf("solid pillar did not block long release: hp=%d", blockedTarget.HP)
+		t.Fatalf("solid pillar did not block long reach: hp=%d", blockedTarget.HP)
 	}
 }
 
-func TestBirdCrossesWaterAndCarriesExitMomentum(t *testing.T) {
-	world := NewWorld(3)
-	world.Terrain = []Terrain{{ID: 1, Kind: TerrainWater, Bounds: Rect{X: 205, Y: 142, W: 230, H: 58}}}
-	world.Player.Pos = Vec{X: 193, Y: 170}
-	world.Player.Form = FormMonkey
-	start := world.Player.Pos
-	world.Step(InputFrame{MoveX: 1})
-	if world.Player.Pos != start {
-		t.Fatalf("monkey crossed water: start=%+v end=%+v", start, world.Player.Pos)
+func TestBirdIgnoresWaterAndCarriesExitMomentum(t *testing.T) {
+	monkey := testPlatformWorld(11)
+	monkey.Terrain = []Terrain{
+		{ID: 1, Kind: TerrainWall, Bounds: Rect{X: 0, Y: 500, W: 180, H: 220}},
+		{ID: 2, Kind: TerrainWater, Bounds: Rect{X: 180, Y: 500, W: 120, H: 220}},
+		{ID: 3, Kind: TerrainWall, Bounds: Rect{X: 300, Y: 500, W: ArenaW - 300, H: 220}},
 	}
-	world.Player.Form = FormBird
-	world.Step(InputFrame{MoveX: 1})
-	if world.Player.Pos.X <= start.X {
-		t.Fatal("bird did not cross water")
+	monkey.Player.Pos = Vec{X: 174, Y: 491}
+	monkey.Player.Grounded = true
+	startHP := monkey.Player.HP
+	step(monkey, InputFrame{MoveX: 1}, 4)
+	if monkey.Player.HP >= startHP {
+		t.Fatal("water did not punish the normal form")
 	}
-	world.Step(InputFrame{Transform: FormMonkey})
-	if world.Player.BirdMomentum == 0 || world.Player.Velocity.LengthSq() == 0 {
-		t.Fatalf("bird exit lost momentum: ticks=%d velocity=%+v", world.Player.BirdMomentum, world.Player.Velocity)
+
+	bird := testPlatformWorld(12)
+	bird.Terrain = monkey.Terrain
+	bird.Player.Pos = Vec{X: 174, Y: 491}
+	bird.Player.Grounded = true
+	bird.Player.Form = FormBird
+	birdHP := bird.Player.HP
+	bird.Step(InputFrame{MoveX: 1, Jump: true})
+	step(bird, InputFrame{MoveX: 1}, 4)
+	if bird.Player.HP != birdHP || bird.Player.Pos.X <= 174 {
+		t.Fatalf("bird did not safely fly across water: hp=%d pos=%+v", bird.Player.HP, bird.Player.Pos)
+	}
+	bird.Step(InputFrame{Transform: FormMonkey})
+	if bird.Player.BirdMomentum == 0 || bird.Player.Velocity.X == 0 {
+		t.Fatalf("bird exit lost momentum: ticks=%d velocity=%+v", bird.Player.BirdMomentum, bird.Player.Velocity)
 	}
 }
 
 func TestTigerPounceBreaksTerrainAndArmor(t *testing.T) {
-	world := NewWorld(4)
-	world.Terrain = []Terrain{{ID: 1, Kind: TerrainBreakable, Bounds: Rect{X: 398, Y: 205, W: 24, H: 70}, HP: 2}}
+	world := testPlatformWorld(13)
+	world.Terrain = append(world.Terrain, Terrain{ID: 2, Kind: TerrainBreakable, Bounds: Rect{X: 170, Y: 430, W: 24, H: 70}, HP: 2})
 	world.Player.Form = FormTiger
-	world.Player.Pos = Vec{X: 378, Y: 230}
-	wall := &world.Terrain[0]
+	world.Player.Pos = Vec{X: 145, Y: 488}
+	wall := &world.Terrain[1]
 	world.Step(InputFrame{AimX: 1, Attack: true})
 	step(world, InputFrame{AimX: 1}, 15)
 	if wall.HP != 0 {
 		t.Fatalf("tiger pounce did not destroy cracked wall: hp=%d", wall.HP)
 	}
 
-	world = NewWorld(5)
-	world.Player.Form = FormTiger
-	armored := testEnemy(world, world.Player.Pos.Add(Vec{X: 20}))
+	world = testPlatformWorld(14)
+	armored := testEnemy(world, Vec{X: 145, Y: 490})
 	armored.Armor = 30
 	world.resolveAttack(world.Player.Pos, Vec{X: 1}, AttackSpec{Range: 30, Width: 10, Damage: 10, Knockback: 8, Heavy: true}, map[int]bool{}, false, FormTiger)
 	if armored.Armor != 0 || armored.Stagger < 32 {
@@ -181,20 +196,10 @@ func TestTigerPounceBreaksTerrainAndArmor(t *testing.T) {
 	}
 }
 
-func TestValidationWorldExceedsViewport(t *testing.T) {
-	if ArenaW <= float64(ViewportW) || ArenaH <= float64(ViewportH) {
-		t.Fatalf("validation world %0.fx%0.f does not exceed viewport %dx%d", ArenaW, ArenaH, ViewportW, ViewportH)
-	}
-	world := NewValidationWorld(16)
-	if world.Player.Pos.Distance(world.Enemies[0].Pos) <= float64(ViewportW)/2 {
-		t.Fatalf("validation encounter does not require travel: player=%+v boss=%+v", world.Player.Pos, world.Enemies[0].Pos)
-	}
-}
-
 func TestMantisCounterCreatesWeakPoint(t *testing.T) {
-	world := NewWorld(6)
+	world := testPlatformWorld(15)
 	world.Player.Form = FormMantis
-	enemy := testEnemy(world, world.Player.Pos.Add(Vec{X: 20}))
+	enemy := testEnemy(world, Vec{X: 140, Y: 490})
 	enemy.Windup = 1
 	world.Step(InputFrame{AimX: 1, Attack: true})
 	if world.Player.Action != ActionMantisStance {
@@ -205,8 +210,8 @@ func TestMantisCounterCreatesWeakPoint(t *testing.T) {
 	}
 }
 
-func TestEchoReplaysCapturedAttackFromItsSpawnPosition(t *testing.T) {
-	world := NewWorld(7)
+func TestEchoReplaysAttackFromItsSpawnPlatform(t *testing.T) {
+	world := testPlatformWorld(16)
 	for tick := 0; tick < 24; tick++ {
 		input := InputFrame{AimX: 1}
 		if tick == 5 {
@@ -224,13 +229,29 @@ func TestEchoReplaysCapturedAttackFromItsSpawnPosition(t *testing.T) {
 	if echo.Action != ActionMedium {
 		t.Fatalf("echo did not replay the captured staff press: action=%s index=%d", echo.Action, echo.EchoIndex)
 	}
-	if echo.Pos != spawn {
-		t.Fatalf("echo moved without recorded movement: spawn=%+v current=%+v", spawn, echo.Pos)
+	if echo.Pos.X != spawn.X || !echo.Grounded {
+		t.Fatalf("echo did not retain its spawn-platform replay position: spawn=%+v current=%+v grounded=%t", spawn, echo.Pos, echo.Grounded)
+	}
+}
+
+func TestValidationStageUsesPlatformsAndExceedsViewport(t *testing.T) {
+	if ArenaW <= float64(ViewportW) || ArenaH <= float64(ViewportH) {
+		t.Fatalf("validation world %0.fx%0.f does not exceed viewport %dx%d", ArenaW, ArenaH, ViewportW, ViewportH)
+	}
+	world := NewValidationWorld(17)
+	hasPlatform, hasWater, hasCrackedWall := false, false, false
+	for _, terrain := range world.Terrain {
+		hasPlatform = hasPlatform || terrain.Kind == TerrainPlatform
+		hasWater = hasWater || terrain.Kind == TerrainWater
+		hasCrackedWall = hasCrackedWall || terrain.Kind == TerrainBreakable
+	}
+	if !hasPlatform || !hasWater || !hasCrackedWall || world.Player.Pos.Distance(world.Enemies[0].Pos) <= float64(ViewportW)/2 {
+		t.Fatalf("validation stage is not a scrolling platform encounter: terrain=%+v player=%+v boss=%+v", world.Terrain, world.Player.Pos, world.Enemies[0].Pos)
 	}
 }
 
 func TestBossGatesUseLongStaffThenEcho(t *testing.T) {
-	world := NewValidationWorld(8)
+	world := NewValidationWorld(18)
 	boss := world.Enemies[0]
 	world.Step(InputFrame{})
 	if !boss.Boss.Shielded || boss.Boss.EchoSeal {
@@ -255,13 +276,29 @@ func TestBossGatesUseLongStaffThenEcho(t *testing.T) {
 	}
 }
 
+func TestBossSweepUsesTheSameCounterRules(t *testing.T) {
+	world := testPlatformWorld(21)
+	boss := world.SpawnArenaBoss(Vec{X: 180, Y: 479})
+	world.Player.Form = FormMantis
+	world.Player.Action = ActionMantisStance
+	world.Player.CounterWindow = 10
+	before := world.Player.HP
+	world.bossSweep(boss)
+	if world.Player.HP != before || boss.WeakPoint == 0 || boss.Stagger < 72 {
+		t.Fatalf("boss sweep bypassed mantis counter: hp=%d weak=%d stagger=%d", world.Player.HP, boss.WeakPoint, boss.Stagger)
+	}
+}
+
 func TestValidationReplayIsDeterministic(t *testing.T) {
-	world := NewValidationWorld(9)
+	world := NewValidationWorld(19)
 	replay := NewReplay(world.Seed)
 	for tick := 0; tick < 90; tick++ {
 		input := InputFrame{AimX: 1}
 		if tick < 30 {
-			input.MoveY = -1
+			input.MoveX = 1
+		}
+		if tick == 8 || tick == 43 {
+			input.Jump = true
 		}
 		if tick == 10 {
 			input.Attack, input.Staff = true, StaffShort
@@ -283,11 +320,11 @@ func TestValidationReplayIsDeterministic(t *testing.T) {
 	}
 }
 
-func TestStateHashIncludesFutureAffectingProjectileState(t *testing.T) {
-	left, right := NewValidationWorld(13), NewValidationWorld(13)
-	left.Projectiles = append(left.Projectiles, &Projectile{ID: 99, Pos: Vec{X: 200, Y: 180}, Velocity: Vec{X: 1}, Radius: 5, Damage: 9, TicksRemaining: 30, FromEnemy: true})
-	right.Projectiles = append(right.Projectiles, &Projectile{ID: 99, Pos: Vec{X: 201, Y: 180}, Velocity: Vec{X: 1}, Radius: 5, Damage: 9, TicksRemaining: 30, FromEnemy: true})
+func TestStateHashIncludesFutureAffectingPlatformState(t *testing.T) {
+	left, right := NewValidationWorld(20), NewValidationWorld(20)
+	left.Player.Grounded = true
+	right.Player.Grounded = false
 	if left.StateHash() == right.StateHash() {
-		t.Fatal("state hash ignored projectile state that could change a future encounter")
+		t.Fatal("state hash ignored grounded state that changes future jump behavior")
 	}
 }

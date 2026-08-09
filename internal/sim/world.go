@@ -270,6 +270,10 @@ func (w *World) updatePlayer(input InputFrame) {
 		speed *= 0.45
 	}
 	w.movePlayerPhysics(moveX * speed)
+	if p.Form == FormBird {
+		// Bird flight keeps horizontal momentum when returning to Monkey form.
+		p.Velocity.X = moveX * speed
+	}
 	if p.Action == ActionIdle && p.AttackBuffer > 0 {
 		w.startPlayerAction()
 	}
@@ -545,6 +549,15 @@ func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
 		clone.TicksRemaining = 0
 		return
 	}
+	if w.counterEnemyAttack(enemy) {
+		return
+	}
+	w.damagePlayer(enemy.Damage, enemy.Facing.Scale(6), false)
+}
+
+// counterEnemyAttack centralizes the exceptional timing rules so every melee
+// threat, including authored boss sweeps, is readable through the same verbs.
+func (w *World) counterEnemyAttack(enemy *Enemy) bool {
 	p := &w.Player
 	if p.Form == FormMantis && p.Action == ActionMantisStance && p.CounterWindow > 0 {
 		enemy.Stagger, enemy.WeakPoint, enemy.Velocity = 72, 180, enemy.Facing.Scale(-13)
@@ -556,16 +569,16 @@ func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
 		w.Hitstop, w.SlowTicks = max(w.Hitstop, 8), 10
 		w.addTrauma(1)
 		w.Effects = append(w.Effects, Effect{Kind: EffectHeavyImpact, Pos: p.Pos, Radius: 48, TicksRemaining: 20, Intensity: 1})
-		return
+		return true
 	}
 	if p.Form == FormMonkey && p.Staff == StaffShort && p.Action == ActionShort && p.ActionTick >= 2 && p.ActionTick < 5 {
 		enemy.Stagger, enemy.Velocity = 32, enemy.Facing.Scale(-8)
 		w.Hitstop = max(w.Hitstop, 4)
 		w.addTrauma(0.45)
 		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: p.Pos, Radius: 27, TicksRemaining: 12, Intensity: 0.7})
-		return
+		return true
 	}
-	w.damagePlayer(enemy.Damage, enemy.Facing.Scale(6), false)
+	return false
 }
 
 func (w *World) updateProjectiles() {
@@ -840,7 +853,7 @@ func (w *World) StateHash() uint64 {
 		_, _ = fmt.Fprintf(h, "/r%d/%d,%d/%d,%d/%d/%d/%d/%d/%d", projectile.ID, q(projectile.Pos.X), q(projectile.Pos.Y), q(projectile.Velocity.X), q(projectile.Velocity.Y), q(projectile.Radius), projectile.Damage, projectile.TicksRemaining, boolHash(projectile.FromEnemy), boolHash(projectile.Hazard))
 	}
 	for _, input := range w.inputHistory {
-		_, _ = fmt.Fprintf(h, "/i%d,%d,%d,%d/%d/%d/%d/%d/%d/%d/%d/%d", input.MoveX, input.MoveY, input.AimX, input.AimY, boolHash(input.Jump), boolHash(input.Attack), boolHash(input.Dodge), boolHash(input.Clone), input.Staff, input.Transform, boolHash(input.Restart), boolHash(input.DebugStep))
+		_, _ = fmt.Fprintf(h, "/i%d/%d,%d/%d/%d/%d/%d/%d/%d/%d/%d", input.MoveX, input.AimX, input.AimY, boolHash(input.Jump), boolHash(input.Attack), boolHash(input.Dodge), boolHash(input.Clone), input.Staff, input.Transform, boolHash(input.Restart), boolHash(input.DebugStep))
 	}
 	return h.Sum64()
 }

@@ -90,9 +90,13 @@ func (w *World) tryOpenBoss(enemy *Enemy, fromEcho bool) bool {
 
 func (w *World) bossSweep(enemy *Enemy) {
 	direction := w.Player.Pos.Sub(enemy.Pos).Normalized()
+	enemy.Facing = direction
 	end := enemy.Pos.Add(direction.Scale(98))
 	w.Effects = append(w.Effects, Effect{Kind: EffectStaffTrail, Pos: enemy.Pos, Direction: direction, Radius: 98, TicksRemaining: 9, Intensity: 0.8})
 	if nearestPointOnSegment(w.Player.Pos, enemy.Pos, end).Distance(w.Player.Pos) <= 22+w.Player.radius() {
+		if w.counterEnemyAttack(enemy) {
+			return
+		}
 		w.damagePlayer(18, direction.Scale(10), false)
 	}
 }
