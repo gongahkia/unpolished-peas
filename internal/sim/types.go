@@ -8,7 +8,7 @@ const (
 	ViewportW  = 640
 	ViewportH  = 360
 	RoomW      = 640.0
-	RoomCount  = 5
+	RoomCount  = 10
 	ArenaW     = RoomW * RoomCount
 	ArenaH     = 720.0
 	TileSize   = 16.0

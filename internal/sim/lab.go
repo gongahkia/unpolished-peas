@@ -59,6 +59,7 @@ const (
 	ObjectTeleporter
 	ObjectSwitch
 	ObjectExit
+	ObjectTreasure
 )
 
 func (k ObjectKind) String() string {
@@ -79,6 +80,8 @@ func (k ObjectKind) String() string {
 		return "teleporter"
 	case ObjectSwitch:
 		return "switch"
+	case ObjectTreasure:
+		return "treasure"
 	default:
 		return "exit"
 	}

@@ -41,7 +41,7 @@ func newGame() (*game, error) {
 }
 
 func (g *game) resetSameSeed() {
-	g.world = sim.NewLabWorld(g.seed)
+	g.world = sim.NewRunWorld(g.seed)
 	g.replay = sim.NewReplay(g.seed)
 }
 
@@ -253,7 +253,7 @@ func drawHUD(screen *ebiten.Image, snapshot sim.RenderSnapshot, paused bool, sta
 	text.Draw(screen, "72 movement lab  |  A/D move  W/space jump  S crouch  Shift roll", basicfont.Face7x13, 8, 15, color.RGBA{R: 229, G: 233, B: 240, A: 255})
 	text.Draw(screen, "S+jump: platform drop/air smash  |  ledge: toward/jump climb, S drop  |  E/J/F arrows", basicfont.Face7x13, 8, 30, color.RGBA{R: 189, G: 207, B: 225, A: 255})
 	text.Draw(screen, "F1 same seed  F2 new seed  Tab debug  F6 save replay", basicfont.Face7x13, 8, 45, color.RGBA{R: 189, G: 207, B: 225, A: 255})
-	text.Draw(screen, fmt.Sprintf("seed %x  %s  jump:%d  coyote:%d  wall:%d  aim:%s", snapshot.Lab.Seed, p.State, p.AirJumps, p.Coyote, p.WallTicks, aimLabel(p.Aim)), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
+	text.Draw(screen, fmt.Sprintf("seed %x  room:%d/%d  treasure:%d  %s", snapshot.Seed, snapshot.Stats.RoomsReached, sim.RoomCount, snapshot.Stats.Treasure, p.State), basicfont.Face7x13, 8, 342, color.RGBA{R: 120, G: 236, B: 204, A: 255})
 	if p.HeldObjectID >= 0 {
 		text.Draw(screen, fmt.Sprintf("holding object %d", p.HeldObjectID), basicfont.Face7x13, 430, 342, color.RGBA{R: 253, G: 213, B: 119, A: 255})
 	}

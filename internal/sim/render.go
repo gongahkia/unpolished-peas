@@ -4,6 +4,7 @@ package sim
 // renderer may animate from Tick but cannot modify the simulation.
 type RenderSnapshot struct {
 	Tick    uint64
+	Seed    uint64
 	Player  PlayerSnapshot
 	Terrain []TerrainSnapshot
 	Objects []ObjectSnapshot
@@ -12,6 +13,7 @@ type RenderSnapshot struct {
 	Trauma  float64
 	Won     bool
 	Lost    bool
+	Stats   RunStats
 }
 
 type PlayerSnapshot struct {
@@ -59,12 +61,14 @@ func (w *World) Snapshot() RenderSnapshot {
 	p := w.Player
 	snapshot := RenderSnapshot{
 		Tick:   w.Tick,
+		Seed:   w.Seed,
 		Player: PlayerSnapshot{Pos: p.Pos, Velocity: p.Velocity, Aim: p.Aim, Facing: p.Facing, Grounded: p.Grounded, State: p.State, Crouching: p.Crouching, Coyote: p.Coyote, AirJumps: p.AirJumps, WallDirection: p.WallDirection, WallTicks: p.WallTicks, RollTicks: p.RollTicks, LedgeTicks: p.LedgeTicks, LedgeTarget: p.LedgeTarget, HeldObjectID: p.HeldObjectID, Tether: p.Tether},
 		Lab:    LabSnapshot{Seed: w.Lab.Seed, Modules: append([]LabModuleInfo(nil), w.Lab.Modules...), Exit: w.Lab.Exit},
 		Debug:  w.Debug,
 		Trauma: w.Trauma,
 		Won:    w.Won,
 		Lost:   w.Lost,
+		Stats:  w.Stats,
 	}
 	for _, terrain := range w.Terrain {
 		snapshot.Terrain = append(snapshot.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
