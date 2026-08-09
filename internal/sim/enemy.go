@@ -36,6 +36,7 @@ type Enemy struct {
 	Facing             Vec
 	Radius             float64
 	HP, MaxHP          int
+	Armor              int
 	Damage             int
 	MoveSpeed          float64
 	AttackRange        float64

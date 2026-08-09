@@ -81,6 +81,7 @@ func (w *World) SpawnEnemy(kind EnemyKind, position Vec) *Enemy {
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "spitting yaoguai", 8, 34, 8, 1.2, 150
 	case EnemyBrute:
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "iron-hide demon", 14, 80, 16, 0.75, 31
+		e.Armor = 6
 	case EnemyLancer:
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "wind-lance demon", 9, 54, 13, 1.75, 70
 	case EnemyHexer:
@@ -327,6 +328,15 @@ func (w *World) resolveStaffAttack(origin, facing Vec, spec AttackSpec, hitIDs m
 			w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: enemy.Pos, Radius: 9, TicksRemaining: 6})
 			continue
 		}
+		if enemy.Armor > 0 {
+			if w.Player.Form == FormTiger {
+				enemy.Armor = 0
+				enemy.Stagger = max(enemy.Stagger, 24)
+				w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: enemy.Pos, Radius: 22, TicksRemaining: 10})
+			} else {
+				damage = max(1, damage-enemy.Armor)
+			}
+		}
 		enemy.HP -= damage
 		enemy.Velocity = enemy.Velocity.Add(facing.Scale(spec.Knockback))
 		enemy.Stagger = max(enemy.Stagger, 5)
@@ -476,6 +486,14 @@ func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
 		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: w.Player.Pos, Radius: 32, TicksRemaining: 14})
 		return
 	}
+	if w.Player.Form == FormMonkey && w.Player.Staff == StaffShort && w.Player.Action == ActionAttack && w.Player.attackActive() {
+		enemy.Stagger = max(enemy.Stagger, 20)
+		enemy.HP -= 6
+		enemy.Velocity = enemy.Facing.Scale(-6)
+		w.Hitstop = max(w.Hitstop, 3)
+		w.Effects = append(w.Effects, Effect{Kind: EffectCounter, Pos: w.Player.Pos, Radius: 24, TicksRemaining: 10})
+		return
+	}
 	w.damagePlayer(enemy.Damage, enemy.Facing.Scale(5), false)
 }
 
@@ -503,9 +521,15 @@ func (w *World) damagePlayer(damage int, knockback Vec, hazard bool) {
 	if p.Form == FormStatue {
 		damage = (damage + 1) / 2
 	}
+	if p.Form == FormGiant {
+		knockback = knockback.Scale(0.35)
+	}
 	p.HP -= damage
 	p.Velocity = knockback
 	p.Stagger = 9
+	if p.Form == FormGiant {
+		p.Stagger = 4
+	}
 	p.Invulnerable = 18
 	w.Effects = append(w.Effects, Effect{Kind: EffectImpact, Pos: p.Pos, Radius: 16, TicksRemaining: 10})
 	if p.HP <= 0 {
