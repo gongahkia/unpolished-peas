@@ -301,11 +301,11 @@ func staffPhase(player sim.PlayerSnapshot) string {
 }
 
 func drawArena(screen *ebiten.Image, terrain []sim.TerrainSnapshot) {
-	for x := 0; x <= logicalW; x += 32 {
-		vector.StrokeLine(screen, float32(x), 0, float32(x), logicalH, 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
+	for x := 0; x <= int(sim.ArenaW); x += 32 {
+		vector.StrokeLine(screen, float32(x), 0, float32(x), float32(sim.ArenaH), 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
 	}
-	for y := 0; y <= logicalH; y += 32 {
-		vector.StrokeLine(screen, 0, float32(y), logicalW, float32(y), 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
+	for y := 0; y <= int(sim.ArenaH); y += 32 {
+		vector.StrokeLine(screen, 0, float32(y), float32(sim.ArenaW), float32(y), 1, color.RGBA{R: 25, G: 32, B: 42, A: 255}, false)
 	}
 	for _, t := range terrain {
 		if t.Kind == sim.TerrainBreakable && t.HP == 0 {
@@ -322,7 +322,7 @@ func drawArena(screen *ebiten.Image, terrain []sim.TerrainSnapshot) {
 		}
 		vector.DrawFilledRect(screen, float32(t.Bounds.X), float32(t.Bounds.Y), float32(t.Bounds.W), float32(t.Bounds.H), c, false)
 	}
-	vector.StrokeRect(screen, 1, 1, logicalW-2, logicalH-2, 2, color.RGBA{R: 80, G: 90, B: 108, A: 255}, false)
+	vector.StrokeRect(screen, 1, 1, float32(sim.ArenaW-2), float32(sim.ArenaH-2), 2, color.RGBA{R: 80, G: 90, B: 108, A: 255}, false)
 }
 func drawEffect(screen *ebiten.Image, e sim.EffectSnapshot) {
 	c := color.RGBA{R: 255, G: 232, B: 150, A: 230}
