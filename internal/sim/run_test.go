@@ -40,6 +40,30 @@ func TestRunKeepsEntrancesAndExitsSafe(t *testing.T) {
 	}
 }
 
+func TestRunValidationRejectsUnsafePopulation(t *testing.T) {
+	layout := GenerateRun(0x77)
+	if len(layout.Spawns) == 0 {
+		t.Fatal("test run omitted spawns")
+	}
+	spawn := &layout.Spawns[0]
+	spawn.Pos = layout.Rooms[spawn.Room].Entry
+	if issue := runValidationIssue(&layout); issue == "" {
+		t.Fatal("validation accepted an enemy at a room entrance")
+	}
+
+	layout = GenerateRun(0x77)
+	for index := range layout.Objects {
+		if layout.Objects[index].Kind == ObjectDoor {
+			layout.Objects[index].LinkID = 0
+			if issue := runValidationIssue(&layout); issue == "" {
+				t.Fatal("validation accepted an unlinked door")
+			}
+			return
+		}
+	}
+	t.Fatal("test run omitted a linked door")
+}
+
 func TestRunWorldCollectsTreasureAndKeepsRunStateInTheHash(t *testing.T) {
 	world := NewRunWorld(0x72)
 	var treasure *WorldObject
