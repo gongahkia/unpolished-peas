@@ -81,6 +81,10 @@ func (w *World) SpawnEnemy(kind EnemyKind, position Vec) *Enemy {
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "spitting yaoguai", 8, 34, 8, 1.2, 150
 	case EnemyBrute:
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "iron-hide demon", 14, 80, 16, 0.75, 31
+	case EnemyLancer:
+		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "wind-lance demon", 9, 54, 13, 1.75, 70
+	case EnemyHexer:
+		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "sutra hexer", 8, 48, 9, 0.9, 125
 	default:
 		e.Name, e.Radius, e.MaxHP, e.Damage, e.MoveSpeed, e.AttackRange = "mountain yaoguai", 10, 42, 10, 1.35, 27
 	}
@@ -443,6 +447,18 @@ func (w *World) enemyAttack(enemy *Enemy, target Vec, clone *Clone) {
 		direction := target.Sub(enemy.Pos).Normalized()
 		w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: enemy.Pos, Velocity: direction.Scale(4), Radius: 5, Damage: enemy.Damage, TicksRemaining: 120, FromEnemy: true})
 		return
+	}
+	if enemy.Kind == EnemyHexer {
+		direction := target.Sub(enemy.Pos).Normalized()
+		perpendicular := Vec{X: -direction.Y, Y: direction.X}
+		for _, offset := range []float64{-0.28, 0, 0.28} {
+			velocity := direction.Add(perpendicular.Scale(offset)).Normalized().Scale(3.2)
+			w.Projectiles = append(w.Projectiles, &Projectile{ID: w.nextEntityID(), Pos: enemy.Pos, Velocity: velocity, Radius: 4, Damage: enemy.Damage, TicksRemaining: 130, FromEnemy: true, Hazard: true})
+		}
+		return
+	}
+	if enemy.Kind == EnemyLancer {
+		enemy.Pos = clampArena(enemy.Pos.Add(enemy.Facing.Scale(28)), enemy.Radius)
 	}
 	if clone != nil {
 		clone.TicksRemaining = 0

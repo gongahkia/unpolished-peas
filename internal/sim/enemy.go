@@ -6,6 +6,8 @@ const (
 	EnemyYaoguai EnemyKind = iota
 	EnemyArcher
 	EnemyBrute
+	EnemyLancer
+	EnemyHexer
 	EnemyBoss
 )
 
@@ -15,6 +17,10 @@ func (k EnemyKind) String() string {
 		return "archer"
 	case EnemyBrute:
 		return "brute"
+	case EnemyLancer:
+		return "lancer"
+	case EnemyHexer:
+		return "hexer"
 	case EnemyBoss:
 		return "boss"
 	default:
