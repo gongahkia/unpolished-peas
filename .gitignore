@@ -1,6 +1,5 @@
-/build/
+/bin/
 /dist/
-*.test
-coverage.out
-.DS_Store
+*.wasm
+*.replay.json
 AGENTS.md

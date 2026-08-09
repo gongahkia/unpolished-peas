@@ -1,71 +1,34 @@
-[![](https://img.shields.io/badge/shack_1.0.0-passing-green)](https://github.com/gongahkia/shack/releases/tag/1.0.0)
-[![](https://github.com/gongahkia/shack/actions/workflows/ci.yml/badge.svg)](https://github.com/gongahkia/shack/actions/workflows/ci.yml)
+# Journey of the Cloud-Born
 
-# `Shack` - a SHiok Atomweight Cli worKstation
+An ASCII-rendered, top-down action roguelite about Sun Wukong. The combat
+language is Wukong's: a staff whose geometry changes, rapid transformations,
+cloud movement, and hair clones that manipulate the fight.
 
-Shack is an [atomweight](https://en.wikipedia.org/wiki/Atomweight) terminal IDE with [sensible day 1 defaults](https://martinfowler.com/bliki/SensibleDefault.html).
+## Run it
 
-<div align="center">
-    <img src="./assets/logo/shack.png" width="35%">
-</div>
+Requires Go 1.25 or newer and the native Ebitengine dependencies for your OS.
 
-## Stack
-
-* *Scripting*: [Go 1.27+](https://go.dev/dl/)
-* *CLI*: [tcell](https://github.com/gdamore/tcell)
-* *Highlighting*: [Chroma](https://github.com/alecthomas/chroma)
-
-## Features
-
-* Familiar keyboard shortcuts and mouse selection
-* Multiple buffers, split panes, a project file tree and an optional minimap
-* Literal and regex search, multiple selections and reviewed multi-file replacements
-* Bundled syntax highlighting, with optional language servers for completion, diagnostics, navigation and formatting
-* Markdown and Org reading views, live previews and code folding
-* Integrated terminals, build/test tasks, Git tools and optional source-level debugging
-* Unsaved-buffer recovery, project sessions and [JSON configuration](./docs/USAGE.md#configuration)
-
-## Video of `Shack` editing its own source code
-
-<div align="center">
-  <video width="85%" src="https://github.com/user-attachments/assets/476227ec-3b7f-450d-bb92-a81e1fc7e3da" controls muted playsinline preload="metadata"></video>
-</div>
-
-## Usage
-
-> [!IMPORTANT]
-> Building from source requires Go 1.27 or newer and `make`. 
-
-### Building `Shack` yourself
-
-1. Clone the repository.
-
-```console
-$ git clone https://github.com/gongahkia/shack && cd shack
+```sh
+go run ./cmd/game
+go test ./...
 ```
 
-2. Build and open the project in your terminal.
+Controls: `WASD`/arrows move, `J` attacks, `K` dashes, `1`/`2`/`3` select
+short/medium/long staff, `Q` tiger, `E` sparrow, `R` mantis, `F` cicada,
+`G` giant, `T` statue, `C` hair clone, `Tab` toggles debug, `Enter` restarts
+after death.
 
-```console
-$ GOTOOLCHAIN=auto make build
-$ ./build/shack .
-```
+## Current status
 
-3. Then run the below to open a specific file
+The simulation and Ebitengine renderer are deliberately separate. Gameplay
+uses glyphs and primitives only; the renderer consumes immutable snapshots so
+sprites can replace it later without changing combat rules. See `docs/ROADMAP.md`
+for the actively tracked implementation status.
 
-```console
-$ ./build/shack docs/USAGE.md
-```
+## Repository layout
 
-
-4. Optionally edit a file without a language server using the below.
-
-```console
-$ ./build/shack --no-lsp .
-```
-
-5. See the [usage guide](./docs/USAGE.md) for the full list of controls, configuration, and [language-server workflows](./docs/LANGUAGE_SERVERS.md).
-
-## Reference
-
-Also see [`Shed`](https://github.com/gongahkia/shed).
+- `cmd/game`: Ebitengine input adapter and glyph renderer.
+- `internal/sim`: deterministic fixed-tick gameplay simulation.
+- `internal/bossdsl`: boss-pattern lexer, parser, validator, compiler.
+- `data/bosses`: authored boss-pattern sources.
+- `docs`: implementation-facing design notes.

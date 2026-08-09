@@ -1,12 +1,22 @@
-.PHONY: build test check release
-VERSION ?= $(shell cat VERSION)
-build:
-	CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -X main.version=$(VERSION)" -o build/shack ./cmd/shack
+.PHONY: run test vet fmt build wasm bosslint
+
+run:
+	go run ./cmd/game
+
 test:
-	go test ./... github.com/coreequip/mermaidascii
-check:
-	test -z "$$(gofmt -l cmd internal)"
+	go test ./...
+
+vet:
 	go vet ./...
-	go test -race ./... github.com/coreequip/mermaidascii
-release:
-	./scripts/release.sh $(VERSION)
+
+fmt:
+	gofmt -w $$(find . -name '*.go' -not -path './vendor/*')
+
+build:
+	go build ./cmd/game
+
+wasm:
+	GOOS=js GOARCH=wasm go build -o dist/journey.wasm ./cmd/game
+
+bosslint:
+	go run ./cmd/bosslint ./data/bosses
