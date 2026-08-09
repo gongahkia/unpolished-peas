@@ -6,16 +6,18 @@ import (
 	"math"
 )
 
-const SimulationVersion = "72-lab-2"
+const SimulationVersion = RunVersion
 
-// World is the deterministic authority for the movement laboratory. Combat
-// state intentionally does not exist in this slice.
+// World is the deterministic authority for a procedural platforming run.
+// Rendering and presentation never mutate this state.
 type World struct {
 	Seed, Tick uint64
 	Player     Player
 	Terrain    []Terrain
 	Objects    []WorldObject
 	Lab        LabLayout
+	Run        RunLayout
+	Stats      RunStats
 	Won, Lost  bool
 	Debug      bool
 	Trauma     float64
@@ -33,6 +35,20 @@ func NewLabWorld(seed uint64) *World {
 	w.Player.Pos = lab.Start
 	w.Player.Grounded = true
 	w.Player.State = TraversalGrounded
+	return w
+}
+
+func NewRunWorld(seed uint64) *World {
+	if seed == 0 {
+		seed = 1
+	}
+	run := GenerateRun(seed)
+	w := &World{Seed: seed, Run: run, Terrain: append([]Terrain(nil), run.Terrain...), Objects: append([]WorldObject(nil), run.Objects...), nextID: len(run.Objects) + 1}
+	w.Player = newPlayer()
+	w.Player.Pos = run.Start
+	w.Player.Grounded = true
+	w.Player.State = TraversalGrounded
+	w.Stats.RoomsReached = 1
 	return w
 }
 
@@ -57,8 +73,10 @@ func (w *World) Step(input InputFrame) {
 	w.updateHeldObject()
 	w.updateObjects()
 	w.updateLinks()
+	w.collectTreasure()
 	w.applyHazards()
 	w.checkExit()
+	w.updateRunStats()
 	w.prevInput = input
 }
 
@@ -546,6 +564,33 @@ func (w *World) updateObjects() {
 	w.Objects = live
 }
 
+func (w *World) collectTreasure() {
+	if len(w.Run.Rooms) == 0 {
+		return
+	}
+	playerBounds := w.Player.boundsAt(w.Player.Pos)
+	live := w.Objects[:0]
+	for _, object := range w.Objects {
+		if object.Kind == ObjectTreasure && playerBounds.overlaps(object.bounds()) {
+			w.Stats.Treasure++
+			w.Trauma = max(w.Trauma, .08)
+			continue
+		}
+		live = append(live, object)
+	}
+	w.Objects = live
+}
+
+func (w *World) updateRunStats() {
+	if len(w.Run.Rooms) == 0 {
+		return
+	}
+	room := int(w.Player.Pos.X/RoomW) + 1
+	if room > w.Stats.RoomsReached {
+		w.Stats.RoomsReached = min(room, len(w.Run.Rooms))
+	}
+}
+
 func (w *World) moveObject(object WorldObject, delta Vec) Vec {
 	next := object.Pos.Add(delta)
 	for _, solid := range w.solidRects() {
@@ -648,7 +693,7 @@ func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	q := func(value float64) int64 { return int64(math.Round(value * 1000)) }
 	p := w.Player
-	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, GeneratorVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
+	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/cl%d/held%d/te%d/%d,%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.ClimbObjectID, p.HeldObjectID, boolHash(p.Tether.Active), q(p.Tether.Pos.X), q(p.Tether.Pos.Y))
 	for _, terrain := range w.Terrain {
 		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
 	}

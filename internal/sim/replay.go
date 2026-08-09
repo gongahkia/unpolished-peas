@@ -56,6 +56,11 @@ func (r *Replay) PlayLab() (*World, error) {
 	return w, r.Play(w)
 }
 
+func (r *Replay) PlayRun() (*World, error) {
+	w := NewRunWorld(r.Seed)
+	return w, r.Play(w)
+}
+
 func SaveReplay(path string, replay *Replay) error {
 	if err := replay.Validate(); err != nil {
 		return err
