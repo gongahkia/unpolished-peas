@@ -758,10 +758,10 @@ func (w *World) resolveBodyCollisions() {
 		minDistance := w.Player.radius() + enemy.Radius
 		if distance > 0 && distance < minDistance {
 			push := delta.Scale((minDistance - distance) / distance)
-		playerPos, playerGrounded := w.moveBody(w.Player.Pos, Vec{X: push.X * 0.55}, w.Player.radius(), w.Player.Form)
-		enemyPos, enemyGrounded := w.moveBody(enemy.Pos, Vec{X: -push.X * 0.45}, enemy.Radius, FormMonkey)
-		w.Player.Pos, w.Player.Grounded = playerPos, playerGrounded
-		enemy.Pos, enemy.Grounded = enemyPos, enemyGrounded
+			playerPos, playerGrounded := w.moveBody(w.Player.Pos, Vec{X: push.X * 0.55}, w.Player.radius(), w.Player.Form)
+			enemyPos, enemyGrounded := w.moveBody(enemy.Pos, Vec{X: -push.X * 0.45}, enemy.Radius, FormMonkey)
+			w.Player.Pos, w.Player.Grounded = playerPos, playerGrounded
+			enemy.Pos, enemy.Grounded = enemyPos, enemyGrounded
 		}
 	}
 }
@@ -820,27 +820,27 @@ func (w *World) StateHash() uint64 {
 	h := fnv.New64a()
 	p := w.Player
 	_, _ = fmt.Fprintf(h, "%s/t%d/r%d/n%d/h%d/s%d/l%d/w%d", SimulationVersion, w.Tick, w.RNG, w.nextID, w.Hitstop, w.SlowTicks, boolHash(w.Won), boolHash(w.Lost))
-	_, _ = fmt.Fprintf(h, "/p%d,%d/%d,%d/%d,%d/hp%d/f%d/st%d/a%d/at%d/c%d/b%d/d%d/i%d/t%d/cl%d/g%d/cw%d/lc%d/lr%d/bm%d", q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.HP, p.Form, p.Staff, p.Action, p.ActionTick, p.Combo, p.AttackBuffer, p.DodgeCooldown, p.Invulnerable, p.TransformCooldown, p.CloneCooldown, p.Stagger, p.CounterWindow, p.LongCharge, q(p.LongRange), p.BirdMomentum)
+	_, _ = fmt.Fprintf(h, "/p%d,%d/%d,%d/%d,%d/hp%d/f%d/st%d/a%d/at%d/c%d/b%d/d%d/i%d/t%d/cl%d/g%d/cw%d/lc%d/lr%d/bm%d/gr%d", q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.HP, p.Form, p.Staff, p.Action, p.ActionTick, p.Combo, p.AttackBuffer, p.DodgeCooldown, p.Invulnerable, p.TransformCooldown, p.CloneCooldown, p.Stagger, p.CounterWindow, p.LongCharge, q(p.LongRange), p.BirdMomentum, boolHash(p.Grounded))
 	hashHitIDs(h, p.AttackHitIDs)
 	for _, terrain := range w.Terrain {
 		_, _ = fmt.Fprintf(h, "/t%d/%d/%d", terrain.ID, terrain.Kind, terrain.HP)
 	}
 	for _, enemy := range w.Enemies {
-		_, _ = fmt.Fprintf(h, "/e%d/k%d/h%d/p%d,%d/v%d,%d/f%d,%d/a%d/ac%d/w%d/st%d/wp%d/fl%d/i%d/target%d/ai%s", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), q(enemy.Facing.X), q(enemy.Facing.Y), enemy.Armor, enemy.AttackCooldown, enemy.Windup, enemy.Stagger, enemy.WeakPoint, enemy.Flash, enemy.Invulnerable, enemy.TargetCloneID, enemy.AIState)
+		_, _ = fmt.Fprintf(h, "/e%d/k%d/h%d/p%d,%d/v%d,%d/f%d,%d/gr%d/a%d/ac%d/w%d/st%d/wp%d/fl%d/i%d/target%d/ai%s", enemy.ID, enemy.Kind, enemy.HP, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Velocity.X), q(enemy.Velocity.Y), q(enemy.Facing.X), q(enemy.Facing.Y), boolHash(enemy.Grounded), enemy.Armor, enemy.AttackCooldown, enemy.Windup, enemy.Stagger, enemy.WeakPoint, enemy.Flash, enemy.Invulnerable, enemy.TargetCloneID, enemy.AIState)
 		if enemy.Boss != nil {
 			boss := enemy.Boss
 			_, _ = fmt.Fprintf(h, "/b%d/%s/%d/%d/%d/%d/%d", boss.Phase, boss.PhaseName, boss.Timer, boolHash(boss.Shielded), boolHash(boss.EchoSeal), boss.TelegraphTicks, boss.VulnerableTicks)
 		}
 	}
 	for _, clone := range w.Clones {
-		_, _ = fmt.Fprintf(h, "/c%d/%d,%d/%d,%d/%d/%d/%d/%d/%d/%d/%d/%d/%d", clone.ID, q(clone.Pos.X), q(clone.Pos.Y), q(clone.Aim.X), q(clone.Aim.Y), clone.Form, clone.Staff, clone.Action, clone.ActionTick, clone.LongCharge, q(clone.LongRange), clone.EchoIndex, clone.TicksRemaining, len(clone.Frames))
+		_, _ = fmt.Fprintf(h, "/c%d/%d,%d/%d,%d/%d/%d/%d/%d/%d/%d/%d/%d/%d/gr%d", clone.ID, q(clone.Pos.X), q(clone.Pos.Y), q(clone.Aim.X), q(clone.Aim.Y), clone.Form, clone.Staff, clone.Action, clone.ActionTick, clone.LongCharge, q(clone.LongRange), clone.EchoIndex, clone.TicksRemaining, len(clone.Frames), boolHash(clone.Grounded))
 		hashHitIDs(h, clone.HitIDs)
 	}
 	for _, projectile := range w.Projectiles {
 		_, _ = fmt.Fprintf(h, "/r%d/%d,%d/%d,%d/%d/%d/%d/%d/%d", projectile.ID, q(projectile.Pos.X), q(projectile.Pos.Y), q(projectile.Velocity.X), q(projectile.Velocity.Y), q(projectile.Radius), projectile.Damage, projectile.TicksRemaining, boolHash(projectile.FromEnemy), boolHash(projectile.Hazard))
 	}
 	for _, input := range w.inputHistory {
-		_, _ = fmt.Fprintf(h, "/i%d,%d,%d,%d/%d/%d/%d/%d/%d/%d/%d", input.MoveX, input.MoveY, input.AimX, input.AimY, boolHash(input.Attack), boolHash(input.Dodge), boolHash(input.Clone), input.Staff, input.Transform, boolHash(input.Restart), boolHash(input.DebugStep))
+		_, _ = fmt.Fprintf(h, "/i%d,%d,%d,%d/%d/%d/%d/%d/%d/%d/%d/%d", input.MoveX, input.MoveY, input.AimX, input.AimY, boolHash(input.Jump), boolHash(input.Attack), boolHash(input.Dodge), boolHash(input.Clone), input.Staff, input.Transform, boolHash(input.Restart), boolHash(input.DebugStep))
 	}
 	return h.Sum64()
 }
