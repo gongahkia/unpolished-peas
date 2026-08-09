@@ -1,6 +1,9 @@
 package sim
 
-import "fmt"
+import (
+	"fmt"
+	"hash/fnv"
+)
 
 type EncounterKind uint8
 
@@ -145,8 +148,15 @@ func (r *Run) spawnSkirmish(count int) {
 		x := 120 + float64((r.World.Random()+uint64(i*97))%400)
 		y := 70 + float64((r.World.Random()+uint64(i*53))%220)
 		kind := EnemyYaoguai
-		if i == count-1 && r.World.Random()%2 == 0 {
-			kind = EnemyArcher
+		if i == count-1 {
+			switch r.World.Random() % 4 {
+			case 0:
+				kind = EnemyArcher
+			case 1:
+				kind = EnemyLancer
+			case 2:
+				kind = EnemyHexer
+			}
 		}
 		r.World.SpawnEnemy(kind, Vec{X: x, Y: y})
 	}
@@ -156,6 +166,7 @@ func (r *Run) spawnElite() {
 	r.spawnSkirmish(2)
 	r.World.SpawnEnemy(EnemyArcher, Vec{X: 500, Y: 90})
 	r.World.SpawnEnemy(EnemyBrute, Vec{X: 470, Y: 260})
+	r.World.SpawnEnemy(EnemyHexer, Vec{X: 145, Y: 85})
 }
 
 // Advance follows a selected route edge only after the current encounter is
@@ -205,4 +216,34 @@ func (r *Run) RestartCurrent() {
 		r.World.Vows[vow] = true
 	}
 	r.startCurrent()
+}
+
+// ApplyFrame is the only replay-facing mutation surface for a pilgrimage.
+// Route decisions are represented alongside combat input instead of relying on
+// UI state, making a whole run reproducible from its seed and ordered frames.
+func (r *Run) ApplyFrame(frame RunFrame) error {
+	if frame.Restart {
+		r.RestartCurrent()
+		return nil
+	}
+	if frame.Vow != VowNone {
+		return r.ChooseVow(frame.Vow)
+	}
+	if frame.Advance {
+		return r.Advance(frame.RouteChoice)
+	}
+	if !r.World.Won && !r.World.Lost && !r.Completed {
+		r.World.Step(frame.Input)
+	}
+	return nil
+}
+
+// StateHash combines route-level state with the deterministic encounter hash.
+func (r *Run) StateHash() uint64 {
+	h := fnv.New64a()
+	_, _ = fmt.Fprintf(h, "%d/%d/%d/%t/%d/%x", r.Seed, r.Current, r.Companion, r.Completed, len(r.History), r.World.StateHash())
+	for _, vow := range []Vow{VowSilence, VowHumility, VowCloudbound} {
+		_, _ = fmt.Fprintf(h, "/%d:%t", vow, r.World.Vows[vow])
+	}
+	return h.Sum64()
 }

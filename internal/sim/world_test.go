@@ -128,6 +128,21 @@ func TestCicadaClearsNormalEnemyTargeting(t *testing.T) {
 	}
 }
 
+func TestLancerAndHexerHaveDistinctAttackRules(t *testing.T) {
+	world := NewWorld(43)
+	lancer := world.SpawnEnemy(EnemyLancer, world.Player.Pos.Add(Vec{X: 50}))
+	hexer := world.SpawnEnemy(EnemyHexer, world.Player.Pos.Add(Vec{X: 100, Y: 20}))
+	lancerStart := lancer.Pos
+	world.enemyAttack(lancer, world.Player.Pos, nil)
+	if lancer.Pos == lancerStart {
+		t.Fatal("lancer attack did not lunge")
+	}
+	world.enemyAttack(hexer, world.Player.Pos, nil)
+	if len(world.Projectiles) != 3 {
+		t.Fatalf("hexer produced %d projectiles, want 3", len(world.Projectiles))
+	}
+}
+
 func TestSameSeedAndInputFramesProduceSameState(t *testing.T) {
 	left, right := NewWorld(99), NewWorld(99)
 	for _, world := range []*World{left, right} {

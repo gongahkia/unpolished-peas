@@ -21,6 +21,7 @@ const (
 
 type game struct {
 	run           *sim.Run
+	replay        *sim.RunReplay
 	world         *sim.World
 	paused        bool
 	routeChoice   int
@@ -29,17 +30,24 @@ type game struct {
 
 func newGame() *game {
 	run := sim.NewRun(0x5EEDC0DE)
-	return &game{run: run, world: run.World}
+	return &game{run: run, replay: sim.NewRunReplay(run.Seed), world: run.World}
 }
 
 func (g *game) Update() error {
 	if inpututil.IsKeyJustPressed(ebiten.KeyP) {
 		g.paused = !g.paused
 	}
+	if inpututil.IsKeyJustPressed(ebiten.KeyF6) {
+		if err := sim.SaveRunReplay("last-run.replay.json", g.replay); err != nil {
+			g.statusMessage = err.Error()
+		} else {
+			g.statusMessage = "saved last-run.replay.json"
+		}
+	}
 	if g.world.Lost && inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		g.run.RestartCurrent()
-		g.world = g.run.World
-		g.statusMessage = "encounter restarted"
+		if g.recordFrame(sim.RunFrame{Restart: true}) {
+			g.statusMessage = "encounter restarted"
+		}
 		return nil
 	}
 	if g.world.Won {
@@ -49,8 +57,17 @@ func (g *game) Update() error {
 	if g.paused && !inpututil.IsKeyJustPressed(ebiten.KeyPeriod) {
 		return nil
 	}
-	g.world.Step(readInput())
+	g.recordFrame(sim.RunFrame{Input: readInput()})
 	return nil
+}
+
+func (g *game) recordFrame(frame sim.RunFrame) bool {
+	if err := g.replay.Record(g.run, frame); err != nil {
+		g.statusMessage = err.Error()
+		return false
+	}
+	g.world = g.run.World
+	return true
 }
 
 func readInput() sim.InputFrame {
@@ -118,21 +135,16 @@ func (g *game) handleRouteInput() {
 			vow = sim.VowCloudbound
 		}
 		if vow != sim.VowNone {
-			if err := g.run.ChooseVow(vow); err != nil {
-				g.statusMessage = err.Error()
-			} else {
+			if g.recordFrame(sim.RunFrame{Vow: vow}) {
 				g.statusMessage = "vow of " + vow.String() + " accepted"
 			}
 		}
 	}
 	if inpututil.IsKeyJustPressed(ebiten.KeyEnter) {
-		if err := g.run.Advance(g.routeChoice); err != nil {
-			g.statusMessage = err.Error()
-			return
+		if g.recordFrame(sim.RunFrame{Advance: true, RouteChoice: g.routeChoice}) {
+			g.routeChoice = 0
+			g.statusMessage = ""
 		}
-		g.world = g.run.World
-		g.routeChoice = 0
-		g.statusMessage = ""
 	}
 }
 
@@ -214,6 +226,10 @@ func enemyGlyph(enemy sim.EnemySnapshot) (string, color.Color) {
 	switch enemy.Kind {
 	case sim.EnemyBrute:
 		return "G", color.RGBA{R: 235, G: 157, B: 73, A: 255}
+	case sim.EnemyLancer:
+		return "l", color.RGBA{R: 246, G: 196, B: 89, A: 255}
+	case sim.EnemyHexer:
+		return "h", color.RGBA{R: 187, G: 119, B: 245, A: 255}
 	case sim.EnemyArcher:
 		return "*", color.RGBA{R: 216, G: 109, B: 214, A: 255}
 	default:

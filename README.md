@@ -27,6 +27,8 @@ short/medium/long staff, `Q` tiger, `E` sparrow, `R` mantis, `F` cicada,
 `G` giant, `T` statue, `0` monkey, `C` hair clone, `Tab` toggles debug, and
 `P` pauses (`.` advances one tick). At an encounter clear, `Z`/`X` select a
 branch and `Enter` continues; shrines use `1`/`2`/`3` to take a vow.
+`F6` writes the current deterministic pilgrimage input recording to
+`last-run.replay.json`; verify it with `go run ./cmd/replaydump last-run.replay.json`.
 
 ## Current status
 
