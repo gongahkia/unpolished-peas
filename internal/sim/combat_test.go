@@ -139,7 +139,8 @@ func TestChargedLongCrossesWaterButNotSolidCover(t *testing.T) {
 }
 
 func TestBirdCrossesWaterAndCarriesExitMomentum(t *testing.T) {
-	world := NewValidationWorld(3)
+	world := NewWorld(3)
+	world.Terrain = []Terrain{{ID: 1, Kind: TerrainWater, Bounds: Rect{X: 205, Y: 142, W: 230, H: 58}}}
 	world.Player.Pos = Vec{X: 193, Y: 170}
 	world.Player.Form = FormMonkey
 	start := world.Player.Pos
@@ -159,10 +160,11 @@ func TestBirdCrossesWaterAndCarriesExitMomentum(t *testing.T) {
 }
 
 func TestTigerPounceBreaksTerrainAndArmor(t *testing.T) {
-	world := NewValidationWorld(4)
+	world := NewWorld(4)
+	world.Terrain = []Terrain{{ID: 1, Kind: TerrainBreakable, Bounds: Rect{X: 398, Y: 205, W: 24, H: 70}, HP: 2}}
 	world.Player.Form = FormTiger
 	world.Player.Pos = Vec{X: 378, Y: 230}
-	wall := &world.Terrain[3]
+	wall := &world.Terrain[0]
 	world.Step(InputFrame{AimX: 1, Attack: true})
 	step(world, InputFrame{AimX: 1}, 15)
 	if wall.HP != 0 {
@@ -176,6 +178,16 @@ func TestTigerPounceBreaksTerrainAndArmor(t *testing.T) {
 	world.resolveAttack(world.Player.Pos, Vec{X: 1}, AttackSpec{Range: 30, Width: 10, Damage: 10, Knockback: 8, Heavy: true}, map[int]bool{}, false, FormTiger)
 	if armored.Armor != 0 || armored.Stagger < 32 {
 		t.Fatalf("tiger did not break armor: armor=%d stagger=%d", armored.Armor, armored.Stagger)
+	}
+}
+
+func TestValidationWorldExceedsViewport(t *testing.T) {
+	if ArenaW <= float64(ViewportW) || ArenaH <= float64(ViewportH) {
+		t.Fatalf("validation world %0.fx%0.f does not exceed viewport %dx%d", ArenaW, ArenaH, ViewportW, ViewportH)
+	}
+	world := NewValidationWorld(16)
+	if world.Player.Pos.Distance(world.Enemies[0].Pos) <= float64(ViewportW)/2 {
+		t.Fatalf("validation encounter does not require travel: player=%+v boss=%+v", world.Player.Pos, world.Enemies[0].Pos)
 	}
 }
 

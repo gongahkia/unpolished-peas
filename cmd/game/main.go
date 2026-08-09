@@ -16,8 +16,8 @@ import (
 )
 
 const (
-	logicalW = 640
-	logicalH = 360
+	logicalW = sim.ViewportW
+	logicalH = sim.ViewportH
 )
 
 type game struct {
@@ -30,7 +30,7 @@ type game struct {
 
 func newGame() *game {
 	w := sim.NewValidationWorld(0x72)
-	return &game{world: w, replay: sim.NewReplay(w.Seed), scene: ebiten.NewImage(logicalW, logicalH)}
+	return &game{world: w, replay: sim.NewReplay(w.Seed), scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH))}
 }
 
 func (g *game) Update() error {
@@ -144,18 +144,30 @@ func axis(value float64) int8 {
 func (g *game) Draw(screen *ebiten.Image) {
 	s := g.world.Snapshot()
 	g.scene.Clear()
-	drawScene(g.scene, s, g.paused, g.status)
+	drawScene(g.scene, s)
 	screen.Fill(color.RGBA{R: 8, G: 10, B: 15, A: 255})
+	camera := followCamera(s.Player.Pos)
 	shake := s.Trauma * 7
-	x := math.Sin(float64(s.Tick)*1.91)*shake + s.TraumaDirection.X*s.Trauma*3
-	y := math.Cos(float64(s.Tick)*2.37)*shake + s.TraumaDirection.Y*s.Trauma*3
+	x := -camera.X + math.Sin(float64(s.Tick)*1.91)*shake + s.TraumaDirection.X*s.Trauma*3
+	y := -camera.Y + math.Cos(float64(s.Tick)*2.37)*shake + s.TraumaDirection.Y*s.Trauma*3
 	op := &ebiten.DrawImageOptions{}
 	op.GeoM.Translate(x, y)
 	screen.DrawImage(g.scene, op)
+	drawHUD(screen, s, camera, g.paused, g.status)
+	if s.Debug.Enabled {
+		drawDebugHUD(screen, s, camera)
+	}
 }
 func (g *game) Layout(_, _ int) (int, int) { return logicalW, logicalH }
 
-func drawScene(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status string) {
+func followCamera(position sim.Vec) sim.Vec {
+	return sim.Vec{
+		X: math.Max(0, math.Min(position.X-float64(logicalW)/2, sim.ArenaW-float64(logicalW))),
+		Y: math.Max(0, math.Min(position.Y-float64(logicalH)/2, sim.ArenaH-float64(logicalH))),
+	}
+}
+
+func drawScene(screen *ebiten.Image, s sim.RenderSnapshot) {
 	screen.Fill(color.RGBA{R: 15, G: 18, B: 24, A: 255})
 	drawArena(screen, s.Terrain)
 	for _, effect := range s.Effects {
@@ -204,9 +216,8 @@ func drawScene(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status s
 	drawPlayerStaff(screen, s.Player)
 	drawGlyph(screen, formGlyph(s.Player.Form), s.Player.Pos, pc)
 	drawHealth(screen, s.Player.Pos.Add(sim.Vec{X: -20, Y: -28}), 40, s.Player.HP, s.Player.MaxHP, color.RGBA{R: 93, G: 230, B: 136, A: 255})
-	drawHUD(screen, s, paused, status)
 	if s.Debug.Enabled {
-		drawDebug(screen, s)
+		drawDebugWorld(screen, s)
 	}
 }
 

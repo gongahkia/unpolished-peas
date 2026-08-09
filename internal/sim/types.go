@@ -4,9 +4,11 @@ package sim
 import "math"
 
 const (
-	TickRate = 60
-	ArenaW   = 640.0
-	ArenaH   = 360.0
+	TickRate  = 60
+	ViewportW = 640
+	ViewportH = 360
+	ArenaW    = 1280.0
+	ArenaH    = 720.0
 )
 
 // Vec is a simulation-space vector measured in logical pixels.

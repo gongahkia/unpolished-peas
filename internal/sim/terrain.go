@@ -38,10 +38,12 @@ func (t Terrain) blocksProjectile() bool {
 
 func validationTerrain() []Terrain {
 	return []Terrain{
-		{ID: 1, Kind: TerrainWater, Bounds: Rect{X: 205, Y: 142, W: 230, H: 58}},
-		{ID: 2, Kind: TerrainPillar, Bounds: Rect{X: 290, Y: 72, W: 38, H: 62}},
-		{ID: 3, Kind: TerrainPillar, Bounds: Rect{X: 454, Y: 230, W: 42, H: 68}},
-		{ID: 4, Kind: TerrainBreakable, Bounds: Rect{X: 398, Y: 205, W: 24, H: 70}, HP: 2},
-		{ID: 5, Kind: TerrainWall, Bounds: Rect{X: 88, Y: 245, W: 104, H: 22}},
+		{ID: 1, Kind: TerrainWater, Bounds: Rect{X: 300, Y: 210, W: 400, H: 180}},
+		{ID: 2, Kind: TerrainPillar, Bounds: Rect{X: 490, Y: 84, W: 52, H: 92}},
+		{ID: 3, Kind: TerrainPillar, Bounds: Rect{X: 875, Y: 492, W: 52, H: 92}},
+		{ID: 4, Kind: TerrainBreakable, Bounds: Rect{X: 700, Y: 305, W: 34, H: 112}, HP: 2},
+		{ID: 5, Kind: TerrainWall, Bounds: Rect{X: 118, Y: 575, W: 190, H: 24}},
+		{ID: 6, Kind: TerrainWall, Bounds: Rect{X: 770, Y: 142, W: 196, H: 24}},
+		{ID: 7, Kind: TerrainPillar, Bounds: Rect{X: 900, Y: 212, W: 46, H: 78}},
 	}
 }

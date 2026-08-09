@@ -41,8 +41,8 @@ func NewWorld(seed uint64) *World {
 func NewValidationWorld(seed uint64) *World {
 	w := NewWorld(seed)
 	w.Terrain = validationTerrain()
-	w.Player.Pos = Vec{X: 135, Y: 185}
-	w.SpawnArenaBoss(Vec{X: 520, Y: 174})
+	w.Player.Pos = Vec{X: 150, Y: 500}
+	w.SpawnArenaBoss(Vec{X: 1050, Y: 250})
 	return w
 }
 
