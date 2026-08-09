@@ -26,8 +26,12 @@ type PlayerSnapshot struct {
 	Action        Action
 	ActionTick    int
 	LongRange     float64
+	LongCharge    int
 	AttackRange   float64
 	AttackWidth   float64
+	AttackStartup int
+	AttackActive  int
+	AttackRecovery int
 	Invulnerable  bool
 }
 
@@ -91,7 +95,7 @@ type DebugSnapshot struct {
 }
 
 func (w *World) Snapshot() RenderSnapshot {
-	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, Invulnerable: w.Player.Invulnerable > 0}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}}
+	s := RenderSnapshot{Tick: w.Tick, Trauma: w.Trauma, TraumaDirection: w.TraumaDirection, Won: w.Won, Lost: w.Lost, Player: PlayerSnapshot{Pos: w.Player.Pos, Velocity: w.Player.Velocity, Aim: w.Player.Aim, Radius: w.Player.radius(), HP: w.Player.HP, MaxHP: w.Player.MaxHP, Form: w.Player.Form, Staff: w.Player.Staff, Action: w.Player.Action, ActionTick: w.Player.ActionTick, LongRange: w.Player.LongRange, LongCharge: w.Player.LongCharge, AttackRange: w.Player.LastAttackSpec.Range, AttackWidth: w.Player.LastAttackSpec.Width, AttackStartup: w.Player.LastAttackSpec.Startup, AttackActive: w.Player.LastAttackSpec.Active, AttackRecovery: w.Player.LastAttackSpec.Recovery, Invulnerable: w.Player.Invulnerable > 0}, Debug: DebugSnapshot{Enabled: w.Debug, Hitstop: w.Hitstop, SlowTicks: w.SlowTicks}}
 	for _, terrain := range w.Terrain {
 		s.Terrain = append(s.Terrain, TerrainSnapshot{ID: terrain.ID, Kind: terrain.Kind, Bounds: terrain.Bounds, HP: terrain.HP})
 	}

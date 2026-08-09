@@ -5,6 +5,7 @@ import (
 	"image/color"
 	"log"
 	"math"
+	"strings"
 
 	"github.com/gongahkia/72/internal/sim"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -200,17 +201,92 @@ func drawScene(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status s
 	if s.Player.Invulnerable && s.Tick%4 < 2 {
 		pc = color.White
 	}
+	drawPlayerStaff(screen, s.Player)
 	drawGlyph(screen, formGlyph(s.Player.Form), s.Player.Pos, pc)
-	vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Pos.X+s.Player.Aim.X*22), float32(s.Player.Pos.Y+s.Player.Aim.Y*22), 1.5, color.RGBA{R: 255, G: 237, B: 125, A: 255}, true)
-	if s.Player.Action == sim.ActionLongCharge {
-		vector.StrokeLine(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Pos.X+s.Player.Aim.X*s.Player.LongRange), float32(s.Player.Pos.Y+s.Player.Aim.Y*s.Player.LongRange), 4, color.RGBA{R: 255, G: 214, B: 86, A: 230}, true)
-		vector.StrokeCircle(screen, float32(s.Player.Pos.X+s.Player.Aim.X*s.Player.LongRange), float32(s.Player.Pos.Y+s.Player.Aim.Y*s.Player.LongRange), 5, 1, color.RGBA{R: 255, G: 214, B: 86, A: 255}, true)
-	}
 	drawHealth(screen, s.Player.Pos.Add(sim.Vec{X: -20, Y: -28}), 40, s.Player.HP, s.Player.MaxHP, color.RGBA{R: 93, G: 230, B: 136, A: 255})
 	drawHUD(screen, s, paused, status)
 	if s.Debug.Enabled {
 		drawDebug(screen, s)
 	}
+}
+
+func drawPlayerStaff(screen *ebiten.Image, player sim.PlayerSnapshot) {
+	aim := player.Aim
+	if aim.LengthSq() == 0 {
+		aim = sim.Vec{X: 1}
+	}
+	if player.Form != sim.FormMonkey {
+		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(player.Pos.X+aim.X*15), float32(player.Pos.Y+aim.Y*15), 1, color.RGBA{R: 126, G: 139, B: 157, A: 180}, true)
+		return
+	}
+	if player.Action == sim.ActionLongCharge {
+		forecast := player.Pos.Add(aim.Scale(136))
+		drawStaffForecast(screen, player.Pos, forecast, color.RGBA{R: 255, G: 205, B: 92, A: 100})
+		end := player.Pos.Add(aim.Scale(player.LongRange))
+		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 4, color.RGBA{R: 255, G: 214, B: 86, A: 255}, true)
+		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 5, 1, color.RGBA{R: 255, G: 237, B: 132, A: 255}, true)
+		return
+	}
+
+	rest := staffRestLength(player.Staff)
+	if !staffAction(player.Action) {
+		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 157, G: 124, B: 84, A: 255}, 3)
+		return
+	}
+
+	end := player.Pos.Add(aim.Scale(player.AttackRange))
+	switch staffPhase(player) {
+	case "windup":
+		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 246, G: 171, B: 83, A: 255}, 3)
+		drawStaffForecast(screen, player.Pos, end, color.RGBA{R: 246, G: 171, B: 83, A: 150})
+	case "active":
+		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), float32(max(3, int(player.AttackWidth/3))), color.RGBA{R: 255, G: 240, B: 154, A: 255}, true)
+		vector.StrokeCircle(screen, float32(end.X), float32(end.Y), 4, 1, color.RGBA{R: 255, G: 248, B: 205, A: 255}, true)
+	case "recovery":
+		drawHeldStaff(screen, player.Pos, aim, rest, color.RGBA{R: 112, G: 125, B: 145, A: 235}, 3)
+		vector.StrokeLine(screen, float32(player.Pos.X), float32(player.Pos.Y), float32(end.X), float32(end.Y), 1, color.RGBA{R: 112, G: 125, B: 145, A: 95}, false)
+	}
+}
+
+func drawHeldStaff(screen *ebiten.Image, origin, aim sim.Vec, length float64, c color.Color, width float32) {
+	start := origin.Add(aim.Scale(-length * 0.22))
+	end := origin.Add(aim.Scale(length * 0.78))
+	vector.StrokeLine(screen, float32(start.X), float32(start.Y), float32(end.X), float32(end.Y), width, c, true)
+	vector.DrawFilledCircle(screen, float32(end.X), float32(end.Y), width, c, true)
+}
+
+func drawStaffForecast(screen *ebiten.Image, origin, end sim.Vec, c color.Color) {
+	delta := end.Sub(origin)
+	for segment := 0; segment < 6; segment += 2 {
+		start := origin.Add(delta.Scale(float64(segment) / 6))
+		finish := origin.Add(delta.Scale(float64(segment+1) / 6))
+		vector.StrokeLine(screen, float32(start.X), float32(start.Y), float32(finish.X), float32(finish.Y), 1, c, false)
+	}
+}
+
+func staffRestLength(staff sim.StaffLength) float64 {
+	switch staff {
+	case sim.StaffShort:
+		return 24
+	case sim.StaffLong:
+		return 52
+	default:
+		return 40
+	}
+}
+
+func staffAction(action sim.Action) bool {
+	return action == sim.ActionShort || action == sim.ActionMedium || action == sim.ActionLongRelease
+}
+
+func staffPhase(player sim.PlayerSnapshot) string {
+	if player.ActionTick < player.AttackStartup {
+		return "windup"
+	}
+	if player.ActionTick < player.AttackStartup+player.AttackActive {
+		return "active"
+	}
+	return "recovery"
 }
 
 func drawArena(screen *ebiten.Image, terrain []sim.TerrainSnapshot) {
@@ -302,8 +378,7 @@ func formColor(f sim.FormID) color.Color {
 func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status string) {
 	text.Draw(screen, "72  |  WASD move  arrows aim  J attack  K dodge  C Echo", basicfont.Face7x13, 8, 15, color.RGBA{R: 220, G: 224, B: 229, A: 255})
 	text.Draw(screen, "1 short  2 medium  3 long hold/release  Q bird  E tiger  R mantis  F1 restart", basicfont.Face7x13, 8, 30, color.RGBA{R: 183, G: 193, B: 207, A: 255})
-	line := fmt.Sprintf("%s | %s | %s", s.Player.Form, s.Player.Staff, s.Player.Action)
-	text.Draw(screen, line, basicfont.Face7x13, 8, 342, color.RGBA{R: 183, G: 193, B: 207, A: 255})
+	text.Draw(screen, fmt.Sprintf("%s | %s", s.Player.Form, staffReadout(s.Player)), basicfont.Face7x13, 8, 342, staffReadoutColor(s.Player))
 	for _, e := range s.Enemies {
 		if e.Boss != nil {
 			text.Draw(screen, "WARDEN — "+e.Boss.PhaseName+" | "+e.Boss.Telegraph, basicfont.Face7x13, 8, 50, color.RGBA{R: 252, G: 171, B: 171, A: 255})
@@ -321,6 +396,40 @@ func drawHUD(screen *ebiten.Image, s sim.RenderSnapshot, paused bool, status str
 	if status != "" {
 		text.Draw(screen, status, basicfont.Face7x13, 8, 326, color.RGBA{R: 255, G: 220, B: 132, A: 255})
 	}
+}
+
+func staffReadout(player sim.PlayerSnapshot) string {
+	switch player.Form {
+	case sim.FormBird:
+		return "BIRD — staff replaced by dive"
+	case sim.FormTiger:
+		return "TIGER — staff replaced by pounce"
+	case sim.FormMantis:
+		return "MANTIS — staff replaced by counter"
+	}
+	if player.Action == sim.ActionLongCharge {
+		return fmt.Sprintf("STAFF CHARGING — long %d/48", player.LongCharge)
+	}
+	if staffAction(player.Action) {
+		return fmt.Sprintf("STAFF %s — %s %d/%d", strings.ToUpper(staffPhase(player)), player.Staff, player.ActionTick+1, player.AttackStartup+player.AttackActive+player.AttackRecovery)
+	}
+	if player.Action == sim.ActionDodge {
+		return "STAFF NOT ACTIVE — dodging"
+	}
+	return fmt.Sprintf("STAFF READY — %s", player.Staff)
+}
+
+func staffReadoutColor(player sim.PlayerSnapshot) color.Color {
+	if player.Action == sim.ActionLongCharge || (staffAction(player.Action) && staffPhase(player) == "windup") {
+		return color.RGBA{R: 246, G: 171, B: 83, A: 255}
+	}
+	if staffAction(player.Action) && staffPhase(player) == "active" {
+		return color.RGBA{R: 255, G: 240, B: 154, A: 255}
+	}
+	if staffAction(player.Action) && staffPhase(player) == "recovery" {
+		return color.RGBA{R: 142, G: 155, B: 176, A: 255}
+	}
+	return color.RGBA{R: 183, G: 193, B: 207, A: 255}
 }
 func drawDebug(screen *ebiten.Image, s sim.RenderSnapshot) {
 	vector.StrokeCircle(screen, float32(s.Player.Pos.X), float32(s.Player.Pos.Y), float32(s.Player.Radius), 1, color.RGBA{R: 95, G: 247, B: 137, A: 255}, false)
