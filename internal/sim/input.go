@@ -17,7 +17,8 @@ type InputFrame struct {
 type StaffLength uint8
 
 const (
-	StaffShort StaffLength = iota
+	StaffNone StaffLength = iota // no selection in this input frame
+	StaffShort
 	StaffMedium
 	StaffLong
 )
@@ -28,8 +29,10 @@ func (s StaffLength) String() string {
 		return "short"
 	case StaffLong:
 		return "long"
-	default:
+	case StaffMedium:
 		return "medium"
+	default:
+		return "none"
 	}
 }
 

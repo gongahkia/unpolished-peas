@@ -23,23 +23,23 @@ func (k EnemyKind) String() string {
 }
 
 type Enemy struct {
-	ID                    int
-	Kind                  EnemyKind
-	Name                  string
-	Pos, Velocity         Vec
-	Facing                Vec
-	Radius                float64
-	HP, MaxHP             int
-	Damage                int
-	MoveSpeed             float64
-	AttackRange           float64
-	AttackCooldown        int
-	Windup                int
-	Stagger               int
-	Invulnerable          int
-	TargetCloneID         int
-	Boss                  *BossState
-	LastDamagedByClone    bool
+	ID                 int
+	Kind               EnemyKind
+	Name               string
+	Pos, Velocity      Vec
+	Facing             Vec
+	Radius             float64
+	HP, MaxHP          int
+	Damage             int
+	MoveSpeed          float64
+	AttackRange        float64
+	AttackCooldown     int
+	Windup             int
+	Stagger            int
+	Invulnerable       int
+	TargetCloneID      int
+	Boss               *BossState
+	LastDamagedByClone bool
 }
 
 func (e *Enemy) alive() bool { return e.HP > 0 }
