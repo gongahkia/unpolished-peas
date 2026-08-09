@@ -4,13 +4,17 @@ package sim
 import "math"
 
 const (
-	TickRate  = 60
-	ViewportW = 640
-	ViewportH = 360
-	ArenaW    = 1280.0
-	ArenaH    = 720.0
-	Gravity   = 0.58
-	JumpSpeed = 10.2
+	TickRate   = 60
+	ViewportW  = 640
+	ViewportH  = 360
+	RoomW      = 640.0
+	RoomCount  = 5
+	ArenaW     = RoomW * RoomCount
+	ArenaH     = 720.0
+	TileSize   = 16.0
+	Gravity    = 0.58
+	JumpSpeed  = 10.2
+	MaxJumpRun = 128.0
 )
 
 // Vec is a simulation-space vector measured in logical pixels.
