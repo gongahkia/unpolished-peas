@@ -1,6 +1,4 @@
-# Texture atlases
-
-## Player atlas
+# Player atlas
 
 `player-atlas.png` is a 256×256 transparent texture atlas made from a Codex-generated pixel-art sprite sheet. It contains sixteen 64×64 cells in row-major order:
 
@@ -13,13 +11,6 @@ The renderer maps those cells to the deterministic traversal snapshot and adds o
 
 The player atlas remains embedded and validated, but the playtest renderer intentionally does not draw it.
 
-## Enemy atlas
+## Test enemy atlas
 
-`enemy-atlas.png` is a 256×256 transparent texture atlas with sixteen 64×64 cells in row-major order:
-
-1. charger: idle, roam, telegraph, charge
-2. hopper: idle, windup, airborne, landing
-3. diver: idle, telegraph, dive, stunned
-4. reserved future variants
-
-The renderer maps deterministic enemy state, movement, and timer data to those cells. Like the player atlas, this animation is presentation-only and cannot modify the simulation or replay hash.
+`test-enemy-atlas.png` is a standalone 256×256 transparent trial sheet. Its first three rows contain charger, hopper, and diver poses; the final row is reserved. It is deliberately not wired into the renderer so the schematic enemy presentation remains the active playtest baseline.

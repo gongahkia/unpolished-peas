@@ -1,6 +1,6 @@
 # 72
 
-`72` is a deterministic procedural platforming prototype. Each short run recombines ten authored room topologies with readable enemies, throwable objects, breakable terrain, hazards, and optional treasure. The player atlas and state-to-frame mapping remain available but its sprite is intentionally omitted from the playtest view; enemies use animated atlas sprites while terrain and objects remain schematic.
+`72` is a deterministic procedural platforming prototype. Each short run recombines ten authored room topologies with readable enemies, throwable objects, breakable terrain, hazards, and optional treasure. The player atlas and state-to-frame mapping remain available but its sprite is intentionally omitted from the playtest view; actors and interactables remain schematic over renderer-local depth layers.
 
 It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
 

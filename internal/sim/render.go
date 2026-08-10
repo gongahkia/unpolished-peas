@@ -57,9 +57,7 @@ type EnemySnapshot struct {
 	Archetype EnemyArchetype
 	State     EnemyState
 	Pos, Size Vec
-	Velocity  Vec
 	Facing    int8
-	Grounded  bool
 	Timer     int
 	Flash     int
 }
@@ -89,7 +87,7 @@ func (w *World) Snapshot() RenderSnapshot {
 		snapshot.Objects = append(snapshot.Objects, ObjectSnapshot{ID: object.ID, Kind: object.Kind, Pos: object.Pos, Size: object.Size, LinkID: object.LinkID, Active: object.Active, Held: object.Held})
 	}
 	for _, enemy := range w.Enemies {
-		snapshot.Enemies = append(snapshot.Enemies, EnemySnapshot{ID: enemy.ID, Archetype: enemy.Archetype, State: enemy.State, Pos: enemy.Pos, Size: enemy.Size, Velocity: enemy.Vel, Facing: enemy.Facing, Grounded: enemy.Grounded, Timer: enemy.Timer, Flash: enemy.Flash})
+		snapshot.Enemies = append(snapshot.Enemies, EnemySnapshot{ID: enemy.ID, Archetype: enemy.Archetype, State: enemy.State, Pos: enemy.Pos, Size: enemy.Size, Facing: enemy.Facing, Timer: enemy.Timer, Flash: enemy.Flash})
 	}
 	return snapshot
 }
