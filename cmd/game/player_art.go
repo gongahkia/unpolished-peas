@@ -3,7 +3,6 @@ package main
 import (
 	_ "embed"
 	"image/color"
-	_ "image/png"
 	"math"
 
 	"github.com/gongahkia/72/internal/sim"

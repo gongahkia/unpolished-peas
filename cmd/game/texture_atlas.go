@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"fmt"
 	"image"
+	_ "image/png"
 
 	"github.com/hajimehoshi/ebiten/v2"
 )

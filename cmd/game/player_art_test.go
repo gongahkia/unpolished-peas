@@ -52,10 +52,10 @@ func TestPlayerAtlasUsesTheExpectedFourByFourGrid(t *testing.T) {
 	if err != nil {
 		t.Fatalf("decode embedded player atlas: %v", err)
 	}
-	if got, want := atlas.Bounds().Dx(), playerAtlasColumns*playerFrameSize; got != want {
+	if got, want := atlas.Bounds().Dx(), textureAtlasColumns*textureAtlasFrame; got != want {
 		t.Fatalf("atlas width = %d, want %d", got, want)
 	}
-	if got, want := atlas.Bounds().Dy(), playerAtlasColumns*playerFrameSize; got != want {
+	if got, want := atlas.Bounds().Dy(), textureAtlasRows*textureAtlasFrame; got != want {
 		t.Fatalf("atlas height = %d, want %d", got, want)
 	}
 	if _, _, _, alpha := atlas.At(0, 0).RGBA(); alpha != 0 {
