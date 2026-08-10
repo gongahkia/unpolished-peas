@@ -5,7 +5,7 @@ import (
 	"embed"
 	"fmt"
 
-	"github.com/gongahkia/72/internal/bossdsl"
+	"github.com/gongahkia/72/example/wukong/internal/bossdsl"
 )
 
 //go:embed *.boss

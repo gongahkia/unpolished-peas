@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/gongahkia/72/internal/sim"
+	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
 func main() {

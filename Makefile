@@ -1,7 +1,7 @@
 .PHONY: run test vet fmt build wasm bosslint
 
 run:
-	go run ./cmd/game --mode=playtest
+	go run ./example/wukong --mode=playtest
 
 test:
 	go test ./...
@@ -13,13 +13,14 @@ fmt:
 	gofmt -w $$(rg --files -g '*.go')
 
 build:
-	go build ./cmd/game
+	mkdir -p bin
+	go build -o bin/wukong ./example/wukong
 
 wasm:
 	mkdir -p dist
-	GOOS=js GOARCH=wasm go build -o dist/72.wasm ./cmd/game
+	GOOS=js GOARCH=wasm go build -o dist/wukong.wasm ./example/wukong
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm_exec.js
-	cp web/index.html dist/index.html
+	cp example/wukong/web/index.html dist/index.html
 
 bosslint:
-	go run ./cmd/bosslint ./data/bosses
+	go run ./example/wukong/cmd/bosslint ./example/wukong/data/bosses
