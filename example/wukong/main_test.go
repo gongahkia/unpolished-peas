@@ -3,7 +3,8 @@ package main
 import (
 	"testing"
 
-	"github.com/gongahkia/72/internal/sim"
+	"github.com/gongahkia/72/engine"
+	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
 func TestFollowCameraClampsToWorldBounds(t *testing.T) {
@@ -31,5 +32,18 @@ func TestAimLabelUsesCompassDirections(t *testing.T) {
 		if got := aimLabel(test.aim); got != test.want {
 			t.Fatalf("aimLabel(%+v) = %q, want %q", test.aim, got, test.want)
 		}
+	}
+}
+
+func TestWukongActionMapPreservesTheDownAxisBinding(t *testing.T) {
+	binding := actionMap()[actionDown]
+	if binding.Axis == nil {
+		t.Fatal("down action is not axis-bound")
+	}
+	if got, want := binding.Axis.GamepadAxis, engine.GamepadAxis(1); got != want {
+		t.Fatalf("down gamepad axis = %d, want %d", got, want)
+	}
+	if len(binding.Axis.Positive) != 1 || binding.Axis.Positive[0] != engine.KeyS {
+		t.Fatalf("down keyboard binding = %+v, want [S]", binding.Axis.Positive)
 	}
 }

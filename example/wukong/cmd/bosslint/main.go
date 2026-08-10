@@ -6,11 +6,11 @@ import (
 	"path/filepath"
 	"sort"
 
-	"github.com/gongahkia/72/internal/bossdsl"
+	"github.com/gongahkia/72/example/wukong/internal/bossdsl"
 )
 
 func main() {
-	directory := "data/bosses"
+	directory := "example/wukong/data/bosses"
 	if len(os.Args) > 1 {
 		directory = os.Args[1]
 	}

@@ -5,7 +5,7 @@ import (
 	"image/color"
 	"math"
 
-	"github.com/gongahkia/72/internal/sim"
+	"github.com/gongahkia/72/example/wukong/internal/sim"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )

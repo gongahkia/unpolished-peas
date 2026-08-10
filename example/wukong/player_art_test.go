@@ -5,7 +5,7 @@ import (
 	"image"
 	"testing"
 
-	"github.com/gongahkia/72/internal/sim"
+	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
 func TestPlayerVisualMapsEveryTraversalStateToItsOwnPose(t *testing.T) {
