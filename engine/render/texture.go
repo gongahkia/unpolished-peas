@@ -14,11 +14,12 @@ type Image struct {
 
 // NewImage validates and copies an RGBA8 texture source.
 func NewImage(width, height int, pixels []byte) (Image, error) {
-	if width <= 0 || height <= 0 {
-		return Image{}, fmt.Errorf("image dimensions must be positive")
+	expected, ok := imageByteLen(width, height)
+	if !ok {
+		return Image{}, fmt.Errorf("image dimensions must be positive and addressable")
 	}
-	if width > maxInt()/height/4 || len(pixels) != width*height*4 {
-		return Image{}, fmt.Errorf("image has %d pixels bytes, want %d", len(pixels), width*height*4)
+	if len(pixels) != expected {
+		return Image{}, fmt.Errorf("image has %d pixel bytes, want %d", len(pixels), expected)
 	}
 	return Image{Width: width, Height: height, Pixels: append([]byte(nil), pixels...)}, nil
 }
@@ -36,7 +37,8 @@ func NewTextureStore() *TextureStore { return &TextureStore{images: make(map[uin
 
 // Create registers source and returns an opaque texture handle.
 func (s *TextureStore) Create(source Image) (Texture, error) {
-	if source.Width <= 0 || source.Height <= 0 || source.Width > maxInt()/source.Height/4 || len(source.Pixels) != source.Width*source.Height*4 {
+	expected, ok := imageByteLen(source.Width, source.Height)
+	if !ok || len(source.Pixels) != expected {
 		return Texture{}, fmt.Errorf("texture source is not a valid RGBA8 image")
 	}
 	s.mu.Lock()
@@ -60,6 +62,13 @@ func (s *TextureStore) Image(texture Texture) (Image, bool) {
 	}
 	image.Pixels = append([]byte(nil), image.Pixels...)
 	return image, true
+}
+
+func imageByteLen(width, height int) (int, bool) {
+	if width <= 0 || height <= 0 || width > maxInt()/height/4 {
+		return 0, false
+	}
+	return width * height * 4, true
 }
 
 func maxInt() int { return int(^uint(0) >> 1) }
