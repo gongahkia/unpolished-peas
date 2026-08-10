@@ -32,7 +32,7 @@ procedural platforming simulation, assets, replay tooling, and playtest rules;
 it demonstrates the kind of game a 72 user can write.
 
 ```sh
-make run
+make example-run
 ```
 
 ## Renderer transition
@@ -58,10 +58,7 @@ runtime milestone.
 make fmt
 make vet
 make test
-go test -race ./example/wukong/internal/...
-make build
-make bosslint
-make wasm
+go test -race ./...
+make example-build
+make example-wasm
 ```
-
-Dynamic HUD/layout authoring and a custom renderer backend are intentionally deferred. HUD work will begin with research into immediate-mode, retained-tree, and hybrid layout approaches before selecting an API.
