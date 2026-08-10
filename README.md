@@ -14,14 +14,14 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 
 | Package | Responsibility |
 | --- | --- |
-| `engine` | application lifecycle, input, cameras, compatibility draw layers, plugins |
+| `engine` | application lifecycle, input, cameras, Canvas compatibility layers, command layers, plugins |
 | `engine/ecs` | entities, components, resources, and ordered schedules |
 | `engine/scene` | ECS-backed parent/child transform hierarchy |
 | `engine/assets` | typed asset handles, reload hooks, async loading, manifests |
 | `engine/audio` | backend-neutral playback and bus mixing |
 | `engine/physics` | deterministic AABB 2D bodies, contacts, and queries |
 | `engine/ui` | retained layout, focus, and pointer hit testing |
-| `engine/render` | backend-neutral high-level 2D render commands |
+| `engine/render` | backend-neutral high-level 2D commands and portable texture sources |
 | `engine/diagnostics` | counters and duration summaries |
 
 ## Wukong example
@@ -38,8 +38,10 @@ make example-run
 ## Renderer transition
 
 `engine/ebiten` is the current compatibility adapter. It translates 72's
-platform-neutral lifecycle, input, and compatibility drawing surface to
-Ebitengine, but Ebitengine types do not appear in the public engine API.
+platform-neutral lifecycle, input, Canvas compatibility drawing surface, and
+high-level render command layers to Ebitengine. Ebitengine types do not appear
+in the public engine API. Runtime-owned portable texture data is converted to
+and cached as Ebitengine GPU images only inside this adapter.
 
 72 will replace this adapter with an engine-owned renderer behind the
 high-level `engine/render` contract. That renderer will own GPU resource
