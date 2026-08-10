@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"image"
+	"math"
 	"testing"
 
 	"github.com/gongahkia/72/internal/sim"
@@ -30,6 +31,17 @@ func TestEnemyVisualMapsArchetypesAndStatesToAtlasFrames(t *testing.T) {
 				t.Fatalf("selected frame %d, want %d", got, test.want)
 			}
 		})
+	}
+}
+
+func TestDiverVisualRotatesTowardDiveVelocity(t *testing.T) {
+	visual := enemyVisualFor(sim.EnemySnapshot{
+		Archetype: sim.EnemyDiver,
+		State:     sim.EnemyDive,
+		Velocity:  sim.Vec{X: 6},
+	}, 0)
+	if got, want := visual.tilt, -math.Pi/2; math.Abs(got-want) > .00001 {
+		t.Fatalf("rightward dive tilt = %f, want %f", got, want)
 	}
 }
 
