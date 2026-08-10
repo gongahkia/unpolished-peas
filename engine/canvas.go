@@ -1,5 +1,7 @@
 package engine
 
+import "github.com/gongahkia/72/engine/render"
+
 // Canvas is the backend-neutral immediate drawing surface exposed to games.
 // Coordinates are logical pixels.
 type Canvas interface {
@@ -10,6 +12,14 @@ type Canvas interface {
 	StrokeCircle(Vec2, float64, float64, Color)
 	StrokeLine(Vec2, Vec2, float64, Color)
 	DrawText(Vec2, string, Color)
+}
+
+// CommandCanvas is implemented by backends that consume the high-level 2D
+// render contract. Canvas remains available while applications migrate from
+// immediate compatibility drawing to command layers.
+type CommandCanvas interface {
+	Canvas
+	RenderCommands(render.Frame) error
 }
 
 type transformCanvas struct {

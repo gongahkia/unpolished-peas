@@ -67,7 +67,7 @@ func (g *wukongGame) addLayers() error {
 		{ID: "environment.distant", Order: -100, Space: engine.WorldSpace, Parallax: backgroundDepth, Draw: g.drawBackground},
 		{ID: "world", Order: 0, Space: engine.WorldSpace, Parallax: 1, Draw: g.drawWorld},
 		{ID: "environment.foreground", Order: 100, Space: engine.ScreenSpace, Draw: g.drawForeground},
-		{ID: "hud", Order: 200, Space: engine.ScreenSpace, Draw: g.drawHUD},
+		{ID: "hud", Order: 200, Space: engine.ScreenSpace, DrawCommands: g.drawHUDCommands},
 		{ID: "debug", Order: 300, Space: engine.ScreenSpace, Draw: g.drawDebug},
 	}
 	for _, layer := range layers {

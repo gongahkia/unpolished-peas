@@ -1,8 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"testing"
 
-import "github.com/gongahkia/72/engine/ecs"
+	"github.com/gongahkia/72/engine/ecs"
+)
 
 func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	app := &testApplication{}
@@ -24,7 +26,9 @@ func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 		t.Fatal("application did not receive update input")
 	}
 	canvas := &recordingCanvas{}
-	runtime.Draw(canvas)
+	if err := runtime.Draw(canvas); err != nil {
+		t.Fatalf("draw runtime: %v", err)
+	}
 	if len(canvas.rects) != 1 || canvas.rects[0].X != 4 {
 		t.Fatalf("runtime layer draw = %+v, want one rectangle at X=4", canvas.rects)
 	}

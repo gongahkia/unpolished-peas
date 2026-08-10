@@ -1,6 +1,10 @@
 package engine
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gongahkia/72/engine/render"
+)
 
 func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
 	stack := &LayerStack{}
@@ -19,7 +23,9 @@ func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
 	canvas := &recordingCanvas{}
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
-	stack.draw(canvas, camera, 1)
+	if err := stack.draw(canvas, camera, 1, render.NewTextureStore()); err != nil {
+		t.Fatal(err)
+	}
 	if len(canvas.rects) != 1 || canvas.rects[0].X != 344 {
 		t.Fatalf("deep layer rect = %+v, want X=344", canvas.rects)
 	}
@@ -28,6 +34,35 @@ func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
 	}
 	if order[0] != "aA" || order[len(order)-1] != "xE" {
 		t.Fatalf("equal-order layers lost registration order: first=%q last=%q", order[0], order[len(order)-1])
+	}
+}
+
+func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
+	stack := &LayerStack{}
+	if err := stack.Add(Layer{
+		ID:       "command-world",
+		Order:    7,
+		Space:    WorldSpace,
+		Parallax: .25,
+		DrawCommands: func(frame CommandFrame) error {
+			return frame.FillRect(render.RectDraw{Bounds: render.Rect{W: 8, H: 8}, Color: render.Color{A: 255}})
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	canvas := &recordingCommandCanvas{}
+	camera := NewCamera(Size{W: 640, H: 360})
+	camera.SetPosition(Vec2{X: 160})
+	if err := stack.draw(canvas, camera, 1, render.NewTextureStore()); err != nil {
+		t.Fatal(err)
+	}
+	if len(canvas.frames) != 1 {
+		t.Fatalf("submitted frames = %d, want 1", len(canvas.frames))
+	}
+	frame := canvas.frames[0]
+	commands := frame.Queue.Commands()
+	if frame.Camera.Position.X != 40 || len(commands) != 1 || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
+		t.Fatalf("command submission = camera=%+v commands=%+v", frame.Camera, commands)
 	}
 }
 
@@ -71,3 +106,13 @@ func (c *recordingCanvas) FillCircle(Vec2, float64, Color)            {}
 func (c *recordingCanvas) StrokeCircle(Vec2, float64, float64, Color) {}
 func (c *recordingCanvas) StrokeLine(Vec2, Vec2, float64, Color)      {}
 func (c *recordingCanvas) DrawText(Vec2, string, Color)               {}
+
+type recordingCommandCanvas struct {
+	recordingCanvas
+	frames []render.Frame
+}
+
+func (c *recordingCommandCanvas) RenderCommands(frame render.Frame) error {
+	c.frames = append(c.frames, frame)
+	return nil
+}

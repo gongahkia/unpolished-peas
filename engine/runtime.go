@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/gongahkia/72/engine/ecs"
+	"github.com/gongahkia/72/engine/render"
 )
 
 // Application supplies game-specific behavior to an engine runtime.
@@ -32,13 +33,14 @@ type Backend interface {
 
 // Runtime owns application lifecycle state shared by all backends.
 type Runtime struct {
-	config  Config
-	app     Application
-	camera  Camera
-	layers  LayerStack
-	world   *ecs.World
-	systems *ecs.Schedule
-	tick    uint64
+	config   Config
+	app      Application
+	camera   Camera
+	layers   LayerStack
+	world    *ecs.World
+	systems  *ecs.Schedule
+	textures *render.TextureStore
+	tick     uint64
 }
 
 // NewRuntime creates and initializes an application runtime.
@@ -50,11 +52,12 @@ func NewRuntime(config Config, app Application) (*Runtime, error) {
 		return nil, err
 	}
 	runtime := &Runtime{
-		config:  config,
-		app:     app,
-		camera:  NewCamera(config.Viewport),
-		world:   ecs.NewWorld(),
-		systems: ecs.NewSchedule(),
+		config:   config,
+		app:      app,
+		camera:   NewCamera(config.Viewport),
+		world:    ecs.NewWorld(),
+		systems:  ecs.NewSchedule(),
+		textures: render.NewTextureStore(),
 	}
 	for _, plugin := range config.Plugins {
 		if plugin == nil {
@@ -101,6 +104,10 @@ func (r *Runtime) World() *ecs.World { return r.world }
 // Systems returns the runtime's deterministic system schedule.
 func (r *Runtime) Systems() *ecs.Schedule { return r.systems }
 
+// Textures returns engine-owned portable texture sources for high-level render
+// layers. Backends create and cache their own native GPU resources from them.
+func (r *Runtime) Textures() *render.TextureStore { return r.textures }
+
 // Update advances the application one platform update.
 func (r *Runtime) Update(input Input) error {
 	if err := r.systems.Run(ecs.PreUpdate, r.world); err != nil {
@@ -132,4 +139,6 @@ func (r *Runtime) FixedUpdate(input Input) error {
 }
 
 // Draw renders all currently registered layers in order.
-func (r *Runtime) Draw(canvas Canvas) { r.layers.draw(canvas, r.camera, r.tick) }
+func (r *Runtime) Draw(canvas Canvas) error {
+	return r.layers.draw(canvas, r.camera, r.tick, r.textures)
+}
