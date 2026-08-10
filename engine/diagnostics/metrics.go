@@ -1,0 +1,72 @@
+// Package diagnostics provides runtime-safe counters and duration summaries.
+package diagnostics
+
+import (
+	"fmt"
+	"sort"
+	"sync"
+	"time"
+)
+
+// Metric is a point-in-time diagnostic value.
+type Metric struct {
+	Name  string
+	Count uint64
+	Total time.Duration
+}
+
+// Registry collects named counters and durations. It is safe for concurrent use.
+type Registry struct {
+	mu      sync.RWMutex
+	metrics map[string]Metric
+}
+
+// NewRegistry creates an empty registry.
+func NewRegistry() *Registry { return &Registry{metrics: make(map[string]Metric)} }
+
+// Add increments a named counter.
+func (r *Registry) Add(name string, amount uint64) error {
+	if name == "" {
+		return fmt.Errorf("metric name must not be empty")
+	}
+	r.mu.Lock()
+	metric := r.metrics[name]
+	metric.Name, metric.Count = name, metric.Count+amount
+	r.metrics[name] = metric
+	r.mu.Unlock()
+	return nil
+}
+
+// Record adds one duration sample to name and increments its count.
+func (r *Registry) Record(name string, duration time.Duration) error {
+	if name == "" {
+		return fmt.Errorf("metric name must not be empty")
+	}
+	if duration < 0 {
+		return fmt.Errorf("metric duration must not be negative")
+	}
+	r.mu.Lock()
+	metric := r.metrics[name]
+	metric.Name, metric.Count, metric.Total = name, metric.Count+1, metric.Total+duration
+	r.metrics[name] = metric
+	r.mu.Unlock()
+	return nil
+}
+
+// Snapshot returns metrics sorted by name.
+func (r *Registry) Snapshot() []Metric {
+	r.mu.RLock()
+	metrics := make([]Metric, 0, len(r.metrics))
+	for _, metric := range r.metrics {
+		metrics = append(metrics, metric)
+	}
+	r.mu.RUnlock()
+	sort.Slice(metrics, func(left, right int) bool { return metrics[left].Name < metrics[right].Name })
+	return metrics
+}
+
+// Measure returns a closure that records elapsed wall time when called.
+func (r *Registry) Measure(name string) func() {
+	started := time.Now()
+	return func() { _ = r.Record(name, time.Since(started)) }
+}

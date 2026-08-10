@@ -1,16 +1,56 @@
-# engine prototype
+# 72
 
-This repository develops a backend-neutral 2D game-engine core. Its public API is currently available as `github.com/gongahkia/72/engine`; the module and repository name are intentionally temporary and will be chosen before release.
+72 is a Go-first, general-purpose game-engine runtime in active development.
+It is 2D-first and targets Linux, Windows, macOS, and WebAssembly. The current
+release is a runtime SDK, not an editor or a complete production toolchain.
 
-The first backend is Ebitengine. Games provide update behavior, register any number of ordered render layers, and receive backend-neutral action input and drawing primitives. World-space layers use camera parallax; screen-space layers provide the future seam for HUD and layout work.
+Games own their rules and content. The engine owns reusable runtime concerns:
 
-## Golden proof
+- application lifecycle, platform-neutral input actions, cameras, and ordered layers;
+- an ECS world, deterministic system scheduler, plugins, and ECS-backed scene transforms;
+- typed reloadable assets, audio mixer state, deterministic AABB 2D physics, retained UI layout, diagnostics, and a high-level 2D render-command model.
 
-[Wukong](example/wukong) is the deterministic procedural platforming example that proves the engine core. It owns its simulation, assets, replay tooling, and presentation while consuming the public engine runtime.
+The public packages are rooted at `github.com/gongahkia/72/engine`:
+
+| Package | Responsibility |
+| --- | --- |
+| `engine` | application lifecycle, input, cameras, compatibility draw layers, plugins |
+| `engine/ecs` | entities, components, resources, and ordered schedules |
+| `engine/scene` | ECS-backed parent/child transform hierarchy |
+| `engine/assets` | typed asset handles, reload hooks, async loading, manifests |
+| `engine/audio` | backend-neutral playback and bus mixing |
+| `engine/physics` | deterministic AABB 2D bodies, contacts, and queries |
+| `engine/ui` | retained layout, focus, and pointer hit testing |
+| `engine/render` | backend-neutral high-level 2D render commands |
+| `engine/diagnostics` | counters and duration summaries |
+
+## Wukong example
+
+[Wukong](example/wukong) is an example game written against 72. It is not part
+of the engine API or a definition of engine policy. It owns its deterministic
+procedural platforming simulation, assets, replay tooling, and playtest rules;
+it demonstrates the kind of game a 72 user can write.
 
 ```sh
 make run
 ```
+
+## Renderer transition
+
+`engine/ebiten` is the current compatibility adapter. It translates 72's
+platform-neutral lifecycle, input, and compatibility drawing surface to
+Ebitengine, but Ebitengine types do not appear in the public engine API.
+
+72 will replace this adapter with an engine-owned renderer behind the
+high-level `engine/render` contract. That renderer will own GPU resource
+lifetime, batching, render passes, shader/material compilation, validation,
+and presentation. The Ebitengine adapter remains supported until the
+engine-owned renderer reaches Wukong parity on the initial desktop and web
+targets. This repository does not yet claim to provide that renderer.
+
+Visual editor tooling, scripting, 3D rendering, mobile/consoles, networking,
+navigation, and advanced animation are intentionally outside the current
+runtime milestone.
 
 ## Verification
 

@@ -1,4 +1,5 @@
-// Package ebiten adapts the engine runtime to Ebitengine.
+// Package ebiten is the temporary Ebitengine compatibility adapter for the
+// engine runtime. It is not the permanent 72 renderer implementation.
 package ebiten
 
 import (

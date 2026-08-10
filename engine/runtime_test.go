@@ -2,6 +2,8 @@ package engine
 
 import "testing"
 
+import "github.com/gongahkia/72/engine/ecs"
+
 func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	app := &testApplication{}
 	runtime, err := NewRuntime(Config{
@@ -26,6 +28,39 @@ func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	if len(canvas.rects) != 1 || canvas.rects[0].X != 4 {
 		t.Fatalf("runtime layer draw = %+v, want one rectangle at X=4", canvas.rects)
 	}
+}
+
+func TestRuntimeBuildsPluginsAndRunsScheduledSystems(t *testing.T) {
+	plugin := &testPlugin{}
+	runtime, err := NewRuntime(Config{
+		Viewport:    Size{W: 320, H: 180},
+		WindowScale: 1,
+		Plugins:     []Plugin{plugin},
+	}, &testApplication{})
+	if err != nil {
+		t.Fatalf("new runtime: %v", err)
+	}
+	if !plugin.built {
+		t.Fatal("plugin was not built")
+	}
+	if err := runtime.Update(NewInput(nil)); err != nil {
+		t.Fatal(err)
+	}
+	if value, ok := ecs.Resource[int](runtime.World()); !ok || value != 2 {
+		t.Fatalf("scheduled resource = %d, %t", value, ok)
+	}
+}
+
+type testPlugin struct{ built bool }
+
+func (p *testPlugin) Build(runtime *Runtime) error {
+	p.built = true
+	ecs.SetResource(runtime.World(), 1)
+	return runtime.Systems().Add(ecs.Update, "increment", func(world *ecs.World) error {
+		value, _ := ecs.Resource[int](world)
+		ecs.SetResource(world, value+1)
+		return nil
+	})
 }
 
 type testApplication struct {
