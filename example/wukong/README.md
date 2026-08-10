@@ -1,6 +1,13 @@
 # Wukong
 
-`Wukong` is a deterministic procedural platforming prototype. Each short run recombines ten authored room topologies with readable enemies, throwable objects, breakable terrain, hazards, and optional treasure. The player atlas and state-to-frame mapping remain available but its sprite is intentionally omitted from the playtest view; actors and interactables remain schematic over renderer-local depth layers.
+`Wukong` is a deterministic procedural platforming prototype and example game
+for the 72 runtime. It is not an engine subsystem: it owns its simulation,
+procedural generation, assets, replays, and game-specific presentation. Each
+short run recombines ten authored room topologies with readable enemies,
+throwable objects, breakable terrain, hazards, and optional treasure. The
+player atlas and state-to-frame mapping remain available but its sprite is
+intentionally omitted from the playtest view; actors and interactables remain
+schematic over renderer-local depth layers.
 
 It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
 

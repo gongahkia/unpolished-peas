@@ -65,6 +65,7 @@ type Config struct {
 	Viewport    Size
 	WindowScale int
 	Actions     ActionMap
+	Plugins     []Plugin
 }
 
 func (c Config) validate() error {
