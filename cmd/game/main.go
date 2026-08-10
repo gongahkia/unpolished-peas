@@ -25,6 +25,7 @@ type game struct {
 	replay    *sim.Replay
 	scene     *ebiten.Image
 	playerArt *playerArt
+	enemyArt  *enemyArt
 	seed      uint64
 	nextSeed  uint64
 	paused    bool
@@ -32,11 +33,15 @@ type game struct {
 }
 
 func newGame() (*game, error) {
-	art, err := loadPlayerArt()
+	playerArt, err := loadPlayerArt()
 	if err != nil {
 		return nil, err
 	}
-	g := &game{seed: runSeed(0x72, 0), nextSeed: 1, scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH)), playerArt: art}
+	enemyArt, err := loadEnemyArt()
+	if err != nil {
+		return nil, err
+	}
+	g := &game{seed: runSeed(0x72, 0), nextSeed: 1, scene: ebiten.NewImage(int(sim.ArenaW), int(sim.ArenaH)), playerArt: playerArt, enemyArt: enemyArt}
 	g.resetSameSeed()
 	return g, nil
 }
@@ -156,7 +161,7 @@ func axis(value float64) int8 {
 func (g *game) Draw(screen *ebiten.Image) {
 	snapshot := g.world.Snapshot()
 	g.scene.Clear()
-	drawScene(g.scene, snapshot, g.playerArt)
+	drawScene(g.scene, snapshot, g.enemyArt)
 	screen.Fill(color.RGBA{R: 8, G: 10, B: 15, A: 255})
 	camera := followCamera(snapshot.Player.Pos)
 	shake := snapshot.Trauma * 6
@@ -175,7 +180,7 @@ func followCamera(position sim.Vec) sim.Vec {
 	return sim.Vec{X: math.Max(0, math.Min(position.X-float64(logicalW)/2, sim.ArenaW-float64(logicalW))), Y: math.Max(0, math.Min(position.Y-float64(logicalH)/2, sim.ArenaH-float64(logicalH)))}
 }
 
-func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *playerArt) {
+func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, enemyArt *enemyArt) {
 	screen.Fill(color.RGBA{R: 14, G: 18, B: 27, A: 255})
 	for _, terrain := range snapshot.Terrain {
 		terrainColor := color.RGBA{R: 63, G: 70, B: 84, A: 255}
@@ -196,12 +201,11 @@ func drawScene(screen *ebiten.Image, snapshot sim.RenderSnapshot, playerArt *pla
 		drawObject(screen, object)
 	}
 	for _, enemy := range snapshot.Enemies {
-		drawEnemy(screen, enemy, snapshot.Tick)
+		drawEnemy(screen, enemy, snapshot.Tick, enemyArt)
 	}
 	drawImpact(screen, snapshot.Impact, snapshot.Tick)
 	p := snapshot.Player
 	vector.StrokeLine(screen, float32(p.Pos.X), float32(p.Pos.Y), float32(p.Pos.X+p.Aim.X*18), float32(p.Pos.Y+p.Aim.Y*18), 1, color.RGBA{R: 88, G: 216, B: 251, A: 255}, true)
-	playerArt.draw(screen, p, snapshot.Tick)
 }
 
 func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
@@ -229,20 +233,9 @@ func drawObject(screen *ebiten.Image, object sim.ObjectSnapshot) {
 	drawGlyph(screen, glyph, object.Pos, color.RGBA{R: 15, G: 17, B: 21, A: 255})
 }
 
-func drawEnemy(screen *ebiten.Image, enemy sim.EnemySnapshot, tick uint64) {
+func drawEnemy(screen *ebiten.Image, enemy sim.EnemySnapshot, tick uint64, art *enemyArt) {
 	bounds := sim.Rect{X: enemy.Pos.X - enemy.Size.X/2, Y: enemy.Pos.Y - enemy.Size.Y/2, W: enemy.Size.X, H: enemy.Size.Y}
-	c := color.RGBA{R: 235, G: 116, B: 94, A: 255}
-	glyph := ">"
-	switch enemy.Archetype {
-	case sim.EnemyHopper:
-		c, glyph = color.RGBA{R: 139, G: 235, B: 122, A: 255}, "^"
-		vector.DrawFilledCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Size.X/2), c, true)
-	case sim.EnemyDiver:
-		c, glyph = color.RGBA{R: 192, G: 130, B: 246, A: 255}, "v"
-		vector.DrawFilledCircle(screen, float32(enemy.Pos.X), float32(enemy.Pos.Y), float32(enemy.Size.X/2), c, true)
-	default:
-		vector.DrawFilledRect(screen, float32(bounds.X), float32(bounds.Y), float32(bounds.W), float32(bounds.H), c, false)
-	}
+	art.draw(screen, enemy, tick)
 	if enemy.Flash > 0 {
 		vector.StrokeRect(screen, float32(bounds.X-2), float32(bounds.Y-2), float32(bounds.W+4), float32(bounds.H+4), 1, color.RGBA{R: 255, G: 246, B: 204, A: 255}, true)
 	}
@@ -254,7 +247,6 @@ func drawEnemy(screen *ebiten.Image, enemy sim.EnemySnapshot, tick uint64) {
 		direction := float64(enemy.Facing)
 		vector.StrokeLine(screen, float32(enemy.Pos.X-direction*18), float32(enemy.Pos.Y), float32(enemy.Pos.X-direction*5), float32(enemy.Pos.Y), 2, color.RGBA{R: 255, G: 173, B: 111, A: 180}, true)
 	}
-	drawGlyph(screen, glyph, enemy.Pos, color.RGBA{R: 19, G: 22, B: 31, A: 255})
 }
 
 func drawImpact(screen *ebiten.Image, impact sim.ImpactState, tick uint64) {
