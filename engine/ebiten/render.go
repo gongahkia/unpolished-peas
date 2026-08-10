@@ -18,7 +18,6 @@ import (
 // applications still depend only on engine/render types.
 type RenderBackend struct {
 	target   *ebiten.Image
-	nextID   uint64
 	textures map[uint64]*ebiten.Image
 }
 
@@ -29,16 +28,6 @@ func NewRenderBackend(target *ebiten.Image) *RenderBackend {
 
 // SetTarget updates the Ebitengine target used for subsequent Render calls.
 func (b *RenderBackend) SetTarget(target *ebiten.Image) { b.target = target }
-
-// CreateTexture registers source and returns an opaque engine/render texture.
-func (b *RenderBackend) CreateTexture(source image.Image) (render.Texture, error) {
-	if source == nil {
-		return render.Texture{}, fmt.Errorf("texture source must not be nil")
-	}
-	b.nextID++
-	b.textures[b.nextID] = ebiten.NewImageFromImage(source)
-	return render.Texture{ID: b.nextID}, nil
-}
 
 // Render submits a high-level 2D frame to the configured Ebitengine target.
 func (b *RenderBackend) Render(frame render.Frame) error {
@@ -72,17 +61,17 @@ func (b *RenderBackend) Render(frame render.Frame) error {
 		if command.Kind == render.Clear {
 			continue
 		}
-		if err := b.draw(frame.Camera, command); err != nil {
+		if err := b.draw(frame, command); err != nil {
 			return err
 		}
 	}
 	return nil
 }
 
-func (b *RenderBackend) draw(camera render.Camera, command render.Command) error {
+func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
 	translate := render.Vec2{}
 	if command.Space == render.WorldSpace {
-		translate = render.Vec2{X: -camera.Position.X, Y: -camera.Position.Y}
+		translate = render.Vec2{X: -frame.Camera.Position.X, Y: -frame.Camera.Position.Y}
 	}
 	switch command.Kind {
 	case render.SpriteCommand:
@@ -90,13 +79,13 @@ func (b *RenderBackend) draw(camera render.Camera, command render.Command) error
 		if !ok {
 			return fmt.Errorf("sprite command has payload %T", command.Payload)
 		}
-		return b.drawSprite(value, translate)
+		return b.drawSprite(frame.Textures, value, translate)
 	case render.TileMapCommand:
 		value, ok := command.Payload.(render.TileMap)
 		if !ok {
 			return fmt.Errorf("tile map command has payload %T", command.Payload)
 		}
-		return b.drawTileMap(value, translate)
+		return b.drawTileMap(frame.Textures, value, translate)
 	case render.FillRect:
 		value, ok := command.Payload.(render.RectDraw)
 		if !ok {
@@ -135,10 +124,10 @@ func (b *RenderBackend) draw(camera render.Camera, command render.Command) error
 	return nil
 }
 
-func (b *RenderBackend) drawSprite(sprite render.Sprite, translate render.Vec2) error {
-	texture := b.textures[sprite.Texture.ID]
-	if texture == nil {
-		return fmt.Errorf("texture %d is not registered", sprite.Texture.ID)
+func (b *RenderBackend) drawSprite(store *render.TextureStore, sprite render.Sprite, translate render.Vec2) error {
+	texture, err := b.texture(store, sprite.Texture)
+	if err != nil {
+		return err
 	}
 	source := sprite.Source
 	if source.W == 0 && source.H == 0 {
@@ -147,6 +136,9 @@ func (b *RenderBackend) drawSprite(sprite render.Sprite, translate render.Vec2) 
 	}
 	if source.W <= 0 || source.H <= 0 {
 		return fmt.Errorf("sprite source must be positive")
+	}
+	if source.X < 0 || source.Y < 0 || source.X+source.W > float64(texture.Bounds().Dx()) || source.Y+source.H > float64(texture.Bounds().Dy()) {
+		return fmt.Errorf("sprite source is outside texture %d", sprite.Texture.ID)
 	}
 	image := texture.SubImage(image.Rect(int(source.X), int(source.Y), int(source.X+source.W), int(source.Y+source.H))).(*ebiten.Image)
 	op := &ebiten.DrawImageOptions{}
@@ -158,11 +150,7 @@ func (b *RenderBackend) drawSprite(sprite render.Sprite, translate render.Vec2) 
 	return nil
 }
 
-func (b *RenderBackend) drawTileMap(tiles render.TileMap, translate render.Vec2) error {
-	texture := b.textures[tiles.Texture.ID]
-	if texture == nil {
-		return fmt.Errorf("texture %d is not registered", tiles.Texture.ID)
-	}
+func (b *RenderBackend) drawTileMap(store *render.TextureStore, tiles render.TileMap, translate render.Vec2) error {
 	for index, tile := range tiles.Tiles {
 		if tile < 0 {
 			continue
@@ -179,11 +167,29 @@ func (b *RenderBackend) drawTileMap(tiles render.TileMap, translate render.Vec2)
 			Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
 			Tint:    tiles.Tint,
 		}
-		if err := b.drawSprite(sprite, translate); err != nil {
+		if err := b.drawSprite(store, sprite, translate); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+func (b *RenderBackend) texture(store *render.TextureStore, handle render.Texture) (*ebiten.Image, error) {
+	if texture := b.textures[handle.ID]; texture != nil {
+		return texture, nil
+	}
+	if store == nil {
+		return nil, fmt.Errorf("texture %d is not available without an engine texture store", handle.ID)
+	}
+	source, ok := store.Image(handle)
+	if !ok {
+		return nil, fmt.Errorf("texture %d is not registered", handle.ID)
+	}
+	decoded := image.NewNRGBA(image.Rect(0, 0, source.Width, source.Height))
+	copy(decoded.Pix, source.Pixels)
+	texture := ebiten.NewImageFromImage(decoded)
+	b.textures[handle.ID] = texture
+	return texture, nil
 }
 
 func translateRect(value render.Rect, offset render.Vec2) render.Rect {

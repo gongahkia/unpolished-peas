@@ -28,8 +28,8 @@ type Camera struct {
 	Viewport Vec2
 }
 
-// Texture identifies a backend-owned image resource. The ID is deliberately
-// opaque to applications so render backends can manage resource lifetime.
+// Texture identifies engine-owned portable image data and a backend-created GPU
+// resource. Its ID is opaque to applications.
 type Texture struct{ ID uint64 }
 
 // Material identifies optional backend-defined shader/material parameters.
@@ -196,8 +196,9 @@ func (q *Queue) append(command Command) error {
 
 // Frame is the backend submission payload for one complete render frame.
 type Frame struct {
-	Camera Camera
-	Queue  *Queue
+	Camera   Camera
+	Queue    *Queue
+	Textures *TextureStore
 }
 
 // Backend consumes renderer-owned high-level frame intent. Backends must not

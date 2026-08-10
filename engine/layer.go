@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"math"
 	"sort"
+
+	"github.com/gongahkia/72/engine/render"
 )
 
 // Frame is the context supplied to a layer draw callback.
@@ -17,13 +19,74 @@ type Frame struct {
 // DrawFunc renders one layer for a frame.
 type DrawFunc func(Frame)
 
+// CommandFrame is the context supplied to a high-level render command layer.
+// Its methods use the Layer's registered order and space automatically.
+type CommandFrame struct {
+	Camera   Camera
+	Tick     uint64
+	Viewport Size
+
+	queue *render.Queue
+	order int
+	space render.Space
+}
+
+// Clear records a screen-space frame clear. It is valid only on a screen-space
+// layer because world-space clears have no meaningful camera transform.
+func (f CommandFrame) Clear(color render.Color) error {
+	if f.space != render.ScreenSpace {
+		return fmt.Errorf("clear is only valid on a screen-space command layer")
+	}
+	f.queue.Clear(color)
+	return nil
+}
+
+// DrawSprite records a textured quad in the layer's space and order.
+func (f CommandFrame) DrawSprite(sprite render.Sprite) error {
+	return f.queue.DrawSprite(f.order, f.space, sprite)
+}
+
+// DrawTileMap records a tile map in the layer's space and order.
+func (f CommandFrame) DrawTileMap(tiles render.TileMap) error {
+	return f.queue.DrawTileMap(f.order, f.space, tiles)
+}
+
+// FillRect records a filled rectangle in the layer's space and order.
+func (f CommandFrame) FillRect(draw render.RectDraw) error {
+	return f.queue.FillRect(f.order, f.space, draw)
+}
+
+// StrokeRect records a stroked rectangle in the layer's space and order.
+func (f CommandFrame) StrokeRect(draw render.RectDraw) error {
+	return f.queue.StrokeRect(f.order, f.space, draw)
+}
+
+// FillCircle records a filled circle in the layer's space and order.
+func (f CommandFrame) FillCircle(draw render.CircleDraw) error {
+	return f.queue.FillCircle(f.order, f.space, draw)
+}
+
+// StrokeLine records a stroked line in the layer's space and order.
+func (f CommandFrame) StrokeLine(draw render.LineDraw) error {
+	return f.queue.StrokeLine(f.order, f.space, draw)
+}
+
+// DrawText records text in the layer's space and order.
+func (f CommandFrame) DrawText(draw render.TextDraw) error {
+	return f.queue.DrawText(f.order, f.space, draw)
+}
+
+// CommandDrawFunc records high-level 2D rendering for one layer.
+type CommandDrawFunc func(CommandFrame) error
+
 // Layer declares one ordered render callback.
 type Layer struct {
-	ID       string
-	Order    int
-	Space    Space
-	Parallax float64
-	Draw     DrawFunc
+	ID           string
+	Order        int
+	Space        Space
+	Parallax     float64
+	Draw         DrawFunc
+	DrawCommands CommandDrawFunc
 }
 
 type registeredLayer struct {
@@ -43,7 +106,7 @@ func (s *LayerStack) Add(layer Layer) error {
 	if layer.ID == "" {
 		return fmt.Errorf("layer ID must not be empty")
 	}
-	if layer.Draw == nil {
+	if layer.Draw == nil && layer.DrawCommands == nil {
 		return fmt.Errorf("layer %q has no draw callback", layer.ID)
 	}
 	if layer.Space != WorldSpace && layer.Space != ScreenSpace {
@@ -111,7 +174,7 @@ func (s *LayerStack) Layers() []Layer {
 	return layers
 }
 
-func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64) {
+func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *render.TextureStore) error {
 	for _, registered := range s.layers {
 		layer := registered.layer
 		translate := Vec2{}
@@ -121,6 +184,36 @@ func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64) {
 				Y: -camera.position.Y*layer.Parallax + camera.offset.Y*layer.Parallax,
 			}
 		}
-		layer.Draw(Frame{Canvas: transformCanvas{canvas: canvas, translate: translate}, Camera: camera, Tick: tick, Viewport: camera.viewport})
+		if layer.Draw != nil {
+			layer.Draw(Frame{Canvas: transformCanvas{canvas: canvas, translate: translate}, Camera: camera, Tick: tick, Viewport: camera.viewport})
+		}
+		if layer.DrawCommands == nil {
+			continue
+		}
+		queue := &render.Queue{}
+		space := render.ScreenSpace
+		commandCamera := render.Camera{Viewport: render.Vec2{X: camera.viewport.W, Y: camera.viewport.H}}
+		if layer.Space == WorldSpace {
+			space = render.WorldSpace
+			commandCamera.Position = render.Vec2{
+				X: camera.position.X*layer.Parallax - camera.offset.X*layer.Parallax,
+				Y: camera.position.Y*layer.Parallax - camera.offset.Y*layer.Parallax,
+			}
+		}
+		frame := CommandFrame{Camera: camera, Tick: tick, Viewport: camera.viewport, queue: queue, order: layer.Order, space: space}
+		if err := layer.DrawCommands(frame); err != nil {
+			return fmt.Errorf("draw command layer %q: %w", layer.ID, err)
+		}
+		if len(queue.Commands()) == 0 {
+			continue
+		}
+		commandCanvas, ok := canvas.(CommandCanvas)
+		if !ok {
+			return fmt.Errorf("layer %q requires a backend with high-level render command support", layer.ID)
+		}
+		if err := commandCanvas.RenderCommands(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures}); err != nil {
+			return fmt.Errorf("submit command layer %q: %w", layer.ID, err)
+		}
 	}
+	return nil
 }

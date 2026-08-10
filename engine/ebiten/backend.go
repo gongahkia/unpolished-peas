@@ -7,6 +7,7 @@ import (
 	"math"
 
 	"github.com/gongahkia/72/engine"
+	engineRender "github.com/gongahkia/72/engine/render"
 	"github.com/hajimehoshi/ebiten/v2"
 	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
@@ -29,16 +30,28 @@ func (Backend) Run(runtime *engine.Runtime) error {
 	if config.Title != "" {
 		ebiten.SetWindowTitle(config.Title)
 	}
-	return ebiten.RunGame(game{runtime: runtime})
+	return ebiten.RunGame(&game{runtime: runtime, renderer: NewRenderBackend(nil)})
 }
 
-type game struct{ runtime *engine.Runtime }
+type game struct {
+	runtime  *engine.Runtime
+	renderer *RenderBackend
+	drawErr  error
+}
 
-func (g game) Update() error { return g.runtime.Update(sampleInput(g.runtime.Actions())) }
+func (g *game) Update() error {
+	if g.drawErr != nil {
+		return g.drawErr
+	}
+	return g.runtime.Update(sampleInput(g.runtime.Actions()))
+}
 
-func (g game) Draw(screen *ebiten.Image) { g.runtime.Draw(canvas{image: screen}) }
+func (g *game) Draw(screen *ebiten.Image) {
+	g.renderer.SetTarget(screen)
+	g.drawErr = g.runtime.Draw(canvas{image: screen, renderer: g.renderer})
+}
 
-func (g game) Layout(_, _ int) (int, int) {
+func (g *game) Layout(_, _ int) (int, int) {
 	viewport := g.runtime.Config().Viewport
 	return int(viewport.W), int(viewport.H)
 }
@@ -161,7 +174,12 @@ func ebitenKeyFor(key engine.Key) (ebiten.Key, bool) {
 	}
 }
 
-type canvas struct{ image *ebiten.Image }
+type canvas struct {
+	image    *ebiten.Image
+	renderer *RenderBackend
+}
+
+func (c canvas) RenderCommands(frame engineRender.Frame) error { return c.renderer.Render(frame) }
 
 func (c canvas) Clear(value engine.Color) { c.image.Fill(ebitenColor(value)) }
 

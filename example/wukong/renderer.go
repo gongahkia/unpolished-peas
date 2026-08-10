@@ -5,6 +5,7 @@ import (
 	"math"
 
 	"github.com/gongahkia/72/engine"
+	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
@@ -114,29 +115,50 @@ func drawGlyph(canvas engine.Canvas, glyph string, position sim.Vec, color engin
 	canvas.DrawText(engine.Vec2{X: position.X - 3, Y: position.Y + 4}, glyph, color)
 }
 
-func (g *wukongGame) drawHUD(frame engine.Frame) {
+func (g *wukongGame) drawHUDCommands(frame engine.CommandFrame) error {
 	snapshot := g.snapshot
 	p := snapshot.Player
-	canvas := frame.Canvas
-	canvas.DrawText(engine.Vec2{X: 8, Y: 15}, "Wukong danger playground  |  A/D move  W/space jump  S down  Shift roll", rgba(229, 233, 240, 255))
-	canvas.DrawText(engine.Vec2{X: 8, Y: 30}, "E carry/drop  J throw  |  stomp, bait chargers, and take optional treasure", rgba(189, 207, 225, 255))
-	canvas.DrawText(engine.Vec2{X: 8, Y: 45}, "F1 same seed  F2 new seed  Enter restart  Tab debug  F6 save replay", rgba(189, 207, 225, 255))
-	canvas.DrawText(engine.Vec2{X: 8, Y: 342}, fmt.Sprintf("seed %x  room:%d/%d  treasure:%d  enemies:%d  breaks:%d  %s", snapshot.Seed, snapshot.Stats.RoomsReached, sim.RoomCount, snapshot.Stats.Treasure, snapshot.Stats.EnemiesDefeated, snapshot.Stats.TerrainBroken, p.State), rgba(120, 236, 204, 255))
+	drawText := func(position engine.Vec2, value string, color engine.Color) error {
+		return frame.DrawText(render.TextDraw{Position: render.Vec2{X: position.X, Y: position.Y}, Value: value, Color: commandColor(color)})
+	}
+	if err := drawText(engine.Vec2{X: 8, Y: 15}, "Wukong danger playground  |  A/D move  W/space jump  S down  Shift roll", rgba(229, 233, 240, 255)); err != nil {
+		return err
+	}
+	if err := drawText(engine.Vec2{X: 8, Y: 30}, "E carry/drop  J throw  |  stomp, bait chargers, and take optional treasure", rgba(189, 207, 225, 255)); err != nil {
+		return err
+	}
+	if err := drawText(engine.Vec2{X: 8, Y: 45}, "F1 same seed  F2 new seed  Enter restart  Tab debug  F6 save replay", rgba(189, 207, 225, 255)); err != nil {
+		return err
+	}
+	if err := drawText(engine.Vec2{X: 8, Y: 342}, fmt.Sprintf("seed %x  room:%d/%d  treasure:%d  enemies:%d  breaks:%d  %s", snapshot.Seed, snapshot.Stats.RoomsReached, sim.RoomCount, snapshot.Stats.Treasure, snapshot.Stats.EnemiesDefeated, snapshot.Stats.TerrainBroken, p.State), rgba(120, 236, 204, 255)); err != nil {
+		return err
+	}
 	if p.HeldObjectID >= 0 {
-		canvas.DrawText(engine.Vec2{X: 430, Y: 342}, fmt.Sprintf("holding object %d", p.HeldObjectID), rgba(253, 213, 119, 255))
+		if err := drawText(engine.Vec2{X: 430, Y: 342}, fmt.Sprintf("holding object %d", p.HeldObjectID), rgba(253, 213, 119, 255)); err != nil {
+			return err
+		}
 	}
 	if g.paused {
-		canvas.DrawText(engine.Vec2{X: 210, Y: 180}, "PAUSED — P resumes, . steps", rgba(255, 240, 162, 255))
+		if err := drawText(engine.Vec2{X: 210, Y: 180}, "PAUSED — P resumes, . steps", rgba(255, 240, 162, 255)); err != nil {
+			return err
+		}
 	}
 	if snapshot.Lost {
-		canvas.DrawText(engine.Vec2{X: 172, Y: 180}, "RESET — Enter or F1 repeats this seed", rgba(255, 107, 108, 255))
+		if err := drawText(engine.Vec2{X: 172, Y: 180}, "RESET — Enter or F1 repeats this seed", rgba(255, 107, 108, 255)); err != nil {
+			return err
+		}
 	}
 	if snapshot.Won {
-		canvas.DrawText(engine.Vec2{X: 156, Y: 180}, "RUN COMPLETE — Enter/F1 repeats, F2 varies", rgba(113, 242, 160, 255))
+		if err := drawText(engine.Vec2{X: 156, Y: 180}, "RUN COMPLETE — Enter/F1 repeats, F2 varies", rgba(113, 242, 160, 255)); err != nil {
+			return err
+		}
 	}
 	if g.status != "" {
-		canvas.DrawText(engine.Vec2{X: 8, Y: 326}, g.status, rgba(255, 219, 137, 255))
+		if err := drawText(engine.Vec2{X: 8, Y: 326}, g.status, rgba(255, 219, 137, 255)); err != nil {
+			return err
+		}
 	}
+	return nil
 }
 
 func (g *wukongGame) drawDebug(frame engine.Frame) {
@@ -183,4 +205,8 @@ func rect(value sim.Rect) engine.Rect {
 
 func rgba(red, green, blue, alpha uint8) engine.Color {
 	return engine.Color{R: red, G: green, B: blue, A: alpha}
+}
+
+func commandColor(value engine.Color) render.Color {
+	return render.Color{R: value.R, G: value.G, B: value.B, A: value.A}
 }
