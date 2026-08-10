@@ -71,7 +71,10 @@ func enemyVisualFor(enemy sim.EnemySnapshot, tick uint64) enemyVisual {
 		case sim.EnemyTelegraph:
 			visual.frame, visual.scaleX, visual.scaleY = 9, .66, .58
 		case sim.EnemyDive:
-			visual.frame, visual.scaleX, visual.scaleY, visual.tilt = 10, .58, .68, math.Pi/2
+			visual.frame, visual.facing, visual.scaleX, visual.scaleY = 10, 1, .58, .68
+			if enemy.Velocity.LengthSq() > 0 {
+				visual.tilt = math.Atan2(enemy.Velocity.Y, enemy.Velocity.X) - math.Pi/2
+			}
 		case sim.EnemyStunned:
 			visual.frame, visual.offsetY = 11, bob(tick, 10, .7)
 		default:
