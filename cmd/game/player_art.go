@@ -1,10 +1,7 @@
 package main
 
 import (
-	"bytes"
 	_ "embed"
-	"fmt"
-	"image"
 	"image/color"
 	_ "image/png"
 	"math"
@@ -14,15 +11,12 @@ import (
 	"github.com/hajimehoshi/ebiten/v2/vector"
 )
 
-const (
-	playerAtlasColumns = 4
-	playerFrameSize    = 64
-)
+const playerAtlasName = "player"
 
 //go:embed assets/player-atlas.png
 var playerAtlasPNG []byte
 
-type playerArt struct{ atlas *ebiten.Image }
+type playerArt struct{ atlas textureAtlas }
 
 type playerVisual struct {
 	frame          int
@@ -33,16 +27,16 @@ type playerVisual struct {
 }
 
 func loadPlayerArt() (*playerArt, error) {
-	source, _, err := image.Decode(bytes.NewReader(playerAtlasPNG))
+	atlas, err := loadTextureAtlas(playerAtlasPNG, playerAtlasName)
 	if err != nil {
-		return nil, fmt.Errorf("decode player atlas: %w", err)
+		return nil, err
 	}
-	return &playerArt{atlas: ebiten.NewImageFromImage(source)}, nil
+	return &playerArt{atlas: atlas}, nil
 }
 
 func (art *playerArt) draw(screen *ebiten.Image, player sim.PlayerSnapshot, tick uint64) {
 	visual := playerVisualFor(player, tick)
-	frame := art.atlas.SubImage(playerFrameRect(visual.frame)).(*ebiten.Image)
+	frame := art.atlas.frame(visual.frame)
 	feet := 11.0
 	if player.Crouching || player.State == sim.TraversalRolling || player.State == sim.TraversalDiving {
 		feet = 7
@@ -53,7 +47,7 @@ func (art *playerArt) draw(screen *ebiten.Image, player sim.PlayerSnapshot, tick
 
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
-	op.GeoM.Translate(-playerFrameSize/2, -52)
+	op.GeoM.Translate(-textureAtlasFrame/2, -52)
 	scaleX := visual.scaleX
 	if visual.facing < 0 {
 		scaleX = -scaleX
@@ -66,12 +60,6 @@ func (art *playerArt) draw(screen *ebiten.Image, player sim.PlayerSnapshot, tick
 }
 
 var colorShadow = colorRGBA(5, 8, 14, 112)
-
-func playerFrameRect(frame int) image.Rectangle {
-	x := frame % playerAtlasColumns * playerFrameSize
-	y := frame / playerAtlasColumns * playerFrameSize
-	return image.Rect(x, y, x+playerFrameSize, y+playerFrameSize)
-}
 
 func playerVisualFor(player sim.PlayerSnapshot, tick uint64) playerVisual {
 	visual := playerVisual{frame: 0, facing: player.Facing, scaleX: .56, scaleY: .56}
