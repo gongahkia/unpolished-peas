@@ -54,5 +54,17 @@ painter order using the existing `engine/render` rectangle and text commands.
 Text coordinates are baselines relative to the node's top-left corner. The
 tree validates finite geometry and clips every node's visuals and descendants
 to its bounds through the nested screen-space command clip contract; its hit
-tests use the same ancestor boundary. Render targets, a concrete host input
-sample, and a production GPU text/render path remain unimplemented.
+tests use the same ancestor boundary. Render targets and a production GPU
+text/render path remain unimplemented.
+
+## Runnable sample
+
+`example/ui` is a small command-only retained-UI sample. It maps arrow/tab,
+enter/space, and primary-pointer events to two interactive buttons, then draws
+the tree through one screen-space command layer. Run it with `make
+ui-sample-run`, or build its desktop and wasm artifacts with `make
+ui-sample-build` and `make ui-sample-wasm`.
+
+The sample exercises the transitional Ebitengine adapter. It demonstrates the
+portable input and rendering contracts but is not evidence of an engine-owned
+native or browser host.

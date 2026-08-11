@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt benchmark benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm
+.PHONY: example-run test vet fmt benchmark benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -45,3 +45,16 @@ first-game-wasm:
 	GOOS=js GOARCH=wasm go build -o dist/first-game/first-game.wasm ./example/first-game
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/first-game/wasm_exec.js
 	cp example/first-game/web/index.html dist/first-game/index.html
+
+ui-sample-run:
+	go run ./example/ui
+
+ui-sample-build:
+	mkdir -p bin
+	go build -o bin/ui-sample ./example/ui
+
+ui-sample-wasm:
+	mkdir -p dist/ui-sample
+	GOOS=js GOARCH=wasm go build -o dist/ui-sample/ui-sample.wasm ./example/ui
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/ui-sample/wasm_exec.js
+	cp example/ui/web/index.html dist/ui-sample/index.html
