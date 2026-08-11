@@ -28,6 +28,18 @@ resize callbacks, `surface destroyed`, and `clean shutdown`. Keep the output
 with the platform, GPU, driver, window system, and command used; it is the
 evidence needed for the compatibility report.
 
+For a bounded framework-lifecycle smoke run, request a resize halfway through
+the duration and then exit through `App.Quit`:
+
+```sh
+CGO_ENABLED=0 go run . -smoke-duration=2s
+```
+
+This should report the resize request, any resize callback accepted by the
+window manager, `smoke quit`, and `clean shutdown`. It verifies the spike's
+controlled teardown path; it does not replace a user-initiated window-close
+test.
+
 Compile-only target checks do not require a window server:
 
 ```sh
@@ -44,8 +56,15 @@ On 2026-08-11, this repository's Fedora 43 Linux environment ran the spike
 under the available graphical session on Intel Iris Xe Graphics (RPL-U). GoGPU
 selected its Vulkan backend, reported `surface available after 63ms`, and
 reported `first frame after 64ms`. The process was deliberately interrupted
-after eight seconds by the non-interactive test harness, so that run does not
-verify a user-initiated clean shutdown or sustained frame cadence.
+after eight seconds by the non-interactive test harness.
+
+On 2026-08-12, `CGO_ENABLED=0 go run . -smoke-duration=2s` selected the same
+Vulkan adapter, reported a surface after 70 ms and a first frame after 71 ms,
+requested a logical `800x450` resize, then reported `smoke quit` and `clean
+shutdown`. The Wayland compositor did not emit a resize callback for that
+request; GoGPU documents `RequestSize` as advisory on Wayland. This verifies a
+framework-controlled teardown, not a user-initiated close, sustained frame
+cadence, or device-loss recovery.
 
 `GOOS=linux GOARCH=amd64`, `GOOS=windows GOARCH=amd64`, and
 `GOOS=darwin GOARCH=arm64` compile checks passed on the same date. Windows and
