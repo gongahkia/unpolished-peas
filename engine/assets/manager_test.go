@@ -3,6 +3,7 @@ package assets
 import (
 	"bytes"
 	"encoding/binary"
+	"encoding/json"
 	"image"
 	"image/color"
 	"image/png"
@@ -128,6 +129,69 @@ func TestStandardLoadersRejectMalformedInput(t *testing.T) {
 	}
 	if _, err := DecodeTileMap("bad.tiles.json", strings.NewReader(`{"texture":"../tiles.png","width":1,"height":1,"atlasWidth":16,"atlasHeight":16,"tileWidth":16,"tileHeight":16,"tiles":[1]}`)); err == nil {
 		t.Fatal("invalid tile map decoded")
+	}
+}
+
+func TestProjectManifestBuildsAReproduciblePackage(t *testing.T) {
+	manifestData := []byte(`{
+  "version": 1,
+  "name": "minimal",
+  "assets": [
+    {"path":"world.tiles.json","type":"tile-map","mode":"embed","dependencies":["tiles.png"]},
+    {"path":"sound.wav","type":"audio","mode":"external"},
+    {"path":"tiles.png","type":"image","mode":"embed"}
+  ]
+}`)
+	source := fstest.MapFS{
+		"72.assets.json":   {Data: manifestData},
+		"tiles.png":        {Data: pngData(t)},
+		"sound.wav":        {Data: wav16(0, 16_384)},
+		"world.tiles.json": {Data: []byte(`{"texture":"tiles.png","width":2,"height":1,"atlasWidth":32,"atlasHeight":16,"tileWidth":16,"tileHeight":16,"tiles":[0,-1]}`)},
+	}
+	manifest, err := LoadProjectManifest(source, "72.assets.json")
+	if err != nil {
+		t.Fatalf("load manifest: %v", err)
+	}
+	first, err := BuildPackage(source, manifest)
+	if err != nil {
+		t.Fatalf("build package: %v", err)
+	}
+	reordered := manifest
+	reordered.Assets[0], reordered.Assets[2] = reordered.Assets[2], reordered.Assets[0]
+	second, err := BuildPackage(source, reordered)
+	if err != nil {
+		t.Fatalf("build reordered package: %v", err)
+	}
+	if !bytes.Equal(first, second) {
+		t.Fatalf("repeated package bytes differ:\n%s\n%s", first, second)
+	}
+	var built Package
+	if err := json.Unmarshal(first, &built); err != nil {
+		t.Fatalf("decode package: %v", err)
+	}
+	if built.Version != PackageVersion || built.Name != "minimal" || len(built.Assets) != 3 || built.Assets[0].Path != "sound.wav" || built.Assets[0].Mode != ExternalAsset || len(built.Assets[0].Data) != 0 || len(built.Assets[0].SHA256) != 64 {
+		t.Fatalf("package = %+v", built)
+	}
+	if built.Assets[2].Path != "world.tiles.json" || len(built.Assets[2].Dependencies) != 1 || built.Assets[2].Dependencies[0] != "tiles.png" || len(built.Assets[2].Data) == 0 {
+		t.Fatalf("embedded tile package = %+v", built.Assets[2])
+	}
+}
+
+func TestProjectManifestRejectsInvalidPathsDuplicatesAndMissingAssets(t *testing.T) {
+	source := fstest.MapFS{"tiles.png": {Data: pngData(t)}}
+	base := ProjectManifest{Version: PackageVersion, Name: "test", Assets: []ManifestAsset{{Path: "tiles.png", Type: AssetImage, Mode: EmbedAsset}}}
+	if _, err := BuildPackage(source, ProjectManifest{Version: PackageVersion, Name: "test", Assets: []ManifestAsset{{Path: "../tiles.png", Type: AssetImage, Mode: EmbedAsset}}}); err == nil || !strings.Contains(err.Error(), "project-relative") {
+		t.Fatalf("invalid manifest path error = %v", err)
+	}
+	duplicate := base
+	duplicate.Assets = append(duplicate.Assets, duplicate.Assets[0])
+	if _, err := BuildPackage(source, duplicate); err == nil || !strings.Contains(err.Error(), "more than once") {
+		t.Fatalf("duplicate manifest path error = %v", err)
+	}
+	missing := base
+	missing.Assets[0].Path = "missing.png"
+	if _, err := BuildPackage(source, missing); err == nil || !strings.Contains(err.Error(), `package asset "missing.png": open source`) {
+		t.Fatalf("missing source error = %v", err)
 	}
 }
 
