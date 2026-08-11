@@ -261,13 +261,37 @@ func finiteSpriteValue(value float64) bool { return !math.IsNaN(value) && !math.
 
 // DrawTileMap records a tile-map batch.
 func (q *Queue) DrawTileMap(layer int, space Space, tiles TileMap) error {
-	if tiles.Texture.ID == 0 || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Columns <= 0 {
-		return fmt.Errorf("tile map requires texture, atlas, positive tile size, and columns")
+	if err := validateTileMap(tiles); err != nil {
+		return err
+	}
+	return q.append(Command{Kind: TileMapCommand, Layer: layer, Space: space, Payload: tiles})
+}
+
+func validateTileMap(tiles TileMap) error {
+	if tiles.Texture.ID == 0 || !finiteVec(tiles.Atlas) || !finiteVec(tiles.TileSize) || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Columns <= 0 {
+		return fmt.Errorf("tile map requires texture, finite atlas, positive tile size, and columns")
 	}
 	if len(tiles.Tiles) == 0 {
 		return fmt.Errorf("tile map must contain tiles")
 	}
-	return q.append(Command{Kind: TileMapCommand, Layer: layer, Space: space, Payload: tiles})
+	sourceColumnsValue, sourceRowsValue := tiles.Atlas.X/tiles.TileSize.X, tiles.Atlas.Y/tiles.TileSize.Y
+	if sourceColumnsValue > float64(maxInt()) || sourceRowsValue > float64(maxInt()) {
+		return fmt.Errorf("tile map atlas has too many tiles")
+	}
+	sourceColumns, sourceRows := int(sourceColumnsValue), int(sourceRowsValue)
+	if sourceColumns <= 0 || sourceRows <= 0 {
+		return fmt.Errorf("tile map atlas must contain at least one tile")
+	}
+	if sourceColumns > maxInt()/sourceRows {
+		return fmt.Errorf("tile map atlas has too many tiles")
+	}
+	maxTile := sourceColumns*sourceRows - 1
+	for index, tile := range tiles.Tiles {
+		if tile > maxTile {
+			return fmt.Errorf("tile map tile %d has atlas index %d above maximum %d", index, tile, maxTile)
+		}
+	}
+	return nil
 }
 
 // FillRect records a filled rectangle.
