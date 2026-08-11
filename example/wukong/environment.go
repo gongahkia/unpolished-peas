@@ -12,11 +12,10 @@ const (
 	foregroundDepth     = 1.08
 )
 
-func (g *wukongGame) drawDeepBackground(frame engine.Frame) {
-	canvas := frame.Canvas
+func (g *wukongGame) drawDeepBackground(canvas *commandPainter) {
 	seed := g.snapshot.Seed
 	const spacing = 80.0
-	first, last := visibleLayerColumns(frame.Camera.Position().X, deepBackgroundDepth, spacing)
+	first, last := visibleLayerColumns(canvas.frame.Camera.Position().X, deepBackgroundDepth, spacing)
 	for column := first; column <= last; column++ {
 		hash := environmentHash(seed, uint64(column), 1)
 		x := float64(column) * spacing
@@ -30,7 +29,7 @@ func (g *wukongGame) drawDeepBackground(frame engine.Frame) {
 	}
 
 	const glowSpacing = 356.0
-	first, last = visibleLayerColumns(frame.Camera.Position().X, deepBackgroundDepth, glowSpacing)
+	first, last = visibleLayerColumns(canvas.frame.Camera.Position().X, deepBackgroundDepth, glowSpacing)
 	for column := first; column <= last; column++ {
 		hash := environmentHash(seed, uint64(column), 3)
 		x := float64(column)*glowSpacing + environmentUnit(hash, 4)*90
@@ -41,11 +40,10 @@ func (g *wukongGame) drawDeepBackground(frame engine.Frame) {
 	}
 }
 
-func (g *wukongGame) drawBackground(frame engine.Frame) {
-	canvas := frame.Canvas
+func (g *wukongGame) drawBackground(canvas *commandPainter) {
 	seed := g.snapshot.Seed
 	const spacing = 104.0
-	first, last := visibleLayerColumns(frame.Camera.Position().X, backgroundDepth, spacing)
+	first, last := visibleLayerColumns(canvas.frame.Camera.Position().X, backgroundDepth, spacing)
 	for column := first; column <= last; column++ {
 		hash := environmentHash(seed, uint64(column), 7)
 		width := 68 + environmentUnit(hash, 8)*42
@@ -65,10 +63,9 @@ func (g *wukongGame) drawBackground(frame engine.Frame) {
 	}
 }
 
-func (g *wukongGame) drawForeground(frame engine.Frame) {
-	canvas := frame.Canvas
+func (g *wukongGame) drawForeground(canvas *commandPainter) {
 	seed := g.snapshot.Seed
-	camera := frame.Camera
+	camera := canvas.frame.Camera
 	shake := camera.Offset()
 	const spacing = 94.0
 	first, last := visibleLayerColumns(camera.Position().X, foregroundDepth, spacing)

@@ -5,53 +5,52 @@ import (
 	"github.com/gongahkia/72/engine/render"
 )
 
-// commandCanvas lets the established presentation routines submit through a
-// CommandFrame while preserving their existing painter order and geometry.
-// It retains only the first validation failure because Canvas methods have no
-// error return.
-type commandCanvas struct {
+// commandPainter records the established presentation routines into a
+// CommandFrame while preserving their painter order and geometry. It retains
+// only the first validation failure so scene helpers can remain linear.
+type commandPainter struct {
 	frame engine.CommandFrame
 	err   error
 }
 
-func commandLayer(frame engine.CommandFrame, draw func(engine.Frame)) error {
-	canvas := &commandCanvas{frame: frame}
-	draw(engine.Frame{Canvas: canvas, Camera: frame.Camera, Tick: frame.Tick, Viewport: frame.Viewport})
-	return canvas.err
+func commandLayer(frame engine.CommandFrame, draw func(*commandPainter)) error {
+	painter := &commandPainter{frame: frame}
+	draw(painter)
+	return painter.err
 }
 
-func (c *commandCanvas) record(err error) {
-	if c.err == nil {
-		c.err = err
+func (p *commandPainter) record(err error) {
+	if p.err == nil {
+		p.err = err
 	}
 }
 
-func (c *commandCanvas) Clear(color engine.Color) {
-	c.record(c.frame.Clear(commandColor(color)))
+func (p *commandPainter) Clear(color engine.Color) {
+	p.record(p.frame.Clear(commandColor(color)))
 }
 
-func (c *commandCanvas) FillRect(bounds engine.Rect, color engine.Color) {
-	c.record(c.frame.FillRect(render.RectDraw{Bounds: commandRect(bounds), Color: commandColor(color)}))
+func (p *commandPainter) FillRect(bounds engine.Rect, color engine.Color) {
+	p.record(p.frame.FillRect(render.RectDraw{Bounds: commandRect(bounds), Color: commandColor(color)}))
 }
 
-func (c *commandCanvas) StrokeRect(bounds engine.Rect, width float64, color engine.Color) {
-	c.record(c.frame.StrokeRect(render.RectDraw{Bounds: commandRect(bounds), Width: width, Color: commandColor(color)}))
+func (p *commandPainter) StrokeRect(bounds engine.Rect, width float64, color engine.Color) {
+	p.record(p.frame.StrokeRect(render.RectDraw{Bounds: commandRect(bounds), Width: width, Color: commandColor(color)}))
 }
 
-func (c *commandCanvas) FillCircle(center engine.Vec2, radius float64, color engine.Color) {
-	c.record(c.frame.FillCircle(render.CircleDraw{Center: commandVec(center), Radius: radius, Color: commandColor(color)}))
+func (p *commandPainter) FillCircle(center engine.Vec2, radius float64, color engine.Color) {
+	p.record(p.frame.FillCircle(render.CircleDraw{Center: commandVec(center), Radius: radius, Color: commandColor(color)}))
 }
 
-func (c *commandCanvas) StrokeCircle(center engine.Vec2, radius, width float64, color engine.Color) {
-	c.record(c.frame.StrokeCircle(render.CircleDraw{Center: commandVec(center), Radius: radius, Width: width, Color: commandColor(color)}))
+func (p *commandPainter) StrokeCircle(center engine.Vec2, radius, width float64, color engine.Color) {
+	p.record(p.frame.StrokeCircle(render.CircleDraw{Center: commandVec(center), Radius: radius, Width: width, Color: commandColor(color)}))
 }
 
-func (c *commandCanvas) StrokeLine(start, end engine.Vec2, width float64, color engine.Color) {
-	c.record(c.frame.StrokeLine(render.LineDraw{Start: commandVec(start), End: commandVec(end), Width: width, Color: commandColor(color)}))
+func (p *commandPainter) StrokeLine(start, end engine.Vec2, width float64, color engine.Color) {
+	p.record(p.frame.StrokeLine(render.LineDraw{Start: commandVec(start), End: commandVec(end), Width: width, Color: commandColor(color)}))
 }
 
-func (c *commandCanvas) DrawText(position engine.Vec2, value string, color engine.Color) {
-	c.record(c.frame.DrawText(render.TextDraw{Position: commandVec(position), Value: value, Color: commandColor(color)}))
+func (p *commandPainter) DrawText(position engine.Vec2, value string, color engine.Color) {
+	p.record(p.frame.DrawText(render.TextDraw{Position: commandVec(position), Value: value, Color: commandColor(color)}))
 }
 
 func (g *wukongGame) drawDeepBackgroundCommands(frame engine.CommandFrame) error {

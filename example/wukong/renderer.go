@@ -16,9 +16,9 @@ func followCamera(position sim.Vec) sim.Vec {
 	}
 }
 
-func (g *wukongGame) drawWorld(frame engine.Frame) { drawScene(frame.Canvas, g.snapshot) }
+func (g *wukongGame) drawWorld(canvas *commandPainter) { drawScene(canvas, g.snapshot) }
 
-func drawScene(canvas engine.Canvas, snapshot sim.RenderSnapshot) {
+func drawScene(canvas *commandPainter, snapshot sim.RenderSnapshot) {
 	for _, terrain := range snapshot.Terrain {
 		terrainColor := rgba(63, 70, 84, 255)
 		switch terrain.Kind {
@@ -45,7 +45,7 @@ func drawScene(canvas engine.Canvas, snapshot sim.RenderSnapshot) {
 	canvas.StrokeLine(vec(p.Pos), vec(p.Pos.Add(p.Aim.Scale(18))), 1, rgba(88, 216, 251, 255))
 }
 
-func drawObject(canvas engine.Canvas, object sim.ObjectSnapshot) {
+func drawObject(canvas *commandPainter, object sim.ObjectSnapshot) {
 	bounds := sim.Rect{X: object.Pos.X - object.Size.X/2, Y: object.Pos.Y - object.Size.Y/2, W: object.Size.X, H: object.Size.Y}
 	c := rgba(182, 185, 196, 255)
 	glyph := "?"
@@ -70,7 +70,7 @@ func drawObject(canvas engine.Canvas, object sim.ObjectSnapshot) {
 	drawGlyph(canvas, glyph, object.Pos, rgba(15, 17, 21, 255))
 }
 
-func drawEnemy(canvas engine.Canvas, enemy sim.EnemySnapshot, tick uint64) {
+func drawEnemy(canvas *commandPainter, enemy sim.EnemySnapshot, tick uint64) {
 	bounds := sim.Rect{X: enemy.Pos.X - enemy.Size.X/2, Y: enemy.Pos.Y - enemy.Size.Y/2, W: enemy.Size.X, H: enemy.Size.Y}
 	c := rgba(235, 116, 94, 255)
 	glyph := ">"
@@ -98,7 +98,7 @@ func drawEnemy(canvas engine.Canvas, enemy sim.EnemySnapshot, tick uint64) {
 	drawGlyph(canvas, glyph, enemy.Pos, rgba(19, 22, 31, 255))
 }
 
-func drawImpact(canvas engine.Canvas, impact sim.ImpactState, tick uint64) {
+func drawImpact(canvas *commandPainter, impact sim.ImpactState, tick uint64) {
 	if impact.Ticks == 0 {
 		return
 	}
@@ -111,7 +111,7 @@ func drawImpact(canvas engine.Canvas, impact sim.ImpactState, tick uint64) {
 	}
 }
 
-func drawGlyph(canvas engine.Canvas, glyph string, position sim.Vec, color engine.Color) {
+func drawGlyph(canvas *commandPainter, glyph string, position sim.Vec, color engine.Color) {
 	canvas.DrawText(engine.Vec2{X: position.X - 3, Y: position.Y + 4}, glyph, color)
 }
 
@@ -161,12 +161,11 @@ func (g *wukongGame) drawHUDCommands(frame engine.CommandFrame) error {
 	return nil
 }
 
-func (g *wukongGame) drawDebug(frame engine.Frame) {
+func (g *wukongGame) drawDebug(canvas *commandPainter) {
 	if !g.snapshot.Debug {
 		return
 	}
-	canvas := frame.Canvas
-	camera := frame.Camera.Position()
+	camera := canvas.frame.Camera.Position()
 	for _, room := range g.snapshot.Run.Rooms {
 		canvas.DrawText(engine.Vec2{X: room.Bounds.X - camera.X + 8, Y: 82}, room.Template.String(), rgba(130, 180, 255, 255))
 	}
