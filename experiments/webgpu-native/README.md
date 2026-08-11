@@ -6,10 +6,10 @@ approval to expose GoGPU or WebGPU types through the 72 API.
 
 The spike uses `github.com/gogpu/gogpu v0.52.1`, whose native default path uses
 `github.com/gogpu/wgpu v0.31.2`. It creates a native window, selects an adapter,
-presents a triangle, reports first-surface and first-frame latency, observes
-resize and surface lifecycle callbacks, and exits through the framework's
-shutdown path. The selected adapter is an implementation detail of the test,
-not an engine API decision.
+continuously presents a triangle, reports first-surface and first-frame latency
+plus per-second and total frame counts, observes resize and surface lifecycle
+callbacks, and exits through the framework's shutdown path. The selected adapter
+is an implementation detail of the test, not an engine API decision.
 
 ## reproduce
 
@@ -36,9 +36,9 @@ CGO_ENABLED=0 go run . -smoke-duration=2s
 ```
 
 This should report the resize request, any resize callback accepted by the
-window manager, `smoke quit`, and `clean shutdown`. It verifies the spike's
-controlled teardown path; it does not replace a user-initiated window-close
-test.
+window manager, frame counts, `smoke quit`, and `clean shutdown`. It verifies
+the spike's controlled teardown and sustained-present paths; it does not replace
+a user-initiated window-close or device-loss test.
 
 Compile-only target checks do not require a window server:
 
@@ -58,13 +58,32 @@ selected its Vulkan backend, reported `surface available after 63ms`, and
 reported `first frame after 64ms`. The process was deliberately interrupted
 after eight seconds by the non-interactive test harness.
 
-On 2026-08-12, `CGO_ENABLED=0 go run . -smoke-duration=2s` selected the same
-Vulkan adapter, reported a surface after 70 ms and a first frame after 71 ms,
-requested a logical `800x450` resize, then reported `smoke quit` and `clean
-shutdown`. The Wayland compositor did not emit a resize callback for that
-request; GoGPU documents `RequestSize` as advisory on Wayland. This verifies a
-framework-controlled teardown, not a user-initiated close, sustained frame
-cadence, or device-loss recovery.
+An initial 2026-08-12 smoke run selected the same Vulkan adapter, reported a
+surface after 70 ms and a first frame after 71 ms, requested a logical
+`800x450` resize, then exited cleanly. That version used GoGPU's animation token
+and did not redraw every tick: GoGPU v0.52.1's animating mode advances updates
+but only draws when invalidated. The current spike uses
+`WithContinuousRender(true)` so its frame count is evidence of actual presents.
+
+The corrected five-second Wayland smoke (`CGO_ENABLED=0 go run . -smoke-duration=5s`)
+reported a surface after 69 ms, first frame after 71 ms,
+per-second counts of 56, 60, 60, and 59, and 293 total frames over 5.006 s.
+The Wayland compositor did not emit a resize callback for the `800x450` request;
+`RequestSize` is advisory on Wayland. Shutdown returned successfully, but the
+Wayland client emitted `queue ... destroyed while proxies still attached` for an
+attached `wl_callback`. This warning is unresolved and prevents treating the
+Wayland shutdown path as clean evidence.
+
+The same five-second smoke through X11 used:
+
+```sh
+env -u WAYLAND_DISPLAY XDG_SESSION_TYPE=x11 CGO_ENABLED=0 go run . -smoke-duration=5s
+```
+
+It reported a surface and first frame after 50 ms, per-second counts of 61, 60,
+64, 60, and 60, a `resize: logical=800x450` callback, 306 total frames over
+5.048 s, and `clean shutdown` without that Wayland warning. It is one Fedora
+43/X11/Vulkan observation on Intel Iris Xe, not broad Linux certification.
 
 `GOOS=linux GOARCH=amd64`, `GOOS=windows GOARCH=amd64`, and
 `GOOS=darwin GOARCH=arm64` compile checks passed on the same date. Windows and
@@ -75,7 +94,7 @@ window presentation, resize, device loss, or shutdown on those systems.
 
 | Target | Current evidence | Required runtime dependencies / caveats |
 | --- | --- | --- |
-| Linux amd64 | One Vulkan adapter selection and first presented frame on Intel Iris Xe. | A graphical X11 or Wayland session and a usable Vulkan/GLES/software path supplied by the system. Driver and compositor coverage remains incomplete. |
+| Linux amd64 | One Intel Iris Xe/Vulkan first-frame observation; the corrected X11 smoke sustained 306 frames over 5.048 s, exercised an X11 resize callback, and shut down cleanly. The corresponding Wayland smoke sustained 293 frames over 5.006 s but emitted an unresolved callback teardown warning. | A graphical X11 or Wayland session and a usable Vulkan/GLES/software path supplied by the system. Driver and compositor coverage remains incomplete. |
 | Windows amd64 | Cross-compiles only. | Win32 plus a supported Vulkan, D3D12, GLES, or software path; a real Windows run remains required. |
 | macOS arm64 | Cross-compiles only. | Cocoa plus Metal or the software path; a real macOS run remains required. |
 

@@ -21,12 +21,12 @@ func main() {
 	started := time.Now()
 	app := gogpu.NewApp(gogpu.DefaultConfig().
 		WithTitle("72 WebGPU native spike").
-		WithSize(960, 540))
+		WithSize(960, 540).
+		WithContinuousRender(true))
 
 	var firstFrame time.Time
-	frames := 0
+	frames, totalFrames := 0, 0
 	reportAt := time.Now().Add(time.Second)
-	var smokeAnimation *gogpu.AnimationToken
 	smokeResizeRequested := false
 	smokeQuitRequested := false
 	app.OnSurfaceAvailable(func() {
@@ -47,6 +47,7 @@ func main() {
 			log.Printf("draw triangle: %v", err)
 		}
 		frames++
+		totalFrames++
 		if now := time.Now(); now.After(reportAt) {
 			fmt.Printf("frames in prior second: %d\n", frames)
 			frames, reportAt = 0, now.Add(time.Second)
@@ -55,9 +56,6 @@ func main() {
 	app.OnUpdate(func(float64) {
 		if *smokeDuration <= 0 {
 			return
-		}
-		if smokeAnimation == nil {
-			smokeAnimation = app.StartAnimation()
 		}
 		if smokeQuitRequested {
 			return
@@ -71,7 +69,6 @@ func main() {
 		if elapsed >= *smokeDuration {
 			smokeQuitRequested = true
 			fmt.Printf("smoke quit after %s\n", elapsed.Round(time.Millisecond))
-			smokeAnimation.Stop()
 			app.Quit()
 		}
 	})
@@ -79,5 +76,6 @@ func main() {
 	if err := app.Run(); err != nil {
 		log.Fatal(err)
 	}
+	fmt.Printf("rendered %d frames over %s\n", totalFrames, time.Since(started).Round(time.Millisecond))
 	fmt.Println("clean shutdown")
 }
