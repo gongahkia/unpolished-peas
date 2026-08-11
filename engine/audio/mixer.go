@@ -3,6 +3,7 @@ package audio
 
 import (
 	"fmt"
+	"math"
 	"sort"
 )
 
@@ -16,7 +17,15 @@ type Sound struct {
 
 // Valid reports whether sound contains a usable PCM format.
 func (s Sound) Valid() bool {
-	return s.SampleRate > 0 && s.Channels > 0 && len(s.Samples)%s.Channels == 0
+	if s.SampleRate <= 0 || s.Channels <= 0 || len(s.Samples) == 0 || len(s.Samples)%s.Channels != 0 {
+		return false
+	}
+	for _, sample := range s.Samples {
+		if math.IsNaN(float64(sample)) || math.IsInf(float64(sample), 0) || sample < -1 || sample > 1 {
+			return false
+		}
+	}
+	return true
 }
 
 // Bus identifies a mix group. The Master bus always exists.
@@ -49,6 +58,14 @@ type Backend interface {
 	Stop(VoiceID) error
 	SetVoice(Voice) error
 	SetBus(Bus, BusState) error
+}
+
+// CloseBackend is an optional Backend lifecycle boundary. A mixer calls Close
+// only when its owner is done with every voice and no longer needs the output
+// device.
+type CloseBackend interface {
+	Backend
+	Close() error
 }
 
 // BusState controls a mix group.
@@ -88,8 +105,8 @@ func (m *Mixer) CreateBus(bus Bus) error {
 
 // SetBus updates gain/mute state for a bus.
 func (m *Mixer) SetBus(bus Bus, state BusState) error {
-	if state.Volume < 0 {
-		return fmt.Errorf("audio bus %q has negative volume %g", bus, state.Volume)
+	if invalidGain(state.Volume) {
+		return fmt.Errorf("audio bus %q has non-finite or negative volume %g", bus, state.Volume)
 	}
 	if _, exists := m.buses[bus]; !exists {
 		return fmt.Errorf("audio bus %q does not exist", bus)
@@ -106,14 +123,14 @@ func (m *Mixer) Play(sound Sound, bus Bus, volume float64, loop bool) (VoiceID, 
 	if !sound.Valid() {
 		return 0, fmt.Errorf("sound must have interleaved samples, channels, and sample rate")
 	}
-	if volume < 0 {
-		return 0, fmt.Errorf("voice volume must not be negative")
+	if invalidGain(volume) {
+		return 0, fmt.Errorf("voice volume must be finite and non-negative")
 	}
 	if _, exists := m.buses[bus]; !exists {
 		return 0, fmt.Errorf("audio bus %q does not exist", bus)
 	}
 	m.nextID++
-	voice := Voice{ID: m.nextID, Sound: sound, Bus: bus, Volume: volume, Loop: loop}
+	voice := Voice{ID: m.nextID, Sound: cloneSound(sound), Bus: bus, Volume: volume, Loop: loop}
 	if m.backend != nil {
 		if err := m.backend.Start(voice); err != nil {
 			return 0, fmt.Errorf("start voice: %w", err)
@@ -125,8 +142,8 @@ func (m *Mixer) Play(sound Sound, bus Bus, volume float64, loop bool) (VoiceID, 
 
 // SetVoice updates a live voice. Sound and bus are immutable after Play.
 func (m *Mixer) SetVoice(id VoiceID, volume float64, position Vec2, spatial bool) error {
-	if volume < 0 {
-		return fmt.Errorf("voice volume must not be negative")
+	if invalidGain(volume) {
+		return fmt.Errorf("voice volume must be finite and non-negative")
 	}
 	voice, ok := m.voices[id]
 	if !ok {
@@ -160,10 +177,32 @@ func (m *Mixer) Stop(id VoiceID) bool {
 func (m *Mixer) Voices() []Voice {
 	voices := make([]Voice, 0, len(m.voices))
 	for _, voice := range m.voices {
+		voice.Sound = cloneSound(voice.Sound)
 		voices = append(voices, voice)
 	}
 	sort.Slice(voices, func(left, right int) bool { return voices[left].ID < voices[right].ID })
 	return voices
+}
+
+// Close stops all voices and closes an output backend that owns a device. It
+// is safe to call with a headless backend; a closed mixer still exposes its
+// configured buses but has no live voices.
+func (m *Mixer) Close() error {
+	var first error
+	for id := range m.voices {
+		if m.backend != nil {
+			if err := m.backend.Stop(id); err != nil && first == nil {
+				first = fmt.Errorf("stop voice %d: %w", id, err)
+			}
+		}
+		delete(m.voices, id)
+	}
+	if backend, ok := m.backend.(CloseBackend); ok {
+		if err := backend.Close(); err != nil && first == nil {
+			first = fmt.Errorf("close audio backend: %w", err)
+		}
+	}
+	return first
 }
 
 func (m *Mixer) applyBus(bus Bus) error {
@@ -174,4 +213,13 @@ func (m *Mixer) applyBus(bus Bus) error {
 		return fmt.Errorf("set audio bus %q: %w", bus, err)
 	}
 	return nil
+}
+
+func invalidGain(gain float64) bool {
+	return gain < 0 || math.IsNaN(gain) || math.IsInf(gain, 0)
+}
+
+func cloneSound(sound Sound) Sound {
+	sound.Samples = append([]float32(nil), sound.Samples...)
+	return sound
 }
