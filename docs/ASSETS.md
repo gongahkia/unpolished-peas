@@ -70,6 +70,6 @@ alignment, malformed font tables, JSON fields outside the tile-map contract,
 invalid atlas indices, and missing manifest dependencies fail at load time.
 
 MP3, Ogg, FLAC, animated image playback, variable-size tile layers, Tiled TMX,
-sprite packing, font rasterization, and source-art conversion are not currently
-supported. A platform audio or graphics library must not be used as an
-undeclared fallback decoder.
+sprite packing, and source-art conversion are not currently supported. Font
+rasterization is supplied by `render.NewGlyphAtlas`, which accepts the loaded
+`assets.Font` value without exposing an asset-manager or backend handle.

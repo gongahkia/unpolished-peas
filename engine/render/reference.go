@@ -151,7 +151,7 @@ func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 		if !ok {
 			return fmt.Errorf("text command has payload %T", command.Payload)
 		}
-		return b.drawText(Vec2{X: value.Position.X + offset.X, Y: value.Position.Y + offset.Y}, value.Value, value.Color)
+		return b.drawText(Vec2{X: value.Position.X + offset.X, Y: value.Position.Y + offset.Y}, value.Value, value.Color, value.Atlas)
 	default:
 		return fmt.Errorf("unsupported render command %d", command.Kind)
 	}
@@ -303,9 +303,12 @@ func (b *ReferenceBackend) strokeLine(start, end Vec2, width float64, tint Color
 	return nil
 }
 
-func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color) error {
+func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color, atlas *GlyphAtlas) error {
 	if !finiteVec(position) {
 		return fmt.Errorf("text position must be finite")
+	}
+	if atlas != nil {
+		return b.drawAtlasText(position, value, tint, atlas)
 	}
 	target := &image.NRGBA{Pix: b.image.Pixels, Stride: b.image.Width * 4, Rect: image.Rect(0, 0, b.image.Width, b.image.Height)}
 	drawer := font.Drawer{
@@ -315,6 +318,48 @@ func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color) err
 		Dot:  fixed.P(int(position.X), int(position.Y)),
 	}
 	drawer.DrawString(value)
+	return nil
+}
+
+func (b *ReferenceBackend) drawAtlasText(position Vec2, value string, tint Color, atlas *GlyphAtlas) error {
+	pen := position.X
+	for _, rune := range value {
+		glyph, err := atlas.Glyph(rune)
+		if err != nil {
+			return fmt.Errorf("resolve glyph %q: %w", rune, err)
+		}
+		if glyph.Source.W > 0 && glyph.Source.H > 0 {
+			page, _, ok := atlas.Page(glyph.Page)
+			if !ok {
+				return fmt.Errorf("glyph atlas page %d is unavailable", glyph.Page)
+			}
+			if err := b.drawImage(page, glyph.Source, Rect{X: pen + glyph.Offset.X, Y: position.Y + glyph.Offset.Y, W: glyph.Source.W, H: glyph.Source.H}, tint); err != nil {
+				return err
+			}
+		}
+		pen += glyph.Advance
+	}
+	return nil
+}
+
+func (b *ReferenceBackend) drawImage(source Image, region, bounds Rect, tint Color) error {
+	if !finiteRect(region) || region.W <= 0 || region.H <= 0 || region.X < 0 || region.Y < 0 || region.X+region.W > float64(source.Width) || region.Y+region.H > float64(source.Height) {
+		return fmt.Errorf("image source is outside portable image")
+	}
+	if !finiteRect(bounds) || bounds.W <= 0 || bounds.H <= 0 {
+		return fmt.Errorf("image bounds must be finite and positive")
+	}
+	for y := maxIntValue(0, int(math.Floor(bounds.Y))); y < minIntValue(b.image.Height, int(math.Ceil(bounds.Y+bounds.H))); y++ {
+		for x := maxIntValue(0, int(math.Floor(bounds.X))); x < minIntValue(b.image.Width, int(math.Ceil(bounds.X+bounds.W))); x++ {
+			centerX, centerY := float64(x)+.5, float64(y)+.5
+			if centerX < bounds.X || centerX >= bounds.X+bounds.W || centerY < bounds.Y || centerY >= bounds.Y+bounds.H {
+				continue
+			}
+			sourceX := sampleCoordinate(region.X+(centerX-bounds.X)*region.W/bounds.W, region.X, region.X+region.W)
+			sourceY := sampleCoordinate(region.Y+(centerY-bounds.Y)*region.H/bounds.H, region.Y, region.Y+region.H)
+			b.blend(x, y, scaleColor(sourceColor(source, sourceX, sourceY), tint))
+		}
+	}
 	return nil
 }
 

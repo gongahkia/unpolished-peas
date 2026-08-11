@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	"github.com/gongahkia/72/engine/diagnostics"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 func TestReferenceBackendUsesClearAndStableLayerOrder(t *testing.T) {
@@ -25,6 +26,24 @@ func TestReferenceBackendUsesClearAndStableLayerOrder(t *testing.T) {
 	}
 	if got, want := referencePixel(t, backend.Snapshot(), 0, 0), (Color{B: 255, A: 255}); got != want {
 		t.Fatalf("ordered pixel = %+v, want %+v", got, want)
+	}
+}
+
+func TestReferenceBackendRendersTextFromGlyphAtlas(t *testing.T) {
+	atlas, err := NewGlyphAtlas(testFontSource(goregular.TTF), GlyphAtlasOptions{Size: 13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	backend := newReferenceBackend(t, 24, 18)
+	var queue Queue
+	if err := queue.DrawText(0, ScreenSpace, TextDraw{Position: Vec2{X: 2, Y: 14}, Value: "A", Color: Color{R: 255, G: 255, B: 255, A: 255}, Atlas: atlas}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	if atlas.GlyphCount() != 1 || atlas.Pages() != 1 || !referenceRegionHasColor(backend.Snapshot(), 2, 1, 12, 14, Color{R: 255, G: 255, B: 255, A: 255}) {
+		t.Fatalf("atlas text was not rendered: glyphs=%d pages=%d", atlas.GlyphCount(), atlas.Pages())
 	}
 }
 

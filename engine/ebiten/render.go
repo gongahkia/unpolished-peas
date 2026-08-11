@@ -17,13 +17,23 @@ import (
 // Ebitengine render target. It exists only during 72's renderer transition;
 // applications still depend only on engine/render types.
 type RenderBackend struct {
-	target   *ebiten.Image
-	textures map[uint64]*ebiten.Image
+	target        *ebiten.Image
+	textures      map[uint64]*ebiten.Image
+	atlasTextures map[atlasPageKey]atlasPageTexture
+}
+
+type atlasPageKey struct {
+	atlas *render.GlyphAtlas
+	page  int
+}
+type atlasPageTexture struct {
+	image    *ebiten.Image
+	revision uint64
 }
 
 // NewRenderBackend creates a temporary renderer for target.
 func NewRenderBackend(target *ebiten.Image) *RenderBackend {
-	return &RenderBackend{target: target, textures: make(map[uint64]*ebiten.Image)}
+	return &RenderBackend{target: target, textures: make(map[uint64]*ebiten.Image), atlasTextures: make(map[atlasPageKey]atlasPageTexture)}
 }
 
 // SetTarget updates the Ebitengine target used for subsequent Render calls.
@@ -123,11 +133,57 @@ func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
 		if !ok {
 			return fmt.Errorf("text command has payload %T", command.Payload)
 		}
-		text.Draw(b.target, value.Value, basicfont.Face7x13, int(value.Position.X+translate.X), int(value.Position.Y+translate.Y), renderColor(value.Color))
+		if err := b.drawText(value, translate); err != nil {
+			return err
+		}
 	default:
 		return fmt.Errorf("unsupported render command %d", command.Kind)
 	}
 	return nil
+}
+
+func (b *RenderBackend) drawText(value render.TextDraw, translate render.Vec2) error {
+	if value.Atlas == nil {
+		text.Draw(b.target, value.Value, basicfont.Face7x13, int(value.Position.X+translate.X), int(value.Position.Y+translate.Y), renderColor(value.Color))
+		return nil
+	}
+	pen := value.Position.X + translate.X
+	for _, rune := range value.Value {
+		glyph, err := value.Atlas.Glyph(rune)
+		if err != nil {
+			return fmt.Errorf("resolve glyph %q: %w", rune, err)
+		}
+		if glyph.Source.W > 0 && glyph.Source.H > 0 {
+			page, err := b.atlasPage(value.Atlas, glyph.Page)
+			if err != nil {
+				return err
+			}
+			region := page.SubImage(image.Rect(int(glyph.Source.X), int(glyph.Source.Y), int(glyph.Source.X+glyph.Source.W), int(glyph.Source.Y+glyph.Source.H))).(*ebiten.Image)
+			op := &ebiten.DrawImageOptions{}
+			op.Filter = ebiten.FilterNearest
+			op.GeoM.Translate(pen+glyph.Offset.X, value.Position.Y+translate.Y+glyph.Offset.Y)
+			op.ColorScale.Scale(float32(value.Color.R)/255, float32(value.Color.G)/255, float32(value.Color.B)/255, float32(value.Color.A)/255)
+			b.target.DrawImage(region, op)
+		}
+		pen += glyph.Advance
+	}
+	return nil
+}
+
+func (b *RenderBackend) atlasPage(atlas *render.GlyphAtlas, index int) (*ebiten.Image, error) {
+	page, revision, ok := atlas.Page(index)
+	if !ok {
+		return nil, fmt.Errorf("glyph atlas page %d is unavailable", index)
+	}
+	key := atlasPageKey{atlas: atlas, page: index}
+	if cached, ok := b.atlasTextures[key]; ok && cached.revision == revision {
+		return cached.image, nil
+	}
+	decoded := image.NewNRGBA(image.Rect(0, 0, page.Width, page.Height))
+	copy(decoded.Pix, page.Pixels)
+	texture := ebiten.NewImageFromImage(decoded)
+	b.atlasTextures[key] = atlasPageTexture{image: texture, revision: revision}
+	return texture, nil
 }
 
 func (b *RenderBackend) drawSprite(store *render.TextureStore, sprite render.Sprite, translate render.Vec2) error {
