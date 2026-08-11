@@ -36,6 +36,7 @@ Start with the engine documentation, not the example source:
 - [structured runtime failures](docs/ERRORS.md)
 - [performance baseline and GPU-validation process](docs/PERFORMANCE.md)
 - [platform build and runtime evidence matrix](docs/SUPPORT.md)
+- [v0.1 release dry-run and evidence requirements](docs/RELEASING.md)
 - [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)

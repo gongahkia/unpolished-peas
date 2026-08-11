@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt benchmark benchmark-report example-build example-wasm first-game-run first-game-build first-game-wasm
+.PHONY: example-run test vet fmt benchmark benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -18,6 +18,10 @@ benchmark:
 benchmark-report:
 	test -n "$(REPORT)"
 	./scripts/capture-render-benchmark.sh "$(REPORT)"
+
+release-dry-run:
+	test -n "$(VERSION)"
+	./scripts/release-dry-run.sh "$(VERSION)"
 
 example-build:
 	mkdir -p bin
