@@ -29,6 +29,10 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 Start with the engine documentation, not the example source:
 
 - [public API stability and compatibility policy](docs/PUBLIC_API.md)
+- [architecture and ownership](docs/ARCHITECTURE.md)
+- [contributor workflow](CONTRIBUTING.md)
+- [host and renderer development](docs/BACKEND_DEVELOPMENT.md)
+- [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)
 - [2D physics boundary](docs/PHYSICS.md)
