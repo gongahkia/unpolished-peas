@@ -266,24 +266,32 @@ func spriteTransform(transform render.SpriteTransform) normalizedSpriteTransform
 }
 
 func (b *RenderBackend) drawTileMap(store *render.TextureStore, tiles render.TileMap, translate render.Vec2) error {
-	for index, tile := range tiles.Tiles {
-		if tile < 0 {
-			continue
-		}
-		column, row := index%tiles.Columns, index/tiles.Columns
-		sourceColumns := int(tiles.Atlas.X / tiles.TileSize.X)
-		if sourceColumns <= 0 {
-			return fmt.Errorf("tile map atlas is narrower than a tile")
-		}
-		sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
-		sprite := render.Sprite{
-			Texture: tiles.Texture,
-			Source:  render.Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-			Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-			Tint:    tiles.Tint,
-		}
-		if err := b.drawSprite(store, sprite, translate); err != nil {
-			return err
+	bounds := b.target.Bounds()
+	visible := tiles.VisibleRange(render.Rect{X: float64(bounds.Min.X) - translate.X, Y: float64(bounds.Min.Y) - translate.Y, W: float64(bounds.Dx()), H: float64(bounds.Dy())})
+	for row := visible.Row; row < visible.Row+visible.Rows; row++ {
+		for column := visible.Column; column < visible.Column+visible.Columns; column++ {
+			index := row*tiles.Columns + column
+			if index >= len(tiles.Tiles) {
+				continue
+			}
+			tile := tiles.Tiles[index]
+			if tile < 0 {
+				continue
+			}
+			sourceColumns := int(tiles.Atlas.X / tiles.TileSize.X)
+			if sourceColumns <= 0 {
+				return fmt.Errorf("tile map atlas is narrower than a tile")
+			}
+			sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
+			sprite := render.Sprite{
+				Texture: tiles.Texture,
+				Source:  render.Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Tint:    tiles.Tint,
+			}
+			if err := b.drawSprite(store, sprite, translate); err != nil {
+				return err
+			}
 		}
 	}
 	return nil

@@ -268,23 +268,39 @@ func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offse
 	if sourceColumns <= 0 {
 		return fmt.Errorf("tile map atlas is narrower than a tile")
 	}
-	for index, tile := range tiles.Tiles {
-		if tile < 0 {
-			continue
-		}
-		column, row := index%tiles.Columns, index/tiles.Columns
-		sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
-		sprite := Sprite{
-			Texture: tiles.Texture,
-			Source:  Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-			Bounds:  Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-			Tint:    tiles.Tint,
-		}
-		if err := b.drawSprite(store, sprite, offset); err != nil {
-			return err
+	visible := tiles.VisibleRange(b.tileViewport(offset))
+	for row := visible.Row; row < visible.Row+visible.Rows; row++ {
+		for column := visible.Column; column < visible.Column+visible.Columns; column++ {
+			index := row*tiles.Columns + column
+			if index >= len(tiles.Tiles) {
+				continue
+			}
+			tile := tiles.Tiles[index]
+			if tile < 0 {
+				continue
+			}
+			sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
+			sprite := Sprite{
+				Texture: tiles.Texture,
+				Source:  Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Bounds:  Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Tint:    tiles.Tint,
+			}
+			if err := b.drawSprite(store, sprite, offset); err != nil {
+				return err
+			}
 		}
 	}
 	return nil
+}
+
+func (b *ReferenceBackend) tileViewport(offset Vec2) Rect {
+	viewport := Rect{X: -offset.X, Y: -offset.Y, W: float64(b.image.Width), H: float64(b.image.Height)}
+	if b.clip == nil {
+		return viewport
+	}
+	clip := translateRect(*b.clip, Vec2{X: -offset.X, Y: -offset.Y})
+	return intersectRects(viewport, clip)
 }
 
 func (b *ReferenceBackend) fillRect(bounds Rect, tint Color) error {
