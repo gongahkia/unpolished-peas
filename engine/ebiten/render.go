@@ -20,10 +20,15 @@ import (
 // applications still depend only on engine/render types.
 type RenderBackend struct {
 	target         *ebiten.Image
-	textures       map[uint64]*ebiten.Image
-	renderTargets  map[uint64]*ebiten.Image
+	textures       map[uint64]textureCache
+	renderTargets  map[uint64]textureCache
 	atlasTextures  map[atlasPageKey]atlasPageTexture
 	textureUploads uint64
+}
+
+type textureCache struct {
+	image    *ebiten.Image
+	revision uint64
 }
 
 type atlasPageKey struct {
@@ -37,11 +42,29 @@ type atlasPageTexture struct {
 
 // NewRenderBackend creates a temporary renderer for target.
 func NewRenderBackend(target *ebiten.Image) *RenderBackend {
-	return &RenderBackend{target: target, textures: make(map[uint64]*ebiten.Image), renderTargets: make(map[uint64]*ebiten.Image), atlasTextures: make(map[atlasPageKey]atlasPageTexture)}
+	return &RenderBackend{target: target, textures: make(map[uint64]textureCache), renderTargets: make(map[uint64]textureCache), atlasTextures: make(map[atlasPageKey]atlasPageTexture)}
 }
 
 // SetTarget updates the Ebitengine target used for subsequent Render calls.
 func (b *RenderBackend) SetTarget(target *ebiten.Image) { b.target = target }
+
+// ResetResources drops private Ebitengine image caches after a device or
+// renderer recreation. The next render lazily rehydrates them from portable
+// TextureStore sources and glyph atlas pages. It does not change public texture
+// handles or the cumulative upload counter.
+func (b *RenderBackend) ResetResources() {
+	if b == nil {
+		return
+	}
+	releaseTextureCaches(b.textures)
+	releaseTextureCaches(b.renderTargets)
+	for _, page := range b.atlasTextures {
+		releaseImage(page.image)
+	}
+	b.textures = make(map[uint64]textureCache)
+	b.renderTargets = make(map[uint64]textureCache)
+	b.atlasTextures = make(map[atlasPageKey]atlasPageTexture)
+}
 
 // Render submits a high-level 2D frame to the configured Ebitengine target.
 func (b *RenderBackend) Render(frame render.Frame) (err error) {
@@ -51,6 +74,7 @@ func (b *RenderBackend) Render(frame render.Frame) (err error) {
 	if frame.Queue == nil {
 		return fmt.Errorf("render frame queue must not be nil")
 	}
+	b.pruneResources(frame.Textures)
 	metrics := render.CollectFrameMetrics(frame, render.Rect{W: float64(b.target.Bounds().Dx()), H: float64(b.target.Bounds().Dy())})
 	uploads := b.textureUploads
 	started := time.Now()
@@ -325,23 +349,30 @@ func (b *RenderBackend) drawTileMap(store *render.TextureStore, tiles render.Til
 }
 
 func (b *RenderBackend) texture(store *render.TextureStore, handle render.Texture) (*ebiten.Image, error) {
-	if target := b.renderTargets[handle.ID]; target != nil {
-		return target, nil
-	}
-	if texture := b.textures[handle.ID]; texture != nil {
-		return texture, nil
-	}
 	if store == nil {
 		return nil, fmt.Errorf("texture %d is not available without an engine texture store", handle.ID)
 	}
-	source, ok := store.Image(handle)
+	revision, target, ok := store.Revision(handle)
 	if !ok {
 		return nil, fmt.Errorf("texture %d is not registered", handle.ID)
 	}
-	decoded := image.NewNRGBA(image.Rect(0, 0, source.Width, source.Height))
-	copy(decoded.Pix, source.Pixels)
+	if target {
+		return b.renderTarget(store, render.RenderTarget{Texture: handle})
+	}
+	if cached, ok := b.textures[handle.ID]; ok && cached.revision == revision {
+		return cached.image, nil
+	}
+	source, ok := store.Source(handle)
+	if !ok {
+		return nil, fmt.Errorf("texture %d is not registered", handle.ID)
+	}
+	decoded := image.NewNRGBA(image.Rect(0, 0, source.Image.Width, source.Image.Height))
+	copy(decoded.Pix, source.Image.Pixels)
 	texture := ebiten.NewImageFromImage(decoded)
-	b.textures[handle.ID] = texture
+	if cached, ok := b.textures[handle.ID]; ok {
+		releaseImage(cached.image)
+	}
+	b.textures[handle.ID] = textureCache{image: texture, revision: source.Revision}
 	b.textureUploads++
 	return texture, nil
 }
@@ -350,20 +381,27 @@ func (b *RenderBackend) renderTarget(store *render.TextureStore, target render.R
 	if target.Texture.ID == 0 {
 		return nil, fmt.Errorf("render target must not be zero")
 	}
-	if cached := b.renderTargets[target.Texture.ID]; cached != nil {
-		return cached, nil
-	}
 	if store == nil {
 		return nil, fmt.Errorf("render target %d is not available without an engine texture store", target.Texture.ID)
 	}
-	source, ok := store.TargetImage(target)
-	if !ok {
+	revision, isTarget, ok := store.Revision(target.Texture)
+	if !ok || !isTarget {
 		return nil, fmt.Errorf("render target texture %d is not registered", target.Texture.ID)
 	}
-	decoded := image.NewNRGBA(image.Rect(0, 0, source.Width, source.Height))
-	copy(decoded.Pix, source.Pixels)
+	if cached, ok := b.renderTargets[target.Texture.ID]; ok && cached.revision == revision {
+		return cached.image, nil
+	}
+	source, ok := store.Source(target.Texture)
+	if !ok || !source.RenderTarget {
+		return nil, fmt.Errorf("render target texture %d is not registered", target.Texture.ID)
+	}
+	decoded := image.NewNRGBA(image.Rect(0, 0, source.Image.Width, source.Image.Height))
+	copy(decoded.Pix, source.Image.Pixels)
 	destination := ebiten.NewImageFromImage(decoded)
-	b.renderTargets[target.Texture.ID] = destination
+	if cached, ok := b.renderTargets[target.Texture.ID]; ok {
+		releaseImage(cached.image)
+	}
+	b.renderTargets[target.Texture.ID] = textureCache{image: destination, revision: source.Revision}
 	b.textureUploads++
 	return destination, nil
 }
@@ -379,15 +417,47 @@ func (b *RenderBackend) cacheStats() (uint64, uint64) {
 		bytes += uint64(bounds.Dx()) * uint64(bounds.Dy()) * 4
 	}
 	for _, texture := range b.textures {
-		add(texture)
+		add(texture.image)
 	}
 	for _, target := range b.renderTargets {
-		add(target)
+		add(target.image)
 	}
 	for _, page := range b.atlasTextures {
 		add(page.image)
 	}
 	return entries, bytes
+}
+
+func (b *RenderBackend) pruneResources(store *render.TextureStore) {
+	if b == nil || store == nil {
+		return
+	}
+	for id, cached := range b.textures {
+		if _, target, ok := store.Revision(render.Texture{ID: id}); ok && !target {
+			continue
+		}
+		releaseImage(cached.image)
+		delete(b.textures, id)
+	}
+	for id, cached := range b.renderTargets {
+		if _, target, ok := store.Revision(render.Texture{ID: id}); ok && target {
+			continue
+		}
+		releaseImage(cached.image)
+		delete(b.renderTargets, id)
+	}
+}
+
+func releaseTextureCaches(caches map[uint64]textureCache) {
+	for _, cached := range caches {
+		releaseImage(cached.image)
+	}
+}
+
+func releaseImage(image *ebiten.Image) {
+	if image != nil {
+		image.Deallocate()
+	}
 }
 
 func translateRect(value render.Rect, offset render.Vec2) render.Rect {

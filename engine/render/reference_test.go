@@ -247,6 +247,9 @@ func TestReferenceBackendRendersTargetThenSamplesItAsSprite(t *testing.T) {
 	if targetImage, ok := store.TargetImage(target); !ok || referencePixel(t, targetImage, 0, 0) != (Color{R: 255, A: 255}) {
 		t.Fatalf("stored target = %+v, present=%t", targetImage, ok)
 	}
+	if source, ok := store.Source(target.Texture); !ok || source.Revision != 2 {
+		t.Fatalf("target source = %+v, present=%t", source, ok)
+	}
 }
 
 func TestReferenceBackendAppliesNestedClipIntersections(t *testing.T) {
