@@ -19,6 +19,7 @@ jobs:
       - run: go test -race ./...
       - run: make example-wasm
       - run: make first-game-wasm
+      - run: make ui-sample-wasm
 
   native:
     name: native ${{ matrix.name }}
@@ -49,6 +50,7 @@ jobs:
       - run: mkdir -p .ci-artifacts
       - run: go build -o ".ci-artifacts/wukong${{ matrix.extension }}" ./example/wukong
       - run: go build -o ".ci-artifacts/first-game${{ matrix.extension }}" ./example/first-game
+      - run: go build -o ".ci-artifacts/ui-sample${{ matrix.extension }}" ./example/ui
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -66,8 +68,10 @@ jobs:
           go-version: '1.25.x'
       - run: make example-wasm
       - run: make first-game-wasm
+      - run: make ui-sample-wasm
       - run: test -s dist/wukong.wasm
       - run: test -s dist/first-game/first-game.wasm
+      - run: test -s dist/ui-sample/ui-sample.wasm
       - if: always()
         uses: actions/upload-artifact@v4
         with:
