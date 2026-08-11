@@ -29,6 +29,15 @@ const (
 	CursorHidden
 )
 
+// PointerButton identifies a portable pointer button.
+type PointerButton uint8
+
+const (
+	PointerPrimary PointerButton = iota
+	PointerSecondary
+	PointerMiddle
+)
+
 // Window exposes host-owned window state and presentation controls. A host may
 // return a contextual unsupported-operation error for a platform capability it
 // cannot provide; it must not silently emulate clipboard or cursor state.
@@ -78,19 +87,20 @@ const (
 // are populated. Action maps deliberately remain separate: hosts report raw
 // portable controls, while the runtime/application owns action binding.
 type Event struct {
-	Kind      EventKind
-	Key       Key
-	Button    GamepadButton
-	Axis      GamepadAxis
-	DeviceID  uint32
-	Position  Vec2
-	Scroll    Vec2
-	Text      string
-	Value     float64
-	Pressed   bool
-	Connected bool
-	Focused   bool
-	Window    WindowState
+	Kind          EventKind
+	Key           Key
+	Button        GamepadButton
+	PointerButton PointerButton
+	Axis          GamepadAxis
+	DeviceID      uint32
+	Position      Vec2
+	Scroll        Vec2
+	Text          string
+	Value         float64
+	Pressed       bool
+	Connected     bool
+	Focused       bool
+	Window        WindowState
 }
 
 // EventSource returns events accumulated since its prior call. PollEvents must

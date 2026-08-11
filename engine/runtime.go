@@ -41,6 +41,7 @@ type Runtime struct {
 	world    *ecs.World
 	systems  *ecs.Schedule
 	textures *render.TextureStore
+	input    *InputMapper
 	tick     uint64
 }
 
@@ -56,6 +57,12 @@ func newRuntime(config Config, app Application, host HostContext) (*Runtime, err
 	if err := config.validate(); err != nil {
 		return nil, err
 	}
+	config.Actions = config.Actions.Clone()
+	config.Plugins = append([]Plugin(nil), config.Plugins...)
+	input, err := NewInputMapper(config.Actions)
+	if err != nil {
+		return nil, err
+	}
 	runtime := &Runtime{
 		config:   config,
 		app:      app,
@@ -64,6 +71,7 @@ func newRuntime(config Config, app Application, host HostContext) (*Runtime, err
 		world:    ecs.NewWorld(),
 		systems:  ecs.NewSchedule(),
 		textures: render.NewTextureStore(),
+		input:    input,
 	}
 	for _, plugin := range config.Plugins {
 		if plugin == nil {
@@ -109,15 +117,37 @@ func RunWithHost(config Config, app Application, host Host) error {
 	return host.Run(runtime)
 }
 
-// Config returns the immutable runtime configuration.
-func (r *Runtime) Config() Config { return r.config }
+// Config returns a copy of the immutable runtime configuration.
+func (r *Runtime) Config() Config {
+	config := r.config
+	config.Actions = config.Actions.Clone()
+	config.Plugins = append([]Plugin(nil), config.Plugins...)
+	return config
+}
 
 // Host returns the platform context installed by RunWithHost. It is the zero
 // value for runtimes created with NewRuntime or the legacy Run function.
 func (r *Runtime) Host() HostContext { return r.host }
 
-// Actions returns the configured input bindings.
-func (r *Runtime) Actions() ActionMap { return r.config.Actions }
+// Actions returns a copy of the runtime's active input bindings.
+func (r *Runtime) Actions() ActionMap { return r.input.Actions() }
+
+// SetActions replaces the runtime's configurable action bindings. Held raw
+// controls are preserved, so the following SampleInput reports the appropriate
+// press or release transition for a rebinding.
+func (r *Runtime) SetActions(actions ActionMap) error {
+	if err := r.input.SetActions(actions); err != nil {
+		return err
+	}
+	r.config.Actions = actions.Clone()
+	return nil
+}
+
+// SampleInput transforms normalized host events into one portable input
+// snapshot. Host implementations should pass their event batch to this method
+// before each Update or FixedUpdate call; games receive only the resulting
+// Input value.
+func (r *Runtime) SampleInput(events []Event) Input { return r.input.Sample(events) }
 
 // Camera returns the mutable runtime camera.
 func (r *Runtime) Camera() *Camera { return &r.camera }
