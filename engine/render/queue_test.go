@@ -1,6 +1,9 @@
 package render
 
-import "testing"
+import (
+	"math"
+	"testing"
+)
 
 func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 	var queue Queue
@@ -23,5 +26,8 @@ func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 	}
 	if err := queue.StrokeCircle(0, ScreenSpace, CircleDraw{Radius: 1}); err == nil {
 		t.Fatal("zero stroked-circle width succeeded")
+	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Transform: SpriteTransform{Rotation: math.NaN()}}); err == nil {
+		t.Fatal("non-finite sprite transform succeeded")
 	}
 }
