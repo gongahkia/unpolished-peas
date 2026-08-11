@@ -73,6 +73,52 @@ type TileMap struct {
 	Tint     Color
 }
 
+// TileRange identifies a contiguous row-major tile region. Column and Row are
+// zero-based; Columns and Rows are counts. A zero count means no visible tile.
+type TileRange struct {
+	Column, Row   int
+	Columns, Rows int
+}
+
+// VisibleRange returns the tile cells whose bounds intersect viewport. Both
+// values use the TileMap's coordinate space. Partially visible edge cells are
+// retained conservatively. Invalid or empty input returns a zero TileRange;
+// Queue validation and renderers remain responsible for reporting invalid maps.
+func (tiles TileMap) VisibleRange(viewport Rect) TileRange {
+	if tiles.Columns <= 0 || len(tiles.Tiles) == 0 || !finite(tiles.Bounds.X) || !finite(tiles.Bounds.Y) || !finiteVec(tiles.TileSize) || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || !finiteRect(viewport) || viewport.W <= 0 || viewport.H <= 0 {
+		return TileRange{}
+	}
+	rows := (len(tiles.Tiles) + tiles.Columns - 1) / tiles.Columns
+	column := tileRangeStart(viewport.X-tiles.Bounds.X, tiles.TileSize.X, tiles.Columns)
+	endColumn := tileRangeEnd(viewport.X+viewport.W-tiles.Bounds.X, tiles.TileSize.X, tiles.Columns)
+	row := tileRangeStart(viewport.Y-tiles.Bounds.Y, tiles.TileSize.Y, rows)
+	endRow := tileRangeEnd(viewport.Y+viewport.H-tiles.Bounds.Y, tiles.TileSize.Y, rows)
+	if endColumn <= column || endRow <= row {
+		return TileRange{}
+	}
+	return TileRange{Column: column, Row: row, Columns: endColumn - column, Rows: endRow - row}
+}
+
+func tileRangeStart(value, size float64, maximum int) int {
+	if value <= 0 {
+		return 0
+	}
+	if value >= float64(maximum)*size {
+		return maximum
+	}
+	return int(math.Floor(value / size))
+}
+
+func tileRangeEnd(value, size float64, maximum int) int {
+	if value <= 0 {
+		return 0
+	}
+	if value >= float64(maximum)*size {
+		return maximum
+	}
+	return int(math.Ceil(value / size))
+}
+
 // CommandKind identifies the payload stored in Command.
 type CommandKind uint8
 

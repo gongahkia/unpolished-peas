@@ -82,3 +82,20 @@ func TestQueueResolvesNestedScreenSpaceClipsWhenRecordingDraws(t *testing.T) {
 		t.Fatal("reset retained a clip")
 	}
 }
+
+func TestTileMapVisibleRangeKeepsPartialAndEdgeTiles(t *testing.T) {
+	tiles := TileMap{Columns: 3, Tiles: make([]int, 6), TileSize: Vec2{X: 1, Y: 1}}
+	for _, test := range []struct {
+		viewport Rect
+		want     TileRange
+	}{
+		{viewport: Rect{X: .25, Y: .25, W: 1, H: 1}, want: TileRange{Column: 0, Row: 0, Columns: 2, Rows: 2}},
+		{viewport: Rect{X: 1, Y: 0, W: 2, H: 1}, want: TileRange{Column: 1, Row: 0, Columns: 2, Rows: 1}},
+		{viewport: Rect{X: 2, Y: 1, W: 1, H: 1}, want: TileRange{Column: 2, Row: 1, Columns: 1, Rows: 1}},
+		{viewport: Rect{X: 3, Y: 0, W: 1, H: 1}, want: TileRange{}},
+	} {
+		if got := tiles.VisibleRange(test.viewport); got != test.want {
+			t.Fatalf("visible range for %+v = %+v, want %+v", test.viewport, got, test.want)
+		}
+	}
+}

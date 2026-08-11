@@ -185,6 +185,37 @@ func TestReferenceBackendAppliesWorldCameraTranslation(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendCullsTileMapToCameraViewportWithoutDroppingEdges(t *testing.T) {
+	backend := newReferenceBackend(t, 2, 1)
+	store := NewTextureStore()
+	texture, err := store.Create(mustReferenceImage(t, 4, 1, []byte{
+		255, 0, 0, 255,
+		0, 255, 0, 255,
+		0, 0, 255, 255,
+		255, 255, 0, 255,
+	}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue Queue
+	if err := queue.DrawTileMap(0, WorldSpace, TileMap{
+		Texture: texture, Atlas: Vec2{X: 4, Y: 1}, TileSize: Vec2{X: 1, Y: 1}, Columns: 4,
+		Tiles: []int{0, 1, 2, 3}, Tint: Color{R: 255, G: 255, B: 255, A: 255},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Camera: Camera{Position: Vec2{X: 2}}, Queue: &queue, Textures: store}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	if got, want := referencePixel(t, image, 0, 0), (Color{B: 255, A: 255}); got != want {
+		t.Fatalf("left edge tile = %+v, want %+v", got, want)
+	}
+	if got, want := referencePixel(t, image, 1, 0), (Color{R: 255, G: 255, A: 255}); got != want {
+		t.Fatalf("right edge tile = %+v, want %+v", got, want)
+	}
+}
+
 func TestReferenceBackendAppliesNestedClipIntersections(t *testing.T) {
 	backend := newReferenceBackend(t, 6, 5)
 	red := Color{R: 255, A: 255}

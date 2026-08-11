@@ -45,6 +45,12 @@ colors use straight-alpha source-over composition. Text uses the fixed
 `basicfont.Face7x13` fallback and its position is the glyph baseline. Material
 parameters are backend-defined and are not interpreted by the reference backend.
 
+`TileMap.VisibleRange` conservatively selects whole cells that intersect a
+target viewport in tile-map coordinates; a partially visible edge cell remains
+in the range. The reference and transitional Ebit renderers use that range
+after camera translation and before per-tile submission. It is culling only:
+atlas coordinates, empty-tile behavior, and draw order are unchanged.
+
 `Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
 The queue stores the effective intersection on each subsequent draw, rather
 than relying on renderer-side push/pop ordering; a `Clear` remains un-clipped.
