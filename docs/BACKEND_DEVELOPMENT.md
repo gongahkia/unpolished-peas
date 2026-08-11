@@ -64,6 +64,14 @@ need the operation, shader asset, and backend cause. Color conversion, blend
 mode, sampling, DPI policy, resize, surface/device loss, and shutdown are
 feature requirements, not implicit behavior inherited from Ebitengine.
 
+`engine/render/internal/shader` owns the embedded, versioned WGSL catalog and
+device-local pipeline-cache identity. A private adapter must validate each
+asset through its actual WGSL compiler, then create the binding-specific native
+pipeline from the provided descriptor. The cache preserves contextual validation
+and creation failures and canonicalizes finite `render.Material` parameters;
+read [RENDER_POLICY.md](RENDER_POLICY.md) before changing alpha, blend, or
+sampling behavior.
+
 `engine/render/internal/presentation` supplies the private lifecycle policy a
 chosen renderer must use on its render thread. Its driver adapter maps native
 adapter/device, surface configure, acquire, present, and release results into
