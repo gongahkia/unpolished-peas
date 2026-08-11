@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gongahkia/72/engine"
+	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
@@ -46,4 +47,44 @@ func TestWukongActionMapPreservesTheDownAxisBinding(t *testing.T) {
 	if len(binding.Axis.Positive) != 1 || binding.Axis.Positive[0] != engine.KeyS {
 		t.Fatalf("down keyboard binding = %+v, want [S]", binding.Axis.Positive)
 	}
+}
+
+func TestWukongActiveLayersSubmitCommandFrames(t *testing.T) {
+	runtime, err := engine.NewRuntime(engine.Config{
+		Title:       "test",
+		Viewport:    engine.Size{W: logicalW, H: logicalH},
+		WindowScale: 1,
+		Actions:     actionMap(),
+	}, &wukongGame{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	canvas := &wukongCommandCanvas{}
+	if err := runtime.Draw(canvas); err != nil {
+		t.Fatal(err)
+	}
+	if canvas.immediateCalls != 0 || canvas.commandFrames == 0 {
+		t.Fatalf("immediate=%d command frames=%d", canvas.immediateCalls, canvas.commandFrames)
+	}
+}
+
+type wukongCommandCanvas struct {
+	immediateCalls int
+	commandFrames  int
+}
+
+func (c *wukongCommandCanvas) Clear(engine.Color)                            { c.immediateCalls++ }
+func (c *wukongCommandCanvas) FillRect(engine.Rect, engine.Color)            { c.immediateCalls++ }
+func (c *wukongCommandCanvas) StrokeRect(engine.Rect, float64, engine.Color) { c.immediateCalls++ }
+func (c *wukongCommandCanvas) FillCircle(engine.Vec2, float64, engine.Color) { c.immediateCalls++ }
+func (c *wukongCommandCanvas) StrokeCircle(engine.Vec2, float64, float64, engine.Color) {
+	c.immediateCalls++
+}
+func (c *wukongCommandCanvas) StrokeLine(engine.Vec2, engine.Vec2, float64, engine.Color) {
+	c.immediateCalls++
+}
+func (c *wukongCommandCanvas) DrawText(engine.Vec2, string, engine.Color) { c.immediateCalls++ }
+func (c *wukongCommandCanvas) RenderCommands(render.Frame) error {
+	c.commandFrames++
+	return nil
 }
