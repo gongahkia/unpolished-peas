@@ -35,24 +35,18 @@ const (
 )
 
 type wukongGame struct {
-	world     *sim.World
-	replay    *sim.Replay
-	playerArt *playerArt
-	runtime   *engine.Runtime
-	snapshot  sim.RenderSnapshot
-	seed      uint64
-	nextSeed  uint64
-	paused    bool
-	status    string
+	world    *sim.World
+	replay   *sim.Replay
+	runtime  *engine.Runtime
+	snapshot sim.RenderSnapshot
+	seed     uint64
+	nextSeed uint64
+	paused   bool
+	status   string
 }
 
 func (g *wukongGame) Initialize(runtime *engine.Runtime) error {
-	art, err := loadPlayerArt()
-	if err != nil {
-		return err
-	}
 	g.runtime = runtime
-	g.playerArt = art
 	g.seed, g.nextSeed = runSeed(0x72, 0), 1
 	if err := g.addLayers(); err != nil {
 		return err
