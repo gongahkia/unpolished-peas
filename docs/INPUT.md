@@ -78,6 +78,15 @@ two independent mappers and requires equal snapshots. That contract test covers
 the common mapping behavior; each concrete host also needs its own callback and
 browser/window lifecycle tests.
 
-The temporary `engine/ebiten` adapter predates the host contract and currently
-provides action sampling only. It is not evidence of native/browser pointer,
-text, or gamepad parity; those host implementations are tracked separately.
+The temporary `engine/ebiten` adapter translates configured keyboard bindings,
+cursor position, mouse buttons and wheel, committed input characters, and
+available gamepads into `engine.Event` batches before calling
+`Runtime.SampleInput`. It samples the current state once per Ebitengine update,
+so the portable mapper, rather than Ebitengine edge helpers, derives press and
+release transitions.
+
+Ebitengine can pause updates while a window is unfocused. Its adapter emits a
+focus change when an update observes one, but cannot independently demonstrate
+a focus-loss reset while no update runs. It supplies no `HostContext` and is
+not evidence of native or browser host parity; those implementations still
+need their own callback, lifecycle, and focus-loss tests.

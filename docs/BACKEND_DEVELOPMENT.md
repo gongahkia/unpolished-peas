@@ -9,8 +9,9 @@ renderer, or test backend. Read [ARCHITECTURE.md](ARCHITECTURE.md),
 
 There is no engine-owned native host, browser host, or production WebGPU
 renderer. `engine/ebiten` is a transitional compatibility adapter. It is not a
-template for leaking Ebitengine types into public APIs, and its action-only
-input sampling is not platform parity.
+template for leaking Ebitengine types into public APIs. It translates its
+available keyboard, pointer, committed-text, and gamepad state into portable
+events, but supplies no `HostContext` and is not platform parity.
 
 No production graphics dependency may be added to the root module while
 [ADR 0002](adr/0002-webgpu-dependency-decision.md) remains accepted. Use the
