@@ -84,3 +84,7 @@ it builds locally. A release-facing change needs target-specific evidence,
 documented limitations, and the API/deprecation requirements in
 [PUBLIC_API.md](docs/PUBLIC_API.md); renderer/platform changes additionally
 need the promotion evidence required by the active ADRs.
+
+The planned v0.1 evidence and dry-run procedure are in
+[RELEASING.md](docs/RELEASING.md). A license choice, third-party notice record,
+and remote CI evidence are release gates, not documentation-only formalities.
