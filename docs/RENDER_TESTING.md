@@ -61,6 +61,19 @@ retain a native target cache. Sampling a target while writing the same target
 is intentionally unspecified. Render targets retain normal frame camera, clip,
 clear, ordering, and texture semantics.
 
+`TextureStore.Replace` changes a regular portable image without changing its
+handle; `TextureStore.Revision` provides inexpensive cache metadata and
+`TextureStore.Source` returns copied pixels when a refresh is required.
+`TextureStore.Release` invalidates a handle
+permanently. Render targets are intentionally replaced only by successful
+`RenderTo` calls, because their dimensions and ownership are fixed at creation.
+When a renderer recreates its native resources, it must drop private caches and
+rehydrate regular textures and atlas pages from their portable sources. The
+transitional Ebit renderer exposes `ResetResources` for this lifecycle. A
+render target's native contents do not survive that reset unless its portable
+source was updated by the backend, so an application must re-render dependent
+targets after device recreation.
+
 `Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
 The queue stores the effective intersection on each subsequent draw, rather
 than relying on renderer-side push/pop ordering; a `Clear` remains un-clipped.

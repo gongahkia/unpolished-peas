@@ -29,8 +29,23 @@ func NewImage(width, height int, pixels []byte) (Image, error) {
 type TextureStore struct {
 	mu      sync.RWMutex
 	nextID  uint64
-	images  map[uint64]Image
+	images  map[uint64]textureSource
 	targets map[uint64]struct{}
+}
+
+type textureSource struct {
+	image    Image
+	revision uint64
+}
+
+// TextureSource is a copied portable texture source and its monotonically
+// increasing revision. RenderTarget identifies an off-screen target rather
+// than a regular upload source. Backends use Revision to refresh private native
+// caches without exposing a native resource through Texture.
+type TextureSource struct {
+	Image        Image
+	Revision     uint64
+	RenderTarget bool
 }
 
 // TextureStats reports the portable RGBA8 source data currently retained by a
@@ -43,7 +58,7 @@ type TextureStats struct {
 
 // NewTextureStore creates an empty texture source store.
 func NewTextureStore() *TextureStore {
-	return &TextureStore{images: make(map[uint64]Image), targets: make(map[uint64]struct{})}
+	return &TextureStore{images: make(map[uint64]textureSource), targets: make(map[uint64]struct{})}
 }
 
 // Create registers source and returns an opaque texture handle.
@@ -55,7 +70,7 @@ func (s *TextureStore) Create(source Image) (Texture, error) {
 	s.mu.Lock()
 	s.nextID++
 	texture := Texture{ID: s.nextID}
-	s.images[texture.ID] = Image{Width: source.Width, Height: source.Height, Pixels: append([]byte(nil), source.Pixels...)}
+	s.images[texture.ID] = textureSource{image: copyImage(source), revision: 1}
 	s.mu.Unlock()
 	return texture, nil
 }
@@ -66,13 +81,89 @@ func (s *TextureStore) Image(texture Texture) (Image, bool) {
 		return Image{}, false
 	}
 	s.mu.RLock()
-	image, ok := s.images[texture.ID]
+	source, ok := s.images[texture.ID]
 	s.mu.RUnlock()
 	if !ok {
 		return Image{}, false
 	}
-	image.Pixels = append([]byte(nil), image.Pixels...)
-	return image, true
+	return copyImage(source.image), true
+}
+
+// Source returns copied portable data, its revision, and its target kind for a
+// texture handle. It is intended for backend cache synchronization.
+func (s *TextureStore) Source(texture Texture) (TextureSource, bool) {
+	if s == nil || texture.ID == 0 {
+		return TextureSource{}, false
+	}
+	s.mu.RLock()
+	source, ok := s.images[texture.ID]
+	_, target := s.targets[texture.ID]
+	s.mu.RUnlock()
+	if !ok {
+		return TextureSource{}, false
+	}
+	return TextureSource{Image: copyImage(source.image), Revision: source.revision, RenderTarget: target}, true
+}
+
+// Revision reports source cache metadata without copying pixel data. Backends
+// can use it on every render submission and call Source only when the revision
+// changes or when a native resource must be recreated.
+func (s *TextureStore) Revision(texture Texture) (revision uint64, renderTarget bool, ok bool) {
+	if s == nil || texture.ID == 0 {
+		return 0, false, false
+	}
+	s.mu.RLock()
+	source, ok := s.images[texture.ID]
+	_, renderTarget = s.targets[texture.ID]
+	s.mu.RUnlock()
+	if !ok {
+		return 0, false, false
+	}
+	return source.revision, renderTarget, true
+}
+
+// Replace updates a regular texture source without changing its opaque handle.
+// It increments Source's revision so backends can replace stale private cache
+// entries. Render targets cannot be replaced this way because their dimensions
+// and render ownership are fixed by CreateRenderTarget.
+func (s *TextureStore) Replace(texture Texture, image Image) error {
+	if s == nil || texture.ID == 0 {
+		return fmt.Errorf("texture must not be zero")
+	}
+	if !validImage(image) {
+		return fmt.Errorf("texture source is not a valid RGBA8 image")
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	source, ok := s.images[texture.ID]
+	if !ok {
+		return fmt.Errorf("texture %d is not registered", texture.ID)
+	}
+	if _, target := s.targets[texture.ID]; target {
+		return fmt.Errorf("texture %d is a render target", texture.ID)
+	}
+	revision, err := nextTextureRevision(source.revision)
+	if err != nil {
+		return err
+	}
+	s.images[texture.ID] = textureSource{image: copyImage(image), revision: revision}
+	return nil
+}
+
+// Release removes the portable source and target registration for texture. A
+// released handle never becomes valid again; later creates receive new IDs.
+func (s *TextureStore) Release(texture Texture) bool {
+	if s == nil || texture.ID == 0 {
+		return false
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, ok := s.images[texture.ID]; !ok {
+		return false
+	}
+	delete(s.images, texture.ID)
+	delete(s.targets, texture.ID)
+	return true
 }
 
 // Stats returns a point-in-time summary of portable texture source storage.
@@ -83,8 +174,8 @@ func (s *TextureStore) Stats() TextureStats {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 	stats := TextureStats{Count: uint64(len(s.images)), RenderTargetCount: uint64(len(s.targets))}
-	for id, image := range s.images {
-		bytes := uint64(len(image.Pixels))
+	for id, source := range s.images {
+		bytes := uint64(len(source.image.Pixels))
 		stats.Bytes += bytes
 		if _, target := s.targets[id]; target {
 			stats.RenderTargetBytes += bytes
@@ -124,13 +215,12 @@ func (s *TextureStore) TargetImage(target RenderTarget) (Image, bool) {
 	}
 	s.mu.RLock()
 	_, targetOK := s.targets[target.Texture.ID]
-	image, imageOK := s.images[target.Texture.ID]
+	source, imageOK := s.images[target.Texture.ID]
 	s.mu.RUnlock()
 	if !targetOK || !imageOK {
 		return Image{}, false
 	}
-	image.Pixels = append([]byte(nil), image.Pixels...)
-	return image, true
+	return copyImage(source.image), true
 }
 
 func (s *TextureStore) replaceTarget(target RenderTarget, source Image) error {
@@ -149,11 +239,26 @@ func (s *TextureStore) replaceTarget(target RenderTarget, source Image) error {
 	if !ok {
 		return fmt.Errorf("render target texture %d is not registered", target.Texture.ID)
 	}
-	if current.Width != source.Width || current.Height != source.Height {
-		return fmt.Errorf("render target dimensions changed from %dx%d to %dx%d", current.Width, current.Height, source.Width, source.Height)
+	if current.image.Width != source.Width || current.image.Height != source.Height {
+		return fmt.Errorf("render target dimensions changed from %dx%d to %dx%d", current.image.Width, current.image.Height, source.Width, source.Height)
 	}
-	s.images[target.Texture.ID] = Image{Width: source.Width, Height: source.Height, Pixels: append([]byte(nil), source.Pixels...)}
+	revision, err := nextTextureRevision(current.revision)
+	if err != nil {
+		return err
+	}
+	s.images[target.Texture.ID] = textureSource{image: copyImage(source), revision: revision}
 	return nil
+}
+
+func copyImage(source Image) Image {
+	return Image{Width: source.Width, Height: source.Height, Pixels: append([]byte(nil), source.Pixels...)}
+}
+
+func nextTextureRevision(revision uint64) (uint64, error) {
+	if revision == ^uint64(0) {
+		return 0, fmt.Errorf("texture revision overflow")
+	}
+	return revision + 1, nil
 }
 
 func imageByteLen(width, height int) (int, bool) {
