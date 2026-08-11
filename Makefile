@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt example-build example-wasm first-game-run first-game-build first-game-wasm
+.PHONY: example-run test vet fmt benchmark benchmark-report example-build example-wasm first-game-run first-game-build first-game-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -11,6 +11,13 @@ vet:
 
 fmt:
 	gofmt -w $$(rg --files -g '*.go')
+
+benchmark:
+	go test -run '^$$' -bench '^BenchmarkReference' -benchmem -count=5 ./engine/render
+
+benchmark-report:
+	test -n "$(REPORT)"
+	./scripts/capture-render-benchmark.sh "$(REPORT)"
 
 example-build:
 	mkdir -p bin
