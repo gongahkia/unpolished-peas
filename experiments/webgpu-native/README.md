@@ -74,6 +74,16 @@ Wayland client emitted `queue ... destroyed while proxies still attached` for an
 attached `wl_callback`. This warning is unresolved and prevents treating the
 Wayland shutdown path as clean evidence.
 
+A repeat on 2026-08-12 produced the same split: it selected the same Vulkan
+adapter, reached the surface in 82 ms and the first frame in 84 ms, then
+presented 294 frames over 5.011 s. It again exited with an attached
+`wl_callback` warning. This confirms the warning on a fresh invocation; it
+does not identify its owner or establish a clean Wayland shutdown path. The
+pinned release's tracker also has an open
+[Wayland fractional-scaling deadlock report](https://github.com/gogpu/gogpu/issues/448).
+That monitor-transition path was not exercised here, but it is additional
+unresolved runtime risk for the exact candidate under review.
+
 The same five-second smoke through X11 used:
 
 ```sh
@@ -125,5 +135,6 @@ not sufficient to select the dependency or to claim all desktop targets.
 
 - [GoGPU README and platform matrix](https://github.com/gogpu/gogpu)
 - [GoGPU release `v0.52.1`](https://github.com/gogpu/gogpu/releases/tag/v0.52.1)
+- [GoGPU Wayland fractional-scaling deadlock #448](https://github.com/gogpu/gogpu/issues/448)
 - [go-webgpu `v0.5.5` documentation](https://pkg.go.dev/github.com/go-webgpu/webgpu@v0.5.5)
 - [wgpu-native `v29.0.0.0` release](https://github.com/gfx-rs/wgpu-native/releases/tag/v29.0.0.0)
