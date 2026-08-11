@@ -5,6 +5,7 @@
 package main
 
 import (
+	"flag"
 	"fmt"
 	"log"
 	"time"
@@ -14,6 +15,9 @@ import (
 )
 
 func main() {
+	smokeDuration := flag.Duration("smoke-duration", 0, "request a resize halfway through this duration, then exit through App.Quit")
+	flag.Parse()
+
 	started := time.Now()
 	app := gogpu.NewApp(gogpu.DefaultConfig().
 		WithTitle("72 WebGPU native spike").
@@ -22,6 +26,9 @@ func main() {
 	var firstFrame time.Time
 	frames := 0
 	reportAt := time.Now().Add(time.Second)
+	var smokeAnimation *gogpu.AnimationToken
+	smokeResizeRequested := false
+	smokeQuitRequested := false
 	app.OnSurfaceAvailable(func() {
 		fmt.Printf("surface available after %s\n", time.Since(started).Round(time.Millisecond))
 	})
@@ -43,6 +50,29 @@ func main() {
 		if now := time.Now(); now.After(reportAt) {
 			fmt.Printf("frames in prior second: %d\n", frames)
 			frames, reportAt = 0, now.Add(time.Second)
+		}
+	})
+	app.OnUpdate(func(float64) {
+		if *smokeDuration <= 0 {
+			return
+		}
+		if smokeAnimation == nil {
+			smokeAnimation = app.StartAnimation()
+		}
+		if smokeQuitRequested {
+			return
+		}
+		elapsed := time.Since(started)
+		if !smokeResizeRequested && elapsed >= *smokeDuration/2 {
+			smokeResizeRequested = true
+			fmt.Println("smoke resize request: logical=800x450")
+			app.RequestSize(800, 450)
+		}
+		if elapsed >= *smokeDuration {
+			smokeQuitRequested = true
+			fmt.Printf("smoke quit after %s\n", elapsed.Round(time.Millisecond))
+			smokeAnimation.Stop()
+			app.Quit()
 		}
 	})
 
