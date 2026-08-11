@@ -191,19 +191,58 @@ func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, offset
 		return fmt.Errorf("sprite source is outside texture %d", sprite.Texture.ID)
 	}
 	bounds := translateRect(sprite.Bounds, offset)
-	for y := maxIntValue(0, int(math.Floor(bounds.Y))); y < minIntValue(b.image.Height, int(math.Ceil(bounds.Y+bounds.H))); y++ {
-		for x := maxIntValue(0, int(math.Floor(bounds.X))); x < minIntValue(b.image.Width, int(math.Ceil(bounds.X+bounds.W))); x++ {
-			centerX, centerY := float64(x)+.5, float64(y)+.5
-			if centerX < bounds.X || centerX >= bounds.X+bounds.W || centerY < bounds.Y || centerY >= bounds.Y+bounds.H {
+	transform := normalizeSpriteTransform(sprite.Transform)
+	origin := Vec2{X: bounds.X + sprite.Transform.Origin.X*bounds.W, Y: bounds.Y + sprite.Transform.Origin.Y*bounds.H}
+	transformed := transformedSpriteBounds(bounds, origin, transform)
+	for y := maxIntValue(0, int(math.Floor(transformed.Y))); y < minIntValue(b.image.Height, int(math.Ceil(transformed.Y+transformed.H))); y++ {
+		for x := maxIntValue(0, int(math.Floor(transformed.X))); x < minIntValue(b.image.Width, int(math.Ceil(transformed.X+transformed.W))); x++ {
+			local := inverseSpritePoint(Vec2{X: float64(x) + .5, Y: float64(y) + .5}, origin, transform)
+			if local.X < bounds.X || local.X >= bounds.X+bounds.W || local.Y < bounds.Y || local.Y >= bounds.Y+bounds.H {
 				continue
 			}
-			sourceX := sampleCoordinate(region.X+(centerX-bounds.X)*region.W/bounds.W, region.X, region.X+region.W)
-			sourceY := sampleCoordinate(region.Y+(centerY-bounds.Y)*region.H/bounds.H, region.Y, region.Y+region.H)
+			sourceX := sampleCoordinate(region.X+(local.X-bounds.X)*region.W/bounds.W, region.X, region.X+region.W)
+			sourceY := sampleCoordinate(region.Y+(local.Y-bounds.Y)*region.H/bounds.H, region.Y, region.Y+region.H)
 			pixel := sourceColor(source, sourceX, sourceY)
 			b.blend(x, y, scaleColor(pixel, sprite.Tint))
 		}
 	}
 	return nil
+}
+
+type spriteTransformValue struct{ scaleX, scaleY, rotation float64 }
+
+func normalizeSpriteTransform(transform SpriteTransform) spriteTransformValue {
+	value := spriteTransformValue{scaleX: transform.ScaleX, scaleY: transform.ScaleY, rotation: transform.Rotation}
+	if value.scaleX == 0 {
+		value.scaleX = 1
+	}
+	if value.scaleY == 0 {
+		value.scaleY = 1
+	}
+	return value
+}
+
+func inverseSpritePoint(point, origin Vec2, transform spriteTransformValue) Vec2 {
+	x, y := point.X-origin.X, point.Y-origin.Y
+	cosine, sine := math.Cos(transform.rotation), math.Sin(transform.rotation)
+	return Vec2{X: origin.X + (cosine*x+sine*y)/transform.scaleX, Y: origin.Y + (-sine*x+cosine*y)/transform.scaleY}
+}
+
+func transformedSpriteBounds(bounds Rect, origin Vec2, transform spriteTransformValue) Rect {
+	points := []Vec2{{X: bounds.X, Y: bounds.Y}, {X: bounds.X + bounds.W, Y: bounds.Y}, {X: bounds.X, Y: bounds.Y + bounds.H}, {X: bounds.X + bounds.W, Y: bounds.Y + bounds.H}}
+	minimum, maximum := transformSpritePoint(points[0], origin, transform), transformSpritePoint(points[0], origin, transform)
+	for _, point := range points[1:] {
+		point = transformSpritePoint(point, origin, transform)
+		minimum.X, minimum.Y = math.Min(minimum.X, point.X), math.Min(minimum.Y, point.Y)
+		maximum.X, maximum.Y = math.Max(maximum.X, point.X), math.Max(maximum.Y, point.Y)
+	}
+	return Rect{X: minimum.X, Y: minimum.Y, W: maximum.X - minimum.X, H: maximum.Y - minimum.Y}
+}
+
+func transformSpritePoint(point, origin Vec2, transform spriteTransformValue) Vec2 {
+	x, y := (point.X-origin.X)*transform.scaleX, (point.Y-origin.Y)*transform.scaleY
+	cosine, sine := math.Cos(transform.rotation), math.Sin(transform.rotation)
+	return Vec2{X: origin.X + cosine*x - sine*y, Y: origin.Y + sine*x + cosine*y}
 }
 
 func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offset Vec2) error {

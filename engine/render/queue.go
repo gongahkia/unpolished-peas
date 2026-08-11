@@ -3,7 +3,10 @@
 // backend details.
 package render
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Vec2 is a logical two-dimensional coordinate.
 type Vec2 struct{ X, Y float64 }
@@ -38,13 +41,24 @@ type Material struct {
 	Parameters map[string]float64
 }
 
+// SpriteTransform applies scale and rotation around a normalized Bounds pivot.
+// Zero ScaleX and ScaleY each mean one, preserving pre-transform sprite
+// behavior. Negative scale mirrors an axis; Rotation is clockwise radians in
+// screen coordinates.
+type SpriteTransform struct {
+	Origin         Vec2
+	ScaleX, ScaleY float64
+	Rotation       float64
+}
+
 // Sprite describes one textured quad.
 type Sprite struct {
-	Texture  Texture
-	Source   Rect
-	Bounds   Rect
-	Tint     Color
-	Material Material
+	Texture   Texture
+	Source    Rect
+	Bounds    Rect
+	Tint      Color
+	Material  Material
+	Transform SpriteTransform
 }
 
 // TileMap describes a tile-grid draw using a single atlas texture. Tiles are
@@ -136,8 +150,17 @@ func (q *Queue) DrawSprite(layer int, space Space, sprite Sprite) error {
 	if sprite.Bounds.W <= 0 || sprite.Bounds.H <= 0 {
 		return fmt.Errorf("sprite bounds must be positive")
 	}
+	if !validSpriteTransform(sprite.Transform) {
+		return fmt.Errorf("sprite transform must contain finite origin, scale, and rotation")
+	}
 	return q.append(Command{Kind: SpriteCommand, Layer: layer, Space: space, Payload: sprite})
 }
+
+func validSpriteTransform(transform SpriteTransform) bool {
+	return finiteSpriteValue(transform.Origin.X) && finiteSpriteValue(transform.Origin.Y) && finiteSpriteValue(transform.ScaleX) && finiteSpriteValue(transform.ScaleY) && finiteSpriteValue(transform.Rotation)
+}
+
+func finiteSpriteValue(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
 
 // DrawTileMap records a tile-map batch.
 func (q *Queue) DrawTileMap(layer int, space Space, tiles TileMap) error {

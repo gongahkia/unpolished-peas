@@ -47,6 +47,28 @@ func TestReferenceBackendRendersTextFromGlyphAtlas(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendMirrorsSpriteAroundNormalizedPivot(t *testing.T) {
+	backend := newReferenceBackend(t, 2, 1)
+	store := NewTextureStore()
+	texture, err := store.Create(mustReferenceImage(t, 2, 1, []byte{255, 0, 0, 255, 0, 255, 0, 255}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue Queue
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: texture, Bounds: Rect{W: 2, H: 1}, Tint: Color{R: 255, G: 255, B: 255, A: 255}, Transform: SpriteTransform{Origin: Vec2{X: .5, Y: .5}, ScaleX: -1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue, Textures: store}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := referencePixel(t, backend.Snapshot(), 0, 0), (Color{G: 255, A: 255}); got != want {
+		t.Fatalf("mirrored left pixel = %+v, want %+v", got, want)
+	}
+	if got, want := referencePixel(t, backend.Snapshot(), 1, 0), (Color{R: 255, A: 255}); got != want {
+		t.Fatalf("mirrored right pixel = %+v, want %+v", got, want)
+	}
+}
+
 func TestReferenceBackendRendersSpritesTilesPrimitivesAndText(t *testing.T) {
 	backend := newReferenceBackend(t, 14, 14)
 	store := NewTextureStore()

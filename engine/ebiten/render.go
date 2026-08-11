@@ -205,11 +205,29 @@ func (b *RenderBackend) drawSprite(store *render.TextureStore, sprite render.Spr
 	image := texture.SubImage(image.Rect(int(source.X), int(source.Y), int(source.X+source.W), int(source.Y+source.H))).(*ebiten.Image)
 	op := &ebiten.DrawImageOptions{}
 	op.Filter = ebiten.FilterNearest
+	transform := spriteTransform(sprite.Transform)
+	origin := render.Vec2{X: sprite.Transform.Origin.X * sprite.Bounds.W, Y: sprite.Transform.Origin.Y * sprite.Bounds.H}
 	op.GeoM.Scale(sprite.Bounds.W/source.W, sprite.Bounds.H/source.H)
-	op.GeoM.Translate(sprite.Bounds.X+translate.X, sprite.Bounds.Y+translate.Y)
+	op.GeoM.Translate(-origin.X, -origin.Y)
+	op.GeoM.Scale(transform.scaleX, transform.scaleY)
+	op.GeoM.Rotate(transform.rotation)
+	op.GeoM.Translate(sprite.Bounds.X+origin.X+translate.X, sprite.Bounds.Y+origin.Y+translate.Y)
 	op.ColorScale.Scale(float32(sprite.Tint.R)/255, float32(sprite.Tint.G)/255, float32(sprite.Tint.B)/255, float32(sprite.Tint.A)/255)
 	b.target.DrawImage(image, op)
 	return nil
+}
+
+type normalizedSpriteTransform struct{ scaleX, scaleY, rotation float64 }
+
+func spriteTransform(transform render.SpriteTransform) normalizedSpriteTransform {
+	value := normalizedSpriteTransform{scaleX: transform.ScaleX, scaleY: transform.ScaleY, rotation: transform.Rotation}
+	if value.scaleX == 0 {
+		value.scaleX = 1
+	}
+	if value.scaleY == 0 {
+		value.scaleY = 1
+	}
+	return value
 }
 
 func (b *RenderBackend) drawTileMap(store *render.TextureStore, tiles render.TileMap, translate render.Vec2) error {
