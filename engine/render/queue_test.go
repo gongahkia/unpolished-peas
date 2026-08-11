@@ -99,3 +99,21 @@ func TestTileMapVisibleRangeKeepsPartialAndEdgeTiles(t *testing.T) {
 		}
 	}
 }
+
+func TestQueueRejectsTileMapOutsideDeclaredAtlas(t *testing.T) {
+	var queue Queue
+	tiles := TileMap{
+		Texture:  Texture{ID: 1},
+		Atlas:    Vec2{X: 2, Y: 1},
+		TileSize: Vec2{X: 1, Y: 1},
+		Columns:  2,
+		Tiles:    []int{0, 2},
+	}
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
+		t.Fatal("out-of-atlas tile map succeeded")
+	}
+	tiles.Tiles[1] = -5
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err != nil {
+		t.Fatalf("negative empty tile failed: %v", err)
+	}
+}

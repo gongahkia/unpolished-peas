@@ -50,6 +50,8 @@ target viewport in tile-map coordinates; a partially visible edge cell remains
 in the range. The reference and transitional Ebit renderers use that range
 after camera translation and before per-tile submission. It is culling only:
 atlas coordinates, empty-tile behavior, and draw order are unchanged.
+`Queue.DrawTileMap` rejects a non-negative atlas index outside the declared
+atlas before rendering; negative values continue to mean empty cells.
 
 `TextureStore.CreateRenderTarget` creates a transparent portable image with a
 stable texture handle. A `TargetBackend` may render a complete `Frame` into it
