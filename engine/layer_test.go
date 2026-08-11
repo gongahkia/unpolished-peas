@@ -45,7 +45,7 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 		Space:    WorldSpace,
 		Parallax: .25,
 		DrawCommands: func(frame CommandFrame) error {
-			return frame.FillRect(render.RectDraw{Bounds: render.Rect{W: 8, H: 8}, Color: render.Color{A: 255}})
+			return frame.StrokeCircle(render.CircleDraw{Radius: 4, Width: 1, Color: render.Color{A: 255}})
 		},
 	}); err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	}
 	frame := canvas.frames[0]
 	commands := frame.Queue.Commands()
-	if frame.Camera.Position.X != 40 || len(commands) != 1 || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
+	if frame.Camera.Position.X != 40 || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
 		t.Fatalf("command submission = camera=%+v commands=%+v", frame.Camera, commands)
 	}
 }

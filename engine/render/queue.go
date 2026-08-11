@@ -69,6 +69,7 @@ const (
 	FillRect
 	StrokeRect
 	FillCircle
+	StrokeCircle
 	StrokeLine
 	Text
 )
@@ -89,10 +90,11 @@ type RectDraw struct {
 	Color  Color
 }
 
-// CircleDraw is a filled circle command payload.
+// CircleDraw is a filled or stroked circle command payload.
 type CircleDraw struct {
 	Center Vec2
 	Radius float64
+	Width  float64
 	Color  Color
 }
 
@@ -168,6 +170,14 @@ func (q *Queue) FillCircle(layer int, space Space, draw CircleDraw) error {
 		return fmt.Errorf("circle radius must be positive")
 	}
 	return q.append(Command{Kind: FillCircle, Layer: layer, Space: space, Payload: draw})
+}
+
+// StrokeCircle records a stroked circle.
+func (q *Queue) StrokeCircle(layer int, space Space, draw CircleDraw) error {
+	if draw.Radius <= 0 || draw.Width <= 0 {
+		return fmt.Errorf("stroked circle radius and width must be positive")
+	}
+	return q.append(Command{Kind: StrokeCircle, Layer: layer, Space: space, Payload: draw})
 }
 
 // StrokeLine records a line.

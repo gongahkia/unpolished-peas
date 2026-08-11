@@ -129,6 +129,12 @@ func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 			return fmt.Errorf("filled circle command has payload %T", command.Payload)
 		}
 		return b.fillCircle(Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Color)
+	case StrokeCircle:
+		value, ok := command.Payload.(CircleDraw)
+		if !ok {
+			return fmt.Errorf("stroked circle command has payload %T", command.Payload)
+		}
+		return b.strokeCircle(Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Width, value.Color)
 	case StrokeLine:
 		value, ok := command.Payload.(LineDraw)
 		if !ok {
@@ -262,6 +268,20 @@ func (b *ReferenceBackend) fillCircle(center Vec2, radius float64, tint Color) e
 	b.forPixels(Rect{X: center.X - radius, Y: center.Y - radius, W: 2 * radius, H: 2 * radius}, func(pixel Vec2) bool {
 		dx, dy := pixel.X-center.X, pixel.Y-center.Y
 		return dx*dx+dy*dy <= radius*radius
+	}, tint)
+	return nil
+}
+
+func (b *ReferenceBackend) strokeCircle(center Vec2, radius, width float64, tint Color) error {
+	if !finiteVec(center) || !finite(radius) || !finite(width) || radius <= 0 || width <= 0 {
+		return fmt.Errorf("stroked circle center, radius, and width must be finite and positive")
+	}
+	outerRadius := radius + width/2
+	innerRadius := math.Max(0, radius-width/2)
+	b.forPixels(Rect{X: center.X - outerRadius, Y: center.Y - outerRadius, W: 2 * outerRadius, H: 2 * outerRadius}, func(pixel Vec2) bool {
+		dx, dy := pixel.X-center.X, pixel.Y-center.Y
+		distanceSquared := dx*dx + dy*dy
+		return distanceSquared <= outerRadius*outerRadius && distanceSquared >= innerRadius*innerRadius
 	}, tint)
 	return nil
 }

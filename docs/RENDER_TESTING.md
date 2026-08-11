@@ -32,12 +32,13 @@ screen-space commands do not translate.
 
 Sprites and tile maps use nearest-neighbour sampling from portable RGBA8 image
 data. A zero sprite source selects the whole texture. Primitive coverage is
-based on logical pixel centres: rectangles are half-open, circles include a
-centre at or inside the radius, and lines include centres at or within half the
-stroke width from their segment. Source and primitive colors use straight-alpha
-source-over composition. Text uses the fixed `basicfont.Face7x13` fallback and
-its position is the glyph baseline. Material parameters are backend-defined
-and are not interpreted by the reference backend.
+based on logical pixel centres: rectangles are half-open; filled circles include
+a centre at or inside the radius; stroked circles cover the band from
+`max(0, radius - width/2)` through `radius + width/2`; and lines include centres
+at or within half the stroke width from their segment. Source and primitive
+colors use straight-alpha source-over composition. Text uses the fixed
+`basicfont.Face7x13` fallback and its position is the glyph baseline. Material
+parameters are backend-defined and are not interpreted by the reference backend.
 
 These rules are intentionally explicit rather than a pixel-for-pixel promise
 to Ebitengine or a future GPU renderer. A backend must document any semantic

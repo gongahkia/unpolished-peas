@@ -66,6 +66,11 @@ func (f CommandFrame) FillCircle(draw render.CircleDraw) error {
 	return f.queue.FillCircle(f.order, f.space, draw)
 }
 
+// StrokeCircle records a stroked circle in the layer's space and order.
+func (f CommandFrame) StrokeCircle(draw render.CircleDraw) error {
+	return f.queue.StrokeCircle(f.order, f.space, draw)
+}
+
 // StrokeLine records a stroked line in the layer's space and order.
 func (f CommandFrame) StrokeLine(draw render.LineDraw) error {
 	return f.queue.StrokeLine(f.order, f.space, draw)
