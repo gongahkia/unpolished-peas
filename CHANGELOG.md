@@ -6,9 +6,12 @@ version tags in the form `v0.x.y`.
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- No release entries yet.
+- Removed the legacy `engine.Canvas`, `engine.CommandCanvas`, immediate
+  `Layer.Draw`/`DrawFunc`, and `engine.Frame` compatibility APIs. Layers now
+  use `DrawCommands`, and `Runtime.Draw` accepts `render.Backend` directly.
+  See the Canvas migration note in `docs/PUBLIC_API.md`.
 
 ## Release entry template
 

@@ -134,6 +134,15 @@ The decision adds documentation only. It does not add a GPU dependency, change
 the current Ebitengine adapter, claim browser support, or remove the Canvas
 compatibility path.
 
+## Implementation update
+
+On 2026-08-12, the command-frame migration retired the legacy `engine.Canvas`
+and immediate `Layer.Draw` API. `Runtime.Draw` now consumes a
+`render.Backend` directly, so supported examples and the transitional Ebit
+adapter use only `render.Frame`. This update does not satisfy the separate
+Ebitengine-retirement criteria above: the adapter remains the current host and
+renderer implementation.
+
 ## Sources checked on 2026-08-11
 
 - [W3C WebGPU specification](https://www.w3.org/TR/webgpu/)

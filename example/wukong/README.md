@@ -9,9 +9,8 @@ player atlas and state-to-frame mapping remain available but its sprite is
 intentionally omitted from the playtest view; actors and interactables remain
 schematic over renderer-local depth layers.
 
-The HUD uses 72's high-level command-layer API; the schematic world remains on
-the Canvas compatibility API while renderer migration continues. Neither path
-can affect the deterministic simulation or replay hashes.
+The HUD and schematic world use 72's high-level command-layer API. Rendering
+cannot affect the deterministic simulation or replay hashes.
 
 It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
 

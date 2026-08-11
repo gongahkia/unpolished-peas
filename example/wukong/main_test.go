@@ -59,32 +59,18 @@ func TestWukongActiveLayersSubmitCommandFrames(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	canvas := &wukongCommandCanvas{}
-	if err := runtime.Draw(canvas); err != nil {
+	backend := &recordingRenderBackend{}
+	if err := runtime.Draw(backend); err != nil {
 		t.Fatal(err)
 	}
-	if canvas.immediateCalls != 0 || canvas.commandFrames == 0 {
-		t.Fatalf("immediate=%d command frames=%d", canvas.immediateCalls, canvas.commandFrames)
+	if len(backend.frames) == 0 {
+		t.Fatal("Wukong did not submit command frames")
 	}
 }
 
-type wukongCommandCanvas struct {
-	immediateCalls int
-	commandFrames  int
-}
+type recordingRenderBackend struct{ frames []render.Frame }
 
-func (c *wukongCommandCanvas) Clear(engine.Color)                            { c.immediateCalls++ }
-func (c *wukongCommandCanvas) FillRect(engine.Rect, engine.Color)            { c.immediateCalls++ }
-func (c *wukongCommandCanvas) StrokeRect(engine.Rect, float64, engine.Color) { c.immediateCalls++ }
-func (c *wukongCommandCanvas) FillCircle(engine.Vec2, float64, engine.Color) { c.immediateCalls++ }
-func (c *wukongCommandCanvas) StrokeCircle(engine.Vec2, float64, float64, engine.Color) {
-	c.immediateCalls++
-}
-func (c *wukongCommandCanvas) StrokeLine(engine.Vec2, engine.Vec2, float64, engine.Color) {
-	c.immediateCalls++
-}
-func (c *wukongCommandCanvas) DrawText(engine.Vec2, string, engine.Color) { c.immediateCalls++ }
-func (c *wukongCommandCanvas) RenderCommands(render.Frame) error {
-	c.commandFrames++
+func (b *recordingRenderBackend) Render(frame render.Frame) error {
+	b.frames = append(b.frames, frame)
 	return nil
 }

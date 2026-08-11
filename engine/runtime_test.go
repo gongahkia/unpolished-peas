@@ -8,6 +8,7 @@ import (
 
 	"github.com/gongahkia/72/engine/diagnostics"
 	"github.com/gongahkia/72/engine/ecs"
+	"github.com/gongahkia/72/engine/render"
 )
 
 func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
@@ -29,12 +30,16 @@ func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	if !app.updated {
 		t.Fatal("application did not receive update input")
 	}
-	canvas := &recordingCanvas{}
-	if err := runtime.Draw(canvas); err != nil {
+	backend := &recordingRenderBackend{}
+	if err := runtime.Draw(backend); err != nil {
 		t.Fatalf("draw runtime: %v", err)
 	}
-	if len(canvas.rects) != 1 || canvas.rects[0].X != 4 {
-		t.Fatalf("runtime layer draw = %+v, want one rectangle at X=4", canvas.rects)
+	if len(backend.frames) != 1 {
+		t.Fatalf("runtime frames = %d, want 1", len(backend.frames))
+	}
+	commands := backend.frames[0].Queue.Commands()
+	if len(commands) != 1 || commands[0].Payload.(render.RectDraw).Bounds.X != 4 {
+		t.Fatalf("runtime layer commands = %+v", commands)
 	}
 	metrics := runtime.Diagnostics().Snapshot()
 	if !hasRecordedMetric(metrics, "runtime.update_time") || !hasRecordedMetric(metrics, "runtime.draw_time") {
@@ -69,6 +74,16 @@ func TestRuntimeBuildsPluginsAndRunsScheduledSystems(t *testing.T) {
 	}
 	if value, ok := ecs.Resource[int](runtime.World()); !ok || value != 2 {
 		t.Fatalf("scheduled resource = %d, %t", value, ok)
+	}
+}
+
+func TestRuntimeRejectsNilRenderBackend(t *testing.T) {
+	runtime, err := NewRuntime(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, &testApplication{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := runtime.Draw(nil); err == nil {
+		t.Fatal("nil render backend succeeded")
 	}
 }
 
@@ -152,8 +167,8 @@ func (a *testApplication) Initialize(runtime *Runtime) error {
 	return runtime.Layers().Add(Layer{
 		ID:    "test",
 		Space: ScreenSpace,
-		Draw: func(frame Frame) {
-			frame.Canvas.FillRect(Rect{X: 4, Y: 8, W: 1, H: 1}, Color{})
+		DrawCommands: func(frame CommandFrame) error {
+			return frame.FillRect(render.RectDraw{Bounds: render.Rect{X: 4, Y: 8, W: 1, H: 1}, Color: render.Color{A: 255}})
 		},
 	})
 }
