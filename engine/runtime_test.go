@@ -1,10 +1,12 @@
 package engine
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 	"time"
 
+	"github.com/gongahkia/72/engine/diagnostics"
 	"github.com/gongahkia/72/engine/ecs"
 )
 
@@ -75,7 +77,47 @@ func TestRunWithHostInstallsAPlatformContextWithoutEbitengine(t *testing.T) {
 	}
 }
 
+func TestRuntimeReportsStructuredInitializationAndFrameFailures(t *testing.T) {
+	initializeCause := errors.New("game setup failed")
+	_, err := NewRuntime(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, failureApplication{initialize: initializeCause})
+	assertRuntimeFailure(t, err, diagnostics.RuntimeSubsystem, "initialize application", diagnostics.CorrectConfiguration, true, initializeCause)
+
+	updateCause := errors.New("game update failed")
+	runtime, err := NewRuntime(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, failureApplication{update: updateCause})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = runtime.Update(NewInput(nil))
+	assertRuntimeFailure(t, err, diagnostics.FrameSubsystem, "update application", diagnostics.CorrectInput, false, updateCause)
+
+	err = RunWithHost(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, &testApplication{}, nil)
+	assertRuntimeFailure(t, err, diagnostics.HostSubsystem, "acquire host", diagnostics.CorrectConfiguration, true, nil)
+}
+
+func assertRuntimeFailure(t *testing.T, err error, subsystem diagnostics.Subsystem, operation string, recovery diagnostics.Recovery, terminal bool, cause error) {
+	t.Helper()
+	var failure *diagnostics.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("error %v is not a diagnostics failure", err)
+	}
+	if failure.Subsystem != subsystem || failure.Operation != operation || failure.Recovery != recovery || failure.Terminal != terminal {
+		t.Fatalf("failure = %+v", failure)
+	}
+	if cause != nil && !errors.Is(err, cause) {
+		t.Fatalf("failure %v did not preserve cause %v", err, cause)
+	}
+}
+
 type testPlugin struct{ built bool }
+
+type failureApplication struct {
+	initialize error
+	update     error
+}
+
+func (a failureApplication) Initialize(*Runtime) error { return a.initialize }
+
+func (a failureApplication) Update(Input) error { return a.update }
 
 func (p *testPlugin) Build(runtime *Runtime) error {
 	p.built = true

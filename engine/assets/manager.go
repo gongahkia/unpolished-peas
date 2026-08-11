@@ -8,6 +8,8 @@ import (
 	"reflect"
 	"sort"
 	"sync"
+
+	"github.com/gongahkia/72/engine/diagnostics"
 )
 
 // Handle identifies an asset of type T. Handles remain valid after Reload;
@@ -70,7 +72,7 @@ func NewManager(source fs.FS) *Manager {
 func Load[T any](manager *Manager, path string, loader Loader[T]) (Handle[T], error) {
 	var zero Handle[T]
 	if err := validLoad(path, loader); err != nil {
-		return zero, err
+		return zero, assetFailure("validate asset request", err, diagnostics.CorrectInput)
 	}
 	typeID := typeOf[T]()
 	key := assetKey{path: path, typeID: typeID}
@@ -83,7 +85,7 @@ func Load[T any](manager *Manager, path string, loader Loader[T]) (Handle[T], er
 
 	value, err := decode(manager.fs, path, loader)
 	if err != nil {
-		return zero, err
+		return zero, assetFailure("load asset", err, diagnostics.CorrectInput)
 	}
 	manager.mu.Lock()
 	defer manager.mu.Unlock()
@@ -131,19 +133,19 @@ func Get[T any](manager *Manager, handle Handle[T]) (T, bool) {
 // Subscribers run after the new value becomes observable.
 func Reload[T any](manager *Manager, handle Handle[T], loader Loader[T]) error {
 	if loader == nil {
-		return fmt.Errorf("asset loader must not be nil")
+		return assetFailure("reload asset", fmt.Errorf("asset loader must not be nil"), diagnostics.CorrectInput)
 	}
 	manager.mu.RLock()
 	record := manager.byID[ID(handle.id)]
 	if record == nil || record.typeID != typeOf[T]() {
 		manager.mu.RUnlock()
-		return fmt.Errorf("asset handle %d is not a loaded %s", handle.id, typeOf[T]())
+		return assetFailure("reload asset", fmt.Errorf("asset handle %d is not a loaded %s", handle.id, typeOf[T]()), diagnostics.CorrectInput)
 	}
 	path := record.path
 	manager.mu.RUnlock()
 	value, err := decode(manager.fs, path, loader)
 	if err != nil {
-		return err
+		return assetFailure("reload asset", err, diagnostics.Retry)
 	}
 	manager.mu.Lock()
 	record = manager.byID[ID(handle.id)]
@@ -233,3 +235,7 @@ func decode[T any](source fs.FS, path string, loader Loader[T]) (T, error) {
 }
 
 func typeOf[T any]() reflect.Type { return reflect.TypeOf((*T)(nil)).Elem() }
+
+func assetFailure(operation string, cause error, recovery diagnostics.Recovery) error {
+	return diagnostics.NewFailure(diagnostics.AssetsSubsystem, operation, cause, recovery, false)
+}
