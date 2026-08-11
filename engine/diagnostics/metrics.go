@@ -38,6 +38,21 @@ func (r *Registry) Add(name string, amount uint64) error {
 	return nil
 }
 
+// Set replaces the point-in-time count for name. It preserves any durations
+// recorded for the same name, though callers should normally use distinct
+// names for counters, gauges, and durations.
+func (r *Registry) Set(name string, value uint64) error {
+	if name == "" {
+		return fmt.Errorf("metric name must not be empty")
+	}
+	r.mu.Lock()
+	metric := r.metrics[name]
+	metric.Name, metric.Count = name, value
+	r.metrics[name] = metric
+	r.mu.Unlock()
+	return nil
+}
+
 // Record adds one duration sample to name and increments its count.
 func (r *Registry) Record(name string, duration time.Duration) error {
 	if name == "" {

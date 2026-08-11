@@ -5,6 +5,13 @@ primitives, and text. They measure command processing and raster work through
 `render.ReferenceBackend` at a fixed logical `320x180` target. They are not GPU
 benchmarks and do not establish a platform support claim.
 
+Each benchmark reports static scene facts alongside timing: `commands/op`,
+`sprite-runs/op`, `tile-cells/op`, and `visible-tiles/op`. A sprite run is a
+contiguous same-layer/texture/material/space/clip command group that could be batched
+while preserving order; it is not a measured GPU batch or draw call. Tile-cell
+values exclude empty (`< 0`) cells and visibility includes any cell intersecting
+the target viewport.
+
 Run the scenes directly:
 
 ```sh
@@ -22,6 +29,32 @@ The report records revision, branch, Go version, operating system/kernel, CPU
 count, five `go test -bench` samples, nanoseconds per operation, allocation
 counts, and bytes per operation. Add the CPU model, power/thermal mode,
 `GOMAXPROCS`, and any unusual background load before publishing it for review.
+
+A representative result shape is:
+
+```text
+BenchmarkReferenceTileMapScene-N  N  N ns/op  2.000 commands/op  0 sprite-runs/op  880 tile-cells/op  858 visible-tiles/op  N B/op  N allocs/op
+```
+
+The time and allocation values vary by machine and Go release. The static
+scene metrics let reviewers tell whether two results exercised the same amount
+of work before comparing them.
+
+## Runtime metrics
+
+`Runtime.Diagnostics()` returns the concurrency-safe
+`diagnostics.Registry` owned by a runtime. `runtime.update_time` and
+`runtime.draw_time` record duration samples. Command renderers receive that
+registry through `render.Frame.Diagnostics` and record `renderer.*` metrics:
+command kinds, non-empty/visible tile cells, compatible sprite runs, portable
+texture counts and bytes, and render-target counts and bytes.
+
+The transitional Ebit adapter additionally records `renderer.texture_uploads`
+and point-in-time `renderer.native_texture_entries` and
+`renderer.native_texture_bytes`. The latter is an RGBA8 dimension-based cache
+estimate only; it excludes driver overhead, temporary allocations, command
+buffers, and actual GPU draw-call/batch counters. A production renderer must
+add measured backend metrics rather than relabel these command-level values.
 
 ## Comparing changes
 

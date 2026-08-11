@@ -6,6 +6,8 @@ package render
 import (
 	"fmt"
 	"math"
+
+	"github.com/gongahkia/72/engine/diagnostics"
 )
 
 // Vec2 is a logical two-dimensional coordinate.
@@ -370,9 +372,10 @@ func finiteRect(value Rect) bool {
 
 // Frame is the backend submission payload for one complete render frame.
 type Frame struct {
-	Camera   Camera
-	Queue    *Queue
-	Textures *TextureStore
+	Camera      Camera
+	Queue       *Queue
+	Textures    *TextureStore
+	Diagnostics *diagnostics.Registry
 }
 
 // Backend consumes renderer-owned high-level frame intent. Backends must not

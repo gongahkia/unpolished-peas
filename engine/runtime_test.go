@@ -36,6 +36,19 @@ func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	if len(canvas.rects) != 1 || canvas.rects[0].X != 4 {
 		t.Fatalf("runtime layer draw = %+v, want one rectangle at X=4", canvas.rects)
 	}
+	metrics := runtime.Diagnostics().Snapshot()
+	if !hasRecordedMetric(metrics, "runtime.update_time") || !hasRecordedMetric(metrics, "runtime.draw_time") {
+		t.Fatalf("runtime metrics = %+v", metrics)
+	}
+}
+
+func hasRecordedMetric(metrics []diagnostics.Metric, name string) bool {
+	for _, metric := range metrics {
+		if metric.Name == name {
+			return metric.Count == 1
+		}
+	}
+	return false
 }
 
 func TestRuntimeBuildsPluginsAndRunsScheduledSystems(t *testing.T) {

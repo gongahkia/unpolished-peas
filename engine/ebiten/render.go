@@ -6,6 +6,7 @@ import (
 	"image/color"
 	"math"
 	"sort"
+	"time"
 
 	"github.com/gongahkia/72/engine/render"
 	"github.com/hajimehoshi/ebiten/v2"
@@ -18,10 +19,11 @@ import (
 // Ebitengine render target. It exists only during 72's renderer transition;
 // applications still depend only on engine/render types.
 type RenderBackend struct {
-	target        *ebiten.Image
-	textures      map[uint64]*ebiten.Image
-	renderTargets map[uint64]*ebiten.Image
-	atlasTextures map[atlasPageKey]atlasPageTexture
+	target         *ebiten.Image
+	textures       map[uint64]*ebiten.Image
+	renderTargets  map[uint64]*ebiten.Image
+	atlasTextures  map[atlasPageKey]atlasPageTexture
+	textureUploads uint64
 }
 
 type atlasPageKey struct {
@@ -42,13 +44,22 @@ func NewRenderBackend(target *ebiten.Image) *RenderBackend {
 func (b *RenderBackend) SetTarget(target *ebiten.Image) { b.target = target }
 
 // Render submits a high-level 2D frame to the configured Ebitengine target.
-func (b *RenderBackend) Render(frame render.Frame) error {
+func (b *RenderBackend) Render(frame render.Frame) (err error) {
 	if b.target == nil {
 		return fmt.Errorf("Ebitengine render target must not be nil")
 	}
 	if frame.Queue == nil {
 		return fmt.Errorf("render frame queue must not be nil")
 	}
+	metrics := render.CollectFrameMetrics(frame, render.Rect{W: float64(b.target.Bounds().Dx()), H: float64(b.target.Bounds().Dy())})
+	uploads := b.textureUploads
+	started := time.Now()
+	defer func() {
+		metrics.Duration = time.Since(started)
+		metrics.TextureUploads = b.textureUploads - uploads
+		metrics.NativeTextureEntries, metrics.NativeTextureBytes = b.cacheStats()
+		metrics.RecordInto(frame.Diagnostics)
+	}()
 	commands := frame.Queue.Commands()
 	for _, command := range commands {
 		if command.Kind != render.Clear {
@@ -233,6 +244,7 @@ func (b *RenderBackend) atlasPage(atlas *render.GlyphAtlas, index int) (*ebiten.
 	copy(decoded.Pix, page.Pixels)
 	texture := ebiten.NewImageFromImage(decoded)
 	b.atlasTextures[key] = atlasPageTexture{image: texture, revision: revision}
+	b.textureUploads++
 	return texture, nil
 }
 
@@ -330,6 +342,7 @@ func (b *RenderBackend) texture(store *render.TextureStore, handle render.Textur
 	copy(decoded.Pix, source.Pixels)
 	texture := ebiten.NewImageFromImage(decoded)
 	b.textures[handle.ID] = texture
+	b.textureUploads++
 	return texture, nil
 }
 
@@ -351,7 +364,30 @@ func (b *RenderBackend) renderTarget(store *render.TextureStore, target render.R
 	copy(decoded.Pix, source.Pixels)
 	destination := ebiten.NewImageFromImage(decoded)
 	b.renderTargets[target.Texture.ID] = destination
+	b.textureUploads++
 	return destination, nil
+}
+
+func (b *RenderBackend) cacheStats() (uint64, uint64) {
+	var entries, bytes uint64
+	add := func(image *ebiten.Image) {
+		if image == nil {
+			return
+		}
+		bounds := image.Bounds()
+		entries++
+		bytes += uint64(bounds.Dx()) * uint64(bounds.Dy()) * 4
+	}
+	for _, texture := range b.textures {
+		add(texture)
+	}
+	for _, target := range b.renderTargets {
+		add(target)
+	}
+	for _, page := range b.atlasTextures {
+		add(page.image)
+	}
+	return entries, bytes
 }
 
 func translateRect(value render.Rect, offset render.Vec2) render.Rect {
