@@ -26,3 +26,21 @@ func TestTextureStoreOwnsPortableTextureData(t *testing.T) {
 		t.Fatal("invalid RGBA image succeeded")
 	}
 }
+
+func TestTextureStoreCreatesAndValidatesRenderTargets(t *testing.T) {
+	store := NewTextureStore()
+	target, err := store.CreateRenderTarget(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	image, ok := store.TargetImage(target)
+	if !ok || image.Width != 2 || image.Height != 1 || len(image.Pixels) != 8 {
+		t.Fatalf("target image = %+v, present=%t", image, ok)
+	}
+	if _, err := store.CreateRenderTarget(0, 1); err == nil {
+		t.Fatal("zero-width render target succeeded")
+	}
+	if _, ok := store.TargetImage(RenderTarget{Texture: Texture{ID: target.Texture.ID + 1}}); ok {
+		t.Fatal("unknown render target was available")
+	}
+}

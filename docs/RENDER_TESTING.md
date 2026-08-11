@@ -51,6 +51,14 @@ in the range. The reference and transitional Ebit renderers use that range
 after camera translation and before per-tile submission. It is culling only:
 atlas coordinates, empty-tile behavior, and draw order are unchanged.
 
+`TextureStore.CreateRenderTarget` creates a transparent portable image with a
+stable texture handle. A `TargetBackend` may render a complete `Frame` into it
+with `RenderTo`; subsequent sprites can sample `target.Texture`. The reference
+backend writes its deterministic result back to the store, while a renderer may
+retain a native target cache. Sampling a target while writing the same target
+is intentionally unspecified. Render targets retain normal frame camera, clip,
+clear, ordering, and texture semantics.
+
 `Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
 The queue stores the effective intersection on each subsequent draw, rather
 than relying on renderer-side push/pop ordering; a `Clear` remains un-clipped.

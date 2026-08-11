@@ -95,6 +95,33 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 	return nil
 }
 
+// RenderTo applies frame to target and updates its portable TextureStore image.
+// The reference backend's main target remains unchanged.
+func (b *ReferenceBackend) RenderTo(frame Frame, target RenderTarget) error {
+	if b == nil {
+		return rendererFailure("render reference target", fmt.Errorf("reference backend must not be nil"), diagnostics.CorrectConfiguration, true)
+	}
+	if frame.Textures == nil {
+		return rendererFailure("render reference target", fmt.Errorf("render target requires an engine texture store"), diagnostics.CorrectInput, false)
+	}
+	image, ok := frame.Textures.TargetImage(target)
+	if !ok {
+		return rendererFailure("render reference target", fmt.Errorf("render target texture %d is not registered", target.Texture.ID), diagnostics.CorrectInput, false)
+	}
+	main := b.image
+	b.image = image
+	err := b.Render(frame)
+	rendered := b.image
+	b.image = main
+	if err != nil {
+		return err
+	}
+	if err := frame.Textures.replaceTarget(target, rendered); err != nil {
+		return rendererFailure("render reference target", err, diagnostics.CorrectInput, false)
+	}
+	return nil
+}
+
 func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 	previousClip := b.clip
 	if clip, ok := command.Clip(); ok {
@@ -624,3 +651,4 @@ func rendererFailure(operation string, cause error, recovery diagnostics.Recover
 }
 
 var _ Backend = (*ReferenceBackend)(nil)
+var _ TargetBackend = (*ReferenceBackend)(nil)

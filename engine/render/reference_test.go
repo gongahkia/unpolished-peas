@@ -216,6 +216,39 @@ func TestReferenceBackendCullsTileMapToCameraViewportWithoutDroppingEdges(t *tes
 	}
 }
 
+func TestReferenceBackendRendersTargetThenSamplesItAsSprite(t *testing.T) {
+	backend := newReferenceBackend(t, 2, 1)
+	backend.Reset(Color{B: 255, A: 255})
+	store := NewTextureStore()
+	target, err := store.CreateRenderTarget(1, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var targetQueue Queue
+	targetQueue.Clear(Color{R: 255, A: 255})
+	if err := backend.RenderTo(Frame{Queue: &targetQueue, Textures: store}, target); err != nil {
+		t.Fatalf("render target: %v", err)
+	}
+	if got, want := referencePixel(t, backend.Snapshot(), 0, 0), (Color{B: 255, A: 255}); got != want {
+		t.Fatalf("main target changed after off-screen render: %+v, want %+v", got, want)
+	}
+	var queue Queue
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: target.Texture, Bounds: Rect{W: 2, H: 1}, Tint: Color{R: 255, G: 255, B: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue, Textures: store}); err != nil {
+		t.Fatalf("render target sprite: %v", err)
+	}
+	for x := 0; x < 2; x++ {
+		if got, want := referencePixel(t, backend.Snapshot(), x, 0), (Color{R: 255, A: 255}); got != want {
+			t.Fatalf("target pixel %d = %+v, want %+v", x, got, want)
+		}
+	}
+	if targetImage, ok := store.TargetImage(target); !ok || referencePixel(t, targetImage, 0, 0) != (Color{R: 255, A: 255}) {
+		t.Fatalf("stored target = %+v, present=%t", targetImage, ok)
+	}
+}
+
 func TestReferenceBackendAppliesNestedClipIntersections(t *testing.T) {
 	backend := newReferenceBackend(t, 6, 5)
 	red := Color{R: 255, A: 255}
