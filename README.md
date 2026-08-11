@@ -33,6 +33,7 @@ Start with the engine documentation, not the example source:
 - [2D physics boundary](docs/PHYSICS.md)
 - [portable asset loaders](docs/ASSETS.md)
 - [project asset packaging](docs/ASSET_PACKAGING.md)
+- [platform host contract](docs/HOSTS.md)
 - [Wukong example](example/wukong), an optional game built with the public API
 
 ## Wukong example

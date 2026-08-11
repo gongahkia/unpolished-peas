@@ -1,7 +1,9 @@
 package engine
 
 import (
+	"fmt"
 	"testing"
+	"time"
 
 	"github.com/gongahkia/72/engine/ecs"
 )
@@ -55,6 +57,24 @@ func TestRuntimeBuildsPluginsAndRunsScheduledSystems(t *testing.T) {
 	}
 }
 
+func TestRunWithHostInstallsAPlatformContextWithoutEbitengine(t *testing.T) {
+	host := &testHost{
+		window: &testWindow{state: WindowState{Title: "before", LogicalSize: Size{W: 320, H: 180}, DrawableSize: Size{W: 640, H: 360}, Scale: 2, Focused: true, Visible: true}},
+		clock:  testClock{},
+		events: &testEvents{events: []Event{{Kind: EventFocusChanged, Focused: true}}},
+	}
+	app := &hostApplication{}
+	if err := RunWithHost(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, app, host); err != nil {
+		t.Fatalf("run with host: %v", err)
+	}
+	if !host.ran || !app.initialized || !app.updated || app.context.Window != host.window || app.context.Clock != host.clock || app.context.Events != host.events {
+		t.Fatalf("host lifecycle ran=%t app=%+v context=%+v", host.ran, app, app.context)
+	}
+	if state := host.window.State(); state.Title != "configured" {
+		t.Fatalf("host window state = %+v", state)
+	}
+}
+
 type testPlugin struct{ built bool }
 
 func (p *testPlugin) Build(runtime *Runtime) error {
@@ -86,4 +106,64 @@ func (a *testApplication) Initialize(runtime *Runtime) error {
 func (a *testApplication) Update(input Input) error {
 	a.updated = input.Pressed("jump")
 	return nil
+}
+
+type hostApplication struct {
+	initialized bool
+	updated     bool
+	context     HostContext
+}
+
+func (a *hostApplication) Initialize(runtime *Runtime) error {
+	a.initialized, a.context = true, runtime.Host()
+	return a.context.Window.SetTitle("configured")
+}
+
+func (a *hostApplication) Update(Input) error {
+	a.updated = true
+	return nil
+}
+
+type testHost struct {
+	window *testWindow
+	clock  testClock
+	events *testEvents
+	ran    bool
+}
+
+func (h *testHost) Context() HostContext {
+	return HostContext{Window: h.window, Clock: h.clock, Events: h.events}
+}
+
+func (h *testHost) Run(runtime *Runtime) error {
+	h.ran = true
+	if events := h.events.PollEvents(); len(events) != 1 || events[0].Kind != EventFocusChanged {
+		return fmt.Errorf("fake host event stream = %+v", events)
+	}
+	return runtime.Update(NewInput(nil))
+}
+
+type testWindow struct {
+	state     WindowState
+	cursor    Cursor
+	clipboard string
+}
+
+func (w *testWindow) State() WindowState                { return w.state }
+func (w *testWindow) SetTitle(title string) error       { w.state.Title = title; return nil }
+func (w *testWindow) SetCursor(cursor Cursor) error     { w.cursor = cursor; return nil }
+func (w *testWindow) ReadClipboard() (string, error)    { return w.clipboard, nil }
+func (w *testWindow) WriteClipboard(value string) error { w.clipboard = value; return nil }
+
+type testClock struct{}
+
+func (testClock) Now() time.Time      { return time.Unix(0, 0) }
+func (testClock) Timing() FrameTiming { return FrameTiming{Frame: 1, Delta: time.Second / 60} }
+
+type testEvents struct{ events []Event }
+
+func (e *testEvents) PollEvents() []Event {
+	events := append([]Event(nil), e.events...)
+	e.events = nil
+	return events
 }

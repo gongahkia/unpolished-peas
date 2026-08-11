@@ -35,6 +35,7 @@ type Backend interface {
 type Runtime struct {
 	config   Config
 	app      Application
+	host     HostContext
 	camera   Camera
 	layers   LayerStack
 	world    *ecs.World
@@ -45,6 +46,10 @@ type Runtime struct {
 
 // NewRuntime creates and initializes an application runtime.
 func NewRuntime(config Config, app Application) (*Runtime, error) {
+	return newRuntime(config, app, HostContext{})
+}
+
+func newRuntime(config Config, app Application, host HostContext) (*Runtime, error) {
 	if app == nil {
 		return nil, fmt.Errorf("application must not be nil")
 	}
@@ -54,6 +59,7 @@ func NewRuntime(config Config, app Application) (*Runtime, error) {
 	runtime := &Runtime{
 		config:   config,
 		app:      app,
+		host:     host,
 		camera:   NewCamera(config.Viewport),
 		world:    ecs.NewWorld(),
 		systems:  ecs.NewSchedule(),
@@ -85,8 +91,30 @@ func Run(config Config, app Application, backend Backend) error {
 	return backend.Run(runtime)
 }
 
+// RunWithHost initializes an application with a host-owned platform context
+// and delegates event-loop ownership to host. Context is installed before
+// Application.Initialize so setup can configure portable window state.
+func RunWithHost(config Config, app Application, host Host) error {
+	if host == nil {
+		return fmt.Errorf("host must not be nil")
+	}
+	context := host.Context()
+	if err := context.validate(); err != nil {
+		return err
+	}
+	runtime, err := newRuntime(config, app, context)
+	if err != nil {
+		return err
+	}
+	return host.Run(runtime)
+}
+
 // Config returns the immutable runtime configuration.
 func (r *Runtime) Config() Config { return r.config }
+
+// Host returns the platform context installed by RunWithHost. It is the zero
+// value for runtimes created with NewRuntime or the legacy Run function.
+func (r *Runtime) Host() HostContext { return r.host }
 
 // Actions returns the configured input bindings.
 func (r *Runtime) Actions() ActionMap { return r.config.Actions }
