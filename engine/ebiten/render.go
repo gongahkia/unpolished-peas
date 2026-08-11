@@ -106,6 +106,12 @@ func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
 			return fmt.Errorf("filled circle command has payload %T", command.Payload)
 		}
 		vector.DrawFilledCircle(b.target, float32(value.Center.X+translate.X), float32(value.Center.Y+translate.Y), float32(value.Radius), renderColor(value.Color), true)
+	case render.StrokeCircle:
+		value, ok := command.Payload.(render.CircleDraw)
+		if !ok {
+			return fmt.Errorf("stroked circle command has payload %T", command.Payload)
+		}
+		vector.StrokeCircle(b.target, float32(value.Center.X+translate.X), float32(value.Center.Y+translate.Y), float32(value.Radius), float32(value.Width), renderColor(value.Color), true)
 	case render.StrokeLine:
 		value, ok := command.Payload.(render.LineDraw)
 		if !ok {

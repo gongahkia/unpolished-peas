@@ -105,6 +105,25 @@ func TestReferenceBackendRendersSpritesTilesPrimitivesAndText(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendRendersStrokeCircle(t *testing.T) {
+	backend := newReferenceBackend(t, 7, 7)
+	white := Color{R: 255, G: 255, B: 255, A: 255}
+	var queue Queue
+	if err := queue.StrokeCircle(0, ScreenSpace, CircleDraw{Center: Vec2{X: 3.5, Y: 3.5}, Radius: 1.5, Width: 1, Color: white}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	if got, want := referencePixel(t, image, 3, 1), white; got != want {
+		t.Fatalf("stroked circle outer edge = %+v, want %+v", got, want)
+	}
+	if got := referencePixel(t, image, 3, 3); got.A != 0 {
+		t.Fatalf("stroked circle center = %+v, want transparent", got)
+	}
+}
+
 func TestReferenceBackendAppliesWorldCameraTranslation(t *testing.T) {
 	backend := newReferenceBackend(t, 4, 1)
 	var queue Queue
