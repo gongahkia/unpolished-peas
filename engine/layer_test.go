@@ -91,8 +91,29 @@ func TestScreenCommandLayerRendersUIVisualThroughCommandFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	commands := canvas.frames[0].Queue.Commands()
-	if len(commands) != 1 || commands[0].Kind != render.FillRect || commands[0].Layer != 9 || commands[0].Space != render.ScreenSpace {
+	clip, clipped := render.Rect{}, false
+	if len(commands) == 1 {
+		clip, clipped = commands[0].Clip()
+	}
+	if len(commands) != 1 || commands[0].Kind != render.FillRect || commands[0].Layer != 9 || commands[0].Space != render.ScreenSpace || !clipped || clip != (render.Rect{W: 32, H: 18}) {
 		t.Fatalf("UI command = %+v", commands)
+	}
+}
+
+func TestWorldCommandLayerRejectsTargetClip(t *testing.T) {
+	stack := &LayerStack{}
+	if err := stack.Add(Layer{
+		ID:       "world",
+		Space:    WorldSpace,
+		Parallax: 1,
+		DrawCommands: func(frame CommandFrame) error {
+			return frame.PushClip(render.Rect{W: 1, H: 1})
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := stack.draw(&recordingCommandCanvas{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore()); err == nil {
+		t.Fatal("world command layer accepted a target clip")
 	}
 }
 

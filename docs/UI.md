@@ -33,8 +33,10 @@ return tree.Render(frame)
 ```
 
 `engine.CommandFrame` owns the queue, layer ordering, and coordinate space. It
-implements `ui.CommandRenderer`, so a screen-space command layer can pass its
-frame directly to `Tree.Render`.
+implements `ui.ClipCommandRenderer`, so a screen-space command layer can pass
+its frame directly to `Tree.Render`. Existing `ui.CommandRenderer` values that
+lack clip operations remain source-compatible, but `Tree.Render` returns an
+error for them because retained visual rendering requires nested clipping.
 
 ## Input policy
 
@@ -50,6 +52,7 @@ platform gesture cancellation.
 `Visual` emits its optional fill, border, and text in parent-before-child
 painter order using the existing `engine/render` rectangle and text commands.
 Text coordinates are baselines relative to the node's top-left corner. The
-tree validates finite geometry but does not clip visuals; its hit tests remain
-bounded by every ancestor. Nested scissor clipping, render targets, a portable
-glyph atlas, concrete host input, and a UI sample remain unimplemented.
+tree validates finite geometry and clips every node's visuals and descendants
+to its bounds through the nested screen-space command clip contract; its hit
+tests use the same ancestor boundary. Render targets, a concrete host input
+sample, and a production GPU text/render path remain unimplemented.

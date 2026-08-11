@@ -45,6 +45,15 @@ colors use straight-alpha source-over composition. Text uses the fixed
 `basicfont.Face7x13` fallback and its position is the glyph baseline. Material
 parameters are backend-defined and are not interpreted by the reference backend.
 
+`Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
+The queue stores the effective intersection on each subsequent draw, rather
+than relying on renderer-side push/pop ordering; a `Clear` remains un-clipped.
+Clip bounds use the same half-open, logical-pixel-centre rule as rectangles and
+apply after a world command's camera translation. `engine.CommandFrame` exposes
+clips only from screen-space layers. The reference backend applies clips to
+sprites, tiles, primitives, and both basic-font and atlas text; renderers must
+preserve those semantics or document their difference.
+
 These rules are intentionally explicit rather than a pixel-for-pixel promise
 to Ebitengine or a future GPU renderer. A backend must document any semantic
 difference and add a focused regression before relying on it.

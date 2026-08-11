@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"math"
 	"sort"
 
 	"github.com/gongahkia/72/engine/render"
@@ -79,6 +80,15 @@ func (b *RenderBackend) Render(frame render.Frame) error {
 }
 
 func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
+	if clip, clipped := command.Clip(); clipped {
+		target, ok := b.clippedTarget(clip)
+		if !ok {
+			return nil
+		}
+		original := b.target
+		b.target = target
+		defer func() { b.target = original }()
+	}
 	translate := render.Vec2{}
 	if command.Space == render.WorldSpace {
 		translate = render.Vec2{X: -frame.Camera.Position.X, Y: -frame.Camera.Position.Y}
@@ -140,6 +150,31 @@ func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
 		return fmt.Errorf("unsupported render command %d", command.Kind)
 	}
 	return nil
+}
+
+func (b *RenderBackend) clippedTarget(clip render.Rect) (*ebiten.Image, bool) {
+	bounds := b.target.Bounds()
+	region := image.Rect(
+		clipPixelEdge(clip.X-.5, bounds.Min.X, bounds.Max.X),
+		clipPixelEdge(clip.Y-.5, bounds.Min.Y, bounds.Max.Y),
+		clipPixelEdge(clip.X+clip.W-.5, bounds.Min.X, bounds.Max.X),
+		clipPixelEdge(clip.Y+clip.H-.5, bounds.Min.Y, bounds.Max.Y),
+	)
+	if region.Empty() {
+		return nil, false
+	}
+	target, ok := b.target.SubImage(region).(*ebiten.Image)
+	return target, ok && target != nil
+}
+
+func clipPixelEdge(value float64, minimum, maximum int) int {
+	if value <= float64(minimum) {
+		return minimum
+	}
+	if value >= float64(maximum) {
+		return maximum
+	}
+	return int(math.Ceil(value))
 }
 
 func (b *RenderBackend) drawText(value render.TextDraw, translate render.Vec2) error {
