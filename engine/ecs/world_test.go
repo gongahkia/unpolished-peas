@@ -65,3 +65,64 @@ func TestSchedulePreservesOrderAndStopsOnError(t *testing.T) {
 		t.Fatalf("schedule calls = %v, want %v", calls, want)
 	}
 }
+
+func TestScheduleValidatesDeclaredAccessAndExplicitOrder(t *testing.T) {
+	world, schedule := NewWorld(), NewSchedule()
+	var calls []string
+	if err := schedule.AddSystem(Update, SystemSpec{
+		Name:   "reader",
+		Access: Access{Reads: []Target{ComponentTarget[position]()}},
+		Run:    func(*World) error { calls = append(calls, "reader"); return nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := schedule.AddSystem(Update, SystemSpec{
+		Name:   "writer",
+		Access: Access{Writes: []Target{ComponentTarget[position]()}},
+		Before: []string{"reader"},
+		Run:    func(*World) error { calls = append(calls, "writer"); return nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := schedule.Names(Update), []string{"writer", "reader"}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("resolved names = %v, want %v", got, want)
+	}
+	if err := schedule.Run(Update, world); err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"writer", "reader"}; !reflect.DeepEqual(calls, want) {
+		t.Fatalf("ordered calls = %v, want %v", calls, want)
+	}
+	readOnly := NewSchedule()
+	for _, name := range []string{"first-reader", "second-reader"} {
+		if err := readOnly.AddSystem(Update, SystemSpec{
+			Name:   name,
+			Access: Access{Reads: []Target{ComponentTarget[velocity]()}},
+			Run:    func(*World) error { return nil },
+		}); err != nil {
+			t.Fatalf("read-only overlap should validate: %v", err)
+		}
+	}
+	if err := readOnly.Validate(Update); err != nil {
+		t.Fatalf("validate read-only overlap: %v", err)
+	}
+
+	conflicting := NewSchedule()
+	if err := conflicting.AddSystem(Update, SystemSpec{
+		Name:   "write-resource",
+		Access: Access{Writes: []Target{ResourceTarget[string]()}},
+		Run:    func(*World) error { return nil },
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if err := conflicting.AddSystem(Update, SystemSpec{
+		Name:   "read-resource",
+		Access: Access{Reads: []Target{ResourceTarget[string]()}},
+		Run:    func(*World) error { return nil },
+	}); err == nil {
+		t.Fatal("unordered read/write conflict succeeded")
+	}
+	if err := conflicting.AddSystem(Update, SystemSpec{Name: "write-resource", Run: func(*World) error { return nil }}); err == nil {
+		t.Fatal("duplicate system name succeeded")
+	}
+}
