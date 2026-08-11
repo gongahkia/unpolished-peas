@@ -1,5 +1,6 @@
 /bin/
 /dist/
+/node_modules/
 *.wasm
 *.replay.json
 AGENTS.md

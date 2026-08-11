@@ -35,6 +35,7 @@ Start with the engine documentation, not the example source:
 - [deterministic render testing](docs/RENDER_TESTING.md)
 - [structured runtime failures](docs/ERRORS.md)
 - [performance baseline and GPU-validation process](docs/PERFORMANCE.md)
+- [platform build and runtime evidence matrix](docs/SUPPORT.md)
 - [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)

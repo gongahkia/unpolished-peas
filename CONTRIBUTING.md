@@ -39,6 +39,20 @@ checks. A successful cross-build must be reported as compile-only unless it
 also ran on the claimed platform. For device-output audio changes, the audio
 example is a manual check; on Linux it needs ALSA development/runtime support.
 
+For the generated first-game browser bundle smoke, use the locked Playwright
+toolchain:
+
+```sh
+npm ci
+make first-game-wasm
+npx playwright install chromium
+npx playwright test --config ci/playwright.config.mjs
+```
+
+This checks bundle loading and startup exceptions in Chromium. It does not
+verify a rendered frame, gameplay input, or WebGPU presentation. `npm audit`
+must be clean before changing the browser test dependency.
+
 ## Change and review expectations
 
 - Explain the problem, intended behavior, scope, and verification in the pull

@@ -5,7 +5,8 @@ on:
   pull_request:
 
 jobs:
-  test:
+  linux:
+    name: linux unit and race
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -15,5 +16,85 @@ jobs:
       - run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))"
       - run: go vet ./...
       - run: go test ./...
-      - run: go test -race ./example/wukong/internal/...
+      - run: go test -race ./...
       - run: make example-wasm
+      - run: make first-game-wasm
+
+  native:
+    name: native ${{ matrix.name }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: linux-amd64
+            os: ubuntu-latest
+            extension: ''
+          - name: windows-amd64
+            os: windows-latest
+            extension: '.exe'
+          - name: macos
+            os: macos-latest
+            extension: ''
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: go vet ./...
+      - run: go test ./...
+      - run: mkdir -p .ci-artifacts
+      - run: go build -o ".ci-artifacts/wukong${{ matrix.extension }}" ./example/wukong
+      - run: go build -o ".ci-artifacts/first-game${{ matrix.extension }}" ./example/first-game
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-${{ matrix.name }}
+          path: .ci-artifacts
+          if-no-files-found: ignore
+
+  wasm:
+    name: wasm bundles
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - run: make example-wasm
+      - run: make first-game-wasm
+      - run: test -s dist/wukong.wasm
+      - run: test -s dist/first-game/first-game.wasm
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-bundles
+          path: dist
+          if-no-files-found: ignore
+
+  browser-smoke:
+    name: wasm browser smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.x'
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: make first-game-wasm
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npx playwright test --config ci/playwright.config.mjs
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wasm-browser-smoke
+          path: |
+            test-results
+            playwright-report
+          if-no-files-found: ignore
