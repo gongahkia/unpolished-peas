@@ -37,6 +37,7 @@ Start with the engine documentation, not the example source:
 - [platform host contract](docs/HOSTS.md)
 - [portable input and rebinding](docs/INPUT.md)
 - [audio playback and device policy](docs/AUDIO.md)
+- [first game tutorial](docs/FIRST_GAME.md)
 - [Wukong example](example/wukong), an optional game built with the public API
 
 ## Wukong example
