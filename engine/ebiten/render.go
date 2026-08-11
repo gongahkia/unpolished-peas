@@ -20,6 +20,7 @@ import (
 type RenderBackend struct {
 	target        *ebiten.Image
 	textures      map[uint64]*ebiten.Image
+	renderTargets map[uint64]*ebiten.Image
 	atlasTextures map[atlasPageKey]atlasPageTexture
 }
 
@@ -34,7 +35,7 @@ type atlasPageTexture struct {
 
 // NewRenderBackend creates a temporary renderer for target.
 func NewRenderBackend(target *ebiten.Image) *RenderBackend {
-	return &RenderBackend{target: target, textures: make(map[uint64]*ebiten.Image), atlasTextures: make(map[atlasPageKey]atlasPageTexture)}
+	return &RenderBackend{target: target, textures: make(map[uint64]*ebiten.Image), renderTargets: make(map[uint64]*ebiten.Image), atlasTextures: make(map[atlasPageKey]atlasPageTexture)}
 }
 
 // SetTarget updates the Ebitengine target used for subsequent Render calls.
@@ -77,6 +78,20 @@ func (b *RenderBackend) Render(frame render.Frame) error {
 		}
 	}
 	return nil
+}
+
+// RenderTo submits frame into target. The target remains available as a sprite
+// source through the same RenderBackend after this call returns.
+func (b *RenderBackend) RenderTo(frame render.Frame, target render.RenderTarget) error {
+	destination, err := b.renderTarget(frame.Textures, target)
+	if err != nil {
+		return err
+	}
+	main := b.target
+	b.target = destination
+	err = b.Render(frame)
+	b.target = main
+	return err
 }
 
 func (b *RenderBackend) draw(frame render.Frame, command render.Command) error {
@@ -298,6 +313,9 @@ func (b *RenderBackend) drawTileMap(store *render.TextureStore, tiles render.Til
 }
 
 func (b *RenderBackend) texture(store *render.TextureStore, handle render.Texture) (*ebiten.Image, error) {
+	if target := b.renderTargets[handle.ID]; target != nil {
+		return target, nil
+	}
 	if texture := b.textures[handle.ID]; texture != nil {
 		return texture, nil
 	}
@@ -315,6 +333,27 @@ func (b *RenderBackend) texture(store *render.TextureStore, handle render.Textur
 	return texture, nil
 }
 
+func (b *RenderBackend) renderTarget(store *render.TextureStore, target render.RenderTarget) (*ebiten.Image, error) {
+	if target.Texture.ID == 0 {
+		return nil, fmt.Errorf("render target must not be zero")
+	}
+	if cached := b.renderTargets[target.Texture.ID]; cached != nil {
+		return cached, nil
+	}
+	if store == nil {
+		return nil, fmt.Errorf("render target %d is not available without an engine texture store", target.Texture.ID)
+	}
+	source, ok := store.TargetImage(target)
+	if !ok {
+		return nil, fmt.Errorf("render target texture %d is not registered", target.Texture.ID)
+	}
+	decoded := image.NewNRGBA(image.Rect(0, 0, source.Width, source.Height))
+	copy(decoded.Pix, source.Pixels)
+	destination := ebiten.NewImageFromImage(decoded)
+	b.renderTargets[target.Texture.ID] = destination
+	return destination, nil
+}
+
 func translateRect(value render.Rect, offset render.Vec2) render.Rect {
 	value.X += offset.X
 	value.Y += offset.Y
@@ -326,3 +365,4 @@ func renderColor(value render.Color) color.RGBA {
 }
 
 var _ render.Backend = (*RenderBackend)(nil)
+var _ render.TargetBackend = (*RenderBackend)(nil)
