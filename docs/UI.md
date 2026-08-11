@@ -52,7 +52,10 @@ platform gesture cancellation.
 `Visual` emits its optional fill, border, and text in parent-before-child
 painter order using the existing `engine/render` rectangle and text commands.
 Text coordinates are baselines relative to the node's top-left corner. The
-tree validates finite geometry and clips every node's visuals and descendants
+optional `Tree.SetTextAtlas` attachment forwards an engine-owned
+`render.GlyphAtlas` to a node's text command; passing nil restores the
+basic-font compatibility path. The tree validates finite geometry and clips
+every node's visuals and descendants
 to its bounds through the nested screen-space command clip contract; its hit
 tests use the same ancestor boundary. Render targets and a production GPU
 text/render path remain unimplemented.

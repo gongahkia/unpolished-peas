@@ -104,16 +104,17 @@ type ClipCommandRenderer interface {
 
 // Tree owns retained UI nodes.
 type Tree struct {
-	next    NodeID
-	nodes   map[NodeID]*Node
-	focus   NodeID
-	capture NodeID
+	next        NodeID
+	nodes       map[NodeID]*Node
+	textAtlases map[NodeID]*render.GlyphAtlas
+	focus       NodeID
+	capture     NodeID
 }
 
 // NewTree creates a tree with one root node.
 func NewTree(style Style) *Tree {
 	root := &Node{ID: 1, Style: style}
-	return &Tree{next: 2, nodes: map[NodeID]*Node{root.ID: root}}
+	return &Tree{next: 2, nodes: map[NodeID]*Node{root.ID: root}, textAtlases: make(map[NodeID]*render.GlyphAtlas)}
 }
 
 // Root returns the immutable root identity.
@@ -160,6 +161,21 @@ func (t *Tree) SetContent(id NodeID, content any) error {
 		return fmt.Errorf("UI node %d does not exist", id)
 	}
 	node.Content = content
+	return nil
+}
+
+// SetTextAtlas attaches an optional portable glyph atlas to one node's Visual
+// text. Passing nil restores the basic-font compatibility path. The atlas is
+// kept separately so Visual remains source-compatible for existing callers.
+func (t *Tree) SetTextAtlas(id NodeID, atlas *render.GlyphAtlas) error {
+	if t.nodes[id] == nil {
+		return fmt.Errorf("UI node %d does not exist", id)
+	}
+	if atlas == nil {
+		delete(t.textAtlases, id)
+		return nil
+	}
+	t.textAtlases[id] = atlas
 	return nil
 }
 
@@ -406,7 +422,7 @@ func (t *Tree) renderNode(renderer ClipCommandRenderer, id NodeID) error {
 		return fmt.Errorf("clip UI node %d: %w", node.ID, err)
 	}
 	if visual, ok := node.Content.(Visual); ok {
-		if err := renderVisual(renderer, node.Bounds, visual); err != nil {
+		if err := renderVisual(renderer, node.Bounds, visual, t.textAtlases[node.ID]); err != nil {
 			_ = renderer.PopClip()
 			return fmt.Errorf("render UI node %d: %w", node.ID, err)
 		}
@@ -423,7 +439,7 @@ func (t *Tree) renderNode(renderer ClipCommandRenderer, id NodeID) error {
 	return nil
 }
 
-func renderVisual(renderer CommandRenderer, bounds Rect, visual Visual) error {
+func renderVisual(renderer CommandRenderer, bounds Rect, visual Visual, atlas *render.GlyphAtlas) error {
 	if !finiteRect(bounds) || bounds.W < 0 || bounds.H < 0 {
 		return fmt.Errorf("UI bounds must be finite and non-negative")
 	}
@@ -457,6 +473,7 @@ func renderVisual(renderer CommandRenderer, bounds Rect, visual Visual) error {
 		Position: render.Vec2{X: bounds.X + visual.TextPosition.X, Y: bounds.Y + visual.TextPosition.Y},
 		Value:    visual.Text,
 		Color:    visual.TextColor,
+		Atlas:    atlas,
 	})
 }
 

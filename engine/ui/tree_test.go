@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gongahkia/72/engine/render"
+	"golang.org/x/image/font/gofont/goregular"
 )
 
 func TestTreeLayoutsAndTargetsFrontmostInteractiveNode(t *testing.T) {
@@ -156,6 +157,46 @@ func TestTreeRequiresClipCommandRenderer(t *testing.T) {
 	}
 }
 
+func TestTreeForwardsVisualGlyphAtlasToTextCommand(t *testing.T) {
+	atlas, err := render.NewGlyphAtlas(fontSource(goregular.TTF), render.GlyphAtlasOptions{Size: 13})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tree := NewTree(Style{})
+	white := render.Color{R: 255, G: 255, B: 255, A: 255}
+	if err := tree.SetContent(tree.Root(), Visual{Text: "A", TextColor: white, TextPosition: Vec2{X: 2, Y: 14}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.SetTextAtlas(tree.Root(), atlas); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Layout(Vec2{X: 24, Y: 18}); err != nil {
+		t.Fatal(err)
+	}
+	var queue render.Queue
+	if err := tree.Render(queueRenderer{queue: &queue, layer: 0}); err != nil {
+		t.Fatal(err)
+	}
+	commands := queue.Commands()
+	if len(commands) != 1 {
+		t.Fatalf("command count = %d, want 1", len(commands))
+	}
+	text, ok := commands[0].Payload.(render.TextDraw)
+	if !ok || text.Atlas != atlas {
+		t.Fatalf("text command = %+v", commands[0])
+	}
+	backend, err := render.NewReferenceBackend(24, 18)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(render.Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	if !hasColor(backend.Snapshot(), white) {
+		t.Fatal("atlas text did not render")
+	}
+}
+
 type queueRenderer struct {
 	queue *render.Queue
 	layer int
@@ -182,3 +223,16 @@ type legacyRenderer struct{}
 func (legacyRenderer) FillRect(render.RectDraw) error   { return nil }
 func (legacyRenderer) StrokeRect(render.RectDraw) error { return nil }
 func (legacyRenderer) DrawText(render.TextDraw) error   { return nil }
+
+type fontSource []byte
+
+func (s fontSource) Bytes() []byte { return append([]byte(nil), s...) }
+
+func hasColor(image render.Image, want render.Color) bool {
+	for offset := 0; offset < len(image.Pixels); offset += 4 {
+		if image.Pixels[offset] == want.R && image.Pixels[offset+1] == want.G && image.Pixels[offset+2] == want.B && image.Pixels[offset+3] == want.A {
+			return true
+		}
+	}
+	return false
+}
