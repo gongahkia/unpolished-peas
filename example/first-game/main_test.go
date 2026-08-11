@@ -25,29 +25,22 @@ func TestFirstGameMovesECSPlayerAndEmitsCommandFrames(t *testing.T) {
 	if !ok || position.X != 153 || position.Y != 90 {
 		t.Fatalf("player position = %+v, present=%t", position, ok)
 	}
-	canvas := &recordingCanvas{}
-	if err := runtime.Draw(canvas); err != nil {
+	backend := &recordingRenderBackend{}
+	if err := runtime.Draw(backend); err != nil {
 		t.Fatalf("draw: %v", err)
 	}
-	if len(canvas.frames) != 2 {
-		t.Fatalf("command frames = %d, want 2", len(canvas.frames))
+	if len(backend.frames) != 2 {
+		t.Fatalf("command frames = %d, want 2", len(backend.frames))
 	}
-	commands := canvas.frames[1].Queue.Commands()
+	commands := backend.frames[1].Queue.Commands()
 	if len(commands) != 2 || commands[0].Kind != render.FillRect || commands[1].Kind != render.Text {
 		t.Fatalf("player commands = %+v", commands)
 	}
 }
 
-type recordingCanvas struct{ frames []render.Frame }
+type recordingRenderBackend struct{ frames []render.Frame }
 
-func (c *recordingCanvas) Clear(engine.Color)                                         {}
-func (c *recordingCanvas) FillRect(engine.Rect, engine.Color)                         {}
-func (c *recordingCanvas) StrokeRect(engine.Rect, float64, engine.Color)              {}
-func (c *recordingCanvas) FillCircle(engine.Vec2, float64, engine.Color)              {}
-func (c *recordingCanvas) StrokeCircle(engine.Vec2, float64, float64, engine.Color)   {}
-func (c *recordingCanvas) StrokeLine(engine.Vec2, engine.Vec2, float64, engine.Color) {}
-func (c *recordingCanvas) DrawText(engine.Vec2, string, engine.Color)                 {}
-func (c *recordingCanvas) RenderCommands(frame render.Frame) error {
-	c.frames = append(c.frames, frame)
+func (b *recordingRenderBackend) Render(frame render.Frame) error {
+	b.frames = append(b.frames, frame)
 	return nil
 }

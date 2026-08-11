@@ -35,7 +35,7 @@ renderer boundary.
 | `engine/ui` | retained layout, focus, and pointer hit testing | changing UI tree/layout behavior |
 | `engine/render` | high-level 2D commands and portable texture sources | changing backend-neutral scene intent |
 | `engine/diagnostics` | counters and duration summaries | adding portable observability data |
-| `engine/ebiten` | temporary Ebitengine lifecycle/input/Canvas/render adapter | maintaining compatibility while the engine-owned host and renderer are absent |
+| `engine/ebiten` | temporary Ebitengine lifecycle/input/render adapter | maintaining compatibility while the engine-owned host and renderer are absent |
 | `example/wukong` | an optional game and its private simulation/presentation code | changing the example, never engine policy |
 | `experiments/webgpu-*` | isolated dependency and platform evidence | collecting evidence for a later dependency decision, not shipping engine behavior |
 
@@ -47,10 +47,9 @@ release. Do not treat example or experiment code as an API precedent.
 ## Frame and input flow
 
 An `engine.Application` initializes a `Runtime`, updates portable game state,
-and emits ordered layers. Layers either use the transitional Canvas path or
-record `engine/render` commands. The runtime owns ECS schedule execution and
-portable texture data; a backend creates its own native GPU cache from those
-textures.
+and records ordered `engine/render` commands. The runtime owns ECS schedule
+execution and portable texture data; a backend creates its own native GPU cache
+from those textures.
 
 For a new `engine.Host`, the owner goroutine creates platform resources, polls
 callbacks, converts them to `engine.Event`, then calls `Runtime.SampleInput`

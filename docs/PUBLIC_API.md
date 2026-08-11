@@ -9,7 +9,7 @@ independent game projects without claiming a 1.0 compatibility guarantee.
 | --- | --- | --- |
 | Supported runtime | `engine`, `engine/ecs`, `engine/scene`, `engine/diagnostics` | 72 maintains source compatibility within a released `v0.x` minor line except for a documented security or correctness exception. |
 | Technology preview | `engine/assets`, `engine/audio`, `engine/physics`, `engine/render`, `engine/ui` | Public APIs are available for evaluation, but may change in the next minor release as their extension boundaries, backend integration, or test coverage mature. A migration note accompanies intentional breaking changes. |
-| Transitional compatibility | `engine/ebiten`, `engine.Canvas`, immediate `Layer.Draw` callbacks | These APIs exist so existing examples continue to run. They are not the target renderer architecture and will be deprecated before removal. The retirement evidence is defined by [ADR 0001](adr/0001-webgpu-renderer-boundary.md). |
+| Transitional compatibility | `engine/ebiten` | This adapter exists while the engine-owned host and renderer are absent. It is not the target renderer architecture. Its retirement evidence is defined by [ADR 0001](adr/0001-webgpu-renderer-boundary.md). |
 | Example-only | `example/wukong/...` | Wukong is a consumer of the public runtime, not an engine package or a support-policy reference. Its `internal` simulation and presentation APIs are not available to other projects. |
 
 An exported identifier is part of the relevant tier only when it appears in a
@@ -52,8 +52,37 @@ An API is deprecated only by all of the following:
 4. The removal release and any unavoidable behavior change are announced in
    the release notes.
 
-For the transitional Ebitengine and Canvas APIs, removal additionally requires
-the evidence in ADR 0001; a deprecation notice alone is insufficient.
+For the transitional Ebitengine adapter, removal additionally requires the
+evidence in ADR 0001; a deprecation notice alone is insufficient.
+
+## Canvas migration
+
+The unreleased command-frame migration removed `engine.Canvas`,
+`engine.CommandCanvas`, `engine.Frame`, immediate `Layer.Draw` callbacks, and
+`Runtime.Draw(Canvas)`. A layer must now provide `DrawCommands`, record
+portable `render` values through its `engine.CommandFrame`, and return any
+validation error. Hosts pass a `render.Backend` to `Runtime.Draw`; applications
+normally use `engine.Run` and do not invoke it directly.
+
+For example, replace an immediate rectangle draw with a command callback:
+
+```go
+engine.Layer{
+    ID: "world",
+    Space: engine.WorldSpace,
+    Parallax: 1,
+    DrawCommands: func(frame engine.CommandFrame) error {
+        return frame.FillRect(render.RectDraw{
+            Bounds: render.Rect{X: 10, Y: 12, W: 16, H: 16},
+            Color: render.Color{R: 255, A: 255},
+        })
+    },
+}
+```
+
+The runtime supplies layer order, coordinate space, camera translation, and
+texture ownership. Renderers receive only `render.Frame`; neither applications
+nor hosts require the removed Canvas compatibility interface.
 
 ## Public API review checklist
 

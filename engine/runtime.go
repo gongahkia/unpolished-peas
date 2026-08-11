@@ -215,11 +215,11 @@ func (r *Runtime) FixedUpdate(input Input) error {
 	return nil
 }
 
-// Draw renders all currently registered layers in order.
-func (r *Runtime) Draw(canvas Canvas) error {
+// Draw renders all currently registered command layers in order.
+func (r *Runtime) Draw(backend render.Backend) error {
 	done := r.diagnostics.Measure("runtime.draw_time")
 	defer done()
-	if err := r.layers.draw(canvas, r.camera, r.tick, r.textures, r.diagnostics); err != nil {
+	if err := r.layers.draw(backend, r.camera, r.tick, r.textures, r.diagnostics); err != nil {
 		return frameFailure("draw layers", err)
 	}
 	return nil

@@ -9,17 +9,6 @@ import (
 	"github.com/gongahkia/72/engine/render"
 )
 
-// Frame is the context supplied to a layer draw callback.
-type Frame struct {
-	Canvas   Canvas
-	Camera   Camera
-	Tick     uint64
-	Viewport Size
-}
-
-// DrawFunc renders one layer for a frame.
-type DrawFunc func(Frame)
-
 // CommandFrame is the context supplied to a high-level render command layer.
 // Its methods use the Layer's registered order and space automatically.
 type CommandFrame struct {
@@ -103,13 +92,12 @@ func (f CommandFrame) DrawText(draw render.TextDraw) error {
 // CommandDrawFunc records high-level 2D rendering for one layer.
 type CommandDrawFunc func(CommandFrame) error
 
-// Layer declares one ordered render callback.
+// Layer declares one ordered high-level render command callback.
 type Layer struct {
 	ID           string
 	Order        int
 	Space        Space
 	Parallax     float64
-	Draw         DrawFunc
 	DrawCommands CommandDrawFunc
 }
 
@@ -130,7 +118,7 @@ func (s *LayerStack) Add(layer Layer) error {
 	if layer.ID == "" {
 		return fmt.Errorf("layer ID must not be empty")
 	}
-	if layer.Draw == nil && layer.DrawCommands == nil {
+	if layer.DrawCommands == nil {
 		return fmt.Errorf("layer %q has no draw callback", layer.ID)
 	}
 	if layer.Space != WorldSpace && layer.Space != ScreenSpace {
@@ -198,22 +186,12 @@ func (s *LayerStack) Layers() []Layer {
 	return layers
 }
 
-func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *render.TextureStore, diagnostics *diagnostics.Registry) error {
+func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, textures *render.TextureStore, diagnostics *diagnostics.Registry) error {
+	if backend == nil {
+		return fmt.Errorf("render backend must not be nil")
+	}
 	for _, registered := range s.layers {
 		layer := registered.layer
-		translate := Vec2{}
-		if layer.Space == WorldSpace {
-			translate = Vec2{
-				X: -camera.position.X*layer.Parallax + camera.offset.X*layer.Parallax,
-				Y: -camera.position.Y*layer.Parallax + camera.offset.Y*layer.Parallax,
-			}
-		}
-		if layer.Draw != nil {
-			layer.Draw(Frame{Canvas: transformCanvas{canvas: canvas, translate: translate}, Camera: camera, Tick: tick, Viewport: camera.viewport})
-		}
-		if layer.DrawCommands == nil {
-			continue
-		}
 		queue := &render.Queue{}
 		space := render.ScreenSpace
 		commandCamera := render.Camera{Viewport: render.Vec2{X: camera.viewport.W, Y: camera.viewport.H}}
@@ -231,11 +209,7 @@ func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *r
 		if len(queue.Commands()) == 0 {
 			continue
 		}
-		commandCanvas, ok := canvas.(CommandCanvas)
-		if !ok {
-			return fmt.Errorf("layer %q requires a backend with high-level render command support", layer.ID)
-		}
-		if err := commandCanvas.RenderCommands(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures, Diagnostics: diagnostics}); err != nil {
+		if err := backend.Render(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures, Diagnostics: diagnostics}); err != nil {
 			return fmt.Errorf("submit command layer %q: %w", layer.ID, err)
 		}
 	}

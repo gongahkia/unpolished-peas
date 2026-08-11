@@ -3,15 +3,10 @@
 package ebiten
 
 import (
-	"image/color"
 	"sort"
 
 	"github.com/gongahkia/72/engine"
-	engineRender "github.com/gongahkia/72/engine/render"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/text"
-	"github.com/hajimehoshi/ebiten/v2/vector"
-	"golang.org/x/image/font/basicfont"
 )
 
 // Backend hosts an engine runtime with Ebitengine.
@@ -49,7 +44,7 @@ func (g *game) Update() error {
 
 func (g *game) Draw(screen *ebiten.Image) {
 	g.renderer.SetTarget(screen)
-	g.drawErr = g.runtime.Draw(canvas{image: screen, renderer: g.renderer})
+	g.drawErr = g.runtime.Draw(g.renderer)
 }
 
 func (g *game) Layout(_, _ int) (int, int) {
@@ -181,41 +176,4 @@ func ebitenKeyFor(key engine.Key) (ebiten.Key, bool) {
 	default:
 		return 0, false
 	}
-}
-
-type canvas struct {
-	image    *ebiten.Image
-	renderer *RenderBackend
-}
-
-func (c canvas) RenderCommands(frame engineRender.Frame) error { return c.renderer.Render(frame) }
-
-func (c canvas) Clear(value engine.Color) { c.image.Fill(ebitenColor(value)) }
-
-func (c canvas) FillRect(rect engine.Rect, value engine.Color) {
-	vector.DrawFilledRect(c.image, float32(rect.X), float32(rect.Y), float32(rect.W), float32(rect.H), ebitenColor(value), false)
-}
-
-func (c canvas) StrokeRect(rect engine.Rect, width float64, value engine.Color) {
-	vector.StrokeRect(c.image, float32(rect.X), float32(rect.Y), float32(rect.W), float32(rect.H), float32(width), ebitenColor(value), false)
-}
-
-func (c canvas) FillCircle(center engine.Vec2, radius float64, value engine.Color) {
-	vector.DrawFilledCircle(c.image, float32(center.X), float32(center.Y), float32(radius), ebitenColor(value), true)
-}
-
-func (c canvas) StrokeCircle(center engine.Vec2, radius, width float64, value engine.Color) {
-	vector.StrokeCircle(c.image, float32(center.X), float32(center.Y), float32(radius), float32(width), ebitenColor(value), true)
-}
-
-func (c canvas) StrokeLine(start, end engine.Vec2, width float64, value engine.Color) {
-	vector.StrokeLine(c.image, float32(start.X), float32(start.Y), float32(end.X), float32(end.Y), float32(width), ebitenColor(value), true)
-}
-
-func (c canvas) DrawText(position engine.Vec2, value string, tint engine.Color) {
-	text.Draw(c.image, value, basicfont.Face7x13, int(position.X), int(position.Y), ebitenColor(tint))
-}
-
-func ebitenColor(value engine.Color) color.RGBA {
-	return color.RGBA{R: value.R, G: value.G, B: value.B, A: value.A}
 }
