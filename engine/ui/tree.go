@@ -1,8 +1,13 @@
-// Package ui provides retained 2D UI layout, focus, and hit testing. Rendering
-// is intentionally supplied by the engine render layer rather than by widgets.
+// Package ui provides retained 2D UI layout, focus, hit testing, and optional
+// command-frame visual emission. Widget behavior remains application-owned.
 package ui
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+
+	"github.com/gongahkia/72/engine/render"
+)
 
 // NodeID identifies a node in a Tree. Root is always node one.
 type NodeID uint64
@@ -55,11 +60,45 @@ type PointerEvent struct {
 	Released bool
 }
 
+// KeyboardInput describes one normalized UI keyboard action. Applications map
+// their portable engine actions to these fields; ui does not receive native key
+// codes or retain an engine input snapshot.
+type KeyboardInput struct {
+	FocusNext     bool
+	FocusPrevious bool
+	Activate      bool
+}
+
+// Visual is optional node content that Tree can render through a command frame.
+// TextPosition is an offset from the node's top-left corner and uses text
+// baseline coordinates. A visual with zero-valued fields emits no commands.
+// Content values of any other type remain application-owned and are ignored by
+// Render.
+type Visual struct {
+	Fill         render.Color
+	DrawFill     bool
+	Border       render.Color
+	BorderWidth  float64
+	Text         string
+	TextColor    render.Color
+	TextPosition Vec2
+}
+
+// CommandRenderer is the subset of a command frame needed to render Visual
+// content. engine.CommandFrame implements it while retaining layer and space
+// ownership inside the engine package.
+type CommandRenderer interface {
+	FillRect(render.RectDraw) error
+	StrokeRect(render.RectDraw) error
+	DrawText(render.TextDraw) error
+}
+
 // Tree owns retained UI nodes.
 type Tree struct {
-	next  NodeID
-	nodes map[NodeID]*Node
-	focus NodeID
+	next    NodeID
+	nodes   map[NodeID]*Node
+	focus   NodeID
+	capture NodeID
 }
 
 // NewTree creates a tree with one root node.
@@ -130,12 +169,36 @@ func (t *Tree) Layout(viewport Vec2) error {
 // front-most, which matches retained painter order.
 func (t *Tree) HitTest(point Vec2) (NodeID, bool) { return t.hit(t.Root(), point) }
 
-// DispatchPointer updates focus on a pressed interactive node and returns its
-// target. Releases do not change focus.
+// DispatchPointer updates focus and pointer capture on a pressed interactive
+// node. While captured, a release targets the captured node even when the
+// pointer has moved outside its bounds. A press outside an interactive node
+// clears any earlier capture without clearing keyboard focus.
 func (t *Tree) DispatchPointer(event PointerEvent) (NodeID, bool) {
+	if event.Pressed {
+		t.capture = 0
+		target, ok := t.HitTest(event.Position)
+		if !ok {
+			return 0, false
+		}
+		t.focus, t.capture = target, target
+		if event.Released {
+			t.capture = 0
+		}
+		return target, true
+	}
+	if t.capture != 0 {
+		target := t.capture
+		if event.Released {
+			t.capture = 0
+		}
+		if node := t.nodes[target]; node != nil && node.Style.Interactive {
+			return target, true
+		}
+		return 0, false
+	}
 	target, ok := t.HitTest(event.Position)
-	if ok && event.Pressed {
-		t.focus = target
+	if event.Released {
+		return 0, false
 	}
 	return target, ok
 }
@@ -146,6 +209,62 @@ func (t *Tree) Focus() (NodeID, bool) {
 		return 0, false
 	}
 	return t.focus, true
+}
+
+// PointerCapture returns the interactive node receiving pointer events until
+// release or CancelPointer, if any.
+func (t *Tree) PointerCapture() (NodeID, bool) {
+	if node := t.nodes[t.capture]; node != nil && node.Style.Interactive {
+		return node.ID, true
+	}
+	return 0, false
+}
+
+// CancelPointer clears an active pointer capture. Hosts should call it when a
+// platform cancels a gesture or focus is lost.
+func (t *Tree) CancelPointer() { t.capture = 0 }
+
+// FocusNext selects the next interactive node in retained painter order. It
+// wraps from the final node to the first.
+func (t *Tree) FocusNext() (NodeID, bool) { return t.moveFocus(1) }
+
+// FocusPrevious selects the previous interactive node in retained painter
+// order. It wraps from the first node to the final node.
+func (t *Tree) FocusPrevious() (NodeID, bool) { return t.moveFocus(-1) }
+
+// ActivateFocused returns the focused interactive node as an activation
+// target. It does not invoke application callbacks.
+func (t *Tree) ActivateFocused() (NodeID, bool) {
+	if node := t.nodes[t.focus]; node != nil && node.Style.Interactive {
+		return node.ID, true
+	}
+	return 0, false
+}
+
+// DispatchKeyboard applies one normalized keyboard input. Traversal has
+// priority over activation when callers intentionally supply multiple fields.
+func (t *Tree) DispatchKeyboard(input KeyboardInput) (NodeID, bool) {
+	if input.FocusPrevious {
+		return t.FocusPrevious()
+	}
+	if input.FocusNext {
+		return t.FocusNext()
+	}
+	if input.Activate {
+		return t.ActivateFocused()
+	}
+	return 0, false
+}
+
+// Render emits Visual content in retained painter order through renderer. A
+// screen-space engine.CommandFrame is the intended renderer. It does not
+// implement clipping; callers must keep visuals within their viewport until
+// the renderer clip contract exists.
+func (t *Tree) Render(renderer CommandRenderer) error {
+	if renderer == nil {
+		return fmt.Errorf("UI command renderer must not be nil")
+	}
+	return t.renderNode(renderer, t.Root())
 }
 
 func (t *Tree) layoutChildren(parent *Node) {
@@ -217,6 +336,109 @@ func (t *Tree) hit(id NodeID, point Vec2) (NodeID, bool) {
 		return node.ID, true
 	}
 	return 0, false
+}
+
+func (t *Tree) moveFocus(direction int) (NodeID, bool) {
+	nodes := t.interactiveNodes(t.Root(), nil)
+	if len(nodes) == 0 {
+		t.focus = 0
+		return 0, false
+	}
+	current := -1
+	for index, id := range nodes {
+		if id == t.focus {
+			current = index
+			break
+		}
+	}
+	if current < 0 {
+		if direction > 0 {
+			t.focus = nodes[0]
+		} else {
+			t.focus = nodes[len(nodes)-1]
+		}
+		return t.focus, true
+	}
+	current = (current + direction + len(nodes)) % len(nodes)
+	t.focus = nodes[current]
+	return t.focus, true
+}
+
+func (t *Tree) interactiveNodes(id NodeID, nodes []NodeID) []NodeID {
+	node := t.nodes[id]
+	if node == nil {
+		return nodes
+	}
+	if node.Style.Interactive {
+		nodes = append(nodes, node.ID)
+	}
+	for _, child := range node.Children {
+		nodes = t.interactiveNodes(child, nodes)
+	}
+	return nodes
+}
+
+func (t *Tree) renderNode(renderer CommandRenderer, id NodeID) error {
+	node := t.nodes[id]
+	if node == nil {
+		return nil
+	}
+	if visual, ok := node.Content.(Visual); ok {
+		if err := renderVisual(renderer, node.Bounds, visual); err != nil {
+			return fmt.Errorf("render UI node %d: %w", node.ID, err)
+		}
+	}
+	for _, child := range node.Children {
+		if err := t.renderNode(renderer, child); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func renderVisual(renderer CommandRenderer, bounds Rect, visual Visual) error {
+	if !finiteRect(bounds) || bounds.W < 0 || bounds.H < 0 {
+		return fmt.Errorf("UI bounds must be finite and non-negative")
+	}
+	renderBounds := render.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: bounds.H}
+	if visual.DrawFill {
+		if renderBounds.W <= 0 || renderBounds.H <= 0 {
+			return fmt.Errorf("filled UI visual requires positive bounds")
+		}
+		if err := renderer.FillRect(render.RectDraw{Bounds: renderBounds, Color: visual.Fill}); err != nil {
+			return err
+		}
+	}
+	if visual.BorderWidth != 0 {
+		if !finite(visual.BorderWidth) || visual.BorderWidth < 0 {
+			return fmt.Errorf("UI border width must be finite and non-negative")
+		}
+		if renderBounds.W <= 0 || renderBounds.H <= 0 {
+			return fmt.Errorf("bordered UI visual requires positive bounds")
+		}
+		if err := renderer.StrokeRect(render.RectDraw{Bounds: renderBounds, Width: visual.BorderWidth, Color: visual.Border}); err != nil {
+			return err
+		}
+	}
+	if visual.Text == "" {
+		return nil
+	}
+	if !finiteVec(visual.TextPosition) {
+		return fmt.Errorf("UI text position must be finite")
+	}
+	return renderer.DrawText(render.TextDraw{
+		Position: render.Vec2{X: bounds.X + visual.TextPosition.X, Y: bounds.Y + visual.TextPosition.Y},
+		Value:    visual.Text,
+		Color:    visual.TextColor,
+	})
+}
+
+func finite(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+
+func finiteVec(value Vec2) bool { return finite(value.X) && finite(value.Y) }
+
+func finiteRect(value Rect) bool {
+	return finite(value.X) && finite(value.Y) && finite(value.W) && finite(value.H)
 }
 
 func max(left, right float64) float64 {
