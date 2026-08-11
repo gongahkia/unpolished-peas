@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"math"
+	"strconv"
 	"syscall/js"
 )
 
@@ -18,6 +19,7 @@ var (
 	device   js.Value
 	format   string
 	ready    bool
+	lossTest js.Func
 )
 
 func main() {
@@ -67,6 +69,7 @@ func main() {
 	setStatus("WebGPU ready; rendering a clear pass")
 
 	go watchDeviceLoss(device.Get("lost"))
+	scheduleDeviceLossTest()
 	var frame js.Func
 	frame = js.FuncOf(func(js.Value, []js.Value) any {
 		if ready && !document.Get("hidden").Bool() {
@@ -124,6 +127,26 @@ func watchDeviceLoss(promise js.Value) {
 		return
 	}
 	setStatus("WebGPU device lost: " + jsMessage(lost))
+}
+
+func scheduleDeviceLossTest() {
+	parameters := js.Global().Get("URLSearchParams").New(window.Get("location").Get("search"))
+	value := parameters.Call("get", "device-loss-after-ms")
+	if value.IsNull() || value.IsUndefined() {
+		return
+	}
+	delay, err := strconv.Atoi(value.String())
+	if err != nil || delay <= 0 {
+		setStatus("invalid device-loss-after-ms test delay")
+		return
+	}
+	lossTest = js.FuncOf(func(js.Value, []js.Value) any {
+		setStatus("testing controlled WebGPU device loss")
+		device.Call("destroy")
+		lossTest.Release()
+		return nil
+	})
+	window.Call("setTimeout", lossTest, delay)
 }
 
 func setStatus(message string) {
