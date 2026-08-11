@@ -33,7 +33,8 @@ func (v Vec2) scale(value float64) Vec2 { return Vec2{X: v.X * value, Y: v.Y * v
 type AABB struct{ HalfExtents Vec2 }
 
 // Body is an AABB body. Layer and Mask use the usual category/mask rule: two
-// bodies collide only when each mask includes the other body's layer.
+// bodies collide only when each mask includes the other body's layer. Sensor
+// bodies generate contacts but receive no positional or velocity response.
 type Body struct {
 	ID       BodyID
 	Type     BodyType
@@ -45,30 +46,78 @@ type Body struct {
 	Sensor   bool
 }
 
-// Contact reports a pair that overlapped during the most recent Step.
+// ContactState identifies a pair's lifecycle transition during one Step.
+type ContactState uint8
+
+const (
+	// ContactBegin reports a pair that was not overlapping during the prior step.
+	ContactBegin ContactState = iota
+	// ContactStay reports a pair that overlaps in consecutive steps.
+	ContactStay
+	// ContactEnd reports a pair that stopped overlapping after the prior step.
+	ContactEnd
+)
+
+// Contact reports a pair's lifecycle transition. Normal points from First to
+// Second for begin/stay contacts. End retains the final observed normal.
 type Contact struct {
 	First, Second BodyID
 	Normal        Vec2
 	Sensor        bool
+	State         ContactState
 }
 
-// World owns bodies and collision events.
+// Config defines a World fixed-step cadence. Call StepFixed for the configured
+// cadence; Step remains available for controlled simulations and tests that
+// need an explicit duration.
+type Config struct{ FixedDelta float64 }
+
+// DefaultFixedDelta is the standard 60 Hz physics cadence.
+const DefaultFixedDelta = 1.0 / 60.0
+
+// World owns bodies and collision lifecycle events.
 type World struct {
 	next     BodyID
 	bodies   map[BodyID]Body
 	contacts []Contact
+	previous map[contactKey]Contact
+	fixed    float64
 }
 
-// NewWorld creates an empty 2D physics world.
-func NewWorld() *World { return &World{next: 1, bodies: make(map[BodyID]Body)} }
+type contactKey struct{ first, second BodyID }
+
+// NewWorld creates an empty 2D physics world with a 60 Hz fixed cadence.
+func NewWorld() *World {
+	world, err := NewWorldWithConfig(Config{FixedDelta: DefaultFixedDelta})
+	if err != nil {
+		panic(err)
+	}
+	return world
+}
+
+// NewWorldWithConfig creates an empty world with an explicit fixed cadence.
+func NewWorldWithConfig(config Config) (*World, error) {
+	if config.FixedDelta <= 0 || math.IsNaN(config.FixedDelta) || math.IsInf(config.FixedDelta, 0) {
+		return nil, fmt.Errorf("physics fixed delta must be finite and positive")
+	}
+	return &World{
+		next:     1,
+		bodies:   make(map[BodyID]Body),
+		previous: make(map[contactKey]Contact),
+		fixed:    config.FixedDelta,
+	}, nil
+}
+
+// FixedDelta returns the duration used by StepFixed.
+func (w *World) FixedDelta() float64 { return w.fixed }
+
+// StepFixed advances one configured fixed-duration simulation step.
+func (w *World) StepFixed() error { return w.Step(w.fixed) }
 
 // Add validates and inserts a body, returning its assigned ID.
 func (w *World) Add(body Body) (BodyID, error) {
-	if body.Shape.HalfExtents.X <= 0 || body.Shape.HalfExtents.Y <= 0 {
-		return 0, fmt.Errorf("body half extents must be positive")
-	}
-	if body.Layer == 0 {
-		return 0, fmt.Errorf("body collision layer must not be zero")
+	if err := validBody(body); err != nil {
+		return 0, err
 	}
 	w.next++
 	body.ID = w.next - 1
@@ -84,14 +133,15 @@ func (w *World) Set(body Body) error {
 	if _, ok := w.bodies[body.ID]; !ok {
 		return fmt.Errorf("body %d does not exist", body.ID)
 	}
-	if body.Shape.HalfExtents.X <= 0 || body.Shape.HalfExtents.Y <= 0 || body.Layer == 0 {
-		return fmt.Errorf("body %d has invalid shape or collision layer", body.ID)
+	if err := validBody(body); err != nil {
+		return fmt.Errorf("body %d: %w", body.ID, err)
 	}
 	w.bodies[body.ID] = body
 	return nil
 }
 
-// Remove removes a body from the world.
+// Remove removes a body from the world. If it had an active contact, the next
+// successful Step reports a ContactEnd for that pair.
 func (w *World) Remove(id BodyID) bool {
 	if _, ok := w.bodies[id]; !ok {
 		return false
@@ -101,7 +151,8 @@ func (w *World) Remove(id BodyID) bool {
 }
 
 // Step advances bodies by dt seconds and resolves non-sensor AABB overlaps.
-// Pair processing is stable by body ID, which makes equal input deterministic.
+// Pair processing and Contacts output are stable by body ID. Callers that need
+// reproducible simulation cadence should use StepFixed.
 func (w *World) Step(dt float64) error {
 	if dt < 0 || math.IsNaN(dt) || math.IsInf(dt, 0) {
 		return fmt.Errorf("physics step duration must be finite and non-negative")
@@ -114,7 +165,7 @@ func (w *World) Step(dt float64) error {
 			w.bodies[id] = body
 		}
 	}
-	w.contacts = w.contacts[:0]
+	current := make(map[contactKey]Contact)
 	for firstIndex, firstID := range ids {
 		for _, secondID := range ids[firstIndex+1:] {
 			first, second := w.bodies[firstID], w.bodies[secondID]
@@ -125,17 +176,40 @@ func (w *World) Step(dt float64) error {
 			if !ok {
 				continue
 			}
-			contact := Contact{First: firstID, Second: secondID, Normal: normal, Sensor: first.Sensor || second.Sensor}
-			w.contacts = append(w.contacts, contact)
+			key := contactKey{first: firstID, second: secondID}
+			state := ContactBegin
+			if _, present := w.previous[key]; present {
+				state = ContactStay
+			}
+			contact := Contact{First: firstID, Second: secondID, Normal: normal, Sensor: first.Sensor || second.Sensor, State: state}
+			current[key] = contact
 			if !contact.Sensor {
 				w.resolve(firstID, secondID, normal, overlap)
 			}
 		}
 	}
+	contacts := make([]Contact, 0, len(current)+len(w.previous))
+	for _, contact := range current {
+		contacts = append(contacts, contact)
+	}
+	for key, previous := range w.previous {
+		if _, present := current[key]; !present {
+			previous.State = ContactEnd
+			contacts = append(contacts, previous)
+		}
+	}
+	sort.Slice(contacts, func(left, right int) bool {
+		if contacts[left].First == contacts[right].First {
+			return contacts[left].Second < contacts[right].Second
+		}
+		return contacts[left].First < contacts[right].First
+	})
+	w.contacts, w.previous = contacts, current
 	return nil
 }
 
-// Contacts returns contacts from the most recent Step in stable ID-pair order.
+// Contacts returns lifecycle events from the most recent Step in stable
+// ID-pair order. It returns copies so callers cannot mutate World state.
 func (w *World) Contacts() []Contact { return append([]Contact(nil), w.contacts...) }
 
 // IDs returns live body IDs in stable creation order.
@@ -148,8 +222,12 @@ func (w *World) IDs() []BodyID {
 	return ids
 }
 
-// Overlap returns every body currently overlapping area and matching layerMask.
+// Overlap returns every body currently overlapping area and matching
+// layerMask, in stable ID order. Invalid or empty queries return no IDs.
 func (w *World) Overlap(area AABB, position Vec2, layerMask uint32) []BodyID {
+	if layerMask == 0 || !finite(position) || !validAABB(area) {
+		return nil
+	}
 	result := make([]BodyID, 0)
 	query := Body{Position: position, Shape: area, Layer: layerMask, Mask: ^uint32(0)}
 	for _, id := range w.IDs() {
@@ -162,6 +240,30 @@ func (w *World) Overlap(area AABB, position Vec2, layerMask uint32) []BodyID {
 		}
 	}
 	return result
+}
+
+func validBody(body Body) error {
+	if body.Type != StaticBody && body.Type != DynamicBody && body.Type != KinematicBody {
+		return fmt.Errorf("body type %d is invalid", body.Type)
+	}
+	if !validAABB(body.Shape) {
+		return fmt.Errorf("body half extents must be finite and positive")
+	}
+	if !finite(body.Position) || !finite(body.Velocity) {
+		return fmt.Errorf("body position and velocity must be finite")
+	}
+	if body.Layer == 0 {
+		return fmt.Errorf("body collision layer must not be zero")
+	}
+	return nil
+}
+
+func validAABB(shape AABB) bool {
+	return shape.HalfExtents.X > 0 && shape.HalfExtents.Y > 0 && finite(shape.HalfExtents)
+}
+
+func finite(value Vec2) bool {
+	return !math.IsNaN(value.X) && !math.IsInf(value.X, 0) && !math.IsNaN(value.Y) && !math.IsInf(value.Y, 0)
 }
 
 func shouldCollide(first, second Body) bool {
