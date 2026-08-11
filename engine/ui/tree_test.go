@@ -1,6 +1,10 @@
 package ui
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/gongahkia/72/engine/render"
+)
 
 func TestTreeLayoutsAndTargetsFrontmostInteractiveNode(t *testing.T) {
 	tree := NewTree(Style{Direction: Row, Padding: 10, Gap: 10})
@@ -26,4 +30,106 @@ func TestTreeLayoutsAndTargetsFrontmostInteractiveNode(t *testing.T) {
 	if focus, ok := tree.Focus(); !ok || focus != right {
 		t.Fatalf("focus = %d, %t", focus, ok)
 	}
+}
+
+func TestTreeCapturesPointerAndTraversesKeyboardFocus(t *testing.T) {
+	tree := NewTree(Style{Direction: Row})
+	first, err := tree.Add(tree.Root(), Style{Grow: 1, Interactive: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	second, err := tree.Add(tree.Root(), Style{Grow: 1, Interactive: true}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Layout(Vec2{X: 20, Y: 10}); err != nil {
+		t.Fatal(err)
+	}
+	if target, ok := tree.DispatchPointer(PointerEvent{Position: Vec2{X: 2, Y: 2}, Pressed: true}); !ok || target != first {
+		t.Fatalf("pressed target = %d, %t", target, ok)
+	}
+	if capture, ok := tree.PointerCapture(); !ok || capture != first {
+		t.Fatalf("capture = %d, %t", capture, ok)
+	}
+	if target, ok := tree.DispatchPointer(PointerEvent{Position: Vec2{X: 19, Y: 9}, Released: true}); !ok || target != first {
+		t.Fatalf("released target = %d, %t", target, ok)
+	}
+	if _, ok := tree.PointerCapture(); ok {
+		t.Fatal("release retained pointer capture")
+	}
+	if target, ok := tree.DispatchKeyboard(KeyboardInput{FocusNext: true}); !ok || target != second {
+		t.Fatalf("next focus = %d, %t", target, ok)
+	}
+	if target, ok := tree.DispatchKeyboard(KeyboardInput{Activate: true}); !ok || target != second {
+		t.Fatalf("activated target = %d, %t", target, ok)
+	}
+	if target, ok := tree.DispatchKeyboard(KeyboardInput{FocusPrevious: true}); !ok || target != first {
+		t.Fatalf("previous focus = %d, %t", target, ok)
+	}
+	if target, ok := tree.DispatchKeyboard(KeyboardInput{FocusPrevious: true}); !ok || target != second {
+		t.Fatalf("wrapped previous focus = %d, %t", target, ok)
+	}
+	if target, ok := tree.DispatchPointer(PointerEvent{Position: Vec2{X: 12, Y: 2}, Pressed: true}); !ok || target != second {
+		t.Fatalf("second press target = %d, %t", target, ok)
+	}
+	tree.CancelPointer()
+	if _, ok := tree.PointerCapture(); ok {
+		t.Fatal("cancel retained pointer capture")
+	}
+}
+
+func TestTreeRendersVisualContentInPainterOrder(t *testing.T) {
+	tree := NewTree(Style{Direction: Row})
+	background := render.Color{B: 255, A: 255}
+	label := render.Color{R: 255, G: 255, B: 255, A: 255}
+	if err := tree.SetContent(tree.Root(), Visual{DrawFill: true, Fill: background}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tree.Add(tree.Root(), Style{Grow: 1}, Visual{BorderWidth: 1, Border: label, Text: "OK", TextColor: label, TextPosition: Vec2{X: 1, Y: 13}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Layout(Vec2{X: 20, Y: 16}); err != nil {
+		t.Fatal(err)
+	}
+	var queue render.Queue
+	if err := tree.Render(queueRenderer{queue: &queue, layer: 7}); err != nil {
+		t.Fatal(err)
+	}
+	commands := queue.Commands()
+	if len(commands) != 3 {
+		t.Fatalf("command count = %d, want 3", len(commands))
+	}
+	for index, want := range []render.CommandKind{render.FillRect, render.StrokeRect, render.Text} {
+		if commands[index].Kind != want || commands[index].Layer != 7 || commands[index].Space != render.ScreenSpace {
+			t.Fatalf("command %d = %+v", index, commands[index])
+		}
+	}
+	backend, err := render.NewReferenceBackend(20, 16)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(render.Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	if got := image.Pixels[0:4]; got[2] != 255 || got[3] != 255 {
+		t.Fatalf("background pixel = %v", got)
+	}
+}
+
+type queueRenderer struct {
+	queue *render.Queue
+	layer int
+}
+
+func (r queueRenderer) FillRect(draw render.RectDraw) error {
+	return r.queue.FillRect(r.layer, render.ScreenSpace, draw)
+}
+
+func (r queueRenderer) StrokeRect(draw render.RectDraw) error {
+	return r.queue.StrokeRect(r.layer, render.ScreenSpace, draw)
+}
+
+func (r queueRenderer) DrawText(draw render.TextDraw) error {
+	return r.queue.DrawText(r.layer, render.ScreenSpace, draw)
 }

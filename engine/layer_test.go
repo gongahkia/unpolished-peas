@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/gongahkia/72/engine/render"
+	"github.com/gongahkia/72/engine/ui"
 )
 
 func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
@@ -63,6 +64,35 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	commands := frame.Queue.Commands()
 	if frame.Camera.Position.X != 40 || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
 		t.Fatalf("command submission = camera=%+v commands=%+v", frame.Camera, commands)
+	}
+}
+
+func TestScreenCommandLayerRendersUIVisualThroughCommandFrame(t *testing.T) {
+	tree := ui.NewTree(ui.Style{})
+	if err := tree.SetContent(tree.Root(), ui.Visual{DrawFill: true, Fill: render.Color{R: 17, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	stack := &LayerStack{}
+	if err := stack.Add(Layer{
+		ID:    "ui",
+		Order: 9,
+		Space: ScreenSpace,
+		DrawCommands: func(frame CommandFrame) error {
+			if err := tree.Layout(ui.Vec2{X: frame.Viewport.W, Y: frame.Viewport.H}); err != nil {
+				return err
+			}
+			return tree.Render(frame)
+		},
+	}); err != nil {
+		t.Fatal(err)
+	}
+	canvas := &recordingCommandCanvas{}
+	if err := stack.draw(canvas, NewCamera(Size{W: 32, H: 18}), 1, render.NewTextureStore()); err != nil {
+		t.Fatal(err)
+	}
+	commands := canvas.frames[0].Queue.Commands()
+	if len(commands) != 1 || commands[0].Kind != render.FillRect || commands[0].Layer != 9 || commands[0].Space != render.ScreenSpace {
+		t.Fatalf("UI command = %+v", commands)
 	}
 }
 
