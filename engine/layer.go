@@ -41,6 +41,24 @@ func (f CommandFrame) Clear(color render.Color) error {
 	return nil
 }
 
+// PushClip starts a nested screen-space clip for later commands in this layer.
+// World-space layers must express clipping through a renderer-specific future
+// contract because a clip is fixed in target coordinates.
+func (f CommandFrame) PushClip(bounds render.Rect) error {
+	if f.space != render.ScreenSpace {
+		return fmt.Errorf("clip is only valid on a screen-space command layer")
+	}
+	return f.queue.PushClip(bounds)
+}
+
+// PopClip ends the latest clip started by PushClip.
+func (f CommandFrame) PopClip() error {
+	if f.space != render.ScreenSpace {
+		return fmt.Errorf("clip is only valid on a screen-space command layer")
+	}
+	return f.queue.PopClip()
+}
+
 // DrawSprite records a textured quad in the layer's space and order.
 func (f CommandFrame) DrawSprite(sprite render.Sprite) error {
 	return f.queue.DrawSprite(f.order, f.space, sprite)

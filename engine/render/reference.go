@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"image"
 	"image/color"
+	"image/draw"
 	"math"
 	"sort"
 
@@ -17,6 +18,7 @@ import (
 // command and image regression tests. It is not a production renderer.
 type ReferenceBackend struct {
 	image Image
+	clip  *Rect
 }
 
 // NewReferenceBackend creates a transparent RGBA8 target with logical pixel
@@ -94,6 +96,13 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 }
 
 func (b *ReferenceBackend) draw(frame Frame, command Command) error {
+	previousClip := b.clip
+	if clip, ok := command.Clip(); ok {
+		b.clip = &clip
+	} else {
+		b.clip = nil
+	}
+	defer func() { b.clip = previousClip }()
 	offset, err := commandOffset(frame.Camera, command.Space)
 	if err != nil {
 		return err
@@ -196,6 +205,9 @@ func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, offset
 	transformed := transformedSpriteBounds(bounds, origin, transform)
 	for y := maxIntValue(0, int(math.Floor(transformed.Y))); y < minIntValue(b.image.Height, int(math.Ceil(transformed.Y+transformed.H))); y++ {
 		for x := maxIntValue(0, int(math.Floor(transformed.X))); x < minIntValue(b.image.Width, int(math.Ceil(transformed.X+transformed.W))); x++ {
+			if !b.visible(x, y) {
+				continue
+			}
 			local := inverseSpritePoint(Vec2{X: float64(x) + .5, Y: float64(y) + .5}, origin, transform)
 			if local.X < bounds.X || local.X >= bounds.X+bounds.W || local.Y < bounds.Y || local.Y >= bounds.Y+bounds.H {
 				continue
@@ -350,8 +362,12 @@ func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color, atl
 		return b.drawAtlasText(position, value, tint, atlas)
 	}
 	target := &image.NRGBA{Pix: b.image.Pixels, Stride: b.image.Width * 4, Rect: image.Rect(0, 0, b.image.Width, b.image.Height)}
+	var destination draw.Image = target
+	if b.clip != nil {
+		destination = clippedImage{NRGBA: target, clip: *b.clip}
+	}
 	drawer := font.Drawer{
-		Dst:  target,
+		Dst:  destination,
 		Src:  image.NewUniform(color.NRGBA{R: tint.R, G: tint.G, B: tint.B, A: tint.A}),
 		Face: basicfont.Face7x13,
 		Dot:  fixed.P(int(position.X), int(position.Y)),
@@ -390,6 +406,9 @@ func (b *ReferenceBackend) drawImage(source Image, region, bounds Rect, tint Col
 	}
 	for y := maxIntValue(0, int(math.Floor(bounds.Y))); y < minIntValue(b.image.Height, int(math.Ceil(bounds.Y+bounds.H))); y++ {
 		for x := maxIntValue(0, int(math.Floor(bounds.X))); x < minIntValue(b.image.Width, int(math.Ceil(bounds.X+bounds.W))); x++ {
+			if !b.visible(x, y) {
+				continue
+			}
 			centerX, centerY := float64(x)+.5, float64(y)+.5
 			if centerX < bounds.X || centerX >= bounds.X+bounds.W || centerY < bounds.Y || centerY >= bounds.Y+bounds.H {
 				continue
@@ -405,11 +424,41 @@ func (b *ReferenceBackend) drawImage(source Image, region, bounds Rect, tint Col
 func (b *ReferenceBackend) forPixels(bounds Rect, include func(Vec2) bool, tint Color) {
 	for y := maxIntValue(0, int(math.Floor(bounds.Y))); y < minIntValue(b.image.Height, int(math.Ceil(bounds.Y+bounds.H))); y++ {
 		for x := maxIntValue(0, int(math.Floor(bounds.X))); x < minIntValue(b.image.Width, int(math.Ceil(bounds.X+bounds.W))); x++ {
-			if include(Vec2{X: float64(x) + .5, Y: float64(y) + .5}) {
+			if b.visible(x, y) && include(Vec2{X: float64(x) + .5, Y: float64(y) + .5}) {
 				b.blend(x, y, tint)
 			}
 		}
 	}
+}
+
+func (b *ReferenceBackend) visible(x, y int) bool {
+	if b.clip == nil {
+		return true
+	}
+	center := Vec2{X: float64(x) + .5, Y: float64(y) + .5}
+	return center.X >= b.clip.X && center.X < b.clip.X+b.clip.W && center.Y >= b.clip.Y && center.Y < b.clip.Y+b.clip.H
+}
+
+type clippedImage struct {
+	*image.NRGBA
+	clip Rect
+}
+
+func (i clippedImage) Set(x, y int, color color.Color) {
+	if i.visible(x, y) {
+		i.NRGBA.Set(x, y, color)
+	}
+}
+
+func (i clippedImage) SetRGBA64(x, y int, color color.RGBA64) {
+	if i.visible(x, y) {
+		i.NRGBA.SetRGBA64(x, y, color)
+	}
+}
+
+func (i clippedImage) visible(x, y int) bool {
+	center := Vec2{X: float64(x) + .5, Y: float64(y) + .5}
+	return center.X >= i.clip.X && center.X < i.clip.X+i.clip.W && center.Y >= i.clip.Y && center.Y < i.clip.Y+i.clip.H
 }
 
 func (b *ReferenceBackend) blend(x, y int, source Color) {
@@ -524,14 +573,6 @@ func translateRect(value Rect, offset Vec2) Rect {
 	value.X += offset.X
 	value.Y += offset.Y
 	return value
-}
-
-func finite(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
-
-func finiteVec(value Vec2) bool { return finite(value.X) && finite(value.Y) }
-
-func finiteRect(value Rect) bool {
-	return finite(value.X) && finite(value.Y) && finite(value.W) && finite(value.H)
 }
 
 func validImage(value Image) bool {

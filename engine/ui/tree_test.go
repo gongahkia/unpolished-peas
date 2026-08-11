@@ -117,10 +117,53 @@ func TestTreeRendersVisualContentInPainterOrder(t *testing.T) {
 	}
 }
 
+func TestTreeClipsDescendantVisualsToAncestorBounds(t *testing.T) {
+	tree := NewTree(Style{Direction: Column})
+	parent, err := tree.Add(tree.Root(), Style{Width: 4, Height: 4, Direction: Row}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tree.Add(parent, Style{Width: 8, Height: 4}, Visual{DrawFill: true, Fill: render.Color{R: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := tree.Layout(Vec2{X: 8, Y: 4}); err != nil {
+		t.Fatal(err)
+	}
+	var queue render.Queue
+	if err := tree.Render(queueRenderer{queue: &queue, layer: 0}); err != nil {
+		t.Fatal(err)
+	}
+	backend, err := render.NewReferenceBackend(8, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(render.Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	if got := image.Pixels[3*4 : 3*4+4]; got[0] != 255 || got[3] != 255 {
+		t.Fatalf("inside ancestor clip = %v", got)
+	}
+	if got := image.Pixels[4*4 : 4*4+4]; got[3] != 0 {
+		t.Fatalf("outside ancestor clip = %v, want transparent", got)
+	}
+}
+
+func TestTreeRequiresClipCommandRenderer(t *testing.T) {
+	tree := NewTree(Style{})
+	if err := tree.Render(legacyRenderer{}); err == nil {
+		t.Fatal("renderer without clip support rendered a retained tree")
+	}
+}
+
 type queueRenderer struct {
 	queue *render.Queue
 	layer int
 }
+
+func (r queueRenderer) PushClip(bounds render.Rect) error { return r.queue.PushClip(bounds) }
+
+func (r queueRenderer) PopClip() error { return r.queue.PopClip() }
 
 func (r queueRenderer) FillRect(draw render.RectDraw) error {
 	return r.queue.FillRect(r.layer, render.ScreenSpace, draw)
@@ -133,3 +176,9 @@ func (r queueRenderer) StrokeRect(draw render.RectDraw) error {
 func (r queueRenderer) DrawText(draw render.TextDraw) error {
 	return r.queue.DrawText(r.layer, render.ScreenSpace, draw)
 }
+
+type legacyRenderer struct{}
+
+func (legacyRenderer) FillRect(render.RectDraw) error   { return nil }
+func (legacyRenderer) StrokeRect(render.RectDraw) error { return nil }
+func (legacyRenderer) DrawText(render.TextDraw) error   { return nil }

@@ -93,6 +93,15 @@ type CommandRenderer interface {
 	DrawText(render.TextDraw) error
 }
 
+// ClipCommandRenderer adds the nested target-space clip contract required by
+// Tree.Render. It preserves source compatibility for renderers that only use
+// individual Visual commands but cannot correctly render a retained tree.
+type ClipCommandRenderer interface {
+	CommandRenderer
+	PushClip(render.Rect) error
+	PopClip() error
+}
+
 // Tree owns retained UI nodes.
 type Tree struct {
 	next    NodeID
@@ -257,14 +266,17 @@ func (t *Tree) DispatchKeyboard(input KeyboardInput) (NodeID, bool) {
 }
 
 // Render emits Visual content in retained painter order through renderer. A
-// screen-space engine.CommandFrame is the intended renderer. It does not
-// implement clipping; callers must keep visuals within their viewport until
-// the renderer clip contract exists.
+// screen-space engine.CommandFrame is the intended renderer. Each node bounds
+// its own visuals and descendants through the renderer's nested clip stack.
 func (t *Tree) Render(renderer CommandRenderer) error {
 	if renderer == nil {
 		return fmt.Errorf("UI command renderer must not be nil")
 	}
-	return t.renderNode(renderer, t.Root())
+	clipper, ok := renderer.(ClipCommandRenderer)
+	if !ok {
+		return fmt.Errorf("UI command renderer must support nested clips")
+	}
+	return t.renderNode(clipper, t.Root())
 }
 
 func (t *Tree) layoutChildren(parent *Node) {
@@ -378,20 +390,35 @@ func (t *Tree) interactiveNodes(id NodeID, nodes []NodeID) []NodeID {
 	return nodes
 }
 
-func (t *Tree) renderNode(renderer CommandRenderer, id NodeID) error {
+func (t *Tree) renderNode(renderer ClipCommandRenderer, id NodeID) error {
 	node := t.nodes[id]
 	if node == nil {
 		return nil
 	}
+	if !finiteRect(node.Bounds) || node.Bounds.W < 0 || node.Bounds.H < 0 {
+		return fmt.Errorf("UI node %d has invalid bounds", node.ID)
+	}
+	if node.Bounds.W == 0 || node.Bounds.H == 0 {
+		return nil
+	}
+	clip := render.Rect{X: node.Bounds.X, Y: node.Bounds.Y, W: node.Bounds.W, H: node.Bounds.H}
+	if err := renderer.PushClip(clip); err != nil {
+		return fmt.Errorf("clip UI node %d: %w", node.ID, err)
+	}
 	if visual, ok := node.Content.(Visual); ok {
 		if err := renderVisual(renderer, node.Bounds, visual); err != nil {
+			_ = renderer.PopClip()
 			return fmt.Errorf("render UI node %d: %w", node.ID, err)
 		}
 	}
 	for _, child := range node.Children {
 		if err := t.renderNode(renderer, child); err != nil {
+			_ = renderer.PopClip()
 			return err
 		}
+	}
+	if err := renderer.PopClip(); err != nil {
+		return fmt.Errorf("unclip UI node %d: %w", node.ID, err)
 	}
 	return nil
 }

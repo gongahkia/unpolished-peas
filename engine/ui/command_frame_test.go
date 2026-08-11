@@ -12,4 +12,8 @@ func TestCommandFrameImplementsUICommandRenderer(t *testing.T) {
 	if renderer == nil {
 		t.Fatal("command frame did not implement UI command renderer")
 	}
+	var clipRenderer ui.ClipCommandRenderer = engine.CommandFrame{}
+	if clipRenderer == nil {
+		t.Fatal("command frame did not implement UI clip command renderer")
+	}
 }

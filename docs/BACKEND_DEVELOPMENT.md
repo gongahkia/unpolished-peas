@@ -43,8 +43,9 @@ windowing library.
 
 ## Implementing a renderer or test backend
 
-1. Consume only `engine/render.Frame`, including the ordered queue and
-   portable `TextureStore`. Native image/device/surface objects remain private.
+1. Consume only `engine/render.Frame`, including the ordered queue, each
+   command's effective screen-space `Clip()` result, and portable
+   `TextureStore`. Native image/device/surface objects remain private.
 2. Preserve submission order, world versus screen space, camera semantics, and
    texture ownership. Renderer cache entries are recreated after device loss
    and released only by renderer-owned lifecycle code.

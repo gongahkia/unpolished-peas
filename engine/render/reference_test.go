@@ -185,6 +185,77 @@ func TestReferenceBackendAppliesWorldCameraTranslation(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendAppliesNestedClipIntersections(t *testing.T) {
+	backend := newReferenceBackend(t, 6, 5)
+	red := Color{R: 255, A: 255}
+	green := Color{G: 255, A: 255}
+	var queue Queue
+	if err := queue.PushClip(Rect{X: 1, Y: 1, W: 4, H: 3}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 6, H: 5}, Color: red}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PushClip(Rect{X: 3, Y: 0, W: 3, H: 4}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(1, ScreenSpace, RectDraw{Bounds: Rect{W: 6, H: 5}, Color: green}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PopClip(); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PopClip(); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	for x, want := range []Color{{}, red, red, green, green, {}} {
+		if got := referencePixel(t, image, x, 1); got != want {
+			t.Fatalf("pixel (%d, 1) = %+v, want %+v", x, got, want)
+		}
+	}
+	if got, want := referencePixel(t, image, 3, 3), green; got != want {
+		t.Fatalf("inner clip bottom-right = %+v, want %+v", got, want)
+	}
+	if got := referencePixel(t, image, 0, 0); got != (Color{}) {
+		t.Fatalf("outside clip = %+v, want transparent", got)
+	}
+}
+
+func TestReferenceBackendClipsBasicFontText(t *testing.T) {
+	backend := newReferenceBackend(t, 8, 14)
+	white := Color{R: 255, G: 255, B: 255, A: 255}
+	var queue Queue
+	if err := queue.PushClip(Rect{W: 4, H: 14}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.DrawText(0, ScreenSpace, TextDraw{Position: Vec2{Y: 13}, Value: "A", Color: white}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	inside := false
+	for y := 0; y < image.Height; y++ {
+		for x := 0; x < image.Width; x++ {
+			pixel := referencePixel(t, image, x, y)
+			if x < 4 && pixel == white {
+				inside = true
+			}
+			if x >= 4 && pixel.A != 0 {
+				t.Fatalf("text pixel outside clip at (%d, %d) = %+v", x, y, pixel)
+			}
+		}
+	}
+	if !inside {
+		t.Fatal("text did not render inside clip")
+	}
+}
+
 func TestReferenceBackendCompositesStraightAlpha(t *testing.T) {
 	backend := newReferenceBackend(t, 1, 1)
 	backend.Reset(Color{B: 255, A: 255})

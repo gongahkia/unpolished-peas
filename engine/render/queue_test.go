@@ -31,3 +31,54 @@ func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 		t.Fatal("non-finite sprite transform succeeded")
 	}
 }
+
+func TestQueueResolvesNestedScreenSpaceClipsWhenRecordingDraws(t *testing.T) {
+	var queue Queue
+	if err := queue.PushClip(Rect{X: 1, Y: 2, W: 5, H: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PushClip(Rect{X: 4, Y: 4, W: 5, H: 5}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PopClip(); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.PopClip(); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	commands := queue.Commands()
+	for index, want := range []*Rect{{X: 1, Y: 2, W: 5, H: 5}, {X: 4, Y: 4, W: 2, H: 3}, {X: 1, Y: 2, W: 5, H: 5}, nil} {
+		got, ok := commands[index].Clip()
+		if ok != (want != nil) {
+			t.Fatalf("command %d clip = %+v, %t, want %+v", index, got, ok, want)
+		}
+		if want != nil && got != *want {
+			t.Fatalf("command %d clip = %+v, want %+v", index, got, *want)
+		}
+	}
+	if err := queue.PopClip(); err == nil {
+		t.Fatal("empty clip stack pop succeeded")
+	}
+	if err := queue.PushClip(Rect{W: 1, H: 1}); err != nil {
+		t.Fatal(err)
+	}
+	queue.Reset()
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := queue.Commands()[0].Clip(); ok {
+		t.Fatal("reset retained a clip")
+	}
+}

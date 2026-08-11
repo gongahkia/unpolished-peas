@@ -94,7 +94,17 @@ type Command struct {
 	Kind    CommandKind
 	Layer   int
 	Space   Space
+	clip    *Rect
 	Payload any
+}
+
+// Clip returns the effective screen-space clip for this draw. The returned
+// rectangle is a value copy; false means the command is not clipped.
+func (c Command) Clip() (Rect, bool) {
+	if c.clip == nil {
+		return Rect{}, false
+	}
+	return *c.clip, true
 }
 
 // RectDraw is a filled or stroked rectangle command payload.
@@ -128,18 +138,59 @@ type TextDraw struct {
 	Atlas    *GlyphAtlas
 }
 
-// Queue records stable high-level rendering commands for one frame.
-type Queue struct{ commands []Command }
+// Queue records stable high-level rendering commands for one frame. Clips are
+// scoped while recording and resolved to an effective screen-space rectangle on
+// each recorded draw, so draw ordering remains independent of clip nesting.
+type Queue struct {
+	commands []Command
+	clips    []Rect
+}
 
 // Reset clears all previously recorded commands.
-func (q *Queue) Reset() { q.commands = q.commands[:0] }
+func (q *Queue) Reset() {
+	q.commands = q.commands[:0]
+	q.clips = q.clips[:0]
+}
 
 // Commands returns a copy in submission order.
-func (q *Queue) Commands() []Command { return append([]Command(nil), q.commands...) }
+func (q *Queue) Commands() []Command {
+	commands := append([]Command(nil), q.commands...)
+	for index := range commands {
+		if commands[index].clip == nil {
+			continue
+		}
+		clip := *commands[index].clip
+		commands[index].clip = &clip
+	}
+	return commands
+}
 
 // Clear records a full-frame clear. Clear is always screen-space layer zero.
 func (q *Queue) Clear(color Color) {
 	q.commands = append(q.commands, Command{Kind: Clear, Space: ScreenSpace, Payload: color})
+}
+
+// PushClip starts a nested screen-space clip. Each subsequent draw records the
+// intersection of this bounds and every active ancestor clip. Clips use target
+// logical coordinates and apply equally to world- and screen-space draws.
+func (q *Queue) PushClip(bounds Rect) error {
+	if !finiteRect(bounds) || bounds.W <= 0 || bounds.H <= 0 {
+		return fmt.Errorf("clip bounds must be finite and positive")
+	}
+	if len(q.clips) > 0 {
+		bounds = intersectRects(q.clips[len(q.clips)-1], bounds)
+	}
+	q.clips = append(q.clips, bounds)
+	return nil
+}
+
+// PopClip ends the most recently pushed clip.
+func (q *Queue) PopClip() error {
+	if len(q.clips) == 0 {
+		return fmt.Errorf("render clip stack is empty")
+	}
+	q.clips = q.clips[:len(q.clips)-1]
+	return nil
 }
 
 // DrawSprite records a textured quad.
@@ -225,8 +276,26 @@ func (q *Queue) append(command Command) error {
 	if command.Space != WorldSpace && command.Space != ScreenSpace {
 		return fmt.Errorf("render command has invalid space %d", command.Space)
 	}
+	if len(q.clips) > 0 {
+		clip := q.clips[len(q.clips)-1]
+		command.clip = &clip
+	}
 	q.commands = append(q.commands, command)
 	return nil
+}
+
+func intersectRects(left, right Rect) Rect {
+	minimumX, minimumY := math.Max(left.X, right.X), math.Max(left.Y, right.Y)
+	maximumX, maximumY := math.Min(left.X+left.W, right.X+right.W), math.Min(left.Y+left.H, right.Y+right.H)
+	return Rect{X: minimumX, Y: minimumY, W: math.Max(0, maximumX-minimumX), H: math.Max(0, maximumY-minimumY)}
+}
+
+func finite(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+
+func finiteVec(value Vec2) bool { return finite(value.X) && finite(value.Y) }
+
+func finiteRect(value Rect) bool {
+	return finite(value.X) && finite(value.Y) && finite(value.W) && finite(value.H)
 }
 
 // Frame is the backend submission payload for one complete render frame.
