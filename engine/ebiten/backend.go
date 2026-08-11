@@ -4,12 +4,11 @@ package ebiten
 
 import (
 	"image/color"
-	"math"
+	"sort"
 
 	"github.com/gongahkia/72/engine"
 	engineRender "github.com/gongahkia/72/engine/render"
 	"github.com/hajimehoshi/ebiten/v2"
-	"github.com/hajimehoshi/ebiten/v2/inpututil"
 	"github.com/hajimehoshi/ebiten/v2/text"
 	"github.com/hajimehoshi/ebiten/v2/vector"
 	"golang.org/x/image/font/basicfont"
@@ -30,20 +29,22 @@ func (Backend) Run(runtime *engine.Runtime) error {
 	if config.Title != "" {
 		ebiten.SetWindowTitle(config.Title)
 	}
-	return ebiten.RunGame(&game{runtime: runtime, renderer: NewRenderBackend(nil)})
+	return ebiten.RunGame(&game{runtime: runtime, renderer: NewRenderBackend(nil), gamepads: make(map[ebiten.GamepadID]struct{})})
 }
 
 type game struct {
 	runtime  *engine.Runtime
 	renderer *RenderBackend
 	drawErr  error
+	gamepads map[ebiten.GamepadID]struct{}
+	focused  bool
 }
 
 func (g *game) Update() error {
 	if g.drawErr != nil {
 		return g.drawErr
 	}
-	return g.runtime.Update(sampleInput(g.runtime.Actions()))
+	return g.runtime.Update(g.runtime.SampleInput(g.events()))
 }
 
 func (g *game) Draw(screen *ebiten.Image) {
@@ -56,77 +57,85 @@ func (g *game) Layout(_, _ int) (int, int) {
 	return int(viewport.W), int(viewport.H)
 }
 
-func sampleInput(actions engine.ActionMap) engine.Input {
-	states := make(map[engine.Action]engine.ActionState, len(actions))
-	gamepads := ebiten.AppendGamepadIDs(nil)
-	for _, action := range actions.Actions() {
-		binding := actions[action]
-		state := engine.ActionState{}
-		for _, key := range binding.Keys {
-			state.Down = state.Down || keyPressed(key)
-			state.Pressed = state.Pressed || keyJustPressed(key)
-			state.Released = state.Released || keyJustReleased(key)
-		}
-		if len(gamepads) > 0 {
-			for _, button := range binding.GamepadButtons {
-				state.Down = state.Down || ebiten.IsGamepadButtonPressed(gamepads[0], ebiten.GamepadButton(button))
-				state.Pressed = state.Pressed || inpututil.IsGamepadButtonJustPressed(gamepads[0], ebiten.GamepadButton(button))
-				state.Released = state.Released || inpututil.IsGamepadButtonJustReleased(gamepads[0], ebiten.GamepadButton(button))
-			}
-		}
-		if binding.Axis != nil {
-			value, down, pressed, released := sampleAxis(*binding.Axis, gamepads)
-			state.Value = value
-			state.Down = state.Down || down
-			state.Pressed = state.Pressed || pressed
-			state.Released = state.Released || released
-		}
-		states[action] = state
+func (g *game) events() []engine.Event {
+	events := make([]engine.Event, 0)
+	focused := ebiten.IsFocused()
+	if focused != g.focused {
+		events = append(events, engine.Event{Kind: engine.EventFocusChanged, Focused: focused})
+		g.focused = focused
 	}
-	return engine.NewInput(states)
+	if !focused {
+		g.gamepads = make(map[ebiten.GamepadID]struct{})
+		return events
+	}
+	for _, key := range configuredKeys(g.runtime.Actions()) {
+		events = append(events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: keyPressed(key)})
+	}
+	x, y := ebiten.CursorPosition()
+	events = append(events, engine.Event{Kind: engine.EventPointerMove, Position: engine.Vec2{X: float64(x), Y: float64(y)}})
+	for _, button := range []struct {
+		ebiten   ebiten.MouseButton
+		portable engine.PointerButton
+	}{{ebiten.MouseButtonLeft, engine.PointerPrimary}, {ebiten.MouseButtonRight, engine.PointerSecondary}, {ebiten.MouseButtonMiddle, engine.PointerMiddle}} {
+		events = append(events, engine.Event{Kind: engine.EventPointerButton, PointerButton: button.portable, Pressed: ebiten.IsMouseButtonPressed(button.ebiten)})
+	}
+	if scrollX, scrollY := ebiten.Wheel(); scrollX != 0 || scrollY != 0 {
+		events = append(events, engine.Event{Kind: engine.EventPointerWheel, Scroll: engine.Vec2{X: scrollX, Y: scrollY}})
+	}
+	if characters := ebiten.AppendInputChars(nil); len(characters) > 0 {
+		events = append(events, engine.Event{Kind: engine.EventText, Text: string(characters)})
+	}
+	ids := ebiten.AppendGamepadIDs(nil)
+	sort.Slice(ids, func(left, right int) bool { return ids[left] < ids[right] })
+	current := make(map[ebiten.GamepadID]struct{}, len(ids))
+	for _, id := range ids {
+		current[id] = struct{}{}
+		if _, known := g.gamepads[id]; !known {
+			events = append(events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: uint32(id), Connected: true})
+		}
+		for button := range ebiten.GamepadButtonCount(id) {
+			events = append(events, engine.Event{Kind: engine.EventGamepadButton, DeviceID: uint32(id), Button: engine.GamepadButton(button), Pressed: ebiten.IsGamepadButtonPressed(id, ebiten.GamepadButton(button))})
+		}
+		for axis := range ebiten.GamepadAxisCount(id) {
+			events = append(events, engine.Event{Kind: engine.EventGamepadAxis, DeviceID: uint32(id), Axis: engine.GamepadAxis(axis), Value: ebiten.GamepadAxisValue(id, axis)})
+		}
+	}
+	for id := range g.gamepads {
+		if _, connected := current[id]; !connected {
+			events = append(events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: uint32(id), Connected: false})
+		}
+	}
+	g.gamepads = current
+	return events
 }
 
-func sampleAxis(binding engine.AxisBinding, gamepads []ebiten.GamepadID) (float64, bool, bool, bool) {
-	negative, positive := false, false
-	pressed, released := false, false
-	for _, key := range binding.Negative {
-		negative = negative || keyPressed(key)
-		pressed = pressed || keyJustPressed(key)
-		released = released || keyJustReleased(key)
-	}
-	for _, key := range binding.Positive {
-		positive = positive || keyPressed(key)
-		pressed = pressed || keyJustPressed(key)
-		released = released || keyJustReleased(key)
-	}
-	if negative != positive {
-		if negative {
-			return -1, true, pressed, released
+func configuredKeys(actions engine.ActionMap) []engine.Key {
+	keys := make(map[engine.Key]struct{})
+	for _, action := range actions.Actions() {
+		binding := actions[action]
+		for _, key := range binding.Keys {
+			keys[key] = struct{}{}
 		}
-		return 1, true, pressed, released
-	}
-	if binding.UseGamepad && len(gamepads) > 0 {
-		value := ebiten.GamepadAxisValue(gamepads[0], int(binding.GamepadAxis))
-		if math.Abs(value) >= binding.Deadzone {
-			return value, true, pressed, released
+		if binding.Axis != nil {
+			for _, key := range binding.Axis.Negative {
+				keys[key] = struct{}{}
+			}
+			for _, key := range binding.Axis.Positive {
+				keys[key] = struct{}{}
+			}
 		}
 	}
-	return 0, false, pressed, released
+	values := make([]engine.Key, 0, len(keys))
+	for key := range keys {
+		values = append(values, key)
+	}
+	sort.Slice(values, func(left, right int) bool { return values[left] < values[right] })
+	return values
 }
 
 func keyPressed(key engine.Key) bool {
 	ebitenKey, ok := ebitenKeyFor(key)
 	return ok && ebiten.IsKeyPressed(ebitenKey)
-}
-
-func keyJustPressed(key engine.Key) bool {
-	ebitenKey, ok := ebitenKeyFor(key)
-	return ok && inpututil.IsKeyJustPressed(ebitenKey)
-}
-
-func keyJustReleased(key engine.Key) bool {
-	ebitenKey, ok := ebitenKeyFor(key)
-	return ok && inpututil.IsKeyJustReleased(ebitenKey)
 }
 
 func ebitenKeyFor(key engine.Key) (ebiten.Key, bool) {
