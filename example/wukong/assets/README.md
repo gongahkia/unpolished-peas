@@ -7,9 +7,13 @@
 3. roll, crouch, wall cling, wall jump
 4. ledge hang, mantle, dive, and reserved future variants
 
-The renderer maps those cells to the deterministic traversal snapshot and adds only renderer-local bob, squash/stretch, tilt, shadows, and motion accents. The art must not affect the simulation or replay hash.
+The cells are reserved for a future renderer mapping from the deterministic
+traversal snapshot. That mapping must keep bob, squash/stretch, tilt, shadows,
+and motion accents presentation-only; the art must not affect the simulation or
+replay hash.
 
-The player atlas remains embedded and validated, but the playtest renderer intentionally does not draw it.
+The player atlas remains source art in the repository, but the playtest renderer
+intentionally does not load or draw it.
 
 ## Test enemy atlas
 
