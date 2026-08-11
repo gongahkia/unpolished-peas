@@ -32,6 +32,7 @@ Start with the engine documentation, not the example source:
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [2D physics boundary](docs/PHYSICS.md)
 - [portable asset loaders](docs/ASSETS.md)
+- [project asset packaging](docs/ASSET_PACKAGING.md)
 - [Wukong example](example/wukong), an optional game built with the public API
 
 ## Wukong example
