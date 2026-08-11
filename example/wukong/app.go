@@ -8,6 +8,7 @@ import (
 
 	"github.com/gongahkia/72/engine"
 	engineebiten "github.com/gongahkia/72/engine/ebiten"
+	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
 
@@ -57,12 +58,13 @@ func (g *wukongGame) Initialize(runtime *engine.Runtime) error {
 
 func (g *wukongGame) addLayers() error {
 	layers := []engine.Layer{
-		{ID: "environment.deep", Order: -200, Space: engine.WorldSpace, Parallax: deepBackgroundDepth, Draw: g.drawDeepBackground},
-		{ID: "environment.distant", Order: -100, Space: engine.WorldSpace, Parallax: backgroundDepth, Draw: g.drawBackground},
-		{ID: "world", Order: 0, Space: engine.WorldSpace, Parallax: 1, Draw: g.drawWorld},
-		{ID: "environment.foreground", Order: 100, Space: engine.ScreenSpace, Draw: g.drawForeground},
+		{ID: "clear", Order: -300, Space: engine.ScreenSpace, DrawCommands: func(frame engine.CommandFrame) error { return frame.Clear(render.Color{R: 8, G: 10, B: 15, A: 255}) }},
+		{ID: "environment.deep", Order: -200, Space: engine.WorldSpace, Parallax: deepBackgroundDepth, DrawCommands: g.drawDeepBackgroundCommands},
+		{ID: "environment.distant", Order: -100, Space: engine.WorldSpace, Parallax: backgroundDepth, DrawCommands: g.drawBackgroundCommands},
+		{ID: "world", Order: 0, Space: engine.WorldSpace, Parallax: 1, DrawCommands: g.drawWorldCommands},
+		{ID: "environment.foreground", Order: 100, Space: engine.ScreenSpace, DrawCommands: g.drawForegroundCommands},
 		{ID: "hud", Order: 200, Space: engine.ScreenSpace, DrawCommands: g.drawHUDCommands},
-		{ID: "debug", Order: 300, Space: engine.ScreenSpace, Draw: g.drawDebug},
+		{ID: "debug", Order: 300, Space: engine.ScreenSpace, DrawCommands: g.drawDebugCommands},
 	}
 	for _, layer := range layers {
 		if err := g.runtime.Layers().Add(layer); err != nil {

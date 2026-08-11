@@ -14,7 +14,6 @@ const (
 
 func (g *wukongGame) drawDeepBackground(frame engine.Frame) {
 	canvas := frame.Canvas
-	canvas.Clear(engine.Color{R: 8, G: 10, B: 15, A: 255})
 	seed := g.snapshot.Seed
 	const spacing = 80.0
 	first, last := visibleLayerColumns(frame.Camera.Position().X, deepBackgroundDepth, spacing)
