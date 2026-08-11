@@ -30,6 +30,7 @@ Start with the engine documentation, not the example source:
 
 - [public API stability and compatibility policy](docs/PUBLIC_API.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
+- [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)
 - [2D physics boundary](docs/PHYSICS.md)
 - [portable asset loaders](docs/ASSETS.md)
 - [project asset packaging](docs/ASSET_PACKAGING.md)
