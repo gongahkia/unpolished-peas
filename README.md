@@ -24,12 +24,20 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 | `engine/render` | backend-neutral high-level 2D commands and portable texture sources |
 | `engine/diagnostics` | counters and duration summaries |
 
+## Documentation
+
+Start with the engine documentation, not the example source:
+
+- [public API stability and compatibility policy](docs/PUBLIC_API.md)
+- [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
+- [Wukong example](example/wukong), an optional game built with the public API
+
 ## Wukong example
 
-[Wukong](example/wukong) is an example game written against 72. It is not part
-of the engine API or a definition of engine policy. It owns its deterministic
-procedural platforming simulation, assets, replay tooling, and playtest rules;
-it demonstrates the kind of game a 72 user can write.
+[Wukong](example/wukong) is optional example-game source, not engine API or a
+definition of engine policy. It owns its deterministic procedural platforming
+simulation, assets, replay tooling, and playtest rules; it demonstrates the
+kind of game a 72 user can write.
 
 ```sh
 make example-run
