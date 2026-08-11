@@ -36,6 +36,7 @@ Start with the engine documentation, not the example source:
 - [project asset packaging](docs/ASSET_PACKAGING.md)
 - [platform host contract](docs/HOSTS.md)
 - [portable input and rebinding](docs/INPUT.md)
+- [audio playback and device policy](docs/AUDIO.md)
 - [Wukong example](example/wukong), an optional game built with the public API
 
 ## Wukong example
