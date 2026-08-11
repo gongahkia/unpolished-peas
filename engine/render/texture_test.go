@@ -44,3 +44,16 @@ func TestTextureStoreCreatesAndValidatesRenderTargets(t *testing.T) {
 		t.Fatal("unknown render target was available")
 	}
 }
+
+func TestTextureStoreReportsPortableStorage(t *testing.T) {
+	store := NewTextureStore()
+	if _, err := store.Create(Image{Width: 1, Height: 1, Pixels: []byte{1, 2, 3, 4}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := store.CreateRenderTarget(2, 1); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := store.Stats(), (TextureStats{Count: 2, RenderTargetCount: 1, Bytes: 12, RenderTargetBytes: 8}); got != want {
+		t.Fatalf("texture stats = %+v, want %+v", got, want)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/gongahkia/72/engine/diagnostics"
 	"github.com/gongahkia/72/engine/render"
 )
 
@@ -197,7 +198,7 @@ func (s *LayerStack) Layers() []Layer {
 	return layers
 }
 
-func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *render.TextureStore) error {
+func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *render.TextureStore, diagnostics *diagnostics.Registry) error {
 	for _, registered := range s.layers {
 		layer := registered.layer
 		translate := Vec2{}
@@ -234,7 +235,7 @@ func (s *LayerStack) draw(canvas Canvas, camera Camera, tick uint64, textures *r
 		if !ok {
 			return fmt.Errorf("layer %q requires a backend with high-level render command support", layer.ID)
 		}
-		if err := commandCanvas.RenderCommands(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures}); err != nil {
+		if err := commandCanvas.RenderCommands(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures, Diagnostics: diagnostics}); err != nil {
 			return fmt.Errorf("submit command layer %q: %w", layer.ID, err)
 		}
 	}

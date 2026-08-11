@@ -3,6 +3,7 @@ package engine
 import (
 	"testing"
 
+	"github.com/gongahkia/72/engine/diagnostics"
 	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/engine/ui"
 )
@@ -24,7 +25,7 @@ func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
 	canvas := &recordingCanvas{}
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
-	if err := stack.draw(canvas, camera, 1, render.NewTextureStore()); err != nil {
+	if err := stack.draw(canvas, camera, 1, render.NewTextureStore(), nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(canvas.rects) != 1 || canvas.rects[0].X != 344 {
@@ -54,7 +55,8 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	canvas := &recordingCommandCanvas{}
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
-	if err := stack.draw(canvas, camera, 1, render.NewTextureStore()); err != nil {
+	registry := diagnostics.NewRegistry()
+	if err := stack.draw(canvas, camera, 1, render.NewTextureStore(), registry); err != nil {
 		t.Fatal(err)
 	}
 	if len(canvas.frames) != 1 {
@@ -62,7 +64,7 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	}
 	frame := canvas.frames[0]
 	commands := frame.Queue.Commands()
-	if frame.Camera.Position.X != 40 || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
+	if frame.Camera.Position.X != 40 || frame.Diagnostics != registry || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
 		t.Fatalf("command submission = camera=%+v commands=%+v", frame.Camera, commands)
 	}
 }
@@ -87,7 +89,7 @@ func TestScreenCommandLayerRendersUIVisualThroughCommandFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	canvas := &recordingCommandCanvas{}
-	if err := stack.draw(canvas, NewCamera(Size{W: 32, H: 18}), 1, render.NewTextureStore()); err != nil {
+	if err := stack.draw(canvas, NewCamera(Size{W: 32, H: 18}), 1, render.NewTextureStore(), nil); err != nil {
 		t.Fatal(err)
 	}
 	commands := canvas.frames[0].Queue.Commands()
@@ -112,7 +114,7 @@ func TestWorldCommandLayerRejectsTargetClip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := stack.draw(&recordingCommandCanvas{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore()); err == nil {
+	if err := stack.draw(&recordingCommandCanvas{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore(), nil); err == nil {
 		t.Fatal("world command layer accepted a target clip")
 	}
 }

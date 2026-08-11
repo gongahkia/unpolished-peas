@@ -18,3 +18,17 @@ func TestRegistryAggregatesSortedMetrics(t *testing.T) {
 		t.Fatalf("metrics = %+v", metrics)
 	}
 }
+
+func TestRegistrySetsPointInTimeMetric(t *testing.T) {
+	registry := NewRegistry()
+	if err := registry.Add("cache.bytes", 10); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Set("cache.bytes", 4); err != nil {
+		t.Fatal(err)
+	}
+	metrics := registry.Snapshot()
+	if len(metrics) != 1 || metrics[0].Name != "cache.bytes" || metrics[0].Count != 4 {
+		t.Fatalf("metrics = %+v", metrics)
+	}
+}

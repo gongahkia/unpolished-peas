@@ -80,6 +80,7 @@ func benchmarkReferenceFrame(b *testing.B, frame Frame) {
 	if err != nil {
 		b.Fatal(err)
 	}
+	metrics := CollectFrameMetrics(frame, Rect{W: 320, H: 180})
 	b.ReportAllocs()
 	b.ResetTimer()
 	for b.Loop() {
@@ -87,6 +88,10 @@ func benchmarkReferenceFrame(b *testing.B, frame Frame) {
 			b.Fatal(err)
 		}
 	}
+	b.ReportMetric(float64(metrics.Commands), "commands/op")
+	b.ReportMetric(float64(metrics.CompatibleSpriteRuns), "sprite-runs/op")
+	b.ReportMetric(float64(metrics.TileCells), "tile-cells/op")
+	b.ReportMetric(float64(metrics.VisibleTiles), "visible-tiles/op")
 }
 
 func benchmarkImage(width, height int) Image {

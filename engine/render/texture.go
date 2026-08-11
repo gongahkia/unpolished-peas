@@ -33,6 +33,14 @@ type TextureStore struct {
 	targets map[uint64]struct{}
 }
 
+// TextureStats reports the portable RGBA8 source data currently retained by a
+// TextureStore. Bytes includes render-target images; RenderTargetBytes is its
+// subset. It does not estimate backend-native allocations.
+type TextureStats struct {
+	Count, RenderTargetCount uint64
+	Bytes, RenderTargetBytes uint64
+}
+
 // NewTextureStore creates an empty texture source store.
 func NewTextureStore() *TextureStore {
 	return &TextureStore{images: make(map[uint64]Image), targets: make(map[uint64]struct{})}
@@ -65,6 +73,24 @@ func (s *TextureStore) Image(texture Texture) (Image, bool) {
 	}
 	image.Pixels = append([]byte(nil), image.Pixels...)
 	return image, true
+}
+
+// Stats returns a point-in-time summary of portable texture source storage.
+func (s *TextureStore) Stats() TextureStats {
+	if s == nil {
+		return TextureStats{}
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	stats := TextureStats{Count: uint64(len(s.images)), RenderTargetCount: uint64(len(s.targets))}
+	for id, image := range s.images {
+		bytes := uint64(len(image.Pixels))
+		stats.Bytes += bytes
+		if _, target := s.targets[id]; target {
+			stats.RenderTargetBytes += bytes
+		}
+	}
+	return stats
 }
 
 // CreateRenderTarget registers a transparent portable image that can be used

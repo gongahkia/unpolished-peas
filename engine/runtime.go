@@ -34,16 +34,17 @@ type Backend interface {
 
 // Runtime owns application lifecycle state shared by all backends.
 type Runtime struct {
-	config   Config
-	app      Application
-	host     HostContext
-	camera   Camera
-	layers   LayerStack
-	world    *ecs.World
-	systems  *ecs.Schedule
-	textures *render.TextureStore
-	input    *InputMapper
-	tick     uint64
+	config      Config
+	app         Application
+	host        HostContext
+	camera      Camera
+	layers      LayerStack
+	world       *ecs.World
+	systems     *ecs.Schedule
+	textures    *render.TextureStore
+	diagnostics *diagnostics.Registry
+	input       *InputMapper
+	tick        uint64
 }
 
 // NewRuntime creates and initializes an application runtime.
@@ -65,14 +66,15 @@ func newRuntime(config Config, app Application, host HostContext) (*Runtime, err
 		return nil, runtimeFailure("initialize input mapper", err, diagnostics.CorrectConfiguration, true)
 	}
 	runtime := &Runtime{
-		config:   config,
-		app:      app,
-		host:     host,
-		camera:   NewCamera(config.Viewport),
-		world:    ecs.NewWorld(),
-		systems:  ecs.NewSchedule(),
-		textures: render.NewTextureStore(),
-		input:    input,
+		config:      config,
+		app:         app,
+		host:        host,
+		camera:      NewCamera(config.Viewport),
+		world:       ecs.NewWorld(),
+		systems:     ecs.NewSchedule(),
+		textures:    render.NewTextureStore(),
+		diagnostics: diagnostics.NewRegistry(),
+		input:       input,
 	}
 	for _, plugin := range config.Plugins {
 		if plugin == nil {
@@ -173,8 +175,15 @@ func (r *Runtime) Systems() *ecs.Schedule { return r.systems }
 // layers. Backends create and cache their own native GPU resources from them.
 func (r *Runtime) Textures() *render.TextureStore { return r.textures }
 
+// Diagnostics returns the runtime-owned, concurrency-safe metrics registry.
+// Runtime update and draw durations are recorded automatically; render
+// backends add command and resource metrics when command layers submit frames.
+func (r *Runtime) Diagnostics() *diagnostics.Registry { return r.diagnostics }
+
 // Update advances the application one platform update.
 func (r *Runtime) Update(input Input) error {
+	done := r.diagnostics.Measure("runtime.update_time")
+	defer done()
 	if err := r.systems.Run(ecs.PreUpdate, r.world); err != nil {
 		return frameFailure("run pre-update systems", err)
 	}
@@ -208,7 +217,9 @@ func (r *Runtime) FixedUpdate(input Input) error {
 
 // Draw renders all currently registered layers in order.
 func (r *Runtime) Draw(canvas Canvas) error {
-	if err := r.layers.draw(canvas, r.camera, r.tick, r.textures); err != nil {
+	done := r.diagnostics.Measure("runtime.draw_time")
+	defer done()
+	if err := r.layers.draw(canvas, r.camera, r.tick, r.textures, r.diagnostics); err != nil {
 		return frameFailure("draw layers", err)
 	}
 	return nil

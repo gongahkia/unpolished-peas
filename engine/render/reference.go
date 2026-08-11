@@ -6,7 +6,7 @@ import (
 	"image/color"
 	"image/draw"
 	"math"
-	"sort"
+	"time"
 
 	"github.com/gongahkia/72/engine/diagnostics"
 	"golang.org/x/image/font"
@@ -54,7 +54,7 @@ func (b *ReferenceBackend) Snapshot() Image {
 
 // Render applies a full high-level command frame. Clear commands are processed
 // before every other command, and non-clear commands retain stable layer order.
-func (b *ReferenceBackend) Render(frame Frame) error {
+func (b *ReferenceBackend) Render(frame Frame) (err error) {
 	if b == nil {
 		return rendererFailure("render reference frame", fmt.Errorf("reference backend must not be nil"), diagnostics.CorrectConfiguration, true)
 	}
@@ -64,7 +64,13 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 	if frame.Queue == nil {
 		return rendererFailure("render reference frame", fmt.Errorf("render frame queue must not be nil"), diagnostics.CorrectInput, false)
 	}
-	commands := frame.Queue.Commands()
+	metrics := CollectFrameMetrics(frame, Rect{W: float64(b.image.Width), H: float64(b.image.Height)})
+	started := time.Now()
+	defer func() {
+		metrics.Duration = time.Since(started)
+		metrics.RecordInto(frame.Diagnostics)
+	}()
+	commands := orderedCommands(frame.Queue.Commands())
 	for _, command := range commands {
 		if command.Kind != Clear {
 			continue
@@ -75,15 +81,6 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 		}
 		b.Reset(value)
 	}
-	sort.SliceStable(commands, func(left, right int) bool {
-		if commands[left].Kind == Clear {
-			return true
-		}
-		if commands[right].Kind == Clear {
-			return false
-		}
-		return commands[left].Layer < commands[right].Layer
-	})
 	for _, command := range commands {
 		if command.Kind == Clear {
 			continue
