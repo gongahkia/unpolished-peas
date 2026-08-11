@@ -33,6 +33,7 @@ Start with the engine documentation, not the example source:
 - [contributor workflow](CONTRIBUTING.md)
 - [host and renderer development](docs/BACKEND_DEVELOPMENT.md)
 - [deterministic render testing](docs/RENDER_TESTING.md)
+- [structured runtime failures](docs/ERRORS.md)
 - [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)

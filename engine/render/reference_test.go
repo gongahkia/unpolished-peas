@@ -1,6 +1,11 @@
 package render
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	"github.com/gongahkia/72/engine/diagnostics"
+)
 
 func TestReferenceBackendUsesClearAndStableLayerOrder(t *testing.T) {
 	backend := newReferenceBackend(t, 1, 1)
@@ -141,8 +146,16 @@ func TestReferenceBackendReportsInvalidTexture(t *testing.T) {
 	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Tint: Color{A: 255}}); err != nil {
 		t.Fatal(err)
 	}
-	if err := backend.Render(Frame{Queue: &queue, Textures: NewTextureStore()}); err == nil {
+	err := backend.Render(Frame{Queue: &queue, Textures: NewTextureStore()})
+	if err == nil {
 		t.Fatal("unregistered texture rendered")
+	}
+	var failure *diagnostics.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("render error %v is not a diagnostics failure", err)
+	}
+	if failure.Subsystem != diagnostics.RendererSubsystem || failure.Operation != "render reference frame" || failure.Recovery != diagnostics.CorrectInput || failure.Terminal {
+		t.Fatalf("failure = %+v", failure)
 	}
 }
 

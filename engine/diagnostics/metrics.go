@@ -2,6 +2,7 @@
 package diagnostics
 
 import (
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -51,6 +52,24 @@ func (r *Registry) Record(name string, duration time.Duration) error {
 	r.metrics[name] = metric
 	r.mu.Unlock()
 	return nil
+}
+
+// RecordFailure increments the counter for a structured engine-boundary
+// failure. Callers own the Registry and choose when a returned error is worth
+// recording; 72 does not retain a hidden global error log.
+func (r *Registry) RecordFailure(err error) error {
+	if err == nil {
+		return nil
+	}
+	var failure *Failure
+	if !errors.As(err, &failure) {
+		return fmt.Errorf("diagnostic failure must be a *Failure")
+	}
+	subsystem := string(failure.Subsystem)
+	if subsystem == "" {
+		subsystem = "engine"
+	}
+	return r.Add("failure."+subsystem, 1)
 }
 
 // Snapshot returns metrics sorted by name.

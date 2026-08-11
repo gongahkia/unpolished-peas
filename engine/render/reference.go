@@ -7,6 +7,7 @@ import (
 	"math"
 	"sort"
 
+	"github.com/gongahkia/72/engine/diagnostics"
 	"golang.org/x/image/font"
 	"golang.org/x/image/font/basicfont"
 	"golang.org/x/image/math/fixed"
@@ -23,7 +24,7 @@ type ReferenceBackend struct {
 func NewReferenceBackend(width, height int) (*ReferenceBackend, error) {
 	length, ok := imageByteLen(width, height)
 	if !ok {
-		return nil, fmt.Errorf("reference target dimensions must be positive and addressable")
+		return nil, rendererFailure("initialize reference target", fmt.Errorf("reference target dimensions must be positive and addressable"), diagnostics.CorrectConfiguration, true)
 	}
 	return &ReferenceBackend{image: Image{Width: width, Height: height, Pixels: make([]byte, length)}}, nil
 }
@@ -53,13 +54,13 @@ func (b *ReferenceBackend) Snapshot() Image {
 // before every other command, and non-clear commands retain stable layer order.
 func (b *ReferenceBackend) Render(frame Frame) error {
 	if b == nil {
-		return fmt.Errorf("reference backend must not be nil")
+		return rendererFailure("render reference frame", fmt.Errorf("reference backend must not be nil"), diagnostics.CorrectConfiguration, true)
 	}
 	if !validImage(b.image) {
-		return fmt.Errorf("reference backend target must be initialized")
+		return rendererFailure("render reference frame", fmt.Errorf("reference backend target must be initialized"), diagnostics.CorrectConfiguration, true)
 	}
 	if frame.Queue == nil {
-		return fmt.Errorf("render frame queue must not be nil")
+		return rendererFailure("render reference frame", fmt.Errorf("render frame queue must not be nil"), diagnostics.CorrectInput, false)
 	}
 	commands := frame.Queue.Commands()
 	for _, command := range commands {
@@ -68,7 +69,7 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 		}
 		value, ok := command.Payload.(Color)
 		if !ok {
-			return fmt.Errorf("clear command has payload %T", command.Payload)
+			return rendererFailure("render reference frame", fmt.Errorf("clear command has payload %T", command.Payload), diagnostics.CorrectInput, false)
 		}
 		b.Reset(value)
 	}
@@ -86,7 +87,7 @@ func (b *ReferenceBackend) Render(frame Frame) error {
 			continue
 		}
 		if err := b.draw(frame, command); err != nil {
-			return err
+			return rendererFailure("render reference frame", err, diagnostics.CorrectInput, false)
 		}
 	}
 	return nil
@@ -144,8 +145,7 @@ func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 		if !ok {
 			return fmt.Errorf("text command has payload %T", command.Payload)
 		}
-		b.drawText(Vec2{X: value.Position.X + offset.X, Y: value.Position.Y + offset.Y}, value.Value, value.Color)
-		return nil
+		return b.drawText(Vec2{X: value.Position.X + offset.X, Y: value.Position.Y + offset.Y}, value.Value, value.Color)
 	default:
 		return fmt.Errorf("unsupported render command %d", command.Kind)
 	}
@@ -283,9 +283,9 @@ func (b *ReferenceBackend) strokeLine(start, end Vec2, width float64, tint Color
 	return nil
 }
 
-func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color) {
+func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color) error {
 	if !finiteVec(position) {
-		return
+		return fmt.Errorf("text position must be finite")
 	}
 	target := &image.NRGBA{Pix: b.image.Pixels, Stride: b.image.Width * 4, Rect: image.Rect(0, 0, b.image.Width, b.image.Height)}
 	drawer := font.Drawer{
@@ -295,6 +295,7 @@ func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color) {
 		Dot:  fixed.P(int(position.X), int(position.Y)),
 	}
 	drawer.DrawString(value)
+	return nil
 }
 
 func (b *ReferenceBackend) forPixels(bounds Rect, include func(Vec2) bool, tint Color) {
@@ -455,6 +456,10 @@ func maxIntValue(left, right int) int {
 		return left
 	}
 	return right
+}
+
+func rendererFailure(operation string, cause error, recovery diagnostics.Recovery, terminal bool) error {
+	return diagnostics.NewFailure(diagnostics.RendererSubsystem, operation, cause, recovery, terminal)
 }
 
 var _ Backend = (*ReferenceBackend)(nil)

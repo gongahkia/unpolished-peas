@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"image"
 	"image/color"
 	"image/png"
@@ -12,6 +13,7 @@ import (
 	"testing"
 	"testing/fstest"
 
+	"github.com/gongahkia/72/engine/diagnostics"
 	"github.com/gongahkia/72/engine/render"
 	"golang.org/x/image/font/gofont/goregular"
 )
@@ -53,6 +55,17 @@ func TestManagerLoadsReloadsAndBuildsManifest(t *testing.T) {
 	}
 	if _, err := Load(manager, "../outside", stringLoader); err == nil || !strings.Contains(err.Error(), "project-relative") {
 		t.Fatalf("invalid path error = %v", err)
+	}
+}
+
+func TestLoadReportsStructuredAssetFailure(t *testing.T) {
+	_, err := Load(NewManager(fstest.MapFS{}), "missing.txt", stringLoader)
+	var failure *diagnostics.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("load error %v is not a diagnostics failure", err)
+	}
+	if failure.Subsystem != diagnostics.AssetsSubsystem || failure.Operation != "load asset" || failure.Recovery != diagnostics.CorrectInput || failure.Terminal {
+		t.Fatalf("failure = %+v", failure)
 	}
 }
 
