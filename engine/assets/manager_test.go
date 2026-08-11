@@ -96,6 +96,13 @@ func TestStandardLoadersDecodePortableAssetsAndTrackTileDependencies(t *testing.
 	if again, _ := Get(manager, font); again.Bytes()[0] != goregular.TTF[0] {
 		t.Fatal("font bytes leaked mutable ownership")
 	}
+	atlas, err := render.NewGlyphAtlas(loadedFont, render.GlyphAtlasOptions{MaxGlyphs: 4})
+	if err != nil {
+		t.Fatalf("create glyph atlas from asset font: %v", err)
+	}
+	if _, err := atlas.Glyph('A'); err != nil {
+		t.Fatalf("rasterize asset font glyph: %v", err)
+	}
 	sound, err := Load(manager, "sound.wav", DecodeWAV)
 	if err != nil {
 		t.Fatalf("load WAV: %v", err)

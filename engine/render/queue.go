@@ -105,11 +105,13 @@ type LineDraw struct {
 	Color      Color
 }
 
-// TextDraw is a backend-font text command payload.
+// TextDraw is a text command payload. Atlas is optional for compatibility; a
+// supplied atlas owns glyph selection, fallback, and portable raster pages.
 type TextDraw struct {
 	Position Vec2
 	Value    string
 	Color    Color
+	Atlas    *GlyphAtlas
 }
 
 // Queue records stable high-level rendering commands for one frame.
