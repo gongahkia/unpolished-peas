@@ -64,6 +64,16 @@ need the operation, shader asset, and backend cause. Color conversion, blend
 mode, sampling, DPI policy, resize, surface/device loss, and shutdown are
 feature requirements, not implicit behavior inherited from Ebitengine.
 
+`engine/render/internal/presentation` supplies the private lifecycle policy a
+chosen renderer must use on its render thread. Its driver adapter maps native
+adapter/device, surface configure, acquire, present, and release results into
+the package's normalized faults without leaking a binding type. The policy
+skips a timeout, suspends zero-sized surfaces, reconfigures an outdated or lost
+surface, recreates a lost device, and returns a terminal structured failure for
+out-of-memory or unclassified faults. Its scripted-driver tests are faithful
+policy tests, not evidence of a real platform implementation; a selected
+binding still needs runtime lifecycle coverage.
+
 ## Review boundary
 
 Changing an exported `engine` or `engine/render` type requires the public API
