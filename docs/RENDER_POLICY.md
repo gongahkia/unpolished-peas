@@ -1,9 +1,8 @@
 # Renderer alpha, blend, and sampling policy
 
 This policy defines the engine-owned 2D renderer foundation. It applies to the
-embedded `sprite-2d@v1` WGSL asset and its private pipeline descriptors; it
-does not claim that the transitional Ebitengine adapter has identical native
-formats or driver behavior.
+embedded `sprite-2d@v1` WGSL asset and its private pipeline descriptors;
+native format and driver behavior remain platform-specific.
 
 ## Inputs and alpha
 

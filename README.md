@@ -62,18 +62,17 @@ make example-run
 
 ## Renderer transition
 
-`engine/ebiten` is the current compatibility adapter. It translates 72's
-platform-neutral lifecycle, input, and high-level render command layers to
-Ebitengine. Ebitengine types do not appear in the public engine API.
-Runtime-owned portable texture data is converted to and cached as Ebitengine
-GPU images only inside this adapter.
+`engine/platform` owns the Linux X11 and browser hosts. Its private WebGPU
+renderer consumes the high-level `engine/render` command frame, owns GPU
+resources, batching, render passes, shader validation, and presentation, and
+does not expose graphics-binding handles to game code. [ADR 0003](docs/adr/0003-engine-owned-webgpu-renderer.md)
+records the dependency and ownership decision.
 
-72 will replace this adapter with an engine-owned renderer behind the
-high-level `engine/render` contract. That renderer will own GPU resource
-lifetime, batching, render passes, shader/material compilation, validation,
-and presentation. The Ebitengine adapter remains supported until the
-engine-owned renderer reaches Wukong parity on the initial desktop and web
-targets. This repository does not yet claim to provide that renderer.
+The Linux X11 path has a local creation and five-second example smoke result.
+The browser path has a local Chromium render/input/resize result. Windows,
+macOS, and browser support beyond that one local Chromium environment remain
+unverified; their source targets distinguish buildability from runtime support.
+There is no Canvas or WebGL fallback when WebGPU is unavailable.
 
 Visual editor tooling, scripting, 3D rendering, mobile/consoles, networking,
 navigation, and advanced animation are intentionally outside the current

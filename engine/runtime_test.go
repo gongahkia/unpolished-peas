@@ -87,7 +87,7 @@ func TestRuntimeRejectsNilRenderBackend(t *testing.T) {
 	}
 }
 
-func TestRunWithHostInstallsAPlatformContextWithoutEbitengine(t *testing.T) {
+func TestRunWithHostInstallsAPlatformContextWithoutGraphicsBinding(t *testing.T) {
 	host := &testHost{
 		window: &testWindow{state: WindowState{Title: "before", LogicalSize: Size{W: 320, H: 180}, DrawableSize: Size{W: 640, H: 360}, Scale: 2, Focused: true, Visible: true}},
 		clock:  testClock{},

@@ -1,8 +1,8 @@
 // Command first-game is the runnable companion to docs/FIRST_GAME.md.
 //
 // Game code below uses engine, engine/ecs, and engine/render. The final Run
-// call uses the temporary Ebitengine host adapter until supported native and
-// browser hosts are available; see the tutorial for that boundary.
+// call uses 72's engine-owned native or browser host; see the tutorial for
+// its platform boundary.
 package main
 
 import (
@@ -10,8 +10,8 @@ import (
 	"log"
 
 	"github.com/gongahkia/72/engine"
-	engineebiten "github.com/gongahkia/72/engine/ebiten"
 	"github.com/gongahkia/72/engine/ecs"
+	"github.com/gongahkia/72/engine/platform"
 	"github.com/gongahkia/72/engine/render"
 )
 
@@ -91,7 +91,7 @@ func main() {
 			actionJump: {Keys: []engine.Key{engine.KeySpace}},
 		},
 	}
-	if err := engineebiten.Run(config, &firstGame{}); err != nil {
+	if err := platform.Run(config, &firstGame{}); err != nil {
 		log.Fatal(err)
 	}
 }

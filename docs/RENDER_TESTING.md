@@ -47,7 +47,7 @@ parameters are backend-defined and are not interpreted by the reference backend.
 
 `TileMap.VisibleRange` conservatively selects whole cells that intersect a
 target viewport in tile-map coordinates; a partially visible edge cell remains
-in the range. The reference and transitional Ebit renderers use that range
+in the range. The reference and engine-owned WebGPU renderers use that range
 after camera translation and before per-tile submission. It is culling only:
 atlas coordinates, empty-tile behavior, and draw order are unchanged.
 `Queue.DrawTileMap` rejects a non-negative atlas index outside the declared
@@ -68,11 +68,11 @@ handle; `TextureStore.Revision` provides inexpensive cache metadata and
 permanently. Render targets are intentionally replaced only by successful
 `RenderTo` calls, because their dimensions and ownership are fixed at creation.
 When a renderer recreates its native resources, it must drop private caches and
-rehydrate regular textures and atlas pages from their portable sources. The
-transitional Ebit renderer exposes `ResetResources` for this lifecycle. A
+rehydrate regular textures and atlas pages from their portable sources. A
 render target's native contents do not survive that reset unless its portable
 source was updated by the backend, so an application must re-render dependent
-targets after device recreation.
+targets after device recreation. The current WebGPU renderer does not yet
+implement device-recreation recovery.
 
 `Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
 The queue stores the effective intersection on each subsequent draw, rather
@@ -84,8 +84,8 @@ sprites, tiles, primitives, and both basic-font and atlas text; renderers must
 preserve those semantics or document their difference.
 
 These rules are intentionally explicit rather than a pixel-for-pixel promise
-to Ebitengine or a future GPU renderer. A backend must document any semantic
-difference and add a focused regression before relying on it.
+across renderers. A backend must document any semantic difference and add a
+focused regression before relying on it.
 
 ## GPU integration tolerance
 
@@ -96,6 +96,7 @@ first observed comparison result. `ImageComparison` reports the number and
 first location of pixels outside the allowed per-channel delta, so a tolerance
 does not hide an unbounded regression.
 
-The current repository has no production GPU renderer or GPU image test.
-Consequently, this helper establishes the comparison contract but does not turn
-compile-only or single-machine WebGPU experiments into GPU test coverage.
+The engine-owned renderer has a headless WebGPU submission test, but no GPU
+image readback regression yet. Consequently, this helper establishes the image
+comparison contract without treating a single-machine submission test as pixel
+coverage.

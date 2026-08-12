@@ -22,9 +22,9 @@ goroutine. Game code may use the installed `HostContext` only while `Run` is
 active and must not retain native resources or call window/event methods from a
 different goroutine.
 
-The legacy `engine.Backend` interface remains for the Ebitengine compatibility
-adapter. It supplies no `HostContext`; `Runtime.Host()` is its zero value there.
-New native and browser integrations implement `engine.Host` instead.
+The legacy `engine.Backend` interface remains for custom event-loop adapters.
+It supplies no `HostContext`; `Runtime.Host()` is its zero value there. Native
+and browser integrations implement `engine.Host` instead.
 
 ## Window and timing
 
@@ -64,4 +64,4 @@ host must use only `engine.Key`, `GamepadButton`, `GamepadAxis`, `Vec2`, and
 A fake host needs only the public interfaces. It supplies deterministic window
 state, timing, and events, then calls runtime lifecycle methods from its own
 `Run`. The runtime test suite includes such a fake and verifies that the
-context is available during initialization without importing Ebitengine.
+context is available during initialization without importing a platform binding.

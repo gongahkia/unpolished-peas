@@ -15,8 +15,8 @@ _ = frame.DrawText(render.TextDraw{Position: render.Vec2{X: 8, Y: 24}, Value: "s
 ```
 
 An atlas uses non-premultiplied RGBA8 pages. Both the reference backend and the
-transitional Ebit backend sample those pages; native GPU upload ownership stays
-with a future renderer backend. Glyphs are rasterized with no hinting, so the
+engine-owned WebGPU renderer sample those pages; the latter owns private GPU
+uploads and cache entries. Glyphs are rasterized with no hinting, so the
 reference backend provides deterministic image-test output for a pinned font
 file and atlas options.
 

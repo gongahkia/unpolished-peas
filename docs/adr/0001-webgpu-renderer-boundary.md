@@ -7,8 +7,8 @@
 ## Context
 
 72 currently exposes a backend-neutral runtime and the `engine/render` command
-contract, but `engine/ebiten` still owns windowing, input sampling, Canvas
-compatibility drawing, and the translation of render commands to Ebitengine.
+contract, but a temporary framework adapter still owns windowing, input
+sampling, Canvas compatibility drawing, and command translation.
 That adapter is intentionally temporary. A replacement needs to serve native
 Linux, Windows, and macOS applications and `GOOS=js GOARCH=wasm` without
 exposing a graphics binding in a game's public API.
@@ -45,7 +45,7 @@ is an architecture decision, not a decision to add a WebGPU dependency yet.
 - The renderer starts with explicit non-premultiplied RGBA input and documents
   conversion at the backend boundary. Blend mode, color-space, sampling, and
   DPI policy are specified alongside the relevant renderer features rather
-  than inherited accidentally from Ebitengine.
+  than inherited accidentally from another renderer.
 - The renderer is responsible for recovering from resize and recoverable
   surface loss, and for returning contextual errors for terminal device or
   out-of-memory failures. The detailed public error model is deferred to the
@@ -86,7 +86,7 @@ for Go wasm by itself. Browser presentation therefore remains a separately
 validated host path even if the native decision selects a wgpu-native binding.
 WebGPU also requires a secure browser context and is not a universal browser
 baseline; the browser host must expose an actionable unsupported-feature error
-rather than silently falling back to Ebitengine or WebGL.
+rather than silently falling back to a framework renderer or WebGL.
 
 ## Package and ownership shape
 
@@ -105,14 +105,14 @@ window or GPU objects. The renderer may cache native representations of
 portable `render.Texture` data, but cache entries are invalidated when the
 device is recreated and are released only by renderer-owned lifecycle code.
 
-## Ebitengine retirement criteria
+## Legacy-adapter retirement criteria
 
-`engine/ebiten` and legacy Canvas remain supported only until the engine-owned
+The legacy framework adapter and Canvas remain supported only until the engine-owned
 host and renderer demonstrate Wukong parity. Removal requires all of the
 following evidence:
 
-- native and wasm Wukong builds run through engine-owned hosts with no Ebit
-  imports in the engine or example;
+- native and wasm Wukong builds run through engine-owned hosts with no
+  framework-renderer imports in the engine or example;
 - command-frame support covers Wukong's sprites, tile maps, primitives, and
   text while preserving documented stable ordering and coordinate semantics;
 - a headless reference backend and image regressions cover those command types;
@@ -131,17 +131,16 @@ boundary. This avoids committing 72's exported API to a binding before its
 platform, packaging, and failure behavior are evidenced.
 
 The decision adds documentation only. It does not add a GPU dependency, change
-the current Ebitengine adapter, claim browser support, or remove the Canvas
+the current framework adapter, claim browser support, or remove the Canvas
 compatibility path.
 
 ## Implementation update
 
 On 2026-08-12, the command-frame migration retired the legacy `engine.Canvas`
 and immediate `Layer.Draw` API. `Runtime.Draw` now consumes a
-`render.Backend` directly, so supported examples and the transitional Ebit
-adapter use only `render.Frame`. This update does not satisfy the separate
-Ebitengine-retirement criteria above: the adapter remains the current host and
-renderer implementation.
+`render.Backend` directly, so supported examples and the transitional framework
+adapter use only `render.Frame`. This historic update did not satisfy the
+separate adapter-retirement criteria at that time.
 
 ## Sources checked on 2026-08-11
 

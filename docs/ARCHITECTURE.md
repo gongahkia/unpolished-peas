@@ -2,7 +2,7 @@
 
 72 is a Go runtime SDK. Games own rules, content, and application composition;
 the runtime owns portable lifecycle, simulation, and rendering intent. It is
-not an editor or a production renderer/host distribution yet.
+not an editor or a broad production platform distribution.
 
 ## Dependency direction
 
@@ -35,7 +35,8 @@ renderer boundary.
 | `engine/ui` | retained layout, focus, and pointer hit testing | changing UI tree/layout behavior |
 | `engine/render` | high-level 2D commands and portable texture sources | changing backend-neutral scene intent |
 | `engine/diagnostics` | counters and duration summaries | adding portable observability data |
-| `engine/ebiten` | temporary Ebitengine lifecycle/input/render adapter | maintaining compatibility while the engine-owned host and renderer are absent |
+| `engine/platform` | Linux X11/browser host lifecycle and private renderer integration | changing platform event, surface, or presentation behavior |
+| `engine/render/webgpu` | private WebGPU resource, batching, and pass implementation | changing graphics-binding behavior without exposing it to games |
 | `example/wukong` | an optional game and its private simulation/presentation code | changing the example, never engine policy |
 | `experiments/webgpu-*` | isolated dependency and platform evidence | collecting evidence for a later dependency decision, not shipping engine behavior |
 
@@ -57,20 +58,13 @@ before `Update` or `FixedUpdate`. It draws and presents on that same goroutine,
 then releases the host context on shutdown. The full contract is in
 [HOSTS.md](HOSTS.md), with control and unit rules in [INPUT.md](INPUT.md).
 
-No engine-owned native or browser host currently exists. The compatibility
-adapter samples actions only; it does not establish pointer, text, gamepad, or
-browser/native host parity.
+`engine/platform` owns the Linux X11 and browser host paths. The Linux host has
+local creation and startup smoke coverage. Browser runtime behavior and
+cross-platform host parity remain unverified.
 
 ## Renderer and platform boundary
 
-The intended renderer is WebGPU-shaped and uses private WGSL shaders, but no
-production WebGPU binding is selected. [ADR 0002](adr/0002-webgpu-dependency-decision.md)
-records the evidence gap and promotion gate. Work that needs a chosen binding,
-surface, native artifact, or browser presentation must first meet that gate and
-be approved by a follow-up ADR.
-
-Until then, safe work is backend-neutral: render command validation and
-ordering, portable texture handling, deterministic/headless reference paths,
-host-contract tests, diagnostics, documentation, and isolated experiments.
-The migration criteria for retiring `engine/ebiten` are in ADR 0001; do not
-remove or bypass the adapter based only on a successful build.
+The renderer uses private WGSL shaders and the pinned low-level WebGPU binding
+in [ADR 0003](adr/0003-engine-owned-webgpu-renderer.md). Runtime evidence is
+intentionally narrower than source-target builds; failures must remain
+contextual rather than falling back to another graphics API.

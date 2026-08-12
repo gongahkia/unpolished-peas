@@ -25,7 +25,8 @@ verification matrix. A compile-only result is not a runtime support claim.
 
 ## Current records
 
+- [ADR 0003](0003-engine-owned-webgpu-renderer.md) selects the low-level
+  binding used only by 72's engine-owned host and renderer.
 - [ADR 0001](0001-webgpu-renderer-boundary.md) defines the backend-private,
   WebGPU-shaped renderer boundary.
-- [ADR 0002](0002-webgpu-dependency-decision.md) rejects a production WebGPU
-  dependency until the recorded cross-platform promotion gate has evidence.
+- [ADR 0002](0002-webgpu-dependency-decision.md) is superseded by ADR 0003.

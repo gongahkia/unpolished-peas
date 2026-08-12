@@ -49,12 +49,12 @@ registry through `render.Frame.Diagnostics` and record `renderer.*` metrics:
 command kinds, non-empty/visible tile cells, compatible sprite runs, portable
 texture counts and bytes, and render-target counts and bytes.
 
-The transitional Ebit adapter additionally records `renderer.texture_uploads`
-and point-in-time `renderer.native_texture_entries` and
-`renderer.native_texture_bytes`. The latter is an RGBA8 dimension-based cache
-estimate only; it excludes driver overhead, temporary allocations, command
-buffers, and actual GPU draw-call/batch counters. A production renderer must
-add measured backend metrics rather than relabel these command-level values.
+The engine-owned WebGPU renderer additionally records `renderer.texture_uploads`,
+`renderer.native_texture_entries`, `renderer.native_texture_bytes`,
+`renderer.batches`, and `renderer.draw_calls`. Texture bytes are an RGBA8
+dimension-based cache estimate and exclude driver overhead; batches and draws
+count compatible submitted command batches for the current frame. They are
+useful local diagnostics, not cross-platform performance certification.
 
 ## Comparing changes
 
@@ -82,7 +82,6 @@ hidden/minimized behavior, clean shutdown, and a device/surface-loss result
 where the target can exercise them. Attach source command output or a trace;
 do not replace the matrix with an unsupported "works on my machine" summary.
 
-The current WebGPU work has only isolated experiments and no engine-owned GPU
-renderer. Its manual evidence belongs in their compatibility records and must
-not be compared with the CPU reference numbers as though they measured the
-same work.
+The current engine-owned renderer has a local Linux headless submission test
+and a five-second example startup smoke. Its manual evidence must not be
+compared with CPU reference numbers as though they measured the same work.

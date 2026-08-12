@@ -17,6 +17,7 @@ type FrameMetrics struct {
 	Commands, ClearCommands                       uint64
 	Sprites, TileMaps, Primitives, Texts          uint64
 	TileCells, VisibleTiles, CompatibleSpriteRuns uint64
+	Batches, DrawCalls                            uint64
 	PortableTextures, PortableTextureBytes        uint64
 	RenderTargets, RenderTargetBytes              uint64
 	TextureUploads, NativeTextureEntries          uint64
@@ -98,6 +99,8 @@ func (m FrameMetrics) RecordInto(registry *diagnostics.Registry) {
 	_ = registry.Add("renderer.tile_cells", m.TileCells)
 	_ = registry.Add("renderer.visible_tiles", m.VisibleTiles)
 	_ = registry.Add("renderer.compatible_sprite_runs", m.CompatibleSpriteRuns)
+	_ = registry.Add("renderer.batches", m.Batches)
+	_ = registry.Add("renderer.draw_calls", m.DrawCalls)
 	_ = registry.Add("renderer.texture_uploads", m.TextureUploads)
 	_ = registry.Set("renderer.portable_texture_count", m.PortableTextures)
 	_ = registry.Set("renderer.portable_texture_bytes", m.PortableTextureBytes)
