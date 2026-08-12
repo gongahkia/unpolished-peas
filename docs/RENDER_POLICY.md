@@ -32,10 +32,11 @@ not gain user-authored blend/shader control from this foundation.
 
 ## Sampling
 
-`nearest` selects nearest-texel sampling. `linear` selects linear filtering.
-Neither selection creates mipmaps, enables anisotropic filtering, or changes
-the texture address policy; those require a later renderer feature and an
-explicit cache key revision.
+The current engine-owned renderer uses nearest-texel sampling for every image.
+Its private pipeline descriptors reserve a linear option for a later engine
+feature, but no public material currently selects it. Neither policy creates
+mipmaps, enables anisotropic filtering, or changes the texture address policy;
+those require a later renderer feature and an explicit cache-key revision.
 
 ## Validation and cache identity
 

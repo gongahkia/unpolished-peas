@@ -13,10 +13,10 @@ import (
 
 func TestEmbeddedSpriteAssetIsVersionedAndPremultipliesOutput(t *testing.T) {
 	assets := Assets()
-	if len(assets) != 1 || assets[0].Name != Sprite2DAsset || assets[0].Version != sprite2DVer {
+	if len(assets) != 2 || assets[0].Name != Sprite2DAsset || assets[1].Name != Sprite2DInstancedAsset || assets[0].Version != sprite2DVer || assets[1].Version != sprite2DVer {
 		t.Fatalf("embedded assets = %+v", assets)
 	}
-	for _, required := range []string{"@vertex", "@fragment", "textureSample", "sample.rgb * input.tint.rgb * alpha"} {
+	for _, required := range []string{"@vertex", "vs_instanced", "@fragment", "textureSample", "sample.rgb * input.tint.rgb * alpha"} {
 		if !strings.Contains(assets[0].Source, required) {
 			t.Fatalf("sprite WGSL does not contain %q", required)
 		}

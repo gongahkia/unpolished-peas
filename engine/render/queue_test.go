@@ -30,6 +30,27 @@ func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Transform: SpriteTransform{Rotation: math.NaN()}}); err == nil {
 		t.Fatal("non-finite sprite transform succeeded")
 	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{X: math.Inf(1), W: 1, H: 1}}); err == nil {
+		t.Fatal("non-finite sprite bounds succeeded")
+	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Source: Rect{W: 1}, Bounds: Rect{W: 1, H: 1}}); err == nil {
+		t.Fatal("partial zero sprite source succeeded")
+	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Material: Material{Parameters: map[string]float64{"opacity": math.Inf(1)}}}); err == nil {
+		t.Fatal("non-finite material parameter succeeded")
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{X: math.NaN(), W: 1, H: 1}}); err == nil {
+		t.Fatal("non-finite rectangle succeeded")
+	}
+	if err := queue.StrokeCircle(0, ScreenSpace, CircleDraw{Center: Vec2{X: math.Inf(1)}, Radius: 1, Width: 1}); err == nil {
+		t.Fatal("non-finite circle center succeeded")
+	}
+	if err := queue.StrokeLine(0, ScreenSpace, LineDraw{Start: Vec2{X: math.NaN()}, Width: 1}); err == nil {
+		t.Fatal("non-finite line endpoint succeeded")
+	}
+	if err := queue.DrawText(0, ScreenSpace, TextDraw{Value: "text", Position: Vec2{Y: math.NaN()}}); err == nil {
+		t.Fatal("non-finite text position succeeded")
+	}
 }
 
 func TestQueueResolvesNestedScreenSpaceClipsWhenRecordingDraws(t *testing.T) {
@@ -115,5 +136,14 @@ func TestQueueRejectsTileMapOutsideDeclaredAtlas(t *testing.T) {
 	tiles.Tiles[1] = -5
 	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err != nil {
 		t.Fatalf("negative empty tile failed: %v", err)
+	}
+	tiles.Bounds.X = math.NaN()
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
+		t.Fatal("non-finite tile bounds succeeded")
+	}
+	tiles.Bounds.X = 0
+	tiles.Columns = len(tiles.Tiles) + 1
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
+		t.Fatal("tile map with more columns than tiles succeeded")
 	}
 }

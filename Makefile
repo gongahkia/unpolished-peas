@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt benchmark benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
+.PHONY: example-run test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -14,6 +14,9 @@ fmt:
 
 benchmark:
 	go test -run '^$$' -bench '^BenchmarkReference' -benchmem -count=5 ./engine/render
+
+benchmark-webgpu:
+	go test -run '^$$' -bench '^BenchmarkHeadlessTileMapScene$$' -benchmem -count=5 ./engine/render/webgpu
 
 benchmark-report:
 	test -n "$(REPORT)"

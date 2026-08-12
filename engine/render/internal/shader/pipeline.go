@@ -15,10 +15,12 @@ import (
 )
 
 const (
-	// Sprite2DAsset is the only embedded shader asset in the initial 2D
-	// pipeline foundation. Its version is part of every cache key.
-	Sprite2DAsset = "sprite-2d"
-	sprite2DVer   = "v1"
+	// Sprite2DAsset renders expanded triangle-list geometry. Sprite2DInstancedAsset
+	// uses the same versioned WGSL with a per-sprite instance layout. Their names
+	// remain distinct pipeline-cache identities.
+	Sprite2DAsset          = "sprite-2d"
+	Sprite2DInstancedAsset = "sprite-2d-instanced"
+	sprite2DVer            = "v1"
 )
 
 //go:embed assets/sprite-2d-v1.wgsl
@@ -32,7 +34,10 @@ type Asset struct {
 	Source  string
 }
 
-var embeddedAssets = []Asset{{Name: Sprite2DAsset, Version: sprite2DVer, Source: sprite2DWGSL}}
+var embeddedAssets = []Asset{
+	{Name: Sprite2DAsset, Version: sprite2DVer, Source: sprite2DWGSL},
+	{Name: Sprite2DInstancedAsset, Version: sprite2DVer, Source: sprite2DWGSL},
+}
 
 // Assets returns copies of all versioned embedded WGSL assets.
 func Assets() []Asset { return append([]Asset(nil), embeddedAssets...) }

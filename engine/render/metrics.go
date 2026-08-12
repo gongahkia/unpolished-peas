@@ -21,7 +21,7 @@ type FrameMetrics struct {
 	PortableTextures, PortableTextureBytes        uint64
 	RenderTargets, RenderTargetBytes              uint64
 	TextureUploads, NativeTextureEntries          uint64
-	NativeTextureBytes                            uint64
+	NativeTextureBytes, NativePipelineEntries     uint64
 	Duration                                      time.Duration
 }
 
@@ -108,6 +108,7 @@ func (m FrameMetrics) RecordInto(registry *diagnostics.Registry) {
 	_ = registry.Set("renderer.render_target_bytes", m.RenderTargetBytes)
 	_ = registry.Set("renderer.native_texture_entries", m.NativeTextureEntries)
 	_ = registry.Set("renderer.native_texture_bytes", m.NativeTextureBytes)
+	_ = registry.Set("renderer.native_pipeline_entries", m.NativePipelineEntries)
 }
 
 func orderedCommands(commands []Command) []Command {

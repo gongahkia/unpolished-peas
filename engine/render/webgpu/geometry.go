@@ -9,25 +9,46 @@ import (
 )
 
 func spriteVertices(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([]vertex, error) {
+	quad, err := spriteQuad(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+	if err != nil {
+		return nil, err
+	}
+	return []vertex{quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]}, nil
+}
+
+func spriteInstance(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) (spriteInstanceData, error) {
+	quad, err := spriteQuad(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+	if err != nil {
+		return spriteInstanceData{}, err
+	}
+	return spriteInstanceData{
+		points01:  [4]float32{quad[0].x, quad[0].y, quad[1].x, quad[1].y},
+		points23:  [4]float32{quad[2].x, quad[2].y, quad[3].x, quad[3].y},
+		texcoords: [4]float32{quad[0].u, quad[0].v, quad[2].u, quad[2].v},
+		tint:      [4]float32{quad[0].r, quad[0].g, quad[0].b, quad[0].a},
+	}, nil
+}
+
+func spriteQuad(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([4]vertex, error) {
 	if textureWidth <= 0 || textureHeight <= 0 {
-		return nil, fmt.Errorf("sprite texture dimensions must be positive")
+		return [4]vertex{}, fmt.Errorf("sprite texture dimensions must be positive")
 	}
 	source := sprite.Source
 	if source.W == 0 && source.H == 0 {
 		source.W, source.H = float64(textureWidth), float64(textureHeight)
 	}
 	if !finiteRect(source) || source.W <= 0 || source.H <= 0 || source.X < 0 || source.Y < 0 || source.X+source.W > float64(textureWidth) || source.Y+source.H > float64(textureHeight) {
-		return nil, fmt.Errorf("sprite source is outside texture %d", sprite.Texture.ID)
+		return [4]vertex{}, fmt.Errorf("sprite source is outside texture %d", sprite.Texture.ID)
 	}
 	if !finiteRect(sprite.Bounds) || sprite.Bounds.W <= 0 || sprite.Bounds.H <= 0 {
-		return nil, fmt.Errorf("sprite bounds must be finite and positive")
+		return [4]vertex{}, fmt.Errorf("sprite bounds must be finite and positive")
 	}
 	transform, err := normalizedTransform(sprite.Transform)
 	if err != nil {
-		return nil, err
+		return [4]vertex{}, err
 	}
 	if viewportWidth <= 0 || viewportHeight <= 0 {
-		return nil, fmt.Errorf("viewport dimensions must be positive")
+		return [4]vertex{}, fmt.Errorf("viewport dimensions must be positive")
 	}
 	bounds := sprite.Bounds
 	bounds.X += offset.X
@@ -48,7 +69,7 @@ func spriteVertices(sprite render.Sprite, textureWidth, textureHeight int, offse
 		vertexAt(points[2], u1, v1, tint, viewportWidth, viewportHeight),
 		vertexAt(points[3], u0, v1, tint, viewportWidth, viewportHeight),
 	}
-	return []vertex{quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]}, nil
+	return quad, nil
 }
 
 type spriteTransform struct{ scaleX, scaleY, rotation float64 }
@@ -73,9 +94,9 @@ func transformPoint(point, origin render.Vec2, transform spriteTransform) render
 	return render.Vec2{X: origin.X + cosine*x - sine*y, Y: origin.Y + sine*x + cosine*y}
 }
 
-func tileVertices(tiles render.TileMap, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([]vertex, error) {
-	if tiles.Columns <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 {
-		return nil, fmt.Errorf("tile map requires positive atlas, tile size, and columns")
+func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([]spriteInstanceData, error) {
+	if !finiteRect(tiles.Bounds) || !finite(tiles.Atlas.X) || !finite(tiles.Atlas.Y) || !finite(tiles.TileSize.X) || !finite(tiles.TileSize.Y) || tiles.Columns <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 {
+		return nil, fmt.Errorf("tile map requires finite bounds, positive atlas, tile size, and columns")
 	}
 	sourceColumns := int(tiles.Atlas.X / tiles.TileSize.X)
 	if sourceColumns <= 0 {
@@ -83,7 +104,7 @@ func tileVertices(tiles render.TileMap, textureWidth, textureHeight int, offset 
 	}
 	viewport := render.Rect{X: -offset.X, Y: -offset.Y, W: float64(viewportWidth), H: float64(viewportHeight)}
 	visible := tiles.VisibleRange(viewport)
-	vertices := make([]vertex, 0, visible.Columns*visible.Rows*6)
+	instances := make([]spriteInstanceData, 0, visible.Columns*visible.Rows)
 	for row := visible.Row; row < visible.Row+visible.Rows; row++ {
 		for column := visible.Column; column < visible.Column+visible.Columns; column++ {
 			index := row*tiles.Columns + column
@@ -98,14 +119,14 @@ func tileVertices(tiles render.TileMap, textureWidth, textureHeight int, offset 
 				Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
 				Tint:    tiles.Tint,
 			}
-			quad, err := spriteVertices(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+			instance, err := spriteInstance(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
 			if err != nil {
 				return nil, err
 			}
-			vertices = append(vertices, quad...)
+			instances = append(instances, instance)
 		}
 	}
-	return vertices, nil
+	return instances, nil
 }
 
 func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth, viewportHeight int) ([]vertex, error) {
@@ -127,18 +148,34 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !ok {
 			return nil, fmt.Errorf("filled rectangle command has payload %T", command.Payload)
 		}
+		if !finiteRect(value.Bounds) || value.Bounds.W <= 0 || value.Bounds.H <= 0 {
+			return nil, fmt.Errorf("filled rectangle bounds must be finite and positive")
+		}
 		return rectVertices(translateRect(value.Bounds), value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeRect:
 		value, ok := command.Payload.(render.RectDraw)
 		if !ok {
 			return nil, fmt.Errorf("stroked rectangle command has payload %T", command.Payload)
 		}
+		if !finiteRect(value.Bounds) || !finite(value.Width) || value.Bounds.W <= 0 || value.Bounds.H <= 0 || value.Width <= 0 {
+			return nil, fmt.Errorf("stroked rectangle bounds and width must be finite and positive")
+		}
 		bounds := translateRect(value.Bounds)
-		return append(rectVertices(render.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight), append(rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + bounds.H - value.Width, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight), append(rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight), rectVertices(render.Rect{X: bounds.X + bounds.W - value.Width, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight)...)...)...), nil
+		if value.Width*2 >= bounds.W || value.Width*2 >= bounds.H {
+			return rectVertices(bounds, value.Color, viewportWidth, viewportHeight), nil
+		}
+		vertices := rectVertices(render.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + bounds.H - value.Width, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight)...)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight)...)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X + bounds.W - value.Width, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight)...)
+		return vertices, nil
 	case render.FillCircle:
 		value, ok := command.Payload.(render.CircleDraw)
 		if !ok {
 			return nil, fmt.Errorf("filled circle command has payload %T", command.Payload)
+		}
+		if !finite(value.Center.X) || !finite(value.Center.Y) || !finite(value.Radius) || value.Radius <= 0 {
+			return nil, fmt.Errorf("filled circle center and radius must be finite and positive")
 		}
 		return circleVertices(render.Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, 0, value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeCircle:
@@ -146,11 +183,17 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !ok {
 			return nil, fmt.Errorf("stroked circle command has payload %T", command.Payload)
 		}
+		if !finite(value.Center.X) || !finite(value.Center.Y) || !finite(value.Radius) || !finite(value.Width) || value.Radius <= 0 || value.Width <= 0 {
+			return nil, fmt.Errorf("stroked circle center, radius, and width must be finite and positive")
+		}
 		return circleVertices(render.Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Width, value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeLine:
 		value, ok := command.Payload.(render.LineDraw)
 		if !ok {
 			return nil, fmt.Errorf("line command has payload %T", command.Payload)
+		}
+		if !finite(value.Start.X) || !finite(value.Start.Y) || !finite(value.End.X) || !finite(value.End.Y) || !finite(value.Width) || value.Width <= 0 {
+			return nil, fmt.Errorf("line endpoints and width must be finite and positive")
 		}
 		start := render.Vec2{X: value.Start.X + offset.X, Y: value.Start.Y + offset.Y}
 		end := render.Vec2{X: value.End.X + offset.X, Y: value.End.Y + offset.Y}
@@ -161,7 +204,11 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		}
 		half := value.Width / 2
 		normal := render.Vec2{X: -dy / length * half, Y: dx / length * half}
-		return toVertices([]render.Vec2{{X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X + normal.X, Y: end.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X - normal.X, Y: start.Y - normal.Y}}, value.Color), nil
+		vertices := toVertices([]render.Vec2{{X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X + normal.X, Y: end.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X - normal.X, Y: start.Y - normal.Y}}, value.Color)
+		angle := math.Atan2(dy, dx)
+		vertices = append(vertices, semicircleVertices(start, angle+math.Pi/2, angle+3*math.Pi/2, half, value.Color, viewportWidth, viewportHeight)...)
+		vertices = append(vertices, semicircleVertices(end, angle-math.Pi/2, angle+math.Pi/2, half, value.Color, viewportWidth, viewportHeight)...)
+		return vertices, nil
 	default:
 		return nil, fmt.Errorf("unsupported primitive command %d", command.Kind)
 	}
@@ -184,21 +231,28 @@ func circleVertices(center render.Vec2, radius, width float64, tint render.Color
 	if radius <= 0 {
 		return nil
 	}
-	const segments = 32
+	segments := circleSegments(radius)
 	color := tintValue(tint)
 	vertices := make([]vertex, 0, segments*6)
-	innerRadius := math.Max(0, radius-width)
+	outerRadius := radius
+	innerRadius := 0.0
+	if width > 0 {
+		outerRadius = radius + width/2
+		innerRadius = math.Max(0, radius-width/2)
+		segments = circleSegments(outerRadius)
+		vertices = make([]vertex, 0, segments*6)
+	}
 	if width <= 0 || innerRadius == 0 {
 		for index := 0; index < segments; index++ {
-			start := circlePoint(center, radius, index, segments)
-			end := circlePoint(center, radius, index+1, segments)
+			start := circlePoint(center, outerRadius, index, segments)
+			end := circlePoint(center, outerRadius, index+1, segments)
 			vertices = append(vertices, vertexAt(center, 0, 0, color, viewportWidth, viewportHeight), vertexAt(start, 0, 0, color, viewportWidth, viewportHeight), vertexAt(end, 0, 0, color, viewportWidth, viewportHeight))
 		}
 		return vertices
 	}
 	for index := 0; index < segments; index++ {
-		outerStart := circlePoint(center, radius, index, segments)
-		outerEnd := circlePoint(center, radius, index+1, segments)
+		outerStart := circlePoint(center, outerRadius, index, segments)
+		outerEnd := circlePoint(center, outerRadius, index+1, segments)
 		innerStart := circlePoint(center, innerRadius, index, segments)
 		innerEnd := circlePoint(center, innerRadius, index+1, segments)
 		vertices = append(vertices, vertexAt(outerStart, 0, 0, color, viewportWidth, viewportHeight), vertexAt(outerEnd, 0, 0, color, viewportWidth, viewportHeight), vertexAt(innerEnd, 0, 0, color, viewportWidth, viewportHeight), vertexAt(outerStart, 0, 0, color, viewportWidth, viewportHeight), vertexAt(innerEnd, 0, 0, color, viewportWidth, viewportHeight), vertexAt(innerStart, 0, 0, color, viewportWidth, viewportHeight))
@@ -206,8 +260,32 @@ func circleVertices(center render.Vec2, radius, width float64, tint render.Color
 	return vertices
 }
 
+func semicircleVertices(center render.Vec2, startAngle, endAngle, radius float64, tint render.Color, viewportWidth, viewportHeight int) []vertex {
+	segments := max(8, circleSegments(radius)/2)
+	color := tintValue(tint)
+	vertices := make([]vertex, 0, segments*3)
+	for index := 0; index < segments; index++ {
+		start := circlePointAtAngle(center, radius, startAngle+(endAngle-startAngle)*float64(index)/float64(segments))
+		end := circlePointAtAngle(center, radius, startAngle+(endAngle-startAngle)*float64(index+1)/float64(segments))
+		vertices = append(vertices, vertexAt(center, 0, 0, color, viewportWidth, viewportHeight), vertexAt(start, 0, 0, color, viewportWidth, viewportHeight), vertexAt(end, 0, 0, color, viewportWidth, viewportHeight))
+	}
+	return vertices
+}
+
+func circleSegments(radius float64) int {
+	if radius <= 0 {
+		return 32
+	}
+	segments := int(math.Ceil(math.Pi / math.Acos(math.Max(-1, 1-.25/radius))))
+	return min(256, max(32, segments))
+}
+
 func circlePoint(center render.Vec2, radius float64, index, segments int) render.Vec2 {
 	angle := float64(index) / float64(segments) * 2 * math.Pi
+	return circlePointAtAngle(center, radius, angle)
+}
+
+func circlePointAtAngle(center render.Vec2, radius, angle float64) render.Vec2 {
 	return render.Vec2{X: center.X + math.Cos(angle)*radius, Y: center.Y + math.Sin(angle)*radius}
 }
 
@@ -231,6 +309,20 @@ func encodeVertices(vertices []vertex) []byte {
 		binary.LittleEndian.PutUint32(data[offset+20:], math.Float32bits(value.g))
 		binary.LittleEndian.PutUint32(data[offset+24:], math.Float32bits(value.b))
 		binary.LittleEndian.PutUint32(data[offset+28:], math.Float32bits(value.a))
+	}
+	return data
+}
+
+func encodeSpriteInstances(instances []spriteInstanceData) []byte {
+	data := make([]byte, len(instances)*spriteInstanceStride)
+	for index, instance := range instances {
+		offset := index * spriteInstanceStride
+		for _, values := range [][4]float32{instance.points01, instance.points23, instance.texcoords, instance.tint} {
+			for component, value := range values {
+				binary.LittleEndian.PutUint32(data[offset+component*4:], math.Float32bits(value))
+			}
+			offset += 16
+		}
 	}
 	return data
 }

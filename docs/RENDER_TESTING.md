@@ -64,15 +64,14 @@ clear, ordering, and texture semantics.
 `TextureStore.Replace` changes a regular portable image without changing its
 handle; `TextureStore.Revision` provides inexpensive cache metadata and
 `TextureStore.Source` returns copied pixels when a refresh is required.
-`TextureStore.Release` invalidates a handle
-permanently. Render targets are intentionally replaced only by successful
-`RenderTo` calls, because their dimensions and ownership are fixed at creation.
-When a renderer recreates its native resources, it must drop private caches and
-rehydrate regular textures and atlas pages from their portable sources. A
-render target's native contents do not survive that reset unless its portable
-source was updated by the backend, so an application must re-render dependent
-targets after device recreation. The current WebGPU renderer does not yet
-implement device-recreation recovery.
+`TextureStore.Release` invalidates a handle permanently. Render targets are
+intentionally replaced only by successful `RenderTo` calls, because their
+dimensions and ownership are fixed at creation. When a renderer recreates its
+native resources, it drops private caches and rehydrates regular textures and
+atlas pages from portable sources. A render target's native contents do not
+survive that reset because the current WebGPU renderer does not copy its native
+pixels back to portable storage; an application must re-render dependent
+targets after device recreation.
 
 `Queue.PushClip` and `Queue.PopClip` form a nested, screen-space clip stack.
 The queue stores the effective intersection on each subsequent draw, rather
@@ -96,7 +95,8 @@ first observed comparison result. `ImageComparison` reports the number and
 first location of pixels outside the allowed per-channel delta, so a tolerance
 does not hide an unbounded regression.
 
-The engine-owned renderer has a headless WebGPU submission test, but no GPU
-image readback regression yet. Consequently, this helper establishes the image
-comparison contract without treating a single-machine submission test as pixel
-coverage.
+The engine-owned renderer has a deterministic headless software-WebGPU image
+regression for ordered, instanced sprite and tile output; texture refresh and
+release coverage; and device-recreation/rehydration coverage. It exercises the
+command-to-WebGPU path without treating a software raster result as
+physical-GPU or cross-platform pixel certification.

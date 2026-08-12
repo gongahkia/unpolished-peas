@@ -190,6 +190,9 @@ func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, te
 	if backend == nil {
 		return fmt.Errorf("render backend must not be nil")
 	}
+	if !finiteVec2(camera.position) || !finiteVec2(camera.offset) || !finiteSize(camera.viewport) || camera.viewport.W <= 0 || camera.viewport.H <= 0 {
+		return fmt.Errorf("camera position, offset, and viewport must be finite with a positive viewport")
+	}
 	for _, registered := range s.layers {
 		layer := registered.layer
 		queue := &render.Queue{}

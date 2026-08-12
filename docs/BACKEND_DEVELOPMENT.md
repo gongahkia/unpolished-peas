@@ -11,9 +11,11 @@ renderer, or test backend. Read [ARCHITECTURE.md](ARCHITECTURE.md),
 uses the root-module pinned low-level WebGPU binding behind the portable
 `engine/render` command boundary. It is not a public graphics-binding API.
 
-The Linux path has local host-creation, headless submission, and five-second
-example startup evidence. Browser runtime behavior and Windows/macOS native
-hosts remain unverified; do not turn source-target builds into support claims.
+The Linux path has local host-creation, deterministic software-WebGPU image,
+and five-second example startup evidence. A local Chromium run has rendered,
+accepted input, and resized the browser host. Windows/macOS native hosts and
+browser behavior beyond that Chromium environment remain unverified; do not
+turn source-target builds into support claims.
 
 ## Implementing a host
 
@@ -43,8 +45,10 @@ windowing library.
    command's effective screen-space `Clip()` result, and portable
    `TextureStore`. Native image/device/surface objects remain private.
 2. Preserve submission order, world versus screen space, camera semantics, and
-   texture ownership. Renderer cache entries are recreated after device loss
-   and released only by renderer-owned lifecycle code.
+   texture ownership. Renderer cache entries are released and recreated only by
+   renderer-owned lifecycle code; regular textures and glyph pages must
+   rehydrate from portable sources after device loss, while render targets must
+   be redrawn by the application.
 3. Keep device creation, surface acquire/configure/present, GPU submission,
    and deferred destruction on the host render thread. A host may coordinate a
    frame but must not take ownership of renderer GPU state.
@@ -68,15 +72,16 @@ and creation failures and canonicalizes finite `render.Material` parameters;
 read [RENDER_POLICY.md](RENDER_POLICY.md) before changing alpha, blend, or
 sampling behavior.
 
-`engine/render/internal/presentation` supplies the private lifecycle policy a
-chosen renderer must use on its render thread. Its driver adapter maps native
-adapter/device, surface configure, acquire, present, and release results into
-the package's normalized faults without leaking a binding type. The policy
-skips a timeout, suspends zero-sized surfaces, reconfigures an outdated or lost
-surface, recreates a lost device, and returns a terminal structured failure for
-out-of-memory or unclassified faults. Its scripted-driver tests are faithful
-policy tests, not evidence of a real platform implementation; a selected
-binding still needs runtime lifecycle coverage.
+`engine/render/internal/presentation` supplies the private lifecycle behavior
+matrix for a chosen renderer. Its driver adapter maps native adapter/device,
+surface configure, acquire, present, and release results into normalized faults
+without leaking a binding type. The policy skips a timeout, suspends zero-sized
+surfaces, reconfigures an outdated or lost surface, recreates a lost device,
+and returns a terminal structured failure for out-of-memory or unclassified
+faults. The WebGPU renderer maps the binding's sentinel errors to those same
+outcomes on its render thread, while retaining the acquired texture needed
+between encoding and present. Its scripted-driver and software-recreation
+tests are not evidence of driver-initiated lifecycle behavior on a real target.
 
 ## Review boundary
 
