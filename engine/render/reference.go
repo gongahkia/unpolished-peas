@@ -55,6 +55,8 @@ func (b *ReferenceBackend) Snapshot() Image {
 // Render applies a full high-level command frame. Clear commands are processed
 // before every other command, and non-clear commands retain stable layer order.
 func (b *ReferenceBackend) Render(frame Frame) (err error) {
+	traceDone := frame.Trace.Span("renderer.reference.frame")
+	defer traceDone()
 	if b == nil {
 		return rendererFailure("render reference frame", fmt.Errorf("reference backend must not be nil"), diagnostics.CorrectConfiguration, true)
 	}

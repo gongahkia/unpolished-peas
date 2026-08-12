@@ -351,6 +351,8 @@ func (r *Renderer) RenderTo(frame render.Frame, target render.RenderTarget) erro
 }
 
 func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, width, height, logicalWidth, logicalHeight int) (err error) {
+	traceDone := frame.Trace.Span("renderer.webgpu.frame")
+	defer traceDone()
 	if frame.Queue == nil {
 		return rendererFailure("render WebGPU frame", fmt.Errorf("render frame queue must not be nil"), diagnostics.CorrectInput, false)
 	}

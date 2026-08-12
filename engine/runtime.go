@@ -43,6 +43,7 @@ type Runtime struct {
 	systems     *ecs.Schedule
 	textures    *render.TextureStore
 	diagnostics *diagnostics.Registry
+	trace       *diagnostics.Trace
 	input       *InputMapper
 	tick        uint64
 }
@@ -180,10 +181,20 @@ func (r *Runtime) Textures() *render.TextureStore { return r.textures }
 // backends add command and resource metrics when command layers submit frames.
 func (r *Runtime) Diagnostics() *diagnostics.Registry { return r.diagnostics }
 
+// SetTrace installs an optional bounded CPU timeline recorder. Pass nil to
+// disable recording. The trace records runtime update/draw and renderer spans;
+// it does not measure asynchronous GPU completion.
+func (r *Runtime) SetTrace(trace *diagnostics.Trace) { r.trace = trace }
+
+// Trace returns the installed optional CPU timeline recorder, if any.
+func (r *Runtime) Trace() *diagnostics.Trace { return r.trace }
+
 // Update advances the application one platform update.
 func (r *Runtime) Update(input Input) error {
 	done := r.diagnostics.Measure("runtime.update_time")
 	defer done()
+	traceDone := r.trace.Span("runtime.update")
+	defer traceDone()
 	if err := r.systems.Run(ecs.PreUpdate, r.world); err != nil {
 		return frameFailure("run pre-update systems", err)
 	}
@@ -219,7 +230,9 @@ func (r *Runtime) FixedUpdate(input Input) error {
 func (r *Runtime) Draw(backend render.Backend) error {
 	done := r.diagnostics.Measure("runtime.draw_time")
 	defer done()
-	if err := r.layers.draw(backend, r.camera, r.tick, r.textures, r.diagnostics); err != nil {
+	traceDone := r.trace.Span("runtime.draw")
+	defer traceDone()
+	if err := r.layers.draw(backend, r.camera, r.tick, r.textures, r.diagnostics, r.trace); err != nil {
 		return frameFailure("draw layers", err)
 	}
 	return nil

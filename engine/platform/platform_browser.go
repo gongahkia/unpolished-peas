@@ -90,9 +90,10 @@ func newBrowserHost(config engine.Config) (*browserHost, error) {
 		return nil, err
 	}
 	now := time.Now()
+	visible := !document.Get("hidden").Bool()
 	host := &browserHost{
 		config: config, document: document, window: window, canvas: canvas, renderer: renderer, start: now, last: now,
-		state: engine.WindowState{Title: config.Title, LogicalSize: engine.Size{W: config.Viewport.W, H: config.Viewport.H}, DrawableSize: engine.Size{W: float64(physicalWidth), H: float64(physicalHeight)}, Scale: float64(config.WindowScale) * dpr, Focused: true, Visible: true},
+		state: engine.WindowState{Title: config.Title, LogicalSize: engine.Size{W: config.Viewport.W, H: config.Viewport.H}, DrawableSize: engine.Size{W: float64(physicalWidth), H: float64(physicalHeight)}, Scale: float64(config.WindowScale) * dpr, Focused: visible && documentHasFocus(document), Visible: visible},
 		done:  make(chan error, 1),
 	}
 	host.listen()
@@ -253,14 +254,18 @@ func (h *browserHost) listen() {
 		h.events = append(h.events, engine.Event{Kind: engine.EventPointerWheel, Scroll: engine.Vec2{X: event.Get("deltaX").Float() / scaleX, Y: -event.Get("deltaY").Float() / scaleY}})
 	})
 	h.listenTo(h.window, "resize", func(js.Value) { h.resizeCanvas() })
-	h.listenTo(h.window, "focus", func(js.Value) { h.setFocus(true) })
+	h.listenTo(h.window, "focus", func(js.Value) { h.setFocus(!h.document.Get("hidden").Bool() && documentHasFocus(h.document)) })
 	h.listenTo(h.window, "blur", func(js.Value) { h.setFocus(false) })
 	h.listenTo(h.document, "visibilitychange", func(js.Value) {
 		visible := !h.document.Get("hidden").Bool()
 		h.state.Visible = visible
 		if !visible {
 			h.setFocus(false)
+			return
 		}
+		// Do not feed a hidden-tab interval into the next simulation update.
+		h.last = time.Now()
+		h.setFocus(documentHasFocus(h.document))
 	})
 }
 
@@ -321,6 +326,11 @@ func devicePixelRatio(window js.Value) float64 {
 		return 1
 	}
 	return value.Float()
+}
+
+func documentHasFocus(document js.Value) bool {
+	method := document.Get("hasFocus")
+	return !method.IsNull() && !method.IsUndefined() && document.Call("hasFocus").Bool()
 }
 
 func scaledCanvasSize(width, height int, scale float64) (int, int) {

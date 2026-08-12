@@ -7,7 +7,10 @@ export default defineConfig({
   use: {
     browserName: "chromium",
     baseURL: "http://127.0.0.1:4173",
-    headless: true,
+    headless: false,
+    launchOptions: {
+      args: ["--enable-unsafe-webgpu"],
+    },
     screenshot: "only-on-failure",
     trace: "retain-on-failure",
   },

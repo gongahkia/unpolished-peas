@@ -48,6 +48,38 @@ func TestRuntimeOwnsApplicationLifecycle(t *testing.T) {
 	}
 }
 
+func TestRuntimeForwardsAnOptionalTraceToRenderFrames(t *testing.T) {
+	runtime, err := NewRuntime(Config{Viewport: Size{W: 320, H: 180}, WindowScale: 1}, &testApplication{})
+	if err != nil {
+		t.Fatalf("NewRuntime() error = %v", err)
+	}
+	trace := diagnostics.NewTrace(8)
+	runtime.SetTrace(trace)
+	if err := runtime.Update(NewInput(nil)); err != nil {
+		t.Fatalf("Update() error = %v", err)
+	}
+	backend := &recordingRenderBackend{}
+	if err := runtime.Draw(backend); err != nil {
+		t.Fatalf("Draw() error = %v", err)
+	}
+	if len(backend.frames) != 1 || backend.frames[0].Trace != trace {
+		t.Fatalf("render frames = %+v, want one frame carrying the trace", backend.frames)
+	}
+	spans, dropped := trace.Snapshot()
+	if dropped != 0 || !containsTraceSpan(spans, "runtime.update") || !containsTraceSpan(spans, "runtime.draw") {
+		t.Fatalf("trace spans = %+v, dropped=%d", spans, dropped)
+	}
+}
+
+func containsTraceSpan(spans []diagnostics.Span, name string) bool {
+	for _, span := range spans {
+		if span.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
 func hasRecordedMetric(metrics []diagnostics.Metric, name string) bool {
 	for _, metric := range metrics {
 		if metric.Name == name {

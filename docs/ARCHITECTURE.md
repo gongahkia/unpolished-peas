@@ -59,8 +59,9 @@ then releases the host context on shutdown. The full contract is in
 [HOSTS.md](HOSTS.md), with control and unit rules in [INPUT.md](INPUT.md).
 
 `engine/platform` owns the Linux X11 and browser host paths. The Linux host has
-local creation and startup smoke coverage. Browser runtime behavior and
-cross-platform host parity remain unverified.
+local creation and startup smoke coverage, and the browser host has limited
+local Chromium render/input/resize/focus/visibility coverage. Cross-platform
+host parity remains unverified.
 
 ## Renderer and platform boundary
 
