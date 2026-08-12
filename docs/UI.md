@@ -68,6 +68,6 @@ the tree through one screen-space command layer. Run it with `make
 ui-sample-run`, or build its desktop and wasm artifacts with `make
 ui-sample-build` and `make ui-sample-wasm`.
 
-The sample exercises the transitional Ebitengine adapter. It demonstrates the
-portable input and rendering contracts but is not evidence of an engine-owned
-native or browser host.
+The sample uses `engine/platform` and the engine-owned renderer. Its native and
+wasm builds demonstrate integration; they are not browser-runtime or
+cross-platform support evidence.

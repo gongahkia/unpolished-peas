@@ -1,6 +1,6 @@
 # ADR 0002: defer the production WebGPU dependency
 
-**Status:** accepted
+**Status:** superseded by [ADR 0003](0003-engine-owned-webgpu-renderer.md)
 
 **Date:** 2026-08-11
 
@@ -37,7 +37,7 @@ remain isolated nested modules so their dependencies cannot leak into the
 engine's exported API or default builds.
 
 The engine-owned WebGPU renderer and host support baseline is therefore **no
-production desktop or browser target**. The temporary Ebitengine adapter keeps
+production desktop or browser target**. The temporary framework adapter keeps
 its existing separate support boundary; its presence is not a WebGPU fallback.
 Linux amd64 has one experimental first-frame observation only. Windows amd64,
 macOS arm64, Chromium, Firefox, and Safari are experimental compile or
@@ -46,7 +46,7 @@ feature-detection targets only, not supported runtime platforms.
 This is a rejection based on insufficient cross-platform runtime evidence, not
 a rejection of WebGPU as the architecture boundary. `engine/render` stays
 backend-neutral, WGSL remains the intended private shader language, and
-`engine/ebiten` remains the temporary compatibility adapter under ADR 0001's
+The temporary compatibility adapter remains under ADR 0001's
 retirement criteria.
 
 ## Replacement experiment and promotion gate
@@ -70,7 +70,7 @@ hardware and record the following in a reviewable compatibility report:
 An approved follow-up ADR must pin one dependency and distribution method only
 after this gate has evidence for the initial support matrix. It must specify
 fallback behavior: unsupported WebGPU returns a contextual error; it must not
-silently select Ebitengine or WebGL.
+silently select a framework renderer or WebGL.
 
 ## Consequences
 

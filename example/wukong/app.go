@@ -7,7 +7,7 @@ import (
 	"math"
 
 	"github.com/gongahkia/72/engine"
-	engineebiten "github.com/gongahkia/72/engine/ebiten"
+	"github.com/gongahkia/72/engine/platform"
 	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/example/wukong/internal/sim"
 )
@@ -205,7 +205,7 @@ func main() {
 		WindowScale: 2,
 		Actions:     actionMap(),
 	}
-	if err := engineebiten.Run(config, &wukongGame{}); err != nil {
+	if err := platform.Run(config, &wukongGame{}); err != nil {
 		log.Fatal(err)
 	}
 }

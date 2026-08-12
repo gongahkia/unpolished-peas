@@ -1,23 +1,21 @@
 # Build and runtime evidence matrix
 
-This matrix maps the separately configured CI checks and recorded local runtime
-results. A configured job is not a completed runtime certification. The current
-examples use the transitional Ebitengine adapter described in
-[PUBLIC_API.md](PUBLIC_API.md); the production WebGPU baseline remains **no
-desktop or browser host/renderer** under [ADR 0002](adr/0002-webgpu-dependency-decision.md).
+This matrix maps recorded local evidence and the versioned CI configuration. A
+configured job is not a completed runtime certification. GitHub Actions is
+currently unavailable, so no current CI result is claimed. The examples use
+`engine/platform` and the engine-owned renderer described in
+[ADR 0003](adr/0003-engine-owned-webgpu-renderer.md).
 
 | Target | CI evidence | Runtime evidence | Current classification |
 | --- | --- | --- | --- |
-| Linux amd64 | Configured Linux job runs formatting, vet, root tests, race tests, and wasm builds for Wukong, first-game, and ui-sample. | On Fedora 43, the isolated native WebGPU spike sustained 306 X11/Vulkan frames over 5.048 s, accepted a resize callback, and exited cleanly. The corresponding Wayland run sustained 293 frames over 5.006 s but emitted an unresolved callback-teardown warning. It is not an engine host. | Unit/build configured; isolated X11 observation and an unresolved Wayland experiment warning. |
-| Windows amd64 | Configured native Windows job runs vet, root tests, and Wukong, first-game, and ui-sample builds on a Windows runner. | No engine-owned graphical host/renderer run is recorded. | Unit/build configured; presentation unverified. |
-| macOS | Configured native macOS job runs vet, root tests, and Wukong, first-game, and ui-sample builds on a macOS runner. | No engine-owned graphical host/renderer run is recorded. | Unit/build configured; presentation unverified. |
-| `GOOS=js GOARCH=wasm` | Configured wasm job builds Wukong, first-game, and ui-sample bundles. The configured browser-smoke job fetches first-game wasm in Chromium and checks that the page does not report a startup exception. | An isolated browser WebGPU spike reached a visual clear pass, live resize, DPR-2 emulated sizing, and controlled device-loss reporting in headed Playwright Chromium 152 with unsafe WebGPU/Vulkan flags. It does not exercise engine gameplay input, a default browser configuration, hidden tabs, a physical high-density display, or a real GPU-loss recovery. | Bundle/browser-load configured; one flag-enabled isolated WebGPU observation. |
+| Linux amd64 | Local formatting, vet, root tests, race tests, and example builds are required; current CI execution is unavailable. | `TestX11HostCreatesNativeWindow` creates/maps an X11 window and initializes the renderer. `bin/first-game` stayed alive for five seconds on Fedora 43 under the X11/WebGPU host. | Local host/startup evidence; presentation image, loss recovery, and broader hardware coverage unverified. |
+| Windows amd64 | Cross compilation is a local source-target check; current CI execution is unavailable. | No native host runtime is implemented or recorded. | Build-only target; presentation unavailable. |
+| macOS | Cross compilation is a local source-target check; current CI execution is unavailable. | No native host runtime is implemented or recorded. | Build-only target; presentation unavailable. |
+| `GOOS=js GOARCH=wasm` | Local wasm bundles can be built; current CI execution is unavailable. | Chromium loaded first-game from a local HTTP origin, rendered the WebGPU scene, accepted ArrowRight input, and resized its canvas from `962×542` to `823×542` with no console errors or warnings. | Local Chromium runtime evidence; device loss, hidden-tab behavior, Firefox, Safari, and real high-DPI hardware remain unverified. |
 
-Each job has a distinct check name. Native build outputs, wasm bundles, and
-Playwright failure artifacts (trace and screenshot when produced) are
-configured for upload by CI. A failed job should be classified as build, unit,
-browser bundle-load, or runtime/presentation evidence rather than being
-collapsed into a generic platform failure.
+When CI access is restored, classify each result as build, unit, browser
+bundle-load, or runtime/presentation evidence rather than collapsing it into a
+generic platform failure.
 
 When adding a platform claim, first update this matrix with the exact command,
 artifact, and whether the result ran on real hardware. The manual GPU matrix

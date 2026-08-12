@@ -32,13 +32,12 @@ python3 -m http.server --directory dist/first-game 8080
 
 Then open <http://127.0.0.1:8080>. Use A/D or arrows to move and space to jump.
 
-**Current host boundary:** the final call to `engineebiten.Run` in
-`example/first-game/main.go` is a transitional compatibility bootstrap. It is
-the only part that does not belong to the supported-runtime tier in
-[the public API policy](PUBLIC_API.md). No supported native or browser host
-exists yet because the WebGPU dependency gate remains unresolved by design. Do
-not use that adapter as a template for a long-lived platform integration; use
-the `engine.Host` contract when a supported host is available.
+**Current host boundary:** the final call to `platform.Run` in
+`example/first-game/main.go` owns the platform lifecycle and private WebGPU
+renderer. Game code stays on the `engine` and `engine/render` contracts. The
+Linux X11 startup and browser Chromium render/input/resize paths have local
+coverage; other desktop targets and browser environments are not yet
+runtime-certified.
 
 ## lifecycle and configuration
 
@@ -106,9 +105,7 @@ return runtime.Layers().Add(engine.Layer{
 ```
 
 `engine/render` records backend-neutral command intent. It is a technology
-preview, so keep its types out of a game’s own long-lived public API. The
-temporary adapter can draw its primitives today; the engine-owned renderer is
-not yet a supported target.
+preview, so keep its types out of a game’s own long-lived public API.
 
 ## assets
 
@@ -135,7 +132,6 @@ supported core.
 ## verification boundary
 
 `example/first-game/main_test.go` proves the public runtime lifecycle, ECS
-movement, and emitted high-level commands without importing Ebitengine. The
-desktop and wasm build commands prove compilation only. A manual desktop/wasm
-run exercises the transitional adapter; it does not establish a supported
-engine-owned host or renderer claim.
+movement, and emitted high-level commands without importing a graphics binding.
+The desktop and wasm build commands prove compilation only. The local Linux
+startup smoke is not a browser or cross-platform certification.

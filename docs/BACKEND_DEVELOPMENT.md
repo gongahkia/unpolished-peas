@@ -3,21 +3,17 @@
 This guide is for contributors implementing an engine-owned platform host,
 renderer, or test backend. Read [ARCHITECTURE.md](ARCHITECTURE.md),
 [HOSTS.md](HOSTS.md), [INPUT.md](INPUT.md), and
-[ADR 0001](adr/0001-webgpu-renderer-boundary.md) before changing a boundary.
+[ADR 0003](adr/0003-engine-owned-webgpu-renderer.md) before changing a boundary.
 
 ## Current status
 
-There is no engine-owned native host, browser host, or production WebGPU
-renderer. `engine/ebiten` is a transitional compatibility adapter. It is not a
-template for leaking Ebitengine types into public APIs. It translates its
-available keyboard, pointer, committed-text, and gamepad state into portable
-events, but supplies no `HostContext` and is not platform parity.
+`engine/platform` owns the Linux X11 and browser hosts. `engine/render/webgpu`
+uses the root-module pinned low-level WebGPU binding behind the portable
+`engine/render` command boundary. It is not a public graphics-binding API.
 
-No production graphics dependency may be added to the root module while
-[ADR 0002](adr/0002-webgpu-dependency-decision.md) remains accepted. Use the
-nested WebGPU experiments to gather the promotion evidence instead. An
-experiment is isolated precisely so its dependencies cannot become a default
-engine build or public API by accident.
+The Linux path has local host-creation, headless submission, and five-second
+example startup evidence. Browser runtime behavior and Windows/macOS native
+hosts remain unverified; do not turn source-target builds into support claims.
 
 ## Implementing a host
 
@@ -54,7 +50,7 @@ windowing library.
    frame but must not take ownership of renderer GPU state.
 4. Use contextual errors for renderer failures; include the operation and
    retain the underlying cause where one exists. Unsupported WebGPU must be an
-   explicit error, never a silent Ebitengine or WebGL fallback.
+   explicit error, never a silent Canvas or WebGL fallback.
 5. Cover command behavior with a headless/fake backend and image or command
    regressions before relying on a physical GPU. Runtime-tested platform
    coverage must be reported separately from compile-only coverage.
@@ -62,7 +58,7 @@ windowing library.
 The initial renderer’s shader language is WGSL, and shader validation errors
 need the operation, shader asset, and backend cause. Color conversion, blend
 mode, sampling, DPI policy, resize, surface/device loss, and shutdown are
-feature requirements, not implicit behavior inherited from Ebitengine.
+feature requirements, not implicit behavior inherited from another renderer.
 
 `engine/render/internal/shader` owns the embedded, versioned WGSL catalog and
 device-local pipeline-cache identity. A private adapter must validate each
@@ -91,4 +87,5 @@ implementation becomes the project direction. Keep binding imports below the
 private renderer seam; tests and examples must not normalize a binding type as
 part of the public API.
 
-For the evidence and decision process, see [ADR 0002](adr/0002-webgpu-dependency-decision.md).
+For the binding decision and remaining evidence limits, see
+[ADR 0003](adr/0003-engine-owned-webgpu-renderer.md).

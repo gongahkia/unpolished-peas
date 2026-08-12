@@ -78,15 +78,8 @@ two independent mappers and requires equal snapshots. That contract test covers
 the common mapping behavior; each concrete host also needs its own callback and
 browser/window lifecycle tests.
 
-The temporary `engine/ebiten` adapter translates configured keyboard bindings,
-cursor position, mouse buttons and wheel, committed input characters, and
-available gamepads into `engine.Event` batches before calling
-`Runtime.SampleInput`. It samples the current state once per Ebitengine update,
-so the portable mapper, rather than Ebitengine edge helpers, derives press and
-release transitions.
-
-Ebitengine can pause updates while a window is unfocused. Its adapter emits a
-focus change when an update observes one, but cannot independently demonstrate
-a focus-loss reset while no update runs. It supplies no `HostContext` and is
-not evidence of native or browser host parity; those implementations still
-need their own callback, lifecycle, and focus-loss tests.
+The Linux X11 and browser hosts translate platform callbacks to `engine.Event`
+batches before calling `Runtime.SampleInput`. The portable mapper, rather than
+a host edge helper, derives press and release transitions. The Linux host has
+local window-creation coverage; browser callback behavior requires runtime
+browser verification.

@@ -12,7 +12,8 @@ schematic over renderer-local depth layers.
 The HUD and schematic world use 72's high-level command-layer API. Rendering
 cannot affect the deterministic simulation or replay hashes.
 
-It requires Go 1.25+ and native Ebitengine dependencies for the host platform.
+It requires Go 1.25+. The Linux host uses X11 and WebGPU at runtime; browser
+and other desktop runtime support remains subject to the project support matrix.
 
 ## Playtest
 

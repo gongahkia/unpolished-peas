@@ -16,7 +16,7 @@ type Application interface {
 
 // FixedApplication is an optional fixed-timestep simulation hook. A backend
 // that owns a separate simulation clock calls Runtime.FixedUpdate; the current
-// Ebitengine adapter keeps its existing one-update-per-tick behavior.
+// Platform hosts keep the existing one-update-per-tick behavior.
 type FixedApplication interface {
 	FixedUpdate(Input) error
 }

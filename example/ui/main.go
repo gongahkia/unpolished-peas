@@ -1,8 +1,7 @@
 // Command ui is a runnable retained-UI sample.
 //
 // It uses normalized engine input and command-frame rendering only. The final
-// Run call uses the temporary Ebitengine adapter until engine-owned hosts are
-// available.
+// Run call uses 72's engine-owned native or browser host.
 package main
 
 import (
@@ -10,7 +9,7 @@ import (
 	"log"
 
 	"github.com/gongahkia/72/engine"
-	engineebiten "github.com/gongahkia/72/engine/ebiten"
+	"github.com/gongahkia/72/engine/platform"
 	"github.com/gongahkia/72/engine/render"
 	"github.com/gongahkia/72/engine/ui"
 )
@@ -155,7 +154,7 @@ func sampleConfig() engine.Config {
 }
 
 func main() {
-	if err := engineebiten.Run(sampleConfig(), &sampleUI{}); err != nil {
+	if err := platform.Run(sampleConfig(), &sampleUI{}); err != nil {
 		log.Fatal(err)
 	}
 }
