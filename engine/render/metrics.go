@@ -11,8 +11,9 @@ import (
 // CompatibleSpriteRuns identifies contiguous, order-preserving sprite groups
 // that share texture, coordinate space, material, and clip state. It is a
 // batching opportunity, not a claim about GPU draw calls. NativeTextureBytes
-// is an optional backend estimate based on known texture dimensions; it does
-// not include driver allocations, command buffers, or transient memory.
+// is an optional backend estimate based on known texture dimensions;
+// NativeBufferBytes is the capacity of renderer-owned dynamic buffers. Neither
+// includes driver allocations, command buffers, or transient memory.
 type FrameMetrics struct {
 	Commands, ClearCommands                       uint64
 	Sprites, TileMaps, Primitives, Texts          uint64
@@ -21,7 +22,8 @@ type FrameMetrics struct {
 	PortableTextures, PortableTextureBytes        uint64
 	RenderTargets, RenderTargetBytes              uint64
 	TextureUploads, NativeTextureEntries          uint64
-	NativeTextureBytes, NativePipelineEntries     uint64
+	NativeTextureBytes, NativeBufferBytes         uint64
+	NativePipelineEntries                         uint64
 	Duration                                      time.Duration
 }
 
@@ -108,6 +110,7 @@ func (m FrameMetrics) RecordInto(registry *diagnostics.Registry) {
 	_ = registry.Set("renderer.render_target_bytes", m.RenderTargetBytes)
 	_ = registry.Set("renderer.native_texture_entries", m.NativeTextureEntries)
 	_ = registry.Set("renderer.native_texture_bytes", m.NativeTextureBytes)
+	_ = registry.Set("renderer.native_buffer_bytes", m.NativeBufferBytes)
 	_ = registry.Set("renderer.native_pipeline_entries", m.NativePipelineEntries)
 }
 
