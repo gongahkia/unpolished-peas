@@ -23,6 +23,11 @@ const (
 	xButtonSecondary  = 3
 	xButtonScrollUp   = 4
 	xButtonScrollDown = 5
+
+	xCursorCrosshair = 34
+	xCursorHand      = 58
+	xCursorDefault   = 68
+	xCursorText      = 152
 )
 
 // Run starts the Linux X11 host. It owns the X11 event loop and uses the
@@ -37,13 +42,15 @@ func Run(config engine.Config, app engine.Application) error {
 }
 
 type x11Host struct {
-	config   engine.Config
-	xlib     *xlib
-	conn     *xgb.Conn
-	windowID xproto.Window
-	wmDelete xproto.Atom
-	keysyms  map[xproto.Keycode][]xproto.Keysym
-	renderer *webgpu.Renderer
+	config     engine.Config
+	xlib       *xlib
+	conn       *xgb.Conn
+	windowID   xproto.Window
+	wmDelete   xproto.Atom
+	keysyms    map[xproto.Keycode][]xproto.Keysym
+	renderer   *webgpu.Renderer
+	cursor     xproto.Cursor
+	cursorFont xproto.Font
 
 	state  engine.WindowState
 	events []engine.Event
@@ -240,8 +247,40 @@ func (h *x11Host) SetTitle(value string) error {
 	return nil
 }
 
-func (*x11Host) SetCursor(cursor engine.Cursor) error {
-	return fmt.Errorf("set X11 cursor %d: cursor shapes are not implemented", cursor)
+func (h *x11Host) SetCursor(cursor engine.Cursor) error {
+	glyph, ok := xCursorGlyph(cursor)
+	if !ok {
+		return fmt.Errorf("set X11 cursor %d: hidden cursors are not implemented", cursor)
+	}
+	if h.cursorFont == 0 {
+		font, err := xproto.NewFontId(h.conn)
+		if err != nil {
+			return fmt.Errorf("allocate X11 cursor font: %w", err)
+		}
+		if err := xproto.OpenFontChecked(h.conn, font, uint16(len("cursor")), "cursor").Check(); err != nil {
+			return fmt.Errorf("open X11 cursor font: %w", err)
+		}
+		h.cursorFont = font
+	}
+	value, err := xproto.NewCursorId(h.conn)
+	if err != nil {
+		return fmt.Errorf("allocate X11 cursor: %w", err)
+	}
+	if err := xproto.CreateGlyphCursorChecked(h.conn, value, h.cursorFont, h.cursorFont, glyph, glyph+1, 0, 0, 0, 0xffff, 0xffff, 0xffff).Check(); err != nil {
+		return fmt.Errorf("create X11 cursor: %w", err)
+	}
+	if err := xproto.ChangeWindowAttributesChecked(h.conn, h.windowID, xproto.CwCursor, []uint32{uint32(value)}).Check(); err != nil {
+		_ = xproto.FreeCursorChecked(h.conn, value).Check()
+		return fmt.Errorf("apply X11 cursor: %w", err)
+	}
+	previous := h.cursor
+	h.cursor = value
+	if previous != 0 {
+		if err := xproto.FreeCursorChecked(h.conn, previous).Check(); err != nil {
+			return fmt.Errorf("release previous X11 cursor: %w", err)
+		}
+	}
+	return nil
 }
 
 func (*x11Host) ReadClipboard() (string, error) {
@@ -364,6 +403,14 @@ func (h *x11Host) close() {
 		h.renderer = nil
 	}
 	if h.conn != nil {
+		if h.cursor != 0 {
+			_ = xproto.FreeCursorChecked(h.conn, h.cursor).Check()
+			h.cursor = 0
+		}
+		if h.cursorFont != 0 {
+			_ = xproto.CloseFontChecked(h.conn, h.cursorFont).Check()
+			h.cursorFont = 0
+		}
 		if h.windowID != 0 {
 			_ = xproto.DestroyWindowChecked(h.conn, h.windowID).Check()
 			h.windowID = 0
@@ -385,6 +432,21 @@ func pointerButton(button uint32) (engine.PointerButton, bool) {
 		return engine.PointerSecondary, true
 	case xButtonMiddle:
 		return engine.PointerMiddle, true
+	default:
+		return 0, false
+	}
+}
+
+func xCursorGlyph(cursor engine.Cursor) (uint16, bool) {
+	switch cursor {
+	case engine.CursorDefault:
+		return xCursorDefault, true
+	case engine.CursorPointer:
+		return xCursorHand, true
+	case engine.CursorText:
+		return xCursorText, true
+	case engine.CursorCrosshair:
+		return xCursorCrosshair, true
 	default:
 		return 0, false
 	}

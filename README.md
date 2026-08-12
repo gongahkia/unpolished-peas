@@ -22,7 +22,7 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 | `engine/physics` | deterministic AABB 2D bodies, contacts, and queries |
 | `engine/ui` | retained layout, focus, and pointer hit testing |
 | `engine/render` | backend-neutral high-level 2D commands and portable texture sources |
-| `engine/platform` | engine-owned Linux X11 and browser canvas hosts |
+| `engine/platform` | engine-owned Linux X11, Win32, AppKit/CAMetalLayer, and browser canvas hosts |
 | `engine/diagnostics` | counters and duration summaries |
 
 ## Documentation
@@ -73,9 +73,11 @@ records the dependency and ownership decision.
 The Linux X11 path has local creation, deterministic software-WebGPU image,
 and five-second example smoke results. The browser path has a local Chromium
 render/input/resize/focus/visibility result and a rendered-frame smoke test.
-Windows, macOS, and browser support beyond that one local Chromium environment
-remain unverified; their source targets distinguish buildability from runtime
-support. There is no Canvas or WebGL fallback when WebGPU is unavailable.
+Windows and macOS now have native host implementations, but remain compile-only
+until they have runtime evidence; browser support beyond that one local
+Chromium environment is likewise unverified. Source targets distinguish
+buildability from runtime support. There is no Canvas or WebGL fallback when
+WebGPU is unavailable.
 
 Visual editor tooling, scripting, 3D rendering, mobile/consoles, networking,
 navigation, and advanced animation are intentionally outside the current
