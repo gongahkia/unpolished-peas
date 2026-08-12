@@ -397,6 +397,7 @@ type Frame struct {
 	Queue       *Queue
 	Textures    *TextureStore
 	Diagnostics *diagnostics.Registry
+	Trace       *diagnostics.Trace
 }
 
 // Backend consumes renderer-owned high-level frame intent. Backends must not

@@ -1,7 +1,7 @@
 # Engine readiness audit
 
 This is an evidence-led assessment of the current worktree on
-2026-08-12. It is not a release declaration. Scores measure readiness for a
+2026-08-13. It is not a release declaration. Scores measure readiness for a
 maintained, general-purpose 2D game-engine runtime, where `10` means a
 documented support matrix, repeatable release process, and target-specific
 runtime evidence.
@@ -9,10 +9,10 @@ runtime evidence.
 | Area | Score | Verified strengths | Release-blocking gaps |
 | --- | --- | --- | --- |
 | 2D renderer | 6/10 | Ordered, instanced sprites and tiles; reusable dynamic buffers; primitives, text, clips, WGSL validation, texture caches, deterministic software-WebGPU image regression, and local device recreation/rehydration. | No physical-GPU image regression, no real driver-loss matrix, nearest sampling only, and render targets must be redrawn after recreation. |
-| Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize result. [Source-verified] Browser-host shutdown returns update/draw failures and removes listeners; current wasm runtime verification covers bundle startup only. | Windows/macOS hosts are stubs; Linux clipboard and cursor shapes are unsupported; no gamepad, IME, or broad browser lifecycle evidence. |
+| Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize/focus/visibility result. [Source-verified] Browser-host shutdown returns update/draw failures, removes listeners, and normalizes focus/hidden-tab timing. | Windows/macOS hosts are stubs; Linux clipboard and cursor shapes are unsupported; no gamepad, IME, or broad browser lifecycle evidence. |
 | Runtime/gameplay APIs | 6/10 | Deterministic ECS scheduling, input normalization, reloadable assets, mixer state, AABB physics, scene transforms, and retained UI layout are tested. Non-finite viewport/camera/render inputs now fail at useful boundaries. | UI is a preview; physics is intentionally AABB-only; browser audio output and user-facing tooling have no runtime evidence. |
-| Diagnostics and performance | 5/10 | Per-frame command, texture, pipeline, batch, draw, and duration metrics; reproducible CPU reference and deterministic software-WebGPU tile benchmarks. | No trace export, physical-GPU benchmark/report, or automatic performance baseline comparison. |
-| Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and an existing Chromium bundle-load smoke are available. | GitHub Actions cannot currently run; the browser smoke is not a rendered-frame test; Windows/macOS checks are compile-only. |
+| Diagnostics and performance | 5/10 | Per-frame command, texture, pipeline, batch, draw, and duration metrics; bounded Chrome-compatible CPU traces; reproducible CPU reference and deterministic software-WebGPU tile benchmarks. | No GPU timestamps, physical-GPU benchmark/report, or automatic performance baseline comparison. |
+| Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and a Chromium render/input/resize/focus/visibility smoke are available. | GitHub Actions cannot currently run; Windows/macOS checks are compile-only. |
 | Product and release | 3/10 | Scope, support evidence, compatibility, and release gates are explicitly documented. | No selected `LICENSE`/`NOTICE`, no published artifacts, no completed remote CI for an exact commit, and no target certification or release owner approval. |
 
 ## Overall verdict: 4/10
@@ -38,11 +38,14 @@ not the existence of core engine packages.
   submitted batches, and draw calls.
 - Replaced per-batch GPU-buffer creation with renderer-owned grow-on-demand
   vertex and instance buffers, and exposed their capacity through diagnostics.
+- Added bounded Chrome-compatible CPU traces for runtime updates, draws, and
+  renderer submission without claiming asynchronous GPU timing.
 - Added native-pipeline entry metrics and documented their limits.
 - [Source-verified] Made browser host shutdown return the originating
   update/draw failure and remove event listeners; corrected pointer/wheel
-  coordinates for independent CSS X/Y scaling. Current wasm runtime verification
-  covers bundle startup only.
+  coordinates for independent CSS X/Y scaling; normalized initial focus and
+  hidden-tab timing. Local Chromium runtime verification exercises rendering,
+  input, resize, focus loss, and hidden-tab behavior.
 - Updated stale renderer, font, UI, error, performance, support, and public
   package documentation.
 

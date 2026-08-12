@@ -186,7 +186,7 @@ func (s *LayerStack) Layers() []Layer {
 	return layers
 }
 
-func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, textures *render.TextureStore, diagnostics *diagnostics.Registry) error {
+func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, textures *render.TextureStore, diagnostics *diagnostics.Registry, trace *diagnostics.Trace) error {
 	if backend == nil {
 		return fmt.Errorf("render backend must not be nil")
 	}
@@ -212,7 +212,7 @@ func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, te
 		if len(queue.Commands()) == 0 {
 			continue
 		}
-		if err := backend.Render(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures, Diagnostics: diagnostics}); err != nil {
+		if err := backend.Render(render.Frame{Camera: commandCamera, Queue: queue, Textures: textures, Diagnostics: diagnostics, Trace: trace}); err != nil {
 			return fmt.Errorf("submit command layer %q: %w", layer.ID, err)
 		}
 	}

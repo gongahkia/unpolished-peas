@@ -59,6 +59,23 @@ resets held actions; this makes focus-loss behavior explicit and testable. A
 host must use only `engine.Key`, `GamepadButton`, `GamepadAxis`, `Vec2`, and
 `WindowState` values in its event stream.
 
+## Browser lifecycle behavior
+
+The wasm host owns its canvas, schedules frames through
+`requestAnimationFrame`, and does not attempt a WebGL or Canvas fallback when
+WebGPU cannot initialize. Window `focus`/`blur` becomes
+`EventFocusChanged`; pointer down focuses the canvas. A `visibilitychange` to
+hidden marks the window invisible, emits a focus-loss event when needed, and
+skips update/draw callbacks. On return to visible it resets the frame-time
+baseline before the next update, so hidden-tab time is not delivered as one
+large simulation delta. Resize reads the canvas CSS rectangle and maps each
+axis independently to logical coordinates before reconfiguring the renderer.
+
+This is [Source-verified] behavior compiled for wasm. A local Chromium smoke
+exercises rendering, input, resize, focus loss, and hidden-tab transitions.
+Browser-device loss and all behavior on other browser/driver combinations still
+need runtime evidence before becoming support claims.
+
 ## Testing hosts
 
 A fake host needs only the public interfaces. It supplies deterministic window

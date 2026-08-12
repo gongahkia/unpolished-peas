@@ -93,7 +93,7 @@ jobs:
       - run: make first-game-wasm
       - run: npm ci
       - run: npx playwright install --with-deps chromium
-      - run: npx playwright test --config ci/playwright.config.mjs
+      - run: xvfb-run -a npx playwright test --config ci/playwright.config.mjs
       - if: always()
         uses: actions/upload-artifact@v4
         with:

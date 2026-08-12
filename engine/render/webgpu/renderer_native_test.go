@@ -32,6 +32,26 @@ func TestHeadlessRendererSubmitsAnOrderedSpriteFrame(t *testing.T) {
 	}
 }
 
+func TestHeadlessRendererRecordsAnOptionalTraceSpan(t *testing.T) {
+	renderer, err := NewHeadless(2, 2)
+	if err != nil {
+		t.Fatalf("NewHeadless() error = %v", err)
+	}
+	defer renderer.Close()
+	queue := &render.Queue{}
+	if err := queue.FillRect(0, render.ScreenSpace, render.RectDraw{Bounds: render.Rect{W: 1, H: 1}, Color: render.Color{R: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	trace := diagnostics.NewTrace(1)
+	if err := renderer.Render(render.Frame{Queue: queue, Trace: trace}); err != nil {
+		t.Fatalf("Render() error = %v", err)
+	}
+	spans, dropped := trace.Snapshot()
+	if dropped != 0 || len(spans) != 1 || spans[0].Name != "renderer.webgpu.frame" {
+		t.Fatalf("trace spans = %+v, dropped=%d", spans, dropped)
+	}
+}
+
 func TestHeadlessRendererProducesOrderedSpriteAndTilePixels(t *testing.T) {
 	renderer, err := NewHeadless(8, 4)
 	if err != nil {

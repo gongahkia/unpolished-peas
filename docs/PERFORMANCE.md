@@ -72,6 +72,30 @@ count private cached pipelines; and batches/draws count submitted command
 batches for the current frame. They are useful local diagnostics, not
 cross-platform performance certification.
 
+## Optional CPU trace export
+
+An application can opt into a bounded CPU timeline for runtime updates, draws,
+and renderer submission without enabling a global profiler:
+
+```go
+trace := diagnostics.NewTrace(4_096)
+runtime.SetTrace(trace)
+
+// after the capture window:
+data, err := trace.ChromeJSON()
+if err != nil {
+    return err
+}
+if err := os.WriteFile("trace.json", data, 0o644); err != nil {
+    return err
+}
+```
+
+Open `trace.json` in Perfetto or Chrome's tracing viewer. The recorder keeps
+the newest spans when it reaches capacity and reports discarded spans through
+`Snapshot`. These are CPU wall-time spans through runtime and renderer
+submission; they do not provide GPU timestamps or prove presentation latency.
+
 ## Comparing changes
 
 Compare only reports with the same Go version, command, scene dimensions, and

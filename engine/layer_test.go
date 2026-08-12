@@ -29,7 +29,7 @@ func TestLayerStackOrdersAndTransformsArbitraryLayers(t *testing.T) {
 	backend := &recordingRenderBackend{}
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
-	if err := stack.draw(backend, camera, 1, render.NewTextureStore(), nil); err != nil {
+	if err := stack.draw(backend, camera, 1, render.NewTextureStore(), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(backend.frames) != 1 || backend.frames[0].Camera.Position.X != 40 {
@@ -64,7 +64,7 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
 	registry := diagnostics.NewRegistry()
-	if err := stack.draw(backend, camera, 1, render.NewTextureStore(), registry); err != nil {
+	if err := stack.draw(backend, camera, 1, render.NewTextureStore(), registry, nil); err != nil {
 		t.Fatal(err)
 	}
 	if len(backend.frames) != 1 {
@@ -97,7 +97,7 @@ func TestScreenCommandLayerRendersUIVisualThroughCommandFrame(t *testing.T) {
 		t.Fatal(err)
 	}
 	backend := &recordingRenderBackend{}
-	if err := stack.draw(backend, NewCamera(Size{W: 32, H: 18}), 1, render.NewTextureStore(), nil); err != nil {
+	if err := stack.draw(backend, NewCamera(Size{W: 32, H: 18}), 1, render.NewTextureStore(), nil, nil); err != nil {
 		t.Fatal(err)
 	}
 	commands := backend.frames[0].Queue.Commands()
@@ -122,7 +122,7 @@ func TestWorldCommandLayerRejectsTargetClip(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if err := stack.draw(&recordingRenderBackend{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore(), nil); err == nil {
+	if err := stack.draw(&recordingRenderBackend{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore(), nil, nil); err == nil {
 		t.Fatal("world command layer accepted a target clip")
 	}
 }
@@ -136,7 +136,7 @@ func TestLayerStackRejectsNonFiniteCameraBeforeSubmittingCommands(t *testing.T) 
 	}
 	camera := NewCamera(Size{W: 2, H: 2})
 	camera.SetPosition(Vec2{X: math.NaN()})
-	if err := stack.draw(&recordingRenderBackend{}, camera, 1, render.NewTextureStore(), nil); err == nil {
+	if err := stack.draw(&recordingRenderBackend{}, camera, 1, render.NewTextureStore(), nil, nil); err == nil {
 		t.Fatal("non-finite camera position submitted commands")
 	}
 }

@@ -68,6 +68,22 @@ func TestReferenceBackendRecordsFrameMetricsIntoDiagnostics(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendRecordsAnOptionalTraceSpan(t *testing.T) {
+	backend := newReferenceBackend(t, 1, 1)
+	trace := diagnostics.NewTrace(1)
+	var queue Queue
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{W: 1, H: 1}, Color: Color{R: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue, Trace: trace}); err != nil {
+		t.Fatal(err)
+	}
+	spans, dropped := trace.Snapshot()
+	if dropped != 0 || len(spans) != 1 || spans[0].Name != "renderer.reference.frame" {
+		t.Fatalf("trace spans = %+v, dropped=%d", spans, dropped)
+	}
+}
+
 func metricsByName(metrics []diagnostics.Metric) map[string]diagnostics.Metric {
 	byName := make(map[string]diagnostics.Metric, len(metrics))
 	for _, metric := range metrics {
