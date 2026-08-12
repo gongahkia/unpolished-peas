@@ -47,10 +47,12 @@ type Renderer struct {
 	pipelines       *shader.Cache
 	nativePipelines []*wgpu.RenderPipeline
 
-	textures     map[uint64]*textureResource
-	atlasPages   map[atlasPageKey]*textureResource
-	basicGlyphs  map[rune]*textureResource
-	whiteTexture *textureResource
+	textures                                   map[uint64]*textureResource
+	atlasPages                                 map[atlasPageKey]*textureResource
+	basicGlyphs                                map[rune]*textureResource
+	whiteTexture                               *textureResource
+	vertexBuffer, spriteInstanceBuffer         *wgpu.Buffer
+	vertexBufferSize, spriteInstanceBufferSize uint64
 
 	textureUploads       uint64
 	forceFallbackAdapter bool
@@ -76,7 +78,7 @@ type vertex struct {
 	r, g, b, a float32
 }
 
-// spriteInstanceData packs a transformed quad into five vec4 vertex
+// spriteInstanceData packs a transformed quad into four vec4 vertex
 // attributes. The instanced shader expands it into the six triangle-list
 // vertices needed for one sprite.
 type spriteInstanceData struct {
@@ -93,11 +95,12 @@ const (
 )
 
 type batch struct {
-	kind      batchKind
-	texture   *textureResource
-	clip      *render.Rect
-	vertices  []vertex
-	instances []spriteInstanceData
+	kind         batchKind
+	texture      *textureResource
+	clip         *render.Rect
+	vertices     []vertex
+	instances    []spriteInstanceData
+	bufferOffset uint64
 }
 
 // newRenderer adopts a binding-private surface created by a platform-specific
@@ -360,7 +363,7 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 	defer func() {
 		metrics.Duration = time.Since(started)
 		metrics.TextureUploads = r.textureUploads - uploads
-		metrics.NativeTextureEntries, metrics.NativeTextureBytes, metrics.NativePipelineEntries = r.cacheStats()
+		metrics.NativeTextureEntries, metrics.NativeTextureBytes, metrics.NativeBufferBytes, metrics.NativePipelineEntries = r.cacheStats()
 		metrics.RecordInto(frame.Diagnostics)
 	}()
 	r.pruneResources(frame.Textures)
@@ -377,6 +380,13 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 		}
 		clear, hasClear = colorValue(value), true
 	}
+	batches, err := r.batches(frame, commands, logicalWidth, logicalHeight)
+	if err != nil {
+		return err
+	}
+	if err := r.uploadBatches(batches); err != nil {
+		return err
+	}
 	encoder, err := r.device.CreateCommandEncoder(&wgpu.CommandEncoderDescriptor{Label: "72 render frame"})
 	if err != nil {
 		return rendererFailure("create WebGPU command encoder", err, diagnostics.Restart, true)
@@ -389,29 +399,19 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 	if err != nil {
 		return rendererFailure("begin WebGPU render pass", err, diagnostics.Restart, true)
 	}
-	batches, err := r.batches(frame, commands, logicalWidth, logicalHeight)
-	if err != nil {
-		_ = pass.End()
-		return err
-	}
-	buffers := make([]*wgpu.Buffer, 0, len(batches))
-	defer func() {
-		for _, buffer := range buffers {
-			buffer.Release()
-		}
-	}()
+	var submitted uint64
 	for _, batch := range batches {
-		buffer, err := r.submitBatch(pass, batch, width, height, logicalWidth, logicalHeight)
+		drawn, err := r.submitBatch(pass, batch, width, height, logicalWidth, logicalHeight)
 		if err != nil {
 			_ = pass.End()
 			return err
 		}
-		if buffer != nil {
-			buffers = append(buffers, buffer)
+		if drawn {
+			submitted++
 		}
 	}
-	metrics.Batches = uint64(len(buffers))
-	metrics.DrawCalls = uint64(len(buffers))
+	metrics.Batches = submitted
+	metrics.DrawCalls = submitted
 	if err := pass.End(); err != nil {
 		return rendererFailure("end WebGPU render pass", err, diagnostics.Restart, true)
 	}
@@ -426,9 +426,9 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 	return nil
 }
 
-func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width, height, logicalWidth, logicalHeight int) (*wgpu.Buffer, error) {
-	if batch.kind == vertexBatch && len(batch.vertices) == 0 || batch.kind == spriteInstanceBatch && len(batch.instances) == 0 {
-		return nil, nil
+func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width, height, logicalWidth, logicalHeight int) (bool, error) {
+	if (batch.kind == vertexBatch && len(batch.vertices) == 0) || (batch.kind == spriteInstanceBatch && len(batch.instances) == 0) {
+		return false, nil
 	}
 	asset := shader.Sprite2DAsset
 	if batch.kind == spriteInstanceBatch {
@@ -436,31 +436,23 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 	}
 	pipeline, _, err := r.pipelines.Pipeline(shader.Request{Asset: asset, Blend: shader.BlendSourceOver, Sampling: shader.SamplingNearest, TargetFormat: r.format.String(), TargetSampleCount: 1})
 	if err != nil {
-		return nil, err
+		return false, err
 	}
 	native, ok := pipeline.(*wgpu.RenderPipeline)
 	if !ok || native == nil {
-		return nil, rendererFailure("bind WebGPU pipeline", fmt.Errorf("private pipeline cache returned %T", pipeline), diagnostics.Restart, true)
+		return false, rendererFailure("bind WebGPU pipeline", fmt.Errorf("private pipeline cache returned %T", pipeline), diagnostics.Restart, true)
 	}
-	data := encodeVertices(batch.vertices)
-	label := "72 sprite vertices"
+	buffer := r.vertexBuffer
 	if batch.kind == spriteInstanceBatch {
-		data = encodeSpriteInstances(batch.instances)
-		label = "72 sprite instances"
+		buffer = r.spriteInstanceBuffer
 	}
-	buffer, err := r.device.CreateBuffer(&wgpu.BufferDescriptor{Label: label, Size: uint64(len(data)), Usage: wgpu.BufferUsageVertex | wgpu.BufferUsageCopyDst})
-	if err != nil {
-		return nil, rendererFailure("create WebGPU vertex buffer", err, diagnostics.Restart, true)
-	}
-	if err := r.device.Queue().WriteBuffer(buffer, 0, data); err != nil {
-		buffer.Release()
-		return nil, rendererFailure("upload WebGPU vertex buffer", err, diagnostics.Restart, true)
+	if buffer == nil {
+		return false, rendererFailure("bind WebGPU dynamic buffer", fmt.Errorf("%d batch buffer is unavailable", batch.kind), diagnostics.Restart, true)
 	}
 	if batch.clip != nil {
 		x, y, clippedWidth, clippedHeight, ok := scissor(*batch.clip, width, height, logicalWidth, logicalHeight)
 		if !ok {
-			buffer.Release()
-			return nil, nil
+			return false, nil
 		}
 		pass.SetScissorRect(x, y, clippedWidth, clippedHeight)
 	} else {
@@ -468,13 +460,72 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 	}
 	pass.SetPipeline(native)
 	pass.SetBindGroup(0, batch.texture.bind, nil)
-	pass.SetVertexBuffer(0, buffer, 0)
+	pass.SetVertexBuffer(0, buffer, batch.bufferOffset)
 	if batch.kind == spriteInstanceBatch {
 		pass.Draw(6, uint32(len(batch.instances)), 0, 0)
 	} else {
 		pass.Draw(uint32(len(batch.vertices)), 1, 0, 0)
 	}
-	return buffer, nil
+	return true, nil
+}
+
+func (r *Renderer) uploadBatches(batches []batch) error {
+	var vertexBytes, instanceBytes uint64
+	for index := range batches {
+		batch := &batches[index]
+		if batch.kind == spriteInstanceBatch {
+			batch.bufferOffset = instanceBytes
+			instanceBytes += uint64(len(batch.instances)) * spriteInstanceStride
+		} else {
+			batch.bufferOffset = vertexBytes
+			vertexBytes += uint64(len(batch.vertices)) * vertexStride
+		}
+	}
+	if err := r.ensureDynamicBuffer(&r.vertexBuffer, &r.vertexBufferSize, vertexBytes, "72 dynamic vertices"); err != nil {
+		return err
+	}
+	if err := r.ensureDynamicBuffer(&r.spriteInstanceBuffer, &r.spriteInstanceBufferSize, instanceBytes, "72 dynamic sprite instances"); err != nil {
+		return err
+	}
+	for _, batch := range batches {
+		var buffer *wgpu.Buffer
+		var data []byte
+		if batch.kind == spriteInstanceBatch {
+			buffer, data = r.spriteInstanceBuffer, encodeSpriteInstances(batch.instances)
+		} else {
+			buffer, data = r.vertexBuffer, encodeVertices(batch.vertices)
+		}
+		if len(data) == 0 {
+			continue
+		}
+		if err := r.device.Queue().WriteBuffer(buffer, batch.bufferOffset, data); err != nil {
+			return rendererFailure("upload WebGPU dynamic buffer", err, diagnostics.Restart, true)
+		}
+	}
+	return nil
+}
+
+func (r *Renderer) ensureDynamicBuffer(buffer **wgpu.Buffer, size *uint64, required uint64, label string) error {
+	if required == 0 || *buffer != nil && *size >= required {
+		return nil
+	}
+	capacity := uint64(4096)
+	for capacity < required {
+		if capacity > ^uint64(0)/2 {
+			return rendererFailure("allocate WebGPU dynamic buffer", fmt.Errorf("%s requires too many bytes", label), diagnostics.CorrectInput, false)
+		}
+		capacity *= 2
+	}
+	created, err := r.device.CreateBuffer(&wgpu.BufferDescriptor{Label: label, Size: capacity, Usage: wgpu.BufferUsageVertex | wgpu.BufferUsageCopyDst})
+	if err != nil {
+		return rendererFailure("allocate WebGPU dynamic buffer", err, diagnostics.Restart, true)
+	}
+	previous := *buffer
+	*buffer, *size = created, capacity
+	if previous != nil {
+		previous.Release()
+	}
+	return nil
 }
 
 func (r *Renderer) batches(frame render.Frame, commands []render.Command, width, height int) ([]batch, error) {
@@ -766,7 +817,7 @@ func (r *Renderer) pruneResources(store *render.TextureStore) {
 	}
 }
 
-func (r *Renderer) cacheStats() (uint64, uint64, uint64) {
+func (r *Renderer) cacheStats() (uint64, uint64, uint64, uint64) {
 	var entries, bytes uint64
 	add := func(resource *textureResource) {
 		if resource == nil {
@@ -789,7 +840,7 @@ func (r *Renderer) cacheStats() (uint64, uint64, uint64) {
 	if r.pipelines != nil {
 		pipelines = uint64(r.pipelines.Count())
 	}
-	return entries, bytes, pipelines
+	return entries, bytes, r.vertexBufferSize + r.spriteInstanceBufferSize, pipelines
 }
 
 // Close releases every binding-private resource. It is idempotent.
@@ -829,6 +880,16 @@ func (r *Renderer) releaseDeviceResources() {
 	for _, pipeline := range r.nativePipelines {
 		pipeline.Release()
 	}
+	if r.vertexBuffer != nil {
+		r.vertexBuffer.Release()
+		r.vertexBuffer = nil
+	}
+	r.vertexBufferSize = 0
+	if r.spriteInstanceBuffer != nil {
+		r.spriteInstanceBuffer.Release()
+		r.spriteInstanceBuffer = nil
+	}
+	r.spriteInstanceBufferSize = 0
 	if r.pipelineLayout != nil {
 		r.pipelineLayout.Release()
 		r.pipelineLayout = nil

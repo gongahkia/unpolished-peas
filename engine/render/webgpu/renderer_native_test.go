@@ -165,6 +165,10 @@ func TestHeadlessRendererRefreshesAndPrunesTextureResources(t *testing.T) {
 	if first == nil || first.revision != 1 {
 		t.Fatalf("initial native texture = %+v", first)
 	}
+	instanceBuffer, instanceBufferSize := renderer.spriteInstanceBuffer, renderer.spriteInstanceBufferSize
+	if instanceBuffer == nil || instanceBufferSize == 0 {
+		t.Fatal("initial render did not allocate an instance buffer")
+	}
 	if err := store.Replace(texture, render.Image{Width: 1, Height: 1, Pixels: []byte{0, 255, 0, 255}}); err != nil {
 		t.Fatalf("Replace() error = %v", err)
 	}
@@ -174,6 +178,9 @@ func TestHeadlessRendererRefreshesAndPrunesTextureResources(t *testing.T) {
 	second := renderer.textures[texture.ID]
 	if second == nil || second == first || second.revision != 2 {
 		t.Fatalf("refreshed native texture = %+v, want a new revision-2 resource", second)
+	}
+	if renderer.spriteInstanceBuffer != instanceBuffer || renderer.spriteInstanceBufferSize != instanceBufferSize {
+		t.Fatal("unchanged instance workload did not reuse the dynamic buffer")
 	}
 	pixels, err := renderer.surface.ReadPixels()
 	if err != nil {
@@ -268,6 +275,9 @@ func TestHeadlessRendererReportsSubmittedBatchMetrics(t *testing.T) {
 	}
 	if got["renderer.native_pipeline_entries"] != 2 {
 		t.Fatalf("native pipeline entries = %d, want 2", got["renderer.native_pipeline_entries"])
+	}
+	if got["renderer.native_buffer_bytes"] == 0 {
+		t.Fatal("native buffer capacity metric was not recorded")
 	}
 }
 

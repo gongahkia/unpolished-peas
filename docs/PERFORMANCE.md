@@ -64,12 +64,13 @@ texture counts and bytes, and render-target counts and bytes.
 
 The engine-owned WebGPU renderer additionally records `renderer.texture_uploads`,
 `renderer.native_texture_entries`, `renderer.native_texture_bytes`,
-`renderer.native_pipeline_entries`, `renderer.batches`, and
-`renderer.draw_calls`. Texture bytes are an RGBA8 dimension-based cache
-estimate and exclude driver overhead; pipeline entries count private cached
-pipelines, and batches/draws count submitted command batches for the current
-frame. They are useful local diagnostics, not cross-platform performance
-certification.
+`renderer.native_buffer_bytes`, `renderer.native_pipeline_entries`,
+`renderer.batches`, and `renderer.draw_calls`. Texture bytes are an RGBA8
+dimension-based cache estimate and exclude driver overhead; buffer bytes are
+the capacity of private reusable vertex and instance buffers; pipeline entries
+count private cached pipelines; and batches/draws count submitted command
+batches for the current frame. They are useful local diagnostics, not
+cross-platform performance certification.
 
 ## Comparing changes
 
