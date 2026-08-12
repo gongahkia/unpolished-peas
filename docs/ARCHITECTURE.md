@@ -35,7 +35,7 @@ renderer boundary.
 | `engine/ui` | retained layout, focus, and pointer hit testing | changing UI tree/layout behavior |
 | `engine/render` | high-level 2D commands and portable texture sources | changing backend-neutral scene intent |
 | `engine/diagnostics` | counters and duration summaries | adding portable observability data |
-| `engine/platform` | Linux X11/browser host lifecycle and private renderer integration | changing platform event, surface, or presentation behavior |
+| `engine/platform` | Linux X11, Win32, AppKit/CAMetalLayer, and browser host lifecycle plus private renderer integration | changing platform event, surface, or presentation behavior |
 | `engine/render/webgpu` | private WebGPU resource, batching, and pass implementation | changing graphics-binding behavior without exposing it to games |
 | `example/wukong` | an optional game and its private simulation/presentation code | changing the example, never engine policy |
 | `experiments/webgpu-*` | isolated dependency and platform evidence | collecting evidence for a later dependency decision, not shipping engine behavior |
@@ -58,10 +58,11 @@ before `Update` or `FixedUpdate`. It draws and presents on that same goroutine,
 then releases the host context on shutdown. The full contract is in
 [HOSTS.md](HOSTS.md), with control and unit rules in [INPUT.md](INPUT.md).
 
-`engine/platform` owns the Linux X11 and browser host paths. The Linux host has
-local creation and startup smoke coverage, and the browser host has limited
-local Chromium render/input/resize/focus/visibility coverage. Cross-platform
-host parity remains unverified.
+`engine/platform` owns Linux X11, Win32, AppKit/CAMetalLayer, and browser host
+paths. The Linux host has local creation and startup smoke coverage, the
+browser host has limited local Chromium render/input/resize/focus/visibility
+coverage, and Windows/macOS are compiled source targets with portable mapping
+tests. Cross-platform host parity remains unverified.
 
 ## Renderer and platform boundary
 

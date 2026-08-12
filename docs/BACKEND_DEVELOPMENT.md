@@ -7,13 +7,15 @@ renderer, or test backend. Read [ARCHITECTURE.md](ARCHITECTURE.md),
 
 ## Current status
 
-`engine/platform` owns the Linux X11 and browser hosts. `engine/render/webgpu`
+`engine/platform` owns Linux X11, Win32, AppKit/CAMetalLayer, and browser
+hosts. `engine/render/webgpu`
 uses the root-module pinned low-level WebGPU binding behind the portable
 `engine/render` command boundary. It is not a public graphics-binding API.
 
 The Linux path has local host-creation, deterministic software-WebGPU image,
 and five-second example startup evidence. A local Chromium run has rendered,
-accepted input, and resized the browser host. Windows/macOS native hosts and
+accepted input, and resized the browser host. Windows/macOS hosts now compile
+with focused portable event tests, but their native runtime behavior and
 browser behavior beyond that Chromium environment remain unverified; do not
 turn source-target builds into support claims.
 

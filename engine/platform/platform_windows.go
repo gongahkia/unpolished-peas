@@ -1,0 +1,764 @@
+//go:build windows
+
+package platform
+
+import (
+	"fmt"
+	"math"
+	"runtime"
+	"sync"
+	"time"
+	"unicode/utf16"
+	"unsafe"
+
+	"github.com/gongahkia/72/engine"
+	"github.com/gongahkia/72/engine/render/webgpu"
+	"golang.org/x/sys/windows"
+)
+
+const (
+	win32ClassName = "72EngineWindow"
+
+	win32CSOwnDC            = 0x0020
+	win32WSOverlappedWindow = 0x00cf0000
+	win32CWUseDefault       = ^uintptr(0x7fffffff)
+	win32SWShow             = 5
+
+	win32PMRemove = 0x0001
+
+	win32WMSize        = 0x0005
+	win32WMSetFocus    = 0x0007
+	win32WMKillFocus   = 0x0008
+	win32WMSetCursor   = 0x0020
+	win32WMChar        = 0x0102
+	win32WMSysKeyDown  = 0x0104
+	win32WMSysKeyUp    = 0x0105
+	win32WMKeyDown     = 0x0100
+	win32WMKeyUp       = 0x0101
+	win32WMMouseMove   = 0x0200
+	win32WMLButtonDown = 0x0201
+	win32WMLButtonUp   = 0x0202
+	win32WMRButtonDown = 0x0204
+	win32WMRButtonUp   = 0x0205
+	win32WMMButtonDown = 0x0207
+	win32WMMButtonUp   = 0x0208
+	win32WMMouseWheel  = 0x020a
+	win32WMClose       = 0x0010
+	win32WMDestroy     = 0x0002
+	win32WMShowWindow  = 0x0018
+	win32WMDPIChanged  = 0x02e0
+	win32WMQuit        = 0x0012
+
+	win32SizeMinimized = 1
+
+	win32HTClient = 1
+
+	win32SWPNoMove     = 0x0002
+	win32SWPNoZOrder   = 0x0004
+	win32SWPNoActivate = 0x0010
+
+	win32IDCArrow = 32512
+	win32IDCText  = 32513
+	win32IDCCross = 32515
+	win32IDCHand  = 32649
+
+	win32WheelDelta = 120
+
+	win32CFUnicodeText = 13
+	win32GMEMMoveable  = 0x0002
+
+	// Leave ample signed-32-bit headroom for the non-client frame added by
+	// AdjustWindowRectEx before CreateWindowEx receives the outer size.
+	win32MaxClientDimension = 1 << 30
+)
+
+var (
+	win32Kernel32 = windows.NewLazySystemDLL("kernel32.dll")
+	win32User32   = windows.NewLazySystemDLL("user32.dll")
+
+	win32GetModuleHandleW   = win32Kernel32.NewProc("GetModuleHandleW")
+	win32GlobalAlloc        = win32Kernel32.NewProc("GlobalAlloc")
+	win32GlobalFree         = win32Kernel32.NewProc("GlobalFree")
+	win32GlobalLock         = win32Kernel32.NewProc("GlobalLock")
+	win32GlobalUnlock       = win32Kernel32.NewProc("GlobalUnlock")
+	win32GlobalSize         = win32Kernel32.NewProc("GlobalSize")
+	win32RtlMoveMemory      = win32Kernel32.NewProc("RtlMoveMemory")
+	win32RegisterClassExW   = win32User32.NewProc("RegisterClassExW")
+	win32CreateWindowExW    = win32User32.NewProc("CreateWindowExW")
+	win32DestroyWindow      = win32User32.NewProc("DestroyWindow")
+	win32DefWindowProcW     = win32User32.NewProc("DefWindowProcW")
+	win32PeekMessageW       = win32User32.NewProc("PeekMessageW")
+	win32TranslateMessage   = win32User32.NewProc("TranslateMessage")
+	win32DispatchMessageW   = win32User32.NewProc("DispatchMessageW")
+	win32ShowWindow         = win32User32.NewProc("ShowWindow")
+	win32UpdateWindow       = win32User32.NewProc("UpdateWindow")
+	win32GetClientRect      = win32User32.NewProc("GetClientRect")
+	win32AdjustWindowRectEx = win32User32.NewProc("AdjustWindowRectEx")
+	win32SetWindowTextW     = win32User32.NewProc("SetWindowTextW")
+	win32SetWindowPos       = win32User32.NewProc("SetWindowPos")
+	win32LoadCursorW        = win32User32.NewProc("LoadCursorW")
+	win32SetCursor          = win32User32.NewProc("SetCursor")
+	win32ShowCursor         = win32User32.NewProc("ShowCursor")
+	win32OpenClipboard      = win32User32.NewProc("OpenClipboard")
+	win32CloseClipboard     = win32User32.NewProc("CloseClipboard")
+	win32GetClipboardData   = win32User32.NewProc("GetClipboardData")
+	win32EmptyClipboard     = win32User32.NewProc("EmptyClipboard")
+	win32SetClipboardData   = win32User32.NewProc("SetClipboardData")
+
+	win32ClassOnce sync.Once
+	win32ClassErr  error
+	win32HostsMu   sync.RWMutex
+	win32Hosts     = make(map[uintptr]*win32Host)
+)
+
+// Run starts the Win32 host. It creates and uses native resources from one OS
+// thread; the private WebGPU renderer remains hidden behind the host contract.
+func Run(config engine.Config, app engine.Application) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	host, err := newWin32Host(config)
+	if err != nil {
+		return err
+	}
+	defer host.close()
+	return engine.RunWithHost(config, app, host)
+}
+
+type win32Host struct {
+	config   engine.Config
+	window   uintptr
+	renderer *webgpu.Renderer
+
+	state  engine.WindowState
+	events []engine.Event
+	frame  uint64
+	timing engine.FrameTiming
+	start  time.Time
+	last   time.Time
+
+	cursor       uintptr
+	cursorHidden bool
+	pendingHigh  uint16
+}
+
+type win32WNDCLASSEX struct {
+	Size       uint32
+	Style      uint32
+	WndProc    uintptr
+	ClsExtra   int32
+	WndExtra   int32
+	Instance   uintptr
+	Icon       uintptr
+	Cursor     uintptr
+	Background uintptr
+	MenuName   *uint16
+	ClassName  *uint16
+	IconSm     uintptr
+}
+
+type win32Point struct{ X, Y int32 }
+
+type win32Message struct {
+	Window  uintptr
+	Message uint32
+	WParam  uintptr
+	LParam  uintptr
+	Time    uint32
+	Point   win32Point
+}
+
+type win32Rect struct{ Left, Top, Right, Bottom int32 }
+
+func newWin32Host(config engine.Config) (*win32Host, error) {
+	if math.IsNaN(config.Viewport.W) || math.IsInf(config.Viewport.W, 0) || math.IsNaN(config.Viewport.H) || math.IsInf(config.Viewport.H, 0) || config.Viewport.W <= 0 || config.Viewport.H <= 0 || config.WindowScale <= 0 {
+		return nil, fmt.Errorf("create Win32 host: configuration has an invalid viewport or window scale")
+	}
+	if err := config.Actions.Validate(); err != nil {
+		return nil, fmt.Errorf("create Win32 host: %w", err)
+	}
+	logicalWidth, logicalHeight := int(config.Viewport.W), int(config.Viewport.H)
+	if float64(logicalWidth) != config.Viewport.W || float64(logicalHeight) != config.Viewport.H {
+		return nil, fmt.Errorf("create Win32 host: viewport dimensions must be integral pixels")
+	}
+	if logicalWidth > win32MaxClientDimension/config.WindowScale || logicalHeight > win32MaxClientDimension/config.WindowScale {
+		return nil, fmt.Errorf("create Win32 host: presentation size is outside the supported range")
+	}
+	if err := registerWin32Class(); err != nil {
+		return nil, err
+	}
+	instance, _, err := win32GetModuleHandleW.Call(0)
+	if instance == 0 {
+		return nil, win32Error("get Win32 module handle", err)
+	}
+	className, err := windows.UTF16PtrFromString(win32ClassName)
+	if err != nil {
+		return nil, fmt.Errorf("encode Win32 class name: %w", err)
+	}
+	title, err := windows.UTF16PtrFromString(config.Title)
+	if err != nil {
+		return nil, fmt.Errorf("encode Win32 title: %w", err)
+	}
+	clientWidth, clientHeight := logicalWidth*config.WindowScale, logicalHeight*config.WindowScale
+	windowRect := win32Rect{Right: int32(clientWidth), Bottom: int32(clientHeight)}
+	if result, _, callErr := win32AdjustWindowRectEx.Call(uintptr(unsafe.Pointer(&windowRect)), win32WSOverlappedWindow, 0, 0); result == 0 {
+		return nil, win32Error("adjust Win32 window rectangle", callErr)
+	}
+	window, _, callErr := win32CreateWindowExW.Call(
+		0, uintptr(unsafe.Pointer(className)), uintptr(unsafe.Pointer(title)), win32WSOverlappedWindow,
+		win32CWUseDefault, win32CWUseDefault, uintptr(windowRect.Right-windowRect.Left), uintptr(windowRect.Bottom-windowRect.Top),
+		0, 0, instance, 0,
+	)
+	if window == 0 {
+		return nil, win32Error("create Win32 window", callErr)
+	}
+	now := time.Now()
+	host := &win32Host{
+		config: config, window: window,
+		state: engine.WindowState{Title: config.Title, LogicalSize: config.Viewport, Focused: true, Visible: true},
+		start: now, last: now,
+	}
+	arrow, _, arrowErr := win32LoadCursorW.Call(0, win32IDCArrow)
+	if arrow == 0 {
+		host.close()
+		return nil, win32Error("load Win32 arrow cursor", arrowErr)
+	}
+	host.cursor = arrow
+	registerWin32Host(host)
+
+	if _, _, callErr = win32ShowWindow.Call(window, win32SWShow); callErr != nil && callErr != windows.ERROR_SUCCESS {
+		host.close()
+		return nil, win32Error("show Win32 window", callErr)
+	}
+	if result, _, callErr := win32UpdateWindow.Call(window); result == 0 {
+		host.close()
+		return nil, win32Error("update Win32 window", callErr)
+	}
+	if err := host.refreshDrawable(); err != nil {
+		host.close()
+		return nil, err
+	}
+	host.events = nil
+	renderer, err := webgpu.NewWin32(window, int(host.state.DrawableSize.W), int(host.state.DrawableSize.H))
+	if err != nil {
+		host.close()
+		return nil, fmt.Errorf("create Win32 WebGPU renderer: %w", err)
+	}
+	host.renderer = renderer
+	if err := renderer.SetLogicalSize(logicalWidth, logicalHeight); err != nil {
+		host.close()
+		return nil, err
+	}
+	return host, nil
+}
+
+func registerWin32Class() error {
+	win32ClassOnce.Do(func() {
+		instance, _, err := win32GetModuleHandleW.Call(0)
+		if instance == 0 {
+			win32ClassErr = win32Error("get Win32 module handle", err)
+			return
+		}
+		className, err := windows.UTF16PtrFromString(win32ClassName)
+		if err != nil {
+			win32ClassErr = fmt.Errorf("encode Win32 class name: %w", err)
+			return
+		}
+		cursor, _, cursorErr := win32LoadCursorW.Call(0, win32IDCArrow)
+		if cursor == 0 {
+			win32ClassErr = win32Error("load Win32 arrow cursor", cursorErr)
+			return
+		}
+		class := win32WNDCLASSEX{
+			Size: uint32(unsafe.Sizeof(win32WNDCLASSEX{})), Style: win32CSOwnDC,
+			WndProc: windows.NewCallback(win32WindowProc), Instance: instance, Cursor: cursor, ClassName: className,
+		}
+		atom, _, registerErr := win32RegisterClassExW.Call(uintptr(unsafe.Pointer(&class)))
+		if atom == 0 && registerErr != windows.ERROR_CLASS_ALREADY_EXISTS {
+			win32ClassErr = win32Error("register Win32 window class", registerErr)
+		}
+	})
+	return win32ClassErr
+}
+
+func (h *win32Host) Context() engine.HostContext {
+	return engine.HostContext{Window: h, Clock: h, Events: h}
+}
+
+func (h *win32Host) Run(appRuntime *engine.Runtime) error {
+	if appRuntime == nil {
+		return fmt.Errorf("run Win32 host: runtime must not be nil")
+	}
+	next := time.Now()
+	for !h.state.CloseRequested {
+		if err := h.pollNative(); err != nil {
+			return err
+		}
+		if h.state.CloseRequested {
+			break
+		}
+		if err := h.refreshDrawable(); err != nil {
+			return err
+		}
+		if !h.state.Visible {
+			now := time.Now()
+			h.last, next = now, now
+			time.Sleep(time.Second / 60)
+			continue
+		}
+		now := h.Now()
+		h.frame++
+		h.timing = engine.FrameTiming{Frame: h.frame, Elapsed: now.Sub(h.start), Delta: now.Sub(h.last)}
+		h.last = now
+		if err := appRuntime.Update(appRuntime.SampleInput(h.PollEvents())); err != nil {
+			return err
+		}
+		if err := appRuntime.Draw(h.renderer); err != nil {
+			return err
+		}
+		next = next.Add(time.Second / 60)
+		if delay := time.Until(next); delay > 0 {
+			time.Sleep(delay)
+		} else {
+			next = time.Now()
+		}
+	}
+	return nil
+}
+
+func (h *win32Host) State() engine.WindowState { return h.state }
+
+func (h *win32Host) SetTitle(value string) error {
+	title, err := windows.UTF16PtrFromString(value)
+	if err != nil {
+		return fmt.Errorf("set Win32 title: %w", err)
+	}
+	if result, _, callErr := win32SetWindowTextW.Call(h.window, uintptr(unsafe.Pointer(title))); result == 0 {
+		return win32Error("set Win32 window title", callErr)
+	}
+	h.state.Title = value
+	return nil
+}
+
+func (h *win32Host) SetCursor(cursor engine.Cursor) error {
+	if cursor == engine.CursorHidden {
+		if !h.cursorHidden {
+			win32ShowCursor.Call(0)
+			h.cursorHidden = true
+		}
+		return nil
+	}
+	if h.cursorHidden {
+		win32ShowCursor.Call(1)
+		h.cursorHidden = false
+	}
+	identifier, ok := win32CursorID(cursor)
+	if !ok {
+		return fmt.Errorf("set Win32 cursor: unsupported cursor %d", cursor)
+	}
+	value, _, callErr := win32LoadCursorW.Call(0, identifier)
+	if value == 0 {
+		return win32Error("load Win32 cursor", callErr)
+	}
+	h.cursor = value
+	win32SetCursor.Call(value)
+	return nil
+}
+
+func (h *win32Host) ReadClipboard() (string, error) {
+	if result, _, callErr := win32OpenClipboard.Call(h.window); result == 0 {
+		return "", win32Error("open Win32 clipboard", callErr)
+	}
+	defer win32CloseClipboard.Call()
+	handle, _, callErr := win32GetClipboardData.Call(win32CFUnicodeText)
+	if handle == 0 {
+		if callErr != nil && callErr != windows.ERROR_SUCCESS {
+			return "", win32Error("read Win32 clipboard", callErr)
+		}
+		return "", fmt.Errorf("read Win32 clipboard: Unicode text is unavailable")
+	}
+	size, _, callErr := win32GlobalSize.Call(handle)
+	if size == 0 {
+		return "", win32Error("measure Win32 clipboard text", callErr)
+	}
+	if size%2 != 0 || size/2 > uintptr(maxInt()) {
+		return "", fmt.Errorf("read Win32 clipboard: Unicode text has an invalid size")
+	}
+	memory, _, callErr := win32GlobalLock.Call(handle)
+	if memory == 0 {
+		return "", win32Error("lock Win32 clipboard text", callErr)
+	}
+	defer win32GlobalUnlock.Call(handle)
+	units := make([]uint16, int(size/2))
+	win32RtlMoveMemory.Call(uintptr(unsafe.Pointer(&units[0])), memory, size)
+	runtime.KeepAlive(units)
+	return windows.UTF16ToString(units), nil
+}
+
+func (h *win32Host) WriteClipboard(value string) error {
+	units, err := windows.UTF16FromString(value)
+	if err != nil {
+		return fmt.Errorf("encode Win32 clipboard text: %w", err)
+	}
+	if len(units) == 0 || len(units) > maxInt()/2 {
+		return fmt.Errorf("write Win32 clipboard: Unicode text is too large")
+	}
+	size := uintptr(len(units) * 2)
+	handle, _, callErr := win32GlobalAlloc.Call(win32GMEMMoveable, size)
+	if handle == 0 {
+		return win32Error("allocate Win32 clipboard text", callErr)
+	}
+	ownedByClipboard := false
+	defer func() {
+		if !ownedByClipboard {
+			win32GlobalFree.Call(handle)
+		}
+	}()
+	memory, _, callErr := win32GlobalLock.Call(handle)
+	if memory == 0 {
+		return win32Error("lock Win32 clipboard text", callErr)
+	}
+	win32RtlMoveMemory.Call(memory, uintptr(unsafe.Pointer(&units[0])), size)
+	runtime.KeepAlive(units)
+	win32GlobalUnlock.Call(handle)
+	if result, _, callErr := win32OpenClipboard.Call(h.window); result == 0 {
+		return win32Error("open Win32 clipboard", callErr)
+	}
+	defer win32CloseClipboard.Call()
+	if result, _, callErr := win32EmptyClipboard.Call(); result == 0 {
+		return win32Error("clear Win32 clipboard", callErr)
+	}
+	if result, _, callErr := win32SetClipboardData.Call(win32CFUnicodeText, handle); result == 0 {
+		return win32Error("write Win32 clipboard", callErr)
+	}
+	ownedByClipboard = true
+	return nil
+}
+
+func (h *win32Host) Now() time.Time             { return time.Now() }
+func (h *win32Host) Timing() engine.FrameTiming { return h.timing }
+
+func (h *win32Host) PollEvents() []engine.Event {
+	events := append([]engine.Event(nil), h.events...)
+	h.events = h.events[:0]
+	return events
+}
+
+func (h *win32Host) pollNative() error {
+	for {
+		var message win32Message
+		result, _, callErr := win32PeekMessageW.Call(uintptr(unsafe.Pointer(&message)), 0, 0, 0, win32PMRemove)
+		if result == 0 {
+			if callErr != nil && callErr != windows.ERROR_SUCCESS {
+				return win32Error("poll Win32 events", callErr)
+			}
+			return nil
+		}
+		if message.Message == win32WMQuit {
+			h.requestClose()
+			return nil
+		}
+		win32TranslateMessage.Call(uintptr(unsafe.Pointer(&message)))
+		win32DispatchMessageW.Call(uintptr(unsafe.Pointer(&message)))
+	}
+}
+
+func (h *win32Host) refreshDrawable() error {
+	if h.window == 0 {
+		return fmt.Errorf("refresh Win32 drawable: window is closed")
+	}
+	var client win32Rect
+	if result, _, callErr := win32GetClientRect.Call(h.window, uintptr(unsafe.Pointer(&client))); result == 0 {
+		return win32Error("read Win32 client rectangle", callErr)
+	}
+	width, height := int(client.Right-client.Left), int(client.Bottom-client.Top)
+	if width <= 0 || height <= 0 {
+		h.state.Visible = false
+		if h.state.DrawableSize.W != 0 || h.state.DrawableSize.H != 0 {
+			if h.renderer != nil {
+				if err := h.renderer.Resize(0, 0); err != nil {
+					return fmt.Errorf("suspend Win32 WebGPU surface: %w", err)
+				}
+			}
+			h.state.DrawableSize = engine.Size{}
+			h.events = append(h.events, engine.Event{Kind: engine.EventWindowResized, Window: h.state})
+		}
+		return nil
+	}
+	h.state.Visible = true
+	if width == int(h.state.DrawableSize.W) && height == int(h.state.DrawableSize.H) {
+		return nil
+	}
+	if h.renderer != nil {
+		if err := h.renderer.Resize(width, height); err != nil {
+			return fmt.Errorf("resize Win32 WebGPU surface: %w", err)
+		}
+	}
+	h.state.DrawableSize = engine.Size{W: float64(width), H: float64(height)}
+	h.state.Scale = float64(width) / h.config.Viewport.W
+	h.events = append(h.events, engine.Event{Kind: engine.EventWindowResized, Window: h.state})
+	return nil
+}
+
+func (h *win32Host) requestClose() {
+	if h.state.CloseRequested {
+		return
+	}
+	h.state.CloseRequested = true
+	h.events = append(h.events, engine.Event{Kind: engine.EventCloseRequested, Window: h.state})
+}
+
+func (h *win32Host) setFocus(value bool) {
+	if h.state.Focused == value {
+		return
+	}
+	h.state.Focused = value
+	h.events = append(h.events, engine.Event{Kind: engine.EventFocusChanged, Focused: value})
+}
+
+func (h *win32Host) appendKey(value uintptr, pressed bool) {
+	if key, ok := win32Key(value); ok {
+		h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: pressed})
+	}
+}
+
+func (h *win32Host) appendText(value uint16) {
+	decoded := rune(value)
+	if utf16.IsSurrogate(rune(value)) {
+		if value >= 0xd800 && value <= 0xdbff {
+			h.pendingHigh = value
+			return
+		}
+		if h.pendingHigh == 0 || value < 0xdc00 || value > 0xdfff {
+			h.pendingHigh = 0
+			return
+		}
+		decoded = utf16.DecodeRune(rune(h.pendingHigh), rune(value))
+		h.pendingHigh = 0
+	}
+	if h.pendingHigh != 0 {
+		h.pendingHigh = 0
+	}
+	if decoded >= 0x20 && decoded != 0x7f {
+		h.events = append(h.events, engine.Event{Kind: engine.EventText, Text: string(decoded)})
+	}
+}
+
+func (h *win32Host) appendPointer(message uint32, wparam, lparam uintptr) {
+	position := win32PointFromLParam(lparam)
+	point := h.logicalPointerPosition(position)
+	switch message {
+	case win32WMMouseMove:
+		h.events = append(h.events, engine.Event{Kind: engine.EventPointerMove, Position: point})
+	case win32WMLButtonDown, win32WMLButtonUp:
+		h.events = append(h.events, engine.Event{Kind: engine.EventPointerButton, PointerButton: engine.PointerPrimary, Pressed: message == win32WMLButtonDown, Position: point})
+	case win32WMRButtonDown, win32WMRButtonUp:
+		h.events = append(h.events, engine.Event{Kind: engine.EventPointerButton, PointerButton: engine.PointerSecondary, Pressed: message == win32WMRButtonDown, Position: point})
+	case win32WMMButtonDown, win32WMMButtonUp:
+		h.events = append(h.events, engine.Event{Kind: engine.EventPointerButton, PointerButton: engine.PointerMiddle, Pressed: message == win32WMMButtonDown, Position: point})
+	case win32WMMouseWheel:
+		delta := float64(int16(wparam>>16)) / win32WheelDelta
+		if delta != 0 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventPointerWheel, Scroll: engine.Vec2{Y: delta}})
+		}
+	}
+}
+
+func (h *win32Host) logicalPointerPosition(position win32Point) engine.Vec2 {
+	width, height := h.state.DrawableSize.W, h.state.DrawableSize.H
+	if width <= 0 || height <= 0 {
+		return engine.Vec2{}
+	}
+	return engine.Vec2{
+		X: float64(position.X) * h.config.Viewport.W / width,
+		Y: float64(position.Y) * h.config.Viewport.H / height,
+	}
+}
+
+func (h *win32Host) close() {
+	if h == nil {
+		return
+	}
+	if h.renderer != nil {
+		h.renderer.Close()
+		h.renderer = nil
+	}
+	if h.cursorHidden {
+		win32ShowCursor.Call(1)
+		h.cursorHidden = false
+	}
+	if h.window != 0 {
+		unregisterWin32Host(h.window)
+		win32DestroyWindow.Call(h.window)
+		h.window = 0
+	}
+}
+
+func win32WindowProc(window uintptr, message uint32, wparam, lparam uintptr) uintptr {
+	host := lookupWin32Host(window)
+	if host == nil {
+		result, _, _ := win32DefWindowProcW.Call(window, uintptr(message), wparam, lparam)
+		return result
+	}
+	switch message {
+	case win32WMClose:
+		host.requestClose()
+		win32DestroyWindow.Call(window)
+		return 0
+	case win32WMDestroy:
+		host.requestClose()
+		host.window = 0
+		unregisterWin32Host(window)
+		return 0
+	case win32WMSetFocus:
+		host.setFocus(true)
+		return 0
+	case win32WMKillFocus:
+		host.pendingHigh = 0
+		host.setFocus(false)
+		return 0
+	case win32WMSize:
+		host.state.Visible = wparam != win32SizeMinimized
+		return 0
+	case win32WMShowWindow:
+		host.state.Visible = wparam != 0
+		return 0
+	case win32WMDPIChanged:
+		if err := host.resizeForDPI(uint16(wparam)); err != nil {
+			host.requestClose()
+		}
+		return 0
+	case win32WMSetCursor:
+		if uint16(lparam) == win32HTClient && host.cursorHidden {
+			return 1
+		}
+		if uint16(lparam) == win32HTClient && host.cursor != 0 {
+			win32SetCursor.Call(host.cursor)
+			return 1
+		}
+	case win32WMKeyDown, win32WMSysKeyDown:
+		host.appendKey(wparam, true)
+		return 0
+	case win32WMKeyUp, win32WMSysKeyUp:
+		host.appendKey(wparam, false)
+		return 0
+	case win32WMChar:
+		host.appendText(uint16(wparam))
+		return 0
+	case win32WMMouseMove, win32WMLButtonDown, win32WMLButtonUp, win32WMRButtonDown, win32WMRButtonUp, win32WMMButtonDown, win32WMMButtonUp, win32WMMouseWheel:
+		host.appendPointer(message, wparam, lparam)
+		return 0
+	}
+	result, _, _ := win32DefWindowProcW.Call(window, uintptr(message), wparam, lparam)
+	return result
+}
+
+func (h *win32Host) resizeForDPI(dpi uint16) error {
+	if dpi == 0 {
+		return nil
+	}
+	clientWidth := int(math.Round(h.config.Viewport.W * float64(h.config.WindowScale) * float64(dpi) / 96))
+	clientHeight := int(math.Round(h.config.Viewport.H * float64(h.config.WindowScale) * float64(dpi) / 96))
+	if clientWidth <= 0 || clientHeight <= 0 {
+		return fmt.Errorf("resize Win32 window for DPI: scaled client size is invalid")
+	}
+	windowRect := win32Rect{Right: int32(clientWidth), Bottom: int32(clientHeight)}
+	if result, _, callErr := win32AdjustWindowRectEx.Call(uintptr(unsafe.Pointer(&windowRect)), win32WSOverlappedWindow, 0, 0); result == 0 {
+		return win32Error("adjust Win32 DPI window rectangle", callErr)
+	}
+	if result, _, callErr := win32SetWindowPos.Call(h.window, 0, 0, 0, uintptr(windowRect.Right-windowRect.Left), uintptr(windowRect.Bottom-windowRect.Top), win32SWPNoMove|win32SWPNoZOrder|win32SWPNoActivate); result == 0 {
+		return win32Error("apply Win32 DPI window rectangle", callErr)
+	}
+	return nil
+}
+
+func registerWin32Host(host *win32Host) {
+	win32HostsMu.Lock()
+	win32Hosts[host.window] = host
+	win32HostsMu.Unlock()
+}
+
+func unregisterWin32Host(window uintptr) {
+	win32HostsMu.Lock()
+	delete(win32Hosts, window)
+	win32HostsMu.Unlock()
+}
+
+func lookupWin32Host(window uintptr) *win32Host {
+	win32HostsMu.RLock()
+	host := win32Hosts[window]
+	win32HostsMu.RUnlock()
+	return host
+}
+
+func win32Key(value uintptr) (engine.Key, bool) {
+	switch value {
+	case 0x41:
+		return engine.KeyA, true
+	case 0x44:
+		return engine.KeyD, true
+	case 0x45:
+		return engine.KeyE, true
+	case 0x4a:
+		return engine.KeyJ, true
+	case 0x50:
+		return engine.KeyP, true
+	case 0x53:
+		return engine.KeyS, true
+	case 0x57:
+		return engine.KeyW, true
+	case 0x20:
+		return engine.KeySpace, true
+	case 0x10:
+		return engine.KeyShift, true
+	case 0x0d:
+		return engine.KeyEnter, true
+	case 0xbe:
+		return engine.KeyPeriod, true
+	case 0x09:
+		return engine.KeyTab, true
+	case 0x28:
+		return engine.KeyArrowDown, true
+	case 0x25:
+		return engine.KeyArrowLeft, true
+	case 0x27:
+		return engine.KeyArrowRight, true
+	case 0x26:
+		return engine.KeyArrowUp, true
+	case 0x70:
+		return engine.KeyF1, true
+	case 0x71:
+		return engine.KeyF2, true
+	case 0x75:
+		return engine.KeyF6, true
+	default:
+		return "", false
+	}
+}
+
+func win32CursorID(cursor engine.Cursor) (uintptr, bool) {
+	switch cursor {
+	case engine.CursorDefault:
+		return win32IDCArrow, true
+	case engine.CursorPointer:
+		return win32IDCHand, true
+	case engine.CursorText:
+		return win32IDCText, true
+	case engine.CursorCrosshair:
+		return win32IDCCross, true
+	default:
+		return 0, false
+	}
+}
+
+func win32PointFromLParam(value uintptr) win32Point {
+	return win32Point{X: int32(int16(value)), Y: int32(int16(value >> 16))}
+}
+
+func win32Error(operation string, err error) error {
+	if err == nil || err == windows.ERROR_SUCCESS {
+		return fmt.Errorf("%s: Win32 call failed", operation)
+	}
+	return fmt.Errorf("%s: %w", operation, err)
+}
+
+func maxInt() int { return int(^uint(0) >> 1) }

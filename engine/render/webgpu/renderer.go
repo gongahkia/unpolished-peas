@@ -27,6 +27,7 @@ const (
 	vertexStride         = 32
 	spriteInstanceStride = 64
 	defaultFontSize      = 13
+	maxSurfaceDimension  = uint64(^uint32(0))
 )
 
 // Renderer translates complete engine command frames into binding-private
@@ -117,8 +118,8 @@ func newRendererWithOptions(instance *wgpu.Instance, surface *wgpu.Surface, widt
 	if instance == nil || surface == nil {
 		return nil, fmt.Errorf("initialize WebGPU renderer: instance and surface must not be nil")
 	}
-	if width <= 0 || height <= 0 {
-		return nil, fmt.Errorf("initialize WebGPU renderer: surface size must be positive, got %dx%d", width, height)
+	if err := validateSurfaceSize(width, height, false); err != nil {
+		return nil, fmt.Errorf("initialize WebGPU renderer: %w", err)
 	}
 	r := &Renderer{
 		instance:             instance,
@@ -261,8 +262,8 @@ func (r *Renderer) Resize(width, height int) error {
 	if r == nil || r.closed {
 		return fmt.Errorf("resize WebGPU surface: renderer is closed")
 	}
-	if width < 0 || height < 0 {
-		return fmt.Errorf("resize WebGPU surface: dimensions must not be negative")
+	if err := validateSurfaceSize(width, height, true); err != nil {
+		return fmt.Errorf("resize WebGPU surface: %w", err)
 	}
 	r.width, r.height = width, height
 	if width == 0 || height == 0 {
@@ -275,6 +276,19 @@ func (r *Renderer) Resize(width, height int) error {
 		AlphaMode: gputypes.CompositeAlphaModeOpaque,
 	}); err != nil {
 		return fmt.Errorf("configure WebGPU surface %dx%d: %w", width, height, err)
+	}
+	return nil
+}
+
+func validateSurfaceSize(width, height int, allowZero bool) error {
+	if width < 0 || height < 0 {
+		return fmt.Errorf("dimensions must not be negative")
+	}
+	if !allowZero && (width == 0 || height == 0) {
+		return fmt.Errorf("dimensions must be positive, got %dx%d", width, height)
+	}
+	if uint64(width) > maxSurfaceDimension || uint64(height) > maxSurfaceDimension {
+		return fmt.Errorf("dimensions exceed WebGPU's uint32 surface extent")
 	}
 	return nil
 }
