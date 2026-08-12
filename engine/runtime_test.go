@@ -3,6 +3,7 @@ package engine
 import (
 	"errors"
 	"fmt"
+	"math"
 	"testing"
 	"time"
 
@@ -84,6 +85,13 @@ func TestRuntimeRejectsNilRenderBackend(t *testing.T) {
 	}
 	if err := runtime.Draw(nil); err == nil {
 		t.Fatal("nil render backend succeeded")
+	}
+}
+
+func TestRuntimeRejectsNonFiniteViewport(t *testing.T) {
+	_, err := NewRuntime(Config{Viewport: Size{W: math.NaN(), H: 180}, WindowScale: 1}, &testApplication{})
+	if err == nil {
+		t.Fatal("non-finite viewport succeeded")
 	}
 }
 

@@ -22,6 +22,7 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 | `engine/physics` | deterministic AABB 2D bodies, contacts, and queries |
 | `engine/ui` | retained layout, focus, and pointer hit testing |
 | `engine/render` | backend-neutral high-level 2D commands and portable texture sources |
+| `engine/platform` | engine-owned Linux X11 and browser canvas hosts |
 | `engine/diagnostics` | counters and duration summaries |
 
 ## Documentation
@@ -37,6 +38,7 @@ Start with the engine documentation, not the example source:
 - [performance baseline and GPU-validation process](docs/PERFORMANCE.md)
 - [platform build and runtime evidence matrix](docs/SUPPORT.md)
 - [v0.1 release dry-run and evidence requirements](docs/RELEASING.md)
+- [current product and engineering readiness audit](docs/READINESS.md)
 - [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
 - [WebGPU dependency decision](docs/adr/0002-webgpu-dependency-decision.md)
@@ -68,11 +70,12 @@ resources, batching, render passes, shader validation, and presentation, and
 does not expose graphics-binding handles to game code. [ADR 0003](docs/adr/0003-engine-owned-webgpu-renderer.md)
 records the dependency and ownership decision.
 
-The Linux X11 path has a local creation and five-second example smoke result.
-The browser path has a local Chromium render/input/resize result. Windows,
-macOS, and browser support beyond that one local Chromium environment remain
-unverified; their source targets distinguish buildability from runtime support.
-There is no Canvas or WebGL fallback when WebGPU is unavailable.
+The Linux X11 path has local creation, deterministic software-WebGPU image,
+and five-second example smoke results. The browser path has a local Chromium
+render/input/resize result and a bundle-load smoke test. Windows, macOS, and
+browser support beyond that one local Chromium environment remain unverified;
+their source targets distinguish buildability from runtime support. There is no
+Canvas or WebGL fallback when WebGPU is unavailable.
 
 Visual editor tooling, scripting, 3D rendering, mobile/consoles, networking,
 navigation, and advanced animation are intentionally outside the current

@@ -37,11 +37,18 @@ type browserHost struct {
 	frame  uint64
 	timing engine.FrameTiming
 
-	callbacks []js.Func
+	listeners []browserListener
 	raf       js.Func
 	rafReady  bool
 	runtime   *engine.Runtime
+	done      chan error
 	stopped   bool
+}
+
+type browserListener struct {
+	target   js.Value
+	name     string
+	callback js.Func
 }
 
 func newBrowserHost(config engine.Config) (*browserHost, error) {
@@ -68,7 +75,8 @@ func newBrowserHost(config engine.Config) (*browserHost, error) {
 	}
 	cssWidth, cssHeight := logicalWidth*config.WindowScale, logicalHeight*config.WindowScale
 	canvas.Get("style").Set("width", fmt.Sprintf("%dpx", cssWidth))
-	canvas.Get("style").Set("height", fmt.Sprintf("%dpx", cssHeight))
+	canvas.Get("style").Set("height", "auto")
+	canvas.Get("style").Set("maxWidth", "100%")
 	dpr := devicePixelRatio(window)
 	physicalWidth, physicalHeight := scaledCanvasSize(cssWidth, cssHeight, dpr)
 	canvas.Set("width", physicalWidth)
@@ -85,6 +93,7 @@ func newBrowserHost(config engine.Config) (*browserHost, error) {
 	host := &browserHost{
 		config: config, document: document, window: window, canvas: canvas, renderer: renderer, start: now, last: now,
 		state: engine.WindowState{Title: config.Title, LogicalSize: engine.Size{W: config.Viewport.W, H: config.Viewport.H}, DrawableSize: engine.Size{W: float64(physicalWidth), H: float64(physicalHeight)}, Scale: float64(config.WindowScale) * dpr, Focused: true, Visible: true},
+		done:  make(chan error, 1),
 	}
 	host.listen()
 	return host, nil
@@ -95,6 +104,12 @@ func (h *browserHost) Context() engine.HostContext {
 }
 
 func (h *browserHost) Run(runtime *engine.Runtime) error {
+	if runtime == nil {
+		return fmt.Errorf("run browser host: runtime must not be nil")
+	}
+	if h.runtime != nil {
+		return fmt.Errorf("run browser host: host is already running")
+	}
 	h.runtime = runtime
 	h.raf = js.FuncOf(func(_ js.Value, _ []js.Value) any {
 		h.drawFrame()
@@ -106,7 +121,8 @@ func (h *browserHost) Run(runtime *engine.Runtime) error {
 	h.rafReady = true
 	h.window.Call("requestAnimationFrame", h.raf)
 	// A Go wasm program must keep its main goroutine live for JS callbacks.
-	select {}
+	// stop reports an application or renderer failure through this channel.
+	return <-h.done
 }
 
 func (h *browserHost) drawFrame() {
@@ -131,16 +147,23 @@ func (h *browserHost) stop(err error) {
 		return
 	}
 	h.stopped = true
-	js.Global().Get("console").Call("error", "72 browser host stopped: "+err.Error())
-	h.renderer.Close()
-	for _, callback := range h.callbacks {
-		callback.Release()
+	if err != nil {
+		js.Global().Get("console").Call("error", "72 browser host stopped: "+err.Error())
 	}
-	h.callbacks = nil
+	if h.renderer != nil {
+		h.renderer.Close()
+		h.renderer = nil
+	}
+	for _, listener := range h.listeners {
+		listener.target.Call("removeEventListener", listener.name, listener.callback)
+		listener.callback.Release()
+	}
+	h.listeners = nil
 	if h.rafReady {
 		h.raf.Release()
 		h.rafReady = false
 	}
+	h.done <- err
 }
 
 func (h *browserHost) State() engine.WindowState { return h.state }
@@ -226,8 +249,8 @@ func (h *browserHost) listen() {
 	})
 	h.listenTo(h.canvas, "wheel", func(event js.Value) {
 		event.Call("preventDefault")
-		scale := h.cssScale()
-		h.events = append(h.events, engine.Event{Kind: engine.EventPointerWheel, Scroll: engine.Vec2{X: event.Get("deltaX").Float() / scale, Y: -event.Get("deltaY").Float() / scale}})
+		scaleX, scaleY := h.cssScales()
+		h.events = append(h.events, engine.Event{Kind: engine.EventPointerWheel, Scroll: engine.Vec2{X: event.Get("deltaX").Float() / scaleX, Y: -event.Get("deltaY").Float() / scaleY}})
 	})
 	h.listenTo(h.window, "resize", func(js.Value) { h.resizeCanvas() })
 	h.listenTo(h.window, "focus", func(js.Value) { h.setFocus(true) })
@@ -243,7 +266,7 @@ func (h *browserHost) listen() {
 
 func (h *browserHost) listenTo(target js.Value, name string, fn func(js.Value)) {
 	callback := js.FuncOf(func(_ js.Value, args []js.Value) any { fn(args[0]); return nil })
-	h.callbacks = append(h.callbacks, callback)
+	h.listeners = append(h.listeners, browserListener{target: target, name: name, callback: callback})
 	target.Call("addEventListener", name, callback)
 }
 
@@ -277,16 +300,19 @@ func (h *browserHost) setFocus(value bool) {
 }
 
 func (h *browserHost) pointerPosition(event js.Value) engine.Vec2 {
-	scale := h.cssScale()
-	return engine.Vec2{X: event.Get("offsetX").Float() / scale, Y: event.Get("offsetY").Float() / scale}
+	scaleX, scaleY := h.cssScales()
+	bounds := h.canvas.Call("getBoundingClientRect")
+	return engine.Vec2{X: (event.Get("clientX").Float() - bounds.Get("left").Float()) / scaleX, Y: (event.Get("clientY").Float() - bounds.Get("top").Float()) / scaleY}
 }
 
-func (h *browserHost) cssScale() float64 {
-	width := h.canvas.Call("getBoundingClientRect").Get("width").Float()
-	if width <= 0 {
-		return float64(h.config.WindowScale)
+func (h *browserHost) cssScales() (float64, float64) {
+	bounds := h.canvas.Call("getBoundingClientRect")
+	width, height := bounds.Get("width").Float(), bounds.Get("height").Float()
+	if width <= 0 || height <= 0 {
+		scale := float64(h.config.WindowScale)
+		return scale, scale
 	}
-	return width / h.config.Viewport.W
+	return width / h.config.Viewport.W, height / h.config.Viewport.H
 }
 
 func devicePixelRatio(window js.Value) float64 {

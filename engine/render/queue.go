@@ -246,11 +246,17 @@ func (q *Queue) DrawSprite(layer int, space Space, sprite Sprite) error {
 	if sprite.Texture.ID == 0 {
 		return fmt.Errorf("sprite texture must not be zero")
 	}
-	if sprite.Bounds.W <= 0 || sprite.Bounds.H <= 0 {
-		return fmt.Errorf("sprite bounds must be positive")
+	if !finiteRect(sprite.Bounds) || sprite.Bounds.W <= 0 || sprite.Bounds.H <= 0 {
+		return fmt.Errorf("sprite bounds must be finite and positive")
+	}
+	if !finiteRect(sprite.Source) || sprite.Source.X < 0 || sprite.Source.Y < 0 || (sprite.Source.W == 0) != (sprite.Source.H == 0) || (sprite.Source.W != 0 && (sprite.Source.W < 0 || sprite.Source.H < 0)) {
+		return fmt.Errorf("sprite source must be finite, non-negative, and either empty or positive")
 	}
 	if !validSpriteTransform(sprite.Transform) {
 		return fmt.Errorf("sprite transform must contain finite origin, scale, and rotation")
+	}
+	if !validMaterial(sprite.Material) {
+		return fmt.Errorf("sprite material parameters must be finite")
 	}
 	return q.append(Command{Kind: SpriteCommand, Layer: layer, Space: space, Payload: sprite})
 }
@@ -261,6 +267,15 @@ func validSpriteTransform(transform SpriteTransform) bool {
 
 func finiteSpriteValue(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
 
+func validMaterial(material Material) bool {
+	for _, value := range material.Parameters {
+		if !finite(value) {
+			return false
+		}
+	}
+	return true
+}
+
 // DrawTileMap records a tile-map batch.
 func (q *Queue) DrawTileMap(layer int, space Space, tiles TileMap) error {
 	if err := validateTileMap(tiles); err != nil {
@@ -270,11 +285,14 @@ func (q *Queue) DrawTileMap(layer int, space Space, tiles TileMap) error {
 }
 
 func validateTileMap(tiles TileMap) error {
-	if tiles.Texture.ID == 0 || !finiteVec(tiles.Atlas) || !finiteVec(tiles.TileSize) || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Columns <= 0 {
+	if tiles.Texture.ID == 0 || !finiteRect(tiles.Bounds) || !finiteVec(tiles.Atlas) || !finiteVec(tiles.TileSize) || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Columns <= 0 {
 		return fmt.Errorf("tile map requires texture, finite atlas, positive tile size, and columns")
 	}
 	if len(tiles.Tiles) == 0 {
 		return fmt.Errorf("tile map must contain tiles")
+	}
+	if tiles.Columns > len(tiles.Tiles) {
+		return fmt.Errorf("tile map columns %d exceed tile count %d", tiles.Columns, len(tiles.Tiles))
 	}
 	sourceColumnsValue, sourceRowsValue := tiles.Atlas.X/tiles.TileSize.X, tiles.Atlas.Y/tiles.TileSize.Y
 	if sourceColumnsValue > float64(maxInt()) || sourceRowsValue > float64(maxInt()) {
@@ -298,40 +316,40 @@ func validateTileMap(tiles TileMap) error {
 
 // FillRect records a filled rectangle.
 func (q *Queue) FillRect(layer int, space Space, draw RectDraw) error {
-	if draw.Bounds.W <= 0 || draw.Bounds.H <= 0 {
-		return fmt.Errorf("rectangle bounds must be positive")
+	if !finiteRect(draw.Bounds) || draw.Bounds.W <= 0 || draw.Bounds.H <= 0 {
+		return fmt.Errorf("rectangle bounds must be finite and positive")
 	}
 	return q.append(Command{Kind: FillRect, Layer: layer, Space: space, Payload: draw})
 }
 
 // StrokeRect records a stroked rectangle.
 func (q *Queue) StrokeRect(layer int, space Space, draw RectDraw) error {
-	if draw.Bounds.W <= 0 || draw.Bounds.H <= 0 || draw.Width <= 0 {
-		return fmt.Errorf("stroked rectangle bounds and width must be positive")
+	if !finiteRect(draw.Bounds) || !finite(draw.Width) || draw.Bounds.W <= 0 || draw.Bounds.H <= 0 || draw.Width <= 0 {
+		return fmt.Errorf("stroked rectangle bounds and width must be finite and positive")
 	}
 	return q.append(Command{Kind: StrokeRect, Layer: layer, Space: space, Payload: draw})
 }
 
 // FillCircle records a filled circle.
 func (q *Queue) FillCircle(layer int, space Space, draw CircleDraw) error {
-	if draw.Radius <= 0 {
-		return fmt.Errorf("circle radius must be positive")
+	if !finiteVec(draw.Center) || !finite(draw.Radius) || draw.Radius <= 0 {
+		return fmt.Errorf("circle center and radius must be finite and positive")
 	}
 	return q.append(Command{Kind: FillCircle, Layer: layer, Space: space, Payload: draw})
 }
 
 // StrokeCircle records a stroked circle.
 func (q *Queue) StrokeCircle(layer int, space Space, draw CircleDraw) error {
-	if draw.Radius <= 0 || draw.Width <= 0 {
-		return fmt.Errorf("stroked circle radius and width must be positive")
+	if !finiteVec(draw.Center) || !finite(draw.Radius) || !finite(draw.Width) || draw.Radius <= 0 || draw.Width <= 0 {
+		return fmt.Errorf("stroked circle center, radius, and width must be finite and positive")
 	}
 	return q.append(Command{Kind: StrokeCircle, Layer: layer, Space: space, Payload: draw})
 }
 
 // StrokeLine records a line.
 func (q *Queue) StrokeLine(layer int, space Space, draw LineDraw) error {
-	if draw.Width <= 0 {
-		return fmt.Errorf("line width must be positive")
+	if !finiteVec(draw.Start) || !finiteVec(draw.End) || !finite(draw.Width) || draw.Width <= 0 {
+		return fmt.Errorf("line endpoints and width must be finite and positive")
 	}
 	return q.append(Command{Kind: StrokeLine, Layer: layer, Space: space, Payload: draw})
 }
@@ -340,6 +358,9 @@ func (q *Queue) StrokeLine(layer int, space Space, draw LineDraw) error {
 func (q *Queue) DrawText(layer int, space Space, draw TextDraw) error {
 	if draw.Value == "" {
 		return fmt.Errorf("text value must not be empty")
+	}
+	if !finiteVec(draw.Position) {
+		return fmt.Errorf("text position must be finite")
 	}
 	return q.append(Command{Kind: Text, Layer: layer, Space: space, Payload: draw})
 }

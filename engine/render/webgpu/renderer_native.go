@@ -36,5 +36,5 @@ func NewHeadless(width, height int) (*Renderer, error) {
 		instance.Release()
 		return nil, fmt.Errorf("create WebGPU headless surface: %w", err)
 	}
-	return newRenderer(instance, surface, width, height)
+	return newRendererWithOptions(instance, surface, width, height, wgpu.TextureFormatBGRA8Unorm, true)
 }

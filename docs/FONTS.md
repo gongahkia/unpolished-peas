@@ -31,5 +31,6 @@ page, 256 glyphs, 13-point text, and `?` as the fallback rune.
 If a requested rune is absent, the atlas attempts its configured fallback and
 marks the returned `render.Glyph` as `Fallback`. If that glyph is also absent,
 or the cache is full, text rendering returns an error. Complex shaping,
-bidirectional layout, line wrapping, font fallback chains, and GPU atlas
-resource recreation are outside this implementation.
+bidirectional layout, line wrapping, and font fallback chains are outside this
+implementation. The WebGPU renderer drops and lazily reuploads atlas pages
+from their portable source after device recreation.

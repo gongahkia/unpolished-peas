@@ -57,8 +57,9 @@ optional `Tree.SetTextAtlas` attachment forwards an engine-owned
 basic-font compatibility path. The tree validates finite geometry and clips
 every node's visuals and descendants
 to its bounds through the nested screen-space command clip contract; its hit
-tests use the same ancestor boundary. Render targets and a production GPU
-text/render path remain unimplemented.
+tests use the same ancestor boundary. It uses the engine's general WebGPU text
+and primitive path, but does not provide complex text shaping, widgets, theme
+assets, animation, accessibility, or editor tooling.
 
 ## Runnable sample
 

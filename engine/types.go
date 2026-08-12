@@ -1,7 +1,10 @@
 // Package engine provides a backend-neutral 2D application runtime.
 package engine
 
-import "fmt"
+import (
+	"fmt"
+	"math"
+)
 
 // Vec2 is a logical two-dimensional position.
 type Vec2 struct {
@@ -69,11 +72,15 @@ type Config struct {
 }
 
 func (c Config) validate() error {
-	if c.Viewport.W <= 0 || c.Viewport.H <= 0 {
-		return fmt.Errorf("viewport must be positive, got %gx%g", c.Viewport.W, c.Viewport.H)
+	if !finiteSize(c.Viewport) || c.Viewport.W <= 0 || c.Viewport.H <= 0 {
+		return fmt.Errorf("viewport must be finite and positive, got %gx%g", c.Viewport.W, c.Viewport.H)
 	}
 	if c.WindowScale <= 0 {
 		return fmt.Errorf("window scale must be positive, got %d", c.WindowScale)
 	}
 	return c.Actions.Validate()
+}
+
+func finiteSize(value Size) bool {
+	return !math.IsNaN(value.W) && !math.IsInf(value.W, 0) && !math.IsNaN(value.H) && !math.IsInf(value.H, 0)
 }

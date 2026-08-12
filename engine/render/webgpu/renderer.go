@@ -5,6 +5,7 @@
 package webgpu
 
 import (
+	"errors"
 	"fmt"
 	"image"
 	"image/color"
@@ -23,8 +24,9 @@ import (
 )
 
 const (
-	vertexStride    = 32
-	defaultFontSize = 13
+	vertexStride         = 32
+	spriteInstanceStride = 64
+	defaultFontSize      = 13
 )
 
 // Renderer translates complete engine command frames into binding-private
@@ -50,8 +52,9 @@ type Renderer struct {
 	basicGlyphs  map[rune]*textureResource
 	whiteTexture *textureResource
 
-	textureUploads uint64
-	closed         bool
+	textureUploads       uint64
+	forceFallbackAdapter bool
+	closed               bool
 }
 
 type textureResource struct {
@@ -73,49 +76,61 @@ type vertex struct {
 	r, g, b, a float32
 }
 
+// spriteInstanceData packs a transformed quad into five vec4 vertex
+// attributes. The instanced shader expands it into the six triangle-list
+// vertices needed for one sprite.
+type spriteInstanceData struct {
+	points01, points23 [4]float32
+	texcoords          [4]float32
+	tint               [4]float32
+}
+
+type batchKind uint8
+
+const (
+	vertexBatch batchKind = iota
+	spriteInstanceBatch
+)
+
 type batch struct {
-	texture  *textureResource
-	clip     *render.Rect
-	vertices []vertex
+	kind      batchKind
+	texture   *textureResource
+	clip      *render.Rect
+	vertices  []vertex
+	instances []spriteInstanceData
 }
 
 // newRenderer adopts a binding-private surface created by a platform-specific
 // constructor. width and height are physical presentation pixels.
 func newRenderer(instance *wgpu.Instance, surface *wgpu.Surface, width, height int) (*Renderer, error) {
-	return newRendererWithFormat(instance, surface, width, height, wgpu.TextureFormatBGRA8Unorm)
+	return newRendererWithOptions(instance, surface, width, height, wgpu.TextureFormatBGRA8Unorm, false)
 }
 
 func newRendererWithFormat(instance *wgpu.Instance, surface *wgpu.Surface, width, height int, format wgpu.TextureFormat) (*Renderer, error) {
+	return newRendererWithOptions(instance, surface, width, height, format, false)
+}
+
+func newRendererWithOptions(instance *wgpu.Instance, surface *wgpu.Surface, width, height int, format wgpu.TextureFormat, forceFallbackAdapter bool) (*Renderer, error) {
 	if instance == nil || surface == nil {
 		return nil, fmt.Errorf("initialize WebGPU renderer: instance and surface must not be nil")
 	}
 	if width <= 0 || height <= 0 {
 		return nil, fmt.Errorf("initialize WebGPU renderer: surface size must be positive, got %dx%d", width, height)
 	}
-	adapter, err := instance.RequestAdapter(&wgpu.RequestAdapterOptions{CompatibleSurface: surface})
-	if err != nil {
-		return nil, fmt.Errorf("select WebGPU adapter: %w", err)
-	}
-	device, err := adapter.RequestDevice(nil)
-	if err != nil {
-		adapter.Release()
-		return nil, fmt.Errorf("create WebGPU device: %w", err)
-	}
 	r := &Renderer{
-		instance:      instance,
-		surface:       surface,
-		adapter:       adapter,
-		device:        device,
-		format:        format,
-		width:         width,
-		height:        height,
-		logicalWidth:  width,
-		logicalHeight: height,
-		textures:      make(map[uint64]*textureResource),
-		atlasPages:    make(map[atlasPageKey]*textureResource),
-		basicGlyphs:   make(map[rune]*textureResource),
+		instance:             instance,
+		surface:              surface,
+		format:               format,
+		width:                width,
+		height:               height,
+		logicalWidth:         width,
+		logicalHeight:        height,
+		textures:             make(map[uint64]*textureResource),
+		atlasPages:           make(map[atlasPageKey]*textureResource),
+		basicGlyphs:          make(map[rune]*textureResource),
+		forceFallbackAdapter: forceFallbackAdapter,
 	}
-	if err := r.initialize(); err != nil {
+	if err := r.openDevice(); err != nil {
 		r.Close()
 		return nil, err
 	}
@@ -165,6 +180,78 @@ func (r *Renderer) initialize() error {
 	return nil
 }
 
+func (r *Renderer) openDevice() error {
+	adapter, err := r.instance.RequestAdapter(&wgpu.RequestAdapterOptions{CompatibleSurface: r.surface, ForceFallbackAdapter: r.forceFallbackAdapter})
+	if err != nil {
+		return fmt.Errorf("select WebGPU adapter: %w", err)
+	}
+	device, err := adapter.RequestDevice(nil)
+	if err != nil {
+		adapter.Release()
+		return fmt.Errorf("create WebGPU device: %w", err)
+	}
+	r.adapter, r.device = adapter, device
+	if err := r.initialize(); err != nil {
+		r.releaseDeviceResources()
+		return err
+	}
+	return nil
+}
+
+// recreateDevice releases all device-local resources and rebuilds them from
+// binding-private configuration. Regular textures and glyph pages rehydrate
+// lazily from their portable sources on the next submitted frame.
+func (r *Renderer) recreateDevice() error {
+	if r == nil || r.closed {
+		return fmt.Errorf("recreate WebGPU device: renderer is closed")
+	}
+	r.surface.Unconfigure()
+	r.releaseDeviceResources()
+	if err := r.openDevice(); err != nil {
+		return fmt.Errorf("recreate WebGPU device: %w", err)
+	}
+	if r.width == 0 || r.height == 0 {
+		return nil
+	}
+	if err := r.Resize(r.width, r.height); err != nil {
+		return fmt.Errorf("reconfigure WebGPU surface after device recreation: %w", err)
+	}
+	return nil
+}
+
+func (r *Renderer) recoverPresentation(err error) (bool, error) {
+	switch {
+	case errors.Is(err, wgpu.ErrTimeout):
+		return true, nil
+	case errors.Is(err, wgpu.ErrSurfaceOutdated), errors.Is(err, wgpu.ErrSurfaceLost):
+		if resizeErr := r.Resize(r.width, r.height); resizeErr != nil {
+			return true, rendererFailure("reconfigure WebGPU surface", resizeErr, diagnostics.Retry, false)
+		}
+		return true, nil
+	case errors.Is(err, wgpu.ErrDeviceLost):
+		if recreateErr := r.recreateDevice(); recreateErr != nil {
+			return true, rendererFailure("recreate WebGPU device", recreateErr, diagnostics.Restart, true)
+		}
+		return true, nil
+	default:
+		return false, nil
+	}
+}
+
+func presentationFault(err error) bool {
+	return errors.Is(err, wgpu.ErrTimeout) || errors.Is(err, wgpu.ErrSurfaceOutdated) || errors.Is(err, wgpu.ErrSurfaceLost) || errors.Is(err, wgpu.ErrDeviceLost)
+}
+
+func presentationFailure(operation string, err error) error {
+	if errors.Is(err, wgpu.ErrOutOfMemory) {
+		return rendererFailure(operation, err, diagnostics.Restart, true)
+	}
+	if errors.Is(err, wgpu.ErrDeviceLost) {
+		return rendererFailure(operation, err, diagnostics.Recreate, false)
+	}
+	return rendererFailure(operation, err, diagnostics.Retry, false)
+}
+
 // Resize configures the private presentation surface. Zero dimensions suspend
 // presentation until a later non-zero resize.
 func (r *Renderer) Resize(width, height int) error {
@@ -199,31 +286,47 @@ func (r *Renderer) Render(frame render.Frame) (err error) {
 	}
 	texture, _, err := r.surface.GetCurrentTexture()
 	if err != nil {
-		return rendererFailure("acquire WebGPU surface frame", err, diagnostics.Retry, false)
+		if handled, recovery := r.recoverPresentation(err); handled {
+			return recovery
+		}
+		return presentationFailure("acquire WebGPU surface frame", err)
 	}
+	discard := true
 	defer func() {
-		if err != nil {
+		if discard {
 			r.surface.DiscardTexture()
 		}
 	}()
 	view, err := texture.CreateView(nil)
 	if err != nil {
-		r.surface.DiscardTexture()
-		return rendererFailure("create WebGPU surface view", err, diagnostics.Retry, false)
+		return presentationFailure("create WebGPU surface view", err)
 	}
 	defer view.Release()
 	if err := r.renderToView(frame, view, r.width, r.height, r.logicalWidth, r.logicalHeight); err != nil {
+		if presentationFault(err) {
+			r.surface.DiscardTexture()
+			discard = false
+			_, recovery := r.recoverPresentation(err)
+			return recovery
+		}
 		return err
 	}
 	if err := r.surface.Present(texture); err != nil {
-		return rendererFailure("present WebGPU surface frame", err, diagnostics.Retry, false)
+		r.surface.DiscardTexture()
+		discard = false
+		if handled, recovery := r.recoverPresentation(err); handled {
+			return recovery
+		}
+		return presentationFailure("present WebGPU surface frame", err)
 	}
+	discard = false
 	return nil
 }
 
 // RenderTo submits a frame to a TextureStore-owned target. Its GPU texture is
-// immediately available to later sprite commands on this renderer. Portable
-// target pixels remain the recovery seed after device recreation.
+// immediately available to later sprite commands on this renderer. The current
+// WebGPU path does not copy native target pixels back to portable storage, so
+// dependent targets must be redrawn after device recreation.
 func (r *Renderer) RenderTo(frame render.Frame, target render.RenderTarget) error {
 	if err := r.available("render WebGPU target"); err != nil {
 		return err
@@ -235,7 +338,13 @@ func (r *Renderer) RenderTo(frame render.Frame, target render.RenderTarget) erro
 	if err != nil {
 		return rendererFailure("render WebGPU target", err, diagnostics.CorrectInput, false)
 	}
-	return r.renderToView(frame, resource.view, resource.width, resource.height, resource.width, resource.height)
+	if err := r.renderToView(frame, resource.view, resource.width, resource.height, resource.width, resource.height); err != nil {
+		if handled, recovery := r.recoverPresentation(err); handled {
+			return recovery
+		}
+		return err
+	}
+	return nil
 }
 
 func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, width, height, logicalWidth, logicalHeight int) (err error) {
@@ -251,7 +360,7 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 	defer func() {
 		metrics.Duration = time.Since(started)
 		metrics.TextureUploads = r.textureUploads - uploads
-		metrics.NativeTextureEntries, metrics.NativeTextureBytes = r.cacheStats()
+		metrics.NativeTextureEntries, metrics.NativeTextureBytes, metrics.NativePipelineEntries = r.cacheStats()
 		metrics.RecordInto(frame.Diagnostics)
 	}()
 	r.pruneResources(frame.Textures)
@@ -318,10 +427,14 @@ func (r *Renderer) renderToView(frame render.Frame, target *wgpu.TextureView, wi
 }
 
 func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width, height, logicalWidth, logicalHeight int) (*wgpu.Buffer, error) {
-	if len(batch.vertices) == 0 {
+	if batch.kind == vertexBatch && len(batch.vertices) == 0 || batch.kind == spriteInstanceBatch && len(batch.instances) == 0 {
 		return nil, nil
 	}
-	pipeline, _, err := r.pipelines.Pipeline(shader.Request{Asset: shader.Sprite2DAsset, Blend: shader.BlendSourceOver, Sampling: shader.SamplingNearest, TargetFormat: r.format.String(), TargetSampleCount: 1})
+	asset := shader.Sprite2DAsset
+	if batch.kind == spriteInstanceBatch {
+		asset = shader.Sprite2DInstancedAsset
+	}
+	pipeline, _, err := r.pipelines.Pipeline(shader.Request{Asset: asset, Blend: shader.BlendSourceOver, Sampling: shader.SamplingNearest, TargetFormat: r.format.String(), TargetSampleCount: 1})
 	if err != nil {
 		return nil, err
 	}
@@ -330,7 +443,12 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 		return nil, rendererFailure("bind WebGPU pipeline", fmt.Errorf("private pipeline cache returned %T", pipeline), diagnostics.Restart, true)
 	}
 	data := encodeVertices(batch.vertices)
-	buffer, err := r.device.CreateBuffer(&wgpu.BufferDescriptor{Label: "72 sprite vertices", Size: uint64(len(data)), Usage: wgpu.BufferUsageVertex | wgpu.BufferUsageCopyDst})
+	label := "72 sprite vertices"
+	if batch.kind == spriteInstanceBatch {
+		data = encodeSpriteInstances(batch.instances)
+		label = "72 sprite instances"
+	}
+	buffer, err := r.device.CreateBuffer(&wgpu.BufferDescriptor{Label: label, Size: uint64(len(data)), Usage: wgpu.BufferUsageVertex | wgpu.BufferUsageCopyDst})
 	if err != nil {
 		return nil, rendererFailure("create WebGPU vertex buffer", err, diagnostics.Restart, true)
 	}
@@ -351,7 +469,11 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 	pass.SetPipeline(native)
 	pass.SetBindGroup(0, batch.texture.bind, nil)
 	pass.SetVertexBuffer(0, buffer, 0)
-	pass.Draw(uint32(len(batch.vertices)), 1, 0, 0)
+	if batch.kind == spriteInstanceBatch {
+		pass.Draw(6, uint32(len(batch.instances)), 0, 0)
+	} else {
+		pass.Draw(uint32(len(batch.vertices)), 1, 0, 0)
+	}
 	return buffer, nil
 }
 
@@ -361,11 +483,21 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 		if len(vertices) == 0 {
 			return
 		}
-		if count := len(result); count > 0 && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
+		if count := len(result); count > 0 && result[count-1].kind == vertexBatch && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
 			result[count-1].vertices = append(result[count-1].vertices, vertices...)
 			return
 		}
-		result = append(result, batch{texture: resource, clip: copyClip(clip), vertices: vertices})
+		result = append(result, batch{kind: vertexBatch, texture: resource, clip: copyClip(clip), vertices: vertices})
+	}
+	appendInstances := func(resource *textureResource, clip *render.Rect, instances []spriteInstanceData) {
+		if len(instances) == 0 {
+			return
+		}
+		if count := len(result); count > 0 && result[count-1].kind == spriteInstanceBatch && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
+			result[count-1].instances = append(result[count-1].instances, instances...)
+			return
+		}
+		result = append(result, batch{kind: spriteInstanceBatch, texture: resource, clip: copyClip(clip), instances: instances})
 	}
 	for _, command := range commands {
 		if command.Kind == render.Clear {
@@ -390,11 +522,11 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU sprite", err, diagnostics.CorrectInput, false)
 			}
-			vertices, err := spriteVertices(sprite, resource.width, resource.height, offset, width, height)
+			instance, err := spriteInstance(sprite, resource.width, resource.height, offset, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU sprite", err, diagnostics.CorrectInput, false)
 			}
-			appendVertices(resource, clipPtr, vertices)
+			appendInstances(resource, clipPtr, []spriteInstanceData{instance})
 		case render.TileMapCommand:
 			tiles, ok := command.Payload.(render.TileMap)
 			if !ok {
@@ -404,11 +536,11 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU tile map", err, diagnostics.CorrectInput, false)
 			}
-			vertices, err := tileVertices(tiles, resource.width, resource.height, offset, width, height)
+			instances, err := tileInstances(tiles, resource.width, resource.height, offset, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU tile map", err, diagnostics.CorrectInput, false)
 			}
-			appendVertices(resource, clipPtr, vertices)
+			appendInstances(resource, clipPtr, instances)
 		case render.FillRect, render.StrokeRect, render.FillCircle, render.StrokeCircle, render.StrokeLine:
 			vertices, err := primitiveVertices(command, offset, width, height)
 			if err != nil {
@@ -425,7 +557,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 				return nil, rendererFailure("translate WebGPU text", err, diagnostics.CorrectInput, false)
 			}
 			for _, textBatch := range textBatches {
-				appendVertices(textBatch.texture, textBatch.clip, textBatch.vertices)
+				appendInstances(textBatch.texture, textBatch.clip, textBatch.instances)
 			}
 		default:
 			return nil, rendererFailure("translate WebGPU frame", fmt.Errorf("unsupported render command %d", command.Kind), diagnostics.CorrectInput, false)
@@ -607,14 +739,14 @@ func (r *Renderer) textBatches(value render.TextDraw, offset render.Vec2, clip *
 			bounds = render.Rect{X: pen + glyph.Offset.X, Y: baseline + glyph.Offset.Y, W: glyph.Source.W, H: glyph.Source.H}
 		}
 		sprite := render.Sprite{Source: source, Bounds: bounds, Tint: value.Color}
-		vertices, err := spriteVertices(sprite, resource.width, resource.height, render.Vec2{}, width, height)
+		instance, err := spriteInstance(sprite, resource.width, resource.height, render.Vec2{}, width, height)
 		if err != nil {
 			return nil, err
 		}
-		if count := len(result); count > 0 && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
-			result[count-1].vertices = append(result[count-1].vertices, vertices...)
+		if count := len(result); count > 0 && result[count-1].kind == spriteInstanceBatch && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
+			result[count-1].instances = append(result[count-1].instances, instance)
 		} else {
-			result = append(result, batch{texture: resource, clip: copyClip(clip), vertices: vertices})
+			result = append(result, batch{kind: spriteInstanceBatch, texture: resource, clip: copyClip(clip), instances: []spriteInstanceData{instance}})
 		}
 		pen += advance
 	}
@@ -634,7 +766,7 @@ func (r *Renderer) pruneResources(store *render.TextureStore) {
 	}
 }
 
-func (r *Renderer) cacheStats() (uint64, uint64) {
+func (r *Renderer) cacheStats() (uint64, uint64, uint64) {
 	var entries, bytes uint64
 	add := func(resource *textureResource) {
 		if resource == nil {
@@ -653,7 +785,11 @@ func (r *Renderer) cacheStats() (uint64, uint64) {
 		add(resource)
 	}
 	add(r.whiteTexture)
-	return entries, bytes
+	var pipelines uint64
+	if r.pipelines != nil {
+		pipelines = uint64(r.pipelines.Count())
+	}
+	return entries, bytes, pipelines
 }
 
 // Close releases every binding-private resource. It is idempotent.
@@ -662,6 +798,21 @@ func (r *Renderer) Close() {
 		return
 	}
 	r.closed = true
+	r.releaseDeviceResources()
+	if r.surface != nil {
+		r.surface.Release()
+		r.surface = nil
+	}
+	if r.instance != nil {
+		r.instance.Release()
+		r.instance = nil
+	}
+}
+
+func (r *Renderer) releaseDeviceResources() {
+	if r == nil {
+		return
+	}
 	for _, resource := range r.textures {
 		resource.release()
 	}
@@ -673,28 +824,32 @@ func (r *Renderer) Close() {
 	}
 	if r.whiteTexture != nil {
 		r.whiteTexture.release()
+		r.whiteTexture = nil
 	}
 	for _, pipeline := range r.nativePipelines {
 		pipeline.Release()
 	}
 	if r.pipelineLayout != nil {
 		r.pipelineLayout.Release()
+		r.pipelineLayout = nil
 	}
 	if r.bindGroupLayout != nil {
 		r.bindGroupLayout.Release()
-	}
-	if r.surface != nil {
-		r.surface.Release()
+		r.bindGroupLayout = nil
 	}
 	if r.device != nil {
 		r.device.Release()
+		r.device = nil
 	}
 	if r.adapter != nil {
 		r.adapter.Release()
+		r.adapter = nil
 	}
-	if r.instance != nil {
-		r.instance.Release()
-	}
+	r.textures = make(map[uint64]*textureResource)
+	r.atlasPages = make(map[atlasPageKey]*textureResource)
+	r.basicGlyphs = make(map[rune]*textureResource)
+	r.nativePipelines = nil
+	r.pipelines = nil
 }
 
 func (r *textureResource) release() {
@@ -713,8 +868,8 @@ func (r *textureResource) release() {
 }
 
 func (r *Renderer) available(operation string) error {
-	if r == nil || r.closed {
-		return rendererFailure(operation, fmt.Errorf("renderer is closed"), diagnostics.Restart, true)
+	if r == nil || r.closed || r.device == nil || r.surface == nil {
+		return rendererFailure(operation, fmt.Errorf("renderer is unavailable"), diagnostics.Restart, true)
 	}
 	return nil
 }
@@ -736,10 +891,16 @@ func (c shaderCompiler) CreatePipeline(descriptor shader.Descriptor) (any, error
 		return nil, err
 	}
 	defer module.Release()
+	entryPoint := "vs_main"
+	vertexBuffers := []gputypes.VertexBufferLayout{{ArrayStride: vertexStride, StepMode: gputypes.VertexStepModeVertex, Attributes: []gputypes.VertexAttribute{{Format: gputypes.VertexFormatFloat32x2, Offset: 0, ShaderLocation: 0}, {Format: gputypes.VertexFormatFloat32x2, Offset: 8, ShaderLocation: 1}, {Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 2}}}}
+	if descriptor.Asset.Name == shader.Sprite2DInstancedAsset {
+		entryPoint = "vs_instanced"
+		vertexBuffers = []gputypes.VertexBufferLayout{{ArrayStride: spriteInstanceStride, StepMode: gputypes.VertexStepModeInstance, Attributes: []gputypes.VertexAttribute{{Format: gputypes.VertexFormatFloat32x4, Offset: 0, ShaderLocation: 0}, {Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 1}, {Format: gputypes.VertexFormatFloat32x4, Offset: 32, ShaderLocation: 2}, {Format: gputypes.VertexFormatFloat32x4, Offset: 48, ShaderLocation: 3}}}}
+	}
 	pipeline, err := c.renderer.device.CreateRenderPipeline(&wgpu.RenderPipelineDescriptor{
 		Label:       descriptor.Asset.Name + " pipeline",
 		Layout:      c.renderer.pipelineLayout,
-		Vertex:      wgpu.VertexState{Module: module, EntryPoint: "vs_main", Buffers: []gputypes.VertexBufferLayout{{ArrayStride: vertexStride, StepMode: gputypes.VertexStepModeVertex, Attributes: []gputypes.VertexAttribute{{Format: gputypes.VertexFormatFloat32x2, Offset: 0, ShaderLocation: 0}, {Format: gputypes.VertexFormatFloat32x2, Offset: 8, ShaderLocation: 1}, {Format: gputypes.VertexFormatFloat32x4, Offset: 16, ShaderLocation: 2}}}}},
+		Vertex:      wgpu.VertexState{Module: module, EntryPoint: entryPoint, Buffers: vertexBuffers},
 		Primitive:   gputypes.PrimitiveState{Topology: gputypes.PrimitiveTopologyTriangleList},
 		Multisample: gputypes.DefaultMultisampleState(),
 		Fragment:    &wgpu.FragmentState{Module: module, EntryPoint: "fs_main", Targets: []gputypes.ColorTargetState{{Format: c.renderer.format, Blend: blendState(descriptor.Blend), WriteMask: gputypes.ColorWriteMaskAll}}},

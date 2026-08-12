@@ -32,8 +32,12 @@ caller that owns a registry can call `RecordFailure(err)` to increment a stable
 `failure.<subsystem>` counter. The engine keeps no hidden global failure log,
 so applications retain control over privacy, retention, and telemetry.
 
-There is no production device/surface lifecycle yet. A future renderer or host
-must return the same failure shape for adapter, surface, timeout, and device
-loss errors, preserving the backend cause and selecting `Retry`, `Recreate`,
-or `Restart` according to its documented policy. That future work must not
-turn the current WebGPU experiments into a support claim.
+The engine-owned WebGPU renderer returns this failure shape for surface
+acquire/present, command submission, texture, and shader failures. Timeouts
+skip one frame; outdated or lost surfaces are reconfigured; and a reported lost
+device releases device-local caches, recreates its device, and lazily
+rehydrates regular textures and glyph pages from portable sources. An
+out-of-memory failure remains terminal. A render target's latest native pixels
+are not copied back to portable storage, so applications must redraw dependent
+targets after device recreation. These local recovery tests do not certify
+driver-initiated loss behavior on every supported platform.

@@ -18,6 +18,19 @@ Run the scenes directly:
 make benchmark
 ```
 
+The selected WebGPU renderer also has a deterministic software-adapter tile
+scene. It reports submitted visible tiles, batches, and draw calls after a
+warm-up upload:
+
+```sh
+make benchmark-webgpu
+```
+
+`BenchmarkHeadlessTileMapScene` uses the binding's fallback software adapter,
+not a physical GPU. Its `visible-tiles/op`, `batches/op`, and `draw-calls/op`
+values verify the submitted scene shape; its timing is not a hardware
+performance baseline and must not be compared to the CPU reference scenes.
+
 Capture a reviewable report without overwriting an existing file:
 
 ```sh
@@ -51,10 +64,12 @@ texture counts and bytes, and render-target counts and bytes.
 
 The engine-owned WebGPU renderer additionally records `renderer.texture_uploads`,
 `renderer.native_texture_entries`, `renderer.native_texture_bytes`,
-`renderer.batches`, and `renderer.draw_calls`. Texture bytes are an RGBA8
-dimension-based cache estimate and exclude driver overhead; batches and draws
-count compatible submitted command batches for the current frame. They are
-useful local diagnostics, not cross-platform performance certification.
+`renderer.native_pipeline_entries`, `renderer.batches`, and
+`renderer.draw_calls`. Texture bytes are an RGBA8 dimension-based cache
+estimate and exclude driver overhead; pipeline entries count private cached
+pipelines, and batches/draws count submitted command batches for the current
+frame. They are useful local diagnostics, not cross-platform performance
+certification.
 
 ## Comparing changes
 
@@ -82,6 +97,7 @@ hidden/minimized behavior, clean shutdown, and a device/surface-loss result
 where the target can exercise them. Attach source command output or a trace;
 do not replace the matrix with an unsupported "works on my machine" summary.
 
-The current engine-owned renderer has a local Linux headless submission test
-and a five-second example startup smoke. Its manual evidence must not be
-compared with CPU reference numbers as though they measured the same work.
+The current engine-owned renderer has a local deterministic software-WebGPU
+image regression and a five-second example startup smoke. Its manual evidence
+must not be compared with CPU reference numbers as though they measured the
+same work.

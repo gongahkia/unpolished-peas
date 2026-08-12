@@ -8,7 +8,7 @@ require (
 	github.com/gogpu/gputypes v0.5.2
 	github.com/gogpu/wgpu v0.31.2
 	github.com/jezek/xgb v1.1.1
-	golang.org/x/image v0.39.0
+	golang.org/x/image v0.45.0
 )
 
 require (
@@ -17,5 +17,5 @@ require (
 	github.com/gogpu/gpucontext v0.27.0 // indirect
 	github.com/gogpu/naga v0.18.0 // indirect
 	golang.org/x/sys v0.47.0 // indirect
-	golang.org/x/text v0.36.0 // indirect
+	golang.org/x/text v0.41.0 // indirect
 )

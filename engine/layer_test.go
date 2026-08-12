@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"math"
 	"testing"
 
 	"github.com/gongahkia/72/engine/diagnostics"
@@ -123,6 +124,20 @@ func TestWorldCommandLayerRejectsTargetClip(t *testing.T) {
 	}
 	if err := stack.draw(&recordingRenderBackend{}, NewCamera(Size{W: 2, H: 2}), 1, render.NewTextureStore(), nil); err == nil {
 		t.Fatal("world command layer accepted a target clip")
+	}
+}
+
+func TestLayerStackRejectsNonFiniteCameraBeforeSubmittingCommands(t *testing.T) {
+	stack := &LayerStack{}
+	if err := stack.Add(Layer{ID: "world", Space: WorldSpace, Parallax: 1, DrawCommands: func(frame CommandFrame) error {
+		return frame.FillRect(render.RectDraw{Bounds: render.Rect{W: 1, H: 1}})
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	camera := NewCamera(Size{W: 2, H: 2})
+	camera.SetPosition(Vec2{X: math.NaN()})
+	if err := stack.draw(&recordingRenderBackend{}, camera, 1, render.NewTextureStore(), nil); err == nil {
+		t.Fatal("non-finite camera position submitted commands")
 	}
 }
 
