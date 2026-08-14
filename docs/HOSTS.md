@@ -82,32 +82,39 @@ need runtime evidence before becoming support claims.
 ## Native desktop lifecycle behavior
 
 The Windows host owns a Win32 `HWND`, pumps messages on its owner thread, and
-creates a private WebGPU surface from that window. It normalizes key, UTF-16
-text, pointer, wheel, focus, resize, minimize, close, and cursor operations
-before passing only portable values to `engine`. Its Unicode clipboard methods
-transfer ownership through the native clipboard APIs. Zero-sized client areas
-suspend the renderer until a subsequent resize, and the host resets its frame
-delta baseline while presentation is suspended.
+creates a private WebGPU surface from that window. It normalizes physical keys,
+UTF-16 text, IMM preedit, pointer, wheel, focus, resize, minimize, close, and
+cursor operations before passing only portable values to `engine`. XInput
+standard-profile polling is enabled only when its system DLL loads. Its Unicode
+clipboard methods transfer ownership through the native clipboard APIs.
+Zero-sized client areas suspend the renderer until a subsequent resize, and the
+host resets its frame delta baseline while presentation is suspended.
 
 The macOS host owns an AppKit `NSWindow`, its `NSView`, and a `CAMetalLayer`.
 It pumps `NSEvent` records on the locked main thread, maps backing scale to the
 physical drawable, converts AppKit pointer coordinates to engine coordinates,
 and handles the same portable lifecycle and clipboard/cursor boundaries. It
-uses the renderer's existing FFI foundation for Objective-C calls, so the host
-does not introduce a second native runtime into the process. `platform.Run`
-returns an error unless it is entered on the process main thread; AppKit UI
-work cannot be safely migrated to an arbitrary goroutine. A minimized or
-invisible window suspends the surface and resets the next frame's delta
-baseline.
+polls standard-profile GameController extended-gamepad state when the optional
+framework loads. Composition reports unavailable because the current generic
+`NSView` does not implement `NSTextInputClient`. It uses the renderer's
+existing FFI foundation for Objective-C calls, so the host does not introduce a
+second native runtime into the process. `platform.Run` returns an error unless
+it is entered on the process main thread; AppKit UI work cannot be safely
+migrated to an arbitrary goroutine. A minimized or invisible window suspends
+the surface and resets the next frame's delta baseline.
 
 Both paths are [Source-verified] through target compilation and portable event
 mapping tests. They have no Windows or macOS runtime/presentation evidence yet;
 they remain build-only targets in [SUPPORT.md](SUPPORT.md).
 
 The Linux X11 host supports the standard default, pointer, text, and crosshair
-cursor roles through the X cursor font. It returns an explicit unsupported
-error for a hidden cursor and for clipboard transfer: X selection ownership is
-asynchronous and cannot honestly satisfy the synchronous `Window` contract.
+cursor roles through the X cursor font. It polls `/dev/input/event*` through
+evdev for common standard-profile controllers when device permissions allow;
+otherwise its gamepad capability is unavailable or restricted without stopping
+the host. Composition reports unavailable pending XIM integration. It returns
+an explicit unsupported error for a hidden cursor and for clipboard transfer:
+X selection ownership is asynchronous and cannot honestly satisfy the
+synchronous `Window` contract.
 
 ## Testing hosts
 

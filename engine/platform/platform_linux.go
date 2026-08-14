@@ -497,51 +497,6 @@ var x11PhysicalKeys = map[xproto.Keycode]engine.Key{
 	95: engine.KeyF11, 96: engine.KeyF12, 104: engine.KeyNumpadEnter, 105: engine.KeyControlRight, 106: engine.KeyNumpadDivide, 108: engine.KeyAltRight, 110: engine.KeyHome, 111: engine.KeyArrowUp, 112: engine.KeyPageUp, 113: engine.KeyArrowLeft, 114: engine.KeyArrowRight, 115: engine.KeyEnd, 116: engine.KeyArrowDown, 117: engine.KeyPageDown, 118: engine.KeyInsert, 119: engine.KeyDelete, 127: engine.KeyPause, 133: engine.KeyMetaLeft, 134: engine.KeyMetaRight, 135: engine.KeyContextMenu,
 }
 
-func xKey(keysym uint64) (engine.Key, bool) {
-	switch keysym {
-	case 'a', 'A':
-		return engine.KeyA, true
-	case 'd', 'D':
-		return engine.KeyD, true
-	case 'e', 'E':
-		return engine.KeyE, true
-	case 'j', 'J':
-		return engine.KeyJ, true
-	case 'p', 'P':
-		return engine.KeyP, true
-	case 's', 'S':
-		return engine.KeyS, true
-	case 'w', 'W':
-		return engine.KeyW, true
-	case 0x20:
-		return engine.KeySpace, true
-	case 0xffe1, 0xffe2:
-		return engine.KeyShift, true
-	case 0xff0d:
-		return engine.KeyEnter, true
-	case '.':
-		return engine.KeyPeriod, true
-	case 0xff09:
-		return engine.KeyTab, true
-	case 0xff54:
-		return engine.KeyArrowDown, true
-	case 0xff51:
-		return engine.KeyArrowLeft, true
-	case 0xff53:
-		return engine.KeyArrowRight, true
-	case 0xff52:
-		return engine.KeyArrowUp, true
-	case 0xffbe:
-		return engine.KeyF1, true
-	case 0xffbf:
-		return engine.KeyF2, true
-	case 0xffc3:
-		return engine.KeyF6, true
-	default:
-		return "", false
-	}
-}
-
 type xlib struct {
 	library unsafe.Pointer
 	display uintptr
