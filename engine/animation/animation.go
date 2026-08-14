@@ -33,8 +33,9 @@ type Frame struct {
 
 // Clip is an immutable validated sequence of animation frames.
 type Clip struct {
-	frames   []Frame
-	playback Playback
+	frames      []Frame
+	playback    Playback
+	minDuration time.Duration
 }
 
 // NewClip validates and copies frames so subsequent caller mutation cannot
@@ -54,6 +55,9 @@ func NewClip(frames []Frame, playback Playback) (Clip, error) {
 		}
 		if frame.Duration <= 0 {
 			return Clip{}, fmt.Errorf("animation frame %d duration must be positive", index)
+		}
+		if index == 0 || frame.Duration < result.minDuration {
+			result.minDuration = frame.Duration
 		}
 	}
 	return result, nil
@@ -80,6 +84,8 @@ type Player struct {
 	elapsed   time.Duration
 	finished  bool
 }
+
+const maximumAdvanceTransitions = 1_000_000
 
 // NewPlayer creates a player at the first frame. Construction does not emit a
 // frame event; events are emitted only when Advance enters a subsequent frame.
@@ -122,8 +128,10 @@ func (p *Player) Restart() {
 }
 
 // Advance moves the playhead by delta and returns named frame-entry events in
-// chronological order. A negative delta is invalid. A sufficiently large
-// delta intentionally reports every crossed event rather than coalescing it.
+// chronological order. A negative delta is invalid. Looping clips reject a
+// delta that would cross more than a bounded number of frames before mutating
+// the player, preventing an accidental wall-time spike from allocating an
+// unbounded event slice.
 func (p *Player) Advance(delta time.Duration) ([]Event, error) {
 	if p == nil || len(p.clip.frames) == 0 {
 		return nil, fmt.Errorf("advance animation player: player is not initialized")
@@ -133,6 +141,9 @@ func (p *Player) Advance(delta time.Duration) ([]Event, error) {
 	}
 	if delta == 0 || p.finished {
 		return nil, nil
+	}
+	if p.clip.playback != Once && delta/p.clip.minDuration > maximumAdvanceTransitions {
+		return nil, fmt.Errorf("advance animation player: delta crosses more than %d frame transitions", maximumAdvanceTransitions)
 	}
 	events := make([]Event, 0)
 	for delta > 0 && !p.finished {

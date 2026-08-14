@@ -36,9 +36,20 @@ and browser integrations implement `engine.Host` instead.
 - `Focused`, `Visible`, and `CloseRequested` expose lifecycle state without
   selecting a platform close policy.
 
-`SetTitle`, `SetCursor`, and clipboard calls return errors. If the operation is
-not available on a platform, the host returns a contextual unsupported error;
-it does not emulate a successful OS or browser operation in engine memory.
+`SetTitle`, `SetCursor`, and synchronous clipboard calls return errors. If the
+operation is not available on a platform, the host returns a contextual
+unsupported error; it does not emulate a successful OS or browser operation in
+engine memory.
+
+`HostContext.AsyncClipboard` optionally exposes request/completion clipboard
+operations for hosts that cannot faithfully expose a synchronous clipboard
+call. It is owner-goroutine only: `RequestClipboard` accepts a read or write
+request and `PollClipboard` returns terminal results in settlement order. The
+browser host implements this optional interface. Clipboard reads and writes
+require the browser's secure context and can still be denied by permission or
+user-activation policy; those failures appear in the completion rather than as
+an invented successful write. Native hosts retain the synchronous `Window`
+clipboard contract and do not provide an async adapter.
 
 `Clock.Timing` returns a frame counter plus elapsed and delta durations. Hosts
 own visibility/throttling behavior. The runtime does not infer fixed simulation

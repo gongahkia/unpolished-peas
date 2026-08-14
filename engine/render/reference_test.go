@@ -185,6 +185,48 @@ func TestReferenceBackendAppliesWorldCameraTranslation(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendAppliesCentreAnchoredWorldZoomOnly(t *testing.T) {
+	backend := newReferenceBackend(t, 4, 4)
+	var queue Queue
+	if err := queue.FillRect(0, WorldSpace, RectDraw{Bounds: Rect{X: 2, Y: 2, W: 1, H: 1}, Color: Color{R: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{X: 3, Y: 3, W: 1, H: 1}, Color: Color{G: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Camera: Camera{Viewport: Vec2{X: 4, Y: 4}, Zoom: 2}, Queue: &queue}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	for _, point := range [][2]int{{2, 2}, {3, 2}, {2, 3}} {
+		if got, want := referencePixel(t, image, point[0], point[1]), (Color{R: 255, A: 255}); got != want {
+			t.Fatalf("zoomed world pixel (%d,%d) = %+v, want %+v", point[0], point[1], got, want)
+		}
+	}
+	if got, want := referencePixel(t, image, 3, 3), (Color{G: 255, A: 255}); got != want {
+		t.Fatalf("screen-space pixel = %+v, want %+v", got, want)
+	}
+}
+
+func TestReferenceBackendZoomedTileViewportUsesInverseTransform(t *testing.T) {
+	backend := newReferenceBackend(t, 2, 1)
+	store := NewTextureStore()
+	texture, err := store.Create(mustReferenceImage(t, 3, 1, []byte{255, 0, 0, 255, 0, 255, 0, 255, 0, 0, 255, 255}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue Queue
+	if err := queue.DrawTileMap(0, WorldSpace, TileMap{Texture: texture, Atlas: Vec2{X: 3, Y: 1}, TileSize: Vec2{X: 1, Y: 1}, Columns: 3, Tiles: []int{0, 1, 2}, Tint: Color{R: 255, G: 255, B: 255, A: 255}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Camera: Camera{Position: Vec2{X: 1}, Viewport: Vec2{X: 2, Y: 1}, Zoom: 2}, Queue: &queue, Textures: store}); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := referencePixel(t, backend.Snapshot(), 0, 0), (Color{G: 255, A: 255}); got != want {
+		t.Fatalf("zoomed left tile = %+v, want %+v", got, want)
+	}
+}
+
 func TestReferenceBackendCullsTileMapToCameraViewportWithoutDroppingEdges(t *testing.T) {
 	backend := newReferenceBackend(t, 2, 1)
 	store := NewTextureStore()

@@ -99,3 +99,16 @@ func TestPlayerPingPongDoesNotDuplicateEndpoints(t *testing.T) {
 		t.Fatalf("ping-pong advance = events=%+v frame=%d, want events=%+v frame=1", events, player.Frame(), want)
 	}
 }
+
+func TestPlayerRejectsUnboundedLoopAdvanceBeforeMutation(t *testing.T) {
+	player, err := NewPlayer(testClip(t, Loop))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := player.Advance(time.Duration(maximumAdvanceTransitions+1) * 10 * time.Millisecond); err == nil {
+		t.Fatal("unbounded loop advance succeeded")
+	}
+	if player.Frame() != 0 || player.Finished() {
+		t.Fatalf("rejected advance mutated player: frame=%d finished=%t", player.Frame(), player.Finished())
+	}
+}

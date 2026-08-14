@@ -63,6 +63,10 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	backend := &recordingRenderBackend{}
 	camera := NewCamera(Size{W: 640, H: 360})
 	camera.SetPosition(Vec2{X: 160})
+	camera.SetOffset(Vec2{X: 8})
+	if err := camera.SetZoom(2); err != nil {
+		t.Fatal(err)
+	}
 	registry := diagnostics.NewRegistry()
 	if err := stack.draw(backend, camera, 1, render.NewTextureStore(), registry, nil); err != nil {
 		t.Fatal(err)
@@ -72,8 +76,20 @@ func TestCommandLayerUsesRegisteredSpaceOrderAndParallax(t *testing.T) {
 	}
 	frame := backend.frames[0]
 	commands := frame.Queue.Commands()
-	if frame.Camera.Position.X != 40 || frame.Diagnostics != registry || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
+	if frame.Camera.Position.X != 40 || frame.Camera.Offset.X != 2 || frame.Camera.Zoom != 2 || frame.Diagnostics != registry || len(commands) != 1 || commands[0].Kind != render.StrokeCircle || commands[0].Layer != 7 || commands[0].Space != render.WorldSpace {
 		t.Fatalf("command submission = camera=%+v commands=%+v", frame.Camera, commands)
+	}
+}
+
+func TestCameraZoomValidation(t *testing.T) {
+	camera := NewCamera(Size{W: 2, H: 2})
+	for _, zoom := range []float64{0, -1, math.NaN(), math.Inf(1)} {
+		if err := camera.SetZoom(zoom); err == nil {
+			t.Fatalf("invalid zoom %g succeeded", zoom)
+		}
+	}
+	if err := camera.SetZoom(1.5); err != nil || camera.Zoom() != 1.5 {
+		t.Fatalf("set zoom = %g, %v", camera.Zoom(), err)
 	}
 }
 

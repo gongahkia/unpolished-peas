@@ -6,6 +6,19 @@ version tags in the form `v0.x.y`.
 
 ## [Unreleased]
 
+### Added
+
+- Added optional browser-only asynchronous clipboard requests through
+  `engine.HostContext.AsyncClipboard`. Browser read results and write failures,
+  including rejected permission-gated promises, are now observable through
+  ordered completions; native synchronous clipboard methods are unchanged.
+- Added supported `engine/animation` with validated deterministic `Clip` and
+  `Player` sprite-sheet playback, frame durations, loop/once/ping-pong modes,
+  stable frame-entry events, and current source rectangles.
+- Added finite, positive centre-anchored camera zoom for world-space layers.
+  Reference and WebGPU renderers apply it to sprites, tile maps, primitives,
+  and text while screen-space layers remain unscaled.
+
 ### Changed
 
 - Removed `render.Material` and `render.Sprite.Material`. They accepted shader
