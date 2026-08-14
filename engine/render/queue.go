@@ -19,6 +19,30 @@ type Rect struct{ X, Y, W, H float64 }
 // Color is a non-premultiplied RGBA color.
 type Color struct{ R, G, B, A uint8 }
 
+// Sampling selects sprite and tile-map texture interpolation. SamplingNearest
+// is the default and preserves pixel-art texels; SamplingLinear interpolates
+// adjacent texels. Neither mode creates mipmaps.
+type Sampling uint8
+
+const (
+	SamplingNearest Sampling = iota
+	SamplingLinear
+)
+
+func (s Sampling) valid() bool { return s == SamplingNearest || s == SamplingLinear }
+
+// BlendMode controls sprite and tile-map compositing. BlendSourceOver is the
+// default painter's-order mode. BlendAdditive adds premultiplied source and
+// destination color and alpha, clamped to the target's representable range.
+type BlendMode uint8
+
+const (
+	BlendSourceOver BlendMode = iota
+	BlendAdditive
+)
+
+func (m BlendMode) valid() bool { return m == BlendSourceOver || m == BlendAdditive }
+
 // Space determines whether a command is transformed by Camera.
 type Space uint8
 
@@ -59,6 +83,8 @@ type Sprite struct {
 	Bounds    Rect
 	Tint      Color
 	Transform SpriteTransform
+	Sampling  Sampling
+	Blend     BlendMode
 }
 
 // TileMap describes a tile-grid draw using a single atlas texture. Tiles are
@@ -71,6 +97,8 @@ type TileMap struct {
 	Tiles    []int
 	Bounds   Rect
 	Tint     Color
+	Sampling Sampling
+	Blend    BlendMode
 }
 
 // TileRange identifies a contiguous row-major tile region. Column and Row are
@@ -253,6 +281,12 @@ func (q *Queue) DrawSprite(layer int, space Space, sprite Sprite) error {
 	if !validSpriteTransform(sprite.Transform) {
 		return fmt.Errorf("sprite transform must contain finite origin, scale, and rotation")
 	}
+	if !sprite.Sampling.valid() {
+		return fmt.Errorf("sprite sampling mode %d is unsupported", sprite.Sampling)
+	}
+	if !sprite.Blend.valid() {
+		return fmt.Errorf("sprite blend mode %d is unsupported", sprite.Blend)
+	}
 	return q.append(Command{Kind: SpriteCommand, Layer: layer, Space: space, Payload: sprite})
 }
 
@@ -276,6 +310,12 @@ func validateTileMap(tiles TileMap) error {
 	}
 	if len(tiles.Tiles) == 0 {
 		return fmt.Errorf("tile map must contain tiles")
+	}
+	if !tiles.Sampling.valid() {
+		return fmt.Errorf("tile map sampling mode %d is unsupported", tiles.Sampling)
+	}
+	if !tiles.Blend.valid() {
+		return fmt.Errorf("tile map blend mode %d is unsupported", tiles.Blend)
 	}
 	if tiles.Columns > len(tiles.Tiles) {
 		return fmt.Errorf("tile map columns %d exceed tile count %d", tiles.Columns, len(tiles.Tiles))

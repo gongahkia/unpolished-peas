@@ -67,9 +67,10 @@ voice starts. Headless/test callers can use `audio.NewMixer(nil)` or a fake
 `audio.Backend` and retain deterministic mixer state without an audio device.
 
 On Linux, Oto requires ALSA development/runtime support. On macOS it uses
-AudioToolbox; on Windows it needs no CGO. Oto documents WebAssembly support,
-but this repository has not independently verified audible browser output, so
-it is not an audio support claim for the future browser host.
+AudioToolbox; on Windows it needs no CGO. Oto's browser path is exercised by a
+WebAssembly bundle and Playwright status-flow test, but that automated test
+does not prove an audible device output. Audible browser support remains a
+manual evidence item rather than a platform support claim.
 
 ## verification
 
@@ -79,6 +80,18 @@ format rejection, deterministic resampling/channel expansion, and live
 bus/voice gain through its PCM reader without opening an output device. The
 example is a manual output-device check because CI must not emit sound.
 
+For the browser path, build the self-contained example with `make audio-wasm`
+and serve `dist` from a local HTTP origin. Open `/audio/index.html`, click or
+press a key, and verify that a 440 Hz tone starts at 25% gain, changes to 50%,
+then stops. Record browser version, secure-origin URL, output device, whether
+sound was heard, and any console error. The Playwright smoke test checks the
+same user-gesture/status sequence and WASM startup errors, but intentionally
+does not treat status text as audible-output proof. Browser playback is subject
+to browser autoplay and user-activation policy; an activation is required
+before interpreting a blocked context as an engine fault.
+
 ## source
 
 - [Oto v3 documentation](https://pkg.go.dev/github.com/ebitengine/oto/v3)
+- [MDN: AudioContext](https://developer.mozilla.org/en-US/docs/Web/API/AudioContext)
+- [MDN: autoplay for Web Audio](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Autoplay)

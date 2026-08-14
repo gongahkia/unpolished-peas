@@ -4,6 +4,7 @@ package webgpu
 
 import (
 	"errors"
+	"os"
 	"testing"
 
 	"github.com/gogpu/wgpu"
@@ -93,6 +94,77 @@ func TestHeadlessRendererProducesOrderedSpriteAndTilePixels(t *testing.T) {
 	assertPixel(t, pixels, 8, 5, 1, render.Color{G: 255, A: 255})
 }
 
+func TestHeadlessRendererSupportsLinearSamplingAndAdditiveBlend(t *testing.T) {
+	renderer, err := NewHeadless(4, 1)
+	if err != nil {
+		t.Fatalf("NewHeadless() error = %v", err)
+	}
+	defer renderer.Close()
+	assertTypedSamplingAndBlend(t, renderer)
+}
+
+func TestPhysicalGPURendererSupportsLinearSamplingAndAdditiveBlend(t *testing.T) {
+	if os.Getenv("72_PHYSICAL_GPU") != "1" {
+		t.Skip("set 72_PHYSICAL_GPU=1 to exercise a non-fallback adapter")
+	}
+	renderer, err := newHeadless(4, 1, false)
+	if err != nil {
+		t.Fatalf("newHeadless(physical GPU) error = %v", err)
+	}
+	defer renderer.Close()
+	assertTypedSamplingAndBlend(t, renderer)
+}
+
+func assertTypedSamplingAndBlend(t *testing.T, renderer *Renderer) {
+	t.Helper()
+	store := render.NewTextureStore()
+	texture, err := store.Create(render.Image{Width: 2, Height: 1, Pixels: []byte{
+		255, 0, 0, 255,
+		0, 0, 255, 255,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := &render.Queue{}
+	queue.Clear(render.Color{G: 20, B: 40, A: 255})
+	if err := queue.DrawSprite(0, render.ScreenSpace, render.Sprite{Texture: texture, Bounds: render.Rect{W: 4, H: 1}, Tint: render.Color{R: 255, G: 255, B: 255, A: 255}, Sampling: render.SamplingLinear, Blend: render.BlendAdditive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := renderer.Render(render.Frame{Queue: queue, Textures: store}); err != nil {
+		t.Fatal(err)
+	}
+	pixels, err := renderer.surface.ReadPixels()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for x, want := range []render.Color{
+		{R: 255, G: 20, B: 40, A: 255},
+		{R: 191, G: 20, B: 104, A: 255},
+		{R: 64, G: 20, B: 231, A: 255},
+		{G: 20, B: 255, A: 255},
+	} {
+		assertPixelNear(t, pixels, 4, x, 0, want, 2)
+	}
+}
+
+func assertPixelNear(t *testing.T, pixels []byte, width, x, y int, want render.Color, tolerance uint8) {
+	t.Helper()
+	offset := (y*width + x) * 4
+	got := render.Color{R: pixels[offset], G: pixels[offset+1], B: pixels[offset+2], A: pixels[offset+3]}
+	for _, difference := range []uint8{channelDistance(got.R, want.R), channelDistance(got.G, want.G), channelDistance(got.B, want.B), channelDistance(got.A, want.A)} {
+		if difference > tolerance {
+			t.Fatalf("pixel (%d,%d) = %#v, want %#v within %d", x, y, got, want, tolerance)
+		}
+	}
+}
+
+func channelDistance(left, right uint8) uint8 {
+	if left > right {
+		return left - right
+	}
+	return right - left
+}
+
 func TestBatchesInstanceCompatibleSpritesAndTiles(t *testing.T) {
 	renderer, err := NewHeadless(8, 4)
 	if err != nil {
@@ -125,6 +197,35 @@ func TestBatchesInstanceCompatibleSpritesAndTiles(t *testing.T) {
 	}
 	if len(batches) != 1 || batches[0].kind != spriteInstanceBatch || len(batches[0].instances) != 4 || len(batches[0].vertices) != 0 {
 		t.Fatalf("batches = %+v, want one four-instance sprite batch", batches)
+	}
+}
+
+func TestBatchesSeparateTypedSamplingAndBlendPolicies(t *testing.T) {
+	renderer, err := NewHeadless(2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer renderer.Close()
+	store := render.NewTextureStore()
+	texture, err := store.Create(render.Image{Width: 1, Height: 1, Pixels: []byte{255, 255, 255, 255}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	queue := &render.Queue{}
+	for _, sprite := range []render.Sprite{
+		{Texture: texture, Bounds: render.Rect{W: 1, H: 1}, Tint: render.Color{R: 255, G: 255, B: 255, A: 255}},
+		{Texture: texture, Bounds: render.Rect{X: 1, W: 1, H: 1}, Tint: render.Color{R: 255, G: 255, B: 255, A: 255}, Sampling: render.SamplingLinear, Blend: render.BlendAdditive},
+	} {
+		if err := queue.DrawSprite(0, render.ScreenSpace, sprite); err != nil {
+			t.Fatal(err)
+		}
+	}
+	batches, err := renderer.batches(render.Frame{Queue: queue, Textures: store}, orderedCommands(queue.Commands()), 2, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(batches) != 2 || batches[0].sampling != render.SamplingNearest || batches[0].blend != render.BlendSourceOver || batches[1].sampling != render.SamplingLinear || batches[1].blend != render.BlendAdditive {
+		t.Fatalf("batches = %+v, want policy-separated sprite batches", batches)
 	}
 }
 

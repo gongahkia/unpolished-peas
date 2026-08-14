@@ -1,16 +1,16 @@
 # Engine readiness audit
 
 This is an evidence-led assessment of the current worktree on
-2026-08-14. It is not a release declaration. Scores measure readiness for a
+2026-08-15. It is not a release declaration. Scores measure readiness for a
 maintained, general-purpose 2D game-engine runtime, where `10` means a
 documented support matrix, repeatable release process, and target-specific
 runtime evidence.
 
 | Area | Score | Verified strengths | Release-blocking gaps |
 | --- | --- | --- | --- |
-| 2D renderer | 6/10 | Ordered, instanced sprites and tiles; reusable dynamic buffers; primitives, text, clips, WGSL validation, texture caches, deterministic software-WebGPU image regression, and local device recreation/rehydration. | No physical-GPU image regression, no real driver-loss matrix, nearest sampling only, and render targets must be redrawn after recreation. |
+| 2D renderer | 6/10 | Ordered, instanced sprites and tiles; typed nearest/linear sampling and source-over/additive blend; reusable dynamic buffers; primitives, text, clips, WGSL validation, texture caches, deterministic software-WebGPU image regression, and local device recreation/rehydration. | Physical-GPU image coverage is opt-in and still needs recorded hardware evidence; no real driver-loss matrix; render targets must be redrawn after recreation. |
 | Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize/focus/visibility result. [Source-verified] Hosts map common physical keys; browser uses composition events and the Gamepad API, Windows uses IMM and XInput when available, Linux uses evdev when accessible, and macOS polls GameController when the framework is present. | Windows/macOS have no runtime evidence; X11 clipboard and hidden cursor are unsupported because the public contract is synchronous; Linux/macOS composition remains unavailable pending XIM/NSTextInputClient integration, and gamepad/IME paths lack runtime evidence. |
-| Runtime/gameplay APIs | 6/10 | Deterministic ECS scheduling, input normalization, reloadable assets, mixer state, AABB physics, scene transforms, and retained UI layout are tested. Non-finite viewport/camera/render inputs now fail at useful boundaries. | UI is a preview; physics is intentionally AABB-only; browser audio output and user-facing tooling have no runtime evidence. |
+| Runtime/gameplay APIs | 6/10 | Deterministic ECS scheduling, input normalization, reloadable assets, verified asset packages/CLI, mixer state, AABB physics queries, scene transforms, and retained UI layout are tested. Non-finite viewport/camera/render inputs now fail at useful boundaries. | UI is a preview; physics is intentionally AABB-only; browser audio has status-flow evidence but no recorded audible-device result. |
 | Diagnostics and performance | 5/10 | Per-frame command, texture, pipeline, batch, draw, and duration metrics; bounded Chrome-compatible CPU traces; reproducible CPU reference and deterministic software-WebGPU tile benchmarks. | No GPU timestamps, physical-GPU benchmark/report, or automatic performance baseline comparison. |
 | Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and a Chromium render/input/resize/focus/visibility smoke are available. | GitHub Actions cannot currently run; Windows/macOS checks are compile-only. |
 | Product and release | 3/10 | Scope, support evidence, compatibility, and release gates are explicitly documented. | No selected `LICENSE`/`NOTICE`, no published artifacts, no completed remote CI for an exact commit, and no target certification or release owner approval. |
@@ -59,6 +59,17 @@ not the existence of core engine packages.
   rejecting host startup.
 - Updated stale renderer, font, UI, error, performance, support, and public
   package documentation.
+- Added finite deterministic raycasts and swept-AABB queries with layer
+  filtering, self-exclusion, stable equal-fraction ordering, and no world
+  mutation.
+- Completed the asset package boundary with strict package reads, embedded and
+  external SHA-256 verification, standard decoder revalidation, and the atomic
+  `72 pack` command.
+- Added a browser audio WASM bundle and browser gesture/status smoke. Audible
+  output still requires the documented manual device check.
+- Exposed typed nearest/linear sampling and source-over/additive blending for
+  sprites and tile maps only, with reference/software-WebGPU conformance tests
+  and an opt-in non-fallback GPU test.
 
 ## Required work before a release declaration
 
@@ -73,9 +84,10 @@ not the existence of core engine packages.
 4. Make the licensing decision and add a reviewed `LICENSE` plus third-party
    `NOTICE`; then produce reviewed artifacts and checksums through the release
    dry run.
-5. Add physical-GPU image/readback and performance evidence. The deterministic
-   software adapter guards translation correctness but cannot certify driver or
-   presentation behavior.
+5. Run the opt-in physical-GPU typed-sampling/blend image test and the broader
+   performance matrix on release hardware. The deterministic software adapter
+   guards translation correctness but cannot certify driver or presentation
+   behavior.
 
 ## Important, non-blocking follow-up work
 
@@ -84,9 +96,6 @@ not the existence of core engine packages.
 - Runtime-test browser Gamepad/IME, Windows IMM/XInput, Linux evdev, and macOS
   GameController behavior. Implement macOS `NSTextInputClient` and Linux XIM
   before claiming composition support on those hosts.
-- Before adding sprite sampling or blend choices, define typed engine semantics
-  and backend conformance tests; arbitrary material parameters were removed as
-  a misleading no-op.
 - Keep editor tooling, 3D, networking, navigation, advanced animation, mobile,
   and consoles explicitly out of this milestone unless product scope changes.
 

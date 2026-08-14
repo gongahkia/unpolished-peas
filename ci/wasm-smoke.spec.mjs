@@ -62,3 +62,21 @@ test("first-game wasm renders, handles input, resize, focus, and visibility", as
   expect(consoleErrors).toEqual([]);
   await expect(page.locator("body")).not.toContainText("WASM startup failed:");
 });
+
+test("browser audio activates after a user gesture and completes PCM playback", async ({ page }) => {
+  const pageErrors = [];
+  page.on("pageerror", (error) => pageErrors.push(error.message));
+  const wasmResponse = page.waitForResponse((response) => response.url().endsWith("/audio.wasm"));
+
+  await page.goto("/audio/index.html");
+  await expect(page.getByRole("heading", { name: "72 browser audio verification" })).toBeVisible();
+  await expect(page.getByRole("status")).toHaveText("waiting for a key, click, or touch to enable audio");
+  expect((await wasmResponse).status()).toBe(200);
+
+  await page.keyboard.press("Space");
+  await expect(page.getByRole("status")).toHaveText("playing 440 Hz at 25% gain");
+  await expect(page.getByRole("status")).toHaveText("playing 440 Hz at 50% gain");
+  await expect(page.getByRole("status")).toHaveText("stopped");
+  expect(pageErrors).toEqual([]);
+  await expect(page.locator("body")).not.toContainText("WASM startup failed:");
+});

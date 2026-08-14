@@ -43,6 +43,24 @@ func TestCollectFrameMetricsReportsCommandAndVisibleTileCounts(t *testing.T) {
 	}
 }
 
+func TestCollectFrameMetricsSeparatesDifferentSpritePolicies(t *testing.T) {
+	store := NewTextureStore()
+	texture, err := store.Create(Image{Width: 1, Height: 1, Pixels: []byte{255, 255, 255, 255}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue Queue
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: texture, Bounds: Rect{W: 1, H: 1}}); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: texture, Bounds: Rect{X: 1, W: 1, H: 1}, Sampling: SamplingLinear, Blend: BlendAdditive}); err != nil {
+		t.Fatal(err)
+	}
+	if got := CollectFrameMetrics(Frame{Queue: &queue, Textures: store}, Rect{W: 2, H: 1}).CompatibleSpriteRuns; got != 2 {
+		t.Fatalf("compatible sprite runs = %d, want 2", got)
+	}
+}
+
 func TestReferenceBackendRecordsFrameMetricsIntoDiagnostics(t *testing.T) {
 	backend := newReferenceBackend(t, 1, 1)
 	registry := diagnostics.NewRegistry()

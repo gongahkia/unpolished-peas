@@ -68,6 +68,93 @@ type PackageAsset struct {
 	Data         []byte    `json:"data,omitempty"`
 }
 
+// PackageReader exposes one validated package and resolves external records
+// through an explicit filesystem. It is safe to retain as long as external is
+// safe for concurrent reads; every returned byte slice is a copy.
+type PackageReader struct {
+	packageData Package
+	external    fs.FS
+	assets      map[string]PackageAsset
+}
+
+// OpenPackage reads exactly one serialized package value and validates its
+// metadata and embedded digests. external is used only when ReadAsset resolves
+// an ExternalAsset record; it may be nil for embed-only packages.
+func OpenPackage(source io.Reader, external fs.FS) (*PackageReader, error) {
+	if source == nil {
+		return nil, fmt.Errorf("asset package source must not be nil")
+	}
+	decoder := json.NewDecoder(source)
+	decoder.DisallowUnknownFields()
+	var data Package
+	if err := decoder.Decode(&data); err != nil {
+		return nil, fmt.Errorf("decode asset package: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); err != io.EOF {
+		return nil, fmt.Errorf("decode asset package: expected one JSON value")
+	}
+	assets, err := data.validate()
+	if err != nil {
+		return nil, fmt.Errorf("validate asset package: %w", err)
+	}
+	for _, asset := range data.Assets {
+		if asset.Mode != EmbedAsset {
+			continue
+		}
+		if err := verifyPackageDigest(asset, asset.Data); err != nil {
+			return nil, err
+		}
+	}
+	return &PackageReader{packageData: clonePackage(data), external: external, assets: assets}, nil
+}
+
+// Package returns a deep copy of this reader's validated metadata.
+func (r *PackageReader) Package() Package {
+	if r == nil {
+		return Package{}
+	}
+	return clonePackage(r.packageData)
+}
+
+// ReadAsset returns one package asset after verifying its SHA-256 digest and
+// standard type decoder. External records resolve only from the filesystem
+// supplied to OpenPackage; no network or implicit working-directory lookup is
+// performed.
+func (r *PackageReader) ReadAsset(path string) ([]byte, error) {
+	if r == nil {
+		return nil, fmt.Errorf("read package asset: reader must not be nil")
+	}
+	asset, ok := r.assets[path]
+	if !ok {
+		return nil, fmt.Errorf("read package asset %q: asset is not declared", path)
+	}
+	data := append([]byte(nil), asset.Data...)
+	if asset.Mode == ExternalAsset {
+		if r.external == nil {
+			return nil, fmt.Errorf("read package asset %q: external filesystem is not configured", path)
+		}
+		file, err := r.external.Open(path)
+		if err != nil {
+			return nil, fmt.Errorf("read package asset %q: open external source: %w", path, err)
+		}
+		data, err = readAsset(path, file)
+		closeErr := file.Close()
+		if err != nil {
+			return nil, fmt.Errorf("read package asset %q: %w", path, err)
+		}
+		if closeErr != nil {
+			return nil, fmt.Errorf("read package asset %q: close external source: %w", path, closeErr)
+		}
+	}
+	if err := verifyPackageDigest(asset, data); err != nil {
+		return nil, err
+	}
+	if err := r.validateResolved(asset, data); err != nil {
+		return nil, err
+	}
+	return append([]byte(nil), data...), nil
+}
+
 // LoadProjectManifest reads and validates a versioned project manifest from a
 // project filesystem. path must itself be project-relative.
 func LoadProjectManifest(source fs.FS, path string) (ProjectManifest, error) {
@@ -204,6 +291,100 @@ func (m ProjectManifest) validate() error {
 		}
 	}
 	return nil
+}
+
+func (p Package) validate() (map[string]PackageAsset, error) {
+	if p.Version != PackageVersion {
+		return nil, fmt.Errorf("version %d is unsupported, want %d", p.Version, PackageVersion)
+	}
+	if strings.TrimSpace(p.Name) == "" {
+		return nil, fmt.Errorf("name must not be empty")
+	}
+	if len(p.Assets) == 0 {
+		return nil, fmt.Errorf("assets must not be empty")
+	}
+	assets := make(map[string]PackageAsset, len(p.Assets))
+	for _, asset := range p.Assets {
+		if !fs.ValidPath(asset.Path) {
+			return nil, fmt.Errorf("asset path %q must be project-relative", asset.Path)
+		}
+		if !asset.Type.valid() {
+			return nil, fmt.Errorf("asset %q has unsupported type %q", asset.Path, asset.Type)
+		}
+		if asset.Mode != EmbedAsset && asset.Mode != ExternalAsset {
+			return nil, fmt.Errorf("asset %q has unsupported mode %q", asset.Path, asset.Mode)
+		}
+		digest, err := hex.DecodeString(asset.SHA256)
+		if err != nil || len(digest) != sha256.Size {
+			return nil, fmt.Errorf("asset %q has an invalid SHA-256 digest", asset.Path)
+		}
+		if asset.Mode == ExternalAsset && len(asset.Data) != 0 {
+			return nil, fmt.Errorf("external asset %q must not embed data", asset.Path)
+		}
+		if _, exists := assets[asset.Path]; exists {
+			return nil, fmt.Errorf("asset path %q is declared more than once", asset.Path)
+		}
+		assets[asset.Path] = clonePackageAsset(asset)
+	}
+	for _, asset := range p.Assets {
+		seen := make(map[string]bool, len(asset.Dependencies))
+		for _, dependency := range asset.Dependencies {
+			if !fs.ValidPath(dependency) {
+				return nil, fmt.Errorf("asset %q dependency %q must be project-relative", asset.Path, dependency)
+			}
+			if seen[dependency] {
+				return nil, fmt.Errorf("asset %q declares dependency %q more than once", asset.Path, dependency)
+			}
+			if dependency == asset.Path {
+				return nil, fmt.Errorf("asset %q cannot depend on itself", asset.Path)
+			}
+			if _, exists := assets[dependency]; !exists {
+				return nil, fmt.Errorf("asset %q depends on undeclared asset %q", asset.Path, dependency)
+			}
+			seen[dependency] = true
+		}
+	}
+	return assets, nil
+}
+
+func (r *PackageReader) validateResolved(asset PackageAsset, data []byte) error {
+	decoded := make(map[string]TileMap)
+	manifest := ManifestAsset{Path: asset.Path, Type: asset.Type, Mode: asset.Mode, Dependencies: asset.Dependencies}
+	if err := validatePackageAsset(manifest, data, decoded); err != nil {
+		return err
+	}
+	for _, tiles := range decoded {
+		if !contains(asset.Dependencies, tiles.Texture) {
+			return fmt.Errorf("package tile map %q must declare texture %q as a dependency", asset.Path, tiles.Texture)
+		}
+		dependency := r.assets[tiles.Texture]
+		if dependency.Type != AssetImage {
+			return fmt.Errorf("package tile map %q texture dependency %q must be an image asset", asset.Path, tiles.Texture)
+		}
+	}
+	return nil
+}
+
+func verifyPackageDigest(asset PackageAsset, data []byte) error {
+	digest := sha256.Sum256(data)
+	if hex.EncodeToString(digest[:]) != asset.SHA256 {
+		return fmt.Errorf("read package asset %q: SHA-256 digest does not match package", asset.Path)
+	}
+	return nil
+}
+
+func clonePackage(data Package) Package {
+	data.Assets = make([]PackageAsset, len(data.Assets))
+	for index, asset := range data.Assets {
+		data.Assets[index] = clonePackageAsset(asset)
+	}
+	return data
+}
+
+func clonePackageAsset(asset PackageAsset) PackageAsset {
+	asset.Dependencies = append([]string(nil), asset.Dependencies...)
+	asset.Data = append([]byte(nil), asset.Data...)
+	return asset
 }
 
 func (t AssetType) valid() bool {

@@ -152,10 +152,12 @@ func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, transf
 			tile := tiles.Tiles[index]
 			sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
 			sprite := render.Sprite{
-				Texture: tiles.Texture,
-				Source:  render.Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-				Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-				Tint:    tiles.Tint,
+				Texture:  tiles.Texture,
+				Source:   render.Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Bounds:   render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Tint:     tiles.Tint,
+				Sampling: tiles.Sampling,
+				Blend:    tiles.Blend,
 			}
 			instance, err := spriteInstance(sprite, textureWidth, textureHeight, transform, viewportWidth, viewportHeight)
 			if err != nil {

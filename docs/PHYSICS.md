@@ -26,9 +26,23 @@ body's mask includes the other's layer. A zero mask is valid and opts a body
 out of pair collision; a zero layer is rejected because it cannot be matched.
 
 `World.Overlap` is an immediate AABB query. It filters bodies by a layer mask
-and returns IDs in creation order. It has no sweep, raycast, shape cast, or
-allocation-free callback form. Queries with invalid geometry, position, or a
-zero layer mask return no IDs.
+and returns IDs in creation order. Queries with invalid geometry, position, or
+a zero layer mask return no IDs.
+
+`World.Raycast(origin, delta, layerMask, exclude)` intersects the finite
+segment from `origin` through `origin + delta`. `World.SweepAABB(shape,
+position, delta, layerMask, exclude)` moves an AABB center over that same
+finite segment. Both return the closest `QueryHit`: the body ID, fraction in
+`[0, 1]`, hit position, and an outward normal. A sensor is queryable. Filtering
+uses the target body's `Layer` alone, matching `Overlap`; a query does not
+apply a target `Mask`. `exclude` omits one body, normally the caller's own
+body. Equal-fraction hits choose the lower body ID.
+
+Neither query mutates body state or contacts. A zero-length or non-finite
+query, invalid sweep shape, or zero layer mask reports no hit. An initial
+overlap reports fraction zero with the deterministic minimum-penetration-axis
+normal. The implementation intentionally has no allocation-free callback or
+generic shape-cast form.
 
 ## Contacts and sensors
 
@@ -50,9 +64,11 @@ applied. Sensor contacts are the supported trigger mechanism.
 The current solver integrates dynamic and kinematic linear velocity, resolves
 axis-aligned penetration, and zeros velocity along the resolution axis. Static
 bodies never move. It does not provide gravity, forces, mass, restitution,
-friction, rotation, continuous collision detection, constraints, broad-phase
-acceleration, compound shapes, polygon/circle geometry, or a third-party
-physics-backend adapter.
+friction, rotation, continuous collision detection for `Step`, constraints,
+broad-phase acceleration, compound shapes, polygon/circle geometry, or a
+third-party physics-backend adapter. `Raycast` and `SweepAABB` are deterministic
+queries; games that need continuous motion must use their hit fraction in their
+own movement logic.
 
 Those omissions are intentional extension seams. Future shapes or alternate
 backends must remain behind engine-owned types and preserve the documented

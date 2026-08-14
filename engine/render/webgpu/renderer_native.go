@@ -27,6 +27,12 @@ func NewXlib(display, window uintptr, width, height int) (*Renderer, error) {
 // NewHeadless creates a software-capable private renderer target for local
 // integration checks. It is not a user-facing presentation host.
 func NewHeadless(width, height int) (*Renderer, error) {
+	return newHeadless(width, height, true)
+}
+
+// newHeadless creates a private headless target. Tests may opt out of the
+// fallback adapter to exercise a physical GPU explicitly.
+func newHeadless(width, height int, forceFallbackAdapter bool) (*Renderer, error) {
 	instance, err := wgpu.CreateInstance(nil)
 	if err != nil {
 		return nil, fmt.Errorf("create WebGPU instance: %w", err)
@@ -36,5 +42,5 @@ func NewHeadless(width, height int) (*Renderer, error) {
 		instance.Release()
 		return nil, fmt.Errorf("create WebGPU headless surface: %w", err)
 	}
-	return newRendererWithOptions(instance, surface, width, height, wgpu.TextureFormatBGRA8Unorm, true)
+	return newRendererWithOptions(instance, surface, width, height, wgpu.TextureFormatBGRA8Unorm, forceFallbackAdapter)
 }

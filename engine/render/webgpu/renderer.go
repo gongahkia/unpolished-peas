@@ -61,12 +61,13 @@ type Renderer struct {
 }
 
 type textureResource struct {
-	texture  *wgpu.Texture
-	view     *wgpu.TextureView
-	bind     *wgpu.BindGroup
-	width    int
-	height   int
-	revision uint64
+	texture     *wgpu.Texture
+	view        *wgpu.TextureView
+	nearestBind *wgpu.BindGroup
+	linearBind  *wgpu.BindGroup
+	width       int
+	height      int
+	revision    uint64
 }
 
 type atlasPageKey struct {
@@ -99,6 +100,8 @@ type batch struct {
 	kind         batchKind
 	texture      *textureResource
 	clip         *render.Rect
+	sampling     render.Sampling
+	blend        render.BlendMode
 	vertices     []vertex
 	instances    []spriteInstanceData
 	bufferOffset uint64
@@ -450,7 +453,7 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 	if batch.kind == spriteInstanceBatch {
 		asset = shader.Sprite2DInstancedAsset
 	}
-	pipeline, _, err := r.pipelines.Pipeline(shader.Request{Asset: asset, Blend: shader.BlendSourceOver, Sampling: shader.SamplingNearest, TargetFormat: r.format.String(), TargetSampleCount: 1})
+	pipeline, _, err := r.pipelines.Pipeline(shader.Request{Asset: asset, Blend: shaderBlend(batch.blend), Sampling: shaderSampling(batch.sampling), TargetFormat: r.format.String(), TargetSampleCount: 1})
 	if err != nil {
 		return false, err
 	}
@@ -475,7 +478,7 @@ func (r *Renderer) submitBatch(pass *wgpu.RenderPassEncoder, batch batch, width,
 		pass.SetScissorRect(0, 0, uint32(width), uint32(height))
 	}
 	pass.SetPipeline(native)
-	pass.SetBindGroup(0, batch.texture.bind, nil)
+	pass.SetBindGroup(0, batch.texture.bind(batch.sampling), nil)
 	pass.SetVertexBuffer(0, buffer, batch.bufferOffset)
 	if batch.kind == spriteInstanceBatch {
 		pass.Draw(6, uint32(len(batch.instances)), 0, 0)
@@ -556,15 +559,15 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 		}
 		result = append(result, batch{kind: vertexBatch, texture: resource, clip: copyClip(clip), vertices: vertices})
 	}
-	appendInstances := func(resource *textureResource, clip *render.Rect, instances []spriteInstanceData) {
+	appendInstances := func(resource *textureResource, clip *render.Rect, sampling render.Sampling, blend render.BlendMode, instances []spriteInstanceData) {
 		if len(instances) == 0 {
 			return
 		}
-		if count := len(result); count > 0 && result[count-1].kind == spriteInstanceBatch && result[count-1].texture == resource && equalClip(result[count-1].clip, clip) {
+		if count := len(result); count > 0 && result[count-1].kind == spriteInstanceBatch && result[count-1].texture == resource && result[count-1].sampling == sampling && result[count-1].blend == blend && equalClip(result[count-1].clip, clip) {
 			result[count-1].instances = append(result[count-1].instances, instances...)
 			return
 		}
-		result = append(result, batch{kind: spriteInstanceBatch, texture: resource, clip: copyClip(clip), instances: instances})
+		result = append(result, batch{kind: spriteInstanceBatch, texture: resource, clip: copyClip(clip), sampling: sampling, blend: blend, instances: instances})
 	}
 	for _, command := range commands {
 		if command.Kind == render.Clear {
@@ -593,7 +596,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU sprite", err, diagnostics.CorrectInput, false)
 			}
-			appendInstances(resource, clipPtr, []spriteInstanceData{instance})
+			appendInstances(resource, clipPtr, sprite.Sampling, sprite.Blend, []spriteInstanceData{instance})
 		case render.TileMapCommand:
 			tiles, ok := command.Payload.(render.TileMap)
 			if !ok {
@@ -607,7 +610,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU tile map", err, diagnostics.CorrectInput, false)
 			}
-			appendInstances(resource, clipPtr, instances)
+			appendInstances(resource, clipPtr, tiles.Sampling, tiles.Blend, instances)
 		case render.FillRect, render.StrokeRect, render.FillCircle, render.StrokeCircle, render.StrokeLine:
 			vertices, err := primitiveVertices(command, transform, width, height)
 			if err != nil {
@@ -624,7 +627,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 				return nil, rendererFailure("translate WebGPU text", err, diagnostics.CorrectInput, false)
 			}
 			for _, textBatch := range textBatches {
-				appendInstances(textBatch.texture, textBatch.clip, textBatch.instances)
+				appendInstances(textBatch.texture, textBatch.clip, render.SamplingNearest, render.BlendSourceOver, textBatch.instances)
 			}
 		default:
 			return nil, rendererFailure("translate WebGPU frame", fmt.Errorf("unsupported render command %d", command.Kind), diagnostics.CorrectInput, false)
@@ -700,27 +703,35 @@ func (r *Renderer) createTexture(source render.Image, revision uint64, label str
 		texture.Release()
 		return nil, err
 	}
-	sampler, err := r.device.CreateSampler(&wgpu.SamplerDescriptor{Label: label + " sampler", AddressModeU: gputypes.AddressModeClampToEdge, AddressModeV: gputypes.AddressModeClampToEdge, AddressModeW: gputypes.AddressModeClampToEdge, MagFilter: gputypes.FilterModeNearest, MinFilter: gputypes.FilterModeNearest, MipmapFilter: gputypes.FilterModeNearest, Anisotropy: 1})
+	newBind := func(name string, filter gputypes.FilterMode) (*wgpu.BindGroup, error) {
+		sampler, err := r.device.CreateSampler(&wgpu.SamplerDescriptor{Label: label + " " + name + " sampler", AddressModeU: gputypes.AddressModeClampToEdge, AddressModeV: gputypes.AddressModeClampToEdge, AddressModeW: gputypes.AddressModeClampToEdge, MagFilter: filter, MinFilter: filter, MipmapFilter: gputypes.FilterModeNearest, Anisotropy: 1})
+		if err != nil {
+			return nil, err
+		}
+		defer sampler.Release()
+		return r.device.CreateBindGroup(&wgpu.BindGroupDescriptor{Label: label + " " + name + " bind group", Layout: r.bindGroupLayout, Entries: []wgpu.BindGroupEntry{{Binding: 0, TextureView: view}, {Binding: 1, Sampler: sampler}}})
+	}
+	nearestBind, err := newBind("nearest", gputypes.FilterModeNearest)
 	if err != nil {
 		view.Release()
 		texture.Release()
 		return nil, err
 	}
-	bind, err := r.device.CreateBindGroup(&wgpu.BindGroupDescriptor{Label: label + " bind group", Layout: r.bindGroupLayout, Entries: []wgpu.BindGroupEntry{{Binding: 0, TextureView: view}, {Binding: 1, Sampler: sampler}}})
+	linearBind, err := newBind("linear", gputypes.FilterModeLinear)
 	if err != nil {
-		sampler.Release()
+		nearestBind.Release()
 		view.Release()
 		texture.Release()
 		return nil, err
 	}
-	sampler.Release()
 	if err := r.device.Queue().WriteTexture(&wgpu.ImageCopyTexture{Texture: texture}, source.Pixels, &wgpu.ImageDataLayout{BytesPerRow: uint32(source.Width * 4), RowsPerImage: uint32(source.Height)}, &wgpu.Extent3D{Width: uint32(source.Width), Height: uint32(source.Height), DepthOrArrayLayers: 1}); err != nil {
-		bind.Release()
+		linearBind.Release()
+		nearestBind.Release()
 		view.Release()
 		texture.Release()
 		return nil, err
 	}
-	return &textureResource{texture: texture, view: view, bind: bind, width: source.Width, height: source.Height, revision: revision}, nil
+	return &textureResource{texture: texture, view: view, nearestBind: nearestBind, linearBind: linearBind, width: source.Width, height: source.Height, revision: revision}, nil
 }
 
 func (r *Renderer) atlasTexture(atlas *render.GlyphAtlas, page int) (*textureResource, error) {
@@ -933,8 +944,11 @@ func (r *textureResource) release() {
 	if r == nil {
 		return
 	}
-	if r.bind != nil {
-		r.bind.Release()
+	if r.nearestBind != nil {
+		r.nearestBind.Release()
+	}
+	if r.linearBind != nil {
+		r.linearBind.Release()
 	}
 	if r.view != nil {
 		r.view.Release()
@@ -942,6 +956,27 @@ func (r *textureResource) release() {
 	if r.texture != nil {
 		r.texture.Release()
 	}
+}
+
+func (r *textureResource) bind(sampling render.Sampling) *wgpu.BindGroup {
+	if sampling == render.SamplingLinear {
+		return r.linearBind
+	}
+	return r.nearestBind
+}
+
+func shaderSampling(value render.Sampling) shader.Sampling {
+	if value == render.SamplingLinear {
+		return shader.SamplingLinear
+	}
+	return shader.SamplingNearest
+}
+
+func shaderBlend(value render.BlendMode) shader.BlendMode {
+	if value == render.BlendAdditive {
+		return shader.BlendAdditive
+	}
+	return shader.BlendSourceOver
 }
 
 func (r *Renderer) available(operation string) error {

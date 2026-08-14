@@ -380,6 +380,37 @@ func TestReferenceBackendCompositesStraightAlpha(t *testing.T) {
 	}
 }
 
+func TestReferenceBackendSupportsLinearSpriteSamplingAndAdditiveBlend(t *testing.T) {
+	backend := newReferenceBackend(t, 4, 1)
+	store := NewTextureStore()
+	texture, err := store.Create(Image{Width: 2, Height: 1, Pixels: []byte{
+		255, 0, 0, 255,
+		0, 0, 255, 255,
+	}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var queue Queue
+	queue.Clear(Color{G: 20, B: 40, A: 255})
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: texture, Bounds: Rect{W: 4, H: 1}, Tint: Color{R: 255, G: 255, B: 255, A: 255}, Sampling: SamplingLinear, Blend: BlendAdditive}); err != nil {
+		t.Fatal(err)
+	}
+	if err := backend.Render(Frame{Queue: &queue, Textures: store}); err != nil {
+		t.Fatal(err)
+	}
+	image := backend.Snapshot()
+	for x, want := range []Color{
+		{R: 255, G: 20, B: 40, A: 255},
+		{R: 191, G: 20, B: 104, A: 255},
+		{R: 64, G: 20, B: 231, A: 255},
+		{G: 20, B: 255, A: 255},
+	} {
+		if got := referencePixel(t, image, x, 0); got != want {
+			t.Fatalf("pixel %d = %+v, want %+v", x, got, want)
+		}
+	}
+}
+
 func TestReferenceBackendReportsInvalidTexture(t *testing.T) {
 	backend := newReferenceBackend(t, 1, 1)
 	var queue Queue

@@ -30,8 +30,10 @@ sorts non-clear commands by layer while retaining submission order within a
 layer. World-space commands translate by the negative frame camera position;
 screen-space commands do not translate.
 
-Sprites and tile maps use nearest-neighbour sampling from portable RGBA8 image
-data. A zero sprite source selects the whole texture. `Sprite.Transform.Origin`
+Sprites and tile maps use their typed nearest or linear sampling mode from
+portable RGBA8 image data. A zero sprite source selects the whole texture.
+Linear filtering follows the GPU's texture-edge clamp, not source-rectangle
+clamping, so unpadded atlas cells can mix with adjacent texels. `Sprite.Transform.Origin`
 is a normalized Bounds pivot; zero scales mean one, negative scales mirror an
 axis, and rotation is clockwise radians in screen coordinates after scaling
 around that pivot. A zero-value transform preserves existing placement. The
@@ -41,9 +43,10 @@ based on logical pixel centres: rectangles are half-open; filled circles include
 a centre at or inside the radius; stroked circles cover the band from
 `max(0, radius - width/2)` through `radius + width/2`; and lines include centres
 at or within half the stroke width from their segment. Source and primitive
-colors use straight-alpha source-over composition. Text uses the fixed
-`basicfont.Face7x13` fallback and its position is the glyph baseline. Sprite
-sampling and source-over blending are fixed engine policy in this release.
+colors use straight-alpha source-over composition. Sprite and tile-map commands
+also support typed premultiplied additive composition. Text uses the fixed
+`basicfont.Face7x13` fallback and its position is the glyph baseline. Text and
+primitive sampling/blending remain nearest/source-over engine policy.
 
 `TileMap.VisibleRange` conservatively selects whole cells that intersect a
 target viewport in tile-map coordinates; a partially visible edge cell remains

@@ -25,18 +25,24 @@ does not apply an implicit transfer conversion.
 
 Pipelines use premultiplied shader output. The default `source-over` state is
 `source × 1 + destination × (1 - source alpha)` for both color and alpha.
-`replace` uses source one and destination zero and is valid only when callers
-know fragments are opaque. `additive` adds source and destination for both
-color and alpha. These are private pipeline selections today; applications do
-not gain user-authored blend/shader control from this foundation.
+`replace` uses source one and destination zero and is retained only for private
+renderer work. `additive` adds source and destination premultiplied color and
+alpha. `render.Sprite.Blend` and `render.TileMap.Blend` expose typed
+`BlendSourceOver` and `BlendAdditive`; zero-value source-over retains existing
+painter's-order behavior. Applications do not gain arbitrary blend equations,
+shaders, or material parameters from this feature.
 
 ## Sampling
 
-The current engine-owned renderer uses nearest-texel sampling for every image.
-Its private pipeline descriptors reserve a linear option for a later engine
-feature. Neither policy creates
-mipmaps, enables anisotropic filtering, or changes the texture address policy;
-those require a later renderer feature and an explicit cache-key revision.
+`render.Sprite.Sampling` and `render.TileMap.Sampling` expose nearest and
+linear filtering for textured draws; the zero value is nearest. Text and
+primitives remain fixed to nearest/source-over. Linear filtering uses
+clamp-to-edge at the texture boundary, not at a sprite source rectangle. Games
+using an atlas therefore need transparent padding or extruded edges to avoid
+neighbouring cells bleeding into a linearly sampled tile. Neither policy
+creates mipmaps, enables anisotropic filtering, or changes the texture address
+policy; those require a later renderer feature and an explicit cache-key
+revision.
 
 ## Validation and cache identity
 

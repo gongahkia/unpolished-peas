@@ -36,6 +36,12 @@ func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Source: Rect{W: 1}, Bounds: Rect{W: 1, H: 1}}); err == nil {
 		t.Fatal("partial zero sprite source succeeded")
 	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Sampling: Sampling(99)}); err == nil {
+		t.Fatal("unsupported sprite sampling succeeded")
+	}
+	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Blend: BlendMode(99)}); err == nil {
+		t.Fatal("unsupported sprite blend succeeded")
+	}
 	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{X: math.NaN(), W: 1, H: 1}}); err == nil {
 		t.Fatal("non-finite rectangle succeeded")
 	}
@@ -142,5 +148,15 @@ func TestQueueRejectsTileMapOutsideDeclaredAtlas(t *testing.T) {
 	tiles.Columns = len(tiles.Tiles) + 1
 	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
 		t.Fatal("tile map with more columns than tiles succeeded")
+	}
+	tiles.Columns = len(tiles.Tiles)
+	tiles.Sampling = Sampling(99)
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
+		t.Fatal("unsupported tile map sampling succeeded")
+	}
+	tiles.Sampling = SamplingNearest
+	tiles.Blend = BlendMode(99)
+	if err := queue.DrawTileMap(0, ScreenSpace, tiles); err == nil {
+		t.Fatal("unsupported tile map blend succeeded")
 	}
 }

@@ -67,6 +67,17 @@ type Contact struct {
 	State         ContactState
 }
 
+// QueryHit is the first deterministic intersection reported by Raycast or
+// SweepAABB. Fraction is measured along the supplied segment in [0, 1].
+// Normal points away from the hit body and therefore opposes movement for a
+// non-overlapping query.
+type QueryHit struct {
+	Body     BodyID
+	Fraction float64
+	Point    Vec2
+	Normal   Vec2
+}
+
 // Config defines a World fixed-step cadence. Call StepFixed for the configured
 // cadence; Step remains available for controlled simulations and tests that
 // need an explicit duration.
@@ -240,6 +251,102 @@ func (w *World) Overlap(area AABB, position Vec2, layerMask uint32) []BodyID {
 		}
 	}
 	return result
+}
+
+// Raycast intersects the finite segment from origin to origin+delta with live
+// body AABBs matching layerMask. exclude is ignored even when it matches the
+// mask, allowing a body to cast from its own position. Invalid, zero-length,
+// or empty queries return no hit. Equal-fraction hits use the lower body ID.
+func (w *World) Raycast(origin, delta Vec2, layerMask uint32, exclude BodyID) (QueryHit, bool) {
+	if layerMask == 0 || !finite(origin) || !finite(delta) || (delta.X == 0 && delta.Y == 0) {
+		return QueryHit{}, false
+	}
+	return w.queryAABB(Vec2{}, origin, delta, layerMask, exclude)
+}
+
+// SweepAABB intersects an AABB centered at position while it travels by delta
+// against live body AABBs matching layerMask. It is an immediate query: it
+// does not move bodies, resolve contacts, or change contact lifecycle state.
+// exclude is ignored even when it matches the mask.
+func (w *World) SweepAABB(area AABB, position, delta Vec2, layerMask uint32, exclude BodyID) (QueryHit, bool) {
+	if layerMask == 0 || !validAABB(area) || !finite(position) || !finite(delta) || (delta.X == 0 && delta.Y == 0) {
+		return QueryHit{}, false
+	}
+	return w.queryAABB(area.HalfExtents, position, delta, layerMask, exclude)
+}
+
+func (w *World) queryAABB(extents, position, delta Vec2, layerMask uint32, exclude BodyID) (QueryHit, bool) {
+	var best QueryHit
+	found := false
+	for _, id := range w.IDs() {
+		if id == exclude {
+			continue
+		}
+		body := w.bodies[id]
+		if body.Layer&layerMask == 0 {
+			continue
+		}
+		fraction, normal, ok := sweep(position, delta, extents, body)
+		if !ok || (found && (fraction > best.Fraction || (fraction == best.Fraction && id > best.Body))) {
+			continue
+		}
+		best = QueryHit{Body: id, Fraction: fraction, Point: position.add(delta.scale(fraction)), Normal: normal}
+		found = true
+	}
+	return best, found
+}
+
+func sweep(position, delta, extents Vec2, target Body) (float64, Vec2, bool) {
+	expanded := target.Shape.HalfExtents.add(extents)
+	difference := position.sub(target.Position)
+	overlapX, overlapY := expanded.X-math.Abs(difference.X), expanded.Y-math.Abs(difference.Y)
+	if overlapX >= 0 && overlapY >= 0 {
+		if overlapX < overlapY {
+			if difference.X < 0 {
+				return 0, Vec2{X: -1}, true
+			}
+			return 0, Vec2{X: 1}, true
+		}
+		if difference.Y < 0 {
+			return 0, Vec2{Y: -1}, true
+		}
+		return 0, Vec2{Y: 1}, true
+	}
+	min := target.Position.sub(expanded)
+	max := target.Position.add(expanded)
+	xEntry, xExit, xNormal, ok := sweepAxis(position.X, delta.X, min.X, max.X, Vec2{X: -1}, Vec2{X: 1})
+	if !ok {
+		return 0, Vec2{}, false
+	}
+	yEntry, yExit, yNormal, ok := sweepAxis(position.Y, delta.Y, min.Y, max.Y, Vec2{Y: -1}, Vec2{Y: 1})
+	if !ok {
+		return 0, Vec2{}, false
+	}
+	entry, exit := math.Max(xEntry, yEntry), math.Min(xExit, yExit)
+	if entry > exit || exit < 0 || entry > 1 {
+		return 0, Vec2{}, false
+	}
+	normal := yNormal
+	if xEntry > yEntry {
+		normal = xNormal
+	}
+	if entry < 0 {
+		entry = 0
+	}
+	return entry, normal, true
+}
+
+func sweepAxis(position, delta, minimum, maximum float64, negative, positive Vec2) (entry, exit float64, normal Vec2, ok bool) {
+	if delta == 0 {
+		if position < minimum || position > maximum {
+			return 0, 0, Vec2{}, false
+		}
+		return math.Inf(-1), math.Inf(1), Vec2{}, true
+	}
+	if delta > 0 {
+		return (minimum - position) / delta, (maximum - position) / delta, negative, true
+	}
+	return (maximum - position) / delta, (minimum - position) / delta, positive, true
 }
 
 func validBody(body Body) error {
