@@ -13,21 +13,30 @@ import (
 )
 
 func main() {
-	if err := run(os.Args[1:], os.Stderr); err != nil {
+	if err := runWithOutput(os.Args[1:], os.Stdout, os.Stderr); err != nil {
 		fmt.Fprintln(os.Stderr, "72:", err)
 		os.Exit(1)
 	}
 }
 
+// run retains the testable command entry point used by existing callers.
 func run(arguments []string, stderr io.Writer) error {
+	return runWithOutput(arguments, io.Discard, stderr)
+}
+
+func runWithOutput(arguments []string, stdout, stderr io.Writer) error {
 	if len(arguments) == 0 {
-		return errors.New("expected subcommand; supported: pack")
+		return errors.New("expected subcommand; supported: new, pack, doctor")
 	}
 	switch arguments[0] {
+	case "new":
+		return runNew(arguments[1:], stdout, stderr)
 	case "pack":
 		return runPack(arguments[1:], stderr)
+	case "doctor":
+		return runDoctor(arguments[1:], stdout, stderr)
 	default:
-		return fmt.Errorf("unsupported subcommand %q; supported: pack", arguments[0])
+		return fmt.Errorf("unsupported subcommand %q; supported: new, pack, doctor", arguments[0])
 	}
 }
 

@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build example-wasm audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
+.PHONY: example-run example-wasm wukong-run wukong-wasm wukong-replay wukong-benchmark test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -35,6 +35,23 @@ example-wasm:
 	GOOS=js GOARCH=wasm go build -o dist/wukong.wasm ./example/wukong
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm_exec.js
 	cp example/wukong/web/index.html dist/index.html
+
+wukong-run:
+	go run ./example/wukong --mode=playtest
+
+wukong-wasm:
+	mkdir -p dist/wukong
+	GOOS=js GOARCH=wasm go build -o dist/wukong/wukong.wasm ./example/wukong
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wukong/wasm_exec.js
+	cp example/wukong/web/index.html dist/wukong/index.html
+
+wukong-replay:
+	mkdir -p dist/wukong
+	go run ./example/wukong/cmd/replaygen -out dist/wukong/reference.replay.json
+	go run ./example/wukong/cmd/replaydump dist/wukong/reference.replay.json
+
+wukong-benchmark:
+	go test -run '^$$' -bench '^BenchmarkReferenceReplay$$' -benchmem -count=5 ./example/wukong/internal/sim
 
 audio-wasm:
 	mkdir -p dist/audio

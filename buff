@@ -1,0 +1,72 @@
+  1. Make the public contract true and mechanically maintained.
+      - Update CONTRIBUTING.md:10: it says CI only exercises Wukong and that
+        browser smoke does not test a rendered frame or input, but ci/wasm-
+        smoke.spec.mjs:3 checks canvas pixels, input, resize, blur, and hidden-
+        tab behavior.
+
+      - Add test-results/ and playwright-report/ to .gitignore:1. The
+        Playwright run currently leaves an untracked test-results/.last-
+        run.json.
+
+      - Introduce a machine-readable support/evidence ledger, then generate
+        SUPPORT.md from it. Each claim should include exact commit, OS, GPU/
+        driver, browser, test type, and date. This is the most valuable
+        delivery practice to adopt from unpolished-peas.
+
+  2. Finish the release process already specified in docs/READINESS.md:58 and
+     docs/RELEASING.md:9.
+      - Select a license; add LICENSE, a reviewed third-party NOTICE, and
+        SECURITY.md.
+
+      - Restore and verify remote CI for the exact release commit; current
+        local workflow configuration exists, but current docs correctly do not
+        treat it as execution evidence.
+
+      - Make a signed/tagged Go module release the primary product. Publish
+        wasm demo bundles with SHA-256 checksums; do not pretend a generic
+        desktop example binary is the engine product.
+
+      - Add a manual workflow_dispatch release workflow that builds only a
+        reviewed tag and has no publish permission by default.
+
+      - Add go mod verify, govulncheck ./..., and npm audit --omit=dev
+        --audit-level=high to CI. Go’s own vulnerability tooling follows
+        reachable calls, making it a useful low-noise check for this
+        repository. Go vulnerability management
+        (https://go.dev/doc/security/vuln/)
+
+      - SHA-pin GitHub Actions and give jobs explicit least-privilege
+        permissions. GitHub recommends full commit SHAs as the immutable action
+        reference. GitHub secure-use guidance
+        (https://docs.github.com/en/actions/reference/security/secure-use)
+
+      - If repository eligibility permits it, attach binary and SBOM provenance
+        to release artifacts. GitHub supports attestations for binaries and
+        SBOMs, but private repositories require Enterprise Cloud. GitHub
+        artifact attestations
+        (https://docs.github.com/en/actions/how-tos/secure-your-work/use-artifact-attestations/use-artifact-attestations)
+
+  3. Treat platform support as a testable product feature.
+      - Certify Windows and macOS on real hardware or change their wording from
+        target platforms to build-only targets.
+
+      - Run Linux X11, Windows, macOS, Chromium, Firefox, and Safari tests
+        where those platforms are claimed. Record resize, DPI, minimize/
+        restore, user close, texture upload, device loss/recovery, and clean
+        shutdown.
+
+      - Keep browser WebGPU experimental for v0.1 unless this matrix passes.
+        WebGPU still has limited browser availability and requires HTTPS/secure
+        contexts. MDN WebGPU
+        (https://developer.mozilla.org/en-US/docs/Web/API/WebGPU_API)
+
+      - Do not add a WebGL fallback yet. First decide whether 72’s browser
+        product is “WebGPU-only experimental” or “broadly deployable web
+        games.” The latter requires a deliberately supported fallback backend,
+        not a quick compatibility layer.
+
+      - Exercise device loss explicitly; the WebGPU standard exposes this
+        through GPUDevice.lost, so it is a real lifecycle state, not just an
+        error-path curiosity. WebGPU device-loss specification
+        (https://www.w3.org/TR/webgpu/#device-loss)
+

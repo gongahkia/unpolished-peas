@@ -6,6 +6,10 @@ if ! printf '%s\n' "$version" | grep -Eq '^v0\.[0-9]+\.[0-9]+$'; then
   printf 'release version must match v0.x.y: %s\n' "$version" >&2
   exit 1
 fi
+if ! go version | grep -Eq '^go version go1\.25\.13( |$)'; then
+  printf 'v0.1 release dry run requires Go 1.25.13: %s\n' "$(go version)" >&2
+  exit 1
+fi
 if ! git diff --quiet || ! git diff --cached --quiet; then
   printf 'release dry run requires a clean worktree\n' >&2
   exit 1
@@ -29,6 +33,9 @@ go test ./...
 go test -race ./...
 make example-build
 make example-wasm
+make wukong-wasm
+make wukong-replay
+make audio-wasm
 make first-game-build
 make first-game-wasm
 make benchmark

@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.25.13'
       - run: test -z "$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))"
       - run: go vet ./...
       - run: go test ./...
@@ -45,7 +45,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.25.13'
       - run: go vet ./...
       - run: go test ./...
       - run: mkdir -p .ci-artifacts
@@ -66,12 +66,14 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.25.13'
       - run: make example-wasm
+      - run: make wukong-wasm
       - run: make audio-wasm
       - run: make first-game-wasm
       - run: make ui-sample-wasm
       - run: test -s dist/wukong.wasm
+      - run: test -s dist/wukong/wukong.wasm
       - run: test -s dist/audio/audio.wasm
       - run: test -s dist/first-game/first-game.wasm
       - run: test -s dist/ui-sample/ui-sample.wasm
@@ -89,7 +91,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.25.x'
+          go-version: '1.25.13'
       - uses: actions/setup-node@v4
         with:
           node-version: '22.x'
@@ -106,3 +108,19 @@ jobs:
             test-results
             playwright-report
           if-no-files-found: ignore
+
+  security:
+    name: dependency security
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.25.13'
+      - run: go mod verify
+      - run: go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+      - run: npm ci
+      - run: npm audit --audit-level=high
