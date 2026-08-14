@@ -81,26 +81,31 @@ const (
 	EventFocusChanged
 	EventWindowResized
 	EventCloseRequested
+	EventComposition
 )
 
 // Event is a normalized input or lifecycle event. Only fields relevant to Kind
 // are populated. Action maps deliberately remain separate: hosts report raw
 // portable controls, while the runtime/application owns action binding.
 type Event struct {
-	Kind          EventKind
-	Key           Key
-	Button        GamepadButton
-	PointerButton PointerButton
-	Axis          GamepadAxis
-	DeviceID      uint32
-	Position      Vec2
-	Scroll        Vec2
-	Text          string
-	Value         float64
-	Pressed       bool
-	Connected     bool
-	Focused       bool
-	Window        WindowState
+	Kind                EventKind
+	Key                 Key
+	Button              GamepadButton
+	PointerButton       PointerButton
+	Axis                GamepadAxis
+	DeviceID            uint32
+	Position            Vec2
+	Scroll              Vec2
+	Text                string
+	Value               float64
+	Pressed             bool
+	Connected           bool
+	GamepadMapping      GamepadMapping
+	GamepadUnsupported  bool
+	Composition         CompositionPhase
+	CompositionCanceled bool
+	Focused             bool
+	Window              WindowState
 }
 
 // EventSource returns events accumulated since its prior call. PollEvents must
@@ -109,12 +114,47 @@ type EventSource interface {
 	PollEvents() []Event
 }
 
+// InputCapability reports whether one normalized input family is usable for a
+// host context. Restricted means the API exists but the current environment
+// denied its use; unavailable means the host does not implement it.
+type InputCapability uint8
+
+const (
+	InputUnavailable InputCapability = iota
+	InputAvailable
+	InputRestricted
+)
+
+// InputCapabilities is the host snapshot captured when Context is requested.
+// It does not imply a device is connected; Gamepad describes whether standard
+// controller observation is supported at all.
+type InputCapabilities struct {
+	Keyboard    InputCapability
+	Composition InputCapability
+	Gamepad     InputCapability
+}
+
+// InputCapabilitySource is optionally implemented by a host Window. Hosts
+// that do not implement it expose InputUnavailable for every capability.
+type InputCapabilitySource interface {
+	InputCapabilities() InputCapabilities
+}
+
 // HostContext is the application-visible, host-owned platform boundary. Its
 // interfaces remain valid only while Host.Run is active on the owner goroutine.
 type HostContext struct {
 	Window Window
 	Clock  Clock
 	Events EventSource
+}
+
+// InputCapabilities returns this host's static normalized-input capabilities.
+// The result deliberately remains available without a backend-specific type.
+func (c HostContext) InputCapabilities() InputCapabilities {
+	if source, ok := c.Window.(InputCapabilitySource); ok {
+		return source.InputCapabilities()
+	}
+	return InputCapabilities{}
 }
 
 func (c HostContext) validate() error {

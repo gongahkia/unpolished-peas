@@ -26,7 +26,7 @@ func TestInputMapperNormalizesActionsPointerTextAndGamepads(t *testing.T) {
 		{Kind: EventGamepadButton, DeviceID: 7, Button: 2, Pressed: true},
 		{Kind: EventGamepadAxis, DeviceID: 7, Axis: 0, Value: .75},
 	})
-	if state := input.State("confirm"); !state.Down || !state.Pressed || state.Value != 0 {
+	if state := input.State("confirm"); !state.Down || !state.Pressed || state.Value != 1 {
 		t.Fatalf("confirm state = %+v", state)
 	}
 	if state := input.State("move"); !state.Down || !state.Pressed || state.Value != .75 {
@@ -42,7 +42,7 @@ func TestInputMapperNormalizesActionsPointerTextAndGamepads(t *testing.T) {
 	if got, want := input.Text(), []string{"ready"}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("text = %#v, want %#v", got, want)
 	}
-	if got, want := input.GamepadConnections(), []GamepadConnection{{DeviceID: 7, Connected: true}}; !reflect.DeepEqual(got, want) {
+	if got, want := input.GamepadConnections(), []GamepadConnection{{DeviceID: 7, Connected: true, Mapping: GamepadMappingStandard, Supported: true}}; !reflect.DeepEqual(got, want) {
 		t.Fatalf("connections = %#v, want %#v", got, want)
 	}
 
@@ -164,3 +164,99 @@ func TestInputMapperProducesEquivalentSnapshotsForEquivalentHostEvents(t *testin
 		}
 	}
 }
+
+func TestInputMapperSupportsPhysicalModifierBindingsAndLegacyShift(t *testing.T) {
+	mapper, err := NewInputMapper(ActionMap{
+		"legacy":    {Keys: []Key{KeyShift}},
+		"left-only": {Keys: []Key{KeyShiftLeft}},
+	})
+	if err != nil {
+		t.Fatalf("new input mapper: %v", err)
+	}
+	first := mapper.Sample([]Event{{Kind: EventKey, Key: KeyShiftRight, Pressed: true}})
+	if !first.Pressed("legacy") || first.Down("left-only") {
+		t.Fatalf("right shift snapshot = legacy=%+v left=%+v", first.State("legacy"), first.State("left-only"))
+	}
+	second := mapper.Sample([]Event{{Kind: EventKey, Key: KeyShiftLeft, Pressed: true}})
+	if !second.Down("legacy") || !second.Pressed("left-only") {
+		t.Fatalf("both shifts snapshot = legacy=%+v left=%+v", second.State("legacy"), second.State("left-only"))
+	}
+	third := mapper.Sample([]Event{{Kind: EventKey, Key: KeyShiftRight, Pressed: false}})
+	if !third.Down("legacy") || !third.Down("left-only") {
+		t.Fatalf("left shift hold snapshot = legacy=%+v left=%+v", third.State("legacy"), third.State("left-only"))
+	}
+}
+
+func TestInputMapperPreservesStandardGamepadValuesAndUnsupportedConnections(t *testing.T) {
+	mapper, err := NewInputMapper(ActionMap{"trigger": {GamepadButtons: []GamepadButton{GamepadButtonLeftTrigger}}})
+	if err != nil {
+		t.Fatalf("new input mapper: %v", err)
+	}
+	input := mapper.Sample([]Event{
+		{Kind: EventGamepadConnection, DeviceID: 9, Connected: true, GamepadMapping: GamepadMappingStandard},
+		{Kind: EventGamepadConnection, DeviceID: 3, Connected: true, GamepadMapping: GamepadMappingStandard},
+		{Kind: EventGamepadButton, DeviceID: 9, Button: GamepadButtonLeftTrigger, Pressed: true, Value: .75},
+		{Kind: EventGamepadAxis, DeviceID: 9, Axis: GamepadAxisLeftStickX, Value: 4},
+		{Kind: EventGamepadConnection, DeviceID: 14, Connected: true, GamepadMapping: GamepadMappingUnknown, GamepadUnsupported: true},
+	})
+	if state := input.State("trigger"); !state.Down || state.Value != .75 {
+		t.Fatalf("trigger state = %+v", state)
+	}
+	gamepads := input.Gamepads()
+	if len(gamepads) != 2 || gamepads[0].DeviceID != 3 || gamepads[1].DeviceID != 9 || gamepads[1].Buttons[GamepadButtonLeftTrigger] != .75 || gamepads[1].Axes[GamepadAxisLeftStickX] != 1 {
+		t.Fatalf("gamepads = %#v", gamepads)
+	}
+	gamepads[1].Buttons[GamepadButtonLeftTrigger] = 0
+	if input.Gamepads()[1].Buttons[GamepadButtonLeftTrigger] != .75 {
+		t.Fatal("Gamepads leaked mutable button map")
+	}
+	connections := input.GamepadConnections()
+	if len(connections) != 3 || connections[2].Supported || connections[2].Mapping != GamepadMappingUnknown {
+		t.Fatalf("connections = %#v", connections)
+	}
+}
+
+func TestInputMapperReportsCompositionAndCancelsItOnFocusLoss(t *testing.T) {
+	mapper, err := NewInputMapper(nil)
+	if err != nil {
+		t.Fatalf("new input mapper: %v", err)
+	}
+	input := mapper.Sample([]Event{
+		{Kind: EventComposition, Composition: CompositionStart, Text: "k"},
+		{Kind: EventComposition, Composition: CompositionUpdate, Text: "ka"},
+	})
+	if preedit, active := input.Preedit(); !active || preedit != "ka" {
+		t.Fatalf("preedit = %q, %t", preedit, active)
+	}
+	if got, want := input.Composition(), []CompositionEvent{{Phase: CompositionStart, Text: "k"}, {Phase: CompositionUpdate, Text: "ka"}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("composition = %#v, want %#v", got, want)
+	}
+	canceled := mapper.Sample([]Event{{Kind: EventFocusChanged, Focused: false}})
+	if preedit, active := canceled.Preedit(); active || preedit != "" {
+		t.Fatalf("canceled preedit = %q, %t", preedit, active)
+	}
+	if got, want := canceled.Composition(), []CompositionEvent{{Phase: CompositionEnd, Text: "ka", Canceled: true}}; !reflect.DeepEqual(got, want) {
+		t.Fatalf("canceled composition = %#v, want %#v", got, want)
+	}
+	ended := mapper.Sample([]Event{{Kind: EventComposition, Composition: CompositionEnd, Text: "か"}, {Kind: EventText, Text: "か"}})
+	if got, want := ended.Composition(), []CompositionEvent{{Phase: CompositionEnd, Text: "か"}}; !reflect.DeepEqual(got, want) || !reflect.DeepEqual(ended.Text(), []string{"か"}) {
+		t.Fatalf("ended composition = %#v text=%#v", got, ended.Text())
+	}
+}
+
+func TestHostContextDefaultsAndExposesInputCapabilities(t *testing.T) {
+	if capabilities := (HostContext{}).InputCapabilities(); capabilities != (InputCapabilities{}) {
+		t.Fatalf("default capabilities = %+v", capabilities)
+	}
+	window := &capabilityTestWindow{capabilities: InputCapabilities{Keyboard: InputAvailable, Composition: InputRestricted, Gamepad: InputUnavailable}}
+	if capabilities := (HostContext{Window: window}).InputCapabilities(); capabilities != window.capabilities {
+		t.Fatalf("host capabilities = %+v, want %+v", capabilities, window.capabilities)
+	}
+}
+
+type capabilityTestWindow struct {
+	testWindow
+	capabilities InputCapabilities
+}
+
+func (w *capabilityTestWindow) InputCapabilities() InputCapabilities { return w.capabilities }

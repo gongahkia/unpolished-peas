@@ -206,6 +206,10 @@ func (h *x11Host) Context() engine.HostContext {
 	return engine.HostContext{Window: h, Clock: h, Events: h}
 }
 
+func (*x11Host) InputCapabilities() engine.InputCapabilities {
+	return engine.InputCapabilities{Keyboard: engine.InputAvailable}
+}
+
 func (h *x11Host) Run(appRuntime *engine.Runtime) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -343,7 +347,7 @@ func (h *x11Host) pollNative() error {
 
 func (h *x11Host) appendKey(keycode xproto.Keycode, state uint16, pressed bool) {
 	keysym := h.keysym(keycode, state)
-	if key, ok := xKey(uint64(keysym)); ok {
+	if key, ok := xKeycode(keycode); ok {
 		h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: pressed})
 	}
 	if pressed {
@@ -461,6 +465,27 @@ func xText(keysym uint64) string {
 		return string(rune(keysym))
 	}
 	return ""
+}
+
+// xKeycode maps the standard Xorg evdev keycode layout. Unlike keysyms, these
+// positions do not change with the active keyboard layout. Nonstandard X11
+// keyboard maps remain observable as text even when they lack a physical key.
+func xKeycode(keycode xproto.Keycode) (engine.Key, bool) {
+	key, ok := x11PhysicalKeys[keycode]
+	return key, ok
+}
+
+var x11PhysicalKeys = map[xproto.Keycode]engine.Key{
+	9:  engine.KeyEscape,
+	10: engine.KeyDigit1, 11: engine.KeyDigit2, 12: engine.KeyDigit3, 13: engine.KeyDigit4, 14: engine.KeyDigit5, 15: engine.KeyDigit6, 16: engine.KeyDigit7, 17: engine.KeyDigit8, 18: engine.KeyDigit9, 19: engine.KeyDigit0,
+	20: engine.KeyMinus, 21: engine.KeyEqual, 22: engine.KeyBackspace, 23: engine.KeyTab,
+	24: engine.KeyQ, 25: engine.KeyW, 26: engine.KeyE, 27: engine.KeyR, 28: engine.KeyT, 29: engine.KeyY, 30: engine.KeyU, 31: engine.KeyI, 32: engine.KeyO, 33: engine.KeyP, 34: engine.KeyBracketLeft, 35: engine.KeyBracketRight, 36: engine.KeyEnter,
+	37: engine.KeyControlLeft, 38: engine.KeyA, 39: engine.KeyS, 40: engine.KeyD, 41: engine.KeyF, 42: engine.KeyG, 43: engine.KeyH, 44: engine.KeyJ, 45: engine.KeyK, 46: engine.KeyL, 47: engine.KeySemicolon, 48: engine.KeyQuote, 49: engine.KeyBackquote,
+	50: engine.KeyShiftLeft, 51: engine.KeyBackslash, 52: engine.KeyZ, 53: engine.KeyX, 54: engine.KeyC, 55: engine.KeyV, 56: engine.KeyB, 57: engine.KeyN, 58: engine.KeyM, 59: engine.KeyComma, 60: engine.KeyPeriod, 61: engine.KeySlash, 62: engine.KeyShiftRight,
+	63: engine.KeyNumpadMultiply, 64: engine.KeyAltLeft, 65: engine.KeySpace, 66: engine.KeyCapsLock,
+	67: engine.KeyF1, 68: engine.KeyF2, 69: engine.KeyF3, 70: engine.KeyF4, 71: engine.KeyF5, 72: engine.KeyF6, 73: engine.KeyF7, 74: engine.KeyF8, 75: engine.KeyF9, 76: engine.KeyF10, 77: engine.KeyNumLock, 78: engine.KeyScrollLock,
+	79: engine.KeyNumpad7, 80: engine.KeyNumpad8, 81: engine.KeyNumpad9, 82: engine.KeyNumpadSubtract, 83: engine.KeyNumpad4, 84: engine.KeyNumpad5, 85: engine.KeyNumpad6, 86: engine.KeyNumpadAdd, 87: engine.KeyNumpad1, 88: engine.KeyNumpad2, 89: engine.KeyNumpad3, 90: engine.KeyNumpad0, 91: engine.KeyNumpadDecimal,
+	95: engine.KeyF11, 96: engine.KeyF12, 104: engine.KeyNumpadEnter, 105: engine.KeyControlRight, 106: engine.KeyNumpadDivide, 108: engine.KeyAltRight, 110: engine.KeyHome, 111: engine.KeyArrowUp, 112: engine.KeyPageUp, 113: engine.KeyArrowLeft, 114: engine.KeyArrowRight, 115: engine.KeyEnd, 116: engine.KeyArrowDown, 117: engine.KeyPageDown, 118: engine.KeyInsert, 119: engine.KeyDelete, 127: engine.KeyPause, 133: engine.KeyMetaLeft, 134: engine.KeyMetaRight, 135: engine.KeyContextMenu,
 }
 
 func xKey(keysym uint64) (engine.Key, bool) {

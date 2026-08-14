@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/gongahkia/72/engine"
+	"github.com/jezek/xgb/xproto"
 )
 
 func TestXlibOpenDisplay(t *testing.T) {
@@ -60,5 +61,13 @@ func TestX11CursorRolesHaveCoreGlyphs(t *testing.T) {
 	}
 	if _, ok := xCursorGlyph(engine.CursorHidden); ok {
 		t.Fatal("hidden X11 cursor was unexpectedly accepted")
+	}
+}
+
+func TestX11PhysicalKeycodesUseLocationsInsteadOfKeysyms(t *testing.T) {
+	for code, want := range map[uint8]engine.Key{24: engine.KeyQ, 38: engine.KeyA, 50: engine.KeyShiftLeft, 62: engine.KeyShiftRight, 113: engine.KeyArrowLeft, 119: engine.KeyDelete} {
+		if got, ok := xKeycode(xproto.Keycode(code)); !ok || got != want {
+			t.Fatalf("xKeycode(%d) = %q, %t; want %q, true", code, got, ok, want)
+		}
 	}
 }

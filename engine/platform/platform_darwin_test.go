@@ -20,6 +20,17 @@ func TestMacPortableInputMappings(t *testing.T) {
 	if _, ok := macKey(0xffff); ok {
 		t.Fatal("unmapped macOS key code was accepted")
 	}
+	for _, test := range []struct {
+		code uint16
+		want engine.Key
+	}{{56, engine.KeyShiftLeft}, {60, engine.KeyShiftRight}, {59, engine.KeyControlLeft}, {62, engine.KeyControlRight}, {82, engine.KeyNumpad0}, {117, engine.KeyDelete}} {
+		if got, ok := macKey(test.code); !ok || got != test.want {
+			t.Fatalf("macKey(%d) = %q, %t; want %q, true", test.code, got, ok, test.want)
+		}
+	}
+	if pressed, ok := macModifierPressed(engine.KeyShiftLeft, macShiftModifier); !ok || !pressed {
+		t.Fatalf("left shift modifier = %t, %t", pressed, ok)
+	}
 	if button, ok := macPointerButton(macEventOtherMouseDown, 2); !ok || button != engine.PointerMiddle {
 		t.Fatalf("other mouse button = %d, %t", button, ok)
 	}

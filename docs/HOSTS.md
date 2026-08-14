@@ -49,9 +49,12 @@ input snapshot.
 ## Normalized events
 
 `EventSource.PollEvents` returns and clears raw portable events accumulated
-since the prior poll. Events cover keyboard, UTF-8 text, pointer motion/buttons
-and wheel, gamepad connection/buttons/axes, focus changes, resize, and close
-requests. Event fields are meaningful only for the event kind.
+since the prior poll. Events cover keyboard, UTF-8 text, IME composition,
+pointer motion/buttons and wheel, gamepad connection/buttons/axes, focus
+changes, resize, and close requests. Event fields are meaningful only for the
+event kind. Hosts should also implement `InputCapabilitySource` through their
+Window value so games can distinguish unavailable or restricted composition and
+gamepad facilities without probing platform APIs.
 
 Hosts report `EventFocusChanged{Focused:false}` rather than inventing releases
 for every held key or button. The input mapping layer consumes that event and
@@ -64,7 +67,7 @@ host must use only `engine.Key`, `GamepadButton`, `GamepadAxis`, `Vec2`, and
 The wasm host owns its canvas, schedules frames through
 `requestAnimationFrame`, and does not attempt a WebGL or Canvas fallback when
 WebGPU cannot initialize. Window `focus`/`blur` becomes
-`EventFocusChanged`; pointer down focuses the canvas. A `visibilitychange` to
+`EventFocusChanged`; pointer down focuses its private text input. A `visibilitychange` to
 hidden marks the window invisible, emits a focus-loss event when needed, and
 skips update/draw callbacks. On return to visible it resets the frame-time
 baseline before the next update, so hidden-tab time is not delivered as one

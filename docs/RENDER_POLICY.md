@@ -34,7 +34,7 @@ not gain user-authored blend/shader control from this foundation.
 
 The current engine-owned renderer uses nearest-texel sampling for every image.
 Its private pipeline descriptors reserve a linear option for a later engine
-feature, but no public material currently selects it. Neither policy creates
+feature. Neither policy creates
 mipmaps, enables anisotropic filtering, or changes the texture address policy;
 those require a later renderer feature and an explicit cache-key revision.
 
@@ -44,7 +44,6 @@ WGSL sources are embedded and versioned. A selected private GPU adapter must
 validate an asset with its real WGSL compiler before creating a native pipeline;
 validation and creation errors retain the shader asset and underlying cause in
 structured renderer diagnostics. Pipeline keys include asset name/version,
-material name and canonical finite parameters, blend mode, sampling, and the
-straight-alpha convention, target format, and target sample count. Equivalent
-material parameter maps targeting the same attachment configuration reuse one
-device-local pipeline.
+blend mode, sampling, the straight-alpha convention, target format, and target
+sample count. Equivalent engine-owned pipeline requests targeting the same
+attachment configuration reuse one device-local pipeline.

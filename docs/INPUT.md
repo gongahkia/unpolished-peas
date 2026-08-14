@@ -13,10 +13,10 @@ if err := runtime.Update(runtime.SampleInput(events)); err != nil {
 ```
 
 `Input` retains action state (`Down`, `Pressed`, `Released`, and signed `Axis`),
-and also exposes a pointer snapshot, committed UTF-8 text, and gamepad connection
-changes. Pointer positions, deltas, and scroll values are logical engine pixels;
-hosts convert native device coordinates using their current DPI scale before
-emitting `EventPointerMove` or `EventPointerWheel`.
+and also exposes a pointer snapshot, committed UTF-8 text, IME composition, and
+gamepad snapshots. Pointer positions, deltas, and scroll values are logical
+engine pixels; hosts convert native device coordinates using their current DPI
+scale before emitting `EventPointerMove` or `EventPointerWheel`.
 
 ## action maps and rebinding
 
@@ -47,21 +47,28 @@ outside `[0, 1)` are rejected.
 
 ## text, pointer, gamepads, and focus
 
-`EventText` carries committed text, not key strokes or IME composition updates.
-`Input.Text` returns only the valid UTF-8 strings committed in that update. A
-text widget owns composition UI and policy outside this minimal runtime input
-contract.
+Keys identify physical locations, not characters from the active keyboard
+layout. Hosts emit left/right modifier keys separately. `KeyShift` remains a
+compatibility binding that matches either physical Shift key.
+
+`EventText` carries committed text, not key strokes. `EventComposition` carries
+`CompositionStart`, `CompositionUpdate`, and `CompositionEnd`; `Input.Composition`
+returns those transitions and `Input.Preedit` exposes the active preedit value.
+An end caused by focus loss is marked canceled. Applications own candidate UI,
+selection, and text-editing policy outside this minimal preedit contract.
 
 Pointer buttons are `PointerPrimary`, `PointerSecondary`, and `PointerMiddle`.
 Use `Input.Pointer` for its position, per-update delta/scroll, and button edge
 state. `Input.Pointer` returns a copy, so an application cannot modify an input
 snapshot seen elsewhere in the frame.
 
-Hosts report connection changes using `EventGamepadConnection`; games can read
-them from `Input.GamepadConnections`. Button and axis events identify the same
-`DeviceID`. Axis values are clamped to `[-1, 1]`; values at or inside the
-configured deadzone are neutral. Non-finite position, scroll, or axis values
-and invalid UTF-8 text are ignored at the normalization boundary.
+The gamepad contract uses the [standard Gamepad mapping](https://www.w3.org/TR/gamepad/#remapping) semantics. `Input.Gamepads` returns DeviceID-ordered standard-profile snapshots: button values are `[0, 1]` and axes are `[-1, 1]`. Hosts report connection changes using `EventGamepadConnection`; games can read mapping/support metadata from `Input.GamepadConnections`. Unknown mappings deliberately do not produce a normalized snapshot. Values at or inside a configured axis deadzone are neutral. Non-finite position, scroll, or analog values and invalid UTF-8 text are ignored at the normalization boundary.
+
+`runtime.Host().InputCapabilities()` returns the static host snapshot for
+keyboard, composition, and standard gamepad support. `InputRestricted` means
+the facility exists but the environment denied its use; `InputUnavailable`
+means this host does not implement it. A capability does not imply a controller
+is currently connected.
 
 On `EventFocusChanged` with `Focused: false`, the mapper clears keyboard,
 pointer-button, and gamepad held state. One release edge is emitted for any
@@ -72,8 +79,8 @@ is spatial state rather than a held control.
 ## host parity
 
 Native and browser hosts must emit the event kinds and units described by
-`engine.Event`; they must not pass platform key codes or raw physical pixels to
-games. `engine/input_test.go` feeds equivalent normalized event batches through
+`engine.Event`; they must not pass platform key codes, layout-derived key names,
+or raw physical pixels to games. `engine/input_test.go` feeds equivalent normalized event batches through
 two independent mappers and requires equal snapshots. That contract test covers
 the common mapping behavior; each concrete host also needs its own callback and
 browser/window lifecycle tests.
@@ -82,4 +89,5 @@ The Linux X11 and browser hosts translate platform callbacks to `engine.Event`
 batches before calling `Runtime.SampleInput`. The portable mapper, rather than
 a host edge helper, derives press and release transitions. The Linux host has
 local window-creation coverage; browser callback behavior requires runtime
-browser verification.
+browser verification. Browser keyboard, composition, and standard Gamepad API
+support are exposed as available when the corresponding browser APIs exist.

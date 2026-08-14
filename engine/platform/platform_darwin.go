@@ -37,7 +37,10 @@ const (
 	macEventOtherMouseUp   = 26
 	macEventOtherMouseDrag = 27
 
-	macShiftModifier = 1 << 17
+	macShiftModifier   = 1 << 17
+	macControlModifier = 1 << 18
+	macOptionModifier  = 1 << 19
+	macCommandModifier = 1 << 20
 )
 
 // Run starts the AppKit host from one locked OS thread. The host owns the
@@ -233,6 +236,10 @@ func newMacHost(config engine.Config) (*macHost, error) {
 
 func (h *macHost) Context() engine.HostContext {
 	return engine.HostContext{Window: h, Clock: h, Events: h}
+}
+
+func (*macHost) InputCapabilities() engine.InputCapabilities {
+	return engine.InputCapabilities{Keyboard: engine.InputAvailable}
 }
 
 func (h *macHost) Run(appRuntime *engine.Runtime) error {
@@ -513,8 +520,10 @@ func (h *macHost) appendEvent(event uintptr) error {
 		if err != nil {
 			return err
 		}
-		if key, ok := macKey(code); ok && key == engine.KeyShift {
-			h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: flags&macShiftModifier != 0})
+		if key, ok := macKey(code); ok {
+			if pressed, modifier := macModifierPressed(key, flags); modifier {
+				h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: pressed})
+			}
 		}
 	case macEventMouseMoved, macEventLeftMouseDrag, macEventRightMouseDrag, macEventOtherMouseDrag:
 		point, err := h.pointerPosition(event)
@@ -718,48 +727,29 @@ func macGoString(runtime *macRuntime, value uintptr) (string, error) {
 
 func maxInt() int { return int(^uint(0) >> 1) }
 
-func macKey(code uint16) (engine.Key, bool) {
-	switch code {
-	case 0:
-		return engine.KeyA, true
-	case 2:
-		return engine.KeyD, true
-	case 14:
-		return engine.KeyE, true
-	case 38:
-		return engine.KeyJ, true
-	case 35:
-		return engine.KeyP, true
-	case 1:
-		return engine.KeyS, true
-	case 13:
-		return engine.KeyW, true
-	case 49:
-		return engine.KeySpace, true
-	case 56, 60:
-		return engine.KeyShift, true
-	case 36:
-		return engine.KeyEnter, true
-	case 47:
-		return engine.KeyPeriod, true
-	case 48:
-		return engine.KeyTab, true
-	case 125:
-		return engine.KeyArrowDown, true
-	case 123:
-		return engine.KeyArrowLeft, true
-	case 124:
-		return engine.KeyArrowRight, true
-	case 126:
-		return engine.KeyArrowUp, true
-	case 122:
-		return engine.KeyF1, true
-	case 120:
-		return engine.KeyF2, true
-	case 97:
-		return engine.KeyF6, true
+func macKey(code uint16) (engine.Key, bool) { key, ok := macPhysicalKeys[code]; return key, ok }
+
+var macPhysicalKeys = map[uint16]engine.Key{
+	0: engine.KeyA, 1: engine.KeyS, 2: engine.KeyD, 3: engine.KeyF, 4: engine.KeyH, 5: engine.KeyG, 6: engine.KeyZ, 7: engine.KeyX, 8: engine.KeyC, 9: engine.KeyV, 11: engine.KeyB, 12: engine.KeyQ, 13: engine.KeyW, 14: engine.KeyE, 15: engine.KeyR, 16: engine.KeyY, 17: engine.KeyT, 31: engine.KeyO, 32: engine.KeyU, 34: engine.KeyI, 35: engine.KeyP, 37: engine.KeyL, 38: engine.KeyJ, 40: engine.KeyK, 45: engine.KeyN, 46: engine.KeyM,
+	18: engine.KeyDigit1, 19: engine.KeyDigit2, 20: engine.KeyDigit3, 21: engine.KeyDigit4, 22: engine.KeyDigit6, 23: engine.KeyDigit5, 24: engine.KeyEqual, 25: engine.KeyDigit9, 26: engine.KeyDigit7, 27: engine.KeyMinus, 28: engine.KeyDigit8, 29: engine.KeyDigit0,
+	30: engine.KeyBracketRight, 33: engine.KeyBracketLeft, 39: engine.KeyQuote, 41: engine.KeySemicolon, 42: engine.KeyBackslash, 43: engine.KeyComma, 44: engine.KeySlash, 47: engine.KeyPeriod, 50: engine.KeyBackquote,
+	36: engine.KeyEnter, 48: engine.KeyTab, 49: engine.KeySpace, 51: engine.KeyBackspace, 53: engine.KeyEscape, 54: engine.KeyMetaRight, 55: engine.KeyMetaLeft, 56: engine.KeyShiftLeft, 57: engine.KeyCapsLock, 58: engine.KeyAltLeft, 59: engine.KeyControlLeft, 60: engine.KeyShiftRight, 61: engine.KeyAltRight, 62: engine.KeyControlRight,
+	65: engine.KeyNumpadDecimal, 67: engine.KeyNumpadMultiply, 69: engine.KeyNumpadAdd, 71: engine.KeyNumLock, 75: engine.KeyNumpadDivide, 76: engine.KeyNumpadEnter, 78: engine.KeyNumpadSubtract, 81: engine.KeyNumpadEqual, 82: engine.KeyNumpad0, 83: engine.KeyNumpad1, 84: engine.KeyNumpad2, 85: engine.KeyNumpad3, 86: engine.KeyNumpad4, 87: engine.KeyNumpad5, 88: engine.KeyNumpad6, 89: engine.KeyNumpad7, 91: engine.KeyNumpad8, 92: engine.KeyNumpad9,
+	96: engine.KeyF5, 97: engine.KeyF6, 98: engine.KeyF7, 99: engine.KeyF3, 100: engine.KeyF8, 101: engine.KeyF9, 103: engine.KeyF11, 109: engine.KeyF10, 110: engine.KeyContextMenu, 111: engine.KeyF12, 114: engine.KeyHelp, 115: engine.KeyHome, 116: engine.KeyPageUp, 117: engine.KeyDelete, 118: engine.KeyF4, 119: engine.KeyEnd, 120: engine.KeyF2, 121: engine.KeyPageDown, 122: engine.KeyF1, 123: engine.KeyArrowLeft, 124: engine.KeyArrowRight, 125: engine.KeyArrowDown, 126: engine.KeyArrowUp,
+}
+
+func macModifierPressed(key engine.Key, flags uint64) (bool, bool) {
+	switch key {
+	case engine.KeyShiftLeft, engine.KeyShiftRight:
+		return flags&macShiftModifier != 0, true
+	case engine.KeyControlLeft, engine.KeyControlRight:
+		return flags&macControlModifier != 0, true
+	case engine.KeyAltLeft, engine.KeyAltRight:
+		return flags&macOptionModifier != 0, true
+	case engine.KeyMetaLeft, engine.KeyMetaRight:
+		return flags&macCommandModifier != 0, true
 	default:
-		return "", false
+		return false, false
 	}
 }
 

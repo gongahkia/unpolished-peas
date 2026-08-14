@@ -8,6 +8,14 @@ version tags in the form `v0.x.y`.
 
 ### Changed
 
+- Removed `render.Material` and `render.Sprite.Material`. They accepted shader
+  names and parameters that no supported renderer forwarded. Sprites now use
+  the documented fixed nearest sampling and source-over blend policy; there is
+  no direct replacement until a typed rendering feature is implemented.
+- Expanded supported `engine` input with physical common-key constants,
+  standard-profile gamepad snapshots, IME preedit transitions, and static host
+  input-capability reporting. `KeyShift` remains an aggregate compatibility
+  binding for left and right Shift.
 - Removed the legacy `engine.Canvas`, `engine.CommandCanvas`, immediate
   `Layer.Draw`/`DrawFunc`, and `engine.Frame` compatibility APIs. Layers now
   use `DrawCommands`, and `Runtime.Draw` accepts `render.Backend` directly.
