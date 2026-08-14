@@ -72,8 +72,17 @@ type macHost struct {
 	last   time.Time
 	timing engine.FrameTiming
 
-	pendingHigh  uint16
-	cursorHidden bool
+	pendingHigh       uint16
+	cursorHidden      bool
+	inputCapabilities engine.InputCapabilities
+	gamepads          map[uintptr]macGamepad
+	nextGamepad       uint32
+}
+
+type macGamepad struct {
+	id      uint32
+	buttons [17]float64
+	axes    [4]float64
 }
 
 func newMacHost(config engine.Config) (*macHost, error) {
@@ -87,7 +96,12 @@ func newMacHost(config engine.Config) (*macHost, error) {
 	if err != nil {
 		return nil, err
 	}
-	host := &macHost{config: config, runtime: runtime}
+	host := &macHost{config: config, runtime: runtime, inputCapabilities: engine.InputCapabilities{Keyboard: engine.InputAvailable}, gamepads: make(map[uintptr]macGamepad)}
+	if runtime.loadFramework("/System/Library/Frameworks/GameController.framework/GameController") == nil {
+		if _, err := runtime.class("GCController"); err == nil {
+			host.inputCapabilities.Gamepad = engine.InputAvailable
+		}
+	}
 	cleanupRuntime := true
 	defer func() {
 		if cleanupRuntime {
@@ -238,9 +252,7 @@ func (h *macHost) Context() engine.HostContext {
 	return engine.HostContext{Window: h, Clock: h, Events: h}
 }
 
-func (*macHost) InputCapabilities() engine.InputCapabilities {
-	return engine.InputCapabilities{Keyboard: engine.InputAvailable}
-}
+func (h *macHost) InputCapabilities() engine.InputCapabilities { return h.inputCapabilities }
 
 func (h *macHost) Run(appRuntime *engine.Runtime) error {
 	if appRuntime == nil {
@@ -420,6 +432,7 @@ func (h *macHost) pollNative() error {
 			return fmt.Errorf("poll macOS events: %w", err)
 		}
 		if event == 0 {
+			h.pollGamepads()
 			return nil
 		}
 		if err := h.appendEvent(event); err != nil {
@@ -427,6 +440,145 @@ func (h *macHost) pollNative() error {
 		}
 		if err := h.runtime.void(h.app, "sendEvent:", macPointer(event)); err != nil {
 			return fmt.Errorf("dispatch macOS event: %w", err)
+		}
+	}
+}
+
+func (h *macHost) pollGamepads() {
+	if h.inputCapabilities.Gamepad != engine.InputAvailable {
+		return
+	}
+	controllerClass, err := h.runtime.class("GCController")
+	if err != nil {
+		return
+	}
+	controllers, err := h.runtime.id(controllerClass, "controllers")
+	if err != nil || controllers == 0 {
+		return
+	}
+	count, err := h.runtime.uint64(controllers, "count")
+	if err != nil {
+		return
+	}
+	seen := make(map[uintptr]struct{}, count)
+	for index := uint64(0); index < count; index++ {
+		controller, err := h.runtime.id(controllers, "objectAtIndex:", macUint64(index))
+		if err != nil || controller == 0 {
+			continue
+		}
+		extended, err := h.runtime.id(controller, "extendedGamepad")
+		if err != nil || extended == 0 {
+			continue
+		}
+		current, ok := h.readGamepad(extended)
+		if !ok {
+			continue
+		}
+		seen[controller] = struct{}{}
+		previous, connected := h.gamepads[controller]
+		if !connected {
+			current.id = h.nextGamepad
+			h.nextGamepad++
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: current.id, Connected: true, GamepadMapping: engine.GamepadMappingStandard})
+		} else {
+			current.id = previous.id
+		}
+		h.appendGamepadChanges(previous, current, connected)
+		h.gamepads[controller] = current
+	}
+	for controller, gamepad := range h.gamepads {
+		if _, present := seen[controller]; present {
+			continue
+		}
+		h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: gamepad.id, Connected: false, GamepadMapping: engine.GamepadMappingStandard})
+		delete(h.gamepads, controller)
+	}
+}
+
+func (h *macHost) readGamepad(gamepad uintptr) (macGamepad, bool) {
+	button := func(selector string) (float64, bool) {
+		input, err := h.runtime.id(gamepad, selector)
+		if err != nil || input == 0 {
+			return 0, false
+		}
+		value, err := h.runtime.float32(input, "value")
+		if err != nil {
+			return 0, false
+		}
+		return math.Max(0, math.Min(1, float64(value))), true
+	}
+	direction := func(selector string) (float64, float64, bool) {
+		pad, err := h.runtime.id(gamepad, selector)
+		if err != nil || pad == 0 {
+			return 0, 0, false
+		}
+		xAxis, err := h.runtime.id(pad, "xAxis")
+		if err != nil || xAxis == 0 {
+			return 0, 0, false
+		}
+		yAxis, err := h.runtime.id(pad, "yAxis")
+		if err != nil || yAxis == 0 {
+			return 0, 0, false
+		}
+		x, xErr := h.runtime.float32(xAxis, "value")
+		y, yErr := h.runtime.float32(yAxis, "value")
+		if xErr != nil || yErr != nil {
+			return 0, 0, false
+		}
+		return math.Max(-1, math.Min(1, float64(x))), math.Max(-1, math.Min(1, float64(y))), true
+	}
+	values := []struct {
+		selector string
+		button   engine.GamepadButton
+	}{
+		{"buttonA", engine.GamepadButtonSouth}, {"buttonB", engine.GamepadButtonEast}, {"buttonX", engine.GamepadButtonWest}, {"buttonY", engine.GamepadButtonNorth},
+		{"leftShoulder", engine.GamepadButtonLeftBumper}, {"rightShoulder", engine.GamepadButtonRightBumper}, {"leftTrigger", engine.GamepadButtonLeftTrigger}, {"rightTrigger", engine.GamepadButtonRightTrigger},
+	}
+	state := macGamepad{}
+	for _, value := range values {
+		pressed, ok := button(value.selector)
+		if !ok {
+			return macGamepad{}, false
+		}
+		state.buttons[value.button] = pressed
+	}
+	leftX, leftY, ok := direction("leftThumbstick")
+	if !ok {
+		return macGamepad{}, false
+	}
+	rightX, rightY, ok := direction("rightThumbstick")
+	if !ok {
+		return macGamepad{}, false
+	}
+	state.axes = [4]float64{leftX, -leftY, rightX, -rightY}
+	dpadX, dpadY, ok := direction("dpad")
+	if !ok {
+		return macGamepad{}, false
+	}
+	if dpadY > .5 {
+		state.buttons[engine.GamepadButtonDPadUp] = 1
+	}
+	if dpadY < -.5 {
+		state.buttons[engine.GamepadButtonDPadDown] = 1
+	}
+	if dpadX < -.5 {
+		state.buttons[engine.GamepadButtonDPadLeft] = 1
+	}
+	if dpadX > .5 {
+		state.buttons[engine.GamepadButtonDPadRight] = 1
+	}
+	return state, true
+}
+
+func (h *macHost) appendGamepadChanges(previous, current macGamepad, connected bool) {
+	for index, value := range current.buttons {
+		if !connected || math.Abs(value-previous.buttons[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadButton, DeviceID: current.id, Button: engine.GamepadButton(index), Value: value, Pressed: value >= .5})
+		}
+	}
+	for index, value := range current.axes {
+		if !connected || math.Abs(value-previous.axes[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadAxis, DeviceID: current.id, Axis: engine.GamepadAxis(index), Value: value})
 		}
 	}
 }

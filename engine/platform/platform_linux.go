@@ -52,11 +52,13 @@ type x11Host struct {
 	cursor     xproto.Cursor
 	cursorFont xproto.Font
 
-	state  engine.WindowState
-	events []engine.Event
-	frame  uint64
-	last   time.Time
-	timing engine.FrameTiming
+	state             engine.WindowState
+	events            []engine.Event
+	frame             uint64
+	last              time.Time
+	timing            engine.FrameTiming
+	inputCapabilities engine.InputCapabilities
+	gamepads          *evdevGamepads
 }
 
 func newX11Host(config engine.Config) (*x11Host, error) {
@@ -148,6 +150,8 @@ func newX11Host(config engine.Config) (*x11Host, error) {
 			Scale:        float64(config.WindowScale), Focused: true, Visible: true,
 		},
 	}
+	host.inputCapabilities = engine.InputCapabilities{Keyboard: engine.InputAvailable}
+	host.gamepads, host.inputCapabilities.Gamepad = newEvdevGamepads()
 	if err := xproto.MapWindowChecked(conn, window).Check(); err != nil {
 		host.close()
 		return nil, fmt.Errorf("map X11 window: %w", err)
@@ -206,9 +210,7 @@ func (h *x11Host) Context() engine.HostContext {
 	return engine.HostContext{Window: h, Clock: h, Events: h}
 }
 
-func (*x11Host) InputCapabilities() engine.InputCapabilities {
-	return engine.InputCapabilities{Keyboard: engine.InputAvailable}
-}
+func (h *x11Host) InputCapabilities() engine.InputCapabilities { return h.inputCapabilities }
 
 func (h *x11Host) Run(appRuntime *engine.Runtime) error {
 	runtime.LockOSThread()
@@ -311,6 +313,9 @@ func (h *x11Host) pollNative() error {
 			return fmt.Errorf("X11 server error: %s", xerr.Error())
 		}
 		if event == nil {
+			if h.gamepads != nil {
+				h.gamepads.poll(&h.events)
+			}
 			return nil
 		}
 		switch event := event.(type) {
@@ -425,6 +430,10 @@ func (h *x11Host) close() {
 	if h.xlib != nil {
 		h.xlib.close()
 		h.xlib = nil
+	}
+	if h.gamepads != nil {
+		h.gamepads.close()
+		h.gamepads = nil
 	}
 }
 
