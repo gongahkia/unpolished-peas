@@ -37,12 +37,6 @@ type Camera struct {
 // resource. Its ID is opaque to applications.
 type Texture struct{ ID uint64 }
 
-// Material identifies optional backend-defined shader/material parameters.
-type Material struct {
-	Name       string
-	Parameters map[string]float64
-}
-
 // SpriteTransform applies scale and rotation around a normalized Bounds pivot.
 // Zero ScaleX and ScaleY each mean one, preserving pre-transform sprite
 // behavior. Negative scale mirrors an axis; Rotation is clockwise radians in
@@ -59,7 +53,6 @@ type Sprite struct {
 	Source    Rect
 	Bounds    Rect
 	Tint      Color
-	Material  Material
 	Transform SpriteTransform
 }
 
@@ -255,9 +248,6 @@ func (q *Queue) DrawSprite(layer int, space Space, sprite Sprite) error {
 	if !validSpriteTransform(sprite.Transform) {
 		return fmt.Errorf("sprite transform must contain finite origin, scale, and rotation")
 	}
-	if !validMaterial(sprite.Material) {
-		return fmt.Errorf("sprite material parameters must be finite")
-	}
 	return q.append(Command{Kind: SpriteCommand, Layer: layer, Space: space, Payload: sprite})
 }
 
@@ -266,15 +256,6 @@ func validSpriteTransform(transform SpriteTransform) bool {
 }
 
 func finiteSpriteValue(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
-
-func validMaterial(material Material) bool {
-	for _, value := range material.Parameters {
-		if !finite(value) {
-			return false
-		}
-	}
-	return true
-}
 
 // DrawTileMap records a tile-map batch.
 func (q *Queue) DrawTileMap(layer int, space Space, tiles TileMap) error {

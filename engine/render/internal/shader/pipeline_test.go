@@ -2,13 +2,11 @@ package shader
 
 import (
 	"errors"
-	"math"
 	"reflect"
 	"strings"
 	"testing"
 
 	"github.com/gongahkia/72/engine/diagnostics"
-	"github.com/gongahkia/72/engine/render"
 )
 
 func TestEmbeddedSpriteAssetIsVersionedAndPremultipliesOutput(t *testing.T) {
@@ -23,11 +21,11 @@ func TestEmbeddedSpriteAssetIsVersionedAndPremultipliesOutput(t *testing.T) {
 	}
 }
 
-func TestCacheReusesEquivalentMaterialKey(t *testing.T) {
+func TestCacheReusesEquivalentPipelineKey(t *testing.T) {
 	compiler := &fakeCompiler{}
 	cache := NewCache(compiler)
-	left := testRequest(render.Material{Name: "sprite", Parameters: map[string]float64{"tint": 1, "opacity": .5}})
-	right := testRequest(render.Material{Name: "sprite", Parameters: map[string]float64{"opacity": .5, "tint": 1}})
+	left := testRequest()
+	right := testRequest()
 	first, reused, err := cache.Pipeline(left)
 	if err != nil || reused {
 		t.Fatalf("first pipeline = %v, reused=%t, err=%v", first, reused, err)
@@ -43,7 +41,7 @@ func TestCacheReusesEquivalentMaterialKey(t *testing.T) {
 		t.Fatalf("descriptor policy = %+v, want blend=%+v alpha=%d", compiler.created[0], want, AlphaStraight)
 	}
 
-	additive := testRequest(left.Material)
+	additive := testRequest()
 	additive.Blend = BlendAdditive
 	if _, reused, err := cache.Pipeline(additive); err != nil || reused || cache.Count() != 2 {
 		t.Fatalf("additive pipeline reused=%t err=%v count=%d", reused, err, cache.Count())
@@ -52,7 +50,7 @@ func TestCacheReusesEquivalentMaterialKey(t *testing.T) {
 		t.Fatalf("compiler calls after new key validation=%d creation=%d", len(compiler.validated), len(compiler.created))
 	}
 
-	differentTarget := testRequest(left.Material)
+	differentTarget := testRequest()
 	differentTarget.TargetFormat = "bgra8unorm"
 	if _, reused, err := cache.Pipeline(differentTarget); err != nil || reused || cache.Count() != 3 {
 		t.Fatalf("different target pipeline reused=%t err=%v count=%d", reused, err, cache.Count())
@@ -65,20 +63,19 @@ func TestCacheReusesEquivalentMaterialKey(t *testing.T) {
 func TestCacheReturnsContextualValidationFailure(t *testing.T) {
 	cause := errors.New("line 17: invalid WGSL token")
 	compiler := &fakeCompiler{validateErr: cause}
-	_, _, err := NewCache(compiler).Pipeline(testRequest(render.Material{}))
+	_, _, err := NewCache(compiler).Pipeline(testRequest())
 	assertShaderFailure(t, err, "validate shader sprite-2d@v1", diagnostics.CorrectConfiguration, true, cause)
 }
 
 func TestCacheRejectsInvalidPipelineKeyBeforeCompilerCalls(t *testing.T) {
-	emptyFormat := testRequest(render.Material{})
+	emptyFormat := testRequest()
 	emptyFormat.TargetFormat = ""
-	zeroSamples := testRequest(render.Material{})
+	zeroSamples := testRequest()
 	zeroSamples.TargetSampleCount = 0
 	tests := []struct {
 		name    string
 		request Request
 	}{
-		{name: "non-finite material parameter", request: testRequest(render.Material{Parameters: map[string]float64{"opacity": math.Inf(1)}})},
 		{name: "empty target format", request: emptyFormat},
 		{name: "zero target sample count", request: zeroSamples},
 	}
@@ -144,6 +141,6 @@ func (c *fakeCompiler) CreatePipeline(descriptor Descriptor) (any, error) {
 
 type fakePipeline struct{ identifier int }
 
-func testRequest(material render.Material) Request {
-	return Request{Asset: Sprite2DAsset, Material: material, Blend: BlendSourceOver, Sampling: SamplingNearest, TargetFormat: "rgba8unorm", TargetSampleCount: 1}
+func testRequest() Request {
+	return Request{Asset: Sprite2DAsset, Blend: BlendSourceOver, Sampling: SamplingNearest, TargetFormat: "rgba8unorm", TargetSampleCount: 1}
 }
