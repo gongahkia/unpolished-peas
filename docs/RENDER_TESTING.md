@@ -42,8 +42,8 @@ a centre at or inside the radius; stroked circles cover the band from
 `max(0, radius - width/2)` through `radius + width/2`; and lines include centres
 at or within half the stroke width from their segment. Source and primitive
 colors use straight-alpha source-over composition. Text uses the fixed
-`basicfont.Face7x13` fallback and its position is the glyph baseline. Material
-parameters are backend-defined and are not interpreted by the reference backend.
+`basicfont.Face7x13` fallback and its position is the glyph baseline. Sprite
+sampling and source-over blending are fixed engine policy in this release.
 
 `TileMap.VisibleRange` conservatively selects whole cells that intersect a
 target viewport in tile-map coordinates; a partially visible edge cell remains

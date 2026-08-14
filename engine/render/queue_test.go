@@ -36,9 +36,6 @@ func TestQueueRecordsValidatedHighLevel2DCommands(t *testing.T) {
 	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Source: Rect{W: 1}, Bounds: Rect{W: 1, H: 1}}); err == nil {
 		t.Fatal("partial zero sprite source succeeded")
 	}
-	if err := queue.DrawSprite(0, ScreenSpace, Sprite{Texture: Texture{ID: 1}, Bounds: Rect{W: 1, H: 1}, Material: Material{Parameters: map[string]float64{"opacity": math.Inf(1)}}}); err == nil {
-		t.Fatal("non-finite material parameter succeeded")
-	}
 	if err := queue.FillRect(0, ScreenSpace, RectDraw{Bounds: Rect{X: math.NaN(), W: 1, H: 1}}); err == nil {
 		t.Fatal("non-finite rectangle succeeded")
 	}

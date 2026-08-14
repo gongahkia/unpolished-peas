@@ -6,12 +6,8 @@ package shader
 import (
 	_ "embed"
 	"fmt"
-	"math"
-	"sort"
-	"strings"
 
 	"github.com/gongahkia/72/engine/diagnostics"
-	"github.com/gongahkia/72/engine/render"
 )
 
 const (
@@ -131,27 +127,22 @@ type AlphaMode uint8
 
 const AlphaStraight AlphaMode = iota
 
-// Request identifies one desired engine-owned pipeline. Material is the
-// existing public command value; cache identity canonicalizes its parameter map
-// without retaining it or exposing a native pipeline type.
+// Request identifies one desired engine-owned pipeline.
 type Request struct {
 	Asset             string
-	Material          render.Material
 	Blend             BlendMode
 	Sampling          Sampling
 	TargetFormat      string
 	TargetSampleCount uint32
 }
 
-// Key is a comparable, canonical pipeline cache key. Parameters stores a
-// length-prefixed, sorted binary-float representation rather than a map so
-// semantically equivalent Material maps reuse one pipeline.
+// Key is a comparable, canonical pipeline cache key.
 type Key struct {
-	Asset, Version, Material, Parameters string
-	Blend, Sampling                      uint8
-	Alpha                                AlphaMode
-	TargetFormat                         string
-	TargetSampleCount                    uint32
+	Asset, Version    string
+	Blend, Sampling   uint8
+	Alpha             AlphaMode
+	TargetFormat      string
+	TargetSampleCount uint32
 }
 
 // Descriptor is passed to a selected binding after validation. It contains no
@@ -245,29 +236,5 @@ func (r Request) key(asset Asset) (Key, error) {
 	if r.TargetSampleCount == 0 {
 		return Key{}, diagnostics.NewFailure(diagnostics.RendererSubsystem, "create shader pipeline key", fmt.Errorf("pipeline target sample count must be positive"), diagnostics.CorrectInput, false)
 	}
-	parameters, err := canonicalParameters(r.Material.Parameters)
-	if err != nil {
-		return Key{}, diagnostics.NewFailure(diagnostics.RendererSubsystem, "create shader pipeline key", err, diagnostics.CorrectInput, false)
-	}
-	return Key{Asset: asset.Name, Version: asset.Version, Material: r.Material.Name, Parameters: parameters, Blend: uint8(r.Blend), Sampling: uint8(r.Sampling), Alpha: AlphaStraight, TargetFormat: r.TargetFormat, TargetSampleCount: r.TargetSampleCount}, nil
-}
-
-func canonicalParameters(parameters map[string]float64) (string, error) {
-	keys := make([]string, 0, len(parameters))
-	for key := range parameters {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	var encoded strings.Builder
-	for _, key := range keys {
-		value := parameters[key]
-		if math.IsNaN(value) || math.IsInf(value, 0) {
-			return "", fmt.Errorf("material parameter %q must be finite", key)
-		}
-		if value == 0 {
-			value = 0 // Canonicalize negative zero, which is numerically equivalent.
-		}
-		fmt.Fprintf(&encoded, "%d:%s=%016x;", len(key), key, math.Float64bits(value))
-	}
-	return encoded.String(), nil
+	return Key{Asset: asset.Name, Version: asset.Version, Blend: uint8(r.Blend), Sampling: uint8(r.Sampling), Alpha: AlphaStraight, TargetFormat: r.TargetFormat, TargetSampleCount: r.TargetSampleCount}, nil
 }

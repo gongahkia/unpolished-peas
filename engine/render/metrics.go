@@ -9,7 +9,7 @@ import (
 
 // FrameMetrics is a backend-neutral summary of one render submission.
 // CompatibleSpriteRuns identifies contiguous, order-preserving sprite groups
-// that share texture, coordinate space, material, and clip state. It is a
+// that share texture, coordinate space, and clip state. It is a
 // batching opportunity, not a claim about GPU draw calls. NativeTextureBytes
 // is an optional backend estimate based on known texture dimensions;
 // NativeBufferBytes is the capacity of renderer-owned dynamic buffers. Neither
@@ -133,26 +133,13 @@ func compatibleSpriteCommands(left, right Command) bool {
 	}
 	leftSprite, leftOK := left.Payload.(Sprite)
 	rightSprite, rightOK := right.Payload.(Sprite)
-	return leftOK && rightOK && leftSprite.Texture == rightSprite.Texture && equalMaterial(leftSprite.Material, rightSprite.Material)
+	return leftOK && rightOK && leftSprite.Texture == rightSprite.Texture
 }
 
 func equalCommandClip(left, right Command) bool {
 	leftClip, leftOK := left.Clip()
 	rightClip, rightOK := right.Clip()
 	return leftOK == rightOK && (!leftOK || leftClip == rightClip)
-}
-
-func equalMaterial(left, right Material) bool {
-	if left.Name != right.Name || len(left.Parameters) != len(right.Parameters) {
-		return false
-	}
-	for key, leftValue := range left.Parameters {
-		rightValue, ok := right.Parameters[key]
-		if !ok || leftValue != rightValue {
-			return false
-		}
-	}
-	return true
 }
 
 func commandViewport(command Command, camera Camera, viewport Rect) (Rect, bool) {

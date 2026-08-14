@@ -70,9 +70,8 @@ feature requirements, not implicit behavior inherited from another renderer.
 device-local pipeline-cache identity. A private adapter must validate each
 asset through its actual WGSL compiler, then create the binding-specific native
 pipeline from the provided descriptor. The cache preserves contextual validation
-and creation failures and canonicalizes finite `render.Material` parameters;
-read [RENDER_POLICY.md](RENDER_POLICY.md) before changing alpha, blend, or
-sampling behavior.
+and creation failures; read [RENDER_POLICY.md](RENDER_POLICY.md) before
+changing alpha, blend, or sampling behavior.
 
 `engine/render/internal/presentation` supplies the private lifecycle behavior
 matrix for a chosen renderer. Its driver adapter maps native adapter/device,
