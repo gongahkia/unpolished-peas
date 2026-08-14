@@ -32,6 +32,9 @@ type browserHost struct {
 	renderer          *webgpu.Renderer
 	inputCapabilities engine.InputCapabilities
 	gamepads          map[uint32]browserGamepad
+	clipboardNext     engine.ClipboardRequestID
+	clipboard         []engine.ClipboardCompletion
+	clipboardRequests []*browserClipboardRequest
 
 	state  engine.WindowState
 	events []engine.Event
@@ -52,6 +55,14 @@ type browserListener struct {
 	target   js.Value
 	name     string
 	callback js.Func
+}
+
+type browserClipboardRequest struct {
+	id        engine.ClipboardRequestID
+	operation engine.ClipboardOperation
+	resolve   js.Func
+	reject    js.Func
+	settled   bool
 }
 
 func newBrowserHost(config engine.Config) (*browserHost, error) {
@@ -176,6 +187,11 @@ func (h *browserHost) stop(err error) {
 		listener.callback.Release()
 	}
 	h.listeners = nil
+	for _, request := range h.clipboardRequests {
+		request.resolve.Release()
+		request.reject.Release()
+	}
+	h.clipboardRequests = nil
 	if !h.textInput.IsNull() && !h.textInput.IsUndefined() {
 		h.textInput.Call("remove")
 		h.textInput = js.Undefined()
@@ -221,13 +237,93 @@ func (*browserHost) ReadClipboard() (string, error) {
 	return "", fmt.Errorf("read browser clipboard: asynchronous Clipboard API cannot satisfy synchronous host contract")
 }
 
-func (h *browserHost) WriteClipboard(value string) error {
+func (*browserHost) WriteClipboard(string) error {
+	return fmt.Errorf("write browser clipboard: asynchronous Clipboard API cannot report completion through synchronous host contract")
+}
+
+// RequestClipboard starts one browser Clipboard API request. Browser
+// permission and secure-context failures settle through PollClipboard so games
+// can observe them without a browser-specific callback.
+func (h *browserHost) RequestClipboard(request engine.ClipboardRequest) (engine.ClipboardRequestID, error) {
+	if h.stopped {
+		return 0, fmt.Errorf("request browser clipboard: host is stopped")
+	}
+	if request.Operation != engine.ClipboardRead && request.Operation != engine.ClipboardWrite {
+		return 0, fmt.Errorf("request browser clipboard: unsupported operation %d", request.Operation)
+	}
+	if secure := h.window.Get("isSecureContext"); !secure.IsNull() && !secure.IsUndefined() && !secure.Bool() {
+		return 0, fmt.Errorf("request browser clipboard: Clipboard API requires a secure context")
+	}
 	clipboard := h.window.Get("navigator").Get("clipboard")
 	if clipboard.IsNull() || clipboard.IsUndefined() {
-		return fmt.Errorf("write browser clipboard: Clipboard API is unavailable")
+		return 0, fmt.Errorf("request browser clipboard: Clipboard API is unavailable")
 	}
-	clipboard.Call("writeText", value)
-	return nil
+	method := "readText"
+	if request.Operation == engine.ClipboardWrite {
+		method = "writeText"
+	}
+	if function := clipboard.Get(method); function.IsNull() || function.IsUndefined() || function.Type() != js.TypeFunction {
+		return 0, fmt.Errorf("request browser clipboard: Clipboard.%s is unavailable", method)
+	}
+	h.clipboardNext++
+	entry := &browserClipboardRequest{id: h.clipboardNext, operation: request.Operation}
+	entry.resolve = js.FuncOf(func(_ js.Value, values []js.Value) any {
+		text := ""
+		if entry.operation == engine.ClipboardRead && len(values) > 0 {
+			text = values[0].String()
+		}
+		h.settleClipboard(entry, text, nil)
+		return nil
+	})
+	entry.reject = js.FuncOf(func(_ js.Value, values []js.Value) any {
+		h.settleClipboard(entry, "", browserClipboardRejection(values))
+		return nil
+	})
+	h.clipboardRequests = append(h.clipboardRequests, entry)
+	if request.Operation == engine.ClipboardRead {
+		clipboard.Call(method).Call("then", entry.resolve, entry.reject)
+	} else {
+		clipboard.Call(method, request.Text).Call("then", entry.resolve, entry.reject)
+	}
+	return entry.id, nil
+}
+
+// PollClipboard returns completed browser clipboard operations in settlement
+// order and clears them from this host.
+func (h *browserHost) PollClipboard() []engine.ClipboardCompletion {
+	completed := append([]engine.ClipboardCompletion(nil), h.clipboard...)
+	h.clipboard = h.clipboard[:0]
+	return completed
+}
+
+func (h *browserHost) settleClipboard(request *browserClipboardRequest, text string, err error) {
+	if request == nil || request.settled {
+		return
+	}
+	request.settled = true
+	request.resolve.Release()
+	request.reject.Release()
+	for index, active := range h.clipboardRequests {
+		if active != request {
+			continue
+		}
+		h.clipboardRequests = append(h.clipboardRequests[:index], h.clipboardRequests[index+1:]...)
+		break
+	}
+	if !h.stopped {
+		h.clipboard = append(h.clipboard, engine.ClipboardCompletion{ID: request.id, Operation: request.operation, Text: text, Err: err})
+	}
+}
+
+func browserClipboardRejection(values []js.Value) error {
+	if len(values) == 0 || values[0].IsNull() || values[0].IsUndefined() {
+		return fmt.Errorf("browser Clipboard API rejected the request")
+	}
+	value := values[0]
+	if message := value.Get("message"); !message.IsNull() && !message.IsUndefined() && message.String() != "" {
+		return fmt.Errorf("browser Clipboard API rejected the request: %s", message.String())
+	}
+	return fmt.Errorf("browser Clipboard API rejected the request: %s", value.String())
 }
 
 func (h *browserHost) Now() time.Time             { return time.Now() }

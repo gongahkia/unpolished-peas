@@ -49,6 +49,43 @@ type Window interface {
 	WriteClipboard(string) error
 }
 
+// ClipboardOperation identifies an asynchronous clipboard operation.
+type ClipboardOperation uint8
+
+const (
+	ClipboardRead ClipboardOperation = iota
+	ClipboardWrite
+)
+
+// ClipboardRequestID identifies one accepted asynchronous clipboard request.
+// IDs are unique only for the lifetime of the host that returned them.
+type ClipboardRequestID uint64
+
+// ClipboardRequest describes one asynchronous clipboard operation. Text is
+// used only by ClipboardWrite.
+type ClipboardRequest struct {
+	Operation ClipboardOperation
+	Text      string
+}
+
+// ClipboardCompletion is the terminal result of an asynchronous clipboard
+// request. Text is populated only for a successful ClipboardRead.
+type ClipboardCompletion struct {
+	ID        ClipboardRequestID
+	Operation ClipboardOperation
+	Text      string
+	Err       error
+}
+
+// AsyncClipboard is an optional, owner-goroutine clipboard interface for
+// hosts whose clipboard API is asynchronous. RequestClipboard returns after a
+// request has been accepted; PollClipboard returns terminal completions in
+// settlement order and clears them from the host.
+type AsyncClipboard interface {
+	RequestClipboard(ClipboardRequest) (ClipboardRequestID, error)
+	PollClipboard() []ClipboardCompletion
+}
+
 // FrameTiming is a host-generated frame snapshot. Delta is the elapsed wall
 // time since the prior presentation frame; fixed simulation cadence remains an
 // application or runtime policy rather than a host assumption.
@@ -155,6 +192,14 @@ func (c HostContext) InputCapabilities() InputCapabilities {
 		return source.InputCapabilities()
 	}
 	return InputCapabilities{}
+}
+
+// AsyncClipboard returns the host's optional asynchronous clipboard facility.
+// It is absent when the host has only the synchronous Window clipboard
+// contract or cannot provide clipboard access.
+func (c HostContext) AsyncClipboard() (AsyncClipboard, bool) {
+	clipboard, ok := c.Window.(AsyncClipboard)
+	return clipboard, ok
 }
 
 func (c HostContext) validate() error {
