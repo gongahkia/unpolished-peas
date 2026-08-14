@@ -24,11 +24,14 @@ func Run(config engine.Config, app engine.Application) error {
 }
 
 type browserHost struct {
-	config   engine.Config
-	document js.Value
-	window   js.Value
-	canvas   js.Value
-	renderer *webgpu.Renderer
+	config            engine.Config
+	document          js.Value
+	window            js.Value
+	canvas            js.Value
+	textInput         js.Value
+	renderer          *webgpu.Renderer
+	inputCapabilities engine.InputCapabilities
+	gamepads          map[uint32]browserGamepad
 
 	state  engine.WindowState
 	events []engine.Event
@@ -70,6 +73,17 @@ func newBrowserHost(config engine.Config) (*browserHost, error) {
 		document.Get("body").Call("appendChild", canvas)
 	}
 	canvas.Set("tabIndex", 0)
+	textInput := document.Call("createElement", "textarea")
+	textInput.Set("tabIndex", -1)
+	textInput.Call("setAttribute", "aria-label", "72 text input")
+	style := textInput.Get("style")
+	style.Set("position", "fixed")
+	style.Set("left", "-10000px")
+	style.Set("top", "0")
+	style.Set("width", "1px")
+	style.Set("height", "1px")
+	style.Set("opacity", "0")
+	document.Get("body").Call("appendChild", textInput)
 	if config.Title != "" {
 		document.Set("title", config.Title)
 	}
@@ -92,7 +106,8 @@ func newBrowserHost(config engine.Config) (*browserHost, error) {
 	now := time.Now()
 	visible := !document.Get("hidden").Bool()
 	host := &browserHost{
-		config: config, document: document, window: window, canvas: canvas, renderer: renderer, start: now, last: now,
+		config: config, document: document, window: window, canvas: canvas, textInput: textInput, renderer: renderer, start: now, last: now,
+		inputCapabilities: browserCapabilities(window), gamepads: make(map[uint32]browserGamepad),
 		state: engine.WindowState{Title: config.Title, LogicalSize: engine.Size{W: config.Viewport.W, H: config.Viewport.H}, DrawableSize: engine.Size{W: float64(physicalWidth), H: float64(physicalHeight)}, Scale: float64(config.WindowScale) * dpr, Focused: visible && documentHasFocus(document), Visible: visible},
 		done:  make(chan error, 1),
 	}
@@ -134,6 +149,7 @@ func (h *browserHost) drawFrame() {
 	h.frame++
 	h.timing = engine.FrameTiming{Frame: h.frame, Elapsed: now.Sub(h.start), Delta: now.Sub(h.last)}
 	h.last = now
+	h.sampleGamepads()
 	if err := h.runtime.Update(h.runtime.SampleInput(h.PollEvents())); err != nil {
 		h.stop(err)
 		return
@@ -160,6 +176,10 @@ func (h *browserHost) stop(err error) {
 		listener.callback.Release()
 	}
 	h.listeners = nil
+	if !h.textInput.IsNull() && !h.textInput.IsUndefined() {
+		h.textInput.Call("remove")
+		h.textInput = js.Undefined()
+	}
 	if h.rafReady {
 		h.raf.Release()
 		h.rafReady = false
@@ -168,6 +188,8 @@ func (h *browserHost) stop(err error) {
 }
 
 func (h *browserHost) State() engine.WindowState { return h.state }
+
+func (h *browserHost) InputCapabilities() engine.InputCapabilities { return h.inputCapabilities }
 
 func (h *browserHost) SetTitle(value string) error {
 	h.document.Set("title", value)
@@ -223,9 +245,6 @@ func (h *browserHost) listen() {
 			event.Call("preventDefault")
 			h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: true})
 		}
-		if text := browserText(event); text != "" {
-			h.events = append(h.events, engine.Event{Kind: engine.EventText, Text: text})
-		}
 	})
 	h.listenTo(h.document, "keyup", func(event js.Value) {
 		if key, ok := browserKey(event.Get("code").String()); ok {
@@ -237,11 +256,30 @@ func (h *browserHost) listen() {
 		h.events = append(h.events, engine.Event{Kind: engine.EventPointerMove, Position: h.pointerPosition(event)})
 	})
 	h.listenTo(h.canvas, "pointerdown", func(event js.Value) {
-		h.canvas.Call("focus")
+		h.textInput.Call("focus")
 		if button, ok := browserButton(event.Get("button").Int()); ok {
 			event.Call("preventDefault")
 			h.events = append(h.events, engine.Event{Kind: engine.EventPointerButton, PointerButton: button, Pressed: true, Position: h.pointerPosition(event)})
 		}
+	})
+	h.listenTo(h.textInput, "beforeinput", func(event js.Value) {
+		inputType := event.Get("inputType").String()
+		if event.Get("isComposing").Bool() || (inputType != "insertText" && inputType != "insertFromComposition") {
+			return
+		}
+		if text := event.Get("data").String(); text != "" && utf8.ValidString(text) {
+			h.events = append(h.events, engine.Event{Kind: engine.EventText, Text: text})
+		}
+	})
+	h.listenTo(h.textInput, "input", func(js.Value) { h.textInput.Set("value", "") })
+	h.listenTo(h.textInput, "compositionstart", func(event js.Value) {
+		h.events = append(h.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionStart, Text: event.Get("data").String()})
+	})
+	h.listenTo(h.textInput, "compositionupdate", func(event js.Value) {
+		h.events = append(h.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionUpdate, Text: event.Get("data").String()})
+	})
+	h.listenTo(h.textInput, "compositionend", func(event js.Value) {
+		h.events = append(h.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionEnd, Text: event.Get("data").String()})
 	})
 	h.listenTo(h.canvas, "pointerup", func(event js.Value) {
 		if button, ok := browserButton(event.Get("button").Int()); ok {
@@ -350,58 +388,104 @@ func browserButton(value int) (engine.PointerButton, bool) {
 	}
 }
 
-func browserKey(value string) (engine.Key, bool) {
-	switch value {
-	case "KeyA":
-		return engine.KeyA, true
-	case "KeyD":
-		return engine.KeyD, true
-	case "KeyE":
-		return engine.KeyE, true
-	case "KeyJ":
-		return engine.KeyJ, true
-	case "KeyP":
-		return engine.KeyP, true
-	case "KeyS":
-		return engine.KeyS, true
-	case "KeyW":
-		return engine.KeyW, true
-	case "Space":
-		return engine.KeySpace, true
-	case "ShiftLeft", "ShiftRight":
-		return engine.KeyShift, true
-	case "Enter":
-		return engine.KeyEnter, true
-	case "Period":
-		return engine.KeyPeriod, true
-	case "Tab":
-		return engine.KeyTab, true
-	case "ArrowDown":
-		return engine.KeyArrowDown, true
-	case "ArrowLeft":
-		return engine.KeyArrowLeft, true
-	case "ArrowRight":
-		return engine.KeyArrowRight, true
-	case "ArrowUp":
-		return engine.KeyArrowUp, true
-	case "F1":
-		return engine.KeyF1, true
-	case "F2":
-		return engine.KeyF2, true
-	case "F6":
-		return engine.KeyF6, true
-	default:
-		return "", false
+func browserKey(value string) (engine.Key, bool) { key, ok := browserKeys[value]; return key, ok }
+
+var browserKeys = map[string]engine.Key{
+	"KeyA": engine.KeyA, "KeyB": engine.KeyB, "KeyC": engine.KeyC, "KeyD": engine.KeyD, "KeyE": engine.KeyE, "KeyF": engine.KeyF, "KeyG": engine.KeyG, "KeyH": engine.KeyH, "KeyI": engine.KeyI, "KeyJ": engine.KeyJ, "KeyK": engine.KeyK, "KeyL": engine.KeyL, "KeyM": engine.KeyM, "KeyN": engine.KeyN, "KeyO": engine.KeyO, "KeyP": engine.KeyP, "KeyQ": engine.KeyQ, "KeyR": engine.KeyR, "KeyS": engine.KeyS, "KeyT": engine.KeyT, "KeyU": engine.KeyU, "KeyV": engine.KeyV, "KeyW": engine.KeyW, "KeyX": engine.KeyX, "KeyY": engine.KeyY, "KeyZ": engine.KeyZ,
+	"Digit0": engine.KeyDigit0, "Digit1": engine.KeyDigit1, "Digit2": engine.KeyDigit2, "Digit3": engine.KeyDigit3, "Digit4": engine.KeyDigit4, "Digit5": engine.KeyDigit5, "Digit6": engine.KeyDigit6, "Digit7": engine.KeyDigit7, "Digit8": engine.KeyDigit8, "Digit9": engine.KeyDigit9,
+	"Backquote": engine.KeyBackquote, "Backslash": engine.KeyBackslash, "BracketLeft": engine.KeyBracketLeft, "BracketRight": engine.KeyBracketRight, "Comma": engine.KeyComma, "Equal": engine.KeyEqual, "IntlBackslash": engine.KeyIntlBackslash, "Minus": engine.KeyMinus, "Period": engine.KeyPeriod, "Quote": engine.KeyQuote, "Semicolon": engine.KeySemicolon, "Slash": engine.KeySlash,
+	"AltLeft": engine.KeyAltLeft, "AltRight": engine.KeyAltRight, "Backspace": engine.KeyBackspace, "CapsLock": engine.KeyCapsLock, "ContextMenu": engine.KeyContextMenu, "ControlLeft": engine.KeyControlLeft, "ControlRight": engine.KeyControlRight, "Enter": engine.KeyEnter, "MetaLeft": engine.KeyMetaLeft, "MetaRight": engine.KeyMetaRight, "ShiftLeft": engine.KeyShiftLeft, "ShiftRight": engine.KeyShiftRight, "Space": engine.KeySpace, "Tab": engine.KeyTab,
+	"Delete": engine.KeyDelete, "End": engine.KeyEnd, "Help": engine.KeyHelp, "Home": engine.KeyHome, "Insert": engine.KeyInsert, "PageDown": engine.KeyPageDown, "PageUp": engine.KeyPageUp, "ArrowDown": engine.KeyArrowDown, "ArrowLeft": engine.KeyArrowLeft, "ArrowRight": engine.KeyArrowRight, "ArrowUp": engine.KeyArrowUp,
+	"NumLock": engine.KeyNumLock, "Numpad0": engine.KeyNumpad0, "Numpad1": engine.KeyNumpad1, "Numpad2": engine.KeyNumpad2, "Numpad3": engine.KeyNumpad3, "Numpad4": engine.KeyNumpad4, "Numpad5": engine.KeyNumpad5, "Numpad6": engine.KeyNumpad6, "Numpad7": engine.KeyNumpad7, "Numpad8": engine.KeyNumpad8, "Numpad9": engine.KeyNumpad9, "NumpadAdd": engine.KeyNumpadAdd, "NumpadDecimal": engine.KeyNumpadDecimal, "NumpadDivide": engine.KeyNumpadDivide, "NumpadEnter": engine.KeyNumpadEnter, "NumpadEqual": engine.KeyNumpadEqual, "NumpadMultiply": engine.KeyNumpadMultiply, "NumpadSubtract": engine.KeyNumpadSubtract,
+	"Escape": engine.KeyEscape, "F1": engine.KeyF1, "F2": engine.KeyF2, "F3": engine.KeyF3, "F4": engine.KeyF4, "F5": engine.KeyF5, "F6": engine.KeyF6, "F7": engine.KeyF7, "F8": engine.KeyF8, "F9": engine.KeyF9, "F10": engine.KeyF10, "F11": engine.KeyF11, "F12": engine.KeyF12, "Pause": engine.KeyPause, "PrintScreen": engine.KeyPrintScreen, "ScrollLock": engine.KeyScrollLock,
+}
+
+type browserGamepad struct {
+	mapping   engine.GamepadMapping
+	supported bool
+	buttons   []float64
+	axes      []float64
+}
+
+func browserCapabilities(window js.Value) engine.InputCapabilities {
+	capabilities := engine.InputCapabilities{Keyboard: engine.InputAvailable, Composition: engine.InputAvailable}
+	gamepads := window.Get("navigator").Get("getGamepads")
+	if !gamepads.IsNull() && !gamepads.IsUndefined() && gamepads.Type() == js.TypeFunction {
+		capabilities.Gamepad = engine.InputAvailable
+	}
+	return capabilities
+}
+
+func (h *browserHost) sampleGamepads() {
+	if h.inputCapabilities.Gamepad != engine.InputAvailable {
+		return
+	}
+	values := h.window.Get("navigator").Call("getGamepads")
+	seen := make(map[uint32]struct{}, values.Length())
+	for index := 0; index < values.Length(); index++ {
+		gamepad := values.Index(index)
+		if gamepad.IsNull() || gamepad.IsUndefined() || !gamepad.Get("connected").Bool() {
+			continue
+		}
+		id := uint32(index)
+		seen[id] = struct{}{}
+		mapping := engine.GamepadMappingUnknown
+		if gamepad.Get("mapping").String() == "standard" {
+			mapping = engine.GamepadMappingStandard
+		}
+		current := browserGamepad{mapping: mapping, supported: mapping == engine.GamepadMappingStandard}
+		if current.supported {
+			current.buttons = browserGamepadButtons(gamepad.Get("buttons"))
+			current.axes = browserGamepadAxes(gamepad.Get("axes"))
+		}
+		previous, exists := h.gamepads[id]
+		if !exists || previous.mapping != current.mapping {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: id, Connected: true, GamepadMapping: mapping, GamepadUnsupported: !current.supported})
+		}
+		if current.supported {
+			h.appendGamepadChanges(id, previous, current)
+		}
+		h.gamepads[id] = current
+	}
+	for id, previous := range h.gamepads {
+		if _, ok := seen[id]; !ok {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: id, Connected: false, GamepadMapping: previous.mapping, GamepadUnsupported: !previous.supported})
+			delete(h.gamepads, id)
+		}
 	}
 }
 
-func browserText(event js.Value) string {
-	if event.Get("ctrlKey").Bool() || event.Get("altKey").Bool() || event.Get("metaKey").Bool() {
-		return ""
+func browserGamepadButtons(values js.Value) []float64 {
+	buttons := make([]float64, 17)
+	for index := range buttons {
+		if index >= values.Length() {
+			break
+		}
+		buttons[index] = math.Max(0, math.Min(1, values.Index(index).Get("value").Float()))
 	}
-	value := event.Get("key").String()
-	if utf8.RuneCountInString(value) != 1 {
-		return ""
+	return buttons
+}
+
+func browserGamepadAxes(values js.Value) []float64 {
+	axes := make([]float64, 4)
+	for index := range axes {
+		if index >= values.Length() {
+			break
+		}
+		axes[index] = math.Max(-1, math.Min(1, values.Index(index).Float()))
 	}
-	return value
+	return axes
+}
+
+func (h *browserHost) appendGamepadChanges(id uint32, previous, current browserGamepad) {
+	for index, value := range current.buttons {
+		if !previous.supported || index >= len(previous.buttons) || math.Abs(value-previous.buttons[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadButton, DeviceID: id, Button: engine.GamepadButton(index), Value: value, Pressed: value >= .5})
+		}
+	}
+	for index, value := range current.axes {
+		if !previous.supported || index >= len(previous.axes) || math.Abs(value-previous.axes[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadAxis, DeviceID: id, Axis: engine.GamepadAxis(index), Value: value})
+		}
+	}
 }

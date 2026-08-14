@@ -21,6 +21,25 @@ func TestWin32PortableInputMappings(t *testing.T) {
 	if _, ok := win32Key(0); ok {
 		t.Fatal("unmapped virtual key was accepted")
 	}
+	for _, test := range []struct {
+		virtual uintptr
+		lparam  uintptr
+		want    engine.Key
+	}{
+		{virtual: 0x10, lparam: 0x2a << 16, want: engine.KeyShiftLeft},
+		{virtual: 0x10, lparam: 0x36 << 16, want: engine.KeyShiftRight},
+		{virtual: 0x11, lparam: 0x1d << 16, want: engine.KeyControlLeft},
+		{virtual: 0x11, lparam: 0x1d<<16 | 1<<24, want: engine.KeyControlRight},
+		{virtual: 0x25, lparam: 0x4b<<16 | 1<<24, want: engine.KeyArrowLeft},
+	} {
+		if got, ok := win32KeyEvent(test.virtual, test.lparam); !ok || got != test.want {
+			t.Fatalf("win32KeyEvent(%#x, %#x) = %q, %t; want %q, true", test.virtual, test.lparam, got, ok, test.want)
+		}
+	}
+	gamepad := win32GamepadFromXInput(win32XInputGamepad{Buttons: 0x1001, LeftTrigger: 128, ThumbLY: -32768})
+	if gamepad.buttons[engine.GamepadButtonSouth] != 1 || gamepad.buttons[engine.GamepadButtonDPadUp] != 1 || gamepad.buttons[engine.GamepadButtonLeftTrigger] <= .5 || gamepad.axes[engine.GamepadAxisLeftStickY] != 1 {
+		t.Fatalf("XInput gamepad = %+v", gamepad)
+	}
 	negative := int16(-9)
 	if point := win32PointFromLParam(uintptr(uint16(12)) | uintptr(uint16(negative))<<16); point != (win32Point{X: 12, Y: -9}) {
 		t.Fatalf("Win32 pointer = %+v", point)

@@ -79,9 +79,9 @@ not the existence of core engine packages.
 - Add structured browser gamepad, IME/text composition, clipboard permission,
   and hidden-tab/device-loss behavior where the synchronous host contract can
   represent it.
-- Decide whether portable material parameters should acquire visible engine
-  semantics; the current embedded shader does not expose user-defined shader
-  or blend control.
+- Before adding sprite sampling or blend choices, define typed engine semantics
+  and backend conformance tests; arbitrary material parameters were removed as
+  a misleading no-op.
 - Keep editor tooling, 3D, networking, navigation, advanced animation, mobile,
   and consoles explicitly out of this milestone unless product scope changes.
 

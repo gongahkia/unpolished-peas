@@ -75,6 +75,7 @@ const (
 var (
 	win32Kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	win32User32   = windows.NewLazySystemDLL("user32.dll")
+	win32XInput   = windows.NewLazySystemDLL("xinput1_4.dll")
 
 	win32GetModuleHandleW   = win32Kernel32.NewProc("GetModuleHandleW")
 	win32GlobalAlloc        = win32Kernel32.NewProc("GlobalAlloc")
@@ -104,6 +105,7 @@ var (
 	win32GetClipboardData   = win32User32.NewProc("GetClipboardData")
 	win32EmptyClipboard     = win32User32.NewProc("EmptyClipboard")
 	win32SetClipboardData   = win32User32.NewProc("SetClipboardData")
+	win32XInputGetState     = win32XInput.NewProc("XInputGetState")
 
 	win32ClassOnce sync.Once
 	win32ClassErr  error
@@ -136,9 +138,31 @@ type win32Host struct {
 	start  time.Time
 	last   time.Time
 
-	cursor       uintptr
-	cursorHidden bool
-	pendingHigh  uint16
+	cursor            uintptr
+	cursorHidden      bool
+	pendingHigh       uint16
+	inputCapabilities engine.InputCapabilities
+	gamepads          map[uint32]win32Gamepad
+}
+
+type win32Gamepad struct {
+	buttons [17]float64
+	axes    [4]float64
+}
+
+type win32XInputState struct {
+	PacketNumber uint32
+	Gamepad      win32XInputGamepad
+}
+
+type win32XInputGamepad struct {
+	Buttons      uint16
+	LeftTrigger  uint8
+	RightTrigger uint8
+	ThumbLX      int16
+	ThumbLY      int16
+	ThumbRX      int16
+	ThumbRY      int16
 }
 
 type win32WNDCLASSEX struct {
@@ -215,7 +239,10 @@ func newWin32Host(config engine.Config) (*win32Host, error) {
 	host := &win32Host{
 		config: config, window: window,
 		state: engine.WindowState{Title: config.Title, LogicalSize: config.Viewport, Focused: true, Visible: true},
-		start: now, last: now,
+		start: now, last: now, inputCapabilities: engine.InputCapabilities{Keyboard: engine.InputAvailable}, gamepads: make(map[uint32]win32Gamepad),
+	}
+	if win32XInput.Load() == nil {
+		host.inputCapabilities.Gamepad = engine.InputAvailable
 	}
 	arrow, _, arrowErr := win32LoadCursorW.Call(0, win32IDCArrow)
 	if arrow == 0 {
@@ -283,6 +310,8 @@ func registerWin32Class() error {
 func (h *win32Host) Context() engine.HostContext {
 	return engine.HostContext{Window: h, Clock: h, Events: h}
 }
+
+func (h *win32Host) InputCapabilities() engine.InputCapabilities { return h.inputCapabilities }
 
 func (h *win32Host) Run(appRuntime *engine.Runtime) error {
 	if appRuntime == nil {
@@ -451,6 +480,7 @@ func (h *win32Host) pollNative() error {
 			if callErr != nil && callErr != windows.ERROR_SUCCESS {
 				return win32Error("poll Win32 events", callErr)
 			}
+			h.pollGamepads()
 			return nil
 		}
 		if message.Message == win32WMQuit {
@@ -515,9 +545,69 @@ func (h *win32Host) setFocus(value bool) {
 	h.events = append(h.events, engine.Event{Kind: engine.EventFocusChanged, Focused: value})
 }
 
-func (h *win32Host) appendKey(value uintptr, pressed bool) {
-	if key, ok := win32Key(value); ok {
+func (h *win32Host) appendKey(value, lparam uintptr, pressed bool) {
+	if key, ok := win32KeyEvent(value, lparam); ok {
 		h.events = append(h.events, engine.Event{Kind: engine.EventKey, Key: key, Pressed: pressed})
+	}
+}
+
+func (h *win32Host) pollGamepads() {
+	if h.inputCapabilities.Gamepad != engine.InputAvailable {
+		return
+	}
+	for id := uint32(0); id < 4; id++ {
+		var state win32XInputState
+		result, _, _ := win32XInputGetState.Call(uintptr(id), uintptr(unsafe.Pointer(&state)))
+		if result != 0 {
+			if _, connected := h.gamepads[id]; connected {
+				h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: id, Connected: false, GamepadMapping: engine.GamepadMappingStandard})
+				delete(h.gamepads, id)
+			}
+			continue
+		}
+		current := win32GamepadFromXInput(state.Gamepad)
+		previous, connected := h.gamepads[id]
+		if !connected {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadConnection, DeviceID: id, Connected: true, GamepadMapping: engine.GamepadMappingStandard})
+		}
+		h.appendGamepadChanges(id, previous, current, connected)
+		h.gamepads[id] = current
+	}
+}
+
+func win32GamepadFromXInput(source win32XInputGamepad) win32Gamepad {
+	buttons := func(mask uint16) float64 {
+		if source.Buttons&mask != 0 {
+			return 1
+		}
+		return 0
+	}
+	return win32Gamepad{
+		buttons: [17]float64{
+			buttons(0x1000), buttons(0x2000), buttons(0x4000), buttons(0x8000), buttons(0x0100), buttons(0x0200), float64(source.LeftTrigger) / 255, float64(source.RightTrigger) / 255,
+			buttons(0x0020), buttons(0x0010), buttons(0x0040), buttons(0x0080), buttons(0x0001), buttons(0x0002), buttons(0x0004), buttons(0x0008), 0,
+		},
+		axes: [4]float64{win32Axis(source.ThumbLX), -win32Axis(source.ThumbLY), win32Axis(source.ThumbRX), -win32Axis(source.ThumbRY)},
+	}
+}
+
+func win32Axis(value int16) float64 {
+	if value < 0 {
+		return float64(value) / 32768
+	}
+	return float64(value) / 32767
+}
+
+func (h *win32Host) appendGamepadChanges(id uint32, previous, current win32Gamepad, connected bool) {
+	for index, value := range current.buttons {
+		if !connected || math.Abs(value-previous.buttons[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadButton, DeviceID: id, Button: engine.GamepadButton(index), Value: value, Pressed: value >= .5})
+		}
+	}
+	for index, value := range current.axes {
+		if !connected || math.Abs(value-previous.axes[index]) > .001 {
+			h.events = append(h.events, engine.Event{Kind: engine.EventGamepadAxis, DeviceID: id, Axis: engine.GamepadAxis(index), Value: value})
+		}
 	}
 }
 
@@ -636,10 +726,10 @@ func win32WindowProc(window uintptr, message uint32, wparam, lparam uintptr) uin
 			return 1
 		}
 	case win32WMKeyDown, win32WMSysKeyDown:
-		host.appendKey(wparam, true)
+		host.appendKey(wparam, lparam, true)
 		return 0
 	case win32WMKeyUp, win32WMSysKeyUp:
-		host.appendKey(wparam, false)
+		host.appendKey(wparam, lparam, false)
 		return 0
 	case win32WMChar:
 		host.appendText(uint16(wparam))
@@ -691,48 +781,68 @@ func lookupWin32Host(window uintptr) *win32Host {
 }
 
 func win32Key(value uintptr) (engine.Key, bool) {
-	switch value {
-	case 0x41:
-		return engine.KeyA, true
-	case 0x44:
-		return engine.KeyD, true
-	case 0x45:
-		return engine.KeyE, true
-	case 0x4a:
-		return engine.KeyJ, true
-	case 0x50:
-		return engine.KeyP, true
-	case 0x53:
-		return engine.KeyS, true
-	case 0x57:
-		return engine.KeyW, true
-	case 0x20:
-		return engine.KeySpace, true
-	case 0x10:
-		return engine.KeyShift, true
-	case 0x0d:
-		return engine.KeyEnter, true
-	case 0xbe:
-		return engine.KeyPeriod, true
-	case 0x09:
-		return engine.KeyTab, true
-	case 0x28:
-		return engine.KeyArrowDown, true
-	case 0x25:
-		return engine.KeyArrowLeft, true
-	case 0x27:
-		return engine.KeyArrowRight, true
-	case 0x26:
-		return engine.KeyArrowUp, true
-	case 0x70:
-		return engine.KeyF1, true
-	case 0x71:
-		return engine.KeyF2, true
-	case 0x75:
-		return engine.KeyF6, true
-	default:
-		return "", false
+	key, ok := win32VirtualKeys[value]
+	return key, ok
+}
+
+func win32KeyEvent(virtual, lparam uintptr) (engine.Key, bool) {
+	scan := byte(lparam >> 16)
+	extended := lparam&(1<<24) != 0
+	if virtual == 0x10 {
+		if scan == 0x36 {
+			return engine.KeyShiftRight, true
+		}
+		return engine.KeyShiftLeft, true
 	}
+	if virtual == 0x11 {
+		if extended {
+			return engine.KeyControlRight, true
+		}
+		return engine.KeyControlLeft, true
+	}
+	if virtual == 0x12 {
+		if extended {
+			return engine.KeyAltRight, true
+		}
+		return engine.KeyAltLeft, true
+	}
+	if key, ok := win32ScanKey(scan, extended); ok {
+		return key, true
+	}
+	return win32Key(virtual)
+}
+
+func win32ScanKey(scan byte, extended bool) (engine.Key, bool) {
+	if extended {
+		key, ok := win32ExtendedScanKeys[scan]
+		return key, ok
+	}
+	key, ok := win32PhysicalScanKeys[scan]
+	return key, ok
+}
+
+var win32VirtualKeys = map[uintptr]engine.Key{
+	0x08: engine.KeyBackspace, 0x09: engine.KeyTab, 0x0d: engine.KeyEnter, 0x13: engine.KeyPause, 0x14: engine.KeyCapsLock, 0x1b: engine.KeyEscape, 0x20: engine.KeySpace, 0x21: engine.KeyPageUp, 0x22: engine.KeyPageDown, 0x23: engine.KeyEnd, 0x24: engine.KeyHome, 0x25: engine.KeyArrowLeft, 0x26: engine.KeyArrowUp, 0x27: engine.KeyArrowRight, 0x28: engine.KeyArrowDown, 0x2c: engine.KeyPrintScreen, 0x2d: engine.KeyInsert, 0x2e: engine.KeyDelete,
+	0x30: engine.KeyDigit0, 0x31: engine.KeyDigit1, 0x32: engine.KeyDigit2, 0x33: engine.KeyDigit3, 0x34: engine.KeyDigit4, 0x35: engine.KeyDigit5, 0x36: engine.KeyDigit6, 0x37: engine.KeyDigit7, 0x38: engine.KeyDigit8, 0x39: engine.KeyDigit9,
+	0x41: engine.KeyA, 0x42: engine.KeyB, 0x43: engine.KeyC, 0x44: engine.KeyD, 0x45: engine.KeyE, 0x46: engine.KeyF, 0x47: engine.KeyG, 0x48: engine.KeyH, 0x49: engine.KeyI, 0x4a: engine.KeyJ, 0x4b: engine.KeyK, 0x4c: engine.KeyL, 0x4d: engine.KeyM, 0x4e: engine.KeyN, 0x4f: engine.KeyO, 0x50: engine.KeyP, 0x51: engine.KeyQ, 0x52: engine.KeyR, 0x53: engine.KeyS, 0x54: engine.KeyT, 0x55: engine.KeyU, 0x56: engine.KeyV, 0x57: engine.KeyW, 0x58: engine.KeyX, 0x59: engine.KeyY, 0x5a: engine.KeyZ,
+	0x5b: engine.KeyMetaLeft, 0x5c: engine.KeyMetaRight, 0x5d: engine.KeyContextMenu,
+	0x60: engine.KeyNumpad0, 0x61: engine.KeyNumpad1, 0x62: engine.KeyNumpad2, 0x63: engine.KeyNumpad3, 0x64: engine.KeyNumpad4, 0x65: engine.KeyNumpad5, 0x66: engine.KeyNumpad6, 0x67: engine.KeyNumpad7, 0x68: engine.KeyNumpad8, 0x69: engine.KeyNumpad9, 0x6a: engine.KeyNumpadMultiply, 0x6b: engine.KeyNumpadAdd, 0x6d: engine.KeyNumpadSubtract, 0x6e: engine.KeyNumpadDecimal, 0x6f: engine.KeyNumpadDivide,
+	0x70: engine.KeyF1, 0x71: engine.KeyF2, 0x72: engine.KeyF3, 0x73: engine.KeyF4, 0x74: engine.KeyF5, 0x75: engine.KeyF6, 0x76: engine.KeyF7, 0x77: engine.KeyF8, 0x78: engine.KeyF9, 0x79: engine.KeyF10, 0x7a: engine.KeyF11, 0x7b: engine.KeyF12, 0x90: engine.KeyNumLock, 0x91: engine.KeyScrollLock,
+	0xba: engine.KeySemicolon, 0xbb: engine.KeyEqual, 0xbc: engine.KeyComma, 0xbd: engine.KeyMinus, 0xbe: engine.KeyPeriod, 0xbf: engine.KeySlash, 0xc0: engine.KeyBackquote, 0xdb: engine.KeyBracketLeft, 0xdc: engine.KeyBackslash, 0xdd: engine.KeyBracketRight, 0xde: engine.KeyQuote,
+}
+
+var win32PhysicalScanKeys = map[byte]engine.Key{
+	0x01: engine.KeyEscape, 0x02: engine.KeyDigit1, 0x03: engine.KeyDigit2, 0x04: engine.KeyDigit3, 0x05: engine.KeyDigit4, 0x06: engine.KeyDigit5, 0x07: engine.KeyDigit6, 0x08: engine.KeyDigit7, 0x09: engine.KeyDigit8, 0x0a: engine.KeyDigit9, 0x0b: engine.KeyDigit0, 0x0c: engine.KeyMinus, 0x0d: engine.KeyEqual, 0x0e: engine.KeyBackspace, 0x0f: engine.KeyTab,
+	0x10: engine.KeyQ, 0x11: engine.KeyW, 0x12: engine.KeyE, 0x13: engine.KeyR, 0x14: engine.KeyT, 0x15: engine.KeyY, 0x16: engine.KeyU, 0x17: engine.KeyI, 0x18: engine.KeyO, 0x19: engine.KeyP, 0x1a: engine.KeyBracketLeft, 0x1b: engine.KeyBracketRight, 0x1c: engine.KeyEnter, 0x1d: engine.KeyControlLeft,
+	0x1e: engine.KeyA, 0x1f: engine.KeyS, 0x20: engine.KeyD, 0x21: engine.KeyF, 0x22: engine.KeyG, 0x23: engine.KeyH, 0x24: engine.KeyJ, 0x25: engine.KeyK, 0x26: engine.KeyL, 0x27: engine.KeySemicolon, 0x28: engine.KeyQuote, 0x29: engine.KeyBackquote, 0x2a: engine.KeyShiftLeft, 0x2b: engine.KeyBackslash,
+	0x2c: engine.KeyZ, 0x2d: engine.KeyX, 0x2e: engine.KeyC, 0x2f: engine.KeyV, 0x30: engine.KeyB, 0x31: engine.KeyN, 0x32: engine.KeyM, 0x33: engine.KeyComma, 0x34: engine.KeyPeriod, 0x35: engine.KeySlash, 0x36: engine.KeyShiftRight, 0x37: engine.KeyNumpadMultiply, 0x38: engine.KeyAltLeft, 0x39: engine.KeySpace, 0x3a: engine.KeyCapsLock,
+	0x3b: engine.KeyF1, 0x3c: engine.KeyF2, 0x3d: engine.KeyF3, 0x3e: engine.KeyF4, 0x3f: engine.KeyF5, 0x40: engine.KeyF6, 0x41: engine.KeyF7, 0x42: engine.KeyF8, 0x43: engine.KeyF9, 0x44: engine.KeyF10, 0x45: engine.KeyNumLock, 0x46: engine.KeyScrollLock,
+	0x47: engine.KeyNumpad7, 0x48: engine.KeyNumpad8, 0x49: engine.KeyNumpad9, 0x4a: engine.KeyNumpadSubtract, 0x4b: engine.KeyNumpad4, 0x4c: engine.KeyNumpad5, 0x4d: engine.KeyNumpad6, 0x4e: engine.KeyNumpadAdd, 0x4f: engine.KeyNumpad1, 0x50: engine.KeyNumpad2, 0x51: engine.KeyNumpad3, 0x52: engine.KeyNumpad0, 0x53: engine.KeyNumpadDecimal,
+	0x56: engine.KeyIntlBackslash, 0x57: engine.KeyF11, 0x58: engine.KeyF12,
+}
+
+var win32ExtendedScanKeys = map[byte]engine.Key{
+	0x1c: engine.KeyNumpadEnter, 0x1d: engine.KeyControlRight, 0x35: engine.KeyNumpadDivide, 0x38: engine.KeyAltRight, 0x47: engine.KeyHome, 0x48: engine.KeyArrowUp, 0x49: engine.KeyPageUp, 0x4b: engine.KeyArrowLeft, 0x4d: engine.KeyArrowRight, 0x4f: engine.KeyEnd, 0x50: engine.KeyArrowDown, 0x51: engine.KeyPageDown, 0x52: engine.KeyInsert, 0x53: engine.KeyDelete, 0x5b: engine.KeyMetaLeft, 0x5c: engine.KeyMetaRight, 0x5d: engine.KeyContextMenu,
 }
 
 func win32CursorID(cursor engine.Cursor) (uintptr, bool) {

@@ -10,36 +10,172 @@ import (
 // Action identifies an application-defined input action.
 type Action string
 
-// Key identifies a backend-neutral keyboard key.
+// Key identifies a backend-neutral physical keyboard key. Hosts map the
+// location of a key rather than the character produced by the active layout.
 type Key string
 
 const (
-	KeyA          Key = "a"
-	KeyD          Key = "d"
-	KeyE          Key = "e"
-	KeyJ          Key = "j"
-	KeyP          Key = "p"
-	KeyS          Key = "s"
-	KeyW          Key = "w"
-	KeySpace      Key = "space"
-	KeyShift      Key = "shift"
-	KeyEnter      Key = "enter"
-	KeyPeriod     Key = "period"
-	KeyTab        Key = "tab"
+	KeyA Key = "a"
+	KeyB Key = "b"
+	KeyC Key = "c"
+	KeyD Key = "d"
+	KeyE Key = "e"
+	KeyF Key = "f"
+	KeyG Key = "g"
+	KeyH Key = "h"
+	KeyI Key = "i"
+	KeyJ Key = "j"
+	KeyK Key = "k"
+	KeyL Key = "l"
+	KeyM Key = "m"
+	KeyN Key = "n"
+	KeyO Key = "o"
+	KeyP Key = "p"
+	KeyQ Key = "q"
+	KeyR Key = "r"
+	KeyS Key = "s"
+	KeyT Key = "t"
+	KeyU Key = "u"
+	KeyV Key = "v"
+	KeyW Key = "w"
+	KeyX Key = "x"
+	KeyY Key = "y"
+	KeyZ Key = "z"
+
+	KeyDigit0 Key = "digit-0"
+	KeyDigit1 Key = "digit-1"
+	KeyDigit2 Key = "digit-2"
+	KeyDigit3 Key = "digit-3"
+	KeyDigit4 Key = "digit-4"
+	KeyDigit5 Key = "digit-5"
+	KeyDigit6 Key = "digit-6"
+	KeyDigit7 Key = "digit-7"
+	KeyDigit8 Key = "digit-8"
+	KeyDigit9 Key = "digit-9"
+
+	KeyBackquote     Key = "backquote"
+	KeyBackslash     Key = "backslash"
+	KeyBracketLeft   Key = "bracket-left"
+	KeyBracketRight  Key = "bracket-right"
+	KeyComma         Key = "comma"
+	KeyEqual         Key = "equal"
+	KeyIntlBackslash Key = "intl-backslash"
+	KeyMinus         Key = "minus"
+	KeyPeriod        Key = "period"
+	KeyQuote         Key = "quote"
+	KeySemicolon     Key = "semicolon"
+	KeySlash         Key = "slash"
+
+	KeyAltLeft      Key = "alt-left"
+	KeyAltRight     Key = "alt-right"
+	KeyBackspace    Key = "backspace"
+	KeyCapsLock     Key = "caps-lock"
+	KeyContextMenu  Key = "context-menu"
+	KeyControlLeft  Key = "control-left"
+	KeyControlRight Key = "control-right"
+	KeyEnter        Key = "enter"
+	KeyMetaLeft     Key = "meta-left"
+	KeyMetaRight    Key = "meta-right"
+	KeyShiftLeft    Key = "shift-left"
+	KeyShiftRight   Key = "shift-right"
+	KeySpace        Key = "space"
+	KeyTab          Key = "tab"
+
+	KeyDelete     Key = "delete"
+	KeyEnd        Key = "end"
+	KeyHelp       Key = "help"
+	KeyHome       Key = "home"
+	KeyInsert     Key = "insert"
+	KeyPageDown   Key = "page-down"
+	KeyPageUp     Key = "page-up"
 	KeyArrowDown  Key = "arrow-down"
 	KeyArrowLeft  Key = "arrow-left"
 	KeyArrowRight Key = "arrow-right"
 	KeyArrowUp    Key = "arrow-up"
-	KeyF1         Key = "f1"
-	KeyF2         Key = "f2"
-	KeyF6         Key = "f6"
+
+	KeyNumLock        Key = "num-lock"
+	KeyNumpad0        Key = "numpad-0"
+	KeyNumpad1        Key = "numpad-1"
+	KeyNumpad2        Key = "numpad-2"
+	KeyNumpad3        Key = "numpad-3"
+	KeyNumpad4        Key = "numpad-4"
+	KeyNumpad5        Key = "numpad-5"
+	KeyNumpad6        Key = "numpad-6"
+	KeyNumpad7        Key = "numpad-7"
+	KeyNumpad8        Key = "numpad-8"
+	KeyNumpad9        Key = "numpad-9"
+	KeyNumpadAdd      Key = "numpad-add"
+	KeyNumpadDecimal  Key = "numpad-decimal"
+	KeyNumpadDivide   Key = "numpad-divide"
+	KeyNumpadEnter    Key = "numpad-enter"
+	KeyNumpadEqual    Key = "numpad-equal"
+	KeyNumpadMultiply Key = "numpad-multiply"
+	KeyNumpadSubtract Key = "numpad-subtract"
+
+	KeyEscape      Key = "escape"
+	KeyF1          Key = "f1"
+	KeyF2          Key = "f2"
+	KeyF3          Key = "f3"
+	KeyF4          Key = "f4"
+	KeyF5          Key = "f5"
+	KeyF6          Key = "f6"
+	KeyF7          Key = "f7"
+	KeyF8          Key = "f8"
+	KeyF9          Key = "f9"
+	KeyF10         Key = "f10"
+	KeyF11         Key = "f11"
+	KeyF12         Key = "f12"
+	KeyPause       Key = "pause"
+	KeyPrintScreen Key = "print-screen"
+	KeyScrollLock  Key = "scroll-lock"
+
+	// KeyShift is retained as an aggregate compatibility binding. Host events
+	// always use KeyShiftLeft or KeyShiftRight when that distinction exists.
+	KeyShift Key = "shift"
 )
 
-// GamepadButton identifies a backend-neutral gamepad button.
+// GamepadButton identifies a button in the W3C standard gamepad mapping.
 type GamepadButton uint8
 
-// GamepadAxis identifies a backend-neutral gamepad axis.
+const (
+	GamepadButtonSouth GamepadButton = iota
+	GamepadButtonEast
+	GamepadButtonWest
+	GamepadButtonNorth
+	GamepadButtonLeftBumper
+	GamepadButtonRightBumper
+	GamepadButtonLeftTrigger
+	GamepadButtonRightTrigger
+	GamepadButtonSelect
+	GamepadButtonStart
+	GamepadButtonLeftStick
+	GamepadButtonRightStick
+	GamepadButtonDPadUp
+	GamepadButtonDPadDown
+	GamepadButtonDPadLeft
+	GamepadButtonDPadRight
+	GamepadButtonHome
+)
+
+// GamepadAxis identifies an axis in the W3C standard gamepad mapping.
 type GamepadAxis uint8
+
+const (
+	GamepadAxisLeftStickX GamepadAxis = iota
+	GamepadAxisLeftStickY
+	GamepadAxisRightStickX
+	GamepadAxisRightStickY
+)
+
+// GamepadMapping identifies the layout semantics reported for a controller.
+// Only standard-mapped controllers can produce normalized button and axis
+// events; unsupported layouts remain observable through connection events.
+type GamepadMapping uint8
+
+const (
+	GamepadMappingStandard GamepadMapping = iota
+	GamepadMappingUnknown
+)
 
 // AxisBinding combines digital keys and a gamepad axis into one signed action.
 type AxisBinding struct {
@@ -163,15 +299,47 @@ func (p PointerState) Button(button PointerButton) ActionState { return p.Button
 type GamepadConnection struct {
 	DeviceID  uint32
 	Connected bool
+	Mapping   GamepadMapping
+	Supported bool
 }
 
-// Input exposes normalized action, pointer, text, and gamepad snapshots for
-// one update. It contains no host or backend-specific values.
+// Gamepad is one ordered standard-profile controller snapshot. Buttons use
+// [0,1], while axes use [-1,1]. Maps are copies owned by Input.
+type Gamepad struct {
+	DeviceID uint32
+	Mapping  GamepadMapping
+	Buttons  map[GamepadButton]float64
+	Axes     map[GamepadAxis]float64
+}
+
+// CompositionPhase identifies an IME preedit lifecycle transition.
+type CompositionPhase uint8
+
+const (
+	CompositionStart CompositionPhase = iota
+	CompositionUpdate
+	CompositionEnd
+)
+
+// CompositionEvent is an IME preedit transition observed during one sample.
+// End is marked Canceled when focus changes before text is committed.
+type CompositionEvent struct {
+	Phase    CompositionPhase
+	Text     string
+	Canceled bool
+}
+
+// Input exposes normalized action, pointer, text, composition, and gamepad
+// snapshots for one update. It contains no host or backend-specific values.
 type Input struct {
 	states      map[Action]ActionState
 	pointer     PointerState
 	text        []string
+	composition []CompositionEvent
+	preedit     string
+	composing   bool
 	connections []GamepadConnection
+	gamepads    []Gamepad
 }
 
 // NewInput creates an action-only snapshot. The supplied map is copied; use
@@ -209,9 +377,34 @@ func (i Input) Pointer() PointerState {
 // Text returns UTF-8 text input committed during this update.
 func (i Input) Text() []string { return append([]string(nil), i.text...) }
 
+// Composition returns preedit transitions observed during this update.
+func (i Input) Composition() []CompositionEvent {
+	return append([]CompositionEvent(nil), i.composition...)
+}
+
+// Preedit returns the current uncommitted IME text and whether a composition
+// remains active after this update.
+func (i Input) Preedit() (string, bool) { return i.preedit, i.composing }
+
 // GamepadConnections returns connection events observed during this update.
 func (i Input) GamepadConnections() []GamepadConnection {
 	return append([]GamepadConnection(nil), i.connections...)
+}
+
+// Gamepads returns ordered, standard-profile controller snapshots. Unknown or
+// unavailable controller mappings produce no snapshots and remain visible via
+// GamepadConnections instead.
+func (i Input) Gamepads() []Gamepad {
+	gamepads := make([]Gamepad, len(i.gamepads))
+	for index, gamepad := range i.gamepads {
+		gamepads[index] = Gamepad{
+			DeviceID: gamepad.DeviceID,
+			Mapping:  gamepad.Mapping,
+			Buttons:  copyGamepadButtons(gamepad.Buttons),
+			Axes:     copyGamepadAxes(gamepad.Axes),
+		}
+	}
+	return gamepads
 }
 
 // InputMapper transforms host-normalized events into portable Input snapshots.
@@ -225,10 +418,13 @@ type InputMapper struct {
 	pointerPosition Vec2
 	pointerButtons  map[PointerButton]bool
 	previousPointer map[PointerButton]bool
+	preedit         string
+	composing       bool
 }
 
 type gamepadState struct {
-	buttons map[GamepadButton]bool
+	mapping GamepadMapping
+	buttons map[GamepadButton]float64
 	axes    map[GamepadAxis]float64
 }
 
@@ -283,23 +479,42 @@ func (m *InputMapper) Rebind(action Action, binding Binding) error {
 }
 
 // Sample consumes one host event batch and returns its Input snapshot. A
-// focus-loss event clears all held raw controls, causing one Released action or
-// pointer state where appropriate. Invalid UTF-8 text and non-finite axis
-// values are ignored because hosts must not inject malformed normalized input.
+// focus-loss event clears held raw controls and cancels an active composition,
+// causing one Released action or pointer state where appropriate. Invalid UTF-8
+// text and non-finite analog values are ignored because hosts must not inject
+// malformed normalized input.
 func (m *InputMapper) Sample(events []Event) Input {
 	if m == nil {
 		return NewInput(nil)
 	}
 	text := make([]string, 0)
+	composition := make([]CompositionEvent, 0)
 	connections := make([]GamepadConnection, 0)
 	pointerDelta, pointerScroll := Vec2{}, Vec2{}
 	for _, event := range events {
 		switch event.Kind {
 		case EventKey:
-			m.keys[event.Key] = event.Pressed
+			if event.Key != "" {
+				m.keys[event.Key] = event.Pressed
+			}
 		case EventText:
 			if event.Text != "" && utf8.ValidString(event.Text) {
 				text = append(text, event.Text)
+			}
+		case EventComposition:
+			if event.Text != "" && !utf8.ValidString(event.Text) {
+				continue
+			}
+			switch event.Composition {
+			case CompositionStart:
+				m.composing, m.preedit = true, event.Text
+				composition = append(composition, CompositionEvent{Phase: CompositionStart, Text: event.Text})
+			case CompositionUpdate:
+				m.composing, m.preedit = true, event.Text
+				composition = append(composition, CompositionEvent{Phase: CompositionUpdate, Text: event.Text})
+			case CompositionEnd:
+				composition = append(composition, CompositionEvent{Phase: CompositionEnd, Text: event.Text, Canceled: event.CompositionCanceled})
+				m.composing, m.preedit = false, ""
 			}
 		case EventPointerMove:
 			if finiteVec2(event.Position) {
@@ -315,20 +530,38 @@ func (m *InputMapper) Sample(events []Event) Input {
 				pointerScroll.Y += event.Scroll.Y
 			}
 		case EventGamepadConnection:
-			connections = append(connections, GamepadConnection{DeviceID: event.DeviceID, Connected: event.Connected})
+			supported := !event.GamepadUnsupported && event.GamepadMapping == GamepadMappingStandard
+			connections = append(connections, GamepadConnection{DeviceID: event.DeviceID, Connected: event.Connected, Mapping: event.GamepadMapping, Supported: supported})
 			if event.Connected {
-				m.gamepads[event.DeviceID] = &gamepadState{buttons: make(map[GamepadButton]bool), axes: make(map[GamepadAxis]float64)}
+				if supported {
+					m.gamepads[event.DeviceID] = &gamepadState{mapping: event.GamepadMapping, buttons: make(map[GamepadButton]float64), axes: make(map[GamepadAxis]float64)}
+				} else {
+					delete(m.gamepads, event.DeviceID)
+				}
 			} else {
 				delete(m.gamepads, event.DeviceID)
 			}
 		case EventGamepadButton:
-			m.gamepad(event.DeviceID).buttons[event.Button] = event.Pressed
+			value := event.Value
+			if event.Pressed && value == 0 {
+				value = 1
+			}
+			if !event.Pressed {
+				value = 0
+			}
+			if finite(value) {
+				m.gamepad(event.DeviceID).buttons[event.Button] = clamp(value, 0, 1)
+			}
 		case EventGamepadAxis:
-			if !math.IsNaN(event.Value) && !math.IsInf(event.Value, 0) {
-				m.gamepad(event.DeviceID).axes[event.Axis] = math.Max(-1, math.Min(1, event.Value))
+			if finite(event.Value) {
+				m.gamepad(event.DeviceID).axes[event.Axis] = clamp(event.Value, -1, 1)
 			}
 		case EventFocusChanged:
 			if !event.Focused {
+				if m.composing {
+					composition = append(composition, CompositionEvent{Phase: CompositionEnd, Text: m.preedit, Canceled: true})
+					m.composing, m.preedit = false, ""
+				}
 				m.resetHeld()
 			}
 		}
@@ -346,13 +579,13 @@ func (m *InputMapper) Sample(events []Event) Input {
 		pointer.Buttons[button] = ActionState{Down: down, Pressed: down && !previous, Released: previous && !down}
 	}
 	m.previousPointer = copyPointerHeld(m.pointerButtons)
-	return Input{states: states, pointer: pointer, text: text, connections: connections}
+	return Input{states: states, pointer: pointer, text: text, composition: composition, preedit: m.preedit, composing: m.composing, connections: connections, gamepads: m.gamepadSnapshots()}
 }
 
 func (m *InputMapper) gamepad(id uint32) *gamepadState {
 	state := m.gamepads[id]
 	if state == nil {
-		state = &gamepadState{buttons: make(map[GamepadButton]bool), axes: make(map[GamepadAxis]float64)}
+		state = &gamepadState{mapping: GamepadMappingStandard, buttons: make(map[GamepadButton]float64), axes: make(map[GamepadAxis]float64)}
 		m.gamepads[id] = state
 	}
 	return state
@@ -366,17 +599,19 @@ func (m *InputMapper) resetHeld() {
 
 func (m *InputMapper) bindingState(binding Binding) (bool, float64) {
 	down := false
+	value := 0.0
 	for _, key := range binding.Keys {
-		if m.keys[key] {
+		if heldKey(m.keys, key) {
 			down = true
+			value = 1
 			break
 		}
 	}
 	for _, gamepad := range m.gamepads {
 		for _, button := range binding.GamepadButtons {
-			if gamepad.buttons[button] {
+			if buttonValue := gamepad.buttons[button]; buttonValue >= .5 {
 				down = true
-				break
+				value = math.Max(value, buttonValue)
 			}
 		}
 		if down {
@@ -384,7 +619,7 @@ func (m *InputMapper) bindingState(binding Binding) (bool, float64) {
 		}
 	}
 	if binding.Axis == nil {
-		return down, 0
+		return down, value
 	}
 	negative, positive := heldKeys(m.keys, binding.Axis.Negative), heldKeys(m.keys, binding.Axis.Positive)
 	if negative != positive {
@@ -402,7 +637,7 @@ func (m *InputMapper) bindingState(binding Binding) (bool, float64) {
 			return true, value
 		}
 	}
-	return down, 0
+	return down, value
 }
 
 func finiteVec2(value Vec2) bool {
@@ -411,11 +646,50 @@ func finiteVec2(value Vec2) bool {
 
 func heldKeys(held map[Key]bool, keys []Key) bool {
 	for _, key := range keys {
-		if held[key] {
+		if heldKey(held, key) {
 			return true
 		}
 	}
 	return false
+}
+
+func heldKey(held map[Key]bool, key Key) bool {
+	if key == KeyShift {
+		return held[KeyShift] || held[KeyShiftLeft] || held[KeyShiftRight]
+	}
+	return held[key]
+}
+
+func (m *InputMapper) gamepadSnapshots() []Gamepad {
+	ids := sortedGamepadIDs(m.gamepads)
+	gamepads := make([]Gamepad, 0, len(ids))
+	for _, id := range ids {
+		state := m.gamepads[id]
+		gamepads = append(gamepads, Gamepad{DeviceID: id, Mapping: state.mapping, Buttons: copyGamepadButtons(state.buttons), Axes: copyGamepadAxes(state.axes)})
+	}
+	return gamepads
+}
+
+func copyGamepadButtons(buttons map[GamepadButton]float64) map[GamepadButton]float64 {
+	clone := make(map[GamepadButton]float64, len(buttons))
+	for button, value := range buttons {
+		clone[button] = value
+	}
+	return clone
+}
+
+func copyGamepadAxes(axes map[GamepadAxis]float64) map[GamepadAxis]float64 {
+	clone := make(map[GamepadAxis]float64, len(axes))
+	for axis, value := range axes {
+		clone[axis] = value
+	}
+	return clone
+}
+
+func finite(value float64) bool { return !math.IsNaN(value) && !math.IsInf(value, 0) }
+
+func clamp(value, minimum, maximum float64) float64 {
+	return math.Max(minimum, math.Min(maximum, value))
 }
 
 func sortedGamepadIDs(gamepads map[uint32]*gamepadState) []uint32 {
