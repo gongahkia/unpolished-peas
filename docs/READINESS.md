@@ -1,7 +1,7 @@
 # Engine readiness audit
 
 This is an evidence-led assessment of the current worktree on
-2026-08-13. It is not a release declaration. Scores measure readiness for a
+2026-08-14. It is not a release declaration. Scores measure readiness for a
 maintained, general-purpose 2D game-engine runtime, where `10` means a
 documented support matrix, repeatable release process, and target-specific
 runtime evidence.
@@ -9,7 +9,7 @@ runtime evidence.
 | Area | Score | Verified strengths | Release-blocking gaps |
 | --- | --- | --- | --- |
 | 2D renderer | 6/10 | Ordered, instanced sprites and tiles; reusable dynamic buffers; primitives, text, clips, WGSL validation, texture caches, deterministic software-WebGPU image regression, and local device recreation/rehydration. | No physical-GPU image regression, no real driver-loss matrix, nearest sampling only, and render targets must be redrawn after recreation. |
-| Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize/focus/visibility result. [Source-verified] Win32 and AppKit/CAMetalLayer hosts implement the portable lifecycle and compile for their targets; Windows implements Unicode clipboard transfer, X11 standard cursor roles compile, and browser shutdown returns update/draw failures, removes listeners, and normalizes focus/hidden-tab timing. | Windows/macOS have no runtime evidence; X11 clipboard and hidden cursor are unsupported because the public contract is synchronous; no gamepad, IME, or broad browser lifecycle evidence. |
+| Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize/focus/visibility result. [Source-verified] Hosts map common physical keys; browser uses composition events and the Gamepad API, Windows uses IMM and XInput when available, Linux uses evdev when accessible, and macOS polls GameController when the framework is present. | Windows/macOS have no runtime evidence; X11 clipboard and hidden cursor are unsupported because the public contract is synchronous; Linux/macOS composition remains unavailable pending XIM/NSTextInputClient integration, and gamepad/IME paths lack runtime evidence. |
 | Runtime/gameplay APIs | 6/10 | Deterministic ECS scheduling, input normalization, reloadable assets, mixer state, AABB physics, scene transforms, and retained UI layout are tested. Non-finite viewport/camera/render inputs now fail at useful boundaries. | UI is a preview; physics is intentionally AABB-only; browser audio output and user-facing tooling have no runtime evidence. |
 | Diagnostics and performance | 5/10 | Per-frame command, texture, pipeline, batch, draw, and duration metrics; bounded Chrome-compatible CPU traces; reproducible CPU reference and deterministic software-WebGPU tile benchmarks. | No GPU timestamps, physical-GPU benchmark/report, or automatic performance baseline comparison. |
 | Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and a Chromium render/input/resize/focus/visibility smoke are available. | GitHub Actions cannot currently run; Windows/macOS checks are compile-only. |
@@ -52,6 +52,11 @@ not the existence of core engine packages.
   retaining an explicit error for its asynchronous clipboard and hidden-cursor
   boundary. Windows/macOS compile for their targets but have no
   runtime/presentation result.
+- Removed the public renderer material no-op. Added physical common-key input,
+  standard-profile controller snapshots, composition start/update/end events,
+  and static input-capability reporting. Browser, XInput, evdev, and
+  GameController adapters report unsupported optional facilities rather than
+  rejecting host startup.
 - Updated stale renderer, font, UI, error, performance, support, and public
   package documentation.
 
@@ -76,9 +81,9 @@ not the existence of core engine packages.
 
 - Add optional GPU timestamps and a physical-GPU benchmark baseline before
   calling large sprite or tile scenes performance-ready.
-- Add structured browser gamepad, IME/text composition, clipboard permission,
-  and hidden-tab/device-loss behavior where the synchronous host contract can
-  represent it.
+- Runtime-test browser Gamepad/IME, Windows IMM/XInput, Linux evdev, and macOS
+  GameController behavior. Implement macOS `NSTextInputClient` and Linux XIM
+  before claiming composition support on those hosts.
 - Before adding sprite sampling or blend choices, define typed engine semantics
   and backend conformance tests; arbitrary material parameters were removed as
   a misleading no-op.

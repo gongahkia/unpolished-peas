@@ -26,28 +26,31 @@ const (
 
 	win32PMRemove = 0x0001
 
-	win32WMSize        = 0x0005
-	win32WMSetFocus    = 0x0007
-	win32WMKillFocus   = 0x0008
-	win32WMSetCursor   = 0x0020
-	win32WMChar        = 0x0102
-	win32WMSysKeyDown  = 0x0104
-	win32WMSysKeyUp    = 0x0105
-	win32WMKeyDown     = 0x0100
-	win32WMKeyUp       = 0x0101
-	win32WMMouseMove   = 0x0200
-	win32WMLButtonDown = 0x0201
-	win32WMLButtonUp   = 0x0202
-	win32WMRButtonDown = 0x0204
-	win32WMRButtonUp   = 0x0205
-	win32WMMButtonDown = 0x0207
-	win32WMMButtonUp   = 0x0208
-	win32WMMouseWheel  = 0x020a
-	win32WMClose       = 0x0010
-	win32WMDestroy     = 0x0002
-	win32WMShowWindow  = 0x0018
-	win32WMDPIChanged  = 0x02e0
-	win32WMQuit        = 0x0012
+	win32WMSize                = 0x0005
+	win32WMSetFocus            = 0x0007
+	win32WMKillFocus           = 0x0008
+	win32WMSetCursor           = 0x0020
+	win32WMChar                = 0x0102
+	win32WMIMEStartComposition = 0x010d
+	win32WMIMEEndComposition   = 0x010e
+	win32WMIMEComposition      = 0x010f
+	win32WMSysKeyDown          = 0x0104
+	win32WMSysKeyUp            = 0x0105
+	win32WMKeyDown             = 0x0100
+	win32WMKeyUp               = 0x0101
+	win32WMMouseMove           = 0x0200
+	win32WMLButtonDown         = 0x0201
+	win32WMLButtonUp           = 0x0202
+	win32WMRButtonDown         = 0x0204
+	win32WMRButtonUp           = 0x0205
+	win32WMMButtonDown         = 0x0207
+	win32WMMButtonUp           = 0x0208
+	win32WMMouseWheel          = 0x020a
+	win32WMClose               = 0x0010
+	win32WMDestroy             = 0x0002
+	win32WMShowWindow          = 0x0018
+	win32WMDPIChanged          = 0x02e0
+	win32WMQuit                = 0x0012
 
 	win32SizeMinimized = 1
 
@@ -70,42 +73,47 @@ const (
 	// Leave ample signed-32-bit headroom for the non-client frame added by
 	// AdjustWindowRectEx before CreateWindowEx receives the outer size.
 	win32MaxClientDimension = 1 << 30
+	win32GCSCompStr         = 0x0008
 )
 
 var (
 	win32Kernel32 = windows.NewLazySystemDLL("kernel32.dll")
 	win32User32   = windows.NewLazySystemDLL("user32.dll")
 	win32XInput   = windows.NewLazySystemDLL("xinput1_4.dll")
+	win32Imm32    = windows.NewLazySystemDLL("imm32.dll")
 
-	win32GetModuleHandleW   = win32Kernel32.NewProc("GetModuleHandleW")
-	win32GlobalAlloc        = win32Kernel32.NewProc("GlobalAlloc")
-	win32GlobalFree         = win32Kernel32.NewProc("GlobalFree")
-	win32GlobalLock         = win32Kernel32.NewProc("GlobalLock")
-	win32GlobalUnlock       = win32Kernel32.NewProc("GlobalUnlock")
-	win32GlobalSize         = win32Kernel32.NewProc("GlobalSize")
-	win32RtlMoveMemory      = win32Kernel32.NewProc("RtlMoveMemory")
-	win32RegisterClassExW   = win32User32.NewProc("RegisterClassExW")
-	win32CreateWindowExW    = win32User32.NewProc("CreateWindowExW")
-	win32DestroyWindow      = win32User32.NewProc("DestroyWindow")
-	win32DefWindowProcW     = win32User32.NewProc("DefWindowProcW")
-	win32PeekMessageW       = win32User32.NewProc("PeekMessageW")
-	win32TranslateMessage   = win32User32.NewProc("TranslateMessage")
-	win32DispatchMessageW   = win32User32.NewProc("DispatchMessageW")
-	win32ShowWindow         = win32User32.NewProc("ShowWindow")
-	win32UpdateWindow       = win32User32.NewProc("UpdateWindow")
-	win32GetClientRect      = win32User32.NewProc("GetClientRect")
-	win32AdjustWindowRectEx = win32User32.NewProc("AdjustWindowRectEx")
-	win32SetWindowTextW     = win32User32.NewProc("SetWindowTextW")
-	win32SetWindowPos       = win32User32.NewProc("SetWindowPos")
-	win32LoadCursorW        = win32User32.NewProc("LoadCursorW")
-	win32SetCursor          = win32User32.NewProc("SetCursor")
-	win32ShowCursor         = win32User32.NewProc("ShowCursor")
-	win32OpenClipboard      = win32User32.NewProc("OpenClipboard")
-	win32CloseClipboard     = win32User32.NewProc("CloseClipboard")
-	win32GetClipboardData   = win32User32.NewProc("GetClipboardData")
-	win32EmptyClipboard     = win32User32.NewProc("EmptyClipboard")
-	win32SetClipboardData   = win32User32.NewProc("SetClipboardData")
-	win32XInputGetState     = win32XInput.NewProc("XInputGetState")
+	win32GetModuleHandleW         = win32Kernel32.NewProc("GetModuleHandleW")
+	win32GlobalAlloc              = win32Kernel32.NewProc("GlobalAlloc")
+	win32GlobalFree               = win32Kernel32.NewProc("GlobalFree")
+	win32GlobalLock               = win32Kernel32.NewProc("GlobalLock")
+	win32GlobalUnlock             = win32Kernel32.NewProc("GlobalUnlock")
+	win32GlobalSize               = win32Kernel32.NewProc("GlobalSize")
+	win32RtlMoveMemory            = win32Kernel32.NewProc("RtlMoveMemory")
+	win32RegisterClassExW         = win32User32.NewProc("RegisterClassExW")
+	win32CreateWindowExW          = win32User32.NewProc("CreateWindowExW")
+	win32DestroyWindow            = win32User32.NewProc("DestroyWindow")
+	win32DefWindowProcW           = win32User32.NewProc("DefWindowProcW")
+	win32PeekMessageW             = win32User32.NewProc("PeekMessageW")
+	win32TranslateMessage         = win32User32.NewProc("TranslateMessage")
+	win32DispatchMessageW         = win32User32.NewProc("DispatchMessageW")
+	win32ShowWindow               = win32User32.NewProc("ShowWindow")
+	win32UpdateWindow             = win32User32.NewProc("UpdateWindow")
+	win32GetClientRect            = win32User32.NewProc("GetClientRect")
+	win32AdjustWindowRectEx       = win32User32.NewProc("AdjustWindowRectEx")
+	win32SetWindowTextW           = win32User32.NewProc("SetWindowTextW")
+	win32SetWindowPos             = win32User32.NewProc("SetWindowPos")
+	win32LoadCursorW              = win32User32.NewProc("LoadCursorW")
+	win32SetCursor                = win32User32.NewProc("SetCursor")
+	win32ShowCursor               = win32User32.NewProc("ShowCursor")
+	win32OpenClipboard            = win32User32.NewProc("OpenClipboard")
+	win32CloseClipboard           = win32User32.NewProc("CloseClipboard")
+	win32GetClipboardData         = win32User32.NewProc("GetClipboardData")
+	win32EmptyClipboard           = win32User32.NewProc("EmptyClipboard")
+	win32SetClipboardData         = win32User32.NewProc("SetClipboardData")
+	win32XInputGetState           = win32XInput.NewProc("XInputGetState")
+	win32ImmGetContext            = win32Imm32.NewProc("ImmGetContext")
+	win32ImmReleaseContext        = win32Imm32.NewProc("ImmReleaseContext")
+	win32ImmGetCompositionStringW = win32Imm32.NewProc("ImmGetCompositionStringW")
 
 	win32ClassOnce sync.Once
 	win32ClassErr  error
@@ -141,6 +149,7 @@ type win32Host struct {
 	cursor            uintptr
 	cursorHidden      bool
 	pendingHigh       uint16
+	preedit           string
 	inputCapabilities engine.InputCapabilities
 	gamepads          map[uint32]win32Gamepad
 }
@@ -243,6 +252,9 @@ func newWin32Host(config engine.Config) (*win32Host, error) {
 	}
 	if win32XInput.Load() == nil {
 		host.inputCapabilities.Gamepad = engine.InputAvailable
+	}
+	if win32Imm32.Load() == nil {
+		host.inputCapabilities.Composition = engine.InputAvailable
 	}
 	arrow, _, arrowErr := win32LoadCursorW.Call(0, win32IDCArrow)
 	if arrow == 0 {
@@ -633,6 +645,32 @@ func (h *win32Host) appendText(value uint16) {
 	}
 }
 
+func (h *win32Host) appendIMEComposition(flags uintptr) {
+	if h.inputCapabilities.Composition != engine.InputAvailable || flags&win32GCSCompStr == 0 {
+		return
+	}
+	context, _, _ := win32ImmGetContext.Call(h.window)
+	if context == 0 {
+		return
+	}
+	defer win32ImmReleaseContext.Call(h.window, context)
+	length, _, _ := win32ImmGetCompositionStringW.Call(context, win32GCSCompStr, 0, 0)
+	if int32(length) < 0 {
+		return
+	}
+	text := ""
+	if length > 0 {
+		units := make([]uint16, (length+1)/2)
+		written, _, _ := win32ImmGetCompositionStringW.Call(context, win32GCSCompStr, uintptr(unsafe.Pointer(&units[0])), length)
+		if int32(written) < 0 {
+			return
+		}
+		text = windows.UTF16ToString(units)
+	}
+	h.preedit = text
+	h.events = append(h.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionUpdate, Text: text})
+}
+
 func (h *win32Host) appendPointer(message uint32, wparam, lparam uintptr) {
 	position := win32PointFromLParam(lparam)
 	point := h.logicalPointerPosition(position)
@@ -733,6 +771,17 @@ func win32WindowProc(window uintptr, message uint32, wparam, lparam uintptr) uin
 		return 0
 	case win32WMChar:
 		host.appendText(uint16(wparam))
+		return 0
+	case win32WMIMEStartComposition:
+		host.preedit = ""
+		host.events = append(host.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionStart})
+		return 0
+	case win32WMIMEComposition:
+		host.appendIMEComposition(lparam)
+		return 0
+	case win32WMIMEEndComposition:
+		host.events = append(host.events, engine.Event{Kind: engine.EventComposition, Composition: engine.CompositionEnd, Text: host.preedit})
+		host.preedit = ""
 		return 0
 	case win32WMMouseMove, win32WMLButtonDown, win32WMLButtonUp, win32WMRButtonDown, win32WMRButtonUp, win32WMMButtonDown, win32WMMButtonUp, win32WMMouseWheel:
 		host.appendPointer(message, wparam, lparam)
