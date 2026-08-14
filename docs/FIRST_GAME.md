@@ -8,7 +8,8 @@ package.
 
 ## prerequisites and reproducible build
 
-72 currently requires Go 1.25. From a clean checkout:
+72 currently requires Go 1.25. The v0.1 release dry-run uses Go 1.25.13;
+the module baseline remains Go 1.25.0. From a clean checkout:
 
 ```sh
 go mod download
@@ -31,6 +32,37 @@ python3 -m http.server --directory dist/first-game 8080
 ```
 
 Then open <http://127.0.0.1:8080>. Use A/D or arrows to move and space to jump.
+
+## Generated starter after v0.1
+
+After v0.1 is published, this is the canonical way to start a new game. The
+generator requires an explicit module path and refuses to create into an
+existing directory:
+
+```sh
+go install github.com/gongahkia/72/cmd/72@v0.1.0
+72 new -module example.com/me/my-game ./my-game
+cd my-game
+make test
+make build
+make wasm
+make pack
+```
+
+`make wasm` writes a static bundle to `dist`; serve it with
+`python3 -m http.server --directory dist 8080`. The starter includes one
+embedded image, one asset manifest, and one test. It deliberately uses the
+same small runtime contracts introduced below rather than a separate template
+framework.
+
+For a diagnostic bundle from the current target, run:
+
+```sh
+72 doctor -out 72-support.zip
+```
+
+The report is diagnostic evidence only. An available WebGPU fallback adapter
+does not certify physical GPU or presentation support.
 
 **Current host boundary:** the final call to `platform.Run` in
 `example/first-game/main.go` owns the platform lifecycle and private WebGPU

@@ -7,10 +7,11 @@ and the package documentation before proposing a new exported API or backend.
 
 ## Local setup and verification
 
-The root module requires Go 1.25. The current CI uses `ubuntu-latest` with Go
-1.25.x and runs formatting, `go vet`, the root tests, the Wukong race tests,
-and the Wukong wasm build. Root commands do not enter the nested WebGPU
-experiment modules.
+The root module requires Go 1.25. The release CI uses Go 1.25.13 and runs
+formatting, `go vet`, root tests, the Wukong replay/wasm evidence, dependency
+verification, `govulncheck`, and the locked browser dependency audit. The
+weekly Go 1.26.6 compatibility job is informational only. Root commands do not
+enter the nested WebGPU experiment modules.
 
 Run the focused package test first, then run the relevant project checks:
 
@@ -24,6 +25,11 @@ make example-build
 make example-wasm
 make first-game-build
 make first-game-wasm
+make wukong-replay
+make wukong-benchmark
+make wukong-wasm
+go mod verify
+go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 ```
 
 `make fmt` modifies Go files. To perform the same non-mutating formatting
@@ -52,6 +58,11 @@ npx playwright test --config ci/playwright.config.mjs
 This checks bundle loading and startup exceptions in Chromium. It does not
 verify a rendered frame, gameplay input, or WebGPU presentation. `npm audit`
 must be clean before changing the browser test dependency.
+
+Keep `github.com/gogpu/wgpu` and `github.com/jezek/xgb` upgrades isolated from
+features or unrelated dependency changes. A graphics or platform dependency
+update needs the full graphics/platform matrix in [SUPPORT.md](docs/SUPPORT.md)
+before review; a successful cross-build is still build evidence only.
 
 ## Change and review expectations
 

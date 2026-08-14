@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"runtime"
 	"strings"
 	"time"
@@ -112,10 +113,28 @@ func writeNewAtomically(path string, data []byte) error {
 	if strings.TrimSpace(path) == "" {
 		return errors.New("support bundle path must not be empty")
 	}
-	if _, err := os.Stat(path); err == nil {
-		return fmt.Errorf("support bundle %q already exists", path)
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("inspect support bundle %q: %w", path, err)
+	file, err := os.CreateTemp(filepath.Dir(path), ".72-doctor-*")
+	if err != nil {
+		return fmt.Errorf("create support bundle output: %w", err)
 	}
-	return writeAtomically(path, data)
+	temporaryPath := file.Name()
+	defer func() { _ = os.Remove(temporaryPath) }()
+	if _, err := file.Write(data); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("write support bundle output: %w", err)
+	}
+	if err := file.Chmod(0o644); err != nil {
+		_ = file.Close()
+		return fmt.Errorf("set support bundle permissions: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		return fmt.Errorf("close support bundle output: %w", err)
+	}
+	if err := os.Link(temporaryPath, path); err != nil {
+		if errors.Is(err, os.ErrExist) {
+			return fmt.Errorf("support bundle %q already exists", path)
+		}
+		return fmt.Errorf("publish support bundle %q: %w", path, err)
+	}
+	return nil
 }

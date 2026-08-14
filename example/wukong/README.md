@@ -27,6 +27,31 @@ go run ./example/wukong --mode=playtest
 go run ./example/wukong/cmd/replaydump wukong.replay.json
 ```
 
+## Reproducible proof
+
+The repository has a fixed, headless reference replay for regression evidence.
+It uses seed `0x72c0ffee`, contains 240 fixed-timestep input frames, and
+checks the final simulation hash without starting a host or renderer:
+
+```sh
+make wukong-replay
+make wukong-benchmark
+make wukong-wasm
+```
+
+`make wukong-replay` writes `dist/wukong/reference.replay.json` and verifies
+it through `replaydump`. `make wukong-benchmark` measures the same replay,
+not a graphics workload. `make wukong-wasm` writes a browser artifact to
+`dist/wukong`; inspect it through an HTTP origin:
+
+```sh
+python3 -m http.server --directory dist/wukong 8080
+```
+
+Then open <http://127.0.0.1:8080>. These commands establish reproducible game
+logic and a build artifact; they do not certify browser rendering, input, or
+GPU presentation.
+
 ## Controls
 
 `A`/`D` run; `W`/`Space` jumps; `S` crouches, drops through a one-way platform with jump, or starts a downward smash in the air; `Shift` rolls. Hold toward a wall to slide, then jump to wall-jump. A ledge briefly catches the player: hold toward it or press jump to mantle, or hold `S` to drop. `E` carries/drops nearby crates and rocks; `J` throws the held object; arrows aim throws. `Tab` shows run topology and links.
@@ -51,5 +76,7 @@ go vet ./...
 go test ./...
 go test -race ./example/wukong/internal/...
 go build ./example/wukong
-make example-wasm
+make wukong-replay
+make wukong-benchmark
+make wukong-wasm
 ```
