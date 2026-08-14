@@ -575,9 +575,9 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 		if clipped {
 			clipPtr = &clip
 		}
-		offset := render.Vec2{}
-		if command.Space == render.WorldSpace {
-			offset = render.Vec2{X: -frame.Camera.Position.X, Y: -frame.Camera.Position.Y}
+		transform, err := newCameraTransform(frame.Camera, command.Space)
+		if err != nil {
+			return nil, rendererFailure("translate WebGPU command", err, diagnostics.CorrectInput, false)
 		}
 		switch command.Kind {
 		case render.SpriteCommand:
@@ -589,7 +589,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU sprite", err, diagnostics.CorrectInput, false)
 			}
-			instance, err := spriteInstance(sprite, resource.width, resource.height, offset, width, height)
+			instance, err := spriteInstance(sprite, resource.width, resource.height, transform, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU sprite", err, diagnostics.CorrectInput, false)
 			}
@@ -603,13 +603,13 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU tile map", err, diagnostics.CorrectInput, false)
 			}
-			instances, err := tileInstances(tiles, resource.width, resource.height, offset, width, height)
+			instances, err := tileInstances(tiles, resource.width, resource.height, transform, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU tile map", err, diagnostics.CorrectInput, false)
 			}
 			appendInstances(resource, clipPtr, instances)
 		case render.FillRect, render.StrokeRect, render.FillCircle, render.StrokeCircle, render.StrokeLine:
-			vertices, err := primitiveVertices(command, offset, width, height)
+			vertices, err := primitiveVertices(command, transform, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU primitive", err, diagnostics.CorrectInput, false)
 			}
@@ -619,7 +619,7 @@ func (r *Renderer) batches(frame render.Frame, commands []render.Command, width,
 			if !ok {
 				return nil, rendererFailure("translate WebGPU text", fmt.Errorf("text command has payload %T", command.Payload), diagnostics.CorrectInput, false)
 			}
-			textBatches, err := r.textBatches(value, offset, clipPtr, width, height)
+			textBatches, err := r.textBatches(value, transform, clipPtr, width, height)
 			if err != nil {
 				return nil, rendererFailure("translate WebGPU text", err, diagnostics.CorrectInput, false)
 			}
@@ -772,10 +772,10 @@ func basicAdvance(value rune) float64 {
 	return float64(advance) / 64
 }
 
-func (r *Renderer) textBatches(value render.TextDraw, offset render.Vec2, clip *render.Rect, width, height int) ([]batch, error) {
+func (r *Renderer) textBatches(value render.TextDraw, transform cameraTransform, clip *render.Rect, width, height int) ([]batch, error) {
 	result := make([]batch, 0)
-	pen := value.Position.X + offset.X
-	baseline := value.Position.Y + offset.Y
+	pen := value.Position.X
+	baseline := value.Position.Y
 	for _, runeValue := range value.Value {
 		var resource *textureResource
 		var source, bounds render.Rect
@@ -806,7 +806,7 @@ func (r *Renderer) textBatches(value render.TextDraw, offset render.Vec2, clip *
 			bounds = render.Rect{X: pen + glyph.Offset.X, Y: baseline + glyph.Offset.Y, W: glyph.Source.W, H: glyph.Source.H}
 		}
 		sprite := render.Sprite{Source: source, Bounds: bounds, Tint: value.Color}
-		instance, err := spriteInstance(sprite, resource.width, resource.height, render.Vec2{}, width, height)
+		instance, err := spriteInstance(sprite, resource.width, resource.height, transform, width, height)
 		if err != nil {
 			return nil, err
 		}

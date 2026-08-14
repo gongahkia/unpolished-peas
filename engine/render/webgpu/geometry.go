@@ -8,16 +8,56 @@ import (
 	"github.com/gongahkia/72/engine/render"
 )
 
-func spriteVertices(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([]vertex, error) {
-	quad, err := spriteQuad(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+type cameraTransform struct {
+	position render.Vec2
+	offset   render.Vec2
+	center   render.Vec2
+	zoom     float64
+}
+
+func newCameraTransform(camera render.Camera, space render.Space) (cameraTransform, error) {
+	if space == render.ScreenSpace {
+		return cameraTransform{zoom: 1}, nil
+	}
+	if space != render.WorldSpace {
+		return cameraTransform{}, fmt.Errorf("render command has invalid space %d", space)
+	}
+	if !finite(camera.Position.X) || !finite(camera.Position.Y) || !finite(camera.Offset.X) || !finite(camera.Offset.Y) || !finite(camera.Viewport.X) || !finite(camera.Viewport.Y) {
+		return cameraTransform{}, fmt.Errorf("render camera position, offset, and viewport must be finite")
+	}
+	zoom := camera.Zoom
+	if zoom == 0 {
+		zoom = 1
+	}
+	if !finite(zoom) || zoom <= 0 {
+		return cameraTransform{}, fmt.Errorf("render camera zoom must be finite and positive")
+	}
+	return cameraTransform{position: camera.Position, offset: camera.Offset, center: render.Vec2{X: camera.Viewport.X / 2, Y: camera.Viewport.Y / 2}, zoom: zoom}, nil
+}
+
+func (t cameraTransform) point(value render.Vec2) render.Vec2 {
+	return render.Vec2{X: t.center.X + (value.X-t.position.X-t.center.X)*t.zoom + t.offset.X, Y: t.center.Y + (value.Y-t.position.Y-t.center.Y)*t.zoom + t.offset.Y}
+}
+
+func (t cameraTransform) rect(value render.Rect) render.Rect {
+	point := t.point(render.Vec2{X: value.X, Y: value.Y})
+	return render.Rect{X: point.X, Y: point.Y, W: value.W * t.zoom, H: value.H * t.zoom}
+}
+
+func (t cameraTransform) inverseRect(value render.Rect) render.Rect {
+	return render.Rect{X: t.position.X + t.center.X + (value.X-t.center.X-t.offset.X)/t.zoom, Y: t.position.Y + t.center.Y + (value.Y-t.center.Y-t.offset.Y)/t.zoom, W: value.W / t.zoom, H: value.H / t.zoom}
+}
+
+func spriteVertices(sprite render.Sprite, textureWidth, textureHeight int, transform cameraTransform, viewportWidth, viewportHeight int) ([]vertex, error) {
+	quad, err := spriteQuad(sprite, textureWidth, textureHeight, transform, viewportWidth, viewportHeight)
 	if err != nil {
 		return nil, err
 	}
 	return []vertex{quad[0], quad[1], quad[2], quad[0], quad[2], quad[3]}, nil
 }
 
-func spriteInstance(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) (spriteInstanceData, error) {
-	quad, err := spriteQuad(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+func spriteInstance(sprite render.Sprite, textureWidth, textureHeight int, transform cameraTransform, viewportWidth, viewportHeight int) (spriteInstanceData, error) {
+	quad, err := spriteQuad(sprite, textureWidth, textureHeight, transform, viewportWidth, viewportHeight)
 	if err != nil {
 		return spriteInstanceData{}, err
 	}
@@ -29,7 +69,7 @@ func spriteInstance(sprite render.Sprite, textureWidth, textureHeight int, offse
 	}, nil
 }
 
-func spriteQuad(sprite render.Sprite, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([4]vertex, error) {
+func spriteQuad(sprite render.Sprite, textureWidth, textureHeight int, view cameraTransform, viewportWidth, viewportHeight int) ([4]vertex, error) {
 	if textureWidth <= 0 || textureHeight <= 0 {
 		return [4]vertex{}, fmt.Errorf("sprite texture dimensions must be positive")
 	}
@@ -51,14 +91,12 @@ func spriteQuad(sprite render.Sprite, textureWidth, textureHeight int, offset re
 		return [4]vertex{}, fmt.Errorf("viewport dimensions must be positive")
 	}
 	bounds := sprite.Bounds
-	bounds.X += offset.X
-	bounds.Y += offset.Y
 	origin := render.Vec2{X: bounds.X + sprite.Transform.Origin.X*bounds.W, Y: bounds.Y + sprite.Transform.Origin.Y*bounds.H}
 	points := [4]render.Vec2{
-		transformPoint(render.Vec2{X: bounds.X, Y: bounds.Y}, origin, transform),
-		transformPoint(render.Vec2{X: bounds.X + bounds.W, Y: bounds.Y}, origin, transform),
-		transformPoint(render.Vec2{X: bounds.X + bounds.W, Y: bounds.Y + bounds.H}, origin, transform),
-		transformPoint(render.Vec2{X: bounds.X, Y: bounds.Y + bounds.H}, origin, transform),
+		view.point(transformPoint(render.Vec2{X: bounds.X, Y: bounds.Y}, origin, transform)),
+		view.point(transformPoint(render.Vec2{X: bounds.X + bounds.W, Y: bounds.Y}, origin, transform)),
+		view.point(transformPoint(render.Vec2{X: bounds.X + bounds.W, Y: bounds.Y + bounds.H}, origin, transform)),
+		view.point(transformPoint(render.Vec2{X: bounds.X, Y: bounds.Y + bounds.H}, origin, transform)),
 	}
 	u0, v0 := source.X/float64(textureWidth), source.Y/float64(textureHeight)
 	u1, v1 := (source.X+source.W)/float64(textureWidth), (source.Y+source.H)/float64(textureHeight)
@@ -94,7 +132,7 @@ func transformPoint(point, origin render.Vec2, transform spriteTransform) render
 	return render.Vec2{X: origin.X + cosine*x - sine*y, Y: origin.Y + sine*x + cosine*y}
 }
 
-func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, offset render.Vec2, viewportWidth, viewportHeight int) ([]spriteInstanceData, error) {
+func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, transform cameraTransform, viewportWidth, viewportHeight int) ([]spriteInstanceData, error) {
 	if !finiteRect(tiles.Bounds) || !finite(tiles.Atlas.X) || !finite(tiles.Atlas.Y) || !finite(tiles.TileSize.X) || !finite(tiles.TileSize.Y) || tiles.Columns <= 0 || tiles.TileSize.X <= 0 || tiles.TileSize.Y <= 0 || tiles.Atlas.X <= 0 || tiles.Atlas.Y <= 0 {
 		return nil, fmt.Errorf("tile map requires finite bounds, positive atlas, tile size, and columns")
 	}
@@ -102,7 +140,7 @@ func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, offset
 	if sourceColumns <= 0 {
 		return nil, fmt.Errorf("tile map atlas is narrower than a tile")
 	}
-	viewport := render.Rect{X: -offset.X, Y: -offset.Y, W: float64(viewportWidth), H: float64(viewportHeight)}
+	viewport := transform.inverseRect(render.Rect{W: float64(viewportWidth), H: float64(viewportHeight)})
 	visible := tiles.VisibleRange(viewport)
 	instances := make([]spriteInstanceData, 0, visible.Columns*visible.Rows)
 	for row := visible.Row; row < visible.Row+visible.Rows; row++ {
@@ -119,7 +157,7 @@ func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, offset
 				Bounds:  render.Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
 				Tint:    tiles.Tint,
 			}
-			instance, err := spriteInstance(sprite, textureWidth, textureHeight, offset, viewportWidth, viewportHeight)
+			instance, err := spriteInstance(sprite, textureWidth, textureHeight, transform, viewportWidth, viewportHeight)
 			if err != nil {
 				return nil, err
 			}
@@ -129,18 +167,13 @@ func tileInstances(tiles render.TileMap, textureWidth, textureHeight int, offset
 	return instances, nil
 }
 
-func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth, viewportHeight int) ([]vertex, error) {
+func primitiveVertices(command render.Command, transform cameraTransform, viewportWidth, viewportHeight int) ([]vertex, error) {
 	toVertices := func(points []render.Vec2, tint render.Color) []vertex {
 		result := make([]vertex, 0, len(points))
 		for _, point := range points {
-			result = append(result, vertexAt(point, 0, 0, tintValue(tint), viewportWidth, viewportHeight))
+			result = append(result, vertexAt(transform.point(point), 0, 0, tintValue(tint), viewportWidth, viewportHeight))
 		}
 		return result
-	}
-	translateRect := func(rect render.Rect) render.Rect {
-		rect.X += offset.X
-		rect.Y += offset.Y
-		return rect
 	}
 	switch command.Kind {
 	case render.FillRect:
@@ -151,7 +184,7 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !finiteRect(value.Bounds) || value.Bounds.W <= 0 || value.Bounds.H <= 0 {
 			return nil, fmt.Errorf("filled rectangle bounds must be finite and positive")
 		}
-		return rectVertices(translateRect(value.Bounds), value.Color, viewportWidth, viewportHeight), nil
+		return rectVertices(transform.rect(value.Bounds), value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeRect:
 		value, ok := command.Payload.(render.RectDraw)
 		if !ok {
@@ -160,14 +193,15 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !finiteRect(value.Bounds) || !finite(value.Width) || value.Bounds.W <= 0 || value.Bounds.H <= 0 || value.Width <= 0 {
 			return nil, fmt.Errorf("stroked rectangle bounds and width must be finite and positive")
 		}
-		bounds := translateRect(value.Bounds)
-		if value.Width*2 >= bounds.W || value.Width*2 >= bounds.H {
+		bounds := transform.rect(value.Bounds)
+		width := value.Width * transform.zoom
+		if width*2 >= bounds.W || width*2 >= bounds.H {
 			return rectVertices(bounds, value.Color, viewportWidth, viewportHeight), nil
 		}
-		vertices := rectVertices(render.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight)
-		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + bounds.H - value.Width, W: bounds.W, H: value.Width}, value.Color, viewportWidth, viewportHeight)...)
-		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight)...)
-		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X + bounds.W - value.Width, Y: bounds.Y + value.Width, W: value.Width, H: bounds.H - 2*value.Width}, value.Color, viewportWidth, viewportHeight)...)
+		vertices := rectVertices(render.Rect{X: bounds.X, Y: bounds.Y, W: bounds.W, H: width}, value.Color, viewportWidth, viewportHeight)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + bounds.H - width, W: bounds.W, H: width}, value.Color, viewportWidth, viewportHeight)...)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X, Y: bounds.Y + width, W: width, H: bounds.H - 2*width}, value.Color, viewportWidth, viewportHeight)...)
+		vertices = append(vertices, rectVertices(render.Rect{X: bounds.X + bounds.W - width, Y: bounds.Y + width, W: width, H: bounds.H - 2*width}, value.Color, viewportWidth, viewportHeight)...)
 		return vertices, nil
 	case render.FillCircle:
 		value, ok := command.Payload.(render.CircleDraw)
@@ -177,7 +211,7 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !finite(value.Center.X) || !finite(value.Center.Y) || !finite(value.Radius) || value.Radius <= 0 {
 			return nil, fmt.Errorf("filled circle center and radius must be finite and positive")
 		}
-		return circleVertices(render.Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, 0, value.Color, viewportWidth, viewportHeight), nil
+		return circleVertices(transform.point(value.Center), value.Radius*transform.zoom, 0, value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeCircle:
 		value, ok := command.Payload.(render.CircleDraw)
 		if !ok {
@@ -186,7 +220,7 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !finite(value.Center.X) || !finite(value.Center.Y) || !finite(value.Radius) || !finite(value.Width) || value.Radius <= 0 || value.Width <= 0 {
 			return nil, fmt.Errorf("stroked circle center, radius, and width must be finite and positive")
 		}
-		return circleVertices(render.Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Width, value.Color, viewportWidth, viewportHeight), nil
+		return circleVertices(transform.point(value.Center), value.Radius*transform.zoom, value.Width*transform.zoom, value.Color, viewportWidth, viewportHeight), nil
 	case render.StrokeLine:
 		value, ok := command.Payload.(render.LineDraw)
 		if !ok {
@@ -195,14 +229,14 @@ func primitiveVertices(command render.Command, offset render.Vec2, viewportWidth
 		if !finite(value.Start.X) || !finite(value.Start.Y) || !finite(value.End.X) || !finite(value.End.Y) || !finite(value.Width) || value.Width <= 0 {
 			return nil, fmt.Errorf("line endpoints and width must be finite and positive")
 		}
-		start := render.Vec2{X: value.Start.X + offset.X, Y: value.Start.Y + offset.Y}
-		end := render.Vec2{X: value.End.X + offset.X, Y: value.End.Y + offset.Y}
+		start := transform.point(value.Start)
+		end := transform.point(value.End)
 		dx, dy := end.X-start.X, end.Y-start.Y
 		length := math.Hypot(dx, dy)
 		if length == 0 {
 			return circleVertices(start, value.Width/2, 0, value.Color, viewportWidth, viewportHeight), nil
 		}
-		half := value.Width / 2
+		half := value.Width * transform.zoom / 2
 		normal := render.Vec2{X: -dy / length * half, Y: dx / length * half}
 		vertices := toVertices([]render.Vec2{{X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X + normal.X, Y: end.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X + normal.X, Y: start.Y + normal.Y}, {X: end.X - normal.X, Y: end.Y - normal.Y}, {X: start.X - normal.X, Y: start.Y - normal.Y}}, value.Color)
 		angle := math.Atan2(dy, dx)

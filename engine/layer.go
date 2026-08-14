@@ -190,20 +190,21 @@ func (s *LayerStack) draw(backend render.Backend, camera Camera, tick uint64, te
 	if backend == nil {
 		return fmt.Errorf("render backend must not be nil")
 	}
-	if !finiteVec2(camera.position) || !finiteVec2(camera.offset) || !finiteSize(camera.viewport) || camera.viewport.W <= 0 || camera.viewport.H <= 0 {
-		return fmt.Errorf("camera position, offset, and viewport must be finite with a positive viewport")
+	if !finiteVec2(camera.position) || !finiteVec2(camera.offset) || !finiteSize(camera.viewport) || camera.viewport.W <= 0 || camera.viewport.H <= 0 || math.IsNaN(camera.zoom) || math.IsInf(camera.zoom, 0) || camera.zoom <= 0 {
+		return fmt.Errorf("camera position, offset, viewport, and zoom must be finite with a positive viewport and zoom")
 	}
 	for _, registered := range s.layers {
 		layer := registered.layer
 		queue := &render.Queue{}
 		space := render.ScreenSpace
-		commandCamera := render.Camera{Viewport: render.Vec2{X: camera.viewport.W, Y: camera.viewport.H}}
+		commandCamera := render.Camera{Viewport: render.Vec2{X: camera.viewport.W, Y: camera.viewport.H}, Zoom: camera.zoom}
 		if layer.Space == WorldSpace {
 			space = render.WorldSpace
 			commandCamera.Position = render.Vec2{
-				X: camera.position.X*layer.Parallax - camera.offset.X*layer.Parallax,
-				Y: camera.position.Y*layer.Parallax - camera.offset.Y*layer.Parallax,
+				X: camera.position.X * layer.Parallax,
+				Y: camera.position.Y * layer.Parallax,
 			}
+			commandCamera.Offset = render.Vec2{X: camera.offset.X * layer.Parallax, Y: camera.offset.Y * layer.Parallax}
 		}
 		frame := CommandFrame{Camera: camera, Tick: tick, Viewport: camera.viewport, queue: queue, order: layer.Order, space: space}
 		if err := layer.DrawCommands(frame); err != nil {

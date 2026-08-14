@@ -129,7 +129,7 @@ func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 		b.clip = nil
 	}
 	defer func() { b.clip = previousClip }()
-	offset, err := commandOffset(frame.Camera, command.Space)
+	transform, err := newCameraTransform(frame.Camera, command.Space)
 	if err != nil {
 		return err
 	}
@@ -139,71 +139,55 @@ func (b *ReferenceBackend) draw(frame Frame, command Command) error {
 		if !ok {
 			return fmt.Errorf("sprite command has payload %T", command.Payload)
 		}
-		return b.drawSprite(frame.Textures, value, offset)
+		return b.drawSprite(frame.Textures, value, transform)
 	case TileMapCommand:
 		value, ok := command.Payload.(TileMap)
 		if !ok {
 			return fmt.Errorf("tile map command has payload %T", command.Payload)
 		}
-		return b.drawTileMap(frame.Textures, value, offset)
+		return b.drawTileMap(frame.Textures, value, transform)
 	case FillRect:
 		value, ok := command.Payload.(RectDraw)
 		if !ok {
 			return fmt.Errorf("filled rectangle command has payload %T", command.Payload)
 		}
-		return b.fillRect(translateRect(value.Bounds, offset), value.Color)
+		return b.fillRect(transform.rect(value.Bounds), value.Color)
 	case StrokeRect:
 		value, ok := command.Payload.(RectDraw)
 		if !ok {
 			return fmt.Errorf("stroked rectangle command has payload %T", command.Payload)
 		}
-		return b.strokeRect(translateRect(value.Bounds, offset), value.Width, value.Color)
+		return b.strokeRect(transform.rect(value.Bounds), value.Width*transform.zoom, value.Color)
 	case FillCircle:
 		value, ok := command.Payload.(CircleDraw)
 		if !ok {
 			return fmt.Errorf("filled circle command has payload %T", command.Payload)
 		}
-		return b.fillCircle(Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Color)
+		return b.fillCircle(transform.point(value.Center), value.Radius*transform.zoom, value.Color)
 	case StrokeCircle:
 		value, ok := command.Payload.(CircleDraw)
 		if !ok {
 			return fmt.Errorf("stroked circle command has payload %T", command.Payload)
 		}
-		return b.strokeCircle(Vec2{X: value.Center.X + offset.X, Y: value.Center.Y + offset.Y}, value.Radius, value.Width, value.Color)
+		return b.strokeCircle(transform.point(value.Center), value.Radius*transform.zoom, value.Width*transform.zoom, value.Color)
 	case StrokeLine:
 		value, ok := command.Payload.(LineDraw)
 		if !ok {
 			return fmt.Errorf("line command has payload %T", command.Payload)
 		}
-		return b.strokeLine(
-			Vec2{X: value.Start.X + offset.X, Y: value.Start.Y + offset.Y},
-			Vec2{X: value.End.X + offset.X, Y: value.End.Y + offset.Y},
-			value.Width,
-			value.Color,
-		)
+		return b.strokeLine(transform.point(value.Start), transform.point(value.End), value.Width*transform.zoom, value.Color)
 	case Text:
 		value, ok := command.Payload.(TextDraw)
 		if !ok {
 			return fmt.Errorf("text command has payload %T", command.Payload)
 		}
-		return b.drawText(Vec2{X: value.Position.X + offset.X, Y: value.Position.Y + offset.Y}, value.Value, value.Color, value.Atlas)
+		return b.drawText(value.Position, value.Value, value.Color, value.Atlas, transform)
 	default:
 		return fmt.Errorf("unsupported render command %d", command.Kind)
 	}
 }
 
-func commandOffset(camera Camera, space Space) (Vec2, error) {
-	switch space {
-	case ScreenSpace:
-		return Vec2{}, nil
-	case WorldSpace:
-		return Vec2{X: -camera.Position.X, Y: -camera.Position.Y}, nil
-	default:
-		return Vec2{}, fmt.Errorf("render command has invalid space %d", space)
-	}
-}
-
-func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, offset Vec2) error {
+func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, view cameraTransform) error {
 	if !finiteRect(sprite.Bounds) || sprite.Bounds.W <= 0 || sprite.Bounds.H <= 0 {
 		return fmt.Errorf("sprite bounds must be finite and positive")
 	}
@@ -225,16 +209,16 @@ func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, offset
 	if region.X < 0 || region.Y < 0 || region.X+region.W > float64(source.Width) || region.Y+region.H > float64(source.Height) {
 		return fmt.Errorf("sprite source is outside texture %d", sprite.Texture.ID)
 	}
-	bounds := translateRect(sprite.Bounds, offset)
+	bounds := sprite.Bounds
 	transform := normalizeSpriteTransform(sprite.Transform)
 	origin := Vec2{X: bounds.X + sprite.Transform.Origin.X*bounds.W, Y: bounds.Y + sprite.Transform.Origin.Y*bounds.H}
-	transformed := transformedSpriteBounds(bounds, origin, transform)
+	transformed := view.rect(transformedSpriteBounds(bounds, origin, transform))
 	for y := maxIntValue(0, int(math.Floor(transformed.Y))); y < minIntValue(b.image.Height, int(math.Ceil(transformed.Y+transformed.H))); y++ {
 		for x := maxIntValue(0, int(math.Floor(transformed.X))); x < minIntValue(b.image.Width, int(math.Ceil(transformed.X+transformed.W))); x++ {
 			if !b.visible(x, y) {
 				continue
 			}
-			local := inverseSpritePoint(Vec2{X: float64(x) + .5, Y: float64(y) + .5}, origin, transform)
+			local := inverseSpritePoint(view.inversePoint(Vec2{X: float64(x) + .5, Y: float64(y) + .5}), origin, transform)
 			if local.X < bounds.X || local.X >= bounds.X+bounds.W || local.Y < bounds.Y || local.Y >= bounds.Y+bounds.H {
 				continue
 			}
@@ -283,7 +267,7 @@ func transformSpritePoint(point, origin Vec2, transform spriteTransformValue) Ve
 	return Vec2{X: origin.X + cosine*x - sine*y, Y: origin.Y + sine*x + cosine*y}
 }
 
-func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offset Vec2) error {
+func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, transform cameraTransform) error {
 	if !finiteRect(tiles.Bounds) || !finiteVec(tiles.Atlas) || !finiteVec(tiles.TileSize) {
 		return fmt.Errorf("tile map coordinates must be finite")
 	}
@@ -294,7 +278,7 @@ func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offse
 	if sourceColumns <= 0 {
 		return fmt.Errorf("tile map atlas is narrower than a tile")
 	}
-	visible := tiles.VisibleRange(b.tileViewport(offset))
+	visible := tiles.VisibleRange(b.tileViewport(transform))
 	for row := visible.Row; row < visible.Row+visible.Rows; row++ {
 		for column := visible.Column; column < visible.Column+visible.Columns; column++ {
 			index := row*tiles.Columns + column
@@ -312,7 +296,7 @@ func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offse
 				Bounds:  Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
 				Tint:    tiles.Tint,
 			}
-			if err := b.drawSprite(store, sprite, offset); err != nil {
+			if err := b.drawSprite(store, sprite, transform); err != nil {
 				return err
 			}
 		}
@@ -320,13 +304,12 @@ func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, offse
 	return nil
 }
 
-func (b *ReferenceBackend) tileViewport(offset Vec2) Rect {
-	viewport := Rect{X: -offset.X, Y: -offset.Y, W: float64(b.image.Width), H: float64(b.image.Height)}
+func (b *ReferenceBackend) tileViewport(transform cameraTransform) Rect {
+	viewport := Rect{W: float64(b.image.Width), H: float64(b.image.Height)}
 	if b.clip == nil {
-		return viewport
+		return transform.inverseRect(viewport)
 	}
-	clip := translateRect(*b.clip, Vec2{X: -offset.X, Y: -offset.Y})
-	return intersectRects(viewport, clip)
+	return transform.inverseRect(intersectRects(viewport, *b.clip))
 }
 
 func (b *ReferenceBackend) fillRect(bounds Rect, tint Color) error {
@@ -396,13 +379,17 @@ func (b *ReferenceBackend) strokeLine(start, end Vec2, width float64, tint Color
 	return nil
 }
 
-func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color, atlas *GlyphAtlas) error {
+func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color, atlas *GlyphAtlas, transform cameraTransform) error {
 	if !finiteVec(position) {
 		return fmt.Errorf("text position must be finite")
 	}
 	if atlas != nil {
-		return b.drawAtlasText(position, value, tint, atlas)
+		return b.drawAtlasText(position, value, tint, atlas, transform)
 	}
+	if transform.zoom != 1 {
+		return b.drawScaledBasicText(position, value, tint, transform)
+	}
+	position = transform.point(position)
 	target := &image.NRGBA{Pix: b.image.Pixels, Stride: b.image.Width * 4, Rect: image.Rect(0, 0, b.image.Width, b.image.Height)}
 	var destination draw.Image = target
 	if b.clip != nil {
@@ -418,7 +405,7 @@ func (b *ReferenceBackend) drawText(position Vec2, value string, tint Color, atl
 	return nil
 }
 
-func (b *ReferenceBackend) drawAtlasText(position Vec2, value string, tint Color, atlas *GlyphAtlas) error {
+func (b *ReferenceBackend) drawAtlasText(position Vec2, value string, tint Color, atlas *GlyphAtlas, transform cameraTransform) error {
 	pen := position.X
 	for _, rune := range value {
 		glyph, err := atlas.Glyph(rune)
@@ -430,11 +417,33 @@ func (b *ReferenceBackend) drawAtlasText(position Vec2, value string, tint Color
 			if !ok {
 				return fmt.Errorf("glyph atlas page %d is unavailable", glyph.Page)
 			}
-			if err := b.drawImage(page, glyph.Source, Rect{X: pen + glyph.Offset.X, Y: position.Y + glyph.Offset.Y, W: glyph.Source.W, H: glyph.Source.H}, tint); err != nil {
+			if err := b.drawImage(page, glyph.Source, transform.rect(Rect{X: pen + glyph.Offset.X, Y: position.Y + glyph.Offset.Y, W: glyph.Source.W, H: glyph.Source.H}), tint); err != nil {
 				return err
 			}
 		}
 		pen += glyph.Advance
+	}
+	return nil
+}
+
+func (b *ReferenceBackend) drawScaledBasicText(position Vec2, value string, tint Color, transform cameraTransform) error {
+	pen := position.X
+	for _, runeValue := range value {
+		glyph := image.NewNRGBA(image.Rect(0, 0, 8, 13))
+		drawer := font.Drawer{Dst: glyph, Src: image.NewUniform(color.NRGBA{R: tint.R, G: tint.G, B: tint.B, A: tint.A}), Face: basicfont.Face7x13, Dot: fixed.P(0, 13)}
+		drawer.DrawString(string(runeValue))
+		source, err := NewImage(8, 13, glyph.Pix)
+		if err != nil {
+			return err
+		}
+		if err := b.drawImage(source, Rect{W: 8, H: 13}, transform.rect(Rect{X: pen, Y: position.Y - 13, W: 8, H: 13}), Color{R: 255, G: 255, B: 255, A: 255}); err != nil {
+			return err
+		}
+		advance, ok := basicfont.Face7x13.GlyphAdvance(runeValue)
+		if !ok {
+			advance = fixed.I(7)
+		}
+		pen += float64(advance) / 64
 	}
 	return nil
 }
