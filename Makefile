@@ -1,4 +1,4 @@
-.PHONY: example-run test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build example-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
+.PHONY: example-run test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build example-wasm audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -35,6 +35,12 @@ example-wasm:
 	GOOS=js GOARCH=wasm go build -o dist/wukong.wasm ./example/wukong
 	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm_exec.js
 	cp example/wukong/web/index.html dist/index.html
+
+audio-wasm:
+	mkdir -p dist/audio
+	GOOS=js GOARCH=wasm go build -o dist/audio/audio.wasm ./example/audio
+	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/audio/wasm_exec.js
+	cp example/audio/web/index.html dist/audio/index.html
 
 first-game-run:
 	go run ./example/first-game

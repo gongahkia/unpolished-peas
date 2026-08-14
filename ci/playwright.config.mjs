@@ -2,12 +2,12 @@ import { defineConfig } from "@playwright/test";
 
 export default defineConfig({
   testDir: ".",
-  testMatch: "wasm-smoke.spec.mjs",
+  testMatch: "*.spec.mjs",
   timeout: 30_000,
   use: {
     browserName: "chromium",
     baseURL: "http://127.0.0.1:4173",
-    headless: false,
+    headless: process.env.PLAYWRIGHT_HEADLESS === "1",
     launchOptions: {
       args: ["--enable-unsafe-webgpu"],
     },

@@ -222,10 +222,13 @@ func (b *ReferenceBackend) drawSprite(store *TextureStore, sprite Sprite, view c
 			if local.X < bounds.X || local.X >= bounds.X+bounds.W || local.Y < bounds.Y || local.Y >= bounds.Y+bounds.H {
 				continue
 			}
-			sourceX := sampleCoordinate(region.X+(local.X-bounds.X)*region.W/bounds.W, region.X, region.X+region.W)
-			sourceY := sampleCoordinate(region.Y+(local.Y-bounds.Y)*region.H/bounds.H, region.Y, region.Y+region.H)
-			pixel := sourceColor(source, sourceX, sourceY)
-			b.blend(x, y, scaleColor(pixel, sprite.Tint))
+			sampleX := region.X + (local.X-bounds.X)*region.W/bounds.W
+			sampleY := region.Y + (local.Y-bounds.Y)*region.H/bounds.H
+			pixel := sourceColor(source, sampleCoordinate(sampleX, region.X, region.X+region.W), sampleCoordinate(sampleY, region.Y, region.Y+region.H))
+			if sprite.Sampling == SamplingLinear {
+				pixel = linearSourceColor(source, sampleX, sampleY)
+			}
+			b.blendMode(x, y, scaleColor(pixel, sprite.Tint), sprite.Blend)
 		}
 	}
 	return nil
@@ -291,10 +294,12 @@ func (b *ReferenceBackend) drawTileMap(store *TextureStore, tiles TileMap, trans
 			}
 			sourceColumn, sourceRow := tile%sourceColumns, tile/sourceColumns
 			sprite := Sprite{
-				Texture: tiles.Texture,
-				Source:  Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-				Bounds:  Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
-				Tint:    tiles.Tint,
+				Texture:  tiles.Texture,
+				Source:   Rect{X: float64(sourceColumn) * tiles.TileSize.X, Y: float64(sourceRow) * tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Bounds:   Rect{X: tiles.Bounds.X + float64(column)*tiles.TileSize.X, Y: tiles.Bounds.Y + float64(row)*tiles.TileSize.Y, W: tiles.TileSize.X, H: tiles.TileSize.Y},
+				Tint:     tiles.Tint,
+				Sampling: tiles.Sampling,
+				Blend:    tiles.Blend,
 			}
 			if err := b.drawSprite(store, sprite, transform); err != nil {
 				return err
@@ -513,9 +518,16 @@ func (i clippedImage) visible(x, y int) bool {
 }
 
 func (b *ReferenceBackend) blend(x, y int, source Color) {
+	b.blendMode(x, y, source, BlendSourceOver)
+}
+
+func (b *ReferenceBackend) blendMode(x, y int, source Color, mode BlendMode) {
 	offset := (y*b.image.Width + x) * 4
 	destination := Color{R: b.image.Pixels[offset], G: b.image.Pixels[offset+1], B: b.image.Pixels[offset+2], A: b.image.Pixels[offset+3]}
 	value := over(destination, source)
+	if mode == BlendAdditive {
+		value = additive(destination, source)
+	}
 	b.image.Pixels[offset] = value.R
 	b.image.Pixels[offset+1] = value.G
 	b.image.Pixels[offset+2] = value.B
@@ -580,6 +592,31 @@ func sourceColor(source Image, x, y int) Color {
 	return Color{R: source.Pixels[offset], G: source.Pixels[offset+1], B: source.Pixels[offset+2], A: source.Pixels[offset+3]}
 }
 
+// linearSourceColor follows WebGPU's normalized-coordinate linear sampler.
+// Sprite source rectangles intentionally do not clamp their own edges: as on
+// the GPU, a linear sample near an unpadded atlas cell can mix its neighbour.
+func linearSourceColor(source Image, x, y float64) Color {
+	x = math.Max(.5, math.Min(float64(source.Width)-.5, x))
+	y = math.Max(.5, math.Min(float64(source.Height)-.5, y))
+	firstX, firstY := int(math.Floor(x-.5)), int(math.Floor(y-.5))
+	fractionX, fractionY := x-.5-float64(firstX), y-.5-float64(firstY)
+	secondX := minIntValue(firstX+1, source.Width-1)
+	secondY := minIntValue(firstY+1, source.Height-1)
+	topLeft, topRight := sourceColor(source, firstX, firstY), sourceColor(source, secondX, firstY)
+	bottomLeft, bottomRight := sourceColor(source, firstX, secondY), sourceColor(source, secondX, secondY)
+	interpolate := func(topLeft, topRight, bottomLeft, bottomRight uint8) uint8 {
+		top := float64(topLeft) + (float64(topRight)-float64(topLeft))*fractionX
+		bottom := float64(bottomLeft) + (float64(bottomRight)-float64(bottomLeft))*fractionX
+		return uint8(math.Round(top + (bottom-top)*fractionY))
+	}
+	return Color{
+		R: interpolate(topLeft.R, topRight.R, bottomLeft.R, bottomRight.R),
+		G: interpolate(topLeft.G, topRight.G, bottomLeft.G, bottomRight.G),
+		B: interpolate(topLeft.B, topRight.B, bottomLeft.B, bottomRight.B),
+		A: interpolate(topLeft.A, topRight.A, bottomLeft.A, bottomRight.A),
+	}
+}
+
 func sampleCoordinate(value, minimum, maximum float64) int {
 	coordinate := int(math.Floor(value))
 	return minIntValue(maxIntValue(coordinate, int(math.Floor(minimum))), int(math.Ceil(maximum))-1)
@@ -602,6 +639,18 @@ func over(destination, source Color) Color {
 	}
 	channel := func(source, destination uint8) uint8 {
 		premultiplied := uint64(source)*sourceAlpha + (uint64(destination)*destinationAlpha*(255-sourceAlpha)+127)/255
+		return uint8((premultiplied + alpha/2) / alpha)
+	}
+	return Color{R: channel(source.R, destination.R), G: channel(source.G, destination.G), B: channel(source.B, destination.B), A: uint8(alpha)}
+}
+
+func additive(destination, source Color) Color {
+	alpha := minIntValue(255, int(source.A)+int(destination.A))
+	if alpha == 0 {
+		return Color{}
+	}
+	channel := func(sourceChannel, destinationChannel uint8) uint8 {
+		premultiplied := minIntValue(255*255, int(sourceChannel)*int(source.A)+int(destinationChannel)*int(destination.A))
 		return uint8((premultiplied + alpha/2) / alpha)
 	}
 	return Color{R: channel(source.R, destination.R), G: channel(source.G, destination.G), B: channel(source.B, destination.B), A: uint8(alpha)}

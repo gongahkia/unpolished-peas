@@ -59,9 +59,16 @@ distribution tooling must provide external content that matches this digest;
 manifest, err := assets.LoadProjectManifest(projectFiles, "72.assets.json")
 artifact, err := assets.BuildPackage(projectFiles, manifest)
 if err != nil {
-    return err
+	return err
 }
-// write artifact using the application's chosen output policy
+reader, err := assets.OpenPackage(bytes.NewReader(artifact), projectFiles)
+if err != nil {
+	return err
+}
+data, err := reader.ReadAsset("maps/first.tiles.json")
+if err != nil {
+	return err
+}
 ```
 
 `BuildPackage` validates every declared source file before encoding. It sorts
@@ -75,3 +82,24 @@ Missing source files, malformed assets, unsupported types or modes, invalid
 paths, duplicate declarations, undeclared dependencies, and mismatched tile
 map texture dependencies fail with the affected manifest or asset path in the
 error.
+
+`OpenPackage` accepts exactly one JSON value, rejects unknown fields, validates
+the package metadata, validates embedded digests immediately, and returns only
+copied data. `ReadAsset` resolves external records through the explicit
+`fs.FS` passed to `OpenPackage`; it verifies its SHA-256 digest and reruns the
+standard type validation before returning bytes. It does not use a working
+directory, an implicit filesystem, or a network resolver.
+
+## Command-line packaging
+
+The `72` command writes a package atomically, so an existing output file is
+left intact when validation or writing fails:
+
+```sh
+go run ./cmd/72 pack -root . -manifest 72.assets.json -out build/game.72.json
+```
+
+`-root` defaults to the current directory and `-manifest` defaults to
+`72.assets.json`. `-out` is required; its parent directory must already exist.
+The command performs the same source validation and canonical serialization as
+`BuildPackage`.

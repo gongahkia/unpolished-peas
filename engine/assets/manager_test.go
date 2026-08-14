@@ -215,6 +215,76 @@ func TestProjectManifestRejectsInvalidPathsDuplicatesAndMissingAssets(t *testing
 	}
 }
 
+func TestPackageReaderVerifiesEmbeddedAndExternalContent(t *testing.T) {
+	source := fstest.MapFS{
+		"tiles.png": {Data: pngData(t)},
+		"sound.wav": {Data: wav16(0, 16_384)},
+	}
+	manifest := ProjectManifest{Version: PackageVersion, Name: "reader", Assets: []ManifestAsset{
+		{Path: "tiles.png", Type: AssetImage, Mode: EmbedAsset},
+		{Path: "sound.wav", Type: AssetAudio, Mode: ExternalAsset},
+	}}
+	artifact, err := BuildPackage(source, manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	reader, err := OpenPackage(bytes.NewReader(artifact), source)
+	if err != nil {
+		t.Fatal(err)
+	}
+	metadata := reader.Package()
+	metadata.Assets[0].Path = "mutated"
+	if reader.Package().Assets[0].Path == "mutated" {
+		t.Fatal("package metadata leaked mutable ownership")
+	}
+	imageData, err := reader.ReadAsset("tiles.png")
+	if err != nil || !bytes.Equal(imageData, source["tiles.png"].Data) {
+		t.Fatalf("embedded asset = %d bytes, %v", len(imageData), err)
+	}
+	imageData[0] ^= 0xff
+	again, err := reader.ReadAsset("tiles.png")
+	if err != nil || bytes.Equal(imageData, again) {
+		t.Fatalf("embedded asset copy = %d bytes, %v", len(again), err)
+	}
+	if data, err := reader.ReadAsset("sound.wav"); err != nil || !bytes.Equal(data, source["sound.wav"].Data) {
+		t.Fatalf("external asset = %d bytes, %v", len(data), err)
+	}
+	tampered := fstest.MapFS{"sound.wav": {Data: wav16(0, 1)}}
+	reader, err = OpenPackage(bytes.NewReader(artifact), tampered)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := reader.ReadAsset("sound.wav"); err == nil || !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("tampered external asset error = %v", err)
+	}
+	var packaged Package
+	if err := json.Unmarshal(artifact, &packaged); err != nil {
+		t.Fatal(err)
+	}
+	for index := range packaged.Assets {
+		if packaged.Assets[index].Path == "tiles.png" {
+			packaged.Assets[index].Data[0] ^= 0xff
+			break
+		}
+	}
+	invalid, err := json.Marshal(packaged)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := OpenPackage(bytes.NewReader(invalid), source); err == nil || !strings.Contains(err.Error(), "digest") {
+		t.Fatalf("tampered embedded package error = %v", err)
+	}
+	if _, err := reader.ReadAsset("missing.wav"); err == nil || !strings.Contains(err.Error(), "not declared") {
+		t.Fatalf("missing package asset error = %v", err)
+	}
+	if _, err := OpenPackage(strings.NewReader(string(artifact)+` {}`), source); err == nil || !strings.Contains(err.Error(), "one JSON value") {
+		t.Fatalf("trailing package JSON error = %v", err)
+	}
+	if _, err := OpenPackage(strings.NewReader(`{"version":1,"name":"reader","assets":[],"unknown":true}`), source); err == nil || !strings.Contains(err.Error(), "unknown field") {
+		t.Fatalf("unknown package JSON field error = %v", err)
+	}
+}
+
 func pngData(t *testing.T) []byte {
 	t.Helper()
 	image := image.NewNRGBA(image.Rect(0, 0, 2, 1))

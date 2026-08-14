@@ -11,10 +11,13 @@ import (
 )
 
 func main() {
+	setAudioStatus("waiting for a key, click, or touch to enable audio")
 	backend, err := oto.New(48_000, 2)
 	if err != nil {
+		setAudioStatus("audio initialization failed")
 		panic(fmt.Errorf("open audio output: %w", err))
 	}
+	setAudioStatus("audio context ready")
 	mixer := audio.NewMixer(backend)
 	defer func() {
 		if err := mixer.Close(); err != nil {
@@ -31,14 +34,17 @@ func main() {
 	if err != nil {
 		panic(fmt.Errorf("play tone: %w", err))
 	}
+	setAudioStatus("playing 440 Hz at 25% gain")
 	fmt.Println("playing 440 Hz tone at 25% voice gain")
 	time.Sleep(300 * time.Millisecond)
 	if err := mixer.SetVoice(voice, .5, audio.Vec2{}, false); err != nil {
 		panic(fmt.Errorf("adjust tone: %w", err))
 	}
+	setAudioStatus("playing 440 Hz at 50% gain")
 	fmt.Println("adjusted tone to 50% voice gain")
 	time.Sleep(300 * time.Millisecond)
 	if mixer.Stop(voice) {
+		setAudioStatus("stopped")
 		fmt.Println("stopped tone")
 	}
 }
