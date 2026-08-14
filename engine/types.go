@@ -42,10 +42,11 @@ type Camera struct {
 	position Vec2
 	offset   Vec2
 	viewport Size
+	zoom     float64
 }
 
 // NewCamera creates a camera for a logical viewport.
-func NewCamera(viewport Size) Camera { return Camera{viewport: viewport} }
+func NewCamera(viewport Size) Camera { return Camera{viewport: viewport, zoom: 1} }
 
 // Position returns the world-space origin visible at the top-left viewport edge.
 func (c Camera) Position() Vec2 { return c.position }
@@ -56,11 +57,25 @@ func (c Camera) Offset() Vec2 { return c.offset }
 // Viewport returns the camera's logical viewport size.
 func (c Camera) Viewport() Size { return c.viewport }
 
+// Zoom returns the world-space zoom factor. One preserves existing logical
+// scale; world rendering expands or contracts around the viewport centre.
+func (c Camera) Zoom() float64 { return c.zoom }
+
 // SetPosition updates the world-space camera origin.
 func (c *Camera) SetPosition(position Vec2) { c.position = position }
 
 // SetOffset updates the presentation-only camera offset.
 func (c *Camera) SetOffset(offset Vec2) { c.offset = offset }
+
+// SetZoom updates the world-space zoom factor. Zoom must be finite and
+// positive so all render backends can apply the same inverse transform.
+func (c *Camera) SetZoom(zoom float64) error {
+	if math.IsNaN(zoom) || math.IsInf(zoom, 0) || zoom <= 0 {
+		return fmt.Errorf("camera zoom must be finite and positive, got %g", zoom)
+	}
+	c.zoom = zoom
+	return nil
+}
 
 // Config configures an application runtime.
 type Config struct {

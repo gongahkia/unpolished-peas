@@ -152,11 +152,11 @@ func commandViewport(command Command, camera Camera, viewport Rect) (Rect, bool)
 			return Rect{}, false
 		}
 	}
-	offset, err := commandOffset(camera, command.Space)
+	transform, err := newCameraTransform(camera, command.Space)
 	if err != nil {
 		return Rect{}, false
 	}
-	return translateRect(viewport, Vec2{X: -offset.X, Y: -offset.Y}), true
+	return transform.inverseRect(viewport), true
 }
 
 func tileRows(tiles TileMap) int {

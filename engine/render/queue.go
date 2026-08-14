@@ -30,7 +30,12 @@ const (
 // Camera controls the world-to-viewport transform for WorldSpace commands.
 type Camera struct {
 	Position Vec2
+	// Offset is a logical-pixel presentation offset applied after world zoom.
+	Offset   Vec2
 	Viewport Vec2
+	// Zoom scales WorldSpace commands around the viewport centre. A zero value
+	// means one for compatibility with direct render.Frame construction.
+	Zoom float64
 }
 
 // Texture identifies engine-owned portable image data and a backend-created GPU
