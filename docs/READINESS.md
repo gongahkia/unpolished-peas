@@ -70,6 +70,11 @@ not the existence of core engine packages.
 - Exposed typed nearest/linear sampling and source-over/additive blending for
   sprites and tile maps only, with reference/software-WebGPU conformance tests
   and an opt-in non-fallback GPU test.
+- Added `72 new` for a minimal versioned starter module, `72 doctor` for a
+  redacted local support bundle that never asserts certification, and a
+  deterministic Wukong reference replay, benchmark target, and browser
+  artifact path. Release CI is pinned to Go 1.25.13, with Go 1.26.6 retained
+  as an informational compatibility job.
 
 ## Required work before a release declaration
 

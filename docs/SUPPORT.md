@@ -21,3 +21,13 @@ When adding a platform claim, first update this matrix with the exact command,
 artifact, and whether the result ran on real hardware. The manual GPU matrix
 and performance reporting rules are in [PERFORMANCE.md](PERFORMANCE.md); host
 and renderer lifecycle requirements are in [BACKEND_DEVELOPMENT.md](BACKEND_DEVELOPMENT.md).
+
+## Local diagnostic bundles
+
+`72 doctor -out 72-support.zip` records the current Go version, target, and a
+best-effort WebGPU availability probe. On native targets that probe uses the
+headless fallback adapter, so `available` means only that the local binding
+could initialize it. The report always labels certification as `unverified`;
+it cannot upgrade a target from buildable to runtime-certified. The ZIP
+contains the JSON report, a restricted Go environment summary, and this
+limitation in text form.

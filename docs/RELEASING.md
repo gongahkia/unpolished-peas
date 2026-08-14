@@ -25,6 +25,10 @@ The release owner needs all of the following before the dry run can pass:
 6. Reproducible artifact evidence: record the exact Go, Node/Playwright, module
    lockfiles, commands, SHA-256 checksums, target architecture, and source
    commit for every published binary or wasm bundle.
+7. Run the release dry run with exactly Go 1.25.13. The project baseline stays
+   Go 1.25.0; Go 1.26.6 is an informational compatibility target and cannot
+   promote a buildable platform to certified support. See the
+   [Go release history](https://go.dev/doc/devel/release).
 
 ## Local dry run
 
@@ -34,16 +38,21 @@ After adding the planned changelog entry and license records, run:
 make release-dry-run VERSION=v0.1.0
 ```
 
-The script rejects an invalid version, dirty worktree, missing license/notice,
-or missing version heading, then runs formatting, vet, tests, race tests,
-example builds, wasm builds, and the reference benchmarks. It is deliberately
-strict: an unsuccessful dry run is a release blocker, not a request to bypass
-a check.
+The script rejects an invalid version, dirty worktree, a Go version other than
+1.25.13, missing license/notice, or missing version heading, then runs
+formatting, vet, tests, race tests, first-game/Wukong/audio builds, Wukong's
+verified reference replay, wasm builds, and reference benchmarks. It is
+deliberately strict: an unsuccessful dry run is a release blocker, not a
+request to bypass a check.
 
 The script cannot verify a remote GitHub Actions run or a real GPU/browser
 matrix. The release owner must inspect the run for the exact commit and attach
 the matrix/report to the release review. The configured CI jobs and current
 evidence limits are listed in [SUPPORT.md](SUPPORT.md).
+
+The weekly `go-next` workflow runs Go 1.26.6 as an allowed-to-fail compatibility
+signal. It does not change the module's Go baseline or any support
+classification.
 
 ## Tag and artifact checklist
 

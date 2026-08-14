@@ -25,6 +25,26 @@ The public packages are rooted at `github.com/gongahkia/72/engine`:
 | `engine/platform` | engine-owned Linux X11, Win32, AppKit/CAMetalLayer, and browser canvas hosts |
 | `engine/diagnostics` | counters and duration summaries |
 
+## Start a game
+
+At the v0.1 release, install the versioned command and generate a runnable
+module. `72 new` never replaces an existing directory.
+
+```sh
+go install github.com/gongahkia/72/cmd/72@v0.1.0
+72 new -module example.com/me/my-game ./my-game
+cd my-game
+make test
+make build
+make wasm
+make pack
+```
+
+The generated project has a desktop command, a browser bundle, one embedded
+asset and manifest, and one focused test. Serve `dist` over HTTP to run
+the browser build. Until v0.1 is published, use the checked-out
+[first game tutorial](docs/FIRST_GAME.md) instead.
+
 ## Documentation
 
 Start with the engine documentation, not the example source:
@@ -48,8 +68,8 @@ Start with the engine documentation, not the example source:
 - [platform host contract](docs/HOSTS.md)
 - [portable input and rebinding](docs/INPUT.md)
 - [audio playback and device policy](docs/AUDIO.md)
-- [first game tutorial](docs/FIRST_GAME.md)
-- [Wukong example](example/wukong), an optional game built with the public API
+- [first game tutorial](docs/FIRST_GAME.md), the canonical onboarding path
+- [Wukong proof game](example/wukong), a reproducible game built with the public API
 
 ## Wukong example
 
@@ -59,8 +79,14 @@ simulation, assets, replay tooling, and playtest rules; it demonstrates the
 kind of game a 72 user can write.
 
 ```sh
-make example-run
+make wukong-run
+make wukong-replay
+make wukong-benchmark
+make wukong-wasm
 ```
+
+The replay command writes and verifies a fixed reference run. The wasm target
+writes `dist/wukong`; serve that directory over HTTP for a browser playtest.
 
 ## Renderer transition
 
@@ -92,4 +118,7 @@ make test
 go test -race ./...
 make example-build
 make example-wasm
+make wukong-replay
+make wukong-benchmark
+make wukong-wasm
 ```
