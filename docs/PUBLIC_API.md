@@ -7,7 +7,7 @@ independent game projects without claiming a 1.0 compatibility guarantee.
 
 | Tier | Packages | Contract |
 | --- | --- | --- |
-| Supported runtime | `engine`, `engine/ecs`, `engine/scene`, `engine/diagnostics` | 72 maintains source compatibility within a released `v0.x` minor line except for a documented security or correctness exception. |
+| Supported runtime | `engine`, `engine/animation`, `engine/ecs`, `engine/scene`, `engine/diagnostics` | 72 maintains source compatibility within a released `v0.x` minor line except for a documented security or correctness exception. |
 | Technology preview | `engine/assets`, `engine/audio`, `engine/physics`, `engine/platform`, `engine/render`, `engine/ui` | Public APIs are available for evaluation, but may change in the next minor release as their extension boundaries, backend integration, or test coverage mature. A migration note accompanies intentional breaking changes. |
 | Restricted implementation | `engine/render/webgpu` | The package implements the engine-owned renderer for `engine/platform`; applications should depend on `engine/render` commands rather than its binding-facing implementation API. |
 | Example-only | `example/wukong/...` | Wukong is a consumer of the public runtime, not an engine package or a support-policy reference. Its `internal` simulation and presentation APIs are not available to other projects. |

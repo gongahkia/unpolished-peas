@@ -187,11 +187,6 @@ func (h *browserHost) stop(err error) {
 		listener.callback.Release()
 	}
 	h.listeners = nil
-	for _, request := range h.clipboardRequests {
-		request.resolve.Release()
-		request.reject.Release()
-	}
-	h.clipboardRequests = nil
 	if !h.textInput.IsNull() && !h.textInput.IsUndefined() {
 		h.textInput.Call("remove")
 		h.textInput = js.Undefined()

@@ -48,7 +48,8 @@ type Camera struct {
 // NewCamera creates a camera for a logical viewport.
 func NewCamera(viewport Size) Camera { return Camera{viewport: viewport, zoom: 1} }
 
-// Position returns the world-space origin visible at the top-left viewport edge.
+// Position returns the world-space origin at the top-left viewport edge when
+// zoom is one. Zoom remains anchored to the logical viewport centre.
 func (c Camera) Position() Vec2 { return c.position }
 
 // Offset returns the presentation-only camera offset.

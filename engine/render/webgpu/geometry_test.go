@@ -13,7 +13,7 @@ func TestStrokeCircleVerticesCenterTheStrokeOnTheDeclaredRadius(t *testing.T) {
 		Payload: render.CircleDraw{
 			Center: render.Vec2{X: 20, Y: 20}, Radius: 5, Width: 2,
 		},
-	}, render.Vec2{}, 40, 40)
+	}, cameraTransform{zoom: 1}, 40, 40)
 	if err != nil {
 		t.Fatalf("primitiveVertices() error = %v", err)
 	}
@@ -35,7 +35,7 @@ func TestStrokeLineVerticesIncludeRoundEndpointCaps(t *testing.T) {
 		Payload: render.LineDraw{
 			Start: render.Vec2{X: 10, Y: 10}, End: render.Vec2{X: 20, Y: 10}, Width: 4,
 		},
-	}, render.Vec2{}, 40, 40)
+	}, cameraTransform{zoom: 1}, 40, 40)
 	if err != nil {
 		t.Fatalf("primitiveVertices() error = %v", err)
 	}
@@ -54,7 +54,7 @@ func TestStrokeRectFillsWhenTheStrokeConsumesTheInterior(t *testing.T) {
 	vertices, err := primitiveVertices(render.Command{
 		Kind:    render.StrokeRect,
 		Payload: render.RectDraw{Bounds: render.Rect{X: 1, Y: 1, W: 4, H: 3}, Width: 2},
-	}, render.Vec2{}, 8, 8)
+	}, cameraTransform{zoom: 1}, 8, 8)
 	if err != nil {
 		t.Fatalf("primitiveVertices() error = %v", err)
 	}
@@ -67,9 +67,28 @@ func TestPrimitiveVerticesRejectsDirectNonFiniteCommands(t *testing.T) {
 	_, err := primitiveVertices(render.Command{
 		Kind:    render.FillCircle,
 		Payload: render.CircleDraw{Center: render.Vec2{X: math.NaN()}, Radius: 1},
-	}, render.Vec2{}, 8, 8)
+	}, cameraTransform{zoom: 1}, 8, 8)
 	if err == nil {
 		t.Fatal("non-finite direct circle command succeeded")
+	}
+}
+
+func TestCameraTransformUsesViewportCentreAndScalesPrimitives(t *testing.T) {
+	transform, err := newCameraTransform(render.Camera{Viewport: render.Vec2{X: 4, Y: 4}, Zoom: 2}, render.WorldSpace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	vertices, err := primitiveVertices(render.Command{Kind: render.FillRect, Payload: render.RectDraw{Bounds: render.Rect{X: 2, Y: 2, W: 1, H: 1}}}, transform, 4, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	minimumX, maximumX := math.Inf(1), math.Inf(-1)
+	for _, vertex := range vertices {
+		point := screenPoint(vertex, 4, 4)
+		minimumX, maximumX = math.Min(minimumX, point.X), math.Max(maximumX, point.X)
+	}
+	if math.Abs(minimumX-2) > .001 || math.Abs(maximumX-4) > .001 {
+		t.Fatalf("zoomed rectangle x = %.3f..%.3f, want 2..4", minimumX, maximumX)
 	}
 }
 
