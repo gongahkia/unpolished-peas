@@ -91,6 +91,17 @@ func (r *macRuntime) close() {
 	r.libraries = nil
 }
 
+// loadFramework is intentionally separate from newMacRuntime because optional
+// facilities such as GameController must not prevent window-host startup.
+func (r *macRuntime) loadFramework(path string) error {
+	library, err := ffi.LoadLibrary(path)
+	if err != nil {
+		return err
+	}
+	r.libraries = append(r.libraries, library)
+	return nil
+}
+
 func (r *macRuntime) class(name string) (uintptr, error) {
 	if value := r.classes[name]; value != 0 {
 		return value, nil
@@ -238,6 +249,18 @@ func (r *macRuntime) double(receiver uintptr, selector string, arguments ...macA
 	}
 	var result float64
 	if err := r.call(types.DoubleTypeDescriptor, unsafe.Pointer(&result), receiver, sel, arguments...); err != nil {
+		return 0, fmt.Errorf("send %s: %w", selector, err)
+	}
+	return result, nil
+}
+
+func (r *macRuntime) float32(receiver uintptr, selector string, arguments ...macArgument) (float32, error) {
+	sel, err := r.sel(selector)
+	if err != nil {
+		return 0, err
+	}
+	var result float32
+	if err := r.call(types.FloatTypeDescriptor, unsafe.Pointer(&result), receiver, sel, arguments...); err != nil {
 		return 0, fmt.Errorf("send %s: %w", selector, err)
 	}
 	return result, nil
