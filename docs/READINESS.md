@@ -12,8 +12,8 @@ runtime evidence.
 | Platform hosts | 4/10 | Linux X11 creation/startup and a local Chromium render/input/resize/focus/visibility result. [Source-verified] Hosts map common physical keys; browser uses composition events and the Gamepad API, Windows uses IMM and XInput when available, Linux uses evdev when accessible, and macOS polls GameController when the framework is present. | Windows/macOS have no runtime evidence; X11 clipboard and hidden cursor are unsupported because the public contract is synchronous; Linux/macOS composition remains unavailable pending XIM/NSTextInputClient integration, and gamepad/IME paths lack runtime evidence. |
 | Runtime/gameplay APIs | 6/10 | Deterministic ECS scheduling, input normalization, reloadable assets, verified asset packages/CLI, mixer state, AABB physics queries, scene transforms, and retained UI layout are tested. Non-finite viewport/camera/render inputs now fail at useful boundaries. | UI is a preview; physics is intentionally AABB-only; browser audio has status-flow evidence but no recorded audible-device result. |
 | Diagnostics and performance | 5/10 | Per-frame command, texture, pipeline, batch, draw, and duration metrics; bounded Chrome-compatible CPU traces; reproducible CPU reference and deterministic software-WebGPU tile benchmarks. | No GPU timestamps, physical-GPU benchmark/report, or automatic performance baseline comparison. |
-| Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and a Chromium render/input/resize/focus/visibility smoke are available. | GitHub Actions cannot currently run; Windows/macOS checks are compile-only. |
-| Product and release | 3/10 | Scope, support evidence, compatibility, and release gates are explicitly documented. | No selected `LICENSE`/`NOTICE`, no published artifacts, no completed remote CI for an exact commit, and no target certification or release owner approval. |
+| Test and build engineering | 5/10 | Local formatting, vet, unit/race tests, target builds, vulnerability scan, and a Chromium render/input/resize/focus/visibility smoke are available. | GitHub Actions currently rejects every job before startup because of account billing/spending-limit state; Windows/macOS checks are compile-only. |
+| Product and release | 3/10 | Scope, support evidence, compatibility, a generated evidence ledger, and non-publishing release gates are documented. | No selected `LICENSE`/`NOTICE`, no published artifacts, no completed remote CI for an exact commit, and no target certification or release owner approval. |
 
 ## Overall verdict: 4/10
 
@@ -75,12 +75,18 @@ not the existence of core engine packages.
   deterministic Wukong reference replay, benchmark target, and browser
   artifact path. Release CI is pinned to Go 1.25.13, with Go 1.26.6 retained
   as an informational compatibility job.
+- Replaced hand-maintained support prose with a generated ledger that rejects
+  incomplete environment metadata, makes Windows/macOS build-only, and keeps
+  browser delivery WebGPU-only experimental. Added SHA-pinned Actions,
+  least-privilege permissions, release-artifact checksum/SBOM preparation, and
+  an opt-in attestation path without publication authority.
 
 ## Required work before a release declaration
 
-1. Restore remote CI and obtain successful Linux, Windows, macOS, wasm, and
-   browser jobs for the exact release commit. Compile-only results remain
-   build evidence, not runtime support.
+1. Restore GitHub Actions runner eligibility by resolving the account
+   billing/spending-limit rejection, then obtain successful Linux, Windows,
+   macOS, wasm, and browser jobs for the exact release commit. Compile-only
+   results remain build evidence, not runtime support.
 2. Runtime-test the implemented Windows and macOS hosts, or explicitly remove
    them from the advertised target set.
 3. Run and record the manual GPU/device-loss/resize/hidden-window matrix in
@@ -110,5 +116,6 @@ This audit batch uses local `go test`, shuffled tests, race tests, `go vet`,
 WebAssembly/native example builds, a deterministic software-WebGPU readback
 test, `npm audit`, and `govulncheck`. The vulnerability scan initially found a
 reachable malicious-font allocation issue in `golang.org/x/image`; the pinned
-fixed version is now scanned clean. Remote GitHub Actions and runtime testing
-on Windows/macOS remain unavailable.
+fixed version is now scanned clean. Remote GitHub Actions are presently blocked
+before runner allocation by account billing/spending-limit state; runtime
+testing on Windows/macOS remains unavailable.

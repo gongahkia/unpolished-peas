@@ -7,11 +7,14 @@ and the package documentation before proposing a new exported API or backend.
 
 ## Local setup and verification
 
-The root module requires Go 1.25. The release CI uses Go 1.25.13 and runs
-formatting, `go vet`, root tests, the Wukong replay/wasm evidence, dependency
-verification, `govulncheck`, and the locked browser dependency audit. The
-weekly Go 1.26.6 compatibility job is informational only. Root commands do not
-enter the nested WebGPU experiment modules.
+The root module requires Go 1.25. The configured release CI uses Go 1.25.13
+and runs formatting, `go vet`, root tests, Wukong replay/wasm evidence,
+dependency verification, `govulncheck`, the locked browser dependency audit,
+and a Chromium smoke. That smoke checks canvas pixels, keyboard input, resize,
+blur, hidden-tab behavior, and browser audio status flow; it is not a physical
+GPU, device-output audio, or cross-browser certification. The weekly Go 1.26.6
+compatibility job is informational only. Root commands do not enter the nested
+WebGPU experiment modules.
 
 Run the focused package test first, then run the relevant project checks:
 
@@ -28,6 +31,9 @@ make first-game-wasm
 make wukong-replay
 make wukong-benchmark
 make wukong-wasm
+make support-check
+make device-loss-simulation
+make workflow-check
 go mod verify
 go run golang.org/x/vuln/cmd/govulncheck@v1.7.0 ./...
 ```
@@ -55,9 +61,22 @@ npx playwright install chromium
 npx playwright test --config ci/playwright.config.mjs
 ```
 
-This checks bundle loading and startup exceptions in Chromium. It does not
-verify a rendered frame, gameplay input, or WebGPU presentation. `npm audit`
-must be clean before changing the browser test dependency.
+This checks bundle loading, rendered canvas pixels, keyboard input, resize,
+blur, visibility behavior, and startup exceptions in Chromium. It does not
+certify physical GPU presentation, audible device output, or Firefox/Safari.
+Run `npm audit --omit=dev --audit-level=high` before changing browser
+dependencies.
+
+`docs/SUPPORT.md` is generated. Record complete, immutable evidence in
+`docs/support-evidence.json`, run `make support-doc`, and include
+`make support-check` in the relevant verification. Do not add a target claim
+with an abbreviated commit, missing GPU/driver or browser details, or a build
+result presented as runtime evidence.
+
+Every `uses:` reference in `.github/workflows` must use a full commit SHA;
+run `make workflow-check` after changing a workflow. The global workflow token
+is read-only. Any additional permission belongs only on the narrow job that
+needs it.
 
 Keep `github.com/gogpu/wgpu` and `github.com/jezek/xgb` upgrades isolated from
 features or unrelated dependency changes. A graphics or platform dependency
