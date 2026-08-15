@@ -28,6 +28,7 @@ if ! grep -Fq "## [$version]" CHANGELOG.md; then
 fi
 
 test -z "$(gofmt -l $(find . -name '*.go' -not -path './vendor/*'))"
+make support-check
 go vet ./...
 go test ./...
 go test -race ./...
@@ -40,3 +41,4 @@ make audio-wasm
 make first-game-build
 make first-game-wasm
 make benchmark
+./scripts/build-release-wasm.sh "$version"

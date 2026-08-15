@@ -1,4 +1,4 @@
-.PHONY: example-run example-wasm wukong-run wukong-wasm wukong-replay wukong-benchmark test vet fmt benchmark benchmark-webgpu benchmark-report release-dry-run example-build audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
+.PHONY: example-run example-wasm wukong-run wukong-wasm wukong-replay wukong-benchmark test vet fmt benchmark benchmark-webgpu benchmark-report device-loss-simulation release-dry-run support-doc support-check workflow-check example-build audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
 
 example-run:
 	go run ./example/wukong --mode=playtest
@@ -18,6 +18,9 @@ benchmark:
 benchmark-webgpu:
 	go test -run '^$$' -bench '^BenchmarkHeadlessTileMapScene$$' -benchmem -count=5 ./engine/render/webgpu
 
+device-loss-simulation:
+	go test ./engine/render/webgpu -run '^TestHeadlessRendererRecreatesItsDeviceAndRehydratesPortableTextures$$'
+
 benchmark-report:
 	test -n "$(REPORT)"
 	./scripts/capture-render-benchmark.sh "$(REPORT)"
@@ -25,6 +28,15 @@ benchmark-report:
 release-dry-run:
 	test -n "$(VERSION)"
 	./scripts/release-dry-run.sh "$(VERSION)"
+
+support-doc:
+	go run ./cmd/supportdoc -in docs/support-evidence.json -out docs/SUPPORT.md
+
+support-check:
+	go run ./cmd/supportdoc -in docs/support-evidence.json -out docs/SUPPORT.md -check
+
+workflow-check:
+	./scripts/check-workflow-actions.sh
 
 example-build:
 	mkdir -p bin

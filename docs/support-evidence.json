@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "policy": "72 publishes target classifications only from this machine-readable ledger. A claim is evidence for the exact recorded commit and environment, not a transferable platform certification. Configured CI, source review, cross-compilation, and an unversioned local observation do not by themselves promote a target.",
+  "targets": [
+    {
+      "id": "linux-amd64",
+      "label": "Linux amd64",
+      "classification": "build and test target; runtime certification incomplete",
+      "requiredEvidence": "Real X11 hardware matrix with resize, DPI, minimize/restore, user close, texture upload, device loss/recovery, and clean shutdown"
+    },
+    {
+      "id": "windows-amd64",
+      "label": "Windows amd64",
+      "classification": "build-only target",
+      "requiredEvidence": "Real Windows hardware matrix with the same lifecycle, input, and presentation checks"
+    },
+    {
+      "id": "macos-arm64-amd64",
+      "label": "macOS arm64/amd64",
+      "classification": "build-only target",
+      "requiredEvidence": "Real macOS hardware matrix on each claimed architecture with the same lifecycle, input, and presentation checks"
+    },
+    {
+      "id": "browser-webgpu",
+      "label": "Browser WebGPU",
+      "classification": "WebGPU-only experimental; not broadly deployable web support",
+      "requiredEvidence": "Secure-context Chromium, Firefox, and Safari matrix with rendering, input, resize/DPI, visibility, device loss/recovery, and shutdown"
+    }
+  ],
+  "claims": []
+}

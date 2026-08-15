@@ -1,8 +1,11 @@
 # 72
 
 72 is a Go-first, general-purpose game-engine runtime in active development.
-It is 2D-first and targets Linux, Windows, macOS, and WebAssembly. The current
-release is a runtime SDK, not an editor or a complete production toolchain.
+It is 2D-first, builds for Linux, Windows, macOS, and WebAssembly, and keeps
+runtime support claims in its generated [evidence ledger](docs/SUPPORT.md).
+For v0.1, browser delivery is WebGPU-only experimental; Windows and macOS are
+build-only targets. The current release is a runtime SDK, not an editor or a
+complete production toolchain.
 
 Games own their rules and content. The engine owns reusable runtime concerns:
 
@@ -57,7 +60,9 @@ Start with the engine documentation, not the example source:
 - [structured runtime failures](docs/ERRORS.md)
 - [performance baseline and GPU-validation process](docs/PERFORMANCE.md)
 - [platform build and runtime evidence matrix](docs/SUPPORT.md)
+- [platform runtime test matrix](docs/PLATFORM_TEST_MATRIX.md)
 - [v0.1 release dry-run and evidence requirements](docs/RELEASING.md)
+- [security policy](SECURITY.md)
 - [current product and engineering readiness audit](docs/READINESS.md)
 - [architecture decision record process](docs/adr/README.md)
 - [renderer architecture decision](docs/adr/0001-webgpu-renderer-boundary.md)
@@ -96,14 +101,11 @@ resources, batching, render passes, shader validation, and presentation, and
 does not expose graphics-binding handles to game code. [ADR 0003](docs/adr/0003-engine-owned-webgpu-renderer.md)
 records the dependency and ownership decision.
 
-The Linux X11 path has local creation, deterministic software-WebGPU image,
-and five-second example smoke results. The browser path has a local Chromium
-render/input/resize/focus/visibility result and a rendered-frame smoke test.
-Windows and macOS now have native host implementations, but remain compile-only
-until they have runtime evidence; browser support beyond that one local
-Chromium environment is likewise unverified. Source targets distinguish
-buildability from runtime support. There is no Canvas or WebGL fallback when
-WebGPU is unavailable.
+The host implementations have source and build coverage, but platform
+classification is controlled only by the generated evidence ledger. Windows
+and macOS remain build-only; browser delivery remains WebGPU-only experimental
+until the required real-hardware/browser matrix has complete records. There is
+no Canvas or WebGL fallback when WebGPU is unavailable.
 
 Visual editor tooling, scripting, 3D rendering, mobile/consoles, networking,
 navigation, and advanced animation are intentionally outside the current

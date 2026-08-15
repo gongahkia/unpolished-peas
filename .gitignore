@@ -1,6 +1,7 @@
 /bin/
 /dist/
 /node_modules/
+/release-artifacts/
 *.wasm
 *.replay.json
 test-results/
