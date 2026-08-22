@@ -1,26 +1,11 @@
 # Security policy
 
-## Supported versions
+## Supported code
 
-72 is pre-1.0. Security fixes are made on the current `main` branch and, after
-the first release, the latest supported release line. No unsupported version
-has a security-fix commitment.
+Until the first non-draft release is published, report security defects against `main`. Afterward, the current published release and `main` are supported; older releases receive fixes only at maintainer discretion.
 
 ## Reporting a vulnerability
 
-Do not open a public issue for a suspected vulnerability. Use the repository's
-private security-advisory reporting channel. If that channel is unavailable,
-contact a repository maintainer privately through GitHub and include a minimal
-reproduction, affected revision, impact assessment, and any mitigation already
-known.
+Use GitHub's private vulnerability-reporting feature for this repository when it is available. Do not include a working exploit, credentials, or private user data in a public issue. If private reporting is unavailable, open a minimal public issue requesting a private contact channel.
 
-Maintainers will acknowledge a report, assess reproducibility and impact, then
-coordinate a fix and disclosure. The repository does not promise a response or
-remediation timeline before a release/security owner is assigned.
-
-## Disclosure
-
-After a fix is available, the disclosure should identify affected revisions,
-the remediation, credits where requested, and any upgrade or configuration
-action. Do not publish exploit details before maintainers agree that affected
-users have a reasonable update path.
+Include affected revision or tag, platform, reproduction steps, impact, and any mitigations already tested. Reports receive an acknowledgement target of seven days; fixes are disclosed after a patch or mitigation is available.

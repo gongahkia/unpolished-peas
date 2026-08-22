@@ -1,11 +1,4 @@
-/bin/
-/dist/
-/node_modules/
-/release-artifacts/
-*.wasm
-*.replay.json
-test-results/
-playwright-report/
-blob-report/
-playwright/.cache/
+.zig-cache/
+zig-out/
+.codex
 AGENTS.md
