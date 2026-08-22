@@ -1,0 +1,736 @@
+package sim
+
+import (
+	"fmt"
+	"hash/fnv"
+	"math"
+)
+
+const SimulationVersion = RunVersion
+
+// World is the deterministic authority for a procedural platforming run.
+// Rendering and presentation never mutate this state.
+type World struct {
+	Seed, Tick uint64
+	Player     Player
+	Terrain    []Terrain
+	Objects    []WorldObject
+	Enemies    []Enemy
+	Run        RunLayout
+	Stats      RunStats
+	Won, Lost  bool
+	Debug      bool
+	Trauma     float64
+	Impact     ImpactState
+	Hitstop    int
+	nextID     int
+	prevInput  InputFrame
+}
+
+func NewRunWorld(seed uint64) *World {
+	if seed == 0 {
+		seed = 1
+	}
+	run := GenerateRun(seed)
+	w := &World{Seed: seed, Run: run, Terrain: append([]Terrain(nil), run.Terrain...), Objects: append([]WorldObject(nil), run.Objects...), nextID: len(run.Objects) + 1}
+	for _, spawn := range run.Spawns {
+		w.Enemies = append(w.Enemies, newEnemy(w.nextObjectID(), spawn))
+	}
+	w.Player = newPlayer()
+	w.Player.Pos = run.Start
+	w.Player.Grounded = true
+	w.Player.State = TraversalGrounded
+	w.Stats.RoomsReached = 1
+	return w
+}
+
+func (w *World) nextObjectID() int { id := w.nextID; w.nextID++; return id }
+
+func (w *World) Step(input InputFrame) {
+	w.Tick++
+	if input.DebugStep && !w.prevInput.DebugStep {
+		w.Debug = !w.Debug
+	}
+	decrement(&w.Impact.Ticks)
+	if w.Hitstop > 0 {
+		w.Hitstop--
+		w.prevInput = input
+		return
+	}
+	if w.Lost || w.Won {
+		w.prevInput = input
+		return
+	}
+	w.Trauma *= 0.82
+	w.updateAim(input)
+	w.beginTraversalInput(input)
+	w.handleInteraction(input)
+	w.handleObjectActions(input)
+	w.updateTraversal(input)
+	w.updateHeldObject()
+	w.updateObjects()
+	w.updateEnemies()
+	w.updateLinks()
+	w.collectTreasure()
+	w.applyHazards()
+	w.checkExit()
+	w.updateRunStats()
+	w.prevInput = input
+}
+
+func (w *World) updateAim(input InputFrame) {
+	aim := Vec{X: float64(input.AimX), Y: float64(input.AimY)}
+	if aim.LengthSq() > 1 {
+		aim = aim.Normalized()
+	}
+	if aim.LengthSq() > 0 {
+		w.Player.Aim = aim
+	}
+}
+
+func decrement(value *int) {
+	if *value > 0 {
+		*value--
+	}
+}
+
+func (w *World) beginTraversalInput(input InputFrame) {
+	p := &w.Player
+	decrement(&p.Coyote)
+	decrement(&p.JumpBuffer)
+	decrement(&p.RollCooldown)
+	decrement(&p.DropTicks)
+	decrement(&p.WallTicks)
+	if input.Jump && !w.prevInput.Jump {
+		p.JumpBuffer = jumpBufferTicks
+	}
+	if input.Down && input.Jump && !w.prevInput.Jump && p.Grounded && w.standingOnPlatform() {
+		p.DropTicks = 10
+		p.Grounded, p.JumpBuffer, p.Coyote = false, 0, 0
+		p.Velocity.Y = 1.6
+	}
+	if input.Down && input.Jump && !w.prevInput.Jump && !p.Grounded && p.State != TraversalLedgeGrab {
+		p.JumpBuffer, p.Coyote = 0, 0
+		p.State = TraversalDiving
+		p.Velocity.Y = max(6, p.Velocity.Y+5)
+	}
+	if p.Grounded && input.Down && p.RollTicks == 0 && !p.Crouching {
+		p.Pos.Y += playerStandHalfH - playerCrouchHalfH
+		p.Crouching = true
+	}
+	if input.Roll && !w.prevInput.Roll && p.RollCooldown == 0 && p.State != TraversalLedgeGrab {
+		direction := p.Facing
+		if input.MoveX != 0 {
+			direction = input.MoveX
+		}
+		wasCrouching := p.Crouching
+		p.Facing, p.RollTicks, p.RollCooldown, p.Crouching = direction, 11, 20, true
+		if p.Grounded && !wasCrouching {
+			p.Pos.Y += playerStandHalfH - playerCrouchHalfH
+		}
+		p.Velocity.X = float64(direction) * 7.4
+		p.State = TraversalRolling
+	}
+	if !input.Jump && w.prevInput.Jump && p.Velocity.Y < -4.2 {
+		p.Velocity.Y = -4.2 // variable jump height
+	}
+	if p.RollTicks == 0 && p.Crouching && !input.Down {
+		w.tryStand()
+	}
+}
+
+func (w *World) tryStand() {
+	p := &w.Player
+	if !p.Grounded {
+		return
+	}
+	target := p.Pos
+	target.Y -= playerStandHalfH - playerCrouchHalfH
+	bounds := Rect{X: target.X - playerHalfW, Y: target.Y - playerStandHalfH, W: playerHalfW * 2, H: playerStandHalfH * 2}
+	if !w.boundsBlocked(bounds) {
+		p.Pos, p.Crouching = target, false
+	}
+}
+
+func (w *World) updateTraversal(input InputFrame) {
+	p := &w.Player
+	if p.State == TraversalLedgeGrab {
+		if input.Down {
+			p.State, p.LedgeTicks = TraversalAirborne, 0
+			p.Velocity.Y = 1.6
+			return
+		}
+		if (input.Jump && !w.prevInput.Jump) || input.MoveX == p.LedgeDirection {
+			p.Pos, p.Velocity = p.LedgeTarget, Vec{}
+			p.LedgeTicks, p.MantleTicks = 0, 5
+			p.State = TraversalMantling
+			return
+		}
+		decrement(&p.LedgeTicks)
+		if p.LedgeTicks == 0 {
+			p.State = TraversalAirborne
+			p.Velocity.Y = 1.6
+		}
+		return
+	}
+	if p.MantleTicks > 0 {
+		p.MantleTicks--
+		p.State = TraversalMantling
+		if p.MantleTicks == 0 {
+			p.State, p.Grounded = TraversalGrounded, true
+		}
+		return
+	}
+	if p.JumpBuffer > 0 {
+		switch {
+		case p.Grounded || p.Coyote > 0:
+			p.Velocity.Y, p.Grounded, p.Coyote, p.JumpBuffer = -jumpVelocity, false, 0, 0
+			p.State = TraversalAirborne
+		case p.WallDirection != 0 && p.WallTicks > 0:
+			p.Velocity = Vec{X: float64(-p.WallDirection) * 6.4, Y: -9.7}
+			p.WallDirection, p.WallTicks, p.JumpBuffer, p.AirJumps = 0, 0, 0, 1
+			p.State = TraversalAirborne
+		case p.AirJumps > 0:
+			p.Velocity.Y, p.AirJumps, p.JumpBuffer = -doubleJumpVelocity, p.AirJumps-1, 0
+			p.State = TraversalAirborne
+		}
+	}
+
+	direction := float64(input.MoveX)
+	if input.MoveX != 0 {
+		p.Facing = input.MoveX
+	}
+	if p.RollTicks > 0 {
+		p.RollTicks--
+		p.State = TraversalRolling
+		direction = float64(p.Facing) * 1.35
+	} else {
+		p.Velocity.X += direction * moveAcceleration
+		if direction == 0 {
+			p.Velocity.X *= 0.72
+		}
+		p.Velocity.X = clamp(p.Velocity.X, -moveTopSpeed, moveTopSpeed)
+	}
+	p.Velocity.Y = min(15, p.Velocity.Y+Gravity)
+	fallSpeed, wasDiving := p.Velocity.Y, p.State == TraversalDiving
+	wall := w.movePlayer(Vec{X: p.Velocity.X, Y: p.Velocity.Y})
+	if p.State == TraversalLedgeGrab {
+		return
+	}
+	brokeFloor := wasDiving && w.breakFloorBelow(fallSpeed)
+	if brokeFloor {
+		p.Grounded, p.Velocity.Y = false, fallSpeed
+	}
+	wallSliding := wall != 0 && !p.Grounded && p.Velocity.Y > 0 && input.MoveX == wall && p.State != TraversalDiving
+	if wallSliding {
+		p.WallDirection, p.WallTicks = wall, wallJumpGraceTicks
+		p.Velocity.Y = min(p.Velocity.Y, 1.35)
+		p.State = TraversalWallCling
+	} else if p.WallTicks == 0 {
+		p.WallDirection = 0
+	}
+	if p.Grounded && !brokeFloor {
+		p.State, p.AirJumps, p.Coyote, p.WallDirection, p.WallTicks = TraversalGrounded, 1, coyoteTicks, 0, 0
+	} else if !wallSliding && p.State != TraversalDiving && p.RollTicks == 0 {
+		p.State = TraversalAirborne
+	}
+	if p.RollTicks == 0 && p.State == TraversalRolling {
+		p.State = TraversalAirborne
+	}
+}
+
+func (w *World) movePlayer(delta Vec) int8 {
+	p := &w.Player
+	position := p.Pos
+	blocked := int8(0)
+	blockingBounds := Rect{}
+	next := position
+	next.X = clamp(position.X+delta.X, playerHalfW, ArenaW-playerHalfW)
+	for _, solid := range w.solidRects() {
+		if !p.boundsAt(next).overlaps(solid) {
+			continue
+		}
+		if delta.X > 0 {
+			next.X = solid.X - playerHalfW
+			blocked = 1
+			blockingBounds = solid
+		} else if delta.X < 0 {
+			next.X = solid.X + solid.W + playerHalfW
+			blocked = -1
+			blockingBounds = solid
+		}
+		p.Velocity.X = 0
+	}
+	if blocked != 0 && !p.Grounded && p.State != TraversalDiving && p.RollTicks == 0 && w.tryGrabLedge(blocked, blockingBounds) {
+		return blocked
+	}
+
+	previousBottom := position.Y + p.halfHeight()
+	next.Y = position.Y + delta.Y
+	p.Grounded = false
+	for _, solid := range w.solidRects() {
+		if !p.boundsAt(next).overlaps(solid) {
+			continue
+		}
+		if delta.Y > 0 && previousBottom <= solid.Y+p.halfHeight() {
+			next.Y = solid.Y - p.halfHeight()
+			p.Grounded = true
+			p.Velocity.Y = 0
+		} else if delta.Y < 0 {
+			next.Y = solid.Y + solid.H + p.halfHeight()
+			p.Velocity.Y = 0
+		}
+	}
+	if p.DropTicks == 0 && delta.Y >= 0 {
+		for _, terrain := range w.Terrain {
+			if terrain.Kind != TerrainPlatform || previousBottom > terrain.Bounds.Y+1 || !p.boundsAt(next).overlaps(terrain.Bounds) {
+				continue
+			}
+			next.Y = terrain.Bounds.Y - p.halfHeight()
+			p.Grounded, p.Velocity.Y = true, 0
+		}
+	}
+	if next.Y > ArenaH+48 {
+		w.Lost = true
+	}
+	p.Pos = next
+	w.pushMovables(delta.X)
+	return blocked
+}
+
+func (w *World) tryGrabLedge(direction int8, blockingBounds Rect) bool {
+	p := &w.Player
+	if p.Velocity.Y < 0 {
+		return false
+	}
+	for _, terrain := range w.Terrain {
+		// A ledge grab belongs to the terrain that stopped horizontal movement.
+		// Selecting any terrain at a similar height can move the player to a
+		// distant platform in the procedural arena.
+		if !terrain.solid() || terrain.Bounds != blockingBounds || terrain.Bounds.Y >= p.Pos.Y || p.Pos.Y-terrain.Bounds.Y > 28 {
+			continue
+		}
+		edge := terrain.Bounds.X
+		if direction < 0 {
+			edge = terrain.Bounds.X + terrain.Bounds.W
+		}
+		stand := Vec{X: edge - float64(direction)*(playerHalfW+2), Y: terrain.Bounds.Y - p.halfHeight()}
+		hang := Vec{X: stand.X, Y: terrain.Bounds.Y + playerStandHalfH - 3}
+		if !w.boundsBlocked(p.boundsAt(stand)) && !w.boundsBlocked(p.boundsAt(hang)) {
+			p.Pos, p.Velocity = hang, Vec{}
+			p.LedgeDirection, p.LedgeTarget, p.LedgeTicks = direction, stand, ledgeGrabTicks
+			p.State, p.WallDirection, p.WallTicks = TraversalLedgeGrab, 0, 0
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) standingOnPlatform() bool {
+	bottom := w.Player.Pos.Y + w.Player.halfHeight()
+	for _, terrain := range w.Terrain {
+		body := w.Player.boundsAt(w.Player.Pos)
+		if terrain.Kind == TerrainPlatform && math.Abs(bottom-terrain.Bounds.Y) < 1.1 && body.X < terrain.Bounds.X+terrain.Bounds.W && body.X+body.W > terrain.Bounds.X {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) solidRects() []Rect {
+	rects := make([]Rect, 0, len(w.Terrain)+len(w.Objects))
+	for _, terrain := range w.Terrain {
+		if terrain.solid() {
+			rects = append(rects, terrain.Bounds)
+		}
+	}
+	for _, object := range w.Objects {
+		if object.Kind == ObjectDoor && !object.Active {
+			rects = append(rects, object.bounds())
+		}
+	}
+	return rects
+}
+
+func (w *World) boundsBlocked(bounds Rect) bool {
+	for _, solid := range w.solidRects() {
+		if bounds.overlaps(solid) {
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) pushMovables(horizontal float64) {
+	if horizontal == 0 || w.Player.HeldObjectID >= 0 {
+		return
+	}
+	playerBounds := w.Player.boundsAt(w.Player.Pos)
+	for index := range w.Objects {
+		object := &w.Objects[index]
+		if !object.movable() || object.Held || !playerBounds.overlaps(object.bounds()) {
+			continue
+		}
+		next := object.Pos
+		next.X += horizontal
+		if !w.boundsBlocked(object.boundsAt(next)) {
+			object.Pos = next
+		}
+	}
+}
+
+func (o WorldObject) boundsAt(pos Vec) Rect {
+	return Rect{X: pos.X - o.Size.X/2, Y: pos.Y - o.Size.Y/2, W: o.Size.X, H: o.Size.Y}
+}
+
+func (w *World) handleInteraction(input InputFrame) {
+	if !input.Interact || w.prevInput.Interact {
+		return
+	}
+	p := &w.Player
+	if p.HeldObjectID >= 0 {
+		w.dropHeldObject()
+		return
+	}
+	for index := range w.Objects {
+		object := &w.Objects[index]
+		if object.Pos.Distance(p.Pos) > 28 {
+			continue
+		}
+		switch object.Kind {
+		case ObjectCrate, ObjectRock:
+			object.Held, p.HeldObjectID = true, object.ID
+			return
+		}
+	}
+}
+
+func (w *World) dropHeldObject() {
+	p := &w.Player
+	object := w.objectByID(p.HeldObjectID)
+	if object != nil {
+		object.Held = false
+		object.Pos = p.Pos.Add(Vec{X: float64(p.Facing) * 18, Y: -2})
+	}
+	p.HeldObjectID = -1
+}
+
+func (w *World) updateHeldObject() {
+	p := &w.Player
+	if p.HeldObjectID < 0 {
+		return
+	}
+	object := w.objectByID(p.HeldObjectID)
+	if object == nil {
+		p.HeldObjectID = -1
+		return
+	}
+	object.Pos = p.Pos.Add(Vec{X: float64(p.Facing) * 16, Y: -12})
+}
+
+func (w *World) handleObjectActions(input InputFrame) {
+	if input.Throw && !w.prevInput.Throw {
+		w.throwHeldObject()
+	}
+}
+
+func (w *World) throwHeldObject() {
+	p := &w.Player
+	object := w.objectByID(p.HeldObjectID)
+	if object == nil {
+		return
+	}
+	object.Held = false
+	object.Vel = p.Aim.Scale(8.5).Add(Vec{Y: -1.2})
+	p.HeldObjectID = -1
+	w.Stats.ObjectsThrown++
+}
+
+func (w *World) updateObjects() {
+	for index := range w.Objects {
+		object := &w.Objects[index]
+		switch object.Kind {
+		case ObjectCrate, ObjectRock:
+			if !object.Held {
+				object.Vel.Y = min(12, object.Vel.Y+Gravity)
+				w.moveObject(object)
+				w.objectHitsEnemies(object)
+				object.Vel.X *= 0.75
+			}
+		}
+	}
+}
+
+func (w *World) collectTreasure() {
+	if len(w.Run.Rooms) == 0 {
+		return
+	}
+	playerBounds := w.Player.boundsAt(w.Player.Pos)
+	live := w.Objects[:0]
+	for _, object := range w.Objects {
+		if object.Kind == ObjectTreasure && playerBounds.overlaps(object.bounds()) {
+			w.Stats.Treasure++
+			w.Trauma = max(w.Trauma, .08)
+			continue
+		}
+		live = append(live, object)
+	}
+	w.Objects = live
+}
+
+func (w *World) updateRunStats() {
+	if len(w.Run.Rooms) == 0 {
+		return
+	}
+	room := int(w.Player.Pos.X/RoomW) + 1
+	if room > w.Stats.RoomsReached {
+		w.Stats.RoomsReached = min(room, len(w.Run.Rooms))
+	}
+}
+
+func (w *World) moveObject(object *WorldObject) {
+	delta := object.Vel
+	next := object.Pos
+	next.X += delta.X
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if !terrain.solid() || !object.boundsAt(next).overlaps(terrain.Bounds) {
+			continue
+		}
+		if terrain.Kind == TerrainBreakable && delta.Length() > 5.5 {
+			w.destroyBreakable(index, .2)
+			continue
+		}
+		if delta.X > 0 {
+			next.X = terrain.Bounds.X - object.Size.X/2
+		} else if delta.X < 0 {
+			next.X = terrain.Bounds.X + terrain.Bounds.W + object.Size.X/2
+		}
+		object.Vel.X = 0
+	}
+	for index := range w.Objects {
+		door := &w.Objects[index]
+		if door.ID == object.ID || door.Kind != ObjectDoor || door.Active || !object.boundsAt(next).overlaps(door.bounds()) {
+			continue
+		}
+		if delta.X > 0 {
+			next.X = door.bounds().X - object.Size.X/2
+		} else if delta.X < 0 {
+			next.X = door.bounds().X + door.bounds().W + object.Size.X/2
+		}
+		object.Vel.X = 0
+	}
+
+	next.Y = object.Pos.Y + delta.Y
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if !terrain.solid() || !object.boundsAt(next).overlaps(terrain.Bounds) {
+			continue
+		}
+		if terrain.Kind == TerrainBreakable && delta.Length() > 5.5 {
+			w.destroyBreakable(index, .2)
+			continue
+		}
+		if delta.Y > 0 {
+			next.Y, object.Vel.Y = terrain.Bounds.Y-object.Size.Y/2, 0
+		} else if delta.Y < 0 {
+			next.Y, object.Vel.Y = terrain.Bounds.Y+terrain.Bounds.H+object.Size.Y/2, 0
+		}
+	}
+	for index := range w.Objects {
+		door := &w.Objects[index]
+		if door.ID == object.ID || door.Kind != ObjectDoor || door.Active || !object.boundsAt(next).overlaps(door.bounds()) {
+			continue
+		}
+		if delta.Y > 0 {
+			next.Y, object.Vel.Y = door.bounds().Y-object.Size.Y/2, 0
+		} else if delta.Y < 0 {
+			next.Y, object.Vel.Y = door.bounds().Y+door.bounds().H+object.Size.Y/2, 0
+		}
+	}
+	object.Pos = next
+}
+
+func (w *World) breakFloorBelow(fallSpeed float64) bool {
+	p := &w.Player
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && p.Pos.X >= terrain.Bounds.X && p.Pos.X <= terrain.Bounds.X+terrain.Bounds.W && p.Pos.Y+p.halfHeight() <= terrain.Bounds.Y+18 && fallSpeed > 5 {
+			w.destroyBreakable(index, .2)
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) breakTerrainAgainst(bounds Rect, force float64) bool {
+	if force < 5 {
+		return false
+	}
+	for index := range w.Terrain {
+		terrain := &w.Terrain[index]
+		if terrain.Kind == TerrainBreakable && terrain.HP > 0 && bounds.overlaps(terrain.Bounds) {
+			w.destroyBreakable(index, .24)
+			return true
+		}
+	}
+	return false
+}
+
+func (w *World) destroyBreakable(index int, trauma float64) {
+	terrain := &w.Terrain[index]
+	if terrain.Kind != TerrainBreakable || terrain.HP == 0 {
+		return
+	}
+	terrain.HP = 0
+	w.Stats.TerrainBroken++
+	w.punctuate(terrain.Bounds.center(), trauma, 2)
+}
+
+func (w *World) punctuate(position Vec, trauma float64, hitstop int) {
+	w.Trauma = max(w.Trauma, trauma)
+	if w.Impact.Ticks < 8 {
+		w.Impact = ImpactState{Pos: position, Ticks: 8, Strength: trauma}
+	}
+	w.Hitstop = max(w.Hitstop, hitstop)
+}
+
+func (w *World) objectHitsEnemies(object *WorldObject) {
+	if object.Vel.Length() < 5.5 {
+		return
+	}
+	for index := range w.Enemies {
+		enemy := &w.Enemies[index]
+		if enemy.Dead || !object.bounds().overlaps(enemy.bounds()) {
+			continue
+		}
+		w.defeatEnemy(enemy)
+		object.Vel = Vec{X: -object.Vel.X * .2, Y: -2.4}
+		w.Trauma = max(w.Trauma, .2)
+		return
+	}
+}
+
+func (w *World) updateLinks() {
+	for index := range w.Objects {
+		object := &w.Objects[index]
+		if object.Kind == ObjectPlate {
+			object.Active = false
+			plateBounds := object.bounds()
+			for _, other := range w.Objects {
+				if other.movable() && !other.Held && other.bounds().overlaps(plateBounds) {
+					object.Active = true
+				}
+			}
+		}
+	}
+	for index := range w.Objects {
+		object := &w.Objects[index]
+		if object.Kind != ObjectDoor {
+			continue
+		}
+		link := w.objectByID(object.LinkID)
+		object.Active = link != nil && link.Active
+	}
+}
+
+func (w *World) applyHazards() {
+	bounds := w.Player.boundsAt(w.Player.Pos)
+	for _, terrain := range w.Terrain {
+		if terrain.Kind == TerrainSpike && bounds.overlaps(terrain.Bounds) {
+			w.Lost = true
+			w.Trauma = 0.36
+			return
+		}
+	}
+	for index := range w.Enemies {
+		enemy := &w.Enemies[index]
+		if enemy.Dead {
+			continue
+		}
+		for _, terrain := range w.Terrain {
+			if terrain.Kind == TerrainSpike && enemy.bounds().overlaps(terrain.Bounds) {
+				w.defeatEnemy(enemy)
+				w.Trauma = max(w.Trauma, .24)
+				break
+			}
+		}
+	}
+	live := w.Objects[:0]
+	for _, object := range w.Objects {
+		destroyed := false
+		if object.movable() && !object.Held {
+			for _, terrain := range w.Terrain {
+				if terrain.Kind == TerrainSpike && object.bounds().overlaps(terrain.Bounds) {
+					destroyed = true
+					break
+				}
+			}
+		}
+		if !destroyed {
+			live = append(live, object)
+		}
+	}
+	w.Objects = live
+}
+
+func (w *World) checkExit() {
+	for _, object := range w.Objects {
+		if object.Kind == ObjectExit && w.Player.boundsAt(w.Player.Pos).overlaps(object.bounds()) {
+			w.Won = true
+			return
+		}
+	}
+}
+
+func (w *World) objectByID(id int) *WorldObject {
+	for index := range w.Objects {
+		if w.Objects[index].ID == id {
+			return &w.Objects[index]
+		}
+	}
+	return nil
+}
+
+func (w *World) StateHash() uint64 {
+	h := fnv.New64a()
+	q := func(value float64) int64 { return int64(math.Round(value * 1000)) }
+	p := w.Player
+	_, _ = fmt.Fprintf(h, "%s/%s/seed%d/t%d/w%d/l%d/hit%d/stats%d,%d,%d,%d,%d/p%d,%d/%d,%d/aim%d,%d/f%d/gr%d/st%d/c%d/j%d/a%d/wall%d/%d/roll%d/%d/crouch%d/drop%d/ledge%d/%d/%d,%d/m%d/held%d/in%d", SimulationVersion, RunVersion, w.Seed, w.Tick, boolHash(w.Won), boolHash(w.Lost), w.Hitstop, w.Stats.RoomsReached, w.Stats.Treasure, w.Stats.EnemiesDefeated, w.Stats.ObjectsThrown, w.Stats.TerrainBroken, q(p.Pos.X), q(p.Pos.Y), q(p.Velocity.X), q(p.Velocity.Y), q(p.Aim.X), q(p.Aim.Y), p.Facing, boolHash(p.Grounded), p.State, p.Coyote, p.JumpBuffer, p.AirJumps, p.WallDirection, p.WallTicks, p.RollTicks, p.RollCooldown, boolHash(p.Crouching), p.DropTicks, p.LedgeTicks, p.LedgeDirection, q(p.LedgeTarget.X), q(p.LedgeTarget.Y), p.MantleTicks, p.HeldObjectID, inputEdgeMask(w.prevInput))
+	for _, terrain := range w.Terrain {
+		_, _ = fmt.Fprintf(h, "/t%d/%d/%d/%d,%d,%d,%d", terrain.ID, terrain.Kind, terrain.HP, q(terrain.Bounds.X), q(terrain.Bounds.Y), q(terrain.Bounds.W), q(terrain.Bounds.H))
+	}
+	for _, object := range w.Objects {
+		_, _ = fmt.Fprintf(h, "/o%d/%d/%d,%d/%d,%d/%d,%d/l%d/a%d/h%d", object.ID, object.Kind, q(object.Pos.X), q(object.Pos.Y), q(object.Vel.X), q(object.Vel.Y), q(object.Size.X), q(object.Size.Y), object.LinkID, boolHash(object.Active), boolHash(object.Held))
+	}
+	for _, enemy := range w.Enemies {
+		_, _ = fmt.Fprintf(h, "/e%d/%d/%d/%d,%d/%d,%d/f%d/g%d/t%d/fl%d/d%d", enemy.ID, enemy.Archetype, enemy.State, q(enemy.Pos.X), q(enemy.Pos.Y), q(enemy.Vel.X), q(enemy.Vel.Y), enemy.Facing, boolHash(enemy.Grounded), enemy.Timer, enemy.Flash, boolHash(enemy.Dead))
+	}
+	return h.Sum64()
+}
+
+func boolHash(value bool) int {
+	if value {
+		return 1
+	}
+	return 0
+}
+
+// inputEdgeMask covers only prior-frame inputs that alter a future simulation
+// transition. Debug input is presentation-only and deliberately omitted.
+func inputEdgeMask(input InputFrame) int {
+	mask := 0
+	if input.Jump {
+		mask |= 1
+	}
+	if input.Roll {
+		mask |= 2
+	}
+	if input.Interact {
+		mask |= 4
+	}
+	if input.Throw {
+		mask |= 8
+	}
+	return mask
+}

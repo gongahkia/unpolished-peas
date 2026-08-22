@@ -1,0 +1,10 @@
+{
+  "name": "72-ci-browser-smoke",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
+  }
+}

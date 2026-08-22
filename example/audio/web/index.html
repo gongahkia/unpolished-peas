@@ -1,0 +1,22 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>72 browser audio verification</title>
+    <style>body { background: #121b2e; color: #ebf2ff; font: 16px system-ui, sans-serif; margin: 2rem; }</style>
+  </head>
+  <body>
+    <h1>72 browser audio verification</h1>
+    <p>Press a key, click, or tap to allow browser audio. With speakers or headphones enabled, confirm a 440 Hz tone starts quietly, increases after 300 ms, then stops.</p>
+    <p id="audio-status" role="status">loading audio example</p>
+    <script src="wasm_exec.js"></script>
+    <script>
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch("audio.wasm"), go.importObject)
+        .then(({ instance }) => go.run(instance))
+        .catch((error) => document.body.append(`WASM startup failed: ${error}`));
+    </script>
+  </body>
+</html>
