@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <link rel="icon" href="data:,">
+    <title>72 browser WebGPU spike</title>
+    <style>
+      html, body { height: 100%; margin: 0; background: #10151f; color: #e5ecf5; font: 16px system-ui, sans-serif; }
+      main { display: grid; grid-template-rows: auto 1fr; height: 100%; }
+      #status { margin: 0; padding: .75rem 1rem; background: #182332; }
+      #surface { width: 100%; height: 100%; display: block; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <p id="status">loading WebGPU spike…</p>
+      <canvas id="surface" aria-label="72 WebGPU presentation surface"></canvas>
+    </main>
+    <script src="./wasm_exec.js"></script>
+    <script>
+      const go = new Go();
+      WebAssembly.instantiateStreaming(fetch("./spike.wasm"), go.importObject)
+        .catch(async () => WebAssembly.instantiate(await (await fetch("./spike.wasm")).arrayBuffer(), go.importObject))
+        .then(result => go.run(result.instance))
+        .catch(error => document.querySelector("#status").textContent = `wasm startup failed: ${error}`);
+    </script>
+  </body>
+</html>

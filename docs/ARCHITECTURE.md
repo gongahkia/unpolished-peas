@@ -1,130 +1,72 @@
-# Shack architecture
+# Architecture and ownership
 
-Go with CGO disabled keeps builds and distribution independent of C toolchains
-and separately installed runtimes. This is a distribution and maintenance choice,
-not evidence that Go is faster than another language.
+72 is a Go runtime SDK. Games own rules, content, and application composition;
+the runtime owns portable lifecycle, simulation, and rendering intent. It is
+not an editor or a broad production platform distribution.
 
-`internal/text` owns a persistent, newline-indexed piece tree. Nodes also flag
-non-ASCII/control bytes so printable ASCII positioning can avoid scanning large
-prefixes. Unchanged branches are shared. UTF-8 edits validate against one source
-version. Undo retains 256 groups, with bounded typing coalescing and inverse edit
-sequences for rebasing other pane selections. Staging clones share immutable text
-while isolating mutable history. Selection movement does not copy the document.
+## Dependency direction
 
-`internal/editor` owns the single event loop, buffers, panes, commands, safe file
-operations, previews and background results. tcell supplies terminal I/O; Chroma
-supplies bundled lexers. Ordinary rendering updates the logical screen and lets
-tcell emit changed cells; it does not request a physical full-screen clear.
+```text
+game -> engine, engine/ecs, engine/render
+engine -> engine/ecs, engine/render
+host -> engine
+private renderer -> engine/render, selected graphics binding
+host -> private renderer
+```
 
-Unicode layout uses an application-wide cache of 64 line/width entries, each
-with at most 512 sparse grapheme checkpoints. Indexing extends only as a query
-requires; checkpoints compact for long lines. A few recent boundaries keep
-sequential screen rows local. Edits retain verified unchanged prefixes and discard
-stale suffixes; replaced documents and skipped versions invalidate their entries.
-Rope readers extend lookahead across UTF-8/grapheme boundaries without repeatedly
-flattening whole lines. Word traversal streams class runs. Oversized grapheme
-measurements are bounded and never retain source strings; terminal painting uses
-a placeholder for clusters longer than 256 bytes while storage remains unchanged.
-Cold navigation to a distant position still scans intervening Unicode text.
+`engine` and `engine/render` are the only engine-facing boundaries for a
+future graphics binding. A game must not receive a window, browser canvas, GPU
+device, queue, surface, or binding-specific image. A host owns its event loop
+and platform resources; the private renderer owns GPU resource and presentation
+lifecycle. [ADR 0001](adr/0001-webgpu-renderer-boundary.md) is the normative
+renderer boundary.
 
-Pane layout is a bounded binary split tree with per-divider ratios; session
-restoration prunes missing leaves and preserves nested orientation. The file tree
-is built from the existing bounded project index, never from per-frame filesystem
-walks. The optional minimap samples short line prefixes into cached immutable
-rows on a coalescing worker; neither syntax lexing nor a full-file copy is needed.
+## Package ownership
 
-`internal/terminal` owns each explicitly started PTY and terminal emulator. An
-actor serializes emulation, input, resize and scrollback, publishing immutable
-frames through an atomic pointer. Separate goroutines read/write the PTY. The UI
-never waits on terminal I/O or acquires an emulator lock. Queues, dimensions,
-scrollback cells and update frequency are capped; no terminal resources are
-allocated until requested. Closing cancels blocked I/O and signals the shell and
-foreground process groups. Only the active view controls a shared PTY's size.
+| Area | Owns | Change here when |
+| --- | --- | --- |
+| `engine` | application lifecycle, configuration, camera, layers, normalized input, and host contract | changing portable game-facing runtime behavior |
+| `engine/ecs` | entities, component storage, resources, and ordered schedules | changing simulation data or system ordering rules |
+| `engine/scene` | ECS-backed transform hierarchy | adding parent/child transform behavior |
+| `engine/assets` | typed handles, reload hooks, loading, package manifests, and portable decoders | adding a portable asset format or loading policy |
+| `engine/audio` | mixer, buses, voices, and portable audio state | changing backend-neutral playback behavior |
+| `engine/audio/oto` | optional local-device output implementation | changing Oto-specific device or PCM conversion behavior |
+| `engine/physics` | deterministic AABB 2D bodies, contacts, and queries | changing the documented 2D physics contract |
+| `engine/ui` | retained layout, focus, and pointer hit testing | changing UI tree/layout behavior |
+| `engine/render` | high-level 2D commands and portable texture sources | changing backend-neutral scene intent |
+| `engine/diagnostics` | counters and duration summaries | adding portable observability data |
+| `engine/platform` | Linux X11, Win32, AppKit/CAMetalLayer, and browser host lifecycle plus private renderer integration | changing platform event, surface, or presentation behavior |
+| `engine/render/webgpu` | private WebGPU resource, batching, and pass implementation | changing graphics-binding behavior without exposing it to games |
+| `example/wukong` | an optional game and its private simulation/presentation code | changing the example, never engine policy |
+| `experiments/webgpu-*` | isolated dependency and platform evidence | collecting evidence for a later dependency decision, not shipping engine behavior |
 
-Workspace previews retain bounded document snapshots. Every included target is
-validated and staged before publishing any change to live buffers. Version and
-disk-fingerprint checks reject stale edits. The latest workspace transaction has
-guarded group undo/redo. File saves remain individually atomic, not a multi-file
-filesystem transaction. Reports are read-only transient buffers without edit history.
+The public support tier of each package is defined in
+[the API policy](PUBLIC_API.md). A package being exported does not make every
+new behavior stable; technology-preview packages may change in the next minor
+release. Do not treat example or experiment code as an API precedent.
 
-`internal/project` discovers up to 10,000 files using Git's native ignore semantics
-when available, or a standalone directory-exclusion walker. Canonical paths prevent
-symlinked roots from duplicating an already-open file. Search runs off the UI thread
-with limits on input file size, retained bytes and matches. Cancellation and request
-identity prevent outdated search results from replacing current results.
+## Frame and input flow
 
-`internal/lsp` owns framed JSON-RPC, subprocess lifecycle and UTF-16 conversion.
-One process is shared per root/server command, up to four combinations. Documents
-carry session identities as well as versions, so delayed sync/close work cannot
-replace a newly reopened document. UI results check source versions and positions.
-Workspace refactoring enters the same preview path as project replacement.
-Server-command actions support lazy resolution and ordered edit-then-command
-execution. Reverse applyEdit requests run off the protocol reader and wait for an
-all-or-none preview result; cancellation/closed-session guards prevent stale
-application. Incoming review payloads are capped at 8 MiB / four requests; client
-requests at 32; small replies use one bounded writer queue.
+An `engine.Application` initializes a `Runtime`, updates portable game state,
+and records ordered `engine/render` commands. The runtime owns ECS schedule
+execution and portable texture data; a backend creates its own native GPU cache
+from those textures.
 
-`internal/fileops` plans ordered file/directory changes in a bounded virtual
-snapshot, checking containment, file kinds, overwrite options and directory
-membership. The resource preview captures immutable buffer state; it validates
-again before committing on a worker. Staging preserves originals until all steps
-succeed, and rollback never overwrites a detected concurrent writer. Failure
-reports retain originals for manual recovery when rollback cannot finish. The
-protocol advertises best-effort undo rather than transactional filesystem support.
-Open buffers follow renames; deleted contents remain exportable reports. Resource
-undo/redo checks buffer identities/versions and disk snapshots, recognizes guarded
-Save All changes and restores both. Completion is consumed before normal recovery
-shutdown; there is no persistent filesystem transaction journal. Text-only ordered
-edits use a single validated document sequence and one undo entry.
+For a new `engine.Host`, the owner goroutine creates platform resources, polls
+callbacks, converts them to `engine.Event`, then calls `Runtime.SampleInput`
+before `Update` or `FixedUpdate`. It draws and presents on that same goroutine,
+then releases the host context on shutdown. The full contract is in
+[HOSTS.md](HOSTS.md), with control and unit rules in [INPUT.md](INPUT.md).
 
-`internal/gitmerge` reads bounded, literal-pathspec Git index records and immutable
-stage blobs. Its linear conflict parser produces UTF-8 byte ranges for merge,
-diff3/zdiff3 and longer marker widths. Resolution uses ordinary editor previews;
-modify/delete choices reuse the resource transaction path. Stage reports are
-read-only. Explicit staging validates saved content and the captured unmerged
-index entries, while leaving commits and merge completion to Git. No merge work
-or subprocess runs until requested.
+`engine/platform` owns Linux X11, Win32, AppKit/CAMetalLayer, and browser host
+paths. The Linux host has local creation and startup smoke coverage, the
+browser host has limited local Chromium render/input/resize/focus/visibility
+coverage, and Windows/macOS are compiled source targets with portable mapping
+tests. Cross-platform host parity remains unverified.
 
-`internal/snippet` parses bounded LSP snippets into an immutable program. The
-editor retains explicit linked ranges and applies precise edits to preserve pane
-and breakpoint positions. Nested replacements regenerate stop metadata; cached
-transforms stay off the typing path. Expansion and regex refresh run on a worker,
-with source-version, selection and request checks before publishing. Regex
-compilation, evaluation, recursion and expanded output have explicit bounds.
+## Renderer and platform boundary
 
-`internal/dap` implements bounded framed requests, cancellation, output retention
-and lifecycle for explicitly chosen stdio/TCP adapters. A dedicated writer keeps
-adapter I/O off the event loop. Spawned adapters get their own OS session, so a
-debuggee cannot seize the editor's controlling terminal. Closing the transport
-allows a bounded cleanup interval before process-group termination. The editor
-tracks stopped-state epochs and rejects stale frame/variable results. Breakpoint
-synchronization is serialized per file and limited to four concurrent files;
-line anchors rebase through normal and workspace edits. Output uses a byte ring
-and is copied into a report only when that report was requested. Attach cleanup
-requests detachment; launch cleanup requests target termination.
-
-`internal/recovery` stores bounded, private, atomically replaced snapshots with
-live-session locks and monotonically sequenced writes. Recovery retains original
-fingerprints, protecting later saves against outside changes. Project session
-metadata is stored separately and never substitutes for dirty-buffer recovery.
-
-`internal/process` runs explicit noninteractive tasks with bounded output,
-process-group cancellation and throttled updates. The same boundary supports
-optional Git commands. Tasks do not run on project open. No new runtime dependency
-is required for ordinary editing, recovery, splits, search, or configuration.
-
-`internal/markup` bundles Markdown and Org parsing and produces bounded terminal
-text, style spans, links and source locations. One coalescing worker renders live
-read-only previews; ordinary frames reuse their cached text. Document content
-cannot execute code or load local include files. Preview navigation can return to
-the corresponding source; limits and format coverage are documented in USAGE.md.
-
-`internal/folding` discovers bounded structural and outline ranges on demand.
-Collapsed state belongs to a pane, never to the text document. Sorted ranges
-project visible rows without walking hidden lines. Edits expand intersected folds
-and rebase unaffected ranges; jumps reveal their target. The scanner is heuristic,
-not a complete parser for every language.
-
-Large-file mode bounds optional services. The editor does not claim constant-memory
-opening, constant-time cold Unicode navigation, universal encodings or mature
-IDE parity. Original Zenbu remains in Git history and `archive/zenbu-before-shack`.
+The renderer uses private WGSL shaders and the pinned low-level WebGPU binding
+in [ADR 0003](adr/0003-engine-owned-webgpu-renderer.md). Runtime evidence is
+intentionally narrower than source-target builds; failures must remain
+contextual rather than falling back to another graphics API.
