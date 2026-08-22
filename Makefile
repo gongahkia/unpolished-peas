@@ -1,98 +1,26 @@
-.PHONY: example-run example-wasm wukong-run wukong-wasm wukong-replay wukong-benchmark test vet fmt benchmark benchmark-webgpu benchmark-report device-loss-simulation release-dry-run support-doc support-check workflow-check example-build audio-wasm first-game-run first-game-build first-game-wasm ui-sample-run ui-sample-build ui-sample-wasm
+.PHONY: run-examples
+.NOTPARALLEL: run-examples
 
-example-run:
-	go run ./example/wukong --mode=playtest
-
-test:
-	go test ./...
-
-vet:
-	go vet ./...
-
-fmt:
-	gofmt -w $$(rg --files -g '*.go')
-
-benchmark:
-	go test -run '^$$' -bench '^BenchmarkReference' -benchmem -count=5 ./engine/render
-
-benchmark-webgpu:
-	go test -run '^$$' -bench '^BenchmarkHeadlessTileMapScene$$' -benchmem -count=5 ./engine/render/webgpu
-
-device-loss-simulation:
-	go test ./engine/render/webgpu -run '^TestHeadlessRendererRecreatesItsDeviceAndRehydratesPortableTextures$$'
-
-benchmark-report:
-	test -n "$(REPORT)"
-	./scripts/capture-render-benchmark.sh "$(REPORT)"
-
-release-dry-run:
-	test -n "$(VERSION)"
-	./scripts/release-dry-run.sh "$(VERSION)"
-
-support-doc:
-	go run ./cmd/supportdoc -in docs/support-evidence.json -out docs/SUPPORT.md
-
-support-check:
-	go run ./cmd/supportdoc -in docs/support-evidence.json -out docs/SUPPORT.md -check
-
-workflow-check:
-	./scripts/check-workflow-actions.sh
-
-example-build:
-	mkdir -p bin
-	go build -o bin/wukong ./example/wukong
-
-example-wasm:
-	mkdir -p dist
-	GOOS=js GOARCH=wasm go build -o dist/wukong.wasm ./example/wukong
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wasm_exec.js
-	cp example/wukong/web/index.html dist/index.html
-
-wukong-run:
-	go run ./example/wukong --mode=playtest
-
-wukong-wasm:
-	mkdir -p dist/wukong
-	GOOS=js GOARCH=wasm go build -o dist/wukong/wukong.wasm ./example/wukong
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/wukong/wasm_exec.js
-	cp example/wukong/web/index.html dist/wukong/index.html
-
-wukong-replay:
-	mkdir -p dist/wukong
-	go run ./example/wukong/cmd/replaygen -out dist/wukong/reference.replay.json
-	go run ./example/wukong/cmd/replaydump dist/wukong/reference.replay.json
-
-wukong-benchmark:
-	go test -run '^$$' -bench '^BenchmarkReferenceReplay$$' -benchmem -count=5 ./example/wukong/internal/sim
-
-audio-wasm:
-	mkdir -p dist/audio
-	GOOS=js GOARCH=wasm go build -o dist/audio/audio.wasm ./example/audio
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/audio/wasm_exec.js
-	cp example/audio/web/index.html dist/audio/index.html
-
-first-game-run:
-	go run ./example/first-game
-
-first-game-build:
-	mkdir -p bin
-	go build -o bin/first-game ./example/first-game
-
-first-game-wasm:
-	mkdir -p dist/first-game
-	GOOS=js GOARCH=wasm go build -o dist/first-game/first-game.wasm ./example/first-game
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/first-game/wasm_exec.js
-	cp example/first-game/web/index.html dist/first-game/index.html
-
-ui-sample-run:
-	go run ./example/ui
-
-ui-sample-build:
-	mkdir -p bin
-	go build -o bin/ui-sample ./example/ui
-
-ui-sample-wasm:
-	mkdir -p dist/ui-sample
-	GOOS=js GOARCH=wasm go build -o dist/ui-sample/ui-sample.wasm ./example/ui
-	cp "$$(go env GOROOT)/lib/wasm/wasm_exec.js" dist/ui-sample/wasm_exec.js
-	cp example/ui/web/index.html dist/ui-sample/index.html
+run-examples:
+	zig build run-bounce-sdl -- --renderer sdl-gpu
+	zig build run-bounce-sdl -- --renderer opengl
+	zig build dev-bounce -- --renderer sdl-gpu
+	zig build dev-bounce -- --renderer opengl
+	zig build run-minimal -- --renderer sdl-gpu
+	zig build run-minimal -- --renderer opengl
+	zig build run-explicit-loop -- --renderer sdl-gpu
+	zig build run-explicit-loop -- --renderer opengl
+	zig build run-audio -- --renderer sdl-gpu
+	zig build run-audio -- --renderer opengl
+	zig build run-atlas -- --renderer sdl-gpu
+	zig build run-atlas -- --renderer opengl
+	zig build run-camera -- --renderer sdl-gpu
+	zig build run-camera -- --renderer opengl
+	zig build run-primitives -- --renderer sdl-gpu
+	zig build run-primitives -- --renderer opengl
+	zig build run-breakout-sdl -- --renderer sdl-gpu
+	zig build run-breakout-sdl -- --renderer opengl
+	zig build run-topdown-sdl -- --renderer sdl-gpu
+	zig build run-topdown-sdl -- --renderer opengl
+	zig build stress-audio-sdl -- --renderer sdl-gpu
+	zig build stress-audio-sdl -- --renderer opengl
