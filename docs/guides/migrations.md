@@ -30,7 +30,7 @@ v0.1 removes the engine-owned Box2D physics subsystem and its public API. Keep p
 
 ## Effects, shader assets, lighting, and GPU resources
 
-v0.1 includes portable material-source validation and a small CPU-reference post-effect chain (`tint`, `grayscale`, `pixelate`, `blur`, and `crt`). Use the [Advanced 2D guide](advanced-2d.md) for the exact source-bundle and Canvas behavior. Lighting, public GPU-resource handles, meshes, compute, and arbitrary custom shader execution remain excluded; keep those rendering extensions and their resource ownership in game code.
+v0.1 includes staged executable 2D materials and final-composited GPU post passes. Migrate validation-only `ShaderSourceBundle` uses to `AssetStore.loadMaterial` and `Material.initStages`; build AOT SPIR-V, DXBC, and metallib artifacts with `peas shader`, then keep GLSL ES and WGSL source beside them for browsers. Named image and std140 uniform bindings replace an unstructured uniform payload. The small CPU-reference post-effect chain (`tint`, `grayscale`, `pixelate`, `blur`, and `crt`) remains useful for headless Canvas behavior. Lighting, public GPU-resource handles, meshes, compute, and arbitrary non-2D rendering remain excluded.
 
 ## Tile maps and collision systems removed
 

@@ -35,7 +35,7 @@ Owned values such as `Canvas`, `Image`, `Atlas`, `Font`, `Sound`, and `AssetStor
 
 ## Exclusions and compatibility
 
-The contract excludes extension ecosystems, ECS, immediate-mode UI, networking and hosted services, Box2D physics, lighting, public GPU-resource handles, meshes, compute, tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Custom shader-source bundles are validated as target-specific assets; arbitrary custom shader execution is not yet a supported Canvas capability. See [v0.1 migrations](migrations.md) for removal guidance.
+The contract excludes extension ecosystems, ECS, immediate-mode UI, networking and hosted services, Box2D physics, lighting, public GPU-resource handles, meshes, compute, tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Staged 2D materials execute through SDL GPU, WebGL 2, and WebGPU; desktop releases consume AOT artifacts and browsers compile their target source. Canvas remains the deterministic headless reference rather than an arbitrary-shader fallback. See [Advanced 2D](advanced-2d.md) and [v0.1 migrations](migrations.md) for limits and migration guidance.
 
 For a published v0.1 release, removing or renaming a listed declaration, changing callback/error/timing behavior, or changing a supported target is a breaking change. The complete semver policy is in [releases and support](releases.md).
 

@@ -109,6 +109,7 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
             try exportSupportBundle(allocator, args);
             return null;
         },
+        .shader => return try runShader(allocator, args, mode),
         .docs => return try docsProject(allocator, args, mode),
         .doctor => unreachable,
     }
@@ -398,6 +399,29 @@ fn supportBundleUsage() error{InvalidArguments} {
     return error.InvalidArguments;
 }
 
+fn runShader(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mode: CliMode) !std.process.Child.Term {
+    const operation = args.next() orelse return shaderUsage();
+    if (!std.mem.eql(u8, operation, "compile") and !std.mem.eql(u8, operation, "assemble")) return shaderUsage();
+    const script_root = std.process.getEnvVarOwned(allocator, "UP_SCRIPT_ROOT") catch return error.ShaderToolUnavailable;
+    defer allocator.free(script_root);
+    const script = try std.fs.path.join(allocator, &.{ script_root, "compile_material.sh" });
+    defer allocator.free(script);
+    var command = std.ArrayList([]const u8).empty;
+    defer command.deinit(allocator);
+    try command.appendSlice(allocator, &.{ "bash", script, operation });
+    while (args.next()) |argument| try command.append(allocator, argument);
+    var child = std.process.Child.init(command.items, allocator);
+    child.stdin_behavior = if (mode.non_interactive) .Ignore else .Inherit;
+    child.stdout_behavior = if (mode.json) .Ignore else .Inherit;
+    child.stderr_behavior = .Inherit;
+    return child.spawnAndWait();
+}
+
+fn shaderUsage() error{InvalidArguments} {
+    std.debug.print("usage: zig build peas -- shader <compile|assemble> ...\n", .{});
+    return error.InvalidArguments;
+}
+
 const DoctorCode = enum(u8) {
     ok = 0,
     project = 20,
@@ -636,6 +660,7 @@ test "known commands parse" {
     try std.testing.expectEqual(tools.Command.package, tools.parseCommand("package").?);
     try std.testing.expectEqual(tools.Command.serve, tools.parseCommand("serve").?);
     try std.testing.expectEqual(tools.Command.support_bundle, tools.parseCommand("support-bundle").?);
+    try std.testing.expectEqual(tools.Command.shader, tools.parseCommand("shader").?);
     try std.testing.expectEqual(tools.Command.doctor, tools.parseCommand("doctor").?);
     try std.testing.expectEqual(tools.Command.docs, tools.parseCommand("docs").?);
 }
@@ -735,7 +760,7 @@ test "doctor exit codes are stable" {
 }
 
 test "JSON envelopes cover every peas command" {
-    const commands = [_]tools.Command{ .new, .run, .check, .@"test", .replay, .package, .serve, .support_bundle, .doctor, .docs };
+    const commands = [_]tools.Command{ .new, .run, .check, .@"test", .replay, .package, .serve, .support_bundle, .shader, .doctor, .docs };
     for (commands) |command| {
         const document = try jsonDocument(std.testing.allocator, command, .ok, "ok", .{ .non_interactive = true });
         defer std.testing.allocator.free(document);
