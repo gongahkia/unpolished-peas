@@ -25,6 +25,12 @@ const primitive_vert_msl = sprite_shaders.primitive_vert_msl;
 const primitive_frag_msl = sprite_shaders.primitive_frag_msl;
 const primitive_vert_hlsl = sprite_shaders.primitive_vert_hlsl;
 const primitive_frag_hlsl = sprite_shaders.primitive_frag_hlsl;
+const particles_vert_spirv = sprite_shaders.particles_vert_spirv;
+const particles_frag_spirv = sprite_shaders.particles_frag_spirv;
+const particles_vert_msl = sprite_shaders.particles_vert_msl;
+const particles_frag_msl = sprite_shaders.particles_frag_msl;
+const particles_vert_hlsl = sprite_shaders.particles_vert_hlsl;
+const particles_frag_hlsl = sprite_shaders.particles_frag_hlsl;
 
 pub const GpuShaderFormat = enum {
     msl,
@@ -1168,13 +1174,14 @@ const RuntimeRenderer = union(RendererKind) {
         };
     }
 
-    fn present(self: *RuntimeRenderer, allocator: std.mem.Allocator, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+    fn present(self: *RuntimeRenderer, allocator: std.mem.Allocator, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, advanced_renderer: ?*const up.Renderer2D, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
         switch (self.*) {
             .sdl_gpu => |*gpu| {
-                var backend = GpuBackend{ .presenter = &gpu.presenter, .device = gpu.device, .window = gpu.window, .canvas = canvas, .sprites = sprites, .capture_path = capture_path, .presentation = presentation, .metrics = metrics };
+                var backend = GpuBackend{ .presenter = &gpu.presenter, .device = gpu.device, .window = gpu.window, .canvas = canvas, .sprites = sprites, .advanced_renderer = advanced_renderer, .capture_path = capture_path, .presentation = presentation, .metrics = metrics };
                 try backend.backend().submit(commands);
             },
             .opengl => |*opengl| {
+                if (advanced_renderer) |value| if (value.material_sprites.items.len != 0 or value.particle_instances.items.len != 0 or value.post_passes.items.len != 0) return error.AdvancedRendererUnavailable;
                 metrics.gpu_frame_ns = null;
                 try opengl.presenter.presentWithPresentation(canvas, sprites, commands, presentation.*);
                 if (capture_path) |path| {
@@ -2670,6 +2677,7 @@ const GpuBackend = struct {
     window: *c.SDL_Window,
     canvas: up.Canvas,
     sprites: *up.SpriteBatch,
+    advanced_renderer: ?*const up.Renderer2D = null,
     capture_path: ?[]const u8 = null,
     presentation: *up.Presentation,
     metrics: *up.RuntimeMetrics,
@@ -2680,7 +2688,7 @@ const GpuBackend = struct {
 
     fn submit(context: *anyopaque, commands: []const up.RenderCommand) anyerror!void {
         const self: *GpuBackend = @ptrCast(@alignCast(context));
-        try self.presenter.present(self.device, self.window, self.canvas, self.sprites, commands, self.capture_path, self.presentation, self.metrics);
+        try self.presenter.present(self.device, self.window, self.canvas, self.sprites, commands, self.advanced_renderer, self.capture_path, self.presentation, self.metrics);
     }
 };
 
@@ -2706,7 +2714,27 @@ const Presenter = struct {
     primitive_buffer: ?*c.SDL_GPUBuffer = null,
     primitive_transfer: ?*c.SDL_GPUTransferBuffer = null,
     primitive_capacity: u32 = 0,
+    particle_alpha_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    particle_additive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    particle_corner_buffer: ?*c.SDL_GPUBuffer = null,
+    particle_corner_transfer: ?*c.SDL_GPUTransferBuffer = null,
+    particle_corners_uploaded: bool = false,
+    particle_instance_buffer: ?*c.SDL_GPUBuffer = null,
+    particle_instance_transfer: ?*c.SDL_GPUTransferBuffer = null,
+    particle_instance_capacity: u32 = 0,
     frame: u64 = 0,
+
+    const ParticleCorner = extern struct { x: f32, y: f32 };
+    const ParticleInstance = extern struct {
+        x: f32,
+        y: f32,
+        extent_x: f32,
+        extent_y: f32,
+        r: f32,
+        g: f32,
+        b: f32,
+        a: f32,
+    };
 
     const SpriteTexture = struct {
         image: *const up.Image,
@@ -2762,6 +2790,9 @@ const Presenter = struct {
         presenter.sprite_additive_pipeline = try createSpritePipeline(device, .additive);
         presenter.primitive_alpha_pipeline = try createPrimitivePipeline(device, .alpha);
         presenter.primitive_additive_pipeline = try createPrimitivePipeline(device, .additive);
+        presenter.particle_alpha_pipeline = try createParticlePipeline(device, .alpha);
+        presenter.particle_additive_pipeline = try createParticlePipeline(device, .additive);
+        try presenter.createParticleCornerBuffer(device);
         return presenter;
     }
 
@@ -2776,6 +2807,12 @@ const Presenter = struct {
         if (self.primitive_additive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.primitive_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
         if (self.primitive_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        if (self.particle_alpha_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.particle_additive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        if (self.particle_corner_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
+        if (self.particle_corner_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
+        if (self.particle_instance_buffer) |buffer| c.SDL_ReleaseGPUBuffer(device, buffer);
+        if (self.particle_instance_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
         self.primitive_batch.deinit();
         self.command_sprites.deinit();
         self.command_operations.deinit(std.heap.page_allocator);
@@ -2793,10 +2830,12 @@ const Presenter = struct {
         self.* = undefined;
     }
 
-    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
+    fn present(self: *Presenter, device: *c.SDL_GPUDevice, window: *c.SDL_Window, canvas: up.Canvas, sprites: *up.SpriteBatch, commands: []const up.RenderCommand, advanced_renderer: ?*const up.Renderer2D, capture_path: ?[]const u8, presentation: *up.Presentation, metrics: *up.RuntimeMetrics) !void {
         var encoder_timer = std.time.Timer.start() catch unreachable;
         var pass_count: u32 = 1;
         self.frame +%= 1;
+        const particle_instances: []const up.GpuParticleInstance = if (advanced_renderer) |value| value.particle_instances.items else &.{};
+        if (advanced_renderer) |value| if (value.material_sprites.items.len != 0 or value.post_passes.items.len != 0) return error.MaterialExecutionUnavailable;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         self.primitive_batch.clear();
@@ -2838,6 +2877,10 @@ const Presenter = struct {
         }
         if (self.command_sprites.vertices.items.len != 0) try self.uploadVertices(device, copy_pass, self.command_sprites.vertices.items);
         if (self.primitive_batch.vertices.items.len != 0) try self.uploadPrimitiveVertices(device, copy_pass, self.primitive_batch.vertices.items);
+        if (particle_instances.len != 0) {
+            try self.uploadParticleCorners(device, copy_pass);
+            try self.uploadParticleInstances(device, copy_pass, particle_instances);
+        }
         c.SDL_EndGPUCopyPass(copy_pass);
 
         if (self.command_operations.items.len != 0) {
@@ -2850,6 +2893,10 @@ const Presenter = struct {
             c.SDL_EndGPUCopyPass(sprite_copy_pass);
             try self.renderSprites(command, sprites);
             pass_count +%= 2;
+        }
+        if (particle_instances.len != 0) {
+            try self.renderParticles(command, @intCast(particle_instances.len));
+            pass_count +%= 1;
         }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
         if (capture_path != null) {
@@ -2932,7 +2979,7 @@ const Presenter = struct {
     }
 
     fn allocationBytes(self: *const Presenter, sprites: *const up.SpriteBatch) u64 {
-        var bytes = @as(u64, self.vertex_capacity) + @as(u64, self.primitive_capacity);
+        var bytes = @as(u64, self.vertex_capacity) + @as(u64, self.primitive_capacity) + @as(u64, self.particle_instance_capacity);
         bytes +|= @as(u64, @intCast(sprites.draws.capacity)) * @sizeOf(up.SpriteBatchDraw);
         bytes +|= @as(u64, @intCast(sprites.vertices.capacity)) * @sizeOf(up.SpriteBatchVertex);
         bytes +|= @as(u64, @intCast(sprites.sorted.capacity)) * @sizeOf(usize);

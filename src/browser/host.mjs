@@ -31,6 +31,8 @@ export const Status = Object.freeze({
   rejected: -3,
 });
 
+const maxParticleInstances = 65536;
+
 export function createBrowserHost({
   canvas,
   memory = new WebAssembly.Memory({initial: 32}),
@@ -494,16 +496,18 @@ export function createBrowserHost({
   }
 
   function drawParticles(source, count, particleBlend) {
-    if (!Number.isInteger(count) || count < 0 || particleBlend < 0 || particleBlend > 1) return Status.invalidArgument;
+    if (!Number.isInteger(count) || count < 0 || count > maxParticleInstances || !Number.isInteger(particleBlend) || particleBlend < 0 || particleBlend > 1) return Status.invalidArgument;
     const bytes = wasmBytes(source, count * 7 * 4);
     if (!bytes) return Status.invalidArgument;
     const instances = new Float32Array(bytes.buffer, bytes.byteOffset, count * 7);
     if (webgpu) return webgpu.drawParticles(instances, particleBlend) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
-    if (!gl || contextLost) return Status.unavailable;
+    if (contextLost) return Status.rejected;
+    if (!gl) return Status.unavailable;
     const spriteStatus = flushSprites();
     if (spriteStatus !== Status.ok) return spriteStatus;
     const pipeline = ensureParticlePipeline();
     if (!pipeline || logicalWidth === 0 || logicalHeight === 0) return Status.unavailable;
+    if (!bindDrawTarget()) return Status.rejected;
     gl.useProgram(pipeline.program);
     gl.uniform2f(pipeline.logicalSize, logicalWidth, logicalHeight);
     gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.baseBuffer);
@@ -521,9 +525,10 @@ export function createBrowserHost({
     gl.enableVertexAttribArray(3);
     gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 28, 12);
     gl.vertexAttribDivisor(3, 1);
-    gl.enable(gl.BLEND);
-    if (particleBlend === 0) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
-    else gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    const previousBlend = blend;
+    blend = particleBlend;
+    applyRenderState();
+    blend = previousBlend;
     gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
     gl.vertexAttribDivisor(1, 0);
     gl.vertexAttribDivisor(2, 0);

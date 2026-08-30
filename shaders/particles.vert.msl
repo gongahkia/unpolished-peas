@@ -1,0 +1,21 @@
+#include <metal_stdlib>
+using namespace metal;
+
+struct ParticleVertex {
+    float2 corner [[attribute(0)]];
+};
+
+struct ParticleInstance {
+    float2 center [[attribute(1)]];
+    float2 extent [[attribute(2)]];
+    float4 color [[attribute(3)]];
+};
+
+struct ParticleOutput {
+    float4 position [[position]];
+    float4 color [[user(locn0)]];
+};
+
+vertex ParticleOutput main0(ParticleVertex vertex, ParticleInstance instance) {
+    return { .position = float4(instance.center + vertex.corner * instance.extent, 0.0, 1.0), .color = instance.color };
+}

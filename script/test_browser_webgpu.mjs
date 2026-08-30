@@ -52,7 +52,7 @@ const device = {
   createCommandEncoder: () => ({
     beginRenderPass: (descriptor) => {
       passes.push(descriptor);
-      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw: (count) => draws.push(count), end() {}};
+      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw: (...args) => draws.push(args), end() {}};
     },
     finish: () => "command-buffer",
   }),
@@ -80,11 +80,12 @@ assert.equal(backend.drawRect(16, 0, 16, 16, 0xff00ff00), true);
 assert.equal(backend.popBlend(), true);
 assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 8, 4, 16, 16, 0x80ffffff, 0), true);
 assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 24, 4, 16, 16, 0xffffffff, 0), true);
+assert.equal(backend.drawParticles(new Float32Array([32, 16, 8, 1, .5, .25, 1, 48, 16, 4, .5, 1, .25, 1]), 1), true);
 assert.equal(backend.present(), true);
 assert.deepEqual(submissions, [["command-buffer"]]);
-assert.equal(writes.length, 2);
-assert.deepEqual(draws, [6, 6, 12]);
-assert.deepEqual(pipelines, ["one-minus-src-alpha", "one", "one-minus-src-alpha"]);
+assert.equal(writes.length, 4);
+assert.deepEqual(draws, [[6], [6], [12], [6, 2]]);
+assert.deepEqual(pipelines, ["one-minus-src-alpha", "one", "one-minus-src-alpha", "one"]);
 assert.deepEqual(passes[0].colorAttachments[0].clearValue, {r: 16 / 255, g: 32 / 255, b: 64 / 255, a: 128 / 255});
 assert.deepEqual(backend.diagnostic(), {adapter_status: "ready", device_status: "ready", canvas_format: "bgra8unorm", logical_width: 320, logical_height: 180});
 resolveLost({reason: "destroyed"});
@@ -111,7 +112,7 @@ const hostDevice = {
   createTexture: () => ({createView: () => "texture-view", destroy() {}}),
   createSampler: () => "sampler",
   createBindGroup: () => "bind-group",
-  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw(count) { hostDraws.push(count); }, end() {}}), finish: () => "host-command"}),
+  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw(...args) { hostDraws.push(args); }, end() {}}), finish: () => "host-command"}),
 };
 const host = createBrowserHost({canvas: hostCanvas, fontFixture: debugFontFixture, navigator: {gpu: {requestAdapter: async () => ({requestDevice: async () => hostDevice}), getPreferredCanvasFormat: () => "rgba8unorm"}}});
 let hostLosses = 0;
@@ -128,8 +129,10 @@ assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4,
 assert.equal(host.imports.env.up_host_gl_pop_blend(), Status.ok);
 new Uint8Array(host.memory.buffer, 32, 3).set([65, 10, 66]);
 assert.equal(host.imports.env.up_host_gl_draw_text(32, 3, 20, 8, 0xffffffff), Status.ok);
+new Float32Array(host.memory.buffer, 64, 7).set([24, 16, 8, 1, .5, .25, 1]);
+assert.equal(host.imports.env.up_host_gl_draw_particles(64, 1, 1), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
-assert.deepEqual(hostDraws, [6, 12]);
+assert.deepEqual(hostDraws, [[6], [12], [6, 1]]);
 assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
 resolveHostLost({reason: "destroyed"});
 await Promise.resolve();
