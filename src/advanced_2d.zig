@@ -2,6 +2,7 @@ const std = @import("std");
 const Canvas = @import("canvas.zig").Canvas;
 const BlendMode = @import("canvas.zig").BlendMode;
 const Color = @import("color.zig").Color;
+const Image = @import("image.zig").Image;
 const Vec2 = @import("math.zig").Vec2;
 
 pub const max_shader_source_bytes = 256 * 1024;
@@ -66,6 +67,85 @@ pub const Material = struct {
         if (name.len == 0 or name.len > 96) return error.InvalidMaterialName;
         try sources.validate();
         return .{ .name = name, .sources = sources };
+    }
+};
+
+/// Vertex and fragment programs use the same target-specific source contract.
+/// The fixed renderer supplies only position, texture coordinates, and tint.
+pub const MaterialStages = struct {
+    vertex: ShaderSourceBundle,
+    fragment: ShaderSourceBundle,
+
+    pub fn validate(self: MaterialStages) !void {
+        try self.vertex.validate();
+        try self.fragment.validate();
+    }
+};
+
+pub const GpuParticleInstance = extern struct {
+    x: f32,
+    y: f32,
+    size: f32,
+    r: f32,
+    g: f32,
+    b: f32,
+    a: f32,
+};
+
+pub const Renderer2D = struct {
+    pub const MaterialSprite = struct {
+        material: *const Material,
+        image: *const Image,
+        x: i32,
+        y: i32,
+        width: i32,
+        height: i32,
+        tint: Color = Color.white,
+        uniforms: []const u8 = &.{},
+    };
+
+    pub const PostPass = struct {
+        material: *const Material,
+        uniforms: []const u8 = &.{},
+    };
+
+    allocator: std.mem.Allocator,
+    material_sprites: std.ArrayListUnmanaged(MaterialSprite) = .{},
+    particle_instances: std.ArrayListUnmanaged(GpuParticleInstance) = .{},
+    post_passes: std.ArrayListUnmanaged(PostPass) = .{},
+
+    pub fn init(allocator: std.mem.Allocator) Renderer2D {
+        return .{ .allocator = allocator };
+    }
+
+    pub fn deinit(self: *Renderer2D) void {
+        self.material_sprites.deinit(self.allocator);
+        self.particle_instances.deinit(self.allocator);
+        self.post_passes.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn beginFrame(self: *Renderer2D) void {
+        self.material_sprites.clearRetainingCapacity();
+        self.particle_instances.clearRetainingCapacity();
+        self.post_passes.clearRetainingCapacity();
+    }
+
+    pub fn drawMaterialSprite(self: *Renderer2D, draw: MaterialSprite) !void {
+        if (draw.width <= 0 or draw.height <= 0) return error.InvalidMaterialDraw;
+        if (draw.uniforms.len > max_shader_source_bytes) return error.MaterialUniformsTooLarge;
+        try draw.material.sources.validate();
+        try self.material_sprites.append(self.allocator, draw);
+    }
+
+    pub fn addPostPass(self: *Renderer2D, pass: PostPass) !void {
+        if (pass.uniforms.len > max_shader_source_bytes) return error.MaterialUniformsTooLarge;
+        try pass.material.sources.validate();
+        try self.post_passes.append(self.allocator, pass);
+    }
+
+    pub fn appendParticle(self: *Renderer2D, particle: GpuParticleInstance) !void {
+        try self.particle_instances.append(self.allocator, particle);
     }
 };
 
@@ -227,6 +307,22 @@ pub const ParticleSystem = struct {
             };
         }
         return count;
+    }
+
+    pub fn submit(self: *const ParticleSystem, renderer: *Renderer2D) !void {
+        try renderer.particle_instances.ensureUnusedCapacity(renderer.allocator, self.particles.items.len);
+        for (self.particles.items) |particle| {
+            const color = interpolateColor(particle.start_color, particle.end_color, particle.age_seconds / particle.lifetime_seconds);
+            renderer.particle_instances.appendAssumeCapacity(.{
+                .x = particle.position.x,
+                .y = particle.position.y,
+                .size = particle.size,
+                .r = @as(f32, @floatFromInt(color.r)) / 255,
+                .g = @as(f32, @floatFromInt(color.g)) / 255,
+                .b = @as(f32, @floatFromInt(color.b)) / 255,
+                .a = @as(f32, @floatFromInt(color.a)) / 255,
+            });
+        }
     }
 
     pub fn draw(self: *const ParticleSystem, canvas: *Canvas) void {
@@ -455,4 +551,18 @@ test "particle simulation is deterministic and produces portable instances" {
         if (pixel.a != 0) visible += 1;
     }
     try std.testing.expect(visible != 0);
+}
+
+test "renderer queue retains GPU particle instance storage" {
+    var renderer = Renderer2D.init(std.testing.allocator);
+    defer renderer.deinit();
+    var particles = try ParticleSystem.init(std.testing.allocator, .{ .max_particles = 4, .lifetime_min_seconds = 1, .lifetime_max_seconds = 1, .speed_min = 1, .speed_max = 1, .size_min = 1, .size_max = 1 });
+    defer particles.deinit();
+    _ = try particles.emit(2);
+    try particles.submit(&renderer);
+    try std.testing.expectEqual(@as(usize, 2), renderer.particle_instances.items.len);
+    const capacity = renderer.particle_instances.capacity;
+    renderer.beginFrame();
+    try particles.submit(&renderer);
+    try std.testing.expectEqual(capacity, renderer.particle_instances.capacity);
 }

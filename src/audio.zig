@@ -1,7 +1,11 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const vorbis_wasm_math = if (builtin.target.cpu.arch == .wasm32) @import("vorbis_wasm_math.zig") else struct {};
+comptime {
+    _ = vorbis_wasm_math;
+}
 
-const vorbis = if (builtin.target.cpu.arch == .wasm32) struct {} else @cImport({
+const vorbis = @cImport({
     @cDefine("STB_VORBIS_HEADER_ONLY", "1");
     @cDefine("STB_VORBIS_NO_STDIO", "1");
     @cInclude("stb_vorbis.c");
@@ -14,6 +18,7 @@ const max_audio_bytes = stable_max_input_bytes;
 const max_ogg_channels = 8;
 const stream_buffer_frames = 16 * 1024;
 const stream_decode_frames = 1024;
+const wasm_ogg_decoder_bytes = 1024 * 1024;
 
 pub const AudioSample = struct {
     left: f32 = 0,
@@ -55,7 +60,6 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
     }
 
     pub fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
-        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         defer allocator.free(bytes);
         return decodeOggSound(allocator, bytes);
@@ -67,7 +71,6 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
     }
 
     pub fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
-        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         return decodeOggSound(allocator, bytes);
     }
 
@@ -89,10 +92,9 @@ pub const Music = struct { // owns source bytes allocated by openWav/openOgg; mo
     }
 
     pub fn openOgg(allocator: std.mem.Allocator, path: []const u8) !Music {
-        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         errdefer allocator.free(bytes);
-        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .ogg = try parseOggInfo(bytes) } };
+        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .ogg = try parseOggInfo(allocator, bytes) } };
     }
 
     pub fn deinit(self: *Music) void {
@@ -453,27 +455,18 @@ const WavPlayback = struct {
     pos: f64 = 0,
 };
 
-const OggPlayback = if (builtin.target.cpu.arch == .wasm32) struct {
+const OggPlayback = struct {
     bytes: []const u8,
     info: OggInfo,
-
-    fn init(_: std.mem.Allocator, _: []const u8, _: OggInfo) !OggPlayback {
-        return error.OggUnsupportedOnWasm;
-    }
-
-    fn deinit(_: *OggPlayback, _: std.mem.Allocator) void {}
-} else struct {
-    bytes: []const u8,
-    info: OggInfo,
-    decoder: *vorbis.stb_vorbis,
+    decoder: OggDecoder,
     buffer: std.ArrayListUnmanaged(AudioSample) = .{},
     start: usize = 0,
     pos: f64 = 0,
     eof: bool = false,
 
     fn init(allocator: std.mem.Allocator, bytes: []const u8, info: OggInfo) !OggPlayback {
-        const decoder = try openOggDecoder(bytes);
-        errdefer vorbis.stb_vorbis_close(decoder);
+        var decoder = try OggDecoder.init(allocator, bytes);
+        errdefer decoder.deinit();
         var buffer: std.ArrayListUnmanaged(AudioSample) = .{};
         errdefer buffer.deinit(allocator);
         try buffer.ensureTotalCapacity(allocator, stream_buffer_frames);
@@ -481,12 +474,12 @@ const OggPlayback = if (builtin.target.cpu.arch == .wasm32) struct {
     }
 
     fn deinit(self: *OggPlayback, allocator: std.mem.Allocator) void {
-        vorbis.stb_vorbis_close(self.decoder);
+        self.decoder.deinit();
         self.buffer.deinit(allocator);
     }
 
     fn reset(self: *OggPlayback) void {
-        _ = vorbis.stb_vorbis_seek_start(self.decoder);
+        _ = vorbis.stb_vorbis_seek_start(self.decoder.value);
         self.buffer.clearRetainingCapacity();
         self.start = 0;
         self.pos = 0;
@@ -509,7 +502,7 @@ const OggPlayback = if (builtin.target.cpu.arch == .wasm32) struct {
         const requested_frames = @min(stream_decode_frames, available);
         var interleaved: [stream_decode_frames * max_ogg_channels]f32 = undefined;
         const sample_count = requested_frames * @as(usize, info.channels);
-        const got = vorbis.stb_vorbis_get_samples_float_interleaved(self.decoder, @intCast(info.channels), &interleaved, @intCast(sample_count));
+        const got = vorbis.stb_vorbis_get_samples_float_interleaved(self.decoder.value, @intCast(info.channels), &interleaved, @intCast(sample_count));
         if (got <= 0) {
             self.eof = true;
             return false;
@@ -554,13 +547,7 @@ fn mixWavMusic(playback: *WavPlayback, controls: *Playback, mixer_rate: u32, loo
     return true;
 }
 
-const mixOggMusic = if (builtin.target.cpu.arch == .wasm32) mixOggMusicUnavailable else mixOggMusicNative;
-
-fn mixOggMusicUnavailable(_: *OggPlayback, _: *Playback, _: std.mem.Allocator, _: u32, _: bool, _: []AudioSample, _: f32) !bool {
-    return error.OggUnsupportedOnWasm;
-}
-
-fn mixOggMusicNative(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
+fn mixOggMusic(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
     const info = playback.info;
     const step = rateStep(info.sample_rate, mixer_rate);
     var i: usize = 0;
@@ -628,26 +615,26 @@ fn clampUnit(value: f32) f32 {
     return value;
 }
 
-fn parseOggInfo(bytes: []const u8) !OggInfo {
-    const decoder = try openOggDecoder(bytes);
-    defer vorbis.stb_vorbis_close(decoder);
-    const info = vorbis.stb_vorbis_get_info(decoder);
+fn parseOggInfo(allocator: std.mem.Allocator, bytes: []const u8) !OggInfo {
+    var decoder = try OggDecoder.init(allocator, bytes);
+    defer decoder.deinit();
+    const info = vorbis.stb_vorbis_get_info(decoder.value);
     if (info.channels <= 0 or info.channels > max_ogg_channels or info.sample_rate == 0) return error.UnsupportedOgg;
-    const frames = vorbis.stb_vorbis_stream_length_in_samples(decoder);
+    const frames = vorbis.stb_vorbis_stream_length_in_samples(decoder.value);
     if (frames == 0) return error.EmptyOgg;
     return .{ .sample_rate = info.sample_rate, .channels = @intCast(info.channels), .frames = frames };
 }
 
 fn decodeOggSound(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
-    const info = try parseOggInfo(bytes);
-    const decoder = try openOggDecoder(bytes);
-    defer vorbis.stb_vorbis_close(decoder);
+    const info = try parseOggInfo(allocator, bytes);
+    var decoder = try OggDecoder.init(allocator, bytes);
+    defer decoder.deinit();
     var frames: std.ArrayListUnmanaged(AudioSample) = .{};
     errdefer frames.deinit(allocator);
     try frames.ensureTotalCapacity(allocator, info.frames);
     while (true) {
         var output: [*c][*c]f32 = undefined;
-        const got = vorbis.stb_vorbis_get_frame_float(decoder, null, &output);
+        const got = vorbis.stb_vorbis_get_frame_float(decoder.value, null, &output);
         if (got <= 0) break;
         var frame: usize = 0;
         while (frame < @as(usize, @intCast(got))) : (frame += 1) {
@@ -658,10 +645,35 @@ fn decodeOggSound(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
     return .{ .allocator = allocator, .sample_rate = info.sample_rate, .frames = try frames.toOwnedSlice(allocator) };
 }
 
-fn openOggDecoder(bytes: []const u8) !*vorbis.stb_vorbis {
+const OggDecoder = struct {
+    allocator: std.mem.Allocator,
+    value: *vorbis.stb_vorbis,
+    storage: []u8 = &.{},
+
+    fn init(allocator: std.mem.Allocator, bytes: []const u8) !OggDecoder {
+        var storage: []u8 = &.{};
+        if (comptime builtin.target.cpu.arch == .wasm32) storage = try allocator.alloc(u8, wasm_ogg_decoder_bytes);
+        errdefer if (storage.len != 0) allocator.free(storage);
+        const value = try openOggDecoder(bytes, storage);
+        return .{ .allocator = allocator, .value = value, .storage = storage };
+    }
+
+    fn deinit(self: *OggDecoder) void {
+        vorbis.stb_vorbis_close(self.value);
+        if (self.storage.len != 0) self.allocator.free(self.storage);
+        self.* = undefined;
+    }
+};
+
+fn openOggDecoder(bytes: []const u8, storage: []u8) !*vorbis.stb_vorbis {
     if (bytes.len > std.math.maxInt(c_int)) return error.AudioTooLarge;
     var err: c_int = 0;
-    return vorbis.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, null) orelse error.InvalidOgg;
+    var allocation = vorbis.stb_vorbis_alloc{
+        .alloc_buffer = if (storage.len == 0) null else storage.ptr,
+        .alloc_buffer_length_in_bytes = std.math.cast(c_int, storage.len) orelse return error.OggDecoderStorageTooLarge,
+    };
+    const maybe_allocation: ?*const vorbis.stb_vorbis_alloc = if (storage.len == 0) null else &allocation;
+    return vorbis.stb_vorbis_open_memory(bytes.ptr, @intCast(bytes.len), &err, maybe_allocation) orelse if (storage.len != 0 and err != 0) error.OggDecoderStorageExhausted else error.InvalidOgg;
 }
 
 fn decodeWavSound(allocator: std.mem.Allocator, bytes: []const u8) !Sound {

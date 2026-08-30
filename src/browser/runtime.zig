@@ -18,6 +18,8 @@ var last_timestamp_ms: ?f64 = null;
 var paused = false;
 var game_canvas: up.graphics.Canvas = undefined;
 var game_canvas_ready = false;
+var renderer: up.graphics.Renderer2D = undefined;
+var renderer_ready = false;
 var render_status: i32 = @intFromEnum(contract.Status.ok);
 
 const runtime_allocator = if (builtin.target.cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator;
@@ -52,11 +54,14 @@ pub export fn up_browser_abi_version() u32 {
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
     if (game_canvas_ready) game_canvas.deinit();
+    if (renderer_ready) renderer.deinit();
     game_canvas = up.graphics.Canvas.init(runtime_allocator, width, height) catch return @intFromEnum(contract.Status.rejected);
     game_canvas_ready = true;
+    renderer = up.graphics.Renderer2D.init(runtime_allocator);
+    renderer_ready = true;
     input = .{};
     game = .{};
-    game_context = .withRuntime(&input, &game_canvas);
+    game_context = .withRenderer(&input, &game_canvas, &renderer);
     protocol = .bind(&game);
     protocol.init(&game_context) catch {
         protocol_failure = protocol.lastFailure();
@@ -79,11 +84,13 @@ pub export fn up_browser_frame(timestamp_ms: f64) void {
             return;
         };
     }
+    renderer.beginFrame();
     protocol.draw(&game_context, timing.alpha) catch {
         protocol_failure = protocol.lastFailure();
         return;
     };
     render_status = submitCanvas();
+    if (render_status == @intFromEnum(contract.Status.ok)) render_status = submitRenderer();
     protocol_failure = null;
     frame_token = contract.scheduleFrame();
 }
@@ -96,6 +103,18 @@ fn submitCanvas() i32 {
     if (!game_canvas_ready) return @intFromEnum(contract.Status.unavailable);
     const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(game_canvas.pixels).len) orelse return @intFromEnum(contract.Status.rejected);
     return contract.uploadCanvas(game_canvas.width, game_canvas.height, @intCast(@intFromPtr(game_canvas.pixels.ptr)), byte_len);
+}
+
+fn submitRenderer() i32 {
+    if (!renderer_ready) return @intFromEnum(contract.Status.unavailable);
+    if (renderer.material_sprites.items.len != 0 or renderer.post_passes.items.len != 0) return @intFromEnum(contract.Status.unavailable);
+    if (renderer.particle_instances.items.len != 0) {
+        const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(renderer.particle_instances.items).len) orelse return @intFromEnum(contract.Status.rejected);
+        const status = contract.drawParticles(@intCast(@intFromPtr(renderer.particle_instances.items.ptr)), @intCast(renderer.particle_instances.items.len), @intFromEnum(up.graphics.BlendMode.alpha));
+        if (status != @intFromEnum(contract.Status.ok)) return status;
+        _ = byte_len;
+    }
+    return contract.present(0);
 }
 
 pub export fn up_browser_set_paused(value: u32) i32 {
@@ -248,6 +267,10 @@ pub export fn up_browser_shutdown() void {
     if (game_canvas_ready) {
         game_canvas.deinit();
         game_canvas_ready = false;
+    }
+    if (renderer_ready) {
+        renderer.deinit();
+        renderer_ready = false;
     }
     contract.teardown();
 }

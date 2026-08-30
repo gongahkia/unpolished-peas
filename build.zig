@@ -39,11 +39,13 @@ pub fn build(b: *std.Build) void {
         .target = wasi_target,
         .optimize = browser_optimize,
     });
+    addBrowserVorbis(wasm_peas);
     const browser_peas = b.addModule("unpolished-peas-browser-core", .{
         .root_source_file = b.path("src/unpolished_peas.zig"),
         .target = browser_target,
         .optimize = browser_optimize,
     });
+    addBrowserVorbis(browser_peas);
     const frame_timing = b.createModule(.{
         .root_source_file = b.path("src/frame_timing.zig"),
         .target = target,
@@ -804,6 +806,14 @@ fn addStb(mod: *std.Build.Module) void {
     mod.addCSourceFile(.{
         .file = mod.owner.path("vendor/stb/stb_vorbis.c"),
         .flags = &.{ "-std=c99", "-DSTB_VORBIS_NO_STDIO" },
+    });
+}
+
+fn addBrowserVorbis(mod: *std.Build.Module) void {
+    mod.addIncludePath(mod.owner.path("vendor/stb"));
+    mod.addCSourceFile(.{
+        .file = mod.owner.path("src/vendor/stb_vorbis_wasm.c"),
+        .flags = &.{ "-std=c99", "-ffreestanding", "-Wno-tautological-pointer-compare" },
     });
 }
 

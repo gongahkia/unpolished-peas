@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const abi_version: u32 = 3;
+pub const abi_version: u32 = 4;
 
 pub const Binding = struct {
     name: []const u8,
@@ -23,6 +23,7 @@ pub const imports = [_]Binding{
     .{ .name = "up_host_gl_present" },
     .{ .name = "up_host_gl_texture_upload" },
     .{ .name = "up_host_gl_canvas_upload" },
+    .{ .name = "up_host_gl_draw_particles" },
     .{ .name = "up_host_gl_draw_sprite" },
     .{ .name = "up_host_gl_flush_sprites" },
     .{ .name = "up_host_gl_draw_text" },
@@ -110,6 +111,7 @@ const WasmHost = struct {
     extern "env" fn up_host_gl_present(mode: u32) i32;
     extern "env" fn up_host_gl_texture_upload(handle: u32, width: u32, height: u32, source: u32, byte_len: u32, sampling: u32) i32;
     extern "env" fn up_host_gl_canvas_upload(width: u32, height: u32, source: u32, byte_len: u32) i32;
+    extern "env" fn up_host_gl_draw_particles(source: u32, count: u32, blend: u32) i32;
     extern "env" fn up_host_gl_draw_sprite(handle: u32, source_x: u32, source_y: u32, source_width: u32, source_height: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32;
     extern "env" fn up_host_gl_flush_sprites() i32;
     extern "env" fn up_host_gl_draw_text(source: u32, byte_len: u32, x: i32, y: i32, color: u32) i32;
@@ -178,6 +180,10 @@ const NativeHost = struct {
     }
 
     fn up_host_gl_canvas_upload(_: u32, _: u32, _: u32, _: u32) i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+
+    fn up_host_gl_draw_particles(_: u32, _: u32, _: u32) i32 {
         return @intFromEnum(Status.unavailable);
     }
 
@@ -307,6 +313,10 @@ pub fn uploadCanvas(width: u32, height: u32, source: u32, byte_len: u32) i32 {
     return host.up_host_gl_canvas_upload(width, height, source, byte_len);
 }
 
+pub fn drawParticles(source: u32, count: u32, blend: u32) i32 {
+    return host.up_host_gl_draw_particles(source, count, blend);
+}
+
 pub fn drawSprite(handle: u32, source_x: u32, source_y: u32, source_width: u32, source_height: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32 {
     return host.up_host_gl_draw_sprite(handle, source_x, source_y, source_width, source_height, x, y, width, height, color, sampling);
 }
@@ -376,8 +386,8 @@ pub fn teardown() void {
 }
 
 test "browser host contract keeps versioned category coverage" {
-    try std.testing.expectEqual(@as(u32, 3), abi_version);
-    try std.testing.expectEqual(@as(usize, 32), imports.len);
+    try std.testing.expectEqual(@as(u32, 4), abi_version);
+    try std.testing.expectEqual(@as(usize, 33), imports.len);
     try std.testing.expectEqual(@as(usize, 35), exports.len);
     try std.testing.expectEqualStrings("up_host_gl_resource_create", imports[4].name);
     try std.testing.expectEqualStrings("up_browser_set_paused", exports[3].name);
@@ -389,6 +399,7 @@ test "browser host contract keeps versioned category coverage" {
     try std.testing.expectEqual(@as(i32, -2), drawRect(0, 0, 1, 1, 0));
     try std.testing.expectEqual(@as(i32, -2), uploadTexture(1, 1, 1, 0, 4, 0));
     try std.testing.expectEqual(@as(i32, -2), uploadCanvas(1, 1, 0, 4));
+    try std.testing.expectEqual(@as(i32, -2), drawParticles(0, 0, 0));
     try std.testing.expectEqual(@as(i32, -2), pushClip(0, 0, 1, 1));
     try std.testing.expectEqual(@as(i32, -2), audioState());
     try std.testing.expectEqual(@as(i32, -2), writeStorage(0, 0, 0, 0));
