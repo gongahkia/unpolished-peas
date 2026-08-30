@@ -16,6 +16,7 @@ pub const Command = enum {
     package,
     serve,
     support_bundle,
+    shader,
     doctor,
     docs,
 };
@@ -229,7 +230,7 @@ pub fn printHelp() void {
     std.debug.print(
         \\usage: zig build peas -- <command> [args]
         \\global flags: --json --non-interactive
-        \\commands: new run check test replay package serve support-bundle doctor docs
+        \\commands: new run check test replay package serve support-bundle shader doctor docs
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]
@@ -237,6 +238,7 @@ pub fn printHelp() void {
         \\package: zig build peas -- package <linux|macos|windows|web> [output-directory] [--game <bounce|topdown|puzzle|platformer>]
         \\serve: zig build peas -- serve [web-bundle-directory] [--port <1-65535>]
         \\support-bundle: zig build peas -- support-bundle <diagnostics-directory> <output-directory> [--include <artifact>]... [--redact <literal>]... [--redact-path <path>]...
+        \\shader: zig build peas -- shader <compile|assemble> ...
         \\doctor: zig build peas -- doctor [project-directory] [--target <linux|macos|windows|web>] [--renderer <auto|gpu|opengl>] [--package <linux|macos|windows|web>]
         \\docs: zig build peas -- docs [overview|quickstart|testing|api]
         \\use `zig build peas -- help` for this message
