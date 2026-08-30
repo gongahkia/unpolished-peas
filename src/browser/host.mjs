@@ -15,7 +15,7 @@ function localStorageOrNull() {
   }
 }
 
-export const AbiVersion = 2;
+export const AbiVersion = 3;
 
 export const ResourceKind = Object.freeze({
   buffer: 0,
@@ -72,6 +72,7 @@ export function createBrowserHost({
   const resources = new Map();
   let debugFont = fontFixture === undefined ? null : createDebugFont(fontFixture);
   let debugFontTexture = 0;
+  let canvasTexture = 0;
   const input = createBrowserInput({
     canvas,
     document: documentRef,
@@ -411,6 +412,20 @@ export function createBrowserHost({
     return uploadTexturePixels(handle, width, height, pixels, sampling);
   }
 
+  function uploadCanvas(width, height, source, byteLength) {
+    const pixels = wasmBytes(source, byteLength);
+    if (!pixels || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
+    if (!resources.get(canvasTexture)) canvasTexture = createResource(ResourceKind.texture, byteLength, true);
+    if (canvasTexture === 0) return Status.unavailable;
+    let status = clear(0);
+    if (status !== Status.ok) return status;
+    status = uploadTexturePixels(canvasTexture, width, height, pixels, 0);
+    if (status !== Status.ok) return status;
+    status = drawSprite(canvasTexture, 0, 0, width, height, 0, 0, logicalWidth, logicalHeight, 0xffffffff, 0);
+    if (status !== Status.ok) return status;
+    return present(0);
+  }
+
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
     const texture = resources.get(handle);
     if (!texture || texture.kind !== ResourceKind.texture || !texture.width || !texture.height || sourceWidth === 0 || sourceHeight === 0 || width <= 0 || height <= 0 || sourceX > texture.width - sourceWidth || sourceY > texture.height - sourceHeight || sampling > 1) return Status.invalidArgument;
@@ -743,6 +758,7 @@ export function createBrowserHost({
       webgpu = null;
       removeAllResources(!contextLost);
       debugFontTexture = 0;
+      canvasTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       spriteBatch = null;
@@ -769,6 +785,7 @@ export function createBrowserHost({
     up_host_gl_draw_triangle: drawTriangle,
     up_host_gl_present: present,
     up_host_gl_texture_upload: uploadTexture,
+    up_host_gl_canvas_upload: uploadCanvas,
     up_host_gl_draw_sprite: drawSprite,
     up_host_gl_flush_sprites: flushSprites,
     up_host_gl_draw_text: drawText,
@@ -791,6 +808,7 @@ export function createBrowserHost({
       webgpu = null;
       removeAllResources(!contextLost);
       debugFontTexture = 0;
+      canvasTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       spriteBatch = null;
