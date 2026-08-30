@@ -36,4 +36,8 @@ Validate a single baseline with `python3 script/check_workload_baseline.py BASEL
 
 `script/check_workload_performance.sh` and `script/check_workload_performance.ps1` are the nightly and tag-release gates for supported macOS/Linux and Windows targets. They record an artifact on the current runner and reject an unapproved regression; they never write baseline files.
 
+## Advanced 2D allocation invariants
+
+`ParticleSystem` reserves its configured particle capacity during initialisation, while `PostProcessChain` keeps a blur scratch surface sized to its Canvas. The unit suite checks that a normal particle update/draw and blur application retain that storage. These are allocation-retention invariants, not a cross-machine frame-time budget. The v1 workload catalog deliberately remains the frozen stable-core workload set until advanced effects and particles have reviewed native and browser artifacts for a versioned catalog update.
+
 Never rewrite a historical baseline schema in place. Add matching `workload-artifacts/vN/` and `workload-baselines/vN/` directories for a new schema or workload version, retaining the prior directory and its checker-compatible JSON for review.
