@@ -136,7 +136,7 @@ const host = createBrowserHost({
     scheduledFrames.delete(token);
   },
 });
-assert.equal(host.abiVersion, 2);
+assert.equal(host.abiVersion, 3);
 const frameTimes = [];
 const resizeCalls = [];
 const pauses = [];
@@ -156,7 +156,7 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",
   "up_host_gl_context_create", "up_host_gl_context_destroy", "up_host_gl_context_lost", "up_host_gl_resource_create", "up_host_gl_resource_destroy",
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
-  "up_host_gl_texture_upload", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
+  "up_host_gl_texture_upload", "up_host_gl_canvas_upload", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
   "up_host_gl_push_clip", "up_host_gl_pop_clip", "up_host_gl_push_blend", "up_host_gl_pop_blend", "up_host_gl_set_camera",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
   "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
@@ -234,6 +234,10 @@ assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));
+new Uint8Array(host.memory.buffer, 64, 16).fill(255);
+assert.equal(env.up_host_gl_canvas_upload(2, 2, 64, 16), Status.ok);
+assert.equal(env.up_host_gl_canvas_upload(2, 2, 64, 15), Status.invalidArgument);
+assert.ok(canvas.gl.calls.some(([name]) => name === "drawArrays"));
 env.up_host_teardown();
 assert.equal(canvas.listeners.size, 0);
 assert.equal(scheduledFrames.size, 0);
