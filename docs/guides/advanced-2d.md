@@ -1,10 +1,35 @@
 # Advanced 2D
 
-The v0.1 advanced layer keeps the engine in 2D. It adds runtime shader-source bundles, CPU-reference post effects, deterministic particles, and mixer-driven music. It does not expose meshes, compute pipelines, raw GPU objects, or a scene/ECS model.
+The v0.1 advanced layer keeps the engine in 2D. It adds executable staged materials, GPU post passes, CPU-reference post effects, deterministic particles, and mixer-driven music. It does not expose meshes, compute pipelines, raw GPU objects, or a scene/ECS model.
 
 ## Materials and post effects
 
-`ShaderSourceBundle` requires HLSL for a native SDL GPU target, GLSL ES for WebGL 2, and WGSL for WebGPU. All three variants must declare the same named texture/uniform manifest. `Material.init` validates that portable package before a future renderer selects its target source; an invalid source, missing entry point, duplicate binding, or invalid binding name fails rather than choosing another backend's code.
+`Material.initStages` creates an executable 2D material from vertex and fragment `MaterialStage` values. Each stage contains AOT SPIR-V, DXBC, and metallib bytes for desktop plus GLSL ES and WGSL source for WebGL 2 and WebGPU. SDL GPU selects and consumes the matching precompiled native artifact; it does not invoke an HLSL, Metal, or SPIR-V compiler at runtime. Browser hosts compile their GLSL ES or WGSL source when the material pipeline is first used.
+
+`AssetStore.loadMaterial("effect.upmat")` loads the generated runtime manifest. It exposes a `MaterialHandle`; call `tryMaterial` each frame before queueing a draw so development reloads can safely replace its backing program. `reloadChanged` watches the manifest and all ten stage artifacts. An invalid rebuild leaves the last working material in place and emits a failed reload event.
+
+Use `peas shader compile <linux|windows|macos> <source.upshader> <output-directory>` on the corresponding CI platform, then `peas shader assemble <source.upshader> <artifact-directory> <output.upmat>` after all three artifact jobs are available. The assembler rejects a missing native artifact, so a release cannot accidentally ship source-only desktop materials.
+
+The material binding list is ordered and starts with `texture:source`. A material sprite supplies that image; a post pass supplies the previous composed frame. Further bindings are named textures or sixteen-byte-padded std140 uniform blocks. WebGL uses the declared texture names and uniform-block names. WebGPU assigns each texture/sampler pair consecutively from bindings 0/1, then assigns uniform blocks after all texture pairs. SDL GPU follows the same declaration order for fragment samplers and uniform slots. Vertex inputs are position, UV, and tint at locations 0, 1, and 2.
+
+```zig
+const handle = try assets.loadMaterial("shaders/wave.upmat");
+const material = try assets.tryMaterial(handle);
+const renderer = try context.requireRenderer2D();
+
+try renderer.drawMaterialSprite(.{
+    .material = material,
+    .image = player_image,
+    .x = 40,
+    .y = 24,
+    .width = 32,
+    .height = 32,
+    .bindings = &.{.{ .name = "palette", .value = .{ .texture = .{ .image = palette_image } } }},
+});
+try renderer.addPostPass(.{ .material = material });
+```
+
+The renderer executes Canvas commands and ordinary sprites, material sprites, particles, then post passes. Every post pass samples the final composed frame through `source` and writes to the alternate RGBA8 target; only the last target is presented or captured. The OpenGL preview presenter rejects this advanced queue. It does not silently emulate materials on the CPU.
 
 The portable reference effects execute on `Canvas`, so their behavior is shared by headless tests, the desktop Canvas presenter, and the browser Canvas upload path. A chain owns a reusable blur scratch surface and applies effects in declaration order.
 
@@ -19,7 +44,7 @@ defer chain.deinit();
 try chain.apply(canvas);
 ```
 
-Custom source bundles are validated and retained as the portable material contract. The present Canvas renderer does not execute arbitrary user shader code: only the documented CPU-reference effects have cross-target execution coverage. Do not treat source-bundle validation as a claim that arbitrary HLSL, GLSL ES, and WGSL programs are semantically interchangeable.
+`ShaderSourceBundle` and `Material.init` remain validation-only compatibility APIs. They cannot be submitted as executable materials; use staged AOT assets instead. `PostProcessChain` remains the CPU Canvas reference for the built-in effects and headless tests. Arbitrary material output is intentionally not byte-identical across GPU drivers, shader compilers, or browser implementations.
 
 ## Particles
 
@@ -61,4 +86,4 @@ _ = try stream.submit(&mixer); // false until browser activation; native uses it
 
 ## Verification and parity
 
-Parity means the same public API, deterministic particle state, audio control semantics, and Canvas capture behavior. It does not mean byte-identical output for arbitrary GPU shaders on different drivers. Run `zig build test`, `zig build test-browser-ogg-decode`, `zig build browser`, `zig build test-browser-host`, and `zig build test-browser-webgpu` for the fast contract checks. Browser proof-game and real-GPU checks remain separate capability jobs.
+Parity means the same public API, binding contract, deterministic particle state, audio control semantics, and Canvas capture behavior. It does not mean byte-identical output for arbitrary GPU shaders on different drivers. Run `zig build test`, `zig build test-browser-ogg-decode`, `zig build browser`, `zig build test-browser-host`, and `zig build test-browser-webgpu` for the fast contract checks. Browser proof-game and real-GPU checks remain separate capability jobs.
