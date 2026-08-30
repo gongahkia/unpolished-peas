@@ -38,6 +38,12 @@ pub const GpuShaderFormat = enum {
     dxbc,
 };
 
+const MaterialShaderFormat = enum {
+    metallib,
+    spirv,
+    dxbc,
+};
+
 pub const GpuCapabilities = struct {
     pub const msl: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_MSL);
     pub const spirv: u32 = @intCast(c.SDL_GPU_SHADERFORMAT_SPIRV);
@@ -2698,6 +2704,7 @@ const GpuBackend = struct {
 
 const Presenter = struct {
     render_target: *c.SDL_GPUTexture,
+    post_target: *c.SDL_GPUTexture,
     transfer: *c.SDL_GPUTransferBuffer,
     width: u32,
     height: u32,
@@ -2726,6 +2733,7 @@ const Presenter = struct {
     particle_instance_buffer: ?*c.SDL_GPUBuffer = null,
     particle_instance_transfer: ?*c.SDL_GPUTransferBuffer = null,
     particle_instance_capacity: u32 = 0,
+    material_pipelines: std.ArrayList(MaterialPipeline) = .empty,
     frame: u64 = 0,
 
     const ParticleCorner = extern struct { x: f32, y: f32 };
@@ -2738,6 +2746,14 @@ const Presenter = struct {
         g: f32,
         b: f32,
         a: f32,
+    };
+
+    const MaterialPipeline = struct {
+        material: *const up.Material,
+        revision: u32,
+        format: MaterialShaderFormat,
+        post: bool,
+        pipeline: *c.SDL_GPUGraphicsPipeline,
     };
 
     const SpriteTexture = struct {
@@ -2779,6 +2795,19 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTexture");
         errdefer c.SDL_ReleaseGPUTexture(device, render_target);
 
+        const post_target = c.SDL_CreateGPUTexture(device, &.{
+            .type = c.SDL_GPU_TEXTURETYPE_2D,
+            .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+            .usage = c.SDL_GPU_TEXTUREUSAGE_SAMPLER | c.SDL_GPU_TEXTUREUSAGE_COLOR_TARGET,
+            .width = width,
+            .height = height,
+            .layer_count_or_depth = 1,
+            .num_levels = 1,
+            .sample_count = c.SDL_GPU_SAMPLECOUNT_1,
+            .props = 0,
+        }) orelse return sdlFail("SDL_CreateGPUTexture");
+        errdefer c.SDL_ReleaseGPUTexture(device, post_target);
+
         const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{
             .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD,
             .size = byte_len,
@@ -2786,7 +2815,7 @@ const Presenter = struct {
         }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
         errdefer c.SDL_ReleaseGPUTransferBuffer(device, transfer);
 
-        var presenter = Presenter{ .render_target = render_target, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator), .command_sprites = up.SpriteBatch.init(std.heap.page_allocator) };
+        var presenter = Presenter{ .render_target = render_target, .post_target = post_target, .transfer = transfer, .width = width, .height = height, .byte_len = byte_len, .primitive_batch = up.PrimitiveBatch.init(std.heap.page_allocator), .command_sprites = up.SpriteBatch.init(std.heap.page_allocator) };
         errdefer presenter.deinit(device);
         presenter.nearest_sampler = try createSpriteSampler(device, .nearest);
         presenter.linear_sampler = try createSpriteSampler(device, .linear);
@@ -2801,6 +2830,8 @@ const Presenter = struct {
     }
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
+        for (self.material_pipelines.items) |entry| c.SDL_ReleaseGPUGraphicsPipeline(device, entry.pipeline);
+        self.material_pipelines.deinit(std.heap.page_allocator);
         if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.sprite_additive_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         if (self.nearest_sampler) |sampler| c.SDL_ReleaseGPUSampler(device, sampler);
@@ -2830,6 +2861,7 @@ const Presenter = struct {
         }
         self.sprite_textures.deinit(std.heap.page_allocator);
         c.SDL_ReleaseGPUTransferBuffer(device, self.transfer);
+        c.SDL_ReleaseGPUTexture(device, self.post_target);
         c.SDL_ReleaseGPUTexture(device, self.render_target);
         self.* = undefined;
     }
@@ -2840,7 +2872,8 @@ const Presenter = struct {
         self.frame +%= 1;
         const particle_instances: []const up.GpuParticleInstance = if (advanced_renderer) |value| value.particle_instances.items else &.{};
         const particle_batches: []const up.Renderer2D.ParticleBatch = if (advanced_renderer) |value| value.particle_batches.items else &.{};
-        if (advanced_renderer) |value| if (value.material_sprites.items.len != 0 or value.post_passes.items.len != 0) return error.MaterialExecutionUnavailable;
+        const material_sprites: []const up.Renderer2D.MaterialSprite = if (advanced_renderer) |value| value.material_sprites.items else &.{};
+        const post_passes: []const up.Renderer2D.PostPass = if (advanced_renderer) |value| value.post_passes.items else &.{};
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         self.primitive_batch.clear();
@@ -2848,6 +2881,8 @@ const Presenter = struct {
         self.command_operations.clearRetainingCapacity();
         try primitive_commands.appendOrdered(&self.primitive_batch, &self.command_sprites, &self.command_operations, self.width, self.height, commands);
         for (self.command_sprites.draws.items) |draw| _ = try self.spriteTexture(device, draw.image);
+        for (material_sprites) |draw| try self.prepareMaterialTextures(device, draw.material, draw.image, draw.bindings);
+        for (post_passes) |pass| try self.prepareMaterialTextures(device, pass.material, null, pass.bindings);
 
         const command = c.SDL_AcquireGPUCommandBuffer(device) orelse return sdlFail("SDL_AcquireGPUCommandBuffer");
         var acquired_swapchain = false;
@@ -2903,9 +2938,20 @@ const Presenter = struct {
             try self.renderParticles(command, particle_batches);
             pass_count +%= 1;
         }
+        for (material_sprites) |draw| {
+            try self.renderMaterialSprite(device, command, draw);
+            pass_count +%= 2;
+        }
+        var final_target = self.render_target;
+        for (post_passes) |pass| {
+            const destination = if (final_target == self.render_target) self.post_target else self.render_target;
+            try self.renderPostPass(device, command, pass, final_target, destination);
+            final_target = destination;
+            pass_count +%= 2;
+        }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
         if (capture_path != null) {
-            capture_transfer = try self.downloadTexture(device, command, self.render_target);
+            capture_transfer = try self.downloadTexture(device, command, final_target);
             pass_count +%= 1;
         }
         errdefer if (capture_transfer) |transfer| c.SDL_ReleaseGPUTransferBuffer(device, transfer);
@@ -2924,7 +2970,7 @@ const Presenter = struct {
             const destination = presentation.destination();
             c.SDL_BlitGPUTexture(command, &.{
                 .source = .{
-                    .texture = self.render_target,
+                    .texture = final_target,
                     .mip_level = 0,
                     .layer_or_depth_plane = 0,
                     .x = 0,
@@ -3163,8 +3209,12 @@ const Presenter = struct {
     }
 
     fn renderTarget(self: *Presenter, load_op: c_uint, clear_color: c.SDL_FColor) c.SDL_GPUColorTargetInfo {
+        return self.renderTargetTexture(self.render_target, load_op, clear_color);
+    }
+
+    fn renderTargetTexture(_: *Presenter, texture: *c.SDL_GPUTexture, load_op: c_uint, clear_color: c.SDL_FColor) c.SDL_GPUColorTargetInfo {
         return .{
-            .texture = self.render_target,
+            .texture = texture,
             .mip_level = 0,
             .layer_or_depth_plane = 0,
             .clear_color = clear_color,
@@ -3223,6 +3273,96 @@ const Presenter = struct {
         const pass = c.SDL_BeginGPURenderPass(command, &color_target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
         defer c.SDL_EndGPURenderPass(pass);
         for (sprites.sorted.items) |draw_index| try self.renderSpriteDraw(pass, sprites.draws.items[draw_index]);
+    }
+
+    fn prepareMaterialTextures(self: *Presenter, device: *c.SDL_GPUDevice, material: *const up.Material, source_image: ?*const up.Image, bindings: []const up.MaterialBinding) !void {
+        _ = try material.executableStages();
+        if (source_image) |image| _ = try self.spriteTexture(device, image);
+        for (bindings) |binding| switch (binding.value) {
+            .texture => |texture| _ = try self.spriteTexture(device, texture.image),
+            .uniform => {},
+        };
+    }
+
+    fn renderMaterialSprite(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, draw: up.Renderer2D.MaterialSprite) !void {
+        const vertices = materialSpriteVertices(self.width, self.height, draw);
+        try self.uploadMaterialVertices(device, command, &vertices);
+        try self.renderMaterial(device, command, draw.material, draw.image, draw.bindings, draw.uniforms, self.render_target, self.render_target, false);
+    }
+
+    fn renderPostPass(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, pass: up.Renderer2D.PostPass, source: *c.SDL_GPUTexture, destination: *c.SDL_GPUTexture) !void {
+        const vertices = fullscreenMaterialVertices();
+        try self.uploadMaterialVertices(device, command, &vertices);
+        try self.renderMaterial(device, command, pass.material, null, pass.bindings, pass.uniforms, source, destination, true);
+    }
+
+    fn uploadMaterialVertices(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, vertices: []const up.SpriteBatchVertex) !void {
+        const copy_pass = c.SDL_BeginGPUCopyPass(command) orelse return sdlFail("SDL_BeginGPUCopyPass");
+        try self.uploadVertices(device, copy_pass, vertices);
+        c.SDL_EndGPUCopyPass(copy_pass);
+    }
+
+    fn renderMaterial(self: *Presenter, device: *c.SDL_GPUDevice, command: *c.SDL_GPUCommandBuffer, material: *const up.Material, source_image: ?*const up.Image, bindings: []const up.MaterialBinding, legacy_settings: []const u8, source_target: *c.SDL_GPUTexture, destination: *c.SDL_GPUTexture, post: bool) !void {
+        const pipeline = try self.materialPipeline(device, material, post);
+        var target = self.renderTargetTexture(destination, if (post) c.SDL_GPU_LOADOP_CLEAR else c.SDL_GPU_LOADOP_LOAD, .{ .r = 0, .g = 0, .b = 0, .a = 0 });
+        const pass = c.SDL_BeginGPURenderPass(command, &target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        defer c.SDL_EndGPURenderPass(pass);
+        const scissor = primitiveScissor(null, self.width, self.height);
+        c.SDL_SetGPUScissor(pass, &scissor);
+        c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+        var texture_bindings: [up.max_shader_bindings]c.SDL_GPUTextureSamplerBinding = undefined;
+        const texture_count = try self.bindMaterialTextures(material, source_image, bindings, source_target, &texture_bindings);
+        c.SDL_BindGPUFragmentSamplers(pass, 0, texture_bindings[0..texture_count].ptr, @intCast(texture_count));
+        try self.pushMaterialUniforms(command, material, bindings, legacy_settings);
+        const vertex_binding = c.SDL_GPUBufferBinding{ .buffer = self.vertex_buffer orelse return error.MaterialPipelineUnavailable, .offset = 0 };
+        c.SDL_BindGPUVertexBuffers(pass, 0, &vertex_binding, 1);
+        c.SDL_DrawGPUPrimitives(pass, 6, 1, 0, 0);
+    }
+
+    fn bindMaterialTextures(self: *Presenter, material: *const up.Material, source_image: ?*const up.Image, bindings: []const up.MaterialBinding, source_target: *c.SDL_GPUTexture, output: *[up.max_shader_bindings]c.SDL_GPUTextureSamplerBinding) !usize {
+        const stages = try material.executableStages();
+        const sampler = self.linear_sampler orelse return error.MaterialPipelineUnavailable;
+        var count: usize = 0;
+        for (stages.bindings) |declared| {
+            if (declared.kind != .texture) continue;
+            const texture = if (std.mem.eql(u8, declared.name, "source")) blk: {
+                if (source_image) |image| break :blk (self.findSprite(image) orelse return error.MissingSpriteTexture).texture;
+                break :blk source_target;
+            } else blk: {
+                const binding = findMaterialBinding(bindings, declared.name) orelse return error.MissingMaterialBinding;
+                const image = switch (binding.value) {
+                    .texture => |value| value.image,
+                    .uniform => return error.MaterialBindingKindMismatch,
+                };
+                break :blk (self.findSprite(image) orelse return error.MissingSpriteTexture).texture;
+            };
+            output[count] = .{ .texture = texture, .sampler = sampler };
+            count += 1;
+        }
+        return count;
+    }
+
+    fn pushMaterialUniforms(_: *Presenter, command: *c.SDL_GPUCommandBuffer, material: *const up.Material, bindings: []const up.MaterialBinding, legacy_settings: []const u8) !void {
+        const stages = try material.executableStages();
+        var slot: u32 = 0;
+        for (stages.bindings) |declared| {
+            if (declared.kind != .uniform) continue;
+            const bytes = if (findMaterialBinding(bindings, declared.name)) |binding| switch (binding.value) {
+                .uniform => |value| value,
+                .texture => return error.MaterialBindingKindMismatch,
+            } else if (std.mem.eql(u8, declared.name, "settings") and legacy_settings.len != 0) legacy_settings else return error.MissingMaterialBinding;
+            c.SDL_PushGPUFragmentUniformData(command, slot, bytes.ptr, @intCast(bytes.len));
+            slot += 1;
+        }
+    }
+
+    fn materialPipeline(self: *Presenter, device: *c.SDL_GPUDevice, material: *const up.Material, post: bool) !*c.SDL_GPUGraphicsPipeline {
+        const format = try selectMaterialShaderFormat(device);
+        for (self.material_pipelines.items) |entry| if (entry.material == material and entry.revision == material.revision and entry.format == format and entry.post == post) return entry.pipeline;
+        const pipeline = try createMaterialPipeline(device, material, format, post);
+        errdefer c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
+        try self.material_pipelines.append(std.heap.page_allocator, .{ .material = material, .revision = material.revision, .format = format, .post = post, .pipeline = pipeline });
+        return pipeline;
     }
 
     fn renderSpriteDraw(self: *Presenter, pass: *c.SDL_GPURenderPass, draw: up.SpriteBatchDraw) !void {
