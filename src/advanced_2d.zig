@@ -93,6 +93,12 @@ pub const GpuParticleInstance = extern struct {
 };
 
 pub const Renderer2D = struct {
+    pub const ParticleBatch = struct {
+        first_instance: usize,
+        instance_count: usize,
+        blend: BlendMode,
+    };
+
     pub const MaterialSprite = struct {
         material: *const Material,
         image: *const Image,
@@ -112,6 +118,7 @@ pub const Renderer2D = struct {
     allocator: std.mem.Allocator,
     material_sprites: std.ArrayListUnmanaged(MaterialSprite) = .{},
     particle_instances: std.ArrayListUnmanaged(GpuParticleInstance) = .{},
+    particle_batches: std.ArrayListUnmanaged(ParticleBatch) = .{},
     post_passes: std.ArrayListUnmanaged(PostPass) = .{},
 
     pub fn init(allocator: std.mem.Allocator) Renderer2D {
@@ -121,6 +128,7 @@ pub const Renderer2D = struct {
     pub fn deinit(self: *Renderer2D) void {
         self.material_sprites.deinit(self.allocator);
         self.particle_instances.deinit(self.allocator);
+        self.particle_batches.deinit(self.allocator);
         self.post_passes.deinit(self.allocator);
         self.* = undefined;
     }
@@ -128,6 +136,7 @@ pub const Renderer2D = struct {
     pub fn beginFrame(self: *Renderer2D) void {
         self.material_sprites.clearRetainingCapacity();
         self.particle_instances.clearRetainingCapacity();
+        self.particle_batches.clearRetainingCapacity();
         self.post_passes.clearRetainingCapacity();
     }
 
@@ -145,7 +154,23 @@ pub const Renderer2D = struct {
     }
 
     pub fn appendParticle(self: *Renderer2D, particle: GpuParticleInstance) !void {
+        if (!std.math.isFinite(particle.x) or !std.math.isFinite(particle.y) or !std.math.isFinite(particle.size) or particle.size <= 0) return error.InvalidParticleInstance;
+        inline for ([_]f32{ particle.r, particle.g, particle.b, particle.a }) |value| if (!std.math.isFinite(value) or value < 0 or value > 1) return error.InvalidParticleInstance;
+        const start = self.particle_instances.items.len;
         try self.particle_instances.append(self.allocator, particle);
+        try self.appendParticleBatch(start, 1, .alpha);
+    }
+
+    pub fn appendParticleBatch(self: *Renderer2D, first_instance: usize, instance_count: usize, blend: BlendMode) !void {
+        if (instance_count == 0 or first_instance > self.particle_instances.items.len or instance_count > self.particle_instances.items.len - first_instance) return error.InvalidParticleBatch;
+        if (self.particle_batches.items.len != 0) {
+            const previous = &self.particle_batches.items[self.particle_batches.items.len - 1];
+            if (previous.blend == blend and previous.first_instance + previous.instance_count == first_instance) {
+                previous.instance_count += instance_count;
+                return;
+            }
+        }
+        try self.particle_batches.append(self.allocator, .{ .first_instance = first_instance, .instance_count = instance_count, .blend = blend });
     }
 };
 
@@ -310,6 +335,7 @@ pub const ParticleSystem = struct {
     }
 
     pub fn submit(self: *const ParticleSystem, renderer: *Renderer2D) !void {
+        const first_instance = renderer.particle_instances.items.len;
         try renderer.particle_instances.ensureUnusedCapacity(renderer.allocator, self.particles.items.len);
         for (self.particles.items) |particle| {
             const color = interpolateColor(particle.start_color, particle.end_color, particle.age_seconds / particle.lifetime_seconds);
@@ -323,6 +349,7 @@ pub const ParticleSystem = struct {
                 .a = @as(f32, @floatFromInt(color.a)) / 255,
             });
         }
+        try renderer.appendParticleBatch(first_instance, self.particles.items.len, self.config.blend);
     }
 
     pub fn draw(self: *const ParticleSystem, canvas: *Canvas) void {

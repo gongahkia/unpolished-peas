@@ -734,6 +734,7 @@ pub const Context = struct {
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
+    renderer: *up.Renderer2D,
     inspector: *up.Inspector,
     profiler: *up.FrameProfiler,
     runtime_metrics: *up.RuntimeMetrics,
@@ -1309,7 +1310,7 @@ fn ProtocolAdapter(comptime Game: type) type {
         context: up.GameContext = undefined,
 
         fn init(self: *Self, ctx: *Context) !void {
-            self.context = up.GameContext.withRuntime(ctx.input, ctx.canvas);
+            self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
             self.protocol = up.GameProtocol(Game).bind(&self.game);
             try self.protocol.init(&self.context);
         }
@@ -1358,6 +1359,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer sprite_batch.deinit();
     var commands = up.RenderCommandBuffer.init(allocator);
     defer commands.deinit();
+    var advanced_renderer = up.Renderer2D.init(allocator);
+    defer advanced_renderer.deinit();
     var inspector = up.Inspector.init(allocator, config.developer_tools);
     defer inspector.deinit();
     var runtime_metrics = up.RuntimeMetrics{};
@@ -1398,7 +1401,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1446,7 +1449,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (renderer_diagnostics.recovery_action != prior_recovery_action) dev.rendererDiagnostics(&renderer_diagnostics);
         if (failure) |current| {
             drawFailure(&canvas, current);
-            try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, null, &presentation, &frame_metrics);
+            try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, &advanced_renderer, null, &presentation, &frame_metrics);
             runtime_metrics = frame_metrics;
             running = advanceFrame(&ctx.frame, config.max_frames) and running;
             continue;
@@ -1505,6 +1508,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
+        advanced_renderer.beginFrame();
         ctx.dt = timing.draw_seconds;
         ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
@@ -1534,7 +1538,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             try output.queue(&audio);
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
-        try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, screenshot_path, &presentation, &frame_metrics);
+        try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, &advanced_renderer, screenshot_path, &presentation, &frame_metrics);
         runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -2835,6 +2839,7 @@ const Presenter = struct {
         var pass_count: u32 = 1;
         self.frame +%= 1;
         const particle_instances: []const up.GpuParticleInstance = if (advanced_renderer) |value| value.particle_instances.items else &.{};
+        const particle_batches: []const up.Renderer2D.ParticleBatch = if (advanced_renderer) |value| value.particle_batches.items else &.{};
         if (advanced_renderer) |value| if (value.material_sprites.items.len != 0 or value.post_passes.items.len != 0) return error.MaterialExecutionUnavailable;
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
@@ -2894,8 +2899,8 @@ const Presenter = struct {
             try self.renderSprites(command, sprites);
             pass_count +%= 2;
         }
-        if (particle_instances.len != 0) {
-            try self.renderParticles(command, @intCast(particle_instances.len));
+        if (particle_batches.len != 0) {
+            try self.renderParticles(command, particle_batches);
             pass_count +%= 1;
         }
         var capture_transfer: ?*c.SDL_GPUTransferBuffer = null;
@@ -3055,6 +3060,91 @@ const Presenter = struct {
         self.primitive_buffer = buffer;
         self.primitive_transfer = transfer;
         self.primitive_capacity = capacity;
+    }
+
+    fn createParticleCornerBuffer(self: *Presenter, device: *c.SDL_GPUDevice) !void {
+        const bytes = @sizeOf([6]ParticleCorner);
+        const buffer = c.SDL_CreateGPUBuffer(device, &.{ .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX, .size = bytes, .props = 0 }) orelse return sdlFail("SDL_CreateGPUBuffer");
+        errdefer c.SDL_ReleaseGPUBuffer(device, buffer);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = bytes, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        self.particle_corner_buffer = buffer;
+        self.particle_corner_transfer = transfer;
+    }
+
+    fn uploadParticleCorners(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass) !void {
+        if (self.particle_corners_uploaded) return;
+        const corners = [_]ParticleCorner{
+            .{ .x = -0.5, .y = -0.5 }, .{ .x = 0.5, .y = -0.5 }, .{ .x = 0.5, .y = 0.5 },
+            .{ .x = -0.5, .y = -0.5 }, .{ .x = 0.5, .y = 0.5 },  .{ .x = -0.5, .y = 0.5 },
+        };
+        const byte_len: u32 = @sizeOf(@TypeOf(corners));
+        const transfer = self.particle_corner_transfer orelse return error.ParticlePipelineUnavailable;
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, true) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
+        const destination: [*]u8 = @ptrCast(mapped);
+        @memcpy(destination[0..byte_len], std.mem.asBytes(&corners));
+        c.SDL_UploadToGPUBuffer(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0 }, &.{ .buffer = self.particle_corner_buffer orelse return error.ParticlePipelineUnavailable, .offset = 0, .size = byte_len }, true);
+        self.particle_corners_uploaded = true;
+    }
+
+    fn uploadParticleInstances(self: *Presenter, device: *c.SDL_GPUDevice, copy_pass: *c.SDL_GPUCopyPass, instances: []const up.GpuParticleInstance) !void {
+        const byte_len = std.math.cast(u32, instances.len * @sizeOf(ParticleInstance)) orelse return error.ParticleBatchTooLarge;
+        try self.ensureParticleInstanceCapacity(device, byte_len);
+        const transfer = self.particle_instance_transfer orelse return error.ParticlePipelineUnavailable;
+        const mapped = c.SDL_MapGPUTransferBuffer(device, transfer, true) orelse return sdlFail("SDL_MapGPUTransferBuffer");
+        defer c.SDL_UnmapGPUTransferBuffer(device, transfer);
+        const destination: [*]ParticleInstance = @ptrCast(@alignCast(mapped));
+        const width: f32 = @floatFromInt(self.width);
+        const height: f32 = @floatFromInt(self.height);
+        for (instances, 0..) |instance, index| {
+            destination[index] = .{
+                .x = instance.x * 2 / width - 1,
+                .y = 1 - instance.y * 2 / height,
+                .extent_x = instance.size / width,
+                .extent_y = instance.size / height,
+                .r = instance.r,
+                .g = instance.g,
+                .b = instance.b,
+                .a = instance.a,
+            };
+        }
+        c.SDL_UploadToGPUBuffer(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0 }, &.{ .buffer = self.particle_instance_buffer orelse return error.ParticlePipelineUnavailable, .offset = 0, .size = byte_len }, true);
+    }
+
+    fn ensureParticleInstanceCapacity(self: *Presenter, device: *c.SDL_GPUDevice, needed: u32) !void {
+        if (needed <= self.particle_instance_capacity) return;
+        var capacity: u32 = 4096;
+        while (capacity < needed) capacity = std.math.mul(u32, capacity, 2) catch return error.ParticleBatchTooLarge;
+        const buffer = c.SDL_CreateGPUBuffer(device, &.{ .usage = c.SDL_GPU_BUFFERUSAGE_VERTEX, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUBuffer");
+        errdefer c.SDL_ReleaseGPUBuffer(device, buffer);
+        const transfer = c.SDL_CreateGPUTransferBuffer(device, &.{ .usage = c.SDL_GPU_TRANSFERBUFFERUSAGE_UPLOAD, .size = capacity, .props = 0 }) orelse return sdlFail("SDL_CreateGPUTransferBuffer");
+        if (self.particle_instance_buffer) |old| c.SDL_ReleaseGPUBuffer(device, old);
+        if (self.particle_instance_transfer) |old| c.SDL_ReleaseGPUTransferBuffer(device, old);
+        self.particle_instance_buffer = buffer;
+        self.particle_instance_transfer = transfer;
+        self.particle_instance_capacity = capacity;
+    }
+
+    fn renderParticles(self: *Presenter, command: *c.SDL_GPUCommandBuffer, batches: []const up.Renderer2D.ParticleBatch) !void {
+        var target = self.renderTarget(c.SDL_GPU_LOADOP_LOAD, .{ .r = 0, .g = 0, .b = 0, .a = 0 });
+        const pass = c.SDL_BeginGPURenderPass(command, &target, 1, null) orelse return sdlFail("SDL_BeginGPURenderPass");
+        defer c.SDL_EndGPURenderPass(pass);
+        const scissor = primitiveScissor(null, self.width, self.height);
+        c.SDL_SetGPUScissor(pass, &scissor);
+        for (batches) |batch| {
+            const pipeline = switch (batch.blend) {
+                .alpha => self.particle_alpha_pipeline orelse return error.ParticlePipelineUnavailable,
+                .additive => self.particle_additive_pipeline orelse return error.ParticlePipelineUnavailable,
+            };
+            const instance_offset = std.math.cast(u32, batch.first_instance * @sizeOf(ParticleInstance)) orelse return error.ParticleBatchTooLarge;
+            const bindings = [_]c.SDL_GPUBufferBinding{
+                .{ .buffer = self.particle_corner_buffer orelse return error.ParticlePipelineUnavailable, .offset = 0 },
+                .{ .buffer = self.particle_instance_buffer orelse return error.ParticlePipelineUnavailable, .offset = instance_offset },
+            };
+            c.SDL_BindGPUGraphicsPipeline(pass, pipeline);
+            c.SDL_BindGPUVertexBuffers(pass, 0, &bindings, bindings.len);
+            c.SDL_DrawGPUPrimitives(pass, 6, @intCast(batch.instance_count), 0, 0);
+        }
     }
 
     fn renderCommandOperations(self: *Presenter, command: *c.SDL_GPUCommandBuffer) !void {
@@ -3375,6 +3465,88 @@ fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SD
             .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
         },
         .num_samplers = if (stage == .fragment) 1 else 0,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 0,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUShader");
+}
+
+fn createParticlePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {
+    const vertex_shader = try createParticleShader(device, .vertex);
+    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
+    const fragment_shader = try createParticleShader(device, .fragment);
+    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const destination_factor: c.SDL_GPUBlendFactor = switch (blend) {
+        .alpha => c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+        .additive => c.SDL_GPU_BLENDFACTOR_ONE,
+    };
+    const target = c.SDL_GPUColorTargetDescription{
+        .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = .{
+            .src_color_blendfactor = c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = destination_factor,
+            .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = destination_factor,
+            .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .color_write_mask = 0xF,
+            .enable_blend = true,
+            .enable_color_write_mask = true,
+            .padding1 = 0,
+            .padding2 = 0,
+        },
+    };
+    const vertex_buffers = [_]c.SDL_GPUVertexBufferDescription{
+        .{ .slot = 0, .pitch = @sizeOf(Presenter.ParticleCorner), .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX, .instance_step_rate = 0 },
+        .{ .slot = 1, .pitch = @sizeOf(Presenter.ParticleInstance), .input_rate = c.SDL_GPU_VERTEXINPUTRATE_INSTANCE, .instance_step_rate = 0 },
+    };
+    const vertex_attributes = [_]c.SDL_GPUVertexAttribute{
+        .{ .location = 0, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(Presenter.ParticleCorner, "x") },
+        .{ .location = 1, .buffer_slot = 1, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(Presenter.ParticleInstance, "x") },
+        .{ .location = 2, .buffer_slot = 1, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(Presenter.ParticleInstance, "extent_x") },
+        .{ .location = 3, .buffer_slot = 1, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = @offsetOf(Presenter.ParticleInstance, "r") },
+    };
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{
+        .vertex_shader = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffers, .num_vertex_buffers = vertex_buffers.len, .vertex_attributes = &vertex_attributes, .num_vertex_attributes = vertex_attributes.len },
+        .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 },
+        .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+}
+
+fn createParticleShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
+    const shader_format = try selectGpuShaderFormat(device);
+    if (shader_format == .dxbc) return createD3dShader(device, stage, switch (stage) {
+        .vertex => particles_vert_hlsl,
+        .fragment => particles_frag_hlsl,
+    }, 0, 0);
+    const source: []const u8 = if (shader_format == .msl)
+        switch (stage) {
+            .vertex => particles_vert_msl,
+            .fragment => particles_frag_msl,
+        }
+    else switch (stage) {
+        .vertex => particles_vert_spirv,
+        .fragment => particles_frag_spirv,
+    };
+    const format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV;
+    const entrypoint: [*:0]const u8 = if (shader_format == .msl) "main0" else "main";
+    return c.SDL_CreateGPUShader(device, &.{
+        .code_size = source.len,
+        .code = source.ptr,
+        .entrypoint = entrypoint,
+        .format = format,
+        .stage = switch (stage) {
+            .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+            .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+        },
+        .num_samplers = 0,
         .num_storage_textures = 0,
         .num_storage_buffers = 0,
         .num_uniform_buffers = 0,
