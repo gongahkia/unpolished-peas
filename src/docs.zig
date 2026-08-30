@@ -144,7 +144,7 @@ test "quickstart rejects the stale unpublished consumer sequence" {
     const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
     defer std.testing.allocator.free(quickstart);
     const claims = [_][]const u8{
-        "v0.0.4 does not exist as a repository tag",
+        "`v0.0.4` does not exist as a repository tag",
         "export ZIG_GLOBAL_CACHE_DIR=\"$(mktemp -d)\"",
         "export ZIG_LOCAL_CACHE_DIR=\"$(mktemp -d)\"",
         "zig build test -Dwith_sdl=false",
