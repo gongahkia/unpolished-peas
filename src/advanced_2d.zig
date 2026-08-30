@@ -91,6 +91,7 @@ pub const PostEffect = union(enum) {
 pub const PostProcessChain = struct {
     allocator: std.mem.Allocator,
     effects: []PostEffect,
+    scratch: []Color = &.{},
 
     pub fn init(allocator: std.mem.Allocator, effects: []const PostEffect) !PostProcessChain {
         for (effects) |effect| try validateEffect(effect);
@@ -98,12 +99,28 @@ pub const PostProcessChain = struct {
     }
 
     pub fn deinit(self: *PostProcessChain) void {
+        if (self.scratch.len != 0) self.allocator.free(self.scratch);
         self.allocator.free(self.effects);
         self.* = undefined;
     }
 
-    pub fn apply(self: *const PostProcessChain, canvas: *Canvas) !void {
-        for (self.effects) |effect| try applyEffect(canvas, effect);
+    pub fn apply(self: *PostProcessChain, canvas: *Canvas) !void {
+        for (self.effects) |effect| {
+            try validateEffect(effect);
+            switch (effect) {
+                .blur => |radius| try self.applyBlur(canvas, radius),
+                else => try applyEffect(canvas, effect),
+            }
+        }
+    }
+
+    fn applyBlur(self: *PostProcessChain, canvas: *Canvas, radius: u8) !void {
+        if (self.scratch.len != canvas.pixels.len) {
+            if (self.scratch.len != 0) self.allocator.free(self.scratch);
+            self.scratch = try self.allocator.alloc(Color, canvas.pixels.len);
+        }
+        @memcpy(self.scratch, canvas.pixels);
+        blur(canvas, self.scratch, radius);
     }
 };
 
@@ -153,7 +170,10 @@ pub const ParticleSystem = struct {
 
     pub fn init(allocator: std.mem.Allocator, config: ParticleEmitterConfig) !ParticleSystem {
         try validateEmitterConfig(config);
-        return .{ .allocator = allocator, .config = config, .random_state = if (config.seed == 0) 1 else config.seed };
+        var system = ParticleSystem{ .allocator = allocator, .config = config, .random_state = if (config.seed == 0) 1 else config.seed };
+        errdefer system.particles.deinit(allocator);
+        try system.particles.ensureTotalCapacity(allocator, config.max_particles);
+        return system;
     }
 
     pub fn deinit(self: *ParticleSystem) void {
@@ -279,7 +299,7 @@ fn applyEffect(canvas: *Canvas, effect: PostEffect) !void {
             for (canvas.pixels) |*pixel| pixel.* = grayscale(pixel.*);
         },
         .pixelate => |size| pixelate(canvas, size),
-        .blur => |radius| try blur(canvas, radius),
+        .blur => return error.PostProcessScratchUnavailable,
         .crt => |options| crt(canvas, options),
     }
 }
@@ -301,10 +321,7 @@ fn pixelate(canvas: *Canvas, size: u32) void {
     }
 }
 
-fn blur(canvas: *Canvas, radius: u8) !void {
-    const scratch = try canvas.allocator.alloc(Color, canvas.pixels.len);
-    defer canvas.allocator.free(scratch);
-    @memcpy(scratch, canvas.pixels);
+fn blur(canvas: *Canvas, scratch: []const Color, radius: u8) void {
     const r: i32 = radius;
     var y: i32 = 0;
     while (y < @as(i32, @intCast(canvas.height))) : (y += 1) {
@@ -383,6 +400,18 @@ test "post process chain has deterministic CPU reference output" {
     try std.testing.expect(canvas.pixels[0].r > canvas.pixels[0].g);
     try std.testing.expectEqual(canvas.pixels[0].g, canvas.pixels[0].b);
     try std.testing.expectError(error.InvalidBlurRadius, PostProcessChain.init(std.testing.allocator, &.{.{ .blur = 0 }}));
+}
+
+test "post process blur reuses its frame scratch allocation" {
+    var canvas = try Canvas.init(std.testing.allocator, 4, 4);
+    defer canvas.deinit();
+    canvas.clear(Color.white);
+    var chain = try PostProcessChain.init(std.testing.allocator, &.{.{ .blur = 1 }});
+    defer chain.deinit();
+    try chain.apply(&canvas);
+    const first = chain.scratch.ptr;
+    try chain.apply(&canvas);
+    try std.testing.expect(first == chain.scratch.ptr);
 }
 
 test "particle simulation is deterministic and produces portable instances" {

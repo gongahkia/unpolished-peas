@@ -4,6 +4,7 @@
 - [Game protocol](guides/game-protocol.md)
 - [v0.1 core contract](guides/core-contract.md)
 - [Stable 2D render contract](guides/rendering.md)
+- [Advanced 2D](guides/advanced-2d.md)
 - [Stable image assets](guides/image-assets.md)
 - [Stable audio assets](guides/audio-assets.md)
 - [Testing](guides/testing.md)

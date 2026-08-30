@@ -1,6 +1,6 @@
 # Stable 2D render contract
 
-The v0.1 renderer is ordered logical-pixel 2D only: clear, filled rectangles, sprites, built-in text, camera-owned transforms, clip state, and alpha/additive blending. It excludes shaders, effects, depth, and every 3D capability.
+The v0.1 renderer is ordered logical-pixel 2D: clear, filled rectangles, sprites, built-in text, camera-owned transforms, clip state, alpha/additive blending, and the CPU-reference effects described in [Advanced 2D](advanced-2d.md). It excludes depth, meshes, public GPU handles, compute, and every 3D capability.
 
 Commands execute in submission order. `clear` replaces the logical canvas. Rectangle bounds are half-open (`x...x+w`, `y...y+h`); non-positive rectangle dimensions are no-ops. Sprite and text draws use the same ordering and active clip/blend state as rectangles.
 
@@ -17,3 +17,5 @@ The browser uploads this fixture once as a nearest-sampled internal glyph atlas.
 The backend-neutral fixture is [`stable-core-v1.json`](../../src/fixtures/renderer/stable-core-v1.json). It covers opaque and alpha sprites, plain/multiline/clipped/fallback built-in text, opaque rectangles, source-over and additive blend, nested clips, and a scaled camera transform. Native SDL GPU/OpenGL conformance expands that fixture to deterministic reference pixels. Forced browser WebGL 2/WebGPU runs consume the exact JSON and compare captures with a deterministic CPU reference. The permitted absolute RGBA per-channel delta is one.
 
 Run `zig build test-renderer-conformance`, `zig build test-renderer-cross-backend`, `zig build test-browser-renderer-parity`, and `zig build test-renderer-three-backend`. The three-backend check compares the logical 64×32 capture before presentation chrome, using the same absolute per-channel tolerance of one; a mismatch retains the fixture, desktop raw pixels and OS/architecture/SDL-runtime/driver/shader metadata, browser PNGs, browser command traces, diagnostics, and browser user-agent/platform metadata under `zig-out/diagnostics/renderer-three-backend/`.
+
+The generic browser runtime now creates the same `Canvas` passed to a callback game and uploads its RGBA result through the browser host. Canvas effects and particle reference draws therefore share desktop/browser semantics. Existing specialised proof-game Wasm runtimes continue to use their direct command ABI.
