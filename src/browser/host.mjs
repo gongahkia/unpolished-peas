@@ -660,7 +660,10 @@ export function createBrowserHost({
     const name = wasmText(namePointer, nameLength);
     const pixels = wasmBytes(pixelsPointer, pixelsLength);
     if (!validMaterialBindingName(name) || pendingMaterial.bindings.some((binding) => binding.name === name) || (name === "source" && pendingMaterial.kind !== 0) || !pixels || !validDimensions(width, height) || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
-    if (webgpu) return webgpu.materialBindTexture(name, width, height, pixels.slice()) ? Status.ok : Status.rejected;
+    if (webgpu) {
+      pendingMaterial.bindings.push({name, kind: "texture", pixels: pixels.slice(), width, height, key: `${pixelsPointer}:${width}:${height}`});
+      return Status.ok;
+    }
     if (!gl || contextLost) return Status.unavailable;
     const texture = ensureMaterialTexture(pixelsPointer, width, height, pixels);
     if (!texture) return Status.rejected;
@@ -673,7 +676,10 @@ export function createBrowserHost({
     const name = wasmText(namePointer, nameLength);
     const bytes = wasmBytes(source, byteLength);
     if (!validMaterialBindingName(name) || name === "source" || !bytes || bytes.byteLength === 0 || bytes.byteLength % 16 !== 0) return Status.invalidArgument;
-    if (webgpu) return webgpu.materialBindUniform(name, bytes.slice()) ? Status.ok : Status.rejected;
+    if (webgpu) {
+      pendingMaterial.bindings.push({name, kind: "uniform", bytes: bytes.slice()});
+      return Status.ok;
+    }
     pendingMaterial.bindings.push({name, kind: "uniform", bytes: bytes.slice()});
     return Status.ok;
   }
@@ -755,7 +761,7 @@ export function createBrowserHost({
     const material = pendingMaterial;
     pendingMaterial = null;
     if (!material || ![x, y, width, height, tint].every(Number.isInteger) || width <= 0 || height <= 0) return Status.invalidArgument;
-    if (webgpu) return webgpu.materialDraw(x, y, width, height, tint) ? Status.ok : Status.rejected;
+    if (webgpu) return webgpu.materialDraw(material, x, y, width, height, tint) ? Status.ok : Status.rejected;
     if (!gl || contextLost || logicalWidth === 0 || logicalHeight === 0) return Status.unavailable;
     const spriteStatus = flushSprites();
     if (spriteStatus !== Status.ok) return spriteStatus;
