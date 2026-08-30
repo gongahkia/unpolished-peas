@@ -1,10 +1,5 @@
 const std = @import("std");
 const builtin = @import("builtin");
-const vorbis_wasm_math = if (builtin.target.cpu.arch == .wasm32) @import("vorbis_wasm_math.zig") else struct {};
-comptime {
-    _ = vorbis_wasm_math;
-}
-
 const vorbis = @cImport({
     @cDefine("STB_VORBIS_HEADER_ONLY", "1");
     @cDefine("STB_VORBIS_NO_STDIO", "1");
@@ -93,6 +88,20 @@ pub const Music = struct { // owns source bytes allocated by openWav/openOgg; mo
 
     pub fn openOgg(allocator: std.mem.Allocator, path: []const u8) !Music {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
+        errdefer allocator.free(bytes);
+        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .ogg = try parseOggInfo(allocator, bytes) } };
+    }
+
+    pub fn decodeWav(allocator: std.mem.Allocator, source: []const u8) !Music {
+        if (source.len > stable_max_input_bytes) return error.AudioTooLarge;
+        const bytes = try allocator.dupe(u8, source);
+        errdefer allocator.free(bytes);
+        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .wav = try parseWav(bytes) } };
+    }
+
+    pub fn decodeOgg(allocator: std.mem.Allocator, source: []const u8) !Music {
+        if (source.len > stable_max_input_bytes) return error.AudioTooLarge;
+        const bytes = try allocator.dupe(u8, source);
         errdefer allocator.free(bytes);
         return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .ogg = try parseOggInfo(allocator, bytes) } };
     }
@@ -992,6 +1001,21 @@ test "ogg music streams through mixer" {
         else => unreachable,
     };
     try std.testing.expectEqual(capacity, final_capacity);
+}
+
+test "music decodes owned Ogg bytes for freestanding hosts" {
+    const bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/tone.ogg", stable_max_input_bytes);
+    defer std.testing.allocator.free(bytes);
+    var music = try Music.decodeOgg(std.testing.allocator, bytes);
+    defer music.deinit();
+    var mixer = try AudioMixer.init(std.testing.allocator, .{ .sample_rate = music.info().sample_rate });
+    defer mixer.deinit();
+    _ = try mixer.playMusic(&music, .{});
+    var out: [256]AudioSample = undefined;
+    try mixer.mix(&out);
+    var nonzero = false;
+    for (out) |sample| if (sample.left != 0 or sample.right != 0) nonzero = true;
+    try std.testing.expect(nonzero);
 }
 
 test "ogg playback retains source data when its Music container moves" {
