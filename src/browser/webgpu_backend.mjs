@@ -16,10 +16,12 @@ function validDimensions(width, height) {
 
 const maxRectangles = 4096;
 const maxSprites = 4096;
-const maxBatches = maxRectangles + maxSprites;
+const maxParticles = 65536;
+const maxBatches = maxRectangles + maxSprites + maxParticles;
 const floatsPerVertex = 6;
 const verticesPerRectangle = 6;
 const spriteFloatsPerVertex = 8;
+const particleFloatsPerInstance = 8;
 const vertexShader = `
 struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f }
 @vertex fn main(@location(0) position: vec2f, @location(1) color: vec4f) -> Output { return Output(vec4f(position, 0.0, 1.0), color); }
@@ -31,6 +33,18 @@ struct Output { @builtin(position) position: vec4f, @location(0) uv: vec2f, @loc
 @group(0) @binding(1) var image_sampler: sampler;
 @vertex fn main(@location(0) position: vec2f, @location(1) uv: vec2f, @location(2) color: vec4f) -> Output { return Output(vec4f(position, 0.0, 1.0), uv, color); }
 @fragment fn fragment(input: Output) -> @location(0) vec4f { return textureSample(image, image_sampler, input.uv) * input.color; }
+`;
+const particleShader = `
+struct Output { @builtin(position) position: vec4f, @location(0) color: vec4f }
+@vertex fn main(
+  @location(0) corner: vec2f,
+  @location(1) center: vec2f,
+  @location(2) extent: vec2f,
+  @location(3) color: vec4f,
+) -> Output {
+  return Output(vec4f(center + corner * extent, 0.0, 1.0), color);
+}
+@fragment fn fragment(input: Output) -> @location(0) vec4f { return input.color; }
 `;
 const alphaBlend = {color: {srcFactor: "src-alpha", dstFactor: "one-minus-src-alpha", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}};
 const additiveBlend = {color: {srcFactor: "src-alpha", dstFactor: "one", operation: "add"}, alpha: {srcFactor: "one", dstFactor: "one-minus-src-alpha", operation: "add"}};
@@ -83,11 +97,28 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     fragment: {module: spriteModule, targets: [{format, blend}]},
     primitive: {topology: "triangle-list"},
   }));
+  const particleModule = device.createShaderModule({code: particleShader});
+  const particlePipelines = [alphaBlend, additiveBlend].map((blend) => device.createRenderPipeline({
+    layout: "auto",
+    vertex: {module: particleModule, buffers: [
+      {arrayStride: 8, attributes: [{shaderLocation: 0, offset: 0, format: "float32x2"}]},
+      {arrayStride: particleFloatsPerInstance * 4, stepMode: "instance", attributes: [
+        {shaderLocation: 1, offset: 0, format: "float32x2"},
+        {shaderLocation: 2, offset: 8, format: "float32x2"},
+        {shaderLocation: 3, offset: 16, format: "float32x4"},
+      ]},
+    ]},
+    fragment: {module: particleModule, targets: [{format, blend}]},
+    primitive: {topology: "triangle-list"},
+  }));
   const usage = globalThis.GPUBufferUsage?.VERTEX | globalThis.GPUBufferUsage?.COPY_DST || 0x28;
   const vertexBuffer = device.createBuffer({size: maxRectangles * verticesPerRectangle * floatsPerVertex * 4, usage});
   const spriteBuffer = device.createBuffer({size: maxSprites * verticesPerRectangle * spriteFloatsPerVertex * 4, usage});
+  const particleBaseBuffer = device.createBuffer({size: verticesPerRectangle * 2 * 4, usage});
+  const particleBuffer = device.createBuffer({size: maxParticles * particleFloatsPerInstance * 4, usage});
+  device.queue.writeBuffer(particleBaseBuffer, 0, new Float32Array([-.5, -.5, .5, -.5, .5, .5, -.5, -.5, .5, .5, -.5, .5]));
   const batches = Array.from({length: maxBatches}, () => ({kind: "", offset: 0, count: 0, texture: null, blend: 0}));
-  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], blend: 0, blends: [], camera: null, vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, batchCount: 0, textures: new Map()};
+  const state = {adapterStatus: "ready", deviceStatus: "ready", destroyed: false, width: 0, height: 0, clear: colorFromPacked(0xff000000), clip: null, clips: [], blend: 0, blends: [], camera: null, vertices: new Float32Array(maxRectangles * verticesPerRectangle * floatsPerVertex), vertexCount: 0, spriteVertices: new Float32Array(maxSprites * verticesPerRectangle * spriteFloatsPerVertex), spriteVertexCount: 0, particleInstances: new Float32Array(maxParticles * particleFloatsPerInstance), particleCount: 0, batchCount: 0, textures: new Map()};
   const reportLoss = (info) => {
     if (state.destroyed) return;
     state.deviceStatus = "lost";
@@ -115,6 +146,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     state.clear = colorFromPacked(color);
     state.vertexCount = 0;
     state.spriteVertexCount = 0;
+    state.particleCount = 0;
     state.batchCount = 0;
     return true;
   }
@@ -232,6 +264,40 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     return true;
   }
 
+  function drawParticles(instances, particleBlend) {
+    if (state.destroyed || state.deviceStatus !== "ready" || !(instances instanceof Float32Array) || !Number.isInteger(particleBlend) || particleBlend < 0 || particleBlend > 1 || instances.length % 7 !== 0) return false;
+    const count = instances.length / 7;
+    if (count === 0) return true;
+    if (count > maxParticles - state.particleCount) return false;
+    const previousBlend = state.blend;
+    state.blend = particleBlend;
+    const batch = appendBatch("particle", state.particleCount);
+    state.blend = previousBlend;
+    if (!batch) return false;
+    let source = 0;
+    let destination = state.particleCount * particleFloatsPerInstance;
+    for (let index = 0; index < count; index += 1) {
+      const x = instances[source];
+      const y = instances[source + 1];
+      const size = instances[source + 2];
+      if (![x, y, size, instances[source + 3], instances[source + 4], instances[source + 5], instances[source + 6]].every(Number.isFinite) || size <= 0) return false;
+      const point = position(x, y);
+      state.particleInstances[destination] = point[0];
+      state.particleInstances[destination + 1] = point[1];
+      state.particleInstances[destination + 2] = size / state.width;
+      state.particleInstances[destination + 3] = size / state.height;
+      state.particleInstances[destination + 4] = instances[source + 3];
+      state.particleInstances[destination + 5] = instances[source + 4];
+      state.particleInstances[destination + 6] = instances[source + 5];
+      state.particleInstances[destination + 7] = instances[source + 6];
+      source += 7;
+      destination += particleFloatsPerInstance;
+    }
+    state.particleCount += count;
+    batch.count += count;
+    return true;
+  }
+
   function pushClip(x, y, width, height) {
     if (state.destroyed || ![x, y, width, height].every(Number.isInteger) || width < 0 || height < 0) return false;
     state.clips.push(state.clip);
@@ -284,23 +350,30 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       const pass = encoder.beginRenderPass({colorAttachments: [{view: context.getCurrentTexture().createView(), clearValue: state.clear, loadOp: "clear", storeOp: "store"}]});
       if (state.vertexCount > 0) device.queue.writeBuffer(vertexBuffer, 0, state.vertices.buffer, 0, state.vertexCount * floatsPerVertex * 4);
       if (state.spriteVertexCount > 0) device.queue.writeBuffer(spriteBuffer, 0, state.spriteVertices.buffer, 0, state.spriteVertexCount * spriteFloatsPerVertex * 4);
+      if (state.particleCount > 0) device.queue.writeBuffer(particleBuffer, 0, state.particleInstances.buffer, 0, state.particleCount * particleFloatsPerInstance * 4);
       for (let index = 0; index < state.batchCount; index += 1) {
         const batch = batches[index];
         applyClip(pass, batch.clip);
         if (batch.kind === "primitive") {
           pass.setPipeline(pipelines[batch.blend]);
           pass.setVertexBuffer(0, vertexBuffer, batch.offset * floatsPerVertex * 4);
-        } else {
+        } else if (batch.kind === "sprite") {
           pass.setPipeline(spritePipelines[batch.blend]);
           pass.setBindGroup(0, batch.texture.bindGroup);
           pass.setVertexBuffer(0, spriteBuffer, batch.offset * spriteFloatsPerVertex * 4);
+        } else {
+          pass.setPipeline(particlePipelines[batch.blend]);
+          pass.setVertexBuffer(0, particleBaseBuffer);
+          pass.setVertexBuffer(1, particleBuffer, batch.offset * particleFloatsPerInstance * 4);
         }
-        pass.draw(batch.count);
+        if (batch.kind === "particle") pass.draw(verticesPerRectangle, batch.count);
+        else pass.draw(batch.count);
       }
       pass.end();
       device.queue.submit([encoder.finish()]);
       state.vertexCount = 0;
       state.spriteVertexCount = 0;
+      state.particleCount = 0;
       state.batchCount = 0;
       return true;
     } catch {
@@ -315,6 +388,8 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     context.unconfigure?.();
     vertexBuffer.destroy?.();
     spriteBuffer.destroy?.();
+    particleBaseBuffer.destroy?.();
+    particleBuffer.destroy?.();
     for (const texture of state.textures.values()) texture.texture.destroy?.();
     state.textures.clear();
     device.destroy?.();
@@ -331,6 +406,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     uploadTexture,
     destroyTexture,
     drawSprite,
+    drawParticles,
     pushClip,
     popClip,
     pushBlend,
