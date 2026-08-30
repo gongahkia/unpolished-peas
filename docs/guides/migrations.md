@@ -10,7 +10,7 @@ v0.1 removes the engine-owned extension manifest, resolver, lock, test matrix, a
 
 ## Particle emitters
 
-v0.1 includes `graphics.ParticleSystem` for deterministic CPU simulation and reference `Canvas` drawing. It is appropriate for bounded 2D effects whose spawn, lifetime, velocity, gravity, size, and colour interpolation belong in the game configuration. It is not an ECS, scene, collision, or GPU-compute system; preserve game-owned simulation that needs those concerns. `particleInstances` is an API boundary for a future instanced presenter, not a promise of GPU acceleration in this release.
+v0.1 includes `graphics.ParticleSystem` for deterministic CPU simulation and reference `Canvas` drawing. It is appropriate for bounded 2D effects whose spawn, lifetime, velocity, gravity, size, and colour interpolation belong in the game configuration. It is not an ECS, scene, collision, or GPU-compute system; preserve game-owned simulation that needs those concerns. Call `submit` with `GameContext.requireRenderer2D()` to render quads through the SDL GPU or browser instanced presenter. The OpenGL preview presenter rejects advanced queues; use `draw` when deterministic Canvas output is the required fallback.
 
 ## ECS removed
 

@@ -1014,7 +1014,9 @@ test "music decodes owned Ogg bytes for freestanding hosts" {
     var out: [256]AudioSample = undefined;
     try mixer.mix(&out);
     var nonzero = false;
-    for (out) |sample| if (sample.left != 0 or sample.right != 0) nonzero = true;
+    for (out) |sample| {
+        if (sample.left != 0 or sample.right != 0) nonzero = true;
+    }
     try std.testing.expect(nonzero);
 }
 

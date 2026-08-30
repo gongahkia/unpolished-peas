@@ -107,13 +107,73 @@ fn submitCanvas() i32 {
 
 fn submitRenderer() i32 {
     if (!renderer_ready) return @intFromEnum(contract.Status.unavailable);
-    if (renderer.material_sprites.items.len != 0 or renderer.post_passes.items.len != 0) return @intFromEnum(contract.Status.unavailable);
+    for (renderer.material_sprites.items) |draw| {
+        const status = submitMaterialSprite(draw);
+        if (status != @intFromEnum(contract.Status.ok)) return status;
+    }
     for (renderer.particle_batches.items) |batch| {
         const instances = renderer.particle_instances.items[batch.first_instance..][0..batch.instance_count];
         const status = contract.drawParticles(@intCast(@intFromPtr(instances.ptr)), @intCast(instances.len), @intFromEnum(batch.blend));
         if (status != @intFromEnum(contract.Status.ok)) return status;
     }
+    for (renderer.post_passes.items) |pass| {
+        const status = submitPostPass(pass);
+        if (status != @intFromEnum(contract.Status.ok)) return status;
+    }
     return contract.present(0);
+}
+
+fn submitMaterialSprite(draw: up.graphics.Renderer2D.MaterialSprite) i32 {
+    const status = beginMaterial(draw.material, 0);
+    if (status != @intFromEnum(contract.Status.ok)) return status;
+    const source_status = bindMaterialImage("source", draw.image);
+    if (source_status != @intFromEnum(contract.Status.ok)) return source_status;
+    const bindings_status = bindMaterialValues(draw.bindings, draw.uniforms);
+    if (bindings_status != @intFromEnum(contract.Status.ok)) return bindings_status;
+    return contract.materialDraw(draw.x, draw.y, draw.width, draw.height, packedColor(draw.tint));
+}
+
+fn submitPostPass(pass: up.graphics.Renderer2D.PostPass) i32 {
+    const status = beginMaterial(pass.material, 1);
+    if (status != @intFromEnum(contract.Status.ok)) return status;
+    const bindings_status = bindMaterialValues(pass.bindings, pass.uniforms);
+    if (bindings_status != @intFromEnum(contract.Status.ok)) return bindings_status;
+    return contract.materialDraw(0, 0, @intCast(game_canvas.width), @intCast(game_canvas.height), packedColor(up.core.Color.white));
+}
+
+fn beginMaterial(material: *const up.graphics.Material, kind: u32) i32 {
+    const stages = material.executableStages() catch return @intFromEnum(contract.Status.unavailable);
+    const material_id = std.math.cast(u32, @intFromPtr(material)) orelse return @intFromEnum(contract.Status.rejected);
+    return contract.materialBegin(material_id, material.revision, kind, pointer(stages.vertex.webgl2_glsl_es), length(stages.vertex.webgl2_glsl_es), pointer(stages.fragment.webgl2_glsl_es), length(stages.fragment.webgl2_glsl_es), pointer(stages.vertex.webgpu_wgsl), length(stages.vertex.webgpu_wgsl), pointer(stages.fragment.webgpu_wgsl), length(stages.fragment.webgpu_wgsl));
+}
+
+fn bindMaterialValues(bindings: []const up.graphics.MaterialBinding, legacy_settings: []const u8) i32 {
+    for (bindings) |binding| {
+        const status = switch (binding.value) {
+            .texture => |texture| bindMaterialImage(binding.name, texture.image),
+            .uniform => |bytes| contract.materialBindUniform(pointer(binding.name), length(binding.name), pointer(bytes), length(bytes)),
+        };
+        if (status != @intFromEnum(contract.Status.ok)) return status;
+    }
+    if (legacy_settings.len != 0) return contract.materialBindUniform(pointer("settings"), "settings".len, pointer(legacy_settings), length(legacy_settings));
+    return @intFromEnum(contract.Status.ok);
+}
+
+fn bindMaterialImage(name: []const u8, image: *const up.assets.Image) i32 {
+    const pixels = std.mem.sliceAsBytes(image.pixels);
+    return contract.materialBindTexture(pointer(name), length(name), image.width, image.height, pointer(pixels), length(pixels));
+}
+
+fn pointer(bytes: []const u8) u32 {
+    return @intCast(@intFromPtr(bytes.ptr));
+}
+
+fn length(bytes: []const u8) u32 {
+    return std.math.cast(u32, bytes.len) orelse 0;
+}
+
+fn packedColor(color: up.core.Color) u32 {
+    return @as(u32, color.r) | (@as(u32, color.g) << 8) | (@as(u32, color.b) << 16) | (@as(u32, color.a) << 24);
 }
 
 pub export fn up_browser_set_paused(value: u32) i32 {
