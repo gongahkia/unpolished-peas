@@ -4,6 +4,7 @@ const Sound = @import("audio.zig").Sound;
 const Font = @import("font_asset.zig").Font;
 const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
+const advanced = @import("advanced_2d.zig");
 
 pub const AssetFile = struct { // owns path and bytes allocated by load; call deinit once.
     allocator: std.mem.Allocator,
@@ -55,12 +56,14 @@ pub const TextHandle = struct { index: usize, generation: u32 }; // borrows an A
 pub const ImageHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryImage for stale-handle errors.
 pub const AudioHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use trySound for stale-handle errors.
 pub const FontHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryFont for stale-handle errors.
+pub const MaterialHandle = struct { index: usize, generation: u32 }; // borrows an AssetStore entry; use tryMaterial for stale-handle errors.
 
 pub const AssetStats = struct {
     texts: usize,
     images: usize,
     sounds: usize,
     fonts: usize,
+    materials: usize,
     reload_events: usize,
 };
 
@@ -135,6 +138,44 @@ const FontAsset = struct {
     }
 };
 
+const MaterialFileSlot = enum(usize) {
+    vertex_spirv,
+    vertex_dxbc,
+    vertex_metallib,
+    vertex_webgl2,
+    vertex_webgpu,
+    fragment_spirv,
+    fragment_dxbc,
+    fragment_metallib,
+    fragment_webgl2,
+    fragment_webgpu,
+};
+
+const MaterialFileAsset = struct {
+    manifest: AssetFile,
+    files: [@typeInfo(MaterialFileSlot).@"enum".fields.len]AssetFile,
+    bindings: []advanced.ShaderBinding,
+    asset: advanced.MaterialAsset,
+    generation: u32 = 1,
+
+    fn deinit(self: *MaterialFileAsset) void {
+        for (&self.files) |*file| file.deinit();
+        self.allocator().free(self.bindings);
+        self.manifest.deinit();
+        self.* = undefined;
+    }
+
+    fn allocator(self: *const MaterialFileAsset) std.mem.Allocator {
+        return self.manifest.allocator;
+    }
+
+    fn changed(self: *const MaterialFileAsset) !bool {
+        if ((try self.manifest.dir.statFile(self.manifest.path)).mtime != self.manifest.mtime) return true;
+        for (self.files) |file| if ((try file.dir.statFile(file.path)).mtime != file.mtime) return true;
+        return false;
+    }
+};
+
 fn nextGeneration(generation: u32) u32 {
     const next = generation +% 1;
     return if (next == 0) 1 else next;
@@ -149,6 +190,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     sounds: std.ArrayListUnmanaged(SoundAsset) = .{},
     fonts: std.ArrayListUnmanaged(FontAsset) = .{},
+    materials: std.ArrayListUnmanaged(MaterialFileAsset) = .{},
     events: std.ArrayListUnmanaged(ReloadEvent) = .{},
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
@@ -161,6 +203,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             .images = self.images.items.len,
             .sounds = self.sounds.items.len,
             .fonts = self.fonts.items.len,
+            .materials = self.materials.items.len,
             .reload_events = self.events.items.len,
         };
     }
@@ -204,10 +247,12 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         for (self.images.items) |*asset| asset.deinit();
         for (self.sounds.items) |*asset| asset.deinit();
         for (self.fonts.items) |*asset| asset.deinit();
+        for (self.materials.items) |*asset| asset.deinit();
         self.texts.deinit(self.allocator);
         self.images.deinit(self.allocator);
         self.sounds.deinit(self.allocator);
         self.fonts.deinit(self.allocator);
+        self.materials.deinit(self.allocator);
         self.events.deinit(self.allocator);
         if (self.root_path) |path| self.allocator.free(path);
         if (self.owned_dir) |*dir| dir.close();
@@ -271,6 +316,19 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         return .{ .index = index, .generation = 1 };
     }
 
+    /// Loads a generated `.upmat` manifest and all ten target-specific stage
+    /// artifacts. The material remains valid until this store is deinitialized.
+    pub fn loadMaterial(self: *AssetStore, path: []const u8) !MaterialHandle {
+        const asset = try self.loadMaterialAsset(path);
+        errdefer {
+            var cleanup = asset;
+            cleanup.deinit();
+        }
+        const index = self.materials.items.len;
+        try self.materials.append(self.allocator, asset);
+        return .{ .index = index, .generation = 1 };
+    }
+
     pub fn tryText(self: AssetStore, handle: TextHandle) ![]const u8 {
         if (handle.index >= self.texts.items.len or self.texts.items[handle.index].generation != handle.generation) return error.StaleHandle;
         return self.texts.items[handle.index].file.text();
@@ -319,6 +377,16 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     pub fn latestFontPtr(self: *AssetStore, handle: FontHandle) !*const Font { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
         if (handle.index >= self.fonts.items.len) return error.InvalidHandle;
         return &self.fonts.items[handle.index].font;
+    }
+
+    pub fn tryMaterial(self: *AssetStore, handle: MaterialHandle) !*const advanced.Material {
+        if (handle.index >= self.materials.items.len or self.materials.items[handle.index].generation != handle.generation) return error.StaleHandle;
+        return &self.materials.items[handle.index].asset.material;
+    }
+
+    pub fn latestMaterial(self: *AssetStore, handle: MaterialHandle) !*const advanced.Material { // accepts stale generations for reload continuity; invalid indexes return error.InvalidHandle.
+        if (handle.index >= self.materials.items.len) return error.InvalidHandle;
+        return &self.materials.items[handle.index].asset.material;
     }
 
     pub fn reloadChanged(self: *AssetStore) ![]const ReloadEvent {
@@ -379,6 +447,26 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             }) {
                 try self.events.append(self.allocator, .{ .path = asset.font_file.path, .status = .changed });
             }
+        }
+
+        for (self.materials.items) |*asset| {
+            const changed = asset.changed() catch |err| {
+                try self.appendReloadFailure(asset.manifest.path, err, .io);
+                continue;
+            };
+            if (!changed) continue;
+            const next = self.loadMaterialAsset(asset.manifest.path) catch |err| {
+                try self.appendReloadFailure(asset.manifest.path, err, .source);
+                continue;
+            };
+            const generation = nextGeneration(asset.generation);
+            const revision = nextGeneration(asset.asset.revision);
+            asset.deinit();
+            asset.* = next;
+            asset.generation = generation;
+            asset.asset.revision = revision;
+            asset.asset.material.revision = revision;
+            try self.events.append(self.allocator, .{ .path = asset.manifest.path, .status = .changed });
         }
 
         return self.events.items;
@@ -480,7 +568,94 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
         }
         return .{ .kind = .bitmap, .font_file = font_file, .image_file = image_file, .font = decoded };
     }
+
+    fn loadMaterialAsset(self: *AssetStore, path: []const u8) !MaterialFileAsset {
+        var manifest = try AssetFile.load(self.allocator, self.dir, path, 256 * 1024);
+        errdefer manifest.deinit();
+        const name = try materialManifestValue(manifest.bytes, "name");
+        const binding_specs = try materialManifestBindings(self.allocator, manifest.bytes);
+        errdefer self.allocator.free(binding_specs);
+        var files: [@typeInfo(MaterialFileSlot).@"enum".fields.len]AssetFile = undefined;
+        var loaded: usize = 0;
+        errdefer for (files[0..loaded]) |*file| file.deinit();
+        inline for (std.meta.fields(MaterialFileSlot)) |field| {
+            const slot: MaterialFileSlot = @enumFromInt(field.value);
+            const key = materialManifestKey(slot);
+            const source = try materialManifestValue(manifest.bytes, key);
+            const resolved = try atlas_mod.resolveSiblingPath(self.allocator, path, source);
+            defer self.allocator.free(resolved);
+            files[@intFromEnum(slot)] = try AssetFile.load(self.allocator, self.dir, resolved, advanced.max_native_shader_bytes);
+            loaded += 1;
+        }
+        const stages = advanced.MaterialStages{
+            .vertex = .{
+                .native = .{ .spirv = files[@intFromEnum(MaterialFileSlot.vertex_spirv)].bytes, .dxbc = files[@intFromEnum(MaterialFileSlot.vertex_dxbc)].bytes, .metallib = files[@intFromEnum(MaterialFileSlot.vertex_metallib)].bytes },
+                .webgl2_glsl_es = files[@intFromEnum(MaterialFileSlot.vertex_webgl2)].bytes,
+                .webgpu_wgsl = files[@intFromEnum(MaterialFileSlot.vertex_webgpu)].bytes,
+            },
+            .fragment = .{
+                .native = .{ .spirv = files[@intFromEnum(MaterialFileSlot.fragment_spirv)].bytes, .dxbc = files[@intFromEnum(MaterialFileSlot.fragment_dxbc)].bytes, .metallib = files[@intFromEnum(MaterialFileSlot.fragment_metallib)].bytes },
+                .webgl2_glsl_es = files[@intFromEnum(MaterialFileSlot.fragment_webgl2)].bytes,
+                .webgpu_wgsl = files[@intFromEnum(MaterialFileSlot.fragment_webgpu)].bytes,
+            },
+            .bindings = binding_specs,
+        };
+        const material = try advanced.Material.initStages(name, stages);
+        return .{ .manifest = manifest, .files = files, .bindings = binding_specs, .asset = .{ .material = material } };
+    }
 };
+
+fn materialManifestKey(slot: MaterialFileSlot) []const u8 {
+    return switch (slot) {
+        .vertex_spirv => "vertex.spirv",
+        .vertex_dxbc => "vertex.dxbc",
+        .vertex_metallib => "vertex.metallib",
+        .vertex_webgl2 => "vertex.webgl2",
+        .vertex_webgpu => "vertex.webgpu",
+        .fragment_spirv => "fragment.spirv",
+        .fragment_dxbc => "fragment.dxbc",
+        .fragment_metallib => "fragment.metallib",
+        .fragment_webgl2 => "fragment.webgl2",
+        .fragment_webgpu => "fragment.webgpu",
+    };
+}
+
+fn materialManifestValue(bytes: []const u8, key: []const u8) ![]const u8 {
+    var found: ?[]const u8 = null;
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0 or trimmed[0] == '#') continue;
+        const equals = std.mem.indexOfScalar(u8, trimmed, '=') orelse return error.InvalidMaterialManifest;
+        const current_key = std.mem.trim(u8, trimmed[0..equals], " \t");
+        if (!std.mem.eql(u8, current_key, key)) continue;
+        if (found != null) return error.DuplicateMaterialManifestKey;
+        const value = std.mem.trim(u8, trimmed[equals + 1 ..], " \t");
+        if (value.len == 0) return error.InvalidMaterialManifest;
+        found = value;
+    }
+    return found orelse error.MissingMaterialManifestKey;
+}
+
+fn materialManifestBindings(allocator: std.mem.Allocator, bytes: []const u8) ![]advanced.ShaderBinding {
+    var result: std.ArrayListUnmanaged(advanced.ShaderBinding) = .{};
+    errdefer result.deinit(allocator);
+    var lines = std.mem.splitScalar(u8, bytes, '\n');
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trim(u8, line, " \t\r");
+        if (trimmed.len == 0 or trimmed[0] == '#') continue;
+        const equals = std.mem.indexOfScalar(u8, trimmed, '=') orelse return error.InvalidMaterialManifest;
+        if (!std.mem.eql(u8, std.mem.trim(u8, trimmed[0..equals], " \t"), "binding")) continue;
+        const value = std.mem.trim(u8, trimmed[equals + 1 ..], " \t");
+        const colon = std.mem.indexOfScalar(u8, value, ':') orelse return error.InvalidMaterialBinding;
+        const kind = std.mem.trim(u8, value[0..colon], " \t");
+        const name = std.mem.trim(u8, value[colon + 1 ..], " \t");
+        const binding_kind: advanced.ShaderBindingKind = if (std.mem.eql(u8, kind, "texture")) .texture else if (std.mem.eql(u8, kind, "uniform")) .uniform else return error.InvalidMaterialBinding;
+        try result.append(allocator, .{ .name = name, .kind = binding_kind });
+    }
+    if (result.items.len == 0) return error.InvalidMaterialBindings;
+    return try result.toOwnedSlice(allocator);
+}
 
 test "asset reload detects content changes" {
     var tmp = std.testing.tmpDir(.{});
@@ -533,10 +708,33 @@ test "asset store exposes canonical loaders only" {
     try std.testing.expect(@hasDecl(AssetStore, "loadImage"));
     try std.testing.expect(@hasDecl(AssetStore, "loadFont"));
     try std.testing.expect(@hasDecl(AssetStore, "loadSound"));
+    try std.testing.expect(@hasDecl(AssetStore, "loadMaterial"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadAtlas"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadPng"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadBitmapFont"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadFontWithOptions"));
+}
+
+test "material manifests create staged assets with reserved source binding" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    const entries = [_]struct { name: []const u8, bytes: []const u8 }{
+        .{ .name = "vertex.spv", .bytes = "x" }, .{ .name = "vertex.dxbc", .bytes = "x" }, .{ .name = "vertex.metallib", .bytes = "x" }, .{ .name = "vertex.glsl", .bytes = "void main(){}" }, .{ .name = "vertex.wgsl", .bytes = "fn main() {}" },
+        .{ .name = "fragment.spv", .bytes = "x" }, .{ .name = "fragment.dxbc", .bytes = "x" }, .{ .name = "fragment.metallib", .bytes = "x" }, .{ .name = "fragment.glsl", .bytes = "void main(){}" }, .{ .name = "fragment.wgsl", .bytes = "fn main() {}" },
+    };
+    for (entries) |entry| try tmp.dir.writeFile(.{ .sub_path = entry.name, .data = entry.bytes });
+    try tmp.dir.writeFile(.{ .sub_path = "wave.upmat", .data =
+        "name=wave\n" ++
+            "vertex.spirv=vertex.spv\nvertex.dxbc=vertex.dxbc\nvertex.metallib=vertex.metallib\nvertex.webgl2=vertex.glsl\nvertex.webgpu=vertex.wgsl\n" ++
+            "fragment.spirv=fragment.spv\nfragment.dxbc=fragment.dxbc\nfragment.metallib=fragment.metallib\nfragment.webgl2=fragment.glsl\nfragment.webgpu=fragment.wgsl\n" ++
+            "binding=texture:source\nbinding=uniform:settings\n" });
+    var store = AssetStore.init(std.testing.allocator, tmp.dir);
+    defer store.deinit();
+    const handle = try store.loadMaterial("wave.upmat");
+    const material = try store.tryMaterial(handle);
+    try std.testing.expectEqualStrings("wave", material.name);
+    try std.testing.expectEqual(@as(usize, 2), (try material.executableStages()).bindings.len);
+    try std.testing.expectError(error.StaleHandle, store.tryMaterial(.{ .index = handle.index, .generation = nextGeneration(handle.generation) }));
 }
 
 test "asset store exposes checked handle accessors" {

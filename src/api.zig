@@ -153,6 +153,7 @@ pub const assets = struct {
     pub const FontLoadOptions = @import("font_asset.zig").LoadOptions;
     pub const ImageDecodeOptions = @import("image.zig").DecodeOptions;
     pub const ImageHandle = @import("assets.zig").ImageHandle;
+    pub const MaterialHandle = @import("assets.zig").MaterialHandle;
     pub const PlaybackHandle = @import("audio.zig").PlaybackHandle;
     pub const ReloadEvent = @import("assets.zig").ReloadEvent;
     pub const ReloadStatus = @import("assets.zig").ReloadStatus;
