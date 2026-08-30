@@ -636,7 +636,7 @@ export function createBrowserHost({
   }
 
   function ensureMaterialTexture(pointer, width, height, pixels) {
-    if (!gl || !validDimensions(width, height) || !(pixels instanceof Uint8Array) || pixels.byteLength !== width * height * 4) return null;
+    if (!gl || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || !(pixels instanceof Uint8Array) || pixels.byteLength !== width * height * 4) return null;
     const key = `${pointer}:${width}:${height}`;
     let texture = materialTextures.get(key);
     if (!texture) {
@@ -659,7 +659,7 @@ export function createBrowserHost({
     if (!pendingMaterial) return Status.invalidArgument;
     const name = wasmText(namePointer, nameLength);
     const pixels = wasmBytes(pixelsPointer, pixelsLength);
-    if (!validMaterialBindingName(name) || pendingMaterial.bindings.some((binding) => binding.name === name) || (name === "source" && pendingMaterial.kind !== 0) || !pixels || !validDimensions(width, height) || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
+    if (!validMaterialBindingName(name) || pendingMaterial.bindings.some((binding) => binding.name === name) || (name === "source" && pendingMaterial.kind !== 0) || !pixels || !Number.isInteger(width) || !Number.isInteger(height) || width <= 0 || height <= 0 || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
     if (webgpu) {
       pendingMaterial.bindings.push({name, kind: "texture", pixels: pixels.slice(), width, height, key: `${pixelsPointer}:${width}:${height}`});
       return Status.ok;
