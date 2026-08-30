@@ -121,6 +121,17 @@ pub fn build(b: *std.Build) void {
     browser_runtime.entry = .disabled;
     browser_runtime.rdynamic = true;
     browser_runtime.import_memory = true;
+    const browser_audio_smoke = b.addObject(.{
+        .name = "unpolished-peas-browser-audio-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("fixtures/browser-audio-smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        }),
+    });
+    const browser_audio_smoke_step = b.step("test-browser-audio-stream", "Compile the public browser PCM audio stream API");
+    browser_audio_smoke_step.dependOn(&browser_audio_smoke.step);
     const browser_topdown_game = b.createModule(.{
         .root_source_file = b.path("examples/topdown_game.zig"),
         .target = browser_target,
