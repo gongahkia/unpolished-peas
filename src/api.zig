@@ -97,12 +97,15 @@ pub const graphics = struct {
     pub const ShaderBinding = @import("advanced_2d.zig").ShaderBinding;
     pub const ShaderSourceBundle = @import("advanced_2d.zig").ShaderSourceBundle;
     pub const Material = @import("advanced_2d.zig").Material;
+    pub const MaterialStages = @import("advanced_2d.zig").MaterialStages;
     pub const MaterialDiagnostic = @import("advanced_2d.zig").MaterialDiagnostic;
+    pub const Renderer2D = @import("advanced_2d.zig").Renderer2D;
     pub const CrtOptions = @import("advanced_2d.zig").CrtOptions;
     pub const PostEffect = @import("advanced_2d.zig").PostEffect;
     pub const PostProcessChain = @import("advanced_2d.zig").PostProcessChain;
     pub const Particle = @import("advanced_2d.zig").Particle;
     pub const ParticleInstance = @import("advanced_2d.zig").ParticleInstance;
+    pub const GpuParticleInstance = @import("advanced_2d.zig").GpuParticleInstance;
     pub const ParticleEmitterConfig = @import("advanced_2d.zig").ParticleEmitterConfig;
     pub const ParticleSystem = @import("advanced_2d.zig").ParticleSystem;
 };

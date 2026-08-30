@@ -14,19 +14,21 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const core_spec = workspace.package(.core);
-    const protocol_spec = workspace.package(.protocol);
-    const transport_spec = workspace.package(.transport);
-    const topology_spec = workspace.package(.topology);
-    const state_spec = workspace.package(.state);
-    const runtime_spec = workspace.package(.runtime);
-    const c_abi_spec = workspace.package(.c_abi);
-    const optional_reference_spec = workspace.package(.optional_reference);
-    const networking_spec = workspace.package(.networking);
-    const services_spec = workspace.package(.services);
-    var workspace_modules: [workspace.packages.len]?*std.Build.Module = .{null} ** workspace.packages.len;
-    const core = b.createModule(.{
-        .root_source_file = b.path(core_spec.root_source_path),
+    if (target.result.cpu.arch != .wasm32) addStb(peas);
+    const wasm_peas = b.addModule("unpolished-peas-wasm-core", .{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = wasi_target,
+        .optimize = browser_optimize,
+    });
+    addBrowserVorbis(wasm_peas);
+    const browser_peas = b.addModule("unpolished-peas-browser-core", .{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+    });
+    addBrowserVorbis(browser_peas);
+    const frame_timing = b.createModule(.{
+        .root_source_file = b.path("src/frame_timing.zig"),
         .target = target,
         .optimize = optimize,
         .imports = workspace.moduleImports(b, .core, &workspace_modules),
@@ -1158,42 +1160,24 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = runtime_spec.module_name, .module = runtime }},
     });
-    const msquic_linux_root = b.pathJoin(&.{ msquic_provider_output, "x86_64-linux" });
-    const msquic_connection_lifecycle_executable = b.addExecutable(.{ .name = "msquic-connection-lifecycle", .root_module = msquic_connection_lifecycle });
-    msquic_connection_lifecycle_executable.addIncludePath(b.path("contracts/fixtures"));
-    msquic_connection_lifecycle_executable.addIncludePath(b.path(b.pathJoin(&.{ msquic_linux_root, "include" })));
-    msquic_connection_lifecycle_executable.addCSourceFile(.{ .file = b.path("contracts/fixtures/msquic_lifecycle_native.c"), .flags = &.{ "-std=c11", "-Wall", "-Wextra", "-Werror" } });
-    msquic_connection_lifecycle_executable.addObjectFile(b.path(b.pathJoin(&.{ msquic_linux_root, "lib", "libmsquic.so.2.5.9" })));
-    msquic_connection_lifecycle_executable.linkLibC();
-    msquic_connection_lifecycle_executable.step.dependOn(&msquic_provider.step);
-    const run_msquic_connection_lifecycle = b.addSystemCommand(&.{ "bash", "contracts/run_msquic_connection_lifecycle.sh" });
-    run_msquic_connection_lifecycle.addArtifactArg(msquic_connection_lifecycle_executable);
-    run_msquic_connection_lifecycle.addFileArg(b.path(b.pathJoin(&.{ msquic_linux_root, "lib", "libmsquic.so.2.5.9" })));
-    const msquic_connection_lifecycle_step = b.step("msquic-connection-lifecycle", "Run the pinned Linux MsQuic lifecycle integration");
-    msquic_connection_lifecycle_step.dependOn(&run_msquic_connection_lifecycle.step);
-    const openssl_provider_output = b.option([]const u8, "openssl-output", "Set the signed OpenSSL source build output directory") orelse "zig-out/openssl";
-    const resolve_openssl_provider = b.option(bool, "openssl-resolve", "Resolve the signed OpenSSL source before linking interop") orelse true;
-    const openssl_provider = b.addSystemCommand(&.{ "python3", "script/resolve_openssl_source.py", "--output", openssl_provider_output });
-    const openssl_provider_step = b.step("openssl-provider", "Build the signed pinned OpenSSL provider source");
-    openssl_provider_step.dependOn(&openssl_provider.step);
-    const openssl_tls_interop = b.createModule(.{
-        .root_source_file = b.path("contracts/openssl_tls_interop.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = protocol_spec.module_name, .module = protocol },
-            .{ .name = runtime_spec.module_name, .module = runtime },
-        },
+}
+
+fn addBrowserVorbis(mod: *std.Build.Module) void {
+    mod.addIncludePath(mod.owner.path("vendor/stb"));
+    mod.addCSourceFile(.{
+        .file = mod.owner.path("src/vendor/stb_vorbis_wasm.c"),
+        .flags = &.{ "-std=c99", "-ffreestanding", "-Wno-tautological-pointer-compare" },
     });
-    const openssl_tls_interop_executable = b.addExecutable(.{ .name = "openssl-tls-interop", .root_module = openssl_tls_interop });
-    openssl_tls_interop_executable.addIncludePath(.{ .cwd_relative = b.pathJoin(&.{ openssl_provider_output, "include" }) });
-    openssl_tls_interop_executable.addCSourceFile(.{ .file = b.path("contracts/fixtures/openssl_tls_native.c"), .flags = &.{ "-std=c11", "-Wall", "-Wextra", "-Werror" } });
-    openssl_tls_interop_executable.addObjectFile(.{ .cwd_relative = b.pathJoin(&.{ openssl_provider_output, "lib", "libssl.a" }) });
-    openssl_tls_interop_executable.addObjectFile(.{ .cwd_relative = b.pathJoin(&.{ openssl_provider_output, "lib", "libcrypto.a" }) });
-    openssl_tls_interop_executable.linkLibC();
-    if (target.result.os.tag == .linux) {
-        openssl_tls_interop_executable.linkSystemLibrary("dl");
-        openssl_tls_interop_executable.linkSystemLibrary("pthread");
+}
+
+fn addSdl3(mod: *std.Build.Module, bundled_sdl: ?*std.Build.Dependency, framework_path: ?[]const u8) void {
+    mod.link_libc = true;
+    if (framework_path) |path| mod.addSystemFrameworkPath(.{ .cwd_relative = path });
+    if (bundled_sdl) |dependency| {
+        mod.addIncludePath(dependency.path("include"));
+        mod.linkLibrary(dependency.artifact("SDL3"));
+    } else {
+        mod.linkSystemLibrary("sdl3", .{ .use_pkg_config = .force });
     }
     if (resolve_openssl_provider) openssl_tls_interop_executable.step.dependOn(&openssl_provider.step);
     const run_openssl_tls_interop = b.addSystemCommand(&.{ "bash", "contracts/run_openssl_tls_interop.sh" });

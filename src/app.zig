@@ -1,6 +1,7 @@
 const std = @import("std");
 const Canvas = @import("canvas.zig").Canvas;
 const Input = @import("input.zig").Input;
+const Renderer2D = @import("advanced_2d.zig").Renderer2D;
 
 pub const GamePhase = enum { init, update, draw };
 
@@ -12,6 +13,7 @@ pub const GameFailure = struct {
 pub const GameContext = struct {
     input: *const Input,
     canvas: ?*Canvas = null,
+    renderer: ?*Renderer2D = null,
     elapsed_seconds: f32 = 0,
     interpolation_alpha: f32 = 0,
 
@@ -23,8 +25,16 @@ pub const GameContext = struct {
         return .{ .input = input, .canvas = canvas };
     }
 
+    pub fn withRenderer(input: *const Input, canvas: *Canvas, renderer: *Renderer2D) GameContext {
+        return .{ .input = input, .canvas = canvas, .renderer = renderer };
+    }
+
     pub fn requireCanvas(self: GameContext) !*Canvas {
         return self.canvas orelse error.CanvasUnavailable;
+    }
+
+    pub fn requireRenderer2D(self: GameContext) !*Renderer2D {
+        return self.renderer orelse error.Renderer2DUnavailable;
     }
 };
 
@@ -243,4 +253,5 @@ test "runtime context exposes a canvas capability" {
     try std.testing.expect((try context.requireCanvas()) == &canvas);
     const bare = GameContext.init(&input);
     try std.testing.expectError(error.CanvasUnavailable, bare.requireCanvas());
+    try std.testing.expectError(error.Renderer2DUnavailable, bare.requireRenderer2D());
 }

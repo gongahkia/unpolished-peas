@@ -592,10 +592,12 @@ enum STBVorbisError
       #include <alloca.h>
    #endif
 #else // STB_VORBIS_NO_CRT
-   #define NULL 0
-   #define malloc(s)   0
-   #define free(s)     ((void) 0)
-   #define realloc(s)  0
+   #ifndef STB_VORBIS_CUSTOM_CRT
+      #define NULL 0
+      #define malloc(s)   0
+      #define free(s)     ((void) 0)
+      #define realloc(s)  0
+   #endif
 #endif // STB_VORBIS_NO_CRT
 
 #include <limits.h>
