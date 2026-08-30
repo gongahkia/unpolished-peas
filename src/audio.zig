@@ -1,6 +1,7 @@
 const std = @import("std");
+const builtin = @import("builtin");
 
-const vorbis = @cImport({
+const vorbis = if (builtin.target.cpu.arch == .wasm32) struct {} else @cImport({
     @cDefine("STB_VORBIS_HEADER_ONLY", "1");
     @cDefine("STB_VORBIS_NO_STDIO", "1");
     @cInclude("stb_vorbis.c");
@@ -54,6 +55,7 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
     }
 
     pub fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
+        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         defer allocator.free(bytes);
         return decodeOggSound(allocator, bytes);
@@ -65,6 +67,7 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
     }
 
     pub fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         return decodeOggSound(allocator, bytes);
     }
 
@@ -86,6 +89,7 @@ pub const Music = struct { // owns source bytes allocated by openWav/openOgg; mo
     }
 
     pub fn openOgg(allocator: std.mem.Allocator, path: []const u8) !Music {
+        if (comptime builtin.target.cpu.arch == .wasm32) return error.OggUnsupportedOnWasm;
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         errdefer allocator.free(bytes);
         return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .ogg = try parseOggInfo(bytes) } };
@@ -449,7 +453,16 @@ const WavPlayback = struct {
     pos: f64 = 0,
 };
 
-const OggPlayback = struct {
+const OggPlayback = if (builtin.target.cpu.arch == .wasm32) struct {
+    bytes: []const u8,
+    info: OggInfo,
+
+    fn init(_: std.mem.Allocator, _: []const u8, _: OggInfo) !OggPlayback {
+        return error.OggUnsupportedOnWasm;
+    }
+
+    fn deinit(_: *OggPlayback, _: std.mem.Allocator) void {}
+} else struct {
     bytes: []const u8,
     info: OggInfo,
     decoder: *vorbis.stb_vorbis,
@@ -541,7 +554,13 @@ fn mixWavMusic(playback: *WavPlayback, controls: *Playback, mixer_rate: u32, loo
     return true;
 }
 
-fn mixOggMusic(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
+const mixOggMusic = if (builtin.target.cpu.arch == .wasm32) mixOggMusicUnavailable else mixOggMusicNative;
+
+fn mixOggMusicUnavailable(_: *OggPlayback, _: *Playback, _: std.mem.Allocator, _: u32, _: bool, _: []AudioSample, _: f32) !bool {
+    return error.OggUnsupportedOnWasm;
+}
+
+fn mixOggMusicNative(playback: *OggPlayback, controls: *Playback, allocator: std.mem.Allocator, mixer_rate: u32, loop: bool, out: []AudioSample, gain: f32) !bool {
     const info = playback.info;
     const step = rateStep(info.sample_rate, mixer_rate);
     var i: usize = 0;

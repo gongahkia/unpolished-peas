@@ -7,6 +7,7 @@ const source_documents = [_][]const u8{
     "guides/game-protocol.md",
     "guides/core-contract.md",
     "guides/rendering.md",
+    "guides/advanced-2d.md",
     "guides/image-assets.md",
     "guides/audio-assets.md",
     "guides/input.md",
