@@ -335,6 +335,7 @@ pub const ParticleSystem = struct {
     }
 
     pub fn submit(self: *const ParticleSystem, renderer: *Renderer2D) !void {
+        if (self.particles.items.len == 0) return;
         const first_instance = renderer.particle_instances.items.len;
         try renderer.particle_instances.ensureUnusedCapacity(renderer.allocator, self.particles.items.len);
         for (self.particles.items) |particle| {
@@ -588,8 +589,29 @@ test "renderer queue retains GPU particle instance storage" {
     _ = try particles.emit(2);
     try particles.submit(&renderer);
     try std.testing.expectEqual(@as(usize, 2), renderer.particle_instances.items.len);
+    try std.testing.expectEqual(@as(usize, 1), renderer.particle_batches.items.len);
+    try std.testing.expectEqual(BlendMode.alpha, renderer.particle_batches.items[0].blend);
     const capacity = renderer.particle_instances.capacity;
     renderer.beginFrame();
     try particles.submit(&renderer);
     try std.testing.expectEqual(capacity, renderer.particle_instances.capacity);
+}
+
+test "renderer queue retains blend-separated particle batches" {
+    var renderer = Renderer2D.init(std.testing.allocator);
+    defer renderer.deinit();
+    try renderer.appendParticle(.{ .x = 1, .y = 2, .size = 3, .r = 1, .g = 0, .b = 0, .a = 1 });
+    try renderer.appendParticle(.{ .x = 2, .y = 3, .size = 4, .r = 0, .g = 1, .b = 0, .a = 1 });
+    try std.testing.expectError(error.InvalidParticleBatch, renderer.appendParticleBatch(2, 0, .additive));
+    try std.testing.expectError(error.InvalidParticleBatch, renderer.appendParticleBatch(2, 1, .additive));
+    try std.testing.expectEqual(@as(usize, 1), renderer.particle_batches.items.len);
+    try std.testing.expectEqual(@as(usize, 2), renderer.particle_batches.items[0].instance_count);
+    try std.testing.expectError(error.InvalidParticleInstance, renderer.appendParticle(.{ .x = 0, .y = 0, .size = 0, .r = 1, .g = 1, .b = 1, .a = 1 }));
+
+    renderer.beginFrame();
+    var particles = try ParticleSystem.init(std.testing.allocator, .{ .max_particles = 2, .lifetime_min_seconds = 1, .lifetime_max_seconds = 1, .speed_min = 1, .speed_max = 1, .size_min = 1, .size_max = 1, .blend = .additive });
+    defer particles.deinit();
+    _ = try particles.emit(2);
+    try particles.submit(&renderer);
+    try std.testing.expectEqual(BlendMode.additive, renderer.particle_batches.items[0].blend);
 }
