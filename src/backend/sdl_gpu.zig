@@ -3012,7 +3012,7 @@ const Presenter = struct {
     }
 
     fn textureCount(self: *const Presenter) u32 {
-        var count: u32 = 1;
+        var count: u32 = 2;
         for (self.sprite_textures.items) |sprite| {
             count +%= 1;
             if (sprite.pending != null) count +%= 1;
@@ -3021,7 +3021,7 @@ const Presenter = struct {
     }
 
     fn textureBytes(self: *const Presenter) u64 {
-        var bytes = @as(u64, self.byte_len);
+        var bytes = @as(u64, self.byte_len) * 2;
         for (self.sprite_textures.items) |sprite| {
             bytes +|= imageBytes(sprite.width, sprite.height);
             if (sprite.pending) |pending| bytes +|= imageBytes(pending.width, pending.height);
@@ -3474,6 +3474,120 @@ const Presenter = struct {
         c.SDL_UploadToGPUTexture(copy_pass, &.{ .transfer_buffer = transfer, .offset = 0, .pixels_per_row = image.width, .rows_per_layer = image.height }, &.{ .texture = texture, .mip_level = 0, .layer = 0, .x = 0, .y = 0, .z = 0, .w = image.width, .h = image.height, .d = 1 }, false);
     }
 };
+
+fn materialSpriteVertices(width: u32, height: u32, draw: up.Renderer2D.MaterialSprite) [6]up.SpriteBatchVertex {
+    const x0 = @as(f32, @floatFromInt(draw.x)) * 2 / @as(f32, @floatFromInt(width)) - 1;
+    const y0 = 1 - @as(f32, @floatFromInt(draw.y)) * 2 / @as(f32, @floatFromInt(height));
+    const x1 = @as(f32, @floatFromInt(draw.x + draw.width)) * 2 / @as(f32, @floatFromInt(width)) - 1;
+    const y1 = 1 - @as(f32, @floatFromInt(draw.y + draw.height)) * 2 / @as(f32, @floatFromInt(height));
+    const color = colorFloat(draw.tint);
+    const a = up.SpriteBatchVertex{ .x = x0, .y = y0, .u = 0, .v = 0, .r = color.r, .g = color.g, .b = color.b, .a = color.a };
+    const b = up.SpriteBatchVertex{ .x = x1, .y = y0, .u = 1, .v = 0, .r = color.r, .g = color.g, .b = color.b, .a = color.a };
+    const c0 = up.SpriteBatchVertex{ .x = x1, .y = y1, .u = 1, .v = 1, .r = color.r, .g = color.g, .b = color.b, .a = color.a };
+    const d = up.SpriteBatchVertex{ .x = x0, .y = y1, .u = 0, .v = 1, .r = color.r, .g = color.g, .b = color.b, .a = color.a };
+    return .{ a, b, c0, a, c0, d };
+}
+
+fn fullscreenMaterialVertices() [6]up.SpriteBatchVertex {
+    const a = up.SpriteBatchVertex{ .x = -1, .y = 1, .u = 0, .v = 0, .r = 1, .g = 1, .b = 1, .a = 1 };
+    const b = up.SpriteBatchVertex{ .x = 1, .y = 1, .u = 1, .v = 0, .r = 1, .g = 1, .b = 1, .a = 1 };
+    const c0 = up.SpriteBatchVertex{ .x = 1, .y = -1, .u = 1, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 };
+    const d = up.SpriteBatchVertex{ .x = -1, .y = -1, .u = 0, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 };
+    return .{ a, b, c0, a, c0, d };
+}
+
+fn findMaterialBinding(bindings: []const up.MaterialBinding, name: []const u8) ?up.MaterialBinding {
+    for (bindings) |binding| if (std.mem.eql(u8, binding.name, name)) return binding;
+    return null;
+}
+
+fn selectMaterialShaderFormat(device: *c.SDL_GPUDevice) !MaterialShaderFormat {
+    const formats: u32 = @intCast(c.SDL_GetGPUShaderFormats(device));
+    if ((formats & @as(u32, @intCast(c.SDL_GPU_SHADERFORMAT_METALLIB))) != 0) return .metallib;
+    if ((formats & @as(u32, @intCast(c.SDL_GPU_SHADERFORMAT_SPIRV))) != 0) return .spirv;
+    if ((formats & @as(u32, @intCast(c.SDL_GPU_SHADERFORMAT_DXBC))) != 0) return .dxbc;
+    return error.MaterialArtifactUnsupported;
+}
+
+fn materialBindingCounts(material: *const up.Material) !struct { samplers: u32, uniforms: u32 } {
+    const stages = try material.executableStages();
+    var samplers: u32 = 0;
+    var uniforms: u32 = 0;
+    for (stages.bindings) |binding| switch (binding.kind) {
+        .texture => samplers += 1,
+        .uniform => uniforms += 1,
+    };
+    return .{ .samplers = samplers, .uniforms = uniforms };
+}
+
+fn createMaterialShader(device: *c.SDL_GPUDevice, material: *const up.Material, shader_stage: SpriteShaderStage, format: MaterialShaderFormat) !*c.SDL_GPUShader {
+    const stages = try material.executableStages();
+    const stage = switch (shader_stage) {
+        .vertex => stages.vertex,
+        .fragment => stages.fragment,
+    };
+    const artifact = switch (format) {
+        .metallib => .{ .code = stage.native.metallib, .entrypoint = stage.native.metallib_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_METALLIB },
+        .spirv => .{ .code = stage.native.spirv, .entrypoint = stage.native.spirv_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_SPIRV },
+        .dxbc => .{ .code = stage.native.dxbc, .entrypoint = stage.native.dxbc_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_DXBC },
+    };
+    const counts = try materialBindingCounts(material);
+    return c.SDL_CreateGPUShader(device, &.{
+        .code_size = artifact.code.len,
+        .code = artifact.code.ptr,
+        .entrypoint = artifact.entrypoint,
+        .format = artifact.format,
+        .stage = switch (shader_stage) {
+            .vertex => c.SDL_GPU_SHADERSTAGE_VERTEX,
+            .fragment => c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+        },
+        .num_samplers = if (shader_stage == .fragment) counts.samplers else 0,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = if (shader_stage == .fragment) counts.uniforms else 0,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUShader");
+}
+
+fn createMaterialPipeline(device: *c.SDL_GPUDevice, material: *const up.Material, format: MaterialShaderFormat, post: bool) !*c.SDL_GPUGraphicsPipeline {
+    const vertex_shader = try createMaterialShader(device, material, .vertex, format);
+    defer c.SDL_ReleaseGPUShader(device, vertex_shader);
+    const fragment_shader = try createMaterialShader(device, material, .fragment, format);
+    defer c.SDL_ReleaseGPUShader(device, fragment_shader);
+    const target = c.SDL_GPUColorTargetDescription{
+        .format = c.SDL_GPU_TEXTUREFORMAT_R8G8B8A8_UNORM,
+        .blend_state = .{
+            .src_color_blendfactor = if (post) c.SDL_GPU_BLENDFACTOR_ONE else c.SDL_GPU_BLENDFACTOR_SRC_ALPHA,
+            .dst_color_blendfactor = if (post) c.SDL_GPU_BLENDFACTOR_ZERO else c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .color_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .src_alpha_blendfactor = c.SDL_GPU_BLENDFACTOR_ONE,
+            .dst_alpha_blendfactor = if (post) c.SDL_GPU_BLENDFACTOR_ZERO else c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
+            .alpha_blend_op = c.SDL_GPU_BLENDOP_ADD,
+            .color_write_mask = 0xF,
+            .enable_blend = true,
+            .enable_color_write_mask = true,
+            .padding1 = 0,
+            .padding2 = 0,
+        },
+    };
+    const vertex_buffer = c.SDL_GPUVertexBufferDescription{ .slot = 0, .pitch = @sizeOf(up.SpriteBatchVertex), .input_rate = c.SDL_GPU_VERTEXINPUTRATE_VERTEX, .instance_step_rate = 0 };
+    const attributes = [_]c.SDL_GPUVertexAttribute{
+        .{ .location = 0, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(up.SpriteBatchVertex, "x") },
+        .{ .location = 1, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT2, .offset = @offsetOf(up.SpriteBatchVertex, "u") },
+        .{ .location = 2, .buffer_slot = 0, .format = c.SDL_GPU_VERTEXELEMENTFORMAT_FLOAT4, .offset = @offsetOf(up.SpriteBatchVertex, "r") },
+    };
+    return c.SDL_CreateGPUGraphicsPipeline(device, &.{
+        .vertex_shader = vertex_shader,
+        .fragment_shader = fragment_shader,
+        .vertex_input_state = .{ .vertex_buffer_descriptions = &vertex_buffer, .num_vertex_buffers = 1, .vertex_attributes = &attributes, .num_vertex_attributes = attributes.len },
+        .primitive_type = c.SDL_GPU_PRIMITIVETYPE_TRIANGLELIST,
+        .rasterizer_state = .{ .fill_mode = c.SDL_GPU_FILLMODE_FILL, .cull_mode = c.SDL_GPU_CULLMODE_NONE, .front_face = c.SDL_GPU_FRONTFACE_COUNTER_CLOCKWISE, .depth_bias_constant_factor = 0, .depth_bias_clamp = 0, .depth_bias_slope_factor = 0, .enable_depth_bias = false, .enable_depth_clip = true, .padding1 = 0, .padding2 = 0 },
+        .multisample_state = .{ .sample_count = c.SDL_GPU_SAMPLECOUNT_1, .sample_mask = 0, .enable_mask = false, .enable_alpha_to_coverage = false, .padding2 = 0, .padding3 = 0 },
+        .depth_stencil_state = .{ .compare_op = c.SDL_GPU_COMPAREOP_NEVER, .back_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .front_stencil_state = .{ .fail_op = c.SDL_GPU_STENCILOP_KEEP, .pass_op = c.SDL_GPU_STENCILOP_KEEP, .depth_fail_op = c.SDL_GPU_STENCILOP_KEEP, .compare_op = c.SDL_GPU_COMPAREOP_NEVER }, .compare_mask = 0, .write_mask = 0, .enable_depth_test = false, .enable_depth_write = false, .enable_stencil_test = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .target_info = .{ .color_target_descriptions = &target, .num_color_targets = 1, .depth_stencil_format = c.SDL_GPU_TEXTUREFORMAT_INVALID, .has_depth_stencil_target = false, .padding1 = 0, .padding2 = 0, .padding3 = 0 },
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUGraphicsPipeline");
+}
 
 fn saturatingAdd(a: i32, b: i32) i32 {
     return std.math.add(i32, a, b) catch if (b < 0) std.math.minInt(i32) else std.math.maxInt(i32);

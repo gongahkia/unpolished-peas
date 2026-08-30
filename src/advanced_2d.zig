@@ -653,6 +653,26 @@ test "shader bundles require every portable source and a consistent manifest" {
     try std.testing.expectError(error.MissingShaderSource, (ShaderSourceBundle{ .native_hlsl = "", .webgl2_glsl_es = valid.webgl2_glsl_es, .webgpu_wgsl = valid.webgpu_wgsl }).validate());
 }
 
+test "staged materials require AOT artifacts, source binding, and complete named values" {
+    const stage = MaterialStage{
+        .native = .{ .spirv = "s", .dxbc = "d", .metallib = "m" },
+        .webgl2_glsl_es = "void main() {}",
+        .webgpu_wgsl = "fn main() {}",
+    };
+    const material = try Material.initStages("wave", .{ .vertex = stage, .fragment = stage, .bindings = &.{ .{ .name = "source", .kind = .texture }, .{ .name = "settings", .kind = .uniform } } });
+    var renderer = Renderer2D.init(std.testing.allocator);
+    defer renderer.deinit();
+    var pixels = [_]Color{Color.white};
+    const image = Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = &pixels };
+    const settings = [_]u8{0} ** 16;
+    try renderer.drawMaterialSprite(.{ .material = &material, .image = &image, .x = 0, .y = 0, .width = 1, .height = 1, .uniforms = &settings });
+    try renderer.addPostPass(.{ .material = &material, .uniforms = &settings });
+    try std.testing.expectEqual(@as(usize, 1), renderer.material_sprites.items.len);
+    try std.testing.expectEqual(@as(usize, 1), renderer.post_passes.items.len);
+    const legacy = try Material.init("legacy", .{ .native_hlsl = "main", .webgl2_glsl_es = "main", .webgpu_wgsl = "main" });
+    try std.testing.expectError(error.MaterialStagesRequired, renderer.drawMaterialSprite(.{ .material = &legacy, .image = &image, .x = 0, .y = 0, .width = 1, .height = 1 }));
+}
+
 test "post process chain has deterministic CPU reference output" {
     var canvas = try Canvas.init(std.testing.allocator, 2, 2);
     defer canvas.deinit();
