@@ -265,10 +265,13 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   }
 
   function drawParticles(instances, particleBlend) {
-    if (state.destroyed || state.deviceStatus !== "ready" || !(instances instanceof Float32Array) || !Number.isInteger(particleBlend) || particleBlend < 0 || particleBlend > 1 || instances.length % 7 !== 0) return false;
+    if (state.destroyed || state.deviceStatus !== "ready" || state.width === 0 || state.height === 0 || !(instances instanceof Float32Array) || !Number.isInteger(particleBlend) || particleBlend < 0 || particleBlend > 1 || instances.length % 7 !== 0) return false;
     const count = instances.length / 7;
     if (count === 0) return true;
     if (count > maxParticles - state.particleCount) return false;
+    for (let source = 0; source < instances.length; source += 7) {
+      if (![instances[source], instances[source + 1], instances[source + 2], instances[source + 3], instances[source + 4], instances[source + 5], instances[source + 6]].every(Number.isFinite) || instances[source + 2] <= 0) return false;
+    }
     const previousBlend = state.blend;
     state.blend = particleBlend;
     const batch = appendBatch("particle", state.particleCount);
@@ -280,7 +283,6 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       const x = instances[source];
       const y = instances[source + 1];
       const size = instances[source + 2];
-      if (![x, y, size, instances[source + 3], instances[source + 4], instances[source + 5], instances[source + 6]].every(Number.isFinite) || size <= 0) return false;
       const point = position(x, y);
       state.particleInstances[destination] = point[0];
       state.particleInstances[destination + 1] = point[1];

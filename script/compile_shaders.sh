@@ -9,6 +9,8 @@ glslangValidator -V -S vert "$ROOT_DIR/shaders/sprite.vert" -o "$OUT_DIR/sprite.
 glslangValidator -V -S frag "$ROOT_DIR/shaders/sprite.frag" -o "$OUT_DIR/sprite.frag.spv"
 glslangValidator -V -S vert "$ROOT_DIR/shaders/primitive.vert" -o "$OUT_DIR/primitive.vert.spv"
 glslangValidator -V -S frag "$ROOT_DIR/shaders/primitive.frag" -o "$OUT_DIR/primitive.frag.spv"
+glslangValidator -V -S vert "$ROOT_DIR/shaders/particles.vert" -o "$OUT_DIR/particles.vert.spv"
+glslangValidator -V -S frag "$ROOT_DIR/shaders/particles.frag" -o "$OUT_DIR/particles.frag.spv"
 
 spirv-cross "$OUT_DIR/sprite.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.vert.hlsl"
 spirv-cross "$OUT_DIR/sprite.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.frag.hlsl"
