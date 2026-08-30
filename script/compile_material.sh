@@ -75,7 +75,7 @@ fi
 source="${1:-}"; artifacts="${2:-}"; output="${3:-}"
 [[ -n "$source" && -n "$artifacts" && -n "$output" && $# -eq 3 ]] || { usage >&2; exit 64; }
 name="$(value name "$source")" || { echo "peas shader: missing name" >&2; exit 65; }
-for required in linux/vertex.spv linux/fragment.spv windows/vertex.dxbc windows/fragment.dxbc macos/vertex.metallib macos/fragment.metallib; do
+for required in linux/vertex.spv linux/fragment.spv linux/vertex.webgl2 linux/vertex.webgpu linux/fragment.webgl2 linux/fragment.webgpu windows/vertex.dxbc windows/fragment.dxbc macos/vertex.metallib macos/fragment.metallib; do
   [[ -s "$artifacts/$required" ]] || { echo "peas shader: missing required artifact $artifacts/$required" >&2; exit 65; }
 done
 mkdir -p "$(dirname "$output")"

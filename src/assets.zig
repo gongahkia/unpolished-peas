@@ -735,6 +735,29 @@ test "material manifests create staged assets with reserved source binding" {
     try std.testing.expectEqualStrings("wave", material.name);
     try std.testing.expectEqual(@as(usize, 2), (try material.executableStages()).bindings.len);
     try std.testing.expectError(error.StaleHandle, store.tryMaterial(.{ .index = handle.index, .generation = nextGeneration(handle.generation) }));
+
+    const revision = material.revision;
+    const fragment_mtime = (try tmp.dir.statFile("fragment.glsl")).mtime;
+    try tmp.dir.writeFile(.{ .sub_path = "fragment.glsl", .data = "void main(){ }" });
+    while ((try tmp.dir.statFile("fragment.glsl")).mtime == fragment_mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "fragment.glsl", .data = "void main(){ }" });
+    }
+    const reloaded = try store.reloadChanged();
+    try std.testing.expectEqual(ReloadStatus.changed, reloaded[0].status);
+    try std.testing.expectError(error.StaleHandle, store.tryMaterial(handle));
+    try std.testing.expectEqual(nextGeneration(revision), (try store.latestMaterial(handle)).revision);
+
+    const manifest_mtime = (try tmp.dir.statFile("wave.upmat")).mtime;
+    try tmp.dir.writeFile(.{ .sub_path = "wave.upmat", .data = "name=broken\n" });
+    while ((try tmp.dir.statFile("wave.upmat")).mtime == manifest_mtime) {
+        std.Thread.sleep(1_000_000);
+        try tmp.dir.writeFile(.{ .sub_path = "wave.upmat", .data = "name=broken\n" });
+    }
+    const failed = try store.reloadChanged();
+    try std.testing.expectEqual(ReloadStatus.failed, failed[0].status);
+    try std.testing.expect(failed[0].retained_content);
+    try std.testing.expectEqual(nextGeneration(revision), (try store.latestMaterial(handle)).revision);
 }
 
 test "asset store exposes checked handle accessors" {
