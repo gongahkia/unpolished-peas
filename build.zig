@@ -134,6 +134,22 @@ pub fn build(b: *std.Build) void {
     });
     const browser_audio_smoke_step = b.step("test-browser-audio-stream", "Compile the public browser PCM audio stream API");
     browser_audio_smoke_step.dependOn(&browser_audio_smoke.step);
+    const browser_ogg_decode_smoke = b.addExecutable(.{
+        .name = "unpolished-peas-browser-ogg-decode-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("browser_ogg_decode_smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        }),
+    });
+    browser_ogg_decode_smoke.entry = .disabled;
+    browser_ogg_decode_smoke.rdynamic = true;
+    browser_ogg_decode_smoke.import_memory = true;
+    const browser_ogg_decode_test = b.addSystemCommand(&.{ "node", "script/test_browser_ogg_decode.mjs" });
+    browser_ogg_decode_test.addFileArg(browser_ogg_decode_smoke.getEmittedBin());
+    const browser_ogg_decode_test_step = b.step("test-browser-ogg-decode", "Decode Ogg/Vorbis through the freestanding browser mixer dependency path");
+    browser_ogg_decode_test_step.dependOn(&browser_ogg_decode_test.step);
     const browser_topdown_game = b.createModule(.{
         .root_source_file = b.path("examples/topdown_game.zig"),
         .target = browser_target,
