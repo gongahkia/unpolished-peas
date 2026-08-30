@@ -386,7 +386,7 @@ test "post process chain has deterministic CPU reference output" {
 }
 
 test "particle simulation is deterministic and produces portable instances" {
-    const config = ParticleEmitterConfig{ .seed = 99, .max_particles = 8, .spawn_rate = 4, .lifetime_min_seconds = 1, .lifetime_max_seconds = 1, .speed_min = 2, .speed_max = 2, .size_min = 2, .size_max = 2 };
+    const config = ParticleEmitterConfig{ .seed = 99, .max_particles = 8, .spawn_rate = 4, .lifetime_min_seconds = 1, .lifetime_max_seconds = 1, .speed_min = 2, .speed_max = 2, .size_min = 2, .size_max = 2, .position = .{ .x = 8, .y = 8 } };
     var first = try ParticleSystem.init(std.testing.allocator, config);
     defer first.deinit();
     var second = try ParticleSystem.init(std.testing.allocator, config);
@@ -400,5 +400,9 @@ test "particle simulation is deterministic and produces portable instances" {
     var canvas = try Canvas.init(std.testing.allocator, 16, 16);
     defer canvas.deinit();
     first.draw(&canvas);
-    try std.testing.expect(canvas.get(0, 0).? != Color.transparent);
+    var visible: usize = 0;
+    for (canvas.pixels) |pixel| {
+        if (pixel.a != 0) visible += 1;
+    }
+    try std.testing.expect(visible != 0);
 }
