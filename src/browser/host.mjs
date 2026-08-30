@@ -15,7 +15,7 @@ function localStorageOrNull() {
   }
 }
 
-export const AbiVersion = 3;
+export const AbiVersion = 4;
 
 export const ResourceKind = Object.freeze({
   buffer: 0,
@@ -55,6 +55,7 @@ export function createBrowserHost({
   let logicalHeight = 0;
   let primitivePipeline = null;
   let spritePipeline = null;
+  let particlePipeline = null;
   let spriteBatch = null;
   let clip = null;
   const clipStack = [];
@@ -160,6 +161,16 @@ export function createBrowserHost({
       gl.deleteProgram(spritePipeline.program);
     }
     spritePipeline = null;
+  }
+
+  function releaseParticlePipeline(release) {
+    if (!particlePipeline) return;
+    if (release && gl) {
+      gl.deleteBuffer(particlePipeline.baseBuffer);
+      gl.deleteBuffer(particlePipeline.instanceBuffer);
+      gl.deleteProgram(particlePipeline.program);
+    }
+    particlePipeline = null;
   }
 
   function wasmBytes(pointer, byteLength) {
@@ -268,6 +279,62 @@ export function createBrowserHost({
     }
     spritePipeline = {program, buffer, sampler};
     return spritePipeline;
+  }
+
+  function ensureParticlePipeline() {
+    if (!gl || contextLost) return null;
+    if (particlePipeline) return particlePipeline;
+    const vertex = compileShader(gl.VERTEX_SHADER, `#version 300 es
+      layout(location = 0) in vec2 in_corner;
+      layout(location = 1) in vec2 in_position;
+      layout(location = 2) in float in_size;
+      layout(location = 3) in vec4 in_color;
+      uniform vec2 logical_size;
+      out vec4 out_color;
+      void main() {
+        vec2 pixel = in_position + in_corner * in_size;
+        vec2 normalized = vec2(pixel.x * 2.0 / logical_size.x - 1.0, 1.0 - pixel.y * 2.0 / logical_size.y);
+        gl_Position = vec4(normalized, 0.0, 1.0);
+        out_color = in_color;
+      }`);
+    if (!vertex) return null;
+    const fragment = compileShader(gl.FRAGMENT_SHADER, `#version 300 es
+      precision mediump float;
+      in vec4 out_color;
+      out vec4 fragment_color;
+      void main() { fragment_color = out_color; }`);
+    if (!fragment) {
+      gl.deleteShader(vertex);
+      return null;
+    }
+    const program = gl.createProgram();
+    if (!program) {
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      return null;
+    }
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      logger?.error?.(`unpolished-peas browser: WebGL particle link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      gl.deleteProgram(program);
+      return null;
+    }
+    const baseBuffer = gl.createBuffer();
+    const instanceBuffer = gl.createBuffer();
+    if (!baseBuffer || !instanceBuffer) {
+      if (baseBuffer) gl.deleteBuffer(baseBuffer);
+      if (instanceBuffer) gl.deleteBuffer(instanceBuffer);
+      gl.deleteProgram(program);
+      return null;
+    }
+    gl.bindBuffer(gl.ARRAY_BUFFER, baseBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-.5, -.5, .5, -.5, .5, .5, -.5, -.5, .5, .5, -.5, .5]), gl.STATIC_DRAW);
+    particlePipeline = {program, baseBuffer, instanceBuffer, logicalSize: gl.getUniformLocation(program, "logical_size")};
+    return particlePipeline;
   }
 
   function bindDrawTarget() {
@@ -423,7 +490,45 @@ export function createBrowserHost({
     if (status !== Status.ok) return status;
     status = drawSprite(canvasTexture, 0, 0, width, height, 0, 0, logicalWidth, logicalHeight, 0xffffffff, 0);
     if (status !== Status.ok) return status;
-    return present(0);
+    return Status.ok;
+  }
+
+  function drawParticles(source, count, particleBlend) {
+    if (!Number.isInteger(count) || count < 0 || particleBlend < 0 || particleBlend > 1) return Status.invalidArgument;
+    const bytes = wasmBytes(source, count * 7 * 4);
+    if (!bytes) return Status.invalidArgument;
+    const instances = new Float32Array(bytes.buffer, bytes.byteOffset, count * 7);
+    if (webgpu) return webgpu.drawParticles(instances, particleBlend) ? Status.ok : webgpu.isLost() ? Status.rejected : Status.rejected;
+    if (!gl || contextLost) return Status.unavailable;
+    const spriteStatus = flushSprites();
+    if (spriteStatus !== Status.ok) return spriteStatus;
+    const pipeline = ensureParticlePipeline();
+    if (!pipeline || logicalWidth === 0 || logicalHeight === 0) return Status.unavailable;
+    gl.useProgram(pipeline.program);
+    gl.uniform2f(pipeline.logicalSize, logicalWidth, logicalHeight);
+    gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.baseBuffer);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 8, 0);
+    gl.vertexAttribDivisor(0, 0);
+    gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.instanceBuffer);
+    gl.bufferData(gl.ARRAY_BUFFER, instances, gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 28, 0);
+    gl.vertexAttribDivisor(1, 1);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 1, gl.FLOAT, false, 28, 8);
+    gl.vertexAttribDivisor(2, 1);
+    gl.enableVertexAttribArray(3);
+    gl.vertexAttribPointer(3, 4, gl.FLOAT, false, 28, 12);
+    gl.vertexAttribDivisor(3, 1);
+    gl.enable(gl.BLEND);
+    if (particleBlend === 0) gl.blendFunc(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA);
+    else gl.blendFunc(gl.SRC_ALPHA, gl.ONE);
+    gl.drawArraysInstanced(gl.TRIANGLES, 0, 6, count);
+    gl.vertexAttribDivisor(1, 0);
+    gl.vertexAttribDivisor(2, 0);
+    gl.vertexAttribDivisor(3, 0);
+    return Status.ok;
   }
 
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
@@ -631,6 +736,7 @@ export function createBrowserHost({
       invalidateResourceValues();
       releasePrimitivePipeline(false);
       releaseSpritePipeline(false);
+      releaseParticlePipeline(false);
       lifecyclePhase = "context_lost";
       return Status.rejected;
     }
@@ -761,6 +867,7 @@ export function createBrowserHost({
       canvasTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
+      releaseParticlePipeline(!contextLost);
       spriteBatch = null;
       lifecyclePhase = "destroyed";
       gl = null;
@@ -786,6 +893,7 @@ export function createBrowserHost({
     up_host_gl_present: present,
     up_host_gl_texture_upload: uploadTexture,
     up_host_gl_canvas_upload: uploadCanvas,
+    up_host_gl_draw_particles: drawParticles,
     up_host_gl_draw_sprite: drawSprite,
     up_host_gl_flush_sprites: flushSprites,
     up_host_gl_draw_text: drawText,
@@ -811,6 +919,7 @@ export function createBrowserHost({
       canvasTexture = 0;
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
+      releaseParticlePipeline(!contextLost);
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);
