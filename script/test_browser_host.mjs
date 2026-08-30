@@ -140,7 +140,7 @@ const host = createBrowserHost({
     scheduledFrames.delete(token);
   },
 });
-assert.equal(host.abiVersion, 4);
+assert.equal(host.abiVersion, 5);
 const frameTimes = [];
 const resizeCalls = [];
 const pauses = [];
@@ -160,7 +160,7 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",
   "up_host_gl_context_create", "up_host_gl_context_destroy", "up_host_gl_context_lost", "up_host_gl_resource_create", "up_host_gl_resource_destroy",
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
-  "up_host_gl_texture_upload", "up_host_gl_canvas_upload", "up_host_gl_draw_particles", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
+  "up_host_gl_texture_upload", "up_host_gl_canvas_upload", "up_host_gl_draw_particles", "up_host_gl_material_begin", "up_host_gl_material_bind_texture", "up_host_gl_material_bind_uniform", "up_host_gl_material_draw", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
   "up_host_gl_push_clip", "up_host_gl_pop_clip", "up_host_gl_push_blend", "up_host_gl_pop_blend", "up_host_gl_set_camera",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
   "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
@@ -223,11 +223,44 @@ assert.equal(env.up_host_gl_draw_text(0, 5, 20, 20, 0xffffffff), Status.ok);
 assert.equal(env.up_host_gl_flush_sprites(), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeText).map(([, , , count]) => count), [18]);
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 3);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
 new Float32Array(host.memory.buffer, 96, 7).set([24, 16, 8, 1, .5, .25, 1]);
 assert.equal(env.up_host_gl_draw_particles(96, 1, 1), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArraysInstanced").at(-1), ["drawArraysInstanced", canvas.gl.TRIANGLES, 0, 6, 1]);
 assert.ok(canvas.gl.calls.some(([name, source, destination]) => name === "blendFuncSeparate" && source === canvas.gl.SRC_ALPHA && destination === canvas.gl.ONE));
+
+const materialVertex = `#version 300 es
+layout(location = 0) in vec2 position;
+layout(location = 1) in vec2 uv;
+layout(location = 2) in vec4 tint;
+out vec2 out_uv;
+out vec4 out_tint;
+void main() { gl_Position = vec4(position, 0.0, 1.0); out_uv = uv; out_tint = tint; }`;
+const materialFragment = `#version 300 es
+precision mediump float;
+uniform sampler2D source;
+in vec2 out_uv;
+in vec4 out_tint;
+out vec4 fragment_color;
+void main() { fragment_color = texture(source, out_uv) * out_tint; }`;
+const materialWgsl = "@vertex fn main() {}";
+const postWgsl = "@fragment fn main() {}";
+const encoder = new TextEncoder();
+function writeText(offset, value) { const bytes = encoder.encode(value); new Uint8Array(host.memory.buffer, offset, bytes.byteLength).set(bytes); return bytes.byteLength; }
+const vertexLength = writeText(512, materialVertex);
+const fragmentLength = writeText(2048, materialFragment);
+const wgslVertexLength = writeText(4096, materialWgsl);
+const wgslFragmentLength = writeText(4608, postWgsl);
+new Uint8Array(host.memory.buffer, 8192, 16).fill(255);
+const sourceNameLength = writeText(9000, "source");
+const beforeMaterials = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
+assert.equal(env.up_host_gl_material_begin(91, 1, 0, 512, vertexLength, 2048, fragmentLength, 4096, wgslVertexLength, 4608, wgslFragmentLength), Status.ok);
+assert.equal(env.up_host_gl_material_bind_texture(9000, sourceNameLength, 2, 2, 8192, 16), Status.ok);
+assert.equal(env.up_host_gl_material_draw(8, 8, 16, 16, 0xffffffff), Status.ok);
+assert.equal(env.up_host_gl_material_begin(92, 1, 1, 512, vertexLength, 2048, fragmentLength, 4096, wgslVertexLength, 4608, wgslFragmentLength), Status.ok);
+assert.equal(env.up_host_gl_material_draw(0, 0, 320, 180, 0xffffffff), Status.ok);
+assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeMaterials).map(([, , , count]) => count), [6, 6]);
+assert.ok(canvas.gl.calls.some(([name, , source]) => name === "shaderSource" && source === materialFragment));
 
 const lost = canvas.dispatch("webglcontextlost");
 assert.equal(lost.prevented, true);
@@ -238,7 +271,7 @@ canvas.dispatch("webglcontextrestored");
 assert.equal(env.up_host_gl_context_lost(), 0);
 assert.deepEqual(host.lifecycle(), {phase: "recovered", generation: 1, recoveries: 1, scheduledFrames: 1});
 assert.deepEqual(resizeCalls, [[320, 180]]);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 10);
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));
