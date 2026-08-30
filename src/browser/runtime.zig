@@ -108,11 +108,10 @@ fn submitCanvas() i32 {
 fn submitRenderer() i32 {
     if (!renderer_ready) return @intFromEnum(contract.Status.unavailable);
     if (renderer.material_sprites.items.len != 0 or renderer.post_passes.items.len != 0) return @intFromEnum(contract.Status.unavailable);
-    if (renderer.particle_instances.items.len != 0) {
-        const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(renderer.particle_instances.items).len) orelse return @intFromEnum(contract.Status.rejected);
-        const status = contract.drawParticles(@intCast(@intFromPtr(renderer.particle_instances.items.ptr)), @intCast(renderer.particle_instances.items.len), @intFromEnum(up.graphics.BlendMode.alpha));
+    for (renderer.particle_batches.items) |batch| {
+        const instances = renderer.particle_instances.items[batch.first_instance..][0..batch.instance_count];
+        const status = contract.drawParticles(@intCast(@intFromPtr(instances.ptr)), @intCast(instances.len), @intFromEnum(batch.blend));
         if (status != @intFromEnum(contract.Status.ok)) return status;
-        _ = byte_len;
     }
     return contract.present(0);
 }
