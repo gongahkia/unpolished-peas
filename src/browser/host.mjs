@@ -15,7 +15,7 @@ function localStorageOrNull() {
   }
 }
 
-export const AbiVersion = 4;
+export const AbiVersion = 5;
 
 export const ResourceKind = Object.freeze({
   buffer: 0,
@@ -58,6 +58,11 @@ export function createBrowserHost({
   let primitivePipeline = null;
   let spritePipeline = null;
   let particlePipeline = null;
+  const materialPipelines = new Map();
+  const materialTextures = new Map();
+  let pendingMaterial = null;
+  let frameTargets = [];
+  let frameTargetIndex = 0;
   let spriteBatch = null;
   let clip = null;
   const clipStack = [];
@@ -173,6 +178,72 @@ export function createBrowserHost({
       gl.deleteProgram(particlePipeline.program);
     }
     particlePipeline = null;
+  }
+
+  function releaseMaterialPipelines(release) {
+    if (release && gl) {
+      for (const pipeline of materialPipelines.values()) {
+        gl.deleteBuffer(pipeline.buffer);
+        gl.deleteProgram(pipeline.program);
+        for (const buffer of pipeline.uniformBuffers.values()) gl.deleteBuffer(buffer);
+      }
+    }
+    materialPipelines.clear();
+    pendingMaterial = null;
+  }
+
+  function releaseMaterialTextures(release) {
+    if (release && gl) for (const texture of materialTextures.values()) gl.deleteTexture(texture.value);
+    materialTextures.clear();
+  }
+
+  function releaseFrameTargets(release) {
+    if (release && gl) for (const target of frameTargets) {
+      gl.deleteFramebuffer(target.framebuffer);
+      gl.deleteTexture(target.texture);
+    }
+    frameTargets = [];
+    frameTargetIndex = 0;
+  }
+
+  function createFrameTargets() {
+    if (!gl || logicalWidth <= 0 || logicalHeight <= 0) return false;
+    releaseFrameTargets(true);
+    const targets = [];
+    for (let index = 0; index < 2; index += 1) {
+      const texture = gl.createTexture();
+      const framebuffer = gl.createFramebuffer();
+      if (!texture || !framebuffer) {
+        for (const target of targets) {
+          gl.deleteFramebuffer(target.framebuffer);
+          gl.deleteTexture(target.texture);
+        }
+        if (framebuffer) gl.deleteFramebuffer(framebuffer);
+        if (texture) gl.deleteTexture(texture);
+        return false;
+      }
+      gl.bindTexture(gl.TEXTURE_2D, texture);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, logicalWidth, logicalHeight, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, framebuffer);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        gl.deleteFramebuffer(framebuffer);
+        gl.deleteTexture(texture);
+        for (const target of targets) {
+          gl.deleteFramebuffer(target.framebuffer);
+          gl.deleteTexture(target.texture);
+        }
+        return false;
+      }
+      targets.push({texture, framebuffer});
+    }
+    frameTargets = targets;
+    frameTargetIndex = 0;
+    return true;
   }
 
   function wasmBytes(pointer, byteLength) {
@@ -340,8 +411,9 @@ export function createBrowserHost({
   }
 
   function bindDrawTarget() {
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    gl.viewport(0, 0, canvas.width, canvas.height);
+    const target = frameTargets[frameTargetIndex];
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
+    gl.viewport(0, 0, logicalWidth, logicalHeight);
     return true;
   }
 
@@ -536,6 +608,188 @@ export function createBrowserHost({
     return Status.ok;
   }
 
+  function wasmText(pointer, byteLength) {
+    const bytes = wasmBytes(pointer, byteLength);
+    if (!bytes || bytes.byteLength === 0) return null;
+    try {
+      return new TextDecoder("utf-8", {fatal: true}).decode(bytes);
+    } catch {
+      return null;
+    }
+  }
+
+  function validMaterialBindingName(name) {
+    return typeof name === "string" && /^[A-Za-z_][A-Za-z0-9_]{0,63}$/.test(name);
+  }
+
+  function materialBegin(id, revision, kind, vertexGlslPointer, vertexGlslLength, fragmentGlslPointer, fragmentGlslLength, vertexWgslPointer, vertexWgslLength, fragmentWgslPointer, fragmentWgslLength) {
+    if (!Number.isInteger(id) || !Number.isInteger(revision) || !Number.isInteger(kind) || id === 0 || revision === 0 || (kind !== 0 && kind !== 1) || pendingMaterial) return Status.invalidArgument;
+    const vertexGlsl = wasmText(vertexGlslPointer, vertexGlslLength);
+    const fragmentGlsl = wasmText(fragmentGlslPointer, fragmentGlslLength);
+    const vertexWgsl = wasmText(vertexWgslPointer, vertexWgslLength);
+    const fragmentWgsl = wasmText(fragmentWgslPointer, fragmentWgslLength);
+    if (!vertexGlsl || !fragmentGlsl || !vertexWgsl || !fragmentWgsl) return Status.invalidArgument;
+    const material = {id, revision, kind, vertexGlsl, fragmentGlsl, vertexWgsl, fragmentWgsl, bindings: []};
+    if (kind === 1) material.bindings.push({name: "source", kind: "texture", texture: frameTargets[frameTargetIndex]?.texture ?? null});
+    pendingMaterial = material;
+    return Status.ok;
+  }
+
+  function ensureMaterialTexture(pointer, width, height, pixels) {
+    if (!gl || !validDimensions(width, height) || !(pixels instanceof Uint8Array) || pixels.byteLength !== width * height * 4) return null;
+    const key = `${pointer}:${width}:${height}`;
+    let texture = materialTextures.get(key);
+    if (!texture) {
+      const value = gl.createTexture();
+      if (!value) return null;
+      texture = {value, width, height};
+      materialTextures.set(key, texture);
+      gl.bindTexture(gl.TEXTURE_2D, value);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+      gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    }
+    return texture.value;
+  }
+
+  function materialBindTexture(namePointer, nameLength, width, height, pixelsPointer, pixelsLength) {
+    if (!pendingMaterial) return Status.invalidArgument;
+    const name = wasmText(namePointer, nameLength);
+    const pixels = wasmBytes(pixelsPointer, pixelsLength);
+    if (!validMaterialBindingName(name) || pendingMaterial.bindings.some((binding) => binding.name === name) || (name === "source" && pendingMaterial.kind !== 0) || !pixels || !validDimensions(width, height) || pixels.byteLength !== width * height * 4) return Status.invalidArgument;
+    if (webgpu) return webgpu.materialBindTexture(name, width, height, pixels.slice()) ? Status.ok : Status.rejected;
+    if (!gl || contextLost) return Status.unavailable;
+    const texture = ensureMaterialTexture(pixelsPointer, width, height, pixels);
+    if (!texture) return Status.rejected;
+    pendingMaterial.bindings.push({name, kind: "texture", texture});
+    return Status.ok;
+  }
+
+  function materialBindUniform(namePointer, nameLength, source, byteLength) {
+    if (!pendingMaterial || pendingMaterial.bindings.some((binding) => binding.name === wasmText(namePointer, nameLength))) return Status.invalidArgument;
+    const name = wasmText(namePointer, nameLength);
+    const bytes = wasmBytes(source, byteLength);
+    if (!validMaterialBindingName(name) || name === "source" || !bytes || bytes.byteLength === 0 || bytes.byteLength % 16 !== 0) return Status.invalidArgument;
+    if (webgpu) return webgpu.materialBindUniform(name, bytes.slice()) ? Status.ok : Status.rejected;
+    pendingMaterial.bindings.push({name, kind: "uniform", bytes: bytes.slice()});
+    return Status.ok;
+  }
+
+  function linkMaterialProgram(vertexSource, fragmentSource) {
+    const vertex = compileShader(gl.VERTEX_SHADER, vertexSource);
+    if (!vertex) return null;
+    const fragment = compileShader(gl.FRAGMENT_SHADER, fragmentSource);
+    if (!fragment) {
+      gl.deleteShader(vertex);
+      return null;
+    }
+    const program = gl.createProgram();
+    if (!program) {
+      gl.deleteShader(vertex);
+      gl.deleteShader(fragment);
+      return null;
+    }
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      logger?.error?.(`unpolished-peas browser: material program link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      gl.deleteProgram(program);
+      return null;
+    }
+    const buffer = gl.createBuffer();
+    if (!buffer) {
+      gl.deleteProgram(program);
+      return null;
+    }
+    return {program, buffer, uniformBuffers: new Map()};
+  }
+
+  function materialPipeline(material) {
+    const key = `${material.id}:${material.revision}`;
+    const cached = materialPipelines.get(key);
+    if (cached) return cached;
+    const pipeline = linkMaterialProgram(material.vertexGlsl, material.fragmentGlsl);
+    if (!pipeline) return null;
+    materialPipelines.set(key, pipeline);
+    return pipeline;
+  }
+
+  function bindMaterialResources(pipeline, bindings) {
+    let textureIndex = 0;
+    let uniformIndex = 0;
+    for (const binding of bindings) {
+      if (binding.kind === "texture") {
+        if (!binding.texture) return false;
+        const location = gl.getUniformLocation(pipeline.program, binding.name);
+        gl.activeTexture(gl.TEXTURE0 + textureIndex);
+        gl.bindTexture(gl.TEXTURE_2D, binding.texture);
+        if (location !== null) gl.uniform1i(location, textureIndex);
+        textureIndex += 1;
+        continue;
+      }
+      if (!gl.getUniformBlockIndex || !gl.uniformBlockBinding || !gl.bindBufferBase) return false;
+      const blockIndex = gl.getUniformBlockIndex(pipeline.program, binding.name);
+      if (blockIndex === undefined || blockIndex === null || blockIndex === gl.INVALID_INDEX || blockIndex === 0xffffffff) return false;
+      let buffer = pipeline.uniformBuffers.get(binding.name);
+      if (!buffer) {
+        buffer = gl.createBuffer();
+        if (!buffer) return false;
+        pipeline.uniformBuffers.set(binding.name, buffer);
+      }
+      gl.bindBuffer(gl.UNIFORM_BUFFER, buffer);
+      gl.bufferData(gl.UNIFORM_BUFFER, binding.bytes, gl.DYNAMIC_DRAW);
+      gl.bindBufferBase(gl.UNIFORM_BUFFER, uniformIndex, buffer);
+      gl.uniformBlockBinding(pipeline.program, blockIndex, uniformIndex);
+      uniformIndex += 1;
+    }
+    return true;
+  }
+
+  function materialDraw(x, y, width, height, tint) {
+    const material = pendingMaterial;
+    pendingMaterial = null;
+    if (!material || ![x, y, width, height, tint].every(Number.isInteger) || width <= 0 || height <= 0) return Status.invalidArgument;
+    if (webgpu) return webgpu.materialDraw(x, y, width, height, tint) ? Status.ok : Status.rejected;
+    if (!gl || contextLost || logicalWidth === 0 || logicalHeight === 0) return Status.unavailable;
+    const spriteStatus = flushSprites();
+    if (spriteStatus !== Status.ok) return spriteStatus;
+    const pipeline = materialPipeline(material);
+    if (!pipeline) return Status.rejected;
+    let targetIndex = frameTargetIndex;
+    if (material.kind === 1) targetIndex = 1 - frameTargetIndex;
+    const target = frameTargets[targetIndex];
+    if (!target) return Status.rejected;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, target.framebuffer);
+    gl.viewport(0, 0, logicalWidth, logicalHeight);
+    gl.useProgram(pipeline.program);
+    gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.buffer);
+    const rgba = colorFloats(tint);
+    const vertices = material.kind === 1
+      ? [-1, 1, 0, 0, ...rgba, 1, 1, 1, 0, ...rgba, 1, -1, 1, 1, ...rgba, -1, 1, 0, 0, ...rgba, 1, -1, 1, 1, ...rgba, -1, -1, 0, 1, ...rgba]
+      : [...spriteVertex(x, y, 0, 0, rgba), ...spriteVertex(x + width, y, 1, 0, rgba), ...spriteVertex(x + width, y + height, 1, 1, rgba), ...spriteVertex(x, y, 0, 0, rgba), ...spriteVertex(x + width, y + height, 1, 1, rgba), ...spriteVertex(x, y + height, 0, 1, rgba)];
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 8);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
+    if (!bindMaterialResources(pipeline, material.bindings)) return Status.rejected;
+    if (material.kind === 1) {
+      gl.disable(gl.SCISSOR_TEST);
+      gl.disable(gl.BLEND);
+    } else applyRenderState();
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
+    if (material.kind === 1) frameTargetIndex = targetIndex;
+    return Status.ok;
+  }
+
   function drawSprite(handle, sourceX, sourceY, sourceWidth, sourceHeight, x, y, width, height, color, sampling) {
     const texture = resources.get(handle);
     if (!texture || texture.kind !== ResourceKind.texture || !texture.width || !texture.height || sourceWidth === 0 || sourceHeight === 0 || width <= 0 || height <= 0 || sourceX > texture.width - sourceWidth || sourceY > texture.height - sourceHeight || sampling > 1) return Status.invalidArgument;
@@ -637,9 +891,33 @@ export function createBrowserHost({
     if (contextLost || mode > 2 || clipStack.length !== 0 || blendStack.length !== 0) return Status.rejected;
     const status = flushSprites();
     if (status !== Status.ok) return status;
+    const source = frameTargets[frameTargetIndex];
+    if (!source) return Status.rejected;
     presentationMode = mode;
     const destination = presentationDestination(mode, logicalWidth, logicalHeight, canvas.width, canvas.height);
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(destination.x, canvas.height - destination.y - destination.height, destination.width, destination.height);
+    gl.disable(gl.SCISSOR_TEST);
+    gl.disable(gl.BLEND);
+    const pipeline = ensureSpritePipeline();
+    if (!pipeline) return Status.rejected;
+    gl.useProgram(pipeline.program);
+    gl.activeTexture(gl.TEXTURE0);
+    gl.bindTexture(gl.TEXTURE_2D, source.texture);
+    gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.buffer);
+    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
+      -1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1,
+      1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 1,
+      1, -1, 1, 1, 1, 1, 1, 1, -1, -1, 0, 1, 1, 1, 1, 1,
+    ]), gl.DYNAMIC_DRAW);
+    gl.enableVertexAttribArray(0);
+    gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 32, 0);
+    gl.enableVertexAttribArray(1);
+    gl.vertexAttribPointer(1, 2, gl.FLOAT, false, 32, 8);
+    gl.enableVertexAttribArray(2);
+    gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
+    gl.uniform1i(pipeline.sampler, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 6);
     gl.flush();
     return Status.ok;
   }
@@ -742,6 +1020,9 @@ export function createBrowserHost({
       releasePrimitivePipeline(false);
       releaseSpritePipeline(false);
       releaseParticlePipeline(false);
+      releaseMaterialPipelines(false);
+      releaseMaterialTextures(false);
+      releaseFrameTargets(false);
       lifecyclePhase = "context_lost";
       return Status.rejected;
     }
@@ -755,6 +1036,10 @@ export function createBrowserHost({
       recoveryCount += 1;
       lifecyclePhase = "recovered";
     } else lifecyclePhase = "active";
+    if (!createFrameTargets()) {
+      lifecyclePhase = "configuration_failed";
+      return Status.rejected;
+    }
     return Status.ok;
   }
 
@@ -839,6 +1124,10 @@ export function createBrowserHost({
     invalidateResourceValues();
     releasePrimitivePipeline(false);
     releaseSpritePipeline(false);
+    releaseParticlePipeline(false);
+    releaseMaterialPipelines(false);
+    releaseMaterialTextures(false);
+    releaseFrameTargets(false);
     spriteBatch = null;
   }
 
@@ -873,6 +1162,9 @@ export function createBrowserHost({
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       releaseParticlePipeline(!contextLost);
+      releaseMaterialPipelines(!contextLost);
+      releaseMaterialTextures(!contextLost);
+      releaseFrameTargets(!contextLost);
       spriteBatch = null;
       lifecyclePhase = "destroyed";
       gl = null;
@@ -899,6 +1191,10 @@ export function createBrowserHost({
     up_host_gl_texture_upload: uploadTexture,
     up_host_gl_canvas_upload: uploadCanvas,
     up_host_gl_draw_particles: drawParticles,
+    up_host_gl_material_begin: materialBegin,
+    up_host_gl_material_bind_texture: materialBindTexture,
+    up_host_gl_material_bind_uniform: materialBindUniform,
+    up_host_gl_material_draw: materialDraw,
     up_host_gl_draw_sprite: drawSprite,
     up_host_gl_flush_sprites: flushSprites,
     up_host_gl_draw_text: drawText,
@@ -925,6 +1221,9 @@ export function createBrowserHost({
       releasePrimitivePipeline(!contextLost);
       releaseSpritePipeline(!contextLost);
       releaseParticlePipeline(!contextLost);
+      releaseMaterialPipelines(!contextLost);
+      releaseMaterialTextures(!contextLost);
+      releaseFrameTargets(!contextLost);
       spriteBatch = null;
       canvas?.removeEventListener("webglcontextlost", onContextLost);
       canvas?.removeEventListener("webglcontextrestored", onContextRestored);

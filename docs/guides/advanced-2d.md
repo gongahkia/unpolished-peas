@@ -23,7 +23,7 @@ Custom source bundles are validated and retained as the portable material contra
 
 ## Particles
 
-`ParticleSystem` has deterministic CPU simulation. Its seed, fixed-step update, particle lifetime, velocity, gravity, size, and colour interpolation produce the same particle state on every target. `particleInstances` exposes portable render data for an instanced backend; `draw` is the reference Canvas implementation.
+`ParticleSystem` has deterministic CPU simulation. Its seed, fixed-step update, particle lifetime, velocity, gravity, size, and colour interpolation produce the same particle state on every target. `submit` appends compact per-particle data to `Renderer2D`; the SDL GPU, WebGL 2, and WebGPU presenters draw each contiguous blend batch with one instanced quad call. `draw` remains the deterministic Canvas reference path.
 
 ```zig
 var particles = try up.graphics.ParticleSystem.init(allocator, .{
@@ -37,16 +37,17 @@ var particles = try up.graphics.ParticleSystem.init(allocator, .{
 defer particles.deinit();
 
 try particles.update(1.0 / 60.0);
-particles.draw(canvas);
+const renderer = try context.requireRenderer2D();
+try particles.submit(renderer);
 ```
 
-The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. The unit suite verifies that the retained capacity and scratch address survive a normal update/draw/apply frame. GPU instancing is not yet wired into the SDL or browser presenter, so `particleInstances` is a prepared portability boundary rather than a current performance claim.
+The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. The unit suite verifies retained capacity, blend-batch construction, and Canvas reference output. `Renderer2D` is available through `GameContext` in the SDL GPU and browser runtimes; the OpenGL preview presenter explicitly rejects queued advanced draws rather than silently falling back to CPU rendering.
 
 ## Audio and music
 
 `assets.Sound` accepts WAV and OGG on native targets. `assets.Music` exposes streamed WAV and OGG music, and `assets.AudioMixer` exposes master, SFX, music, and custom buses with volume, pan, pause/resume, fade, and stale-handle checks. `SoundOptions` now accepts an optional bus and pan.
 
-Browser builds can use WAV assets with the same mixer and submit one bounded PCM buffer through `assets.AudioStream`. Browser audio must first be activated by a user gesture; `AudioStream.submit` returns `false` while the browser host is suspended or its queue is full. OGG decode/streaming is deliberately rejected on `wasm32-freestanding` until a decoder can be shipped without changing the freestanding runtime contract.
+Browser builds can decode WAV and OGG/Vorbis with the same Zig mixer used by native builds, then submit one bounded PCM buffer through `assets.AudioStream`. `Music.decodeOgg` accepts owned asset bytes for freestanding hosts and preserves its source for streamed mixer playback. Browser audio must first be activated by a user gesture; `AudioStream.submit` returns `false` while the browser host is suspended or its queue is full. The browser decoder uses a fixed 1 MiB caller-owned Vorbis workspace; unusually complex streams that exhaust it fail with `OggDecoderStorageExhausted` rather than allocating through an unavailable C runtime.
 
 ```zig
 var mixer = try up.assets.AudioMixer.init(allocator, .{});
@@ -60,4 +61,4 @@ _ = try stream.submit(&mixer); // false until browser activation; native uses it
 
 ## Verification and parity
 
-Parity means the same public API, source-bundle validation, deterministic particle state, audio control semantics, and Canvas capture behavior. It does not mean byte-identical output for arbitrary GPU shaders on different drivers. Run `zig build test`, `zig build test-browser-audio-stream`, `zig build browser`, and `zig build test-browser-host` for the fast contract checks. Browser proof-game and real-GPU checks remain separate capability jobs.
+Parity means the same public API, deterministic particle state, audio control semantics, and Canvas capture behavior. It does not mean byte-identical output for arbitrary GPU shaders on different drivers. Run `zig build test`, `zig build test-browser-ogg-decode`, `zig build browser`, `zig build test-browser-host`, and `zig build test-browser-webgpu` for the fast contract checks. Browser proof-game and real-GPU checks remain separate capability jobs.

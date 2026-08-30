@@ -7,6 +7,8 @@ const Vec2 = @import("math.zig").Vec2;
 
 pub const max_shader_source_bytes = 256 * 1024;
 pub const max_shader_bindings = 16;
+pub const max_native_shader_bytes = 8 * 1024 * 1024;
+pub const max_material_uniform_bytes = 64 * 1024;
 pub const max_particles = 1_000_000;
 
 pub const ShaderTarget = enum {
@@ -23,6 +25,42 @@ pub const ShaderBindingKind = enum {
 pub const ShaderBinding = struct {
     name: []const u8,
     kind: ShaderBindingKind,
+};
+
+/// Precompiled desktop shader code. SDL GPU consumes these bytes directly;
+/// production builds must not compile user material source at runtime.
+pub const NativeShaderArtifacts = struct {
+    spirv: []const u8,
+    dxbc: []const u8,
+    metallib: []const u8,
+    spirv_entrypoint: [:0]const u8 = "main",
+    dxbc_entrypoint: [:0]const u8 = "main",
+    metallib_entrypoint: [:0]const u8 = "main0",
+
+    pub fn validate(self: NativeShaderArtifacts) !void {
+        inline for ([_][]const u8{ self.spirv, self.dxbc, self.metallib }) |artifact| {
+            if (artifact.len == 0) return error.MissingNativeShaderArtifact;
+            if (artifact.len > max_native_shader_bytes) return error.NativeShaderArtifactTooLarge;
+        }
+    }
+};
+
+/// Browser source is compiled by WebGL 2 or WebGPU because those APIs do not
+/// accept portable precompiled material binaries.
+pub const MaterialStage = struct {
+    native: NativeShaderArtifacts,
+    webgl2_glsl_es: []const u8,
+    webgpu_wgsl: []const u8,
+
+    pub fn validate(self: MaterialStage) !void {
+        try self.native.validate();
+        inline for ([_][]const u8{ self.webgl2_glsl_es, self.webgpu_wgsl }) |source| {
+            if (source.len == 0) return error.MissingShaderSource;
+            if (source.len > max_shader_source_bytes) return error.ShaderSourceTooLarge;
+            if (std.mem.indexOf(u8, source, "main") == null) return error.ShaderEntryPointMissing;
+            if (!std.unicode.utf8ValidateSlice(source)) return error.InvalidShaderSourceEncoding;
+        }
+    }
 };
 
 /// All sources are required. The engine validates the common binding manifest
@@ -61,24 +99,85 @@ pub const ShaderSourceBundle = struct {
 
 pub const Material = struct {
     name: []const u8,
-    sources: ShaderSourceBundle,
+    /// Retained for source-bundle validation compatibility. A material made
+    /// with `init` intentionally cannot be submitted to a GPU renderer.
+    sources: ?ShaderSourceBundle = null,
+    stages: ?MaterialStages = null,
+    revision: u32 = 1,
 
     pub fn init(name: []const u8, sources: ShaderSourceBundle) !Material {
         if (name.len == 0 or name.len > 96) return error.InvalidMaterialName;
         try sources.validate();
         return .{ .name = name, .sources = sources };
     }
+
+    pub fn initStages(name: []const u8, stages: MaterialStages) !Material {
+        if (name.len == 0 or name.len > 96) return error.InvalidMaterialName;
+        try stages.validate();
+        return .{ .name = name, .stages = stages };
+    }
+
+    pub fn executableStages(self: Material) !MaterialStages {
+        return self.stages orelse error.MaterialStagesRequired;
+    }
 };
 
-/// Vertex and fragment programs use the same target-specific source contract.
-/// The fixed renderer supplies only position, texture coordinates, and tint.
+/// The fixed renderer supplies position, texture coordinates, and tint at
+/// locations 0, 1, and 2. `source` must be the first texture binding; it is
+/// supplied from the material sprite image or the previous post-pass output.
 pub const MaterialStages = struct {
-    vertex: ShaderSourceBundle,
-    fragment: ShaderSourceBundle,
+    vertex: MaterialStage,
+    fragment: MaterialStage,
+    bindings: []const ShaderBinding,
 
     pub fn validate(self: MaterialStages) !void {
         try self.vertex.validate();
         try self.fragment.validate();
+        if (self.bindings.len == 0 or self.bindings.len > max_shader_bindings) return error.InvalidMaterialBindings;
+        var source_index: ?usize = null;
+        for (self.bindings, 0..) |binding, index| {
+            if (!validBindingName(binding.name)) return error.InvalidShaderBindingName;
+            for (self.bindings[0..index]) |previous| {
+                if (std.mem.eql(u8, previous.name, binding.name)) return error.DuplicateShaderBinding;
+            }
+            if (std.mem.eql(u8, binding.name, "source")) {
+                if (binding.kind != .texture) return error.InvalidMaterialSourceBinding;
+                source_index = index;
+            }
+        }
+        if (source_index == null or source_index.? != 0) return error.MaterialSourceBindingRequired;
+    }
+};
+
+pub const MaterialTextureBinding = struct {
+    image: *const Image,
+};
+
+/// Uniform bytes are std140-compatible blocks. Each block is independently
+/// bound in declaration order and must be padded to sixteen bytes.
+pub const MaterialBindingValue = union(ShaderBindingKind) {
+    texture: MaterialTextureBinding,
+    uniform: []const u8,
+};
+
+pub const MaterialBinding = struct {
+    name: []const u8,
+    value: MaterialBindingValue,
+};
+
+/// A stable indirection for file-backed material assets. AssetStore reloads
+/// replace the material and advance this revision only after full validation.
+pub const MaterialAsset = struct {
+    material: Material,
+    revision: u32 = 1,
+
+    pub fn replace(self: *MaterialAsset, material: Material) !void {
+        var next = material;
+        _ = try next.executableStages();
+        self.revision +%= 1;
+        if (self.revision == 0) self.revision = 1;
+        next.revision = self.revision;
+        self.material = next;
     }
 };
 
@@ -107,11 +206,15 @@ pub const Renderer2D = struct {
         width: i32,
         height: i32,
         tint: Color = Color.white,
+        bindings: []const MaterialBinding = &.{},
+        /// Compatibility payload for a declared `settings` uniform block.
         uniforms: []const u8 = &.{},
     };
 
     pub const PostPass = struct {
         material: *const Material,
+        bindings: []const MaterialBinding = &.{},
+        /// Compatibility payload for a declared `settings` uniform block.
         uniforms: []const u8 = &.{},
     };
 
@@ -142,14 +245,12 @@ pub const Renderer2D = struct {
 
     pub fn drawMaterialSprite(self: *Renderer2D, draw: MaterialSprite) !void {
         if (draw.width <= 0 or draw.height <= 0) return error.InvalidMaterialDraw;
-        if (draw.uniforms.len > max_shader_source_bytes) return error.MaterialUniformsTooLarge;
-        try draw.material.sources.validate();
+        try validateMaterialBindings(draw.material, draw.bindings, draw.uniforms);
         try self.material_sprites.append(self.allocator, draw);
     }
 
     pub fn addPostPass(self: *Renderer2D, pass: PostPass) !void {
-        if (pass.uniforms.len > max_shader_source_bytes) return error.MaterialUniformsTooLarge;
-        try pass.material.sources.validate();
+        try validateMaterialBindings(pass.material, pass.bindings, pass.uniforms);
         try self.post_passes.append(self.allocator, pass);
     }
 
@@ -394,6 +495,45 @@ fn validBindingName(value: []const u8) bool {
         return false;
     }
     return true;
+}
+
+fn validateMaterialBindings(material: *const Material, values: []const MaterialBinding, legacy_settings: []const u8) !void {
+    const stages = try material.executableStages();
+    if (legacy_settings.len > max_material_uniform_bytes) return error.MaterialUniformsTooLarge;
+    for (values, 0..) |value, index| {
+        if (!validBindingName(value.name) or std.mem.eql(u8, value.name, "source")) return error.InvalidMaterialBinding;
+        for (values[0..index]) |previous| if (std.mem.eql(u8, previous.name, value.name)) return error.DuplicateMaterialBinding;
+        const declared = findBinding(stages.bindings, value.name) orelse return error.UnknownMaterialBinding;
+        switch (value.value) {
+            .texture => if (declared.kind != .texture) return error.MaterialBindingKindMismatch,
+            .uniform => |bytes| {
+                if (declared.kind != .uniform) return error.MaterialBindingKindMismatch;
+                if (bytes.len == 0 or bytes.len > max_material_uniform_bytes or bytes.len % 16 != 0) return error.InvalidMaterialUniformBlock;
+            },
+        }
+    }
+    for (stages.bindings) |declared| {
+        if (std.mem.eql(u8, declared.name, "source")) continue;
+        if (findMaterialBinding(values, declared.name)) |value| {
+            if (std.meta.activeTag(value.value) != declared.kind) return error.MaterialBindingKindMismatch;
+            continue;
+        }
+        if (declared.kind == .uniform and std.mem.eql(u8, declared.name, "settings") and legacy_settings.len != 0) {
+            if (legacy_settings.len % 16 != 0) return error.InvalidMaterialUniformBlock;
+            continue;
+        }
+        return error.MissingMaterialBinding;
+    }
+}
+
+fn findBinding(bindings: []const ShaderBinding, name: []const u8) ?ShaderBinding {
+    for (bindings) |binding| if (std.mem.eql(u8, binding.name, name)) return binding;
+    return null;
+}
+
+fn findMaterialBinding(bindings: []const MaterialBinding, name: []const u8) ?MaterialBinding {
+    for (bindings) |binding| if (std.mem.eql(u8, binding.name, name)) return binding;
+    return null;
 }
 
 fn validateEffect(effect: PostEffect) !void {

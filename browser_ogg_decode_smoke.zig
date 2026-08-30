@@ -14,6 +14,8 @@ pub export fn up_browser_ogg_decode_smoke() i32 {
     _ = mixer.playMusic(&music, .{}) catch return -5;
     var output: [256]up.assets.AudioSample = undefined;
     mixer.mix(&output) catch return -6;
-    for (output) |sample| if (sample.left != 0 or sample.right != 0) return 0;
+    for (output) |sample| {
+        if (sample.left != 0 or sample.right != 0) return 0;
+    }
     return -7;
 }
