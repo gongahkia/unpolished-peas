@@ -140,15 +140,16 @@ test "broken runnable example links fail validation" {
     try std.testing.expectError(error.BrokenExampleLink, validateExampleLinks(std.testing.allocator, root, docs_root));
 }
 
-test "quickstart declares the published consumer sequence" {
+test "quickstart rejects the stale unpublished consumer sequence" {
     const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
     defer std.testing.allocator.free(quickstart);
-    const commands = [_][]const u8{
-        "git clone --depth 1 --branch v0.0.4 https://github.com/gongahkia/unpolished-peas.git",
+    const claims = [_][]const u8{
+        "v0.0.4 does not exist as a repository tag",
         "export ZIG_GLOBAL_CACHE_DIR=\"$(mktemp -d)\"",
         "export ZIG_LOCAL_CACHE_DIR=\"$(mktemp -d)\"",
-        "zig build new -- game",
-        "zig build run -- --frames 2",
+        "zig build test -Dwith_sdl=false",
+        "zig build browser -Dwith_sdl=false",
     };
-    for (commands) |command| try std.testing.expect(std.mem.indexOf(u8, quickstart, command) != null);
+    for (claims) |claim| try std.testing.expect(std.mem.indexOf(u8, quickstart, claim) != null);
+    try std.testing.expect(std.mem.indexOf(u8, quickstart, "git clone --depth 1 --branch v0.0.4") == null);
 }

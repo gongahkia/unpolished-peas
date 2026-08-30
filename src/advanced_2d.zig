@@ -159,8 +159,8 @@ pub const ParticleEmitterConfig = struct {
     blend: BlendMode = .alpha,
 };
 
-/// CPU simulation is authoritative. Backends consume particleInstances as one
-/// instanced sprite draw, while headless rendering uses draw for the same state.
+/// cpu simulation is authoritative. Backends may consume particleInstances as
+/// one instanced sprite draw, while headless rendering uses draw for the same state.
 pub const ParticleSystem = struct {
     allocator: std.mem.Allocator,
     config: ParticleEmitterConfig,
@@ -382,10 +382,10 @@ fn interpolateColor(from: Color, to: Color, amount: f32) Color {
 }
 
 test "shader bundles require every portable source and a consistent manifest" {
-    const valid = ShaderSourceBundle{ .native_hlsl = "float4 main() : SV_Target { return 0; }", .webgl2_glsl_es = "void main() {}", .webgpu_wgsl = "@fragment fn main() {}", .bindings = &.{.{ .name = "source_texture", .kind = .texture }, .{ .name = "settings", .kind = .uniform }} };
+    const valid = ShaderSourceBundle{ .native_hlsl = "float4 main() : SV_Target { return 0; }", .webgl2_glsl_es = "void main() {}", .webgpu_wgsl = "@fragment fn main() {}", .bindings = &.{ .{ .name = "source_texture", .kind = .texture }, .{ .name = "settings", .kind = .uniform } } };
     try valid.validate();
     try std.testing.expectEqualStrings(valid.webgpu_wgsl, valid.source(.webgpu_wgsl));
-    try std.testing.expectError(error.DuplicateShaderBinding, (ShaderSourceBundle{ .native_hlsl = valid.native_hlsl, .webgl2_glsl_es = valid.webgl2_glsl_es, .webgpu_wgsl = valid.webgpu_wgsl, .bindings = &.{.{ .name = "same", .kind = .texture }, .{ .name = "same", .kind = .uniform }} }).validate());
+    try std.testing.expectError(error.DuplicateShaderBinding, (ShaderSourceBundle{ .native_hlsl = valid.native_hlsl, .webgl2_glsl_es = valid.webgl2_glsl_es, .webgpu_wgsl = valid.webgpu_wgsl, .bindings = &.{ .{ .name = "same", .kind = .texture }, .{ .name = "same", .kind = .uniform } } }).validate());
     try std.testing.expectError(error.MissingShaderSource, (ShaderSourceBundle{ .native_hlsl = "", .webgl2_glsl_es = valid.webgl2_glsl_es, .webgpu_wgsl = valid.webgpu_wgsl }).validate());
 }
 
@@ -412,6 +412,27 @@ test "post process blur reuses its frame scratch allocation" {
     const first = chain.scratch.ptr;
     try chain.apply(&canvas);
     try std.testing.expect(first == chain.scratch.ptr);
+}
+
+test "advanced frame storage is retained after setup" {
+    const config = ParticleEmitterConfig{ .seed = 7, .max_particles = 8, .spawn_rate = 8, .lifetime_min_seconds = 2, .lifetime_max_seconds = 2, .speed_min = 1, .speed_max = 1, .size_min = 1, .size_max = 1 };
+    var particles = try ParticleSystem.init(std.testing.allocator, config);
+    defer particles.deinit();
+    try std.testing.expect(particles.particles.capacity >= config.max_particles);
+    const particle_capacity = particles.particles.capacity;
+
+    var canvas = try Canvas.init(std.testing.allocator, 8, 8);
+    defer canvas.deinit();
+    var chain = try PostProcessChain.init(std.testing.allocator, &.{.{ .blur = 1 }});
+    defer chain.deinit();
+    try chain.apply(&canvas);
+    const scratch = chain.scratch.ptr;
+
+    try particles.update(1.0);
+    particles.draw(&canvas);
+    try chain.apply(&canvas);
+    try std.testing.expectEqual(particle_capacity, particles.particles.capacity);
+    try std.testing.expect(scratch == chain.scratch.ptr);
 }
 
 test "particle simulation is deterministic and produces portable instances" {

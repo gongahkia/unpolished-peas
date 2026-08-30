@@ -8,9 +8,9 @@ v0.1 exposes only `core`, `input`, `graphics`, `assets`, `preview`, and `testSup
 
 v0.1 removes the engine-owned extension manifest, resolver, lock, test matrix, and CI gates. Delete those engine-specific files from a game or integration. Third-party Zig dependencies remain game-owned: declare and resolve them directly in the game's `build.zig.zon` and `build.zig`.
 
-## Particle emitters removed
+## Particle emitters
 
-v0.1 removes the engine-owned particle emitter runtime and public API. Delete particle-emitter calls and keep any game-specific visual simulation in game code.
+v0.1 includes `graphics.ParticleSystem` for deterministic CPU simulation and reference `Canvas` drawing. It is appropriate for bounded 2D effects whose spawn, lifetime, velocity, gravity, size, and colour interpolation belong in the game configuration. It is not an ECS, scene, collision, or GPU-compute system; preserve game-owned simulation that needs those concerns. `particleInstances` is an API boundary for a future instanced presenter, not a promise of GPU acceleration in this release.
 
 ## ECS removed
 
@@ -28,9 +28,9 @@ Networking, relays, and hosted services were not shipped in this checkout and ar
 
 v0.1 removes the engine-owned Box2D physics subsystem and its public API. Keep physics simulation and collision behavior game-owned.
 
-## Effects, shader assets, lighting, and GPU resources removed
+## Effects, shader assets, lighting, and GPU resources
 
-v0.1 removes engine-owned effects, post-processing, shader assets, lighting, and public GPU-resource handles. Keep game-specific rendering extensions and resource ownership in game code; core rendering remains limited to documented 2D primitives, sprites, text, and presentation.
+v0.1 includes portable material-source validation and a small CPU-reference post-effect chain (`tint`, `grayscale`, `pixelate`, `blur`, and `crt`). Use the [Advanced 2D guide](advanced-2d.md) for the exact source-bundle and Canvas behavior. Lighting, public GPU-resource handles, meshes, compute, and arbitrary custom shader execution remain excluded; keep those rendering extensions and their resource ownership in game code.
 
 ## Tile maps and collision systems removed
 

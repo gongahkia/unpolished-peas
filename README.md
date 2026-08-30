@@ -8,19 +8,16 @@ A small Zig 2D engine with a callback-game starter and explicit core APIs.
 
 ## Start in 60 seconds
 
-Requires Zig `0.15.2`. Start from the published `v0.0.4` checkout with empty Zig caches; do not install from `main`.
+Requires Zig `0.15.2`. There is currently no published tag for this v0.1 development contract: `v0.0.4` is not a repository tag. Do not use the stale consumer command below from older revisions, and do not treat `main` as an installation target.
 
 ```sh
-git clone --depth 1 --branch v0.0.4 https://github.com/gongahkia/unpolished-peas.git
-cd unpolished-peas
 export ZIG_GLOBAL_CACHE_DIR="$(mktemp -d)"
 export ZIG_LOCAL_CACHE_DIR="$(mktemp -d)"
-zig build new -- game
-cd game
-zig build run -- --frames 2
+zig build test -Dwith_sdl=false
+zig build browser -Dwith_sdl=false
 ```
 
-This creates the callback [starter](templates/bounce/src/main.zig): set `Game.config`, then implement `init`, fixed-step `update`, and `draw`. The default dependency fetches pinned SDL3 source; no system SDL installation is required.
+This verifies the source checkout's headless and browser contracts. The callback [starter](templates/bounce/src/main.zig) remains the small reference game: set `Game.config`, then implement `init`, fixed-step `update`, and `draw`. A release preparation step must replace its generated dependency coordinate with a real immutable tag URL and matching hash before it is usable as an independent project.
 
 ## Supported platforms
 
@@ -53,6 +50,6 @@ Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/gui
 
 ## Release and local docs
 
-Generated projects pin one public archive URL and matching hash. Upgrade them together from the reviewed starter manifest; see [release policy](docs/guides/releases.md).
+Published generated projects pin one public archive URL and matching hash. No current tag provides that coordinate; see [release policy](docs/guides/releases.md).
 
 Run `zig build docs` for offline documentation, or `zig build peas -- docs quickstart` to locate its local path. The [docs index](docs/index.md) links testing, platform, API, and migration details.

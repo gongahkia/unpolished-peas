@@ -4,7 +4,7 @@ The v0.1 advanced layer keeps the engine in 2D. It adds runtime shader-source bu
 
 ## Materials and post effects
 
-`ShaderSourceBundle` requires HLSL for native SDL GPU compilation, GLSL ES for WebGL 2, and WGSL for WebGPU. All three variants must declare the same named texture/uniform manifest. `Material.init` validates that portable package before a renderer selects its target source; an invalid source, missing entry point, duplicate binding, or invalid binding name fails rather than choosing another backend's code.
+`ShaderSourceBundle` requires HLSL for a native SDL GPU target, GLSL ES for WebGL 2, and WGSL for WebGPU. All three variants must declare the same named texture/uniform manifest. `Material.init` validates that portable package before a future renderer selects its target source; an invalid source, missing entry point, duplicate binding, or invalid binding name fails rather than choosing another backend's code.
 
 The portable reference effects execute on `Canvas`, so their behavior is shared by headless tests, the desktop Canvas presenter, and the browser Canvas upload path. A chain owns a reusable blur scratch surface and applies effects in declaration order.
 
@@ -40,7 +40,7 @@ try particles.update(1.0 / 60.0);
 particles.draw(canvas);
 ```
 
-The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. This keeps ordinary update/draw frames allocation-free after setup. GPU instancing is not yet wired into the SDL or browser presenter, so `particleInstances` is a prepared portability boundary rather than a current performance claim.
+The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. The unit suite verifies that the retained capacity and scratch address survive a normal update/draw/apply frame. GPU instancing is not yet wired into the SDL or browser presenter, so `particleInstances` is a prepared portability boundary rather than a current performance claim.
 
 ## Audio and music
 
