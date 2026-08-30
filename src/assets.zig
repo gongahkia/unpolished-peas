@@ -444,13 +444,13 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     fn loadSoundAsset(self: *AssetStore, path: []const u8) !SoundAsset {
-        if (!std.mem.endsWith(u8, path, ".wav")) return error.UnsupportedSoundAsset;
+        if (!std.mem.endsWith(u8, path, ".wav") and !std.mem.endsWith(u8, path, ".ogg")) return error.UnsupportedSoundAsset;
         const file = try AssetFile.load(self.allocator, self.dir, path, @import("audio.zig").stable_max_input_bytes);
         errdefer {
             var cleanup = file;
             cleanup.deinit();
         }
-        const decoded = try Sound.decodeWav(self.allocator, file.bytes);
+        const decoded = if (std.mem.endsWith(u8, path, ".wav")) try Sound.decodeWav(self.allocator, file.bytes) else try Sound.decodeOgg(self.allocator, file.bytes);
         errdefer {
             var cleanup = decoded;
             cleanup.deinit();
@@ -511,13 +511,14 @@ test "asset handles reject stale generations" {
     const text = try store.loadText("examples/assets/message.txt");
     const image = try store.loadImage("examples/assets/ball.png");
     const sound = try store.loadSound("examples/assets/blip.wav");
-    try std.testing.expectError(error.UnsupportedSoundAsset, store.loadSound("examples/assets/tone.ogg"));
+    const ogg = try store.loadSound("examples/assets/tone.ogg");
     const truetype = try store.loadFont("examples/assets/fonts/Basic-Regular.ttf", .{});
     const opentype = try store.loadFont("examples/assets/fonts/SourceSans3-Regular.otf", .{});
     const bitmap = try store.loadFont("examples/assets/fonts/bitmap.fnt", .{});
     try std.testing.expect((try store.tryText(text)).len > 0);
     try std.testing.expect((try store.tryImage(image)).width > 0);
     try std.testing.expect((try store.trySound(sound)).frames.len > 0);
+    try std.testing.expect((try store.trySound(ogg)).frames.len > 0);
     try std.testing.expect((try store.tryFont(truetype)).glyphForCodepoint(0x00c9).?.width > 0);
     try std.testing.expect((try store.tryFont(opentype)).glyphForCodepoint(0x00c9).?.width > 0);
     try std.testing.expect((try store.tryFont(bitmap)).glyphForCodepoint('B').?.width > 0);

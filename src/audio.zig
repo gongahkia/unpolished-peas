@@ -29,7 +29,9 @@ pub const PlaybackHandle = struct { // borrows an AudioMixer playback; false fro
 };
 
 pub const SoundOptions = struct {
+    bus: ?BusHandle = null,
     volume: f32 = 1,
+    pan: f32 = 0,
     loop: bool = false,
 };
 
@@ -51,7 +53,7 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
         return decodeWavSound(allocator, bytes);
     }
 
-    fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
+    pub fn loadOgg(allocator: std.mem.Allocator, path: []const u8) !Sound {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         defer allocator.free(bytes);
         return decodeOggSound(allocator, bytes);
@@ -62,7 +64,7 @@ pub const Sound = struct { // owns decoded frames allocated by loadWav; call dei
         return decodeWavSound(allocator, bytes);
     }
 
-    fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
+    pub fn decodeOgg(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
         return decodeOggSound(allocator, bytes);
     }
 
@@ -170,8 +172,9 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
 
     pub fn playSound(self: *AudioMixer, sound: *const Sound, options: SoundOptions) !PlaybackHandle {
         try requireVolume(options.volume);
+        try requirePan(options.pan);
         if (sound.frames.len == 0) return error.EmptySound;
-        const bus_handle = sfxBus();
+        const bus_handle = options.bus orelse sfxBus();
         _ = try self.getBus(bus_handle);
         var playback = Playback{
             .id = 0,
@@ -179,7 +182,7 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
             .paused = false,
             .bus = bus_handle,
             .volume = options.volume,
-            .pan = 0,
+            .pan = options.pan,
             .loop = options.loop,
             .kind = .{ .sound = .{ .sound = sound } },
         };

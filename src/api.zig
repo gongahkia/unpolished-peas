@@ -92,6 +92,19 @@ pub const graphics = struct {
     pub const TextLayoutOptions = @import("text_layout.zig").Options;
     pub const TextLayout = @import("text_layout.zig").Layout;
     pub const layoutText = @import("text_layout.zig").layout;
+    pub const ShaderTarget = @import("advanced_2d.zig").ShaderTarget;
+    pub const ShaderBindingKind = @import("advanced_2d.zig").ShaderBindingKind;
+    pub const ShaderBinding = @import("advanced_2d.zig").ShaderBinding;
+    pub const ShaderSourceBundle = @import("advanced_2d.zig").ShaderSourceBundle;
+    pub const Material = @import("advanced_2d.zig").Material;
+    pub const MaterialDiagnostic = @import("advanced_2d.zig").MaterialDiagnostic;
+    pub const CrtOptions = @import("advanced_2d.zig").CrtOptions;
+    pub const PostEffect = @import("advanced_2d.zig").PostEffect;
+    pub const PostProcessChain = @import("advanced_2d.zig").PostProcessChain;
+    pub const Particle = @import("advanced_2d.zig").Particle;
+    pub const ParticleInstance = @import("advanced_2d.zig").ParticleInstance;
+    pub const ParticleEmitterConfig = @import("advanced_2d.zig").ParticleEmitterConfig;
+    pub const ParticleSystem = @import("advanced_2d.zig").ParticleSystem;
 };
 
 pub const assets = struct {
@@ -105,6 +118,11 @@ pub const assets = struct {
     pub const AtlasAnimationSpec = @import("atlas.zig").AnimationSpec;
     pub const Font = @import("font_asset.zig").Font;
     pub const Sound = @import("audio.zig").Sound;
+    pub const Music = @import("audio.zig").Music;
+    pub const MusicOptions = @import("audio.zig").MusicOptions;
+    pub const AudioMixer = @import("audio.zig").AudioMixer;
+    pub const AudioSample = @import("audio.zig").AudioSample;
+    pub const BusHandle = @import("audio.zig").BusHandle;
     pub const AssetStats = @import("assets.zig").AssetStats;
     pub const Animation = @import("atlas.zig").Animation;
     pub const AnimationFrame = @import("atlas.zig").AnimationFrame;
@@ -141,8 +159,8 @@ pub const preview = struct {
 };
 pub const testSupport = @import("test_support.zig");
 
-test "public API excludes removed and unsupported systems" {
-    inline for (.{ "effects", "PixelEffect", "PostProcessChain", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
+test "public API excludes unsupported systems" {
+    inline for (.{ "effects", "PixelEffect", "ShaderProgram", "ShaderAssetHandle", "lighting", "GpuResourceKind", "GpuResources", "TextureHandle", "RenderTargetHandle", "ShaderHandle", "PipelineHandle" }) |name| {
         try std.testing.expect(!@hasDecl(@This(), name));
     }
     inline for (.{ "world", "TileMap", "TileMapLayer", "TileCollider", "CharacterController", "collision", "Broadphase", "InspectorCollisionPanel" }) |name| {
@@ -162,9 +180,5 @@ test "public API excludes removed and unsupported systems" {
     inline for (.{ "CameraBounds", "CameraDirector", "CameraFollow", "CameraHandle", "CameraRig", "CameraShake", "CameraShot", "CameraViewport" }) |name| {
         try std.testing.expect(!@hasDecl(graphics, name));
     }
-    inline for (.{ "Music", "MusicOptions", "AudioMixer", "AudioSample", "BusHandle" }) |name| {
-        try std.testing.expect(!@hasDecl(assets, name));
-    }
-    inline for (.{ "loadOgg", "decodeOgg" }) |name| try std.testing.expect(!@hasDecl(assets.Sound, name));
-    inline for (.{ "bus", "pan" }) |name| try std.testing.expect(!@hasField(assets.SoundOptions, name));
+    inline for (.{ "Music", "MusicOptions", "AudioMixer", "AudioSample", "BusHandle" }) |name| try std.testing.expect(@hasDecl(assets, name));
 }

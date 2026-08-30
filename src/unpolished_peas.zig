@@ -12,6 +12,7 @@ test {
     _ = @import("preview.zig");
     _ = @import("app.zig");
     _ = @import("actions.zig");
+    _ = @import("advanced_2d.zig");
     _ = @import("audio.zig");
     _ = @import("atlas.zig");
     _ = @import("camera.zig");
