@@ -123,6 +123,8 @@ pub const assets = struct {
     pub const AudioMixer = @import("audio.zig").AudioMixer;
     pub const AudioSample = @import("audio.zig").AudioSample;
     pub const BusHandle = @import("audio.zig").BusHandle;
+    pub const AudioStream = @import("audio_stream.zig").AudioStream;
+    pub const AudioStreamConfig = @import("audio_stream.zig").Config;
     pub const AssetStats = @import("assets.zig").AssetStats;
     pub const Animation = @import("atlas.zig").Animation;
     pub const AnimationFrame = @import("atlas.zig").AnimationFrame;
@@ -180,5 +182,5 @@ test "public API excludes unsupported systems" {
     inline for (.{ "CameraBounds", "CameraDirector", "CameraFollow", "CameraHandle", "CameraRig", "CameraShake", "CameraShot", "CameraViewport" }) |name| {
         try std.testing.expect(!@hasDecl(graphics, name));
     }
-    inline for (.{ "Music", "MusicOptions", "AudioMixer", "AudioSample", "BusHandle" }) |name| try std.testing.expect(@hasDecl(assets, name));
+    inline for (.{ "Music", "MusicOptions", "AudioMixer", "AudioSample", "BusHandle", "AudioStream", "AudioStreamConfig" }) |name| try std.testing.expect(@hasDecl(assets, name));
 }
