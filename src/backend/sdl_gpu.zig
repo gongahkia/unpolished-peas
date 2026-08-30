@@ -1426,6 +1426,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         input.beginFrame();
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
+        advanced_renderer.beginFrame();
         refreshPresentation(renderer.window(), &presentation);
         var audio_device_changed = false;
         var close_requested = false;
@@ -1508,7 +1509,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         if (failure != null) continue;
 
         canvas.clear(config.clear_color);
-        advanced_renderer.beginFrame();
         ctx.dt = timing.draw_seconds;
         ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
