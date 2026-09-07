@@ -35,7 +35,9 @@ export class DeterministicRng {
       !Number.isSafeInteger(maximumExclusive) ||
       maximumExclusive <= minimum
     ) {
-      throw new RangeError('rng_int bounds must be safe integers with maximum greater than minimum');
+      throw new RangeError(
+        'rng_int bounds must be safe integers with maximum greater than minimum',
+      );
     }
     const range = maximumExclusive - minimum;
     if (range > 0x1_0000_0000) {

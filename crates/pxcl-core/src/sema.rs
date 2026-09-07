@@ -161,9 +161,8 @@ impl<'syntax> Analyzer<'syntax> {
                 Item::Callback(callback) => {
                     ir.routines.push(self.check_callback(callback));
                 }
-                Item::Record(_) => {}
                 Item::Assertion(assertion) => self.check_module_assertion(assertion),
-                Item::Import(_) | Item::Enum(_) => {}
+                Item::Import(_) | Item::Record(_) | Item::Enum(_) => {}
             }
         }
         (self.symbols, ir, self.diagnostics)

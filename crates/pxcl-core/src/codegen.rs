@@ -514,13 +514,10 @@ impl<'input> Generator<'input> {
                 value,
                 ..
             } => {
-                let target = self.place(target, ValueContext::Task);
-                let value = self.expression(value, ValueContext::Task);
-                let operator = assignment_operator(*operator);
-                self.writer.line(
-                    format!("{target}{operator}{value};task.pc={next};continue;"),
-                    Some(span),
-                );
+                let assignment =
+                    self.store_statement(target, *operator, value, ValueContext::Task, span);
+                self.writer
+                    .line(format!("{assignment};task.pc={next};continue;"), Some(span));
             }
             TaskInstruction::Expression { value, .. } => {
                 let value = self.expression(value, ValueContext::Task);
@@ -724,12 +721,10 @@ impl<'input> Generator<'input> {
                 operator,
                 value,
             } => {
-                let target = self.place(target, context);
-                let value = self.expression(value, context);
-                self.writer.line(
-                    format!("{target}{}{value};", assignment_operator(*operator)),
-                    Some(statement.span),
-                );
+                let assignment =
+                    self.store_statement(target, *operator, value, context, statement.span);
+                self.writer
+                    .line(format!("{assignment};"), Some(statement.span));
             }
             IrStatementKind::Expression(value) => {
                 let value = self.expression(value, context);
@@ -1020,6 +1015,62 @@ impl<'input> Generator<'input> {
                 self.expression(subject, context),
                 self.expression(index, context)
             ),
+            IrPlace::Error => "undefined".to_owned(),
+        }
+    }
+
+    fn store_statement(
+        &mut self,
+        place: &IrPlace,
+        operator: AssignmentOperator,
+        value: &IrExpression,
+        context: ValueContext,
+        span: Span,
+    ) -> String {
+        let value_js = self.expression(value, context);
+        if operator == AssignmentOperator::Assign || value.r#type != Type::Int {
+            return format!(
+                "{}{}{value_js}",
+                self.place(place, context),
+                assignment_operator(operator)
+            );
+        }
+        let checked = |left: &str, value: &str| match operator {
+            AssignmentOperator::Divide => {
+                format!("divideInt({left},{value},{},{})", span.start, span.end)
+            }
+            AssignmentOperator::Add
+            | AssignmentOperator::Subtract
+            | AssignmentOperator::Multiply => format!(
+                "integer(({left}){}({value}),{},{})",
+                assignment_operator(operator).trim_end_matches('='),
+                span.start,
+                span.end
+            ),
+            AssignmentOperator::Assign => unreachable!("handled before integer compound store"),
+        };
+        match place {
+            IrPlace::Symbol(symbol) => {
+                let target = self.load(*symbol, context);
+                format!("{target}={}", checked(&target, &value_js))
+            }
+            IrPlace::Field { subject, field } => {
+                let subject = self.expression(subject, context);
+                let property = safe_property(field);
+                let left = format!("object.{property}");
+                format!(
+                    "((object,value)=>({left}={}))(({subject}),({value_js}))",
+                    checked(&left, "value")
+                )
+            }
+            IrPlace::Index { subject, index } => {
+                let subject = self.expression(subject, context);
+                let index = self.expression(index, context);
+                format!(
+                    "((object,key,value)=>(object[key]={}))(({subject}),({index}),({value_js}))",
+                    checked("object[key]", "value")
+                )
+            }
             IrPlace::Error => "undefined".to_owned(),
         }
     }

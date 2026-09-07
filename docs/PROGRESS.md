@@ -51,10 +51,27 @@ Each group may produce several coherent commits, and integration occurs througho
 - Verification: `./scripts/check.sh`; 22 Rust tests, one Vitest test, strict Rust/TypeScript lint and
   type checks, native/browser builds, and release WASM compilation pass.
 
+## 2026-09-07 — Milestone 4: code generation, deterministic runtime, and worker sandbox
+
+- Added release/debug ES-module generation from the same typed IR, standard source-map v3 output,
+  direct span relationships, safe-integer checks, work instrumentation, and CLI/browser bindings.
+- Lowered tasks, including nested branches, loops, fixed iteration, matches, waits, and launches, to
+  explicit serializable program-counter state with locals, iterators, and temporaries.
+- Added seeded xorshift32 RNG, frame-derived time, 30/60 Hz scheduling, source-attributed frame
+  budgets, structured snapshots/restores, four-port input frames, and validated runtime faults.
+- Added the disposable module-worker protocol, blob-only loading, ambient capability lockdown,
+  cloned command output, host response deadlines, and compiler-produced browser smoke fixtures.
+- Proved representative debug/release semantic equivalence by executing both outputs under Node.
+- Playwright/Firefox production-bundle checks passed normal execution, denied-capability audit, and
+  a source-mapped runaway loop; visual inspection passed exact 2x and 3x viewports without clipping.
+- Verification: `./scripts/check.sh`; 28 Rust tests and seven Vitest tests, formatting, ESLint,
+  strict Clippy and TypeScript checks, native/browser production builds, and release WASM compilation
+  pass. Playwright checks used the generated production fixtures in Firefox 155.
+
 ## Current risks
 
-- Project-wide import linking, code generation, runtime, studio tools, debugger, packer, LSP,
+- Project-wide import linking, full hardware facilities, studio tools, debugger, packer, LSP,
   exporter, and games remain to be built.
 - WebGL2 and Web Audio behavior will need both state tests and hands-on browser inspection.
-- Worker hardening must be validated against concrete denial and runaway-loop cases; it must not be
-  described as stronger isolation than the browser actually provides.
+- Broader worker-hardening audits remain; the current boundary must not be described as stronger
+  isolation than the browser actually provides.
