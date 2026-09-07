@@ -1,0 +1,43 @@
+format = 1
+language = "PXCL/1"
+id = "cinder-circuit"
+title = "CINDER CIRCUIT"
+author = "@gongahkia"
+version = "1.0.0-alpha.1"
+entry = "src/main.pxl"
+update_rate = 60
+label = "presentation/label.svg"
+thumbnail = "presentation/thumbnail.svg"
+display = "assets/display.pxp"
+
+[assets.runner]
+kind = "animation"
+path = "assets/runner.pxg"
+
+[assets.tiles]
+kind = "tile_set"
+path = "assets/tiles.pxg"
+
+[assets.world]
+kind = "map"
+path = "assets/world.pxm"
+
+[assets.jump]
+kind = "sound"
+path = "assets/jump.pxs"
+
+[assets.hurt]
+kind = "sound"
+path = "assets/hurt.pxs"
+
+[assets.chime]
+kind = "sound"
+path = "assets/chime.pxs"
+
+[assets.bass]
+kind = "sound"
+path = "assets/bass.pxs"
+
+[assets.theme]
+kind = "music"
+path = "assets/theme.pxt"
