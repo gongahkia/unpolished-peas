@@ -492,4 +492,40 @@ mod tests {
             ]
         );
     }
+
+    #[test]
+    fn accepts_crlf_without_leaking_carriage_returns() {
+        assert_eq!(
+            kinds("on update:\r\n  let frame = 1\r\n"),
+            vec![
+                TokenKind::On,
+                TokenKind::Update,
+                TokenKind::Colon,
+                TokenKind::Newline,
+                TokenKind::Indent,
+                TokenKind::Let,
+                TokenKind::Identifier("frame".to_owned()),
+                TokenKind::Equal,
+                TokenKind::Int(1),
+                TokenKind::Newline,
+                TokenKind::Dedent,
+                TokenKind::Eof,
+            ]
+        );
+    }
+
+    #[test]
+    fn reports_dedent_to_an_unknown_width() {
+        let output = lex(&SourceFile::new(
+            FileId(0),
+            "bad.pxl",
+            "on update:\n    if true:\n        let value = 1\n  let other = 2\n",
+        ));
+        assert!(
+            output
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "PX1003")
+        );
+    }
 }

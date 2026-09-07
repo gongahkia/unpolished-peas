@@ -1,0 +1,57 @@
+// PXCL/1 syntax conformance fixture
+import std.math as math
+
+const MAX_SPEED: Num = 4.5
+const LANES = 4
+state score: Int = 0
+state history: List[Int, 16] = []
+state ports: [Int, 4] = [0, 0, 0, 0]
+
+record Player:
+  pos: Vec2
+  velocity: Vec2
+  lives: Int = 3
+
+enum Mode:
+  Title
+  Play
+  Win(Int)
+
+fn clamp_speed(value: Num) -> Num:
+  if value > MAX_SPEED:
+    return MAX_SPEED
+  elif value < -MAX_SPEED:
+    return -MAX_SPEED
+  else:
+    return value
+
+fn sum(limit: Int) -> Int:
+  var total = 0
+  for index in 0..limit:
+    total += index
+  return total
+
+task flash(color: Color):
+  var count = 0
+  while count < 3:
+    pal(1, color)
+    wait 2f
+    count += 1
+  wait 0.5s
+
+on start:
+  score = sum(4)
+  start flash(#warning)
+
+on update:
+  let active = score > 0 and not false
+  if active:
+    score += 1
+
+on draw:
+  clear(0)
+  sprite(#hero, 120, 72)
+
+on raster(line: Int):
+  if line < 72:
+    raster_scroll(line, 1)
