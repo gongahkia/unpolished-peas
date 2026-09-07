@@ -37,6 +37,7 @@ interface ActivePlayer {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PROJECT_ID = /^[a-z0-9][a-z0-9.-]{2,63}$/;
+const BUNDLED_CARTRIDGES = ['cinder-circuit', 'ashvault', 'raster-rush'] as const;
 
 /** Diegetic boot monitor, command shell, source editor, and cartridge player foundation. */
 export class StudioApp {
@@ -67,6 +68,10 @@ export class StudioApp {
       '',
       "TYPE 'HELP' FOR COMMANDS",
     ]);
+    const installed = await this.installBundledCartridges();
+    if (installed > 0) {
+      this.appendLines([`${String(installed)} BUILT-IN CARTRIDGES INSTALLED`]);
+    }
     const projects = await this.repository.listProjects();
     if (projects.length > 0) {
       this.activeProject = fromStored(projects[0] as StoredProject);
@@ -76,6 +81,33 @@ export class StudioApp {
     }
     this.renderShell();
     document.documentElement.dataset.studioReady = 'true';
+  }
+
+  private async installBundledCartridges(): Promise<number> {
+    let installed = 0;
+    for (const id of BUNDLED_CARTRIDGES) {
+      if ((await this.repository.loadProject(id)) !== undefined) {
+        continue;
+      }
+      const response = await fetch(new URL(`./cartridges/${id}.pxc`, document.baseURI));
+      if (!response.ok) {
+        throw new Error(`BUILT-IN CARTRIDGE ${id} COULD NOT BE READ`);
+      }
+      const unpacked = await this.compiler.unpackCartridge(
+        new Uint8Array(await response.arrayBuffer()),
+      );
+      const manifest = await this.compiler.parseManifest(unpacked.manifest);
+      await this.repository.saveProject({
+        id: manifest.id,
+        title: manifest.title,
+        manifest: unpacked.manifest,
+        files: Object.fromEntries(
+          Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        ),
+      });
+      installed += 1;
+    }
+    return installed;
   }
 
   private renderShell(): void {

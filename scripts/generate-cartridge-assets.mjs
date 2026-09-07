@@ -40,6 +40,14 @@ function row(...cells) {
   return [...cells, ...Array.from({ length: 8 - cells.length }, () => null)];
 }
 
+function sprite8(pixels) {
+  const frame = [...pixels, ...Array(64).fill(0)].slice(0, 64);
+  if (frame.length !== 64 || frame.some((color) => !Number.isInteger(color))) {
+    throw new TypeError('8x8 sprite pixels must be integer palette indices');
+  }
+  return { revision: 1, kind: 'sprite', width: 8, height: 8, frames: [frame] };
+}
+
 function display(raster = []) {
   return {
     revision: 1,
@@ -66,7 +74,7 @@ function cinderCircuit() {
     kind: 'sprite',
     width: 8,
     height: 8,
-    frames: [runnerA, runnerB],
+    frames: [sprite8(runnerA).frames[0], sprite8(runnerB).frames[0]],
   });
 
   const tile = (draw) => {
@@ -156,16 +164,9 @@ function cinderCircuit() {
 
 function ashvault() {
   const path = 'cartridges/ashvault/assets';
-  const sprite = (pixels) => ({
-    revision: 1,
-    kind: 'sprite',
-    width: 8,
-    height: 8,
-    frames: [pixels],
-  });
   writeJson(
     `${path}/seeker.pxg`,
-    sprite([
+    sprite8([
       0, 0, 15, 15, 15, 15, 0, 0, 0, 15, 7, 7, 7, 7, 15, 0, 0, 15, 7, 23, 23, 7, 15, 0, 0, 15, 7, 7,
       7, 7, 15, 0, 0, 0, 15, 15, 0, 0, 0, 0, 15, 0, 15, 15, 15, 15, 0, 15, 0, 15, 0, 15, 0, 0, 15,
       0, 15, 0, 0, 15, 15, 15, 15, 0, 0,
@@ -173,7 +174,7 @@ function ashvault() {
   );
   writeJson(
     `${path}/wraith.pxg`,
-    sprite([
+    sprite8([
       0, 0, 29, 29, 29, 29, 0, 0, 0, 29, 31, 31, 31, 31, 29, 0, 29, 31, 7, 31, 31, 7, 31, 29, 29,
       31, 31, 31, 31, 31, 31, 29, 0, 29, 31, 31, 31, 31, 29, 0, 0, 29, 31, 29, 31, 29, 0, 0, 0, 29,
       0, 29, 0, 29, 0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -181,7 +182,7 @@ function ashvault() {
   );
   writeJson(
     `${path}/relic.pxg`,
-    sprite([
+    sprite8([
       0, 0, 0, 15, 15, 0, 0, 0, 0, 0, 15, 7, 7, 15, 0, 0, 0, 15, 7, 14, 14, 7, 15, 0, 15, 7, 14, 15,
       15, 14, 7, 15, 0, 15, 7, 14, 14, 7, 15, 0, 0, 0, 15, 7, 7, 15, 0, 0, 0, 0, 0, 15, 15, 0, 0, 0,
       0, 0, 0, 0, 0, 0, 0, 0, 0,
@@ -189,7 +190,7 @@ function ashvault() {
   );
   writeJson(
     `${path}/gate.pxg`,
-    sprite([
+    sprite8([
       22, 22, 23, 23, 23, 23, 22, 22, 22, 23, 7, 7, 7, 7, 23, 22, 23, 7, 20, 20, 20, 20, 7, 23, 23,
       7, 20, 23, 23, 20, 7, 23, 23, 7, 20, 23, 23, 20, 7, 23, 23, 7, 20, 20, 20, 20, 7, 23, 22, 23,
       7, 7, 7, 7, 23, 22, 22, 22, 23, 23, 23, 23, 22, 22,
@@ -233,16 +234,9 @@ function ashvault() {
 
 function rasterRush() {
   const path = 'cartridges/raster-rush/assets';
-  const sprite = (pixels) => ({
-    revision: 1,
-    kind: 'sprite',
-    width: 8,
-    height: 8,
-    frames: [pixels],
-  });
   writeJson(
     `${path}/car.pxg`,
-    sprite([
+    sprite8([
       0, 0, 0, 11, 11, 0, 0, 0, 0, 0, 11, 15, 15, 11, 0, 0, 0, 11, 15, 7, 7, 15, 11, 0, 11, 15, 15,
       11, 11, 15, 15, 11, 11, 15, 7, 11, 11, 7, 15, 11, 11, 15, 15, 15, 15, 15, 15, 11, 0, 1, 1, 0,
       0, 1, 1, 0, 0, 1, 1, 0, 0, 1, 1, 0,
@@ -250,7 +244,7 @@ function rasterRush() {
   );
   writeJson(
     `${path}/beacon.pxg`,
-    sprite([
+    sprite8([
       0, 0, 15, 15, 15, 15, 0, 0, 0, 15, 7, 7, 7, 7, 15, 0, 0, 0, 0, 15, 15, 0, 0, 0, 0, 0, 0, 15,
       15, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0,
       22, 22, 22, 22, 22, 22, 0, 0, 22, 22, 22, 22, 22, 22, 0,
