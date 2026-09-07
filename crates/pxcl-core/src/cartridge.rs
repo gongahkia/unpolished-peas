@@ -1,4 +1,8 @@
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::BTreeMap,
+    fmt::{self, Write as _},
+    path::Path,
+};
 
 use serde::{Deserialize, Serialize};
 
@@ -11,6 +15,82 @@ const MAGIC: &[u8; 8] = b"PX240C\x1a\x01";
 pub const CARTRIDGE_CAPACITY_BYTES: usize = 256 * 1024;
 const MAX_UNPACKED_BYTES: usize = 2 * 1024 * 1024;
 const MAX_ARCHIVE_ENTRIES: usize = 4096;
+const SHA256_INITIAL: [u32; 8] = [
+    0x6a09_e667,
+    0xbb67_ae85,
+    0x3c6e_f372,
+    0xa54f_f53a,
+    0x510e_527f,
+    0x9b05_688c,
+    0x1f83_d9ab,
+    0x5be0_cd19,
+];
+const SHA256_ROUND: [u32; 64] = [
+    0x428a_2f98,
+    0x7137_4491,
+    0xb5c0_fbcf,
+    0xe9b5_dba5,
+    0x3956_c25b,
+    0x59f1_11f1,
+    0x923f_82a4,
+    0xab1c_5ed5,
+    0xd807_aa98,
+    0x1283_5b01,
+    0x2431_85be,
+    0x550c_7dc3,
+    0x72be_5d74,
+    0x80de_b1fe,
+    0x9bdc_06a7,
+    0xc19b_f174,
+    0xe49b_69c1,
+    0xefbe_4786,
+    0x0fc1_9dc6,
+    0x240c_a1cc,
+    0x2de9_2c6f,
+    0x4a74_84aa,
+    0x5cb0_a9dc,
+    0x76f9_88da,
+    0x983e_5152,
+    0xa831_c66d,
+    0xb003_27c8,
+    0xbf59_7fc7,
+    0xc6e0_0bf3,
+    0xd5a7_9147,
+    0x06ca_6351,
+    0x1429_2967,
+    0x27b7_0a85,
+    0x2e1b_2138,
+    0x4d2c_6dfc,
+    0x5338_0d13,
+    0x650a_7354,
+    0x766a_0abb,
+    0x81c2_c92e,
+    0x9272_2c85,
+    0xa2bf_e8a1,
+    0xa81a_664b,
+    0xc24b_8b70,
+    0xc76c_51a3,
+    0xd192_e819,
+    0xd699_0624,
+    0xf40e_3585,
+    0x106a_a070,
+    0x19a4_c116,
+    0x1e37_6c08,
+    0x2748_774c,
+    0x34b0_bcb5,
+    0x391c_0cb3,
+    0x4ed8_aa4a,
+    0x5b9c_ca4f,
+    0x682e_6ff3,
+    0x748f_82ee,
+    0x78a5_636f,
+    0x84c8_7814,
+    0x8cc7_0208,
+    0x90be_fffa,
+    0xa450_6ceb,
+    0xbef9_a3f7,
+    0xc671_78f2,
+];
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -99,6 +179,10 @@ impl fmt::Display for CartridgeError {
 impl std::error::Error for CartridgeError {}
 
 /// Parses and validates the Git-friendly `cart.toml` project manifest.
+///
+/// # Errors
+///
+/// Returns a stable `PX40xx` error when TOML decoding or manifest validation fails.
 pub fn parse_project_manifest(source: &str) -> Result<ProjectManifest, CartridgeError> {
     let manifest: ProjectManifest = toml::from_str(source)
         .map_err(|error| cartridge_error("PX4001", format!("invalid cart.toml: {error}")))?;
@@ -107,6 +191,11 @@ pub fn parse_project_manifest(source: &str) -> Result<ProjectManifest, Cartridge
 }
 
 /// Builds one canonical, compressed, source-inspectable `.pxc` byte sequence.
+///
+/// # Errors
+///
+/// Returns a stable `PX40xx` error for invalid manifests, missing files, compiler diagnostics,
+/// archive collisions, or capacity violations.
 pub fn pack_project(
     manifest_source: &str,
     project_files: &BTreeMap<String, Vec<u8>>,
@@ -142,56 +231,11 @@ pub fn pack_project(
         )
     })?;
 
-    let mut entries = BTreeMap::<String, Vec<u8>>::new();
-    for (path, bytes) in project_files {
-        let path = normalize_project_path(path)?;
-        if path.ends_with(".pxl") {
-            let text = normalized_source(bytes, &path)?;
-            insert_unique(&mut entries, format!("source/{path}"), text.into_bytes())?;
-        }
-    }
-
-    let mut packed_assets = BTreeMap::new();
-    for (name, asset) in &manifest.assets {
-        let project_path = normalize_project_path(&asset.path)?;
-        let bytes = project_files.get(&project_path).ok_or_else(|| {
-            cartridge_error(
-                "PX4002",
-                format!("asset '{name}' is missing file '{project_path}'"),
-            )
-        })?;
-        let archive_path = format!("assets/{project_path}");
-        insert_unique(&mut entries, archive_path.clone(), bytes.clone())?;
-        packed_assets.insert(
-            name.clone(),
-            PackedAsset {
-                kind: asset.kind,
-                path: archive_path,
-            },
-        );
-    }
-
-    let label = include_presentation_file(
-        &mut entries,
+    let (mut entries, packed_assets, label, thumbnail) = collect_project_entries(
+        &manifest,
         project_files,
-        manifest.label.as_deref(),
-        "label",
-    )?;
-    let thumbnail = include_presentation_file(
-        &mut entries,
-        project_files,
-        manifest.thumbnail.as_deref(),
-        "thumbnail",
-    )?;
-    insert_unique(
-        &mut entries,
-        "build/cartridge.js".to_owned(),
-        generated.javascript.into_bytes(),
-    )?;
-    insert_unique(
-        &mut entries,
-        "build/cartridge.js.map".to_owned(),
-        generated.source_map_json.into_bytes(),
+        generated.javascript,
+        generated.source_map_json,
     )?;
 
     let files = entries
@@ -244,7 +288,76 @@ pub fn pack_project(
     })
 }
 
+fn collect_project_entries(
+    manifest: &ProjectManifest,
+    project_files: &BTreeMap<String, Vec<u8>>,
+    javascript: String,
+    source_map: String,
+) -> Result<CollectedEntries, CartridgeError> {
+    let mut entries = BTreeMap::<String, Vec<u8>>::new();
+    for (path, bytes) in project_files {
+        let path = normalize_project_path(path)?;
+        if has_pxl_extension(&path) {
+            let text = normalized_source(bytes, &path)?;
+            insert_unique(&mut entries, format!("source/{path}"), text.into_bytes())?;
+        }
+    }
+    let mut packed_assets = BTreeMap::new();
+    for (name, asset) in &manifest.assets {
+        let project_path = normalize_project_path(&asset.path)?;
+        let bytes = project_files.get(&project_path).ok_or_else(|| {
+            cartridge_error(
+                "PX4002",
+                format!("asset '{name}' is missing file '{project_path}'"),
+            )
+        })?;
+        let archive_path = format!("assets/{project_path}");
+        insert_unique(&mut entries, archive_path.clone(), bytes.clone())?;
+        packed_assets.insert(
+            name.clone(),
+            PackedAsset {
+                kind: asset.kind,
+                path: archive_path,
+            },
+        );
+    }
+    let label = include_presentation_file(
+        &mut entries,
+        project_files,
+        manifest.label.as_deref(),
+        "label",
+    )?;
+    let thumbnail = include_presentation_file(
+        &mut entries,
+        project_files,
+        manifest.thumbnail.as_deref(),
+        "thumbnail",
+    )?;
+    insert_unique(
+        &mut entries,
+        "build/cartridge.js".to_owned(),
+        javascript.into_bytes(),
+    )?;
+    insert_unique(
+        &mut entries,
+        "build/cartridge.js.map".to_owned(),
+        source_map.into_bytes(),
+    )?;
+    Ok((entries, packed_assets, label, thumbnail))
+}
+
+type CollectedEntries = (
+    BTreeMap<String, Vec<u8>>,
+    BTreeMap<String, PackedAsset>,
+    Option<String>,
+    Option<String>,
+);
+
 /// Decodes an untrusted `.pxc`, enforcing bounds, hashes, ordering, and manifest integrity.
+///
+/// # Errors
+///
+/// Returns a stable `PX40xx` error for malformed, oversized, non-canonical, or corrupted input.
 pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError> {
     if bytes.len() > CARTRIDGE_CAPACITY_BYTES {
         return Err(cartridge_error(
@@ -369,7 +482,7 @@ fn validate_manifest(manifest: &ProjectManifest) -> Result<(), CartridgeError> {
         ));
     }
     let entry = normalize_project_path(&manifest.entry)?;
-    if !entry.ends_with(".pxl") {
+    if !has_pxl_extension(&entry) {
         return Err(cartridge_error(
             "PX4006",
             "entry must name a .pxl source file".to_owned(),
@@ -478,12 +591,13 @@ fn insert_unique(
     path: String,
     bytes: Vec<u8>,
 ) -> Result<(), CartridgeError> {
-    if entries.insert(path.clone(), bytes).is_some() {
+    if entries.contains_key(&path) {
         return Err(cartridge_error(
             "PX4007",
             format!("two project files map to archive path '{path}'"),
         ));
     }
+    entries.insert(path, bytes);
     Ok(())
 }
 
@@ -663,95 +777,26 @@ fn valid_identifier(value: &str) -> bool {
         && bytes.all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
 }
 
+fn has_pxl_extension(path: &str) -> bool {
+    Path::new(path)
+        .extension()
+        .is_some_and(|extension| extension == "pxl")
+}
+
 fn cartridge_error(code: &'static str, message: String) -> CartridgeError {
     CartridgeError { code, message }
 }
 
 fn sha256_hex(input: &[u8]) -> String {
-    sha256(input)
-        .iter()
-        .map(|byte| format!("{byte:02x}"))
-        .collect()
+    let mut output = String::with_capacity(64);
+    for byte in sha256(input) {
+        write!(&mut output, "{byte:02x}").expect("writing to a String cannot fail");
+    }
+    output
 }
 
 #[allow(clippy::many_single_char_names)]
 fn sha256(input: &[u8]) -> [u8; 32] {
-    const INITIAL: [u32; 8] = [
-        0x6a09_e667,
-        0xbb67_ae85,
-        0x3c6e_f372,
-        0xa54f_f53a,
-        0x510e_527f,
-        0x9b05_688c,
-        0x1f83_d9ab,
-        0x5be0_cd19,
-    ];
-    const ROUND: [u32; 64] = [
-        0x428a_2f98,
-        0x7137_4491,
-        0xb5c0_fbcf,
-        0xe9b5_dba5,
-        0x3956_c25b,
-        0x59f1_11f1,
-        0x923f_82a4,
-        0xab1c_5ed5,
-        0xd807_aa98,
-        0x1283_5b01,
-        0x2431_85be,
-        0x550c_7dc3,
-        0x72be_5d74,
-        0x80de_b1fe,
-        0x9bdc_06a7,
-        0xc19b_f174,
-        0xe49b_69c1,
-        0xefbe_4786,
-        0x0fc1_9dc6,
-        0x240c_a1cc,
-        0x2de9_2c6f,
-        0x4a74_84aa,
-        0x5cb0_a9dc,
-        0x76f9_88da,
-        0x983e_5152,
-        0xa831_c66d,
-        0xb003_27c8,
-        0xbf59_7fc7,
-        0xc6e0_0bf3,
-        0xd5a7_9147,
-        0x06ca_6351,
-        0x1429_2967,
-        0x27b7_0a85,
-        0x2e1b_2138,
-        0x4d2c_6dfc,
-        0x5338_0d13,
-        0x650a_7354,
-        0x766a_0abb,
-        0x81c2_c92e,
-        0x9272_2c85,
-        0xa2bf_e8a1,
-        0xa81a_664b,
-        0xc24b_8b70,
-        0xc76c_51a3,
-        0xd192_e819,
-        0xd699_0624,
-        0xf40e_3585,
-        0x106a_a070,
-        0x19a4_c116,
-        0x1e37_6c08,
-        0x2748_774c,
-        0x34b0_bcb5,
-        0x391c_0cb3,
-        0x4ed8_aa4a,
-        0x5b9c_ca4f,
-        0x682e_6ff3,
-        0x748f_82ee,
-        0x78a5_636f,
-        0x84c8_7814,
-        0x8cc7_0208,
-        0x90be_fffa,
-        0xa450_6ceb,
-        0xbef9_a3f7,
-        0xc671_78f2,
-    ];
     let bit_length = u64::try_from(input.len())
         .unwrap_or(u64::MAX)
         .wrapping_mul(8);
@@ -761,11 +806,11 @@ fn sha256(input: &[u8]) -> [u8; 32] {
         padded.push(0);
     }
     padded.extend_from_slice(&bit_length.to_be_bytes());
-    let mut hash = INITIAL;
-    for block in padded.chunks_exact(64) {
+    let mut hash = SHA256_INITIAL;
+    for block in padded.as_chunks::<64>().0 {
         let mut words = [0_u32; 64];
-        for (index, chunk) in block.chunks_exact(4).enumerate() {
-            words[index] = u32::from_be_bytes(chunk.try_into().expect("chunk is four bytes"));
+        for (index, chunk) in block.as_chunks::<4>().0.iter().enumerate() {
+            words[index] = u32::from_be_bytes(*chunk);
         }
         for index in 16..64 {
             let first = words[index - 15].rotate_right(7)
@@ -786,7 +831,7 @@ fn sha256(input: &[u8]) -> [u8; 32] {
             let temporary1 = h
                 .wrapping_add(sigma1)
                 .wrapping_add(choice)
-                .wrapping_add(ROUND[index])
+                .wrapping_add(SHA256_ROUND[index])
                 .wrapping_add(words[index]);
             let sigma0 = a.rotate_right(2) ^ a.rotate_right(13) ^ a.rotate_right(22);
             let majority = (a & b) ^ (a & c) ^ (b & c);
