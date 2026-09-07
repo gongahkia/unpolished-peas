@@ -528,17 +528,34 @@ body,
 .tracker-head {
   display: flex;
   height: 13px;
-  gap: 5px;
+  gap: 3px;
 }
 
 .tracker-head input[type='number'] {
   width: 28px;
 }
 
+.tracker-head select {
+  width: 25px;
+}
+
+.tracker-order {
+  display: grid;
+  grid-template-columns: 28px 1fr;
+  height: 11px;
+  align-items: center;
+}
+
+.tracker-order input {
+  min-width: 0;
+  color: var(--cream);
+  background: #302d2a;
+}
+
 .tracker-grid {
   display: grid;
   grid-template-columns: 10px repeat(8, 1fr);
-  height: 98px;
+  height: 87px;
   overflow: auto;
   gap: 1px;
   scrollbar-width: none;

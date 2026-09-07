@@ -1511,7 +1511,7 @@ impl<'syntax> Analyzer<'syntax> {
             {
                 self.diagnostics.push(
                     Diagnostic::error(
-                        "PX3119",
+                        "PX3121",
                         callee.span,
                         "raster callbacks may call only `pal` and `raster_scroll`",
                     )
@@ -2237,7 +2237,7 @@ on draw:
             output
                 .diagnostics
                 .iter()
-                .filter(|diagnostic| diagnostic.code == "PX3119")
+                .filter(|diagnostic| diagnostic.code == "PX3121")
                 .count(),
             1
         );
