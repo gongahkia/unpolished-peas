@@ -716,6 +716,97 @@ body,
     monospace;
 }
 
+.cartridge-import main {
+  position: absolute;
+  inset: 18px 12px 35px;
+  padding: 7px;
+  color: var(--cream);
+  background: #302d2a;
+  border-left: 2px solid var(--amber);
+  font-size: 6px;
+  line-height: 9px;
+}
+
+.cartridge-import main p {
+  margin: 0 0 8px;
+}
+
+.import-pick {
+  display: block;
+  color: var(--amber);
+}
+
+.import-pick input {
+  display: block;
+  width: 100%;
+  margin-top: 3px;
+  color: var(--cream);
+  font:
+    5px/7px ui-monospace,
+    monospace;
+}
+
+.import-status {
+  position: absolute;
+  right: 3px;
+  bottom: 12px;
+  left: 3px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--cyan);
+  font-size: 5px;
+  line-height: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.import-status.error {
+  color: var(--coral);
+}
+
+.inspector-files {
+  position: absolute;
+  inset: 13px auto 11px 3px;
+  display: flex;
+  width: 66px;
+  flex-flow: column nowrap;
+  gap: 1px;
+  overflow: auto;
+  scrollbar-width: none;
+}
+
+.inspector-files button {
+  min-height: 9px;
+  padding: 0 2px;
+  overflow: hidden;
+  color: var(--cream);
+  background: #302d2a;
+  border: 0;
+  border-left: 1px solid var(--cyan);
+  border-radius: 0;
+  font:
+    4px/7px ui-monospace,
+    monospace;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.inspector-output {
+  position: absolute;
+  inset: 13px 3px 11px 72px;
+  margin: 0;
+  overflow: auto;
+  padding: 3px;
+  color: var(--cream);
+  background: #302d2a;
+  font:
+    4px/6px ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  scrollbar-width: none;
+}
+
 .debug-tabs button {
   flex: 1;
   border-color: #665f54;

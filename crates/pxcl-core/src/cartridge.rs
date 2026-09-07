@@ -169,6 +169,12 @@ pub struct DecodedCartridge {
     pub entries: BTreeMap<String, Vec<u8>>,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
+pub struct UnpackedProject {
+    pub manifest: String,
+    pub files: BTreeMap<String, Vec<u8>>,
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct CartridgeError {
     pub code: &'static str,
@@ -736,6 +742,118 @@ pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError
     Ok(DecodedCartridge { manifest, entries })
 }
 
+/// Reconstructs the Git-friendly project representation from a validated cartridge.
+///
+/// # Errors
+///
+/// Returns a stable cartridge error when archive paths cannot be mapped back to project paths.
+pub fn unpack_cartridge_project(bytes: &[u8]) -> Result<UnpackedProject, CartridgeError> {
+    let cartridge = decode_cartridge(bytes)?;
+    let packed = &cartridge.manifest;
+    let entry = strip_archive_prefix(&packed.entry, "source/", "entry")?;
+    let mut files = BTreeMap::new();
+    for (path, contents) in &cartridge.entries {
+        if let Some(project_path) = path.strip_prefix("source/") {
+            insert_unpacked(&mut files, project_path, contents)?;
+        }
+    }
+    let mut assets = BTreeMap::new();
+    for (name, asset) in &packed.assets {
+        let project_path = strip_archive_prefix(&asset.path, "assets/", "asset")?;
+        let contents = cartridge.entries.get(&asset.path).ok_or_else(|| {
+            cartridge_error(
+                "PX4012",
+                format!("packed asset path '{}' is missing", asset.path),
+            )
+        })?;
+        insert_unpacked(&mut files, &project_path, contents)?;
+        assets.insert(
+            name.clone(),
+            ProjectAsset {
+                kind: asset.kind,
+                path: project_path,
+            },
+        );
+    }
+    let label = unpack_presentation(&cartridge, packed.label.as_deref(), "label", &mut files)?;
+    let thumbnail = unpack_presentation(
+        &cartridge,
+        packed.thumbnail.as_deref(),
+        "thumbnail",
+        &mut files,
+    )?;
+    let display =
+        unpack_presentation(&cartridge, packed.display.as_deref(), "display", &mut files)?;
+    let manifest = ProjectManifest {
+        format_revision: packed.format_revision,
+        language_revision: packed.language_revision.clone(),
+        id: packed.id.clone(),
+        title: packed.title.clone(),
+        author: packed.author.clone(),
+        version: packed.version.clone(),
+        entry,
+        update_rate: packed.update_rate,
+        label,
+        thumbnail,
+        display,
+        assets,
+    };
+    let manifest = toml::to_string(&manifest).map_err(|error| {
+        cartridge_error(
+            "PX4012",
+            format!("could not reconstruct project manifest: {error}"),
+        )
+    })?;
+    parse_project_manifest(&manifest)?;
+    Ok(UnpackedProject { manifest, files })
+}
+
+fn strip_archive_prefix(path: &str, prefix: &str, role: &str) -> Result<String, CartridgeError> {
+    let project_path = path.strip_prefix(prefix).ok_or_else(|| {
+        cartridge_error(
+            "PX4012",
+            format!("packed {role} path '{path}' has an invalid prefix"),
+        )
+    })?;
+    normalize_project_path(project_path)
+}
+
+fn unpack_presentation(
+    cartridge: &DecodedCartridge,
+    path: Option<&str>,
+    role: &str,
+    files: &mut BTreeMap<String, Vec<u8>>,
+) -> Result<Option<String>, CartridgeError> {
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    let prefix = format!("presentation/{role}/");
+    let project_path = strip_archive_prefix(path, &prefix, role)?;
+    let contents = cartridge.entries.get(path).ok_or_else(|| {
+        cartridge_error("PX4012", format!("presentation path '{path}' is missing"))
+    })?;
+    insert_unpacked(files, &project_path, contents)?;
+    Ok(Some(project_path))
+}
+
+fn insert_unpacked(
+    files: &mut BTreeMap<String, Vec<u8>>,
+    path: &str,
+    contents: &[u8],
+) -> Result<(), CartridgeError> {
+    match files.get(path) {
+        Some(existing) if existing == contents => Ok(()),
+        Some(_) => Err(cartridge_error(
+            "PX4012",
+            format!("archive entries collide at project path '{path}'"),
+        )),
+        None => {
+            files.insert(path.to_owned(), contents.to_vec());
+            Ok(())
+        }
+    }
+}
+
 fn validate_manifest(manifest: &ProjectManifest) -> Result<(), CartridgeError> {
     if manifest.format_revision != CARTRIDGE_FORMAT_REVISION {
         return Err(cartridge_error(
@@ -1206,7 +1324,7 @@ impl<'a> Reader<'a> {
 mod tests {
     use super::{
         CARTRIDGE_CAPACITY_BYTES, compile_project, decode_cartridge, pack_project, rle_decode,
-        rle_encode, sha256_hex,
+        rle_encode, sha256_hex, unpack_cartridge_project,
     };
     use crate::CompileMode;
     use std::collections::BTreeMap;
@@ -1308,6 +1426,17 @@ path = "assets/hero.pxg"
                 .is_empty()
         );
         assert!(pack_project(manifest(), &project_files).is_ok());
+    }
+
+    #[test]
+    fn packed_cartridges_reconstruct_source_visible_projects() {
+        let packed = pack_project(manifest(), &files("\n")).expect("pack");
+        let unpacked = unpack_cartridge_project(&packed.bytes).expect("unpack");
+        let reconstructed = super::parse_project_manifest(&unpacked.manifest).expect("manifest");
+        assert_eq!(reconstructed.id, "test.game");
+        assert_eq!(reconstructed.entry, "src/main.pxl");
+        assert_eq!(reconstructed.display.as_deref(), Some("assets/display.pxp"));
+        assert_eq!(unpacked.files, files("\n"));
     }
 
     #[test]
