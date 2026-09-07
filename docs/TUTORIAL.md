@@ -80,6 +80,8 @@ on draw:
     print("Z TO RETRY", 91, 82, 7)
 ```
 
+The same checked example is kept at `examples/relay-catch` in this repository.
+
 PXCL uses two-space indentation, explicit persistent-state types, inferred local types, and
 half-open ranges. `rng_int` is deterministic and `btnp` is true only on the press transition.
 

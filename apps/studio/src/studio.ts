@@ -407,20 +407,60 @@ export class StudioApp {
     textarea.value = decoder.decode(bytes);
     renderHighlight(highlight, textarea.value);
     let analysisTimer: ReturnType<typeof setTimeout> | undefined;
+    let autosaveTimer: ReturnType<typeof setTimeout> | undefined;
+    let saveQueue = Promise.resolve();
+    let dirty = false;
     const updateWorkingCopy = (): void => {
       project.files[selectedPath] = encoder.encode(textarea.value);
       this.activeProject = project;
+    };
+    const persistWorkingCopy = (): Promise<void> => {
+      updateWorkingCopy();
+      if (!dirty) {
+        return saveQueue.catch(() => undefined);
+      }
+      dirty = false;
+      saveQueue = saveQueue
+        .catch(() => undefined)
+        .then(async () => {
+          const stored = await this.repository.loadProject(project.id);
+          if (stored !== undefined && stored.revision !== project.revision) {
+            dirty = true;
+            throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / F6 RELOAD`);
+          }
+          const saved = await this.repository.saveProject(project);
+          Object.assign(project, fromStored(saved));
+          this.activeProject = project;
+          if (this.root.contains(textarea)) {
+            this.setDiagnostic(`AUTOSAVED R${String(saved.revision)}`, false);
+          }
+        });
+      return saveQueue;
+    };
+    const scheduleAutosave = (): void => {
+      if (autosaveTimer !== undefined) {
+        clearTimeout(autosaveTimer);
+      }
+      autosaveTimer = setTimeout(() => {
+        void persistWorkingCopy().catch((error: unknown) => {
+          if (this.root.contains(textarea)) {
+            this.setDiagnostic(errorMessage(error), true);
+          }
+        });
+      }, 750);
     };
     const analyze = (): void => {
       updateWorkingCopy();
       void this.showDiagnostics(selectedPath, textarea.value);
     };
     textarea.addEventListener('input', () => {
+      dirty = true;
       renderHighlight(highlight, textarea.value);
       if (analysisTimer !== undefined) {
         clearTimeout(analysisTimer);
       }
       analysisTimer = setTimeout(analyze, 120);
+      scheduleAutosave();
     });
     textarea.addEventListener('scroll', () => {
       highlight.scrollTop = textarea.scrollTop;
@@ -444,19 +484,33 @@ export class StudioApp {
         }
         updateWorkingCopy();
         if (action === 'back') {
-          this.renderShell();
+          if (autosaveTimer !== undefined) {
+            clearTimeout(autosaveTimer);
+          }
+          void persistWorkingCopy()
+            .catch((error: unknown) => {
+              this.appendLines([`!${errorMessage(error)}`]);
+            })
+            .finally(() => {
+              this.renderShell();
+            });
         } else if (action === 'format') {
           void this.compiler
             .format(selectedPath, textarea.value)
             .then((formatted) => {
               textarea.value = formatted;
+              dirty = true;
               analyze();
+              scheduleAutosave();
             })
             .catch((error: unknown) => {
               this.setDiagnostic(errorMessage(error), true);
             });
         } else if (action === 'save') {
-          void this.saveProject()
+          if (autosaveTimer !== undefined) {
+            clearTimeout(autosaveTimer);
+          }
+          void persistWorkingCopy()
             .then(() => {
               this.setDiagnostic('SAVED', false);
             })
@@ -470,7 +524,12 @@ export class StudioApp {
         } else if (action === 'symbol') {
           gotoDefinition(textarea);
         } else if (action === 'reload') {
-          void this.reloadEditorProject(project, selectedPath, textarea, highlight);
+          if (autosaveTimer !== undefined) {
+            clearTimeout(autosaveTimer);
+          }
+          void this.reloadEditorProject(project, selectedPath, textarea, highlight).then(() => {
+            dirty = false;
+          });
         }
       },
       { once: false },
@@ -493,8 +552,10 @@ export class StudioApp {
       if (event.ctrlKey && event.code === 'Space') {
         event.preventDefault();
         completeAtCursor(textarea);
+        dirty = true;
         renderHighlight(highlight, textarea.value);
         analyze();
+        scheduleAutosave();
         return;
       }
       if (action !== undefined) {

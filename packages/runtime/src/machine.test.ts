@@ -100,4 +100,23 @@ describe('DeterministicMachine', () => {
     ]);
     expect(machine.call('dither', [0, 0, 1, 2, 8], { start: 0, end: 1 })).toBe(2);
   });
+
+  it('exposes clamped pointer state and press transitions', () => {
+    const machine = new DeterministicMachine(counterFactory, {
+      seed: 9,
+      workUnitsPerFrame: 100,
+      updateRate: 60,
+    });
+    const input = {
+      ...emptyInputFrame(),
+      pointer: { x: 57, y: 91, primary: true, secondary: false, inside: true },
+    };
+    machine.runFrame(input);
+    expect(machine.call('pointer_x', [], { start: 0, end: 1 })).toBe(57);
+    expect(machine.call('pointer_y', [], { start: 0, end: 1 })).toBe(91);
+    expect(machine.call('pointer_inside', [], { start: 0, end: 1 })).toBe(true);
+    expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(true);
+    machine.runFrame(input);
+    expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(false);
+  });
 });

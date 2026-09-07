@@ -289,6 +289,16 @@
           return (
             pressed(args[0], args[1], currentInput) && !pressed(args[0], args[1], previousInput)
           );
+        if (name === 'pointer_x') return currentInput?.pointer?.x ?? 0;
+        if (name === 'pointer_y') return currentInput?.pointer?.y ?? 0;
+        if (name === 'pointer_inside') return currentInput?.pointer?.inside ?? false;
+        if (name === 'pointer_primary' || name === 'pointer_secondary') {
+          const button = name === 'pointer_primary' ? 'primary' : 'secondary';
+          return (
+            (currentInput?.pointer?.[button] ?? false) &&
+            !(previousInput?.pointer?.[button] ?? false)
+          );
+        }
         if (name === 'save_get_int') return Object.hasOwn(save, args[0]) ? save[args[0]] : args[1];
         if (name === 'save_set_int') {
           save[args[0]] = args[1];
@@ -786,7 +796,11 @@
     const oscillator = (patch, stopAt) => {
       const frequency = 440 * 2 ** ((patch.note - 69) / 12);
       if (patch.waveform === 'noise') {
-        const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate),
+        const buffer = audioContext.createBuffer(
+            1,
+            audioContext.sampleRate,
+            audioContext.sampleRate,
+          ),
           samples = buffer.getChannelData(0);
         let noise = (0x240c1999 ^ patch.note) >>> 0;
         for (let index = 0; index < samples.length; index++) {
@@ -818,7 +832,10 @@
       const pitchEnd = audioContext.currentTime + patch.durationFrames / 60;
       if (patch.pitch.slideSemitonesPerFrame !== 0)
         source.frequency.exponentialRampToValueAtTime(
-          Math.max(1, frequency * 2 ** ((patch.pitch.slideSemitonesPerFrame * patch.durationFrames) / 12)),
+          Math.max(
+            1,
+            frequency * 2 ** ((patch.pitch.slideSemitonesPerFrame * patch.durationFrames) / 12),
+          ),
           pitchEnd,
         );
       const auxiliaries = [];
@@ -848,10 +865,7 @@
         voice = oscillator(patch, releaseEnd + 0.02);
       gain.gain.setValueAtTime(patch.envelope.attackFrames === 0 ? patch.volume : 0, now);
       gain.gain.linearRampToValueAtTime(patch.volume, attackEnd);
-      gain.gain.linearRampToValueAtTime(
-        patch.volume * patch.envelope.sustainLevel,
-        decayEnd,
-      );
+      gain.gain.linearRampToValueAtTime(patch.volume * patch.envelope.sustainLevel, decayEnd);
       gain.gain.setValueAtTime(patch.volume * patch.envelope.sustainLevel, sustainEnd);
       gain.gain.linearRampToValueAtTime(0, releaseEnd);
       pan.pan.value = patch.pan;

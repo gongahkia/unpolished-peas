@@ -234,6 +234,21 @@ export class DeterministicMachine implements CartridgeApi {
         }
         return pressed && !(this.previousInput.controllers[port]?.buttons[button] ?? false);
       }
+      case 'pointer_x':
+        expectArguments(name, arguments_, 0, sourceSpan);
+        return this.input.pointer.x;
+      case 'pointer_y':
+        expectArguments(name, arguments_, 0, sourceSpan);
+        return this.input.pointer.y;
+      case 'pointer_inside':
+        expectArguments(name, arguments_, 0, sourceSpan);
+        return this.input.pointer.inside;
+      case 'pointer_primary':
+      case 'pointer_secondary': {
+        expectArguments(name, arguments_, 0, sourceSpan);
+        const button = name === 'pointer_primary' ? 'primary' : 'secondary';
+        return this.input.pointer[button] && !this.previousInput.pointer[button];
+      }
       default: {
         const context: ExecutionContext = {
           frame: this.currentFrame,
