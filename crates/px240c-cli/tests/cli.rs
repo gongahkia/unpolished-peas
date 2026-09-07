@@ -80,3 +80,59 @@ fn build_emits_javascript_and_source_map() {
         fs::remove_file(path).expect("temporary build artifact removes");
     }
 }
+
+#[test]
+fn new_pack_and_info_form_a_deterministic_project_workflow() {
+    let project =
+        std::env::temp_dir().join(format!("px240c-project-{}-{}", std::process::id(), line!()));
+    assert!(
+        !project.exists(),
+        "temporary project path unexpectedly exists"
+    );
+    let create = binary()
+        .args([
+            "new",
+            project.to_str().expect("UTF-8 project path"),
+            "--title",
+            "CLI TEST",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        create.status.success(),
+        "{}",
+        String::from_utf8_lossy(&create.stderr)
+    );
+    let first = project.with_extension("first.pxc");
+    let second = project.with_extension("second.pxc");
+    for output in [&first, &second] {
+        let pack = binary()
+            .args([
+                "pack",
+                project.to_str().expect("UTF-8 project path"),
+                "--output",
+                output.to_str().expect("UTF-8 cartridge path"),
+            ])
+            .output()
+            .expect("CLI starts");
+        assert!(
+            pack.status.success(),
+            "{}",
+            String::from_utf8_lossy(&pack.stderr)
+        );
+    }
+    assert_eq!(
+        fs::read(&first).expect("first cartridge reads"),
+        fs::read(&second).expect("second cartridge reads")
+    );
+    let info = binary()
+        .args(["info", first.to_str().expect("UTF-8 cartridge path")])
+        .output()
+        .expect("CLI starts");
+    assert!(info.status.success());
+    assert!(String::from_utf8_lossy(&info.stdout).contains("\"title\": \"CLI TEST\""));
+
+    fs::remove_file(first).expect("first cartridge removes");
+    fs::remove_file(second).expect("second cartridge removes");
+    fs::remove_dir_all(project).expect("temporary project removes");
+}

@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use pxcl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    format_source,
+    decode_cartridge, format_source, pack_project,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -90,4 +90,28 @@ pub fn format(file_name: &str, source: &str) -> Result<String, String> {
             format!("PXCL diagnostic serialization failed: {serialization_error}")
         })
     })
+}
+
+/// Packs browser-owned project files with the same canonical implementation as the native CLI.
+///
+/// # Errors
+///
+/// Returns a project, compilation, capacity, or serialization error.
+#[wasm_bindgen(js_name = packProject)]
+pub fn pack_project_for_browser(manifest: &str, files_json: &str) -> Result<Vec<u8>, String> {
+    let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
+    pack_project(manifest, &files)
+        .map(|packed| packed.bytes)
+        .map_err(|error| error.to_string())
+}
+
+/// Validates and decodes an untrusted cartridge for browser import and inspection.
+///
+/// # Errors
+///
+/// Returns a bounded decoder, integrity, revision, or serialization error.
+#[wasm_bindgen(js_name = decodeCartridge)]
+pub fn decode_cartridge_for_browser(bytes: &[u8]) -> Result<String, String> {
+    let cartridge = decode_cartridge(bytes).map_err(|error| error.to_string())?;
+    serde_json::to_string(&cartridge).map_err(|error| error.to_string())
 }

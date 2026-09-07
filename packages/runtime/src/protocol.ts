@@ -1,6 +1,7 @@
 import { isInputFrame, type InputFrame } from './input';
 import { HARDWARE } from './hardware';
 import { isMapQueryCatalog, type MapQueryAsset } from './map-query';
+import { isSaveValues, type SaveValues, type SaveWrite } from './save';
 
 export interface SourceSpan {
   readonly start: number;
@@ -12,6 +13,7 @@ export interface SandboxConfiguration {
   readonly workUnitsPerFrame: number;
   readonly updateRate: 30 | 60;
   readonly maps?: readonly MapQueryAsset[];
+  readonly save?: SaveValues;
 }
 
 export type HostRequest =
@@ -39,6 +41,7 @@ export type WorkerResponse =
       }[];
       readonly drawCommands: readonly ConsoleCommand[];
       readonly audioCommands: readonly ConsoleCommand[];
+      readonly saveWrites: readonly SaveWrite[];
     }
   | { readonly id: number; readonly type: 'snapshot'; readonly snapshot: unknown }
   | { readonly id: number; readonly type: 'restored' }
@@ -107,6 +110,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
           'attribution',
           'drawCommands',
           'audioCommands',
+          'saveWrites',
         ]) &&
         isNonNegativeInteger(value.frame) &&
         isNonNegativeInteger(value.workUnits) &&
@@ -115,7 +119,9 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
         Array.isArray(value.drawCommands) &&
         value.drawCommands.every(isConsoleCommand) &&
         Array.isArray(value.audioCommands) &&
-        value.audioCommands.every(isConsoleCommand)
+        value.audioCommands.every(isConsoleCommand) &&
+        Array.isArray(value.saveWrites) &&
+        value.saveWrites.every(isSaveWrite)
       );
     case 'audit':
       return (
@@ -144,11 +150,19 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
 function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
   return (
     isRecord(value) &&
+    hasExactKeys(value, [
+      'seed',
+      'workUnitsPerFrame',
+      'updateRate',
+      ...(value.maps === undefined ? [] : ['maps']),
+      ...(value.save === undefined ? [] : ['save']),
+    ]) &&
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
     value.workUnitsPerFrame > 0 &&
     (value.updateRate === 30 || value.updateRate === 60) &&
-    (value.maps === undefined || isMapQueryCatalog(value.maps))
+    (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
+    (value.save === undefined || isSaveValues(value.save))
   );
 }
 
@@ -193,6 +207,15 @@ function isConsoleCommand(value: unknown): value is ConsoleCommand {
     isSourceSpan(value.sourceSpan) &&
     (value.rasterLine === undefined ||
       (isNonNegativeInteger(value.rasterLine) && value.rasterLine < HARDWARE.height))
+  );
+}
+
+function isSaveWrite(value: unknown): value is SaveWrite {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['key', 'value']) &&
+    typeof value.key === 'string' &&
+    isSaveValues({ [value.key]: value.value })
   );
 }
 

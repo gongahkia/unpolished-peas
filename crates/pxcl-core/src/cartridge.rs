@@ -121,7 +121,7 @@ pub struct ProjectAsset {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackedManifest {
     pub format_revision: u16,
     pub language_revision: String,
@@ -139,14 +139,14 @@ pub struct PackedManifest {
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PackedAsset {
     pub kind: AssetKind,
     pub path: String,
 }
 
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FileIntegrity {
     pub bytes: u32,
     pub sha256: String,
@@ -158,7 +158,7 @@ pub struct PackedCartridge {
     pub manifest: PackedManifest,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct DecodedCartridge {
     pub manifest: PackedManifest,
     pub entries: BTreeMap<String, Vec<u8>>,
@@ -411,7 +411,14 @@ pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError
                 "cartridge expands beyond the decoder limit".to_owned(),
             ));
         }
-        let decoded = rle_decode(reader.take(encoded_length)?, raw_length)?;
+        let encoded = reader.take(encoded_length)?;
+        let decoded = rle_decode(encoded, raw_length)?;
+        if rle_encode(&decoded) != encoded {
+            return Err(cartridge_error(
+                "PX4010",
+                format!("entry '{path}' does not use canonical compression"),
+            ));
+        }
         if sha256(&decoded) != expected_hash {
             return Err(cartridge_error(
                 "PX4011",
@@ -433,6 +440,12 @@ pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError
     let manifest: PackedManifest = serde_json::from_slice(manifest_bytes).map_err(|error| {
         cartridge_error("PX4012", format!("packed manifest is invalid: {error}"))
     })?;
+    if serde_json::to_vec(&manifest).ok().as_deref() != Some(manifest_bytes) {
+        return Err(cartridge_error(
+            "PX4012",
+            "packed manifest is not canonical JSON".to_owned(),
+        ));
+    }
     validate_packed_manifest(&manifest, &entries)?;
     Ok(DecodedCartridge { manifest, entries })
 }

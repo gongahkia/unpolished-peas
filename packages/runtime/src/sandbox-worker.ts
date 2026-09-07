@@ -3,6 +3,7 @@ import { RuntimeFault } from './errors';
 import { DeterministicMachine, type CartridgeFactory, type ExecutionContext } from './machine';
 import { HARDWARE } from './hardware';
 import { MapQueryStore } from './map-query';
+import { SaveMemory, type SaveValues } from './save';
 import {
   isHostRequest,
   type ConsoleCommand,
@@ -22,6 +23,7 @@ let machine: DeterministicMachine | undefined;
 let drawCommands: ConsoleCommand[] = [];
 let audioCommands: ConsoleCommand[] = [];
 let mapQueries = new MapQueryStore();
+let saveMemory = new SaveMemory();
 
 lockDownWorkerGlobals(globalThis);
 
@@ -48,6 +50,7 @@ async function handleRequest(request: HostRequest): Promise<void> {
       const loaded: unknown = await import(/* @vite-ignore */ request.moduleUrl);
       const factory = readFactory(loaded);
       mapQueries = new MapQueryStore(request.configuration.maps ?? []);
+      saveMemory = new SaveMemory(request.configuration.save ?? {});
       machine = new DeterministicMachine(factory, request.configuration, {
         call: handleConsoleCall,
       });
@@ -68,6 +71,7 @@ async function handleRequest(request: HostRequest): Promise<void> {
         attribution: report.attribution,
         drawCommands,
         audioCommands,
+        saveWrites: saveMemory.takeWrites(),
       } satisfies WorkerResponse);
       break;
     }
@@ -91,13 +95,20 @@ async function handleRequest(request: HostRequest): Promise<void> {
       send({
         id: request.id,
         type: 'snapshot',
-        snapshot: requireMachine().snapshot(),
+        snapshot: {
+          revision: 1,
+          machine: requireMachine().snapshot(),
+          save: saveMemory.snapshot(),
+        },
       } satisfies WorkerResponse);
       break;
-    case 'restore':
-      requireMachine().restore(request.snapshot);
+    case 'restore': {
+      const snapshot = readWorkerSnapshot(request.snapshot);
+      requireMachine().restore(snapshot.machine);
+      saveMemory.restore(snapshot.save);
       send({ id: request.id, type: 'restored' } satisfies WorkerResponse);
       break;
+    }
   }
 }
 
@@ -142,6 +153,28 @@ function handleConsoleCall(
     }
     throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
   }
+  if (name === 'save_get_int' || name === 'save_set_int') {
+    const key = arguments_[0];
+    if (typeof key !== 'string') {
+      throw new RuntimeFault('PX9009', 'save key must be Text', sourceSpan);
+    }
+    try {
+      if (name === 'save_get_int' && arguments_.length === 2) {
+        return saveMemory.get(key, readInteger(arguments_[1], sourceSpan));
+      }
+      if (name === 'save_set_int' && arguments_.length === 2) {
+        saveMemory.set(key, readInteger(arguments_[1], sourceSpan));
+        return undefined;
+      }
+    } catch (error: unknown) {
+      throw new RuntimeFault(
+        'PX9012',
+        error instanceof Error ? error.message : 'invalid cartridge save operation',
+        sourceSpan,
+      );
+    }
+    throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+  }
   const command = {
     name,
     arguments: structuredClone(arguments_),
@@ -157,12 +190,6 @@ function handleConsoleCall(
   }
   if (AUDIO_CALLS.has(name)) {
     audioCommands.push(command);
-    return undefined;
-  }
-  if (name === 'save_get_int') {
-    return arguments_[1] ?? 0;
-  }
-  if (name === 'save_set_int') {
     return undefined;
   }
   throw new RuntimeFault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
@@ -296,4 +323,11 @@ function readInteger(value: unknown, sourceSpan: SourceSpan): number {
     throw new RuntimeFault('PX9009', 'map query arguments must be safe integers', sourceSpan);
   }
   return value;
+}
+
+function readWorkerSnapshot(value: unknown): { machine: unknown; save: SaveValues } {
+  if (!isRecord(value) || value.revision !== 1 || !('machine' in value) || !('save' in value)) {
+    throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
+  }
+  return { machine: value.machine, save: value.save as SaveValues };
 }
