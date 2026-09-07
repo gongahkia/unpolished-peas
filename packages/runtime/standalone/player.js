@@ -110,7 +110,10 @@
     KeyG: [1, 'b'],
     KeyR: [1, 'x'],
     KeyT: [1, 'y'],
+    KeyV: [1, 'l'],
+    KeyB: [1, 'r'],
     Digit1: [1, 'start'],
+    Backquote: [1, 'menu'],
   };
   const held = new Set();
   globalThis.addEventListener('keydown', (event) => {
@@ -193,6 +196,8 @@
     let saveWrites = [];
     let draw = [];
     let audio = [];
+    let phase = 'start';
+    let rasterLine;
     const span = { start: 0, end: 0 };
     const fault = (code, message, sourceSpan = span) => {
       const error = new Error(message);
@@ -208,13 +213,52 @@
       return rng;
     };
     const pressed = (port, name, input) => input?.controllers?.[port]?.buttons?.[name] ?? false;
+    const charge = (units, sourceSpan) => {
+      work += units;
+      if (work > 50000) fault('PX9001', 'frame exceeded 50000 work units', sourceSpan);
+    };
+    const consoleCost = (name, args) => {
+      const integer = (index) => (Number.isSafeInteger(args[index]) ? args[index] : 0);
+      if (name === 'clear') return Math.ceil((240 * 144) / 32);
+      if (name === 'pixel') return 1;
+      if (name === 'line')
+        return Math.max(Math.abs(integer(2) - integer(0)), Math.abs(integer(3) - integer(1))) + 1;
+      if (name === 'rect') return Math.max(1, 2 * Math.abs(integer(2)) + 2 * Math.abs(integer(3)));
+      if (name === 'rect_fill')
+        return Math.max(1, Math.ceil((Math.abs(integer(2)) * Math.abs(integer(3))) / 4));
+      if (name === 'circle') return Math.max(1, Math.abs(integer(2)) * 8);
+      if (name === 'circle_fill')
+        return Math.max(1, Math.ceil((Math.abs(integer(2)) ** 2 * 3) / 4));
+      if (name === 'triangle') {
+        const area = Math.abs(
+          (integer(2) - integer(0)) * (integer(5) - integer(1)) -
+            (integer(4) - integer(0)) * (integer(3) - integer(1)),
+        );
+        return Math.max(1, Math.ceil(area / 8));
+      }
+      if (name === 'sprite' || name === 'animation') return 32;
+      if (name === 'sprite_xform') return Math.max(32, 32 * Math.abs(integer(3)) ** 2);
+      if (name === 'map') return 128;
+      if (name === 'print')
+        return Math.max(1, (typeof args[0] === 'string' ? args[0].length : 0) * 6);
+      if (name === 'sfx' || name === 'music' || name === 'music_stop') return 8;
+      return 1;
+    };
     const api = {
       work(units, sourceSpan) {
-        work += units;
-        if (work > 50000) fault('PX9001', 'frame exceeded 50000 work units', sourceSpan);
+        charge(units, sourceSpan);
       },
       fault,
       call(name, args, sourceSpan) {
+        charge(consoleCost(name, args), sourceSpan);
+        if (phase === 'raster' && name !== 'pal' && name !== 'raster_scroll')
+          fault(
+            'PX9011',
+            `console API call '${name}' is not valid in the raster callback`,
+            sourceSpan,
+          );
+        if (name === 'raster_scroll' && phase !== 'raster')
+          fault('PX9011', 'raster_scroll is only valid in the raster callback', sourceSpan);
         if (name === 'rng_num') return random() / 4294967296;
         if (name === 'rng_int') {
           const [minimum, maximum] = args;
@@ -224,7 +268,12 @@
             maximum <= minimum
           )
             fault('PX9007', 'invalid RNG bounds', sourceSpan);
-          return minimum + (random() % (maximum - minimum));
+          const range = maximum - minimum;
+          const limit = 4294967296 - (4294967296 % range);
+          let sample;
+          do sample = random();
+          while (sample >= limit);
+          return minimum + (sample % range);
         }
         if (name === 'Vec2') return { x: args[0], y: args[1] };
         if (name === 'Rect') return { x: args[0], y: args[1], w: args[2], h: args[3] };
@@ -256,7 +305,12 @@
           const tile = layer.cells[y * layer.width + x];
           return name === 'map_cell' ? tile : ((layer.flags[tile] ?? 0) & (1 << args[4])) !== 0;
         }
-        const command = { name, arguments: globalThis.structuredClone(args), sourceSpan };
+        const command = {
+          name,
+          arguments: globalThis.structuredClone(args),
+          sourceSpan,
+          ...(rasterLine === undefined ? {} : { rasterLine }),
+        };
         if (['sfx', 'music', 'music_stop'].includes(name)) audio.push(command);
         else {
           if (draw.length >= 4096) fault('PX9010', 'draw-command ceiling exceeded', sourceSpan);
@@ -273,6 +327,8 @@
           save = request.save;
           const loaded = await import(request.moduleUrl);
           cartridge = loaded.default(api);
+          phase = 'start';
+          rasterLine = undefined;
           cartridge.start();
           for (const name of [
             'Date',
@@ -305,9 +361,19 @@
           draw = [];
           audio = [];
           saveWrites = [];
-          if (updateRate === 60 || frame % 2 === 0) cartridge.update();
+          rasterLine = undefined;
+          if (updateRate === 60 || frame % 2 === 0) {
+            phase = 'update';
+            cartridge.update();
+          }
+          phase = 'draw';
           cartridge.draw();
-          for (let line = 0; line < 144; line++) cartridge.raster(line);
+          phase = 'raster';
+          for (let line = 0; line < 144; line++) {
+            rasterLine = line;
+            cartridge.raster(line);
+          }
+          rasterLine = undefined;
           globalThis.postMessage({
             id: request.id,
             type: 'frame',
@@ -704,38 +770,107 @@
     let audioContext = null,
       tracker = null,
       voices = [];
+    const periodicWave = (samples) => {
+      const harmonics = Math.min(32, samples.length - 1),
+        real = new Float32Array(harmonics + 1),
+        imaginary = new Float32Array(harmonics + 1);
+      for (let harmonic = 1; harmonic <= harmonics; harmonic++) {
+        for (let index = 0; index < samples.length; index++) {
+          const phase = (2 * Math.PI * harmonic * index) / samples.length;
+          real[harmonic] += (2 * samples[index] * Math.cos(phase)) / samples.length;
+          imaginary[harmonic] -= (2 * samples[index] * Math.sin(phase)) / samples.length;
+        }
+      }
+      return audioContext.createPeriodicWave(real, imaginary, { disableNormalization: false });
+    };
+    const oscillator = (patch, stopAt) => {
+      const frequency = 440 * 2 ** ((patch.note - 69) / 12);
+      if (patch.waveform === 'noise') {
+        const buffer = audioContext.createBuffer(1, audioContext.sampleRate, audioContext.sampleRate),
+          samples = buffer.getChannelData(0);
+        let noise = (0x240c1999 ^ patch.note) >>> 0;
+        for (let index = 0; index < samples.length; index++) {
+          noise ^= noise << 13;
+          noise ^= noise >>> 17;
+          noise ^= noise << 5;
+          samples[index] = (noise >>> 0) / 2147483648 - 1;
+        }
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.loop = true;
+        source.playbackRate.value = Math.max(0.2, frequency / 440);
+        source.start();
+        source.stop(stopAt);
+        return { source, auxiliaries: [] };
+      }
+      const source = audioContext.createOscillator();
+      if (patch.waveform === 'pulse') {
+        const duty = patch.duty ?? 0.5;
+        source.setPeriodicWave(
+          periodicWave(Array.from({ length: 32 }, (_, index) => (index / 32 < duty ? 1 : -1))),
+        );
+      } else if (patch.waveform === 'wavetable') {
+        source.setPeriodicWave(periodicWave(patch.wavetable));
+      } else {
+        source.type = patch.waveform === 'saw' ? 'sawtooth' : patch.waveform;
+      }
+      source.frequency.setValueAtTime(frequency, audioContext.currentTime);
+      const pitchEnd = audioContext.currentTime + patch.durationFrames / 60;
+      if (patch.pitch.slideSemitonesPerFrame !== 0)
+        source.frequency.exponentialRampToValueAtTime(
+          Math.max(1, frequency * 2 ** ((patch.pitch.slideSemitonesPerFrame * patch.durationFrames) / 12)),
+          pitchEnd,
+        );
+      const auxiliaries = [];
+      if (patch.pitch.vibratoDepthSemitones > 0 && patch.pitch.vibratoPeriodFrames > 0) {
+        const vibrato = audioContext.createOscillator(),
+          depth = audioContext.createGain();
+        vibrato.frequency.value = 60 / patch.pitch.vibratoPeriodFrames;
+        depth.gain.value = frequency * (2 ** (patch.pitch.vibratoDepthSemitones / 12) - 1);
+        vibrato.connect(depth).connect(source.frequency);
+        vibrato.start();
+        vibrato.stop(stopAt);
+        auxiliaries.push(vibrato);
+      }
+      source.start();
+      source.stop(stopAt);
+      return { source, auxiliaries };
+    };
     const play = (patch) => {
       if (!audioContext || !patch) return;
       const now = audioContext.currentTime,
-        osc = audioContext.createOscillator(),
         gain = audioContext.createGain(),
-        pan = audioContext.createStereoPanner();
-      osc.type =
-        patch.waveform === 'saw'
-          ? 'sawtooth'
-          : patch.waveform === 'pulse'
-            ? 'square'
-            : patch.waveform === 'noise'
-              ? 'square'
-              : patch.waveform === 'wavetable'
-                ? 'sine'
-                : patch.waveform;
-      osc.frequency.value = 440 * 2 ** ((patch.note - 69) / 12);
-      gain.gain.setValueAtTime(0, now);
-      gain.gain.linearRampToValueAtTime(patch.volume, now + patch.envelope.attackFrames / 60);
+        pan = audioContext.createStereoPanner(),
+        attackEnd = now + patch.envelope.attackFrames / 60,
+        decayEnd = attackEnd + patch.envelope.decayFrames / 60,
+        sustainEnd = Math.max(decayEnd, now + patch.durationFrames / 60),
+        releaseEnd = sustainEnd + patch.envelope.releaseFrames / 60,
+        voice = oscillator(patch, releaseEnd + 0.02);
+      gain.gain.setValueAtTime(patch.envelope.attackFrames === 0 ? patch.volume : 0, now);
+      gain.gain.linearRampToValueAtTime(patch.volume, attackEnd);
       gain.gain.linearRampToValueAtTime(
         patch.volume * patch.envelope.sustainLevel,
-        now + (patch.envelope.attackFrames + patch.envelope.decayFrames) / 60,
+        decayEnd,
       );
-      gain.gain.linearRampToValueAtTime(
-        0,
-        now + (patch.durationFrames + patch.envelope.releaseFrames) / 60,
-      );
+      gain.gain.setValueAtTime(patch.volume * patch.envelope.sustainLevel, sustainEnd);
+      gain.gain.linearRampToValueAtTime(0, releaseEnd);
       pan.pan.value = patch.pan;
-      osc.connect(gain).connect(pan).connect(audioContext.destination);
-      osc.start();
-      osc.stop(now + (patch.durationFrames + patch.envelope.releaseFrames + 1) / 60);
-      voices.push(osc);
+      voice.source.connect(gain).connect(pan).connect(audioContext.destination);
+      const active = {
+        ...voice,
+        stop() {
+          try {
+            voice.source.stop();
+            for (const auxiliary of voice.auxiliaries) auxiliary.stop();
+          } catch {
+            /* an ended voice is already silent */
+          }
+        },
+      };
+      voices.push(active);
+      voice.source.addEventListener('ended', () => {
+        voices = voices.filter((candidate) => candidate !== active);
+      });
       if (voices.length > 8) voices.shift().stop();
     };
     return {
