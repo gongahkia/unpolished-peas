@@ -1,4 +1,5 @@
 import { isInputFrame, type InputFrame } from './input';
+import { HARDWARE } from './hardware';
 
 export interface SourceSpan {
   readonly start: number;
@@ -57,6 +58,7 @@ export interface ConsoleCommand {
   readonly name: string;
   readonly arguments: readonly unknown[];
   readonly sourceSpan: SourceSpan;
+  readonly rasterLine?: number;
 }
 
 export function isHostRequest(value: unknown): value is HostRequest {
@@ -66,29 +68,80 @@ export function isHostRequest(value: unknown): value is HostRequest {
   switch (value.type) {
     case 'load':
       return (
+        hasExactKeys(value, ['id', 'type', 'moduleUrl', 'configuration']) &&
         typeof value.moduleUrl === 'string' &&
         value.moduleUrl.startsWith('blob:') &&
         isSandboxConfiguration(value.configuration)
       );
     case 'frame':
-      return isInputFrame(value.input);
+      return hasExactKeys(value, ['id', 'type', 'input']) && isInputFrame(value.input);
     case 'snapshot':
     case 'audit':
-      return true;
+      return hasExactKeys(value, ['id', 'type']);
     case 'restore':
-      return 'snapshot' in value;
+      return hasExactKeys(value, ['id', 'type', 'snapshot']);
     default:
       return false;
   }
 }
 
 export function isWorkerResponse(value: unknown): value is WorkerResponse {
-  return (
-    isRecord(value) &&
-    isNonNegativeInteger(value.id) &&
-    typeof value.type === 'string' &&
-    ['loaded', 'frame', 'snapshot', 'restored', 'audit', 'error'].includes(value.type)
-  );
+  if (!isRecord(value) || !isNonNegativeInteger(value.id) || typeof value.type !== 'string') {
+    return false;
+  }
+  switch (value.type) {
+    case 'loaded':
+    case 'restored':
+      return hasExactKeys(value, ['id', 'type']);
+    case 'snapshot':
+      return hasExactKeys(value, ['id', 'type', 'snapshot']);
+    case 'frame':
+      return (
+        hasExactKeys(value, [
+          'id',
+          'type',
+          'frame',
+          'workUnits',
+          'attribution',
+          'drawCommands',
+          'audioCommands',
+        ]) &&
+        isNonNegativeInteger(value.frame) &&
+        isNonNegativeInteger(value.workUnits) &&
+        Array.isArray(value.attribution) &&
+        value.attribution.every(isAttribution) &&
+        Array.isArray(value.drawCommands) &&
+        value.drawCommands.every(isConsoleCommand) &&
+        Array.isArray(value.audioCommands) &&
+        value.audioCommands.every(isConsoleCommand)
+      );
+    case 'audit':
+      return (
+        hasExactKeys(value, [
+          'id',
+          'type',
+          'exposedCapabilities',
+          'mathRandomAvailable',
+        ]) &&
+        Array.isArray(value.exposedCapabilities) &&
+        value.exposedCapabilities.every((capability) => typeof capability === 'string') &&
+        typeof value.mathRandomAvailable === 'boolean'
+      );
+    case 'error':
+      return (
+        hasExactKeys(
+          value,
+          value.sourceSpan === undefined
+            ? ['id', 'type', 'code', 'message']
+            : ['id', 'type', 'code', 'message', 'sourceSpan'],
+        ) &&
+        typeof value.code === 'string' &&
+        typeof value.message === 'string' &&
+        (value.sourceSpan === undefined || isSourceSpan(value.sourceSpan))
+      );
+    default:
+      return false;
+  }
 }
 
 function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
@@ -107,4 +160,45 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isNonNegativeInteger(value: unknown): value is number {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function isSourceSpan(value: unknown): value is SourceSpan {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['start', 'end']) &&
+    isNonNegativeInteger(value.start) &&
+    isNonNegativeInteger(value.end) &&
+    value.start <= value.end
+  );
+}
+
+function isAttribution(value: unknown): boolean {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['sourceSpan', 'units']) &&
+    isSourceSpan(value.sourceSpan) &&
+    isNonNegativeInteger(value.units)
+  );
+}
+
+function isConsoleCommand(value: unknown): value is ConsoleCommand {
+  return (
+    isRecord(value) &&
+    hasExactKeys(
+      value,
+      value.rasterLine === undefined
+        ? ['name', 'arguments', 'sourceSpan']
+        : ['name', 'arguments', 'sourceSpan', 'rasterLine'],
+    ) &&
+    typeof value.name === 'string' &&
+    Array.isArray(value.arguments) &&
+    isSourceSpan(value.sourceSpan) &&
+    (value.rasterLine === undefined ||
+      (isNonNegativeInteger(value.rasterLine) && value.rasterLine < HARDWARE.height))
+  );
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length && expected.every((key) => actual.includes(key));
 }

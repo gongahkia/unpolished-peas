@@ -176,10 +176,17 @@ impl<'syntax> Analyzer<'syntax> {
             vec![Type::Int, Type::Int, Type::Int, Type::Int, Type::Color],
             Type::Unit,
         );
-        for name in ["rect", "rect_fill", "circle", "circle_fill"] {
+        for name in ["rect", "rect_fill"] {
             self.builtin(
                 name,
                 vec![Type::Int, Type::Int, Type::Int, Type::Int, Type::Color],
+                Type::Unit,
+            );
+        }
+        for name in ["circle", "circle_fill"] {
+            self.builtin(
+                name,
+                vec![Type::Int, Type::Int, Type::Int, Type::Color],
                 Type::Unit,
             );
         }
@@ -202,12 +209,48 @@ impl<'syntax> Analyzer<'syntax> {
             Type::Unit,
         );
         self.builtin(
+            "sprite_xform",
+            vec![
+                Type::Asset(AssetKind::Sprite),
+                Type::Int,
+                Type::Int,
+                Type::Int,
+                Type::Int,
+                Type::Bool,
+                Type::Bool,
+            ],
+            Type::Unit,
+        );
+        self.builtin(
+            "animation",
+            vec![
+                Type::Asset(AssetKind::Animation),
+                Type::Int,
+                Type::Int,
+                Type::Int,
+            ],
+            Type::Unit,
+        );
+        self.builtin(
             "map",
             vec![Type::Asset(AssetKind::Map), Type::Int, Type::Int],
             Type::Unit,
         );
+        self.builtin("camera", vec![Type::Int, Type::Int], Type::Unit);
+        self.builtin(
+            "clip",
+            vec![Type::Int, Type::Int, Type::Int, Type::Int],
+            Type::Unit,
+        );
+        self.builtin("clip_reset", Vec::new(), Type::Unit);
         self.builtin("pal", vec![Type::Color, Type::Color], Type::Unit);
+        self.builtin("pal_reset", Vec::new(), Type::Unit);
         self.builtin("raster_scroll", vec![Type::Int, Type::Int], Type::Unit);
+        self.builtin(
+            "dither",
+            vec![Type::Int, Type::Int, Type::Color, Type::Color, Type::Int],
+            Type::Color,
+        );
         self.builtin(
             "print",
             vec![Type::Text, Type::Int, Type::Int, Type::Color],
@@ -221,12 +264,33 @@ impl<'syntax> Analyzer<'syntax> {
         self.builtin("save_set_int", vec![Type::Text, Type::Int], Type::Unit);
         self.builtin("sfx", vec![Type::Asset(AssetKind::Sound)], Type::Unit);
         self.builtin("music", vec![Type::Asset(AssetKind::Music)], Type::Unit);
+        self.builtin("music_stop", Vec::new(), Type::Unit);
         self.builtin("Vec2", vec![Type::Num, Type::Num], Type::Vec2);
         self.builtin(
             "Rect",
             vec![Type::Num, Type::Num, Type::Num, Type::Num],
             Type::Rect,
         );
+        for (name, r#type) in [
+            ("pad1", Type::Controller),
+            ("pad2", Type::Controller),
+            ("pad3", Type::Controller),
+            ("pad4", Type::Controller),
+            ("up", Type::Button),
+            ("down", Type::Button),
+            ("left", Type::Button),
+            ("right", Type::Button),
+            ("a", Type::Button),
+            ("b", Type::Button),
+            ("x", Type::Button),
+            ("y", Type::Button),
+            ("l", Type::Button),
+            ("r", Type::Button),
+            ("start_button", Type::Button),
+            ("menu", Type::Button),
+        ] {
+            self.builtin_value(name, r#type);
+        }
     }
 
     fn builtin(&mut self, name: &'static str, parameters: Vec<Type>, return_type: Type) {
@@ -236,6 +300,11 @@ impl<'syntax> Analyzer<'syntax> {
             return_type: Box::new(return_type),
             task: false,
         });
+        let id = self.add_symbol(name, SymbolKind::Builtin, r#type, false, None);
+        self.globals.insert(name.to_owned(), id);
+    }
+
+    fn builtin_value(&mut self, name: &'static str, r#type: Type) {
         let id = self.add_symbol(name, SymbolKind::Builtin, r#type, false, None);
         self.globals.insert(name.to_owned(), id);
     }
