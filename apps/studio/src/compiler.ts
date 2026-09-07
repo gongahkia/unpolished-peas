@@ -7,6 +7,7 @@ import initWasm, {
   language_revision as wasmLanguageRevision,
   packProject as wasmPackProject,
   parseProjectManifest as wasmParseProjectManifest,
+  unpackCartridge as wasmUnpackCartridge,
 } from '../../../crates/pxcl-wasm/pkg/pxcl_wasm';
 
 export interface SourceSpan {
@@ -80,6 +81,11 @@ export interface ProjectManifest {
   >;
 }
 
+export interface UnpackedProject {
+  readonly manifest: string;
+  readonly files: Readonly<Record<string, readonly number[]>>;
+}
+
 /** Lazy WebAssembly bridge over the repository's authoritative Rust compiler and packer. */
 export class BrowserCompiler {
   private readonly initialized: Promise<void>;
@@ -125,6 +131,11 @@ export class BrowserCompiler {
   public async decodeCartridge(bytes: Uint8Array): Promise<DecodedCartridge> {
     await this.initialized;
     return JSON.parse(wasmDecodeCartridge(bytes)) as DecodedCartridge;
+  }
+
+  public async unpackCartridge(bytes: Uint8Array): Promise<UnpackedProject> {
+    await this.initialized;
+    return JSON.parse(wasmUnpackCartridge(bytes)) as UnpackedProject;
   }
 
   public async parseManifest(source: string): Promise<ProjectManifest> {

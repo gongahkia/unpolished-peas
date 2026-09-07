@@ -141,6 +141,9 @@ export class StudioApp {
         case 'load':
           await this.loadProject(arguments_[0]);
           break;
+        case 'import':
+          this.openImporter();
+          return;
         case 'save':
           await this.saveProject();
           break;
@@ -176,10 +179,13 @@ export class StudioApp {
         case 'info':
           await this.info();
           break;
+        case 'inspect':
+          await this.openInspector();
+          return;
         case 'help':
           this.appendLines([
-            'DIR  NEW  LOAD  SAVE  RECOVER',
-            'EDIT RUN DEBUG PACK INFO HELP REBOOT',
+            'DIR NEW LOAD SAVE RECOVER IMPORT',
+            'EDIT RUN DEBUG PACK INSPECT INFO',
             'PROJECT SPRITE MAP PALETTE SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
@@ -250,6 +256,64 @@ export class StudioApp {
     }
     this.activeProject = fromStored(project);
     this.appendLines([`LOADED ${id} R${String(project.revision)}`]);
+  }
+
+  private openImporter(): void {
+    this.root.innerHTML = `
+      <section class="display cartridge-import" data-view="import" aria-label="PX-240C cartridge import">
+        <header class="system-bar"><span>CARTRIDGE IMPORT</span><span>PXC/1</span></header>
+        <main>
+          <p>SELECT A SOURCE-INSPECTABLE .PXC.</p>
+          <p>AN EXISTING ID IS REPLACED WITH A RECOVERY SNAPSHOT.</p>
+          <label class="import-pick">OPEN <input type="file" accept=".pxc,application/x-px240c-cartridge"></label>
+        </main>
+        <p class="import-status" role="status" aria-live="polite">WAITING FOR CARTRIDGE</p>
+        <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
+      </section>
+    `;
+    const section = requireElement(this.root, '[data-view="import"]');
+    const input = requireElement(this.root, 'input[type="file"]') as HTMLInputElement;
+    const back = (): void => {
+      this.renderShell();
+    };
+    this.root.querySelector('[data-back]')?.addEventListener('click', back);
+    section.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') back();
+    });
+    input.addEventListener('change', () => {
+      const file = input.files?.[0];
+      if (file === undefined) return;
+      void this.importCartridge(file).catch((error: unknown) => {
+        const status = this.root.querySelector<HTMLElement>('.import-status');
+        if (status !== null) {
+          status.textContent = errorMessage(error);
+          status.classList.add('error');
+        }
+      });
+    });
+    input.focus();
+  }
+
+  private async importCartridge(file: File): Promise<void> {
+    if (file.size > HARDWARE.cartridgeCapacityBytes) {
+      throw new RangeError('CARTRIDGE EXCEEDS THE 256 KIB CAPACITY');
+    }
+    const unpacked = await this.compiler.unpackCartridge(new Uint8Array(await file.arrayBuffer()));
+    const manifest = await this.compiler.parseManifest(unpacked.manifest);
+    const project = await this.repository.saveProject({
+      id: manifest.id,
+      title: manifest.title,
+      manifest: unpacked.manifest,
+      files: Object.fromEntries(
+        Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+      ),
+    });
+    this.activeProject = fromStored(project);
+    this.appendLines([
+      `IMPORTED ${manifest.id} R${String(project.revision)}`,
+      `${String(Object.keys(project.files).length)} SOURCE/ASSET FILES`,
+    ]);
+    this.renderShell();
   }
 
   private async saveProject(): Promise<void> {
@@ -721,6 +785,54 @@ export class StudioApp {
         : `${project.id} / ${project.title} / R${String(project.revision)}`,
       '240X144 / 32 COLOR / 60HZ',
     ]);
+  }
+
+  private async openInspector(): Promise<void> {
+    const project = this.requireProject();
+    const cartridge = await this.compiler.decodeCartridge(
+      await this.compiler.packProject(project.manifest, project.files),
+    );
+    const sources = Object.entries(cartridge.entries)
+      .filter(([path]) => path.startsWith('source/'))
+      .sort(([left], [right]) => left.localeCompare(right));
+    this.root.innerHTML = `
+      <section class="display cartridge-inspector" data-view="inspector" aria-label="Packed cartridge inspector">
+        <header class="system-bar"><span>PXC INSPECTOR</span><span>SOURCE VISIBLE</span></header>
+        <nav class="inspector-files" aria-label="Cartridge contents"></nav>
+        <pre class="inspector-output" tabindex="0"></pre>
+        <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
+      </section>
+    `;
+    const navigation = requireElement(this.root, '.inspector-files');
+    const output = requireElement(this.root, '.inspector-output');
+    const panes = new Map<string, string>([
+      ['MANIFEST', JSON.stringify(cartridge.manifest, undefined, 2)],
+      ...sources.map(
+        ([path, bytes]) =>
+          [path.slice('source/'.length), decoder.decode(Uint8Array.from(bytes))] as [
+            string,
+            string,
+          ],
+      ),
+    ]);
+    for (const [name, contents] of panes) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = name;
+      button.addEventListener('click', () => {
+        output.textContent = contents;
+      });
+      navigation.append(button);
+    }
+    output.textContent = panes.get('MANIFEST') ?? '';
+    const back = (): void => {
+      this.renderShell();
+    };
+    this.root.querySelector('[data-back]')?.addEventListener('click', back);
+    this.root.querySelector('[data-view="inspector"]')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') back();
+    });
+    (output as HTMLElement).focus();
   }
 
   private reportCompilerDiagnostic(diagnostic: CompilerDiagnostic | undefined): void {
