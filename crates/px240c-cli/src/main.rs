@@ -3,7 +3,7 @@ use std::{
     fs,
     hash::{DefaultHasher, Hash, Hasher},
     path::{Path, PathBuf},
-    process::ExitCode,
+    process::{Command as ProcessCommand, ExitCode},
     thread,
     time::Duration,
 };
@@ -11,8 +11,8 @@ use std::{
 use clap::{Parser, Subcommand};
 use pxcl_core::{
     AssetCatalog, CompileMode, Diagnostic, FileId, GeneratedProgram, ProjectManifest, SourceFile,
-    analyze_module, compile, compile_project, decode_cartridge, format_source, pack_project,
-    parse_project_manifest,
+    analyze_module, compile, compile_project, decode_cartridge, export_standalone_html,
+    format_source, pack_project, parse_project_manifest,
 };
 
 mod lsp;
@@ -73,6 +73,21 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Export a project in a redistributable format.
+    Export {
+        #[command(subcommand)]
+        command: ExportCommand,
+    },
+    /// Export and open a project in the system browser.
+    Run {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Write and validate the player without opening a browser.
+        #[arg(long)]
+        no_open: bool,
+    },
     /// Repack a project whenever its files change.
     Watch {
         #[arg(default_value = ".")]
@@ -87,6 +102,17 @@ enum Command {
     Info { path: Option<PathBuf> },
     /// Run the PXCL/1 language server over standard input/output.
     Lsp,
+}
+
+#[derive(Debug, Subcommand)]
+enum ExportCommand {
+    /// Export one offline, source-inspectable standalone HTML player.
+    Html {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -104,9 +130,65 @@ fn main() -> ExitCode {
         Command::Check { paths } => check_files(&paths),
         Command::Fmt { check, paths } => format_files(&paths, check),
         Command::Pack { path, output } => pack_directory(&path, output.as_deref()),
+        Command::Export {
+            command: ExportCommand::Html { path, output },
+        } => export_html_directory(&path, output.as_deref())
+            .map_or(ExitCode::FAILURE, |_| ExitCode::SUCCESS),
+        Command::Run {
+            path,
+            output,
+            no_open,
+        } => run_directory(&path, output.as_deref(), no_open),
         Command::Watch { path, output, once } => watch_directory(&path, output.as_deref(), once),
         Command::Info { path } => info(path.as_deref()),
         Command::Lsp => lsp::run(),
+    }
+}
+
+fn export_html_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
+    let project = load_project(path)?;
+    let html =
+        export_standalone_html(&project.manifest_source, &project.files).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?;
+    let output = output.map_or_else(
+        || {
+            path.join("dist")
+                .join(format!("{}.html", project.manifest.id))
+        },
+        Path::to_path_buf,
+    );
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            eprintln!("{}: {error}", parent.display());
+        })?;
+    }
+    fs::write(&output, html.as_bytes()).map_err(|error| {
+        eprintln!("{}: {error}", output.display());
+    })?;
+    println!("exported {} ({} bytes)", output.display(), html.len());
+    Ok(output)
+}
+
+fn run_directory(path: &Path, output: Option<&Path>, no_open: bool) -> ExitCode {
+    let Ok(output) = export_html_directory(path, output) else {
+        return ExitCode::FAILURE;
+    };
+    if no_open {
+        return ExitCode::SUCCESS;
+    }
+    match ProcessCommand::new("xdg-open").arg(&output).spawn() {
+        Ok(_) => {
+            println!("opened {}", output.display());
+            ExitCode::SUCCESS
+        }
+        Err(error) => {
+            eprintln!(
+                "{}: could not open system browser: {error}",
+                output.display()
+            );
+            ExitCode::FAILURE
+        }
     }
 }
 

@@ -170,9 +170,25 @@ Each group may produce several coherent commits, and integration occurs througho
   build, Rust formatting/Clippy, 37 Rust tests, native workspace build, and release WebAssembly
   build pass.
 
+## 2026-09-07 — Distribution workflow
+
+- Added bounded `.pxc` project reconstruction and wired explicit cartridge import and source/
+  metadata inspection through the shared Rust/Wasm boundary.
+- Added one deterministic offline HTML exporter shared by the Studio and native CLI. The embedded
+  player runs verified compiled output, exposes every original PXCL module, preserves indexed
+  graphics/input/save/audio facilities, and performs no CDN or backend requests.
+- Added `px240c export html` and `px240c run` with a headless `--no-open` verification path. Studio
+  `pack`, `import`, and `export` downloads were exercised end to end.
+- Added a relative-path web app manifest, original maskable icon, and build-generated precache
+  inventory. Playwright/Firefox proved a production reload completes with the network context
+  disabled after initial installation; standalone worker execution and source inspection reported
+  no console errors.
+- Narrow verification passed: exporter unit tests, CLI export/run integration, Rust formatting and
+  Clippy, ESLint, strict TypeScript checking, production Wasm/Studio build, and browser exercises.
+
 ## Current risks
 
-- Exporter/PWA, project/cartridge import, and three games remain to be built.
+- Three bundled games and their final limit calibration remain to be built.
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, one tracker pattern, and no custom font editor.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps

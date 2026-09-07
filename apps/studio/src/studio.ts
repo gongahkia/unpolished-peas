@@ -185,7 +185,7 @@ export class StudioApp {
         case 'help':
           this.appendLines([
             'DIR NEW LOAD SAVE RECOVER IMPORT',
-            'EDIT RUN DEBUG PACK INSPECT INFO',
+            'EDIT RUN DEBUG PACK EXPORT INSPECT INFO',
             'PROJECT SPRITE MAP PALETTE SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
@@ -195,7 +195,7 @@ export class StudioApp {
           await this.boot();
           return;
         case 'export':
-          this.appendLines(['EXPORT HTML: NOT IN THIS ROM REVISION']);
+          await this.exportHtml();
           break;
         case '':
           break;
@@ -773,6 +773,20 @@ export class StudioApp {
     link.click();
     URL.revokeObjectURL(url);
     this.appendLines([`PACKED ${project.id}.pxc ${String(bytes.byteLength)} BYTES`]);
+  }
+
+  private async exportHtml(): Promise<void> {
+    const project = this.requireProject();
+    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `${project.id}.html`;
+    link.click();
+    URL.revokeObjectURL(url);
+    this.appendLines([
+      `EXPORTED ${project.id}.html ${String(encoder.encode(html).byteLength)} BYTES`,
+    ]);
   }
 
   private async info(): Promise<void> {

@@ -1,0 +1,20 @@
+{
+  "name": "PX-240C Color Development Unit",
+  "short_name": "PX-240C",
+  "description": "Offline fantasy-console studio for PXCL/1 cartridges.",
+  "id": "./",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "landscape",
+  "background_color": "#17141f",
+  "theme_color": "#292725",
+  "icons": [
+    {
+      "src": "./icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

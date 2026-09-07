@@ -6,7 +6,8 @@ with a native Linux CLI.
 ## Package ownership
 
 - `crates/pxcl-core`: PXCL syntax, semantic analysis, typed IR, code generation, debug metadata,
-  deterministic cartridge encoding, formatter, and language-service analysis.
+  deterministic cartridge encoding, standalone HTML export, formatter, and language-service
+  analysis.
 - `crates/pxcl-wasm`: a deliberately narrow WebAssembly boundary over `pxcl-core`.
 - `crates/px240c-cli`: native command family and stdio language server, both using `pxcl-core`.
 - `packages/runtime`: deterministic hardware model, worker protocol, indexed graphics, input, audio,
@@ -25,6 +26,11 @@ catalog, and lowered to a serializable structured IR. That IR is instrumented an
 compact JavaScript plus source maps; the same IR produces debug and release output.
 Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.pxc`
 artifact containing original source and compiled output.
+
+Standalone export deliberately reuses the pack/decode boundary: verified archive entries are
+embedded with a small revisioned browser player rather than rebuilding a parallel project model.
+The Vite build emits a service worker from the final hashed asset inventory, so offline caching
+tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.

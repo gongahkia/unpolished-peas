@@ -88,6 +88,66 @@ fn build_emits_javascript_and_source_map() {
 }
 
 #[test]
+fn export_html_and_headless_run_write_the_same_offline_player() {
+    let project =
+        std::env::temp_dir().join(format!("px240c-export-{}-{}", std::process::id(), line!()));
+    let create = binary()
+        .args([
+            "new",
+            project.to_str().expect("UTF-8 project path"),
+            "--title",
+            "EXPORT TEST",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(create.status.success());
+    let first = project.with_extension("first.html");
+    let second = project.with_extension("second.html");
+    let export = binary()
+        .args([
+            "export",
+            "html",
+            project.to_str().expect("UTF-8 project path"),
+            "--output",
+            first.to_str().expect("UTF-8 HTML path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        export.status.success(),
+        "{}",
+        String::from_utf8_lossy(&export.stderr)
+    );
+    let run = binary()
+        .args([
+            "run",
+            project.to_str().expect("UTF-8 project path"),
+            "--no-open",
+            "--output",
+            second.to_str().expect("UTF-8 HTML path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        run.status.success(),
+        "{}",
+        String::from_utf8_lossy(&run.stderr)
+    );
+    let first_html = fs::read_to_string(&first).expect("first HTML reads");
+    assert_eq!(
+        first_html,
+        fs::read_to_string(&second).expect("second HTML reads")
+    );
+    assert!(first_html.contains("PX-240C standalone cartridge player"));
+    assert!(first_html.contains("id=\"source-view\""));
+    assert!(!first_html.contains("https://"));
+    for path in [first, second] {
+        fs::remove_file(path).expect("temporary HTML removes");
+    }
+    fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+#[test]
 fn new_pack_and_info_form_a_deterministic_project_workflow() {
     let project =
         std::env::temp_dir().join(format!("px240c-project-{}-{}", std::process::id(), line!()));
