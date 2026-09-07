@@ -188,7 +188,6 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## Current risks
 
-- Three bundled games and their final limit calibration remain to be built.
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, one tracker pattern, and no custom font editor.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps
@@ -199,3 +198,22 @@ Each group may produce several coherent commits, and integration occurs througho
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger
   isolation than the browser actually provides.
+
+## 2026-09-07 — Milestones 10-12: bundled cartridges and frozen limits
+
+- Added Cinder Circuit, a camera-scrolling tile platformer with responsive pixel collision, animated
+  movement, task-driven victory feedback, hazards, lives, music, and SFX.
+- Added Ashvault, a turn-based deterministic procedural roguelike with fog of war, records, enums,
+  fixed-capacity collections, pursuing enemies, relic/exit objectives, defeat, and isolated saved
+  depth progress. The fixed revision-1 seed was checked to keep every relic and exit reachable.
+- Added Raster Rush 99, a scanline road-projection racer with steering, boost, off-road slowdown,
+  obstacle penalties, timeout/finish states, tracker music, and simultaneous two-, three-, and
+  four-player split-screen paths using all controller ports.
+- Added original indexed sprite/tile/map art, synth patches, tracker orders, display files,
+  labels/thumbnails, deterministic asset generation, build-time Studio packing, first-run local
+  installation, public-decoder tests, and CLI compilation/packing tests for all three games.
+- Froze the 50,000-unit frame ceiling after production-Studio measurements: Cinder Circuit 3,295,
+  Ashvault 11,783, Raster Rush one-player 27,906, and four-player 31,422 representative units. Packed
+  cartridges are 32,264-34,137 bytes and visual use is 160-2,854 bytes.
+- Playwright/Firefox ran all games through the Studio worker and standalone exporter, exercised the
+  four-player view, and visually inspected every title/gameplay surface with clean consoles.

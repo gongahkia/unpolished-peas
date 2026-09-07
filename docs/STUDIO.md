@@ -13,6 +13,10 @@ canonical packed metadata and all original source modules. `export` downloads on
 player with its own visible source inspector.
 The source editor has PXCL highlighting, live compiler diagnostics, completion, same-file symbol
 navigation, canonical formatting, explicit save, run, and external-revision reload controls.
+Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
+newer revision stops the save and surfaces F6 reload instead of knowingly overwriting it. Explicit
+F3 save and leaving the editor flush the same serialized path. Every successful write retains the
+previous revision in the ten-entry recovery ring.
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
 from a cartridge to the shell.

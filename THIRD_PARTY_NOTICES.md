@@ -11,9 +11,18 @@ through `cargo metadata`.
 
 The JavaScript development toolchain's direct packages are TypeScript 6.0.3 (Apache-2.0), Vite
 8.2.2 (MIT), Vitest 5.0.0 (MIT), ESLint 10.10.0 (MIT), `@eslint/js` 10.0.1 (MIT),
-typescript-eslint 8.69.0 (MIT), and Prettier 3.9.6 (MIT). Exact transitive versions are recorded in
-`pnpm-lock.yaml`. These build/test tools are not shipped as cartridge assets.
+typescript-eslint 8.69.0 (MIT), and Prettier 3.9.6 (MIT). The locked transitive graph additionally
+contains packages under MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, and
+BlueOak-1.0.0. Exact package names, versions, resolved integrity values, and dependency edges are in
+`pnpm-lock.yaml`; `pnpm licenses list` reproduces the licence inventory. These build/test packages
+are not cartridge assets.
 
-No third-party game code, palette, font, artwork, or audio is included. The built-in palette and
-bitmap font are original project assets. Full upstream notice/license-text collection remains a
-release-candidate audit item before redistribution outside this private repository.
+No third-party game code, palette, font, artwork, or audio is included. The built-in palette,
+bitmap font, icon, labels, game graphics, and synth compositions are original project assets.
+Standalone cartridge exports contain the original dependency-free player plus author-owned
+cartridge material; they do not embed the Node development toolchain or a third-party game engine.
+
+This notice is the authoritative inventory for the current private alpha. The upstream package
+directories installed by `make setup` contain their complete licence and notice texts. Any future
+external binary redistribution of the Studio must accompany the applicable upstream texts required
+by those terms; no such publication or deployment is performed by this repository.

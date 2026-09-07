@@ -6,12 +6,12 @@ deterministic costs, not elapsed time or CPU instructions. Measurements below ar
 active-play frames observed in the production Studio on 2026-09-07; control flow can vary slightly,
 and the enforced ceiling remains the authority.
 
-| Cartridge       | Packed `.pxc` | Visual store | Release JS | Representative work/frame |
-| --------------- | -------------: | -----------: | ---------: | ------------------------: |
-| Cinder Circuit  |     32,264 B   |      2,854 B |   11,939 B |                   3,295   |
-| Ashvault        |     33,834 B   |        288 B |   13,297 B |                  11,783   |
-| Raster Rush 1P  |     34,137 B   |        160 B |   13,404 B |                  27,906   |
-| Raster Rush 4P  |     34,137 B   |        160 B |   13,404 B |                  31,422   |
+| Cartridge      | Packed `.pxc` | Visual store | Release JS | Representative work/frame |
+| -------------- | ------------: | -----------: | ---------: | ------------------------: |
+| Cinder Circuit |      32,264 B |      2,854 B |   11,939 B |                     3,295 |
+| Ashvault       |      33,834 B |        288 B |   13,297 B |                    11,783 |
+| Raster Rush 1P |      34,137 B |        160 B |   13,404 B |                    27,906 |
+| Raster Rush 4P |      34,137 B |        160 B |   13,404 B |                    31,422 |
 
 Raster Rush four-player is the governing frame case at about 63% of the 50,000-unit ceiling. It
 executes four independent controller paths and view projections plus 144 raster callbacks while

@@ -287,6 +287,11 @@ impl<'syntax> Analyzer<'syntax> {
     fn install_runtime_builtins(&mut self) {
         self.builtin("btn", vec![Type::Controller, Type::Button], Type::Bool);
         self.builtin("btnp", vec![Type::Controller, Type::Button], Type::Bool);
+        self.builtin("pointer_x", Vec::new(), Type::Int);
+        self.builtin("pointer_y", Vec::new(), Type::Int);
+        self.builtin("pointer_inside", Vec::new(), Type::Bool);
+        self.builtin("pointer_primary", Vec::new(), Type::Bool);
+        self.builtin("pointer_secondary", Vec::new(), Type::Bool);
         self.builtin("rng_int", vec![Type::Int, Type::Int], Type::Int);
         self.builtin("rng_num", Vec::new(), Type::Num);
         self.builtin("save_get_int", vec![Type::Text, Type::Int], Type::Int);
@@ -1499,6 +1504,21 @@ impl<'syntax> Analyzer<'syntax> {
             );
             return error_expression(span);
         };
+        if self.current_routine == Some(RoutineKind::Callback(CallbackKind::Raster)) {
+            let symbol = self.symbol(callee_symbol);
+            if symbol.kind != SymbolKind::Builtin
+                || !matches!(symbol.name.as_str(), "pal" | "raster_scroll")
+            {
+                self.diagnostics.push(
+                    Diagnostic::error(
+                        "PX3119",
+                        callee.span,
+                        "raster callbacks may call only `pal` and `raster_scroll`",
+                    )
+                    .with_primary_label("this call is outside the constrained raster facility"),
+                );
+            }
+        }
         if signature.task && self.allowed_task_call_start != Some(span.start) {
             self.diagnostics.push(
                 Diagnostic::error("PX3111", span, "tasks must be launched with `start`")
@@ -2205,5 +2225,21 @@ on draw:
         assert!(output.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "PX3111" && diagnostic.message.contains("launched with `start`")
         }));
+    }
+
+    #[test]
+    fn raster_callbacks_reject_calls_outside_the_display_list() {
+        let output = analyze(
+            "on raster(line: Int):\n  pal(1, 2)\n  raster_scroll(line, 0)\n  pixel(0, line, 3)\n",
+            &AssetCatalog::default(),
+        );
+        assert_eq!(
+            output
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "PX3119")
+                .count(),
+            1
+        );
     }
 }

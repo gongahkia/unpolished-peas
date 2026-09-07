@@ -212,4 +212,7 @@ on draw:
 
 on raster(line: Int):
   if run_state == RunState.Title and line < 64:
-    pal(29, dither(line, pulse / 8, 29, 31, 8))
+    if (line / 4 + pulse / 8) % 2 == 0:
+      pal(29, 29)
+    else:
+      pal(29, 31)

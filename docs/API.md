@@ -61,6 +61,9 @@ Four controller values are available as `pad1` through `pad4`. Button values are
 
 The host input adapter combines keyboard, pointer/touch, and standard gamepads. Pointer coordinates
 are clamped to the virtual display and recorded alongside all four controller ports.
+`pointer_x()`/`pointer_y()` return that indexed-pixel position, `pointer_inside()` reports whether
+the pointer is over the display, and `pointer_primary()`/`pointer_secondary()` report press
+transitions for mouse, pen, or touch buttons.
 
 ## Audio
 

@@ -82,6 +82,8 @@ kind where another is required have distinct diagnostics.
 The four `Controller` values are `pad1` through `pad4`. The `Button` values are `up`, `down`, `left`,
 `right`, `a`, `b`, `x`, `y`, `l`, `r`, `start_button`, and `menu`. These are typed built-in values,
 not strings or integers. The complete implemented console-call surface is in [`API.md`](API.md).
+Pointer/touch input is available through `pointer_x()`, `pointer_y()`, `pointer_inside()`,
+`pointer_primary()`, and `pointer_secondary()`; the button calls are transition-triggered.
 
 Functions are non-capturing references and can be stored in locals. `let` bindings cannot be
 assigned after initialization; `var` and top-level `state` are mutable. Tasks return `Unit`, may
