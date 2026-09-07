@@ -38,6 +38,9 @@ quarter turns. Transformed output is charged more heavily than an ordinary blit.
 read bounded map data with `map_cell(asset, layer, x, y)`, which returns `-1` outside the map, and
 `map_flag(asset, layer, x, y, flag)`, which returns `false` outside the map or for a flag outside
 0-7. Sprite pixels, animation frames, tiles, map cells, fonts, and raster data share 128 KiB.
+The project display file can supply an initial logical remap and scanline states; source-level
+palette and raster commands override those defaults. Asset file schemas are documented in
+[ASSETS.md](ASSETS.md).
 
 ## Raster display list
 

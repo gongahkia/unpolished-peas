@@ -38,6 +38,18 @@ export interface IndexedMap {
 
 export type VisualAsset = IndexedSprite | IndexedAnimation | IndexedTileSet | IndexedMap;
 
+export interface DisplayRasterState {
+  readonly line: number;
+  readonly scrollX: number;
+  readonly scrollY: number;
+  readonly remap: Uint8Array;
+}
+
+export interface DisplayConfiguration {
+  readonly remap: Uint8Array;
+  readonly raster: readonly DisplayRasterState[];
+}
+
 interface DrawState {
   cameraX: number;
   cameraY: number;
@@ -129,9 +141,11 @@ export class IndexedGraphics {
   private back = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly resolved = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly assets: VisualAssetStore;
+  private readonly display: DisplayConfiguration;
 
-  public constructor(assets = new VisualAssetStore()) {
+  public constructor(assets = new VisualAssetStore(), display?: DisplayConfiguration) {
     this.assets = assets;
+    this.display = copyDisplayConfiguration(display);
   }
 
   public executeFrame(commands: readonly ConsoleCommand[]): GraphicsFrame {
@@ -139,7 +153,7 @@ export class IndexedGraphics {
       throw new RangeError('draw-command ceiling exceeded');
     }
     this.back.set(this.front);
-    const state = initialDrawState();
+    const state = initialDrawState(this.display.remap);
     const rasterRemaps = Array.from(
       { length: HARDWARE.height },
       () => new Uint8Array(HARDWARE.paletteSize),
@@ -150,6 +164,13 @@ export class IndexedGraphics {
     const displayRemap = identityRemap();
     let displayScrollX = 0;
     let displayScrollY = 0;
+
+    for (const raster of this.display.raster) {
+      rasterRemaps[raster.line]?.set(raster.remap);
+      rasterScrollX[raster.line] = raster.scrollX;
+      rasterScrollY[raster.line] = raster.scrollY;
+      rasterStateSet[raster.line] = 1;
+    }
 
     for (const command of commands) {
       if (command.rasterLine === undefined) {
@@ -660,7 +681,7 @@ export function orderedDither(
   return threshold < Math.max(0, Math.min(16, level)) ? expectColor(second) : expectColor(first);
 }
 
-function initialDrawState(): DrawState {
+function initialDrawState(remap = identityRemap()): DrawState {
   return {
     cameraX: 0,
     cameraY: 0,
@@ -668,8 +689,43 @@ function initialDrawState(): DrawState {
     clipY: 0,
     clipWidth: HARDWARE.width,
     clipHeight: HARDWARE.height,
-    remap: identityRemap(),
+    remap: remap.slice(),
   };
+}
+
+function copyDisplayConfiguration(display?: DisplayConfiguration): DisplayConfiguration {
+  if (display === undefined) {
+    return { remap: identityRemap(), raster: [] };
+  }
+  if (!validRemap(display.remap)) {
+    throw new TypeError('display configuration has an invalid base remap');
+  }
+  let previousLine = -1;
+  const raster = display.raster.map((state) => {
+    if (
+      !Number.isInteger(state.line) ||
+      state.line <= previousLine ||
+      state.line >= HARDWARE.height ||
+      !Number.isSafeInteger(state.scrollX) ||
+      !Number.isSafeInteger(state.scrollY) ||
+      state.scrollX < -32_768 ||
+      state.scrollX > 32_767 ||
+      state.scrollY < -32_768 ||
+      state.scrollY > 32_767 ||
+      !validRemap(state.remap)
+    ) {
+      throw new TypeError('display configuration has invalid raster state');
+    }
+    previousLine = state.line;
+    return { ...state, remap: state.remap.slice() };
+  });
+  return { remap: display.remap.slice(), raster };
+}
+
+function validRemap(remap: Uint8Array): boolean {
+  return (
+    remap.length === HARDWARE.paletteSize && remap.every((color) => color < HARDWARE.paletteSize)
+  );
 }
 
 function identityRemap(): Uint8Array {

@@ -1,12 +1,14 @@
 import { AudioAssetStore, type AudioAsset, type MusicAsset, type SoundAsset } from './audio';
 import {
   VisualAssetStore,
+  type DisplayConfiguration,
   type IndexedAnimation,
   type IndexedMap,
   type IndexedSprite,
   type IndexedTileSet,
   type VisualAsset,
 } from './graphics';
+import { HARDWARE } from './hardware';
 import type { MapQueryAsset } from './map-query';
 
 export type ProjectAssetKind =
@@ -21,7 +23,20 @@ export interface RuntimeAssetBundle {
   readonly visual: readonly VisualAsset[];
   readonly audio: readonly AudioAsset[];
   readonly maps: readonly MapQueryAsset[];
+  readonly display?: DisplayConfiguration;
   readonly visualBytes: number;
+}
+
+export interface DisplayAssetFile {
+  readonly revision: 1;
+  readonly kind: 'display';
+  readonly remap: readonly number[];
+  readonly raster: readonly {
+    readonly line: number;
+    readonly scrollX: number;
+    readonly scrollY: number;
+    readonly remap: readonly number[];
+  }[];
 }
 
 export interface SpriteAssetFile {
@@ -54,6 +69,7 @@ export interface MapAssetFile {
 export function decodeRuntimeAssets(
   declarations: Readonly<Record<string, ProjectAssetDeclaration>>,
   files: Readonly<Record<string, Uint8Array>>,
+  displayPath?: string,
 ): RuntimeAssetBundle {
   const visual: VisualAsset[] = [];
   const audio: AudioAsset[] = [];
@@ -112,11 +128,17 @@ export function decodeRuntimeAssets(
         };
       }),
     }));
+  const display = decodeDisplay(displayPath, files);
+  const visualBytes = visualStore.usedBytes + displayBytes(display);
+  if (visualBytes > HARDWARE.visualCapacityBytes) {
+    throw new RangeError('visual assets exceed the 128 KiB shared capacity');
+  }
   return {
     visual,
     audio,
     maps,
-    visualBytes: visualStore.usedBytes,
+    ...(display === undefined ? {} : { display }),
+    visualBytes,
   };
 }
 
@@ -241,6 +263,55 @@ function decodeMusic(name: string, value: unknown): MusicAsset {
     throw new TypeError(`music asset '${name}' is invalid`);
   }
   return { ...value, name } as unknown as MusicAsset;
+}
+
+function decodeDisplay(
+  path: string | undefined,
+  files: Readonly<Record<string, Uint8Array>>,
+): DisplayConfiguration | undefined {
+  if (path === undefined) return undefined;
+  const bytes = files[path];
+  if (bytes === undefined) {
+    throw new TypeError(`display configuration is missing '${path}'`);
+  }
+  const value: unknown = JSON.parse(new TextDecoder().decode(bytes));
+  if (
+    !isRecord(value) ||
+    value.revision !== 1 ||
+    value.kind !== 'display' ||
+    !isNumberArray(value.remap, HARDWARE.paletteSize, 0, HARDWARE.paletteSize - 1) ||
+    !Array.isArray(value.raster) ||
+    value.raster.length > HARDWARE.height
+  ) {
+    throw new TypeError('display configuration is invalid');
+  }
+  let previousLine = -1;
+  const raster = value.raster.map((state) => {
+    if (
+      !isRecord(state) ||
+      !boundedInteger(state.line, 0, HARDWARE.height - 1) ||
+      state.line <= previousLine ||
+      !boundedInteger(state.scrollX, -32_768, 32_767) ||
+      !boundedInteger(state.scrollY, -32_768, 32_767) ||
+      !isNumberArray(state.remap, HARDWARE.paletteSize, 0, HARDWARE.paletteSize - 1)
+    ) {
+      throw new TypeError('display configuration has invalid raster state');
+    }
+    previousLine = state.line;
+    return {
+      line: state.line,
+      scrollX: state.scrollX,
+      scrollY: state.scrollY,
+      remap: Uint8Array.from(state.remap),
+    };
+  });
+  return { remap: Uint8Array.from(value.remap), raster };
+}
+
+function displayBytes(display: DisplayConfiguration | undefined): number {
+  return display === undefined
+    ? 0
+    : HARDWARE.paletteSize + display.raster.length * (HARDWARE.paletteSize + 6);
 }
 
 function isNumberArray(

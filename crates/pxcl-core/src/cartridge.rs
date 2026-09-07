@@ -887,7 +887,7 @@ fn include_presentation_file(
     let bytes = project_files.get(&project_path).ok_or_else(|| {
         cartridge_error("PX4002", format!("{role} file '{project_path}' is missing"))
     })?;
-    let archive_path = format!("label/{role}/{project_path}");
+    let archive_path = format!("presentation/{role}/{project_path}");
     insert_unique(entries, archive_path.clone(), bytes.clone())?;
     Ok(Some(archive_path))
 }
@@ -1220,6 +1220,7 @@ author = "@gongahkia"
 version = "1.0.0"
 entry = "src/main.pxl"
 update_rate = 60
+display = "assets/display.pxp"
 
 [assets.hero]
 kind = "sprite"
@@ -1234,6 +1235,10 @@ path = "assets/hero.pxg"
                 format!("on draw:{line_ending}  clear(0){line_ending}").into_bytes(),
             ),
             ("assets/hero.pxg".to_owned(), vec![0, 1, 1, 1, 0]),
+            (
+                "assets/display.pxp".to_owned(),
+                br#"{"revision":1,"kind":"display"}"#.to_vec(),
+            ),
         ])
     }
 
@@ -1269,6 +1274,15 @@ path = "assets/hero.pxg"
         );
         assert!(decoded.entries.contains_key("build/cartridge.js"));
         assert!(decoded.entries.contains_key("assets/assets/hero.pxg"));
+        assert_eq!(
+            decoded.manifest.display.as_deref(),
+            Some("presentation/display/assets/display.pxp")
+        );
+        assert!(
+            decoded
+                .entries
+                .contains_key("presentation/display/assets/display.pxp")
+        );
     }
 
     #[test]
