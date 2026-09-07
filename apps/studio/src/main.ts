@@ -3,8 +3,10 @@ import {
   emptyInputFrame,
   HARDWARE,
   IndexedGraphics,
+  IndexedDbStorage,
   RuntimeFault,
   SandboxSession,
+  StudioRepository,
   Synthesizer,
   WebAudioSink,
   WebGlIndexedRenderer,
@@ -41,6 +43,55 @@ if (diagnosticMode !== null) {
 }
 if (new URLSearchParams(globalThis.location.search).get('hardware-test') === 'audio') {
   prepareAudioDiagnostic();
+}
+if (new URLSearchParams(globalThis.location.search).get('persistence-test') === '1') {
+  void runPersistenceDiagnostic();
+}
+
+async function runPersistenceDiagnostic(): Promise<void> {
+  const status = document.querySelector<HTMLElement>('#diagnostic');
+  if (status === null) {
+    throw new Error('persistence diagnostic output is missing');
+  }
+  const repository = new StudioRepository(new IndexedDbStorage('px240c-diagnostic'));
+  const project = {
+    id: 'diagnostic.project',
+    title: 'DIAGNOSTIC PROJECT',
+    manifest: 'format = 1',
+    files: { 'src/main.pxl': new TextEncoder().encode('on draw:\n  clear(0)\n') },
+  };
+  const firstSave = repository.cartridgeSave('diagnostic.first');
+  const secondSave = repository.cartridgeSave('diagnostic.second');
+  try {
+    await repository.saveProject(project);
+    await repository.saveProject({
+      ...project,
+      files: { 'src/main.pxl': new TextEncoder().encode('on draw:\n  clear(1)\n') },
+    });
+    await firstSave.write(Uint8Array.of(1, 2, 3));
+    await secondSave.write(Uint8Array.of(9));
+    const recovery = await repository.recoverySnapshots(project.id);
+    if (
+      recovery.length !== 1 ||
+      (await firstSave.read())[0] !== 1 ||
+      (await secondSave.read())[0] !== 9
+    ) {
+      throw new Error('IndexedDB persistence state was incoherent');
+    }
+    showResult(status, 'INDEXEDDB RECOVERY / SAVE ISOLATION VERIFIED', true);
+    document.documentElement.dataset.persistenceTest = 'passed';
+  } catch (error: unknown) {
+    showResult(
+      status,
+      error instanceof Error ? error.message : 'persistence diagnostic failed',
+      false,
+    );
+    document.documentElement.dataset.persistenceTest = 'failed';
+  } finally {
+    await repository.deleteProject(project.id);
+    await firstSave.clear();
+    await secondSave.clear();
+  }
 }
 
 function prepareAudioDiagnostic(): void {
@@ -131,6 +182,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
       seed: 0x240c1999,
       workUnitsPerFrame: mode === 'runaway' ? 96 : 20_000,
       updateRate: 60,
+      ...(mode === 'runaway' ? {} : { save: { boots: 4 } }),
     });
     if (mode === 'runaway') {
       try {
@@ -149,7 +201,14 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
       throw new Error('runaway cartridge completed without a budget fault');
     }
     const frame = await sandbox.frame(emptyInputFrame());
-    if (frame.frame !== 0 || frame.drawCommands.length < 8 || frame.workUnits <= 0) {
+    if (
+      frame.frame !== 0 ||
+      frame.drawCommands.length < 8 ||
+      frame.workUnits <= 0 ||
+      frame.saveWrites.length !== 1 ||
+      frame.saveWrites[0]?.key !== 'boots' ||
+      frame.saveWrites[0].value !== 5
+    ) {
       throw new Error('sandbox frame result was incoherent');
     }
     const screen = document.querySelector<HTMLCanvasElement>('#screen');

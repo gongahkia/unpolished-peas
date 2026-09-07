@@ -1,5 +1,8 @@
 state frames: Int = 0
 
+on start:
+  save_set_int("boots", save_get_int("boots", 0) + 1)
+
 on update:
   frames += 1
 

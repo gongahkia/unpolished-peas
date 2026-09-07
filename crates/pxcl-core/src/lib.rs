@@ -15,7 +15,7 @@ pub mod types;
 
 pub use cartridge::{
     CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
-    ProjectManifest, decode_cartridge, pack_project, parse_project_manifest,
+    ProjectManifest, compile_project, decode_cartridge, pack_project, parse_project_manifest,
 };
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};

@@ -6,8 +6,9 @@ Keywords are lowercase, identifiers are case-sensitive, and indexes and half-ope
 zero-based. The compiler and its conformance fixtures are authoritative when this document differs.
 
 The implemented compiler resolves names to stable symbol IDs and lowers valid modules to typed IR.
-Project-wide import linking is a later milestone; isolated-module analysis reports an explicit
-diagnostic when code dereferences an imported module.
+Project builds link absolute dotted imports such as `import src.math as math` to `src/math.pxl`.
+Revision 1 rejects cycles, callbacks in dependency modules, and colliding top-level names. The
+single-file analysis API deliberately reports that imported members require project analysis.
 
 ## Lexical rules
 

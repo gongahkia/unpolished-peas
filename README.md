@@ -9,9 +9,9 @@ Made by @gongahkia. All rights reserved.
 
 ## Current status
 
-Active alpha implementation. The typed PXCL front end, ES-module code generation, deterministic
-runtime/worker, indexed graphics, four-port input, and synthesizer/tracker core are implemented; the
-project model and product surfaces must not yet be treated as complete. See
+Active alpha implementation. The typed PXCL compiler and project linker, deterministic `.pxc`,
+native CLI/LSP, browser persistence, runtime/worker, indexed graphics, four-port input, and
+synthesizer/tracker core are implemented; the integrated product surfaces are not yet complete. See
 [`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
 
 ## Development

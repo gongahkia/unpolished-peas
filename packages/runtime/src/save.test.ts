@@ -23,8 +23,12 @@ describe('worker save memory', () => {
 
   it('rejects unsafe keys, non-integers, and save-capacity overflow', () => {
     const save = new SaveMemory();
-    expect(() => save.set('__proto__', 1)).toThrow(/canonical ASCII/);
-    expect(() => save.set('score', 0.5)).toThrow(/safe integers/);
+    expect(() => {
+      save.set('__proto__', 1);
+    }).toThrow(/canonical ASCII/);
+    expect(() => {
+      save.set('score', 0.5);
+    }).toThrow(/safe integers/);
     const oversized = Object.fromEntries(
       Array.from({ length: 512 }, (_, index) => [
         `value_${String(index)}`,

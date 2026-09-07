@@ -72,20 +72,22 @@ export class IndexedDbStorage implements StorageBackend {
 export class MemoryStorage implements StorageBackend {
   private readonly records = new Map<string, unknown>();
 
-  public async get(key: string): Promise<unknown> {
-    return structuredClone(this.records.get(key));
+  public get(key: string): Promise<unknown> {
+    return Promise.resolve(structuredClone(this.records.get(key)));
   }
 
-  public async set(key: string, value: unknown): Promise<void> {
+  public set(key: string, value: unknown): Promise<void> {
     this.records.set(key, structuredClone(value));
+    return Promise.resolve();
   }
 
-  public async delete(key: string): Promise<void> {
+  public delete(key: string): Promise<void> {
     this.records.delete(key);
+    return Promise.resolve();
   }
 
-  public async keys(prefix: string): Promise<readonly string[]> {
-    return [...this.records.keys()].filter((key) => key.startsWith(prefix)).sort();
+  public keys(prefix: string): Promise<readonly string[]> {
+    return Promise.resolve([...this.records.keys()].filter((key) => key.startsWith(prefix)).sort());
   }
 }
 
@@ -200,6 +202,10 @@ export class CartridgeSaveAccess {
     }
     await this.storage.set(saveKey(this.#id), value.slice());
   }
+
+  public async clear(): Promise<void> {
+    await this.storage.delete(saveKey(this.#id));
+  }
 }
 
 function validateProject(project: ProjectDocument): void {
@@ -294,28 +300,40 @@ function openDatabase(name: string): Promise<IDBDatabase> {
         database.createObjectStore(STORE_NAME);
       }
     });
-    request.addEventListener('success', () => resolve(request.result));
-    request.addEventListener('error', () => reject(request.error ?? new Error('IndexedDB failed')));
-    request.addEventListener('blocked', () => reject(new Error('IndexedDB upgrade is blocked')));
+    request.addEventListener('success', () => {
+      resolve(request.result);
+    });
+    request.addEventListener('error', () => {
+      reject(request.error ?? new Error('IndexedDB failed'));
+    });
+    request.addEventListener('blocked', () => {
+      reject(new Error('IndexedDB upgrade is blocked'));
+    });
   });
 }
 
 function requestResult<Value>(request: IDBRequest<Value>): Promise<Value> {
   return new Promise((resolve, reject) => {
-    request.addEventListener('success', () => resolve(request.result));
-    request.addEventListener('error', () => reject(request.error ?? new Error('IndexedDB failed')));
+    request.addEventListener('success', () => {
+      resolve(request.result);
+    });
+    request.addEventListener('error', () => {
+      reject(request.error ?? new Error('IndexedDB failed'));
+    });
   });
 }
 
 function transactionDone(transaction: IDBTransaction): Promise<void> {
   return new Promise((resolve, reject) => {
-    transaction.addEventListener('complete', () => resolve());
-    transaction.addEventListener('abort', () =>
-      reject(transaction.error ?? new Error('IndexedDB transaction aborted')),
-    );
-    transaction.addEventListener('error', () =>
-      reject(transaction.error ?? new Error('IndexedDB transaction failed')),
-    );
+    transaction.addEventListener('complete', () => {
+      resolve();
+    });
+    transaction.addEventListener('abort', () => {
+      reject(transaction.error ?? new Error('IndexedDB transaction aborted'));
+    });
+    transaction.addEventListener('error', () => {
+      reject(transaction.error ?? new Error('IndexedDB transaction failed'));
+    });
   });
 }
 
