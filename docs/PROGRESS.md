@@ -148,13 +148,37 @@ Each group may produce several coherent commits, and integration occurs througho
   build, Rust formatting/Clippy, 37 Rust tests, native workspace build, and release WebAssembly
   build pass.
 
+## 2026-09-07 — Milestone 9: debugger, profiler, and deterministic rewind
+
+- Extended debug generation with source probes that capture ordinary routine parameters/locals,
+  task locals/program counters, and call stacks while preserving release/debug IR and semantic
+  equivalence. Worker traces are protocol-validated and bounded to 4,096 events per frame.
+- Added real pause/resume and frame advance, conditional source-line breakpoints, safe watches,
+  frame-trace step into/over/out, restart, direct timeline rewind, and divergence reporting in one
+  keyboard-operable 240x144 debugger surface.
+- Added per-line cumulative synthetic-work profiling plus globals, tasks, stack, framebuffer,
+  visual-assets/capacity, packed-size, palette/raster, synthesizer-voice, and tracker inspection.
+- Added a bounded replay journal that records every input frame and deterministic output/state
+  fingerprint. Composite snapshots cover worker/RNG/task/save-copy state, persistent/resolved
+  indexed graphics, and synthesizer/tracker state before frame 0 and every 30 frames.
+- Playwright/Firefox exercised a task/function cartridge through frame advance, routine and task
+  local capture, call-stack navigation, conditional breakpoint hits, watches, step in/over/out,
+  profile/memory/audio views, rewind, restart, and branch execution. The absent-display `null`
+  manifest boundary found with a fresh project was corrected and regression-tested. The production
+  console reported no browser errors and the debugger was visually inspected at exact 3x scale.
+- Verification: `./scripts/check.sh`; Prettier, ESLint, strict TypeScript, 37 Vitest tests, production
+  build, Rust formatting/Clippy, 37 Rust tests, native workspace build, and release WebAssembly
+  build pass.
+
 ## Current risks
 
-- Debugger/replay, exporter/PWA, project/cartridge import, and three games remain to be built.
+- Exporter/PWA, project/cartridge import, and three games remain to be built.
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, one tracker pattern, and no custom font editor.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps
   currently identify the deterministic linked source rather than each original module.
+- Breakpoints stop after the containing frame; source steps navigate captured probe events rather
+  than suspending synchronous JavaScript in the middle of a callback.
 - LSP references/rename are currently same-document and full-document-sync only.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger

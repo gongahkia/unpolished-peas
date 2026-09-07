@@ -97,7 +97,8 @@ class DebuggerController {
   ): Promise<DebuggerController> {
     const compilation = await compiler.compileProject(project.manifest, project.files, true);
     const diagnostic = compilation.analysis.diagnostics[0];
-    if (diagnostic !== undefined || compilation.generated === undefined) {
+    const generated = compilation.generated;
+    if (diagnostic !== undefined || generated === undefined) {
       throw new Error(
         diagnostic === undefined
           ? 'debug compiler produced no program'
@@ -114,6 +115,7 @@ class DebuggerController {
       save,
       back,
       compilation,
+      generated.javascript,
       manifest.update_rate,
       assets,
       packedBytes,
@@ -127,6 +129,7 @@ class DebuggerController {
     save: SaveValues,
     private readonly back: () => void,
     compilation: CompilationResult,
+    javascript: string,
     updateRate: 30 | 60,
     assets: ReturnType<typeof decodeRuntimeAssets>,
     packedBytes: number,
@@ -154,7 +157,6 @@ class DebuggerController {
     this.graphics = new IndexedGraphics(new VisualAssetStore(assets.visual), assets.display);
     this.renderer = new WebGlIndexedRenderer(canvas);
     this.synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
-    const javascript = compilation.generated.javascript;
     this.initialization = this.sandbox.load(javascript, {
       seed: 0x240c1999,
       workUnitsPerFrame: WORK_LIMIT,

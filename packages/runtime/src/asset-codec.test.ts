@@ -117,6 +117,7 @@ describe('source-visible asset codec', () => {
   });
 
   it('rejects invalid palette indices and tracker references', () => {
+    expect(decodeRuntimeAssets({}, {}, null).display).toBeUndefined();
     expect(() =>
       decodeRuntimeAssets(
         { hero: { kind: 'sprite', path: 'hero.pxg' } },
