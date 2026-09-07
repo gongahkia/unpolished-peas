@@ -1,7 +1,7 @@
-# Experimental alpha hardware profile
+# Frozen alpha hardware profile
 
-These values are centrally defined experimental limits. They are not final until all three pack-in
-cartridges have been measured and the calibration milestone freezes the profile.
+These centrally defined revision-1 limits were frozen after measuring all three bundled cartridges.
+See [LIMITS.md](LIMITS.md) for the calibration evidence.
 
 | Facility                        |          Current value |
 | ------------------------------- | ---------------------: |
@@ -16,6 +16,7 @@ cartridges have been measured and the calibration milestone freezes the profile.
 | Synth voices / tracker channels |                  8 / 8 |
 | Synth output                    |       48,000 Hz stereo |
 | Controller ports                |                      4 |
+| Work units                      |       50,000 per frame |
 
 Framebuffer storage is double-buffered and separate from visual assets. Sprites may be 1-64 pixels
 per axis; sprites, animation frames, 8x8 tiles, maps, fonts, and raster data share visual capacity.
@@ -52,7 +53,7 @@ character, and an audio command costs eight. State-only graphics calls cost one.
 deterministic estimates, not timing predictions. Charges retain source spans for profiler attribution
 and budget faults.
 
-The per-frame work-unit ceiling is intentionally not frozen yet. It will be selected from measured
-platformer, roguelike, single-player racer, and four-player split-screen frame distributions. The
-runtime already requires a positive fixed limit for each cartridge execution and stops the frame at
-the first charge that exceeds it.
+The per-frame work-unit ceiling is 50,000. The runtime stops at the first charge that exceeds it and
+reports the responsible source span. The highest measured bundled path is Raster Rush with four
+simultaneous views at about 31,422 units, leaving headroom for input-dependent variation while still
+making the limit visible during ordinary development.
