@@ -1,5 +1,6 @@
 import { WorkBudget, type WorkAttribution } from './budget';
 import { RuntimeFault } from './errors';
+import { orderedDither } from './graphics';
 import { emptyInputFrame, isButton, isInputFrame, type InputFrame } from './input';
 import type { SandboxConfiguration, SourceSpan } from './protocol';
 import { DeterministicRng } from './rng';
@@ -37,8 +38,21 @@ export interface CartridgeApi {
 
 export type CartridgeFactory = (api: CartridgeApi) => GeneratedCartridge;
 
+export type ExecutionPhase = 'start' | 'update' | 'draw' | 'raster';
+
+export interface ExecutionContext {
+  readonly frame: number;
+  readonly phase: ExecutionPhase;
+  readonly rasterLine?: number;
+}
+
 export interface RuntimeHooks {
-  readonly call?: (name: string, arguments_: readonly unknown[], sourceSpan: SourceSpan) => unknown;
+  readonly call?: (
+    name: string,
+    arguments_: readonly unknown[],
+    sourceSpan: SourceSpan,
+    context: ExecutionContext,
+  ) => unknown;
   readonly probe?: (id: number, sourceSpan: SourceSpan, locals: unknown) => void;
   readonly enter?: (name: string, sourceSpan: SourceSpan) => void;
   readonly leave?: () => void;
@@ -70,6 +84,8 @@ export class DeterministicMachine implements CartridgeApi {
   private booted = false;
   private input: InputFrame = emptyInputFrame();
   private previousInput: InputFrame = emptyInputFrame();
+  private phase: ExecutionPhase = 'start';
+  private rasterLine: number | undefined;
 
   public constructor(
     factory: CartridgeFactory,
@@ -96,6 +112,8 @@ export class DeterministicMachine implements CartridgeApi {
       return;
     }
     this.budget.beginFrame();
+    this.phase = 'start';
+    this.rasterLine = undefined;
     this.cartridge.start();
     this.booted = true;
   }
@@ -108,12 +126,17 @@ export class DeterministicMachine implements CartridgeApi {
     this.input = structuredClone(input);
     this.budget.beginFrame();
     if (this.updateRate === 60 || this.currentFrame % 2 === 0) {
+      this.phase = 'update';
       this.cartridge.update();
     }
+    this.phase = 'draw';
     this.cartridge.draw();
     for (let line = 0; line < 144; line += 1) {
+      this.phase = 'raster';
+      this.rasterLine = line;
       this.cartridge.raster(line);
     }
+    this.rasterLine = undefined;
     const report: FrameReport = {
       frame: this.currentFrame,
       workUnits: this.budget.used,
@@ -187,6 +210,16 @@ export class DeterministicMachine implements CartridgeApi {
           w: expectNumber(arguments_[2], sourceSpan),
           h: expectNumber(arguments_[3], sourceSpan),
         };
+      case 'dither': {
+        expectArguments(name, arguments_, 5, sourceSpan);
+        return orderedDither(
+          expectInteger(arguments_[0], sourceSpan),
+          expectInteger(arguments_[1], sourceSpan),
+          expectInteger(arguments_[2], sourceSpan),
+          expectInteger(arguments_[3], sourceSpan),
+          expectInteger(arguments_[4], sourceSpan),
+        );
+      }
       case 'btn':
       case 'btnp': {
         expectArguments(name, arguments_, 2, sourceSpan);
@@ -202,7 +235,12 @@ export class DeterministicMachine implements CartridgeApi {
         return pressed && !(this.previousInput.controllers[port]?.buttons[button] ?? false);
       }
       default: {
-        const result = this.hooks.call?.(name, arguments_, sourceSpan);
+        const context: ExecutionContext = {
+          frame: this.currentFrame,
+          phase: this.phase,
+          ...(this.rasterLine === undefined ? {} : { rasterLine: this.rasterLine }),
+        };
+        const result = this.hooks.call?.(name, arguments_, sourceSpan, context);
         if (this.hooks.call === undefined) {
           return this.fault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
         }

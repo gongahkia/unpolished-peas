@@ -1,6 +1,7 @@
 import { DENIED_WORKER_CAPABILITIES, lockDownWorkerGlobals } from './capabilities';
 import { RuntimeFault } from './errors';
-import { DeterministicMachine, type CartridgeFactory } from './machine';
+import { DeterministicMachine, type CartridgeFactory, type ExecutionContext } from './machine';
+import { HARDWARE } from './hardware';
 import {
   isHostRequest,
   type ConsoleCommand,
@@ -101,9 +102,19 @@ function handleConsoleCall(
   name: string,
   arguments_: readonly unknown[],
   sourceSpan: SourceSpan,
+  context: ExecutionContext,
 ): unknown {
-  const command = { name, arguments: structuredClone(arguments_), sourceSpan };
+  requireMachine().work(consoleWorkCost(name, arguments_), sourceSpan);
+  const command = {
+    name,
+    arguments: structuredClone(arguments_),
+    sourceSpan,
+    ...(context.rasterLine === undefined ? {} : { rasterLine: context.rasterLine }),
+  };
   if (DRAW_CALLS.has(name)) {
+    if (drawCommands.length >= HARDWARE.drawCommandsPerFrame) {
+      throw new RuntimeFault('PX9010', 'draw-command ceiling exceeded', sourceSpan);
+    }
     drawCommands.push(command);
     return undefined;
   }
@@ -129,14 +140,65 @@ const DRAW_CALLS = new Set([
   'circle',
   'circle_fill',
   'triangle',
+  'camera',
+  'clip',
+  'clip_reset',
   'sprite',
+  'sprite_xform',
+  'animation',
   'map',
   'pal',
+  'pal_reset',
   'raster_scroll',
   'print',
 ]);
 
-const AUDIO_CALLS = new Set(['sfx', 'music']);
+const AUDIO_CALLS = new Set(['sfx', 'music', 'music_stop']);
+
+function consoleWorkCost(name: string, arguments_: readonly unknown[]): number {
+  const integer = (index: number): number => {
+    const value = arguments_[index];
+    return typeof value === 'number' && Number.isSafeInteger(value) ? value : 0;
+  };
+  switch (name) {
+    case 'clear':
+      return Math.ceil((HARDWARE.width * HARDWARE.height) / 32);
+    case 'pixel':
+      return 1;
+    case 'line':
+      return Math.max(Math.abs(integer(2) - integer(0)), Math.abs(integer(3) - integer(1))) + 1;
+    case 'rect':
+      return Math.max(1, 2 * Math.abs(integer(2)) + 2 * Math.abs(integer(3)));
+    case 'rect_fill':
+      return Math.max(1, Math.ceil((Math.abs(integer(2)) * Math.abs(integer(3))) / 4));
+    case 'circle':
+      return Math.max(1, Math.abs(integer(2)) * 8);
+    case 'circle_fill':
+      return Math.max(1, Math.ceil((Math.abs(integer(2)) ** 2 * 3) / 4));
+    case 'triangle': {
+      const area = Math.abs(
+        (integer(2) - integer(0)) * (integer(5) - integer(1)) -
+          (integer(4) - integer(0)) * (integer(3) - integer(1)),
+      );
+      return Math.max(1, Math.ceil(area / 8));
+    }
+    case 'sprite':
+    case 'animation':
+      return 32;
+    case 'sprite_xform':
+      return Math.max(32, 32 * Math.abs(integer(3)) ** 2);
+    case 'map':
+      return 128;
+    case 'print':
+      return Math.max(1, String(arguments_[0] ?? '').length * 6);
+    case 'sfx':
+    case 'music':
+    case 'music_stop':
+      return 8;
+    default:
+      return 1;
+  }
+}
 
 function readFactory(module: unknown): CartridgeFactory {
   if (!isRecord(module) || typeof module.default !== 'function') {

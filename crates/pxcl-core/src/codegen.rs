@@ -1086,7 +1086,8 @@ impl<'input> Generator<'input> {
             SymbolKind::Function | SymbolKind::Task | SymbolKind::Record | SymbolKind::Variant => {
                 format!("s{}", symbol.0)
             }
-            SymbolKind::Builtin => definition.name.clone(),
+            SymbolKind::Builtin => builtin_value_js(&definition.name)
+                .map_or_else(|| definition.name.clone(), ToOwned::to_owned),
             SymbolKind::Import | SymbolKind::Enum => "undefined".to_owned(),
         }
     }
@@ -1643,6 +1644,28 @@ fn js_string(value: &str) -> String {
     serde_json::to_string(value).expect("Rust strings always encode as JSON strings")
 }
 
+fn builtin_value_js(name: &str) -> Option<&'static str> {
+    match name {
+        "pad1" => Some("0"),
+        "pad2" => Some("1"),
+        "pad3" => Some("2"),
+        "pad4" => Some("3"),
+        "up" => Some("\"up\""),
+        "down" => Some("\"down\""),
+        "left" => Some("\"left\""),
+        "right" => Some("\"right\""),
+        "a" => Some("\"a\""),
+        "b" => Some("\"b\""),
+        "x" => Some("\"x\""),
+        "y" => Some("\"y\""),
+        "l" => Some("\"l\""),
+        "r" => Some("\"r\""),
+        "start_button" => Some("\"start\""),
+        "menu" => Some("\"menu\""),
+        _ => None,
+    }
+}
+
 fn base64_vlq(value: i64) -> String {
     const BASE64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut encoded = if value < 0 {
@@ -1703,6 +1726,20 @@ mod tests {
         assert!(debug.javascript.contains("api.probe?."));
         assert!(!release.relationships.is_empty());
         assert!(release.source_map_json.contains("\"version\":3"));
+    }
+
+    #[test]
+    fn lowers_public_input_and_graphics_values_without_host_globals() {
+        let source = SourceFile::new(
+            FileId(0),
+            "hardware.pxl",
+            "on update:\n  let pressed = btn(pad1, a)\n  if pressed:\n    pixel(1, 1, dither(1, 1, 2, 3, 8))\n",
+        );
+        let output = compile(&source, &AssetCatalog::default(), CompileMode::Release);
+        assert!(output.analysis.diagnostics.is_empty());
+        let javascript = &output.generated.expect("generated output").javascript;
+        assert!(javascript.contains("consoleCall(\"btn\",[0,\"a\"]"));
+        assert!(javascript.contains("consoleCall(\"dither\""));
     }
 
     #[test]
