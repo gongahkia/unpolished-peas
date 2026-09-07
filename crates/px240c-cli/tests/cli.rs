@@ -7,7 +7,7 @@ fn binary() -> Command {
 #[test]
 fn check_accepts_the_positive_language_fixture() {
     let fixture = format!(
-        "{}/../pxcl-core/tests/fixtures/positive/kitchen_sink.pxl",
+        "{}/../pxcl-core/tests/fixtures/types/positive.pxl",
         env!("CARGO_MANIFEST_DIR")
     );
     let output = binary()

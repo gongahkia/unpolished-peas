@@ -24,7 +24,7 @@ pub enum SymbolKind {
 }
 
 /// One definition in the resolved module symbol table.
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Symbol {
     pub id: SymbolId,
     pub name: String,
@@ -158,7 +158,7 @@ pub struct IrMatchArm {
     pub span: Span,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 #[serde(tag = "kind", content = "data")]
 pub enum IrPattern {
     Wildcard,
@@ -183,7 +183,10 @@ pub struct IrExpression {
 pub enum IrExpressionKind {
     Literal(Literal),
     Load(SymbolId),
-    Asset { name: String, kind: AssetKind },
+    Asset {
+        name: String,
+        kind: AssetKind,
+    },
     Array(Vec<IrExpression>),
     Unary {
         operator: UnaryOperator,
