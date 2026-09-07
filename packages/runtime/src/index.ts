@@ -2,6 +2,7 @@ export * from './audio';
 export * from './asset-codec';
 export * from './budget';
 export * from './capabilities';
+export * from './debugger';
 export * from './errors';
 export * from './font';
 export * from './graphics';

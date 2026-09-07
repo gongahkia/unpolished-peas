@@ -70,6 +70,17 @@ describe('indexed graphics hardware', () => {
     expect(persistent.indexedPixels[1]).toBe(3);
   });
 
+  it('restores persistent and resolved framebuffer state', () => {
+    const graphics = new IndexedGraphics();
+    graphics.executeFrame([command('clear', [3]), command('pal', [3, 12], 0)]);
+    const snapshot = graphics.snapshot();
+    graphics.executeFrame([command('clear', [7])]);
+    graphics.restore(snapshot);
+
+    expect(graphics.snapshot()).toEqual(snapshot);
+    expect(graphics.executeFrame([]).indexedPixels[0]).toBe(3);
+  });
+
   it('draws transparent sprites, transforms, tile maps, and bounded tile flags', () => {
     const sprite: IndexedSprite = {
       kind: 'sprite',

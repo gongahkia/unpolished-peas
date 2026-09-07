@@ -65,6 +65,12 @@ export interface GraphicsFrame {
   readonly commands: number;
 }
 
+export interface GraphicsSnapshot {
+  readonly revision: 1;
+  readonly front: Uint8Array;
+  readonly resolved: Uint8Array;
+}
+
 /** Validated, capacity-accounted assets shared by sprite and map drawing. */
 export class VisualAssetStore {
   private readonly entries = new Map<string, VisualAsset>();
@@ -217,6 +223,29 @@ export class IndexedGraphics {
     this.front = this.back;
     this.back = previousFront;
     return { indexedPixels: this.resolved.slice(), commands: commands.length };
+  }
+
+  public snapshot(): GraphicsSnapshot {
+    return { revision: 1, front: this.front.slice(), resolved: this.resolved.slice() };
+  }
+
+  public restore(snapshot: unknown): void {
+    const pixelCount = HARDWARE.width * HARDWARE.height;
+    if (
+      !isRecord(snapshot) ||
+      snapshot.revision !== 1 ||
+      !(snapshot.front instanceof Uint8Array) ||
+      snapshot.front.length !== pixelCount ||
+      snapshot.front.some((color) => color >= HARDWARE.paletteSize) ||
+      !(snapshot.resolved instanceof Uint8Array) ||
+      snapshot.resolved.length !== pixelCount ||
+      snapshot.resolved.some((color) => color >= HARDWARE.paletteSize)
+    ) {
+      throw new TypeError('invalid indexed graphics snapshot');
+    }
+    this.front.set(snapshot.front);
+    this.back.set(snapshot.front);
+    this.resolved.set(snapshot.resolved);
   }
 
   private executeDraw(command: ConsoleCommand, state: DrawState): void {
@@ -726,6 +755,10 @@ function validRemap(remap: Uint8Array): boolean {
   return (
     remap.length === HARDWARE.paletteSize && remap.every((color) => color < HARDWARE.paletteSize)
   );
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function identityRemap(): Uint8Array {

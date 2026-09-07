@@ -56,8 +56,26 @@ describe('sandbox protocol', () => {
       saveWrites: [],
     };
     expect(isWorkerResponse(frame)).toBe(true);
+    expect(
+      isWorkerResponse({
+        ...frame,
+        debug: {
+          truncated: false,
+          trace: [
+            {
+              id: 0,
+              sourceSpan: { start: 1, end: 2 },
+              locals: { s1: 4 },
+              callStack: [{ name: 'update', sourceSpan: { start: 0, end: 8 } }],
+            },
+          ],
+          inspection: { state: { s0: 4 }, tasks: [], callStack: [] },
+        },
+      }),
+    ).toBe(true);
     expect(isWorkerResponse({ id: 1, type: 'frame' })).toBe(false);
     expect(isWorkerResponse({ ...frame, ambient: true })).toBe(false);
     expect(isWorkerResponse({ ...frame, drawCommands: [{ name: 'clear' }] })).toBe(false);
+    expect(isWorkerResponse({ ...frame, debug: { trace: [], inspection: {} } })).toBe(false);
   });
 });

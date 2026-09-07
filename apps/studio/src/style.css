@@ -610,6 +610,177 @@ body,
   scrollbar-width: none;
 }
 
+.debug-stage {
+  position: absolute;
+  inset: 12px 2px 45px;
+  display: grid;
+  grid-template-columns: 111px 1fr;
+  gap: 2px;
+  font-size: 4px;
+  line-height: 6px;
+}
+
+.debug-left,
+.debug-right {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.debug-screen {
+  display: block;
+  width: 108px;
+  height: 65px;
+  border: 1px solid #665f54;
+  image-rendering: pixelated;
+}
+
+.timeline-label {
+  display: grid;
+  grid-template-columns: 31px 1fr;
+  align-items: center;
+  margin-top: 1px;
+}
+
+.debug-timeline {
+  width: 100%;
+  height: 5px;
+  margin: 0;
+  accent-color: var(--amber);
+}
+
+.debug-location {
+  height: 6px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--cyan);
+  white-space: nowrap;
+}
+
+.debug-tabs {
+  display: flex;
+  height: 9px;
+  gap: 1px;
+}
+
+.debug-tabs button,
+.debug-actions button,
+.debug-entry button,
+.debug-back {
+  min-width: 0;
+  padding: 0 1px;
+  color: var(--cream);
+  background: #5b2938;
+  border: 1px solid var(--cyan);
+  border-radius: 0;
+  font:
+    4px/6px ui-monospace,
+    monospace;
+}
+
+.debug-tabs button {
+  flex: 1;
+  border-color: #665f54;
+  font-size: 3px;
+}
+
+.debug-tabs button.active {
+  color: var(--deep);
+  background: var(--amber);
+}
+
+.debug-output {
+  height: 76px;
+  margin: 1px 0 0;
+  overflow: auto;
+  padding: 2px;
+  color: var(--cream);
+  background: #302d2a;
+  font:
+    4px/6px ui-monospace,
+    monospace;
+  white-space: pre-wrap;
+  scrollbar-width: none;
+}
+
+.debug-actions,
+.debug-entry {
+  position: absolute;
+  right: 2px;
+  left: 2px;
+  display: flex;
+  height: 9px;
+  gap: 1px;
+}
+
+.debug-actions {
+  bottom: 34px;
+}
+
+.debug-actions button {
+  flex: 1;
+}
+
+.debug-entry {
+  bottom: 23px;
+}
+
+.debug-entry input {
+  min-width: 0;
+  height: 9px;
+  padding: 0 1px;
+  color: var(--cream);
+  background: #302d2a;
+  border: 1px solid #665f54;
+  border-radius: 0;
+  outline: 0;
+  font:
+    4px/6px ui-monospace,
+    monospace;
+}
+
+.debug-entry input:focus {
+  border-color: var(--amber);
+}
+
+.break-line {
+  width: 22px;
+  appearance: textfield;
+}
+
+.break-line::-webkit-inner-spin-button,
+.break-line::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
+.break-condition {
+  width: 55px;
+}
+
+.watch-expression {
+  flex: 1;
+}
+
+.debug-status {
+  position: absolute;
+  inset: auto 42px 11px 2px;
+  height: 7px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--cyan);
+  font-size: 4px;
+  line-height: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.debug-back {
+  position: absolute;
+  bottom: 1px;
+  left: 2px;
+  height: 8px;
+}
+
 .prompt {
   color: #f3a65a;
 }
