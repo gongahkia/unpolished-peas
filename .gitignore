@@ -13,5 +13,6 @@ test-results/
 .vite/
 crates/pxcl-wasm/pkg/
 apps/studio/public/generated/
+apps/studio/public/cartridges/
 output/
 .playwright-cli/

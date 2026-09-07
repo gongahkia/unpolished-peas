@@ -10,6 +10,9 @@ function offlineServiceWorker(): Plugin {
         './index.html',
         './icon.svg',
         './manifest.webmanifest',
+        './cartridges/ashvault.pxc',
+        './cartridges/cinder-circuit.pxc',
+        './cartridges/raster-rush.pxc',
         ...Object.keys(bundle).map((path) => `./${path}`),
       ].sort();
       this.emitFile({
