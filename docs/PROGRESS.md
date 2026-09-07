@@ -25,9 +25,22 @@ Each group may produce several coherent commits, and integration occurs througho
 - Verification: `make setup` and `./scripts/check.sh`; TypeScript format/lint/type tests, Vitest,
   browser production build, Rust formatting/Clippy/tests/native build, and release WASM build pass.
 
+## 2026-09-07 — Milestone 2: PXCL syntax front end
+
+- Added byte-accurate source spans, line indexing, serializable stable diagnostics, and an
+  ASCII-only indentation lexer with comments, assets, duration literals, CRLF handling, and recovery.
+- Added a recovery parser and serializable AST for modules, records, enums, typed state/functions,
+  deterministic tasks, callbacks, control flow, exhaustive-match syntax, types, and expressions.
+- Added an idempotent two-space formatter, `px240c check`, `px240c fmt`, file-backed positive and
+  negative fixtures, exact diagnostic-span assertions, and 512 bounded generated parser inputs.
+- Exposed tokens, AST, and diagnostics as JSON through the WebAssembly boundary.
+- Verification: `./scripts/check.sh`; 17 Rust tests, one Vitest test, strict Rust/TypeScript lint and
+  type checks, native/browser builds, and release WASM compilation pass.
+
 ## Current risks
 
-- The language, runtime, studio tools, debugger, packer, LSP, exporter, and games remain to be built.
+- Name resolution, static typing, IR/code generation, runtime, studio tools, debugger, packer, LSP,
+  exporter, and games remain to be built.
 - WebGL2 and Web Audio behavior will need both state tests and hands-on browser inspection.
 - Worker hardening must be validated against concrete denial and runaway-loop cases; it must not be
   described as stronger isolation than the browser actually provides.

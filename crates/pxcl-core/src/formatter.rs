@@ -46,6 +46,7 @@ fn format_tokens(tokens: &[Token]) -> String {
     let mut indentation = 0_usize;
     let mut line_start = true;
     let mut previous: Option<&TokenKind> = None;
+    let mut previous_was_unary = false;
 
     for token in tokens {
         match &token.kind {
@@ -58,6 +59,7 @@ fn format_tokens(tokens: &[Token]) -> String {
                 output.push('\n');
                 line_start = true;
                 previous = None;
+                previous_was_unary = false;
             }
             TokenKind::Eof => {}
             TokenKind::Comment(text) => {
@@ -68,13 +70,17 @@ fn format_tokens(tokens: &[Token]) -> String {
                 output.push_str("//");
                 output.push_str(text);
                 previous = Some(&token.kind);
+                previous_was_unary = false;
             }
             kind => {
                 begin_token(&mut output, indentation, &mut line_start);
-                if previous.is_some_and(|previous| needs_space(previous, kind)) {
+                if !previous_was_unary
+                    && previous.is_some_and(|previous| needs_space(previous, kind))
+                {
                     output.push(' ');
                 }
                 output.push_str(&render(kind));
+                previous_was_unary = is_unary_prefix(kind, previous);
                 previous = Some(kind);
             }
         }
@@ -83,6 +89,34 @@ fn format_tokens(tokens: &[Token]) -> String {
         output.push('\n');
     }
     output
+}
+
+fn is_unary_prefix(current: &TokenKind, previous: Option<&TokenKind>) -> bool {
+    matches!(current, TokenKind::Plus | TokenKind::Minus)
+        && previous.is_none_or(|previous| {
+            matches!(
+                previous,
+                TokenKind::LeftParen
+                    | TokenKind::LeftBracket
+                    | TokenKind::Comma
+                    | TokenKind::Colon
+                    | TokenKind::Equal
+                    | TokenKind::EqualEqual
+                    | TokenKind::BangEqual
+                    | TokenKind::Less
+                    | TokenKind::LessEqual
+                    | TokenKind::Greater
+                    | TokenKind::GreaterEqual
+                    | TokenKind::Plus
+                    | TokenKind::Minus
+                    | TokenKind::Star
+                    | TokenKind::Slash
+                    | TokenKind::Percent
+                    | TokenKind::And
+                    | TokenKind::Or
+                    | TokenKind::Return
+            )
+        })
 }
 
 fn begin_token(output: &mut String, indentation: usize, line_start: &mut bool) {
@@ -102,16 +136,20 @@ fn needs_space(previous: &TokenKind, current: &TokenKind) -> bool {
             | TokenKind::Comma
             | TokenKind::Colon
             | TokenKind::Dot
+            | TokenKind::Range
     ) || matches!(
         previous,
-        TokenKind::LeftParen | TokenKind::LeftBracket | TokenKind::Dot
+        TokenKind::LeftParen | TokenKind::LeftBracket | TokenKind::Dot | TokenKind::Range
     ) {
         return false;
     }
     if matches!(current, TokenKind::LeftParen | TokenKind::LeftBracket)
         && matches!(
             previous,
-            TokenKind::Identifier(_) | TokenKind::RightParen | TokenKind::RightBracket
+            TokenKind::Identifier(_)
+                | TokenKind::Raster
+                | TokenKind::RightParen
+                | TokenKind::RightBracket
         )
     {
         return false;
