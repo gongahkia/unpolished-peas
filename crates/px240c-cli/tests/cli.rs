@@ -1,6 +1,7 @@
 use std::{
     fs,
     io::Write,
+    path::PathBuf,
     process::{Command, Stdio},
 };
 
@@ -145,6 +146,44 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
         fs::remove_file(path).expect("temporary HTML removes");
     }
     fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+#[test]
+fn bundled_cartridges_compile_and_pack_within_capacity() {
+    let cartridges = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cartridges");
+    for id in ["cinder-circuit", "ashvault", "raster-rush"] {
+        let project = cartridges.join(id);
+        let check = binary()
+            .args(["check", project.to_str().expect("UTF-8 cartridge path")])
+            .output()
+            .expect("CLI starts");
+        assert!(
+            check.status.success(),
+            "{id}: {}",
+            String::from_utf8_lossy(&check.stderr)
+        );
+        let packed =
+            std::env::temp_dir().join(format!("px240c-bundled-{}-{id}.pxc", std::process::id()));
+        let pack = binary()
+            .args([
+                "pack",
+                project.to_str().expect("UTF-8 cartridge path"),
+                "--output",
+                packed.to_str().expect("UTF-8 output path"),
+            ])
+            .output()
+            .expect("CLI starts");
+        assert!(
+            pack.status.success(),
+            "{id}: {}",
+            String::from_utf8_lossy(&pack.stderr)
+        );
+        let size = fs::metadata(&packed)
+            .expect("packed cartridge metadata")
+            .len();
+        assert!(size < 256 * 1024, "{id} exceeds the cartridge capacity");
+        fs::remove_file(packed).expect("temporary cartridge removes");
+    }
 }
 
 #[test]
