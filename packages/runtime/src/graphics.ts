@@ -735,7 +735,7 @@ function validateSprite(sprite: IndexedSprite): void {
   }
 }
 
-function visualAssetBytes(asset: VisualAsset): number {
+export function visualAssetBytes(asset: VisualAsset): number {
   switch (asset.kind) {
     case 'sprite':
       return asset.pixels.byteLength;

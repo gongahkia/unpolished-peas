@@ -112,6 +112,8 @@ pub struct ProjectManifest {
     #[serde(default)]
     pub thumbnail: Option<String>,
     #[serde(default)]
+    pub display: Option<String>,
+    #[serde(default)]
     pub assets: BTreeMap<String, ProjectAsset>,
 }
 
@@ -136,6 +138,7 @@ pub struct PackedManifest {
     pub update_rate: u8,
     pub label: Option<String>,
     pub thumbnail: Option<String>,
+    pub display: Option<String>,
     pub assets: BTreeMap<String, PackedAsset>,
     pub files: BTreeMap<String, FileIntegrity>,
 }
@@ -230,7 +233,7 @@ pub fn pack_project(
         )
     })?;
 
-    let (mut entries, packed_assets, label, thumbnail) = collect_project_entries(
+    let (mut entries, packed_assets, label, thumbnail, display) = collect_project_entries(
         &manifest,
         project_files,
         generated.javascript,
@@ -261,6 +264,7 @@ pub fn pack_project(
         update_rate: manifest.update_rate,
         label,
         thumbnail,
+        display,
         assets: packed_assets,
         files,
     };
@@ -608,6 +612,12 @@ fn collect_project_entries(
         manifest.thumbnail.as_deref(),
         "thumbnail",
     )?;
+    let display = include_presentation_file(
+        &mut entries,
+        project_files,
+        manifest.display.as_deref(),
+        "display",
+    )?;
     insert_unique(
         &mut entries,
         "build/cartridge.js".to_owned(),
@@ -618,12 +628,13 @@ fn collect_project_entries(
         "build/cartridge.js.map".to_owned(),
         source_map.into_bytes(),
     )?;
-    Ok((entries, packed_assets, label, thumbnail))
+    Ok((entries, packed_assets, label, thumbnail, display))
 }
 
 type CollectedEntries = (
     BTreeMap<String, Vec<u8>>,
     BTreeMap<String, PackedAsset>,
+    Option<String>,
     Option<String>,
     Option<String>,
 );
@@ -791,6 +802,9 @@ fn validate_manifest(manifest: &ProjectManifest) -> Result<(), CartridgeError> {
     if let Some(path) = &manifest.thumbnail {
         normalize_project_path(path)?;
     }
+    if let Some(path) = &manifest.display {
+        normalize_project_path(path)?;
+    }
     Ok(())
 }
 
@@ -842,9 +856,13 @@ fn validate_packed_manifest(
             ));
         }
     }
-    for path in [manifest.label.as_ref(), manifest.thumbnail.as_ref()]
-        .into_iter()
-        .flatten()
+    for path in [
+        manifest.label.as_ref(),
+        manifest.thumbnail.as_ref(),
+        manifest.display.as_ref(),
+    ]
+    .into_iter()
+    .flatten()
     {
         if !entries.contains_key(path) {
             return Err(cartridge_error(
