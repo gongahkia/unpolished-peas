@@ -1,5 +1,6 @@
 import { isInputFrame, type InputFrame } from './input';
 import { HARDWARE } from './hardware';
+import { isMapQueryCatalog, type MapQueryAsset } from './map-query';
 
 export interface SourceSpan {
   readonly start: number;
@@ -10,6 +11,7 @@ export interface SandboxConfiguration {
   readonly seed: number;
   readonly workUnitsPerFrame: number;
   readonly updateRate: 30 | 60;
+  readonly maps?: readonly MapQueryAsset[];
 }
 
 export type HostRequest =
@@ -117,12 +119,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
       );
     case 'audit':
       return (
-        hasExactKeys(value, [
-          'id',
-          'type',
-          'exposedCapabilities',
-          'mathRandomAvailable',
-        ]) &&
+        hasExactKeys(value, ['id', 'type', 'exposedCapabilities', 'mathRandomAvailable']) &&
         Array.isArray(value.exposedCapabilities) &&
         value.exposedCapabilities.every((capability) => typeof capability === 'string') &&
         typeof value.mathRandomAvailable === 'boolean'
@@ -150,7 +147,8 @@ function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
     value.workUnitsPerFrame > 0 &&
-    (value.updateRate === 30 || value.updateRate === 60)
+    (value.updateRate === 30 || value.updateRate === 60) &&
+    (value.maps === undefined || isMapQueryCatalog(value.maps))
   );
 }
 

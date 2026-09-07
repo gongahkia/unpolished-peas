@@ -100,9 +100,9 @@ describe('indexed graphics hardware', () => {
     const graphics = new IndexedGraphics(assets);
     const frame = graphics.executeFrame([
       command('clear', [1]),
-      command('sprite', [{ name: 'hero', kind: 'sprite' }, 1, 1]),
-      command('sprite_xform', [{ name: 'hero', kind: 'sprite' }, 4, 1, 2, 1, false, false]),
-      command('map', [{ name: 'level', kind: 'map' }, 10, 1]),
+      command('sprite', [{ name: 'hero', kind: 'Sprite' }, 1, 1]),
+      command('sprite_xform', [{ name: 'hero', kind: 'Sprite' }, 4, 1, 2, 1, false, false]),
+      command('map', [{ name: 'level', kind: 'Map' }, 10, 1]),
     ]);
     expect(frame.indexedPixels[1 * HARDWARE.width + 1]).toBe(2);
     expect(frame.indexedPixels[2 * HARDWARE.width + 1]).toBe(1);
@@ -130,7 +130,7 @@ describe('indexed graphics hardware', () => {
           { kind: 'sprite', name: 'dot', width: 1, height: 1, pixels: Uint8Array.of(1) },
         ]),
       ).executeFrame([
-        command('sprite_xform', [{ name: 'dot', kind: 'sprite' }, 0, 0, 17, 0, false, false]),
+        command('sprite_xform', [{ name: 'dot', kind: 'Sprite' }, 0, 0, 17, 0, false, false]),
       ]),
     ).toThrow(/between 1 and 16/);
     expect(() =>
@@ -148,5 +148,17 @@ describe('indexed graphics hardware', () => {
     );
     expect(pattern.filter((color) => color === 2)).toHaveLength(8);
     expect(pattern).toEqual([2, 1, 2, 1, 1, 2, 1, 2, 2, 1, 2, 1, 1, 2, 1, 2]);
+  });
+
+  it('renders the built-in ASCII bitmap font into indexed pixels', () => {
+    const frame = new IndexedGraphics().executeFrame([
+      command('clear', [0]),
+      command('print', ['A!', 0, 0, 7]),
+    ]);
+    expect(frame.indexedPixels[1]).toBe(7);
+    expect(frame.indexedPixels[2]).toBe(7);
+    expect(frame.indexedPixels[3]).toBe(7);
+    expect(frame.indexedPixels[6 + 2]).toBe(7);
+    expect(frame.indexedPixels[6 * HARDWARE.width + 6 + 2]).toBe(7);
   });
 });

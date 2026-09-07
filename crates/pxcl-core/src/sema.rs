@@ -169,6 +169,13 @@ impl<'syntax> Analyzer<'syntax> {
     }
 
     fn install_builtins(&mut self) {
+        self.install_shape_builtins();
+        self.install_display_builtins();
+        self.install_runtime_builtins();
+        self.install_builtin_values();
+    }
+
+    fn install_shape_builtins(&mut self) {
         self.builtin("clear", vec![Type::Color], Type::Unit);
         self.builtin("pixel", vec![Type::Int, Type::Int, Type::Color], Type::Unit);
         self.builtin(
@@ -203,6 +210,9 @@ impl<'syntax> Analyzer<'syntax> {
             ],
             Type::Unit,
         );
+    }
+
+    fn install_display_builtins(&mut self) {
         self.builtin(
             "sprite",
             vec![Type::Asset(AssetKind::Sprite), Type::Int, Type::Int],
@@ -236,6 +246,22 @@ impl<'syntax> Analyzer<'syntax> {
             vec![Type::Asset(AssetKind::Map), Type::Int, Type::Int],
             Type::Unit,
         );
+        self.builtin(
+            "map_cell",
+            vec![Type::Asset(AssetKind::Map), Type::Int, Type::Int, Type::Int],
+            Type::Int,
+        );
+        self.builtin(
+            "map_flag",
+            vec![
+                Type::Asset(AssetKind::Map),
+                Type::Int,
+                Type::Int,
+                Type::Int,
+                Type::Int,
+            ],
+            Type::Bool,
+        );
         self.builtin("camera", vec![Type::Int, Type::Int], Type::Unit);
         self.builtin(
             "clip",
@@ -256,6 +282,9 @@ impl<'syntax> Analyzer<'syntax> {
             vec![Type::Text, Type::Int, Type::Int, Type::Color],
             Type::Unit,
         );
+    }
+
+    fn install_runtime_builtins(&mut self) {
         self.builtin("btn", vec![Type::Controller, Type::Button], Type::Bool);
         self.builtin("btnp", vec![Type::Controller, Type::Button], Type::Bool);
         self.builtin("rng_int", vec![Type::Int, Type::Int], Type::Int);
@@ -271,6 +300,9 @@ impl<'syntax> Analyzer<'syntax> {
             vec![Type::Num, Type::Num, Type::Num, Type::Num],
             Type::Rect,
         );
+    }
+
+    fn install_builtin_values(&mut self) {
         for (name, r#type) in [
             ("pad1", Type::Controller),
             ("pad2", Type::Controller),

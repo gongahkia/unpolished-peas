@@ -6,8 +6,8 @@ Keywords are lowercase, identifiers are case-sensitive, and indexes and half-ope
 zero-based. The compiler and its conformance fixtures are authoritative when this document differs.
 
 The implemented compiler resolves names to stable symbol IDs and lowers valid modules to typed IR.
-Project-wide import linking and runtime execution are later milestones; isolated-module analysis
-reports an explicit diagnostic when code dereferences an imported module.
+Project-wide import linking is a later milestone; isolated-module analysis reports an explicit
+diagnostic when code dereferences an imported module.
 
 ## Lexical rules
 
@@ -77,6 +77,10 @@ restricted to 1 through 65535. General dynamic allocation is not part of PXCL/1.
 Asset types are `Sprite`, `Animation`, `TileSet`, `Map`, `Font`, `Sound`, and `Music`. A `#name`
 reference obtains its type from the cartridge asset catalog. Missing assets and passing one asset
 kind where another is required have distinct diagnostics.
+
+The four `Controller` values are `pad1` through `pad4`. The `Button` values are `up`, `down`, `left`,
+`right`, `a`, `b`, `x`, `y`, `l`, `r`, `start_button`, and `menu`. These are typed built-in values,
+not strings or integers. The complete implemented console-call surface is in [`API.md`](API.md).
 
 Functions are non-capturing references and can be stored in locals. `let` bindings cannot be
 assigned after initialization; `var` and top-level `state` are mutable. Tasks return `Unit`, may

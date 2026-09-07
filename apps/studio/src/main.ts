@@ -1,4 +1,14 @@
-import { emptyInputFrame, HARDWARE, RuntimeFault, SandboxSession } from '@px240c/runtime';
+import {
+  AudioAssetStore,
+  emptyInputFrame,
+  HARDWARE,
+  IndexedGraphics,
+  RuntimeFault,
+  SandboxSession,
+  Synthesizer,
+  WebAudioSink,
+  WebGlIndexedRenderer,
+} from '@px240c/runtime';
 import './style.css';
 
 const studio = document.querySelector<HTMLElement>('#studio');
@@ -11,11 +21,13 @@ const audioVoices = String(HARDWARE.audioVoices);
 
 studio.innerHTML = `
   <section class="display" aria-label="PX-240C monitor">
+    <canvas id="screen" aria-label="PX-240C indexed display"></canvas>
     <p>PX-240C COLOR DEVELOPMENT UNIT</p>
     <p>SYSTEM ROM 1.0&nbsp; (C) 1999</p>
     <p>${visualKilobytes}K VISUAL STORE / ${audioVoices}V SOUND</p>
     <p>PXCL/1 READY</p>
     <p class="prompt" aria-label="command prompt">&gt;<span aria-hidden="true">_</span></p>
+    <button id="audio-test" type="button" hidden>ENABLE AUDIO TEST</button>
     <p id="diagnostic" class="diagnostic" role="status" aria-live="polite"></p>
   </section>
 `;
@@ -26,6 +38,68 @@ globalThis.addEventListener('resize', updateIntegerScale);
 const diagnosticMode = new URLSearchParams(globalThis.location.search).get('sandbox-test');
 if (diagnosticMode !== null) {
   void runSandboxDiagnostic(diagnosticMode);
+}
+if (new URLSearchParams(globalThis.location.search).get('hardware-test') === 'audio') {
+  prepareAudioDiagnostic();
+}
+
+function prepareAudioDiagnostic(): void {
+  const button = document.querySelector<HTMLButtonElement>('#audio-test');
+  const status = document.querySelector<HTMLElement>('#diagnostic');
+  if (button === null || status === null) {
+    throw new Error('audio diagnostic controls are missing');
+  }
+  button.hidden = false;
+  button.addEventListener(
+    'click',
+    () => {
+      void runAudioDiagnostic(button, status);
+    },
+    { once: true },
+  );
+}
+
+async function runAudioDiagnostic(button: HTMLButtonElement, status: HTMLElement): Promise<void> {
+  button.disabled = true;
+  try {
+    const tone = {
+      kind: 'sound' as const,
+      name: 'audio-check',
+      waveform: 'pulse' as const,
+      note: 69,
+      durationFrames: 8,
+      volume: 0.35,
+      pan: 0,
+      duty: 0.25,
+      envelope: { attackFrames: 1, decayFrames: 1, sustainLevel: 0.7, releaseFrames: 2 },
+      pitch: {
+        slideSemitonesPerFrame: 0.1,
+        vibratoDepthSemitones: 0.2,
+        vibratoPeriodFrames: 4,
+      },
+    };
+    const synthesizer = new Synthesizer(new AudioAssetStore([tone]));
+    const sink = new WebAudioSink();
+    await sink.resume();
+    sink.enqueue(
+      synthesizer.executeFrame([
+        {
+          name: 'sfx',
+          arguments: [{ name: tone.name, kind: 'Sound' }],
+          sourceSpan: { start: 0, end: 0 },
+        },
+      ]),
+    );
+    if (sink.state !== 'running') {
+      throw new Error(`Web Audio remained ${sink.state}`);
+    }
+    globalThis.addEventListener('pagehide', () => void sink.close(), { once: true });
+    showResult(status, '8V SYNTH / WEB AUDIO VERIFIED', true);
+    document.documentElement.dataset.hardwareAudio = 'passed';
+  } catch (error: unknown) {
+    showResult(status, error instanceof Error ? error.message : 'audio diagnostic failed', false);
+    document.documentElement.dataset.hardwareAudio = 'failed';
+  }
 }
 
 async function runSandboxDiagnostic(mode: string): Promise<void> {
@@ -55,7 +129,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
     }
     await sandbox.load(await response.text(), {
       seed: 0x240c1999,
-      workUnitsPerFrame: mode === 'runaway' ? 96 : 10_000,
+      workUnitsPerFrame: mode === 'runaway' ? 96 : 20_000,
       updateRate: 60,
     });
     if (mode === 'runaway') {
@@ -75,9 +149,18 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
       throw new Error('runaway cartridge completed without a budget fault');
     }
     const frame = await sandbox.frame(emptyInputFrame());
-    if (frame.frame !== 0 || frame.drawCommands.length !== 1 || frame.workUnits <= 0) {
+    if (frame.frame !== 0 || frame.drawCommands.length < 8 || frame.workUnits <= 0) {
       throw new Error('sandbox frame result was incoherent');
     }
+    const screen = document.querySelector<HTMLCanvasElement>('#screen');
+    const display = document.querySelector<HTMLElement>('.display');
+    if (screen === null || display === null) {
+      throw new Error('hardware display is missing');
+    }
+    const graphics = new IndexedGraphics();
+    const renderer = new WebGlIndexedRenderer(screen);
+    renderer.render(graphics.executeFrame(frame.drawCommands).indexedPixels);
+    display.classList.add('running-cartridge');
     showResult(status, 'SANDBOX FRAME VERIFIED', true);
   } catch (error: unknown) {
     showResult(status, error instanceof Error ? error.message : 'sandbox diagnostic failed', false);

@@ -27,6 +27,7 @@ body,
 }
 
 .display {
+  position: relative;
   width: 240px;
   height: 144px;
   padding: 12px;
@@ -35,6 +36,27 @@ body,
   image-rendering: pixelated;
   transform: scale(var(--px-scale, 1));
   transform-origin: center;
+}
+
+#screen {
+  position: absolute;
+  inset: 0;
+  display: none;
+  width: 240px;
+  height: 144px;
+  image-rendering: pixelated;
+}
+
+.display.running-cartridge {
+  padding: 0;
+}
+
+.display.running-cartridge #screen {
+  display: block;
+}
+
+.display.running-cartridge > p:not(.diagnostic) {
+  display: none;
 }
 
 .display p {
@@ -51,8 +73,33 @@ body,
   color: #79d8cf;
 }
 
+.running-cartridge .diagnostic {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  z-index: 1;
+  padding: 2px;
+  color: #f4e5bd;
+  background: #17141f;
+}
+
 .diagnostic.error {
   color: #f07f6a;
+}
+
+#audio-test {
+  padding: 3px 5px;
+  color: #f4e5bd;
+  background: #5b2938;
+  border: 1px solid #75cbc0;
+  border-radius: 0;
+  font: inherit;
+  font-size: 8px;
+}
+
+#audio-test:focus-visible {
+  outline: 2px solid #e7bd50;
+  outline-offset: 2px;
 }
 
 @media (prefers-reduced-motion: no-preference) {

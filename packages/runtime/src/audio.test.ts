@@ -37,7 +37,7 @@ function command(name: string, arguments_: readonly unknown[]): ConsoleCommand {
   return { name, arguments: arguments_, sourceSpan };
 }
 
-function handle(name: string, kind: 'sound' | 'music'): object {
+function handle(name: string, kind: 'Sound' | 'Music'): object {
   return { name, kind };
 }
 
@@ -46,7 +46,7 @@ describe('PX-240C synthesizer and tracker', () => {
     for (const waveform of ['pulse', 'triangle', 'saw', 'noise', 'wavetable'] as const) {
       const patch = sound(waveform, waveform);
       const synthesizer = new Synthesizer(new AudioAssetStore([patch]));
-      const frame = synthesizer.executeFrame([command('sfx', [handle(patch.name, 'sound')])]);
+      const frame = synthesizer.executeFrame([command('sfx', [handle(patch.name, 'Sound')])]);
       expect(frame.left).toHaveLength(HARDWARE.audioSampleRate / HARDWARE.frameRate);
       expect(frame.left.some((sample) => sample !== 0)).toBe(true);
       expect(frame.left).toEqual(frame.right);
@@ -59,7 +59,7 @@ describe('PX-240C synthesizer and tracker', () => {
     const synthesizer = new Synthesizer(new AudioAssetStore([patch]));
     synthesizer.executeFrame(
       Array.from({ length: HARDWARE.audioVoices + 1 }, () =>
-        command('sfx', [handle('tone', 'sound')]),
+        command('sfx', [handle('tone', 'Sound')]),
       ),
     );
     const sequences = synthesizer
@@ -86,7 +86,7 @@ describe('PX-240C synthesizer and tracker', () => {
       loop: false,
     };
     const synthesizer = new Synthesizer(new AudioAssetStore([patch, music]));
-    const first = synthesizer.executeFrame([command('music', [handle('theme', 'music')])]);
+    const first = synthesizer.executeFrame([command('music', [handle('theme', 'Music')])]);
     expect(first.tracker).toMatchObject({ orderIndex: 0, row: 0, frameInRow: 1 });
     const second = synthesizer.executeFrame([]);
     expect(second.tracker).toBeNull();
@@ -96,7 +96,7 @@ describe('PX-240C synthesizer and tracker', () => {
   it('restores oscillator, noise, voice-allocation, and tracker state exactly', () => {
     const patch = sound('noise', 'noise');
     const synthesizer = new Synthesizer(new AudioAssetStore([patch]));
-    synthesizer.executeFrame([command('sfx', [handle('noise', 'sound')])]);
+    synthesizer.executeFrame([command('sfx', [handle('noise', 'Sound')])]);
     const snapshot = synthesizer.snapshot();
     const expected = synthesizer.executeFrame([]);
     synthesizer.restore(snapshot);

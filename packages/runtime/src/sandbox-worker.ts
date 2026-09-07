@@ -2,6 +2,7 @@ import { DENIED_WORKER_CAPABILITIES, lockDownWorkerGlobals } from './capabilitie
 import { RuntimeFault } from './errors';
 import { DeterministicMachine, type CartridgeFactory, type ExecutionContext } from './machine';
 import { HARDWARE } from './hardware';
+import { MapQueryStore } from './map-query';
 import {
   isHostRequest,
   type ConsoleCommand,
@@ -20,6 +21,7 @@ const send = workerPort.postMessage.bind(workerPort);
 let machine: DeterministicMachine | undefined;
 let drawCommands: ConsoleCommand[] = [];
 let audioCommands: ConsoleCommand[] = [];
+let mapQueries = new MapQueryStore();
 
 lockDownWorkerGlobals(globalThis);
 
@@ -45,6 +47,7 @@ async function handleRequest(request: HostRequest): Promise<void> {
     case 'load': {
       const loaded: unknown = await import(/* @vite-ignore */ request.moduleUrl);
       const factory = readFactory(loaded);
+      mapQueries = new MapQueryStore(request.configuration.maps ?? []);
       machine = new DeterministicMachine(factory, request.configuration, {
         call: handleConsoleCall,
       });
@@ -105,6 +108,40 @@ function handleConsoleCall(
   context: ExecutionContext,
 ): unknown {
   requireMachine().work(consoleWorkCost(name, arguments_), sourceSpan);
+  if (context.phase === 'raster' && name !== 'pal' && name !== 'raster_scroll') {
+    throw new RuntimeFault(
+      'PX9011',
+      `console API call '${name}' is not valid in the raster callback`,
+      sourceSpan,
+    );
+  }
+  if (name === 'raster_scroll' && context.phase !== 'raster') {
+    throw new RuntimeFault(
+      'PX9011',
+      'raster_scroll is only valid in the raster callback',
+      sourceSpan,
+    );
+  }
+  if (name === 'map_cell' || name === 'map_flag') {
+    const handle = arguments_[0];
+    if (!isAssetHandle(handle, 'Map')) {
+      throw new RuntimeFault('PX9009', 'expected a Map asset handle', sourceSpan);
+    }
+    const integers = arguments_.slice(1).map((value) => readInteger(value, sourceSpan));
+    if (name === 'map_cell' && integers.length === 3) {
+      return mapQueries.cell(handle.name, integers[0] ?? 0, integers[1] ?? 0, integers[2] ?? 0);
+    }
+    if (name === 'map_flag' && integers.length === 4) {
+      return mapQueries.flag(
+        handle.name,
+        integers[0] ?? 0,
+        integers[1] ?? 0,
+        integers[2] ?? 0,
+        integers[3] ?? 0,
+      );
+    }
+    throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+  }
   const command = {
     name,
     arguments: structuredClone(arguments_),
@@ -190,7 +227,7 @@ function consoleWorkCost(name: string, arguments_: readonly unknown[]): number {
     case 'map':
       return 128;
     case 'print':
-      return Math.max(1, String(arguments_[0] ?? '').length * 6);
+      return Math.max(1, (typeof arguments_[0] === 'string' ? arguments_[0].length : 0) * 6);
     case 'sfx':
     case 'music':
     case 'music_stop':
@@ -243,4 +280,20 @@ function requestId(value: unknown): number {
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function isAssetHandle(value: unknown, kind: string): value is { name: string; kind: string } {
+  return (
+    isRecord(value) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    value.kind === kind
+  );
+}
+
+function readInteger(value: unknown, sourceSpan: SourceSpan): number {
+  if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
+    throw new RuntimeFault('PX9009', 'map query arguments must be safe integers', sourceSpan);
+  }
+  return value;
 }

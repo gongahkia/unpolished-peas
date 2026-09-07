@@ -55,7 +55,12 @@ export function isButton(value: unknown): value is Button {
 }
 
 export function isInputFrame(value: unknown): value is InputFrame {
-  if (!isRecord(value) || !Array.isArray(value.controllers) || value.controllers.length !== 4) {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['controllers', 'pointer']) ||
+    !Array.isArray(value.controllers) ||
+    value.controllers.length !== 4
+  ) {
     return false;
   }
   if (!value.controllers.every(isControllerState) || !isRecord(value.pointer)) {
@@ -63,10 +68,15 @@ export function isInputFrame(value: unknown): value is InputFrame {
   }
   const pointer = value.pointer;
   return (
+    hasExactKeys(pointer, ['x', 'y', 'primary', 'secondary', 'inside']) &&
     typeof pointer.x === 'number' &&
-    Number.isFinite(pointer.x) &&
+    Number.isSafeInteger(pointer.x) &&
+    pointer.x >= 0 &&
+    pointer.x < HARDWARE.width &&
     typeof pointer.y === 'number' &&
-    Number.isFinite(pointer.y) &&
+    Number.isSafeInteger(pointer.y) &&
+    pointer.y >= 0 &&
+    pointer.y < HARDWARE.height &&
     typeof pointer.primary === 'boolean' &&
     typeof pointer.secondary === 'boolean' &&
     typeof pointer.inside === 'boolean'
@@ -295,14 +305,22 @@ function applyStandardGamepad(buttons: Record<Button, boolean>, gamepad: Standar
 }
 
 function isControllerState(value: unknown): value is ControllerState {
-  if (!isRecord(value) || !isRecord(value.buttons)) {
+  if (!isRecord(value) || !hasExactKeys(value, ['buttons']) || !isRecord(value.buttons)) {
     return false;
   }
   const buttons = value.buttons;
-  return BUTTONS.every((button) => typeof buttons[button] === 'boolean');
+  return (
+    hasExactKeys(buttons, BUTTONS) &&
+    BUTTONS.every((button) => typeof buttons[button] === 'boolean')
+  );
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null;
+}
+
+function hasExactKeys(value: Record<string, unknown>, expected: readonly string[]): boolean {
+  const keys = Object.keys(value);
+  return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
 import { HARDWARE } from './hardware';
