@@ -22,6 +22,11 @@ const studioRoot = studio;
 
 updateIntegerScale();
 globalThis.addEventListener('resize', updateIntegerScale);
+if ('serviceWorker' in navigator) {
+  globalThis.addEventListener('load', () => {
+    void navigator.serviceWorker.register(new URL('./sw.js', document.baseURI), { scope: './' });
+  });
+}
 
 const parameters = new URLSearchParams(globalThis.location.search);
 const diagnosticMode = parameters.get('sandbox-test');

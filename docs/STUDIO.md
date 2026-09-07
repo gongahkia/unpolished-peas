@@ -6,7 +6,11 @@ cartridge worker receives only a validated copy of its own integer save values; 
 the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
-`edit`, `run`, `pack`, `info`, `help`, and `reboot` operate on real project/compiler/runtime paths.
+`import`, `edit`, `run`, `debug`, `pack`, `export`, `inspect`, `info`, `help`, and `reboot` operate on
+real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, reconstructs its
+editable project, and preserves the previous same-ID revision for recovery. `inspect` displays the
+canonical packed metadata and all original source modules. `export` downloads one offline HTML
+player with its own visible source inspector.
 The source editor has PXCL highlighting, live compiler diagnostics, completion, same-file symbol
 navigation, canonical formatting, explicit save, run, and external-revision reload controls.
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
@@ -35,17 +39,24 @@ px240c check my-game
 px240c build my-game
 px240c watch my-game
 px240c pack my-game
+px240c export html my-game
+px240c run my-game
 px240c info my-game/dist/my-game.pxc
 px240c lsp
 ```
 
 `watch --once` performs the same initial deterministic build and exits for CI checks. Otherwise it
 polls project content every 250 ms and repacks only when bytes change. `fmt --check` reports source
-that differs from canonical two-space formatting.
+that differs from canonical two-space formatting. `run` writes the same standalone HTML artifact to
+`dist/` and opens it with `xdg-open`; `--no-open` performs only the validated export for CI or a
+headless environment.
 
 The browser production build runs `scripts/build-wasm.sh`, which builds the Rust compiler for
 `wasm32-unknown-unknown` and generates pinned web bindings before Vite bundles it. Cartridge
 compilation therefore does not depend on a backend or a second TypeScript compiler implementation.
+The production build also emits a generated same-origin service worker containing the exact hashed
+build inventory. After its first successful load, the Studio boots and operates offline. The web
+app manifest and maskable icon are static repository assets.
 
 ## Language-server clients
 

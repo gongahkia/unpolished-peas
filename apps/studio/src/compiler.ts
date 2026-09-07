@@ -3,6 +3,7 @@ import initWasm, {
   compileProject as wasmCompileProject,
   compiler_version as wasmCompilerVersion,
   decodeCartridge as wasmDecodeCartridge,
+  exportHtml as wasmExportHtml,
   format as wasmFormat,
   language_revision as wasmLanguageRevision,
   packProject as wasmPackProject,
@@ -136,6 +137,14 @@ export class BrowserCompiler {
   public async unpackCartridge(bytes: Uint8Array): Promise<UnpackedProject> {
     await this.initialized;
     return JSON.parse(wasmUnpackCartridge(bytes)) as UnpackedProject;
+  }
+
+  public async exportHtml(
+    manifest: string,
+    files: Readonly<Record<string, Uint8Array>>,
+  ): Promise<string> {
+    await this.initialized;
+    return wasmExportHtml(manifest, encodeProjectFiles(files));
   }
 
   public async parseManifest(source: string): Promise<ProjectManifest> {

@@ -4,8 +4,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use pxcl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    compile_project, decode_cartridge, format_source, pack_project, parse_project_manifest,
-    unpack_cartridge_project,
+    compile_project, decode_cartridge, export_standalone_html, format_source, pack_project,
+    parse_project_manifest, unpack_cartridge_project,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -162,4 +162,15 @@ pub fn decode_cartridge_for_browser(bytes: &[u8]) -> Result<String, String> {
 pub fn unpack_cartridge_for_browser(bytes: &[u8]) -> Result<String, String> {
     let project = unpack_cartridge_project(bytes).map_err(|error| error.to_string())?;
     serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+/// Exports browser-owned project files as a validated, offline standalone player.
+///
+/// # Errors
+///
+/// Returns the same project, compilation, capacity, or serialization errors as the packer.
+#[wasm_bindgen(js_name = exportHtml)]
+pub fn export_html_for_browser(manifest: &str, files_json: &str) -> Result<String, String> {
+    let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
+    export_standalone_html(manifest, &files).map_err(|error| error.to_string())
 }

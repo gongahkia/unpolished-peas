@@ -4,6 +4,7 @@ pub mod ast;
 pub mod cartridge;
 pub mod codegen;
 pub mod diagnostic;
+pub mod exporter;
 pub mod formatter;
 pub mod ir;
 pub mod lexer;
@@ -20,6 +21,7 @@ pub use cartridge::{
 };
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};
+pub use exporter::export_standalone_html;
 pub use formatter::{FormatError, format_source};
 pub use lexer::lex;
 pub use parser::{ParseOutput, parse};

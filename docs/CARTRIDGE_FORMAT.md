@@ -62,8 +62,22 @@ Packed size is limited to 256 KiB. Decoding additionally limits expansion to 2 M
 entries, checks every length and hash, rejects trailing bytes, and verifies the manifest inventory.
 `px240c pack` performs a decode after encoding before it writes the artifact.
 
+Validated cartridges can be reconstructed into their source-visible project form. Import reverses
+the `source/`, `assets/`, and `presentation/` prefixes, regenerates a validated `cart.toml`, and
+never exposes compiled build entries as editable source.
+
+## Standalone HTML
+
+`px240c export html` and the Studio `export` command call the same Rust exporter. It first packs and
+decodes the project, then embeds the verified canonical manifest and every archive entry as base64
+inside one HTML file. The inline revision-1 runtime uses no CDN, backend, or external asset request;
+the visible `SOURCE` inspector decodes and displays every original `source/` module. The player
+retains indexed graphics, raster state, synth/tracker audio, four gamepad ports, keyboard and
+pointer/touch input, deterministic work limits, and a cartridge-ID-scoped browser save key.
+
 ## Reproducibility
 
 For identical manifest, source, asset bytes, and compiler revision, `px240c pack` emits identical
 bytes. The CLI integration suite builds two artifacts and byte-compares them; core tests also prove
-LF/CRLF normalization and bounded malformed-input handling.
+LF/CRLF normalization and bounded malformed-input handling. Standalone exports are likewise
+byte-identical for identical inputs.

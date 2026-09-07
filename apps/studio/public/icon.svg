@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="PX-240C">
+  <rect width="512" height="512" rx="72" fill="#d5b992"/>
+  <rect x="44" y="44" width="424" height="424" rx="42" fill="#292532"/>
+  <path fill="#ed7b69" d="M96 112h112v32h32v112h-32v32h-64v112H96zm48 48v80h48v-80z"/>
+  <path fill="#75cbc0" d="M272 112h48v80h32v-80h48v96h-24v48h24v144h-48v-96h-32v96h-48V256h24v-48h-24z"/>
+  <rect x="112" y="416" width="288" height="16" fill="#e7bd50"/>
+</svg>
