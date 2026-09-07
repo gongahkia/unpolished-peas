@@ -570,7 +570,11 @@ export class StudioApp {
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
-    const assets = decodeRuntimeAssets(parsedManifest.assets, project.files);
+    const assets = decodeRuntimeAssets(
+      parsedManifest.assets,
+      project.files,
+      parsedManifest.display,
+    );
     this.root.innerHTML = `
       <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
@@ -590,7 +594,7 @@ export class StudioApp {
     );
     const sandbox = new SandboxSession(worker, 1_000);
     const input = new BrowserInput(canvas);
-    const graphics = new IndexedGraphics(new VisualAssetStore(assets.visual));
+    const graphics = new IndexedGraphics(new VisualAssetStore(assets.visual), assets.display);
     const renderer = new WebGlIndexedRenderer(canvas);
     const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
     let audioSink: WebAudioSink | undefined;

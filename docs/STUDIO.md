@@ -7,14 +7,21 @@ the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
 `edit`, `run`, `pack`, `info`, `help`, and `reboot` operate on real project/compiler/runtime paths.
-The source editor has live compiler diagnostics, canonical formatting, save, and run controls.
+The source editor has PXCL highlighting, live compiler diagnostics, completion, same-file symbol
+navigation, canonical formatting, explicit save, run, and external-revision reload controls.
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
 from a cartridge to the shell.
 
-The remaining asset editors and debugger surfaces are under active construction. Development query
-routes separately verify the WebGL fixture, Web Audio gesture path, IndexedDB recovery, and sandbox
-fault handling.
+`project`, `sprite`, `map`, `palette`, `sfx`, and `music` open cartridge settings and source-visible
+asset editors in the same 240x144 display. The sprite tool provides frames, onion skinning,
+selection transforms, palette painting, undo/redo, and capacity feedback. The map tool provides
+layers, tile flags, painting, undo/redo, and shared-capacity feedback. Palette/raster defaults feed
+the runtime without changing the fixed master palette. Sound patches and eight-channel tracker
+patterns can be previewed after a browser audio gesture. `manual` searches built-in help and
+`explore` exposes tokens, AST, symbols, typed IR, JavaScript, source maps, diagnostics, and size
+accounting. Escape returns from a tool; F3 saves asset changes. Debugger surfaces remain under
+active construction.
 
 ## Native commands
 

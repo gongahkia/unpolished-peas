@@ -17,14 +17,16 @@ author = "@gongahkia"
 version = "0.1.0"
 entry = "src/main.pxl"
 update_rate = 60
+display = "assets/display.pxp"
 
 [assets.hero]
 kind = "sprite"
 path = "assets/hero.pxg"
 ```
 
-`update_rate` is 30 or 60. Optional `label` and `thumbnail` keys name project-relative files.
-Asset kinds are `sprite`, `animation`, `map`, `sound`, `music`, and `font`. IDs contain 3-64
+`update_rate` is 30 or 60. Optional `label`, `thumbnail`, and `display` keys name project-relative
+files. `display` selects the default palette/raster state described in [ASSETS.md](ASSETS.md).
+Asset kinds are `sprite`, `animation`, `tile_set`, `map`, `sound`, `music`, and `font`. IDs contain 3-64
 lowercase ASCII letters, digits, dots, or hyphens. Paths are relative ASCII paths; empty segments,
 `.`/`..`, backslashes, and absolute paths are invalid. Unknown manifest fields are errors.
 
@@ -50,7 +52,7 @@ RLE packets encode 1-128 bytes. A high tag bit denotes a repeated-byte packet; o
 is literal. Runs of four or more bytes use repeated packets. The decoder re-encodes every payload
 and rejects alternate encodings, so equivalent data has one representation.
 
-The archive contains normalized `source/` modules, `assets/` data, optional presentation files,
+The archive contains normalized `source/` modules, `assets/` data, optional `presentation/` files,
 `build/cartridge.js`, `build/cartridge.js.map`, and compact canonical `manifest.json`. Source line
 endings are normalized to LF. The manifest records compiler/language/format revisions and a sorted
 size/SHA-256 inventory for every other entry. There are no timestamps, permissions, host paths, or

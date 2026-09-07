@@ -124,10 +124,35 @@ Each group may produce several coherent commits, and integration occurs througho
   against the production build. Reload recovered revision 2 from IndexedDB; no console errors were
   reported. Shell, editor, and running cartridge were visually inspected at exact 3x scale.
 
+## 2026-09-07 — Milestone 8: integrated creation tools and asset pipeline
+
+- Added source-visible revision-1 JSON codecs for variable sprites/animations, 8x8 tile sets and
+  flags, layered maps, oscillator patches, tracker songs, and default palette/raster display state.
+  Runtime loading validates references and hardware bounds before cartridge execution.
+- Added functional in-display sprite, map, palette/raster, sound, music, and project-settings tools.
+  The graphics tools provide bounded painting, navigation, selection/transforms, onion skinning,
+  undo/redo, and capacity feedback; audio tools provide patch/pattern editing and gesture-gated
+  previews.
+- Expanded the editor with PXCL highlighting, completion, same-file definition lookup, and explicit
+  external-revision reload. Added searchable built-in manual and compiler-explorer views for every
+  exposed pipeline stage and size/work accounting.
+- Connected saved visual/audio assets to the production player. Project display defaults now affect
+  indexed drawing and scanout, count toward the shared visual capacity, and remain overridable by
+  public PXCL palette/raster calls.
+- Playwright/Firefox exercised each editor, persistent saves, deterministic `.pxc` download, asset
+  loading, running audio enablement, stop/reload, manual search, and compiler-explorer switching.
+  The initial sound/music file-revision integration fault was reproduced and regression-tested;
+  the corrected run reported no console errors. Sprite, map, and palette tools were visually
+  inspected at exact 3x scale.
+- Verification: `./scripts/check.sh`; Prettier, ESLint, strict TypeScript, 33 Vitest tests, production
+  build, Rust formatting/Clippy, 37 Rust tests, native workspace build, and release WebAssembly
+  build pass.
+
 ## Current risks
 
-- Asset editors, expanded code navigation, debugger/replay, exporter/PWA, and three games remain to
-  be built.
+- Debugger/replay, exporter/PWA, project/cartridge import, and three games remain to be built.
+- The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
+  raster row, one tracker pattern, and no custom font editor.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps
   currently identify the deterministic linked source rather than each original module.
 - LSP references/rename are currently same-document and full-document-sync only.

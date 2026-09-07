@@ -366,6 +366,16 @@ body,
   width: 32px;
 }
 
+.asset-tool input[type='number'] {
+  appearance: textfield;
+}
+
+.asset-tool input[type='number']::-webkit-inner-spin-button,
+.asset-tool input[type='number']::-webkit-outer-spin-button {
+  margin: 0;
+  appearance: none;
+}
+
 .palette-grid {
   display: grid;
   grid-column: 1 / -1;

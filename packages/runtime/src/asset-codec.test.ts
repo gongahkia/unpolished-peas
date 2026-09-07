@@ -7,6 +7,7 @@ import {
   encodeSoundAssetFile,
 } from './asset-codec';
 import type { SoundAsset } from './audio';
+import { IndexedGraphics, VisualAssetStore } from './graphics';
 
 const sound = {
   revision: 1,
@@ -78,6 +79,19 @@ describe('source-visible asset codec', () => {
         },
         loop: true,
       }),
+      'display.pxp': encodeAssetFile({
+        revision: 1,
+        kind: 'display',
+        remap: Array.from({ length: 32 }, (_, index) => (index === 1 ? 7 : index)),
+        raster: [
+          {
+            line: 1,
+            scrollX: 0,
+            scrollY: 0,
+            remap: Array.from({ length: 32 }, (_, index) => (index === 7 ? 8 : index)),
+          },
+        ],
+      }),
     };
     const bundle = decodeRuntimeAssets(
       {
@@ -88,11 +102,18 @@ describe('source-visible asset codec', () => {
         theme: { kind: 'music', path: 'theme.pxt' },
       },
       files,
+      'display.pxp',
     );
     expect(bundle.visual.map((asset) => asset.kind)).toEqual(['sprite', 'map', 'tile_set']);
     expect(bundle.audio.map((asset) => asset.kind)).toEqual(['sound', 'music']);
     expect(bundle.maps[0]?.layers[0]?.tileFlags[0]).toBe(1);
     expect(bundle.visualBytes).toBeGreaterThan(0);
+    const frame = new IndexedGraphics(
+      new VisualAssetStore(bundle.visual),
+      bundle.display,
+    ).executeFrame([{ name: 'clear', arguments: [1], sourceSpan: { start: 0, end: 0 } }]);
+    expect(frame.indexedPixels[0]).toBe(7);
+    expect(frame.indexedPixels[240]).toBe(8);
   });
 
   it('rejects invalid palette indices and tracker references', () => {
