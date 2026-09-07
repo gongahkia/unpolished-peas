@@ -1,4 +1,5 @@
 export * from './audio';
+export * from './asset-codec';
 export * from './budget';
 export * from './capabilities';
 export * from './errors';

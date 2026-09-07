@@ -300,7 +300,8 @@ fn load_project(path: &Path) -> Result<LoadedProject, ()> {
         .values()
         .map(|asset| asset.path.as_str())
         .chain(manifest.label.as_deref())
-        .chain(manifest.thumbnail.as_deref());
+        .chain(manifest.thumbnail.as_deref())
+        .chain(manifest.display.as_deref());
     for relative in required_paths {
         if files.contains_key(relative) {
             continue;

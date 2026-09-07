@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use pxcl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    compile_project, decode_cartridge, format_source, pack_project,
+    compile_project, decode_cartridge, format_source, pack_project, parse_project_manifest,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -19,6 +19,17 @@ pub fn compiler_version() -> String {
 #[wasm_bindgen]
 pub fn language_revision() -> String {
     pxcl_core::LANGUAGE_REVISION.to_owned()
+}
+
+/// Parses and validates `cart.toml` for browser project tooling.
+///
+/// # Errors
+///
+/// Returns the same stable manifest error used by the CLI and packer.
+#[wasm_bindgen(js_name = parseProjectManifest)]
+pub fn parse_project_manifest_for_browser(source: &str) -> Result<String, String> {
+    let manifest = parse_project_manifest(source).map_err(|error| error.to_string())?;
+    serde_json::to_string(&manifest).map_err(|error| error.to_string())
 }
 
 /// Returns tokens, parsed AST, and designed diagnostics as compiler-explorer JSON.

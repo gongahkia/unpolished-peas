@@ -6,6 +6,7 @@ import initWasm, {
   format as wasmFormat,
   language_revision as wasmLanguageRevision,
   packProject as wasmPackProject,
+  parseProjectManifest as wasmParseProjectManifest,
 } from '../../../crates/pxcl-wasm/pkg/pxcl_wasm';
 
 export interface SourceSpan {
@@ -45,6 +46,29 @@ export interface CompilationResult {
 export interface DecodedCartridge {
   readonly manifest: Readonly<Record<string, unknown>>;
   readonly entries: Readonly<Record<string, readonly number[]>>;
+}
+
+export interface ProjectManifest {
+  readonly format_revision: number;
+  readonly language_revision: string;
+  readonly id: string;
+  readonly title: string;
+  readonly author: string;
+  readonly version: string;
+  readonly entry: string;
+  readonly update_rate: 30 | 60;
+  readonly label?: string;
+  readonly thumbnail?: string;
+  readonly display?: string;
+  readonly assets: Readonly<
+    Record<
+      string,
+      {
+        readonly kind: 'sprite' | 'animation' | 'tile_set' | 'map' | 'font' | 'sound' | 'music';
+        readonly path: string;
+      }
+    >
+  >;
 }
 
 /** Lazy WebAssembly bridge over the repository's authoritative Rust compiler and packer. */
@@ -92,6 +116,11 @@ export class BrowserCompiler {
   public async decodeCartridge(bytes: Uint8Array): Promise<DecodedCartridge> {
     await this.initialized;
     return JSON.parse(wasmDecodeCartridge(bytes)) as DecodedCartridge;
+  }
+
+  public async parseManifest(source: string): Promise<ProjectManifest> {
+    await this.initialized;
+    return JSON.parse(wasmParseProjectManifest(source)) as ProjectManifest;
   }
 }
 

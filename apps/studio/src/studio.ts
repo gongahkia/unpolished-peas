@@ -1,24 +1,30 @@
 import {
+  AudioAssetStore,
   BrowserInput,
+  decodeRuntimeAssets,
   HARDWARE,
   IndexedDbStorage,
   IndexedGraphics,
   isSaveValues,
   SandboxSession,
   StudioRepository,
+  Synthesizer,
+  VisualAssetStore,
+  WebAudioSink,
   WebGlIndexedRenderer,
   type SaveValues,
   type StoredProject,
 } from '@px240c/runtime';
 
 import { BrowserCompiler, type CompilerDiagnostic } from './compiler';
+import { openCreationTool, type CreationTool } from './tools';
 
 interface WorkingProject {
-  readonly id: string;
-  readonly title: string;
-  readonly manifest: string;
-  readonly revision: number;
-  readonly files: Record<string, Uint8Array>;
+  id: string;
+  title: string;
+  manifest: string;
+  revision: number;
+  files: Record<string, Uint8Array>;
 }
 
 interface ActivePlayer {
@@ -141,6 +147,20 @@ export class StudioApp {
         case 'edit':
           this.openEditor(arguments_[0]);
           return;
+        case 'sprite':
+        case 'map':
+        case 'palette':
+        case 'sfx':
+        case 'music':
+        case 'project':
+          await this.openTool(command as CreationTool);
+          return;
+        case 'manual':
+          this.openManual();
+          return;
+        case 'explore':
+          await this.openExplorer();
+          return;
         case 'run':
           await this.runProject();
           return;
@@ -154,6 +174,8 @@ export class StudioApp {
           this.appendLines([
             'DIR  NEW  LOAD  SAVE  RECOVER',
             'EDIT RUN PACK INFO HELP REBOOT',
+            'PROJECT SPRITE MAP PALETTE SFX MUSIC',
+            'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
           ]);
           break;
@@ -227,7 +249,8 @@ export class StudioApp {
   private async saveProject(): Promise<void> {
     const project = this.requireProject();
     const stored = await this.repository.saveProject(project);
-    this.activeProject = fromStored(stored);
+    Object.assign(project, fromStored(stored));
+    this.activeProject = project;
     this.appendLines([`SAVED ${project.id} R${String(stored.revision)}`]);
   }
 
@@ -263,19 +286,24 @@ export class StudioApp {
     this.root.innerHTML = `
       <section class="display editor" data-view="editor" aria-label="PXCL source editor">
         <header class="system-bar"><span>CODE</span><span class="editor-file"></span></header>
+        <pre class="source-highlight" aria-hidden="true"></pre>
         <textarea class="source-input" spellcheck="false" aria-label="PXCL source"></textarea>
         <div class="diagnostic-strip" role="status" aria-live="polite">CHECKING...</div>
         <footer class="tool-bar">
           <button type="button" data-action="back">ESC BACK</button>
           <button type="button" data-action="format">F2 FORMAT</button>
           <button type="button" data-action="save">F3 SAVE</button>
+          <button type="button" data-action="symbol">F4 SYMBOL</button>
           <button type="button" data-action="run">F5 RUN</button>
+          <button type="button" data-action="reload">F6 RELOAD</button>
         </footer>
       </section>
     `;
     requireElement(this.root, '.editor-file').textContent = selectedPath;
     const textarea = requireElement(this.root, '.source-input') as HTMLTextAreaElement;
+    const highlight = requireElement(this.root, '.source-highlight') as HTMLElement;
     textarea.value = decoder.decode(bytes);
+    renderHighlight(highlight, textarea.value);
     let analysisTimer: ReturnType<typeof setTimeout> | undefined;
     const updateWorkingCopy = (): void => {
       project.files[selectedPath] = encoder.encode(textarea.value);
@@ -286,10 +314,22 @@ export class StudioApp {
       void this.showDiagnostics(selectedPath, textarea.value);
     };
     textarea.addEventListener('input', () => {
+      renderHighlight(highlight, textarea.value);
       if (analysisTimer !== undefined) {
         clearTimeout(analysisTimer);
       }
       analysisTimer = setTimeout(analyze, 120);
+    });
+    textarea.addEventListener('scroll', () => {
+      highlight.scrollTop = textarea.scrollTop;
+      highlight.scrollLeft = textarea.scrollLeft;
+    });
+    textarea.addEventListener('focus', () => {
+      void this.repository.loadProject(project.id).then((stored) => {
+        if (stored !== undefined && stored.revision > project.revision) {
+          this.setDiagnostic(`R${String(stored.revision)} AVAILABLE / F6 RELOAD`, true);
+        }
+      });
     });
     const editor = requireElement(this.root, '.editor');
     editor.addEventListener(
@@ -325,6 +365,10 @@ export class StudioApp {
           void this.runProject().catch((error: unknown) => {
             this.setDiagnostic(errorMessage(error), true);
           });
+        } else if (action === 'symbol') {
+          gotoDefinition(textarea);
+        } else if (action === 'reload') {
+          void this.reloadEditorProject(project, selectedPath, textarea, highlight);
         }
       },
       { once: false },
@@ -339,7 +383,18 @@ export class StudioApp {
               ? 'save'
               : event.key === 'F5'
                 ? 'run'
-                : undefined;
+                : event.key === 'F4'
+                  ? 'symbol'
+                  : event.key === 'F6'
+                    ? 'reload'
+                    : undefined;
+      if (event.ctrlKey && event.code === 'Space') {
+        event.preventDefault();
+        completeAtCursor(textarea);
+        renderHighlight(highlight, textarea.value);
+        analyze();
+        return;
+      }
       if (action !== undefined) {
         event.preventDefault();
         (requireElement(this.root, `[data-action="${action}"]`) as HTMLButtonElement).click();
@@ -347,6 +402,142 @@ export class StudioApp {
     });
     void this.showDiagnostics(selectedPath, textarea.value);
     textarea.focus();
+  }
+
+  private async reloadEditorProject(
+    project: WorkingProject,
+    path: string,
+    textarea: HTMLTextAreaElement,
+    highlight: HTMLElement,
+  ): Promise<void> {
+    const stored = await this.repository.loadProject(project.id);
+    const source = stored?.files[path];
+    if (stored === undefined || source === undefined) {
+      this.setDiagnostic('NO EXTERNAL REVISION AVAILABLE', true);
+      return;
+    }
+    Object.assign(project, fromStored(stored));
+    this.activeProject = project;
+    textarea.value = decoder.decode(source);
+    renderHighlight(highlight, textarea.value);
+    await this.showDiagnostics(path, textarea.value);
+  }
+
+  private async openTool(tool: CreationTool): Promise<void> {
+    const project = this.requireProject();
+    await openCreationTool(this.root, tool, project, {
+      back: () => {
+        this.renderShell();
+      },
+      save: async () => {
+        await this.saveProject();
+      },
+      parseManifest: async () => this.compiler.parseManifest(project.manifest),
+    });
+  }
+
+  private openManual(): void {
+    const topics = manualTopics();
+    this.root.innerHTML = `
+      <section class="display manual" data-view="manual" aria-label="PX-240C manual browser">
+        <header class="system-bar"><span>PXCL/1 MANUAL</span><span>ROM 1.0</span></header>
+        <input class="manual-search" type="search" aria-label="Search manual" placeholder="SEARCH">
+        <nav class="manual-topics" aria-label="Manual topics"></nav>
+        <article class="manual-page" tabindex="0"></article>
+        <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
+      </section>
+    `;
+    const search = requireElement(this.root, '.manual-search') as HTMLInputElement;
+    const navigation = requireElement(this.root, '.manual-topics');
+    const page = requireElement(this.root, '.manual-page');
+    const show = (topic: (typeof topics)[number]): void => {
+      page.replaceChildren();
+      const heading = document.createElement('h1');
+      heading.textContent = topic.title;
+      const body = document.createElement('p');
+      body.textContent = topic.body;
+      page.append(heading, body);
+    };
+    const renderTopics = (): void => {
+      const query = search.value.toLowerCase();
+      const visible = topics.filter((topic) =>
+        `${topic.title} ${topic.body}`.toLowerCase().includes(query),
+      );
+      navigation.replaceChildren(
+        ...visible.map((topic) => {
+          const button = document.createElement('button');
+          button.type = 'button';
+          button.textContent = topic.title;
+          button.addEventListener('click', () => {
+            show(topic);
+          });
+          return button;
+        }),
+      );
+      const first = visible[0];
+      if (first !== undefined) show(first);
+    };
+    search.addEventListener('input', renderTopics);
+    const back = (): void => {
+      this.renderShell();
+    };
+    this.root.querySelector('[data-back]')?.addEventListener('click', back);
+    this.root.querySelector('[data-view="manual"]')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') back();
+    });
+    renderTopics();
+    search.focus();
+  }
+
+  private async openExplorer(): Promise<void> {
+    const project = this.requireProject();
+    const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
+    const panes: Readonly<Record<string, unknown>> = {
+      TOKENS: compilation.analysis.tokens,
+      AST: compilation.analysis.module,
+      TYPED: compilation.analysis.symbols,
+      IR: compilation.analysis.ir,
+      JS: compilation.generated?.javascript ?? 'NO GENERATED PROGRAM',
+      MAP: compilation.generated?.source_map_json ?? 'NO SOURCE MAP',
+      DIAG: compilation.analysis.diagnostics,
+      SIZE: {
+        generatedBytes: compilation.generated?.generated_bytes ?? 0,
+        probes: compilation.generated?.probe_count ?? 0,
+        workModel: compilation.generated?.work_model ?? {},
+      },
+    };
+    this.root.innerHTML = `
+      <section class="display explorer" data-view="explorer" aria-label="PXCL compiler explorer">
+        <header class="system-bar"><span>COMPILER EXPLORER</span><span>RELEASE</span></header>
+        <nav class="explorer-tabs" aria-label="Compiler stages"></nav>
+        <pre class="explorer-output" tabindex="0"></pre>
+        <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
+      </section>
+    `;
+    const tabs = requireElement(this.root, '.explorer-tabs');
+    const output = requireElement(this.root, '.explorer-output');
+    const show = (name: string): void => {
+      const value = panes[name];
+      output.textContent = typeof value === 'string' ? value : JSON.stringify(value, undefined, 2);
+    };
+    for (const name of Object.keys(panes)) {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = name;
+      button.addEventListener('click', () => {
+        show(name);
+      });
+      tabs.append(button);
+    }
+    const back = (): void => {
+      this.renderShell();
+    };
+    this.root.querySelector('[data-back]')?.addEventListener('click', back);
+    this.root.querySelector('[data-view="explorer"]')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') back();
+    });
+    show('TOKENS');
+    (output as HTMLElement).focus();
   }
 
   private async showDiagnostics(path: string, source: string): Promise<void> {
@@ -378,10 +569,13 @@ export class StudioApp {
       this.reportCompilerDiagnostic(diagnostic);
       return;
     }
+    const parsedManifest = await this.compiler.parseManifest(project.manifest);
+    const assets = decodeRuntimeAssets(parsedManifest.assets, project.files);
     this.root.innerHTML = `
       <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
+        <button class="enable-player-audio" type="button">SOUND</button>
         <p class="player-status" role="status"></p>
       </section>
     `;
@@ -396,14 +590,17 @@ export class StudioApp {
     );
     const sandbox = new SandboxSession(worker, 1_000);
     const input = new BrowserInput(canvas);
-    const graphics = new IndexedGraphics();
+    const graphics = new IndexedGraphics(new VisualAssetStore(assets.visual));
     const renderer = new WebGlIndexedRenderer(canvas);
+    const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
+    let audioSink: WebAudioSink | undefined;
     const saveAccess = this.repository.cartridgeSave(project.id);
     let saveValues = await readSaveValues(saveAccess);
     await sandbox.load(compilation.generated.javascript, {
       seed: 0x240c1999,
       workUnitsPerFrame: 50_000,
       updateRate: manifestUpdateRate(project.manifest),
+      maps: assets.maps,
       save: saveValues,
     });
     let stopped = false;
@@ -420,6 +617,9 @@ export class StudioApp {
       stopped = true;
       input.destroy();
       sandbox.dispose();
+      if (audioSink !== undefined) {
+        void audioSink.close();
+      }
       globalThis.removeEventListener('keydown', stopKey, true);
       this.player = undefined;
       this.appendLines([`STOPPED ${project.id}`]);
@@ -430,6 +630,18 @@ export class StudioApp {
       'click',
       stop,
     );
+    (requireElement(this.root, '.enable-player-audio') as HTMLButtonElement).addEventListener(
+      'click',
+      (event) => {
+        const button = event.currentTarget as HTMLButtonElement;
+        audioSink = new WebAudioSink();
+        void audioSink.resume().then(() => {
+          button.textContent = 'SOUND ON';
+          button.disabled = true;
+        });
+      },
+      { once: true },
+    );
     globalThis.addEventListener('keydown', stopKey, true);
     const frame = async (): Promise<void> => {
       if (stopped) {
@@ -438,6 +650,8 @@ export class StudioApp {
       try {
         const result = await sandbox.frame(input.poll());
         renderer.render(graphics.executeFrame(result.drawCommands).indexedPixels);
+        const audioFrame = synthesizer.executeFrame(result.audioCommands);
+        audioSink?.enqueue(audioFrame);
         if (result.saveWrites.length > 0) {
           saveValues = { ...saveValues };
           for (const write of result.saveWrites) {
@@ -571,6 +785,133 @@ function splitCommand(source: string): string[] {
     result.push(match[1] ?? match[2] ?? match[3] ?? '');
   }
   return result;
+}
+
+const COMPLETIONS = [
+  'state',
+  'let',
+  'var',
+  'fn',
+  'task',
+  'on',
+  'if',
+  'else',
+  'for',
+  'while',
+  'match',
+  'return',
+  'wait',
+  'start',
+  'clear',
+  'pixel',
+  'line',
+  'rect',
+  'rect_fill',
+  'circle',
+  'circle_fill',
+  'triangle',
+  'sprite',
+  'animation',
+  'map',
+  'print',
+  'btn',
+  'btnp',
+  'rng_int',
+  'rng_num',
+  'sfx',
+  'music',
+  'save_get_int',
+  'save_set_int',
+] as const;
+
+function completeAtCursor(textarea: HTMLTextAreaElement): void {
+  const cursor = textarea.selectionStart;
+  const prefix = /[A-Za-z_][A-Za-z0-9_]*$/.exec(textarea.value.slice(0, cursor))?.[0] ?? '';
+  const completion = COMPLETIONS.find((candidate) => candidate.startsWith(prefix));
+  if (completion === undefined) {
+    return;
+  }
+  const start = cursor - prefix.length;
+  textarea.setRangeText(completion, start, cursor, 'end');
+}
+
+function gotoDefinition(textarea: HTMLTextAreaElement): void {
+  const cursor = textarea.selectionStart;
+  const left = textarea.value.slice(0, cursor).search(/[A-Za-z_][A-Za-z0-9_]*$/);
+  const tail = /^[A-Za-z0-9_]*/.exec(textarea.value.slice(cursor))?.[0] ?? '';
+  if (left < 0) return;
+  const symbol = `${textarea.value.slice(0, cursor).slice(left)}${tail}`;
+  const matcher = new RegExp(`^(?:state|const|fn|task|record|enum|let|var)\\s+${symbol}\\b`, 'm');
+  const definition = matcher.exec(textarea.value);
+  if (definition === null) return;
+  const start = definition.index + definition[0].lastIndexOf(symbol);
+  textarea.focus();
+  textarea.setSelectionRange(start, start + symbol.length);
+  const line = textarea.value.slice(0, start).split('\n').length - 1;
+  textarea.scrollTop = Math.max(0, line * 7 - 28);
+}
+
+function renderHighlight(target: HTMLElement, source: string): void {
+  const pattern =
+    /\/\/.*$|"(?:\\.|[^"\\])*"|#[A-Za-z_][A-Za-z0-9_]*|\b(?:and|as|assert|break|case|const|continue|draw|elif|else|enum|false|fn|for|if|import|in|let|match|none|not|on|or|raster|record|return|start|state|task|true|update|var|wait|while)\b|\b\d+(?:\.\d+)?(?:f|s)?\b/gm;
+  target.replaceChildren();
+  let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    const index = match.index;
+    if (index > cursor) target.append(document.createTextNode(source.slice(cursor, index)));
+    const token = document.createElement('span');
+    const text = match[0];
+    token.className = text.startsWith('//')
+      ? 'syntax-comment'
+      : text.startsWith('"')
+        ? 'syntax-text'
+        : text.startsWith('#')
+          ? 'syntax-asset'
+          : /^\d/.test(text)
+            ? 'syntax-number'
+            : 'syntax-keyword';
+    token.textContent = text;
+    target.append(token);
+    cursor = index + text.length;
+  }
+  target.append(document.createTextNode(source.slice(cursor)));
+}
+
+function manualTopics(): readonly { readonly title: string; readonly body: string }[] {
+  return [
+    {
+      title: 'START',
+      body: 'Create with NEW id, open EDIT, then RUN. Save explicitly with F3 or SAVE. PACK downloads a deterministic source-inspectable cartridge.',
+    },
+    {
+      title: 'PXCL',
+      body: 'PXCL/1 is ASCII-only, statically typed, indentation-based, and deterministic. Mutable top-level values use state with an explicit type.',
+    },
+    {
+      title: 'CALLBACKS',
+      body: 'on start runs once. on update runs at 30 or 60 Hz. on draw renders every frame. on raster(line: Int) may change palette and scroll state.',
+    },
+    {
+      title: 'TASKS',
+      body: 'Declare task name(...): and launch it with start name(...). wait 2f suspends for frames; wait 0.5s converts to cartridge time.',
+    },
+    {
+      title: 'DRAWING',
+      body: 'Use clear, pixel, line, rect, circle, triangle, sprite, animation, map, print, camera, clip, pal, and raster_scroll. Colors are fixed indices 0-31.',
+    },
+    {
+      title: 'INPUT',
+      body: 'btn and btnp accept pad1 through pad4 and button values up/down/left/right/a/b/x/y/l/r/start_button/menu.',
+    },
+    {
+      title: 'AUDIO',
+      body: 'SFX are eight-voice oscillator patches. MUSIC opens the eight-channel pattern tracker. Imported PCM and arbitrary samples are unavailable.',
+    },
+    {
+      title: 'LIMITS',
+      body: '240x144, 32 colors, 128 KiB visual assets, 8 KiB save, 256 KiB packed cartridge, 4096 draw commands, 8 synth voices, 4 local ports.',
+    },
+  ];
 }
 
 function errorMessage(error: unknown): string {
