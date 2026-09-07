@@ -1,5 +1,20 @@
 //! Shared compiler, analysis, and cartridge-format implementation for PXCL/1.
 
+pub mod ast;
+pub mod diagnostic;
+pub mod formatter;
+pub mod lexer;
+pub mod parser;
+pub mod span;
+pub mod token;
+
+pub use diagnostic::{Diagnostic, Severity};
+pub use formatter::{FormatError, format_source};
+pub use lexer::lex;
+pub use parser::{ParseOutput, parse};
+pub use span::{FileId, LineColumn, SourceFile, Span, Spanned};
+pub use token::{Token, TokenKind};
+
 /// The source-language revision understood by this compiler.
 pub const LANGUAGE_REVISION: &str = "PXCL/1";
 
