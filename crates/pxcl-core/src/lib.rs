@@ -1,6 +1,7 @@
 //! Shared compiler, analysis, and cartridge-format implementation for PXCL/1.
 
 pub mod ast;
+pub mod cartridge;
 pub mod codegen;
 pub mod diagnostic;
 pub mod formatter;
@@ -12,6 +13,10 @@ pub mod span;
 pub mod token;
 pub mod types;
 
+pub use cartridge::{
+    CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
+    ProjectManifest, decode_cartridge, pack_project, parse_project_manifest,
+};
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};
 pub use formatter::{FormatError, format_source};
