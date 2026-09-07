@@ -54,7 +54,7 @@ export const MASTER_PALETTE = Object.freeze([
   '#c38aae',
 ] as const);
 
-export const MASTER_PALETTE_RGBA = new Uint8Array(
+export const MASTER_PALETTE_RGBA = Object.freeze(
   MASTER_PALETTE.flatMap((hex) => [
     Number.parseInt(hex.slice(1, 3), 16),
     Number.parseInt(hex.slice(3, 5), 16),
