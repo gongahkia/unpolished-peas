@@ -53,6 +53,7 @@ describe('sandbox protocol', () => {
         },
       ],
       audioCommands: [],
+      saveWrites: [],
     };
     expect(isWorkerResponse(frame)).toBe(true);
     expect(isWorkerResponse({ id: 1, type: 'frame' })).toBe(false);
