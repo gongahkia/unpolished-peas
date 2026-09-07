@@ -61,7 +61,6 @@ impl AssetCatalog {
         self.entries.get(name)
     }
 
-    #[must_use]
     pub fn iter(&self) -> impl Iterator<Item = (&str, &AssetDefinition)> {
         self.entries
             .iter()
@@ -70,9 +69,7 @@ impl AssetCatalog {
 }
 
 /// Stable identifier assigned during name resolution.
-#[derive(
-    Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize,
-)]
+#[derive(Clone, Copy, Debug, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize)]
 pub struct SymbolId(pub u32);
 
 /// Fully resolved PXCL value type used by typed IR and debugger metadata.
@@ -119,6 +116,7 @@ impl Type {
 #[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
 pub struct FunctionType {
     pub parameters: Vec<Type>,
+    pub required_parameters: u32,
     pub return_type: Box<Type>,
     pub task: bool,
 }

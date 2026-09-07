@@ -5,8 +5,9 @@ deterministic PX-240C cartridges. Newlines terminate statements and indentation 
 Keywords are lowercase, identifiers are case-sensitive, and indexes and half-open ranges are
 zero-based. The compiler and its conformance fixtures are authoritative when this document differs.
 
-This reference currently describes the implemented syntax front end. Static semantics, standard
-modules, tasks, and runtime APIs will be extended alongside their verified compiler phases.
+The implemented compiler resolves names to stable symbol IDs and lowers valid modules to typed IR.
+Project-wide import linking and runtime execution are later milestones; isolated-module analysis
+reports an explicit diagnostic when code dereferences an imported module.
 
 ## Lexical rules
 
@@ -58,6 +59,34 @@ enum Mode:
   Win(Int)
 ```
 
+Defaulted record fields must follow required fields and may be omitted from positional construction.
+Enum matches must cover every variant or include `else`. Pattern payload bindings have the declared
+variant field types.
+
+## Static types
+
+`Num` is the deterministic numeric path and `Int` is validated for integer-only operations. Integer
+literals may initialize `Num`, and palette indices from 0 through 31 may initialize `Color`; other
+implicit conversions are rejected. `Bool`, `Text`, `Vec2`, `Rect`, `Controller`, and `Button` are
+distinct value types. `Unit` is the no-value function return type.
+
+`Option[T]`, fixed arrays `[T, N]`, and fixed-capacity `List[T, N]` are bounded. A fixed array literal
+may initialize a list when its length does not exceed the declared capacity. Capacity is currently
+restricted to 1 through 65535. General dynamic allocation is not part of PXCL/1.
+
+Asset types are `Sprite`, `Animation`, `TileSet`, `Map`, `Font`, `Sound`, and `Music`. A `#name`
+reference obtains its type from the cartridge asset catalog. Missing assets and passing one asset
+kind where another is required have distinct diagnostics.
+
+Functions are non-capturing references and can be stored in locals. `let` bindings cannot be
+assigned after initialization; `var` and top-level `state` are mutable. Tasks return `Unit`, may
+`wait`, and must be launched with a direct `start task_name(...)` call. Ordinary functions and system
+callbacks cannot suspend.
+
+Module-level `const` initializers use the compile-time expression subset: primitive literals,
+earlier constants, unary numeric/Boolean operators, arithmetic, comparisons, equality, and Boolean
+operators. Module-level `assert` uses the same subset and fails compilation when false or undecidable.
+
 ## Grammar
 
 The following EBNF specifies the accepted syntax. Whitespace between tokens is omitted; `NEWLINE`,
@@ -107,8 +136,8 @@ line-end     = [ comment ], NEWLINE ;
 ## Diagnostics and formatting
 
 Diagnostics carry stable codes, exact half-open UTF-8 byte spans, primary and secondary labels, and
-notes. `PX1xxx` identifies lexical errors and `PX2xxx` identifies parsing errors. Tooling consumes the
-structured representation rather than scraping prose.
+notes. `PX1xxx` identifies lexical errors, `PX2xxx` parsing errors, and `PX3xxx` resolution/type
+errors. Tooling consumes the structured representation rather than scraping prose.
 
 `px240c fmt` writes canonical two-space indentation and token spacing. `px240c fmt --check` reports
 drift without writing. The formatter refuses invalid syntax so it cannot silently reinterpret a

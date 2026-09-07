@@ -37,9 +37,23 @@ Each group may produce several coherent commits, and integration occurs througho
 - Verification: `./scripts/check.sh`; 17 Rust tests, one Vitest test, strict Rust/TypeScript lint and
   type checks, native/browser builds, and release WASM compilation pass.
 
+## 2026-09-07 — Milestone 3: resolution, types, assets, and typed IR
+
+- Added deterministic global/local symbol tables, declaration collection, lexical scopes, duplicate
+  definition spans, named type resolution, non-capturing function types, and contextual literals.
+- Added bounded array/list and `Option` typing, records with trailing defaults, enum constructors and
+  exhaustive matches, mutability and return-path checks, callback contracts, and task-only suspension.
+- Added a typed asset catalog with precise missing/wrong-kind errors and public graphics/audio handle
+  types, plus compile-time constant evaluation and module assertions.
+- Lowered valid modules to serializable typed IR shared by future debug/release generation; CLI
+  `check` and browser analysis now use semantic analysis rather than syntax alone.
+- Added positive/negative type fixtures covering independent errors and fully typed IR invariants.
+- Verification: `./scripts/check.sh`; 22 Rust tests, one Vitest test, strict Rust/TypeScript lint and
+  type checks, native/browser builds, and release WASM compilation pass.
+
 ## Current risks
 
-- Name resolution, static typing, IR/code generation, runtime, studio tools, debugger, packer, LSP,
+- Project-wide import linking, code generation, runtime, studio tools, debugger, packer, LSP,
   exporter, and games remain to be built.
 - WebGL2 and Web Audio behavior will need both state tests and hands-on browser inspection.
 - Worker hardening must be validated against concrete denial and runaway-loop cases; it must not be

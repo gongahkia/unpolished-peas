@@ -2,7 +2,7 @@
 
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use pxcl_core::{FileId, SourceFile, format_source, parse};
+use pxcl_core::{AssetCatalog, FileId, SourceFile, analyze_module, format_source};
 
 /// Returns the compiler version used by the browser studio.
 #[must_use]
@@ -26,7 +26,25 @@ pub fn language_revision() -> String {
 #[wasm_bindgen]
 pub fn analyze(file_name: &str, source: &str) -> Result<String, String> {
     let source = SourceFile::new(FileId(0), file_name, source);
-    serde_json::to_string(&parse(&source)).map_err(|error| error.to_string())
+    serde_json::to_string(&analyze_module(&source, &AssetCatalog::default()))
+        .map_err(|error| error.to_string())
+}
+
+/// Analyzes PXCL using a JSON-encoded typed asset catalog.
+///
+/// # Errors
+///
+/// Returns an error when the catalog or analysis result cannot be decoded or encoded.
+#[wasm_bindgen]
+pub fn analyze_with_assets(
+    file_name: &str,
+    source: &str,
+    asset_catalog_json: &str,
+) -> Result<String, String> {
+    let assets: AssetCatalog =
+        serde_json::from_str(asset_catalog_json).map_err(|error| error.to_string())?;
+    let source = SourceFile::new(FileId(0), file_name, source);
+    serde_json::to_string(&analyze_module(&source, &assets)).map_err(|error| error.to_string())
 }
 
 /// Formats a syntactically valid PXCL/1 module.

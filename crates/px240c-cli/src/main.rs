@@ -5,7 +5,7 @@ use std::{
 };
 
 use clap::{Parser, Subcommand};
-use pxcl_core::{Diagnostic, FileId, SourceFile, format_source, parse};
+use pxcl_core::{AssetCatalog, Diagnostic, FileId, SourceFile, analyze_module, format_source};
 
 #[derive(Debug, Parser)]
 #[command(
@@ -63,7 +63,7 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
             continue;
         };
         let source = SourceFile::new(file_id(index), path.display().to_string(), text);
-        let output = parse(&source);
+        let output = analyze_module(&source, &AssetCatalog::default());
         if !output.diagnostics.is_empty() {
             emit_diagnostics(path, &source, &output.diagnostics);
             failed = true;

@@ -1,0 +1,43 @@
+const STARTING_LIVES: Int = 3
+assert STARTING_LIVES * 2 == 6
+state score: Int = 0
+state saved_score: Option[Int] = none
+state history: List[Int, 8] = []
+state lanes: [Int, 4] = [0, 1, 2, 3]
+
+record Player:
+  pos: Vec2
+  lives: Int = 3
+
+enum Mode:
+  Title
+  Play
+  Win(Int)
+
+state player: Player = Player(Vec2(0.0, 0.0))
+state mode: Mode = Mode.Title
+
+fn add_score(amount: Int) -> Int:
+  let next = score + amount
+  return next
+
+task pulse(color: Color):
+  pal(1, color)
+  wait 2f
+
+on start:
+  score = add_score(STARTING_LIVES)
+
+on update:
+  player.pos = Vec2(player.pos.x + 1.0, player.pos.y)
+  start pulse(2)
+  match mode:
+    case Mode.Title:
+      mode = Mode.Play
+    case Mode.Play:
+      score += 1
+    case Mode.Win(points):
+      score = points
+
+on draw:
+  clear(0)
