@@ -43,3 +43,47 @@ fn formatter_check_distinguishes_valid_unformatted_source() {
     );
     fs::remove_file(path).expect("temporary source removes");
 }
+
+#[test]
+fn build_emits_javascript_and_source_map() {
+    let stem = std::env::temp_dir().join(format!(
+        "px240c-build-{}-{}",
+        std::process::id(),
+        line!()
+    ));
+    let source = stem.with_extension("pxl");
+    let javascript = stem.with_extension("js");
+    let source_map = stem.with_extension("js.map");
+    fs::write(
+        &source,
+        "state score: Int = 0\non update:\n  score += 1\n",
+    )
+    .expect("temporary source writes");
+    let output = binary()
+        .args([
+            "build",
+            source.to_str().expect("UTF-8 source path"),
+            "--output",
+            javascript.to_str().expect("UTF-8 output path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(
+        fs::read_to_string(&javascript)
+            .expect("JavaScript reads")
+            .contains("export default function createCartridge")
+    );
+    let map: serde_json::Value = serde_json::from_str(
+        &fs::read_to_string(&source_map).expect("source map reads"),
+    )
+    .expect("source map is JSON");
+    assert_eq!(map["version"], 3);
+    for path in [source, javascript, source_map] {
+        fs::remove_file(path).expect("temporary build artifact removes");
+    }
+}
