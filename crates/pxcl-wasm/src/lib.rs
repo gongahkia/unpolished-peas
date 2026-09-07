@@ -4,7 +4,7 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use pxcl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    decode_cartridge, format_source, pack_project,
+    compile_project, decode_cartridge, format_source, pack_project,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -74,6 +74,31 @@ pub fn compile_for_browser(
             CompileMode::Release
         },
     );
+    serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
+/// Links and compiles a browser-owned project through the same pipeline as the native CLI.
+///
+/// # Errors
+///
+/// Returns an error when project files cannot be decoded, linked, compiled, or serialized.
+#[wasm_bindgen(js_name = compileProject)]
+pub fn compile_project_for_browser(
+    manifest: &str,
+    files_json: &str,
+    debug: bool,
+) -> Result<String, String> {
+    let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
+    let output = compile_project(
+        manifest,
+        &files,
+        if debug {
+            CompileMode::Debug
+        } else {
+            CompileMode::Release
+        },
+    )
+    .map_err(|error| error.to_string())?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 

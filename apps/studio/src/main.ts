@@ -11,41 +11,55 @@ import {
   WebAudioSink,
   WebGlIndexedRenderer,
 } from '@px240c/runtime';
+import { StudioApp } from './studio';
 import './style.css';
 
 const studio = document.querySelector<HTMLElement>('#studio');
 if (studio === null) {
   throw new Error('PX-240C studio root is missing');
 }
-
-const visualKilobytes = String(HARDWARE.visualCapacityBytes / 1024);
-const audioVoices = String(HARDWARE.audioVoices);
-
-studio.innerHTML = `
-  <section class="display" aria-label="PX-240C monitor">
-    <canvas id="screen" aria-label="PX-240C indexed display"></canvas>
-    <p>PX-240C COLOR DEVELOPMENT UNIT</p>
-    <p>SYSTEM ROM 1.0&nbsp; (C) 1999</p>
-    <p>${visualKilobytes}K VISUAL STORE / ${audioVoices}V SOUND</p>
-    <p>PXCL/1 READY</p>
-    <p class="prompt" aria-label="command prompt">&gt;<span aria-hidden="true">_</span></p>
-    <button id="audio-test" type="button" hidden>ENABLE AUDIO TEST</button>
-    <p id="diagnostic" class="diagnostic" role="status" aria-live="polite"></p>
-  </section>
-`;
+const studioRoot = studio;
 
 updateIntegerScale();
 globalThis.addEventListener('resize', updateIntegerScale);
 
-const diagnosticMode = new URLSearchParams(globalThis.location.search).get('sandbox-test');
+const parameters = new URLSearchParams(globalThis.location.search);
+const diagnosticMode = parameters.get('sandbox-test');
+const audioDiagnostic = parameters.get('hardware-test') === 'audio';
+const persistenceDiagnostic = parameters.get('persistence-test') === '1';
+if (diagnosticMode !== null || audioDiagnostic || persistenceDiagnostic) {
+  renderDiagnosticScaffold();
+} else {
+  void new StudioApp(studioRoot).boot().catch((error: unknown) => {
+    studioRoot.textContent = error instanceof Error ? error.message : 'PX-240C boot failed';
+    document.documentElement.dataset.studioReady = 'failed';
+  });
+}
 if (diagnosticMode !== null) {
   void runSandboxDiagnostic(diagnosticMode);
 }
-if (new URLSearchParams(globalThis.location.search).get('hardware-test') === 'audio') {
+if (audioDiagnostic) {
   prepareAudioDiagnostic();
 }
-if (new URLSearchParams(globalThis.location.search).get('persistence-test') === '1') {
+if (persistenceDiagnostic) {
   void runPersistenceDiagnostic();
+}
+
+function renderDiagnosticScaffold(): void {
+  const visualKilobytes = String(HARDWARE.visualCapacityBytes / 1024);
+  const audioVoices = String(HARDWARE.audioVoices);
+  studioRoot.innerHTML = `
+    <section class="display diagnostic-display" aria-label="PX-240C monitor">
+      <canvas id="screen" aria-label="PX-240C indexed display"></canvas>
+      <p>PX-240C COLOR DEVELOPMENT UNIT</p>
+      <p>SYSTEM ROM 1.0&nbsp; (C) 1999</p>
+      <p>${visualKilobytes}K VISUAL STORE / ${audioVoices}V SOUND</p>
+      <p>PXCL/1 READY</p>
+      <p class="prompt" aria-label="command prompt">&gt;<span aria-hidden="true">_</span></p>
+      <button id="audio-test" type="button" hidden>ENABLE AUDIO TEST</button>
+      <p id="diagnostic" class="diagnostic" role="status" aria-live="polite"></p>
+    </section>
+  `;
 }
 
 async function runPersistenceDiagnostic(): Promise<void> {

@@ -5,10 +5,16 @@ pre-save recovery revisions, settings, and capability-scoped cartridge saves in 
 cartridge worker receives only a validated copy of its own integer save values; it never receives
 the repository, another cartridge ID, or an IndexedDB handle.
 
-The integrated shell and editors are under active construction. The current production diagnostic
-build verifies the boot display, WebGL cartridge frame, Web Audio gesture path, IndexedDB recovery,
-and save isolation. These diagnostics are development evidence, not substitutes for the final
-interactive studio workflow.
+The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
+`edit`, `run`, `pack`, `info`, `help`, and `reboot` operate on real project/compiler/runtime paths.
+The source editor has live compiler diagnostics, canonical formatting, save, and run controls.
+Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
+output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
+from a cartridge to the shell.
+
+The remaining asset editors and debugger surfaces are under active construction. Development query
+routes separately verify the WebGL fixture, Web Audio gesture path, IndexedDB recovery, and sandbox
+fault handling.
 
 ## Native commands
 
@@ -27,6 +33,10 @@ px240c lsp
 `watch --once` performs the same initial deterministic build and exits for CI checks. Otherwise it
 polls project content every 250 ms and repacks only when bytes change. `fmt --check` reports source
 that differs from canonical two-space formatting.
+
+The browser production build runs `scripts/build-wasm.sh`, which builds the Rust compiler for
+`wasm32-unknown-unknown` and generates pinned web bindings before Vite bundles it. Cartridge
+compilation therefore does not depend on a backend or a second TypeScript compiler implementation.
 
 ## Language-server clients
 
