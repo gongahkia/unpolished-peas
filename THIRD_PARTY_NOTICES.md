@@ -19,6 +19,8 @@ are not cartridge assets.
 
 No third-party game code, palette, font, artwork, or audio is included. The built-in palette,
 bitmap font, icon, labels, game graphics, and synth compositions are original project assets.
+The Studio's `px240c.ttf` is generated from that same glyph matrix by
+`scripts/generate-bitmap-font.mjs`; it contains no third-party font material.
 Standalone cartridge exports contain the original dependency-free player plus author-owned
 cartridge material; they do not embed the Node development toolchain or a third-party game engine.
 

@@ -11,6 +11,7 @@ function offlineServiceWorker(): Plugin {
       const publicFiles = [
         'icon.svg',
         'manifest.webmanifest',
+        'px240c.ttf',
         'cartridges/ashvault.pxc',
         'cartridges/cinder-circuit.pxc',
         'cartridges/raster-rush.pxc',

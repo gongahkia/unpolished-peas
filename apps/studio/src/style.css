@@ -1,7 +1,15 @@
+@font-face {
+  font-family: 'PX-240C Bitmap';
+  src: url('/px240c.ttf') format('truetype');
+  font-style: normal;
+  font-weight: 400;
+  font-display: block;
+}
+
 :root {
   color: #292725;
   background: #d8ccb2;
-  font-family: ui-monospace, monospace;
+  font-family: 'PX-240C Bitmap', monospace;
   font-synthesis: none;
   --cream: #f4e9ce;
   --charcoal: #292725;
@@ -199,7 +207,7 @@ body,
   background: #302d2a;
   border: 0;
   font:
-    5px/7px ui-monospace,
+    5px/7px 'PX-240C Bitmap',
     monospace;
   tab-size: 2;
   white-space: pre;
@@ -287,7 +295,7 @@ body,
   border: 1px solid var(--cyan);
   border-radius: 0;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
 }
 
@@ -540,10 +548,16 @@ body,
 }
 
 .tracker-order {
-  display: grid;
-  grid-template-columns: 28px 1fr;
+  display: flex;
+  gap: 2px;
   height: 11px;
   align-items: center;
+}
+
+.tracker-order label {
+  display: grid;
+  flex: 1;
+  grid-template-columns: 28px 1fr;
 }
 
 .tracker-order input {
@@ -583,7 +597,7 @@ body,
   border: 1px solid var(--amber);
   border-radius: 0;
   font:
-    5px/7px ui-monospace,
+    5px/7px 'PX-240C Bitmap',
     monospace;
 }
 
@@ -608,7 +622,7 @@ body,
   border-left: 1px solid var(--cyan);
   border-radius: 0;
   font:
-    5px/7px ui-monospace,
+    5px/7px 'PX-240C Bitmap',
     monospace;
   text-align: left;
 }
@@ -660,7 +674,7 @@ body,
   color: var(--cream);
   background: #302d2a;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
   white-space: pre-wrap;
   scrollbar-width: none;
@@ -729,7 +743,7 @@ body,
   border: 1px solid var(--cyan);
   border-radius: 0;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
 }
 
@@ -759,7 +773,7 @@ body,
   margin-top: 3px;
   color: var(--cream);
   font:
-    5px/7px ui-monospace,
+    5px/7px 'PX-240C Bitmap',
     monospace;
 }
 
@@ -802,7 +816,7 @@ body,
   border-left: 1px solid var(--cyan);
   border-radius: 0;
   font:
-    4px/7px ui-monospace,
+    4px/7px 'PX-240C Bitmap',
     monospace;
   text-align: left;
   text-overflow: ellipsis;
@@ -818,7 +832,7 @@ body,
   color: var(--cream);
   background: #302d2a;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
   white-space: pre-wrap;
   scrollbar-width: none;
@@ -843,7 +857,7 @@ body,
   color: var(--cream);
   background: #302d2a;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
   white-space: pre-wrap;
   scrollbar-width: none;
@@ -881,7 +895,7 @@ body,
   border-radius: 0;
   outline: 0;
   font:
-    4px/6px ui-monospace,
+    4px/6px 'PX-240C Bitmap',
     monospace;
 }
 

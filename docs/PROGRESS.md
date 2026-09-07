@@ -186,26 +186,14 @@ Each group may produce several coherent commits, and integration occurs througho
 - Narrow verification passed: exporter unit tests, CLI export/run integration, Rust formatting and
   Clippy, ESLint, strict TypeScript checking, production Wasm/Studio build, and browser exercises.
 
-## Current risks
-
-- The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
-  raster row, one tracker pattern, and no custom font editor.
-- Linked revision-1 modules must have globally unique top-level names; generated project source maps
-  currently identify the deterministic linked source rather than each original module.
-- Breakpoints stop after the containing frame; source steps navigate captured probe events rather
-  than suspending synchronous JavaScript in the middle of a callback.
-- LSP references/rename are currently same-document and full-document-sync only.
-- Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
-- Broader worker-hardening audits remain; the current boundary must not be described as stronger
-  isolation than the browser actually provides.
-
 ## 2026-09-07 — Milestones 10-12: bundled cartridges and frozen limits
 
 - Added Cinder Circuit, a camera-scrolling tile platformer with responsive pixel collision, animated
   movement, task-driven victory feedback, hazards, lives, music, and SFX.
 - Added Ashvault, a turn-based deterministic procedural roguelike with fog of war, records, enums,
   fixed-capacity collections, pursuing enemies, relic/exit objectives, defeat, and isolated saved
-  depth progress. The fixed revision-1 seed was checked to keep every relic and exit reachable.
+  depth progress. Generation now clears a sparse objective spine so every revision-1 seed keeps all
+  five relics and the exit reachable while retaining randomized side chambers.
 - Added Raster Rush 99, a scanline road-projection racer with steering, boost, off-road slowdown,
   obstacle penalties, timeout/finish states, tracker music, and simultaneous two-, three-, and
   four-player split-screen paths using all controller ports.
@@ -214,6 +202,33 @@ Each group may produce several coherent commits, and integration occurs througho
   installation, public-decoder tests, and CLI compilation/packing tests for all three games.
 - Froze the 50,000-unit frame ceiling after production-Studio measurements: Cinder Circuit 3,295,
   Ashvault 11,783, Raster Rush one-player 27,906, and four-player 31,422 representative units. Packed
-  cartridges are 32,264-34,137 bytes and visual use is 160-2,854 bytes.
+  cartridges are 32,270-36,142 bytes and visual use is 160-2,854 bytes.
 - Playwright/Firefox ran all games through the Studio worker and standalone exporter, exercised the
   four-player view, and visually inspected every title/gameplay surface with clean consoles.
+
+## 2026-09-07 — Milestone 13: release-candidate integration and polish
+
+- Added serialized, revision-checked editor autosave with a 750 ms debounce, bounded recovery, and
+  external-change refusal/reload behavior; Firefox verified persistence through a real page reload.
+- Added public pointer/touch coordinates and button-edge queries to PXCL, matched standalone input,
+  completed standalone synth waveforms/pitch effects, and aligned its facility work accounting and
+  raster phase restrictions with the Studio runtime.
+- Expanded the Studio tracker from a hard-coded pattern to named pattern creation, editable order
+  lists, full-order preview/looping, patch-reference preservation, and bounded undo/redo.
+- Added a deterministic TrueType build of the original runtime glyph matrix and applied it throughout
+  the shell and integrated tools; the file is included in the offline PWA inventory.
+- Added a static diagnostic that confines raster callbacks to palette remapping and raster scrolling,
+  after the standalone path exposed an invalid cartridge draw call during scanout.
+
+## Current risks
+
+- The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
+  raster row, and no custom font editor.
+- Linked revision-1 modules must have globally unique top-level names; generated project source maps
+  currently identify the deterministic linked source rather than each original module.
+- Breakpoints stop after the containing frame; source steps navigate captured probe events rather
+  than suspending synchronous JavaScript in the middle of a callback.
+- LSP references/rename are currently same-document and full-document-sync only.
+- Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
+- Broader worker-hardening audits remain; the current boundary must not be described as stronger
+  isolation than the browser actually provides.
