@@ -3,17 +3,22 @@
 pub mod ast;
 pub mod diagnostic;
 pub mod formatter;
+pub mod ir;
 pub mod lexer;
 pub mod parser;
+pub mod sema;
 pub mod span;
 pub mod token;
+pub mod types;
 
 pub use diagnostic::{Diagnostic, Severity};
 pub use formatter::{FormatError, format_source};
 pub use lexer::lex;
 pub use parser::{ParseOutput, parse};
+pub use sema::{AnalysisOutput, analyze_module};
 pub use span::{FileId, LineColumn, SourceFile, Span, Spanned};
 pub use token::{Token, TokenKind};
+pub use types::{AssetCatalog, AssetKind, Type};
 
 /// The source-language revision understood by this compiler.
 pub const LANGUAGE_REVISION: &str = "PXCL/1";
