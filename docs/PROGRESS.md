@@ -88,10 +88,32 @@ Each group may produce several coherent commits, and integration occurs througho
   Clippy and TypeScript checks, native/browser production builds, and release WASM compilation pass.
   Browser adapter checks used Firefox 155 and compiler-produced PXCL fixtures.
 
+## 2026-09-07 — Milestone 6: projects, cartridges, persistence, CLI, and LSP
+
+- Added strict `cart.toml` parsing, dependency-ordered dotted module imports, project-wide typed
+  compilation, and explicit errors for missing/cyclic modules, dependency callbacks, and name
+  collisions.
+- Added the bounded deterministic `.pxc` revision-1 container with canonical paths/JSON/RLE,
+  original normalized source, release JavaScript/source map, assets/presentation files, SHA-256
+  inventory, post-pack decode, corruption checks, and 256 KiB enforcement.
+- Added `new`, project-aware `check`/`build`, `pack`, content-based `watch`, project/cartridge `info`,
+  and a protocol-tested stdio LSP with diagnostics, completion, hover, definitions, references, and
+  rename.
+- Added browser project/settings persistence, ten pre-save recovery revisions, immutable-ID 8 KiB
+  save capabilities, worker save calls, deterministic write batches, and snapshot inclusion.
+- Playwright/Firefox exercised real IndexedDB recovery and cross-cartridge save isolation, plus a
+  compiler-produced worker fixture that loaded and updated prior save state. The production page
+  reported no console errors and was visually inspected at 3x.
+- Verification: strict Rust formatting/Clippy and 36 Rust tests pass; Prettier, ESLint, strict
+  TypeScript checking, 30 Vitest tests, runtime build, and production Studio build pass. Full-suite
+  verification is recorded by the milestone commit.
+
 ## Current risks
 
-- Project-wide import linking, full hardware facilities, studio tools, debugger, packer, LSP,
-  exporter, and games remain to be built.
+- The shell, integrated editors, debugger/replay, exporter/PWA, and three games remain to be built.
+- Linked revision-1 modules must have globally unique top-level names; generated project source maps
+  currently identify the deterministic linked source rather than each original module.
+- LSP references/rename are currently same-document and full-document-sync only.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger
   isolation than the browser actually provides.

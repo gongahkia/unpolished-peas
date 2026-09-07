@@ -69,6 +69,9 @@ allocation is deterministic and steals the oldest voice when all eight are activ
 
 ## Persistence status
 
-`save_get_int(key, fallback)` and `save_set_int(key, value)` are typed, but the current sandbox
-adapter still returns the fallback and discards writes. Per-cartridge isolated 8 KiB persistence is a
-remaining project-model milestone; these calls must not be described as durable yet.
+`save_get_int(key, fallback)` reads a safe integer from the cartridge's initial save copy, and
+`save_set_int(key, value)` updates worker-local state. Keys are 1-64 canonical ASCII characters.
+Writes are returned to the trusted host in sorted frame batches and the Studio repository can flush
+them to an isolated 8 KiB block keyed by immutable cartridge ID. Snapshot/restore includes save
+state. A custom host must persist returned writes itself; worker-local writes are not durable merely
+because a frame completed.

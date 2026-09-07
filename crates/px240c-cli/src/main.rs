@@ -1,15 +1,21 @@
 use std::{
     collections::BTreeMap,
     fs,
+    hash::{DefaultHasher, Hash, Hasher},
     path::{Path, PathBuf},
     process::ExitCode,
+    thread,
+    time::Duration,
 };
 
 use clap::{Parser, Subcommand};
 use pxcl_core::{
-    AssetCatalog, CompileMode, Diagnostic, FileId, ProjectManifest, SourceFile, analyze_module,
-    compile, decode_cartridge, format_source, pack_project, parse_project_manifest,
+    AssetCatalog, CompileMode, Diagnostic, FileId, GeneratedProgram, ProjectManifest, SourceFile,
+    analyze_module, compile, compile_project, decode_cartridge, format_source, pack_project,
+    parse_project_manifest,
 };
+
+mod lsp;
 
 #[derive(Debug, Parser)]
 #[command(
@@ -67,8 +73,20 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Repack a project whenever its files change.
+    Watch {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+        /// Build once and exit; useful for editor and CI integration checks.
+        #[arg(long)]
+        once: bool,
+    },
     /// Print toolchain revisions, a project manifest, or packed-cartridge metadata.
     Info { path: Option<PathBuf> },
+    /// Run the PXCL/1 language server over standard input/output.
+    Lsp,
 }
 
 fn main() -> ExitCode {
@@ -86,7 +104,9 @@ fn main() -> ExitCode {
         Command::Check { paths } => check_files(&paths),
         Command::Fmt { check, paths } => format_files(&paths, check),
         Command::Pack { path, output } => pack_directory(&path, output.as_deref()),
+        Command::Watch { path, output, once } => watch_directory(&path, output.as_deref(), once),
         Command::Info { path } => info(path.as_deref()),
+        Command::Lsp => lsp::run(),
     }
 }
 
@@ -161,6 +181,62 @@ fn pack_directory(path: &Path, output: Option<&Path>) -> ExitCode {
         packed.manifest.files.len()
     );
     ExitCode::SUCCESS
+}
+
+fn watch_directory(path: &Path, output: Option<&Path>, once: bool) -> ExitCode {
+    let first = pack_directory(path, output);
+    if once {
+        return first;
+    }
+    let mut fingerprint = directory_fingerprint(path).ok();
+    println!("watching {}", path.display());
+    loop {
+        thread::sleep(Duration::from_millis(250));
+        let current = directory_fingerprint(path).ok();
+        if current == fingerprint {
+            continue;
+        }
+        fingerprint = current;
+        let _ = pack_directory(path, output);
+    }
+}
+
+fn directory_fingerprint(path: &Path) -> Result<u64, std::io::Error> {
+    let mut files = Vec::new();
+    collect_fingerprint_files(path, path, &mut files)?;
+    files.sort();
+    let mut hasher = DefaultHasher::new();
+    for file in files {
+        file.strip_prefix(path).unwrap_or(&file).hash(&mut hasher);
+        fs::read(file)?.hash(&mut hasher);
+    }
+    Ok(hasher.finish())
+}
+
+fn collect_fingerprint_files(
+    root: &Path,
+    directory: &Path,
+    files: &mut Vec<PathBuf>,
+) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            let name = entry.file_name();
+            if !matches!(
+                name.to_str(),
+                Some(".git" | "dist" | "node_modules" | "target")
+            ) {
+                collect_fingerprint_files(root, &entry.path(), files)?;
+            }
+        } else if entry.path() != root.join("cart.pxc") {
+            files.push(entry.path());
+        }
+    }
+    Ok(())
 }
 
 fn info(path: Option<&Path>) -> ExitCode {
@@ -331,6 +407,9 @@ fn toml_string(value: &str) -> String {
 }
 
 fn build_file(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
+    if path.is_dir() {
+        return build_directory(path, output, debug);
+    }
     let Ok(text) = read_source(path) else {
         return ExitCode::FAILURE;
     };
@@ -353,6 +432,41 @@ fn build_file(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
         return ExitCode::FAILURE;
     };
     let output = output.map_or_else(|| path.with_extension("js"), Path::to_path_buf);
+    write_program(&generated, &output)
+}
+
+fn build_directory(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
+    let Ok(project) = load_project(path) else {
+        return ExitCode::FAILURE;
+    };
+    let compilation = match compile_project(
+        &project.manifest_source,
+        &project.files,
+        if debug {
+            CompileMode::Debug
+        } else {
+            CompileMode::Release
+        },
+    ) {
+        Ok(compilation) => compilation,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    if !compilation.analysis.diagnostics.is_empty() {
+        emit_project_diagnostics(path, &compilation.analysis.diagnostics);
+        return ExitCode::FAILURE;
+    }
+    let Some(generated) = compilation.generated else {
+        eprintln!("{}: compiler produced no output", path.display());
+        return ExitCode::FAILURE;
+    };
+    let output = output.map_or_else(|| path.join("dist/cartridge.js"), Path::to_path_buf);
+    write_program(&generated, &output)
+}
+
+fn write_program(generated: &GeneratedProgram, output: &Path) -> ExitCode {
     let source_map = output.with_extension("js.map");
     if let Some(parent) = output.parent()
         && let Err(error) = fs::create_dir_all(parent)
@@ -371,11 +485,11 @@ fn build_file(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
         "{}//# sourceMappingURL={}\n",
         generated.javascript, source_map_name
     );
-    if let Err(error) = fs::write(&output, javascript) {
+    if let Err(error) = fs::write(output, javascript) {
         eprintln!("{}: {error}", output.display());
         return ExitCode::FAILURE;
     }
-    if let Err(error) = fs::write(&source_map, generated.source_map_json) {
+    if let Err(error) = fs::write(&source_map, &generated.source_map_json) {
         eprintln!("{}: {error}", source_map.display());
         return ExitCode::FAILURE;
     }
@@ -395,6 +509,28 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
     }
     let mut failed = false;
     for (index, path) in paths.iter().enumerate() {
+        if path.is_dir() {
+            let Ok(project) = load_project(path) else {
+                failed = true;
+                continue;
+            };
+            match compile_project(
+                &project.manifest_source,
+                &project.files,
+                CompileMode::Release,
+            ) {
+                Ok(output) if output.analysis.diagnostics.is_empty() => {}
+                Ok(output) => {
+                    emit_project_diagnostics(path, &output.analysis.diagnostics);
+                    failed = true;
+                }
+                Err(error) => {
+                    eprintln!("{}: {error}", path.display());
+                    failed = true;
+                }
+            }
+            continue;
+        }
         let Ok(text) = read_source(path) else {
             failed = true;
             continue;
@@ -407,6 +543,17 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
         }
     }
     status(failed)
+}
+
+fn emit_project_diagnostics(path: &Path, diagnostics: &[Diagnostic]) {
+    for diagnostic in diagnostics {
+        eprintln!(
+            "{}: error[{}]: {}",
+            path.display(),
+            diagnostic.code,
+            diagnostic.message
+        );
+    }
 }
 
 fn format_files(paths: &[PathBuf], check: bool) -> ExitCode {

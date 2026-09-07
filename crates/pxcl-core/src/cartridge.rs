@@ -1,5 +1,5 @@
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, BTreeSet},
     fmt::{self, Write as _},
     path::Path,
 };
@@ -7,8 +7,10 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AssetCatalog, AssetKind, CARTRIDGE_FORMAT_REVISION, CompileMode, FileId, LANGUAGE_REVISION,
-    SourceFile, compile, compiler_version,
+    AssetCatalog, AssetKind, CARTRIDGE_FORMAT_REVISION, CompilationOutput, CompileMode, FileId,
+    LANGUAGE_REVISION, SourceFile, TokenKind,
+    ast::{Item, Module},
+    compile, compiler_version, parse,
 };
 
 const MAGIC: &[u8; 8] = b"PX240C\x1a\x01";
@@ -202,19 +204,16 @@ pub fn pack_project(
 ) -> Result<PackedCartridge, CartridgeError> {
     let manifest = parse_project_manifest(manifest_source)?;
     let normalized_entry = normalize_project_path(&manifest.entry)?;
-    let entry_bytes = project_files.get(&normalized_entry).ok_or_else(|| {
-        cartridge_error(
-            "PX4002",
-            format!("entry source '{normalized_entry}' is missing"),
-        )
-    })?;
-    let entry_text = normalized_source(entry_bytes, &normalized_entry)?;
     let mut asset_catalog = AssetCatalog::default();
     for (name, asset) in &manifest.assets {
         asset_catalog.insert(name.clone(), asset.kind);
     }
-    let source = SourceFile::new(FileId(0), normalized_entry.clone(), entry_text);
-    let compilation = compile(&source, &asset_catalog, CompileMode::Release);
+    let compilation = compile_linked_project(
+        &manifest,
+        project_files,
+        &asset_catalog,
+        CompileMode::Release,
+    )?;
     if let Some(diagnostic) = compilation.analysis.diagnostics.first() {
         return Err(cartridge_error(
             "PX4003",
@@ -286,6 +285,282 @@ pub fn pack_project(
         bytes,
         manifest: packed_manifest,
     })
+}
+
+/// Links imported project modules and compiles them through the ordinary typed pipeline.
+///
+/// Imports use absolute dotted project paths: `import src.math as math` resolves
+/// `src/math.pxl`. Reachable modules are flattened in dependency order after checking that their
+/// top-level names do not collide. This keeps generated JavaScript free of host module loading.
+///
+/// # Errors
+///
+/// Returns a stable `PX40xx` error for an invalid manifest, missing module, import cycle, parse
+/// failure, unsupported dependency callback, or cross-module top-level name collision.
+pub fn compile_project(
+    manifest_source: &str,
+    project_files: &BTreeMap<String, Vec<u8>>,
+    mode: CompileMode,
+) -> Result<CompilationOutput, CartridgeError> {
+    let manifest = parse_project_manifest(manifest_source)?;
+    let mut asset_catalog = AssetCatalog::default();
+    for (name, asset) in &manifest.assets {
+        asset_catalog.insert(name.clone(), asset.kind);
+    }
+    compile_linked_project(&manifest, project_files, &asset_catalog, mode)
+}
+
+fn compile_linked_project(
+    manifest: &ProjectManifest,
+    project_files: &BTreeMap<String, Vec<u8>>,
+    assets: &AssetCatalog,
+    mode: CompileMode,
+) -> Result<CompilationOutput, CartridgeError> {
+    let entry = normalize_project_path(&manifest.entry)?;
+    let source = link_project_sources(&entry, project_files)?;
+    Ok(compile(&source, assets, mode))
+}
+
+#[derive(Clone, Debug)]
+struct ProjectModule {
+    text: String,
+    syntax: Module,
+}
+
+fn link_project_sources(
+    entry: &str,
+    project_files: &BTreeMap<String, Vec<u8>>,
+) -> Result<SourceFile, CartridgeError> {
+    let mut modules = BTreeMap::new();
+    for (index, (path, bytes)) in project_files
+        .iter()
+        .filter(|(path, _)| has_pxl_extension(path))
+        .enumerate()
+    {
+        let path = normalize_project_path(path)?;
+        let text = normalized_source(bytes, &path)?;
+        let source = SourceFile::new(
+            FileId(u32::try_from(index).unwrap_or(u32::MAX)),
+            path.clone(),
+            text.clone(),
+        );
+        let parsed = parse(&source);
+        if let Some(diagnostic) = parsed.diagnostics.first() {
+            return Err(cartridge_error(
+                "PX4003",
+                format!(
+                    "module '{path}' did not parse: error[{}] {}",
+                    diagnostic.code, diagnostic.message
+                ),
+            ));
+        }
+        modules.insert(
+            path,
+            ProjectModule {
+                text,
+                syntax: parsed.module,
+            },
+        );
+    }
+    if !modules.contains_key(entry) {
+        return Err(cartridge_error(
+            "PX4002",
+            format!("entry source '{entry}' is missing"),
+        ));
+    }
+    let mut visiting = Vec::new();
+    let mut visited = BTreeSet::<String>::new();
+    let mut order = Vec::new();
+    visit_module(entry, &modules, &mut visiting, &mut visited, &mut order)?;
+    validate_link_names(entry, &order, &modules)?;
+
+    let mut linked = String::new();
+    for path in order {
+        let module = modules.get(&path).expect("visited modules exist");
+        linked.push_str(&render_module(&path, module, &modules)?);
+        if !linked.ends_with('\n') {
+            linked.push('\n');
+        }
+        linked.push('\n');
+    }
+    Ok(SourceFile::new(
+        FileId(0),
+        format!("project/{entry}"),
+        linked,
+    ))
+}
+
+fn visit_module(
+    path: &str,
+    modules: &BTreeMap<String, ProjectModule>,
+    visiting: &mut Vec<String>,
+    visited: &mut BTreeSet<String>,
+    order: &mut Vec<String>,
+) -> Result<(), CartridgeError> {
+    if visited.contains(path) {
+        return Ok(());
+    }
+    if visiting.iter().any(|candidate| candidate == path) {
+        visiting.push(path.to_owned());
+        return Err(cartridge_error(
+            "PX4008",
+            format!("module import cycle: {}", visiting.join(" -> ")),
+        ));
+    }
+    let module = modules
+        .get(path)
+        .ok_or_else(|| cartridge_error("PX4008", format!("imported module '{path}' is missing")))?;
+    visiting.push(path.to_owned());
+    for item in &module.syntax.items {
+        if let Item::Import(import) = item {
+            let imported = import_path(import.path.iter().map(|part| part.value.as_str()))?;
+            visit_module(&imported, modules, visiting, visited, order)?;
+        }
+    }
+    visiting.pop();
+    visited.insert(path.to_owned());
+    order.push(path.to_owned());
+    Ok(())
+}
+
+fn validate_link_names(
+    entry: &str,
+    order: &[String],
+    modules: &BTreeMap<String, ProjectModule>,
+) -> Result<(), CartridgeError> {
+    let mut owners = BTreeMap::<String, String>::new();
+    for path in order {
+        let module = modules.get(path).expect("visited modules exist");
+        if path != entry
+            && module
+                .syntax
+                .items
+                .iter()
+                .any(|item| matches!(item, Item::Callback(_)))
+        {
+            return Err(cartridge_error(
+                "PX4009",
+                format!("imported module '{path}' declares a system callback"),
+            ));
+        }
+        for name in module_exports(&module.syntax) {
+            if let Some(previous) = owners.insert(name.clone(), path.clone()) {
+                return Err(cartridge_error(
+                    "PX4009",
+                    format!(
+                        "top-level name '{name}' collides between modules '{previous}' and '{path}'"
+                    ),
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn render_module(
+    path: &str,
+    module: &ProjectModule,
+    modules: &BTreeMap<String, ProjectModule>,
+) -> Result<String, CartridgeError> {
+    let mut replacements = Vec::<(usize, usize, String)>::new();
+    let mut aliases = BTreeMap::<String, (String, BTreeSet<String>)>::new();
+    for item in &module.syntax.items {
+        if let Item::Import(import) = item {
+            let imported_path = import_path(import.path.iter().map(|part| part.value.as_str()))?;
+            let imported = modules.get(&imported_path).ok_or_else(|| {
+                cartridge_error(
+                    "PX4008",
+                    format!("module '{path}' imports missing module '{imported_path}'"),
+                )
+            })?;
+            let alias = import
+                .alias
+                .as_ref()
+                .or_else(|| import.path.last())
+                .map(|name| name.value.clone())
+                .ok_or_else(|| cartridge_error("PX4008", "empty import path".to_owned()))?;
+            if aliases
+                .insert(
+                    alias.clone(),
+                    (
+                        imported_path,
+                        module_exports(&imported.syntax).into_iter().collect(),
+                    ),
+                )
+                .is_some()
+            {
+                return Err(cartridge_error(
+                    "PX4009",
+                    format!("module '{path}' repeats import alias '{alias}'"),
+                ));
+            }
+            replacements.push((
+                usize::try_from(import.span.start).unwrap_or(usize::MAX),
+                usize::try_from(import.span.end).unwrap_or(usize::MAX),
+                String::new(),
+            ));
+        }
+    }
+    let source = SourceFile::new(FileId(0), path, module.text.clone());
+    let tokens = crate::lex(&source).tokens;
+    for window in tokens.windows(3) {
+        let TokenKind::Identifier(alias) = &window[0].kind else {
+            continue;
+        };
+        if !matches!(window[1].kind, TokenKind::Dot) {
+            continue;
+        }
+        let TokenKind::Identifier(member) = &window[2].kind else {
+            continue;
+        };
+        let Some((imported_path, exports)) = aliases.get(alias) else {
+            continue;
+        };
+        if !exports.contains(member) {
+            return Err(cartridge_error(
+                "PX4009",
+                format!("module '{imported_path}' has no exported member '{member}'"),
+            ));
+        }
+        replacements.push((
+            usize::try_from(window[0].span.start).unwrap_or(usize::MAX),
+            usize::try_from(window[2].span.end).unwrap_or(usize::MAX),
+            member.clone(),
+        ));
+    }
+    replacements.sort_by_key(|(start, _, _)| *start);
+    let mut output = module.text.clone();
+    for (start, end, replacement) in replacements.into_iter().rev() {
+        let Some(_) = output.get(start..end) else {
+            return Err(cartridge_error(
+                "PX4009",
+                format!("module '{path}' produced an invalid link span"),
+            ));
+        };
+        output.replace_range(start..end, &replacement);
+    }
+    Ok(output)
+}
+
+fn module_exports(module: &Module) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Constant(value) => Some(value.name.value.clone()),
+            Item::State(value) => Some(value.name.value.clone()),
+            Item::Function(value) => Some(value.name.value.clone()),
+            Item::Task(value) => Some(value.name.value.clone()),
+            Item::Record(value) => Some(value.name.value.clone()),
+            Item::Enum(value) => Some(value.name.value.clone()),
+            Item::Import(_) | Item::Callback(_) | Item::Assertion(_) => None,
+        })
+        .collect()
+}
+
+fn import_path<'a>(parts: impl Iterator<Item = &'a str>) -> Result<String, CartridgeError> {
+    let path = format!("{}.pxl", parts.collect::<Vec<_>>().join("/"));
+    normalize_project_path(&path)
 }
 
 fn collect_project_entries(
@@ -912,9 +1187,10 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CARTRIDGE_CAPACITY_BYTES, decode_cartridge, pack_project, rle_decode, rle_encode,
-        sha256_hex,
+        CARTRIDGE_CAPACITY_BYTES, compile_project, decode_cartridge, pack_project, rle_decode,
+        rle_encode, sha256_hex,
     };
+    use crate::CompileMode;
     use std::collections::BTreeMap;
 
     fn manifest() -> &'static str {
@@ -975,6 +1251,31 @@ path = "assets/hero.pxg"
         );
         assert!(decoded.entries.contains_key("build/cartridge.js"));
         assert!(decoded.entries.contains_key("assets/assets/hero.pxg"));
+    }
+
+    #[test]
+    fn project_imports_link_through_the_typed_pipeline() {
+        let mut project_files = files("\n");
+        project_files.insert(
+            "src/main.pxl".to_owned(),
+            b"import src.math as math\nstate score: Int = 1\non update:\n  score = math.twice(score)\n"
+                .to_vec(),
+        );
+        project_files.insert(
+            "src/math.pxl".to_owned(),
+            b"fn twice(value: Int) -> Int:\n  return value * 2\n".to_vec(),
+        );
+        let output = compile_project(manifest(), &project_files, CompileMode::Release)
+            .expect("project links");
+        assert!(output.analysis.diagnostics.is_empty());
+        assert!(
+            !output
+                .generated
+                .expect("project generates")
+                .javascript
+                .is_empty()
+        );
+        assert!(pack_project(manifest(), &project_files).is_ok());
     }
 
     #[test]
