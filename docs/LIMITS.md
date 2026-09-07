@@ -8,8 +8,8 @@ and the enforced ceiling remains the authority.
 
 | Cartridge      | Packed `.pxc` | Visual store | Release JS | Representative work/frame |
 | -------------- | ------------: | -----------: | ---------: | ------------------------: |
-| Cinder Circuit |      32,264 B |      2,854 B |   11,939 B |                     3,295 |
-| Ashvault       |      33,834 B |        288 B |   13,297 B |                    11,783 |
+| Cinder Circuit |      32,270 B |      2,854 B |   11,945 B |                     3,295 |
+| Ashvault       |      36,142 B |        288 B |   14,465 B |                    11,783 |
 | Raster Rush 1P |      34,137 B |        160 B |   13,404 B |                    27,906 |
 | Raster Rush 4P |      34,137 B |        160 B |   13,404 B |                    31,422 |
 

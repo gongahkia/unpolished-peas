@@ -5,9 +5,10 @@
   "type": "module",
   "scripts": {
     "generate:fixtures": "cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- build fixtures/sandbox-smoke.pxl --output public/generated/sandbox-smoke.js && cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- build fixtures/sandbox-runaway.pxl --output public/generated/sandbox-runaway.js",
+    "generate:font": "node ../../scripts/generate-bitmap-font.mjs",
     "generate:cartridges": "node ../../scripts/generate-cartridge-assets.mjs && cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- pack ../../cartridges/cinder-circuit --output public/cartridges/cinder-circuit.pxc && cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- pack ../../cartridges/ashvault --output public/cartridges/ashvault.pxc && cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- pack ../../cartridges/raster-rush --output public/cartridges/raster-rush.pxc",
     "generate:wasm": "../../scripts/build-wasm.sh",
-    "prepare:assets": "pnpm generate:wasm && pnpm generate:fixtures && pnpm generate:cartridges",
+    "prepare:assets": "pnpm generate:font && pnpm generate:wasm && pnpm generate:fixtures && pnpm generate:cartridges",
     "prebuild": "pnpm prepare:assets",
     "predev": "pnpm prepare:assets",
     "pretypecheck": "pnpm generate:wasm",

@@ -550,12 +550,12 @@ function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: Too
 function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
   const path = 'assets/theme.pxt';
   const existing = readJson<Record<string, unknown> | undefined>(project.files[path], undefined);
-  const song = musicDocument(existing);
+  let song = musicDocument(existing);
   root.innerHTML = toolFrame(
     '8-CHANNEL TRACKER',
     `<div class="tracker">
       <div class="tracker-head"><label>F/ROW <input class="tempo" type="number" min="1" max="60" value="${String(numberValue(existing?.framesPerRow, 6))}"></label><label><input class="loop" type="checkbox"${existing?.loop === false ? '' : ' checked'}> LOOP</label><button data-preview>PLAY</button><label>PAT <select class="pattern-select"></select></label><button data-add-pattern title="Add pattern">+PAT</button></div>
-      <label class="tracker-order">ORDER <input value=""></label>
+      <div class="tracker-order"><label>ORDER <input value=""></label><button data-track-undo>UNDO</button><button data-track-redo>REDO</button></div>
       <div class="tracker-grid" role="grid"></div>
     </div>`,
   );
@@ -564,6 +564,23 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
   const patternSelect = requireElement(root, '.pattern-select') as HTMLSelectElement;
   const orderInput = requireElement(root, '.tracker-order input') as HTMLInputElement;
   orderInput.value = song.order.join(' ');
+  interface HistoryEntry {
+    readonly song: EditableMusicDocument;
+    readonly order: string;
+    readonly selected: string;
+  }
+  const undo: HistoryEntry[] = [];
+  const redo: HistoryEntry[] = [];
+  const capture = (order = orderInput.value): HistoryEntry => ({
+    song: structuredClone(song),
+    order,
+    selected: patternSelect.value,
+  });
+  const remember = (entry = capture()): void => {
+    undo.push(entry);
+    if (undo.length > 32) undo.shift();
+    redo.length = 0;
+  };
   const refreshPatternSelect = (selected: string): void => {
     patternSelect.replaceChildren();
     for (const name of Object.keys(song.patterns)) {
@@ -587,6 +604,7 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
         const button = documentElement('button', noteLabel(rows[row]?.[channel]?.note ?? null));
         button.setAttribute('role', 'gridcell');
         button.addEventListener('click', () => {
+          remember();
           const current = rows[row]?.[channel] ?? null;
           const notes = [null, 48, 55, 60, 64, 67, 72] as const;
           const note = current?.note ?? null;
@@ -606,13 +624,49 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
   };
   refreshPatternSelect(Object.keys(song.patterns)[0] ?? '00');
   renderPattern();
+  const restore = (entry: HistoryEntry): void => {
+    song = structuredClone(entry.song);
+    orderInput.value = entry.order;
+    const selected =
+      song.patterns[entry.selected] === undefined
+        ? (Object.keys(song.patterns)[0] ?? '00')
+        : entry.selected;
+    refreshPatternSelect(selected);
+    renderPattern();
+  };
+  const stepHistory = (from: HistoryEntry[], to: HistoryEntry[]): void => {
+    const entry = from.pop();
+    if (entry === undefined) return;
+    to.push(capture());
+    restore(entry);
+  };
   patternSelect.addEventListener('change', renderPattern);
+  let orderBefore = orderInput.value;
+  orderInput.addEventListener('focus', () => {
+    orderBefore = orderInput.value;
+  });
+  orderInput.addEventListener('change', () => {
+    if (orderInput.value !== orderBefore) remember(capture(orderBefore));
+  });
+  root.querySelector('[data-track-undo]')?.addEventListener('click', () => {
+    stepHistory(undo, redo);
+  });
+  root.querySelector('[data-track-redo]')?.addEventListener('click', () => {
+    stepHistory(redo, undo);
+  });
+  (requireElement(root, '.asset-tool') as HTMLElement).addEventListener('keydown', (event) => {
+    if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === 'z') {
+      event.preventDefault();
+      stepHistory(event.shiftKey ? redo : undo, event.shiftKey ? undo : redo);
+    }
+  });
   root.querySelector('[data-add-pattern]')?.addEventListener('click', () => {
     const name = nextPatternName(song.patterns);
     if (name === undefined) {
       setToolStatus(root, 'PATTERN LIMIT REACHED', true);
       return;
     }
+    remember();
     song.patterns[name] = emptyMusicRows();
     orderInput.value = `${orderInput.value.trim()} ${name}`.trim();
     refreshPatternSelect(name);

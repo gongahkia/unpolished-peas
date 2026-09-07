@@ -26,7 +26,11 @@ asset editors in the same 240x144 display. The sprite tool provides frames, onio
 selection transforms, palette painting, undo/redo, and capacity feedback. The map tool provides
 layers, tile flags, painting, undo/redo, and shared-capacity feedback. Palette/raster defaults feed
 the runtime without changing the fixed master palette. Sound patches and eight-channel tracker
-patterns can be previewed after a browser audio gesture. `manual` searches built-in help and
+patterns can be previewed after a browser audio gesture. The tracker edits named patterns and an
+ordered playback sequence, preserves existing patch references, loops on request, and provides
+bounded note/pattern undo/redo. The shell, editors, controls, and cartridges use the same original
+PX-240C glyph design; the Studio font is generated locally from the runtime's glyph matrix.
+`manual` searches built-in help and
 `explore` exposes tokens, AST, symbols, typed IR, JavaScript, source maps, diagnostics, and size
 accounting. `debug` opens source breakpoints and trace stepping, state/task/watch inspection,
 synthetic-work profiling, hardware inspectors, and deterministic frame rewind. Its precise
