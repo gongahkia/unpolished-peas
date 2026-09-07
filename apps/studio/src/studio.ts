@@ -17,6 +17,7 @@ import {
 } from '@px240c/runtime';
 
 import { BrowserCompiler, type CompilerDiagnostic } from './compiler';
+import { openDebugger, type ActiveDebugger } from './debugger';
 import { openCreationTool, type CreationTool } from './tools';
 
 interface WorkingProject {
@@ -47,6 +48,7 @@ export class StudioApp {
   private readonly history: string[] = [];
   private historyCursor = 0;
   private player: ActivePlayer | undefined;
+  private activeDebugger: ActiveDebugger | undefined;
 
   public constructor(root: HTMLElement, databaseName = 'px240c-studio') {
     this.root = root;
@@ -55,6 +57,7 @@ export class StudioApp {
 
   public async boot(): Promise<void> {
     this.stopPlayer();
+    this.stopDebugger();
     this.terminalLines.length = 0;
     this.appendLines([
       'PX-240C COLOR DEVELOPMENT UNIT',
@@ -164,6 +167,9 @@ export class StudioApp {
         case 'run':
           await this.runProject();
           return;
+        case 'debug':
+          await this.debugProject();
+          return;
         case 'pack':
           await this.packProject();
           break;
@@ -173,7 +179,7 @@ export class StudioApp {
         case 'help':
           this.appendLines([
             'DIR  NEW  LOAD  SAVE  RECOVER',
-            'EDIT RUN PACK INFO HELP REBOOT',
+            'EDIT RUN DEBUG PACK INFO HELP REBOOT',
             'PROJECT SPRITE MAP PALETTE SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
@@ -562,6 +568,7 @@ export class StudioApp {
   }
 
   private async runProject(): Promise<void> {
+    this.stopDebugger();
     const project = this.requireProject();
     const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
     const diagnostic = compilation.analysis.diagnostics[0];
@@ -674,6 +681,22 @@ export class StudioApp {
     requestAnimationFrame(() => void frame());
   }
 
+  private async debugProject(): Promise<void> {
+    this.stopPlayer();
+    const project = this.requireProject();
+    const save = await readSaveValues(this.repository.cartridgeSave(project.id));
+    try {
+      this.activeDebugger = await openDebugger(this.root, project, this.compiler, save, () => {
+        this.activeDebugger = undefined;
+        this.appendLines([`DEBUG STOPPED ${project.id}`]);
+        this.renderShell();
+      });
+    } catch (error: unknown) {
+      this.renderShell();
+      throw error;
+    }
+  }
+
   private async packProject(): Promise<void> {
     const project = this.requireProject();
     const bytes = await this.compiler.packProject(project.manifest, project.files);
@@ -723,6 +746,11 @@ export class StudioApp {
   private stopPlayer(): void {
     this.player?.stop();
     this.player = undefined;
+  }
+
+  private stopDebugger(): void {
+    this.activeDebugger?.stop();
+    this.activeDebugger = undefined;
   }
 
   private appendLines(lines: readonly string[]): void {

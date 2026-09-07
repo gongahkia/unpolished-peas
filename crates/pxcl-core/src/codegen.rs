@@ -112,6 +112,7 @@ struct Generator<'input> {
     probe_count: u32,
     temporary: u32,
     task_programs: Vec<TaskProgram>,
+    debug_locals: Vec<SymbolId>,
     work: WorkModel,
 }
 
@@ -137,6 +138,7 @@ impl<'input> Generator<'input> {
             probe_count: 0,
             temporary: 0,
             task_programs: Vec::new(),
+            debug_locals: Vec::new(),
             work: WorkModel::default(),
         }
     }
@@ -354,7 +356,10 @@ impl<'input> Generator<'input> {
                 self.writer.line("try{", Some(routine.span));
                 self.writer.indent += 1;
             }
+            let debug_locals_base = self.debug_locals.len();
+            self.debug_locals.extend(&routine.parameters);
             self.generate_statements(&routine.body, ValueContext::Routine);
+            self.debug_locals.truncate(debug_locals_base);
             if self.mode == CompileMode::Debug {
                 self.writer.indent -= 1;
                 self.writer.line("}finally{leave();}", Some(routine.span));
@@ -695,10 +700,15 @@ impl<'input> Generator<'input> {
     }
 
     fn generate_statements(&mut self, statements: &[IrStatement], context: ValueContext) {
+        let debug_locals_base = self.debug_locals.len();
         for statement in statements {
             self.generate_probe(statement.span, context);
             self.generate_statement(statement, context);
+            if let IrStatementKind::Let { symbol, .. } = &statement.kind {
+                self.debug_locals.push(*symbol);
+            }
         }
+        self.debug_locals.truncate(debug_locals_base);
     }
 
     #[allow(clippy::too_many_lines)]
@@ -800,7 +810,10 @@ impl<'input> Generator<'input> {
                     ),
                     Some(statement.span),
                 );
+                let debug_locals_base = self.debug_locals.len();
+                self.debug_locals.push(*binding);
                 self.generate_statements(body, context);
+                self.debug_locals.truncate(debug_locals_base);
                 self.writer.indent -= 1;
                 self.writer.line("}", Some(statement.span));
             }
@@ -868,7 +881,10 @@ impl<'input> Generator<'input> {
             if !bindings.is_empty() {
                 self.writer.line(bindings, Some(arm.span));
             }
+            let debug_locals_base = self.debug_locals.len();
+            self.debug_locals.extend(pattern_symbols(&arm.pattern));
             self.generate_statements(&arm.body, context);
+            self.debug_locals.truncate(debug_locals_base);
             self.writer.indent -= 1;
             self.writer.line("}", Some(arm.span));
         }
@@ -883,8 +899,15 @@ impl<'input> Generator<'input> {
         let id = self.probe_count;
         self.probe_count += 1;
         let locals = match context {
-            ValueContext::Routine => "undefined",
-            ValueContext::Task => "task.locals",
+            ValueContext::Routine => format!(
+                "{{{}}}",
+                self.debug_locals
+                    .iter()
+                    .map(|symbol| format!("s{}:s{}", symbol.0, symbol.0))
+                    .collect::<Vec<_>>()
+                    .join(",")
+            ),
+            ValueContext::Task => "task.locals".to_owned(),
         };
         self.writer.line(
             format!(
@@ -1630,6 +1653,14 @@ fn pattern_bindings(pattern: &IrPattern, subject: &str, context: ValueContext) -
     }
 }
 
+fn pattern_symbols(pattern: &IrPattern) -> Vec<SymbolId> {
+    match pattern {
+        IrPattern::Binding(symbol) => vec![*symbol],
+        IrPattern::Variant { bindings, .. } => bindings.clone(),
+        IrPattern::Wildcard | IrPattern::Literal(_) | IrPattern::Error => Vec::new(),
+    }
+}
+
 fn safe_property(name: &str) -> String {
     if name.bytes().enumerate().all(|(index, byte)| {
         byte == b'_' || byte.is_ascii_alphabetic() || (index > 0 && byte.is_ascii_digit())
@@ -1724,6 +1755,7 @@ mod tests {
         let debug = debug.generated.expect("debug output");
         assert!(!release.javascript.contains("api.probe?."));
         assert!(debug.javascript.contains("api.probe?."));
+        assert!(debug.javascript.contains("},{s"));
         assert!(!release.relationships.is_empty());
         assert!(release.source_map_json.contains("\"version\":3"));
     }

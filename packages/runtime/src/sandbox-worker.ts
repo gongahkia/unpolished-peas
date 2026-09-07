@@ -7,6 +7,8 @@ import { SaveMemory, type SaveValues } from './save';
 import {
   isHostRequest,
   type ConsoleCommand,
+  type DebugStackFrame,
+  type DebugTraceEvent,
   type HostRequest,
   type SourceSpan,
   type WorkerResponse,
@@ -24,6 +26,10 @@ let drawCommands: ConsoleCommand[] = [];
 let audioCommands: ConsoleCommand[] = [];
 let mapQueries = new MapQueryStore();
 let saveMemory = new SaveMemory();
+let debugEnabled = false;
+let debugTrace: DebugTraceEvent[] = [];
+let debugCallStack: DebugStackFrame[] = [];
+let debugTraceTruncated = false;
 
 lockDownWorkerGlobals(globalThis);
 
@@ -51,8 +57,34 @@ async function handleRequest(request: HostRequest): Promise<void> {
       const factory = readFactory(loaded);
       mapQueries = new MapQueryStore(request.configuration.maps ?? []);
       saveMemory = new SaveMemory(request.configuration.save ?? {});
+      debugEnabled = request.configuration.debug ?? false;
+      debugTrace = [];
+      debugCallStack = [];
+      debugTraceTruncated = false;
       machine = new DeterministicMachine(factory, request.configuration, {
         call: handleConsoleCall,
+        ...(debugEnabled
+          ? {
+              probe: (id: number, sourceSpan: SourceSpan, locals: unknown) => {
+                if (debugTrace.length >= HARDWARE.drawCommandsPerFrame) {
+                  debugTraceTruncated = true;
+                  return;
+                }
+                debugTrace.push({
+                  id,
+                  sourceSpan,
+                  locals: structuredClone(locals),
+                  callStack: structuredClone(debugCallStack),
+                });
+              },
+              enter: (name: string, sourceSpan: SourceSpan) => {
+                debugCallStack.push({ name, sourceSpan });
+              },
+              leave: () => {
+                debugCallStack.pop();
+              },
+            }
+          : {}),
       });
       machine.boot();
       send({ id: request.id, type: 'loaded' } satisfies WorkerResponse);
@@ -62,6 +94,8 @@ async function handleRequest(request: HostRequest): Promise<void> {
       const active = requireMachine();
       drawCommands = [];
       audioCommands = [];
+      debugTrace = [];
+      debugTraceTruncated = false;
       const report = active.runFrame(request.input);
       send({
         id: request.id,
@@ -72,6 +106,15 @@ async function handleRequest(request: HostRequest): Promise<void> {
         drawCommands,
         audioCommands,
         saveWrites: saveMemory.takeWrites(),
+        ...(debugEnabled
+          ? {
+              debug: {
+                trace: debugTrace,
+                truncated: debugTraceTruncated,
+                inspection: structuredClone(active.inspect()),
+              },
+            }
+          : {}),
       } satisfies WorkerResponse);
       break;
     }

@@ -8,12 +8,35 @@ export interface SourceSpan {
   readonly end: number;
 }
 
+export interface DebugStackFrame {
+  readonly name: string;
+  readonly sourceSpan: SourceSpan;
+}
+
+export interface DebugTraceEvent {
+  readonly id: number;
+  readonly sourceSpan: SourceSpan;
+  readonly locals: unknown;
+  readonly callStack: readonly DebugStackFrame[];
+}
+
+export interface DebugFrame {
+  readonly trace: readonly DebugTraceEvent[];
+  readonly truncated: boolean;
+  readonly inspection: {
+    readonly state: unknown;
+    readonly tasks: unknown;
+    readonly callStack: unknown;
+  };
+}
+
 export interface SandboxConfiguration {
   readonly seed: number;
   readonly workUnitsPerFrame: number;
   readonly updateRate: 30 | 60;
   readonly maps?: readonly MapQueryAsset[];
   readonly save?: SaveValues;
+  readonly debug?: boolean;
 }
 
 export type HostRequest =
@@ -42,6 +65,7 @@ export type WorkerResponse =
       readonly drawCommands: readonly ConsoleCommand[];
       readonly audioCommands: readonly ConsoleCommand[];
       readonly saveWrites: readonly SaveWrite[];
+      readonly debug?: DebugFrame;
     }
   | { readonly id: number; readonly type: 'snapshot'; readonly snapshot: unknown }
   | { readonly id: number; readonly type: 'restored' }
@@ -111,6 +135,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
           'drawCommands',
           'audioCommands',
           'saveWrites',
+          ...(value.debug === undefined ? [] : ['debug']),
         ]) &&
         isNonNegativeInteger(value.frame) &&
         isNonNegativeInteger(value.workUnits) &&
@@ -121,7 +146,8 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
         Array.isArray(value.audioCommands) &&
         value.audioCommands.every(isConsoleCommand) &&
         Array.isArray(value.saveWrites) &&
-        value.saveWrites.every(isSaveWrite)
+        value.saveWrites.every(isSaveWrite) &&
+        (value.debug === undefined || isDebugFrame(value.debug))
       );
     case 'audit':
       return (
@@ -156,13 +182,43 @@ function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
       'updateRate',
       ...(value.maps === undefined ? [] : ['maps']),
       ...(value.save === undefined ? [] : ['save']),
+      ...(value.debug === undefined ? [] : ['debug']),
     ]) &&
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
     value.workUnitsPerFrame > 0 &&
     (value.updateRate === 30 || value.updateRate === 60) &&
     (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
-    (value.save === undefined || isSaveValues(value.save))
+    (value.save === undefined || isSaveValues(value.save)) &&
+    (value.debug === undefined || typeof value.debug === 'boolean')
+  );
+}
+
+function isDebugFrame(value: unknown): value is DebugFrame {
+  if (
+    !isRecord(value) ||
+    !hasExactKeys(value, ['trace', 'truncated', 'inspection']) ||
+    !Array.isArray(value.trace) ||
+    typeof value.truncated !== 'boolean' ||
+    !isRecord(value.inspection) ||
+    !hasExactKeys(value.inspection, ['state', 'tasks', 'callStack'])
+  ) {
+    return false;
+  }
+  return value.trace.every(
+    (event) =>
+      isRecord(event) &&
+      hasExactKeys(event, ['id', 'sourceSpan', 'locals', 'callStack']) &&
+      isNonNegativeInteger(event.id) &&
+      isSourceSpan(event.sourceSpan) &&
+      Array.isArray(event.callStack) &&
+      event.callStack.every(
+        (frame) =>
+          isRecord(frame) &&
+          hasExactKeys(frame, ['name', 'sourceSpan']) &&
+          typeof frame.name === 'string' &&
+          isSourceSpan(frame.sourceSpan),
+      ),
   );
 }
 

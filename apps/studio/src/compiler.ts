@@ -24,11 +24,20 @@ export interface CompilerDiagnostic {
   readonly notes: readonly string[];
 }
 
+export interface CompilerSymbol {
+  readonly id: number;
+  readonly name: string;
+  readonly kind: string;
+  readonly type: unknown;
+  readonly mutable: boolean;
+  readonly defined_at?: SourceSpan;
+}
+
 export interface CompilationResult {
   readonly analysis: {
     readonly tokens: readonly unknown[];
     readonly module: unknown;
-    readonly symbols: readonly unknown[];
+    readonly symbols: readonly CompilerSymbol[];
     readonly ir: unknown;
     readonly diagnostics: readonly CompilerDiagnostic[];
   };
