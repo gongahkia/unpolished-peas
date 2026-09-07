@@ -66,9 +66,9 @@ export interface ProjectManifest {
   readonly version: string;
   readonly entry: string;
   readonly update_rate: 30 | 60;
-  readonly label?: string;
-  readonly thumbnail?: string;
-  readonly display?: string;
+  readonly label: string | null;
+  readonly thumbnail: string | null;
+  readonly display: string | null;
   readonly assets: Readonly<
     Record<
       string,

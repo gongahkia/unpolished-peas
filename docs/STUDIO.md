@@ -20,8 +20,10 @@ layers, tile flags, painting, undo/redo, and shared-capacity feedback. Palette/r
 the runtime without changing the fixed master palette. Sound patches and eight-channel tracker
 patterns can be previewed after a browser audio gesture. `manual` searches built-in help and
 `explore` exposes tokens, AST, symbols, typed IR, JavaScript, source maps, diagnostics, and size
-accounting. Escape returns from a tool; F3 saves asset changes. Debugger surfaces remain under
-active construction.
+accounting. `debug` opens source breakpoints and trace stepping, state/task/watch inspection,
+synthetic-work profiling, hardware inspectors, and deterministic frame rewind. Its precise
+frame-boundary semantics and limitations are documented in [DEBUGGER.md](DEBUGGER.md). Escape
+returns from a creation tool; F3 saves asset changes.
 
 ## Native commands
 

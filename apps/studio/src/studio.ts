@@ -940,6 +940,10 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
       body: 'SFX are eight-voice oscillator patches. MUSIC opens the eight-channel pattern tracker. Imported PCM and arbitrary samples are unavailable.',
     },
     {
+      title: 'DEBUG',
+      body: 'DEBUG opens frame pause, source breakpoints, trace stepping, watches, state/task/profile/hardware inspectors, and deterministic rewind. Debug save writes are not persisted.',
+    },
+    {
       title: 'LIMITS',
       body: '240x144, 32 colors, 128 KiB visual assets, 8 KiB save, 256 KiB packed cartridge, 4096 draw commands, 8 synth voices, 4 local ports.',
     },

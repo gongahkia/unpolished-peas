@@ -26,5 +26,11 @@ compact JavaScript plus source maps; the same IR produces debug and release outp
 Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.pxc`
 artifact containing original source and compiled output.
 
+Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
+returns bounded traces and serializable state/task inspection only when debug mode is requested.
+The Studio combines periodic worker snapshots with indexed-framebuffer and synthesizer snapshots;
+recorded inputs and canonical fingerprints provide deterministic rewind with explicit divergence
+detection. The debugger does not receive DOM, persistence, or network capabilities.
+
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.

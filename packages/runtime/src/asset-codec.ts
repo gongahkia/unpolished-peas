@@ -69,7 +69,7 @@ export interface MapAssetFile {
 export function decodeRuntimeAssets(
   declarations: Readonly<Record<string, ProjectAssetDeclaration>>,
   files: Readonly<Record<string, Uint8Array>>,
-  displayPath?: string,
+  displayPath?: string | null,
 ): RuntimeAssetBundle {
   const visual: VisualAsset[] = [];
   const audio: AudioAsset[] = [];
@@ -266,10 +266,10 @@ function decodeMusic(name: string, value: unknown): MusicAsset {
 }
 
 function decodeDisplay(
-  path: string | undefined,
+  path: string | null | undefined,
   files: Readonly<Record<string, Uint8Array>>,
 ): DisplayConfiguration | undefined {
-  if (path === undefined) return undefined;
+  if (path === undefined || path === null) return undefined;
   const bytes = files[path];
   if (bytes === undefined) {
     throw new TypeError(`display configuration is missing '${path}'`);
