@@ -17,7 +17,8 @@ synthesizer/tracker core are implemented; the integrated product surfaces are no
 ## Development
 
 Requirements: Linux, Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt, and the
-`wasm32-unknown-unknown` target.
+`wasm32-unknown-unknown` target. `make setup` installs the pinned `wasm-bindgen-cli` 0.2.128 in the
+user Cargo bin directory when it is absent.
 
 ```sh
 make setup

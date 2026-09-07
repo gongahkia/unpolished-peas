@@ -5,8 +5,11 @@
   "type": "module",
   "scripts": {
     "generate:fixtures": "cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- build fixtures/sandbox-smoke.pxl --output public/generated/sandbox-smoke.js && cargo run --quiet --manifest-path ../../Cargo.toml --package px240c-cli -- build fixtures/sandbox-runaway.pxl --output public/generated/sandbox-runaway.js",
-    "prebuild": "pnpm generate:fixtures",
-    "predev": "pnpm generate:fixtures",
+    "generate:wasm": "../../scripts/build-wasm.sh",
+    "prepare:assets": "pnpm generate:wasm && pnpm generate:fixtures",
+    "prebuild": "pnpm prepare:assets",
+    "predev": "pnpm prepare:assets",
+    "pretypecheck": "pnpm generate:wasm",
     "build": "tsc -p tsconfig.json --noEmit && vite build",
     "dev": "vite",
     "typecheck": "tsc -p tsconfig.json --noEmit"

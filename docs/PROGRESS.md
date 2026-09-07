@@ -108,9 +108,26 @@ Each group may produce several coherent commits, and integration occurs througho
   TypeScript checking, 30 Vitest tests, runtime build, and production Studio build pass. Full-suite
   verification is recorded by the milestone commit.
 
+## 2026-09-07 — Milestone 7: boot monitor and integrated execution
+
+- Added a generated WebAssembly browser bridge to the authoritative Rust compiler, project linker,
+  formatter, packer, and decoder; the pinned binding tool is part of the reproducible setup path.
+- Replaced the static boot mockup with a keyboard-operable 240x144 monitor shell backed by the real
+  IndexedDB repository. Project creation/loading, explicit saves, bounded recovery selection,
+  directory/info output, editing, running, and `.pxc` download are functional.
+- Added a compact source editor with live compiler diagnostics, canonical formatting, persistent
+  save, and direct run controls. The default project is valid PXCL/1 and visibly responds to input.
+- Integrated project execution with the dedicated worker, indexed WebGL output, four-port browser
+  input, frame/work meters, and per-cartridge save write flushing. Shift+Escape stops and disposes
+  the worker/input adapters before returning to the shell.
+- Playwright/Firefox completed create -> edit -> diagnose -> save -> compile -> run -> stop -> reload
+  against the production build. Reload recovered revision 2 from IndexedDB; no console errors were
+  reported. Shell, editor, and running cartridge were visually inspected at exact 3x scale.
+
 ## Current risks
 
-- The shell, integrated editors, debugger/replay, exporter/PWA, and three games remain to be built.
+- Asset editors, expanded code navigation, debugger/replay, exporter/PWA, and three games remain to
+  be built.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps
   currently identify the deterministic linked source rather than each original module.
 - LSP references/rename are currently same-document and full-document-sync only.
