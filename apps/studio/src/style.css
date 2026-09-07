@@ -1,0 +1,60 @@
+:root {
+  color: #292725;
+  background: #d8ccb2;
+  font-family: ui-monospace, monospace;
+  font-synthesis: none;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#studio {
+  width: 100%;
+  min-width: 240px;
+  height: 100%;
+  min-height: 144px;
+  margin: 0;
+}
+
+#studio {
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #292725;
+}
+
+.display {
+  width: 240px;
+  height: 144px;
+  padding: 12px;
+  color: #f4e9ce;
+  background: #413d38;
+  image-rendering: pixelated;
+  transform: scale(var(--px-scale, 1));
+  transform-origin: center;
+}
+
+.display p {
+  margin: 0 0 6px;
+  font-size: 8px;
+  line-height: 1;
+}
+
+.prompt {
+  color: #f3a65a;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .prompt span {
+    animation: blink 1s steps(1, end) infinite;
+  }
+}
+
+@keyframes blink {
+  50% {
+    visibility: hidden;
+  }
+}
