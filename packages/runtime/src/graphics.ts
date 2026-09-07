@@ -1,4 +1,5 @@
 import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
+import { BITMAP_FONT, glyphRows } from './font';
 import type { ConsoleCommand } from './protocol';
 
 export interface IndexedSprite {
@@ -69,6 +70,20 @@ export class VisualAssetStore {
         throw new RangeError('visual assets exceed the 128 KiB shared capacity');
       }
       this.entries.set(asset.name, asset);
+    }
+    for (const asset of assets) {
+      if (asset.kind !== 'map') {
+        continue;
+      }
+      for (const layer of asset.layers) {
+        const tileSet = this.entries.get(layer.tileSet);
+        if (
+          tileSet?.kind !== 'tile_set' ||
+          layer.cells.some((tile) => tile >= tileSet.tiles.length)
+        ) {
+          throw new TypeError(`map '${asset.name}' references an invalid tile set or tile`);
+        }
+      }
     }
     this.usedBytes = usedBytes;
   }
@@ -246,13 +261,13 @@ export class IndexedGraphics {
         return;
       case 'sprite': {
         const [handle, x, y] = command.arguments;
-        this.drawSprite(readAssetName(handle, 'sprite'), expectInteger(x), expectInteger(y), state);
+        this.drawSprite(readAssetName(handle, 'Sprite'), expectInteger(x), expectInteger(y), state);
         return;
       }
       case 'animation': {
         const [handle, frame, x, y] = command.arguments;
         this.drawAnimation(
-          readAssetName(handle, 'animation'),
+          readAssetName(handle, 'Animation'),
           expectInteger(frame),
           expectInteger(x),
           expectInteger(y),
@@ -263,7 +278,7 @@ export class IndexedGraphics {
       case 'sprite_xform': {
         const [handle, x, y, scale, quarterTurns, flipX, flipY] = command.arguments;
         this.drawTransformedSprite(
-          readAssetName(handle, 'sprite'),
+          readAssetName(handle, 'Sprite'),
           expectInteger(x),
           expectInteger(y),
           expectInteger(scale),
@@ -276,13 +291,22 @@ export class IndexedGraphics {
       }
       case 'map': {
         const [handle, x, y] = command.arguments;
-        this.drawMap(readAssetName(handle, 'map'), expectInteger(x), expectInteger(y), state);
+        this.drawMap(readAssetName(handle, 'Map'), expectInteger(x), expectInteger(y), state);
         return;
       }
       case 'raster_scroll':
         throw new TypeError('raster_scroll is only valid in the raster callback');
-      case 'print':
-        throw new TypeError('bitmap fonts require a named Font asset');
+      case 'print': {
+        const [text, x, y, color] = command.arguments;
+        this.print(
+          expectText(text),
+          expectInteger(x),
+          expectInteger(y),
+          expectInteger(color),
+          state,
+        );
+        return;
+      }
       default:
         throw new TypeError(`unknown graphics command '${command.name}'`);
     }
@@ -540,6 +564,27 @@ export class IndexedGraphics {
       }
     }
   }
+
+  private print(text: string, x: number, y: number, color: number, state: DrawState): void {
+    let cursorX = x;
+    let cursorY = y;
+    for (const character of text) {
+      if (character === '\n') {
+        cursorX = x;
+        cursorY += BITMAP_FONT.advanceY;
+        continue;
+      }
+      const rows = glyphRows(character);
+      rows.forEach((bits, row) => {
+        for (let column = 0; column < BITMAP_FONT.glyphWidth; column += 1) {
+          if ((bits & (1 << (BITMAP_FONT.glyphWidth - 1 - column))) !== 0) {
+            this.plot(cursorX + column, cursorY + row, color, state);
+          }
+        }
+      });
+      cursorX += BITMAP_FONT.advanceX;
+    }
+  }
 }
 
 /** WebGL2 palette resolver. The GPU sees only indexed pixels and the immutable RGB table. */
@@ -742,6 +787,13 @@ function expectBoolean(value: unknown): boolean {
   return value;
 }
 
+function expectText(value: unknown): string {
+  if (typeof value !== 'string') {
+    throw new TypeError('graphics argument must be Text');
+  }
+  return value;
+}
+
 function expectColor(value: number): number {
   if (value < 0 || value >= HARDWARE.paletteSize) {
     throw new RangeError('palette index must be between 0 and 31');
@@ -883,7 +935,7 @@ function configurePaletteTexture(gl: WebGL2RenderingContext, texture: WebGLTextu
     0,
     gl.RGBA,
     gl.UNSIGNED_BYTE,
-    MASTER_PALETTE_RGBA,
+    Uint8Array.from(MASTER_PALETTE_RGBA),
   );
 }
 

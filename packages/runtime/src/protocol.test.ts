@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 
 import { lockDownWorkerGlobals } from './capabilities';
 import { emptyInputFrame } from './input';
-import { isHostRequest } from './protocol';
+import { isHostRequest, isWorkerResponse } from './protocol';
 
 describe('sandbox protocol', () => {
   it('accepts complete frame messages and denies non-blob cartridge module URLs', () => {
@@ -34,5 +34,29 @@ describe('sandbox protocol', () => {
     }
     expect(target.Math).toMatchObject({ max: Math.max, trunc: Math.trunc });
     expect(target.Math).not.toHaveProperty('random');
+  });
+
+  it('rejects shallow or over-specified worker responses', () => {
+    const frame = {
+      id: 1,
+      type: 'frame',
+      frame: 0,
+      workUnits: 4,
+      attribution: [{ sourceSpan: { start: 1, end: 2 }, units: 4 }],
+      drawCommands: [
+        { name: 'clear', arguments: [0], sourceSpan: { start: 1, end: 2 } },
+        {
+          name: 'pal',
+          arguments: [1, 2],
+          sourceSpan: { start: 3, end: 4 },
+          rasterLine: 12,
+        },
+      ],
+      audioCommands: [],
+    };
+    expect(isWorkerResponse(frame)).toBe(true);
+    expect(isWorkerResponse({ id: 1, type: 'frame' })).toBe(false);
+    expect(isWorkerResponse({ ...frame, ambient: true })).toBe(false);
+    expect(isWorkerResponse({ ...frame, drawCommands: [{ name: 'clear' }] })).toBe(false);
   });
 });

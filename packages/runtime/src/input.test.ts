@@ -10,7 +10,14 @@ describe('four-port input model', () => {
     buttons[9] = { pressed: true };
     buttons[12] = { pressed: true };
     const mapped = standardGamepadButtons({ index: 2, buttons, axes: [-0.75, 0.8] });
-    expect(mapped).toMatchObject({ a: true, r: true, start: true, up: true, left: true, down: true });
+    expect(mapped).toMatchObject({
+      a: true,
+      r: true,
+      start: true,
+      up: true,
+      left: true,
+      down: true,
+    });
     expect(mapped.b).toBe(false);
   });
 
@@ -21,5 +28,7 @@ describe('four-port input model', () => {
     expect(frame.controllers[0]).not.toBe(frame.controllers[1]);
     expect(isInputFrame(frame)).toBe(true);
     expect(isInputFrame({ ...frame, controllers: frame.controllers.slice(0, 3) })).toBe(false);
+    expect(isInputFrame({ ...frame, pointer: { ...frame.pointer, x: 0.5 } })).toBe(false);
+    expect(isInputFrame({ ...frame, extra: true })).toBe(false);
   });
 });

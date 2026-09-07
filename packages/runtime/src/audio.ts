@@ -185,7 +185,6 @@ export class Synthesizer {
 
   public restore(snapshot: SynthSnapshot): void {
     if (
-      snapshot.revision !== 1 ||
       !Number.isSafeInteger(snapshot.frame) ||
       snapshot.frame < 0 ||
       snapshot.voices.length !== HARDWARE.audioVoices
@@ -212,12 +211,12 @@ export class Synthesizer {
     switch (command.name) {
       case 'sfx': {
         const [handle] = expectArguments(command, 1);
-        this.trigger(readAssetName(handle, 'sound'));
+        this.trigger(readAssetName(handle, 'Sound'));
         return;
       }
       case 'music': {
         const [handle] = expectArguments(command, 1);
-        const name = readAssetName(handle, 'music');
+        const name = readAssetName(handle, 'Music');
         const music = this.assets.get(name);
         if (music?.kind !== 'music') {
           throw new TypeError(`missing Music asset '${name}'`);
@@ -332,6 +331,10 @@ export class WebAudioSink {
 
   public constructor(context = new AudioContext({ sampleRate: HARDWARE.audioSampleRate })) {
     this.context = context;
+  }
+
+  public get state(): AudioContextState {
+    return this.context.state;
   }
 
   public async resume(): Promise<void> {
@@ -540,7 +543,7 @@ function expectArguments(command: ConsoleCommand, count: number): unknown[] {
   return [...command.arguments];
 }
 
-function readAssetName(value: unknown, kind: 'sound' | 'music'): string {
+function readAssetName(value: unknown, kind: 'Sound' | 'Music'): string {
   if (
     typeof value !== 'object' ||
     value === null ||

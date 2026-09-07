@@ -21,7 +21,7 @@ receives persistence handles or DOM objects.
 ## Data flow
 
 PXCL source is tokenized, parsed, resolved to stable symbol IDs, type-checked against a typed asset
-catalog, and lowered to a serializable structured IR. That IR will be instrumented and generated as
+catalog, and lowered to a serializable structured IR. That IR is instrumented and generated as
 compact JavaScript plus source maps; the same IR produces debug and release output.
 Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.pxc`
 artifact containing original source and compiled output.

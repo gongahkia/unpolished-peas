@@ -68,10 +68,30 @@ Each group may produce several coherent commits, and integration occurs througho
   strict Clippy and TypeScript checks, native/browser production builds, and release WASM compilation
   pass. Playwright checks used the generated production fixtures in Firefox 155.
 
+## 2026-09-07 — Milestone 5: indexed hardware, input, and synthesizer
+
+- Added the fixed original 32-colour palette, persistent double-buffered indexed storage, integer
+  primitive rasterization, logical remapping, camera/clip state, and a WebGL2 palette resolver.
+- Added transparent variable sprites, animation frames, 8x8 layered tile maps and flags,
+  nearest-neighbour integer transforms, bounded map queries, ordered dithering, and an original 5x7
+  built-in bitmap font with shared visual-capacity enforcement.
+- Added scanline scroll/palette display state, phase-aware console calls, facility-specific work
+  costs, the 4,096-command limit, and exact browser protocol validation.
+- Added keyboard, pointer/touch, and standard-gamepad translation into four complete controller
+  ports, plus statically constructible controller and button values in PXCL.
+- Added five oscillator sources, envelopes, pitch slide/vibrato, pan, deterministic eight-voice
+  allocation, an eight-channel pattern/order tracker, snapshot restore, and a user-gesture Web Audio
+  queue. Imported sample data is not representable.
+- Playwright/Firefox checks rendered the compiler-produced graphics fixture through WebGL2 at exact
+  2x and 3x scales, preserved capability/runaway behavior, and started Web Audio after a button click.
+- Verification: `./scripts/check.sh`; 29 Rust tests and 25 Vitest tests, formatting, ESLint, strict
+  Clippy and TypeScript checks, native/browser production builds, and release WASM compilation pass.
+  Browser adapter checks used Firefox 155 and compiler-produced PXCL fixtures.
+
 ## Current risks
 
 - Project-wide import linking, full hardware facilities, studio tools, debugger, packer, LSP,
   exporter, and games remain to be built.
-- WebGL2 and Web Audio behavior will need both state tests and hands-on browser inspection.
+- Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger
   isolation than the browser actually provides.

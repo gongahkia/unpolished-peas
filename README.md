@@ -10,8 +10,9 @@ Made by @gongahkia. All rights reserved.
 ## Current status
 
 Active alpha implementation. The typed PXCL front end, ES-module code generation, deterministic
-runtime core, and worker boundary are implemented; the hardware facilities and product surfaces must
-not yet be treated as complete. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
+runtime/worker, indexed graphics, four-port input, and synthesizer/tracker core are implemented; the
+project model and product surfaces must not yet be treated as complete. See
+[`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
 
 ## Development
 

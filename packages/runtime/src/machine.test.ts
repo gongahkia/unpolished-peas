@@ -6,6 +6,7 @@ import {
   type CartridgeApi,
   type CartridgeFactory,
   type CartridgeSnapshot,
+  type ExecutionContext,
 } from './machine';
 
 interface TestState {
@@ -64,5 +65,39 @@ describe('DeterministicMachine', () => {
     const replayedFrame1 = machine.runFrame(emptyInputFrame());
     expect(replayedFrame1).toEqual(frame1);
     expect(machine.inspect()).toEqual(afterFrame1);
+  });
+
+  it('reports callback phase/scanline context and evaluates dithering inside the machine', () => {
+    const contexts: ExecutionContext[] = [];
+    const factory: CartridgeFactory = (api) => ({
+      start: () => void api.call('trace', [], { start: 0, end: 1 }),
+      update: () => undefined,
+      draw: () => void api.call('trace', [], { start: 2, end: 3 }),
+      raster: (line) => {
+        if (line === 7) {
+          api.call('trace', [], { start: 4, end: 5 });
+        }
+      },
+      snapshot: () => ({ state: {}, tasks: [], nextTaskId: 1 }),
+      restore: () => undefined,
+      inspect: () => ({ state: {}, tasks: [], callStack: [] }),
+    });
+    const machine = new DeterministicMachine(
+      factory,
+      { seed: 1, workUnitsPerFrame: 100, updateRate: 60 },
+      {
+        call: (_name, _arguments, _span, context) => {
+          contexts.push(context);
+          return undefined;
+        },
+      },
+    );
+    machine.runFrame(emptyInputFrame());
+    expect(contexts).toEqual([
+      { frame: 0, phase: 'start' },
+      { frame: 0, phase: 'draw' },
+      { frame: 0, phase: 'raster', rasterLine: 7 },
+    ]);
+    expect(machine.call('dither', [0, 0, 1, 2, 8], { start: 0, end: 1 })).toBe(2);
   });
 });
