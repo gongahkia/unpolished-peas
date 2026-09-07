@@ -1,0 +1,179 @@
+use serde::{Deserialize, Serialize};
+
+use crate::span::Span;
+
+/// PXCL/1 lexical token. Literal values are decoded but every token retains its source span.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+#[serde(tag = "kind", content = "value")]
+pub enum TokenKind {
+    Identifier(String),
+    Asset(String),
+    Int(i64),
+    Num(f64),
+    Text(String),
+    Frames(u32),
+    Seconds(f64),
+    Comment(String),
+    Import,
+    As,
+    Const,
+    State,
+    Let,
+    Var,
+    Fn,
+    Task,
+    On,
+    Start,
+    Update,
+    Draw,
+    Raster,
+    Record,
+    Enum,
+    Match,
+    Case,
+    If,
+    Elif,
+    Else,
+    For,
+    In,
+    While,
+    Return,
+    Break,
+    Continue,
+    Wait,
+    True,
+    False,
+    None,
+    And,
+    Or,
+    Not,
+    Assert,
+    Newline,
+    Indent,
+    Dedent,
+    LeftParen,
+    RightParen,
+    LeftBracket,
+    RightBracket,
+    Colon,
+    Comma,
+    Dot,
+    Arrow,
+    Range,
+    Plus,
+    Minus,
+    Star,
+    Slash,
+    Percent,
+    Equal,
+    EqualEqual,
+    BangEqual,
+    Less,
+    LessEqual,
+    Greater,
+    GreaterEqual,
+    PlusEqual,
+    MinusEqual,
+    StarEqual,
+    SlashEqual,
+    Eof,
+}
+
+impl TokenKind {
+    /// Returns a concise source-facing description for parser diagnostics.
+    #[must_use]
+    pub fn description(&self) -> &'static str {
+        match self {
+            Self::Identifier(_) => "identifier",
+            Self::Asset(_) => "asset reference",
+            Self::Int(_) => "integer",
+            Self::Num(_) => "number",
+            Self::Text(_) => "text",
+            Self::Frames(_) => "frame duration",
+            Self::Seconds(_) => "second duration",
+            Self::Comment(_) => "comment",
+            Self::Import => "`import`",
+            Self::As => "`as`",
+            Self::Const => "`const`",
+            Self::State => "`state`",
+            Self::Let => "`let`",
+            Self::Var => "`var`",
+            Self::Fn => "`fn`",
+            Self::Task => "`task`",
+            Self::On => "`on`",
+            Self::Start => "`start`",
+            Self::Update => "`update`",
+            Self::Draw => "`draw`",
+            Self::Raster => "`raster`",
+            Self::Record => "`record`",
+            Self::Enum => "`enum`",
+            Self::Match => "`match`",
+            Self::Case => "`case`",
+            Self::If => "`if`",
+            Self::Elif => "`elif`",
+            Self::Else => "`else`",
+            Self::For => "`for`",
+            Self::In => "`in`",
+            Self::While => "`while`",
+            Self::Return => "`return`",
+            Self::Break => "`break`",
+            Self::Continue => "`continue`",
+            Self::Wait => "`wait`",
+            Self::True => "`true`",
+            Self::False => "`false`",
+            Self::None => "`none`",
+            Self::And => "`and`",
+            Self::Or => "`or`",
+            Self::Not => "`not`",
+            Self::Assert => "`assert`",
+            Self::Newline => "newline",
+            Self::Indent => "indent",
+            Self::Dedent => "dedent",
+            Self::LeftParen => "`(`",
+            Self::RightParen => "`)`",
+            Self::LeftBracket => "`[`",
+            Self::RightBracket => "`]`",
+            Self::Colon => "`:`",
+            Self::Comma => "`,`",
+            Self::Dot => "`.`",
+            Self::Arrow => "`->`",
+            Self::Range => "`..`",
+            Self::Plus => "`+`",
+            Self::Minus => "`-`",
+            Self::Star => "`*`",
+            Self::Slash => "`/`",
+            Self::Percent => "`%`",
+            Self::Equal => "`=`",
+            Self::EqualEqual => "`==`",
+            Self::BangEqual => "`!=`",
+            Self::Less => "`<`",
+            Self::LessEqual => "`<=`",
+            Self::Greater => "`>`",
+            Self::GreaterEqual => "`>=`",
+            Self::PlusEqual => "`+=`",
+            Self::MinusEqual => "`-=`",
+            Self::StarEqual => "`*=`",
+            Self::SlashEqual => "`/=`",
+            Self::Eof => "end of file",
+        }
+    }
+
+    #[must_use]
+    pub fn same_variant(&self, other: &Self) -> bool {
+        std::mem::discriminant(self) == std::mem::discriminant(other)
+    }
+}
+
+/// One lexical token and its half-open byte span.
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
+pub struct Token {
+    pub kind: TokenKind,
+    pub span: Span,
+}
+
+impl Token {
+    #[must_use]
+    pub const fn new(kind: TokenKind, span: Span) -> Self {
+        Self { kind, span }
+    }
+}
