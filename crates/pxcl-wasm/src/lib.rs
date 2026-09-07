@@ -2,7 +2,10 @@
 
 use wasm_bindgen::prelude::wasm_bindgen;
 
-use pxcl_core::{AssetCatalog, FileId, SourceFile, analyze_module, format_source};
+use pxcl_core::{
+    AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
+    format_source,
+};
 
 /// Returns the compiler version used by the browser studio.
 #[must_use]
@@ -45,6 +48,33 @@ pub fn analyze_with_assets(
         serde_json::from_str(asset_catalog_json).map_err(|error| error.to_string())?;
     let source = SourceFile::new(FileId(0), file_name, source);
     serde_json::to_string(&analyze_module(&source, &assets)).map_err(|error| error.to_string())
+}
+
+/// Compiles a module and typed asset catalog to release or debug JavaScript and source-map JSON.
+///
+/// # Errors
+///
+/// Returns an error when inputs or compiler output cannot be decoded or encoded.
+#[wasm_bindgen(js_name = compile)]
+pub fn compile_for_browser(
+    file_name: &str,
+    source: &str,
+    asset_catalog_json: &str,
+    debug: bool,
+) -> Result<String, String> {
+    let assets: AssetCatalog =
+        serde_json::from_str(asset_catalog_json).map_err(|error| error.to_string())?;
+    let source = SourceFile::new(FileId(0), file_name, source);
+    let output = compile_source(
+        &source,
+        &assets,
+        if debug {
+            CompileMode::Debug
+        } else {
+            CompileMode::Release
+        },
+    );
+    serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
 /// Formats a syntactically valid PXCL/1 module.

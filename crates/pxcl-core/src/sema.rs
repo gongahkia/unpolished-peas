@@ -126,10 +126,12 @@ impl<'syntax> Analyzer<'syntax> {
         self.collect_nominal_members();
         self.collect_value_declarations();
 
+        let records = self.lower_records();
+        let enums = self.lower_enums();
         let mut ir = IrModule {
             globals: Vec::new(),
-            records: self.lower_records(),
-            enums: self.lower_enums(),
+            records,
+            enums,
             routines: Vec::new(),
         };
         for item in &self.module.items {
@@ -159,7 +161,7 @@ impl<'syntax> Analyzer<'syntax> {
                 Item::Callback(callback) => {
                     ir.routines.push(self.check_callback(callback));
                 }
-                Item::Record(record) => self.check_record_defaults(record),
+                Item::Record(_) => {}
                 Item::Assertion(assertion) => self.check_module_assertion(assertion),
                 Item::Import(_) | Item::Enum(_) => {}
             }
@@ -445,21 +447,39 @@ impl<'syntax> Analyzer<'syntax> {
         }
     }
 
-    fn lower_records(&self) -> Vec<IrRecord> {
-        self.record_fields
+    fn lower_records(&mut self) -> Vec<IrRecord> {
+        let records: Vec<_> = self
+            .module
+            .items
             .iter()
-            .map(|(symbol, fields)| IrRecord {
-                symbol: *symbol,
-                fields: fields
-                    .iter()
-                    .map(|field| IrField {
-                        name: field.name.clone(),
-                        r#type: field.r#type.clone(),
-                        span: field.span,
-                    })
-                    .collect(),
+            .filter_map(|item| match item {
+                Item::Record(record) => Some(record.clone()),
+                _ => None,
             })
-            .collect()
+            .collect();
+        let mut lowered = Vec::new();
+        for record in records {
+            let Some(symbol) = self.definition_ids.get(&record.name.span.start).copied() else {
+                continue;
+            };
+            let fields = self.record_fields.get(&symbol).cloned().unwrap_or_default();
+            let fields = record
+                .fields
+                .iter()
+                .zip(fields)
+                .map(|(syntax, field)| IrField {
+                    name: field.name,
+                    default: syntax
+                        .default
+                        .as_ref()
+                        .map(|default| self.check_expression(default, Some(&field.r#type))),
+                    r#type: field.r#type,
+                    span: field.span,
+                })
+                .collect();
+            lowered.push(IrRecord { symbol, fields });
+        }
+        lowered
     }
 
     fn lower_enums(&self) -> Vec<IrEnum> {
@@ -519,18 +539,6 @@ impl<'syntax> Analyzer<'syntax> {
 
     fn check_state(&mut self, state: &State) -> Option<IrGlobal> {
         self.check_global(state.name.span, &state.value, state.span, true)
-    }
-
-    fn check_record_defaults(&mut self, record: &Record) {
-        let Some(symbol) = self.definition_ids.get(&record.name.span.start).copied() else {
-            return;
-        };
-        let expected_fields = self.record_fields.get(&symbol).cloned().unwrap_or_default();
-        for (field, expected) in record.fields.iter().zip(expected_fields) {
-            if let Some(default) = &field.default {
-                self.check_expression(default, Some(&expected.r#type));
-            }
-        }
     }
 
     fn check_function(&mut self, function: &Function) -> Option<IrRoutine> {

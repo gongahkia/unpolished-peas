@@ -51,16 +51,17 @@ pub struct IrGlobal {
     pub span: Span,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct IrRecord {
     pub symbol: SymbolId,
     pub fields: Vec<IrField>,
 }
 
-#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize)]
+#[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct IrField {
     pub name: String,
     pub r#type: Type,
+    pub default: Option<IrExpression>,
     pub span: Span,
 }
 
