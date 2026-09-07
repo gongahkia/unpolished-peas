@@ -9,6 +9,7 @@ import {
   encodeSoundAssetFile,
   type MusicAsset,
   type SoundAsset,
+  type TrackerCell,
 } from '@px240c/runtime';
 
 import type { ProjectManifest } from './compiler';
@@ -549,46 +550,94 @@ function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: Too
 function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
   const path = 'assets/theme.pxt';
   const existing = readJson<Record<string, unknown> | undefined>(project.files[path], undefined);
-  const rows = musicRows(existing);
+  const song = musicDocument(existing);
   root.innerHTML = toolFrame(
     '8-CHANNEL TRACKER',
     `<div class="tracker">
-      <div class="tracker-head"><label>F/ROW <input class="tempo" type="number" min="1" max="60" value="${String(numberValue(existing?.framesPerRow, 6))}"></label><label><input class="loop" type="checkbox"${existing?.loop === false ? '' : ' checked'}> LOOP</label><button data-preview>PLAY</button></div>
-      <div class="tracker-grid" role="grid" aria-label="Pattern 00"></div>
+      <div class="tracker-head"><label>F/ROW <input class="tempo" type="number" min="1" max="60" value="${String(numberValue(existing?.framesPerRow, 6))}"></label><label><input class="loop" type="checkbox"${existing?.loop === false ? '' : ' checked'}> LOOP</label><button data-preview>PLAY</button><label>PAT <select class="pattern-select"></select></label><button data-add-pattern title="Add pattern">+PAT</button></div>
+      <label class="tracker-order">ORDER <input value=""></label>
+      <div class="tracker-grid" role="grid"></div>
     </div>`,
   );
   bindCommon(root, callbacks);
   const grid = requireElement(root, '.tracker-grid');
-  for (let row = 0; row < 16; row += 1) {
-    const label = documentElement('span', row.toString(16).toUpperCase().padStart(2, '0'));
-    grid.append(label);
-    for (let channel = 0; channel < 8; channel += 1) {
-      const button = documentElement('button', noteLabel(rows[row]?.[channel] ?? null));
-      button.setAttribute('role', 'gridcell');
-      button.addEventListener('click', () => {
-        const current = rows[row]?.[channel] ?? null;
-        const notes = [null, 48, 55, 60, 64, 67, 72] as const;
-        const next =
-          notes[(notes.indexOf(current as (typeof notes)[number]) + 1) % notes.length] ?? null;
-        const target = rows[row];
-        if (target !== undefined) target[channel] = next;
-        button.textContent = noteLabel(next);
-      });
-      grid.append(button);
+  const patternSelect = requireElement(root, '.pattern-select') as HTMLSelectElement;
+  const orderInput = requireElement(root, '.tracker-order input') as HTMLInputElement;
+  orderInput.value = song.order.join(' ');
+  const refreshPatternSelect = (selected: string): void => {
+    patternSelect.replaceChildren();
+    for (const name of Object.keys(song.patterns)) {
+      const option = document.createElement('option');
+      option.textContent = name;
+      option.value = name;
+      patternSelect.append(option);
     }
-  }
-  const read = (): MusicAsset => musicFromRows(root, rows);
+    patternSelect.value = selected;
+  };
+  const renderPattern = (): void => {
+    const name = patternSelect.value;
+    const rows = song.patterns[name];
+    if (rows === undefined) throw new Error(`pattern '${name}' is missing`);
+    grid.replaceChildren();
+    grid.setAttribute('aria-label', `Pattern ${name}`);
+    for (let row = 0; row < 16; row += 1) {
+      const label = documentElement('span', row.toString(16).toUpperCase().padStart(2, '0'));
+      grid.append(label);
+      for (let channel = 0; channel < 8; channel += 1) {
+        const button = documentElement('button', noteLabel(rows[row]?.[channel]?.note ?? null));
+        button.setAttribute('role', 'gridcell');
+        button.addEventListener('click', () => {
+          const current = rows[row]?.[channel] ?? null;
+          const notes = [null, 48, 55, 60, 64, 67, 72] as const;
+          const note = current?.note ?? null;
+          const next = notes[(notes.indexOf(note as (typeof notes)[number]) + 1) % notes.length];
+          const target = rows[row];
+          if (target !== undefined) {
+            target[channel] =
+              next === null || next === undefined
+                ? null
+                : { ...current, note: next, sound: current?.sound ?? 'blip' };
+          }
+          button.textContent = noteLabel(next ?? null);
+        });
+        grid.append(button);
+      }
+    }
+  };
+  refreshPatternSelect(Object.keys(song.patterns)[0] ?? '00');
+  renderPattern();
+  patternSelect.addEventListener('change', renderPattern);
+  root.querySelector('[data-add-pattern]')?.addEventListener('click', () => {
+    const name = nextPatternName(song.patterns);
+    if (name === undefined) {
+      setToolStatus(root, 'PATTERN LIMIT REACHED', true);
+      return;
+    }
+    song.patterns[name] = emptyMusicRows();
+    orderInput.value = `${orderInput.value.trim()} ${name}`.trim();
+    refreshPatternSelect(name);
+    renderPattern();
+    setToolStatus(root, `PATTERN ${name} ADDED`, false);
+  });
+  const read = (): MusicAsset => musicFromDocument(root, song);
   root.querySelector('[data-preview]')?.addEventListener('click', () => {
-    void previewMusic(read()).catch((error: unknown) => {
-      setToolStatus(root, errorMessage(error), true);
-    });
+    void callbacks
+      .parseManifest()
+      .then((manifest) => previewMusic(read(), musicSounds(project, manifest)))
+      .catch((error: unknown) => {
+        setToolStatus(root, errorMessage(error), true);
+      });
   });
   bindSave(root, async () => {
-    if (project.files['assets/blip.pxs'] === undefined) {
+    const music = read();
+    const usesBlip = Object.values(music.patterns).some((pattern) =>
+      pattern.rows.some((row) => row.some((cell) => cell?.sound === 'blip')),
+    );
+    if (usesBlip && project.files['assets/blip.pxs'] === undefined) {
       project.files['assets/blip.pxs'] = encodeAssetFile(defaultSound());
       project.manifest = upsertAsset(project.manifest, 'blip', 'sound', 'assets/blip.pxs');
     }
-    project.files[path] = encodeMusicAssetFile(read());
+    project.files[path] = encodeMusicAssetFile(music);
     project.manifest = upsertAsset(project.manifest, 'theme', 'music', path);
     await callbacks.save();
   });
@@ -851,48 +900,100 @@ async function previewSound(sound: SoundAsset): Promise<void> {
   setTimeout(() => void sink.close(), 2_000);
 }
 
-function musicRows(value: Record<string, unknown> | undefined): (number | null)[][] {
-  const empty = Array.from({ length: 16 }, () =>
-    Array.from<number | null>({ length: 8 }).fill(null),
-  );
-  if (value === undefined || !isRecord(value.patterns) || !isRecord(value.patterns['00']))
-    return empty;
-  const pattern = value.patterns['00'];
-  if (!Array.isArray(pattern.rows)) return empty;
-  return empty.map((row, rowIndex) =>
-    row.map((_, channel) => {
-      const cell: unknown = (pattern.rows as unknown[][])[rowIndex]?.[channel];
-      return isRecord(cell) && typeof cell.note === 'number' ? cell.note : null;
-    }),
-  );
+type EditableMusicRows = (TrackerCell | null)[][];
+
+interface EditableMusicDocument {
+  readonly order: string[];
+  readonly patterns: Record<string, EditableMusicRows>;
 }
 
-function musicFromRows(
-  root: ParentNode,
-  rows: readonly (readonly (number | null)[])[],
-): MusicAsset {
+function emptyMusicRows(): EditableMusicRows {
+  return Array.from({ length: 16 }, () => Array.from<TrackerCell | null>({ length: 8 }).fill(null));
+}
+
+function musicDocument(value: Record<string, unknown> | undefined): EditableMusicDocument {
+  const patterns: Record<string, EditableMusicRows> = {};
+  if (value !== undefined && isRecord(value.patterns)) {
+    for (const [name, rawPattern] of Object.entries(value.patterns)) {
+      if (!isRecord(rawPattern) || !Array.isArray(rawPattern.rows)) continue;
+      const rows = emptyMusicRows();
+      for (let row = 0; row < rows.length; row += 1) {
+        const target = rows[row];
+        if (target === undefined) continue;
+        for (let channel = 0; channel < 8; channel += 1) {
+          const cell: unknown = (rawPattern.rows as unknown[][])[row]?.[channel];
+          if (isRecord(cell) && typeof cell.note === 'number' && typeof cell.sound === 'string') {
+            target[channel] = {
+              note: cell.note,
+              sound: cell.sound,
+              ...(typeof cell.volume === 'number' ? { volume: cell.volume } : {}),
+            };
+          }
+        }
+      }
+      patterns[name] = rows;
+    }
+  }
+  if (Object.keys(patterns).length === 0) patterns['00'] = emptyMusicRows();
+  const order = Array.isArray(value?.order)
+    ? value.order.filter(
+        (name): name is string => typeof name === 'string' && patterns[name] !== undefined,
+      )
+    : [];
+  return { order: order.length === 0 ? [Object.keys(patterns)[0] ?? '00'] : order, patterns };
+}
+
+function nextPatternName(
+  patterns: Readonly<Record<string, EditableMusicRows>>,
+): string | undefined {
+  for (let index = 0; index <= 0xff; index += 1) {
+    const name = index.toString(16).toUpperCase().padStart(2, '0');
+    if (patterns[name] === undefined) return name;
+  }
+  return undefined;
+}
+
+function musicFromDocument(root: ParentNode, document: EditableMusicDocument): MusicAsset {
+  const order = (requireElement(root, '.tracker-order input') as HTMLInputElement).value
+    .split(/[\s,]+/u)
+    .filter((name) => name.length > 0);
+  if (order.length === 0) throw new Error('order list cannot be empty');
+  const missing = order.find((name) => document.patterns[name] === undefined);
+  if (missing !== undefined) throw new Error(`order references missing pattern '${missing}'`);
   return {
     kind: 'music',
     name: 'theme',
     framesPerRow: Number((requireElement(root, '.tempo') as HTMLInputElement).value),
-    order: ['00'],
-    patterns: {
-      '00': {
-        rows: rows.map((row) =>
-          row.map((note) => (note === null ? null : { note, sound: 'blip' })),
-        ),
-      },
-    },
+    order,
+    patterns: Object.fromEntries(
+      Object.entries(document.patterns).map(([name, rows]) => [name, { rows }]),
+    ),
     loop: (requireElement(root, '.loop') as HTMLInputElement).checked,
   };
 }
 
-async function previewMusic(music: MusicAsset): Promise<void> {
-  const sound = { ...defaultSound(), name: 'blip' } as unknown as SoundAsset;
-  const synth = new Synthesizer(new AudioAssetStore([sound, music]));
+function musicSounds(project: ToolProject, manifest: ProjectManifest): SoundAsset[] {
+  return Object.entries(manifest.assets).flatMap(([name, asset]) => {
+    if (asset.kind !== 'sound') return [];
+    const value = readJson<Record<string, unknown> | undefined>(
+      project.files[asset.path],
+      undefined,
+    );
+    return value === undefined ? [] : [{ ...value, name } as unknown as SoundAsset];
+  });
+}
+
+async function previewMusic(music: MusicAsset, sounds: readonly SoundAsset[]): Promise<void> {
+  const assets = [...sounds];
+  if (!assets.some((sound) => sound.name === 'blip')) {
+    assets.push({ ...defaultSound(), name: 'blip' } as unknown as SoundAsset);
+  }
+  const synth = new Synthesizer(new AudioAssetStore([...assets, music]));
   const sink = new WebAudioSink();
   await sink.resume();
-  const frames = music.framesPerRow * (music.patterns['00']?.rows.length ?? 0);
+  const frames =
+    music.framesPerRow *
+    music.order.reduce((rows, name) => rows + (music.patterns[name]?.rows.length ?? 0), 0);
   for (let frame = 0; frame < frames; frame += 1) {
     sink.enqueue(
       synth.executeFrame(
