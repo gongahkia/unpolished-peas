@@ -95,6 +95,7 @@ struct Analyzer<'syntax> {
     loop_depth: u32,
     callbacks: BTreeMap<CallbackKind, Span>,
     constant_values: BTreeMap<SymbolId, ConstantValue>,
+    allowed_task_call_start: Option<u32>,
 }
 
 impl<'syntax> Analyzer<'syntax> {
@@ -115,6 +116,7 @@ impl<'syntax> Analyzer<'syntax> {
             loop_depth: 0,
             callbacks: BTreeMap::new(),
             constant_values: BTreeMap::new(),
+            allowed_task_call_start: None,
         }
     }
 
@@ -765,7 +767,9 @@ impl<'syntax> Analyzer<'syntax> {
                 IrStatementKind::Wait(self.check_expression(duration, Some(&Type::Duration)))
             }
             StatementKind::Start(expression) => {
+                self.allowed_task_call_start = Some(expression.span.start);
                 let expression = self.check_expression(expression, None);
+                self.allowed_task_call_start = None;
                 let valid = match expression.kind {
                     IrExpressionKind::Call { callee, .. } => {
                         self.symbol(callee).kind == SymbolKind::Task
@@ -1387,6 +1391,12 @@ impl<'syntax> Analyzer<'syntax> {
             );
             return error_expression(span);
         };
+        if signature.task && self.allowed_task_call_start != Some(span.start) {
+            self.diagnostics.push(
+                Diagnostic::error("PX3111", span, "tasks must be launched with `start`")
+                    .with_primary_label("direct task calls are not expressions"),
+            );
+        }
         IrExpression {
             kind: IrExpressionKind::Call {
                 callee: callee_symbol,
@@ -2076,5 +2086,16 @@ on draw:
                 .iter()
                 .any(|diagnostic| diagnostic.code == "PX3112")
         );
+    }
+
+    #[test]
+    fn task_calls_require_the_start_statement() {
+        let output = analyze(
+            "task blink():\n  wait 1f\non update:\n  blink()\n",
+            &AssetCatalog::default(),
+        );
+        assert!(output.diagnostics.iter().any(|diagnostic| {
+            diagnostic.code == "PX3111" && diagnostic.message.contains("launched with `start`")
+        }));
     }
 }
