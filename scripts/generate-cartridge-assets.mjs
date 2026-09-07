@@ -97,33 +97,37 @@ function cinderCircuit() {
     flags: [0, 1, 1, 1, 4, 2],
   });
 
-  const width = 64;
+  const width = 256;
   const height = 18;
   const cells = Array(width * height).fill(0);
   for (let x = 0; x < width; x += 1) {
     cells[16 * width + x] = 2;
     cells[17 * width + x] = 1;
   }
-  for (const [start, end] of [
-    [11, 13],
-    [21, 23],
-    [31, 34],
-    [41, 43],
-    [51, 54],
-  ]) {
-    for (let x = start; x < end; x += 1) cells[16 * width + x] = 4;
+  for (let sector = 0; sector < 4; sector += 1) {
+    const base = sector * 64;
+    for (const [start, end] of [
+      [11, 13],
+      [21, 23],
+      [31, 34],
+      [41, 43],
+      [51, 54],
+    ]) {
+      for (let x = base + start; x < base + end; x += 1) cells[16 * width + x] = 4;
+    }
+    const shift = sector === 0 ? 0 : (sector % 3) - 1;
+    for (const [y, start, end] of [
+      [13, 6, 11],
+      [11, 15, 20],
+      [14, 25, 31],
+      [10, 34, 40],
+      [13, 44, 50],
+      [9, 54, 59],
+    ]) {
+      for (let x = base + start; x < base + end; x += 1) cells[(y + shift) * width + x] = 3;
+    }
   }
-  for (const [y, start, end] of [
-    [13, 6, 11],
-    [11, 15, 20],
-    [14, 25, 31],
-    [10, 34, 40],
-    [13, 44, 50],
-    [9, 54, 59],
-  ]) {
-    for (let x = start; x < end; x += 1) cells[y * width + x] = 3;
-  }
-  cells[15 * width + 61] = 5;
+  cells[15 * width + 253] = 5;
   writeJson(`${path}/world.pxm`, {
     revision: 1,
     kind: 'map',

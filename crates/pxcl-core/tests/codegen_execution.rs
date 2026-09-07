@@ -2,6 +2,40 @@ use std::{fs, process::Command};
 
 use pxcl_core::{AssetCatalog, CompileMode, FileId, SourceFile, compile};
 
+fn execute_source(label: &str, source: &str) -> std::process::Output {
+    let source = SourceFile::new(FileId(0), format!("{label}.pxl"), source);
+    let output = compile(&source, &AssetCatalog::default(), CompileMode::Release);
+    assert!(
+        output.analysis.diagnostics.is_empty(),
+        "{:#?}",
+        output.analysis.diagnostics
+    );
+    let program = output.generated.expect("valid source generates JavaScript");
+    let script = format!(
+        r#"{}
+let workUnits=0;
+const api={{
+  work(units){{workUnits+=units;if(workUnits>100000)throw new Error("PX9001: budget");}},
+  call(){{throw new Error("unexpected console API call");}},
+  fault(code,message){{throw new Error(`${{code}}: ${{message}}`);}}
+}};
+const cartridge=createCartridge(api);
+cartridge.start();
+process.stdout.write(JSON.stringify(cartridge.snapshot()));
+"#,
+        program.javascript
+    );
+    let path =
+        std::env::temp_dir().join(format!("pxcl-codegen-{label}-{}.mjs", std::process::id()));
+    fs::write(&path, script).expect("temporary generated module writes");
+    let result = Command::new("node")
+        .arg(&path)
+        .output()
+        .expect("Node.js executes generated module");
+    fs::remove_file(path).expect("temporary generated module removes");
+    result
+}
+
 fn execute(mode: CompileMode) -> serde_json::Value {
     let source = SourceFile::new(
         FileId(0),
@@ -78,4 +112,57 @@ fn release_and_debug_outputs_are_semantically_equivalent() {
         release["snapshot"]["tasks"].as_array().map(Vec::len),
         Some(0)
     );
+}
+
+#[test]
+fn options_and_fixed_collection_indexes_execute_with_runtime_guards() {
+    let valid = execute_source(
+        "option-collection",
+        r#"state saved: Option[Int] = none
+state values: List[Int, 2] = []
+state letter: Int = 0
+on start:
+  values[0] = unwrap_or(saved, 7)
+  saved = some(5)
+  values[1] = unwrap_or(saved, 0)
+  letter = "A"[0]
+"#,
+    );
+    assert!(
+        valid.status.success(),
+        "generated module failed:\n{}",
+        String::from_utf8_lossy(&valid.stderr)
+    );
+    let snapshot: serde_json::Value =
+        serde_json::from_slice(&valid.stdout).expect("generated module prints JSON");
+    let values = snapshot["state"]
+        .as_object()
+        .expect("state is an object")
+        .values()
+        .collect::<Vec<_>>();
+    assert!(
+        values
+            .iter()
+            .any(|value| value.as_array() == Some(&vec![7.into(), 5.into()]))
+    );
+    assert!(values.iter().any(|value| value.as_i64() == Some(65)));
+    assert!(
+        values
+            .iter()
+            .any(|value| value["value"].as_i64() == Some(5))
+    );
+
+    let outside = execute_source(
+        "collection-bounds",
+        "state values: List[Int, 1] = []\non start:\n  values[1] = 9\n",
+    );
+    assert!(!outside.status.success());
+    assert!(String::from_utf8_lossy(&outside.stderr).contains("PX9007"));
+
+    let oversized_range = execute_source(
+        "range-budget",
+        "state total: Int = 0\non start:\n  for value in 0..1000000:\n    total += value\n",
+    );
+    assert!(!oversized_range.status.success());
+    assert!(String::from_utf8_lossy(&oversized_range.stderr).contains("PX9001"));
 }

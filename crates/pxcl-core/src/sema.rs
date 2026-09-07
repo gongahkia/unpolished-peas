@@ -299,6 +299,13 @@ impl<'syntax> Analyzer<'syntax> {
         self.builtin("sfx", vec![Type::Asset(AssetKind::Sound)], Type::Unit);
         self.builtin("music", vec![Type::Asset(AssetKind::Music)], Type::Unit);
         self.builtin("music_stop", Vec::new(), Type::Unit);
+        self.builtin("some", vec![Type::Unknown], Type::Unknown);
+        self.builtin("is_some", vec![Type::Unknown], Type::Bool);
+        self.builtin(
+            "unwrap_or",
+            vec![Type::Unknown, Type::Unknown],
+            Type::Unknown,
+        );
         self.builtin("Vec2", vec![Type::Num, Type::Num], Type::Vec2);
         self.builtin(
             "Rect",
@@ -1486,13 +1493,6 @@ impl<'syntax> Analyzer<'syntax> {
                 .with_primary_label("argument count does not match the callable signature"),
             );
         }
-        let arguments = arguments
-            .iter()
-            .enumerate()
-            .map(|(index, argument)| {
-                self.check_expression(argument, signature.parameters.get(index))
-            })
-            .collect();
         let IrExpressionKind::Load(callee_symbol) = callee.kind else {
             self.diagnostics.push(
                 Diagnostic::error(
@@ -1503,6 +1503,26 @@ impl<'syntax> Analyzer<'syntax> {
                 .with_primary_label("dynamic host or closure calls are not available"),
             );
             return error_expression(span);
+        };
+        let callee_name = self.symbol(callee_symbol).name.clone();
+        let special_builtin = self.symbol(callee_symbol).kind == SymbolKind::Builtin
+            && matches!(callee_name.as_str(), "some" | "is_some" | "unwrap_or");
+        let arguments = arguments
+            .iter()
+            .enumerate()
+            .map(|(index, argument)| {
+                let expected = if special_builtin {
+                    None
+                } else {
+                    signature.parameters.get(index)
+                };
+                self.check_expression(argument, expected)
+            })
+            .collect::<Vec<_>>();
+        let return_type = if special_builtin {
+            self.check_option_builtin(&callee_name, &arguments, span)
+        } else {
+            (*signature.return_type).clone()
         };
         if self.current_routine == Some(RoutineKind::Callback(CallbackKind::Raster)) {
             let symbol = self.symbol(callee_symbol);
@@ -1530,8 +1550,65 @@ impl<'syntax> Analyzer<'syntax> {
                 callee: callee_symbol,
                 arguments,
             },
-            r#type: (*signature.return_type).clone(),
+            r#type: return_type,
             span,
+        }
+    }
+
+    fn check_option_builtin(
+        &mut self,
+        name: &str,
+        arguments: &[IrExpression],
+        call_span: Span,
+    ) -> Type {
+        match name {
+            "some" => Type::Option(Box::new(
+                arguments
+                    .first()
+                    .map_or(Type::Unknown, |argument| argument.r#type.clone()),
+            )),
+            "is_some" => {
+                if let Some(argument) = arguments.first()
+                    && !matches!(argument.r#type, Type::Option(_) | Type::Error)
+                {
+                    self.type_mismatch(
+                        argument.span,
+                        &argument.r#type,
+                        &Type::Option(Box::new(Type::Unknown)),
+                        "option argument",
+                    );
+                }
+                Type::Bool
+            }
+            "unwrap_or" => {
+                let element = match arguments.first().map(|argument| &argument.r#type) {
+                    Some(Type::Option(element)) => (**element).clone(),
+                    Some(Type::Error) | None => Type::Unknown,
+                    Some(actual) => {
+                        self.type_mismatch(
+                            arguments
+                                .first()
+                                .map_or(call_span, |argument| argument.span),
+                            actual,
+                            &Type::Option(Box::new(Type::Unknown)),
+                            "option argument",
+                        );
+                        Type::Unknown
+                    }
+                };
+                if let Some(fallback) = arguments.get(1)
+                    && !Self::is_assignable(&fallback.r#type, &element)
+                {
+                    self.type_mismatch(
+                        fallback.span,
+                        &fallback.r#type,
+                        &element,
+                        "fallback expression",
+                    );
+                }
+                element
+            }
+            _ => Type::Unknown,
         }
     }
 
@@ -1632,6 +1709,17 @@ impl<'syntax> Analyzer<'syntax> {
                 let checked = self.check_expression(expression, None);
                 let r#type = checked.r#type.clone();
                 if let IrExpressionKind::Index { subject, index } = checked.kind {
+                    if subject.r#type == Type::Text {
+                        self.diagnostics.push(
+                            Diagnostic::error(
+                                "PX3107",
+                                expression.span,
+                                "Text indexes are immutable",
+                            )
+                            .with_primary_label("assign a new Text value instead"),
+                        );
+                        return (IrPlace::Error, Type::Error);
+                    }
                     (IrPlace::Index { subject, index }, r#type)
                 } else {
                     let _ = (subject, index);
@@ -2225,6 +2313,28 @@ on draw:
         assert!(output.diagnostics.iter().any(|diagnostic| {
             diagnostic.code == "PX3111" && diagnostic.message.contains("launched with `start`")
         }));
+    }
+
+    #[test]
+    fn option_helpers_preserve_the_element_type_and_reject_mismatches() {
+        let valid = analyze(
+            "state saved: Option[Int] = none\non start:\n  saved = some(7)\n  let present = is_some(saved)\n  let value = unwrap_or(saved, 0)\n",
+            &AssetCatalog::default(),
+        );
+        assert!(valid.diagnostics.is_empty(), "{:#?}", valid.diagnostics);
+
+        let invalid = analyze(
+            "on start:\n  let wrong_option = is_some(7)\n  let wrong_fallback = unwrap_or(some(7), \"seven\")\n",
+            &AssetCatalog::default(),
+        );
+        assert_eq!(
+            invalid
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "PX3101")
+                .count(),
+            2
+        );
     }
 
     #[test]

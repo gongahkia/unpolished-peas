@@ -26,7 +26,9 @@ task pulse(color: Color):
   wait 2f
 
 on start:
-  score = add_score(STARTING_LIVES)
+  saved_score = some(add_score(STARTING_LIVES))
+  if is_some(saved_score):
+    score = unwrap_or(saved_score, 0)
 
 on update:
   player.pos = Vec2(player.pos.x + 1.0, player.pos.y)

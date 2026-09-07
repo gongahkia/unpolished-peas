@@ -53,6 +53,15 @@ describe('bundled cartridge assets', () => {
       expect(assets.visualBytes).toBeGreaterThan(0);
       expect(assets.visualBytes).toBeLessThanOrEqual(HARDWARE.visualCapacityBytes);
       expect(assets.audio.length).toBeGreaterThan(0);
+      if (id === 'cinder-circuit') {
+        const world = assets.visual.find((asset) => asset.name === 'world');
+        expect(world?.kind).toBe('map');
+        if (world?.kind === 'map') {
+          expect(world.layers[0]?.width).toBe(256);
+          expect(world.layers[0]?.cells.filter((tile) => tile === 5)).toHaveLength(1);
+        }
+        expect(assets.visualBytes).toBe(9_766);
+      }
     });
   }
 });

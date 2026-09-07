@@ -673,8 +673,14 @@
         const map = assetStore.get(a[0]?.name);
         for (const layer of map?.layers ?? []) {
           const tiles = assetStore.get(layer.tileSet);
-          for (let my = 0; my < layer.height; my++)
-            for (let mx = 0; mx < layer.width; mx++) {
+          const right = Math.min(240, s.clipX + s.clipW);
+          const bottom = Math.min(144, s.clipY + s.clipH);
+          const firstX = Math.max(0, Math.floor((s.clipX + s.cameraX - a[1]) / 8));
+          const lastX = Math.min(layer.width, Math.ceil((right + s.cameraX - a[1]) / 8));
+          const firstY = Math.max(0, Math.floor((s.clipY + s.cameraY - a[2]) / 8));
+          const lastY = Math.min(layer.height, Math.ceil((bottom + s.cameraY - a[2]) / 8));
+          for (let my = firstY; my < lastY; my++)
+            for (let mx = firstX; mx < lastX; mx++) {
               const pixels = tiles?.tiles?.[layer.cells[my * layer.width + mx]];
               sprite(
                 { width: 8, height: 8, pixels },

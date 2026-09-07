@@ -188,8 +188,9 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## 2026-09-07 — Milestones 10-12: bundled cartridges and frozen limits
 
-- Added Cinder Circuit, a camera-scrolling tile platformer with responsive pixel collision, animated
-  movement, task-driven victory feedback, hazards, lives, music, and SFX.
+- Added Cinder Circuit, a camera-scrolling four-circuit tile platformer with responsive pixel
+  collision, animated movement, task-driven victory feedback, hazards, lives, music, and SFX. Its
+  256x18 course remains efficient through camera/clip tile culling in Studio and standalone players.
 - Added Ashvault, a turn-based deterministic procedural roguelike with fog of war, records, enums,
   fixed-capacity collections, pursuing enemies, relic/exit objectives, defeat, and isolated saved
   depth progress. Generation now clears a sparse objective spine so every revision-1 seed keeps all
@@ -200,9 +201,9 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added original indexed sprite/tile/map art, synth patches, tracker orders, display files,
   labels/thumbnails, deterministic asset generation, build-time Studio packing, first-run local
   installation, public-decoder tests, and CLI compilation/packing tests for all three games.
-- Froze the 50,000-unit frame ceiling after production-Studio measurements: Cinder Circuit 3,295,
-  Ashvault 11,783, Raster Rush one-player 27,906, and four-player 31,422 representative units. Packed
-  cartridges are 32,270-36,142 bytes and visual use is 160-2,854 bytes.
+- Froze the 50,000-unit frame ceiling after production-Studio measurements: Cinder Circuit 3,342,
+  Ashvault 12,031, Raster Rush one-player 28,034, and four-player 31,682 representative units. Packed
+  cartridges are 37,311-42,121 bytes and visual use is 160-9,766 bytes.
 - Playwright/Firefox ran all games through the Studio worker and standalone exporter, exercised the
   four-player view, and visually inspected every title/gameplay surface with clean consoles.
 
@@ -219,11 +220,27 @@ Each group may produce several coherent commits, and integration occurs througho
   the shell and integrated tools; the file is included in the offline PWA inventory.
 - Added a static diagnostic that confines raster callbacks to palette remapping and raster scrolling,
   after the standalone path exposed an invalid cartridge draw call during scanout.
+- Completed runtime semantics for typed options and fixed collections: `some`/`is_some`/`unwrap_or`
+  preserve element types, collection/text indexes are checked with source-mapped faults, and
+  allocations/capacity writes receive deterministic work charges. Dynamic ranges are charged before
+  bounded materialization so an extreme range cannot allocate ahead of the frame budget.
+- Calibrated Cinder Circuit as four 2,048-pixel relay runs at 30 updates per second, retaining a
+  3,342-unit active-update frame while establishing about 4 1/2 minutes of uninterrupted traversal.
+- Added a pinned Playwright/Firefox end-to-end suite to the repository gate. It boots the production
+  PWA, runs all three bundled games (including Raster Rush four-player), exercises create/edit/
+  autosave/run/debug and every integrated creation tool, tests recovery and pack/import/export,
+  executes and inspects the standalone player, and reloads the Studio offline. Its first run exposed
+  and then verified the fix for a stale active-cartridge label after `new`/`load`.
+- Release-candidate verification: `./scripts/check.sh` passed Prettier, ESLint, strict root/runtime/
+  Studio TypeScript checks, 42 Vitest tests, production asset generation/build, one full Firefox E2E,
+  Rust formatting and Clippy with warnings denied, 45 Rust tests, native workspace build, and release
+  `wasm32-unknown-unknown` build. Separate public-CLI calibration rebuilt, byte-compared, and exported
+  every bundled cartridge.
 
 ## Current risks
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
-  raster row, and no custom font editor.
+  raster row, and no custom font asset decoding/editor.
 - Linked revision-1 modules must have globally unique top-level names; generated project source maps
   currently identify the deterministic linked source rather than each original module.
 - Breakpoints stop after the containing frame; source steps navigate captured probe events rather
