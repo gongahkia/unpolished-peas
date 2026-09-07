@@ -124,6 +124,54 @@ describe('indexed graphics hardware', () => {
     expect(assets.mapFlag('level', 0, 0, 0, 1)).toBe(true);
   });
 
+  it('reads only camera-visible map cells while preserving visible tile output', () => {
+    const tile: IndexedSprite = {
+      kind: 'sprite',
+      name: 'ground-tile',
+      width: 8,
+      height: 8,
+      pixels: new Uint8Array(64).fill(6),
+    };
+    const tileSet: IndexedTileSet = {
+      kind: 'tile_set',
+      name: 'ground',
+      tiles: [tile],
+      flags: Uint8Array.of(0),
+    };
+    const rawCells = new Uint16Array(40);
+    let rendering = false;
+    const cells = new Proxy(rawCells, {
+      get(target, property) {
+        const index = typeof property === 'string' ? Number(property) : Number.NaN;
+        if (rendering && Number.isSafeInteger(index) && index < 30) {
+          throw new Error('renderer read a fully off-camera map cell');
+        }
+        const value = Reflect.get(target, property, target) as unknown;
+        return typeof value === 'function'
+          ? (...arguments_: unknown[]): unknown =>
+              Reflect.apply(value, target, arguments_) as unknown
+          : value;
+      },
+    });
+    const map: IndexedMap = {
+      kind: 'map',
+      name: 'wide-level',
+      layers: [{ width: 40, height: 1, cells, tileSet: 'ground' }],
+    };
+    const graphics = new IndexedGraphics(new VisualAssetStore([tileSet, map]));
+
+    rendering = true;
+    const frame = graphics.executeFrame([
+      command('clear', [1]),
+      command('camera', [240, 0]),
+      command('map', [{ name: 'wide-level', kind: 'Map' }, 0, 0]),
+    ]);
+
+    expect(frame.indexedPixels[0]).toBe(6);
+    expect(frame.indexedPixels[79]).toBe(6);
+    expect(frame.indexedPixels[80]).toBe(1);
+  });
+
   it('enforces asset, sprite, palette, transform, and command limits', () => {
     const maximum = new Uint8Array(HARDWARE.spriteMaximumAxis ** 2);
     const assets = Array.from({ length: 33 }, (_, index): IndexedSprite => ({

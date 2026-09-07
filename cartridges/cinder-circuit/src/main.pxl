@@ -1,7 +1,7 @@
 // CINDER CIRCUIT
 // Made by @gongahkia
 
-const LEVEL_WIDTH: Int = 512
+const LEVEL_WIDTH: Int = 2048
 const PLAYER_SIZE: Int = 8
 
 enum Stage:
@@ -18,8 +18,10 @@ state grounded: Bool = false
 state camera_x: Int = 0
 state ticks: Int = 0
 state lives: Int = 3
-state embers: [Int, 8] = [19, 47, 86, 133, 188, 257, 356, 449]
+state embers: [Int, 8] = [190, 447, 686, 933, 1188, 1457, 1756, 1949]
 state flash: Color = 15
+state relays: Int = 0
+state relay_ready: Bool = true
 
 fn solid_at(world_x: Int, world_y: Int) -> Bool:
   return map_flag(#world, 0, world_x / 8, world_y / 8, 0)
@@ -90,15 +92,17 @@ on update:
   if stage == Stage.Title:
     if btnp(pad1, a) or btnp(pad1, start_button):
       lives = 3
+      relays = 0
+      relay_ready = true
       reset_runner()
       stage = Stage.Play
       music(#theme)
   elif stage == Stage.Play:
     var horizontal = 0
     if btn(pad1, left):
-      horizontal -= 2
+      horizontal -= 1
     if btn(pad1, right):
-      horizontal += 2
+      horizontal += 1
     move_horizontal(horizontal)
     if grounded and btnp(pad1, a):
       velocity_y = -6
@@ -119,9 +123,19 @@ on update:
     if player_y > 136 or hazard_at(player_x + 4, player_y + 7):
       lose_life()
     elif goal_at(player_x + 4, player_y + 4):
-      stage = Stage.Win
-      music_stop()
-      start victory_signal()
+      if relay_ready:
+        relays += 1
+        relay_ready = false
+        sfx(#chime)
+        if relays >= 4:
+          stage = Stage.Win
+          music_stop()
+          start victory_signal()
+        else:
+          reset_runner()
+          relay_ready = true
+    else:
+      relay_ready = true
   elif btnp(pad1, a) or btnp(pad1, start_button):
     stage = Stage.Title
 
@@ -135,7 +149,7 @@ on draw:
     rect(26, 66, 188, 55, 15)
     print("CINDER CIRCUIT", 76, 75, 15)
     print("ARROWS MOVE  Z JUMPS", 55, 91, 7)
-    print("REACH THE CYAN RELAY", 58, 101, 23)
+    print("RESTORE FOUR RELAYS", 64, 101, 23)
     print("Z OR ENTER TO START", 61, 111, 11)
   elif stage == Stage.Play:
     clear(25)
@@ -149,6 +163,14 @@ on draw:
     camera(0, 0)
     rect_fill(0, 0, 240, 10, 1)
     print("CINDER CIRCUIT", 4, 2, 15)
+    if relays == 0:
+      print("R OOOO", 132, 2, 15)
+    elif relays == 1:
+      print("R #OOO", 132, 2, 15)
+    elif relays == 2:
+      print("R ##OO", 132, 2, 15)
+    else:
+      print("R ###O", 132, 2, 15)
     if lives == 3:
       print("LIVES OOO", 176, 2, 23)
     elif lives == 2:
@@ -160,7 +182,7 @@ on draw:
     rect_fill(18, 18, 204, 108, flash)
     rect_fill(22, 22, 196, 100, 1)
     animation(#runner, (ticks / 7) % 2, 116, 50)
-    print("RELAY RESTORED", 76, 78, 23)
+    print("FOUR RELAYS LIVE", 70, 78, 23)
     print("THE CIRCUIT GLOWS", 67, 91, 15)
     print("Z TO RETURN", 88, 108, 7)
   else:

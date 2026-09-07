@@ -43,7 +43,9 @@ during scanout but cannot change these values.
 
 Work units are deterministic accounting units, not real CPU instructions and not evidence for a
 fictional clock speed. The compiler currently charges 8 units at each function/callback entry, 4 at
-loop back-edges, 4 per task-state transition, 4 per allocation, and 2 before each console API call.
+loop back-edges, 4 per task-state transition, 4 per allocation or fixed-capacity write, one per
+materialized range element, and 2 before each console API call. Charging a range before allocation
+lets the frame budget reject an extreme dynamic range without first constructing it.
 The runtime charges 1,080 units for `clear`; one for a pixel; `max(abs(dx), abs(dy)) + 1` for a line;
 `2*abs(width) + 2*abs(height)` for an outline rectangle; `ceil(abs(width*height)/4)` for a filled
 rectangle; `8*abs(radius)` for a circle outline; `ceil(3*radius^2/4)` for a filled circle; and
@@ -55,5 +57,5 @@ and budget faults.
 
 The per-frame work-unit ceiling is 50,000. The runtime stops at the first charge that exceeds it and
 reports the responsible source span. The highest measured bundled path is Raster Rush with four
-simultaneous views at about 31,422 units, leaving headroom for input-dependent variation while still
+simultaneous views at about 31,682 units, leaving headroom for input-dependent variation while still
 making the limit visible during ordinary development.

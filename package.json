@@ -17,10 +17,12 @@
     "format:check": "prettier --check .",
     "lint": "eslint .",
     "test": "vitest run",
-    "typecheck": "pnpm --recursive --if-present run typecheck"
+    "test:e2e": "pnpm build && playwright test",
+    "typecheck": "tsc -p tsconfig.json --noEmit && pnpm --recursive --if-present run typecheck"
   },
   "devDependencies": {
     "@eslint/js": "10.0.1",
+    "@playwright/test": "1.63.0",
     "@types/node": "26.4.1",
     "eslint": "10.10.0",
     "prettier": "3.9.6",

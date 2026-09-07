@@ -980,6 +980,10 @@ export class StudioApp {
   }
 
   private refreshTerminal(): void {
+    const cart = this.root.querySelector<HTMLElement>('.active-cart');
+    if (cart !== null) {
+      cart.textContent = this.activeProject?.id.toUpperCase() ?? 'NO CART';
+    }
     const terminal = this.root.querySelector<HTMLElement>('.terminal');
     if (terminal === null) {
       return;
@@ -1136,7 +1140,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'PXCL',
-      body: 'PXCL/1 is ASCII-only, statically typed, indentation-based, and deterministic. Mutable top-level values use state with an explicit type.',
+      body: 'PXCL/1 is ASCII-only, statically typed, indentation-based, and deterministic. Mutable top-level values use state with an explicit type. Arrays and Lists have fixed checked capacities; use none/some/is_some/unwrap_or with Option values.',
     },
     {
       title: 'CALLBACKS',
@@ -1148,11 +1152,11 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'DRAWING',
-      body: 'Use clear, pixel, line, rect, circle, triangle, sprite, animation, map, print, camera, clip, pal, and raster_scroll. Colors are fixed indices 0-31.',
+      body: 'Use clear, pixel, line, rect/rect_fill, circle/circle_fill, triangle, sprite/sprite_xform, animation, map/map_cell/map_flag, print, camera, clip, pal, dither, and raster_scroll. Colors are fixed indices 0-31.',
     },
     {
       title: 'INPUT',
-      body: 'btn and btnp accept pad1 through pad4 and button values up/down/left/right/a/b/x/y/l/r/start_button/menu.',
+      body: 'btn and btnp accept pad1 through pad4 and button values up/down/left/right/a/b/x/y/l/r/start_button/menu. pointer_x/y, pointer_inside, and pointer_primary/secondary expose recorded mouse, pen, and touch input.',
     },
     {
       title: 'AUDIO',
@@ -1164,7 +1168,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'LIMITS',
-      body: '240x144, 32 colors, 128 KiB visual assets, 8 KiB save, 256 KiB packed cartridge, 4096 draw commands, 8 synth voices, 4 local ports.',
+      body: '240x144, 32 colors, 128 KiB visual assets, 8 KiB save, 256 KiB packed cartridge, 50,000 work units, 4096 draw commands, 8 synth voices, 4 local ports.',
     },
   ];
 }

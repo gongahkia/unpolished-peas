@@ -595,8 +595,26 @@ export class IndexedGraphics {
       if (tileSet?.kind !== 'tile_set') {
         throw new TypeError(`missing TileSet asset '${layer.tileSet}'`);
       }
-      for (let row = 0; row < layer.height; row += 1) {
-        for (let column = 0; column < layer.width; column += 1) {
+      const clipRight = Math.min(HARDWARE.width, state.clipX + state.clipWidth);
+      const clipBottom = Math.min(HARDWARE.height, state.clipY + state.clipHeight);
+      const firstColumn = Math.max(
+        0,
+        Math.floor((state.clipX + state.cameraX - x) / HARDWARE.tileSize),
+      );
+      const lastColumn = Math.min(
+        layer.width,
+        Math.ceil((clipRight + state.cameraX - x) / HARDWARE.tileSize),
+      );
+      const firstRow = Math.max(
+        0,
+        Math.floor((state.clipY + state.cameraY - y) / HARDWARE.tileSize),
+      );
+      const lastRow = Math.min(
+        layer.height,
+        Math.ceil((clipBottom + state.cameraY - y) / HARDWARE.tileSize),
+      );
+      for (let row = firstRow; row < lastRow; row += 1) {
+        for (let column = firstColumn; column < lastColumn; column += 1) {
           const tile = tileSet.tiles[layer.cells[row * layer.width + column] ?? -1];
           if (tile !== undefined) {
             this.blit(

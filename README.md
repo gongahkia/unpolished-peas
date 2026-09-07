@@ -35,7 +35,8 @@ The original bundled cartridges are ordinary public-facility PXCL projects:
 
 Requirements are Linux, Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt,
 and `wasm32-unknown-unknown`. The one setup command installs locked dependencies, installs the pinned
-`wasm-bindgen-cli` 0.2.128 when absent, and builds the complete project:
+`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox test browser, and
+builds the complete project:
 
 ```sh
 make setup
@@ -51,6 +52,8 @@ Run every repository gate with:
 ```sh
 make check
 ```
+
+This includes the production build and the pinned Firefox end-to-end workflow.
 
 For the native external-editor workflow:
 

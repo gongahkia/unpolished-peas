@@ -194,7 +194,37 @@ impl<'input> Generator<'input> {
             None,
         );
         self.writer.line(
-            "const iterable=value=>value&&value.__range?[...Array(Math.max(0,value.end-value.start)).keys()].map(index=>value.start+index):value;",
+            format!(
+                "const allocate=(value,start,end)=>{{work({},start,end);return value;}};",
+                self.work.allocation
+            ),
+            None,
+        );
+        self.writer.line(
+            "const boundedIndex=(key,limit,start,end)=>{if(!Number.isSafeInteger(key)||key<0||key>=limit)return api.fault(\"PX9007\",\"collection index is outside its fixed capacity\",{start,end});return key;};",
+            None,
+        );
+        self.writer.line(
+            "const collectionRead=(value,key,limit,start,end)=>{key=boundedIndex(key,limit,start,end);if(!(key in value))return api.fault(\"PX9008\",\"list element has not been initialized\",{start,end});return value[key];};",
+            None,
+        );
+        self.writer.line(
+            format!(
+                "const collectionWrite=(value,key,limit,next,start,end)=>{{key=boundedIndex(key,limit,start,end);work({},start,end);value[key]=next;return next;}};",
+                self.work.allocation
+            ),
+            None,
+        );
+        self.writer.line(
+            "const textIndex=(value,key,start,end)=>value.charCodeAt(boundedIndex(key,value.length,start,end));",
+            None,
+        );
+        self.writer.line(
+            "const optionSome=(value,start,end)=>allocate({__some:true,value},start,end);const optionIsSome=value=>value!==null;const optionUnwrap=(value,fallback)=>value===null?fallback:value.value;",
+            None,
+        );
+        self.writer.line(
+            "const iterable=(value,start,end)=>{if(!value?.__range)return value;const length=Math.max(0,value.end-value.start);work(length,start,end);return [...Array(length).keys()].map(index=>value.start+index);};",
             None,
         );
         self.writer.line(
@@ -583,7 +613,8 @@ impl<'input> Generator<'input> {
                 let value = self.expression(value, ValueContext::Task);
                 self.writer.line(
                     format!(
-                        "task.iterators.i{iterator}={{values:iterable({value}),index:0}};task.pc={next};continue;"
+                        "task.iterators.i{iterator}={{values:iterable({value},{},{}),index:0}};task.pc={next};continue;",
+                        span.start, span.end
                     ),
                     Some(span),
                 );
@@ -799,7 +830,10 @@ impl<'input> Generator<'input> {
             } => {
                 let value = self.expression(value, context);
                 self.writer.line(
-                    format!("for(const s{} of iterable({value})){{", binding.0),
+                    format!(
+                        "for(const s{} of iterable({value},{},{})){{",
+                        binding.0, statement.span.start, statement.span.end
+                    ),
                     Some(statement.span),
                 );
                 self.writer.indent += 1;
@@ -943,12 +977,14 @@ impl<'input> Generator<'input> {
                 js_string(kind.type_name())
             ),
             IrExpressionKind::Array(elements) => format!(
-                "[{}]",
+                "allocate([{}],{},{})",
                 elements
                     .iter()
                     .map(|element| self.expression(element, context))
                     .collect::<Vec<_>>()
-                    .join(",")
+                    .join(","),
+                expression.span.start,
+                expression.span.end
             ),
             IrExpressionKind::Unary { operator, operand } => {
                 let operand = self.expression(operand, context);
@@ -1001,12 +1037,20 @@ impl<'input> Generator<'input> {
                     .join(",");
                 let symbol = self.symbol(*callee);
                 match symbol.kind {
-                    SymbolKind::Builtin => format!(
-                        "consoleCall({},[{arguments}],{},{})",
-                        js_string(&symbol.name),
-                        expression.span.start,
-                        expression.span.end
-                    ),
+                    SymbolKind::Builtin => match symbol.name.as_str() {
+                        "some" => format!(
+                            "optionSome({arguments},{},{})",
+                            expression.span.start, expression.span.end
+                        ),
+                        "is_some" => format!("optionIsSome({arguments})"),
+                        "unwrap_or" => format!("optionUnwrap({arguments})"),
+                        _ => format!(
+                            "consoleCall({},[{arguments}],{},{})",
+                            js_string(&symbol.name),
+                            expression.span.start,
+                            expression.span.end
+                        ),
+                    },
                     SymbolKind::Task => format!("startTask({},[{arguments}])", callee.0),
                     _ => format!("s{}({arguments})", callee.0),
                 }
@@ -1016,11 +1060,26 @@ impl<'input> Generator<'input> {
                 self.expression(subject, context),
                 safe_property(field)
             ),
-            IrExpressionKind::Index { subject, index } => format!(
-                "({})[{}]",
-                self.expression(subject, context),
-                self.expression(index, context)
-            ),
+            IrExpressionKind::Index { subject, index } => {
+                let subject_type = subject.r#type.clone();
+                let subject = self.expression(subject, context);
+                let index = self.expression(index, context);
+                match subject_type {
+                    Type::Array { length, .. } => format!(
+                        "collectionRead(({subject}),({index}),{length},{},{})",
+                        expression.span.start, expression.span.end
+                    ),
+                    Type::List { capacity, .. } => format!(
+                        "collectionRead(({subject}),({index}),{capacity},{},{})",
+                        expression.span.start, expression.span.end
+                    ),
+                    Type::Text => format!(
+                        "textIndex(({subject}),({index}),{},{})",
+                        expression.span.start, expression.span.end
+                    ),
+                    _ => format!("({subject})[{index}]"),
+                }
+            }
             IrExpressionKind::Error => "undefined".to_owned(),
         }
     }
@@ -1051,6 +1110,43 @@ impl<'input> Generator<'input> {
         span: Span,
     ) -> String {
         let value_js = self.expression(value, context);
+        if let IrPlace::Index { subject, index } = place
+            && let Some(limit) = collection_capacity(&subject.r#type)
+        {
+            let subject = self.expression(subject, context);
+            let index = self.expression(index, context);
+            let current = format!(
+                "collectionRead(object,key,{limit},{},{})",
+                span.start, span.end
+            );
+            let next = if operator == AssignmentOperator::Assign {
+                "next".to_owned()
+            } else if value.r#type == Type::Int {
+                match operator {
+                    AssignmentOperator::Divide => {
+                        format!("divideInt({current},next,{},{})", span.start, span.end)
+                    }
+                    AssignmentOperator::Add
+                    | AssignmentOperator::Subtract
+                    | AssignmentOperator::Multiply => format!(
+                        "integer(({current}){}(next),{},{})",
+                        assignment_operator(operator).trim_end_matches('='),
+                        span.start,
+                        span.end
+                    ),
+                    AssignmentOperator::Assign => unreachable!("handled above"),
+                }
+            } else {
+                format!(
+                    "({current}){}(next)",
+                    assignment_operator(operator).trim_end_matches('=')
+                )
+            };
+            return format!(
+                "((object,key,next)=>collectionWrite(object,key,{limit},{next},{},{}))(({subject}),({index}),({value_js}))",
+                span.start, span.end
+            );
+        }
         if operator == AssignmentOperator::Assign || value.r#type != Type::Int {
             return format!(
                 "{}{}{value_js}",
@@ -1658,6 +1754,14 @@ fn pattern_symbols(pattern: &IrPattern) -> Vec<SymbolId> {
         IrPattern::Binding(symbol) => vec![*symbol],
         IrPattern::Variant { bindings, .. } => bindings.clone(),
         IrPattern::Wildcard | IrPattern::Literal(_) | IrPattern::Error => Vec::new(),
+    }
+}
+
+fn collection_capacity(r#type: &Type) -> Option<u32> {
+    match r#type {
+        Type::Array { length, .. } => Some(*length),
+        Type::List { capacity, .. } => Some(*capacity),
+        _ => None,
     }
 }
 

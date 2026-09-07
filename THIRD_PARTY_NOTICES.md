@@ -11,11 +11,12 @@ through `cargo metadata`.
 
 The JavaScript development toolchain's direct packages are TypeScript 6.0.3 (Apache-2.0), Vite
 8.2.2 (MIT), Vitest 5.0.0 (MIT), ESLint 10.10.0 (MIT), `@eslint/js` 10.0.1 (MIT),
-typescript-eslint 8.69.0 (MIT), and Prettier 3.9.6 (MIT). The locked transitive graph additionally
-contains packages under MIT, Apache-2.0, BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, and
-BlueOak-1.0.0. Exact package names, versions, resolved integrity values, and dependency edges are in
-`pnpm-lock.yaml`; `pnpm licenses list` reproduces the licence inventory. These build/test packages
-are not cartridge assets.
+typescript-eslint 8.69.0 (MIT), Prettier 3.9.6 (MIT), and `@playwright/test` 1.63.0
+(Apache-2.0). The locked transitive graph additionally contains packages under MIT, Apache-2.0,
+BSD-2-Clause, BSD-3-Clause, ISC, MPL-2.0, and BlueOak-1.0.0. Exact package names, versions, resolved
+integrity values, and dependency edges are in `pnpm-lock.yaml`; `pnpm licenses list` reproduces the
+licence inventory. These build/test packages and Playwright's local Firefox test browser are not
+cartridge assets or redistributed application components.
 
 No third-party game code, palette, font, artwork, or audio is included. The built-in palette,
 bitmap font, icon, labels, game graphics, and synth compositions are original project assets.

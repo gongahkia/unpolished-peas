@@ -71,9 +71,14 @@ literals may initialize `Num`, and palette indices from 0 through 31 may initial
 implicit conversions are rejected. `Bool`, `Text`, `Vec2`, `Rect`, `Controller`, and `Button` are
 distinct value types. `Unit` is the no-value function return type.
 
-`Option[T]`, fixed arrays `[T, N]`, and fixed-capacity `List[T, N]` are bounded. A fixed array literal
-may initialize a list when its length does not exceed the declared capacity. Capacity is currently
-restricted to 1 through 65535. General dynamic allocation is not part of PXCL/1.
+`Option[T]`, fixed arrays `[T, N]`, and fixed-capacity `List[T, N]` are bounded. `none` constructs an
+empty option; `some(value)` preserves the element's static type, `is_some(option)` tests it, and
+`unwrap_or(option, fallback)` returns the contained value or a same-typed fallback. A fixed array
+literal may initialize a list when its length does not exceed the declared capacity. Capacity is
+currently restricted to 1 through 65535. Generated reads and writes validate integer indices against
+the declared length/capacity; an uninitialized sparse-list read is also a source-mapped runtime
+fault. Indexing ASCII `Text` returns the character code and is read-only. General dynamic allocation
+is not part of PXCL/1.
 
 Asset types are `Sprite`, `Animation`, `TileSet`, `Map`, `Font`, `Sound`, and `Music`. A `#name`
 reference obtains its type from the cartridge asset catalog. Missing assets and passing one asset

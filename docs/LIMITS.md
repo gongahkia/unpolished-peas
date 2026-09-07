@@ -8,15 +8,18 @@ and the enforced ceiling remains the authority.
 
 | Cartridge      | Packed `.pxc` | Visual store | Release JS | Representative work/frame |
 | -------------- | ------------: | -----------: | ---------: | ------------------------: |
-| Cinder Circuit |      32,270 B |      2,854 B |   11,945 B |                     3,295 |
-| Ashvault       |      36,142 B |        288 B |   14,465 B |                    11,783 |
-| Raster Rush 1P |      34,137 B |        160 B |   13,404 B |                    27,906 |
-| Raster Rush 4P |      34,137 B |        160 B |   13,404 B |                    31,422 |
+| Cinder Circuit |      42,121 B |      9,766 B |   13,896 B |                     3,342 |
+| Ashvault       |      40,532 B |        288 B |   18,832 B |                    12,031 |
+| Raster Rush 1P |      37,311 B |        160 B |   16,546 B |                    28,034 |
+| Raster Rush 4P |      37,311 B |        160 B |   16,546 B |                    31,682 |
 
 Raster Rush four-player is the governing frame case at about 63% of the 50,000-unit ceiling. It
 executes four independent controller paths and view projections plus 144 raster callbacks while
 remaining below the limit. The 256 KiB packed and 128 KiB visual ceilings have substantial headroom
 for these deliberately compact games; they remain useful authoring ceilings rather than targets.
+Cinder's four 2,048-pixel circuits at its configured 30 Hz update rate establish a roughly 4 1/2
+minute uninterrupted minimum traversal before jumps or life resets. The renderer culls its 256x18
+map to the visible camera/clip region.
 
 ## Frozen revision-1 profile
 

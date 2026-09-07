@@ -10,7 +10,7 @@ pnpm format:check
 pnpm lint
 pnpm typecheck
 pnpm test
-pnpm build
+pnpm test:e2e
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
