@@ -5,3 +5,5 @@ coverage
 crates/pxcl-wasm/pkg
 pnpm-lock.yaml
 PX240C_ALPHA_BRIEF.md
+.playwright-cli
+output

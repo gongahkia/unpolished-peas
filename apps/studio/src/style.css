@@ -47,6 +47,14 @@ body,
   color: #f3a65a;
 }
 
+.diagnostic {
+  color: #79d8cf;
+}
+
+.diagnostic.error {
+  color: #f07f6a;
+}
+
 @media (prefers-reduced-motion: no-preference) {
   .prompt span {
     animation: blink 1s steps(1, end) infinite;

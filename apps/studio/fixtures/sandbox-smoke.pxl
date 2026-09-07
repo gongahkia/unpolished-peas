@@ -1,0 +1,7 @@
+state frames: Int = 0
+
+on update:
+  frames += 1
+
+on draw:
+  clear(0)

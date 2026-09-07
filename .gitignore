@@ -12,3 +12,6 @@ test-results/
 .DS_Store
 .vite/
 crates/pxcl-wasm/pkg/
+apps/studio/public/generated/
+output/
+.playwright-cli/

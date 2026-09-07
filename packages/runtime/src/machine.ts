@@ -38,11 +38,7 @@ export interface CartridgeApi {
 export type CartridgeFactory = (api: CartridgeApi) => GeneratedCartridge;
 
 export interface RuntimeHooks {
-  readonly call?: (
-    name: string,
-    arguments_: readonly unknown[],
-    sourceSpan: SourceSpan,
-  ) => unknown;
+  readonly call?: (name: string, arguments_: readonly unknown[], sourceSpan: SourceSpan) => unknown;
   readonly probe?: (id: number, sourceSpan: SourceSpan, locals: unknown) => void;
   readonly enter?: (name: string, sourceSpan: SourceSpan) => void;
   readonly leave?: () => void;
@@ -179,7 +175,10 @@ export class DeterministicMachine implements CartridgeApi {
       }
       case 'Vec2':
         expectArguments(name, arguments_, 2, sourceSpan);
-        return { x: expectNumber(arguments_[0], sourceSpan), y: expectNumber(arguments_[1], sourceSpan) };
+        return {
+          x: expectNumber(arguments_[0], sourceSpan),
+          y: expectNumber(arguments_[1], sourceSpan),
+        };
       case 'Rect':
         expectArguments(name, arguments_, 4, sourceSpan);
         return {

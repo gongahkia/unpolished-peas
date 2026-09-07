@@ -1,9 +1,5 @@
 import { RuntimeFault } from './errors';
-import type {
-  HostRequest,
-  SandboxConfiguration,
-  WorkerResponse,
-} from './protocol';
+import type { HostRequest, SandboxConfiguration, WorkerResponse } from './protocol';
 import { isWorkerResponse } from './protocol';
 import type { InputFrame } from './input';
 
@@ -32,10 +28,7 @@ export class SandboxSession {
     this.worker.addEventListener('messageerror', this.handleMessageError);
   }
 
-  public async load(
-    javascript: string,
-    configuration: SandboxConfiguration,
-  ): Promise<void> {
+  public async load(javascript: string, configuration: SandboxConfiguration): Promise<void> {
     const moduleUrl = URL.createObjectURL(new Blob([javascript], { type: 'text/javascript' }));
     try {
       const response = await this.request((id) => ({
@@ -62,21 +55,19 @@ export class SandboxSession {
     return response.snapshot;
   }
 
+  public async audit(): Promise<Extract<WorkerResponse, { type: 'audit' }>> {
+    const response = await this.request((id) => ({ id, type: 'audit' }));
+    this.expectResponse(response, 'audit');
+    return response;
+  }
+
   public async restore(snapshot: unknown): Promise<void> {
     const response = await this.request((id) => ({ id, type: 'restore', snapshot }));
     this.expectResponse(response, 'restored');
   }
 
   public dispose(): void {
-    if (this.disposed) {
-      return;
-    }
-    this.disposed = true;
-    this.worker.removeEventListener('message', this.handleMessage);
-    this.worker.removeEventListener('error', this.handleWorkerError);
-    this.worker.removeEventListener('messageerror', this.handleMessageError);
-    this.worker.terminate();
-    this.rejectAll(new Error('sandbox worker was disposed'));
+    this.shutdown(new Error('sandbox worker was disposed'));
   }
 
   private readonly handleMessage = (event: MessageEvent<unknown>): void => {
@@ -138,8 +129,19 @@ export class SandboxSession {
   }
 
   private disposeWithError(error: Error): void {
-    this.dispose();
-    this.rejectAll(error);
+    this.shutdown(error);
+  }
+
+  private shutdown(reason: Error): void {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.worker.removeEventListener('message', this.handleMessage);
+    this.worker.removeEventListener('error', this.handleWorkerError);
+    this.worker.removeEventListener('messageerror', this.handleMessageError);
+    this.worker.terminate();
+    this.rejectAll(reason);
   }
 
   private rejectAll(error: Error): void {

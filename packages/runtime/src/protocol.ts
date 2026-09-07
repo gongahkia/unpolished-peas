@@ -19,6 +19,7 @@ export type HostRequest =
       readonly configuration: SandboxConfiguration;
     }
   | { readonly id: number; readonly type: 'frame'; readonly input: InputFrame }
+  | { readonly id: number; readonly type: 'audit' }
   | { readonly id: number; readonly type: 'snapshot' }
   | { readonly id: number; readonly type: 'restore'; readonly snapshot: unknown };
 
@@ -38,6 +39,12 @@ export type WorkerResponse =
     }
   | { readonly id: number; readonly type: 'snapshot'; readonly snapshot: unknown }
   | { readonly id: number; readonly type: 'restored' }
+  | {
+      readonly id: number;
+      readonly type: 'audit';
+      readonly exposedCapabilities: readonly string[];
+      readonly mathRandomAvailable: boolean;
+    }
   | {
       readonly id: number;
       readonly type: 'error';
@@ -66,6 +73,7 @@ export function isHostRequest(value: unknown): value is HostRequest {
     case 'frame':
       return isInputFrame(value.input);
     case 'snapshot':
+    case 'audit':
       return true;
     case 'restore':
       return 'snapshot' in value;
@@ -79,7 +87,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
     isRecord(value) &&
     isNonNegativeInteger(value.id) &&
     typeof value.type === 'string' &&
-    ['loaded', 'frame', 'snapshot', 'restored', 'error'].includes(value.type)
+    ['loaded', 'frame', 'snapshot', 'restored', 'audit', 'error'].includes(value.type)
   );
 }
 

@@ -93,6 +93,12 @@ fn build_file(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
     };
     let output = output.map_or_else(|| path.with_extension("js"), Path::to_path_buf);
     let source_map = output.with_extension("js.map");
+    if let Some(parent) = output.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("{}: {error}", parent.display());
+        return ExitCode::FAILURE;
+    }
     let Some(source_map_name) = source_map.file_name().and_then(|name| name.to_str()) else {
         eprintln!(
             "{}: output source-map name is not valid UTF-8",

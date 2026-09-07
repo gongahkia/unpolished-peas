@@ -8,7 +8,13 @@ const typedRules = tseslint.configs.strictTypeChecked.map((config) => ({
 
 export default tseslint.config(
   {
-    ignores: ['**/dist/**', '**/coverage/**', '**/node_modules/**', 'crates/pxcl-wasm/pkg/**'],
+    ignores: [
+      '**/dist/**',
+      '**/coverage/**',
+      '**/node_modules/**',
+      'apps/studio/public/generated/**',
+      'crates/pxcl-wasm/pkg/**',
+    ],
   },
   eslint.configs.recommended,
   ...typedRules,

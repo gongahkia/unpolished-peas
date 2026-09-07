@@ -9,8 +9,9 @@ Made by @gongahkia. All rights reserved.
 
 ## Current status
 
-Active alpha implementation. The workspace and trust boundaries are established; product surfaces
-must not yet be treated as complete. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
+Active alpha implementation. The typed PXCL front end, ES-module code generation, deterministic
+runtime core, and worker boundary are implemented; the hardware facilities and product surfaces must
+not yet be treated as complete. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
 
 ## Development
 

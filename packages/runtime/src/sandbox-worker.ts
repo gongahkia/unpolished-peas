@@ -1,9 +1,6 @@
-import { lockDownWorkerGlobals } from './capabilities';
+import { DENIED_WORKER_CAPABILITIES, lockDownWorkerGlobals } from './capabilities';
 import { RuntimeFault } from './errors';
-import {
-  DeterministicMachine,
-  type CartridgeFactory,
-} from './machine';
+import { DeterministicMachine, type CartridgeFactory } from './machine';
 import {
   isHostRequest,
   type ConsoleCommand,
@@ -70,6 +67,22 @@ async function handleRequest(request: HostRequest): Promise<void> {
       } satisfies WorkerResponse);
       break;
     }
+    case 'audit': {
+      const globals = globalThis as Record<string, unknown>;
+      const math = globals.Math;
+      send({
+        id: request.id,
+        type: 'audit',
+        exposedCapabilities: DENIED_WORKER_CAPABILITIES.filter(
+          (capability) => globals[capability] !== undefined,
+        ),
+        mathRandomAvailable:
+          typeof math === 'object' &&
+          math !== null &&
+          typeof (math as Record<string, unknown>).random === 'function',
+      } satisfies WorkerResponse);
+      break;
+    }
     case 'snapshot':
       send({
         id: request.id,
@@ -127,11 +140,10 @@ const AUDIO_CALLS = new Set(['sfx', 'music']);
 
 function readFactory(module: unknown): CartridgeFactory {
   if (!isRecord(module) || typeof module.default !== 'function') {
-    throw new RuntimeFault(
-      'PX9101',
-      'compiled module does not export a cartridge factory',
-      { start: 0, end: 0 },
-    );
+    throw new RuntimeFault('PX9101', 'compiled module does not export a cartridge factory', {
+      start: 0,
+      end: 0,
+    });
   }
   return module.default as CartridgeFactory;
 }

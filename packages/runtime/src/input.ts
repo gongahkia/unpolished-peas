@@ -39,7 +39,10 @@ export interface InputFrame {
 
 export function emptyInputFrame(): InputFrame {
   const controller = (): ControllerState => ({
-    buttons: Object.fromEntries(BUTTONS.map((button) => [button, false])) as Record<Button, boolean>,
+    buttons: Object.fromEntries(BUTTONS.map((button) => [button, false])) as Record<
+      Button,
+      boolean
+    >,
   });
   return {
     controllers: [controller(), controller(), controller(), controller()],
