@@ -1,77 +1,27 @@
-[![](https://img.shields.io/badge/unpolished_peas_v1.0.0-active-brightgreen)](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
-![](https://github.com/gongahkia/unpolished-peas/actions/workflows/toolchain.yml/badge.svg)
+# PX-240C Color Development Unit
 
-# `Unpolished Peas` 🫛
+PX-240C is a private, proprietary fantasy-console project presented as a technically unusual,
+commercially unsuccessful colour handheld from 1999. The finished alpha will provide a complete
+PXCL/1 compiler, deterministic runtime, 240x144 integrated studio, native Linux workflow, and three
+original pack-in cartridges.
 
-A small framework for building 2D games in [Zig](https://ziglang.org/) that compile to [native](https://ziglang.org/learn/build-system/) and [browser](https://github.com/zigtools/playground) builds.
+Made by @gongahkia. All rights reserved.
 
-## Stack
+## Current status
 
-* [Zig 0.15.2](https://ziglang.org/)
-* [SDL3](https://wiki.libsdl.org/SDL3/FrontPage)
-* [WASM](https://webassembly.org/)
+Active alpha implementation. The workspace and trust boundaries are established; product surfaces
+must not yet be treated as complete. See [`docs/PROGRESS.md`](docs/PROGRESS.md) for verified state.
 
-## Screenshots
+## Development
 
-<div align="center">
-    <img src="asset/reference/neon-siege.png" width="45%">
-    <img src="asset/reference/lantern-leap.png" width="45%">
-</div>
+Requirements: Linux, Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt, and the
+`wasm32-unknown-unknown` target.
 
-## Usage
-
-> [!NOTE]  
-> For a more detailed guide, refer to the [quickstart guide](docs/guides/quickstart.md) or check out `Unpolished Peas` in action within [Seed Sprint](templates/starter/README.md) & [Neon Siege](dogfood/neon-siege/README.md).
-
-It's pretty easy to get started with `Unpolished Peas`. Below are a couple of code snippets.
-
-### Drawing text
-
-```zig
-pub fn draw(_: *Game, ctx: *sdl.Context) void {
-    ctx.text("Hello world!", 40, 30, up.core.Color.white);
-}
+```sh
+make setup
+make check
+pnpm dev
 ```
 
-### Drawing an image
-
-```zig
-image: up.assets.ImageHandle,
-
-pub fn init(ctx: *sdl.Context) !Game {
-    return .{ .image = try ctx.loadImage("ball.png") };
-}
-
-pub fn draw(self: *Game, ctx: *sdl.Context) !void {
-    try ctx.image(self.image, 40, 30);
-}
-```
-
-### Playing a sound
-
-```zig
-sound: up.assets.AudioHandle,
-
-pub fn init(ctx: *sdl.Context) !Game {
-    return .{ .sound = try ctx.loadSound("blip.wav") };
-}
-
-pub fn update(self: *Game, ctx: *sdl.Context) !void {
-    if (ctx.input.wasPressed(.action)) {
-        _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.sound), .{});
-    }
-}
-```
-
-## Support
-
-See [platform status](docs/guides/platforms.md) for the updated suport matrix.
-
-## Other docs
-
-* [Learning path](docs/index.md) 
-* [Game protocol](docs/guides/game-protocol.md)
-* [Core contract](docs/guides/core-contract.md) 
-* [Installation](docs/guides/installation.md)
-* [Release policy](docs/guides/releases.md) 
-* [Local documentation](docs/index.md) 
+No cloud account, backend, deployment, or existing fantasy-console compatibility layer is part of
+the alpha.

@@ -1,0 +1,20 @@
+[package]
+name = "px240c-cli"
+description = "Native Linux toolchain for PX-240C cartridges"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "px240c"
+path = "src/main.rs"
+
+[dependencies]
+clap.workspace = true
+pxcl-core.workspace = true
+
+[lints]
+workspace = true
