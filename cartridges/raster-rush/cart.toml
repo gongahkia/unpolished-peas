@@ -1,0 +1,39 @@
+format = 1
+language = "PXCL/1"
+id = "raster-rush"
+title = "RASTER RUSH 99"
+author = "@gongahkia"
+version = "1.0.0-alpha.1"
+entry = "src/main.pxl"
+update_rate = 60
+label = "presentation/label.svg"
+thumbnail = "presentation/thumbnail.svg"
+display = "assets/display.pxp"
+
+[assets.car]
+kind = "sprite"
+path = "assets/car.pxg"
+
+[assets.beacon]
+kind = "sprite"
+path = "assets/beacon.pxg"
+
+[assets.motor]
+kind = "sound"
+path = "assets/motor.pxs"
+
+[assets.boost]
+kind = "sound"
+path = "assets/boost.pxs"
+
+[assets.crash]
+kind = "sound"
+path = "assets/crash.pxs"
+
+[assets.fanfare]
+kind = "sound"
+path = "assets/fanfare.pxs"
+
+[assets.race_theme]
+kind = "music"
+path = "assets/race-theme.pxt"

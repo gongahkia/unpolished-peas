@@ -1,0 +1,47 @@
+format = 1
+language = "PXCL/1"
+id = "ashvault"
+title = "ASHVAULT"
+author = "@gongahkia"
+version = "1.0.0-alpha.1"
+entry = "src/main.pxl"
+update_rate = 60
+label = "presentation/label.svg"
+thumbnail = "presentation/thumbnail.svg"
+display = "assets/display.pxp"
+
+[assets.seeker]
+kind = "sprite"
+path = "assets/seeker.pxg"
+
+[assets.wraith]
+kind = "sprite"
+path = "assets/wraith.pxg"
+
+[assets.relic]
+kind = "sprite"
+path = "assets/relic.pxg"
+
+[assets.gate]
+kind = "sprite"
+path = "assets/gate.pxg"
+
+[assets.step]
+kind = "sound"
+path = "assets/step.pxs"
+
+[assets.bump]
+kind = "sound"
+path = "assets/bump.pxs"
+
+[assets.found]
+kind = "sound"
+path = "assets/found.pxs"
+
+[assets.drone]
+kind = "sound"
+path = "assets/drone.pxs"
+
+[assets.lament]
+kind = "music"
+path = "assets/lament.pxt"
