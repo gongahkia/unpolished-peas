@@ -95,6 +95,7 @@ export interface SynthSnapshot {
 export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
   if (
     !audioRecord(value) ||
+    Object.keys(value).length !== 5 ||
     value.revision !== 1 ||
     !audioCounter(value.frame) ||
     !audioCounter(value.nextSequence) ||
@@ -108,6 +109,7 @@ export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
     !value.voices.every(
       (voice: unknown, slot: number) =>
         audioRecord(voice) &&
+        Object.keys(voice).length === 9 &&
         typeof voice.active === 'boolean' &&
         voice.slot === slot &&
         typeof voice.sound === 'string' &&
@@ -128,6 +130,7 @@ export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
   return (
     value.tracker === null ||
     (audioRecord(value.tracker) &&
+      Object.keys(value.tracker).length === 4 &&
       typeof value.tracker.music === 'string' &&
       value.tracker.music.length > 0 &&
       value.tracker.music.length <= HARDWARE.cartridgeCapacityBytes &&
@@ -141,6 +144,7 @@ export function isAudioFrame(value: unknown): value is AudioFrame {
   const samples = HARDWARE.audioSampleRate / HARDWARE.frameRate;
   return (
     audioRecord(value) &&
+    Object.keys(value).length === 4 &&
     value.left instanceof Float32Array &&
     value.left.length === samples &&
     value.right instanceof Float32Array &&
@@ -151,7 +155,10 @@ export function isAudioFrame(value: unknown): value is AudioFrame {
     value.activeVoices <= HARDWARE.audioVoices &&
     (value.tracker === null ||
       (audioRecord(value.tracker) &&
+        Object.keys(value.tracker).length === 4 &&
         typeof value.tracker.music === 'string' &&
+        value.tracker.music.length > 0 &&
+        value.tracker.music.length <= HARDWARE.cartridgeCapacityBytes &&
         audioCounter(value.tracker.orderIndex) &&
         audioCounter(value.tracker.row) &&
         audioCounter(value.tracker.frameInRow)))
@@ -515,7 +522,7 @@ function validateAudioAsset(asset: AudioAsset): void {
     asset.framesPerRow < 1 ||
     asset.framesPerRow > 240 ||
     asset.order.length === 0 ||
-    asset.order.some((name) => asset.patterns[name] === undefined)
+    asset.order.some((name) => !Object.hasOwn(asset.patterns, name))
   ) {
     throw new RangeError(`music '${asset.name}' has an invalid order list or tempo`);
   }
