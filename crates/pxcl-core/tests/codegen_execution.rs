@@ -97,6 +97,56 @@ process.stdout.write(JSON.stringify({{snapshot:cartridge.snapshot(),workUnits}})
 }
 
 #[test]
+fn runtime_globals_execute_at_start_not_factory_construction() {
+    for mode in [CompileMode::Release, CompileMode::Debug] {
+        let source = SourceFile::new(
+            FileId(0),
+            "boot.pxl",
+            "state value: Int = mem_read(0)\non start:\n  value += 1\n",
+        );
+        let output = compile(&source, &AssetCatalog::default(), mode);
+        assert!(
+            output.analysis.diagnostics.is_empty(),
+            "{:#?}",
+            output.analysis.diagnostics
+        );
+        let program = output
+            .generated
+            .expect("valid boot source generates JavaScript");
+        let script = format!(
+            r#"{}
+let workUnits=0;
+const calls=[];
+const api={{
+  work(units){{workUnits+=units;}},
+  call(name,args){{calls.push([name,args]);return 7;}},
+  fault(code,message){{throw new Error(`${{code}}: ${{message}}`);}},
+  probe(){{}},enter(){{}},leave(){{}}
+}};
+const cartridge=createCartridge(api);
+if(workUnits!==0||calls.length!==0||Object.keys(cartridge.snapshot().state).length!==0)throw new Error("factory executed globals");
+cartridge.start();
+if(Object.values(cartridge.snapshot().state)[0]!==8||calls.length!==1||calls[0][0]!=="mem_read"||workUnits===0)throw new Error("boot did not initialize globals");
+"#,
+            program.javascript
+        );
+        let path =
+            std::env::temp_dir().join(format!("pxcl-codegen-boot-{}.mjs", std::process::id()));
+        fs::write(&path, script).expect("temporary boot module writes");
+        let result = Command::new("node")
+            .arg(&path)
+            .output()
+            .expect("Node.js executes boot module");
+        fs::remove_file(path).expect("temporary boot module removes");
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+}
+
+#[test]
 fn release_and_debug_outputs_are_semantically_equivalent() {
     let release = execute(CompileMode::Release);
     let debug = execute(CompileMode::Debug);

@@ -81,6 +81,12 @@ without advancing audio time. Alpha discarded start-time draw/audio commands; pr
 explicit V1 boot semantic required for coherent mixed access. The three original game traces remain
 the compatibility boundary for their actual behavior.
 
+Global bindings initialize before `on start` inside that same start phase, after device attachment.
+Initialization-time runtime calls share its work budget and live device state. The generated factory
+does not execute these calls during construction. `tests/conformance/boot.pxl` checks reset reads,
+RNG/memory/drawing aliases, start-phase status, retained initializer attribution and the exact combined
+boot-budget boundary in native Release/Debug tests; Firefox runs it through Wasm and the Worker.
+
 At each display frame's beginning, back receives front; draw state, raster records and the callback
 accumulator reset to the cartridge display defaults. Drawing and bus writes then occur in program
 order. Scanout reads back through the raster table after all 144 callbacks, publishes resolved pixels,
