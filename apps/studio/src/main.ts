@@ -2,7 +2,6 @@ import {
   AudioAssetStore,
   emptyInputFrame,
   HARDWARE,
-  IndexedGraphics,
   IndexedDbStorage,
   RuntimeFault,
   SandboxSession,
@@ -235,9 +234,8 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
     if (screen === null || display === null) {
       throw new Error('hardware display is missing');
     }
-    const graphics = new IndexedGraphics();
     const renderer = new WebGlIndexedRenderer(screen);
-    renderer.render(graphics.executeFrame(frame.drawCommands).indexedPixels);
+    renderer.render(frame.output.indexedPixels);
     display.classList.add('running-cartridge');
     showResult(status, 'SANDBOX FRAME VERIFIED', true);
   } catch (error: unknown) {

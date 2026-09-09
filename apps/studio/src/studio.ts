@@ -1,15 +1,10 @@
 import {
-  AudioAssetStore,
   BrowserInput,
-  decodeRuntimeAssets,
   HARDWARE,
   IndexedDbStorage,
-  IndexedGraphics,
   isSaveValues,
   SandboxSession,
   StudioRepository,
-  Synthesizer,
-  VisualAssetStore,
   WebAudioSink,
   WebGlIndexedRenderer,
   type SaveValues,
@@ -734,11 +729,6 @@ export class StudioApp {
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
-    const assets = decodeRuntimeAssets(
-      parsedManifest.assets,
-      project.files,
-      parsedManifest.display,
-    );
     this.root.innerHTML = `
       <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
@@ -758,9 +748,7 @@ export class StudioApp {
     );
     const sandbox = new SandboxSession(worker, 1_000);
     const input = new BrowserInput(canvas);
-    const graphics = new IndexedGraphics(new VisualAssetStore(assets.visual), assets.display);
     const renderer = new WebGlIndexedRenderer(canvas);
-    const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
     let audioSink: WebAudioSink | undefined;
     const saveAccess = this.repository.cartridgeSave(project.id);
     let saveValues = await readSaveValues(saveAccess);
@@ -768,7 +756,11 @@ export class StudioApp {
       seed: 0x240c1999,
       workUnitsPerFrame: 50_000,
       updateRate: manifestUpdateRate(project.manifest),
-      maps: assets.maps,
+      assets: {
+        declarations: parsedManifest.assets,
+        files: project.files,
+        displayPath: parsedManifest.display,
+      },
       save: saveValues,
     });
     let stopped = false;
@@ -817,9 +809,8 @@ export class StudioApp {
       }
       try {
         const result = await sandbox.frame(input.poll());
-        renderer.render(graphics.executeFrame(result.drawCommands).indexedPixels);
-        const audioFrame = synthesizer.executeFrame(result.audioCommands);
-        audioSink?.enqueue(audioFrame);
+        renderer.render(result.output.indexedPixels);
+        audioSink?.enqueue(result.output.audio);
         if (result.saveWrites.length > 0) {
           saveValues = { ...saveValues };
           for (const write of result.saveWrites) {

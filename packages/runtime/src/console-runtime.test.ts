@@ -24,6 +24,44 @@ const factory: CartridgeFactory = (api) => ({
 });
 
 describe('production console dispatcher', () => {
+  it('restores all device state and pending boot saves transactionally', () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        start() {
+          api.call('save_set_int', ['boots', 1], span);
+        },
+      }),
+      configuration,
+    );
+    const before = runtime.snapshot();
+    const invalid = {
+      ...before,
+      machine: { ...before.machine, frame: 99 },
+      save: { ...before.save, counter: 99 },
+      audio: {
+        ...before.audio,
+        voices: before.audio.voices.map((voice, index) =>
+          index === 0 ? { ...voice, active: true, sound: 'missing' } : voice,
+        ),
+      },
+    };
+    expect(() => {
+      runtime.restore(invalid);
+    }).toThrow(/missing sound/);
+    expect(runtime.snapshot()).toEqual(before);
+    const first = runtime.runFrame(emptyInputFrame());
+    expect(first.saveWrites).toContainEqual({ key: 'boots', value: 1 });
+    runtime.restore(before);
+    expect(runtime.runFrame(emptyInputFrame())).toEqual(first);
+    const invalidPixels = { ...before, graphics: { ...before.graphics, front: new Uint8Array(1) } };
+    const saved = runtime.snapshot();
+    expect(() => {
+      runtime.restore(invalidPixels);
+    }).toThrow(/invalid worker snapshot/);
+    expect(runtime.snapshot()).toEqual(saved);
+  });
+
   it('isolates instances, flushes saves once and resets per-frame debug/command buffers', () => {
     const first = createConsoleRuntime(factory, { ...configuration, debug: true });
     const second = createConsoleRuntime(factory, configuration);

@@ -1,8 +1,28 @@
 import { RuntimeFault } from './errors';
-import { DeterministicMachine, type CartridgeFactory, type ExecutionContext } from './machine';
+import {
+  DeterministicMachine,
+  isMachineSnapshot,
+  type CartridgeFactory,
+  type ExecutionContext,
+  type MachineSnapshot,
+} from './machine';
+import { decodeRuntimeAssets, isRuntimeAssetSource } from './asset-codec';
+import { AudioAssetStore, Synthesizer, isSynthSnapshot, type SynthSnapshot } from './audio';
+import {
+  IndexedGraphics,
+  VisualAssetStore,
+  isGraphicsSnapshot,
+  type GraphicsSnapshot,
+} from './graphics';
 import { HARDWARE } from './hardware';
 import { MapQueryStore } from './map-query';
-import { SaveMemory, type SaveValues } from './save';
+import {
+  SaveMemory,
+  isSaveValues,
+  isPendingSaveWrites,
+  type SaveValues,
+  type SaveWrite,
+} from './save';
 import type { InputFrame } from './input';
 import type {
   ConsoleCommand,
@@ -17,8 +37,30 @@ export type ConsoleFrame = Omit<Extract<WorkerResponse, { type: 'frame' }>, 'id'
 
 export interface ConsoleRuntime {
   runFrame(input: InputFrame): ConsoleFrame;
-  snapshot(): unknown;
+  snapshot(): ConsoleRuntimeSnapshot;
   restore(snapshot: unknown): void;
+}
+
+export interface ConsoleRuntimeSnapshot {
+  readonly revision: 2;
+  readonly machine: MachineSnapshot;
+  readonly save: SaveValues;
+  readonly graphics: GraphicsSnapshot;
+  readonly audio: SynthSnapshot;
+  readonly pendingSaveWrites: readonly SaveWrite[];
+}
+
+export function isConsoleRuntimeSnapshot(value: unknown): value is ConsoleRuntimeSnapshot {
+  return (
+    isRecord(value) &&
+    value.revision === 2 &&
+    Object.keys(value).length === 6 &&
+    isMachineSnapshot(value.machine) &&
+    isSaveValues(value.save) &&
+    isGraphicsSnapshot(value.graphics) &&
+    isSynthSnapshot(value.audio) &&
+    isPendingSaveWrites(value.pendingSaveWrites, value.save)
+  );
 }
 
 /** One production dispatcher for restricted Workers and deterministic headless hosts. */
@@ -26,10 +68,21 @@ export function createConsoleRuntime(
   factory: CartridgeFactory,
   configuration: SandboxConfiguration,
 ): ConsoleRuntime {
+  if (configuration.assets !== undefined && !isRuntimeAssetSource(configuration.assets))
+    throw new RuntimeFault('PX9100', 'invalid runtime asset source', { start: 0, end: 0 });
+  const source = configuration.assets;
+  const assets =
+    source === undefined
+      ? decodeRuntimeAssets({}, {})
+      : decodeRuntimeAssets(source.declarations, source.files, source.displayPath);
+  const visualStore = new VisualAssetStore(assets.visual);
+  const graphics = new IndexedGraphics(visualStore, assets.display);
+  const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
+  let rendering = false;
   let machine: DeterministicMachine | undefined = undefined;
   let drawCommands: ConsoleCommand[] = [];
   let audioCommands: ConsoleCommand[] = [];
-  const mapQueries = new MapQueryStore(configuration.maps ?? []);
+  const mapQueries = new MapQueryStore(source === undefined ? (configuration.maps ?? []) : []);
   const saveMemory = new SaveMemory(configuration.save ?? {});
   const debugEnabled = configuration.debug ?? false;
   let debugTrace: DebugTraceEvent[] = [];
@@ -70,12 +123,25 @@ export function createConsoleRuntime(
       debugTrace = [];
       debugTraceTruncated = false;
       const active = requireMachine();
-      const report = active.runFrame(input);
+      graphics.beginFrame();
+      rendering = true;
+      let report;
+      try {
+        report = active.runFrame(input);
+      } finally {
+        rendering = false;
+      }
+      const output = {
+        indexedPixels: graphics.finishFrame().indexedPixels,
+        audio: synthesizer.finishFrame(),
+        audioState: synthesizer.snapshot(),
+      };
       return {
         ...report,
         drawCommands,
         audioCommands,
         saveWrites: saveMemory.takeWrites(),
+        output,
         ...(debugEnabled
           ? {
               debug: {
@@ -87,15 +153,41 @@ export function createConsoleRuntime(
           : {}),
       };
     },
-    snapshot() {
-      return { revision: 1, machine: requireMachine().snapshot(), save: saveMemory.snapshot() };
-    },
+    snapshot: captureSnapshot,
     restore(value) {
       const snapshot = readWorkerSnapshot(value);
-      requireMachine().restore(snapshot.machine);
-      saveMemory.restore(snapshot.save);
+      const before = captureSnapshot();
+      try {
+        requireMachine().restore(snapshot.machine);
+        saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
+        if (snapshot.revision === 2) {
+          graphics.restore(snapshot.graphics);
+          synthesizer.restore(snapshot.audio);
+        }
+      } catch (error) {
+        requireMachine().restore(before.machine);
+        saveMemory.restore(before.save, before.pendingSaveWrites);
+        graphics.restore(before.graphics);
+        synthesizer.restore(before.audio);
+        throw new RuntimeFault(
+          'PX9103',
+          error instanceof Error ? error.message : 'invalid device snapshot',
+          { start: 0, end: 0 },
+        );
+      }
     },
   };
+
+  function captureSnapshot(): ConsoleRuntimeSnapshot {
+    return {
+      revision: 2,
+      machine: requireMachine().snapshot(),
+      save: saveMemory.snapshot(),
+      graphics: graphics.snapshot(),
+      audio: synthesizer.snapshot(),
+      pendingSaveWrites: saveMemory.pendingWrites(),
+    };
+  }
 
   function handleConsoleCall(
     name: string,
@@ -125,9 +217,26 @@ export function createConsoleRuntime(
       }
       const integers = arguments_.slice(1).map((value) => readInteger(value, sourceSpan));
       if (name === 'map_cell' && integers.length === 3) {
+        if (source !== undefined)
+          return (
+            visualStore.mapCell(
+              handle.name,
+              integers[0] ?? 0,
+              integers[1] ?? 0,
+              integers[2] ?? 0,
+            ) ?? -1
+          );
         return mapQueries.cell(handle.name, integers[0] ?? 0, integers[1] ?? 0, integers[2] ?? 0);
       }
       if (name === 'map_flag' && integers.length === 4) {
+        if (source !== undefined)
+          return visualStore.mapFlag(
+            handle.name,
+            integers[0] ?? 0,
+            integers[1] ?? 0,
+            integers[2] ?? 0,
+            integers[3] ?? 0,
+          );
         return mapQueries.flag(
           handle.name,
           integers[0] ?? 0,
@@ -171,10 +280,12 @@ export function createConsoleRuntime(
         throw new RuntimeFault('PX9010', 'draw-command ceiling exceeded', sourceSpan);
       }
       drawCommands.push(command);
+      if (rendering) graphics.executeCommand(command);
       return undefined;
     }
     if (AUDIO_CALLS.has(name)) {
       audioCommands.push(command);
+      if (rendering) synthesizer.executeCommand(command);
       return undefined;
     }
     throw new RuntimeFault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
@@ -277,9 +388,29 @@ function readInteger(value: unknown, sourceSpan: SourceSpan): number {
   return value;
 }
 
-function readWorkerSnapshot(value: unknown): { machine: unknown; save: SaveValues } {
-  if (!isRecord(value) || value.revision !== 1 || !('machine' in value) || !('save' in value)) {
+function readWorkerSnapshot(value: unknown): {
+  revision: 1 | 2;
+  machine: unknown;
+  save: SaveValues;
+  graphics: unknown;
+  audio: unknown;
+  pendingSaveWrites: readonly SaveWrite[];
+} {
+  if (
+    !isRecord(value) ||
+    (value.revision === 2
+      ? !isConsoleRuntimeSnapshot(value)
+      : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
+  ) {
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
-  return { machine: value.machine, save: value.save as SaveValues };
+  return {
+    revision: value.revision === 2 ? 2 : 1,
+    machine: value.machine,
+    save: value.save as SaveValues,
+    graphics: value.graphics,
+    audio: value.audio,
+    pendingSaveWrites:
+      value.revision === 2 ? (value.pendingSaveWrites as readonly SaveWrite[]) : [],
+  };
 }
