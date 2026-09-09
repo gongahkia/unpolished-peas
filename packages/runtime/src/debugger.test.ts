@@ -1,9 +1,49 @@
 import { describe, expect, it } from 'vitest';
 
-import { debugFingerprint, evaluateWatch, ReplayJournal } from './debugger';
+import {
+  consoleReplayObservable,
+  debugFingerprint,
+  evaluateWatch,
+  ReplayJournal,
+} from './debugger';
+import { createConsoleRuntime } from './console-runtime';
+import { MEMORY } from './bus';
 import { emptyInputFrame } from './input';
 
 describe('debugger replay and watches', () => {
+  it('detects pixel and PCM divergence even when bus code emits no draw or audio commands', async () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        start() {},
+        update() {},
+        raster() {},
+        draw() {
+          api.call('mem_write', [MEMORY.back, 7], { start: 0, end: 1 });
+        },
+        snapshot: () => ({ state: {}, tasks: [], nextTaskId: 1 }),
+        restore() {},
+        inspect: () => ({ state: {}, tasks: [], callStack: [] }),
+      }),
+      { seed: 1, updateRate: 60, workUnitsPerFrame: 50_000 },
+    );
+    const journal = new ReplayJournal(4);
+    journal.recordSnapshot(0, runtime.snapshot());
+    const frame = runtime.runFrame(emptyInputFrame());
+    expect(frame.drawCommands).toEqual([]);
+    expect(frame.audioCommands).toEqual([]);
+    journal.recordFrame(0, emptyInputFrame(), consoleReplayObservable(frame));
+    for (const change of ['pixel', 'audio']) {
+      const altered = structuredClone(frame);
+      if (change === 'pixel') altered.output.indexedPixels[0] = 8;
+      else altered.output.audio.left[0] = 0.5;
+      const replay = await journal.replay(1, {
+        restore: () => Promise.resolve(),
+        frame: () => Promise.resolve(consoleReplayObservable(altered)),
+      });
+      expect(replay.divergence).toMatchObject({ frame: 0 });
+    }
+  });
+
   it('plans snapshot replay, detects divergence, and supports branching', async () => {
     const journal = new ReplayJournal(4);
     journal.recordSnapshot(0, { cursor: 0 });

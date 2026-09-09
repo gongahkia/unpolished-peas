@@ -1321,6 +1321,20 @@ impl<'syntax> Analyzer<'syntax> {
         self.lookup(name)
     }
 
+    fn is_raster_builtin(name: &str) -> bool {
+        matches!(
+            name,
+            "pal"
+                | "raster_scroll"
+                | "mem_read"
+                | "mem_read16"
+                | "mem_write"
+                | "mem_write16"
+                | "mem_copy"
+                | "mem_fill"
+        )
+    }
+
     fn check_asset(&mut self, name: &Name) -> IrExpression {
         if let Some(definition) = self.assets.get(&name.value) {
             IrExpression {
@@ -1544,19 +1558,7 @@ impl<'syntax> Analyzer<'syntax> {
         };
         if self.current_routine == Some(RoutineKind::Callback(CallbackKind::Raster)) {
             let symbol = self.symbol(callee_symbol);
-            if symbol.kind != SymbolKind::Builtin
-                || !matches!(
-                    symbol.name.as_str(),
-                    "pal"
-                        | "raster_scroll"
-                        | "mem_read"
-                        | "mem_read16"
-                        | "mem_write"
-                        | "mem_write16"
-                        | "mem_copy"
-                        | "mem_fill"
-                )
-            {
+            if symbol.kind != SymbolKind::Builtin || !Self::is_raster_builtin(&symbol.name) {
                 self.diagnostics.push(
                     Diagnostic::error(
                         "PX3121",
