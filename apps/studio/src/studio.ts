@@ -754,7 +754,7 @@ export class StudioApp {
     let saveValues = await readSaveValues(saveAccess);
     await sandbox.load(compilation.generated.javascript, {
       seed: 0x240c1999,
-      workUnitsPerFrame: 50_000,
+      workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
       updateRate: manifestUpdateRate(project.manifest),
       assets: {
         declarations: parsedManifest.assets,

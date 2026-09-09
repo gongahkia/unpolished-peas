@@ -6,7 +6,7 @@ import {
   type ExecutionContext,
   type MachineSnapshot,
 } from './machine';
-import { decodeRuntimeAssets, isRuntimeAssetSource } from './asset-codec';
+import { decodeRuntimeAssets } from './asset-codec';
 import { AudioAssetStore, Synthesizer, isSynthSnapshot, type SynthSnapshot } from './audio';
 import {
   IndexedGraphics,
@@ -25,6 +25,7 @@ import {
   type SaveWrite,
 } from './save';
 import { isInputFrame, type InputFrame } from './input';
+import { isSandboxConfiguration } from './protocol';
 import type {
   ConsoleCommand,
   DebugStackFrame,
@@ -72,8 +73,8 @@ export function createConsoleRuntime(
   factory: CartridgeFactory,
   configuration: SandboxConfiguration,
 ): ConsoleRuntime {
-  if (configuration.assets !== undefined && !isRuntimeAssetSource(configuration.assets))
-    throw new RuntimeFault('PX9100', 'invalid runtime asset source', { start: 0, end: 0 });
+  if (!isSandboxConfiguration(configuration))
+    throw new RuntimeFault('PX9100', 'invalid sandbox configuration', { start: 0, end: 0 });
   const source = configuration.assets;
   const assets =
     source === undefined

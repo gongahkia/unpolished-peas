@@ -26,6 +26,20 @@ const factory: CartridgeFactory = (api) => ({
 });
 
 describe('production console dispatcher', () => {
+  it('rejects a raised hardware work ceiling before constructing cartridge state', () => {
+    let constructed = false;
+    expect(() =>
+      createConsoleRuntime(
+        (api) => {
+          constructed = true;
+          return factory(api);
+        },
+        { ...configuration, workUnitsPerFrame: 50_001 },
+      ),
+    ).toThrow(expect.objectContaining({ code: 'PX9100' }));
+    expect(constructed).toBe(false);
+  });
+
   it('rejects malformed input before resetting any device state', () => {
     const runtime = createConsoleRuntime(
       (api) => ({

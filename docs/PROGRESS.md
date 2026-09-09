@@ -457,6 +457,32 @@ Each group may produce several coherent commits, and integration occurs througho
   by audio/save/ROM and the full viewer/conformance/shared-host work. Hardware Revision 1 is still
   incomplete. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2g: fixed work ceiling and restorable accounting primitive
+
+- Auditing system-register inputs exposed a contradiction: HARDWARE/LIMITS documented 50,000 work
+  units, but the load protocol and core accepted larger budgets. Two focused tests reproduced it.
+  The ceiling is now an explicit hardware constant, enforced by the shared configuration schema
+  before cartridge construction. Studio uses that constant; lower internal diagnostic budgets remain
+  supported. The core now validates the complete configuration with the Worker protocol's schema.
+- Added a revisioned work-budget snapshot primitive retaining used units, limit and exact source
+  attribution. Restore validates counts, ordering, spans, duplicates, totals and limit agreement
+  before mutation. It is tested independently but **not yet wired into aggregate machine snapshots
+  or mapped system registers**; that integration is the next checkpoint, not claimed here.
+- Enormous finite integer work charges now fault with a representable saturated counter/attribution
+  total at `2^53-1`, rather than leaving unsafe integer accounting. Ordinary charges and source fault
+  positions are unchanged. Tested both safe-integer addition overflow and larger geometric-scale
+  charges, as well as malformed/sparse budget snapshots and transactional rejection.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **88 Vitest tests**, production
+  builds, **one complete Firefox E2E** (23.9 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. The two admission reproductions failed first and passed after enforcement. No complete
+  gate tests were skipped; all alpha output/work/state/PCM compatibility checks still pass.
+- Original games remain 42,851 / 41,262 / 38,039 packed bytes. Main/Worker JS measure 122,239/60,078
+  bytes; Wasm remains 1,167,748 bytes. No visual layout changed; no additional manual capture was
+  needed for this boundary change. Chromium and the remainder of V1 verification are still open.
+- Next: integrate accounting, execution/fault status and deterministic counters into complete machine
+  snapshots and real system MMIO, retaining explicit legacy migrations. Hardware Revision 1 remains
+  incomplete. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

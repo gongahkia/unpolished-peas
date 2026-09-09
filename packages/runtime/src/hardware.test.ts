@@ -14,6 +14,7 @@ describe('experimental alpha hardware profile', () => {
       saveCapacityBytes: 8 * 1024,
       cartridgeCapacityBytes: 256 * 1024,
       drawCommandsPerFrame: 4096,
+      workUnitsPerFrame: 50_000,
       audioVoices: 8,
       audioSampleRate: 48_000,
       trackerChannels: 8,

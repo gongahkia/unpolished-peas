@@ -185,7 +185,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
   }
 }
 
-function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
+export function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
   return (
     isRecord(value) &&
     hasExactKeys(value, [
@@ -200,6 +200,7 @@ function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
     value.workUnitsPerFrame > 0 &&
+    value.workUnitsPerFrame <= HARDWARE.workUnitsPerFrame &&
     (value.updateRate === 30 || value.updateRate === 60) &&
     (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
     (value.save === undefined || isSaveValues(value.save)) &&

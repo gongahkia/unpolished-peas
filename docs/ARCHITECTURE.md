@@ -20,7 +20,8 @@ in a dedicated worker and communicates through a versioned, validated message pr
 receives persistence handles or DOM objects.
 
 The Worker delegates scheduling, console dispatch, work accounting, graphics, audio, maps, saves
-and debug traces to `packages/runtime/src/console-runtime.ts`. That core validates and decodes a
+and debug traces to `packages/runtime/src/console-runtime.ts`. That core validates its complete
+configuration with the same schema as the Worker protocol, rejects budgets above 50,000, and decodes a
 bounded source asset bank; map queries and drawing use the same visual store. Commands execute in
 program order, then frame completion resolves indexed scanout and renders deterministic PCM.
 The page presents those pixels/samples and handles input and storage; it no longer re-executes
