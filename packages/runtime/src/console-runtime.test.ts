@@ -35,6 +35,87 @@ const factory: CartridgeFactory = (api) => ({
 });
 
 describe('production console dispatcher', () => {
+  it('latches output-stage audio exhaustion before advancing the completed frame counter', () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        update() {},
+        draw() {
+          api.call('music', [{ kind: 'Music', name: 'song' }], span);
+        },
+      }),
+      {
+        ...configuration,
+        assets: {
+          declarations: {
+            tone: { kind: 'sound', path: 'tone.pxs' },
+            song: { kind: 'music', path: 'song.pxt' },
+          },
+          files: {
+            'tone.pxs': new TextEncoder().encode(
+              JSON.stringify({
+                revision: 1,
+                kind: 'sound',
+                waveform: 'triangle',
+                note: 60,
+                durationFrames: 4,
+                volume: 0.5,
+                pan: 0,
+                envelope: { attackFrames: 0, decayFrames: 0, sustainLevel: 1, releaseFrames: 0 },
+                pitch: {
+                  slideSemitonesPerFrame: 0,
+                  vibratoDepthSemitones: 0,
+                  vibratoPeriodFrames: 0,
+                },
+              }),
+            ),
+            'song.pxt': new TextEncoder().encode(
+              JSON.stringify({
+                revision: 1,
+                kind: 'music',
+                framesPerRow: 1,
+                order: ['p'],
+                loop: true,
+                patterns: {
+                  p: {
+                    rows: [[{ note: 60, sound: 'tone' }, null, null, null, null, null, null, null]],
+                  },
+                },
+              }),
+            ),
+          },
+        },
+      },
+    );
+    const healthy = runtime.snapshot();
+    runtime.restore({
+      ...healthy,
+      audio: { ...healthy.audio, nextSequence: Number.MAX_SAFE_INTEGER },
+    });
+    expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9012' }),
+    );
+    const faulted = runtime.snapshot();
+    expect(faulted.machine.frame).toBe(0);
+    expect(faulted.audio.frame).toBe(0);
+    expect(faulted.audio.nextSequence).toBe(Number.MAX_SAFE_INTEGER);
+    expect(faulted.machine.execution).toMatchObject({
+      phase: 'output',
+      updates: 1,
+      rasterLine: null,
+      fault: { code: 9012, sourceSpan: { start: 0, end: 0 } },
+    });
+    expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9014' }),
+    );
+    deepStrictEqual(runtime.snapshot(), faulted);
+    runtime.restore(healthy);
+    expect(runtime.runFrame(emptyInputFrame()).frame).toBe(0);
+    expect(runtime.snapshot().machine.frame).toBe(1);
+    runtime.restore(faulted);
+    deepStrictEqual(runtime.snapshot(), faulted);
+  });
+
   it('rejects a raised hardware work ceiling before constructing cartridge state', () => {
     let constructed = false;
     expect(() =>

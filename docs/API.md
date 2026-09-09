@@ -95,6 +95,11 @@ triangle, saw, noise, and 4-32-entry wavetable oscillators; frame-based attack/d
 pitch slide, triangle vibrato, volume, and pan. It cannot represent imported PCM samples. Voice
 allocation is deterministic and steals the oldest voice when all eight are active.
 
+`audio_id(name: Text) -> Int` returns an immutable audio descriptor ID or `-1`, costing one plus
+the name length. The voice/tracker bus reads and controls the same synthesizer state as these calls;
+see [audio registers](HARDWARE.md#synthesizer-and-tracker-controls) for layouts, numeric constraints,
+timing, raw activation/volume changes and output-stage faults.
+
 ## Persistence status
 
 `save_get_int(key, fallback)` reads a safe integer from the cartridge's initial save copy, and

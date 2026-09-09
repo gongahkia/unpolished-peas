@@ -540,6 +540,50 @@ Each group may produce several coherent commits, and integration occurs througho
   controls, save/ROM, Chromium and the remaining Hardware/V1 acceptance work are still open.
   Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2j: writable synth/tracker MMIO and output fault boundaries
+
+- The byte bus now supports side-effect-free preparation of device writes followed by commit only
+  after every destination validates. Focused tests exercise overlapping copies, RAM/device aliasing,
+  invalid values, cross-region permissions and raster restrictions with no partial commits. MMIO
+  owners retain their own snapshots; the bus does not save a second register image.
+- Mapped synth status at `0x51000`, tracker selection/position at `0x51020`, eight 64-byte voice
+  records at `0x51100`, and immutable name-sorted audio descriptors at `0x3c0000`. Voice controls use
+  the existing exact binary64 note/volume/phase and integer age/noise state. High-level commands and
+  raw reads/writes share the same objects. `audio_id(Text)` is lazily typed like `visual_id`, preserving
+  old symbol IDs. Layouts, read-only allocation fields, timing, raw activation and stopped-tracker
+  behavior are documented. Aggregate snapshot revision 5 remains sufficient: synth state already
+  retains every mapped mutable field.
+- Reproduced audio allocation overflow and corrected the output-stage boundary. Scanout and audio
+  mixing now run in machine phase 5 before its completed-frame increment. Audio/frame allocation
+  exhaustion faults with PX9012 before overflow; output failures latch phase/counters/source status
+  and reject retry before reset. Healthy and faulted checkpoint restore are tested. Normal synthesis
+  calculations, game scheduling and all frozen alpha PCM/frame/work/state traces remain unchanged.
+- Added ordinary `tests/conformance/audio` source/assets. Native Release/Debug cases exercise all
+  eight voices, descriptors, high/low aliases, raw-muted versus audible PCM and complete replay. A
+  restored boundary test exposed the fixture's low-word comparison at frame 65,536; the assertion now
+  compares low words, while the host test checks copied 64-bit counters across 65,535/65,536. This was
+  a fixture defect, not hardware-counter wrap. Both compiler modes failed first and passed afterward.
+- `./scripts/check.sh` passed after that correction: formatting, lint, strict TypeScript,
+  **118 Vitest tests**, production builds, **one complete Firefox E2E** (24.7 s), Rust fmt/Clippy,
+  **47 Rust tests**, native and release Wasm builds. An earlier complete run also passed before the
+  additional rollover test (27.5 s Firefox). The output-exhaustion reproduction initially failed;
+  a focused lint issue with closure-updated output narrowing was resolved without disabling the
+  rule. No final-gate tests were skipped; focused reproductions selected subsets intentionally.
+- The final audio conformance artifact packs identically twice at **15,309 bytes**, SHA-256
+  `1155cf4d01bd45603f81e53c7164adc77178a23729cb3a5ae665b145d3662594`. It is conformance proof, not a
+  substitute for the required size-coded showcases. Original games remain 42,851/41,262/38,039 bytes
+  with unchanged hashes. Main/Worker JS are 129,252/69,424 bytes; Wasm is 1,168,140 bytes.
+- Using the Playwright CLI skill, manually imported/ran the fixture in headed Firefox, inspected
+  `AUDIO BUS PASS` at 5x integer scaling, and inspected the eight-voice debugger panel after stepping,
+  rewinding to zero and replaying frame one. Reimported the corrected final artifact and inspected
+  its screen again (`output/playwright/v1-audio-conformance.png`); console errors/warnings were zero.
+  `v1-audio-debugger.png` records the earlier equivalent frame-one panel. The existing player control
+  overlay and debugger layout are unchanged; this is not a clean-capture/UI-redesign claim. Browser
+  and owned preview server were closed. No subjective audible-quality judgment was made.
+- Next: verify initialization-time runtime calls, then save commits/ROM, the full viewer and shared
+  hosts. Hardware Revision 1 is still incomplete. Chromium and all remaining V1 stopping requirements
+  remain open. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

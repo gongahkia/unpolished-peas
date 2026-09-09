@@ -83,11 +83,13 @@ export function createConsoleRuntime(
       : decodeRuntimeAssets(source.declarations, source.files, source.displayPath);
   const visualStore = new VisualAssetStore(assets.visual, assets.display);
   const graphics = new IndexedGraphics(visualStore);
-  const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
+  const audioStore = new AudioAssetStore(assets.audio);
+  const synthesizer = new Synthesizer(audioStore);
   let rendering = false;
   let machine: DeterministicMachine | undefined = undefined;
   let drawCommands: ConsoleCommand[] = [];
   let audioCommands: ConsoleCommand[] = [];
+  let frameOutput: ConsoleFrame['output'] | undefined;
   const mapQueries = new MapQueryStore(source === undefined ? (configuration.maps ?? []) : []);
   const saveMemory = new SaveMemory(configuration.save ?? {});
   const debugEnabled = configuration.debug ?? false;
@@ -100,6 +102,7 @@ export function createConsoleRuntime(
       { name: 'ram', address: MEMORY.ram, bytes: ram, writable: true },
       ...graphics.memoryRegions(),
       ...visualStore.memoryRegions(),
+      ...synthesizer.memoryRegions(),
       {
         name: 'controllers and pointer',
         address: MEMORY.input,
@@ -127,6 +130,13 @@ export function createConsoleRuntime(
   );
 
   machine = new DeterministicMachine(factory, configuration, {
+    completeFrame: () => {
+      frameOutput = {
+        indexedPixels: graphics.finishFrame().indexedPixels,
+        audio: synthesizer.finishFrame(),
+        audioState: synthesizer.snapshot(),
+      };
+    },
     call: handleConsoleCall,
     ...(debugEnabled
       ? {
@@ -168,6 +178,7 @@ export function createConsoleRuntime(
       active.assertRunnable();
       drawCommands = [];
       audioCommands = [];
+      frameOutput = undefined;
       debugTrace = [];
       debugTraceTruncated = false;
       graphics.beginFrame();
@@ -178,11 +189,7 @@ export function createConsoleRuntime(
       } finally {
         rendering = false;
       }
-      const output = {
-        indexedPixels: graphics.finishFrame().indexedPixels,
-        audio: synthesizer.finishFrame(),
-        audioState: synthesizer.snapshot(),
-      };
+      const output = completedOutput();
       return {
         ...report,
         drawCommands,
@@ -255,17 +262,26 @@ export function createConsoleRuntime(
     };
   }
 
+  function completedOutput(): ConsoleFrame['output'] {
+    if (frameOutput === undefined)
+      throw new RuntimeFault('PX9102', 'frame completed without device output', {
+        start: 0,
+        end: 0,
+      });
+    return frameOutput;
+  }
+
   function handleConsoleCall(
     name: string,
     arguments_: readonly unknown[],
     sourceSpan: SourceSpan,
     context: ExecutionContext,
   ): unknown {
-    if (name === 'visual_id') {
+    if (name === 'visual_id' || name === 'audio_id') {
       if (arguments_.length !== 1 || typeof arguments_[0] !== 'string')
-        throw new RuntimeFault('PX9009', 'visual_id expects one Text name', sourceSpan);
+        throw new RuntimeFault('PX9009', `${name} expects one Text name`, sourceSpan);
       requireMachine().work(1 + arguments_[0].length, sourceSpan);
-      return visualStore.id(arguments_[0]);
+      return (name === 'visual_id' ? visualStore : audioStore).id(arguments_[0]);
     }
     if (MEMORY_CALLS.has(name)) {
       if (arguments_.length !== MEMORY_CALLS.get(name))

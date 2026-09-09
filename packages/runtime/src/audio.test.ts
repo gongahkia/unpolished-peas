@@ -10,6 +10,7 @@ import {
   type Waveform,
 } from './audio';
 import { HARDWARE } from './hardware';
+import { MEMORY, MemoryBus } from './bus';
 import type { ConsoleCommand } from './protocol';
 
 const sourceSpan = { start: 0, end: 1 };
@@ -43,6 +44,176 @@ function handle(name: string, kind: 'Sound' | 'Music'): object {
 }
 
 describe('PX-240C synthesizer and tracker', () => {
+  it('faults at exact audio counters before mutating voices or advancing samples', () => {
+    const synth = new Synthesizer(new AudioAssetStore([sound('tone')]));
+    const initial = synth.snapshot();
+    synth.restore({ ...initial, nextSequence: Number.MAX_SAFE_INTEGER });
+    const beforeTrigger = synth.snapshot();
+    expect(() => {
+      synth.executeCommand(command('sfx', [handle('tone', 'Sound')]));
+    }).toThrow(expect.objectContaining({ code: 'PX9012', sourceSpan }));
+    expect(synth.snapshot()).toEqual(beforeTrigger);
+    synth.restore({ ...initial, frame: Number.MAX_SAFE_INTEGER });
+    const beforeFrame = synth.snapshot();
+    expect(() => synth.finishFrame()).toThrow(expect.objectContaining({ code: 'PX9012' }));
+    expect(synth.snapshot()).toEqual(beforeFrame);
+  });
+
+  it('shares all eight live voices and their exact floating-point controls with writable MMIO', () => {
+    const store = new AudioAssetStore([sound('tone')]);
+    const synth = new Synthesizer(store);
+    const ram = new Uint8Array(64);
+    const bus = new MemoryBus(
+      [{ name: 'RAM', address: 0, bytes: ram, writable: true }, ...synth.memoryRegions()],
+      () => {},
+    );
+    expect(bus.read(MEMORY.audio + 17, 2, sourceSpan)).toBe(0x0808);
+    expect(bus.read(MEMORY.audio + 20, 2, sourceSpan)).toBe(48_000);
+    expect(bus.read(MEMORY.audio + 24, 2, sourceSpan)).toBe(1);
+    expect(bus.read(MEMORY.audioAssets, 2, sourceSpan)).toBe(1);
+    expect(bus.read(MEMORY.audioAssets + 8, 2, sourceSpan)).toBe(69);
+    for (let slot = 0; slot < 8; slot += 1) {
+      const address = MEMORY.audioVoices + slot * MEMORY.voiceStride;
+      expect(bus.read(address, 1, sourceSpan)).toBe(0);
+      synth.executeCommand(command('sfx', [handle('tone', 'Sound')]));
+      expect(bus.read(address, 1, sourceSpan)).toBe(1);
+      expect(bus.read(address + 4, 2, sourceSpan)).toBe(1);
+      expect(bus.read(address + 48, 2, sourceSpan)).toBe(slot + 1);
+      bus.copy(0, address + 8, 8, sourceSpan);
+      expect(new DataView(ram.buffer).getFloat64(0, true)).toBe(69);
+      new DataView(ram.buffer).setFloat64(0, 0.25, true);
+      bus.copy(address + 32, 0, 8, sourceSpan);
+      bus.fill(address + 16, 0, 8, sourceSpan);
+    }
+    expect(bus.read(MEMORY.audio + 16, 1, sourceSpan)).toBe(8);
+    expect(bus.read(MEMORY.audio + 8, 2, sourceSpan)).toBe(9);
+    expect(
+      synth.inspectVoices().every((voice) => voice.volumeScale === 0 && voice.phase === 0.25),
+    ).toBe(true);
+    const checkpoint = synth.snapshot();
+    const expected = synth.finishFrame();
+    expect(expected.left.every((sample) => sample === 0)).toBe(true);
+    expect(expected.right.every((sample) => sample === 0)).toBe(true);
+    expect(bus.read(MEMORY.audio, 2, sourceSpan)).toBe(1);
+    expect(bus.read(MEMORY.audioVoices + 24, 2, sourceSpan)).toBe(1);
+    synth.restore(checkpoint);
+    expect(bus.read(MEMORY.audio, 2, sourceSpan)).toBe(0);
+    expect(bus.read(MEMORY.audioVoices + 24, 2, sourceSpan)).toBe(0);
+    expect(synth.finishFrame()).toEqual(expected);
+    expect(bus.snapshot().regions).toHaveLength(1);
+  });
+
+  it('rejects invalid voice encodings and cross-permission writes before changing synth state', () => {
+    const synth = new Synthesizer(new AudioAssetStore([sound('tone')]));
+    synth.executeCommand(command('sfx', [handle('tone', 'Sound')]));
+    const ram = new Uint8Array(64);
+    const bus = new MemoryBus(
+      [{ name: 'RAM', address: 0, bytes: ram, writable: true }, ...synth.memoryRegions()],
+      () => {},
+    );
+    const before = synth.snapshot();
+    const base = MEMORY.audioVoices;
+    for (const [offset, value] of [
+      [0, 2],
+      [1, 1],
+      [4, 0],
+      [4, 99],
+      [44, 1],
+    ]) {
+      expect(() => {
+        bus.write(base + (offset ?? 0), value ?? 0, 1, sourceSpan);
+      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      expect(synth.snapshot()).toEqual(before);
+    }
+    for (const [offset, value] of [
+      [8, NaN],
+      [8, 128],
+      [16, Infinity],
+      [16, -1],
+      [32, 1],
+    ]) {
+      new DataView(ram.buffer).setFloat64(0, value ?? 0, true);
+      expect(() => {
+        bus.copy(base + (offset ?? 0), 0, 8, sourceSpan);
+      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      expect(synth.snapshot()).toEqual(before);
+    }
+    new DataView(ram.buffer).setBigUint64(0, BigInt(Number.MAX_SAFE_INTEGER), true);
+    expect(() => {
+      bus.copy(base + 24, 0, 8, sourceSpan);
+    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    expect(() => {
+      bus.fill(base + 40, 0, 4, sourceSpan);
+    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    expect(() => {
+      bus.fill(base + 44, 0, 8, sourceSpan);
+    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    expect(() => {
+      bus.write(base, 0, 1, sourceSpan, true);
+    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    expect(synth.snapshot()).toEqual(before);
+    bus.write(base, 0, 1, sourceSpan);
+    expect(synth.inspectVoices()[0]?.active).toBe(false);
+    bus.write(base, 1, 1, sourceSpan);
+    expect(synth.inspectVoices()[0]?.active).toBe(true);
+  });
+
+  it('shares tracker position/start/stop with raw controls and exposes stable sorted asset IDs', () => {
+    const row = [
+      { note: 72, sound: 'tone', volume: 0.5 },
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+      null,
+    ];
+    const music: MusicAsset = {
+      kind: 'music',
+      name: 'song',
+      framesPerRow: 2,
+      order: ['p'],
+      patterns: { p: { rows: [row, row] } },
+      loop: true,
+    };
+    const assets = new AudioAssetStore([sound('tone'), music]);
+    expect(assets.id('song')).toBe(0);
+    expect(assets.id('tone')).toBe(1);
+    expect(assets.id('absent')).toBe(-1);
+    const high = new Synthesizer(assets);
+    const low = new Synthesizer(assets);
+    const bus = new MemoryBus(low.memoryRegions(), () => {});
+    expect(bus.read(MEMORY.audioAssets, 2, sourceSpan)).toBe(2);
+    expect(bus.read(MEMORY.audioAssets + 20, 2, sourceSpan)).toBe(2);
+    bus.write(MEMORY.audioTracker, assets.id('song') + 1, 2, sourceSpan);
+    high.executeCommand(command('music', [handle('song', 'Music')]));
+    expect(low.snapshot()).toEqual(high.snapshot());
+    expect(low.finishFrame()).toEqual(high.finishFrame());
+    expect(bus.read(MEMORY.audioTracker + 12, 2, sourceSpan)).toBe(1);
+    bus.write(MEMORY.audioTracker + 8, 1, 2, sourceSpan);
+    expect(low.inspectTracker()).toMatchObject({ row: 1, frameInRow: 1 });
+    const before = low.snapshot();
+    for (const [offset, value] of [
+      [0, 2],
+      [4, 1],
+      [8, 2],
+      [12, 2],
+    ]) {
+      expect(() => {
+        bus.write(MEMORY.audioTracker + (offset ?? 0), value ?? 0, 2, sourceSpan);
+      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      expect(low.snapshot()).toEqual(before);
+    }
+    bus.write(MEMORY.audioTracker, 0, 2, sourceSpan);
+    expect(low.inspectTracker()).toBeNull();
+    expect(bus.read(MEMORY.audioTracker + 8, 2, sourceSpan)).toBe(0);
+    low.executeCommand(command('music', [handle('song', 'Music')]));
+    expect(bus.read(MEMORY.audioTracker, 2, sourceSpan)).toBe(1);
+    low.executeCommand(command('music_stop', []));
+    expect(bus.read(MEMORY.audioTracker, 2, sourceSpan)).toBe(0);
+  });
+
   it('rejects unsupported oscillators and non-finite or missing numeric patch data before rendering', () => {
     const patch = sound('invalid');
     const invalid: unknown[] = [

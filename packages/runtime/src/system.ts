@@ -2,7 +2,7 @@ import { HARDWARE } from './hardware';
 import type { SourceSpan } from './protocol';
 import type { WorkBudgetSnapshot } from './budget';
 
-export const EXECUTION_PHASES = ['idle', 'start', 'update', 'draw', 'raster'] as const;
+export const EXECUTION_PHASES = ['idle', 'start', 'update', 'draw', 'raster', 'output'] as const;
 export type ExecutionPhase = (typeof EXECUTION_PHASES)[number];
 
 export interface MachineFault {
@@ -44,7 +44,8 @@ export function isExecutionSnapshot(
     return false;
   const base = rate === 60 ? frame : Math.ceil(frame / 2);
   const updated =
-    (value.phase === 'draw' || value.phase === 'raster') && (rate === 60 || frame % 2 === 0);
+    (value.phase === 'draw' || value.phase === 'raster' || value.phase === 'output') &&
+    (rate === 60 || frame % 2 === 0);
   if (
     value.updates !== base + Number(updated) ||
     (value.phase !== 'idle' && frame === Number.MAX_SAFE_INTEGER) ||

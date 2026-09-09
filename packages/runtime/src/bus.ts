@@ -19,6 +19,12 @@ export const MEMORY = Object.freeze({
   systemBytes: 64,
   rasterLive: 0x50400,
   visualInfo: 0x50300,
+  audio: 0x51000,
+  audioTracker: 0x51020,
+  audioVoices: 0x51100,
+  voiceStride: 64,
+  audioAssets: 0x3c0000,
+  audioAssetStride: 32,
   raster: 0x55000,
   rasterStride: 40,
   assets: 0xa0000,
@@ -46,7 +52,14 @@ export interface ReadOnlyMemoryRegion {
   readonly readByte: (offset: number) => number;
 }
 
-export type MemoryRegion = ByteMemoryRegion | ReadOnlyMemoryRegion;
+/** Preparation is side-effect free; a returned commit must not fail or revalidate. */
+export interface WritableMemoryRegion extends Omit<ReadOnlyMemoryRegion, 'writable'> {
+  readonly writable: true;
+  readonly rasterWritable?: boolean;
+  readonly prepareWrite: (offset: number, bytes: Uint8Array) => (() => void) | undefined;
+}
+
+export type MemoryRegion = ByteMemoryRegion | ReadOnlyMemoryRegion | WritableMemoryRegion;
 
 function regionLength(region: MemoryRegion): number {
   return 'bytes' in region ? region.bytes.length : region.length;
@@ -210,7 +223,7 @@ export class MemoryBus {
   }
 
   private store(address: number, bytes: Uint8Array, span: SourceSpan, raster: boolean): void {
-    const writes: { region: ByteMemoryRegion; offset: number; bytes: Uint8Array }[] = [];
+    const writes: (() => void)[] = [];
     for (let index = 0; index < bytes.length;) {
       const cursor = address + index;
       const region = this.regions.find(
@@ -225,19 +238,27 @@ export class MemoryBus {
           span,
         );
       const offset = cursor - region.address;
-      const count = Math.min(bytes.length - index, region.bytes.length - offset);
+      const count = Math.min(bytes.length - index, regionLength(region) - offset);
       const part = bytes.subarray(index, index + count);
-      if (region.validate?.(offset, part) === false)
+      const commit =
+        'bytes' in region
+          ? region.validate?.(offset, part) === false
+            ? undefined
+            : () => {
+                region.bytes.set(part, offset);
+              }
+          : region.prepareWrite(offset, part);
+      if (commit === undefined)
         throw new RuntimeFault(
           'PX9022',
           `invalid value for hardware region '${region.name}'`,
           span,
         );
-      writes.push({ region, offset, bytes: part });
+      writes.push(commit);
       index += count;
     }
     // all range, permission and value checks precede the first mutation, including cross-region writes.
-    for (const write of writes) write.region.bytes.set(write.bytes, write.offset);
+    for (const write of writes) write();
   }
 
   private range(address: number, length: number, span: SourceSpan): void {

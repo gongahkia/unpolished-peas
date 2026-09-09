@@ -23,6 +23,95 @@ describe('public PXCL hardware conformance', () => {
   });
 
   for (const mode of ['release', 'debug']) {
+    it(`runs mixed audio controls and retains exact PCM on replay in ${mode}`, async () => {
+      const cli = join(root, 'target/debug/px240c');
+      const project = join(root, 'tests/conformance/audio');
+      const output = join(temporary, `audio-${mode}.mjs`);
+      execFileSync(cli, [
+        'build',
+        project,
+        '--output',
+        output,
+        ...(mode === 'debug' ? ['--debug'] : []),
+      ]);
+      const manifest = JSON.parse(execFileSync(cli, ['info', project], { encoding: 'utf8' })) as {
+        assets: Record<string, ProjectAssetDeclaration>;
+      };
+      const generated = (await import(/* @vite-ignore */ pathToFileURL(output).href)) as {
+        default: CartridgeFactory;
+      };
+      const runtime = createConsoleRuntime(generated.default, {
+        seed: 1,
+        updateRate: 60,
+        workUnitsPerFrame: 50_000,
+        debug: mode === 'debug',
+        assets: {
+          declarations: manifest.assets,
+          files: Object.fromEntries(
+            Object.values(manifest.assets).map((asset) => [
+              asset.path,
+              new Uint8Array(readFileSync(join(project, asset.path))),
+            ]),
+          ),
+        },
+      });
+      for (let frame = 0; frame < 4; frame += 1) {
+        const before = runtime.snapshot();
+        const report = runtime.runFrame(emptyInputFrame());
+        const after = runtime.snapshot();
+        expect(report.output.audio.left.some((sample) => sample !== 0)).toBe(frame % 2 === 1);
+        expect(report.output.audio.right.some((sample) => sample !== 0)).toBe(frame % 2 === 1);
+        expect(
+          after.audio.voices.every(
+            (voice) => voice.active && voice.ageFrames === 1 && voice.volumeScale === frame % 2,
+          ),
+        ).toBe(true);
+        const ram = after.memory.regions.find((region) => region.address === MEMORY.ram)?.bytes;
+        if (ram === undefined) throw new Error('missing audio capture');
+        const view = new DataView(ram.buffer, ram.byteOffset, ram.byteLength);
+        expect(view.getBigUint64(0, true)).toBe(BigInt(frame));
+        expect(view.getBigUint64(8, true)).toBe(BigInt(17 + frame * 8));
+        for (let slot = 0; slot < 8; slot += 1) {
+          expect(view.getFloat64(32 + slot * 64 + 16, true)).toBe(frame % 2);
+          expect(view.getBigUint64(32 + slot * 64 + 48, true)).toBe(BigInt(9 + frame * 8 + slot));
+        }
+        runtime.restore(before);
+        deepStrictEqual(runtime.runFrame(emptyInputFrame()), report);
+        deepStrictEqual(runtime.snapshot(), after);
+      }
+      const current = runtime.snapshot();
+      const state = current.machine.cartridge.state as Record<string, unknown>;
+      const counters = Object.entries(state).filter(([, value]) => value === 4);
+      expect(counters).toHaveLength(1);
+      const counter = counters[0]?.[0];
+      if (counter === undefined) throw new Error('missing audio fixture frame counter');
+      runtime.restore({
+        ...current,
+        machine: {
+          ...current.machine,
+          frame: 65_535,
+          execution: { ...current.machine.execution, updates: 65_535 },
+          cartridge: { ...current.machine.cartridge, state: { ...state, [counter]: 65_535 } },
+        },
+        audio: { ...current.audio, frame: 65_535 },
+      });
+      for (const frame of [65_535, 65_536]) {
+        const before = runtime.snapshot();
+        const report = runtime.runFrame(emptyInputFrame());
+        expect(report.frame).toBe(frame);
+        expect(report.output.audio.left.some((sample) => sample !== 0)).toBe(frame % 2 === 1);
+        const after = runtime.snapshot();
+        const ram = after.memory.regions.find((region) => region.address === MEMORY.ram)?.bytes;
+        if (ram === undefined) throw new Error('missing audio counter capture');
+        expect(new DataView(ram.buffer, ram.byteOffset, ram.byteLength).getBigUint64(0, true)).toBe(
+          BigInt(frame),
+        );
+        runtime.restore(before);
+        deepStrictEqual(runtime.runFrame(emptyInputFrame()), report);
+        deepStrictEqual(runtime.snapshot(), after);
+      }
+    });
+
     for (const updateRate of [30, 60] as const) {
       it(`runs system conformance in ${mode} at ${String(updateRate)} Hz`, async () => {
         const output = join(temporary, `system-${mode}-${String(updateRate)}.mjs`);
