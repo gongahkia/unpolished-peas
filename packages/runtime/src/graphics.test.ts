@@ -1,3 +1,4 @@
+import { deepStrictEqual } from 'node:assert/strict';
 import { describe, expect, it } from 'vitest';
 
 import {
@@ -42,7 +43,7 @@ describe('indexed graphics hardware', () => {
     for (const call of calls) graphics.executeCommand(call);
     expect(graphics.snapshot().front[0]).toBe(0);
     const result = graphics.finishFrame();
-    expect(result).toEqual(new IndexedGraphics().executeFrame(calls));
+    deepStrictEqual(result, new IndexedGraphics().executeFrame(calls));
     expect(result.indexedPixels[0]).toBe(23);
     expect(graphics.snapshot().front[0]).toBe(11);
     expect(() => graphics.finishFrame()).toThrow(/not begun/);
@@ -54,7 +55,7 @@ describe('indexed graphics hardware', () => {
     graphics.executeCommand(command('clear', [7]));
     graphics.restore(snapshot);
     expect(() => graphics.finishFrame()).toThrow(/not begun/);
-    expect(graphics.snapshot()).toEqual(snapshot);
+    deepStrictEqual(graphics.snapshot(), snapshot);
   });
 
   it('uses one immutable, unique 32-colour master palette', () => {
@@ -107,7 +108,7 @@ describe('indexed graphics hardware', () => {
     graphics.executeFrame([command('clear', [7])]);
     graphics.restore(snapshot);
 
-    expect(graphics.snapshot()).toEqual(snapshot);
+    deepStrictEqual(graphics.snapshot(), snapshot);
     expect(graphics.executeFrame([]).indexedPixels[0]).toBe(3);
   });
 

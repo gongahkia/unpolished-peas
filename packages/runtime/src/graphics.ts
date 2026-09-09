@@ -1,6 +1,7 @@
 import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
 import { BITMAP_FONT, glyphRows } from './font';
 import type { ConsoleCommand } from './protocol';
+import { MEMORY, type MemoryRegion } from './bus';
 
 export interface IndexedSprite {
   readonly kind: 'sprite';
@@ -162,23 +163,27 @@ export class IndexedGraphics {
   private readonly resolved = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly assets: VisualAssetStore;
   private readonly display: DisplayConfiguration;
-  private state = initialDrawState();
-  private readonly rasterRemaps = Array.from(
-    { length: HARDWARE.height },
-    () => new Uint8Array(HARDWARE.paletteSize),
+  private readonly drawRegisters = new Uint8Array(80);
+  private readonly transparency = Uint8Array.of(HARDWARE.transparentColor);
+  private readonly state = new MemoryDrawState(this.drawRegisters);
+  private readonly rasterBytes = new Uint8Array(HARDWARE.height * MEMORY.rasterStride);
+  private readonly rasterView = new DataView(this.rasterBytes.buffer);
+  private readonly rasterRemaps = Array.from({ length: HARDWARE.height }, (_, line) =>
+    this.rasterBytes.subarray(line * MEMORY.rasterStride + 8, (line + 1) * MEMORY.rasterStride),
   );
-  private readonly rasterScrollX = new Int16Array(HARDWARE.height);
-  private readonly rasterScrollY = new Int16Array(HARDWARE.height);
-  private readonly rasterStateSet = new Uint8Array(HARDWARE.height);
-  private readonly displayRemap = identityRemap();
-  private displayScrollX = 0;
-  private displayScrollY = 0;
+  private readonly rasterLive = new Uint8Array(48);
+  private readonly rasterLiveView = new DataView(this.rasterLive.buffer);
+  private readonly displayRemap = this.rasterLive.subarray(16);
   private commandCount = 0;
   private activeFrame = false;
 
   public constructor(assets = new VisualAssetStore(), display?: DisplayConfiguration) {
     this.assets = assets;
     this.display = copyDisplayConfiguration(display);
+    this.state.clipWidth = HARDWARE.width;
+    this.state.clipHeight = HARDWARE.height;
+    this.state.remap.set(this.display.remap);
+    this.displayRemap.set(identityRemap());
   }
 
   public executeFrame(commands: readonly ConsoleCommand[]): GraphicsFrame {
@@ -191,21 +196,20 @@ export class IndexedGraphics {
 
   public beginFrame(): void {
     this.back.set(this.front);
-    this.state = initialDrawState(this.display.remap);
-    for (const remap of this.rasterRemaps) remap.fill(0);
-    this.rasterScrollX.fill(0);
-    this.rasterScrollY.fill(0);
-    this.rasterStateSet.fill(0);
+    this.drawRegisters.fill(0);
+    this.state.clipWidth = HARDWARE.width;
+    this.state.clipHeight = HARDWARE.height;
+    this.state.remap.set(this.display.remap);
+    this.rasterBytes.fill(0);
+    this.rasterLive.fill(0);
     this.displayRemap.set(identityRemap());
-    this.displayScrollX = 0;
-    this.displayScrollY = 0;
     this.commandCount = 0;
     this.activeFrame = true;
     for (const raster of this.display.raster) {
       this.rasterRemaps[raster.line]?.set(raster.remap);
-      this.rasterScrollX[raster.line] = raster.scrollX;
-      this.rasterScrollY[raster.line] = raster.scrollY;
-      this.rasterStateSet[raster.line] = 1;
+      this.rasterView.setInt16(raster.line * MEMORY.rasterStride + 4, raster.scrollX, true);
+      this.rasterView.setInt16(raster.line * MEMORY.rasterStride + 6, raster.scrollY, true);
+      this.rasterBytes[raster.line * MEMORY.rasterStride] = 1;
     }
   }
 
@@ -215,7 +219,11 @@ export class IndexedGraphics {
       throw new RangeError('draw-command ceiling exceeded');
     this.commandCount += 1;
     if (command.rasterLine === undefined) {
-      this.executeDraw(command, this.state);
+      const writesState = ['camera', 'clip', 'clip_reset', 'pal', 'pal_reset'].includes(
+        command.name,
+      );
+      // commands are atomic; latch their read-only registers outside the pixel loops.
+      this.executeDraw(command, writesState ? this.state : this.state.capture());
       return;
     }
     const line = command.rasterLine;
@@ -226,14 +234,24 @@ export class IndexedGraphics {
       const [from, to] = expectIntegers(command, 2);
       this.displayRemap[expectColor(from)] = expectColor(to);
     } else if (command.name === 'raster_scroll') {
-      [this.displayScrollX, this.displayScrollY] = expectIntegers(command, 2);
+      const [x, y] = expectIntegers(command, 2);
+      this.rasterLiveView.setFloat64(0, x, true);
+      this.rasterLiveView.setFloat64(8, y, true);
     } else {
       throw new TypeError(`'${command.name}' is not valid during raster display`);
     }
-    this.rasterScrollX[line] = clampInt16(this.displayScrollX);
-    this.rasterScrollY[line] = clampInt16(this.displayScrollY);
+    this.rasterView.setInt16(
+      line * MEMORY.rasterStride + 4,
+      clampInt16(this.rasterLiveView.getFloat64(0, true)),
+      true,
+    );
+    this.rasterView.setInt16(
+      line * MEMORY.rasterStride + 6,
+      clampInt16(this.rasterLiveView.getFloat64(8, true)),
+      true,
+    );
     this.rasterRemaps[line]?.set(this.displayRemap);
-    this.rasterStateSet[line] = 1;
+    this.rasterBytes[line * MEMORY.rasterStride] = 1;
   }
 
   public finishFrame(): GraphicsFrame {
@@ -243,10 +261,10 @@ export class IndexedGraphics {
     let previousScrollY = 0;
     for (let y = 0; y < HARDWARE.height; y += 1) {
       const lineRemap = this.rasterRemaps[y];
-      if (lineRemap !== undefined && this.rasterStateSet[y] === 1) {
+      if (lineRemap !== undefined && this.rasterBytes[y * MEMORY.rasterStride] === 1) {
         previousRemap = lineRemap;
-        previousScrollX = this.rasterScrollX[y] ?? 0;
-        previousScrollY = this.rasterScrollY[y] ?? 0;
+        previousScrollX = this.rasterView.getInt16(y * MEMORY.rasterStride + 4, true);
+        previousScrollY = this.rasterView.getInt16(y * MEMORY.rasterStride + 6, true);
       }
       for (let x = 0; x < HARDWARE.width; x += 1) {
         const sourceX = wrap(x + previousScrollX, HARDWARE.width);
@@ -264,6 +282,79 @@ export class IndexedGraphics {
 
   public snapshot(): GraphicsSnapshot {
     return { revision: 1, front: this.front.slice(), resolved: this.resolved.slice() };
+  }
+
+  public memoryRegions(): readonly MemoryRegion[] {
+    const validate = (_offset: number, bytes: Uint8Array): boolean =>
+      bytes.every((color) => color < HARDWARE.paletteSize);
+    return [
+      { name: 'front', address: MEMORY.front, bytes: this.front, writable: true, validate },
+      { name: 'back', address: MEMORY.back, bytes: this.back, writable: true, validate },
+      {
+        name: 'display',
+        address: MEMORY.display,
+        bytes: this.resolved,
+        writable: false,
+        retained: true,
+        validate,
+      },
+      {
+        name: 'draw state',
+        address: MEMORY.draw,
+        bytes: this.drawRegisters,
+        writable: true,
+        validate: (offset, bytes) => {
+          const candidate = this.drawRegisters.slice();
+          candidate.set(bytes, offset);
+          const view = new DataView(candidate.buffer);
+          for (let field = 0; field < 48; field += 8)
+            if (!Number.isSafeInteger(view.getFloat64(field, true))) return false;
+          return (
+            view.getFloat64(32, true) >= 0 &&
+            view.getFloat64(40, true) >= 0 &&
+            candidate.subarray(48).every((color) => color < HARDWARE.paletteSize)
+          );
+        },
+      },
+      {
+        name: 'transparency index',
+        address: MEMORY.transparency,
+        bytes: this.transparency,
+        writable: false,
+      },
+      {
+        name: 'raster callback state',
+        address: MEMORY.rasterLive,
+        bytes: this.rasterLive,
+        writable: false,
+        retained: true,
+        validate: (_offset, bytes) => {
+          const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+          return (
+            bytes.length === 48 &&
+            Number.isSafeInteger(view.getFloat64(0, true)) &&
+            Number.isSafeInteger(view.getFloat64(8, true)) &&
+            bytes.subarray(16).every((color) => color < HARDWARE.paletteSize)
+          );
+        },
+      },
+      {
+        name: 'raster table',
+        address: MEMORY.raster,
+        bytes: this.rasterBytes,
+        writable: true,
+        rasterWritable: true,
+        validate: (offset, bytes) =>
+          bytes.every((value, index) => {
+            const field = (offset + index) % MEMORY.rasterStride;
+            return field === 0
+              ? value <= 1
+              : field < 4
+                ? value === 0
+                : field < 8 || value < HARDWARE.paletteSize;
+          }),
+      },
+    ];
   }
 
   public restore(snapshot: unknown): void {
@@ -606,7 +697,7 @@ export class IndexedGraphics {
           sourceY = sprite.height - 1 - sourceY;
         }
         const color = sprite.pixels[sourceY * sprite.width + sourceX] ?? HARDWARE.transparentColor;
-        if (color !== HARDWARE.transparentColor) {
+        if (color !== this.transparency[0]) {
           this.plot(x + outputX, y + outputY, color, state);
         }
       }
@@ -756,16 +847,63 @@ export function orderedDither(
   return threshold < Math.max(0, Math.min(16, level)) ? expectColor(second) : expectColor(first);
 }
 
-function initialDrawState(remap = identityRemap()): DrawState {
-  return {
-    cameraX: 0,
-    cameraY: 0,
-    clipX: 0,
-    clipY: 0,
-    clipWidth: HARDWARE.width,
-    clipHeight: HARDWARE.height,
-    remap: remap.slice(),
-  };
+class MemoryDrawState implements DrawState {
+  private readonly view: DataView;
+  public readonly remap: Uint8Array;
+
+  public constructor(bytes: Uint8Array) {
+    this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+    this.remap = bytes.subarray(48);
+  }
+
+  public capture(): DrawState {
+    return {
+      cameraX: this.cameraX,
+      cameraY: this.cameraY,
+      clipX: this.clipX,
+      clipY: this.clipY,
+      clipWidth: this.clipWidth,
+      clipHeight: this.clipHeight,
+      remap: this.remap,
+    };
+  }
+
+  public get cameraX(): number {
+    return this.view.getFloat64(0, true);
+  }
+  public set cameraX(value: number) {
+    this.view.setFloat64(0, value, true);
+  }
+  public get cameraY(): number {
+    return this.view.getFloat64(8, true);
+  }
+  public set cameraY(value: number) {
+    this.view.setFloat64(8, value, true);
+  }
+  public get clipX(): number {
+    return this.view.getFloat64(16, true);
+  }
+  public set clipX(value: number) {
+    this.view.setFloat64(16, value, true);
+  }
+  public get clipY(): number {
+    return this.view.getFloat64(24, true);
+  }
+  public set clipY(value: number) {
+    this.view.setFloat64(24, value, true);
+  }
+  public get clipWidth(): number {
+    return this.view.getFloat64(32, true);
+  }
+  public set clipWidth(value: number) {
+    this.view.setFloat64(32, value, true);
+  }
+  public get clipHeight(): number {
+    return this.view.getFloat64(40, true);
+  }
+  public set clipHeight(value: number) {
+    this.view.setFloat64(40, value, true);
+  }
 }
 
 function copyDisplayConfiguration(display?: DisplayConfiguration): DisplayConfiguration {

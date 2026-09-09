@@ -1285,7 +1285,10 @@ impl<'syntax> Analyzer<'syntax> {
             return error_expression(span);
         }
         let name = &path[0];
-        let Some(symbol) = self.lookup(&name.value) else {
+        let Some(symbol) = self
+            .lookup(&name.value)
+            .or_else(|| self.memory_builtin(&name.value))
+        else {
             self.diagnostics.push(
                 Diagnostic::error(
                     "PX3002",
@@ -1301,6 +1304,21 @@ impl<'syntax> Analyzer<'syntax> {
             r#type: self.symbol(symbol).r#type.clone(),
             span,
         }
+    }
+
+    fn memory_builtin(&mut self, name: &str) -> Option<SymbolId> {
+        let (name, count, return_type) = match name {
+            "mem_read" => ("mem_read", 1, Type::Int),
+            "mem_read16" => ("mem_read16", 1, Type::Int),
+            "mem_write" => ("mem_write", 2, Type::Unit),
+            "mem_write16" => ("mem_write16", 2, Type::Unit),
+            "mem_copy" => ("mem_copy", 3, Type::Unit),
+            "mem_fill" => ("mem_fill", 3, Type::Unit),
+            _ => return None,
+        };
+        // lazy installation preserves alpha symbol IDs and existing user-defined names.
+        self.builtin(name, vec![Type::Int; count], return_type);
+        self.lookup(name)
     }
 
     fn check_asset(&mut self, name: &Name) -> IrExpression {
@@ -1527,13 +1545,23 @@ impl<'syntax> Analyzer<'syntax> {
         if self.current_routine == Some(RoutineKind::Callback(CallbackKind::Raster)) {
             let symbol = self.symbol(callee_symbol);
             if symbol.kind != SymbolKind::Builtin
-                || !matches!(symbol.name.as_str(), "pal" | "raster_scroll")
+                || !matches!(
+                    symbol.name.as_str(),
+                    "pal"
+                        | "raster_scroll"
+                        | "mem_read"
+                        | "mem_read16"
+                        | "mem_write"
+                        | "mem_write16"
+                        | "mem_copy"
+                        | "mem_fill"
+                )
             {
                 self.diagnostics.push(
                     Diagnostic::error(
                         "PX3121",
                         callee.span,
-                        "raster callbacks may call only `pal` and `raster_scroll`",
+                        "raster callbacks may call only palette, raster scroll and hardware memory operations",
                     )
                     .with_primary_label("this call is outside the constrained raster facility"),
                 );
@@ -2334,6 +2362,33 @@ on draw:
                 .filter(|diagnostic| diagnostic.code == "PX3101")
                 .count(),
             2
+        );
+    }
+
+    #[test]
+    fn memory_builtins_are_typed_without_reserving_existing_user_names() {
+        let invalid = analyze("on draw:\n  mem_write(true, 7)\n", &AssetCatalog::default());
+        assert!(
+            invalid
+                .diagnostics
+                .iter()
+                .any(|diagnostic| diagnostic.code == "PX3101")
+        );
+        let shadowed = analyze(
+            "fn mem_read(value: Bool) -> Bool:\n  return value\non start:\n  assert mem_read(true), \"user function\"\n",
+            &AssetCatalog::default(),
+        );
+        assert!(
+            shadowed.diagnostics.is_empty(),
+            "{:#?}",
+            shadowed.diagnostics
+        );
+        assert!(
+            shadowed
+                .symbols
+                .iter()
+                .any(|symbol| symbol.name == "mem_read"
+                    && symbol.kind == crate::ir::SymbolKind::Function)
         );
     }
 

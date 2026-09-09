@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { deepStrictEqual } from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -195,10 +196,10 @@ describe('shared Worker core versus alpha browser execution', () => {
         visualBytes: assets.visualBytes,
       }).toEqual(audioMetrics[id]);
       runtime.restore(original);
-      expect(runtime.snapshot()).toEqual(original);
+      deepStrictEqual(runtime.snapshot(), original);
       for (const expected of trace.frames.slice(0, 10)) {
         runtime.runFrame(expected.input);
-        expect(runtime.snapshot()).toEqual(snapshots[expected.frame]);
+        deepStrictEqual(runtime.snapshot(), snapshots[expected.frame]);
         expect(hash(JSON.stringify(legacySnapshot(runtime.snapshot())))).toBe(expected.stateHash);
       }
     }, 30_000);
