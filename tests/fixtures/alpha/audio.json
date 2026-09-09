@@ -1,0 +1,17 @@
+{
+  "cinder-circuit": {
+    "visualBytes": 9766,
+    "peakVoices": 4,
+    "pcmHash": "e730e962afdbfababa536a4033191333bcc322f3fee3cbe8b4d1547982b11ff4"
+  },
+  "ashvault": {
+    "visualBytes": 288,
+    "peakVoices": 5,
+    "pcmHash": "93930135d6ff547b724f2ed02dcae2c10b647e1f481d47199ed5e30d6c2dc2f7"
+  },
+  "raster-rush": {
+    "visualBytes": 160,
+    "peakVoices": 5,
+    "pcmHash": "e948a02c45835d7d5ed6272d5d12533f99624e0da908582460a1807fe06af25d"
+  }
+}

@@ -1,0 +1,143 @@
+{
+  "cinder-circuit": {
+    "format": 1,
+    "language": "PXCL/1",
+    "id": "cinder-circuit",
+    "title": "CINDER CIRCUIT",
+    "author": "@gongahkia",
+    "version": "1.0.0-alpha.1",
+    "entry": "src/main.pxl",
+    "update_rate": 30,
+    "label": "presentation/label.svg",
+    "thumbnail": "presentation/thumbnail.svg",
+    "display": "assets/display.pxp",
+    "assets": {
+      "bass": {
+        "kind": "sound",
+        "path": "assets/bass.pxs"
+      },
+      "chime": {
+        "kind": "sound",
+        "path": "assets/chime.pxs"
+      },
+      "hurt": {
+        "kind": "sound",
+        "path": "assets/hurt.pxs"
+      },
+      "jump": {
+        "kind": "sound",
+        "path": "assets/jump.pxs"
+      },
+      "runner": {
+        "kind": "animation",
+        "path": "assets/runner.pxg"
+      },
+      "theme": {
+        "kind": "music",
+        "path": "assets/theme.pxt"
+      },
+      "tiles": {
+        "kind": "tile_set",
+        "path": "assets/tiles.pxg"
+      },
+      "world": {
+        "kind": "map",
+        "path": "assets/world.pxm"
+      }
+    }
+  },
+  "ashvault": {
+    "format": 1,
+    "language": "PXCL/1",
+    "id": "ashvault",
+    "title": "ASHVAULT",
+    "author": "@gongahkia",
+    "version": "1.0.0-alpha.1",
+    "entry": "src/main.pxl",
+    "update_rate": 60,
+    "label": "presentation/label.svg",
+    "thumbnail": "presentation/thumbnail.svg",
+    "display": "assets/display.pxp",
+    "assets": {
+      "bump": {
+        "kind": "sound",
+        "path": "assets/bump.pxs"
+      },
+      "drone": {
+        "kind": "sound",
+        "path": "assets/drone.pxs"
+      },
+      "found": {
+        "kind": "sound",
+        "path": "assets/found.pxs"
+      },
+      "gate": {
+        "kind": "sprite",
+        "path": "assets/gate.pxg"
+      },
+      "lament": {
+        "kind": "music",
+        "path": "assets/lament.pxt"
+      },
+      "relic": {
+        "kind": "sprite",
+        "path": "assets/relic.pxg"
+      },
+      "seeker": {
+        "kind": "sprite",
+        "path": "assets/seeker.pxg"
+      },
+      "step": {
+        "kind": "sound",
+        "path": "assets/step.pxs"
+      },
+      "wraith": {
+        "kind": "sprite",
+        "path": "assets/wraith.pxg"
+      }
+    }
+  },
+  "raster-rush": {
+    "format": 1,
+    "language": "PXCL/1",
+    "id": "raster-rush",
+    "title": "RASTER RUSH 99",
+    "author": "@gongahkia",
+    "version": "1.0.0-alpha.1",
+    "entry": "src/main.pxl",
+    "update_rate": 60,
+    "label": "presentation/label.svg",
+    "thumbnail": "presentation/thumbnail.svg",
+    "display": "assets/display.pxp",
+    "assets": {
+      "beacon": {
+        "kind": "sprite",
+        "path": "assets/beacon.pxg"
+      },
+      "boost": {
+        "kind": "sound",
+        "path": "assets/boost.pxs"
+      },
+      "car": {
+        "kind": "sprite",
+        "path": "assets/car.pxg"
+      },
+      "crash": {
+        "kind": "sound",
+        "path": "assets/crash.pxs"
+      },
+      "fanfare": {
+        "kind": "sound",
+        "path": "assets/fanfare.pxs"
+      },
+      "motor": {
+        "kind": "sound",
+        "path": "assets/motor.pxs"
+      },
+      "race_theme": {
+        "kind": "music",
+        "path": "assets/race-theme.pxt"
+      }
+    }
+  }
+}
