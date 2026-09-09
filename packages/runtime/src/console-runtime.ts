@@ -14,7 +14,8 @@ import {
   isGraphicsSnapshot,
   type GraphicsSnapshot,
 } from './graphics';
-import { HARDWARE } from './hardware';
+import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
+import { MEMORY, MemoryBus, isMemorySnapshot, type MemorySnapshot } from './bus';
 import { MapQueryStore } from './map-query';
 import {
   SaveMemory,
@@ -42,24 +43,27 @@ export interface ConsoleRuntime {
 }
 
 export interface ConsoleRuntimeSnapshot {
-  readonly revision: 2;
+  readonly revision: 3;
   readonly machine: MachineSnapshot;
   readonly save: SaveValues;
   readonly graphics: GraphicsSnapshot;
   readonly audio: SynthSnapshot;
   readonly pendingSaveWrites: readonly SaveWrite[];
+  readonly memory: MemorySnapshot;
 }
 
 export function isConsoleRuntimeSnapshot(value: unknown): value is ConsoleRuntimeSnapshot {
   return (
     isRecord(value) &&
-    value.revision === 2 &&
-    Object.keys(value).length === 6 &&
+    value.revision === 3 &&
+    Object.keys(value).length === 7 &&
     isMachineSnapshot(value.machine) &&
     isSaveValues(value.save) &&
     isGraphicsSnapshot(value.graphics) &&
     isSynthSnapshot(value.audio) &&
-    isPendingSaveWrites(value.pendingSaveWrites, value.save)
+    isPendingSaveWrites(value.pendingSaveWrites, value.save) &&
+    isMemorySnapshot(value.memory) &&
+    graphicsMatchesMemory(value.graphics, value.memory)
   );
 }
 
@@ -88,6 +92,22 @@ export function createConsoleRuntime(
   let debugTrace: DebugTraceEvent[] = [];
   const debugCallStack: DebugStackFrame[] = [];
   let debugTraceTruncated = false;
+  const ram = new Uint8Array(MEMORY.ramBytes);
+  const bus = new MemoryBus(
+    [
+      { name: 'ram', address: MEMORY.ram, bytes: ram, writable: true },
+      ...graphics.memoryRegions(),
+      {
+        name: 'master palette RGBA',
+        address: MEMORY.palette,
+        bytes: Uint8Array.from(MASTER_PALETTE_RGBA),
+        writable: false,
+      },
+    ],
+    (units, span) => {
+      requireMachine().work(units, span);
+    },
+  );
 
   machine = new DeterministicMachine(factory, configuration, {
     call: handleConsoleCall,
@@ -114,7 +134,14 @@ export function createConsoleRuntime(
         }
       : {}),
   });
-  machine.boot();
+  graphics.beginFrame();
+  rendering = true;
+  try {
+    machine.boot();
+  } finally {
+    rendering = false;
+  }
+  graphics.finishFrame();
 
   return {
     runFrame(input) {
@@ -160,15 +187,18 @@ export function createConsoleRuntime(
       try {
         requireMachine().restore(snapshot.machine);
         saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
-        if (snapshot.revision === 2) {
+        if (snapshot.revision >= 2) {
           graphics.restore(snapshot.graphics);
           synthesizer.restore(snapshot.audio);
         }
+        if (snapshot.memory !== undefined) bus.restore(snapshot.memory);
+        else if (snapshot.revision === 2) ram.fill(0);
       } catch (error) {
         requireMachine().restore(before.machine);
         saveMemory.restore(before.save, before.pendingSaveWrites);
         graphics.restore(before.graphics);
         synthesizer.restore(before.audio);
+        bus.restore(before.memory);
         throw new RuntimeFault(
           'PX9103',
           error instanceof Error ? error.message : 'invalid device snapshot',
@@ -180,12 +210,13 @@ export function createConsoleRuntime(
 
   function captureSnapshot(): ConsoleRuntimeSnapshot {
     return {
-      revision: 2,
+      revision: 3,
       machine: requireMachine().snapshot(),
       save: saveMemory.snapshot(),
       graphics: graphics.snapshot(),
       audio: synthesizer.snapshot(),
       pendingSaveWrites: saveMemory.pendingWrites(),
+      memory: bus.snapshot(),
     };
   }
 
@@ -195,6 +226,37 @@ export function createConsoleRuntime(
     sourceSpan: SourceSpan,
     context: ExecutionContext,
   ): unknown {
+    if (MEMORY_CALLS.has(name)) {
+      if (arguments_.length !== MEMORY_CALLS.get(name))
+        throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+      const values = arguments_.map((value) => readInteger(value, sourceSpan));
+      const address = values[0] ?? 0;
+      const second = values[1] ?? 0;
+      const third = values[2] ?? 0;
+      const raster = context.phase === 'raster';
+      switch (name) {
+        case 'mem_read':
+          return bus.read(address, 1, sourceSpan);
+        case 'mem_read16':
+          return bus.read(address, 2, sourceSpan);
+        case 'mem_write': {
+          bus.write(address, second, 1, sourceSpan, raster);
+          return;
+        }
+        case 'mem_write16': {
+          bus.write(address, second, 2, sourceSpan, raster);
+          return;
+        }
+        case 'mem_copy': {
+          bus.copy(address, second, third, sourceSpan, raster);
+          return;
+        }
+        case 'mem_fill': {
+          bus.fill(address, second, third, sourceSpan, raster);
+          return;
+        }
+      }
+    }
     requireMachine().work(consoleWorkCost(name, arguments_), sourceSpan);
     if (context.phase === 'raster' && name !== 'pal' && name !== 'raster_scroll') {
       throw new RuntimeFault(
@@ -383,34 +445,67 @@ function isAssetHandle(value: unknown, kind: string): value is { name: string; k
 
 function readInteger(value: unknown, sourceSpan: SourceSpan): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
-    throw new RuntimeFault('PX9009', 'map query arguments must be safe integers', sourceSpan);
+    throw new RuntimeFault('PX9009', 'console arguments must be safe integers', sourceSpan);
   }
   return value;
 }
 
 function readWorkerSnapshot(value: unknown): {
-  revision: 1 | 2;
+  revision: 1 | 2 | 3;
   machine: unknown;
   save: SaveValues;
   graphics: unknown;
   audio: unknown;
   pendingSaveWrites: readonly SaveWrite[];
+  memory: unknown;
 } {
   if (
     !isRecord(value) ||
-    (value.revision === 2
+    (value.revision === 3
       ? !isConsoleRuntimeSnapshot(value)
-      : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
+      : value.revision === 2
+        ? Object.keys(value).length !== 6 ||
+          !isMachineSnapshot(value.machine) ||
+          !isSaveValues(value.save) ||
+          !isGraphicsSnapshot(value.graphics) ||
+          !isSynthSnapshot(value.audio) ||
+          !isPendingSaveWrites(value.pendingSaveWrites, value.save)
+        : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
   ) {
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
   return {
-    revision: value.revision === 2 ? 2 : 1,
+    revision: value.revision === 3 ? 3 : value.revision === 2 ? 2 : 1,
     machine: value.machine,
     save: value.save as SaveValues,
     graphics: value.graphics,
     audio: value.audio,
     pendingSaveWrites:
-      value.revision === 2 ? (value.pendingSaveWrites as readonly SaveWrite[]) : [],
+      value.revision === 1 ? [] : (value.pendingSaveWrites as readonly SaveWrite[]),
+    memory: value.revision === 3 ? value.memory : undefined,
   };
 }
+
+function graphicsMatchesMemory(graphics: GraphicsSnapshot, memory: MemorySnapshot): boolean {
+  return [
+    [MEMORY.front, graphics.front],
+    [MEMORY.display, graphics.resolved],
+  ].every(([address, pixels]) => {
+    if (!(pixels instanceof Uint8Array)) return false;
+    const bytes = memory.regions.find((region) => region.address === address)?.bytes;
+    return (
+      bytes !== undefined &&
+      bytes.length === pixels.length &&
+      bytes.every((value, index) => value === pixels[index])
+    );
+  });
+}
+
+const MEMORY_CALLS = new Map([
+  ['mem_read', 1],
+  ['mem_read16', 1],
+  ['mem_write', 2],
+  ['mem_write16', 2],
+  ['mem_copy', 3],
+  ['mem_fill', 3],
+]);

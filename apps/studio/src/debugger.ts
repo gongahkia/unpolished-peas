@@ -51,7 +51,12 @@ export async function openDebugger(
   back: () => void,
 ): Promise<ActiveDebugger> {
   const controller = await DebuggerController.create(root, project, compiler, save, back);
-  await controller.start();
+  try {
+    await controller.start();
+  } catch (error) {
+    controller.stop();
+    throw error;
+  }
   return {
     stop: () => {
       controller.stop();
@@ -171,6 +176,9 @@ class DebuggerController {
     await this.initialization;
     this.journal.recordSnapshot(0, await this.captureSnapshot());
     this.bindControls();
+    this.setControlsEnabled(true);
+    requireElement(this.root, '.debugger').setAttribute('aria-busy', 'false');
+    this.renderer.render(this.lastPixels);
     this.render();
     (requireElement(this.root, '.debugger') as HTMLElement).focus();
   }
@@ -188,7 +196,7 @@ class DebuggerController {
 
   private renderShell(): void {
     this.root.innerHTML = `
-      <section class="display debugger" data-view="debugger" aria-label="PXCL source debugger" tabindex="-1">
+      <section class="display debugger" data-view="debugger" aria-label="PXCL source debugger" aria-busy="true" tabindex="-1">
         <header class="system-bar"><span>DEBUG / ${escapeHtml(this.project.id)}</span><span>FRAME TRACE</span></header>
         <main class="debug-stage">
           <div class="debug-left">
@@ -208,10 +216,19 @@ class DebuggerController {
           <input class="break-line" type="number" min="1" max="${String(this.sourceLines.length)}" value="1" aria-label="Breakpoint line"><input class="break-condition" type="text" placeholder="CONDITION" aria-label="Breakpoint condition"><button type="button" data-debug="break">BRK</button>
           <input class="watch-expression" type="text" placeholder="WATCH" aria-label="Watch expression"><button type="button" data-debug="watch">ADD</button>
         </div>
-        <p class="debug-status" role="status" aria-live="polite"></p>
+        <p class="debug-status" role="status" aria-live="polite">INITIALIZING HARDWARE</p>
         <button class="debug-back" type="button" data-debug="back">ESC BACK</button>
       </section>
     `;
+    this.setControlsEnabled(false);
+  }
+
+  private setControlsEnabled(enabled: boolean): void {
+    this.root
+      .querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input')
+      .forEach((control) => {
+        control.disabled = !enabled;
+      });
   }
 
   private bindControls(): void {

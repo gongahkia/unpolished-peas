@@ -45,9 +45,20 @@ palette and raster commands override those defaults. Asset file schemas are docu
 ## Raster display list
 
 `on raster(line: Int)` runs once for each scanline from 0 through 143 after `on draw`. Only
-`pal(from, to)` and `raster_scroll(x, y)` are legal there. Their state is captured for that line and
+`pal(from, to)`, `raster_scroll(x, y)` and the V1 memory operations are legal there. Memory writes
+are restricted to raster-table addresses. Palette/scroll state is captured for that line and
 remains in effect until changed by a later scanline. Scroll wraps the already drawn indexed back
 buffer; palette changes happen during display resolution and do not alter framebuffer indices.
+
+## V1 memory access (implemented subset)
+
+`mem_read(address)` and `mem_read16(address)` read unsigned bytes / little-endian 16-bit words.
+`mem_write(address, value)` and `mem_write16(address, value)` write those widths; `mem_copy(dst,
+src, count)` handles overlapping ranges and `mem_fill(dst, byte, count)` fills bytes. All arguments
+are `Int`, writes return unit, and the normal compiler/runtime work budget applies. This checkpoint
+maps work RAM and live graphics/raster storage, not the full V1 device set. See the exact candidate
+addresses, field encodings, timing, permissions and fault behavior in [HARDWARE.md](HARDWARE.md).
+The standalone alpha exporter does not yet implement the memory surface.
 
 ## Input and deterministic utilities
 

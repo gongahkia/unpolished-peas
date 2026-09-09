@@ -1,6 +1,7 @@
 export * from './audio';
 export * from './asset-codec';
 export * from './budget';
+export * from './bus';
 export * from './capabilities';
 export * from './console-runtime';
 export * from './debugger';

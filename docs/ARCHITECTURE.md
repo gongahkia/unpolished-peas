@@ -25,7 +25,9 @@ bounded source asset bank; map queries and drawing use the same visual store. Co
 program order, then frame completion resolves indexed scanout and renders deterministic PCM.
 The page presents those pixels/samples and handles input and storage; it no longer re-executes
 cartridge graphics or audio. Tests drive this same core with native-compiled PXCL and compare
-actual alpha browser recordings. The V1 bus and public headless CLI are not yet implemented.
+actual alpha browser recordings. `MemoryBus` now aliases work RAM and the actual graphics/raster
+storage with transactional byte/word/copy/fill access. Its candidate layout and implemented subset
+are documented in HARDWARE; the remaining devices and public headless CLI are still required.
 
 ## Data flow
 
@@ -42,8 +44,8 @@ tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.
-The revision-2 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer
-and synthesizer state. Restore validates all components and rolls back on a device-reference failure.
+The revision-3 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
+synthesizer and retained bus state. Restore validates all components and rolls back on a device-reference failure.
 The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
 snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
 divergence detection. Raw legacy Worker snapshots restore only their original scheduler/save fields;
