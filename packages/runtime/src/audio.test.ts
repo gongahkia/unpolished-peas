@@ -42,6 +42,18 @@ function handle(name: string, kind: 'Sound' | 'Music'): object {
 }
 
 describe('PX-240C synthesizer and tracker', () => {
+  it('applies voice commands immediately but advances samples and age only on frame completion', () => {
+    const assets = new AudioAssetStore([sound('tone')]);
+    const synthesizer = new Synthesizer(assets);
+    const trigger = command('sfx', [handle('tone', 'Sound')]);
+    synthesizer.executeCommand(trigger);
+    expect(synthesizer.inspectVoices()[0]).toMatchObject({ active: true, ageFrames: 0, phase: 0 });
+    expect(synthesizer.snapshot().frame).toBe(0);
+    expect(synthesizer.finishFrame()).toEqual(new Synthesizer(assets).executeFrame([trigger]));
+    expect(synthesizer.inspectVoices()[0]?.ageFrames).toBe(1);
+    expect(synthesizer.snapshot().frame).toBe(1);
+  });
+
   it('generates every oscillator source without arbitrary sample assets', () => {
     for (const waveform of ['pulse', 'triangle', 'saw', 'noise', 'wavetable'] as const) {
       const patch = sound(waveform, waveform);

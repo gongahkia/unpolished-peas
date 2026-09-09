@@ -27,6 +27,36 @@ function command(
 }
 
 describe('indexed graphics hardware', () => {
+  it('executes ordered commands before publishing scanout and resets frame-local state', () => {
+    const graphics = new IndexedGraphics();
+    const calls = [
+      command('clear', [1]),
+      command('pal', [2, 11]),
+      command('pixel', [0, 0, 2]),
+      command('pal', [11, 23], 0),
+    ];
+    expect(() => {
+      graphics.executeCommand(command('clear', [1]));
+    }).toThrow(/not begun/);
+    graphics.beginFrame();
+    for (const call of calls) graphics.executeCommand(call);
+    expect(graphics.snapshot().front[0]).toBe(0);
+    const result = graphics.finishFrame();
+    expect(result).toEqual(new IndexedGraphics().executeFrame(calls));
+    expect(result.indexedPixels[0]).toBe(23);
+    expect(graphics.snapshot().front[0]).toBe(11);
+    expect(() => graphics.finishFrame()).toThrow(/not begun/);
+    graphics.beginFrame();
+    graphics.executeCommand(command('pixel', [0, 0, 2]));
+    expect(graphics.finishFrame().indexedPixels[0]).toBe(2);
+    const snapshot = graphics.snapshot();
+    graphics.beginFrame();
+    graphics.executeCommand(command('clear', [7]));
+    graphics.restore(snapshot);
+    expect(() => graphics.finishFrame()).toThrow(/not begun/);
+    expect(graphics.snapshot()).toEqual(snapshot);
+  });
+
   it('uses one immutable, unique 32-colour master palette', () => {
     expect(MASTER_PALETTE).toHaveLength(HARDWARE.paletteSize);
     expect(new Set(MASTER_PALETTE)).toHaveLength(HARDWARE.paletteSize);
