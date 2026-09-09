@@ -92,13 +92,19 @@ outside the available Linux verification contract.
    palette, 240×144 presentation and all three original games unchanged unless a demonstrated
    regression requires a specific compatibility correction.
 
-Known gaps directly verified in implementation: Worker-only map copies versus host visual assets;
+Known gaps directly verified in the initial alpha implementation: Worker-only map copies versus host visual assets;
 host-owned graphics/audio; duplicate standalone runtime; global uniqueness in project linking;
 same-document lexical LSP navigation; frame-boundary debugger and captured-probe stepping; one
 map tileset and one raster row in editors; unsupported custom-font decoding; no headless CLI
 execution (`run --no-open` exports HTML); keyboard mappings for two ports only; Firefox-only E2E.
 Input edges are sampled every display frame even in 30 Hz carts. A skipped-update edge needs an
 explicit conformance test; do not change control semantics on the basis of a browser-test retry.
+
+Checkpoints 2a–2d now place actual graphics/audio and a partial byte bus inside the shared Worker
+core, with native execution against the frozen alpha traces. They remove the host-owned device
+copies above but do not complete Hardware Revision 1, standalone consolidation or source suspension.
+See PROGRESS for exact verification and the remaining device mappings; the milestone checklist
+below stays open until the complete outcomes pass.
 
 ## Required implementation checklist
 

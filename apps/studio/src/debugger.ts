@@ -1,5 +1,6 @@
 import {
   BrowserInput,
+  consoleReplayObservable,
   decodeRuntimeAssets,
   evaluateWatch,
   HARDWARE,
@@ -335,7 +336,7 @@ class DebuggerController {
           `replay cursor expected frame ${String(this.currentFrame)}, received ${String(response.frame)}`,
         );
       }
-      this.journal.recordFrame(response.frame, input, replayObservable(response));
+      this.journal.recordFrame(response.frame, input, consoleReplayObservable(response));
       this.currentFrame = response.frame + 1;
       if (this.currentFrame % SNAPSHOT_INTERVAL === 0) {
         this.journal.recordSnapshot(this.currentFrame, await this.captureSnapshot());
@@ -397,7 +398,7 @@ class DebuggerController {
           this.renderer.render(snapshot.graphics.resolved);
           this.lastFrame = undefined;
         },
-        frame: async (input) => replayObservable(await this.executeFrame(input, false)),
+        frame: async (input) => consoleReplayObservable(await this.executeFrame(input, false)),
       });
       this.currentFrame = result.frame;
       this.selectedTrace = -1;
@@ -602,18 +603,6 @@ class DebuggerController {
       }
     }
   }
-}
-
-function replayObservable(response: FrameResponse): unknown {
-  return {
-    frame: response.frame,
-    workUnits: response.workUnits,
-    attribution: response.attribution,
-    drawCommands: response.drawCommands,
-    audioCommands: response.audioCommands,
-    saveWrites: response.saveWrites,
-    debug: response.debug,
-  };
 }
 
 function debugSource(compilation: CompilationResult, project: DebugProject): string {

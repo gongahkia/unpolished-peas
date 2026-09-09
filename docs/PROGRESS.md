@@ -336,6 +336,48 @@ Each group may produce several coherent commits, and integration occurs througho
   register/reference/conformance contract. No bus or V1 completion is claimed by this checkpoint.
   Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2d: byte bus and graphics backing storage
+
+- Added checked byte/LE-word access, overlap-safe copy/fill, reserved/read-only handling and
+  transactional writes over actual RAM, framebuffers, draw registers and all 144 raster records.
+  The 22-bit address layout is a candidate subset, **not frozen Hardware Revision 1**. Visual-store,
+  input, audio, save and system mappings, the viewer and the complete conformance cartridge remain.
+  Most implementation was retained in local snapshot commit `38848d6` before this follow-up.
+- Camera/clip registers use little-endian binary64 safe integers to preserve the existing PXCL Int
+  range. Register-backed getters initially caused a substantial rasterizer slowdown; atomic drawing
+  commands now latch their read-only register values outside pixel loops. Five alternating paired
+  CPU measurements against `2bd8c4d` give 240-frame medians of 242.4→253.1 ms (Cinder), 246.1→218.6 ms
+  (Ashvault), and 386.0→364.3 ms (Racer). `node scripts/measure-graphics.mjs` checks all 720 pixel
+  hashes before timing. These shared-host samples are not edit-to-run or stable latency guarantees.
+- Boot graphics/audio commands now execute on the same devices as bus writes; boot scanout does not
+  advance machine time or voice age. This deliberately changes alpha's discarded boot commands;
+  none of the three games depend on that behavior, and their recorded outputs remain identical.
+  Core snapshot revision 3 retains writable bus storage; revision-2 migration initializes new RAM
+  to zero, and malformed full restores roll back all devices. This remains frame-boundary replay.
+- Ordinary PXCL conformance source exercises the public APIs through native Release/Debug builds
+  and the real Firefox Worker. Tests cover address/value faults, work-before-allocation, byte order,
+  aliasing, every raster row, reset/scanout and restore. New builtin names are installed lazily so
+  old symbol identities and existing user-defined functions remain compatible.
+- Firefox exposed enabled debugger controls before initialization had attached their handlers.
+  Startup now disables controls until ready and cleans up on failure. Replay fingerprints also
+  include indexed pixels and PCM: command-only fingerprints missed output changed by bus writes.
+- Intermediate checks failed on measurement-script Node imports, a CommonJS-incompatible fixture
+  path and Clippy's function-length limit; corrected each and reran the gate. Large typed-array
+  assertions now use Node's full `deepStrictEqual` comparison to reduce test overhead; no timeout
+  or behavioral assertion was weakened. The replay-output test was verified in a subsequent gate.
+- `./scripts/check.sh` passed: formatting, ESLint, strict TypeScript, **68 Vitest tests**, production
+  builds, **one complete Firefox E2E** (31.5 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. A separate full Vitest rerun also passed all 68 tests. All 720 alpha hashes and
+  canonical PCM hashes pass. No required gate tests were skipped; Chromium coverage is still pending.
+- Production main/Worker JS measure 117,845/52,685 bytes; Wasm is 1,167,303 bytes. Packed games remain
+  42,851 / 41,262 / 38,039 bytes. Directly inspected 5× screenshots of four-player Racer, active
+  Ashvault and Cinder's title under `output/playwright/v1-bus-*.png`. Manual Cinder start attempts
+  did not enter play in this inspection; its automated scripted compatibility path passed. The
+  known skipped-update input-edge question remains for explicit input conformance, not a guessed fix.
+- Next: the real visual allocation table and shared map/tile/sprite storage, then remaining device
+  mappings and full reference/conformance. Standalone still uses its old runtime and does not yet
+  support the new bus APIs. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

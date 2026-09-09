@@ -1,4 +1,18 @@
 import type { InputFrame } from './input';
+import type { ConsoleFrame } from './console-runtime';
+
+export function consoleReplayObservable(response: ConsoleFrame): unknown {
+  return {
+    frame: response.frame,
+    workUnits: response.workUnits,
+    attribution: response.attribution,
+    drawCommands: response.drawCommands,
+    audioCommands: response.audioCommands,
+    saveWrites: response.saveWrites,
+    debug: response.debug,
+    output: response.output,
+  };
+}
 
 export interface ReplayFrame {
   readonly frame: number;
