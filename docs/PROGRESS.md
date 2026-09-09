@@ -423,6 +423,40 @@ Each group may produce several coherent commits, and integration occurs througho
 - Next: controller and timing/RNG/work/status mappings with explicit input-transition conformance,
   followed by remaining audio/save/ROM mappings, full hardware viewer/reference and shared hosts.
 
+## 2026-09-10 — V1 milestone 2f: authoritative controller MMIO
+
+- Added read-only MMIO regions whose byte reads encode device-owned state directly. Controller
+  masks and pointer registers use the scheduler's actual current/previous frames, also read by
+  `btn`, `btnp` and pointer APIs. No shadow input image or new snapshot revision is needed; existing
+  frame snapshots restore both high-level and bus observations. Reads/copies retain normal byte-bus
+  costs; writes and cross-region writes into these registers fail transactionally.
+- Reproduced alpha's 30 Hz edge timing with a controlled scheduler test: an odd-frame press appears
+  in drawing, but the following update sees held=true and pressed=false. Restore reproduces it.
+  Documented this frame-sampled behavior without changing any original game/control code. This
+  checkpoint does not add update-latched input, four-port keyboard remapping or accessibility UX.
+- The public input fixture tests every button on all four ports, current/previous/pressed/released
+  masks, pointer coordinates/edges, reset, MMIO-to-RAM copy and restore. Native Release/Debug tests
+  each exercise 36 scripted frames at both 30 and 60 Hz. Its initial array `const` declarations failed
+  PXCL's existing compile-time-expression restriction; using fixed state arrays made the fixture
+  valid without changing the language or weakening validation.
+- Found and reproduced two boundary defects while checking malformed input. A pointer outside the
+  screen failed only after the core had reset live draw registers; the core now validates before
+  any frame reset. A four-slot sparse controller array passed `.every` because holes were skipped;
+  validation now checks all four actual entries and rejects extra enumerable array fields. Focused
+  regressions failed first, then passed with the corrections and full-state equality assertions.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **84 Vitest tests**, production
+  builds, **one complete Firefox E2E** (24.4 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. Firefox runs the input fixture with real keyboard presses on both existing mappings.
+  All frozen alpha traces/PCM still pass. No complete-gate tests were skipped; the failed filtered
+  reproductions intentionally selected individual tests before the subsequent complete run.
+- Packed games and their intermediate-V1 hashes are unchanged at 42,851 / 41,262 / 38,039 bytes.
+  Main/Worker JS are 122,185/58,507 bytes; Wasm remains 1,167,748 bytes. No separate visual-layout
+  change was made; the preceding checkpoint's inspected screens remain the latest manual captures.
+  Chromium, controller remapping and the remaining V1 acceptance work remain open.
+- Next: actual frame/update/time/RNG/work/fault registers and matching snapshot semantics, followed
+  by audio/save/ROM and the full viewer/conformance/shared-host work. Hardware Revision 1 is still
+  incomplete. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

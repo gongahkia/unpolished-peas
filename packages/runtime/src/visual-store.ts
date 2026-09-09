@@ -1,5 +1,5 @@
 import { HARDWARE } from './hardware';
-import { MEMORY, type MemoryRegion } from './bus';
+import { MEMORY, type ByteMemoryRegion } from './bus';
 import type {
   DisplayConfiguration,
   IndexedMap,
@@ -134,7 +134,7 @@ export class VisualAssetStore {
     );
   }
 
-  public memoryRegions(): readonly MemoryRegion[] {
+  public memoryRegions(): readonly ByteMemoryRegion[] {
     return [
       {
         name: 'visual store',

@@ -57,6 +57,9 @@ little-endian DataViews back map cells; the renderer and map query API read thos
 Display defaults also occupy their charged bytes, with frame-start latching into live registers.
 Read-only descriptors expose allocation order and exact sizes. Legacy revision-3 bus snapshots
 migrate the new visual region from source, while current snapshots retain all mutable visual bytes.
+Read-only controller/pointer MMIO encodes the scheduler's actual current/previous input frames;
+there is no shadow input buffer to synchronize or independently restore. Core input validation
+precedes graphics resets; direct `DeterministicMachine` callers are validated at its frame boundary too.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.

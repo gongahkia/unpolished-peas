@@ -1,7 +1,13 @@
 import { WorkBudget, type WorkAttribution } from './budget';
 import { RuntimeFault } from './errors';
 import { orderedDither } from './graphics';
-import { emptyInputFrame, isButton, isInputFrame, type InputFrame } from './input';
+import {
+  emptyInputFrame,
+  inputRegisterByte,
+  isButton,
+  isInputFrame,
+  type InputFrame,
+} from './input';
 import type { SandboxConfiguration, SourceSpan } from './protocol';
 import { DeterministicRng } from './rng';
 
@@ -119,6 +125,8 @@ export class DeterministicMachine implements CartridgeApi {
   }
 
   public runFrame(input: InputFrame): FrameReport {
+    if (!isInputFrame(input))
+      throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
     if (!this.booted) {
       this.boot();
     }
@@ -171,6 +179,10 @@ export class DeterministicMachine implements CartridgeApi {
 
   public inspect(): CartridgeInspection {
     return this.cartridge.inspect();
+  }
+
+  public readInputByte(offset: number): number {
+    return inputRegisterByte(this.input, this.previousInput, offset);
   }
 
   public work(units: number, sourceSpan: SourceSpan): void {

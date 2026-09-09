@@ -1,7 +1,7 @@
 import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
 import { BITMAP_FONT, glyphRows } from './font';
 import type { ConsoleCommand } from './protocol';
-import { MEMORY, type MemoryRegion } from './bus';
+import { MEMORY, type ByteMemoryRegion } from './bus';
 import { VisualAssetStore } from './visual-store';
 export { VisualAssetStore, visualAssetBytes } from './visual-store';
 
@@ -219,7 +219,7 @@ export class IndexedGraphics {
     return { revision: 1, front: this.front.slice(), resolved: this.resolved.slice() };
   }
 
-  public memoryRegions(): readonly MemoryRegion[] {
+  public memoryRegions(): readonly ByteMemoryRegion[] {
     const validate = (_offset: number, bytes: Uint8Array): boolean =>
       bytes.every((color) => color < HARDWARE.paletteSize);
     return [

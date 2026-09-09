@@ -24,7 +24,7 @@ import {
   type SaveValues,
   type SaveWrite,
 } from './save';
-import type { InputFrame } from './input';
+import { isInputFrame, type InputFrame } from './input';
 import type {
   ConsoleCommand,
   DebugStackFrame,
@@ -99,6 +99,13 @@ export function createConsoleRuntime(
       ...graphics.memoryRegions(),
       ...visualStore.memoryRegions(),
       {
+        name: 'controllers and pointer',
+        address: MEMORY.input,
+        length: MEMORY.inputBytes,
+        writable: false,
+        readByte: (offset) => requireMachine().readInputByte(offset),
+      },
+      {
         name: 'master palette RGBA',
         address: MEMORY.palette,
         bytes: Uint8Array.from(MASTER_PALETTE_RGBA),
@@ -146,6 +153,8 @@ export function createConsoleRuntime(
 
   return {
     runFrame(input) {
+      if (!isInputFrame(input))
+        throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
       drawCommands = [];
       audioCommands = [];
       debugTrace = [];

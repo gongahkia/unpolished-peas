@@ -26,6 +26,25 @@ const factory: CartridgeFactory = (api) => ({
 });
 
 describe('production console dispatcher', () => {
+  it('rejects malformed input before resetting any device state', () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        draw() {
+          api.call('pal', [2, 7], span);
+        },
+      }),
+      configuration,
+    );
+    runtime.runFrame(emptyInputFrame());
+    const before = runtime.snapshot();
+    const input = emptyInputFrame();
+    expect(() => {
+      runtime.runFrame({ ...input, pointer: { ...input.pointer, x: 240 } });
+    }).toThrow(expect.objectContaining({ code: 'PX9008' }));
+    deepStrictEqual(runtime.snapshot(), before);
+  });
+
   it('restores all device state and pending boot saves transactionally', () => {
     const runtime = createConsoleRuntime(
       (api) => ({

@@ -46,6 +46,63 @@ const counterFactory: CartridgeFactory = (api: CartridgeApi) => {
 };
 
 describe('DeterministicMachine', () => {
+  it('samples button edges per display frame, including skipped 30 Hz updates', () => {
+    const updates: unknown[] = [];
+    const draws: unknown[] = [];
+    const span = { start: 4, end: 9 };
+    const machine = new DeterministicMachine(
+      (api) => ({
+        ...counterFactory(api),
+        update() {
+          updates.push([
+            machine.frame,
+            api.call('btn', [0, 'a'], span),
+            api.call('btnp', [0, 'a'], span),
+          ]);
+        },
+        draw() {
+          draws.push([
+            machine.frame,
+            api.call('btn', [0, 'a'], span),
+            api.call('btnp', [0, 'a'], span),
+          ]);
+        },
+      }),
+      { seed: 1, updateRate: 30, workUnitsPerFrame: 100 },
+    );
+    const released = emptyInputFrame();
+    const held = {
+      ...released,
+      controllers: [
+        { buttons: { ...released.controllers[0].buttons, a: true } },
+        released.controllers[1],
+        released.controllers[2],
+        released.controllers[3],
+      ] as const,
+    };
+    machine.runFrame(released);
+    machine.runFrame(held);
+    const skipped = machine.snapshot();
+    machine.runFrame(held);
+    machine.runFrame(released);
+    machine.runFrame(released);
+    expect(updates).toEqual([
+      [0, false, false],
+      [2, true, false],
+      [4, false, false],
+    ]);
+    expect(draws).toEqual([
+      [0, false, false],
+      [1, true, true],
+      [2, true, false],
+      [3, false, false],
+      [4, false, false],
+    ]);
+    machine.restore(skipped);
+    machine.runFrame(held);
+    expect(updates.at(-1)).toEqual([2, true, false]);
+  });
+
   it('derives time from frames, respects 30 Hz update cadence, and restores RNG/state', () => {
     const machine = new DeterministicMachine(counterFactory, {
       seed: 9,
@@ -116,7 +173,19 @@ describe('DeterministicMachine', () => {
     expect(machine.call('pointer_y', [], { start: 0, end: 1 })).toBe(91);
     expect(machine.call('pointer_inside', [], { start: 0, end: 1 })).toBe(true);
     expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(true);
+    expect(machine.readInputByte(32)).toBe(57);
+    expect(machine.readInputByte(34)).toBe(91);
+    expect(machine.readInputByte(42)).toBe(5);
+    const first = machine.snapshot();
     machine.runFrame(input);
     expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(false);
+    expect(machine.readInputByte(42)).toBe(0);
+    machine.restore(first);
+    expect(machine.readInputByte(42)).toBe(5);
+    expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(true);
+    expect(() => {
+      machine.runFrame({ ...input, pointer: { ...input.pointer, x: 240 } });
+    }).toThrow(expect.objectContaining({ code: 'PX9008' }));
+    expect(machine.snapshot()).toEqual(first);
   });
 });

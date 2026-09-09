@@ -50,6 +50,48 @@ export function emptyInputFrame(): InputFrame {
   };
 }
 
+/** Little-endian controller/pointer MMIO over the same frames used by the high-level API. */
+export function inputRegisterByte(
+  current: InputFrame,
+  previous: InputFrame,
+  offset: number,
+): number {
+  if (offset < 0 || offset >= 48 || !Number.isInteger(offset)) return 0;
+  if (offset < 32) {
+    const port = Math.floor(offset / 8);
+    const mask = (frame: InputFrame): number =>
+      BUTTONS.reduce(
+        (bits, button, bit) => bits | (frame.controllers[port]?.buttons[button] ? 1 << bit : 0),
+        0,
+      );
+    const held = mask(current);
+    const before = mask(previous);
+    const field = offset % 8;
+    const bits =
+      field < 2 ? held : field < 4 ? before : field < 6 ? held & ~before : before & ~held;
+    return (bits >>> ((offset % 2) * 8)) & 255;
+  }
+  const field = offset - 32;
+  if (field < 8) {
+    const pointer = field < 4 ? current.pointer : previous.pointer;
+    const value = field % 4 < 2 ? pointer.x : pointer.y;
+    return (value >>> ((field % 2) * 8)) & 255;
+  }
+  const flags = (pointer: PointerState): number =>
+    Number(pointer.primary) | (Number(pointer.secondary) << 1) | (Number(pointer.inside) << 2);
+  const held = flags(current.pointer);
+  const before = flags(previous.pointer);
+  return field === 8
+    ? held
+    : field === 9
+      ? before
+      : field === 10
+        ? held & ~before
+        : field === 11
+          ? before & ~held
+          : 0;
+}
+
 export function isButton(value: unknown): value is Button {
   return typeof value === 'string' && (BUTTONS as readonly string[]).includes(value);
 }
@@ -63,7 +105,11 @@ export function isInputFrame(value: unknown): value is InputFrame {
   ) {
     return false;
   }
-  if (!value.controllers.every(isControllerState) || !isRecord(value.pointer)) {
+  if (
+    Object.keys(value.controllers).length !== 4 ||
+    !Array.from(value.controllers).every(isControllerState) ||
+    !isRecord(value.pointer)
+  ) {
     return false;
   }
   const pointer = value.pointer;
