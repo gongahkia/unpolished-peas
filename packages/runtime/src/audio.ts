@@ -100,7 +100,7 @@ export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
     !audioCounter(value.frame) ||
     !audioCounter(value.nextSequence) ||
     value.nextSequence < 1 ||
-    !Array.isArray(value.voices) ||
+    !denseAudioArray(value.voices) ||
     value.voices.length !== HARDWARE.audioVoices
   )
     return false;
@@ -185,13 +185,13 @@ export class AudioAssetStore {
 
   public constructor(assets: readonly AudioAsset[] = []) {
     for (const asset of assets) {
+      validateAudioAsset(asset);
       if (this.entries.has(asset.name)) {
         throw new TypeError(`duplicate audio asset '${asset.name}'`);
       }
-      validateAudioAsset(asset);
-      this.entries.set(asset.name, asset);
+      this.entries.set(asset.name, structuredClone(asset));
     }
-    for (const asset of assets) {
+    for (const asset of this.entries.values()) {
       if (asset.kind !== 'music') {
         continue;
       }
@@ -279,8 +279,15 @@ export class Synthesizer {
       throw new TypeError('invalid PX-240C synthesizer snapshot');
     }
     for (const voice of snapshot.voices) {
-      if (voice.active && this.assets.get(voice.sound)?.kind !== 'sound')
+      const sound = this.assets.get(voice.sound);
+      if ((voice.active || voice.sound !== '') && sound?.kind !== 'sound')
         throw new TypeError('snapshot references a missing sound');
+      if (
+        voice.active &&
+        sound?.kind === 'sound' &&
+        voice.ageFrames >= sound.durationFrames + sound.envelope.releaseFrames
+      )
+        throw new TypeError('snapshot contains a voice beyond its sound lifetime');
     }
     if (snapshot.tracker !== null) {
       const tracker = snapshot.tracker;
@@ -479,68 +486,74 @@ function emptyVoice(slot: number): Voice {
   };
 }
 
-function validateAudioAsset(asset: AudioAsset): void {
-  if (asset.name.length === 0) {
-    throw new TypeError('audio asset names cannot be empty');
+function validateAudioAsset(asset: unknown): asserts asset is AudioAsset {
+  if (!audioRecord(asset) || typeof asset.name !== 'string' || asset.name.length === 0) {
+    throw new TypeError('audio assets require a nonempty name');
   }
   if (asset.kind === 'sound') {
     if (
-      !Number.isInteger(asset.note) ||
-      asset.note < 0 ||
-      asset.note > 127 ||
-      !Number.isSafeInteger(asset.durationFrames) ||
-      asset.durationFrames < 1 ||
-      asset.durationFrames > 3600 ||
-      asset.volume < 0 ||
-      asset.volume > 1 ||
-      asset.pan < -1 ||
-      asset.pan > 1 ||
+      typeof asset.waveform !== 'string' ||
+      !['pulse', 'triangle', 'saw', 'noise', 'wavetable'].includes(asset.waveform) ||
+      !audioInteger(asset.note, 0, 127) ||
+      !audioInteger(asset.durationFrames, 1, 3600) ||
+      !audioNumber(asset.volume, 0, 1) ||
+      !audioNumber(asset.pan, -1, 1) ||
       !validEnvelope(asset.envelope) ||
-      !validPitch(asset.pitch)
+      !validPitch(asset.pitch, asset.durationFrames + asset.envelope.releaseFrames)
     ) {
       throw new RangeError(`sound '${asset.name}' is outside PX-240C limits`);
     }
     if (
       asset.waveform === 'pulse' &&
-      (asset.duty === undefined || asset.duty <= 0 || asset.duty >= 1)
+      (!audioNumber(asset.duty, 0, 1) || asset.duty === 0 || asset.duty === 1)
     ) {
       throw new RangeError(`pulse sound '${asset.name}' requires a duty between zero and one`);
     }
     if (
       asset.waveform === 'wavetable' &&
-      (asset.wavetable === undefined ||
+      (!denseAudioArray(asset.wavetable) ||
         asset.wavetable.length < 4 ||
         asset.wavetable.length > 32 ||
-        asset.wavetable.some((sample) => !Number.isFinite(sample) || sample < -1 || sample > 1))
+        asset.wavetable.some((sample) => !audioNumber(sample, -1, 1)))
     ) {
       throw new RangeError(`wavetable sound '${asset.name}' requires 4-32 normalized entries`);
     }
     return;
   }
   if (
-    !Number.isSafeInteger(asset.framesPerRow) ||
-    asset.framesPerRow < 1 ||
-    asset.framesPerRow > 240 ||
+    asset.kind !== 'music' ||
+    typeof asset.loop !== 'boolean' ||
+    !audioInteger(asset.framesPerRow, 1, 240) ||
+    !denseAudioArray(asset.order) ||
     asset.order.length === 0 ||
-    asset.order.some((name) => !Object.hasOwn(asset.patterns, name))
+    !audioRecord(asset.patterns) ||
+    asset.order.some(
+      (name) => typeof name !== 'string' || !Object.hasOwn(asset.patterns as object, name),
+    )
   ) {
     throw new RangeError(`music '${asset.name}' has an invalid order list or tempo`);
   }
   for (const pattern of Object.values(asset.patterns)) {
-    if (pattern.rows.length === 0 || pattern.rows.length > 256) {
+    if (
+      !audioRecord(pattern) ||
+      !denseAudioArray(pattern.rows) ||
+      pattern.rows.length === 0 ||
+      pattern.rows.length > 256
+    ) {
       throw new RangeError(`music '${asset.name}' has an invalid pattern length`);
     }
     for (const row of pattern.rows) {
-      if (row.length !== HARDWARE.trackerChannels) {
+      if (!denseAudioArray(row) || row.length !== HARDWARE.trackerChannels) {
         throw new RangeError(`music '${asset.name}' patterns must have eight channels`);
       }
       for (const cell of row) {
         if (
           cell !== null &&
-          (!Number.isInteger(cell.note) ||
-            cell.note < 0 ||
-            cell.note > 127 ||
-            (cell.volume !== undefined && (cell.volume < 0 || cell.volume > 1)))
+          (!audioRecord(cell) ||
+            !audioInteger(cell.note, 0, 127) ||
+            typeof cell.sound !== 'string' ||
+            cell.sound.length === 0 ||
+            (cell.volume !== undefined && !audioNumber(cell.volume, 0, 1)))
         ) {
           throw new RangeError(`music '${asset.name}' contains an invalid note`);
         }
@@ -549,24 +562,42 @@ function validateAudioAsset(asset: AudioAsset): void {
   }
 }
 
-function validEnvelope(envelope: VolumeEnvelope): boolean {
+function denseAudioArray(value: unknown): value is unknown[] {
   return (
-    [envelope.attackFrames, envelope.decayFrames, envelope.releaseFrames].every(
-      (value) => Number.isSafeInteger(value) && value >= 0 && value <= 3600,
-    ) &&
-    envelope.sustainLevel >= 0 &&
-    envelope.sustainLevel <= 1
+    Array.isArray(value) &&
+    Object.keys(value).length === value.length &&
+    Array.from(value.keys()).every((index) => Object.hasOwn(value, index))
   );
 }
 
-function validPitch(pitch: PitchEffect): boolean {
+function audioInteger(value: unknown, minimum: number, maximum: number): value is number {
+  return audioNumber(value, minimum, maximum) && Number.isSafeInteger(value);
+}
+
+function validEnvelope(envelope: unknown): envelope is VolumeEnvelope {
   return (
-    Number.isFinite(pitch.slideSemitonesPerFrame) &&
-    Number.isFinite(pitch.vibratoDepthSemitones) &&
-    Number.isSafeInteger(pitch.vibratoPeriodFrames) &&
-    pitch.vibratoPeriodFrames >= 0 &&
-    pitch.vibratoPeriodFrames <= 3600
+    audioRecord(envelope) &&
+    [envelope.attackFrames, envelope.decayFrames, envelope.releaseFrames].every((value) =>
+      audioInteger(value, 0, 3600),
+    ) &&
+    audioNumber(envelope.sustainLevel, 0, 1)
   );
+}
+
+function validPitch(pitch: unknown, lifetime: number): pitch is PitchEffect {
+  if (
+    !audioRecord(pitch) ||
+    typeof pitch.slideSemitonesPerFrame !== 'number' ||
+    !Number.isFinite(pitch.slideSemitonesPerFrame) ||
+    typeof pitch.vibratoDepthSemitones !== 'number' ||
+    !Number.isFinite(pitch.vibratoDepthSemitones) ||
+    !audioInteger(pitch.vibratoPeriodFrames, 0, 3600)
+  )
+    return false;
+  // include every tracker note and the full voice lifetime, not only the patch's default note.
+  const excursion =
+    Math.abs(pitch.slideSemitonesPerFrame) * lifetime + Math.abs(pitch.vibratoDepthSemitones);
+  return Number.isFinite(excursion) && Number.isFinite(noteFrequency(127 + excursion));
 }
 
 function oscillatorValue(sound: SoundAsset, voice: Voice): number {

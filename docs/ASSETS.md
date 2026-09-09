@@ -90,6 +90,13 @@ running. Display state is charged as 32 bytes plus 38 bytes per raster row.
 
 A `sound` is an oscillator patch. Notes are MIDI integers 0-127, duration and envelope time are in
 frames, volume and sustain are 0-1, and pan is -1 to 1. Pulse duty must be between zero and one.
+Numeric fields must be present and finite, and the waveform must be one of the five supported
+oscillators. Pitch effects are admitted only when the worst-case frequency remains finite across
+all notes 0–127 and the full duration plus release: `127 + abs(slide)*lifetime + abs(vibrato)` is
+the upper-note bound used for validation. Previously accepted malformed patches that could produce
+non-finite oscillator state are now rejected at asset load. Tracker orders/rows/tables must be dense
+arrays with valid shapes, boolean looping and finite cell volumes. Loaded patches are copied into
+the synthesizer's asset store; snapshot restore rejects an active voice beyond its patch lifetime.
 Wavetables contain 4-32 samples in the range -1 to 1.
 
 ```json
