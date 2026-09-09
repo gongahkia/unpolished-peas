@@ -86,5 +86,17 @@ describe('sandbox protocol', () => {
     expect(isWorkerResponse({ ...frame, ambient: true })).toBe(false);
     expect(isWorkerResponse({ ...frame, drawCommands: [{ name: 'clear' }] })).toBe(false);
     expect(isWorkerResponse({ ...frame, debug: { trace: [], inspection: {} } })).toBe(false);
+    for (const output of [
+      undefined,
+      { ...frame.output, indexedPixels: new Uint8Array(1) },
+      { ...frame.output, indexedPixels: new Uint8Array(HARDWARE.width * HARDWARE.height).fill(32) },
+      { ...frame.output, audio: { ...audio, left: new Float32Array(audio.left.length).fill(NaN) } },
+      { ...frame.output, audio: { ...audio, activeVoices: 9 } },
+      { ...frame.output, audio: { ...audio, extra: true } },
+      { ...frame.output, audioState: { ...frame.output.audioState, voices: [] } },
+      { ...frame.output, audioState: { ...frame.output.audioState, extra: true } },
+    ]) {
+      expect(isWorkerResponse({ ...frame, output })).toBe(false);
+    }
   });
 });

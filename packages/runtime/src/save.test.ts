@@ -45,7 +45,7 @@ describe('worker save memory', () => {
     const save = new SaveMemory();
     save.set('score', 7);
     expect(save.pendingWrites()).toEqual([{ key: 'score', value: 7 }]);
-    expect(save.pendingWrites()).toEqual(save.pendingWrites());
+    const snapshot = save.snapshot();
     expect(() => {
       save.restore({ score: 7 }, [{ key: 'score', value: 8 }]);
     }).toThrow(/snapshot/);
@@ -55,6 +55,7 @@ describe('worker save memory', () => {
         { key: 'score', value: 7 },
       ]);
     }).toThrow(/snapshot/);
+    expect(save.snapshot()).toEqual(snapshot);
     expect(save.takeWrites()).toEqual([{ key: 'score', value: 7 }]);
   });
 });

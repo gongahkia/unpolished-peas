@@ -21,7 +21,9 @@ Never update these from V1 to make a compatibility test pass.
 
 Production-rasterizer tests compare all 720 recorded framebuffer hashes and canonical synth output.
 Shared-core tests also recompile all three original sources using the native compiler, execute the
-recorded inputs and compare every work/command/save/state result, then restore and forward-run.
+recorded inputs and compare every work/command/save/state result plus the core's own pixel/PCM output,
+then restore and forward-run the full Worker-owned devices. Legacy state hashes use the explicit
+revision-1 projection; the complete new snapshot is also compared after replay.
 This is not yet a public CLI headless runner or Chromium parity check; those remain required.
 Short paths do not cover complete game progression or save writes.
 

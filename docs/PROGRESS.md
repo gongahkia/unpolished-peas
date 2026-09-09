@@ -309,6 +309,33 @@ Each group may produce several coherent commits, and integration occurs througho
   execution copies, and attach the real Revision 1 bus. This preparatory checkpoint does not yet
   expose bus APIs or claim Worker ownership of graphics/audio.
 
+## 2026-09-10 — V1 milestone 2c: Worker-owned graphics/audio and complete frame snapshots
+
+- Studio player and debugger now present Worker-produced indexed pixels and PCM. The shared core
+  decodes a bounded source asset bank and owns the actual rasterizer/synthesizer; map queries use the
+  same visual store as drawing. The integration was retained in local commit `3e6d908` before this
+  verification checkpoint. Standalone export still has its old separate implementation.
+- Revision-2 core snapshots include graphics, audio and pending save writes as well as machine/save
+  state. Restore validates structure and device references, rolling back all components and pending
+  writes on failure. The debugger's existing journal wrapper now derives its data from this snapshot.
+  Raw legacy Worker snapshots retain their original machine/save-only semantics; full public replay
+  migration is still required. Boot graphics/audio commands retain alpha's discard behavior for now.
+- Expanded native-compiled compatibility execution to compare the core's own indexed output, PCM,
+  post-frame voice peaks and full device snapshot restore/forward behavior. All 720 alpha frame
+  hashes, original work/commands/saves/state hashes and the three canonical PCM hashes match.
+- Reproduced a malformed tracker order accepting inherited `__proto__` as a pattern. The validator
+  now requires an own pattern entry. Added rejection checks for malformed pixels/PCM/voice state and
+  pending-save queues. A too-strict field-count check initially rejected valid nine-field voices;
+  corrected it and reran the focused suite (20 passed), followed by the full gate.
+- `./scripts/check.sh` passed: Prettier, ESLint, strict TypeScript, **56 Vitest tests**, production
+  builds, **one complete Firefox E2E**, Rust fmt/Clippy, **46 Rust tests**, native and release Wasm
+  builds. No required tests were skipped. Production Worker/main JS now measure approximately
+  45.46/116.52 kB; the ownership move transfers device code into the Worker. Games remain exactly
+  42,851 / 41,262 / 38,039 packed bytes at this checkpoint. Chromium is not yet covered.
+- Next: real byte/word/copy/fill APIs and live hardware backing stores, then the full Revision 1
+  register/reference/conformance contract. No bus or V1 completion is claimed by this checkpoint.
+  Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

@@ -19,11 +19,13 @@ Dependencies point inward: studio -> runtime/WASM bridge -> compiler core. Cartr
 in a dedicated worker and communicates through a versioned, validated message protocol. It never
 receives persistence handles or DOM objects.
 
-The Worker delegates scheduling, console dispatch, work accounting, maps, saves and debug traces to
-`packages/runtime/src/console-runtime.ts`. Tests drive this same core with native-compiled PXCL and
-compare actual alpha browser recordings. Graphics/audio still reside in the Studio host at this
-checkpoint; moving their ownership into the shared core is required before the V1 bus is exposed.
-The CLI does not yet provide a headless execution command.
+The Worker delegates scheduling, console dispatch, work accounting, graphics, audio, maps, saves
+and debug traces to `packages/runtime/src/console-runtime.ts`. That core validates and decodes a
+bounded source asset bank; map queries and drawing use the same visual store. Commands execute in
+program order, then frame completion resolves indexed scanout and renders deterministic PCM.
+The page presents those pixels/samples and handles input and storage; it no longer re-executes
+cartridge graphics or audio. Tests drive this same core with native-compiled PXCL and compare
+actual alpha browser recordings. The V1 bus and public headless CLI are not yet implemented.
 
 ## Data flow
 
@@ -40,9 +42,13 @@ tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.
-The Studio combines periodic worker snapshots with indexed-framebuffer and synthesizer snapshots;
-recorded inputs and canonical fingerprints provide deterministic rewind with explicit divergence
-detection. The debugger does not receive DOM, persistence, or network capabilities.
+The revision-2 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer
+and synthesizer state. Restore validates all components and rolls back on a device-reference failure.
+The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
+snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
+divergence detection. Raw legacy Worker snapshots restore only their original scheduler/save fields;
+they do not contain graphics/audio. Full public replay migration remains required. The debugger does
+not grant cartridges DOM, persistence, or network capabilities.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.
