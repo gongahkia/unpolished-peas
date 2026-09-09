@@ -2,6 +2,8 @@ import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
 import { BITMAP_FONT, glyphRows } from './font';
 import type { ConsoleCommand } from './protocol';
 import { MEMORY, type MemoryRegion } from './bus';
+import { VisualAssetStore } from './visual-store';
+export { VisualAssetStore, visualAssetBytes } from './visual-store';
 
 export interface IndexedSprite {
   readonly kind: 'sprite';
@@ -86,76 +88,6 @@ export function isGraphicsSnapshot(value: unknown): value is GraphicsSnapshot {
   );
 }
 
-/** Validated, capacity-accounted assets shared by sprite and map drawing. */
-export class VisualAssetStore {
-  private readonly entries = new Map<string, VisualAsset>();
-  public readonly usedBytes: number;
-
-  public constructor(assets: readonly VisualAsset[] = []) {
-    let usedBytes = 0;
-    for (const asset of assets) {
-      if (this.entries.has(asset.name)) {
-        throw new TypeError(`duplicate visual asset '${asset.name}'`);
-      }
-      validateAsset(asset);
-      usedBytes += visualAssetBytes(asset);
-      if (usedBytes > HARDWARE.visualCapacityBytes) {
-        throw new RangeError('visual assets exceed the 128 KiB shared capacity');
-      }
-      this.entries.set(asset.name, asset);
-    }
-    for (const asset of assets) {
-      if (asset.kind !== 'map') {
-        continue;
-      }
-      for (const layer of asset.layers) {
-        const tileSet = this.entries.get(layer.tileSet);
-        if (
-          tileSet?.kind !== 'tile_set' ||
-          layer.cells.some((tile) => tile >= tileSet.tiles.length)
-        ) {
-          throw new TypeError(`map '${asset.name}' references an invalid tile set or tile`);
-        }
-      }
-    }
-    this.usedBytes = usedBytes;
-  }
-
-  public get(name: string): VisualAsset | undefined {
-    return this.entries.get(name);
-  }
-
-  public mapCell(name: string, layer: number, x: number, y: number): number | undefined {
-    const asset = this.entries.get(name);
-    if (asset?.kind !== 'map') {
-      return undefined;
-    }
-    const selected = asset.layers[layer];
-    if (selected === undefined || x < 0 || y < 0 || x >= selected.width || y >= selected.height) {
-      return undefined;
-    }
-    return selected.cells[y * selected.width + x];
-  }
-
-  public mapFlag(name: string, layer: number, x: number, y: number, flag: number): boolean {
-    const asset = this.entries.get(name);
-    if (asset?.kind !== 'map' || flag < 0 || flag > 7) {
-      return false;
-    }
-    const selected = asset.layers[layer];
-    if (selected === undefined) {
-      return false;
-    }
-    const tile = this.mapCell(name, layer, x, y);
-    const tileSet = this.entries.get(selected.tileSet);
-    return (
-      tile !== undefined &&
-      tileSet?.kind === 'tile_set' &&
-      ((tileSet.flags[tile] ?? 0) & (1 << flag)) !== 0
-    );
-  }
-}
-
 /** Deterministic indexed immediate-mode rasterizer with double-buffered storage. */
 export class IndexedGraphics {
   private readonly front = new Uint8Array(HARDWARE.width * HARDWARE.height);
@@ -179,7 +111,10 @@ export class IndexedGraphics {
 
   public constructor(assets = new VisualAssetStore(), display?: DisplayConfiguration) {
     this.assets = assets;
-    this.display = copyDisplayConfiguration(display);
+    this.display =
+      display === undefined
+        ? (assets.display ?? copyDisplayConfiguration())
+        : copyDisplayConfiguration(display);
     this.state.clipWidth = HARDWARE.width;
     this.state.clipHeight = HARDWARE.height;
     this.state.remap.set(this.display.remap);
@@ -734,7 +669,7 @@ export class IndexedGraphics {
       );
       for (let row = firstRow; row < lastRow; row += 1) {
         for (let column = firstColumn; column < lastColumn; column += 1) {
-          const tile = tileSet.tiles[layer.cells[row * layer.width + column] ?? -1];
+          const tile = tileSet.tiles[layer.cells.getUint16((row * layer.width + column) * 2, true)];
           if (tile !== undefined) {
             this.blit(
               tile,
@@ -947,81 +882,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function identityRemap(): Uint8Array {
   return Uint8Array.from({ length: HARDWARE.paletteSize }, (_, index) => index);
-}
-
-function validateAsset(asset: VisualAsset): void {
-  if (asset.name.length === 0) {
-    throw new TypeError('visual asset names cannot be empty');
-  }
-  switch (asset.kind) {
-    case 'sprite':
-      validateSprite(asset);
-      return;
-    case 'animation':
-      if (asset.frames.length === 0) {
-        throw new RangeError(`animation '${asset.name}' has no frames`);
-      }
-      asset.frames.forEach(validateSprite);
-      return;
-    case 'tile_set':
-      if (asset.tiles.length === 0 || asset.flags.length !== asset.tiles.length) {
-        throw new RangeError(`tile set '${asset.name}' has incoherent tiles or flags`);
-      }
-      for (const tile of asset.tiles) {
-        validateSprite(tile);
-        if (tile.width !== HARDWARE.tileSize || tile.height !== HARDWARE.tileSize) {
-          throw new RangeError(`tile set '${asset.name}' contains a non-8x8 tile`);
-        }
-      }
-      return;
-    case 'map':
-      if (asset.layers.length === 0) {
-        throw new RangeError(`map '${asset.name}' has no layers`);
-      }
-      for (const layer of asset.layers) {
-        if (
-          !Number.isSafeInteger(layer.width) ||
-          !Number.isSafeInteger(layer.height) ||
-          layer.width <= 0 ||
-          layer.height <= 0 ||
-          layer.cells.length !== layer.width * layer.height ||
-          layer.tileSet.length === 0
-        ) {
-          throw new RangeError(`map '${asset.name}' has an invalid layer`);
-        }
-      }
-  }
-}
-
-function validateSprite(sprite: IndexedSprite): void {
-  if (
-    !Number.isSafeInteger(sprite.width) ||
-    !Number.isSafeInteger(sprite.height) ||
-    sprite.width < 1 ||
-    sprite.width > HARDWARE.spriteMaximumAxis ||
-    sprite.height < 1 ||
-    sprite.height > HARDWARE.spriteMaximumAxis ||
-    sprite.pixels.length !== sprite.width * sprite.height ||
-    sprite.pixels.some((color) => color >= HARDWARE.paletteSize)
-  ) {
-    throw new RangeError(`sprite '${sprite.name}' is outside PX-240C limits`);
-  }
-}
-
-export function visualAssetBytes(asset: VisualAsset): number {
-  switch (asset.kind) {
-    case 'sprite':
-      return asset.pixels.byteLength;
-    case 'animation':
-      return asset.frames.reduce((total, frame) => total + frame.pixels.byteLength, 0);
-    case 'tile_set':
-      return (
-        asset.flags.byteLength +
-        asset.tiles.reduce((total, tile) => total + tile.pixels.byteLength, 0)
-      );
-    case 'map':
-      return asset.layers.reduce((total, layer) => total + layer.cells.byteLength, 0);
-  }
 }
 
 function expectIntegers(command: ConsoleCommand, count: 0): [];

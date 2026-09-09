@@ -1,4 +1,5 @@
 import { readFile } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
 
 import { expect, test, type Page } from '@playwright/test';
 
@@ -16,7 +17,7 @@ async function saveAndCloseTool(page: Page): Promise<void> {
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
 }
 
-test('complete local Studio and distribution workflow', async ({ page, context }) => {
+test('complete local Studio and distribution workflow', async ({ page, context }, testInfo) => {
   const browserErrors: string[] = [];
   page.on('pageerror', (error) => browserErrors.push(error.message));
   page.on('console', (message) => {
@@ -97,6 +98,25 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await page.locator('[data-debug="frame"]').click();
   await expect(page.locator('.debug-status')).toHaveText('PAUSED AT FRAME 1');
   await page.locator('[data-debug="back"]').click();
+
+  const visualCartridge = testInfo.outputPath('visual-conformance.pxc');
+  execFileSync('target/debug/px240c', [
+    'pack',
+    'tests/conformance/visual',
+    '--output',
+    visualCartridge,
+  ]);
+  await shellCommand(page, 'import');
+  await page.locator('input[type="file"]').setInputFiles(visualCartridge);
+  await expect(page.locator('.terminal')).toContainText('IMPORTED visual-conformance');
+  await shellCommand(page, 'run');
+  await expect
+    .poll(async () => {
+      const status = await page.locator('.player-status').innerText();
+      return /^F\d{5} W\d{5}$/.test(status) ? Number(status.slice(1, 6)) : -1;
+    })
+    .toBeGreaterThanOrEqual(3);
+  await page.locator('.stop-player').click();
 
   await shellCommand(page, 'new e2e-alpha E2E ALPHA');
   await expect(page.locator('.active-cart')).toHaveText('E2E-ALPHA');

@@ -56,7 +56,10 @@ buffer; palette changes happen during display resolution and do not alter frameb
 `mem_write(address, value)` and `mem_write16(address, value)` write those widths; `mem_copy(dst,
 src, count)` handles overlapping ranges and `mem_fill(dst, byte, count)` fills bytes. All arguments
 are `Int`, writes return unit, and the normal compiler/runtime work budget applies. This checkpoint
-maps work RAM and live graphics/raster storage, not the full V1 device set. See the exact candidate
+maps work RAM, the shared visual image and live graphics/raster storage, not the full V1 device set.
+`visual_id(name: Text) -> Int` returns the visual descriptor ID or `-1`; its runtime cost is one plus
+the name length. Descriptors expose sprite/frame/tile/map addresses, dimensions and flags. These
+bytes are the backing state used by drawing and map queries. See the exact candidate
 addresses, field encodings, timing, permissions and fault behavior in [HARDWARE.md](HARDWARE.md).
 The standalone alpha exporter does not yet implement the memory surface.
 

@@ -1,5 +1,5 @@
 import { deepStrictEqual } from 'node:assert/strict';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 import {
   IndexedGraphics,
@@ -169,29 +169,22 @@ describe('indexed graphics hardware', () => {
       tiles: [tile],
       flags: Uint8Array.of(0),
     };
-    const rawCells = new Uint16Array(40);
-    let rendering = false;
-    const cells = new Proxy(rawCells, {
-      get(target, property) {
-        const index = typeof property === 'string' ? Number(property) : Number.NaN;
-        if (rendering && Number.isSafeInteger(index) && index < 30) {
-          throw new Error('renderer read a fully off-camera map cell');
-        }
-        const value = Reflect.get(target, property, target) as unknown;
-        return typeof value === 'function'
-          ? (...arguments_: unknown[]): unknown =>
-              Reflect.apply(value, target, arguments_) as unknown
-          : value;
-      },
-    });
     const map: IndexedMap = {
       kind: 'map',
       name: 'wide-level',
-      layers: [{ width: 40, height: 1, cells, tileSet: 'ground' }],
+      layers: [{ width: 40, height: 1, cells: new Uint16Array(40), tileSet: 'ground' }],
     };
-    const graphics = new IndexedGraphics(new VisualAssetStore([tileSet, map]));
+    const store = new VisualAssetStore([tileSet, map]);
+    const stored = store.get('wide-level');
+    if (stored?.kind !== 'map' || stored.layers[0] === undefined) throw new Error('missing map');
+    const cells = stored.layers[0].cells;
+    const readCell = cells.getUint16.bind(cells);
+    const reads = vi.spyOn(cells, 'getUint16').mockImplementation((offset, littleEndian) => {
+      if (offset < 60) throw new Error('renderer read a fully off-camera map cell');
+      return readCell(offset, littleEndian);
+    });
+    const graphics = new IndexedGraphics(store);
 
-    rendering = true;
     const frame = graphics.executeFrame([
       command('clear', [1]),
       command('camera', [240, 0]),
@@ -201,6 +194,8 @@ describe('indexed graphics hardware', () => {
     expect(frame.indexedPixels[0]).toBe(6);
     expect(frame.indexedPixels[79]).toBe(6);
     expect(frame.indexedPixels[80]).toBe(1);
+    expect(reads).toHaveBeenCalledTimes(10);
+    reads.mockRestore();
   });
 
   it('enforces asset, sprite, palette, transform, and command limits', () => {

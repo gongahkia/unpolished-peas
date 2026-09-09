@@ -44,13 +44,19 @@ tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.
-The revision-3 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
+The revision-4 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
 synthesizer and retained bus state. Restore validates all components and rolls back on a device-reference failure.
 The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
 snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
 divergence detection. Raw legacy Worker snapshots restore only their original scheduler/save fields;
 they do not contain graphics/audio. Full public replay migration remains required. The debugger does
 not grant cartridges DOM, persistence, or network capabilities.
+
+Visual assets now occupy one packed 128 KiB image. Byte views back pixels/flags and explicit
+little-endian DataViews back map cells; the renderer and map query API read those views directly.
+Display defaults also occupy their charged bytes, with frame-start latching into live registers.
+Read-only descriptors expose allocation order and exact sizes. Legacy revision-3 bus snapshots
+migrate the new visual region from source, while current snapshots retain all mutable visual bytes.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.

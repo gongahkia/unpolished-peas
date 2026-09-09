@@ -49,6 +49,11 @@ Sprite pixels, animation pixels, tile pixels and flags, two bytes per map cell, 
 share the 128 KiB visual capacity. The loader rejects missing tile sets and out-of-range tile
 indices before execution.
 
+In the V1 candidate runtime these payloads occupy the actual bus image at `0x30000`. Allocation
+descriptors and `visual_id` expose their addresses; drawing and map queries read that same storage.
+See [HARDWARE.md](HARDWARE.md#visual-image-and-allocation-descriptors) for encoding and write rules.
+Asset files and the alpha packed format remain unchanged.
+
 ## Display state
 
 The optional top-level `display = "assets/display.pxp"` manifest key names a default palette and

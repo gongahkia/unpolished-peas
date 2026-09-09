@@ -378,6 +378,51 @@ Each group may produce several coherent commits, and integration occurs througho
   mappings and full reference/conformance. Standalone still uses its old runtime and does not yet
   support the new bus APIs. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2e: real visual image and allocation descriptors
+
+- Packed sprites, animation frames, tile pixels/flags, map layers and display defaults into one
+  actual 128 KiB image. Renderer byte views and explicit little-endian map DataViews alias the bus;
+  no host-endian word reinterpretation or alignment padding is used. Mapped display defaults retain
+  their exact alpha cost and latch into live registers at frame start. Low-level pixel/index writes
+  validate affected allocations transactionally; free tail bytes are writable scratch storage.
+- Added bounded read-only asset/allocation descriptors and `visual_id(Text)`, with exact layout,
+  costs, permissions and reset/timing documentation. Names resolve to deterministic ASCII-sorted IDs;
+  map descriptors identify their tileset. These remain candidate addresses, not frozen Hardware
+  Revision 1. Custom fonts and the remaining non-graphics devices are still required.
+- Internal snapshots are revision 4 and retain modified visuals. Revision-3 migration preserves its
+  bus state and reloads newly mapped visuals from source; revision-2 migration also zeroes work RAM.
+  Malformed images and wrong layouts roll back without partial changes. Alpha archive/project files
+  and the public packed format were not changed; full public replay migrations remain pending.
+- Added five visual-store tests, revision-3 migration/rollback coverage and a public PXCL visual
+  conformance project compiled in Release and Debug. The camera-culling regression now instruments
+  the actual mapped DataView, checking exactly ten visible cells instead of an obsolete source array.
+  Initial focused lint rejected nine void-expression callbacks; its standard fixes were applied and
+  all checks rerun. No behavioral test or timeout was weakened.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **76 Vitest tests**, production
+  builds, **one complete Firefox E2E** (21.5 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. Firefox now imports, recompiles and runs the visual conformance cart as well as the
+  prior memory/debugger and full alpha workflows. All 720 frozen pixels/state/work/command traces
+  and canonical PCM hashes pass. No gate tests were skipped; Chromium is still pending.
+- The visual conformance project packs twice identically to **11,924 bytes**, SHA-256
+  `d012f88b17c3b2184adc02a0f106d069769cedef2432da9b49253712486cdf0f`. This is a focused test
+  project, not the finished service/stress cartridge or a claimed size-class showcase. Original
+  games remain 42,851 / 41,262 / 38,039 bytes with unchanged intermediate-V1 hashes. Production
+  main/Worker JS are 122,107/57,538 bytes; Wasm is 1,167,748 bytes.
+- Ran two five-pair graphics measurements against `2bd8c4d`; all 720 pixel checks passed each time.
+  Paired median CPU times per 240 frames were 345.0→413.9 / 367.9→324.4 / 501.0→508.4 ms, then
+  287.2→273.5 / 307.2→231.3 / 358.3→350.6 ms (Cinder/Ashvault/Racer). The variation does not support
+  a stable speedup or regression claim; these are rasterizer-only shared-host samples, not the
+  required final edit-to-run measurement.
+- Used the Playwright CLI for direct 5× visual inspection of `VISUAL BUS PASS` and `135B / 128K`,
+  including the changed sprite/tile pixels. The first CLI upload lacked an active file chooser;
+  clicking the existing OPEN control then uploading worked. Capture:
+  `output/playwright/v1-visual-conformance.png`. The host control overlay is unchanged; clean capture
+  remains a later requirement. Also inspected debugger frame 1, rewound to 0 and returned to 1;
+  `output/playwright/v1-visual-debugger.png` retains that view. The CLI browser reported zero
+  console messages/errors/warnings. Nothing was pushed, published or deployed.
+- Next: controller and timing/RNG/work/status mappings with explicit input-transition conformance,
+  followed by remaining audio/save/ROM mappings, full hardware viewer/reference and shared hosts.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
