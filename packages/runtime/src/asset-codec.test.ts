@@ -24,6 +24,25 @@ const sound = {
 };
 
 describe('source-visible asset codec', () => {
+  it('rejects malformed and numerically unsafe sound JSON at the public asset boundary', () => {
+    for (const invalid of [
+      { ...sound, waveform: 'sample' },
+      { ...sound, volume: null },
+      { ...sound, pan: undefined },
+      { ...sound, duty: '0.5' },
+      { ...sound, pitch: { ...sound.pitch, slideSemitonesPerFrame: 1e308 } },
+    ]) {
+      expect(() =>
+        decodeRuntimeAssets(
+          { tone: { kind: 'sound', path: 'tone.pxs' } },
+          {
+            'tone.pxs': encodeAssetFile(invalid),
+          },
+        ),
+      ).toThrow();
+    }
+  });
+
   it('bounds Worker asset banks and rejects noncanonical paths and structural payloads', () => {
     const source = {
       declarations: { hero: { kind: 'sprite', path: 'hero.pxg' } },

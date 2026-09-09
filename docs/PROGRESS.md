@@ -517,6 +517,29 @@ Each group may produce several coherent commits, and integration occurs througho
   viewer, complete conformance and shared-host work. Hardware Revision 1 is still incomplete.
   Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2i: audio-state validation before writable controls
+
+- Two focused regressions reproduced accepted unsupported waveforms and sparse eight-voice
+  snapshots. Tightened sound/tracker shape and numeric validation: known oscillator kinds, present
+  finite levels/pan/duty, dense tables/orders/rows, boolean looping and finite cell volumes. Pitch
+  effects must retain a finite worst-case frequency over all tracker notes and the complete voice
+  lifetime. This rejects malformed/extreme data that previously could admit non-finite oscillator
+  state; normal synthesis calculations are unchanged.
+- Audio assets are copied into the validated owner. Snapshot restore rejects missing patch references
+  and active voices beyond their patch lifetime before mutation. Tests cover sparse arrays with an
+  extra-property disguise, malformed JSON through the public codec, unsafe pitch, valid extreme pitch,
+  caller mutation after load and transactional rejection. Writable audio MMIO is **not implemented
+  in this checkpoint**; these checks establish its necessary state-validation boundary.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **110 Vitest tests**, production
+  builds, **one complete Firefox E2E** (26.6 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. Both initial reproductions failed before the correction. A focused lint check rejected
+  the test's deliberate array deletion; it now constructs that malformed case through reflection.
+  Final-gate tests were not skipped; all immutable alpha frame/work/state/PCM checks pass.
+- Packed games retain the preceding sizes/hashes. Main/Worker JS measure 125,446/65,341 bytes;
+  Wasm remains 1,167,748 bytes. There is no visual-layout change or new manual screenshot. Audio
+  controls, save/ROM, Chromium and the remaining Hardware/V1 acceptance work are still open.
+  Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   AudioAssetStore,
   Synthesizer,
+  isSynthSnapshot,
   type MusicAsset,
   type SoundAsset,
   type TrackerCell,
@@ -42,6 +43,87 @@ function handle(name: string, kind: 'Sound' | 'Music'): object {
 }
 
 describe('PX-240C synthesizer and tracker', () => {
+  it('rejects unsupported oscillators and non-finite or missing numeric patch data before rendering', () => {
+    const patch = sound('invalid');
+    const invalid: unknown[] = [
+      { ...patch, waveform: 'sample' },
+      { ...patch, volume: NaN },
+      { ...patch, volume: undefined },
+      { ...patch, pan: NaN },
+      { ...patch, duty: NaN },
+      { ...patch, pitch: { ...patch.pitch, slideSemitonesPerFrame: 1e308 } },
+      { ...patch, pitch: { ...patch.pitch, vibratoDepthSemitones: 1e308 } },
+    ];
+    for (const value of invalid) expect(() => new AudioAssetStore([value as SoundAsset])).toThrow();
+  });
+
+  it('rejects sparse voice snapshots and active voices beyond the patch lifetime transactionally', () => {
+    const synth = new Synthesizer(new AudioAssetStore([sound('tone')]));
+    synth.executeCommand(command('sfx', [handle('tone', 'Sound')]));
+    const before = synth.snapshot();
+    expect(isSynthSnapshot({ ...before, voices: Array(8) })).toBe(false);
+    const disguised = [...before.voices];
+    Reflect.deleteProperty(disguised, '0');
+    Object.assign(disguised, { extra: before.voices[0] });
+    expect(isSynthSnapshot({ ...before, voices: disguised })).toBe(false);
+    expect(() => {
+      synth.restore({
+        ...before,
+        voices: before.voices.map((voice, index) =>
+          index === 0 ? { ...voice, ageFrames: Number.MAX_SAFE_INTEGER } : voice,
+        ),
+      });
+    }).toThrow(/voice/);
+    expect(synth.snapshot()).toEqual(before);
+  });
+
+  it('validates tracker structure and finite cells before following instrument references', () => {
+    const row = [{ note: 60, sound: 'tone' }, null, null, null, null, null, null, null];
+    const music = {
+      kind: 'music',
+      name: 'song',
+      framesPerRow: 1,
+      order: ['p'],
+      patterns: { p: { rows: [row] } },
+      loop: true,
+    };
+    const invalid: unknown[] = [
+      { ...music, loop: 1 },
+      { ...music, order: Array(1) },
+      { ...music, order: [null], patterns: { null: { rows: [row] } } },
+      { ...music, patterns: { p: { rows: Array(1) } } },
+      { ...music, patterns: { p: { rows: [Array(8)] } } },
+      {
+        ...music,
+        patterns: { p: { rows: [[{ note: 60, sound: 'tone', volume: NaN }, ...row.slice(1)]] } },
+      },
+    ];
+    for (const value of invalid)
+      expect(() => new AudioAssetStore([sound('tone'), value as MusicAsset])).toThrow();
+  });
+
+  it('owns a validated copy of patches and renders extreme admitted pitch without non-finite state', () => {
+    const patch = sound('tone');
+    const store = new AudioAssetStore([patch]);
+    Object.assign(patch, { volume: NaN });
+    const owned = new Synthesizer(store);
+    expect(
+      owned.executeFrame([command('sfx', [handle('tone', 'Sound')])]).left.every(Number.isFinite),
+    ).toBe(true);
+    const extreme = {
+      ...sound('extreme'),
+      pitch: { slideSemitonesPerFrame: 1000, vibratoDepthSemitones: 1000, vibratoPeriodFrames: 2 },
+    };
+    const synth = new Synthesizer(new AudioAssetStore([extreme]));
+    synth.executeCommand(command('sfx', [handle('extreme', 'Sound')]));
+    for (let frame = 0; frame < 6; frame += 1) {
+      const output = synth.finishFrame();
+      expect(output.left.every(Number.isFinite)).toBe(true);
+      expect(output.right.every(Number.isFinite)).toBe(true);
+      expect(isSynthSnapshot(synth.snapshot())).toBe(true);
+    }
+  });
+
   it('applies voice commands immediately but advances samples and age only on frame completion', () => {
     const assets = new AudioAssetStore([sound('tone')]);
     const synthesizer = new Synthesizer(assets);
