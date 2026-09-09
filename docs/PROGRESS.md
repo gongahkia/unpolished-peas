@@ -237,7 +237,35 @@ Each group may produce several coherent commits, and integration occurs througho
   `wasm32-unknown-unknown` build. Separate public-CLI calibration rebuilt, byte-compared, and exported
   every bundled cartridge.
 
-## Current risks
+## 2026-09-09 — V1 milestone 1: audit and immutable alpha baseline
+
+- Started from `e39be5a`; the only initial addition was the supplied V1 brief. Read the handoffs,
+  inspected manifests/tasks/implementation and passed the complete existing gate before changing
+  implementation code. The first attempt stopped on brief formatting; formatting only that document
+  allowed the rerun to pass all 42 Vitest / 45 Rust tests, Firefox E2E, native/Wasm and production builds.
+- Added `COMPETITIVE_GAP_AUDIT.md` with the full required checklist, actual architectural gaps,
+  consolidation strategy, verified measurements and explicitly untested areas. No scope was waived.
+- Recorded actual production Firefox 155.0 Worker input/commands/state and indexed-output hashes
+  over 240 intentional frames for each original game; archived exact alpha `.pxc` files, original
+  first-install project records, final replay snapshots and a separately labeled synthetic save.
+- New compatibility tests compare all 720 recorded framebuffer hashes using the production
+  rasterizer and freeze 48 kHz stereo float32 PCM hashes using the production synth. Measured
+  post-frame voice peaks are 4/5/5. Whole-path work peaks are 10,477/19,140/31,722, higher than alpha's
+  earlier representative active-frame figures because these paths include title/start/transition work.
+- Measured edit/save/run/first-render warm medians: 297.8 ms for original single-file Cinder and
+  282.1 ms for a two-module split in an isolated test browser profile. Repository game sources and
+  user browser data were not edited. Inspected the shell and all three game screenshots directly;
+  retained captures under `output/playwright/` and exact bundle/cartridge hashes with the fixtures.
+- Recorder development exposed an off-by-one observation boundary: host Promise continuations can
+  run between Worker message listeners. Gating the game callback at execution time produced exactly
+  240 contiguous renders/snapshots per retained trace. This was a harness issue, not a gameplay change.
+- Checkpoint verification passed: focused Prettier/ESLint, runtime strict TypeScript and all three
+  new compatibility tests. No production implementation has changed. Chromium and full PXCL
+  headless re-execution remain required, not claimed by command-replay checks.
+- Next: extract the Worker dispatcher into the shared production core, verify alpha parity, then
+  implement actual Worker-owned hardware state and the Revision 1 bus/reference/conformance tests.
+
+## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, and no custom font asset decoding/editor.

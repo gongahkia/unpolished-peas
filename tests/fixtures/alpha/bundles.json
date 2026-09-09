@@ -1,0 +1,18 @@
+{
+  "index-CaLGlYXc.js": {
+    "bytes": 121103,
+    "sha256": "a23660056431d43b36724fd3cbf8fa7df92176cc4183892db0820aa8dfa6bd2f"
+  },
+  "index-DLEVuQSJ.css": {
+    "bytes": 12372,
+    "sha256": "a3bdd27b5c698a387f4e1c3ac5e3a9c9d0972899a47dcb900b0a1df52cecc5c9"
+  },
+  "pxcl_wasm_bg-BOMWrNDL.wasm": {
+    "bytes": 1165346,
+    "sha256": "d5051018628688cf675ff801959673fd678d26f1c47cfc2a1243dea5b04f3336"
+  },
+  "sandbox-worker-CM4mRpOT.js": {
+    "bytes": 18722,
+    "sha256": "5cf91913e8d53013418fcc7309f0fce2372c4827a96ee4ebab46f21c8c632f7a"
+  }
+}

@@ -1,0 +1,46 @@
+{
+  "commit": "e39be5a",
+  "browser": "Firefox 155.0",
+  "cartridges": {
+    "cinder-circuit": {
+      "bytes": 42121,
+      "sha256": "5a8ab544ebd5a8b7746f9aa6e10c7859838ae02eb0e91b94faa0269be29d5bd4",
+      "peakWork": 10477,
+      "peakDrawCommands": 90,
+      "peakAudioCommands": 1,
+      "finalFramebufferHash": "37e05608feb0c99751e17cd08dd74d62eb5bd100230a56c67eaed68c71daf9fe",
+      "finalStateHash": "d7460081158e3ff5ecb30f6689d77c9a2271b5d2f1291e6ea0b12031313c6d48",
+      "audioCommandHash": "33fe706d73358f446bfb83e218755620ac9a2a8514706bd9d140ffe6a4ad6195"
+    },
+    "ashvault": {
+      "bytes": 40532,
+      "sha256": "9da9e011eb293f5b5d2690362d385c18ac6107003a52319ead829791cb1c2e3a",
+      "peakWork": 19140,
+      "peakDrawCommands": 120,
+      "peakAudioCommands": 3,
+      "finalFramebufferHash": "db03fc95a5688bd95055ae2ae8700f71145ea1198a0e5a5b255059ee01c61b9c",
+      "finalStateHash": "94b607f2784bef4a11e45d522bfafc0cd38ab803e4ece55c64a030f0afbc9073",
+      "audioCommandHash": "18b56bc094b71434115acb752d24011113518fb48de7de0b4abd2a1f61ba7459"
+    },
+    "raster-rush": {
+      "bytes": 37311,
+      "sha256": "4357e6fd4354c7b737258b3008cb613d1c792cdfead7f45a3356bc268dd018c3",
+      "peakWork": 31722,
+      "peakDrawCommands": 470,
+      "peakAudioCommands": 1,
+      "finalFramebufferHash": "05e33801457c0d6e38f6a7ff29a8a1703041917bc7ef55d186f958aba5b2ef53",
+      "finalStateHash": "166e1a18520c8cec7e844ac574c023fa55c11529b047b28369cf8cf7ae9b4738",
+      "audioCommandHash": "e7adc2bcc93c6591eaf4aac055f187d44df40dfc0935d1730933ba14ef64a563"
+    }
+  },
+  "editRun": {
+    "description": "Playwright wall clock, fill edit + save/back + run + first rendered frame; one cold, ten warm; Cinder Circuit original single-file project",
+    "coldMilliseconds": 338.9065980000014,
+    "warmMilliseconds": [
+      323.69856699999946, 299.3406670000004, 296.13158699999985, 295.4721720000016,
+      321.2091150000015, 269.8397839999998, 299.7678089999972, 291.46396000000095,
+      322.40337999999974, 296.211725000001
+    ],
+    "medianMilliseconds": 297.7761960000007
+  }
+}
