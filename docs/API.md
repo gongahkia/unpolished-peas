@@ -56,7 +56,8 @@ buffer; palette changes happen during display resolution and do not alter frameb
 `mem_write(address, value)` and `mem_write16(address, value)` write those widths; `mem_copy(dst,
 src, count)` handles overlapping ranges and `mem_fill(dst, byte, count)` fills bytes. All arguments
 are `Int`, writes return unit, and the normal compiler/runtime work budget applies. This checkpoint
-maps work RAM, the shared visual image and live graphics/raster storage, not the full V1 device set.
+maps work RAM, the shared visual image, live graphics/raster storage and read-only controller/pointer
+registers, not the full V1 device set.
 `visual_id(name: Text) -> Int` returns the visual descriptor ID or `-1`; its runtime cost is one plus
 the name length. Descriptors expose sprite/frame/tile/map addresses, dimensions and flags. These
 bytes are the backing state used by drawing and map queries. See the exact candidate
@@ -69,12 +70,14 @@ Four controller values are available as `pad1` through `pad4`. Button values are
 `left`, `right`, `a`, `b`, `x`, `y`, `l`, `r`, `start_button`, and `menu`.
 
 - `btn(controller, button)` reports the current frame state.
-- `btnp(controller, button)` reports a false-to-true transition.
+- `btnp(controller, button)` reports a false-to-true transition in the current display frame.
 - `rng_num()` returns a deterministic value in `[0, 1)`.
 - `rng_int(minimum, maximum)` returns an unbiased deterministic integer in the half-open range.
 
 The host input adapter combines keyboard, pointer/touch, and standard gamepads. Pointer coordinates
 are clamped to the virtual display and recorded alongside all four controller ports.
+These calls and the input bus read the same current/previous frames. Edges are not consumed by reads
+and are not latched across a skipped 30 Hz update; see [input timing](HARDWARE.md#controller-and-pointer-registers).
 `pointer_x()`/`pointer_y()` return that indexed-pixel position, `pointer_inside()` reports whether
 the pointer is over the display, and `pointer_primary()`/`pointer_secondary()` report press
 transitions for mouse, pen, or touch buttons.

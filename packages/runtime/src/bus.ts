@@ -13,6 +13,8 @@ export const MEMORY = Object.freeze({
   draw: 0x50000,
   transparency: 0x50050,
   palette: 0x50080,
+  input: 0x50100,
+  inputBytes: 48,
   rasterLive: 0x50400,
   visualInfo: 0x50300,
   raster: 0x55000,
@@ -23,7 +25,7 @@ export const MEMORY = Object.freeze({
   allocationStride: 24,
 } as const);
 
-export interface MemoryRegion {
+export interface ByteMemoryRegion {
   readonly name: string;
   readonly address: number;
   readonly bytes: Uint8Array;
@@ -31,6 +33,21 @@ export interface MemoryRegion {
   readonly retained?: boolean;
   readonly rasterWritable?: boolean;
   readonly validate?: (offset: number, bytes: Uint8Array) => boolean;
+}
+
+/** Read-only MMIO serializes the owner's current state without retaining a second image. */
+export interface ReadOnlyMemoryRegion {
+  readonly name: string;
+  readonly address: number;
+  readonly length: number;
+  readonly writable: false;
+  readonly readByte: (offset: number) => number;
+}
+
+export type MemoryRegion = ByteMemoryRegion | ReadOnlyMemoryRegion;
+
+function regionLength(region: MemoryRegion): number {
+  return 'bytes' in region ? region.bytes.length : region.length;
 }
 
 export interface MemorySnapshot {
@@ -84,14 +101,16 @@ export class MemoryBus {
     this.charge = charge;
     let end = 0;
     for (const region of this.regions) {
+      const length = regionLength(region);
       if (
         !Number.isSafeInteger(region.address) ||
         region.address < end ||
-        region.bytes.length === 0 ||
-        region.bytes.length > MEMORY.size - region.address
+        !Number.isSafeInteger(length) ||
+        length <= 0 ||
+        length > MEMORY.size - region.address
       )
         throw new TypeError('invalid or overlapping hardware region');
-      end = region.address + region.bytes.length;
+      end = region.address + length;
     }
   }
 
@@ -171,23 +190,29 @@ export class MemoryBus {
       retained[index]?.bytes.set(snapshot.regions[index]?.bytes ?? []);
   }
 
-  private retained(): readonly MemoryRegion[] {
-    return this.regions.filter((region) => region.retained ?? region.writable);
+  private retained(): readonly ByteMemoryRegion[] {
+    return this.regions.filter(
+      (region): region is ByteMemoryRegion =>
+        'bytes' in region && (region.retained ?? region.writable),
+    );
   }
 
   private byte(address: number): number {
     const region = this.regions.find(
-      (entry) => address >= entry.address && address < entry.address + entry.bytes.length,
+      (entry) => address >= entry.address && address < entry.address + regionLength(entry),
     );
-    return region?.bytes[address - region.address] ?? 0;
+    if (region === undefined) return 0;
+    return 'bytes' in region
+      ? (region.bytes[address - region.address] ?? 0)
+      : region.readByte(address - region.address);
   }
 
   private store(address: number, bytes: Uint8Array, span: SourceSpan, raster: boolean): void {
-    const writes: { region: MemoryRegion; offset: number; bytes: Uint8Array }[] = [];
+    const writes: { region: ByteMemoryRegion; offset: number; bytes: Uint8Array }[] = [];
     for (let index = 0; index < bytes.length;) {
       const cursor = address + index;
       const region = this.regions.find(
-        (entry) => cursor >= entry.address && cursor < entry.address + entry.bytes.length,
+        (entry) => cursor >= entry.address && cursor < entry.address + regionLength(entry),
       );
       if (region === undefined || !region.writable)
         throw new RuntimeFault('PX9021', 'write to read-only or reserved hardware memory', span);

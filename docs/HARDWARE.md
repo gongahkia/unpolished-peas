@@ -42,7 +42,7 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Input, audio, time/RNG/work/faults,
+Hardware Revision 1 contract. Audio, time/RNG/work/faults,
 save commits and cartridge ROM registers remain to be mapped. The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
@@ -62,6 +62,7 @@ reads zero; writing one faults. Offsets below are hexadecimal; lengths and count
 | `50000` |       80 | RW     | Draw camera/clip and logical palette remap; layout below.                                                           |
 | `50050` |        1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
 | `50080` |      128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
+| `50100` |       48 | R      | Four controller ports and pointer, encoded from the machine's current/previous input frames. Reset zero.            |
 | `50300` |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
 | `50400` |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
 | `55000` |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
@@ -196,6 +197,43 @@ Only actual descriptor records are mapped; unused slots remain reserved zero/rea
 `tests/conformance/visual/` is an ordinary source-visible project exercising descriptor discovery,
 unaligned cells, sprite/tile/flag writes and mixed high-level drawing/query calls in Release/Debug
 core tests and Firefox import/compile/run. It is not the complete V1 service cartridge.
+
+### Controller and pointer registers
+
+The input region is read-only memory-mapped I/O (MMIO): reads encode the actual input frames used
+by `btn`, `btnp` and pointer calls. There is no separately refreshed register image. Machine
+snapshots already retain these frames, so restoring them immediately changes both API and bus
+observations without a new snapshot revision. Byte/word/copy costs are the ordinary bus costs;
+reading input does not consume or acknowledge an edge. Writes fault with `PX9021` in every phase.
+
+Each of four ports occupies eight bytes at `50100 + (port-1)*8`:
+
+| Offset | LE unsigned 16-bit mask                                |
+| :----- | :----------------------------------------------------- |
+| `00`   | Current held buttons.                                  |
+| `02`   | Previous display frame's held buttons.                 |
+| `04`   | Pressed this display frame: current AND NOT previous.  |
+| `06`   | Released this display frame: previous AND NOT current. |
+
+Bits 0–11 are up, down, left, right, A, B, X, Y, L, R, start, menu; bits 12–15 read zero.
+The pointer follows at `50120`: current X/Y at offsets `00`/`02`, previous X/Y at `04`/`06`
+(LE u16). Offsets `08`/`09` are current/previous flags, `0a`/`0b` are pressed/released flag
+edges. Flag bits 0/1/2 mean primary, secondary and inside. Offsets `0c`–`0f` read zero.
+Coordinates remain within 0–239 and 0–143; invalid frames, missing ports or malformed button sets
+are rejected with `PX9008` by the core before any device frame reset.
+
+Inputs are sampled once at the start of **each 60 Hz display frame**, before callbacks. They remain
+stable throughout that frame's update/draw/raster calls. This deliberately preserves alpha's `btnp`
+timing: in a 30 Hz cartridge a press first sampled on an odd, skipped-update frame is visible to
+that frame's drawing but is not latched for the next update. A held button is still visible through
+`btn`. The focused scheduler test reproduces this exact sequence and its restore behavior; it is
+not inferred from browser key timing. This checkpoint does not introduce update-latched edges.
+
+`tests/conformance/input.pxl` checks all twelve buttons on every port, high/low API equivalence,
+held/press/release transitions, pointer state, reset and copying registers to RAM. Native tests run
+36-frame scripted traces at both 30/60 Hz in Release/Debug with restore/forward checks. Firefox
+also compiles and executes it with real keyboard presses on the existing two keyboard mappings.
+Four-port keyboard remapping and the wider accessibility pass remain required.
 
 ## Synthetic work model
 

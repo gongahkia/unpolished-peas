@@ -8,6 +8,43 @@ import { HARDWARE } from './hardware';
 const span = { start: 23, end: 31 };
 
 describe('hardware byte bus', () => {
+  it('reads live read-only device registers without storing a shadow image', () => {
+    let value = 0x1234;
+    const ram = new Uint8Array(2);
+    const bus = new MemoryBus(
+      [
+        { name: 'ram', address: 0, bytes: ram, writable: true },
+        {
+          name: 'device',
+          address: 2,
+          length: 2,
+          writable: false,
+          readByte: (offset) => (value >>> (offset * 8)) & 255,
+        },
+      ],
+      () => {},
+    );
+    expect(bus.read(2, 2, span)).toBe(0x1234);
+    value = 0xabcd;
+    expect(bus.read(2, 2, span)).toBe(0xabcd);
+    bus.copy(0, 2, 2, span);
+    expect([...ram]).toEqual([0xcd, 0xab]);
+    const saved = bus.snapshot();
+    expect(saved.regions).toHaveLength(1);
+    expect(() => {
+      bus.fill(0, 0, 4, span);
+    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    deepStrictEqual(bus.snapshot(), saved);
+    for (const length of [0, -1, 0.5, Infinity, MEMORY.size + 1])
+      expect(
+        () =>
+          new MemoryBus(
+            [{ name: 'invalid', address: 0, length, writable: false, readByte: () => 0 }],
+            () => {},
+          ),
+      ).toThrow(/region/);
+  });
+
   it('shares camera, clip and palette registers with high-level drawing and rejects invalid encodings', () => {
     const graphics = new IndexedGraphics();
     const ram = new Uint8Array(8);

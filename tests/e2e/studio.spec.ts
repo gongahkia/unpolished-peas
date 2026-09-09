@@ -118,6 +118,28 @@ test('complete local Studio and distribution workflow', async ({ page, context }
     .toBeGreaterThanOrEqual(3);
   await page.locator('.stop-player').click();
 
+  await shellCommand(page, 'new e2e-input INPUT CONFORMANCE');
+  await shellCommand(page, 'edit');
+  await page
+    .locator('textarea.source-input')
+    .fill(await readFile('tests/conformance/input.pxl', 'utf8'));
+  await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
+  await page.locator('[data-action="back"]').click();
+  await shellCommand(page, 'run');
+  await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await page.keyboard.down('z');
+  await page.keyboard.down('f');
+  await expect
+    .poll(async () => {
+      const status = await page.locator('.player-status').innerText();
+      return /^F\d{5} W\d{5}$/.test(status) ? Number(status.slice(1, 6)) : -1;
+    })
+    .toBeGreaterThanOrEqual(3);
+  await page.keyboard.up('z');
+  await page.keyboard.up('f');
+  await expect(page.locator('.player-status')).not.toHaveClass(/error/);
+  await page.locator('.stop-player').click();
+
   await shellCommand(page, 'new e2e-alpha E2E ALPHA');
   await expect(page.locator('.active-cart')).toHaveText('E2E-ALPHA');
   await shellCommand(page, 'edit');
