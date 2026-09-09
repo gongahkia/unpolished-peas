@@ -407,6 +407,8 @@ impl<'input> Generator<'input> {
     }
 
     fn generate_globals(&mut self) {
+        self.writer.line("function initialize(){", None);
+        self.writer.indent += 1;
         for global in &self.ir.globals {
             let initializer = self.expression(&global.initializer, ValueContext::Routine);
             self.writer.line(
@@ -414,6 +416,8 @@ impl<'input> Generator<'input> {
                 Some(global.span),
             );
         }
+        self.writer.indent -= 1;
+        self.writer.line("}", None);
     }
 
     fn generate_tasks(&mut self) {
@@ -691,7 +695,7 @@ impl<'input> Generator<'input> {
         self.writer.indent += 1;
         self.writer.line(
             format!(
-                "start:()=>{{{}{}}},",
+                "start:()=>{{initialize();{}{}}},",
                 if has_start { "cb_start();" } else { "" },
                 "stepTasks();"
             ),

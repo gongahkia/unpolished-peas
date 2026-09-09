@@ -69,6 +69,9 @@ Writable audio MMIO uses side-effect-free preparation and a commit after all bus
 It updates the existing voice/tracker objects directly; their existing synth snapshot remains the
 single retained representation. Scanout and audio mixing run inside the scheduler's output phase
 before its frame counter advances, so a device failure is captured by the same terminal fault latch.
+Generated factories do not execute global initializers. The runtime first attaches the machine and
+devices, then `boot()` runs global initialization and `on start` in one start-phase work budget. This
+keeps initialization-time console calls inside the same execution and device boundary as callbacks.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.

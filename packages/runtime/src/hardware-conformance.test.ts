@@ -23,6 +23,65 @@ describe('public PXCL hardware conformance', () => {
   });
 
   for (const mode of ['release', 'debug']) {
+    it(`runs runtime-call globals inside the boot boundary in ${mode}`, async () => {
+      const source = join(root, 'tests/conformance/boot.pxl');
+      const output = join(temporary, `boot-${mode}.mjs`);
+      execFileSync(join(root, 'target/debug/px240c'), [
+        'build',
+        source,
+        '--output',
+        output,
+        ...(mode === 'debug' ? ['--debug'] : []),
+      ]);
+      const generated = (await import(/* @vite-ignore */ pathToFileURL(output).href)) as {
+        default: CartridgeFactory;
+      };
+      const runtime = createConsoleRuntime(generated.default, {
+        seed: 1,
+        updateRate: 60,
+        workUnitsPerFrame: 50_000,
+        debug: mode === 'debug',
+      });
+      const boot = runtime.snapshot();
+      expect([...boot.graphics.front.slice(0, 3)]).toEqual([0, 11, 23]);
+      const callback = readFileSync(source, 'utf8').indexOf('on start:');
+      expect(
+        boot.machine.budget.attribution.some(
+          (entry) => entry.sourceSpan.start < callback && entry.units > 0,
+        ),
+      ).toBe(true);
+      const bootLimit = boot.machine.budget.used;
+      const exact = createConsoleRuntime(generated.default, {
+        seed: 1,
+        updateRate: 60,
+        workUnitsPerFrame: bootLimit,
+        debug: mode === 'debug',
+      });
+      expect(exact.snapshot().machine.budget.used).toBe(bootLimit);
+      const finalCall = 'pixel(2, 0, 23)';
+      const finalStart = readFileSync(source, 'utf8').indexOf(finalCall);
+      expect(() =>
+        createConsoleRuntime(generated.default, {
+          seed: 1,
+          updateRate: 60,
+          workUnitsPerFrame: bootLimit - 1,
+          debug: mode === 'debug',
+        }),
+      ).toThrow(
+        expect.objectContaining({
+          code: 'PX9001',
+          sourceSpan: { start: finalStart, end: finalStart + finalCall.length },
+        }),
+      );
+      expect(boot.memory.regions[0]?.bytes[0]).toBe(7);
+      const first = runtime.runFrame(emptyInputFrame());
+      expect(runtime.snapshot().memory.regions[0]?.bytes[0]).toBe(8);
+      runtime.runFrame(emptyInputFrame());
+      expect(runtime.snapshot().memory.regions[0]?.bytes[0]).toBe(9);
+      runtime.restore(boot);
+      deepStrictEqual(runtime.runFrame(emptyInputFrame()), first);
+    });
+
     it(`runs mixed audio controls and retains exact PCM on replay in ${mode}`, async () => {
       const cli = join(root, 'target/debug/px240c');
       const project = join(root, 'tests/conformance/audio');

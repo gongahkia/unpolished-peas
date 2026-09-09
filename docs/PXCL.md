@@ -104,6 +104,13 @@ Module-level `const` initializers use the compile-time expression subset: primit
 earlier constants, unary numeric/Boolean operators, arithmetic, comparisons, equality, and Boolean
 operators. Module-level `assert` uses the same subset and fails compilation when false or undecidable.
 
+Global bindings initialize in linked declaration order at boot, before `on start`, after devices
+have been attached. Mutable `state` initializers may call ordinary functions and runtime APIs; their
+work and `on start` share one boot budget. Their drawing/audio/save effects use the same live devices
+as callbacks. They do not run again on an ordinary frame or when restoring an already booted snapshot.
+The generated JavaScript factory only creates the instance; its `start()` initializes globals before
+the start callback. A low-level pre-boot snapshot therefore has no initialized global bindings yet.
+
 ## Grammar
 
 The following EBNF specifies the accepted syntax. Whitespace between tokens is omitted; `NEWLINE`,

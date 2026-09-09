@@ -584,6 +584,39 @@ Each group may produce several coherent commits, and integration occurs througho
   hosts. Hardware Revision 1 is still incomplete. Chromium and all remaining V1 stopping requirements
   remain open. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2k: runtime-call globals execute inside boot
+
+- Reproduced PX9102 in native Release and Debug when a mutable global initializer called `mem_read`:
+  generated factories executed initializers while the core was still constructing its machine.
+  The emitter now generates an initialization routine invoked first by `start()`, after attachment
+  and before `on start`. Initializers retain linked declaration order and run in the existing start
+  phase/budget with real devices. No eager attachment of a partially constructed machine is needed.
+- Added the public boot fixture for reset RAM, RNG, palette/drawing aliases, phase/status, retained
+  initializer work, single initialization across frames and full replay. Exact-budget admission and
+  one-unit-below rejection verify the combined initializer/start budget and the final call's exact
+  source span. A Rust execution test checks both modes: factory construction makes no runtime calls
+  and initializes no globals; `start()` initializes them before the callback. This low-level factory
+  timing change is documented; booted snapshots and all legacy alpha fixtures remain compatible.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **120 Vitest tests**, production
+  builds, **one complete Firefox E2E**, Rust fmt/Clippy, **48 Rust tests**, native and release Wasm
+  builds. The first full attempt stopped on a nested test matcher's unsafe `any`; an exact span value
+  replaced it, and the full gate reran successfully. No final-gate tests skipped. All frozen alpha
+  frame/work/state/PCM traces pass. No UI layout changed or additional manual screenshot was taken;
+  the immediately preceding headed Firefox inspections remain the latest visual check.
+- The emitted wrapper changes packed bytes, not game source or observed play. Current game artifacts:
+  Cinder Circuit **42,904 bytes**, SHA-256
+  `225f164cc7cb9a891b353fb41df025d7a4d9be09ef713888c4f7a8b766408ea8`;
+  Ashvault **41,315 bytes**, `44abf7399348c4790de27ad316d63fcfea1c064e3c99980c644026e75d604986`;
+  Raster Rush **38,091 bytes**, `3f4172ea7f5538d860143f555a9243dac38449e4a51cabffab8b2279ab41d5b1`.
+  The increases from the preceding checkpoint are 53/53/52 bytes. Main/Worker JS remain
+  129,252/69,424 bytes; Wasm is 1,168,292 bytes.
+- Repacked conformance artifacts twice and compared byte-for-byte: audio **15,355 bytes**,
+  `860851df9f1700c218879cbafb81871f5701c9f6329eb673412dc21efe1c31d9`; visual **11,967 bytes**,
+  `9e60c60547ee72f1444af56f7a603075d0d95d5d835a179e844a90fad29f9a89`.
+- Next: authoritative save bytes and explicit commit semantics, preserving legacy integer-save
+  behavior and persisted values, followed by ROM/viewer/shared-host work. Hardware Revision 1 and
+  the remaining V1 contract are still incomplete. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
