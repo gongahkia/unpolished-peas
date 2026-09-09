@@ -19,6 +19,12 @@ Dependencies point inward: studio -> runtime/WASM bridge -> compiler core. Cartr
 in a dedicated worker and communicates through a versioned, validated message protocol. It never
 receives persistence handles or DOM objects.
 
+The Worker delegates scheduling, console dispatch, work accounting, maps, saves and debug traces to
+`packages/runtime/src/console-runtime.ts`. Tests drive this same core with native-compiled PXCL and
+compare actual alpha browser recordings. Graphics/audio still reside in the Studio host at this
+checkpoint; moving their ownership into the shared core is required before the V1 bus is exposed.
+The CLI does not yet provide a headless execution command.
+
 ## Data flow
 
 PXCL source is tokenized, parsed, resolved to stable symbol IDs, type-checked against a typed asset

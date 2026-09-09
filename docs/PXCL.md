@@ -64,6 +64,11 @@ Defaulted record fields must follow required fields and may be omitted from posi
 Enum matches must cover every variant or include `else`. Pattern payload bindings have the declared
 variant field types.
 
+Enum `==` and `!=` compare the variant and payload values, not host object identity, including after
+snapshot restore. Payload records and collections are compared by their stored fields/elements.
+Each payload slot and traversed nested field costs one work unit at the comparison's source span;
+payload-free variants require no extra work units. Traversal uses the normal frame budget.
+
 ## Static types
 
 `Num` is the deterministic numeric path and `Int` is validated for integer-only operations. Integer

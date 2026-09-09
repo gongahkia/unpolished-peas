@@ -115,6 +115,62 @@ fn release_and_debug_outputs_are_semantically_equivalent() {
 }
 
 #[test]
+fn enum_equality_survives_snapshot_restore_and_compares_nested_payloads() {
+    let source = SourceFile::new(
+        FileId(0),
+        "enum-replay.pxl",
+        r#"record Payload:
+  values: [Int, 2]
+enum Mode:
+  Title
+  Play
+  Data(Payload)
+state mode: Mode = Mode.Title
+state packet: Mode = Mode.Data(Payload([2, 7]))
+state ticks: Int = 0
+on update:
+  assert mode == Mode.Title, "restored title"
+  assert mode != Mode.Play, "different variant"
+  assert packet == Mode.Data(Payload([2, 7])), "equal payload"
+  assert packet != Mode.Data(Payload([2, 8])), "different payload"
+  ticks += 1
+"#,
+    );
+    for mode in [CompileMode::Release, CompileMode::Debug] {
+        let output = compile(&source, &AssetCatalog::default(), mode);
+        assert!(
+            output.analysis.diagnostics.is_empty(),
+            "{:#?}",
+            output.analysis.diagnostics
+        );
+        let program = output.generated.expect("enum fixture compiles");
+        let script = format!(
+            r#"{}
+const api={{work(units){{if(units<0)throw new Error("negative work");}},call(){{throw new Error("unexpected API");}},fault(code,message){{throw new Error(`${{code}}: ${{message}}`);}}}};
+const cartridge=createCartridge(api);
+cartridge.start();
+const before=cartridge.snapshot();
+cartridge.update();
+const expected=JSON.stringify(cartridge.snapshot());
+cartridge.restore(before);
+cartridge.update();
+if(JSON.stringify(cartridge.snapshot())!==expected)throw new Error("replay differs");
+"#,
+            program.javascript
+        );
+        let result = Command::new("node")
+            .args(["--input-type=module", "-e", &script])
+            .output()
+            .expect("Node.js executes enum regression");
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+}
+
+#[test]
 fn options_and_fixed_collection_indexes_execute_with_runtime_guards() {
     let valid = execute_source(
         "option-collection",

@@ -1,0 +1,80 @@
+import { describe, expect, it } from 'vitest';
+import { createConsoleRuntime } from './console-runtime';
+import { emptyInputFrame } from './input';
+import type { CartridgeFactory } from './machine';
+
+const span = { start: 10, end: 20 };
+const configuration = { seed: 99, workUnitsPerFrame: 50_000, updateRate: 60 as const };
+const factory: CartridgeFactory = (api) => ({
+  start() {},
+  update() {
+    const value = api.call('save_get_int', ['counter', 0], span) as number;
+    api.call('save_set_int', ['counter', value + 1], span);
+  },
+  draw() {
+    api.enter?.('draw', span);
+    api.probe?.(1, span, { value: 7 });
+    api.call('pixel', [0, 0, 7], span);
+    api.leave?.();
+  },
+  raster() {},
+  snapshot: () => ({ state: {}, tasks: [], nextTaskId: 1 }),
+  restore() {},
+  inspect: () => ({ state: {}, tasks: [], callStack: [] }),
+});
+
+describe('production console dispatcher', () => {
+  it('isolates instances, flushes saves once and resets per-frame debug/command buffers', () => {
+    const first = createConsoleRuntime(factory, { ...configuration, debug: true });
+    const second = createConsoleRuntime(factory, configuration);
+    const initial = first.snapshot();
+    const frame = first.runFrame(emptyInputFrame());
+    expect(frame.saveWrites).toEqual([{ key: 'counter', value: 1 }]);
+    expect(frame.drawCommands).toHaveLength(1);
+    expect(frame.workUnits).toBe(3);
+    expect(frame.debug?.trace).toEqual([
+      {
+        id: 1,
+        sourceSpan: span,
+        locals: { value: 7 },
+        callStack: [{ name: 'draw', sourceSpan: span }],
+      },
+    ]);
+    expect(first.runFrame(emptyInputFrame()).saveWrites).toEqual([{ key: 'counter', value: 2 }]);
+    expect(second.runFrame(emptyInputFrame())).not.toHaveProperty('debug');
+    expect(second.snapshot()).toMatchObject({ save: { counter: 1 } });
+    first.restore(initial);
+    expect(first.runFrame(emptyInputFrame())).toEqual(frame);
+  });
+
+  it('preserves source-mapped raster phase and draw/work ceiling faults', () => {
+    const illegalRaster = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        raster(line) {
+          if (line === 0) api.call('pixel', [0, 0, 7], span);
+        },
+      }),
+      configuration,
+    );
+    expect(() => illegalRaster.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9011', sourceSpan: span }),
+    );
+    const commands = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        draw() {
+          for (let index = 0; index < 4097; index += 1) api.call('pixel', [0, 0, 7], span);
+        },
+      }),
+      configuration,
+    );
+    expect(() => commands.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9010', sourceSpan: span }),
+    );
+    const limited = createConsoleRuntime(factory, { ...configuration, workUnitsPerFrame: 2 });
+    expect(() => limited.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9001', sourceSpan: span }),
+    );
+  });
+});

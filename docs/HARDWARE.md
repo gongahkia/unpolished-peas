@@ -46,6 +46,8 @@ fictional clock speed. The compiler currently charges 8 units at each function/c
 loop back-edges, 4 per task-state transition, 4 per allocation or fixed-capacity write, one per
 materialized range element, and 2 before each console API call. Charging a range before allocation
 lets the frame budget reject an extreme dynamic range without first constructing it.
+V1 enum payload equality additionally charges one unit per payload slot or traversed nested field;
+payload-free enum comparisons keep their existing work cost and survive snapshot cloning.
 The runtime charges 1,080 units for `clear`; one for a pixel; `max(abs(dx), abs(dy)) + 1` for a line;
 `2*abs(width) + 2*abs(height)` for an outline rectangle; `ceil(abs(width*height)/4)` for a filled
 rectangle; `8*abs(radius)` for a circle outline; `ceil(3*radius^2/4)` for a filled circle; and

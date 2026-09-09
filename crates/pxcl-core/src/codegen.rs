@@ -223,6 +223,13 @@ impl<'input> Generator<'input> {
             "const optionSome=(value,start,end)=>allocate({__some:true,value},start,end);const optionIsSome=value=>value!==null;const optionUnwrap=(value,fallback)=>value===null?fallback:value.value;",
             None,
         );
+        if !self.ir.enums.is_empty() {
+            // enum values survive cloning; payload traversal is bounded by the ordinary work budget.
+            self.writer.line(
+                "const enumEqual=(a,b,start,end)=>{if(a.__enum!==b.__enum||a.__variant!==b.__variant)return false;work(a.fields.length,start,end);const pending=a.fields.map((value,index)=>[value,b.fields[index]]);while(pending.length){const [left,right]=pending.pop();if(left===right)continue;if(left===null||right===null||typeof left!==\"object\"||typeof right!==\"object\"||Array.isArray(left)!==Array.isArray(right))return false;const keys=Object.keys(left);work(keys.length,start,end);if(keys.length!==Object.keys(right).length)return false;for(const key of keys){if(!Object.hasOwn(right,key))return false;pending.push([left[key],right[key]]);}}return true;};",
+                None,
+            );
+        }
         self.writer.line(
             "const iterable=(value,start,end)=>{if(!value?.__range)return value;const length=Math.max(0,value.end-value.start);work(length,start,end);return [...Array(length).keys()].map(index=>value.start+index);};",
             None,
@@ -1000,8 +1007,21 @@ impl<'input> Generator<'input> {
                 operator,
                 right,
             } => {
+                let enum_comparison = matches!(left.r#type, Type::Enum(_))
+                    && matches!(operator, BinaryOperator::Equal | BinaryOperator::NotEqual);
                 let left = self.expression(left, context);
                 let right = self.expression(right, context);
+                if enum_comparison {
+                    let negate = if *operator == BinaryOperator::NotEqual {
+                        "!"
+                    } else {
+                        ""
+                    };
+                    return format!(
+                        "{negate}enumEqual({left},{right},{},{})",
+                        expression.span.start, expression.span.end
+                    );
+                }
                 if expression.r#type == Type::Range {
                     return format!("({{__range:true,start:{left},end:{right}}})");
                 }
