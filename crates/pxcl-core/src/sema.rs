@@ -1322,6 +1322,7 @@ impl<'syntax> Analyzer<'syntax> {
             "mem_write16" => ("mem_write16", 2, Type::Unit),
             "mem_copy" => ("mem_copy", 3, Type::Unit),
             "mem_fill" => ("mem_fill", 3, Type::Unit),
+            "save_commit" => ("save_commit", 0, Type::Unit),
             _ => return None,
         };
         // lazy installation preserves alpha symbol IDs and existing user-defined names.

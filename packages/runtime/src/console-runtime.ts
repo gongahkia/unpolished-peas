@@ -21,6 +21,9 @@ import {
   SaveMemory,
   isSaveValues,
   isPendingSaveWrites,
+  isSaveSnapshot,
+  isPendingDeviceWrites,
+  type SaveSnapshot,
   type SaveValues,
   type SaveWrite,
 } from './save';
@@ -44,9 +47,9 @@ export interface ConsoleRuntime {
 }
 
 export interface ConsoleRuntimeSnapshot {
-  readonly revision: 5;
+  readonly revision: 6;
   readonly machine: MachineSnapshot;
-  readonly save: SaveValues;
+  readonly save: SaveSnapshot;
   readonly graphics: GraphicsSnapshot;
   readonly audio: SynthSnapshot;
   readonly pendingSaveWrites: readonly SaveWrite[];
@@ -56,14 +59,14 @@ export interface ConsoleRuntimeSnapshot {
 export function isConsoleRuntimeSnapshot(value: unknown): value is ConsoleRuntimeSnapshot {
   return (
     isRecord(value) &&
-    value.revision === 5 &&
+    value.revision === 6 &&
     Object.keys(value).length === 7 &&
     isMachineSnapshot(value.machine) &&
     value.machine.revision === 2 &&
-    isSaveValues(value.save) &&
+    isSaveSnapshot(value.save) &&
     isGraphicsSnapshot(value.graphics) &&
     isSynthSnapshot(value.audio) &&
-    isPendingSaveWrites(value.pendingSaveWrites, value.save) &&
+    isPendingDeviceWrites(value.pendingSaveWrites, value.save) &&
     isMemorySnapshot(value.memory) &&
     graphicsMatchesMemory(value.graphics, value.memory)
   );
@@ -103,6 +106,9 @@ export function createConsoleRuntime(
       ...graphics.memoryRegions(),
       ...visualStore.memoryRegions(),
       ...synthesizer.memoryRegions(),
+      ...saveMemory.memoryRegions((units, span) => {
+        requireMachine().work(units, span);
+      }),
       {
         name: 'controllers and pointer',
         address: MEMORY.input,
@@ -190,11 +196,14 @@ export function createConsoleRuntime(
         rendering = false;
       }
       const output = completedOutput();
+      const saveWrites = saveMemory.takeWrites();
+      const saveCommit = saveMemory.takeCommit();
       return {
         ...report,
         drawCommands,
         audioCommands,
-        saveWrites: saveMemory.takeWrites(),
+        saveWrites,
+        ...(saveCommit === undefined ? {} : { saveCommit }),
         output,
         ...(debugEnabled
           ? {
@@ -213,7 +222,9 @@ export function createConsoleRuntime(
       const before = captureSnapshot();
       try {
         requireMachine().restore(snapshot.machine);
-        saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
+        if (snapshot.revision === 6)
+          saveMemory.restoreDevice(snapshot.save, snapshot.pendingSaveWrites);
+        else saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
         if (snapshot.revision >= 2) {
           graphics.restore(snapshot.graphics);
           synthesizer.restore(snapshot.audio);
@@ -237,7 +248,7 @@ export function createConsoleRuntime(
         }
       } catch (error) {
         requireMachine().restore(before.machine);
-        saveMemory.restore(before.save, before.pendingSaveWrites);
+        saveMemory.restoreDevice(before.save, before.pendingSaveWrites);
         graphics.restore(before.graphics);
         synthesizer.restore(before.audio);
         bus.restore(before.memory);
@@ -252,9 +263,9 @@ export function createConsoleRuntime(
 
   function captureSnapshot(): ConsoleRuntimeSnapshot {
     return {
-      revision: 5,
+      revision: 6,
       machine: requireMachine().snapshot(),
-      save: saveMemory.snapshot(),
+      save: saveMemory.deviceSnapshot(),
       graphics: graphics.snapshot(),
       audio: synthesizer.snapshot(),
       pendingSaveWrites: saveMemory.pendingWrites(),
@@ -328,6 +339,21 @@ export function createConsoleRuntime(
         'raster_scroll is only valid in the raster callback',
         sourceSpan,
       );
+    }
+    if (name === 'save_commit') {
+      if (arguments_.length !== 0)
+        throw new RuntimeFault('PX9009', 'save_commit expects no arguments', sourceSpan);
+      requireMachine().work(HARDWARE.saveCapacityBytes, sourceSpan);
+      try {
+        saveMemory.commit();
+      } catch (error) {
+        throw new RuntimeFault(
+          'PX9012',
+          error instanceof Error ? error.message : 'invalid save commit',
+          sourceSpan,
+        );
+      }
+      return;
     }
     if (name === 'map_cell' || name === 'map_flag') {
       const handle = arguments_[0];
@@ -508,9 +534,9 @@ function readInteger(value: unknown, sourceSpan: SourceSpan): number {
 }
 
 function readWorkerSnapshot(value: unknown): {
-  revision: 1 | 2 | 3 | 4 | 5;
+  revision: 1 | 2 | 3 | 4 | 5 | 6;
   machine: unknown;
-  save: SaveValues;
+  save: SaveValues | SaveSnapshot;
   graphics: unknown;
   audio: unknown;
   pendingSaveWrites: readonly SaveWrite[];
@@ -518,14 +544,14 @@ function readWorkerSnapshot(value: unknown): {
 } {
   if (
     !isRecord(value) ||
-    (value.revision === 5 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
+    (value.revision === 6 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
   ) {
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
   return {
-    revision: value.revision as 1 | 2 | 3 | 4 | 5,
+    revision: value.revision as 1 | 2 | 3 | 4 | 5 | 6,
     machine: value.machine,
-    save: value.save as SaveValues,
+    save: value.save as SaveValues | SaveSnapshot,
     graphics: value.graphics,
     audio: value.audio,
     pendingSaveWrites:
@@ -537,12 +563,13 @@ function readWorkerSnapshot(value: unknown): {
 function isLegacyWorkerSnapshot(value: Record<string, unknown>): boolean {
   if (
     !isMachineSnapshot(value.machine) ||
-    value.machine.revision !== 1 ||
+    value.machine.revision !== (value.revision === 5 ? 2 : 1) ||
     !isSaveValues(value.save)
   )
     return false;
   if (value.revision === 1) return Object.keys(value).length === 3;
-  if (value.revision !== 2 && value.revision !== 3 && value.revision !== 4) return false;
+  if (value.revision !== 2 && value.revision !== 3 && value.revision !== 4 && value.revision !== 5)
+    return false;
   return (
     Object.keys(value).length === (value.revision === 2 ? 6 : 7) &&
     isGraphicsSnapshot(value.graphics) &&

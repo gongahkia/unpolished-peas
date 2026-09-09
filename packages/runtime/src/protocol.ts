@@ -3,7 +3,7 @@ import { isRuntimeAssetSource, type RuntimeAssetSource } from './asset-codec';
 import { isAudioFrame, isSynthSnapshot, type AudioFrame, type SynthSnapshot } from './audio';
 import { HARDWARE } from './hardware';
 import { isMapQueryCatalog, type MapQueryAsset } from './map-query';
-import { isSaveValues, type SaveValues, type SaveWrite } from './save';
+import { isSaveImage, isSaveValues, type SaveImage, type SaveWrite } from './save';
 
 export interface SourceSpan {
   readonly start: number;
@@ -37,7 +37,7 @@ export interface SandboxConfiguration {
   readonly workUnitsPerFrame: number;
   readonly updateRate: 30 | 60;
   readonly maps?: readonly MapQueryAsset[];
-  readonly save?: SaveValues;
+  readonly save?: SaveImage;
   readonly debug?: boolean;
   readonly assets?: RuntimeAssetSource;
 }
@@ -74,6 +74,7 @@ export type WorkerResponse =
       readonly drawCommands: readonly ConsoleCommand[];
       readonly audioCommands: readonly ConsoleCommand[];
       readonly saveWrites: readonly SaveWrite[];
+      readonly saveCommit?: Uint8Array;
       readonly output: ConsoleOutput;
       readonly debug?: DebugFrame;
     }
@@ -146,6 +147,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
           'audioCommands',
           'saveWrites',
           'output',
+          ...(value.saveCommit === undefined ? [] : ['saveCommit']),
           ...(value.debug === undefined ? [] : ['debug']),
         ]) &&
         isNonNegativeInteger(value.frame) &&
@@ -158,6 +160,9 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
         value.audioCommands.every(isConsoleCommand) &&
         Array.isArray(value.saveWrites) &&
         value.saveWrites.every(isSaveWrite) &&
+        (value.saveCommit === undefined ||
+          (value.saveCommit instanceof Uint8Array &&
+            value.saveCommit.length === HARDWARE.saveCapacityBytes)) &&
         isConsoleOutput(value.output) &&
         (value.debug === undefined || isDebugFrame(value.debug))
       );
@@ -203,7 +208,7 @@ export function isSandboxConfiguration(value: unknown): value is SandboxConfigur
     value.workUnitsPerFrame <= HARDWARE.workUnitsPerFrame &&
     (value.updateRate === 30 || value.updateRate === 60) &&
     (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
-    (value.save === undefined || isSaveValues(value.save)) &&
+    (value.save === undefined || isSaveImage(value.save)) &&
     (value.debug === undefined || typeof value.debug === 'boolean') &&
     (value.assets === undefined || isRuntimeAssetSource(value.assets))
   );

@@ -4,6 +4,7 @@ import { createConsoleRuntime } from './console-runtime';
 import { MEMORY } from './bus';
 import { emptyInputFrame } from './input';
 import type { CartridgeFactory, MachineSnapshot } from './machine';
+import { SaveMemory, decodeSaveValues } from './save';
 
 const legacyMachine = (snapshot: MachineSnapshot) => ({
   revision: 1,
@@ -167,7 +168,7 @@ describe('production console dispatcher', () => {
         frame: 99,
         execution: { ...before.machine.execution, updates: 99 },
       },
-      save: { ...before.save, counter: 99 },
+      save: { ...before.save, bytes: new SaveMemory({ counter: 99 }).deviceSnapshot().bytes },
       audio: {
         ...before.audio,
         voices: before.audio.voices.map((voice, index) =>
@@ -217,7 +218,7 @@ describe('production console dispatcher', () => {
     runtime.restore({
       revision: 2,
       machine: legacyMachine(initial.machine),
-      save: initial.save,
+      save: decodeSaveValues(initial.save.bytes),
       graphics: initial.graphics,
       audio: initial.audio,
       pendingSaveWrites: initial.pendingSaveWrites,
@@ -248,10 +249,11 @@ describe('production console dispatcher', () => {
     );
     runtime.runFrame(emptyInputFrame());
     const current = runtime.snapshot();
-    expect(current.revision).toBe(5);
+    expect(current.revision).toBe(6);
     const legacy = {
       ...current,
       revision: 3,
+      save: decodeSaveValues(current.save.bytes),
       machine: legacyMachine(current.machine),
       memory: {
         ...current.memory,
@@ -285,15 +287,21 @@ describe('production console dispatcher', () => {
     runtime.runFrame(emptyInputFrame());
     const current = runtime.snapshot();
     runtime.runFrame(emptyInputFrame());
-    runtime.restore({ ...current, revision: 4, machine: legacyMachine(current.machine) });
+    runtime.restore({
+      ...current,
+      revision: 4,
+      machine: legacyMachine(current.machine),
+      save: decodeSaveValues(current.save.bytes),
+    });
     deepStrictEqual(runtime.snapshot(), {
       ...current,
+      save: { ...current.save, commits: 0 },
       machine: {
         ...current.machine,
         budget: { ...current.machine.budget, used: 0, attribution: [] },
       },
     });
-    for (const revision of [1, 2, 3, 4, 6])
+    for (const revision of [1, 2, 3, 4, 5, 7])
       expect(() => {
         runtime.restore({ ...current, revision });
       }).toThrow(/snapshot/);
@@ -383,7 +391,7 @@ describe('production console dispatcher', () => {
     ]);
     expect(first.runFrame(emptyInputFrame()).saveWrites).toEqual([{ key: 'counter', value: 2 }]);
     expect(second.runFrame(emptyInputFrame())).not.toHaveProperty('debug');
-    expect(second.snapshot()).toMatchObject({ save: { counter: 1 } });
+    expect(decodeSaveValues(second.snapshot().save.bytes)).toEqual({ counter: 1 });
     first.restore(initial);
     deepStrictEqual(first.runFrame(emptyInputFrame()), frame);
   });

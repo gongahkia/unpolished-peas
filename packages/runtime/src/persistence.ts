@@ -193,7 +193,11 @@ export class CartridgeSaveAccess {
 
   public async read(): Promise<Uint8Array> {
     const value = await this.storage.get(saveKey(this.#id));
-    return value instanceof Uint8Array ? value.slice() : new Uint8Array();
+    if (value === undefined) return new Uint8Array();
+    if (!(value instanceof Uint8Array)) throw new TypeError('invalid stored cartridge save');
+    if (value.byteLength > HARDWARE.saveCapacityBytes)
+      throw new RangeError('stored cartridge save exceeds the 8 KiB capacity');
+    return value.slice();
   }
 
   public async write(value: Uint8Array): Promise<void> {

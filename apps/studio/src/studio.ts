@@ -2,12 +2,10 @@ import {
   BrowserInput,
   HARDWARE,
   IndexedDbStorage,
-  isSaveValues,
   SandboxSession,
   StudioRepository,
   WebAudioSink,
   WebGlIndexedRenderer,
-  type SaveValues,
   type StoredProject,
 } from '@px240c/runtime';
 
@@ -729,6 +727,8 @@ export class StudioApp {
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
+    const saveAccess = this.repository.cartridgeSave(project.id);
+    const save = await saveAccess.read();
     this.root.innerHTML = `
       <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
@@ -750,19 +750,24 @@ export class StudioApp {
     const input = new BrowserInput(canvas);
     const renderer = new WebGlIndexedRenderer(canvas);
     let audioSink: WebAudioSink | undefined;
-    const saveAccess = this.repository.cartridgeSave(project.id);
-    let saveValues = await readSaveValues(saveAccess);
-    await sandbox.load(compilation.generated.javascript, {
-      seed: 0x240c1999,
-      workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
-      updateRate: manifestUpdateRate(project.manifest),
-      assets: {
-        declarations: parsedManifest.assets,
-        files: project.files,
-        displayPath: parsedManifest.display,
-      },
-      save: saveValues,
-    });
+    try {
+      await sandbox.load(compilation.generated.javascript, {
+        seed: 0x240c1999,
+        workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
+        updateRate: manifestUpdateRate(project.manifest),
+        assets: {
+          declarations: parsedManifest.assets,
+          files: project.files,
+          displayPath: parsedManifest.display,
+        },
+        save,
+      });
+    } catch (error) {
+      input.destroy();
+      sandbox.dispose();
+      this.renderShell();
+      throw error;
+    }
     let stopped = false;
     const stopKey = (event: KeyboardEvent): void => {
       if (event.key === 'Escape' && event.shiftKey) {
@@ -811,13 +816,7 @@ export class StudioApp {
         const result = await sandbox.frame(input.poll());
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
-        if (result.saveWrites.length > 0) {
-          saveValues = { ...saveValues };
-          for (const write of result.saveWrites) {
-            (saveValues as Record<string, number>)[write.key] = write.value;
-          }
-          await saveAccess.write(encoder.encode(JSON.stringify(saveValues)));
-        }
+        if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
         status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
         requestAnimationFrame(() => void frame());
       } catch (error: unknown) {
@@ -832,7 +831,7 @@ export class StudioApp {
   private async debugProject(): Promise<void> {
     this.stopPlayer();
     const project = this.requireProject();
-    const save = await readSaveValues(this.repository.cartridgeSave(project.id));
+    const save = await this.repository.cartridgeSave(project.id).read();
     try {
       this.activeDebugger = await openDebugger(this.root, project, this.compiler, save, () => {
         this.activeDebugger = undefined;
@@ -1010,21 +1009,6 @@ function manifestUpdateRate(manifest: string): 30 | 60 {
   return /^update_rate\s*=\s*30\s*$/m.test(manifest) ? 30 : 60;
 }
 
-async function readSaveValues(
-  access: ReturnType<StudioRepository['cartridgeSave']>,
-): Promise<SaveValues> {
-  const bytes = await access.read();
-  if (bytes.byteLength === 0) {
-    return {};
-  }
-  try {
-    const value: unknown = JSON.parse(decoder.decode(bytes));
-    return isSaveValues(value) ? value : {};
-  } catch {
-    return {};
-  }
-}
-
 function splitCommand(source: string): string[] {
   const result: string[] = [];
   for (const match of source.matchAll(/"([^"]*)"|'([^']*)'|(\S+)/g)) {
@@ -1068,6 +1052,7 @@ const COMPLETIONS = [
   'music',
   'save_get_int',
   'save_set_int',
+  'save_commit',
 ] as const;
 
 function completeAtCursor(textarea: HTMLTextAreaElement): void {
