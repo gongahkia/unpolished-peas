@@ -281,7 +281,7 @@ export class DeterministicMachine implements CartridgeApi {
   }
 }
 
-function isMachineSnapshot(value: unknown): value is MachineSnapshot {
+export function isMachineSnapshot(value: unknown): value is MachineSnapshot {
   if (typeof value !== 'object' || value === null) {
     return false;
   }

@@ -92,6 +92,86 @@ export interface SynthSnapshot {
   readonly tracker: TrackerState | null;
 }
 
+export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
+  if (
+    !audioRecord(value) ||
+    value.revision !== 1 ||
+    !audioCounter(value.frame) ||
+    !audioCounter(value.nextSequence) ||
+    value.nextSequence < 1 ||
+    !Array.isArray(value.voices) ||
+    value.voices.length !== HARDWARE.audioVoices
+  )
+    return false;
+  const nextSequence = value.nextSequence;
+  if (
+    !value.voices.every(
+      (voice: unknown, slot: number) =>
+        audioRecord(voice) &&
+        typeof voice.active === 'boolean' &&
+        voice.slot === slot &&
+        typeof voice.sound === 'string' &&
+        voice.sound.length <= HARDWARE.cartridgeCapacityBytes &&
+        audioNumber(voice.note, 0, 127) &&
+        audioNumber(voice.volumeScale, 0, 1) &&
+        audioCounter(voice.ageFrames) &&
+        audioNumber(voice.phase, 0, 1) &&
+        voice.phase < 1 &&
+        audioCounter(voice.noiseState) &&
+        voice.noiseState > 0 &&
+        voice.noiseState <= 0xffff_ffff &&
+        audioCounter(voice.sequence) &&
+        voice.sequence < nextSequence,
+    )
+  )
+    return false;
+  return (
+    value.tracker === null ||
+    (audioRecord(value.tracker) &&
+      typeof value.tracker.music === 'string' &&
+      value.tracker.music.length > 0 &&
+      value.tracker.music.length <= HARDWARE.cartridgeCapacityBytes &&
+      audioCounter(value.tracker.orderIndex) &&
+      audioCounter(value.tracker.row) &&
+      audioCounter(value.tracker.frameInRow))
+  );
+}
+
+export function isAudioFrame(value: unknown): value is AudioFrame {
+  const samples = HARDWARE.audioSampleRate / HARDWARE.frameRate;
+  return (
+    audioRecord(value) &&
+    value.left instanceof Float32Array &&
+    value.left.length === samples &&
+    value.right instanceof Float32Array &&
+    value.right.length === samples &&
+    value.left.every((sample) => audioNumber(sample, -1, 1)) &&
+    value.right.every((sample) => audioNumber(sample, -1, 1)) &&
+    audioCounter(value.activeVoices) &&
+    value.activeVoices <= HARDWARE.audioVoices &&
+    (value.tracker === null ||
+      (audioRecord(value.tracker) &&
+        typeof value.tracker.music === 'string' &&
+        audioCounter(value.tracker.orderIndex) &&
+        audioCounter(value.tracker.row) &&
+        audioCounter(value.tracker.frameInRow)))
+  );
+}
+
+function audioCounter(value: unknown): value is number {
+  return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
+}
+
+function audioNumber(value: unknown, minimum: number, maximum: number): value is number {
+  return (
+    typeof value === 'number' && Number.isFinite(value) && value >= minimum && value <= maximum
+  );
+}
+
+function audioRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+
 /** Validated oscillator and tracker data. Arbitrary PCM samples are intentionally unrepresentable. */
 export class AudioAssetStore {
   private readonly entries = new Map<string, AudioAsset>();
@@ -187,13 +267,25 @@ export class Synthesizer {
     });
   }
 
-  public restore(snapshot: SynthSnapshot): void {
-    if (
-      !Number.isSafeInteger(snapshot.frame) ||
-      snapshot.frame < 0 ||
-      snapshot.voices.length !== HARDWARE.audioVoices
-    ) {
+  public restore(snapshot: unknown): void {
+    if (!isSynthSnapshot(snapshot)) {
       throw new TypeError('invalid PX-240C synthesizer snapshot');
+    }
+    for (const voice of snapshot.voices) {
+      if (voice.active && this.assets.get(voice.sound)?.kind !== 'sound')
+        throw new TypeError('snapshot references a missing sound');
+    }
+    if (snapshot.tracker !== null) {
+      const tracker = snapshot.tracker;
+      const music = this.assets.get(tracker.music);
+      const patternName = music?.kind === 'music' ? music.order[tracker.orderIndex] : undefined;
+      if (
+        music?.kind !== 'music' ||
+        patternName === undefined ||
+        music.patterns[patternName]?.rows[tracker.row] === undefined ||
+        tracker.frameInRow >= music.framesPerRow
+      )
+        throw new TypeError('snapshot references an invalid tracker position');
     }
     this.frame = snapshot.frame;
     this.nextSequence = snapshot.nextSequence;

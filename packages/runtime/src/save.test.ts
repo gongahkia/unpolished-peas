@@ -40,4 +40,21 @@ describe('worker save memory', () => {
     );
     expect(isSaveValues(oversized)).toBe(false);
   });
+
+  it('validates pending writes and preserves them across snapshots without flushing early', () => {
+    const save = new SaveMemory();
+    save.set('score', 7);
+    expect(save.pendingWrites()).toEqual([{ key: 'score', value: 7 }]);
+    expect(save.pendingWrites()).toEqual(save.pendingWrites());
+    expect(() => {
+      save.restore({ score: 7 }, [{ key: 'score', value: 8 }]);
+    }).toThrow(/snapshot/);
+    expect(() => {
+      save.restore({ score: 7 }, [
+        { key: 'score', value: 7 },
+        { key: 'score', value: 7 },
+      ]);
+    }).toThrow(/snapshot/);
+    expect(save.takeWrites()).toEqual([{ key: 'score', value: 7 }]);
+  });
 });

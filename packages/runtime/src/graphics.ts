@@ -71,6 +71,20 @@ export interface GraphicsSnapshot {
   readonly resolved: Uint8Array;
 }
 
+export function isGraphicsSnapshot(value: unknown): value is GraphicsSnapshot {
+  const pixels = HARDWARE.width * HARDWARE.height;
+  return (
+    isRecord(value) &&
+    value.revision === 1 &&
+    value.front instanceof Uint8Array &&
+    value.front.length === pixels &&
+    value.front.every((color) => color < HARDWARE.paletteSize) &&
+    value.resolved instanceof Uint8Array &&
+    value.resolved.length === pixels &&
+    value.resolved.every((color) => color < HARDWARE.paletteSize)
+  );
+}
+
 /** Validated, capacity-accounted assets shared by sprite and map drawing. */
 export class VisualAssetStore {
   private readonly entries = new Map<string, VisualAsset>();
@@ -253,17 +267,7 @@ export class IndexedGraphics {
   }
 
   public restore(snapshot: unknown): void {
-    const pixelCount = HARDWARE.width * HARDWARE.height;
-    if (
-      !isRecord(snapshot) ||
-      snapshot.revision !== 1 ||
-      !(snapshot.front instanceof Uint8Array) ||
-      snapshot.front.length !== pixelCount ||
-      snapshot.front.some((color) => color >= HARDWARE.paletteSize) ||
-      !(snapshot.resolved instanceof Uint8Array) ||
-      snapshot.resolved.length !== pixelCount ||
-      snapshot.resolved.some((color) => color >= HARDWARE.paletteSize)
-    ) {
+    if (!isGraphicsSnapshot(snapshot)) {
       throw new TypeError('invalid indexed graphics snapshot');
     }
     this.front.set(snapshot.front);

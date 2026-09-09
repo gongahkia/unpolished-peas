@@ -1,14 +1,11 @@
 import {
-  AudioAssetStore,
   BrowserInput,
   decodeRuntimeAssets,
   evaluateWatch,
   HARDWARE,
-  IndexedGraphics,
+  isConsoleRuntimeSnapshot,
   ReplayJournal,
   SandboxSession,
-  Synthesizer,
-  VisualAssetStore,
   WebAudioSink,
   WebGlIndexedRenderer,
   type DebugTraceEvent,
@@ -16,6 +13,7 @@ import {
   type InputFrame,
   type SaveValues,
   type SynthSnapshot,
+  type RuntimeAssetSource,
 } from '@px240c/runtime';
 
 import { BrowserCompiler, type CompilationResult } from './compiler';
@@ -71,9 +69,9 @@ class DebuggerController {
   private readonly symbolNames: ReadonlyMap<number, string>;
   private readonly sandbox: SandboxSession;
   private readonly input: BrowserInput;
-  private readonly graphics: IndexedGraphics;
+  private lastPixels: Uint8Array = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly renderer: WebGlIndexedRenderer;
-  private readonly synthesizer: Synthesizer;
+  private lastAudio: SynthSnapshot | undefined;
   private readonly packedBytes: number;
   private readonly visualBytes: number;
   private readonly visualAssets: readonly { readonly name: string; readonly kind: string }[];
@@ -118,6 +116,7 @@ class DebuggerController {
       generated.javascript,
       manifest.update_rate,
       assets,
+      { declarations: manifest.assets, files: project.files, displayPath: manifest.display },
       packedBytes,
       source,
     );
@@ -132,6 +131,7 @@ class DebuggerController {
     javascript: string,
     updateRate: 30 | 60,
     assets: ReturnType<typeof decodeRuntimeAssets>,
+    assetSource: RuntimeAssetSource,
     packedBytes: number,
     source: string,
   ) {
@@ -154,14 +154,12 @@ class DebuggerController {
       1_000,
     );
     this.input = new BrowserInput(canvas);
-    this.graphics = new IndexedGraphics(new VisualAssetStore(assets.visual), assets.display);
     this.renderer = new WebGlIndexedRenderer(canvas);
-    this.synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
     this.initialization = this.sandbox.load(javascript, {
       seed: 0x240c1999,
       workUnitsPerFrame: WORK_LIMIT,
       updateRate,
-      maps: assets.maps,
+      assets: assetSource,
       save,
       debug: true,
     });
@@ -344,20 +342,26 @@ class DebuggerController {
   private async executeFrame(input: InputFrame, audible: boolean): Promise<FrameResponse> {
     const response = await this.sandbox.frame(input);
     if (response.debug === undefined) throw new Error('debug worker omitted trace data');
-    const graphicsFrame = this.graphics.executeFrame(response.drawCommands);
-    this.renderer.render(graphicsFrame.indexedPixels);
-    const audioFrame = this.synthesizer.executeFrame(response.audioCommands);
-    if (audible) this.audioSink?.enqueue(audioFrame);
+    this.lastPixels = response.output.indexedPixels;
+    this.lastAudio = response.output.audioState;
+    this.renderer.render(this.lastPixels);
+    if (audible) this.audioSink?.enqueue(response.output.audio);
     this.lastFrame = response;
     return response;
   }
 
   private async captureSnapshot(): Promise<DebuggerSnapshot> {
+    const worker = await this.sandbox.snapshot();
+    if (!isConsoleRuntimeSnapshot(worker)) throw new TypeError('worker omitted device snapshot');
+    const graphics = worker.graphics;
+    const audio = worker.audio;
+    this.lastPixels = graphics.resolved;
+    this.lastAudio = audio;
     return {
       revision: 1,
-      worker: await this.sandbox.snapshot(),
-      graphics: this.graphics.snapshot(),
-      audio: this.synthesizer.snapshot(),
+      worker,
+      graphics,
+      audio,
     };
   }
 
@@ -371,8 +375,8 @@ class DebuggerController {
         restore: async (value) => {
           const snapshot = readDebuggerSnapshot(value);
           await this.sandbox.restore(snapshot.worker);
-          this.graphics.restore(snapshot.graphics);
-          this.synthesizer.restore(snapshot.audio);
+          this.lastPixels = snapshot.graphics.resolved;
+          this.lastAudio = snapshot.audio;
           this.renderer.render(snapshot.graphics.resolved);
           this.lastFrame = undefined;
         },
@@ -561,17 +565,15 @@ class DebuggerController {
             .join('\n') || 'ADVANCE A FRAME TO PROFILE'
         );
       case 'MEMORY': {
-        const snapshot = this.graphics.snapshot();
-        const colors = new Set(snapshot.resolved).size;
-        const nonzero = snapshot.resolved.reduce(
-          (count, color) => count + (color === 0 ? 0 : 1),
-          0,
-        );
+        const pixels = this.lastPixels;
+        const colors = new Set(pixels).size;
+        const nonzero = pixels.reduce((count, color) => count + (color === 0 ? 0 : 1), 0);
         const assets = this.visualAssets.map((asset) => `${asset.name} ${asset.kind}`).join('\n');
-        return `FRAMEBUFFER ${String(snapshot.resolved.length)}B\nNONZERO ${String(nonzero)} / COLORS ${String(colors)}\nVISUAL ${String(this.visualBytes)}/${String(HARDWARE.visualCapacityBytes)}B\nCART ${String(this.packedBytes)}/${String(HARDWARE.cartridgeCapacityBytes)}B\nRASTER ROWS ${String(this.displayRasterRows)}\n\n${assets || 'NO VISUAL ASSETS'}`;
+        return `FRAMEBUFFER ${String(pixels.length)}B\nNONZERO ${String(nonzero)} / COLORS ${String(colors)}\nVISUAL ${String(this.visualBytes)}/${String(HARDWARE.visualCapacityBytes)}B\nCART ${String(this.packedBytes)}/${String(HARDWARE.cartridgeCapacityBytes)}B\nRASTER ROWS ${String(this.displayRasterRows)}\n\n${assets || 'NO VISUAL ASSETS'}`;
       }
       case 'AUDIO': {
-        const snapshot = this.synthesizer.snapshot();
+        const snapshot = this.lastAudio;
+        if (snapshot === undefined) return 'NO AUDIO SNAPSHOT';
         const voices = snapshot.voices
           .map(
             (voice, index) =>

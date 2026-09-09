@@ -1,4 +1,6 @@
 import { isInputFrame, type InputFrame } from './input';
+import { isRuntimeAssetSource, type RuntimeAssetSource } from './asset-codec';
+import { isAudioFrame, isSynthSnapshot, type AudioFrame, type SynthSnapshot } from './audio';
 import { HARDWARE } from './hardware';
 import { isMapQueryCatalog, type MapQueryAsset } from './map-query';
 import { isSaveValues, type SaveValues, type SaveWrite } from './save';
@@ -37,6 +39,13 @@ export interface SandboxConfiguration {
   readonly maps?: readonly MapQueryAsset[];
   readonly save?: SaveValues;
   readonly debug?: boolean;
+  readonly assets?: RuntimeAssetSource;
+}
+
+export interface ConsoleOutput {
+  readonly indexedPixels: Uint8Array;
+  readonly audio: AudioFrame;
+  readonly audioState: SynthSnapshot;
 }
 
 export type HostRequest =
@@ -65,6 +74,7 @@ export type WorkerResponse =
       readonly drawCommands: readonly ConsoleCommand[];
       readonly audioCommands: readonly ConsoleCommand[];
       readonly saveWrites: readonly SaveWrite[];
+      readonly output: ConsoleOutput;
       readonly debug?: DebugFrame;
     }
   | { readonly id: number; readonly type: 'snapshot'; readonly snapshot: unknown }
@@ -135,6 +145,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
           'drawCommands',
           'audioCommands',
           'saveWrites',
+          'output',
           ...(value.debug === undefined ? [] : ['debug']),
         ]) &&
         isNonNegativeInteger(value.frame) &&
@@ -147,6 +158,7 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
         value.audioCommands.every(isConsoleCommand) &&
         Array.isArray(value.saveWrites) &&
         value.saveWrites.every(isSaveWrite) &&
+        isConsoleOutput(value.output) &&
         (value.debug === undefined || isDebugFrame(value.debug))
       );
     case 'audit':
@@ -183,6 +195,7 @@ function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
       ...(value.maps === undefined ? [] : ['maps']),
       ...(value.save === undefined ? [] : ['save']),
       ...(value.debug === undefined ? [] : ['debug']),
+      ...(value.assets === undefined ? [] : ['assets']),
     ]) &&
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
@@ -190,7 +203,20 @@ function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
     (value.updateRate === 30 || value.updateRate === 60) &&
     (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
     (value.save === undefined || isSaveValues(value.save)) &&
-    (value.debug === undefined || typeof value.debug === 'boolean')
+    (value.debug === undefined || typeof value.debug === 'boolean') &&
+    (value.assets === undefined || isRuntimeAssetSource(value.assets))
+  );
+}
+
+export function isConsoleOutput(value: unknown): value is ConsoleOutput {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['indexedPixels', 'audio', 'audioState']) &&
+    value.indexedPixels instanceof Uint8Array &&
+    value.indexedPixels.length === HARDWARE.width * HARDWARE.height &&
+    value.indexedPixels.every((color) => color < HARDWARE.paletteSize) &&
+    isAudioFrame(value.audio) &&
+    isSynthSnapshot(value.audioState)
   );
 }
 

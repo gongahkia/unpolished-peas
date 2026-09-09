@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import { lockDownWorkerGlobals } from './capabilities';
+import { Synthesizer } from './audio';
+import { HARDWARE } from './hardware';
 import { emptyInputFrame } from './input';
 import { isHostRequest, isWorkerResponse } from './protocol';
 
@@ -37,6 +39,8 @@ describe('sandbox protocol', () => {
   });
 
   it('rejects shallow or over-specified worker responses', () => {
+    const synthesizer = new Synthesizer();
+    const audio = synthesizer.finishFrame();
     const frame = {
       id: 1,
       type: 'frame',
@@ -54,6 +58,11 @@ describe('sandbox protocol', () => {
       ],
       audioCommands: [],
       saveWrites: [],
+      output: {
+        indexedPixels: new Uint8Array(HARDWARE.width * HARDWARE.height),
+        audio,
+        audioState: synthesizer.snapshot(),
+      },
     };
     expect(isWorkerResponse(frame)).toBe(true);
     expect(

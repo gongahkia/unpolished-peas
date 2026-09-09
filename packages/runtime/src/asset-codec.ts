@@ -19,6 +19,63 @@ export interface ProjectAssetDeclaration {
   readonly path: string;
 }
 
+export interface RuntimeAssetSource {
+  readonly declarations: Readonly<Record<string, ProjectAssetDeclaration>>;
+  readonly files: Readonly<Record<string, Uint8Array>>;
+  readonly displayPath?: string | null;
+}
+
+/** Bounded, data-only source bank sent to the restricted Worker for authoritative decoding. */
+export function isRuntimeAssetSource(value: unknown): value is RuntimeAssetSource {
+  if (
+    !isRecord(value) ||
+    !isRecord(value.declarations) ||
+    !isRecord(value.files) ||
+    Array.isArray(value.declarations) ||
+    Array.isArray(value.files) ||
+    Object.keys(value).some((key) => !['declarations', 'files', 'displayPath'].includes(key)) ||
+    Object.keys(value.declarations).length > 4096 ||
+    Object.keys(value.files).length > 4096 ||
+    (value.displayPath !== undefined &&
+      value.displayPath !== null &&
+      !canonicalAssetPath(value.displayPath))
+  )
+    return false;
+  let bytes = typeof value.displayPath === 'string' ? value.displayPath.length : 0;
+  for (const [path, data] of Object.entries(value.files)) {
+    if (!canonicalAssetPath(path) || !(data instanceof Uint8Array)) return false;
+    bytes += path.length + data.byteLength;
+    if (bytes > 2 * 1024 * 1024) return false;
+  }
+  for (const [name, declaration] of Object.entries(value.declarations)) {
+    if (
+      !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
+      !isRecord(declaration) ||
+      Object.keys(declaration).length !== 2 ||
+      !canonicalAssetPath(declaration.path) ||
+      typeof declaration.kind !== 'string' ||
+      !['sprite', 'animation', 'tile_set', 'map', 'font', 'sound', 'music'].includes(
+        declaration.kind,
+      )
+    )
+      return false;
+    bytes += name.length + declaration.path.length + declaration.kind.length;
+    if (bytes > 2 * 1024 * 1024) return false;
+  }
+  return true;
+}
+
+function canonicalAssetPath(value: unknown): value is string {
+  return (
+    typeof value === 'string' &&
+    value.length > 0 &&
+    value.length <= 1024 &&
+    value
+      .split('/')
+      .every((part) => /^[A-Za-z0-9_.-]+$/.test(part) && part !== '.' && part !== '..')
+  );
+}
+
 export interface RuntimeAssetBundle {
   readonly visual: readonly VisualAsset[];
   readonly audio: readonly AudioAsset[];

@@ -40,21 +40,47 @@ export class SaveMemory {
     return sortedValues(this.values);
   }
 
-  public restore(value: unknown): void {
-    if (!isSaveValues(value)) {
+  public restore(value: unknown, pendingWrites: readonly SaveWrite[] = []): void {
+    if (!isSaveValues(value) || !isPendingSaveWrites(pendingWrites, value)) {
       throw new TypeError('invalid PX-240C save snapshot');
     }
     this.values = { ...value };
     this.writes.clear();
+    for (const write of pendingWrites) this.writes.set(write.key, write.value);
+  }
+
+  public pendingWrites(): readonly SaveWrite[] {
+    return [...this.writes]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([key, value]) => ({ key, value }));
   }
 
   public takeWrites(): readonly SaveWrite[] {
-    const result = [...this.writes]
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, value]) => ({ key, value }));
+    const writes = this.pendingWrites();
     this.writes.clear();
-    return result;
+    return writes;
   }
+}
+
+export function isPendingSaveWrites(
+  value: unknown,
+  values: SaveValues,
+): value is readonly SaveWrite[] {
+  if (!Array.isArray(value) || value.length > Object.keys(values).length) return false;
+  const keys = new Set<string>();
+  return value.every((write: unknown) => {
+    if (
+      !isRecord(write) ||
+      Object.keys(write).length !== 2 ||
+      typeof write.key !== 'string' ||
+      !Object.hasOwn(values, write.key) ||
+      write.value !== values[write.key] ||
+      keys.has(write.key)
+    )
+      return false;
+    keys.add(write.key);
+    return true;
+  });
 }
 
 export function isSaveValues(value: unknown): value is SaveValues {

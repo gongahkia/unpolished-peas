@@ -8,8 +8,8 @@ import { gunzipSync } from 'node:zlib';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { decodeRuntimeAssets, type ProjectAssetDeclaration } from './asset-codec';
-import { AudioAssetStore, Synthesizer } from './audio';
-import { createConsoleRuntime } from './console-runtime';
+import { AudioAssetStore, Synthesizer, type AudioFrame } from './audio';
+import { createConsoleRuntime, type ConsoleRuntimeSnapshot } from './console-runtime';
 import { IndexedGraphics, VisualAssetStore } from './graphics';
 import type { InputFrame } from './input';
 import type { CartridgeFactory } from './machine';
@@ -20,6 +20,20 @@ const directory = new URL('../../../tests/fixtures/alpha/', import.meta.url);
 const read = (name: string): Buffer => readFileSync(new URL(name, directory));
 const hash = (bytes: Uint8Array | string): string =>
   createHash('sha256').update(bytes).digest('hex');
+const legacySnapshot = (snapshot: ConsoleRuntimeSnapshot): unknown => ({
+  revision: 1,
+  machine: snapshot.machine,
+  save: snapshot.save,
+});
+function pcmBytes(audio: AudioFrame): Uint8Array {
+  const pcm = new Uint8Array(audio.left.length * 8);
+  const view = new DataView(pcm.buffer);
+  for (let sample = 0; sample < audio.left.length; sample += 1) {
+    view.setFloat32(sample * 8, audio.left[sample] ?? 0, true);
+    view.setFloat32(sample * 8 + 4, audio.right[sample] ?? 0, true);
+  }
+  return pcm;
+}
 const projects = new Map(
   JSON.parse(
     gunzipSync(read('indexeddb.json.gz')).toString(),
@@ -93,13 +107,7 @@ describe('immutable alpha recordings', () => {
         ).toBe(frame.framebufferHash);
         const audio = synth.executeFrame(frame.audioCommands);
         peakVoices = Math.max(peakVoices, audio.activeVoices);
-        const pcm = new Uint8Array(audio.left.length * 8);
-        const view = new DataView(pcm.buffer);
-        for (let sample = 0; sample < audio.left.length; sample += 1) {
-          view.setFloat32(sample * 8, audio.left[sample] ?? 0, true);
-          view.setFloat32(sample * 8 + 4, audio.right[sample] ?? 0, true);
-        }
-        pcmHash.update(pcm);
+        pcmHash.update(pcmBytes(audio));
       }
       expect({
         visualBytes: assets.visualBytes,
@@ -143,6 +151,7 @@ describe('shared Worker core versus alpha browser execution', () => {
           audioCommands: ConsoleCommand[];
           saveWrites: unknown;
           stateHash: string;
+          framebufferHash: string;
         }[];
         finalSnapshot: unknown;
       };
@@ -153,9 +162,16 @@ describe('shared Worker core versus alpha browser execution', () => {
       const runtime = createConsoleRuntime(generated.default, {
         ...trace.configuration,
         maps: assets.maps,
+        assets: {
+          declarations: catalog.assets,
+          files: project.files,
+          displayPath: catalog.display,
+        },
       });
       const original = runtime.snapshot();
       const snapshots: unknown[] = [];
+      const pcmHash = createHash('sha256');
+      let peakVoices = 0;
       for (const expected of trace.frames) {
         const actual = runtime.runFrame(expected.input);
         expect(actual.frame).toBe(expected.frame);
@@ -163,18 +179,27 @@ describe('shared Worker core versus alpha browser execution', () => {
         expect(actual.drawCommands).toEqual(expected.drawCommands);
         expect(actual.audioCommands).toEqual(expected.audioCommands);
         expect(actual.saveWrites).toEqual(expected.saveWrites);
-        expect(hash(JSON.stringify(runtime.snapshot())), `frame ${String(expected.frame)}`).toBe(
-          expected.stateHash,
-        );
+        expect(hash(actual.output.indexedPixels)).toBe(expected.framebufferHash);
+        pcmHash.update(pcmBytes(actual.output.audio));
+        peakVoices = Math.max(peakVoices, actual.output.audio.activeVoices);
+        expect(
+          hash(JSON.stringify(legacySnapshot(runtime.snapshot()))),
+          `frame ${String(expected.frame)}`,
+        ).toBe(expected.stateHash);
         if (expected.frame < 10) snapshots.push(runtime.snapshot());
       }
-      expect(runtime.snapshot()).toEqual(trace.finalSnapshot);
+      expect(legacySnapshot(runtime.snapshot())).toEqual(trace.finalSnapshot);
+      expect({
+        pcmHash: pcmHash.digest('hex'),
+        peakVoices,
+        visualBytes: assets.visualBytes,
+      }).toEqual(audioMetrics[id]);
       runtime.restore(original);
       expect(runtime.snapshot()).toEqual(original);
       for (const expected of trace.frames.slice(0, 10)) {
         runtime.runFrame(expected.input);
         expect(runtime.snapshot()).toEqual(snapshots[expected.frame]);
-        expect(hash(JSON.stringify(runtime.snapshot()))).toBe(expected.stateHash);
+        expect(hash(JSON.stringify(legacySnapshot(runtime.snapshot())))).toBe(expected.stateHash);
       }
     }, 30_000);
   }

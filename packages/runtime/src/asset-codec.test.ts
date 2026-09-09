@@ -5,6 +5,7 @@ import {
   encodeAssetFile,
   encodeMusicAssetFile,
   encodeSoundAssetFile,
+  isRuntimeAssetSource,
 } from './asset-codec';
 import type { SoundAsset } from './audio';
 import { IndexedGraphics, VisualAssetStore } from './graphics';
@@ -23,6 +24,45 @@ const sound = {
 };
 
 describe('source-visible asset codec', () => {
+  it('bounds Worker asset banks and rejects noncanonical paths and structural payloads', () => {
+    const source = {
+      declarations: { hero: { kind: 'sprite', path: 'hero.pxg' } },
+      files: { 'hero.pxg': new Uint8Array(4) },
+    };
+    expect(isRuntimeAssetSource(source)).toBe(true);
+    for (const bad of [
+      null,
+      { declarations: [], files: {} },
+      { declarations: {}, files: [] },
+      { ...source, host: true },
+      { ...source, displayPath: '../display.pxp' },
+      { ...source, files: { '/hero.pxg': new Uint8Array(1) } },
+      { ...source, files: { 'hero.pxg': [1, 2] } },
+      { ...source, files: { 'hero.pxg': new Uint8Array(2 * 1024 * 1024) } },
+      { ...source, declarations: { hero: { kind: 'javascript', path: 'hero.pxg' } } },
+    ]) {
+      expect(isRuntimeAssetSource(bad)).toBe(false);
+    }
+  });
+
+  it('rejects tracker orders that name inherited object properties', () => {
+    expect(() =>
+      decodeRuntimeAssets(
+        { song: { kind: 'music', path: 'song.pxt' } },
+        {
+          'song.pxt': encodeAssetFile({
+            revision: 1,
+            kind: 'music',
+            framesPerRow: 2,
+            order: ['__proto__'],
+            patterns: {},
+            loop: true,
+          }),
+        },
+      ),
+    ).toThrow(/order/);
+  });
+
   it('adds the file revision and removes runtime names when encoding audio assets', () => {
     const encodedSound: unknown = JSON.parse(
       new TextDecoder().decode(encodeSoundAssetFile({ ...sound, name: 'beep' } as SoundAsset)),
