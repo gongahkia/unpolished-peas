@@ -140,8 +140,12 @@ export class Synthesizer {
 
   public executeFrame(commands: readonly ConsoleCommand[]): AudioFrame {
     for (const command of commands) {
-      this.execute(command);
+      this.executeCommand(command);
     }
+    return this.finishFrame();
+  }
+
+  public finishFrame(): AudioFrame {
     this.advanceTracker();
     const sampleCount = HARDWARE.audioSampleRate / HARDWARE.frameRate;
     const left = new Float32Array(sampleCount);
@@ -207,7 +211,7 @@ export class Synthesizer {
     return this.tracker === null ? null : { ...this.tracker };
   }
 
-  private execute(command: ConsoleCommand): void {
+  public executeCommand(command: ConsoleCommand): void {
     switch (command.name) {
       case 'sfx': {
         const [handle] = expectArguments(command, 1);

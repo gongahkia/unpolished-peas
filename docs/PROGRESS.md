@@ -293,6 +293,22 @@ Each group may produce several coherent commits, and integration occurs througho
   reference/inspection/conformance. The remaining brief checklist remains open. Nothing was pushed,
   published or deployed.
 
+## 2026-09-09 — V1 milestone 2b: command-time device execution
+
+- Split indexed graphics into begin-frame, ordered command execution and scanout completion;
+  retained `executeFrame` as a wrapper over those operations. Raster/draw state still resets at the
+  same frame boundary. Front/back storage now has stable identity instead of swapping array objects,
+  which permits fixed hardware addresses without changing the recorded pixels.
+- Split synth command execution from frame completion. Commands change voice/tracker state before
+  rendering; sample generation and voice age advance only on completion. No second rasterizer or
+  synthesizer was introduced. Snapshot restore cancels an unfinished graphics frame.
+- Verification passed: runtime strict TypeScript, 20 focused graphics/audio/alpha compatibility
+  tests (including all 720 browser pixel hashes and production PCM hashes), then 16 graphics/audio
+  tests including two new command-time ordering/reset/timing checks, plus focused Prettier/ESLint.
+- Next: move these actual device instances into the restricted shared core, remove Studio's
+  execution copies, and attach the real Revision 1 bus. This preparatory checkpoint does not yet
+  expose bus APIs or claim Worker ownership of graphics/audio.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

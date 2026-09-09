@@ -143,11 +143,24 @@ export class VisualAssetStore {
 
 /** Deterministic indexed immediate-mode rasterizer with double-buffered storage. */
 export class IndexedGraphics {
-  private front = new Uint8Array(HARDWARE.width * HARDWARE.height);
-  private back = new Uint8Array(HARDWARE.width * HARDWARE.height);
+  private readonly front = new Uint8Array(HARDWARE.width * HARDWARE.height);
+  private readonly back = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly resolved = new Uint8Array(HARDWARE.width * HARDWARE.height);
   private readonly assets: VisualAssetStore;
   private readonly display: DisplayConfiguration;
+  private state = initialDrawState();
+  private readonly rasterRemaps = Array.from(
+    { length: HARDWARE.height },
+    () => new Uint8Array(HARDWARE.paletteSize),
+  );
+  private readonly rasterScrollX = new Int16Array(HARDWARE.height);
+  private readonly rasterScrollY = new Int16Array(HARDWARE.height);
+  private readonly rasterStateSet = new Uint8Array(HARDWARE.height);
+  private readonly displayRemap = identityRemap();
+  private displayScrollX = 0;
+  private displayScrollY = 0;
+  private commandCount = 0;
+  private activeFrame = false;
 
   public constructor(assets = new VisualAssetStore(), display?: DisplayConfiguration) {
     this.assets = assets;
@@ -155,61 +168,71 @@ export class IndexedGraphics {
   }
 
   public executeFrame(commands: readonly ConsoleCommand[]): GraphicsFrame {
-    if (commands.length > HARDWARE.drawCommandsPerFrame) {
+    if (commands.length > HARDWARE.drawCommandsPerFrame)
       throw new RangeError('draw-command ceiling exceeded');
-    }
+    this.beginFrame();
+    for (const command of commands) this.executeCommand(command);
+    return this.finishFrame();
+  }
+
+  public beginFrame(): void {
     this.back.set(this.front);
-    const state = initialDrawState(this.display.remap);
-    const rasterRemaps = Array.from(
-      { length: HARDWARE.height },
-      () => new Uint8Array(HARDWARE.paletteSize),
-    );
-    const rasterScrollX = new Int16Array(HARDWARE.height);
-    const rasterScrollY = new Int16Array(HARDWARE.height);
-    const rasterStateSet = new Uint8Array(HARDWARE.height);
-    const displayRemap = identityRemap();
-    let displayScrollX = 0;
-    let displayScrollY = 0;
-
+    this.state = initialDrawState(this.display.remap);
+    for (const remap of this.rasterRemaps) remap.fill(0);
+    this.rasterScrollX.fill(0);
+    this.rasterScrollY.fill(0);
+    this.rasterStateSet.fill(0);
+    this.displayRemap.set(identityRemap());
+    this.displayScrollX = 0;
+    this.displayScrollY = 0;
+    this.commandCount = 0;
+    this.activeFrame = true;
     for (const raster of this.display.raster) {
-      rasterRemaps[raster.line]?.set(raster.remap);
-      rasterScrollX[raster.line] = raster.scrollX;
-      rasterScrollY[raster.line] = raster.scrollY;
-      rasterStateSet[raster.line] = 1;
+      this.rasterRemaps[raster.line]?.set(raster.remap);
+      this.rasterScrollX[raster.line] = raster.scrollX;
+      this.rasterScrollY[raster.line] = raster.scrollY;
+      this.rasterStateSet[raster.line] = 1;
     }
+  }
 
-    for (const command of commands) {
-      if (command.rasterLine === undefined) {
-        this.executeDraw(command, state);
-        continue;
-      }
-      const line = command.rasterLine;
-      if (line < 0 || line >= HARDWARE.height) {
-        throw new RangeError('raster command has an invalid scanline');
-      }
-      if (command.name === 'pal') {
-        const [from, to] = expectIntegers(command, 2);
-        displayRemap[expectColor(from)] = expectColor(to);
-      } else if (command.name === 'raster_scroll') {
-        [displayScrollX, displayScrollY] = expectIntegers(command, 2);
-      } else {
-        throw new TypeError(`'${command.name}' is not valid during raster display`);
-      }
-      rasterScrollX[line] = clampInt16(displayScrollX);
-      rasterScrollY[line] = clampInt16(displayScrollY);
-      rasterRemaps[line]?.set(displayRemap);
-      rasterStateSet[line] = 1;
+  public executeCommand(command: ConsoleCommand): void {
+    if (!this.activeFrame) throw new Error('graphics frame has not begun');
+    if (this.commandCount >= HARDWARE.drawCommandsPerFrame)
+      throw new RangeError('draw-command ceiling exceeded');
+    this.commandCount += 1;
+    if (command.rasterLine === undefined) {
+      this.executeDraw(command, this.state);
+      return;
     }
+    const line = command.rasterLine;
+    if (line < 0 || line >= HARDWARE.height) {
+      throw new RangeError('raster command has an invalid scanline');
+    }
+    if (command.name === 'pal') {
+      const [from, to] = expectIntegers(command, 2);
+      this.displayRemap[expectColor(from)] = expectColor(to);
+    } else if (command.name === 'raster_scroll') {
+      [this.displayScrollX, this.displayScrollY] = expectIntegers(command, 2);
+    } else {
+      throw new TypeError(`'${command.name}' is not valid during raster display`);
+    }
+    this.rasterScrollX[line] = clampInt16(this.displayScrollX);
+    this.rasterScrollY[line] = clampInt16(this.displayScrollY);
+    this.rasterRemaps[line]?.set(this.displayRemap);
+    this.rasterStateSet[line] = 1;
+  }
 
+  public finishFrame(): GraphicsFrame {
+    if (!this.activeFrame) throw new Error('graphics frame has not begun');
     let previousRemap = identityRemap();
     let previousScrollX = 0;
     let previousScrollY = 0;
     for (let y = 0; y < HARDWARE.height; y += 1) {
-      const lineRemap = rasterRemaps[y];
-      if (lineRemap !== undefined && rasterStateSet[y] === 1) {
+      const lineRemap = this.rasterRemaps[y];
+      if (lineRemap !== undefined && this.rasterStateSet[y] === 1) {
         previousRemap = lineRemap;
-        previousScrollX = rasterScrollX[y] ?? 0;
-        previousScrollY = rasterScrollY[y] ?? 0;
+        previousScrollX = this.rasterScrollX[y] ?? 0;
+        previousScrollY = this.rasterScrollY[y] ?? 0;
       }
       for (let x = 0; x < HARDWARE.width; x += 1) {
         const sourceX = wrap(x + previousScrollX, HARDWARE.width);
@@ -219,10 +242,10 @@ export class IndexedGraphics {
       }
     }
 
-    const previousFront = this.front;
-    this.front = this.back;
-    this.back = previousFront;
-    return { indexedPixels: this.resolved.slice(), commands: commands.length };
+    // fixed buffer identity is required by the byte-addressed hardware interface.
+    this.front.set(this.back);
+    this.activeFrame = false;
+    return { indexedPixels: this.resolved.slice(), commands: this.commandCount };
   }
 
   public snapshot(): GraphicsSnapshot {
@@ -246,6 +269,7 @@ export class IndexedGraphics {
     this.front.set(snapshot.front);
     this.back.set(snapshot.front);
     this.resolved.set(snapshot.resolved);
+    this.activeFrame = false;
   }
 
   private executeDraw(command: ConsoleCommand, state: DrawState): void {
