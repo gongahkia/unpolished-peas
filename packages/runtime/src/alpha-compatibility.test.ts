@@ -1,13 +1,20 @@
 import { createHash } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { gunzipSync } from 'node:zlib';
-import { describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { decodeRuntimeAssets, type ProjectAssetDeclaration } from './asset-codec';
 import { AudioAssetStore, Synthesizer } from './audio';
+import { createConsoleRuntime } from './console-runtime';
 import { IndexedGraphics, VisualAssetStore } from './graphics';
+import type { InputFrame } from './input';
+import type { CartridgeFactory } from './machine';
 import type { StoredProject } from './persistence';
-import type { ConsoleCommand } from './protocol';
+import type { ConsoleCommand, SandboxConfiguration } from './protocol';
 
 const directory = new URL('../../../tests/fixtures/alpha/', import.meta.url);
 const read = (name: string): Buffer => readFileSync(new URL(name, directory));
@@ -100,5 +107,75 @@ describe('immutable alpha recordings', () => {
         pcmHash: pcmHash.digest('hex'),
       }).toEqual(audioMetrics[id]);
     });
+  }
+});
+
+describe('shared Worker core versus alpha browser execution', () => {
+  const root = fileURLToPath(new URL('../../../', import.meta.url));
+  let temporary: string;
+  beforeAll(() => {
+    temporary = mkdtempSync(join(tmpdir(), 'px240c-alpha-core-'));
+    execFileSync('cargo', ['build', '--quiet', '--package', 'px240c-cli'], { cwd: root });
+  }, 120_000);
+  afterAll(() => {
+    if (temporary) rmSync(temporary, { recursive: true, force: true });
+  });
+  for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
+    it(`recompiles and executes ${id} with identical work, commands, saves and state`, async () => {
+      const generatedPath = join(temporary, `${id}.mjs`);
+      execFileSync(join(root, 'target/debug/px240c'), [
+        'build',
+        join(root, 'cartridges', id),
+        '--output',
+        generatedPath,
+      ]);
+      // only the authoritative compiler's fresh output is loaded, never embedded cartridge JS.
+      const generated = (await import(/* @vite-ignore */ pathToFileURL(generatedPath).href)) as {
+        default: CartridgeFactory;
+      };
+      const trace = JSON.parse(gunzipSync(read(`${id}.trace.json.gz`)).toString()) as {
+        configuration: SandboxConfiguration;
+        frames: {
+          frame: number;
+          input: InputFrame;
+          workUnits: number;
+          drawCommands: ConsoleCommand[];
+          audioCommands: ConsoleCommand[];
+          saveWrites: unknown;
+          stateHash: string;
+        }[];
+        finalSnapshot: unknown;
+      };
+      const project = projects.get(`project/${id}`);
+      const catalog = catalogs[id];
+      if (project === undefined || catalog === undefined) throw new Error('missing alpha assets');
+      const assets = decodeRuntimeAssets(catalog.assets, project.files, catalog.display);
+      const runtime = createConsoleRuntime(generated.default, {
+        ...trace.configuration,
+        maps: assets.maps,
+      });
+      const original = runtime.snapshot();
+      const snapshots: unknown[] = [];
+      for (const expected of trace.frames) {
+        const actual = runtime.runFrame(expected.input);
+        expect(actual.frame).toBe(expected.frame);
+        expect(actual.workUnits).toBe(expected.workUnits);
+        expect(actual.drawCommands).toEqual(expected.drawCommands);
+        expect(actual.audioCommands).toEqual(expected.audioCommands);
+        expect(actual.saveWrites).toEqual(expected.saveWrites);
+        expect(hash(JSON.stringify(runtime.snapshot())), `frame ${String(expected.frame)}`).toBe(
+          expected.stateHash,
+        );
+        if (expected.frame < 10) snapshots.push(runtime.snapshot());
+      }
+      expect(runtime.snapshot()).toEqual(trace.finalSnapshot);
+      runtime.restore(original);
+      expect(runtime.snapshot()).toEqual(original);
+      for (const expected of trace.frames.slice(0, 10)) {
+        runtime.runFrame(expected.input);
+        expect(runtime.snapshot()).toEqual(snapshots[expected.frame]);
+        expect(hash(JSON.stringify(runtime.snapshot()))).toBe(expected.stateHash);
+      }
+    }, 30_000);
   }
 });

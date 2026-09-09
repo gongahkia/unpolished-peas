@@ -265,6 +265,34 @@ Each group may produce several coherent commits, and integration occurs througho
 - Next: extract the Worker dispatcher into the shared production core, verify alpha parity, then
   implement actual Worker-owned hardware state and the Revision 1 bus/reference/conformance tests.
 
+## 2026-09-09 — V1 milestone 2a: shared console dispatcher and replay correctness
+
+- Extracted the existing Worker dispatcher into `createConsoleRuntime`. The Worker remains the
+  restricted browser boundary; each core instance owns its scheduler, map/save state, command
+  buffers and bounded debug trace. Graphics/audio ownership and the hardware bus are the next step,
+  not yet implemented by this extraction. The standalone player is still a separate implementation.
+- Native-compiled first-party sources now execute through that same core in tests and match all
+  720 alpha frames' work, draw/audio commands, save writes and full state hashes. The retained alpha
+  archive/project/trace files were not changed. Cinder's recorded JSON map views are reconstructed
+  through the frozen project's production asset decoder rather than treated as native typed arrays.
+- Added actual restore/forward checks. They initially failed for all three games: generated enum
+  comparisons used JS object identity, while restore cloned the enum objects. Changed typed enum
+  equality to variant/payload value equality; payload traversal charges the normal work budget.
+  Payload-free game enums retain identical normal-play work and state hashes. A native compiler
+  regression covers nested payload equality/inequality and replay in release and debug modes.
+- Verified core instance isolation, per-frame buffer/debug reset, save flushing/restore, raster
+  restrictions, draw ceiling and source-mapped work faults. Narrow lint initially rejected deprecated
+  Vitest `toThrowError`; tests now use its supported `toThrow` API.
+- `./scripts/check.sh` passed: formatting, ESLint, all strict TypeScript checks, **50 Vitest tests**,
+  production builds, **one complete Firefox E2E**, Rust fmt/Clippy, **46 Rust tests**, native workspace
+  and release Wasm builds. There were no skipped tests in the complete gate. The focused replay
+  runs selected three tests; the full gate subsequently exercised all of them.
+- Current repacked games are 42,851 / 41,262 / 38,039 bytes, including the new enum comparison helper;
+  all remain below 64 KiB. These are intermediate V1 measurements, not replacements for alpha hashes.
+- Next: Worker-owned graphics/audio backing state, real bus/register access and full Revision 1
+  reference/inspection/conformance. The remaining brief checklist remains open. Nothing was pushed,
+  published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

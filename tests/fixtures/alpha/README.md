@@ -20,8 +20,10 @@ Never update these from V1 to make a compatibility test pass.
   by feeding actual recorded browser commands to the unchanged production synth, not a new synth.
 
 Production-rasterizer tests compare all 720 recorded framebuffer hashes and canonical synth output.
-This first checkpoint does not yet re-execute PXCL and compare state in a headless runner; that is
-required in milestone 3. Short paths do not cover complete game progression or save writes.
+Shared-core tests also recompile all three original sources using the native compiler, execute the
+recorded inputs and compare every work/command/save/state result, then restore and forward-run.
+This is not yet a public CLI headless runner or Chromium parity check; those remain required.
+Short paths do not cover complete game progression or save writes.
 
 Recording commands (archival only, refuse post-alpha implementation diffs and existing outputs):
 
