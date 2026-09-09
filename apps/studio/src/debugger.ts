@@ -12,7 +12,7 @@ import {
   type DebugTraceEvent,
   type GraphicsSnapshot,
   type InputFrame,
-  type SaveValues,
+  type SaveImage,
   type SynthSnapshot,
   type RuntimeAssetSource,
 } from '@px240c/runtime';
@@ -48,7 +48,7 @@ export async function openDebugger(
   root: HTMLElement,
   project: DebugProject,
   compiler: BrowserCompiler,
-  save: SaveValues,
+  save: SaveImage,
   back: () => void,
 ): Promise<ActiveDebugger> {
   const controller = await DebuggerController.create(root, project, compiler, save, back);
@@ -96,7 +96,7 @@ class DebuggerController {
     root: HTMLElement,
     project: DebugProject,
     compiler: BrowserCompiler,
-    save: SaveValues,
+    save: SaveImage,
     back: () => void,
   ): Promise<DebuggerController> {
     const compilation = await compiler.compileProject(project.manifest, project.files, true);
@@ -131,7 +131,7 @@ class DebuggerController {
   private constructor(
     private readonly root: HTMLElement,
     private readonly project: DebugProject,
-    save: SaveValues,
+    save: SaveImage,
     private readonly back: () => void,
     compilation: CompilationResult,
     javascript: string,

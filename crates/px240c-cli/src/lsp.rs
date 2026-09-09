@@ -84,6 +84,7 @@ const BUILTINS: &[(&str, &str)] = &[
         "fn save_get_int(key: Text, fallback: Int) -> Int",
     ),
     ("save_set_int", "fn save_set_int(key: Text, value: Int)"),
+    ("save_commit", "fn save_commit()"),
     ("sfx", "fn sfx(sound: Sound)"),
     ("music", "fn music(track: Music)"),
     ("music_stop", "fn music_stop()"),

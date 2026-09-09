@@ -19,6 +19,9 @@ export const MEMORY = Object.freeze({
   systemBytes: 64,
   rasterLive: 0x50400,
   visualInfo: 0x50300,
+  saveControl: 0x50500,
+  save: 0x58000,
+  saveCommitted: 0x5a000,
   audio: 0x51000,
   audioTracker: 0x51020,
   audioVoices: 0x51100,
@@ -52,11 +55,15 @@ export interface ReadOnlyMemoryRegion {
   readonly readByte: (offset: number) => number;
 }
 
-/** Preparation is side-effect free; a returned commit must not fail or revalidate. */
+/** Preparation may charge work but cannot mutate devices; a commit must not fail or revalidate. */
 export interface WritableMemoryRegion extends Omit<ReadOnlyMemoryRegion, 'writable'> {
   readonly writable: true;
   readonly rasterWritable?: boolean;
-  readonly prepareWrite: (offset: number, bytes: Uint8Array) => (() => void) | undefined;
+  readonly prepareWrite: (
+    offset: number,
+    bytes: Uint8Array,
+    span: SourceSpan,
+  ) => (() => void) | undefined;
 }
 
 export type MemoryRegion = ByteMemoryRegion | ReadOnlyMemoryRegion | WritableMemoryRegion;
@@ -247,7 +254,7 @@ export class MemoryBus {
             : () => {
                 region.bytes.set(part, offset);
               }
-          : region.prepareWrite(offset, part);
+          : region.prepareWrite(offset, part, span);
       if (commit === undefined)
         throw new RuntimeFault(
           'PX9022',

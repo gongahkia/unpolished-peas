@@ -9,6 +9,7 @@ export function consoleReplayObservable(response: ConsoleFrame): unknown {
     drawCommands: response.drawCommands,
     audioCommands: response.audioCommands,
     saveWrites: response.saveWrites,
+    saveCommit: response.saveCommit,
     debug: response.debug,
     output: response.output,
   };

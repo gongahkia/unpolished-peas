@@ -16,6 +16,7 @@ import type { InputFrame } from './input';
 import type { CartridgeFactory } from './machine';
 import type { StoredProject } from './persistence';
 import type { ConsoleCommand, SandboxConfiguration } from './protocol';
+import { SaveMemory } from './save';
 
 const directory = new URL('../../../tests/fixtures/alpha/', import.meta.url);
 const read = (name: string): Buffer => readFileSync(new URL(name, directory));
@@ -31,7 +32,7 @@ const legacySnapshot = (snapshot: ConsoleRuntimeSnapshot): unknown => ({
     input: snapshot.machine.input,
     previousInput: snapshot.machine.previousInput,
   },
-  save: snapshot.save,
+  save: new SaveMemory(snapshot.save.bytes).snapshot(),
 });
 function pcmBytes(audio: AudioFrame): Uint8Array {
   const pcm = new Uint8Array(audio.left.length * 8);
