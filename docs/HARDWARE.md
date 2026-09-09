@@ -42,7 +42,7 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Audio, save commits and cartridge ROM registers remain to be mapped.
+Hardware Revision 1 contract. Save commits and cartridge ROM registers remain to be mapped.
 The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
@@ -52,23 +52,27 @@ of work RAM). It leaves room for cartridge descriptors without taking bytes from
 visual capacity. There are no address wraps or mirrored mappings. Every currently unmapped address
 reads zero; writing one faults. Offsets below are hexadecimal; lengths and counts are decimal.
 
-| Address |    Bytes | Access | Actual backing state / reset                                                                                        |
-| :------ | -------: | :----- | :------------------------------------------------------------------------------------------------------------------ |
-| `00000` |   65,536 | RW     | Work RAM, zero on cartridge load.                                                                                   |
-| `10000` |   34,560 | RW     | Front indexed framebuffer; zero before `on start`.                                                                  |
-| `19000` |   34,560 | RW     | Back indexed framebuffer; zero before `on start`.                                                                   |
-| `22000` |   34,560 | R      | Resolved indexed scanout; zero before `on start`.                                                                   |
-| `30000` |  131,072 | RW     | Packed visual image, initialized from cartridge assets; unallocated tail is zero.                                   |
-| `50000` |       80 | RW     | Draw camera/clip and logical palette remap; layout below.                                                           |
-| `50050` |        1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
-| `50080` |      128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
-| `50100` |       48 | R      | Four controller ports and pointer, encoded from the machine's current/previous input frames. Reset zero.            |
-| `50200` |       64 | R      | Scheduler, deterministic time, RNG, work and fault registers, encoded from their actual owners; layout below.       |
-| `50300` |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
-| `50400` |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
-| `55000` |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
-| `a0000` | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
-| `c0000` | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
+| Address  |    Bytes | Access | Actual backing state / reset                                                                                        |
+| :------- | -------: | :----- | :------------------------------------------------------------------------------------------------------------------ |
+| `00000`  |   65,536 | RW     | Work RAM, zero on cartridge load.                                                                                   |
+| `10000`  |   34,560 | RW     | Front indexed framebuffer; zero before `on start`.                                                                  |
+| `19000`  |   34,560 | RW     | Back indexed framebuffer; zero before `on start`.                                                                   |
+| `22000`  |   34,560 | R      | Resolved indexed scanout; zero before `on start`.                                                                   |
+| `30000`  |  131,072 | RW     | Packed visual image, initialized from cartridge assets; unallocated tail is zero.                                   |
+| `50000`  |       80 | RW     | Draw camera/clip and logical palette remap; layout below.                                                           |
+| `50050`  |        1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
+| `50080`  |      128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
+| `50100`  |       48 | R      | Four controller ports and pointer, encoded from the machine's current/previous input frames. Reset zero.            |
+| `50200`  |       64 | R      | Scheduler, deterministic time, RNG, work and fault registers, encoded from their actual owners; layout below.       |
+| `50300`  |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
+| `50400`  |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
+| `51000`  |       32 | R      | Synth clock, allocation counter, active voice count and audio asset metadata.                                       |
+| `51020`  |       16 | RW     | Tracker selection and position; zero means stopped.                                                                 |
+| `51100`  |      512 | mixed  | Eight 64-byte voice records; controls are RW, allocation sequence/reserved tail are read-only.                      |
+| `55000`  |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
+| `a0000`  | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
+| `c0000`  | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
+| `3c0000` | variable | R      | Audio asset descriptors, 32 bytes each; sorted by name, at most 4,096 entries.                                      |
 
 All framebuffer bytes must be indices 0–31. Raw writes bypass draw camera, clip and logical remap;
 they do not bypass scanout remapping. `on start` now executes both high-level drawing and bus writes
@@ -173,7 +177,7 @@ fields represent exact integers through `2^53-1`; their unused upper bits are ze
 | `10`       | IEEE binary64 | Cartridge seconds, exactly the machine's `frame / 60` calculation; no host clock.      |
 | `18`       | u32           | Current normalized RNG state; high-level RNG calls advance this same owner.            |
 | `1c`       | u8            | Configured update cadence, 30 or 60.                                                   |
-| `1d`       | u8            | Phase: 0 idle, 1 start, 2 update, 3 draw, 4 raster.                                    |
+| `1d`       | u8            | Phase: 0 idle, 1 start, 2 update, 3 draw, 4 raster, 5 output (scanout and mixing).     |
 | `1e`       | u16           | Active raster line, 0–143; `65535` outside raster.                                     |
 | `20`       | u64           | Current boot/frame work usage, including the charge for this read or copy.             |
 | `28`       | u64           | Actual work limit, 50,000 in production; internal diagnostic hosts may lower it.       |
@@ -185,7 +189,7 @@ fields represent exact integers through `2^53-1`; their unused upper bits are ze
 
 Updates run on every frame at 60 Hz and even-indexed frames at 30 Hz. The update counter advances
 only after its callback returns successfully; draw/raster see that completed count. The frame
-counter advances only after all callbacks return. Work resets before start and before each frame,
+counter advances only after all callbacks, scanout and audio mixing complete. Work resets before start and before each frame,
 not when read or snapshotted. A fault retains the active phase/line, work and source span; the active
 status bit clears. Ordinary fault attempts leave the original exception and message intact. Further
 execution attempts fail with `PX9014` before resetting devices, without replacing the original latch.
@@ -198,6 +202,78 @@ implement resumable source-statement pauses. The public `tests/conformance/syste
 all callback phases and scanlines, mixed RNG/register access, counters, status and charged reads.
 Native Release/Debug tests run it at 30/60 Hz, check binary64 time and copied register bytes, and
 replay complete snapshots. Firefox E2E compiles/runs it in the Worker and rewinds a debug frame.
+
+### Synthesizer and tracker controls
+
+Audio MMIO reads and writes the existing synthesizer's actual voices and tracker, not a retained
+copy. A write stages the touched control record, validates it, and commits only after every target
+region passes permission/value checks. Failed operations retain work charges but do not change
+controls. These regions are not independently retained in the bus snapshot: the existing synth
+snapshot is their owner. All fields below are little-endian; normal byte-bus costs apply. Reads are
+legal during raster; writes are not. They do not consume the high-level draw-command allowance.
+
+`audio_id(name: Text) -> Int` returns a zero-based ID, or `-1` when absent, costing `1 + name.length`
+runtime units plus the normal API-call charge. Sound and music share one name-sorted ID space.
+Register references use `ID + 1`, reserving zero for no asset. IDs and descriptors are immutable
+for a loaded cartridge. Descriptor words at `3c0000 + ID*32` are eight u32 fields: kind (1 sound,
+2 music), waveform (1 pulse, 2 triangle, 3 saw, 4 noise, 5 wavetable), default note, duration,
+release frames, tracker frames-per-row, order length and loop flag. Inapplicable fields are zero.
+
+Synth status at `51000`:
+
+| Offset     | Encoding | Meaning / reset                                            |
+| :--------- | :------- | :--------------------------------------------------------- |
+| `00`       | u64      | Completed audio frames, zero; boot does not advance audio. |
+| `08`       | u64      | Next voice-allocation sequence, one.                       |
+| `10`       | u8       | Active voices, zero.                                       |
+| `11`, `12` | u8       | Voice/tracker channel capacities, both eight.              |
+| `13`       | u8       | Tracker active, zero.                                      |
+| `14`       | u32      | Sample rate, 48,000.                                       |
+| `18`       | u32      | Number of audio assets.                                    |
+| `1c`       | u32      | Audio descriptor base address, `3c0000`.                   |
+
+Tracker controls at `51020` are four u32 fields: music reference, order index, row and frame-in-row.
+Selecting a music asset from stopped state starts at `(0,0,0)`; positions must exist in that asset.
+Use a single 16-byte copy to change selection and position together when an old position would be
+invalid for a new song. Writing music reference zero stops and clears the position; position writes
+while stopped are discarded. `music` selects and resets position, and `music_stop` clears this same
+state. The sequencer emits notes and advances its position at output time, before mixing that frame.
+
+Voice record at `51100 + slot*64`, for slots 0–7:
+
+| Offset    | Encoding / access | Meaning / reset                                                    |
+| :-------- | :---------------- | :----------------------------------------------------------------- |
+| `00`      | u8 RW             | Active, 0 or 1; reset zero.                                        |
+| `01`–`03` | zero RW           | Reserved; writes must keep zero.                                   |
+| `04`      | u32 RW            | Sound reference; reset zero. Music/unknown references are invalid. |
+| `08`      | binary64 RW       | Note 0–127; reset zero.                                            |
+| `10`      | binary64 RW       | Volume scale 0–1; reset one.                                       |
+| `18`      | u64 RW            | Voice age in frames; reset zero.                                   |
+| `20`      | binary64 RW       | Oscillator phase in `[0,1)`; reset zero.                           |
+| `28`      | u32 RW            | Nonzero noise state; reset one.                                    |
+| `2c`–`2f` | zero RW           | Reserved; writes must keep zero.                                   |
+| `30`      | u64 R             | Allocation sequence; reset zero.                                   |
+| `38`–`3f` | zero R            | Reserved.                                                          |
+
+Integer counters are exact through `2^53-1`; floats must be finite and within their stated ranges.
+An active voice needs a valid sound and age below duration plus release. `sfx` initializes the first
+free voice, otherwise steals the oldest allocation, and writes these same fields immediately.
+Raw changes do not implicitly restart phase/age or allocate a sequence. Setting active to zero
+stops the voice; manually activating a configured inactive voice retains its prior allocation sequence.
+Raw note/volume/phase changes affect the next output mix. Tracker notes may subsequently allocate
+or steal voices in that same frame. Rendering uses the existing exact binary64 state and oscillator
+calculations; the three alpha PCM traces remain unchanged.
+
+Audio-frame and allocation-counter exhaustion fault with `PX9012` before the overflowing increment.
+An `sfx` fault carries its source span; output-stage hardware faults have span `(0,0)`. Output faults
+are latched inside the machine's frame boundary, retaining phase 5 and not advancing its completed
+frame counter. Earlier successful commands may remain in the fault snapshot, just as with callback
+faults; restoring a healthy checkpoint is the recovery path.
+
+`tests/conformance/audio` is an ordinary source-visible cartridge. Native Release/Debug tests verify
+all eight voices, descriptors, command/register aliases, alternating raw-muted/audible PCM and full
+replay. Firefox E2E imports, compiles and runs the packed cartridge through the Worker. Standalone
+exporter parity, the full hardware viewer and the remaining hardware regions are still required.
 
 ### Visual image and allocation descriptors
 

@@ -65,6 +65,7 @@ export interface ExecutionContext {
 }
 
 export interface RuntimeHooks {
+  readonly completeFrame?: () => void;
   readonly call?: (
     name: string,
     arguments_: readonly unknown[],
@@ -178,6 +179,8 @@ export class DeterministicMachine implements CartridgeApi {
         this.cartridge.raster(line);
       }
       this.rasterLine = undefined;
+      this.phase = 'output';
+      this.hooks.completeFrame?.();
       const report: FrameReport = {
         frame: this.currentFrame,
         workUnits: this.budget.used,

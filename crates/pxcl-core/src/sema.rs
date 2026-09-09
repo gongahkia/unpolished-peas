@@ -1311,6 +1311,10 @@ impl<'syntax> Analyzer<'syntax> {
             self.builtin("visual_id", vec![Type::Text], Type::Int);
             return self.lookup(name);
         }
+        if name == "audio_id" {
+            self.builtin("audio_id", vec![Type::Text], Type::Int);
+            return self.lookup(name);
+        }
         let (name, count, return_type) = match name {
             "mem_read" => ("mem_read", 1, Type::Int),
             "mem_read16" => ("mem_read16", 1, Type::Int),
@@ -1337,6 +1341,7 @@ impl<'syntax> Analyzer<'syntax> {
                 | "mem_copy"
                 | "mem_fill"
                 | "visual_id"
+                | "audio_id"
         )
     }
 
@@ -2382,7 +2387,7 @@ on draw:
                 .any(|diagnostic| diagnostic.code == "PX3101")
         );
         let wrong_name = analyze(
-            "on start:\n  let id = visual_id(7)\n",
+            "on start:\n  let id = visual_id(7)\n  let sound_id = audio_id(7)\n",
             &AssetCatalog::default(),
         );
         assert!(
@@ -2390,6 +2395,14 @@ on draw:
                 .diagnostics
                 .iter()
                 .any(|diagnostic| diagnostic.code == "PX3101")
+        );
+        assert_eq!(
+            wrong_name
+                .diagnostics
+                .iter()
+                .filter(|diagnostic| diagnostic.code == "PX3101")
+                .count(),
+            2
         );
         let shadowed = analyze(
             "fn mem_read(value: Bool) -> Bool:\n  return value\non start:\n  assert mem_read(true), \"user function\"\n",

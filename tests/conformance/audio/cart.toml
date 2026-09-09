@@ -1,0 +1,16 @@
+format = 1
+language = "PXCL/1"
+id = "audio-conformance"
+title = "AUDIO CONFORMANCE"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "main.pxl"
+update_rate = 60
+
+[assets.tone]
+kind = "sound"
+path = "tone.pxs"
+
+[assets.theme]
+kind = "music"
+path = "theme.pxt"

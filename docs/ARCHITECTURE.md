@@ -65,6 +65,10 @@ System MMIO likewise encodes the real scheduler, RNG and work ledger. Revision-2
 retain boot/counter/cadence/accounting and terminal fault state, with explicit defaults for legacy
 revision-1 machines. Fault retries are rejected before any per-frame device reset. Current snapshots
 are completed-frame or fault boundaries; they do not claim resumable source-statement execution.
+Writable audio MMIO uses side-effect-free preparation and a commit after all bus targets validate.
+It updates the existing voice/tracker objects directly; their existing synth snapshot remains the
+single retained representation. Scanout and audio mixing run inside the scheduler's output phase
+before its frame counter advances, so a device failure is captured by the same terminal fault latch.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.

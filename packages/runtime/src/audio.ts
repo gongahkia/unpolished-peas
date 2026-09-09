@@ -1,5 +1,7 @@
 import { HARDWARE } from './hardware';
-import type { ConsoleCommand } from './protocol';
+import { MEMORY, type MemoryRegion } from './bus';
+import { RuntimeFault } from './errors';
+import type { ConsoleCommand, SourceSpan } from './protocol';
 
 export type Waveform = 'pulse' | 'triangle' | 'saw' | 'noise' | 'wavetable';
 
@@ -105,28 +107,7 @@ export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
   )
     return false;
   const nextSequence = value.nextSequence;
-  if (
-    !value.voices.every(
-      (voice: unknown, slot: number) =>
-        audioRecord(voice) &&
-        Object.keys(voice).length === 9 &&
-        typeof voice.active === 'boolean' &&
-        voice.slot === slot &&
-        typeof voice.sound === 'string' &&
-        voice.sound.length <= HARDWARE.cartridgeCapacityBytes &&
-        audioNumber(voice.note, 0, 127) &&
-        audioNumber(voice.volumeScale, 0, 1) &&
-        audioCounter(voice.ageFrames) &&
-        audioNumber(voice.phase, 0, 1) &&
-        voice.phase < 1 &&
-        audioCounter(voice.noiseState) &&
-        voice.noiseState > 0 &&
-        voice.noiseState <= 0xffff_ffff &&
-        audioCounter(voice.sequence) &&
-        voice.sequence < nextSequence,
-    )
-  )
-    return false;
+  if (!value.voices.every((voice, slot) => isVoice(voice, slot, nextSequence))) return false;
   return (
     value.tracker === null ||
     (audioRecord(value.tracker) &&
@@ -137,6 +118,27 @@ export function isSynthSnapshot(value: unknown): value is SynthSnapshot {
       audioCounter(value.tracker.orderIndex) &&
       audioCounter(value.tracker.row) &&
       audioCounter(value.tracker.frameInRow))
+  );
+}
+
+function isVoice(voice: unknown, slot: number, nextSequence: number): voice is Voice {
+  return (
+    audioRecord(voice) &&
+    Object.keys(voice).length === 9 &&
+    typeof voice.active === 'boolean' &&
+    voice.slot === slot &&
+    typeof voice.sound === 'string' &&
+    voice.sound.length <= HARDWARE.cartridgeCapacityBytes &&
+    audioNumber(voice.note, 0, 127) &&
+    audioNumber(voice.volumeScale, 0, 1) &&
+    audioCounter(voice.ageFrames) &&
+    audioNumber(voice.phase, 0, 1) &&
+    voice.phase < 1 &&
+    audioCounter(voice.noiseState) &&
+    voice.noiseState > 0 &&
+    voice.noiseState <= 0xffffffff &&
+    audioCounter(voice.sequence) &&
+    voice.sequence < nextSequence
   );
 }
 
@@ -182,6 +184,9 @@ function audioRecord(value: unknown): value is Record<string, unknown> {
 /** Validated oscillator and tracker data. Arbitrary PCM samples are intentionally unrepresentable. */
 export class AudioAssetStore {
   private readonly entries = new Map<string, AudioAsset>();
+  private readonly ordered: readonly AudioAsset[];
+  private readonly ids = new Map<string, number>();
+  private readonly descriptors: Uint8Array;
 
   public constructor(assets: readonly AudioAsset[] = []) {
     for (const asset of assets) {
@@ -205,10 +210,55 @@ export class AudioAssetStore {
         }
       }
     }
+    this.ordered = [...this.entries.values()].sort((left, right) =>
+      left.name < right.name ? -1 : left.name > right.name ? 1 : 0,
+    );
+    this.descriptors = new Uint8Array(this.ordered.length * MEMORY.audioAssetStride);
+    const view = new DataView(this.descriptors.buffer);
+    for (const [id, asset] of this.ordered.entries()) {
+      this.ids.set(asset.name, id);
+      const fields =
+        asset.kind === 'sound'
+          ? [
+              1,
+              ['pulse', 'triangle', 'saw', 'noise', 'wavetable'].indexOf(asset.waveform) + 1,
+              asset.note,
+              asset.durationFrames,
+              asset.envelope.releaseFrames,
+              0,
+              0,
+              0,
+            ]
+          : [2, 0, 0, 0, 0, asset.framesPerRow, asset.order.length, Number(asset.loop)];
+      for (const [field, value] of fields.entries())
+        view.setUint32(id * MEMORY.audioAssetStride + field * 4, value, true);
+    }
   }
 
   public get(name: string): AudioAsset | undefined {
     return this.entries.get(name);
+  }
+
+  public id(name: string): number {
+    return this.ids.get(name) ?? -1;
+  }
+  public byId(id: number): AudioAsset | undefined {
+    return this.ordered[id];
+  }
+  public get count(): number {
+    return this.ordered.length;
+  }
+  public memoryRegions(): readonly MemoryRegion[] {
+    return this.descriptors.length === 0
+      ? []
+      : [
+          {
+            name: 'audio asset descriptors',
+            address: MEMORY.audioAssets,
+            bytes: this.descriptors,
+            writable: false,
+          },
+        ];
   }
 }
 
@@ -233,6 +283,8 @@ export class Synthesizer {
   }
 
   public finishFrame(): AudioFrame {
+    if (this.frame === Number.MAX_SAFE_INTEGER)
+      throw new RuntimeFault('PX9012', 'audio-frame counter is exhausted', { start: 0, end: 0 });
     this.advanceTracker();
     const sampleCount = HARDWARE.audioSampleRate / HARDWARE.frameRate;
     const left = new Float32Array(sampleCount);
@@ -317,11 +369,148 @@ export class Synthesizer {
     return this.tracker === null ? null : { ...this.tracker };
   }
 
+  public memoryRegions(): readonly MemoryRegion[] {
+    return [
+      ...this.assets.memoryRegions(),
+      {
+        name: 'synth status',
+        address: MEMORY.audio,
+        length: 32,
+        writable: false,
+        readByte: (offset) => this.statusByte(offset),
+      },
+      {
+        name: 'tracker controls',
+        address: MEMORY.audioTracker,
+        length: 16,
+        writable: true,
+        readByte: (offset) => this.trackerByte(offset),
+        prepareWrite: (offset, bytes) => this.prepareTrackerWrite(offset, bytes),
+      },
+      ...this.voices.flatMap((voice): MemoryRegion[] => [
+        {
+          name: `voice ${String(voice.slot)} controls`,
+          address: MEMORY.audioVoices + voice.slot * MEMORY.voiceStride,
+          length: 48,
+          writable: true,
+          readByte: (offset) => this.voiceByte(voice, offset),
+          prepareWrite: (offset, bytes) => this.prepareVoiceWrite(voice, offset, bytes),
+        },
+        {
+          name: `voice ${String(voice.slot)} allocation`,
+          address: MEMORY.audioVoices + voice.slot * MEMORY.voiceStride + 48,
+          length: 16,
+          writable: false,
+          readByte: (offset) => (offset < 8 ? integerByte(voice.sequence, offset) : 0),
+        },
+      ]),
+    ];
+  }
+
+  private statusByte(offset: number): number {
+    if (offset < 8) return integerByte(this.frame, offset);
+    if (offset < 16) return integerByte(this.nextSequence, offset - 8);
+    if (offset === 16) return this.voices.filter((voice) => voice.active).length;
+    if (offset === 17) return HARDWARE.audioVoices;
+    if (offset === 18) return HARDWARE.trackerChannels;
+    if (offset === 19) return Number(this.tracker !== null);
+    if (offset < 24) return integerByte(HARDWARE.audioSampleRate, offset - 20);
+    if (offset < 28) return integerByte(this.assets.count, offset - 24);
+    return integerByte(MEMORY.audioAssets, offset - 28);
+  }
+
+  private trackerByte(offset: number): number {
+    if (this.tracker === null) return 0;
+    const values = [
+      this.assets.id(this.tracker.music) + 1,
+      this.tracker.orderIndex,
+      this.tracker.row,
+      this.tracker.frameInRow,
+    ];
+    return integerByte(values[Math.floor(offset / 4)] ?? 0, offset % 4);
+  }
+
+  private prepareTrackerWrite(offset: number, bytes: Uint8Array): (() => void) | undefined {
+    const staged = Uint8Array.from({ length: 16 }, (_, index) => this.trackerByte(index));
+    staged.set(bytes, offset);
+    const view = new DataView(staged.buffer);
+    const id = view.getUint32(0, true);
+    if (id === 0)
+      return () => {
+        this.tracker = null;
+      };
+    const music = this.assets.byId(id - 1);
+    if (music?.kind !== 'music') return undefined;
+    const next = {
+      music: music.name,
+      orderIndex: view.getUint32(4, true),
+      row: view.getUint32(8, true),
+      frameInRow: view.getUint32(12, true),
+    };
+    const patternName = music.order[next.orderIndex];
+    if (
+      patternName === undefined ||
+      music.patterns[patternName]?.rows[next.row] === undefined ||
+      next.frameInRow >= music.framesPerRow
+    )
+      return undefined;
+    return () => {
+      this.tracker = next;
+    };
+  }
+
+  private voiceByte(voice: Voice, offset: number): number {
+    if (offset === 0) return Number(voice.active);
+    if (offset < 4) return 0;
+    if (offset < 8) return integerByte(this.assets.id(voice.sound) + 1, offset - 4);
+    if (offset < 16) return floatByte(voice.note, offset - 8);
+    if (offset < 24) return floatByte(voice.volumeScale, offset - 16);
+    if (offset < 32) return integerByte(voice.ageFrames, offset - 24);
+    if (offset < 40) return floatByte(voice.phase, offset - 32);
+    if (offset < 44) return integerByte(voice.noiseState, offset - 40);
+    return 0;
+  }
+
+  private prepareVoiceWrite(
+    voice: Voice,
+    offset: number,
+    bytes: Uint8Array,
+  ): (() => void) | undefined {
+    const staged = Uint8Array.from({ length: 48 }, (_, index) => this.voiceByte(voice, index));
+    staged.set(bytes, offset);
+    if (staged[0] !== 0 && staged[0] !== 1) return undefined;
+    if ([1, 2, 3, 44, 45, 46, 47].some((index) => staged[index] !== 0)) return undefined;
+    const view = new DataView(staged.buffer);
+    const id = view.getUint32(4, true);
+    const sound = this.assets.byId(id - 1);
+    if (id !== 0 && sound?.kind !== 'sound') return undefined;
+    const next: Voice = {
+      ...voice,
+      active: staged[0] === 1,
+      sound: sound?.name ?? '',
+      note: view.getFloat64(8, true),
+      volumeScale: view.getFloat64(16, true),
+      ageFrames: Number(view.getBigUint64(24, true)),
+      phase: view.getFloat64(32, true),
+      noiseState: view.getUint32(40, true),
+    };
+    if (
+      !isVoice(next, voice.slot, this.nextSequence) ||
+      (next.active &&
+        (sound?.kind !== 'sound' ||
+          next.ageFrames >= sound.durationFrames + sound.envelope.releaseFrames))
+    )
+      return undefined;
+    return () => {
+      Object.assign(voice, next);
+    };
+  }
+
   public executeCommand(command: ConsoleCommand): void {
     switch (command.name) {
       case 'sfx': {
         const [handle] = expectArguments(command, 1);
-        this.trigger(readAssetName(handle, 'Sound'));
+        this.trigger(readAssetName(handle, 'Sound'), undefined, 1, command.sourceSpan);
         return;
       }
       case 'music': {
@@ -343,11 +532,18 @@ export class Synthesizer {
     }
   }
 
-  private trigger(soundName: string, noteOverride?: number, volumeScale = 1): void {
+  private trigger(
+    soundName: string,
+    noteOverride?: number,
+    volumeScale = 1,
+    sourceSpan: SourceSpan = { start: 0, end: 0 },
+  ): void {
     const sound = this.assets.get(soundName);
     if (sound?.kind !== 'sound') {
       throw new TypeError(`missing Sound asset '${soundName}'`);
     }
+    if (this.nextSequence === Number.MAX_SAFE_INTEGER)
+      throw new RuntimeFault('PX9012', 'voice-allocation counter is exhausted', sourceSpan);
     const voice =
       this.voices.find((candidate) => !candidate.active) ??
       this.voices.reduce((oldest, candidate) =>
@@ -484,6 +680,16 @@ function emptyVoice(slot: number): Voice {
     noiseState: 1,
     sequence: 0,
   };
+}
+
+function integerByte(value: number, offset: number): number {
+  return Math.floor(value / 2 ** (offset * 8)) & 255;
+}
+
+function floatByte(value: number, offset: number): number {
+  const view = new DataView(new ArrayBuffer(8));
+  view.setFloat64(0, value, true);
+  return view.getUint8(offset);
 }
 
 function validateAudioAsset(asset: unknown): asserts asset is AudioAsset {

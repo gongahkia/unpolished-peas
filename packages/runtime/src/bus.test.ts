@@ -1,13 +1,70 @@
 import { deepStrictEqual } from 'node:assert/strict';
 import { describe, expect, it } from 'vitest';
 import { WorkBudget } from './budget';
-import { MEMORY, MemoryBus, isMemorySnapshot } from './bus';
+import { MEMORY, MemoryBus, isMemorySnapshot, type WritableMemoryRegion } from './bus';
 import { IndexedGraphics } from './graphics';
 import { HARDWARE } from './hardware';
 
 const span = { start: 23, end: 31 };
 
 describe('hardware byte bus', () => {
+  it('prepares writable device operations without shadow state or partial cross-region commits', () => {
+    const owners = [0x0403, 0x0605];
+    let commits = 0;
+    const devices = owners.map((_, index): WritableMemoryRegion => ({
+      name: `device ${String(index)}`,
+      address: 2 + index * 2,
+      length: 2,
+      writable: true,
+      readByte: (offset) => ((owners[index] ?? 0) >>> (offset * 8)) & 255,
+      prepareWrite(offset, bytes) {
+        const staged = new DataView(new ArrayBuffer(2));
+        staged.setUint16(0, owners[index] ?? 0, true);
+        new Uint8Array(staged.buffer).set(bytes, offset);
+        const value = staged.getUint16(0, true);
+        if (value > 0x7fff) return undefined;
+        return () => {
+          owners[index] = value;
+          commits += 1;
+        };
+      },
+    }));
+    const ram = Uint8Array.of(1, 2);
+    const costs: number[] = [];
+    const bus = new MemoryBus(
+      [{ name: 'RAM', address: 0, bytes: ram, writable: true }, ...devices],
+      (units) => {
+        costs.push(units);
+      },
+    );
+    bus.copy(1, 0, 5, span);
+    expect([...ram]).toEqual([1, 1]);
+    expect(owners).toEqual([0x0302, 0x0504]);
+    expect(commits).toBe(2);
+    expect(costs).toEqual([11]);
+    const saved = bus.snapshot();
+    expect(saved.regions).toHaveLength(1);
+    expect(() => {
+      bus.fill(0, 7, 7, span);
+    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    expect(() => {
+      bus.fill(0, 255, 6, span);
+    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    expect(() => {
+      bus.write(2, 9, 1, span, true);
+    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    expect(commits).toBe(2);
+    expect(owners).toEqual([0x0302, 0x0504]);
+    deepStrictEqual(bus.snapshot(), saved);
+    owners[0] = 0x1234;
+    expect(bus.read(2, 2, span)).toBe(0x1234);
+    bus.write(2, 0x5678, 2, span);
+    expect(owners[0]).toBe(0x5678);
+    bus.restore(saved);
+    expect(owners[0]).toBe(0x5678);
+    expect(commits).toBe(3);
+  });
+
   it('reads live read-only device registers without storing a shadow image', () => {
     let value = 0x1234;
     const ram = new Uint8Array(2);

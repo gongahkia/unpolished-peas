@@ -118,6 +118,25 @@ test('complete local Studio and distribution workflow', async ({ page, context }
     .toBeGreaterThanOrEqual(3);
   await page.locator('.stop-player').click();
 
+  const audioCartridge = testInfo.outputPath('audio-conformance.pxc');
+  execFileSync('target/debug/px240c', [
+    'pack',
+    'tests/conformance/audio',
+    '--output',
+    audioCartridge,
+  ]);
+  await shellCommand(page, 'import');
+  await page.locator('input[type="file"]').setInputFiles(audioCartridge);
+  await expect(page.locator('.terminal')).toContainText('IMPORTED audio-conformance');
+  await shellCommand(page, 'run');
+  await expect
+    .poll(async () => {
+      const status = await page.locator('.player-status').innerText();
+      return /^F\d{5} W\d{5}$/.test(status) ? Number(status.slice(1, 6)) : -1;
+    })
+    .toBeGreaterThanOrEqual(3);
+  await page.locator('.stop-player').click();
+
   await shellCommand(page, 'new e2e-input INPUT CONFORMANCE');
   await shellCommand(page, 'edit');
   await page
