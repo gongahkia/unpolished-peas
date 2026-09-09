@@ -41,7 +41,7 @@ type FrameResponse = Awaited<ReturnType<SandboxSession['frame']>>;
 type DebugTab = 'SOURCE' | 'STATE' | 'TASKS' | 'PROFILE' | 'MEMORY' | 'AUDIO';
 
 const SNAPSHOT_INTERVAL = 30;
-const WORK_LIMIT = 50_000;
+const WORK_LIMIT = HARDWARE.workUnitsPerFrame;
 const decoder = new TextDecoder();
 
 export async function openDebugger(

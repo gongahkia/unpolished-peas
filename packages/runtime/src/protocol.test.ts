@@ -7,6 +7,22 @@ import { emptyInputFrame } from './input';
 import { isHostRequest, isWorkerResponse } from './protocol';
 
 describe('sandbox protocol', () => {
+  it('rejects a load that raises the fixed 50,000-unit work ceiling', () => {
+    const load = {
+      id: 1,
+      type: 'load',
+      moduleUrl: 'blob:https://px240c.test/module',
+      configuration: { seed: 1, updateRate: 60, workUnitsPerFrame: 50_000 },
+    };
+    expect(isHostRequest(load)).toBe(true);
+    expect(
+      isHostRequest({
+        ...load,
+        configuration: { ...load.configuration, workUnitsPerFrame: 50_001 },
+      }),
+    ).toBe(false);
+  });
+
   it('accepts complete frame messages and denies non-blob cartridge module URLs', () => {
     expect(isHostRequest({ id: 1, type: 'frame', input: emptyInputFrame() })).toBe(true);
     expect(

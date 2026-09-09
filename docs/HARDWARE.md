@@ -257,3 +257,10 @@ The per-frame work-unit ceiling is 50,000. The runtime stops at the first charge
 reports the responsible source span. The highest measured bundled path is Raster Rush with four
 simultaneous views at about 31,682 units, leaving headroom for input-dependent variation while still
 making the limit visible during ordinary development.
+
+The protocol and shared core reject a configuration above the fixed ceiling before constructing a
+cartridge; internal diagnostic tests may use a stricter limit. Studio takes its normal limit from the
+same `HARDWARE.workUnitsPerFrame` constant. A faulted work counter saturates at the largest safe PXCL
+integer (`2^53-1`) if an enormous charge would overflow it; the charge still faults at its source
+span before a bulk operation proceeds. Attribution retains the same saturated total. Ordinary
+in-budget accounting and first-party frame costs are unchanged.
