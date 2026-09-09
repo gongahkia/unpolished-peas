@@ -14,8 +14,13 @@ export const MEMORY = Object.freeze({
   transparency: 0x50050,
   palette: 0x50080,
   rasterLive: 0x50400,
+  visualInfo: 0x50300,
   raster: 0x55000,
   rasterStride: 40,
+  assets: 0xa0000,
+  assetStride: 32,
+  allocations: 0xc0000,
+  allocationStride: 24,
 } as const);
 
 export interface MemoryRegion {

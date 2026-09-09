@@ -42,7 +42,7 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Visual allocations/descriptors, input, audio, time/RNG/work/faults,
+Hardware Revision 1 contract. Input, audio, time/RNG/work/faults,
 save commits and cartridge ROM registers remain to be mapped. The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
@@ -52,17 +52,21 @@ of work RAM). It leaves room for cartridge descriptors without taking bytes from
 visual capacity. There are no address wraps or mirrored mappings. Every currently unmapped address
 reads zero; writing one faults. Offsets below are hexadecimal; lengths and counts are decimal.
 
-| Address |  Bytes | Access | Actual backing state / reset                                                                                        |
-| :------ | -----: | :----- | :------------------------------------------------------------------------------------------------------------------ |
-| `00000` | 65,536 | RW     | Work RAM, zero on cartridge load.                                                                                   |
-| `10000` | 34,560 | RW     | Front indexed framebuffer; zero before `on start`.                                                                  |
-| `19000` | 34,560 | RW     | Back indexed framebuffer; zero before `on start`.                                                                   |
-| `22000` | 34,560 | R      | Resolved indexed scanout; zero before `on start`.                                                                   |
-| `50000` |     80 | RW     | Draw camera/clip and logical palette remap; layout below.                                                           |
-| `50050` |      1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
-| `50080` |    128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
-| `50400` |     48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
-| `55000` |  5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
+| Address |    Bytes | Access | Actual backing state / reset                                                                                        |
+| :------ | -------: | :----- | :------------------------------------------------------------------------------------------------------------------ |
+| `00000` |   65,536 | RW     | Work RAM, zero on cartridge load.                                                                                   |
+| `10000` |   34,560 | RW     | Front indexed framebuffer; zero before `on start`.                                                                  |
+| `19000` |   34,560 | RW     | Back indexed framebuffer; zero before `on start`.                                                                   |
+| `22000` |   34,560 | R      | Resolved indexed scanout; zero before `on start`.                                                                   |
+| `30000` |  131,072 | RW     | Packed visual image, initialized from cartridge assets; unallocated tail is zero.                                   |
+| `50000` |       80 | RW     | Draw camera/clip and logical palette remap; layout below.                                                           |
+| `50050` |        1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
+| `50080` |      128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
+| `50300` |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
+| `50400` |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
+| `55000` |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
+| `a0000` | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
+| `c0000` | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
 
 All framebuffer bytes must be indices 0–31. Raw writes bypass draw camera, clip and logical remap;
 they do not bypass scanout remapping. `on start` now executes both high-level drawing and bus writes
@@ -135,10 +139,12 @@ invalid byte/word/register value, and `PX9011` a write outside the raster facili
 rejected by the compiler before execution. New memory built-ins are resolved on first use to retain
 old programs' symbol IDs and existing user functions with those names.
 
-Internal core snapshot revision 3 adds RAM and all mutable/retained bus regions. Its existing
+Internal core snapshot revision 4 retains RAM and all mutable/retained bus regions, including the
+visual image. Its existing
 framebuffer projection must agree with the memory image. Restore checks region layout and values
 before mutation and rolls back device, machine, save and pending-write state on a failure. Revision-2
-frame snapshots migrate with zero RAM; raw alpha revision-1 snapshots still restore only their
+frame snapshots migrate with zero RAM and source-initialized visuals; revision-3 snapshots retain
+their existing bus state and initialize the newly mapped visuals from source. Raw alpha revision-1 snapshots still restore only their
 original machine/save fields. This is frame-boundary compatibility, not public `.pxrec` migration
 or source-statement suspension. Full source-level pause state remains required.
 
@@ -146,6 +152,50 @@ or source-statement suspension. Full source-level pause state remains required.
 and debug tests, and through Wasm and the actual Worker in Firefox E2E. The lower-level bus tests
 cover all mapped regions, all 144 raster rows, mixed high/low writes, reset, permissions, bounds,
 unaligned words, overlaps, exact work charges and rollback. These tests cover this subset only.
+
+### Visual image and allocation descriptors
+
+`visual_id(name: Text) -> Int` returns a visual asset's zero-based descriptor ID, or `-1` if absent.
+IDs follow ascending ASCII manifest-name order, independent of declaration order. The lookup costs
+`1 + name.length` runtime units plus the usual compiler call charge and is legal in raster callbacks.
+Sound/music are not visual assets; custom fonts remain unimplemented at this checkpoint.
+
+The six `50300` status words are asset count, declared visual bytes, descriptor base `a0000`,
+allocation count, allocation base `c0000`, and display-default byte address (zero if absent).
+All descriptor fields below are unaligned-safe, little-endian unsigned 32-bit values.
+
+| Record               | Offset           | Meaning                                                                                           |
+| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------ |
+| Asset, 32 bytes      | `00`             | Kind: sprite 1, animation 2, tile set 3, map 4.                                                   |
+| Asset                | `04`, `08`, `0c` | Allocation count, first allocation descriptor address, total payload bytes.                       |
+| Asset                | `10`–`1f`        | Reserved zero.                                                                                    |
+| Allocation, 24 bytes | `00`             | Payload kind: indexed pixels 1, map cells 2, tile flags 3, display remap 4, default raster row 5. |
+| Allocation           | `04`, `08`       | Payload byte address and length.                                                                  |
+| Allocation           | `0c`, `10`       | Pixel/cell width and height; byte-width and 1 for flags/display records.                          |
+| Allocation           | `14`             | Map tileset asset ID plus one, otherwise zero.                                                    |
+
+Assets are packed consecutively in ID order with **no alignment padding**: a sprite's pixels;
+an animation's frames in order; a tileset's tile pixels in order followed by its flag bytes;
+a map's layers in order. Map cells are unsigned little-endian 16-bit indices regardless of host
+endianness. The renderer and `map_cell` read these exact words; `map_flag` reads the current mapped
+tile flags. Pixel bytes must remain 0–31 and map words must reference an existing tile. A partial
+word write validates the resulting whole word. Multi-allocation writes validate before any changes.
+Sprite/map/flag changes affect subsequent high-level calls immediately. Raster callbacks may read
+these regions but cannot write them. Assets and allocation metadata cannot be resized at runtime.
+
+Optional display defaults follow the named assets: 32 remap bytes then 38 bytes per configured
+raster row (LE u16 line, LE i16 X/Y scroll, 32 remap bytes). The line bytes must retain their original
+value; scroll and remap are writable. Defaults are latched at frame start, so changes affect the next
+frame rather than its already initialized live registers. These bytes count toward the same 128 KiB
+capacity, exactly as in alpha. The unallocated tail is writable byte scratch space; descriptor
+`used` counts declared payload, not nonzero bytes. Restart reloads source; snapshots retain the tail.
+
+Descriptor bytes are fixed machine metadata, outside the 128 KiB payload budget. Every allocation
+consumes at least one payload byte, bounding the table at 131,072 records (3 MiB, ending at `3c0000`).
+Only actual descriptor records are mapped; unused slots remain reserved zero/read-only holes.
+`tests/conformance/visual/` is an ordinary source-visible project exercising descriptor discovery,
+unaligned cells, sprite/tile/flag writes and mixed high-level drawing/query calls in Release/Debug
+core tests and Firefox import/compile/run. It is not the complete V1 service cartridge.
 
 ## Synthetic work model
 

@@ -2,6 +2,7 @@
 state frames: Int = 0
 
 on start:
+  assert visual_id("absent") == -1, "unknown visual ID"
   assert mem_read(0) == 0, "RAM reset"
   mem_write16(1, 4660)
   assert mem_read(1) == 52, "little endian low byte"

@@ -98,6 +98,60 @@ describe('production console dispatcher', () => {
     deepStrictEqual(runtime.snapshot(), initial);
   });
 
+  it('migrates revision-3 bus snapshots from source visuals while retaining RAM and rejecting malformed images', () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        update() {
+          api.call('mem_write', [0, 7], span);
+          api.call('mem_write', [MEMORY.visual, 23], span);
+        },
+      }),
+      {
+        ...configuration,
+        assets: {
+          declarations: { dot: { kind: 'sprite', path: 'dot.pxg' } },
+          files: {
+            'dot.pxg': new TextEncoder().encode(
+              JSON.stringify({ revision: 1, kind: 'sprite', width: 1, height: 1, frames: [[7]] }),
+            ),
+          },
+        },
+      },
+    );
+    runtime.runFrame(emptyInputFrame());
+    const current = runtime.snapshot();
+    expect(current.revision).toBe(4);
+    const legacy = {
+      ...current,
+      revision: 3,
+      memory: {
+        ...current.memory,
+        regions: current.memory.regions.filter((region) => region.address !== MEMORY.visual),
+      },
+    };
+    runtime.restore(legacy);
+    const migrated = runtime.snapshot();
+    expect(
+      migrated.memory.regions.find((region) => region.address === MEMORY.visual)?.bytes[0],
+    ).toBe(7);
+    expect(migrated.memory.regions[0]?.bytes[0]).toBe(7);
+    runtime.restore(current);
+    deepStrictEqual(runtime.snapshot(), current);
+    const malformed = structuredClone(current);
+    const visual = malformed.memory.regions.find((region) => region.address === MEMORY.visual);
+    if (visual === undefined) throw new Error('missing visual region');
+    visual.bytes[0] = 32;
+    expect(() => {
+      runtime.restore(malformed);
+    }).toThrow(/snapshot/);
+    deepStrictEqual(runtime.snapshot(), current);
+    expect(() => {
+      runtime.restore({ ...current, revision: 3 });
+    }).toThrow(/snapshot/);
+    deepStrictEqual(runtime.snapshot(), current);
+  });
+
   it('isolates instances, flushes saves once and resets per-frame debug/command buffers', () => {
     const first = createConsoleRuntime(factory, { ...configuration, debug: true });
     const second = createConsoleRuntime(factory, configuration);

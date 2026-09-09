@@ -1,0 +1,20 @@
+format = 1
+language = "PXCL/1"
+id = "visual-conformance"
+title = "VISUAL CONFORMANCE"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "main.pxl"
+update_rate = 60
+
+[assets.dot]
+kind = "sprite"
+path = "dot.pxg"
+
+[assets.level]
+kind = "map"
+path = "level.pxm"
+
+[assets.terrain]
+kind = "tile_set"
+path = "terrain.pxg"

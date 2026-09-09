@@ -43,7 +43,7 @@ export interface ConsoleRuntime {
 }
 
 export interface ConsoleRuntimeSnapshot {
-  readonly revision: 3;
+  readonly revision: 4;
   readonly machine: MachineSnapshot;
   readonly save: SaveValues;
   readonly graphics: GraphicsSnapshot;
@@ -55,7 +55,7 @@ export interface ConsoleRuntimeSnapshot {
 export function isConsoleRuntimeSnapshot(value: unknown): value is ConsoleRuntimeSnapshot {
   return (
     isRecord(value) &&
-    value.revision === 3 &&
+    value.revision === 4 &&
     Object.keys(value).length === 7 &&
     isMachineSnapshot(value.machine) &&
     isSaveValues(value.save) &&
@@ -79,8 +79,8 @@ export function createConsoleRuntime(
     source === undefined
       ? decodeRuntimeAssets({}, {})
       : decodeRuntimeAssets(source.declarations, source.files, source.displayPath);
-  const visualStore = new VisualAssetStore(assets.visual);
-  const graphics = new IndexedGraphics(visualStore, assets.display);
+  const visualStore = new VisualAssetStore(assets.visual, assets.display);
+  const graphics = new IndexedGraphics(visualStore);
   const synthesizer = new Synthesizer(new AudioAssetStore(assets.audio));
   let rendering = false;
   let machine: DeterministicMachine | undefined = undefined;
@@ -97,6 +97,7 @@ export function createConsoleRuntime(
     [
       { name: 'ram', address: MEMORY.ram, bytes: ram, writable: true },
       ...graphics.memoryRegions(),
+      ...visualStore.memoryRegions(),
       {
         name: 'master palette RGBA',
         address: MEMORY.palette,
@@ -191,8 +192,23 @@ export function createConsoleRuntime(
           graphics.restore(snapshot.graphics);
           synthesizer.restore(snapshot.audio);
         }
-        if (snapshot.memory !== undefined) bus.restore(snapshot.memory);
-        else if (snapshot.revision === 2) ram.fill(0);
+        if (snapshot.revision === 4) bus.restore(snapshot.memory);
+        else if (snapshot.revision >= 2) {
+          const visual = new VisualAssetStore(assets.visual, assets.display).memoryRegions()[0];
+          if (visual === undefined) throw new TypeError('missing visual image');
+          if (snapshot.revision === 3 && isMemorySnapshot(snapshot.memory)) {
+            bus.restore({
+              revision: 1,
+              regions: [
+                ...snapshot.memory.regions,
+                { address: MEMORY.visual, bytes: visual.bytes },
+              ].sort((a, b) => a.address - b.address),
+            });
+          } else {
+            ram.fill(0);
+            visualStore.memoryRegions()[0]?.bytes.set(visual.bytes);
+          }
+        }
       } catch (error) {
         requireMachine().restore(before.machine);
         saveMemory.restore(before.save, before.pendingSaveWrites);
@@ -210,7 +226,7 @@ export function createConsoleRuntime(
 
   function captureSnapshot(): ConsoleRuntimeSnapshot {
     return {
-      revision: 3,
+      revision: 4,
       machine: requireMachine().snapshot(),
       save: saveMemory.snapshot(),
       graphics: graphics.snapshot(),
@@ -226,6 +242,12 @@ export function createConsoleRuntime(
     sourceSpan: SourceSpan,
     context: ExecutionContext,
   ): unknown {
+    if (name === 'visual_id') {
+      if (arguments_.length !== 1 || typeof arguments_[0] !== 'string')
+        throw new RuntimeFault('PX9009', 'visual_id expects one Text name', sourceSpan);
+      requireMachine().work(1 + arguments_[0].length, sourceSpan);
+      return visualStore.id(arguments_[0]);
+    }
     if (MEMORY_CALLS.has(name)) {
       if (arguments_.length !== MEMORY_CALLS.get(name))
         throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
@@ -451,7 +473,7 @@ function readInteger(value: unknown, sourceSpan: SourceSpan): number {
 }
 
 function readWorkerSnapshot(value: unknown): {
-  revision: 1 | 2 | 3;
+  revision: 1 | 2 | 3 | 4;
   machine: unknown;
   save: SaveValues;
   graphics: unknown;
@@ -461,28 +483,30 @@ function readWorkerSnapshot(value: unknown): {
 } {
   if (
     !isRecord(value) ||
-    (value.revision === 3
+    (value.revision === 4
       ? !isConsoleRuntimeSnapshot(value)
-      : value.revision === 2
-        ? Object.keys(value).length !== 6 ||
-          !isMachineSnapshot(value.machine) ||
-          !isSaveValues(value.save) ||
-          !isGraphicsSnapshot(value.graphics) ||
-          !isSynthSnapshot(value.audio) ||
-          !isPendingSaveWrites(value.pendingSaveWrites, value.save)
-        : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
+      : value.revision === 3
+        ? !isConsoleRuntimeSnapshot({ ...value, revision: 4 })
+        : value.revision === 2
+          ? Object.keys(value).length !== 6 ||
+            !isMachineSnapshot(value.machine) ||
+            !isSaveValues(value.save) ||
+            !isGraphicsSnapshot(value.graphics) ||
+            !isSynthSnapshot(value.audio) ||
+            !isPendingSaveWrites(value.pendingSaveWrites, value.save)
+          : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
   ) {
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
   return {
-    revision: value.revision === 3 ? 3 : value.revision === 2 ? 2 : 1,
+    revision: value.revision === 4 ? 4 : value.revision === 3 ? 3 : value.revision === 2 ? 2 : 1,
     machine: value.machine,
     save: value.save as SaveValues,
     graphics: value.graphics,
     audio: value.audio,
     pendingSaveWrites:
       value.revision === 1 ? [] : (value.pendingSaveWrites as readonly SaveWrite[]),
-    memory: value.revision === 3 ? value.memory : undefined,
+    memory: value.revision === 4 || value.revision === 3 ? value.memory : undefined,
   };
 }
 
