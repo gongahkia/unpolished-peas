@@ -24,6 +24,54 @@ describe('public PXCL hardware conformance', () => {
 
   for (const mode of ['release', 'debug']) {
     for (const updateRate of [30, 60] as const) {
+      it(`runs system conformance in ${mode} at ${String(updateRate)} Hz`, async () => {
+        const output = join(temporary, `system-${mode}-${String(updateRate)}.mjs`);
+        execFileSync(join(root, 'target/debug/px240c'), [
+          'build',
+          join(root, 'tests/conformance/system.pxl'),
+          '--output',
+          output,
+          ...(mode === 'debug' ? ['--debug'] : []),
+        ]);
+        const generated = (await import(/* @vite-ignore */ pathToFileURL(output).href)) as {
+          default: CartridgeFactory;
+        };
+        const runtime = createConsoleRuntime(generated.default, {
+          seed: 1,
+          updateRate,
+          workUnitsPerFrame: 50_000,
+          debug: mode === 'debug',
+        });
+        for (let frame = 0; frame < 4; frame += 1) {
+          const before = runtime.snapshot();
+          const report = runtime.runFrame(emptyInputFrame());
+          const after = runtime.snapshot();
+          const ram = after.memory.regions.find((region) => region.address === MEMORY.ram)?.bytes;
+          if (ram === undefined) throw new Error('missing system capture');
+          const view = new DataView(ram.buffer, ram.byteOffset, ram.byteLength);
+          expect(view.getBigUint64(0, true)).toBe(BigInt(frame));
+          expect(view.getBigUint64(8, true)).toBe(
+            BigInt(updateRate === 60 ? frame + 1 : Math.floor(frame / 2) + 1),
+          );
+          expect(view.getFloat64(16, true)).toBe(frame / 60);
+          expect(view.getUint32(24, true)).toBe(after.machine.rngState);
+          expect(view.getUint8(28)).toBe(updateRate);
+          expect(view.getUint8(29)).toBe(3);
+          expect(view.getUint16(30, true)).toBe(65535);
+          expect(view.getBigUint64(32, true)).toBeGreaterThan(0n);
+          expect(view.getBigUint64(32, true)).toBeLessThan(BigInt(report.workUnits));
+          expect(view.getBigUint64(40, true)).toBe(50_000n);
+          expect(view.getUint8(48)).toBe(3);
+          expect(view.getBigUint64(64, true)).toBe(0n);
+          expect(view.getUint32(88, true)).toBe(1);
+          expect(view.getUint8(93)).toBe(1);
+          expect(view.getUint8(112)).toBe(2);
+          runtime.restore(before);
+          deepStrictEqual(runtime.runFrame(emptyInputFrame()), report);
+          deepStrictEqual(runtime.snapshot(), after);
+        }
+      });
+
       it(`runs all-port input conformance in ${mode} at ${String(updateRate)} Hz`, async () => {
         const output = join(temporary, `input-${mode}-${String(updateRate)}.mjs`);
         execFileSync(join(root, 'target/debug/px240c'), [

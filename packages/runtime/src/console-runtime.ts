@@ -44,7 +44,7 @@ export interface ConsoleRuntime {
 }
 
 export interface ConsoleRuntimeSnapshot {
-  readonly revision: 4;
+  readonly revision: 5;
   readonly machine: MachineSnapshot;
   readonly save: SaveValues;
   readonly graphics: GraphicsSnapshot;
@@ -56,9 +56,10 @@ export interface ConsoleRuntimeSnapshot {
 export function isConsoleRuntimeSnapshot(value: unknown): value is ConsoleRuntimeSnapshot {
   return (
     isRecord(value) &&
-    value.revision === 4 &&
+    value.revision === 5 &&
     Object.keys(value).length === 7 &&
     isMachineSnapshot(value.machine) &&
+    value.machine.revision === 2 &&
     isSaveValues(value.save) &&
     isGraphicsSnapshot(value.graphics) &&
     isSynthSnapshot(value.audio) &&
@@ -105,6 +106,13 @@ export function createConsoleRuntime(
         length: MEMORY.inputBytes,
         writable: false,
         readByte: (offset) => requireMachine().readInputByte(offset),
+      },
+      {
+        name: 'scheduler, RNG, work and fault status',
+        address: MEMORY.system,
+        length: MEMORY.systemBytes,
+        writable: false,
+        readByte: (offset) => requireMachine().readSystemByte(offset),
       },
       {
         name: 'master palette RGBA',
@@ -156,11 +164,12 @@ export function createConsoleRuntime(
     runFrame(input) {
       if (!isInputFrame(input))
         throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+      const active = requireMachine();
+      active.assertRunnable();
       drawCommands = [];
       audioCommands = [];
       debugTrace = [];
       debugTraceTruncated = false;
-      const active = requireMachine();
       graphics.beginFrame();
       rendering = true;
       let report;
@@ -202,7 +211,7 @@ export function createConsoleRuntime(
           graphics.restore(snapshot.graphics);
           synthesizer.restore(snapshot.audio);
         }
-        if (snapshot.revision === 4) bus.restore(snapshot.memory);
+        if (snapshot.revision >= 4) bus.restore(snapshot.memory);
         else if (snapshot.revision >= 2) {
           const visual = new VisualAssetStore(assets.visual, assets.display).memoryRegions()[0];
           if (visual === undefined) throw new TypeError('missing visual image');
@@ -236,7 +245,7 @@ export function createConsoleRuntime(
 
   function captureSnapshot(): ConsoleRuntimeSnapshot {
     return {
-      revision: 4,
+      revision: 5,
       machine: requireMachine().snapshot(),
       save: saveMemory.snapshot(),
       graphics: graphics.snapshot(),
@@ -483,7 +492,7 @@ function readInteger(value: unknown, sourceSpan: SourceSpan): number {
 }
 
 function readWorkerSnapshot(value: unknown): {
-  revision: 1 | 2 | 3 | 4;
+  revision: 1 | 2 | 3 | 4 | 5;
   machine: unknown;
   save: SaveValues;
   graphics: unknown;
@@ -493,31 +502,39 @@ function readWorkerSnapshot(value: unknown): {
 } {
   if (
     !isRecord(value) ||
-    (value.revision === 4
-      ? !isConsoleRuntimeSnapshot(value)
-      : value.revision === 3
-        ? !isConsoleRuntimeSnapshot({ ...value, revision: 4 })
-        : value.revision === 2
-          ? Object.keys(value).length !== 6 ||
-            !isMachineSnapshot(value.machine) ||
-            !isSaveValues(value.save) ||
-            !isGraphicsSnapshot(value.graphics) ||
-            !isSynthSnapshot(value.audio) ||
-            !isPendingSaveWrites(value.pendingSaveWrites, value.save)
-          : value.revision !== 1 || !isMachineSnapshot(value.machine) || !isSaveValues(value.save))
+    (value.revision === 5 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
   ) {
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
   return {
-    revision: value.revision === 4 ? 4 : value.revision === 3 ? 3 : value.revision === 2 ? 2 : 1,
+    revision: value.revision as 1 | 2 | 3 | 4 | 5,
     machine: value.machine,
     save: value.save as SaveValues,
     graphics: value.graphics,
     audio: value.audio,
     pendingSaveWrites:
       value.revision === 1 ? [] : (value.pendingSaveWrites as readonly SaveWrite[]),
-    memory: value.revision === 4 || value.revision === 3 ? value.memory : undefined,
+    memory: value.memory,
   };
+}
+
+function isLegacyWorkerSnapshot(value: Record<string, unknown>): boolean {
+  if (
+    !isMachineSnapshot(value.machine) ||
+    value.machine.revision !== 1 ||
+    !isSaveValues(value.save)
+  )
+    return false;
+  if (value.revision === 1) return Object.keys(value).length === 3;
+  if (value.revision !== 2 && value.revision !== 3 && value.revision !== 4) return false;
+  return (
+    Object.keys(value).length === (value.revision === 2 ? 6 : 7) &&
+    isGraphicsSnapshot(value.graphics) &&
+    isSynthSnapshot(value.audio) &&
+    isPendingSaveWrites(value.pendingSaveWrites, value.save) &&
+    (value.revision === 2 ||
+      (isMemorySnapshot(value.memory) && graphicsMatchesMemory(value.graphics, value.memory)))
+  );
 }
 
 function graphicsMatchesMemory(graphics: GraphicsSnapshot, memory: MemorySnapshot): boolean {

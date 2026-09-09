@@ -15,6 +15,8 @@ export const MEMORY = Object.freeze({
   palette: 0x50080,
   input: 0x50100,
   inputBytes: 48,
+  system: 0x50200,
+  systemBytes: 64,
   rasterLive: 0x50400,
   visualInfo: 0x50300,
   raster: 0x55000,

@@ -42,8 +42,8 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Audio, time/RNG/work/faults,
-save commits and cartridge ROM registers remain to be mapped. The standalone exporter still uses its
+Hardware Revision 1 contract. Audio, save commits and cartridge ROM registers remain to be mapped.
+The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
 
@@ -63,6 +63,7 @@ reads zero; writing one faults. Offsets below are hexadecimal; lengths and count
 | `50050` |        1 | R      | Actual sprite transparency index, fixed at zero.                                                                    |
 | `50080` |      128 | R      | Immutable master palette, 32 RGBA byte tuples; alpha always 255.                                                    |
 | `50100` |       48 | R      | Four controller ports and pointer, encoded from the machine's current/previous input frames. Reset zero.            |
+| `50200` |       64 | R      | Scheduler, deterministic time, RNG, work and fault registers, encoded from their actual owners; layout below.       |
 | `50300` |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
 | `50400` |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
 | `55000` |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
@@ -140,19 +141,63 @@ invalid byte/word/register value, and `PX9011` a write outside the raster facili
 rejected by the compiler before execution. New memory built-ins are resolved on first use to retain
 old programs' symbol IDs and existing user functions with those names.
 
-Internal core snapshot revision 4 retains RAM and all mutable/retained bus regions, including the
-visual image. Its existing
+Internal core snapshot revision 5 retains RAM and all mutable/retained bus regions, including the
+visual image. Its revision-2 machine snapshot also retains update cadence, work limit/usage/attribution,
+boot status, completed update count and terminal execution/fault state. Its existing
 framebuffer projection must agree with the memory image. Restore checks region layout and values
 before mutation and rolls back device, machine, save and pending-write state on a failure. Revision-2
 frame snapshots migrate with zero RAM and source-initialized visuals; revision-3 snapshots retain
-their existing bus state and initialize the newly mapped visuals from source. Raw alpha revision-1 snapshots still restore only their
-original machine/save fields. This is frame-boundary compatibility, not public `.pxrec` migration
+their existing bus state and initialize the newly mapped visuals from source. Revision-4 snapshots
+retain their complete device/bus images. All four legacy formats require a revision-1 machine snapshot:
+missing work/attribution become zero/empty, completed updates are derived from frame/cadence, and
+phase/fault become idle/none. Existing boot status is preserved, or set true when a legacy frame is
+nonzero. Raw alpha revision-1 snapshots still restore only their original machine/save fields, plus
+these explicit metadata defaults. This is frame-boundary compatibility, not public `.pxrec` migration
 or source-statement suspension. Full source-level pause state remains required.
 
 `tests/conformance/memory.pxl` runs through the native compiler and shared production core in release
 and debug tests, and through Wasm and the actual Worker in Firefox E2E. The lower-level bus tests
 cover all mapped regions, all 144 raster rows, mixed high/low writes, reset, permissions, bounds,
 unaligned words, overlaps, exact work charges and rollback. These tests cover this subset only.
+
+### Scheduler, time, RNG, work and fault registers
+
+These read-only MMIO fields at `50200` encode actual machine state at the instant of the read. There
+is no periodically synchronized register image. Multi-byte fields are little-endian. Unsigned 64-bit
+fields represent exact integers through `2^53-1`; their unused upper bits are zero.
+
+| Offset     | Encoding      | Meaning                                                                                |
+| :--------- | :------------ | :------------------------------------------------------------------------------------- |
+| `00`       | u64           | Display frames completed; also the current callback's frame index. Reset zero.         |
+| `08`       | u64           | Successful update callbacks completed. Reset zero.                                     |
+| `10`       | IEEE binary64 | Cartridge seconds, exactly the machine's `frame / 60` calculation; no host clock.      |
+| `18`       | u32           | Current normalized RNG state; high-level RNG calls advance this same owner.            |
+| `1c`       | u8            | Configured update cadence, 30 or 60.                                                   |
+| `1d`       | u8            | Phase: 0 idle, 1 start, 2 update, 3 draw, 4 raster.                                    |
+| `1e`       | u16           | Active raster line, 0–143; `65535` outside raster.                                     |
+| `20`       | u64           | Current boot/frame work usage, including the charge for this read or copy.             |
+| `28`       | u64           | Actual work limit, 50,000 in production; internal diagnostic hosts may lower it.       |
+| `30`       | u8            | Status bits: 0 boot completed, 1 callback active, 2 terminal fault.                    |
+| `31`–`33`  | zero          | Reserved.                                                                              |
+| `34`       | u16           | Numeric `PX9xxx` fault code; zero when healthy, 9199 for an unexpected host exception. |
+| `36`–`37`  | zero          | Reserved.                                                                              |
+| `38`, `3c` | u32           | Fault source span start/end; zero when absent or unavailable.                          |
+
+Updates run on every frame at 60 Hz and even-indexed frames at 30 Hz. The update counter advances
+only after its callback returns successfully; draw/raster see that completed count. The frame
+counter advances only after all callbacks return. Work resets before start and before each frame,
+not when read or snapshotted. A fault retains the active phase/line, work and source span; the active
+status bit clears. Ordinary fault attempts leave the original exception and message intact. Further
+execution attempts fail with `PX9014` before resetting devices, without replacing the original latch.
+Restart or restore a healthy checkpoint to resume. Restoring a faulted checkpoint keeps it faulted.
+Attempting another frame at `2^53-1` completed frames faults with `PX9012`, without counter wrap.
+
+Current machine snapshots are accepted only at idle or terminal-fault boundaries, not during a live
+callback. They validate cadence, limit and counter/phase consistency before restore. This does not
+implement resumable source-statement pauses. The public `tests/conformance/system.pxl` exercises
+all callback phases and scanlines, mixed RNG/register access, counters, status and charged reads.
+Native Release/Debug tests run it at 30/60 Hz, check binary64 time and copied register bytes, and
+replay complete snapshots. Firefox E2E compiles/runs it in the Worker and rewinds a debug frame.
 
 ### Visual image and allocation descriptors
 

@@ -3,7 +3,16 @@ import { describe, expect, it } from 'vitest';
 import { createConsoleRuntime } from './console-runtime';
 import { MEMORY } from './bus';
 import { emptyInputFrame } from './input';
-import type { CartridgeFactory } from './machine';
+import type { CartridgeFactory, MachineSnapshot } from './machine';
+
+const legacyMachine = (snapshot: MachineSnapshot) => ({
+  revision: 1,
+  frame: snapshot.frame,
+  rngState: snapshot.rngState,
+  cartridge: snapshot.cartridge,
+  input: snapshot.input,
+  previousInput: snapshot.previousInput,
+});
 
 const span = { start: 10, end: 20 };
 const configuration = { seed: 99, workUnitsPerFrame: 50_000, updateRate: 60 as const };
@@ -72,7 +81,11 @@ describe('production console dispatcher', () => {
     const before = runtime.snapshot();
     const invalid = {
       ...before,
-      machine: { ...before.machine, frame: 99 },
+      machine: {
+        ...before.machine,
+        frame: 99,
+        execution: { ...before.machine.execution, updates: 99 },
+      },
       save: { ...before.save, counter: 99 },
       audio: {
         ...before.audio,
@@ -122,7 +135,7 @@ describe('production console dispatcher', () => {
     expect(runtime.snapshot().memory.regions[0]?.bytes[0]).toBe(7);
     runtime.restore({
       revision: 2,
-      machine: initial.machine,
+      machine: legacyMachine(initial.machine),
       save: initial.save,
       graphics: initial.graphics,
       audio: initial.audio,
@@ -154,10 +167,11 @@ describe('production console dispatcher', () => {
     );
     runtime.runFrame(emptyInputFrame());
     const current = runtime.snapshot();
-    expect(current.revision).toBe(4);
+    expect(current.revision).toBe(5);
     const legacy = {
       ...current,
       revision: 3,
+      machine: legacyMachine(current.machine),
       memory: {
         ...current.memory,
         regions: current.memory.regions.filter((region) => region.address !== MEMORY.visual),
@@ -180,9 +194,94 @@ describe('production console dispatcher', () => {
     }).toThrow(/snapshot/);
     deepStrictEqual(runtime.snapshot(), current);
     expect(() => {
-      runtime.restore({ ...current, revision: 3 });
+      runtime.restore({ ...current, revision: 3, machine: legacyMachine(current.machine) });
     }).toThrow(/snapshot/);
     deepStrictEqual(runtime.snapshot(), current);
+  });
+
+  it('migrates revision-4 device images without inventing prior work or fault state', () => {
+    const runtime = createConsoleRuntime(factory, configuration);
+    runtime.runFrame(emptyInputFrame());
+    const current = runtime.snapshot();
+    runtime.runFrame(emptyInputFrame());
+    runtime.restore({ ...current, revision: 4, machine: legacyMachine(current.machine) });
+    deepStrictEqual(runtime.snapshot(), {
+      ...current,
+      machine: {
+        ...current.machine,
+        budget: { ...current.machine.budget, used: 0, attribution: [] },
+      },
+    });
+    for (const revision of [1, 2, 3, 4, 6])
+      expect(() => {
+        runtime.restore({ ...current, revision });
+      }).toThrow(/snapshot/);
+  });
+
+  it('latches system faults before a retry can reset devices and restores both healthy and faulted checkpoints', () => {
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        draw() {
+          api.call('pal', [2, 7], span);
+          api.call('mem_write', [MEMORY.system, 0], span);
+        },
+      }),
+      configuration,
+    );
+    const healthy = runtime.snapshot();
+    expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9021' }),
+    );
+    const faulted = runtime.snapshot();
+    expect(faulted.machine.execution).toEqual({
+      booted: true,
+      updates: 1,
+      phase: 'draw',
+      rasterLine: null,
+      fault: { code: 9021, sourceSpan: span },
+    });
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
+        expect.objectContaining({ code: 'PX9014' }),
+      );
+      deepStrictEqual(runtime.snapshot(), faulted);
+    }
+    runtime.restore(healthy);
+    deepStrictEqual(runtime.snapshot(), healthy);
+    runtime.restore(faulted);
+    deepStrictEqual(runtime.snapshot(), faulted);
+    expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
+      expect.objectContaining({ code: 'PX9014' }),
+    );
+  });
+
+  it('charges system reads before encoding authoritative work usage and rejects inconsistent accounting', () => {
+    const observed: unknown[] = [];
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        update() {},
+        draw() {
+          api.work(7, span);
+          observed.push(api.call('mem_read16', [MEMORY.system + 32], span));
+          observed.push(api.call('mem_read16', [MEMORY.system + 40], span));
+          observed.push(api.call('mem_read', [MEMORY.system + 29], span));
+        },
+      }),
+      configuration,
+    );
+    expect(runtime.runFrame(emptyInputFrame()).workUnits).toBe(12);
+    expect(observed).toEqual([9, 50_000, 3]);
+    const before = runtime.snapshot();
+    expect(before.memory.regions.some((region) => region.address === MEMORY.system)).toBe(false);
+    expect(() => {
+      runtime.restore({
+        ...before,
+        machine: { ...before.machine, budget: { ...before.machine.budget, used: 11 } },
+      });
+    }).toThrow(/snapshot/);
+    deepStrictEqual(runtime.snapshot(), before);
   });
 
   it('isolates instances, flushes saves once and resets per-frame debug/command buffers', () => {

@@ -45,7 +45,7 @@ tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.
-The revision-4 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
+The revision-5 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
 synthesizer and retained bus state. Restore validates all components and rolls back on a device-reference failure.
 The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
 snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
@@ -61,6 +61,10 @@ migrate the new visual region from source, while current snapshots retain all mu
 Read-only controller/pointer MMIO encodes the scheduler's actual current/previous input frames;
 there is no shadow input buffer to synchronize or independently restore. Core input validation
 precedes graphics resets; direct `DeterministicMachine` callers are validated at its frame boundary too.
+System MMIO likewise encodes the real scheduler, RNG and work ledger. Revision-2 machine snapshots
+retain boot/counter/cadence/accounting and terminal fault state, with explicit defaults for legacy
+revision-1 machines. Fault retries are rejected before any per-frame device reset. Current snapshots
+are completed-frame or fault boundaries; they do not claim resumable source-statement execution.
 
 Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
 documented implementation detail conflicts with this overview.
