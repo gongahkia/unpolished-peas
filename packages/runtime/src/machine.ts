@@ -1,4 +1,9 @@
-import { WorkBudget, type WorkAttribution } from './budget';
+import {
+  WorkBudget,
+  isWorkBudgetSnapshot,
+  type WorkAttribution,
+  type WorkBudgetSnapshot,
+} from './budget';
 import { RuntimeFault } from './errors';
 import { orderedDither } from './graphics';
 import {
@@ -10,6 +15,15 @@ import {
 } from './input';
 import type { SandboxConfiguration, SourceSpan } from './protocol';
 import { DeterministicRng } from './rng';
+import {
+  isExecutionSnapshot,
+  isFaultSpan,
+  systemRegisterByte,
+  type ExecutionPhase,
+  type ExecutionSnapshot,
+  type MachineFault,
+} from './system';
+export type { ExecutionPhase } from './system';
 
 export interface CartridgeSnapshot {
   readonly state: unknown;
@@ -44,8 +58,6 @@ export interface CartridgeApi {
 
 export type CartridgeFactory = (api: CartridgeApi) => GeneratedCartridge;
 
-export type ExecutionPhase = 'start' | 'update' | 'draw' | 'raster';
-
 export interface ExecutionContext {
   readonly frame: number;
   readonly phase: ExecutionPhase;
@@ -70,13 +82,20 @@ export interface FrameReport {
   readonly attribution: readonly WorkAttribution[];
 }
 
-export interface MachineSnapshot {
+export interface LegacyMachineSnapshot {
   readonly revision: 1;
   readonly frame: number;
   readonly rngState: number;
   readonly cartridge: CartridgeSnapshot;
   readonly input: InputFrame;
   readonly previousInput: InputFrame;
+}
+
+export interface MachineSnapshot extends Omit<LegacyMachineSnapshot, 'revision'> {
+  readonly revision: 2;
+  readonly updateRate: 30 | 60;
+  readonly budget: WorkBudgetSnapshot;
+  readonly execution: ExecutionSnapshot;
 }
 
 /** Deterministic callback scheduler and the only API surface visible to generated cartridge code. */
@@ -90,14 +109,18 @@ export class DeterministicMachine implements CartridgeApi {
   private booted = false;
   private input: InputFrame = emptyInputFrame();
   private previousInput: InputFrame = emptyInputFrame();
-  private phase: ExecutionPhase = 'start';
+  private phase: ExecutionPhase = 'idle';
   private rasterLine: number | undefined;
+  private completedUpdates = 0;
+  private lastFault: MachineFault | null = null;
 
   public constructor(
     factory: CartridgeFactory,
     configuration: SandboxConfiguration,
     hooks: RuntimeHooks = {},
   ) {
+    if (![30, 60].includes(configuration.updateRate))
+      throw new RangeError('update rate must be 30 or 60 Hz');
     this.budget = new WorkBudget(configuration.workUnitsPerFrame);
     this.rng = new DeterministicRng(configuration.seed);
     this.updateRate = configuration.updateRate;
@@ -114,54 +137,80 @@ export class DeterministicMachine implements CartridgeApi {
   }
 
   public boot(): void {
+    this.assertRunnable();
     if (this.booted) {
       return;
     }
     this.budget.beginFrame();
     this.phase = 'start';
     this.rasterLine = undefined;
-    this.cartridge.start();
-    this.booted = true;
+    try {
+      this.cartridge.start();
+      this.booted = true;
+      this.phase = 'idle';
+    } catch (error) {
+      this.rememberFault(error);
+      throw error;
+    }
   }
 
   public runFrame(input: InputFrame): FrameReport {
     if (!isInputFrame(input))
       throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+    this.assertRunnable();
     if (!this.booted) {
       this.boot();
     }
     this.previousInput = this.input;
     this.input = structuredClone(input);
     this.budget.beginFrame();
-    if (this.updateRate === 60 || this.currentFrame % 2 === 0) {
-      this.phase = 'update';
-      this.cartridge.update();
+    try {
+      if (this.updateRate === 60 || this.currentFrame % 2 === 0) {
+        this.phase = 'update';
+        this.cartridge.update();
+        this.completedUpdates += 1;
+      }
+      this.phase = 'draw';
+      this.cartridge.draw();
+      for (let line = 0; line < 144; line += 1) {
+        this.phase = 'raster';
+        this.rasterLine = line;
+        this.cartridge.raster(line);
+      }
+      this.rasterLine = undefined;
+      const report: FrameReport = {
+        frame: this.currentFrame,
+        workUnits: this.budget.used,
+        attribution: this.budget.attribution(),
+      };
+      this.currentFrame += 1;
+      this.phase = 'idle';
+      return report;
+    } catch (error) {
+      this.rememberFault(error);
+      throw error;
     }
-    this.phase = 'draw';
-    this.cartridge.draw();
-    for (let line = 0; line < 144; line += 1) {
-      this.phase = 'raster';
-      this.rasterLine = line;
-      this.cartridge.raster(line);
-    }
-    this.rasterLine = undefined;
-    const report: FrameReport = {
-      frame: this.currentFrame,
-      workUnits: this.budget.used,
-      attribution: this.budget.attribution(),
-    };
-    this.currentFrame += 1;
-    return report;
   }
 
   public snapshot(): MachineSnapshot {
+    if (this.phase !== 'idle' && this.lastFault === null)
+      throw new TypeError('machine snapshots require a completed frame or fault boundary');
     return structuredClone({
-      revision: 1,
+      revision: 2,
       frame: this.currentFrame,
       rngState: this.rng.state,
       cartridge: this.cartridge.snapshot(),
       input: this.input,
       previousInput: this.previousInput,
+      updateRate: this.updateRate,
+      budget: this.budget.snapshot(),
+      execution: {
+        booted: this.booted,
+        updates: this.completedUpdates,
+        phase: this.phase,
+        rasterLine: this.rasterLine ?? null,
+        fault: this.lastFault,
+      },
     });
   }
 
@@ -170,11 +219,38 @@ export class DeterministicMachine implements CartridgeApi {
       throw new TypeError('invalid PX-240C machine snapshot');
     }
     const snapshot = value;
+    if (
+      snapshot.revision === 2 &&
+      (snapshot.updateRate !== this.updateRate || snapshot.budget.limit !== this.budget.limit)
+    )
+      throw new TypeError('machine snapshot does not match the execution configuration');
+    const previous = structuredClone(this.cartridge.snapshot());
+    try {
+      this.cartridge.restore(structuredClone(snapshot.cartridge));
+    } catch (error) {
+      this.cartridge.restore(previous);
+      throw error;
+    }
+    if (snapshot.revision === 2) {
+      this.budget.restore(snapshot.budget);
+      this.booted = snapshot.execution.booted;
+      this.completedUpdates = snapshot.execution.updates;
+      this.phase = snapshot.execution.phase;
+      this.rasterLine = snapshot.execution.rasterLine ?? undefined;
+      this.lastFault = structuredClone(snapshot.execution.fault);
+    } else {
+      this.budget.beginFrame();
+      this.booted = this.booted || snapshot.frame > 0;
+      this.completedUpdates =
+        this.updateRate === 60 ? snapshot.frame : Math.ceil(snapshot.frame / 2);
+      this.phase = 'idle';
+      this.rasterLine = undefined;
+      this.lastFault = null;
+    }
     this.currentFrame = snapshot.frame;
     this.rng.restore(snapshot.rngState);
     this.input = structuredClone(snapshot.input);
     this.previousInput = structuredClone(snapshot.previousInput);
-    this.cartridge.restore(structuredClone(snapshot.cartridge));
   }
 
   public inspect(): CartridgeInspection {
@@ -185,8 +261,45 @@ export class DeterministicMachine implements CartridgeApi {
     return inputRegisterByte(this.input, this.previousInput, offset);
   }
 
+  public readSystemByte(offset: number): number {
+    return systemRegisterByte(
+      {
+        frame: this.currentFrame,
+        updates: this.completedUpdates,
+        seconds: this.cartridgeTimeSeconds,
+        rngState: this.rng.state,
+        updateRate: this.updateRate,
+        phase: this.phase,
+        rasterLine: this.rasterLine,
+        booted: this.booted,
+        fault: this.lastFault,
+        used: this.budget.used,
+        limit: this.budget.limit,
+      },
+      offset,
+    );
+  }
+
+  public assertRunnable(): void {
+    if (this.lastFault !== null)
+      throw new RuntimeFault(
+        'PX9014',
+        'cartridge faulted; restart or restore a healthy checkpoint',
+        this.lastFault.sourceSpan,
+      );
+    if (this.phase !== 'idle')
+      throw new RuntimeFault('PX9014', 'cartridge is already executing', { start: 0, end: 0 });
+    if (this.currentFrame === Number.MAX_SAFE_INTEGER)
+      this.fault('PX9012', 'display-frame counter is exhausted', { start: 0, end: 0 });
+  }
+
   public work(units: number, sourceSpan: SourceSpan): void {
-    this.budget.charge(units, sourceSpan);
+    try {
+      this.budget.charge(units, sourceSpan);
+    } catch (error) {
+      this.rememberFault(error, sourceSpan);
+      throw error;
+    }
   }
 
   public call(name: string, arguments_: readonly unknown[], sourceSpan: SourceSpan): unknown {
@@ -277,7 +390,20 @@ export class DeterministicMachine implements CartridgeApi {
   }
 
   public fault(code: string, message: string, sourceSpan: SourceSpan): never {
-    throw new RuntimeFault(code, message, sourceSpan);
+    const error = new RuntimeFault(code, message, sourceSpan);
+    this.rememberFault(error);
+    throw error;
+  }
+
+  private rememberFault(error: unknown, fallback: SourceSpan = { start: 0, end: 0 }): void {
+    const span = error instanceof RuntimeFault ? error.sourceSpan : fallback;
+    this.lastFault = {
+      code:
+        error instanceof RuntimeFault && /^PX9\d{3}$/.test(error.code)
+          ? Number(error.code.slice(2))
+          : 9199,
+      sourceSpan: isFaultSpan(span) ? { ...span } : { start: 0, end: 0 },
+    };
   }
 
   public probe(id: number, sourceSpan: SourceSpan, locals: unknown): void {
@@ -293,13 +419,14 @@ export class DeterministicMachine implements CartridgeApi {
   }
 }
 
-export function isMachineSnapshot(value: unknown): value is MachineSnapshot {
-  if (typeof value !== 'object' || value === null) {
+export function isMachineSnapshot(
+  value: unknown,
+): value is MachineSnapshot | LegacyMachineSnapshot {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
     return false;
   }
   const candidate = value as Record<string, unknown>;
-  return (
-    candidate.revision === 1 &&
+  const base =
     Number.isSafeInteger(candidate.frame) &&
     typeof candidate.frame === 'number' &&
     candidate.frame >= 0 &&
@@ -307,7 +434,23 @@ export function isMachineSnapshot(value: unknown): value is MachineSnapshot {
     isInputFrame(candidate.input) &&
     isInputFrame(candidate.previousInput) &&
     typeof candidate.cartridge === 'object' &&
-    candidate.cartridge !== null
+    candidate.cartridge !== null;
+  if (!base) return false;
+  if (candidate.revision === 1) return Object.keys(candidate).length === 6;
+  return (
+    candidate.revision === 2 &&
+    Object.keys(candidate).length === 9 &&
+    typeof candidate.rngState === 'number' &&
+    candidate.rngState > 0 &&
+    candidate.rngState <= 0xffffffff &&
+    (candidate.updateRate === 30 || candidate.updateRate === 60) &&
+    isWorkBudgetSnapshot(candidate.budget) &&
+    isExecutionSnapshot(
+      candidate.execution,
+      candidate.frame as number,
+      candidate.updateRate,
+      candidate.budget,
+    )
   );
 }
 

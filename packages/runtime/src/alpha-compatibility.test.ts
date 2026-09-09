@@ -23,7 +23,14 @@ const hash = (bytes: Uint8Array | string): string =>
   createHash('sha256').update(bytes).digest('hex');
 const legacySnapshot = (snapshot: ConsoleRuntimeSnapshot): unknown => ({
   revision: 1,
-  machine: snapshot.machine,
+  machine: {
+    revision: 1,
+    frame: snapshot.machine.frame,
+    rngState: snapshot.machine.rngState,
+    cartridge: snapshot.machine.cartridge,
+    input: snapshot.machine.input,
+    previousInput: snapshot.machine.previousInput,
+  },
   save: snapshot.save,
 });
 function pcmBytes(audio: AudioFrame): Uint8Array {

@@ -483,6 +483,40 @@ Each group may produce several coherent commits, and integration occurs througho
   snapshots and real system MMIO, retaining explicit legacy migrations. Hardware Revision 1 remains
   incomplete. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2h: authoritative system registers and execution snapshots
+
+- Added read-only system MMIO at `0x50200`: completed frame/update counts, frame-derived binary64
+  time, actual RNG state, cadence, callback phase/scanline, charged work/limit and terminal fault
+  status/source span. Reads encode device-owned state directly; no shadow register image is saved.
+  All four callback phases and all 144 scanlines are exercised by ordinary PXCL conformance source.
+- Machine snapshot revision 2 now retains boot/counter/cadence, work accounting/attribution and fault
+  boundaries; aggregate core snapshots advance to revision 5. Legacy core revisions 1–4 explicitly
+  require their original revision-1 machine shape. Migration derives update counts, defaults missing
+  accounting to zero/empty and phase/fault to idle/none, and preserves boot status or infers boot
+  completion from a nonzero frame. Existing graphics/audio/visual migration behavior remains tested.
+- Faults retain their original phase, line, source span and work usage. Retry fails before per-frame
+  device reset; restoring a healthy checkpoint permits execution, while restoring a faulted one keeps
+  it terminal. Frame counters fault at the exact-integer ceiling rather than wrapping. Snapshot
+  validation rejects inconsistent counter/phase/configuration/accounting, and cartridge restore
+  failure rolls back cartridge state. Live-callback snapshots are explicitly rejected: source-level
+  suspension is still unimplemented, not implied by the new phase metadata.
+- Added native Release/Debug system conformance at both 30 and 60 Hz, binary register/time capture,
+  RNG alias checks and full replay equality. Firefox compiles and runs the fixture in the real Worker,
+  then steps/rewinds/replays a debug frame. Alpha compatibility now projects the original six-field
+  machine format when hashing old state; **no immutable fixture was regenerated or edited**.
+- `./scripts/check.sh` passed: formatting, lint, strict TypeScript, **105 Vitest tests**, production
+  builds, **one complete Firefox E2E** (25.4 s), Rust fmt/Clippy, **47 Rust tests**, native and release
+  Wasm builds. An initial focused lint run found test callback/style issues plus a defensive typed
+  cadence check; these were corrected. The first full gate stopped on test formatting after lint's
+  autofix; formatting was applied and the entire gate rerun successfully. No final-gate tests skipped.
+- Games remain 42,851 / 41,262 / 38,039 bytes with the same hashes recorded above. Main/Worker JS
+  measure 124,782/64,673 bytes; Wasm remains 1,167,748 bytes. All frozen alpha output/work/state/PCM
+  traces pass. No visual-layout change or additional manual screenshot was made; Chromium remains
+  open alongside the rest of the V1 stopping contract.
+- Next: audio control/status backed by the existing synthesizer, then save commits/ROM and the
+  viewer, complete conformance and shared-host work. Hardware Revision 1 is still incomplete.
+  Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

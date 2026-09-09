@@ -74,6 +74,11 @@ Four controller values are available as `pad1` through `pad4`. Button values are
 - `rng_num()` returns a deterministic value in `[0, 1)`.
 - `rng_int(minimum, maximum)` returns an unbiased deterministic integer in the half-open range.
 
+The read-only system bus at `0x50200` exposes the actual frame/update counters, frame-derived time,
+RNG state, work ledger and fault/phase status. Reads share ordinary bus costs and do not advance RNG
+or time. See [HARDWARE.md](HARDWARE.md#scheduler-time-rng-work-and-fault-registers) for the byte layout,
+fault latch and snapshot semantics.
+
 The host input adapter combines keyboard, pointer/touch, and standard gamepads. Pointer coordinates
 are clamped to the virtual display and recorded alongside all four controller ports.
 These calls and the input bus read the same current/previous frames. Edges are not consumed by reads
