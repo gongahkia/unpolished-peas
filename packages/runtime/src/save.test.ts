@@ -144,6 +144,17 @@ describe('worker save memory', () => {
     }).toThrow(expect.objectContaining({ code: 'PX9001' }));
     expect(save.deviceSnapshot()).toEqual(before);
   });
+
+  it('applies debugger save edits without consuming cartridge work', () => {
+    const { save, bus, budget } = device();
+    budget.beginFrame();
+    bus.edit(MEMORY.save + 7, Uint8Array.of(42));
+    bus.edit(MEMORY.saveControl, Uint8Array.of(1));
+    expect(budget.used).toBe(0);
+    expect(save.deviceSnapshot().commits).toBe(1);
+    expect(save.takeCommit()?.[7]).toBe(42);
+  });
+
   it('uses fallback values for absent keys that match Object prototype names', () => {
     const save = new SaveMemory();
     for (const key of ['toString', 'valueOf', 'hasOwnProperty', '__defineGetter__']) {

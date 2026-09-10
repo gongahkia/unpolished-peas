@@ -23,7 +23,14 @@ updateIntegerScale();
 globalThis.addEventListener('resize', updateIntegerScale);
 if ('serviceWorker' in navigator) {
   globalThis.addEventListener('load', () => {
-    void navigator.serviceWorker.register(new URL('./sw.js', document.baseURI), { scope: './' });
+    void navigator.serviceWorker
+      .register(new URL('./sw.js', document.baseURI), { scope: './' })
+      .catch((error: unknown) => {
+        // A navigation can abort an otherwise successful best-effort registration.
+        if (!(error instanceof DOMException && error.name === 'AbortError')) {
+          console.warn('PX-240C offline cache registration failed', error);
+        }
+      });
   });
 }
 

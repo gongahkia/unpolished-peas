@@ -592,7 +592,7 @@ export class StudioApp {
     });
   }
 
-  private openManual(): void {
+  private openManual(initialTitle = 'START'): void {
     const topics = manualTopics();
     this.root.innerHTML = `
       <section class="display manual" data-view="manual" aria-label="PX-240C manual browser">
@@ -642,6 +642,8 @@ export class StudioApp {
       if ((event as KeyboardEvent).key === 'Escape') back();
     });
     renderTopics();
+    const initial = topics.find((topic) => topic.title === initialTitle);
+    if (initial !== undefined) show(initial);
     search.focus();
   }
 
@@ -727,6 +729,7 @@ export class StudioApp {
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
+    const rom = await this.compiler.packProject(project.manifest, project.files);
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
     this.root.innerHTML = `
@@ -761,6 +764,7 @@ export class StudioApp {
           displayPath: parsedManifest.display,
         },
         save,
+        rom,
       });
     } catch (error) {
       input.destroy();
@@ -833,11 +837,21 @@ export class StudioApp {
     const project = this.requireProject();
     const save = await this.repository.cartridgeSave(project.id).read();
     try {
-      this.activeDebugger = await openDebugger(this.root, project, this.compiler, save, () => {
-        this.activeDebugger = undefined;
-        this.appendLines([`DEBUG STOPPED ${project.id}`]);
-        this.renderShell();
-      });
+      this.activeDebugger = await openDebugger(
+        this.root,
+        project,
+        this.compiler,
+        save,
+        () => {
+          this.activeDebugger = undefined;
+          this.appendLines([`DEBUG STOPPED ${project.id}`]);
+          this.renderShell();
+        },
+        () => {
+          this.activeDebugger = undefined;
+          this.openManual('HARDWARE');
+        },
+      );
     } catch (error: unknown) {
       this.renderShell();
       throw error;
@@ -1141,6 +1155,10 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     {
       title: 'DEBUG',
       body: 'DEBUG opens frame pause, source breakpoints, trace stepping, watches, state/task/profile/hardware inspectors, and deterministic rewind. Debug save writes are not persisted.',
+    },
+    {
+      title: 'HARDWARE',
+      body: 'Hardware Revision 1 uses a 22-bit byte bus. In DEBUG choose MEMO, enter a hexadecimal address and 1-64 byte length, then GET. HEX/DEC changes display and SET edits one writable byte while paused. WP adds up to eight change watchpoints. RAM begins 000000, framebuffers 010000, visual store 030000, registers 050000, save 058000, cartridge ROM 060000. Reserved bytes read zero and reject writes.',
     },
     {
       title: 'LIMITS',

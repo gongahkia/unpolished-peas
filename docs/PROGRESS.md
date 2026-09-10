@@ -646,6 +646,45 @@ Each group may produce several coherent commits, and integration occurs througho
   incomplete until immutable cartridge ROM/metadata and the full memory viewer/conformance freeze.
   Chromium and the remaining V1 milestones are still open. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2m: immutable cartridge ROM and hardware memory viewer
+
+- The trusted host now supplies a cloned canonical cartridge image to the production Worker. The
+  byte-exact image is read-only at `0x60000`; a 64-byte status block at `0x50600` reports hardware
+  revision, format revision, length, fixed capacity, base, presence/canonical flags and entry count.
+  Oversize images reject at configuration validation, unmapped absence remains a reserved hole, and
+  both the status and image reject writes. Studio run and debug first pack the active project, so the
+  mapped bytes are the same source-visible artifact used for export.
+- Added a strict debug-only Worker request/response path for bounded memory reads and edits. Reads
+  return the production bus bytes plus region names/bounds/permissions. Edits are transactional,
+  uncharged host operations at idle message boundaries and still use device validators; release
+  runtimes, read-only regions and reserved holes reject them. Debug edits to the save command do not
+  accidentally consume cartridge frame work.
+- Replaced the debugger's placeholder memory summary with the real MEMO panel: hexadecimal addresses,
+  1–64 byte HEX/DEC views, changed-byte markers, region labels and permissions, safe single-byte
+  paused edits, eight byte-change watchpoints, and a Hardware manual shortcut. The existing source,
+  state, task, profile, audio, replay and control surfaces remain available. Firefox E2E reads RAM in
+  both number formats, edits it, trips a watchpoint on the next frame, and follows the manual link.
+- Unit/conformance coverage now checks bus inspection/edit transactionality, protocol validation,
+  ROM cloning/status/permissions, debug/release access and public PXCL ROM reads. A first Firefox run
+  exposed an unhandled service-worker registration `AbortError` during the existing intentional
+  offline reload; its trace located the aborted best-effort registration. Registration now handles
+  navigation aborts without hiding other failures, and the unchanged complete workflow passed on
+  rerun in 25.9 s with no browser errors.
+- The final complete repository gate passed: Prettier, ESLint, strict TypeScript, **132 Vitest
+  tests**, production builds, the complete Firefox E2E (**25.2 s**), Rust fmt/Clippy with warnings
+  denied, **48 Rust tests**, and native/release Wasm builds. A preceding complete run with 131
+  Vitest tests and the same browser coverage also passed before the focused debugger-save accounting
+  assertion was added.
+- Both packings of every original game remain byte-identical to the preceding checkpoint: Cinder
+  Circuit **42,904 bytes**, SHA-256
+  `225f164cc7cb9a891b353fb41df025d7a4d9be09ef713888c4f7a8b766408ea8`; Ashvault **41,315 bytes**,
+  `44abf7399348c4790de27ad316d63fcfea1c064e3c99980c644026e75d604986`; Raster Rush **38,091
+  bytes**, `3f4172ea7f5538d860143f555a9243dac38449e4a51cabffab8b2279ab41d5b1`.
+  Current main/Worker/Wasm outputs are 137,148/75,926/1,168,672 bytes before the full gate.
+- Next: freeze the complete conformance/service cartridge and shared headless/standalone execution.
+  Hardware Revision 1 is not yet declared complete. Chromium and the remaining V1 milestones remain
+  open. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

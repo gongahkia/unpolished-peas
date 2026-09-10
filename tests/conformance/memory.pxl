@@ -1,5 +1,7 @@
 // public PXCL memory conformance; candidate Revision 1 addresses are decimal.
 state frames: Int = 0
+const CART_INFO: Int = 329216
+const CART_ROM: Int = 393216
 
 on start:
   assert visual_id("absent") == -1, "unknown visual ID"
@@ -16,6 +18,15 @@ on start:
   mem_fill(1, 0, 4)
   assert mem_read16(1) == 0, "fill"
   assert mem_read(327808) == 23, "fixed palette red"
+  assert mem_read16(CART_INFO) == 1, "hardware revision"
+  assert mem_read16(CART_INFO + 2) == 1, "cartridge format revision"
+  assert mem_read16(CART_INFO + 8) == 0, "cartridge capacity low word"
+  assert mem_read16(CART_INFO + 10) == 4, "cartridge capacity high word"
+  assert mem_read16(CART_INFO + 12) == 0, "ROM base low word"
+  assert mem_read16(CART_INFO + 14) == 6, "ROM base high word"
+  assert mem_read(CART_INFO + 16) == 3, "present and canonical flags"
+  assert mem_read(CART_ROM) == 80, "ROM magic P"
+  assert mem_read(CART_ROM + 1) == 88, "ROM magic X"
   pixel(3, 0, 7)
   assert mem_read(102403) == 7, "boot draw alias"
   mem_write(102404, 23)
