@@ -49,6 +49,7 @@ px240c watch my-game
 px240c pack my-game
 px240c export html my-game
 px240c run my-game
+px240c run my-game --headless --frames 120 --input tests/replays/my-game.json
 px240c info my-game/dist/my-game.pxc
 px240c lsp
 ```
@@ -57,7 +58,9 @@ px240c lsp
 polls project content every 250 ms and repacks only when bytes change. `fmt --check` reports source
 that differs from canonical two-space formatting. `run` writes the same standalone HTML artifact to
 `dist/` and opens it with `xdg-open`; `--no-open` performs only the validated export for CI or a
-headless environment.
+headless environment. `run --headless` instead drives the production console core under Node and
+emits revisioned JSON framebuffer/state/audio/PCM/save hashes. It accepts a project directory or
+`.pxc`, an explicit seed/frame count, compact controller trace and optional raw save image.
 
 The browser production build runs `scripts/build-wasm.sh`, which builds the Rust compiler for
 `wasm32-unknown-unknown` and generates pinned web bindings before Vite bundles it. Cartridge

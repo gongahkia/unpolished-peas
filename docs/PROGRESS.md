@@ -685,6 +685,45 @@ Each group may produce several coherent commits, and integration occurs througho
   Hardware Revision 1 is not yet declared complete. Chromium and the remaining V1 milestones remain
   open. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 3a: shared headless/standalone core and golden game replays
+
+- Added `px240c run PROJECT_OR_PXC --headless` on the existing CLI surface. It accepts an unsigned
+  seed, 0–36,000 frames, compact duration-aware four-port/pointer trace JSON, an optional raw 8 KiB
+  save and an optional result path. Revision-1 output records per-frame framebuffer/state/audio
+  command/little-endian Float32 PCM/save SHA-256 and work, aggregate hashes/peak and modeled fault
+  code/span. Project and `.pxc` inputs produce identical output; imported artifacts are bounded,
+  reconstructed and recompiled from source before execution rather than trusting archived JS.
+- The generated 149,795-byte Node adapter directly drives `createConsoleRuntime`, the production
+  core used by the browser Worker. Focused host tests cover deterministic output, modeled faults and
+  malformed traces; CLI integration covers project/raw cartridge parity, explicit seed, compact
+  input and initial save. Node is a CLI host dependency and is not exposed to cartridge code.
+- Replaced the hand-written standalone emulator with a generated 179,384-byte host containing an
+  inline build of the same locked-down `sandbox-worker.ts` and production core as Studio. Exports now
+  embed the exact canonical ROM, authoritative assets, indexed output/PCM and byte-save commits.
+  Legacy standalone JSON saves migrate into an isolated V1 cartridge key. Firefox's complete E2E,
+  including standalone play/source inspection and offline Studio reload, passed in **26.5 s**.
+- Added intentional compact replay paths and golden results for all three original games. Cinder
+  Circuit's 120 frames peak at **3,498 WU** and end with framebuffer/state/audio-command/PCM hashes
+  `7d94f65d...` / `b09b01d5...` / `6c3241a1...` / `c3c2895d...`; Ashvault's 30 frames peak at
+  **19,140 WU** and end `7a954d16...` / `98e2a72c...` / `3526f248...` / `82bc2372...`; Raster
+  Rush's 120 frames peak at **28,140 WU** and end `d133c8d0...` / `fe417b70...` / `11af7f6c...` /
+  `ca00a064...`. Automated CLI tests also lock beginning/middle/end framebuffer checkpoints and the
+  complete original cartridge hashes.
+- Added `px240c-service`, an ordinary source-visible PXCL service cartridge with eight diagnostic
+  pages and live public-API checks for reset/bus/display/raster/input/audio/save/ROM/scheduler/RNG/
+  tasks. It is now a fourth built-in Studio cartridge, packs byte-identically at **27,869 bytes**,
+  SHA-256 `0175b0e7d06bd401ee48ef695b095cdbdf78a0832b1acd9dc88648322a0f12b8`, and completes five
+  headless frames at a **5,130 WU** peak without fault.
+- Original game artifacts remain unchanged at 42,904/41,315/38,091 bytes with the prior hashes. The
+  main/Worker JS outputs are now 137,165/75,926 bytes. Embedding the shared standalone implementation
+  in the Rust/Wasm exporter increases Wasm from 1,168,672 to **1,314,950 bytes** and the formatted
+  generated standalone player from 33,091 to **179,384 bytes**; this is explicit host/distribution
+  cost, not cartridge size. The complete repository gate passed after two Clippy findings drove a
+  smaller host-process helper: Prettier, ESLint, strict TypeScript, **134 Vitest tests**, production
+  builds, complete Firefox E2E, Rust fmt/Clippy with warnings denied, **50 Rust tests**, native and
+  release Wasm builds. Cross-browser parity and the remaining V1 milestones remain open. Nothing was
+  pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

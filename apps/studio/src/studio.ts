@@ -30,7 +30,7 @@ interface ActivePlayer {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PROJECT_ID = /^[a-z0-9][a-z0-9.-]{2,63}$/;
-const BUNDLED_CARTRIDGES = ['cinder-circuit', 'ashvault', 'raster-rush'] as const;
+const BUNDLED_CARTRIDGES = ['cinder-circuit', 'ashvault', 'raster-rush', 'px240c-service'] as const;
 
 /** Diegetic boot monitor, command shell, source editor, and cartridge player foundation. */
 export class StudioApp {

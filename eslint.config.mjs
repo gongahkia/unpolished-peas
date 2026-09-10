@@ -14,6 +14,8 @@ export default tseslint.config(
       '**/node_modules/**',
       'apps/studio/public/generated/**',
       'crates/pxcl-wasm/pkg/**',
+      'packages/runtime/standalone/**',
+      'packages/runtime/vite.*.config.ts',
     ],
   },
   eslint.configs.recommended,

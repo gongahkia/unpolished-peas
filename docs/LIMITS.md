@@ -1,6 +1,6 @@
 # Alpha limit calibration
 
-The experimental profile was frozen after building and running all three bundled cartridges through
+The experimental profile was frozen after building and running all three original game cartridges through
 the public compiler, packer, worker, indexed renderer, and asset decoder. Work units are synthetic
 deterministic costs, not elapsed time or CPU instructions. Measurements below are representative
 active-play frames observed in the production Studio on 2026-09-07; control flow can vary slightly,

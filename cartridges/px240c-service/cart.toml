@@ -1,0 +1,12 @@
+format = 1
+language = "PXCL/1"
+id = "px240c-service"
+title = "PX-240C SERVICE CARTRIDGE"
+author = "@gongahkia"
+version = "1.0.0"
+entry = "src/main.pxl"
+update_rate = 60
+
+[assets.tone]
+kind = "sound"
+path = "assets/tone.pxs"

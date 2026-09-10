@@ -251,13 +251,11 @@ fn run_headless(
         eprintln!("{}: compiled program is not UTF-8", path.display());
         return ExitCode::FAILURE;
     };
-    let trace = match read_json_input(input) {
-        Ok(value) => value,
-        Err(()) => return ExitCode::FAILURE,
+    let Ok(trace) = read_json_input(input) else {
+        return ExitCode::FAILURE;
     };
-    let save_bytes = match read_save_image(save) {
-        Ok(bytes) => bytes,
-        Err(()) => return ExitCode::FAILURE,
+    let Ok(save_bytes) = read_save_image(save) else {
+        return ExitCode::FAILURE;
     };
     let manifest = &cartridge.manifest;
     let request = serde_json::json!({
@@ -280,59 +278,9 @@ fn run_headless(
         eprintln!("{}: could not encode headless request", path.display());
         return ExitCode::FAILURE;
     };
-    let host_path = std::env::temp_dir().join(format!(
-        "px240c-headless-{}-{}.mjs",
-        std::process::id(),
-        frames
-    ));
-    if let Err(error) = fs::write(&host_path, HEADLESS_HOST) {
-        eprintln!("{}: {error}", host_path.display());
+    let Ok(serialized) = execute_headless_host(&request, frames) else {
         return ExitCode::FAILURE;
-    }
-    let node = std::env::var_os("PX240C_NODE").unwrap_or_else(|| "node".into());
-    let child = ProcessCommand::new(node)
-        .arg(&host_path)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn();
-    let mut child = match child {
-        Ok(child) => child,
-        Err(error) => {
-            let _ = fs::remove_file(&host_path);
-            eprintln!("could not start the PX-240C Node headless host: {error}");
-            return ExitCode::FAILURE;
-        }
     };
-    if let Some(mut stdin) = child.stdin.take()
-        && let Err(error) = stdin.write_all(&request)
-    {
-        let _ = child.kill();
-        let _ = fs::remove_file(&host_path);
-        eprintln!("could not send cartridge to headless host: {error}");
-        return ExitCode::FAILURE;
-    }
-    let result = child.wait_with_output();
-    let _ = fs::remove_file(&host_path);
-    let result = match result {
-        Ok(result) if result.status.success() => result,
-        Ok(result) => {
-            eprint!("{}", String::from_utf8_lossy(&result.stderr));
-            return ExitCode::FAILURE;
-        }
-        Err(error) => {
-            eprintln!("headless host did not complete: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let parsed: serde_json::Value = match serde_json::from_slice(&result.stdout) {
-        Ok(parsed) => parsed,
-        Err(error) => {
-            eprintln!("headless host returned invalid JSON: {error}");
-            return ExitCode::FAILURE;
-        }
-    };
-    let serialized = serde_json::to_vec_pretty(&parsed).expect("JSON value always serializes");
     if let Some(output) = output {
         if let Some(parent) = output.parent()
             && let Err(error) = fs::create_dir_all(parent)
@@ -353,6 +301,58 @@ fn run_headless(
         println!("{}", String::from_utf8_lossy(&serialized));
     }
     ExitCode::SUCCESS
+}
+
+fn execute_headless_host(request: &[u8], frames: u32) -> Result<Vec<u8>, ()> {
+    let host_path = std::env::temp_dir().join(format!(
+        "px240c-headless-{}-{}.mjs",
+        std::process::id(),
+        frames
+    ));
+    if let Err(error) = fs::write(&host_path, HEADLESS_HOST) {
+        eprintln!("{}: {error}", host_path.display());
+        return Err(());
+    }
+    let node = std::env::var_os("PX240C_NODE").unwrap_or_else(|| "node".into());
+    let child = ProcessCommand::new(node)
+        .arg(&host_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = child.map_err(|error| {
+        let _ = fs::remove_file(&host_path);
+        eprintln!("could not start the PX-240C Node headless host: {error}");
+    })?;
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(error) = stdin.write_all(request)
+    {
+        let _ = child.kill();
+        let _ = fs::remove_file(&host_path);
+        eprintln!("could not send cartridge to headless host: {error}");
+        return Err(());
+    }
+    let result = child.wait_with_output();
+    let _ = fs::remove_file(&host_path);
+    let result = match result {
+        Ok(result) if result.status.success() => result,
+        Ok(result) => {
+            eprint!("{}", String::from_utf8_lossy(&result.stderr));
+            return Err(());
+        }
+        Err(error) => {
+            eprintln!("headless host did not complete: {error}");
+            return Err(());
+        }
+    };
+    let parsed: serde_json::Value = match serde_json::from_slice(&result.stdout) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("headless host returned invalid JSON: {error}");
+            return Err(());
+        }
+    };
+    Ok(serde_json::to_vec_pretty(&parsed).expect("JSON value always serializes"))
 }
 
 fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCartridge), ()> {

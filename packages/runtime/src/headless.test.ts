@@ -65,7 +65,10 @@ describe('production headless host', () => {
       },
     });
     await expect(
-      runHeadless({ ...request(), trace: { revision: 1, frames: [{ frame: 3, input: {} }] } }),
+      runHeadless({
+        ...request(),
+        trace: { revision: 1, frames: [{ frame: 3, controllers: [] }] },
+      }),
     ).rejects.toThrow(/invalid PX-240C headless request/);
   });
 });

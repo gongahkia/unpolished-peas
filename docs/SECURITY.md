@@ -16,11 +16,11 @@ shadows `Date`, network constructors, browser storage, `crypto`, `navigator`, `e
 `Math.random` where the browser permits those properties to be replaced. Cartridge module URLs must
 use the host-created `blob:` scheme. Messages in both directions are structurally validated.
 
-The worker receives cloned input frames, its own validated integer save-value copy, and bounded map
-query data, then returns draw/audio commands and sorted save writes. It does not receive IndexedDB
-handles, the studio project database, another cartridge ID, or another cartridge's save block. The
-trusted host applies writes through a capability bound to the immutable current cartridge ID and
-enforces the 8 KiB limit.
+The worker receives cloned input frames, its own validated 8 KiB save image, bounded asset bytes and
+the read-only canonical cartridge image. It returns resolved indexed pixels, deterministic PCM,
+commands and complete committed save images. It does not receive IndexedDB handles, the Studio
+project database, another cartridge ID, or another cartridge's save block. The trusted host applies
+commits through a capability bound to the immutable current cartridge ID.
 
 ## Resource controls
 
@@ -34,12 +34,19 @@ These controls protect studio responsiveness and deterministic replay semantics.
 against a compromised browser engine, same-origin side channels outside the worker model, or a user
 manually substituting arbitrary JavaScript for compiler output.
 
-Standalone HTML exports embed the canonical decoded cartridge and a smaller dependency-free player.
-Their worker accepts only compiler-produced build output from that embedded cartridge, applies the
-same 50,000-unit and 4,096-command ceilings, and has no project-database capability. The standalone
-file is intentionally self-contained and therefore uses inline script and `blob:` module workers;
+Standalone HTML exports embed the canonical cartridge and a generated dependency-free host. Its
+inline worker is built from the same locked-down Worker and production console core as Studio,
+including all Hardware Revision 1 permissions and fixed ceilings. It has no project-database
+capability. The standalone file is intentionally self-contained and therefore uses inline script
+and `blob:` workers;
 it does not claim the same deployable Content Security Policy surface as the hashed Studio build. A
 user who edits the exported HTML can also edit its runtime and must not treat it as a signed format.
+
+The native headless adapter does not execute an imported cartridge's archived JavaScript. Rust
+first performs bounded canonical decode, reconstructs its source-visible project, recompiles it with
+the authoritative compiler and sends that output plus bounded data to the embedded production-core
+Node host. PXCL has no path to Node globals; malformed host requests reject before boot. Node is a
+documented CLI runtime dependency, not a cartridge capability.
 
 The PWA service worker caches only same-origin GET requests and an exact build-generated inventory.
 Its cache revision covers hashed bundles and bundled-cartridge bytes. It adds offline availability,

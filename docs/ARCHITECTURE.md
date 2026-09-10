@@ -28,7 +28,8 @@ The page presents those pixels/samples and handles input and storage; it no long
 cartridge graphics or audio. Tests drive this same core with native-compiled PXCL and compare
 actual alpha browser recordings. `MemoryBus` now aliases work RAM and the actual graphics/raster
 storage with transactional byte/word/copy/fill access. Its candidate layout and implemented subset
-are documented in HARDWARE; the remaining devices and public headless CLI are still required.
+are documented in HARDWARE. The browser Worker, the embedded offline standalone Worker, and the
+native CLI's Node headless adapter all drive this same core rather than reimplementing console calls.
 
 ## Data flow
 
@@ -38,14 +39,19 @@ compact JavaScript plus source maps; the same IR produces debug and release outp
 Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.pxc`
 artifact containing original source and compiled output.
 
-Standalone export deliberately reuses the pack/decode boundary: verified archive entries are
-embedded with a small revisioned browser player rather than rebuilding a parallel project model.
+Standalone export deliberately reuses the pack/decode boundary: verified archive entries and the
+exact canonical ROM are embedded with a generated host whose inline Worker is built from the same
+`sandbox-worker.ts` and production core as Studio. The generated player is checked in so Rust/Wasm
+exports are reproducible without a JavaScript build step; the runtime package build regenerates it.
+The headless host is generated from `headless.ts`, embedded in the native CLI, and accepts only a
+bounded JSON request prepared by Rust. Imported `.pxc` files are unpacked and recompiled from their
+source before execution, so their archived build entry is never trusted as executable input.
 The Vite build emits a service worker from the final hashed asset inventory, so offline caching
 tracks the actual build instead of a handwritten filename list.
 
 Debug output adds source probes and routine enter/leave hooks without changing typed IR. The worker
 returns bounded traces and serializable state/task inspection only when debug mode is requested.
-The revision-5 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
+The revision-6 Worker snapshot includes the scheduler, saves and pending writes, indexed-framebuffer,
 synthesizer and retained bus state. Restore validates all components and rolls back on a device-reference failure.
 The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
 snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
