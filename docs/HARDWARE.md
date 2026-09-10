@@ -42,7 +42,7 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Save commits and cartridge ROM registers remain to be mapped.
+Hardware Revision 1 contract. Cartridge ROM and metadata registers remain to be mapped.
 The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
@@ -66,10 +66,13 @@ reads zero; writing one faults. Offsets below are hexadecimal; lengths and count
 | `50200`  |       64 | R      | Scheduler, deterministic time, RNG, work and fault registers, encoded from their actual owners; layout below.       |
 | `50300`  |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
 | `50400`  |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
+| `50500`  |       32 | mixed  | Save commit command and live status; layout below.                                                                  |
 | `51000`  |       32 | R      | Synth clock, allocation counter, active voice count and audio asset metadata.                                       |
 | `51020`  |       16 | RW     | Tracker selection and position; zero means stopped.                                                                 |
 | `51100`  |      512 | mixed  | Eight 64-byte voice records; controls are RW, allocation sequence/reserved tail are read-only.                      |
 | `55000`  |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
+| `58000`  |    8,192 | RW     | Cartridge save working image, initialized from the isolated persisted block.                                        |
+| `5a000`  |    8,192 | R      | Last committed save image.                                                                                          |
 | `a0000`  | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
 | `c0000`  | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
 | `3c0000` | variable | R      | Audio asset descriptors, 32 bytes each; sorted by name, at most 4,096 entries.                                      |
@@ -151,8 +154,9 @@ invalid byte/word/register value, and `PX9011` a write outside the raster facili
 rejected by the compiler before execution. New memory built-ins are resolved on first use to retain
 old programs' symbol IDs and existing user functions with those names.
 
-Internal core snapshot revision 5 retains RAM and all mutable/retained bus regions, including the
-visual image. Its revision-2 machine snapshot also retains update cadence, work limit/usage/attribution,
+Internal core snapshot revision 6 retains RAM and all mutable/retained bus regions, including the
+visual image, plus save working/committed images and commit state in their authoritative owner. Its
+revision-2 machine snapshot also retains update cadence, work limit/usage/attribution,
 boot status, completed update count and terminal execution/fault state. Its existing
 framebuffer projection must agree with the memory image. Restore checks region layout and values
 before mutation and rolls back device, machine, save and pending-write state on a failure. Revision-2
@@ -169,6 +173,42 @@ or source-statement suspension. Full source-level pause state remains required.
 and debug tests, and through Wasm and the actual Worker in Firefox E2E. The lower-level bus tests
 cover all mapped regions, all 144 raster rows, mixed high/low writes, reset, permissions, bounds,
 unaligned words, overlaps, exact work charges and rollback. These tests cover this subset only.
+
+### Cartridge save image and commit control
+
+The isolated 8 KiB save device has a writable working image at `58000` and a read-only committed
+latch at `5a000`. Both are byte-exact and reset from the host-provided save block. Raw writes change
+only the working image. Writing byte value `1` to `50500`, or calling `save_commit()`, atomically
+copies all 8,192 bytes into the committed latch and queues that complete image for the trusted host
+after the frame succeeds. Writing zero is a no-op; other values and multi-byte writes that cross
+into status space fault transactionally. Commit costs 8,192 work units in addition to an MMIO write
+or the compiler's normal API-call charge. Save writes are forbidden during raster callbacks.
+
+Status bytes at `50500` are:
+
+| Offset    | Encoding | Meaning                                                                    |
+| :-------- | :------- | :------------------------------------------------------------------------- |
+| `00`      | u8 W     | Commit command: zero no-op, one commit. Reads zero.                        |
+| `01`      | u8 R     | Bit 0 working differs from committed; bit 1 an image awaits host delivery. |
+| `02`–`03` | zero R   | Reserved.                                                                  |
+| `04`      | u32 R    | Capacity, always 8,192.                                                    |
+| `08`      | u64 R    | Successful commit count, reset zero and exact through `2^53-1`.            |
+| `10`      | u32 R    | Number of working bytes that differ from the committed image.              |
+| `14`–`1f` | zero R   | Reserved.                                                                  |
+
+The alpha `save_get_int`/`save_set_int` API is retained. Its canonical sorted JSON integer object
+occupies the same working bytes; `save_set_int` also commits immediately so existing cartridges keep
+their persistence behavior. Raw edits to a valid integer image are visible to `save_get_int`.
+Arbitrary binary images are legal, but integer API calls then fault without replacing those bytes.
+The host receives only a successful committed frame, never a partial write. Snapshot revision 6
+retains working bytes, the committed latch, dirty/pending status, count, and compatible legacy
+pending integer-write reports. Restores validate everything before mutation; alpha snapshot
+revisions 1–5 migrate their integer object into both images without changing archived fixtures.
+
+`tests/conformance/save.pxl` is ordinary PXCL source. Native Release/Debug runs cover initial host
+bytes, raw/high-level aliasing, dirty state, explicit and compatibility commits, host output and
+restore/forward equality. Lower-level tests cover binary images, permissions, capacity, work and
+counter faults, sparse/malformed snapshots, complete-image cloning and transactional rollback.
 
 ### Scheduler, time, RNG, work and fault registers
 

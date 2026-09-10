@@ -10,6 +10,7 @@ import { MEMORY } from './bus';
 import { BUTTONS, emptyInputFrame } from './input';
 import type { CartridgeFactory } from './machine';
 import type { ProjectAssetDeclaration } from './asset-codec';
+import { decodeSaveValues } from './save';
 
 describe('public PXCL hardware conformance', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -23,6 +24,45 @@ describe('public PXCL hardware conformance', () => {
   });
 
   for (const mode of ['release', 'debug']) {
+    it(`runs mixed save access and explicit commits in ${mode}`, async () => {
+      const output = join(temporary, `save-${mode}.mjs`);
+      execFileSync(join(root, 'target/debug/px240c'), [
+        'build',
+        join(root, 'tests/conformance/save.pxl'),
+        '--output',
+        output,
+        ...(mode === 'debug' ? ['--debug'] : []),
+      ]);
+      const generated = (await import(/* @vite-ignore */ pathToFileURL(output).href)) as {
+        default: CartridgeFactory;
+      };
+      const runtime = createConsoleRuntime(generated.default, {
+        seed: 1,
+        updateRate: 60,
+        workUnitsPerFrame: 50_000,
+        debug: mode === 'debug',
+        save: new TextEncoder().encode('{"score":7}'),
+      });
+      const boot = runtime.snapshot();
+      const first = runtime.runFrame(emptyInputFrame());
+      expect(first.saveWrites).toEqual([]);
+      expect(first.saveCommit).toBeInstanceOf(Uint8Array);
+      expect(decodeSaveValues(first.saveCommit ?? new Uint8Array())).toEqual({ score: 8 });
+      expect(runtime.snapshot().save).toMatchObject({ pendingCommit: false, commits: 1 });
+      const afterFirst = runtime.snapshot();
+      runtime.restore(boot);
+      deepStrictEqual(runtime.runFrame(emptyInputFrame()), first);
+      deepStrictEqual(runtime.snapshot(), afterFirst);
+
+      const second = runtime.runFrame(emptyInputFrame());
+      expect(second.saveWrites).toEqual([{ key: 'level', value: 2 }]);
+      expect(decodeSaveValues(second.saveCommit ?? new Uint8Array())).toEqual({
+        level: 2,
+        score: 8,
+      });
+      expect(runtime.snapshot().save).toMatchObject({ pendingCommit: false, commits: 2 });
+    });
+
     it(`runs runtime-call globals inside the boot boundary in ${mode}`, async () => {
       const source = join(root, 'tests/conformance/boot.pxl');
       const output = join(temporary, `boot-${mode}.mjs`);

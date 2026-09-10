@@ -617,6 +617,35 @@ Each group may produce several coherent commits, and integration occurs througho
   behavior and persisted values, followed by ROM/viewer/shared-host work. Hardware Revision 1 and
   the remaining V1 contract are still incomplete. Nothing was pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 2l: authoritative save image and explicit commits
+
+- Recovered an unlogged inherited implementation in commit `38b7406` and audited it before extending
+  it. The Worker now owns one byte-exact 8 KiB working save image plus a committed latch. Raw MMIO at
+  `0x58000` and read-only committed bytes at `0x5a000` share this state; `0x50500` exposes an atomic
+  full-image commit command, dirty/pending flags, fixed capacity, commit count and changed-byte count.
+  Commit preparation charges all 8,192 units before mutation and range writes remain transactional.
+- The legacy sorted-JSON integer API aliases the same bytes. `save_set_int` deliberately retains its
+  alpha auto-commit behavior while `save_commit` supports binary/raw users. Invalid binary data makes
+  integer calls fault without replacing the image. Host output delivers cloned complete images only
+  after successful frames; Studio now persists those exact bytes rather than rebuilding JSON.
+- Aggregate snapshots advance to revision 6 and retain working/committed bytes, pending state and
+  count. Legacy revisions 1–5 migrate their integer objects into both images; malformed/sparse state
+  rejects before mutation. The existing alpha save fixture and all frozen game traces remain intact.
+- Added ordinary `tests/conformance/save.pxl` plus Release/Debug native runs for initial host bytes,
+  raw/high-level aliasing, status, explicit/compatibility commits, host output and restore/forward
+  equality. Firefox now persists a seed save, edits that same project's source, then runs the public
+  conformance program against the retained identity. This also verifies source edits do not erase
+  progress. `./scripts/check.sh` passed: formatting, lint, strict types, **129 Vitest tests**,
+  production builds, **one complete Firefox E2E** (44.7 s), Rust fmt/Clippy, **48 Rust tests**,
+  native and release Wasm builds. A preceding focused browser run also passed in 59.8 s.
+- The initial untouched gate at `e70f99a` passed after installing the repository-pinned host tools:
+  formatting, lint, strict types, **127 Vitest tests**, production builds, **one Firefox E2E**,
+  Clippy, **48 Rust tests**, native and release Wasm builds. The first attempts correctly stopped on
+  absent pnpm/generated Wasm bindings/target; no code was changed until setup and the baseline passed.
+- No packed game source or output semantics changed in this checkpoint. Hardware Revision 1 remains
+  incomplete until immutable cartridge ROM/metadata and the full memory viewer/conformance freeze.
+  Chromium and the remaining V1 milestones are still open. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

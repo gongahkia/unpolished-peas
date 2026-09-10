@@ -1,0 +1,34 @@
+// public PXCL save conformance; Revision 1 addresses are decimal.
+const SAVE_CONTROL: Int = 328960
+const SAVE: Int = 360448
+const SAVE_COMMITTED: Int = 368640
+state frames: Int = 0
+
+on start:
+  assert save_get_int("score", 0) == 7, "initial integer image"
+  assert mem_read(SAVE + 9) == 55, "working byte alias"
+  assert mem_read(SAVE_COMMITTED + 9) == 55, "committed byte alias"
+  assert mem_read16(SAVE_CONTROL + 4) == 8192, "fixed save capacity"
+  assert mem_read(SAVE_CONTROL + 1) == 0, "clean reset status"
+
+on update:
+  frames += 1
+  if frames == 1:
+    mem_write(SAVE + 9, 56)
+    assert save_get_int("score", 0) == 8, "raw write reaches integer API"
+    assert mem_read(SAVE_CONTROL + 1) == 1, "dirty working image"
+  elif frames == 2:
+    save_set_int("level", 2)
+    assert mem_read(SAVE_CONTROL + 1) == 2, "legacy write auto-commits"
+
+on draw:
+  if frames == 1:
+    assert mem_read(SAVE_COMMITTED + 9) == 55, "commit latch unchanged"
+    save_commit()
+    assert mem_read(SAVE_COMMITTED + 9) == 56, "explicit commit copied image"
+    assert mem_read16(SAVE_CONTROL + 8) == 1, "commit counter"
+  clear(0)
+  print("SAVE BUS PASS", 4, 24, 11)
+
+on raster(line: Int):
+  assert mem_read(SAVE_CONTROL + 4) == 0, "capacity high byte"
