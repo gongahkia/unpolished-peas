@@ -4,6 +4,7 @@ import { isAudioFrame, isSynthSnapshot, type AudioFrame, type SynthSnapshot } fr
 import { HARDWARE } from './hardware';
 import { isMapQueryCatalog, type MapQueryAsset } from './map-query';
 import { isSaveImage, isSaveValues, type SaveImage, type SaveWrite } from './save';
+import type { MemoryRegionDescriptor } from './bus';
 
 export interface SourceSpan {
   readonly start: number;
@@ -40,6 +41,8 @@ export interface SandboxConfiguration {
   readonly save?: SaveImage;
   readonly debug?: boolean;
   readonly assets?: RuntimeAssetSource;
+  /** Host-validated canonical `.pxc` bytes exposed read-only on the hardware bus. */
+  readonly rom?: Uint8Array;
 }
 
 export interface ConsoleOutput {
@@ -58,7 +61,19 @@ export type HostRequest =
   | { readonly id: number; readonly type: 'frame'; readonly input: InputFrame }
   | { readonly id: number; readonly type: 'audit' }
   | { readonly id: number; readonly type: 'snapshot' }
-  | { readonly id: number; readonly type: 'restore'; readonly snapshot: unknown };
+  | { readonly id: number; readonly type: 'restore'; readonly snapshot: unknown }
+  | {
+      readonly id: number;
+      readonly type: 'memory';
+      readonly address: number;
+      readonly length: number;
+    }
+  | {
+      readonly id: number;
+      readonly type: 'memory-edit';
+      readonly address: number;
+      readonly bytes: Uint8Array;
+    };
 
 export type WorkerResponse =
   | { readonly id: number; readonly type: 'loaded' }
@@ -80,6 +95,14 @@ export type WorkerResponse =
     }
   | { readonly id: number; readonly type: 'snapshot'; readonly snapshot: unknown }
   | { readonly id: number; readonly type: 'restored' }
+  | {
+      readonly id: number;
+      readonly type: 'memory';
+      readonly address: number;
+      readonly bytes: Uint8Array;
+      readonly regions: readonly MemoryRegionDescriptor[];
+    }
+  | { readonly id: number; readonly type: 'memory-edited' }
   | {
       readonly id: number;
       readonly type: 'audit';
@@ -120,6 +143,19 @@ export function isHostRequest(value: unknown): value is HostRequest {
       return hasExactKeys(value, ['id', 'type']);
     case 'restore':
       return hasExactKeys(value, ['id', 'type', 'snapshot']);
+    case 'memory':
+      return (
+        hasExactKeys(value, ['id', 'type', 'address', 'length']) &&
+        isMemoryRange(value.address, value.length)
+      );
+    case 'memory-edit':
+      return (
+        hasExactKeys(value, ['id', 'type', 'address', 'bytes']) &&
+        value.bytes instanceof Uint8Array &&
+        value.bytes.length > 0 &&
+        value.bytes.length <= 256 &&
+        isMemoryRange(value.address, value.bytes.length)
+      );
     default:
       return false;
   }
@@ -132,9 +168,21 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
   switch (value.type) {
     case 'loaded':
     case 'restored':
+    case 'memory-edited':
       return hasExactKeys(value, ['id', 'type']);
     case 'snapshot':
       return hasExactKeys(value, ['id', 'type', 'snapshot']);
+    case 'memory':
+      return (
+        hasExactKeys(value, ['id', 'type', 'address', 'bytes', 'regions']) &&
+        value.bytes instanceof Uint8Array &&
+        value.bytes.length > 0 &&
+        value.bytes.length <= 256 &&
+        isMemoryRange(value.address, value.bytes.length) &&
+        Array.isArray(value.regions) &&
+        value.regions.length <= 4096 &&
+        value.regions.every(isMemoryRegionDescriptor)
+      );
     case 'frame':
       return (
         hasExactKeys(value, [
@@ -190,6 +238,37 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
   }
 }
 
+function isMemoryRange(address: unknown, length: unknown): boolean {
+  return (
+    typeof address === 'number' &&
+    Number.isSafeInteger(address) &&
+    address >= 0 &&
+    typeof length === 'number' &&
+    Number.isSafeInteger(length) &&
+    length > 0 &&
+    length <= 256 &&
+    address <= 0x400000 - length
+  );
+}
+
+function isMemoryRegionDescriptor(value: unknown): value is MemoryRegionDescriptor {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['name', 'address', 'length', 'writable']) &&
+    typeof value.name === 'string' &&
+    value.name.length > 0 &&
+    value.name.length <= 128 &&
+    typeof value.writable === 'boolean' &&
+    typeof value.address === 'number' &&
+    Number.isSafeInteger(value.address) &&
+    value.address >= 0 &&
+    typeof value.length === 'number' &&
+    Number.isSafeInteger(value.length) &&
+    value.length > 0 &&
+    value.address <= 0x400000 - value.length
+  );
+}
+
 export function isSandboxConfiguration(value: unknown): value is SandboxConfiguration {
   return (
     isRecord(value) &&
@@ -201,6 +280,7 @@ export function isSandboxConfiguration(value: unknown): value is SandboxConfigur
       ...(value.save === undefined ? [] : ['save']),
       ...(value.debug === undefined ? [] : ['debug']),
       ...(value.assets === undefined ? [] : ['assets']),
+      ...(value.rom === undefined ? [] : ['rom']),
     ]) &&
     Number.isSafeInteger(value.seed) &&
     isNonNegativeInteger(value.workUnitsPerFrame) &&
@@ -210,7 +290,11 @@ export function isSandboxConfiguration(value: unknown): value is SandboxConfigur
     (value.maps === undefined || isMapQueryCatalog(value.maps)) &&
     (value.save === undefined || isSaveImage(value.save)) &&
     (value.debug === undefined || typeof value.debug === 'boolean') &&
-    (value.assets === undefined || isRuntimeAssetSource(value.assets))
+    (value.assets === undefined || isRuntimeAssetSource(value.assets)) &&
+    (value.rom === undefined ||
+      (value.rom instanceof Uint8Array &&
+        value.rom.length > 0 &&
+        value.rom.length <= HARDWARE.cartridgeCapacityBytes))
   );
 }
 

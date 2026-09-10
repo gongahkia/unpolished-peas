@@ -380,6 +380,7 @@ describe('public PXCL hardware conformance', () => {
         updateRate: 60,
         workUnitsPerFrame: 50_000,
         debug: mode === 'debug',
+        rom: Uint8Array.of(80, 88, 50, 52, 48, 67, 26, 1, 3, 0, 0, 0),
       });
       const boot = runtime.snapshot();
       expect(boot.graphics.front[3]).toBe(7);

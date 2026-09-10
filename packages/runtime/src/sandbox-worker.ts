@@ -75,6 +75,17 @@ async function handleRequest(request: HostRequest): Promise<void> {
       requireRuntime().restore(request.snapshot);
       send({ id: request.id, type: 'restored' } satisfies WorkerResponse);
       break;
+    case 'memory':
+      send({
+        id: request.id,
+        type: 'memory',
+        ...requireRuntime().inspectMemory(request.address, request.length),
+      } satisfies WorkerResponse);
+      break;
+    case 'memory-edit':
+      requireRuntime().editMemory(request.address, request.bytes);
+      send({ id: request.id, type: 'memory-edited' } satisfies WorkerResponse);
+      break;
   }
 }
 

@@ -16,6 +16,7 @@ import {
 } from './graphics';
 import { HARDWARE, MASTER_PALETTE_RGBA } from './hardware';
 import { MEMORY, MemoryBus, isMemorySnapshot, type MemorySnapshot } from './bus';
+import type { MemoryRegionDescriptor } from './bus';
 import { MapQueryStore } from './map-query';
 import {
   SaveMemory,
@@ -44,6 +45,15 @@ export interface ConsoleRuntime {
   runFrame(input: InputFrame): ConsoleFrame;
   snapshot(): ConsoleRuntimeSnapshot;
   restore(snapshot: unknown): void;
+  inspectMemory(
+    address: number,
+    length: number,
+  ): {
+    readonly address: number;
+    readonly bytes: Uint8Array;
+    readonly regions: readonly MemoryRegionDescriptor[];
+  };
+  editMemory(address: number, bytes: Uint8Array): void;
 }
 
 export interface ConsoleRuntimeSnapshot {
@@ -95,6 +105,8 @@ export function createConsoleRuntime(
   let frameOutput: ConsoleFrame['output'] | undefined;
   const mapQueries = new MapQueryStore(source === undefined ? (configuration.maps ?? []) : []);
   const saveMemory = new SaveMemory(configuration.save ?? {});
+  const cartridgeRom = configuration.rom?.slice() ?? new Uint8Array();
+  const cartridgeInfo = createCartridgeInfo(cartridgeRom);
   const debugEnabled = configuration.debug ?? false;
   let debugTrace: DebugTraceEvent[] = [];
   const debugCallStack: DebugStackFrame[] = [];
@@ -109,6 +121,22 @@ export function createConsoleRuntime(
       ...saveMemory.memoryRegions((units, span) => {
         requireMachine().work(units, span);
       }),
+      {
+        name: 'cartridge status',
+        address: MEMORY.cartridgeInfo,
+        bytes: cartridgeInfo,
+        writable: false,
+      },
+      ...(cartridgeRom.length === 0
+        ? []
+        : [
+            {
+              name: 'canonical cartridge ROM',
+              address: MEMORY.cartridgeRom,
+              bytes: cartridgeRom,
+              writable: false,
+            } as const,
+          ]),
       {
         name: 'controllers and pointer',
         address: MEMORY.input,
@@ -258,6 +286,32 @@ export function createConsoleRuntime(
           { start: 0, end: 0 },
         );
       }
+    },
+    inspectMemory(address, length) {
+      if (!debugEnabled)
+        throw new RuntimeFault('PX9104', 'memory inspection requires a debug cartridge', {
+          start: 0,
+          end: 0,
+        });
+      if (!Number.isSafeInteger(length) || length < 1 || length > 256)
+        throw new RuntimeFault('PX9020', 'debug memory reads require 1-256 bytes', {
+          start: 0,
+          end: 0,
+        });
+      return { address, bytes: bus.inspect(address, length), regions: bus.describe() };
+    },
+    editMemory(address, bytes) {
+      if (!debugEnabled)
+        throw new RuntimeFault('PX9104', 'memory editing requires a debug cartridge', {
+          start: 0,
+          end: 0,
+        });
+      if (!(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > 256)
+        throw new RuntimeFault('PX9020', 'debug memory edits require 1-256 bytes', {
+          start: 0,
+          end: 0,
+        });
+      bus.edit(address, bytes);
     },
   };
 
@@ -442,6 +496,27 @@ export function createConsoleRuntime(
     }
     return machine;
   }
+}
+
+function createCartridgeInfo(rom: Uint8Array): Uint8Array {
+  const bytes = new Uint8Array(64);
+  const view = new DataView(bytes.buffer);
+  const validHeader =
+    rom.length >= 12 &&
+    [80, 88, 50, 52, 48, 67, 26].every((byte, index) => rom[index] === byte) &&
+    rom[7] === 1;
+  view.setUint16(0, 1, true);
+  view.setUint16(2, validHeader ? (rom[7] ?? 0) : 0, true);
+  view.setUint32(4, rom.length, true);
+  view.setUint32(8, HARDWARE.cartridgeCapacityBytes, true);
+  view.setUint32(12, MEMORY.cartridgeRom, true);
+  view.setUint32(16, Number(rom.length > 0) | (Number(validHeader) << 1), true);
+  view.setUint32(
+    20,
+    validHeader ? new DataView(rom.buffer, rom.byteOffset).getUint32(8, true) : 0,
+    true,
+  );
+  return bytes;
 }
 
 const DRAW_CALLS = new Set([

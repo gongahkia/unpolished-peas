@@ -20,8 +20,10 @@ export const MEMORY = Object.freeze({
   rasterLive: 0x50400,
   visualInfo: 0x50300,
   saveControl: 0x50500,
+  cartridgeInfo: 0x50600,
   save: 0x58000,
   saveCommitted: 0x5a000,
+  cartridgeRom: 0x60000,
   audio: 0x51000,
   audioTracker: 0x51020,
   audioVoices: 0x51100,
@@ -63,10 +65,18 @@ export interface WritableMemoryRegion extends Omit<ReadOnlyMemoryRegion, 'writab
     offset: number,
     bytes: Uint8Array,
     span: SourceSpan,
+    debugEdit?: boolean,
   ) => (() => void) | undefined;
 }
 
 export type MemoryRegion = ByteMemoryRegion | ReadOnlyMemoryRegion | WritableMemoryRegion;
+
+export interface MemoryRegionDescriptor {
+  readonly name: string;
+  readonly address: number;
+  readonly length: number;
+  readonly writable: boolean;
+}
 
 function regionLength(region: MemoryRegion): number {
   return 'bytes' in region ? region.bytes.length : region.length;
@@ -185,6 +195,31 @@ export class MemoryBus {
     this.store(destination, bytes, span, raster);
   }
 
+  /** Bounded debugger read at an idle Worker message boundary; does not charge cartridge work. */
+  public inspect(address: number, length: number): Uint8Array {
+    const span = { start: 0, end: 0 };
+    this.range(address, length, span);
+    const bytes = new Uint8Array(length);
+    for (let index = 0; index < length; index += 1) bytes[index] = this.byte(address + index);
+    return bytes;
+  }
+
+  /** Transactional debugger edit at an idle Worker message boundary; does not charge work. */
+  public edit(address: number, bytes: Uint8Array): void {
+    const span = { start: 0, end: 0 };
+    this.range(address, bytes.length, span);
+    this.store(address, bytes.slice(), span, false, true);
+  }
+
+  public describe(): readonly MemoryRegionDescriptor[] {
+    return this.regions.map((region) => ({
+      name: region.name,
+      address: region.address,
+      length: regionLength(region),
+      writable: region.writable,
+    }));
+  }
+
   public snapshot(): MemorySnapshot {
     return {
       revision: 1,
@@ -229,7 +264,13 @@ export class MemoryBus {
       : region.readByte(address - region.address);
   }
 
-  private store(address: number, bytes: Uint8Array, span: SourceSpan, raster: boolean): void {
+  private store(
+    address: number,
+    bytes: Uint8Array,
+    span: SourceSpan,
+    raster: boolean,
+    debugEdit = false,
+  ): void {
     const writes: (() => void)[] = [];
     for (let index = 0; index < bytes.length;) {
       const cursor = address + index;
@@ -254,7 +295,7 @@ export class MemoryBus {
             : () => {
                 region.bytes.set(part, offset);
               }
-          : region.prepareWrite(offset, part, span);
+          : region.prepareWrite(offset, part, span, debugEdit);
       if (commit === undefined)
         throw new RuntimeFault(
           'PX9022',
