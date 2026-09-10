@@ -36,6 +36,47 @@ const factory: CartridgeFactory = (api) => ({
 });
 
 describe('production console dispatcher', () => {
+  it('exposes cloned ROM/status bytes and permits debugger-only transactional RAM edits', () => {
+    let observed = -1;
+    const rom = Uint8Array.of(80, 88, 50, 52, 48, 67, 26, 1, 3, 0, 0, 0, 77);
+    const runtime = createConsoleRuntime(
+      (api) => ({
+        ...factory(api),
+        update() {
+          observed = api.call('mem_read', [MEMORY.cartridgeRom + 12], span) as number;
+        },
+      }),
+      { ...configuration, debug: true, rom },
+    );
+    rom[12] = 0;
+    const status = runtime.inspectMemory(MEMORY.cartridgeInfo, 64);
+    expect(new DataView(status.bytes.buffer).getUint16(0, true)).toBe(1);
+    expect(new DataView(status.bytes.buffer).getUint16(2, true)).toBe(1);
+    expect(new DataView(status.bytes.buffer).getUint32(4, true)).toBe(13);
+    expect(new DataView(status.bytes.buffer).getUint32(20, true)).toBe(3);
+    expect(status.regions).toContainEqual({
+      name: 'canonical cartridge ROM',
+      address: MEMORY.cartridgeRom,
+      length: 13,
+      writable: false,
+    });
+    runtime.editMemory(MEMORY.ram, Uint8Array.of(9, 8));
+    expect(runtime.inspectMemory(MEMORY.ram, 2).bytes).toEqual(Uint8Array.of(9, 8));
+    expect(() => {
+      runtime.editMemory(MEMORY.cartridgeRom, Uint8Array.of(0));
+    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    runtime.runFrame(emptyInputFrame());
+    expect(observed).toBe(77);
+
+    const release = createConsoleRuntime(factory, { ...configuration, rom });
+    expect(() => {
+      release.inspectMemory(0, 1);
+    }).toThrow(expect.objectContaining({ code: 'PX9104' }));
+    expect(() => {
+      release.editMemory(0, Uint8Array.of(1));
+    }).toThrow(expect.objectContaining({ code: 'PX9104' }));
+  });
+
   it('latches output-stage audio exhaustion before advancing the completed frame counter', () => {
     const runtime = createConsoleRuntime(
       (api) => ({

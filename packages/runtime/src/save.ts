@@ -154,7 +154,7 @@ export class SaveMemory {
         length: 1,
         writable: true,
         readByte: () => 0,
-        prepareWrite: (_offset, bytes, span) => {
+        prepareWrite: (_offset, bytes, span, debugEdit) => {
           if (bytes[0] === 0) return () => undefined;
           if (bytes[0] !== 1) return undefined;
           try {
@@ -166,7 +166,7 @@ export class SaveMemory {
               span,
             );
           }
-          charge(HARDWARE.saveCapacityBytes, span);
+          if (debugEdit !== true) charge(HARDWARE.saveCapacityBytes, span);
           return () => {
             this.latch();
             this.writes.clear();

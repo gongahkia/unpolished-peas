@@ -42,7 +42,8 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. Cartridge ROM and metadata registers remain to be mapped.
+Hardware Revision 1 contract. The remaining freeze work is the complete service/conformance suite
+and shared headless/standalone host verification.
 The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.
@@ -67,12 +68,14 @@ reads zero; writing one faults. Offsets below are hexadecimal; lengths and count
 | `50300`  |       24 | R      | Visual allocation status; six little-endian unsigned 32-bit fields, below.                                          |
 | `50400`  |       48 | R      | Raster callback accumulator: two little-endian binary64 scroll values and 32 remap bytes. Reset `(0,0)` / identity. |
 | `50500`  |       32 | mixed  | Save commit command and live status; layout below.                                                                  |
+| `50600`  |       64 | R      | Hardware revision and immutable canonical-cartridge status; layout below.                                           |
 | `51000`  |       32 | R      | Synth clock, allocation counter, active voice count and audio asset metadata.                                       |
 | `51020`  |       16 | RW     | Tracker selection and position; zero means stopped.                                                                 |
 | `51100`  |      512 | mixed  | Eight 64-byte voice records; controls are RW, allocation sequence/reserved tail are read-only.                      |
 | `55000`  |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
 | `58000`  |    8,192 | RW     | Cartridge save working image, initialized from the isolated persisted block.                                        |
 | `5a000`  |    8,192 | R      | Last committed save image.                                                                                          |
+| `60000`  | variable | R      | Exact canonical `.pxc` bytes supplied by the trusted host, up to 256 KiB.                                           |
 | `a0000`  | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
 | `c0000`  | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
 | `3c0000` | variable | R      | Audio asset descriptors, 32 bytes each; sorted by name, at most 4,096 entries.                                      |
@@ -209,6 +212,42 @@ revisions 1–5 migrate their integer object into both images without changing a
 bytes, raw/high-level aliasing, dirty state, explicit and compatibility commits, host output and
 restore/forward equality. Lower-level tests cover binary images, permissions, capacity, work and
 counter faults, sparse/malformed snapshots, complete-image cloning and transactional rollback.
+
+### Cartridge status and ROM
+
+The trusted host may provide the exact canonical `.pxc` image when it constructs a runtime. The
+Worker clones it, maps those immutable bytes at `60000`, and never exposes a host file, URL or
+JavaScript object. A configuration over the fixed 256 KiB cartridge limit is rejected before the
+machine starts. Hosts that have no canonical image leave the ROM range reserved; the status block
+still describes that absence. Cartridge code pays normal bus read/copy costs.
+
+The 64 read-only bytes at `50600` are:
+
+| Offset    | Encoding | Meaning                                                                  |
+| :-------- | :------- | :----------------------------------------------------------------------- |
+| `00`      | u16      | Hardware revision, currently 1.                                          |
+| `02`      | u16      | Canonical cartridge format revision, 1 for a valid V1 header, else zero. |
+| `04`      | u32      | Mapped canonical image length in bytes.                                  |
+| `08`      | u32      | Fixed complete-cartridge capacity, 262,144.                              |
+| `0c`      | u32      | ROM base address, `60000`.                                               |
+| `10`      | u32      | Flags: bit 0 image present; bit 1 canonical V1 header valid.             |
+| `14`      | u32      | Header entry count when bit 1 is set, otherwise zero.                    |
+| `18`–`3f` | zero     | Reserved.                                                                |
+
+Header validation here is informational and deliberately small: the trusted pack/import boundary
+does complete cartridge validation. The status flag recognizes `PX240C`, byte `1a`, revision 1 and
+a complete 12-byte header. ROM and status writes fault transactionally. The Studio run and debugger
+pack the active project first and pass the resulting bytes, so cartridge code and the debugger see
+the same artifact the user would export. `tests/conformance/memory.pxl` reads the status and magic
+through public bus calls in native Release/Debug and Firefox.
+
+The debug-only Worker protocol permits bounded 1–256 byte inspection and editing only at idle
+message boundaries. Inspection is uncharged and reports the real mapped-region names, bounds and
+permissions; edits are uncharged, transactional, and go through the same device validators as
+cartridge writes. Release runtimes reject both operations, and read-only/reserved ranges remain
+protected. Studio's MEMO panel exposes 1–64 byte hexadecimal/decimal views, changed-byte markers,
+up to eight byte-change watchpoints, safe paused edits, and a direct Hardware manual link. This is a
+view onto the production bus, not a duplicated visualization image.
 
 ### Scheduler, time, RNG, work and fault registers
 

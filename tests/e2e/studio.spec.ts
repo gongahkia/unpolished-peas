@@ -97,7 +97,27 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await expect(page.locator('.debug-status')).toHaveText('REWOUND TO FRAME 0');
   await page.locator('[data-debug="frame"]').click();
   await expect(page.locator('.debug-status')).toHaveText('PAUSED AT FRAME 1');
-  await page.locator('[data-debug="back"]').click();
+  await page.locator('.debug-tabs button').filter({ hasText: 'MEMO' }).click();
+  await expect(page.locator('.memory-debug-entry')).toBeVisible();
+  await page.getByLabel('Memory address').fill('000064');
+  await page.getByLabel('Memory length').fill('8');
+  await page.locator('[data-debug="memory-read"]').click();
+  await expect(page.locator('.debug-output')).toContainText('RAM RW / HEX');
+  await expect(page.locator('.debug-output')).toContainText('000064');
+  await page.getByLabel('Memory number format').selectOption('10');
+  await page.locator('[data-debug="memory-read"]').click();
+  await expect(page.locator('.debug-output')).toContainText('/ DEC');
+  await page.getByLabel('Memory byte value').fill('9');
+  await page.locator('[data-debug="memory-write"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('SET 000064=09 / PAUSED');
+  await page.locator('[data-debug="memory-watch"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('WATCHING 000064');
+  await page.locator('[data-debug="frame"]').click();
+  await expect(page.locator('.debug-status')).toHaveText(/WATCH 000064 09>02/);
+  await page.locator('[data-debug="memory-manual"]').click();
+  await expect(page.locator('[data-view="manual"]')).toBeVisible();
+  await expect(page.locator('.manual-page')).toContainText('Hardware Revision 1');
+  await page.locator('[data-back]').click();
 
   const visualCartridge = testInfo.outputPath('visual-conformance.pxc');
   execFileSync('target/debug/px240c', [
