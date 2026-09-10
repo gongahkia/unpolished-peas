@@ -59,6 +59,7 @@ export type HostRequest =
       readonly configuration: SandboxConfiguration;
     }
   | { readonly id: number; readonly type: 'frame'; readonly input: InputFrame }
+  | { readonly id: number; readonly type: 'debug-step'; readonly input: InputFrame }
   | { readonly id: number; readonly type: 'audit' }
   | { readonly id: number; readonly type: 'snapshot' }
   | { readonly id: number; readonly type: 'restore'; readonly snapshot: unknown }
@@ -77,6 +78,14 @@ export type HostRequest =
 
 export type WorkerResponse =
   | { readonly id: number; readonly type: 'loaded' }
+  | {
+      readonly id: number;
+      readonly type: 'debug-step';
+      readonly event?: DebugTraceEvent;
+      readonly inspection?: DebugFrame['inspection'];
+      readonly booted?: true;
+      readonly frame?: Omit<Extract<WorkerResponse, { type: 'frame' }>, 'id' | 'type'>;
+    }
   | {
       readonly id: number;
       readonly type: 'frame';
@@ -138,6 +147,8 @@ export function isHostRequest(value: unknown): value is HostRequest {
       );
     case 'frame':
       return hasExactKeys(value, ['id', 'type', 'input']) && isInputFrame(value.input);
+    case 'debug-step':
+      return hasExactKeys(value, ['id', 'type', 'input']) && isInputFrame(value.input);
     case 'snapshot':
     case 'audit':
       return hasExactKeys(value, ['id', 'type']);
@@ -170,6 +181,8 @@ export function isWorkerResponse(value: unknown): value is WorkerResponse {
     case 'restored':
     case 'memory-edited':
       return hasExactKeys(value, ['id', 'type']);
+    case 'debug-step':
+      return isDebugStepResponse(value);
     case 'snapshot':
       return hasExactKeys(value, ['id', 'type', 'snapshot']);
     case 'memory':
@@ -321,20 +334,40 @@ function isDebugFrame(value: unknown): value is DebugFrame {
   ) {
     return false;
   }
-  return value.trace.every(
-    (event) =>
-      isRecord(event) &&
-      hasExactKeys(event, ['id', 'sourceSpan', 'locals', 'callStack']) &&
-      isNonNegativeInteger(event.id) &&
-      isSourceSpan(event.sourceSpan) &&
-      Array.isArray(event.callStack) &&
-      event.callStack.every(
-        (frame) =>
-          isRecord(frame) &&
-          hasExactKeys(frame, ['name', 'sourceSpan']) &&
-          typeof frame.name === 'string' &&
-          isSourceSpan(frame.sourceSpan),
-      ),
+  return value.trace.every(isDebugTraceEvent);
+}
+
+function isDebugStepResponse(value: Record<string, unknown>): boolean {
+  if (value.booted === true) return hasExactKeys(value, ['id', 'type', 'booted']);
+  if (value.frame !== undefined) {
+    return (
+      hasExactKeys(value, ['id', 'type', 'frame']) &&
+      isRecord(value.frame) &&
+      isWorkerResponse({ id: value.id, type: 'frame', ...value.frame })
+    );
+  }
+  return (
+    hasExactKeys(value, ['id', 'type', 'event', 'inspection']) &&
+    isDebugTraceEvent(value.event) &&
+    isRecord(value.inspection) &&
+    hasExactKeys(value.inspection, ['state', 'tasks', 'callStack'])
+  );
+}
+
+function isDebugTraceEvent(value: unknown): value is DebugTraceEvent {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['id', 'sourceSpan', 'locals', 'callStack']) &&
+    isNonNegativeInteger(value.id) &&
+    isSourceSpan(value.sourceSpan) &&
+    Array.isArray(value.callStack) &&
+    value.callStack.every(
+      (frame) =>
+        isRecord(frame) &&
+        hasExactKeys(frame, ['name', 'sourceSpan']) &&
+        typeof frame.name === 'string' &&
+        isSourceSpan(frame.sourceSpan),
+    )
   );
 }
 

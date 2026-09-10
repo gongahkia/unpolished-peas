@@ -757,15 +757,45 @@ Each group may produce several coherent commits, and integration occurs througho
   original-file project index, Studio cross-file UX, folder-backed editing, repeat latency sample,
   and genuine debugger suspension remain open. Nothing was pushed, published or deployed.
 
-## Current risks (alpha baseline; V1 work in progress)
+## 2026-09-10 — V1 milestone 5a: live statement suspension
+
+- Debug generation now emits resumable generator code and yields immediately before executable
+  global initializers and statements. Nested routines, loops, callbacks and serialized task
+  continuations suspend through the same path; call stacks and locals remain live while stopped.
+  Release generation is unchanged and contains no debug yields or resumable metadata.
+- Added an explicit debug boot boundary. `on start` can be stepped without advancing frame time,
+  then completes before frame 0. Each frame samples input once and holds it across all statement
+  stops. Graphics, audio, save output and replay journal advancement remain deferred until the
+  frame completes. Frame execution still drives the same resumable cartridge to completion, so
+  headless tests and ordinary debug play retain prior semantics.
+- Added a validated Worker `debug-step` exchange and rewired Studio's IN/OVER/OUT, run and frame
+  controls to advance the live continuation instead of navigating a completed-frame trace. Source
+  breakpoints and restricted conditions are tested at the actual pre-statement boundary. Paused
+  inspectors show live globals/tasks/stacks; memory edits remain transactional, and rewind discards
+  an unfinished continuation and restores the last completed boot/frame snapshot.
+- Focused verification passed strict TypeScript, 40 runtime/protocol/hardware tests, and a native
+  compiler execution test that observes suspension inside a nested call, loop and task. The complete
+  repository gate then passed formatting, ESLint, strict TypeScript, **135 Vitest tests**, production
+  builds, the full Firefox E2E in **30.5 s**, Clippy with warnings denied, **58 Rust tests**, native
+  and release Wasm builds. Firefox exercised pre-initializer, boot and callback statement stops; its
+  cold-offline visit now waits for the preceding controlled online reload to finish before severing
+  the network. Original cartridge artifacts remain byte-identical at 42,904 / 41,315 / 38,091 /
+  27,869 bytes and retain their previously recorded SHA-256 hashes.
+- Current generated host sizes are 155,782-byte headless, 186,411-byte standalone, 138,999-byte
+  Studio main JS, 79,373-byte Worker JS and 1,361,437-byte compiler Wasm. Cross-module original-file
+  source maps, breakpoint edit remapping and the remaining debugger matrix are the next work in this
+  milestone; no debugger-completion or V1-completion claim is made. Nothing was pushed, published or
+  deployed.
+
+## Current risks (V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, and no custom font asset decoding/editor.
-- Linked revision-1 modules must have globally unique top-level names; generated project source maps
-  currently identify the deterministic linked source rather than each original module.
-- Breakpoints stop after the containing frame; source steps navigate captured probe events rather
-  than suspending synchronous JavaScript in the middle of a callback.
-- LSP references/rename are currently same-document and full-document-sync only.
+- Generated project source maps still identify the deterministic linked source rather than each
+  original module; live stops therefore need original-file remapping before the debugger milestone
+  is complete.
+- Breakpoint persistence/remapping after edits, folder-backed editing and incremental compiler
+  invalidation beyond direct importer diagnostics remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger
   isolation than the browser actually provides.

@@ -296,6 +296,15 @@ on draw:
 
   await shellCommand(page, 'debug');
   await expect(page.locator('[data-view="debugger"]')).toBeVisible();
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED L3 / DEPTH 0');
+  await expect(page.locator('.debug-location')).toContainText('F0000 L3');
+  await expect(page.locator('.debug-output')).toContainText('state player_x: Int = 112');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('BOOT COMPLETE');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED L6 / DEPTH 1');
+  await expect(page.locator('.debug-location')).toContainText('F0000 L6');
   await page.locator('[data-debug="frame"]').click();
   await expect(page.locator('.debug-status')).toHaveText('PAUSED AT FRAME 1');
   await page.getByLabel('Watch expression').fill('player_x');
@@ -398,6 +407,7 @@ on draw:
   await expect
     .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null))
     .toBe(true);
+  await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');

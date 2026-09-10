@@ -37,11 +37,26 @@ export interface CartridgeInspection {
   readonly callStack: unknown;
 }
 
+export interface DebugProbeEvent {
+  readonly id: number;
+  readonly sourceSpan: SourceSpan;
+  readonly locals: unknown;
+}
+
+export interface DebugStep {
+  readonly done: boolean;
+  readonly event?: DebugProbeEvent;
+}
+
+// Release cartridges return void; debug cartridges return one resumable step.
+// eslint-disable-next-line @typescript-eslint/no-invalid-void-type
+type CartridgeCallbackResult = void | DebugStep;
+
 export interface GeneratedCartridge {
-  start(): void;
-  update(): void;
-  draw(): void;
-  raster(line: number): void;
+  start(): CartridgeCallbackResult;
+  update(): CartridgeCallbackResult;
+  draw(): CartridgeCallbackResult;
+  raster(line: number): CartridgeCallbackResult;
   snapshot(): CartridgeSnapshot;
   restore(snapshot: CartridgeSnapshot): void;
   inspect(): CartridgeInspection;
@@ -83,6 +98,12 @@ export interface FrameReport {
   readonly attribution: readonly WorkAttribution[];
 }
 
+export interface MachineDebugStep {
+  readonly event?: DebugProbeEvent;
+  readonly report?: FrameReport;
+  readonly booted?: true;
+}
+
 export interface LegacyMachineSnapshot {
   readonly revision: 1;
   readonly frame: number;
@@ -106,6 +127,7 @@ export class DeterministicMachine implements CartridgeApi {
   private readonly updateRate: 30 | 60;
   private readonly cartridge: GeneratedCartridge;
   private readonly hooks: RuntimeHooks;
+  private readonly debugEnabled: boolean;
   private currentFrame = 0;
   private booted = false;
   private input: InputFrame = emptyInputFrame();
@@ -114,6 +136,7 @@ export class DeterministicMachine implements CartridgeApi {
   private rasterLine: number | undefined;
   private completedUpdates = 0;
   private lastFault: MachineFault | null = null;
+  private debugInput: InputFrame | undefined;
 
   public constructor(
     factory: CartridgeFactory,
@@ -125,6 +148,7 @@ export class DeterministicMachine implements CartridgeApi {
     this.budget = new WorkBudget(configuration.workUnitsPerFrame);
     this.rng = new DeterministicRng(configuration.seed);
     this.updateRate = configuration.updateRate;
+    this.debugEnabled = configuration.debug === true;
     this.hooks = hooks;
     this.cartridge = factory(this);
   }
@@ -146,7 +170,7 @@ export class DeterministicMachine implements CartridgeApi {
     this.phase = 'start';
     this.rasterLine = undefined;
     try {
-      this.cartridge.start();
+      this.completeDebugCallback(() => this.cartridge.start());
       this.booted = true;
       this.phase = 'idle';
     } catch (error) {
@@ -159,6 +183,12 @@ export class DeterministicMachine implements CartridgeApi {
     if (!isInputFrame(input))
       throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
     this.assertRunnable();
+    if (this.debugEnabled) {
+      for (;;) {
+        const step = this.stepDebug(input);
+        if (step.report !== undefined) return step.report;
+      }
+    }
     if (!this.booted) {
       this.boot();
     }
@@ -168,15 +198,15 @@ export class DeterministicMachine implements CartridgeApi {
     try {
       if (this.updateRate === 60 || this.currentFrame % 2 === 0) {
         this.phase = 'update';
-        this.cartridge.update();
+        this.completeDebugCallback(() => this.cartridge.update());
         this.completedUpdates += 1;
       }
       this.phase = 'draw';
-      this.cartridge.draw();
+      this.completeDebugCallback(() => this.cartridge.draw());
       for (let line = 0; line < 144; line += 1) {
         this.phase = 'raster';
         this.rasterLine = line;
-        this.cartridge.raster(line);
+        this.completeDebugCallback(() => this.cartridge.raster(line));
       }
       this.rasterLine = undefined;
       this.phase = 'output';
@@ -192,6 +222,114 @@ export class DeterministicMachine implements CartridgeApi {
     } catch (error) {
       this.rememberFault(error);
       throw error;
+    }
+  }
+
+  /** Advances a debug build to exactly one statement boundary or one completed frame. */
+  public stepDebug(input: InputFrame): MachineDebugStep {
+    if (!this.debugEnabled)
+      throw new RuntimeFault('PX9015', 'statement stepping requires a debug cartridge', {
+        start: 0,
+        end: 0,
+      });
+    if (!isInputFrame(input))
+      throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+    if (this.lastFault !== null) this.assertRunnable();
+    try {
+      if (this.phase === 'idle') {
+        this.debugInput = structuredClone(input);
+        this.budget.beginFrame();
+        if (!this.booted) {
+          this.phase = 'start';
+        } else {
+          this.beginDebugFrame();
+        }
+      }
+      for (;;) {
+        const step = this.stepDebugPhase();
+        if (step.event !== undefined) {
+          this.probe(step.event.id, step.event.sourceSpan, step.event.locals);
+          return { event: structuredClone(step.event) };
+        }
+        if (!step.done) throw new TypeError('invalid generated debug step');
+        const boundary = this.advanceDebugPhase();
+        if (boundary === 'booted') return { booted: true };
+        if (boundary !== undefined) return { report: boundary };
+      }
+    } catch (error) {
+      this.rememberFault(error);
+      throw error;
+    }
+  }
+
+  private beginDebugFrame(): void {
+    const input = this.debugInput ?? emptyInputFrame();
+    this.previousInput = this.input;
+    this.input = structuredClone(input);
+    this.phase = this.updateRate === 60 || this.currentFrame % 2 === 0 ? 'update' : 'draw';
+  }
+
+  private stepDebugPhase(): DebugStep {
+    switch (this.phase) {
+      case 'start':
+        return this.cartridge.start() ?? { done: true };
+      case 'update':
+        return this.cartridge.update() ?? { done: true };
+      case 'draw':
+        return this.cartridge.draw() ?? { done: true };
+      case 'raster':
+        return this.cartridge.raster(this.rasterLine ?? 0) ?? { done: true };
+      case 'idle':
+      case 'output':
+        throw new TypeError(`cannot step machine phase ${this.phase}`);
+    }
+  }
+
+  private advanceDebugPhase(): FrameReport | 'booted' | undefined {
+    switch (this.phase) {
+      case 'start':
+        this.booted = true;
+        this.phase = 'idle';
+        this.debugInput = undefined;
+        return 'booted';
+      case 'update':
+        this.completedUpdates += 1;
+        this.phase = 'draw';
+        return undefined;
+      case 'draw':
+        this.phase = 'raster';
+        this.rasterLine = 0;
+        return undefined;
+      case 'raster': {
+        if ((this.rasterLine ?? 0) < 143) {
+          this.rasterLine = (this.rasterLine ?? 0) + 1;
+          return undefined;
+        }
+        this.rasterLine = undefined;
+        this.phase = 'output';
+        this.hooks.completeFrame?.();
+        const report: FrameReport = {
+          frame: this.currentFrame,
+          workUnits: this.budget.used,
+          attribution: this.budget.attribution(),
+        };
+        this.currentFrame += 1;
+        this.phase = 'idle';
+        this.debugInput = undefined;
+        return report;
+      }
+      case 'idle':
+      case 'output':
+        throw new TypeError(`cannot advance machine phase ${this.phase}`);
+    }
+  }
+
+  private completeDebugCallback(callback: () => CartridgeCallbackResult): void {
+    for (;;) {
+      const step = callback();
+      if (step === undefined || step.done) return;
+      if (step.event !== undefined)
+        this.probe(step.event.id, step.event.sourceSpan, step.event.locals);
     }
   }
 
@@ -254,6 +392,7 @@ export class DeterministicMachine implements CartridgeApi {
     this.rng.restore(snapshot.rngState);
     this.input = structuredClone(snapshot.input);
     this.previousInput = structuredClone(snapshot.previousInput);
+    this.debugInput = undefined;
   }
 
   public inspect(): CartridgeInspection {

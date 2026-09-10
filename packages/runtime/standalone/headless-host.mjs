@@ -2838,6 +2838,7 @@ var DeterministicMachine = class {
   updateRate;
   cartridge;
   hooks;
+  debugEnabled;
   currentFrame = 0;
   booted = false;
   input = emptyInputFrame();
@@ -2846,12 +2847,14 @@ var DeterministicMachine = class {
   rasterLine;
   completedUpdates = 0;
   lastFault = null;
+  debugInput;
   constructor(factory, configuration, hooks = {}) {
     if (![30, 60].includes(configuration.updateRate))
       throw new RangeError('update rate must be 30 or 60 Hz');
     this.budget = new WorkBudget(configuration.workUnitsPerFrame);
     this.rng = new DeterministicRng(configuration.seed);
     this.updateRate = configuration.updateRate;
+    this.debugEnabled = configuration.debug === true;
     this.hooks = hooks;
     this.cartridge = factory(this);
   }
@@ -2868,7 +2871,7 @@ var DeterministicMachine = class {
     this.phase = 'start';
     this.rasterLine = void 0;
     try {
-      this.cartridge.start();
+      this.completeDebugCallback(() => this.cartridge.start());
       this.booted = true;
       this.phase = 'idle';
     } catch (error) {
@@ -2883,6 +2886,11 @@ var DeterministicMachine = class {
         end: 0,
       });
     this.assertRunnable();
+    if (this.debugEnabled)
+      for (;;) {
+        const step = this.stepDebug(input);
+        if (step.report !== void 0) return step.report;
+      }
     if (!this.booted) this.boot();
     this.previousInput = this.input;
     this.input = structuredClone(input);
@@ -2890,15 +2898,15 @@ var DeterministicMachine = class {
     try {
       if (this.updateRate === 60 || this.currentFrame % 2 === 0) {
         this.phase = 'update';
-        this.cartridge.update();
+        this.completeDebugCallback(() => this.cartridge.update());
         this.completedUpdates += 1;
       }
       this.phase = 'draw';
-      this.cartridge.draw();
+      this.completeDebugCallback(() => this.cartridge.draw());
       for (let line = 0; line < 144; line += 1) {
         this.phase = 'raster';
         this.rasterLine = line;
-        this.cartridge.raster(line);
+        this.completeDebugCallback(() => this.cartridge.raster(line));
       }
       this.rasterLine = void 0;
       this.phase = 'output';
@@ -2914,6 +2922,109 @@ var DeterministicMachine = class {
     } catch (error) {
       this.rememberFault(error);
       throw error;
+    }
+  }
+  /** Advances a debug build to exactly one statement boundary or one completed frame. */
+  stepDebug(input) {
+    if (!this.debugEnabled)
+      throw new RuntimeFault('PX9015', 'statement stepping requires a debug cartridge', {
+        start: 0,
+        end: 0,
+      });
+    if (!isInputFrame(input))
+      throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+        start: 0,
+        end: 0,
+      });
+    if (this.lastFault !== null) this.assertRunnable();
+    try {
+      if (this.phase === 'idle') {
+        this.debugInput = structuredClone(input);
+        this.budget.beginFrame();
+        if (!this.booted) this.phase = 'start';
+        else this.beginDebugFrame();
+      }
+      for (;;) {
+        const step = this.stepDebugPhase();
+        if (step.event !== void 0) {
+          this.probe(step.event.id, step.event.sourceSpan, step.event.locals);
+          return { event: structuredClone(step.event) };
+        }
+        if (!step.done) throw new TypeError('invalid generated debug step');
+        const boundary = this.advanceDebugPhase();
+        if (boundary === 'booted') return { booted: true };
+        if (boundary !== void 0) return { report: boundary };
+      }
+    } catch (error) {
+      this.rememberFault(error);
+      throw error;
+    }
+  }
+  beginDebugFrame() {
+    const input = this.debugInput ?? emptyInputFrame();
+    this.previousInput = this.input;
+    this.input = structuredClone(input);
+    this.phase = this.updateRate === 60 || this.currentFrame % 2 === 0 ? 'update' : 'draw';
+  }
+  stepDebugPhase() {
+    switch (this.phase) {
+      case 'start':
+        return this.cartridge.start() ?? { done: true };
+      case 'update':
+        return this.cartridge.update() ?? { done: true };
+      case 'draw':
+        return this.cartridge.draw() ?? { done: true };
+      case 'raster':
+        return this.cartridge.raster(this.rasterLine ?? 0) ?? { done: true };
+      case 'idle':
+      case 'output':
+        throw new TypeError(`cannot step machine phase ${this.phase}`);
+    }
+  }
+  advanceDebugPhase() {
+    switch (this.phase) {
+      case 'start':
+        this.booted = true;
+        this.phase = 'idle';
+        this.debugInput = void 0;
+        return 'booted';
+      case 'update':
+        this.completedUpdates += 1;
+        this.phase = 'draw';
+        return;
+      case 'draw':
+        this.phase = 'raster';
+        this.rasterLine = 0;
+        return;
+      case 'raster': {
+        if ((this.rasterLine ?? 0) < 143) {
+          this.rasterLine = (this.rasterLine ?? 0) + 1;
+          return;
+        }
+        this.rasterLine = void 0;
+        this.phase = 'output';
+        this.hooks.completeFrame?.();
+        const report = {
+          frame: this.currentFrame,
+          workUnits: this.budget.used,
+          attribution: this.budget.attribution(),
+        };
+        this.currentFrame += 1;
+        this.phase = 'idle';
+        this.debugInput = void 0;
+        return report;
+      }
+      case 'idle':
+      case 'output':
+        throw new TypeError(`cannot advance machine phase ${this.phase}`);
+    }
+  }
+  completeDebugCallback(callback) {
+    for (;;) {
+      const step = callback();
+      if (step === void 0 || step.done) return;
+      if (step.event !== void 0)
+        this.probe(step.event.id, step.event.sourceSpan, step.event.locals);
     }
   }
   snapshot() {
@@ -2972,6 +3083,7 @@ var DeterministicMachine = class {
     this.rng.restore(snapshot.rngState);
     this.input = structuredClone(snapshot.input);
     this.previousInput = structuredClone(snapshot.previousInput);
+    this.debugInput = void 0;
   }
   inspect() {
     return this.cartridge.inspect();
@@ -3640,6 +3752,7 @@ function createConsoleRuntime(factory, configuration) {
   let drawCommands = [];
   let audioCommands = [];
   let frameOutput;
+  let debugFrameActive = false;
   const mapQueries = new MapQueryStore(source === void 0 ? (configuration.maps ?? []) : []);
   const saveMemory = new SaveMemory(configuration.save ?? {});
   const cartridgeRom = configuration.rom?.slice() ?? /* @__PURE__ */ new Uint8Array();
@@ -3742,11 +3855,12 @@ function createConsoleRuntime(factory, configuration) {
   graphics.beginFrame();
   rendering = true;
   try {
-    machine.boot();
+    if (!debugEnabled) machine.boot();
   } finally {
     rendering = false;
   }
   graphics.finishFrame();
+  let boundarySnapshot = captureSnapshot();
   return {
     runFrame(input) {
       if (!isInputFrame(input))
@@ -3772,6 +3886,7 @@ function createConsoleRuntime(factory, configuration) {
       const output = completedOutput();
       const saveWrites = saveMemory.takeWrites();
       const saveCommit = saveMemory.takeCommit();
+      boundarySnapshot = captureSnapshot();
       return {
         ...report,
         drawCommands,
@@ -3790,12 +3905,80 @@ function createConsoleRuntime(factory, configuration) {
           : {}),
       };
     },
+    stepDebug(input) {
+      if (!debugEnabled)
+        throw new RuntimeFault('PX9104', 'statement stepping requires a debug cartridge', {
+          start: 0,
+          end: 0,
+        });
+      if (!isInputFrame(input))
+        throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+          start: 0,
+          end: 0,
+        });
+      if (!debugFrameActive) {
+        drawCommands = [];
+        audioCommands = [];
+        frameOutput = void 0;
+        debugTrace = [];
+        debugTraceTruncated = false;
+        graphics.beginFrame();
+        debugFrameActive = true;
+      }
+      rendering = true;
+      let step;
+      try {
+        step = requireMachine().stepDebug(input);
+      } finally {
+        rendering = false;
+      }
+      if (step.event !== void 0) {
+        const inspection = structuredClone(requireMachine().inspect());
+        return {
+          event: {
+            ...step.event,
+            callStack: structuredClone(debugCallStack),
+          },
+          inspection,
+        };
+      }
+      if (step.booted === true) {
+        debugFrameActive = false;
+        graphics.finishFrame();
+        boundarySnapshot = captureSnapshot();
+        return { booted: true };
+      }
+      const report = step.report;
+      if (report === void 0) throw new TypeError('debug step produced no event or frame');
+      debugFrameActive = false;
+      const output = completedOutput();
+      const saveWrites = saveMemory.takeWrites();
+      const saveCommit = saveMemory.takeCommit();
+      const inspection = structuredClone(requireMachine().inspect());
+      boundarySnapshot = captureSnapshot();
+      return {
+        frame: {
+          ...report,
+          drawCommands,
+          audioCommands,
+          saveWrites,
+          ...(saveCommit === void 0 ? {} : { saveCommit }),
+          output,
+          debug: {
+            trace: debugTrace,
+            truncated: debugTraceTruncated,
+            inspection,
+          },
+        },
+      };
+    },
     snapshot: captureSnapshot,
     restore(value) {
       const snapshot = readWorkerSnapshot(value);
-      const before = captureSnapshot();
+      const before = debugFrameActive ? boundarySnapshot : captureSnapshot();
       try {
         requireMachine().restore(snapshot.machine);
+        debugFrameActive = false;
         if (snapshot.revision === 6)
           saveMemory.restoreDevice(snapshot.save, snapshot.pendingSaveWrites);
         else saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
@@ -3823,6 +4006,7 @@ function createConsoleRuntime(factory, configuration) {
             visualStore.memoryRegions()[0]?.bytes.set(visual.bytes);
           }
         }
+        boundarySnapshot = captureSnapshot();
       } catch (error) {
         requireMachine().restore(before.machine);
         saveMemory.restoreDevice(before.save, before.pendingSaveWrites);
