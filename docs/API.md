@@ -62,7 +62,8 @@ registers, not the full V1 device set.
 the name length. Descriptors expose sprite/frame/tile/map addresses, dimensions and flags. These
 bytes are the backing state used by drawing and map queries. See the exact candidate
 addresses, field encodings, timing, permissions and fault behavior in [HARDWARE.md](HARDWARE.md).
-The standalone alpha exporter does not yet implement the memory surface.
+Studio, the offline standalone player, and `px240c run --headless` all execute this surface through
+the same production console core.
 
 ## Input and deterministic utilities
 

@@ -42,8 +42,8 @@ during scanout but cannot change these values.
 ## V1 candidate byte bus (in progress)
 
 The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. The remaining freeze work is the complete service/conformance suite
-and shared headless/standalone host verification.
+Hardware Revision 1 contract. The remaining freeze work is the complete aggregate conformance gate
+and cross-host verification.
 The standalone exporter still uses its
 alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
 hardware conformance or standalone parity.

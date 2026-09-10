@@ -69,11 +69,28 @@ never exposes compiled build entries as editable source.
 ## Standalone HTML
 
 `px240c export html` and the Studio `export` command call the same Rust exporter. It first packs and
-decodes the project, then embeds the verified canonical manifest and every archive entry as base64
-inside one HTML file. The inline revision-1 runtime uses no CDN, backend, or external asset request;
-the visible `SOURCE` inspector decodes and displays every original `source/` module. The player
-retains indexed graphics, raster state, synth/tracker audio, four gamepad ports, keyboard and
-pointer/touch input, deterministic work limits, and a cartridge-ID-scoped browser save key.
+decodes the project, then embeds the verified canonical bytes, manifest and every archive entry as
+base64 inside one HTML file. The inline revision-1 host uses no CDN, backend, or external asset
+request; its generated Worker is the production `sandbox-worker.ts`/`console-runtime.ts`, not a
+second emulator. The visible `SOURCE` inspector decodes every original `source/` module. Indexed
+graphics, raster state, synth/tracker PCM, four gamepad ports, keyboard and pointer/touch input,
+work limits and byte saves therefore have the same semantics as Studio. Saves use a cartridge-ID
+scoped V1 key and migrate the prior standalone integer-JSON key without cross-cartridge access.
+
+## Headless traces
+
+`px240c run PROJECT_OR_PXC --headless` recompiles source through the authoritative Rust compiler and
+drives the production TypeScript core without opening a browser. `--seed`, `--frames`, `--input`,
+`--save` and `--output` control a run. Input JSON revision 1 contains sorted, non-overlapping frame
+records with a starting `frame`, optional `duration`, and up to four `{port, buttons}` assignments;
+an optional complete pointer record supplies `x`, `y`, `primary`, `secondary` and `inside`.
+
+The revision-1 JSON result includes every frame's framebuffer, state, audio-command, little-endian
+Float32 PCM and committed-save SHA-256 plus work use. Its summary reports final hashes, aggregate
+audio/PCM hashes, completed/requested frames, peak work and any stable PX9xxx fault/span. Requests
+are bounded to 36,000 frames, 8 MiB of trace JSON, 2 MiB of decoded files, 256 KiB of ROM and 8 KiB
+of save data. A modeled cartridge fault is a successful trace result; malformed input or a host
+failure exits unsuccessfully.
 
 ## Reproducibility
 

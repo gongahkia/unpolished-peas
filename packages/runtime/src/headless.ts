@@ -4,12 +4,24 @@ import { decodeRuntimeAssets, type ProjectAssetDeclaration } from './asset-codec
 import { createConsoleRuntime, type ConsoleFrame } from './console-runtime';
 import { RuntimeFault } from './errors';
 import { HARDWARE } from './hardware';
-import { emptyInputFrame, isInputFrame, type InputFrame } from './input';
+import {
+  BUTTONS,
+  emptyInputFrame,
+  isButton,
+  type Button,
+  type InputFrame,
+  type PointerState,
+} from './input';
 import type { CartridgeFactory } from './machine';
 
 export interface HeadlessTraceFrame {
   readonly frame: number;
-  readonly input: InputFrame;
+  readonly duration?: number;
+  readonly controllers: readonly {
+    readonly port: 1 | 2 | 3 | 4;
+    readonly buttons: readonly Button[];
+  }[];
+  readonly pointer?: PointerState;
 }
 
 export interface HeadlessTrace {
@@ -97,7 +109,10 @@ export async function runHeadless(value: unknown): Promise<HeadlessResult> {
     save: Uint8Array.from(request.save),
     rom: Uint8Array.from(request.rom),
   });
-  const inputs = new Map(request.trace.frames.map(({ frame, input }) => [frame, input]));
+  const inputs = new Map<number, InputFrame>();
+  for (const trace of request.trace.frames)
+    for (let offset = 0; offset < (trace.duration ?? 1); offset += 1)
+      inputs.set(trace.frame + offset, traceInput(trace));
   const frameResults: HeadlessFrameResult[] = [];
   const commandHash = createHash('sha256');
   const pcmHash = createHash('sha256');
@@ -237,21 +252,78 @@ function isTrace(value: unknown, frameLimit: number): value is HeadlessTrace {
     value.frames.length > frameLimit
   )
     return false;
-  let previous = -1;
+  let previousEnd = 0;
   for (const item of value.frames) {
     if (
       !isRecord(item) ||
-      !hasExactKeys(item, ['frame', 'input']) ||
+      !hasOnlyKeys(item, ['frame', 'duration', 'controllers', 'pointer']) ||
+      !('controllers' in item) ||
       typeof item.frame !== 'number' ||
       !Number.isSafeInteger(item.frame) ||
-      item.frame <= previous ||
+      item.frame < previousEnd ||
       item.frame >= frameLimit ||
-      !isInputFrame(item.input)
+      (item.duration !== undefined &&
+        (typeof item.duration !== 'number' ||
+          !Number.isSafeInteger(item.duration) ||
+          item.duration < 1 ||
+          item.duration > frameLimit - item.frame)) ||
+      !isTraceControllers(item.controllers) ||
+      (item.pointer !== undefined && !isHeadlessPointer(item.pointer))
     )
       return false;
-    previous = item.frame;
+    previousEnd = item.frame + (item.duration ?? 1);
   }
   return true;
+}
+
+function isHeadlessPointer(value: unknown): value is PointerState {
+  return (
+    isRecord(value) &&
+    hasExactKeys(value, ['x', 'y', 'primary', 'secondary', 'inside']) &&
+    typeof value.x === 'number' &&
+    Number.isSafeInteger(value.x) &&
+    value.x >= 0 &&
+    value.x < HARDWARE.width &&
+    typeof value.y === 'number' &&
+    Number.isSafeInteger(value.y) &&
+    value.y >= 0 &&
+    value.y < HARDWARE.height &&
+    typeof value.primary === 'boolean' &&
+    typeof value.secondary === 'boolean' &&
+    typeof value.inside === 'boolean'
+  );
+}
+
+function isTraceControllers(value: unknown): value is HeadlessTraceFrame['controllers'] {
+  if (!Array.isArray(value) || value.length > 4) return false;
+  const ports = new Set<number>();
+  for (const controller of value) {
+    if (
+      !isRecord(controller) ||
+      !hasExactKeys(controller, ['port', 'buttons']) ||
+      typeof controller.port !== 'number' ||
+      ![1, 2, 3, 4].includes(controller.port) ||
+      ports.has(controller.port) ||
+      !Array.isArray(controller.buttons) ||
+      controller.buttons.length > BUTTONS.length ||
+      new Set(controller.buttons).size !== controller.buttons.length ||
+      !controller.buttons.every(isButton)
+    )
+      return false;
+    ports.add(controller.port);
+  }
+  return true;
+}
+
+function traceInput(frame: HeadlessTraceFrame): InputFrame {
+  const input = emptyInputFrame();
+  for (const controller of frame.controllers) {
+    const target = input.controllers[controller.port - 1];
+    if (target === undefined) continue;
+    for (const button of controller.buttons)
+      (target.buttons as Record<Button, boolean>)[button] = true;
+  }
+  return { ...input, ...(frame.pointer === undefined ? {} : { pointer: frame.pointer }) };
 }
 
 function isByteRecord(
@@ -324,6 +396,10 @@ function hasExactKeys(value: Record<string, unknown>, keys: readonly string[]): 
   return (
     actual.length === keys.length && [...keys].sort().every((key, index) => actual[index] === key)
   );
+}
+
+function hasOnlyKeys(value: Record<string, unknown>, keys: readonly string[]): boolean {
+  return Object.keys(value).every((key) => keys.includes(key));
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

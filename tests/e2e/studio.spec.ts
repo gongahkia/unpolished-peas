@@ -40,6 +40,7 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await expect(page.locator('.terminal')).toContainText('cinder-circuit');
   await expect(page.locator('.terminal')).toContainText('ashvault');
   await expect(page.locator('.terminal')).toContainText('raster-rush');
+  await expect(page.locator('.terminal')).toContainText('px240c-service');
 
   for (const cartridge of [
     { id: 'cinder-circuit', key: 'z', work: ['W03274', 'W03342'] },
@@ -74,6 +75,18 @@ test('complete local Studio and distribution workflow', async ({ page, context }
     await page.locator('.stop-player').click();
     await expect(page.locator('[data-view="shell"]')).toBeVisible();
   }
+
+  await shellCommand(page, 'load px240c-service');
+  await shellCommand(page, 'run');
+  await expect(page.locator('[data-view="player"]')).toBeVisible();
+  await expect
+    .poll(async () => {
+      const status = await page.locator('.player-status').innerText();
+      return /^F\d{5} W\d{5}$/.test(status) ? Number(status.slice(1, 6)) : -1;
+    })
+    .toBeGreaterThanOrEqual(3);
+  await expect(page.locator('.player-status')).not.toHaveClass(/error/);
+  await page.locator('.stop-player').click();
 
   await shellCommand(page, 'new e2e-bus MEMORY CONFORMANCE');
   await shellCommand(page, 'edit');

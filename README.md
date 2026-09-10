@@ -3,7 +3,7 @@
 PX-240C is a complete local-first fantasy console presented as a technically unusual, commercially
 unsuccessful colour handheld from 1999. Its alpha includes the statically typed PXCL/1 language,
 Rust/Wasm compiler, deterministic worker runtime, 240x144 integrated Studio, source debugger and
-rewind, native Linux CLI/LSP, reproducible cartridges, offline standalone export, and three original
+rewind, native Linux CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, and three original
 pack-in games.
 
 Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository is private and
@@ -61,6 +61,7 @@ For the native external-editor workflow:
 cargo run -p px240c-cli -- new my-game --title "MY GAME"
 cargo run -p px240c-cli -- check my-game
 cargo run -p px240c-cli -- run my-game
+cargo run -p px240c-cli -- run my-game --headless --frames 120 --input path/to/replay.json
 cargo run -p px240c-cli -- export html my-game
 ```
 

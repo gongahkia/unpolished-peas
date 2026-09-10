@@ -130,7 +130,7 @@ stopping contracts in the brief remain authoritative in addition to this checkli
 ### 3. Conformance and headless execution
 
 - [ ] No-browser conformance for every region/register plus reset/aliasing/bounds/endianness/framebuffer/raster/input/audio/tasks/RNG/save/work/faults.
-- [ ] One production-core headless CLI accepts cartridge, seed, frame/update count, scripted input and save; emits frame/state/audio or PCM hashes, peaks and faults.
+- [x] One production-core headless CLI accepts cartridge, seed, frame/update count, scripted input and save; emits frame/state/audio or PCM hashes, peaks and faults.
 - [ ] Browser/headless golden parity in both browsers; original three game paths preserve output, controls, audio and saves.
 - [ ] Raw pre-V1 cartridge/project/replay/save compatibility fixtures migrate without replacing originals; public source-visible PXCL diagnostic/service cart.
 

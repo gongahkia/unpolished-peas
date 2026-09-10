@@ -11,6 +11,7 @@ const STANDALONE_PLAYER: &str = include_str!("../../../packages/runtime/standalo
 struct StandalonePayload {
     manifest: PackedManifest,
     files: BTreeMap<String, String>,
+    rom: String,
 }
 
 /// Exports a project as one offline, source-inspectable standalone HTML player.
@@ -36,6 +37,7 @@ pub fn export_standalone_html(
             .into_iter()
             .map(|(path, contents)| (path, base64(&contents)))
             .collect(),
+        rom: base64(&packed.bytes),
     };
     let payload = serde_json::to_string(&payload).map_err(|error| {
         export_error(format!("could not serialize standalone payload: {error}"))
@@ -176,6 +178,8 @@ update_rate = 60
         assert!(first.contains("id=\"source-view\""));
         assert!(first.contains("source/src/main.pxl"));
         assert!(first.contains(&base64(&files["src/main.pxl"])));
+        assert!(first.contains("\"rom\":\"UFgyNDBD"));
+        assert!(first.contains("createConsoleRuntime"));
         assert!(!first.contains("https://"));
         assert!(!first.contains("SCRIPT </script> TEST"));
         assert!(first.contains("SCRIPT &lt;/script&gt; TEST"));
