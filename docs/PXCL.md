@@ -7,8 +7,10 @@ zero-based. The compiler and its conformance fixtures are authoritative when thi
 
 The implemented compiler resolves names to stable symbol IDs and lowers valid modules to typed IR.
 Project builds link absolute dotted imports such as `import src.math as math` to `src/math.pxl`.
-Revision 1 rejects cycles, callbacks in dependency modules, and colliding top-level names. The
-single-file analysis API deliberately reports that imported members require project analysis.
+Revision 1 gives every module its own top-level namespace, permits the same declaration name in
+different modules, and resolves imported members through their alias. It rejects cycles and system
+callbacks in dependency modules. The single-file analysis API deliberately reports that imported
+members require project analysis.
 
 ## Lexical rules
 
@@ -30,6 +32,24 @@ state score: Int = 0
 state recent: List[Int, 16] = []
 state ports: [Int, 4] = [0, 0, 0, 0]
 ```
+
+Top-level declarations are public by default so every alpha project remains valid. `pub` may make
+that intent explicit; `private` prevents access through an import alias. Visibility applies to
+constants, state, functions, tasks, records, and enums. Imports are absolute project paths and
+always use qualified member access:
+
+```pxl
+import src.motion as motion
+
+private const STEP: Int = 2
+pub fn advance(x: Int) -> Int:
+  return motion.clamp_x(x + STEP)
+```
+
+Dependencies initialize before their importers in a deterministic depth-first order, with paths
+and imports traversed in source order. A cycle is a `PX4008` project diagnostic. Repeated aliases,
+missing/private members, and invalid module surfaces are `PX4009` diagnostics. Only the entry module
+may declare system callbacks. Single-file cartridges need no imports or visibility modifiers.
 
 Locals use inferred types. `let` is immutable and `var` is mutable. Functions declare parameter and
 return types. Tasks have typed parameters but no return value and may suspend with `wait`.
@@ -118,8 +138,9 @@ The following EBNF specifies the accepted syntax. Whitespace between tokens is o
 
 ```ebnf
 module       = { NEWLINE | item }, EOF ;
-item         = import | constant | state | function | task | callback
-             | record | enum | assertion ;
+item         = import | [ visibility ], ( constant | state | function | task | record | enum )
+             | callback | assertion ;
+visibility   = "pub" | "private" ;
 import       = "import", path, [ "as", identifier ], line-end ;
 constant     = "const", identifier, [ ":", type ], "=", expression, line-end ;
 state        = "state", identifier, ":", type, "=", expression, line-end ;

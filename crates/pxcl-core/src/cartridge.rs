@@ -382,12 +382,13 @@ fn link_project_sources(
     let mut visited = BTreeSet::<String>::new();
     let mut order = Vec::new();
     visit_module(entry, &modules, &mut visiting, &mut visited, &mut order)?;
-    validate_link_names(entry, &order, &modules)?;
+    validate_link_modules(entry, &order, &modules)?;
+    let renames = module_renames(&order, &modules);
 
     let mut linked = String::new();
     for path in order {
         let module = modules.get(&path).expect("visited modules exist");
-        linked.push_str(&render_module(&path, module, &modules)?);
+        linked.push_str(&render_module(&path, module, &modules, &renames)?);
         if !linked.ends_with('\n') {
             linked.push('\n');
         }
@@ -433,12 +434,11 @@ fn visit_module(
     Ok(())
 }
 
-fn validate_link_names(
+fn validate_link_modules(
     entry: &str,
     order: &[String],
     modules: &BTreeMap<String, ProjectModule>,
 ) -> Result<(), CartridgeError> {
-    let mut owners = BTreeMap::<String, String>::new();
     for path in order {
         let module = modules.get(path).expect("visited modules exist");
         if path != entry
@@ -453,24 +453,42 @@ fn validate_link_names(
                 format!("imported module '{path}' declares a system callback"),
             ));
         }
-        for name in module_exports(&module.syntax) {
-            if let Some(previous) = owners.insert(name.clone(), path.clone()) {
-                return Err(cartridge_error(
-                    "PX4009",
-                    format!(
-                        "top-level name '{name}' collides between modules '{previous}' and '{path}'"
-                    ),
-                ));
-            }
-        }
     }
     Ok(())
+}
+
+fn module_renames(
+    order: &[String],
+    modules: &BTreeMap<String, ProjectModule>,
+) -> BTreeMap<String, BTreeMap<String, String>> {
+    let mut counts = BTreeMap::<String, usize>::new();
+    for path in order {
+        for name in module_declarations(&modules[path].syntax) {
+            *counts.entry(name).or_default() += 1;
+        }
+    }
+    order
+        .iter()
+        .enumerate()
+        .map(|(index, path)| {
+            let names = module_declarations(&modules[path].syntax)
+                .into_iter()
+                .filter(|name| counts.get(name).copied().unwrap_or_default() > 1)
+                .map(|name| {
+                    let renamed = format!("__pxm{index}_{name}");
+                    (name, renamed)
+                })
+                .collect();
+            (path.clone(), names)
+        })
+        .collect()
 }
 
 fn render_module(
     path: &str,
     module: &ProjectModule,
     modules: &BTreeMap<String, ProjectModule>,
+    renames: &BTreeMap<String, BTreeMap<String, String>>,
 ) -> Result<String, CartridgeError> {
     let mut replacements = Vec::<(usize, usize, String)>::new();
     let mut aliases = BTreeMap::<String, (String, BTreeSet<String>)>::new();
@@ -535,9 +553,14 @@ fn render_module(
         replacements.push((
             usize::try_from(window[0].span.start).unwrap_or(usize::MAX),
             usize::try_from(window[2].span.end).unwrap_or(usize::MAX),
-            member.clone(),
+            renames
+                .get(imported_path)
+                .and_then(|names| names.get(member))
+                .unwrap_or(member)
+                .clone(),
         ));
     }
+    add_namespace_replacements(&tokens, &mut replacements, &renames[path], &module.syntax);
     replacements.sort_by_key(|(start, _, _)| *start);
     let mut output = module.text.clone();
     for (start, end, replacement) in replacements.into_iter().rev() {
@@ -552,7 +575,93 @@ fn render_module(
     Ok(output)
 }
 
+fn add_namespace_replacements(
+    tokens: &[crate::Token],
+    replacements: &mut Vec<(usize, usize, String)>,
+    own_names: &BTreeMap<String, String>,
+    syntax: &Module,
+) {
+    let local_scopes = local_scopes(syntax);
+    for (index, token) in tokens.iter().enumerate() {
+        let TokenKind::Identifier(name) = &token.kind else {
+            continue;
+        };
+        let Some(linked_name) = own_names.get(name) else {
+            continue;
+        };
+        if replacements.iter().any(|(start, end, _)| {
+            *start <= usize::try_from(token.span.start).unwrap_or(usize::MAX)
+                && usize::try_from(token.span.end).unwrap_or(usize::MAX) <= *end
+        }) {
+            continue;
+        }
+        let preceded_by_dot = tokens[..index]
+            .iter()
+            .rev()
+            .find(|candidate| {
+                !matches!(
+                    candidate.kind,
+                    TokenKind::Comment(_)
+                        | TokenKind::Newline
+                        | TokenKind::Indent
+                        | TokenKind::Dedent
+                )
+            })
+            .is_some_and(|previous| matches!(previous.kind, TokenKind::Dot));
+        if preceded_by_dot
+            || local_scopes.iter().any(|scope| {
+                scope.name == *name
+                    && scope.start <= token.span.start
+                    && token.span.start < scope.end
+            })
+        {
+            continue;
+        }
+        replacements.push((
+            usize::try_from(token.span.start).unwrap_or(usize::MAX),
+            usize::try_from(token.span.end).unwrap_or(usize::MAX),
+            linked_name.clone(),
+        ));
+    }
+}
+
 fn module_exports(module: &Module) -> Vec<String> {
+    module
+        .items
+        .iter()
+        .filter_map(|item| match item {
+            Item::Constant(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::State(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::Function(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::Task(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::Record(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::Enum(value) if value.visibility == crate::ast::Visibility::Public => {
+                Some(value.name.value.clone())
+            }
+            Item::Constant(_)
+            | Item::State(_)
+            | Item::Function(_)
+            | Item::Task(_)
+            | Item::Record(_)
+            | Item::Enum(_)
+            | Item::Import(_)
+            | Item::Callback(_)
+            | Item::Assertion(_) => None,
+        })
+        .collect()
+}
+
+fn module_declarations(module: &Module) -> Vec<String> {
     module
         .items
         .iter()
@@ -566,6 +675,116 @@ fn module_exports(module: &Module) -> Vec<String> {
             Item::Import(_) | Item::Callback(_) | Item::Assertion(_) => None,
         })
         .collect()
+}
+
+#[derive(Clone, Debug)]
+struct LocalScope {
+    name: String,
+    start: u32,
+    end: u32,
+}
+
+fn local_scopes(module: &Module) -> Vec<LocalScope> {
+    let mut scopes = Vec::new();
+    for item in &module.items {
+        match item {
+            Item::Function(value) => {
+                add_parameters(&mut scopes, &value.parameters, value.span.end);
+                add_block_scopes(&mut scopes, &value.body, value.span.end);
+            }
+            Item::Task(value) => {
+                add_parameters(&mut scopes, &value.parameters, value.span.end);
+                add_block_scopes(&mut scopes, &value.body, value.span.end);
+            }
+            Item::Callback(value) => {
+                add_parameters(&mut scopes, &value.parameters, value.span.end);
+                add_block_scopes(&mut scopes, &value.body, value.span.end);
+            }
+            Item::Import(_)
+            | Item::Constant(_)
+            | Item::State(_)
+            | Item::Record(_)
+            | Item::Enum(_)
+            | Item::Assertion(_) => {}
+        }
+    }
+    scopes
+}
+
+fn add_parameters(scopes: &mut Vec<LocalScope>, parameters: &[crate::ast::Parameter], end: u32) {
+    scopes.extend(parameters.iter().map(|parameter| LocalScope {
+        name: parameter.name.value.clone(),
+        start: parameter.name.span.start,
+        end,
+    }));
+}
+
+fn add_block_scopes(scopes: &mut Vec<LocalScope>, block: &[crate::ast::Statement], end: u32) {
+    use crate::ast::{PatternKind, StatementKind};
+    for statement in block {
+        match &statement.kind {
+            StatementKind::Let { name, .. } => scopes.push(LocalScope {
+                name: name.value.clone(),
+                start: name.span.start,
+                end,
+            }),
+            StatementKind::If(value) => {
+                for branch in &value.branches {
+                    add_block_scopes(scopes, &branch.body, branch.span.end);
+                }
+                if let Some(body) = &value.else_body {
+                    add_block_scopes(scopes, body, block_end(body, statement.span.end));
+                }
+            }
+            StatementKind::While { body, .. } => {
+                add_block_scopes(scopes, body, block_end(body, statement.span.end));
+            }
+            StatementKind::For { binding, body, .. } => {
+                let body_end = block_end(body, statement.span.end);
+                scopes.push(LocalScope {
+                    name: binding.value.clone(),
+                    start: binding.span.start,
+                    end: body_end,
+                });
+                add_block_scopes(scopes, body, body_end);
+            }
+            StatementKind::Match(value) => {
+                for arm in &value.arms {
+                    let body_end = block_end(&arm.body, arm.span.end);
+                    match &arm.pattern.kind {
+                        PatternKind::Binding(name) => scopes.push(LocalScope {
+                            name: name.value.clone(),
+                            start: name.span.start,
+                            end: body_end,
+                        }),
+                        PatternKind::Variant { bindings, .. } => {
+                            scopes.extend(bindings.iter().map(|name| LocalScope {
+                                name: name.value.clone(),
+                                start: name.span.start,
+                                end: body_end,
+                            }));
+                        }
+                        PatternKind::Wildcard | PatternKind::Literal(_) => {}
+                    }
+                    add_block_scopes(scopes, &arm.body, body_end);
+                }
+            }
+            StatementKind::Assignment { .. }
+            | StatementKind::Expression(_)
+            | StatementKind::Return(_)
+            | StatementKind::Break
+            | StatementKind::Continue
+            | StatementKind::Wait(_)
+            | StatementKind::Start(_)
+            | StatementKind::Assert(_) => {}
+        }
+    }
+}
+
+fn block_end(block: &[crate::ast::Statement], fallback: u32) -> u32 {
+    block
+        .last()
+        .map_or(fallback, |statement| statement.span.end)
 }
 
 fn import_path<'a>(parts: impl Iterator<Item = &'a str>) -> Result<String, CartridgeError> {
@@ -582,7 +801,7 @@ fn collect_project_entries(
     let mut entries = BTreeMap::<String, Vec<u8>>::new();
     for (path, bytes) in project_files {
         let path = normalize_project_path(path)?;
-        if has_pxl_extension(&path) {
+        if has_pxl_extension(&path) && !path.starts_with("tests/") {
             let text = normalized_source(bytes, &path)?;
             insert_unique(&mut entries, format!("source/{path}"), text.into_bytes())?;
         }
@@ -1404,6 +1623,22 @@ path = "assets/hero.pxg"
     }
 
     #[test]
+    fn release_cartridges_exclude_test_only_source_entries() {
+        let mut project_files = files("\n");
+        project_files.insert(
+            "tests/private-check.pxl".to_owned(),
+            b"on start:\n  assert true\n".to_vec(),
+        );
+        let packed = pack_project(manifest(), &project_files).expect("project packs");
+        let decoded = decode_cartridge(&packed.bytes).expect("cartridge decodes");
+        assert!(
+            !decoded
+                .entries
+                .contains_key("source/tests/private-check.pxl")
+        );
+    }
+
+    #[test]
     fn project_imports_link_through_the_typed_pipeline() {
         let mut project_files = files("\n");
         project_files.insert(
@@ -1417,7 +1652,11 @@ path = "assets/hero.pxg"
         );
         let output = compile_project(manifest(), &project_files, CompileMode::Release)
             .expect("project links");
-        assert!(output.analysis.diagnostics.is_empty());
+        assert!(
+            output.analysis.diagnostics.is_empty(),
+            "{:?}",
+            output.analysis.diagnostics
+        );
         assert!(
             !output
                 .generated
@@ -1426,6 +1665,87 @@ path = "assets/hero.pxg"
                 .is_empty()
         );
         assert!(pack_project(manifest(), &project_files).is_ok());
+    }
+
+    #[test]
+    fn project_modules_namespace_collisions_and_preserve_local_shadowing() {
+        let mut project_files = files("\n");
+        project_files.insert(
+            "src/main.pxl".to_owned(),
+            b"import src.left as left\nimport src.right as right\nstate score: Int = left.value(2) + right.value(3)\non draw:\n  clear(0)\n"
+                .to_vec(),
+        );
+        project_files.insert(
+            "src/left.pxl".to_owned(),
+            b"private const offset: Int = 1\npub fn value(value: Int) -> Int:\n  return value + offset\n"
+                .to_vec(),
+        );
+        project_files.insert(
+            "src/right.pxl".to_owned(),
+            b"private const offset: Int = 2\nfn value(input: Int) -> Int:\n  let value = input\n  return value + offset\n"
+                .to_vec(),
+        );
+        let output = compile_project(manifest(), &project_files, CompileMode::Release)
+            .expect("namespaced project links");
+        assert!(
+            output.analysis.diagnostics.is_empty(),
+            "{:?}",
+            output.analysis.diagnostics
+        );
+        let names: Vec<_> = output
+            .analysis
+            .symbols
+            .iter()
+            .map(|symbol| symbol.name.as_str())
+            .collect();
+        assert!(names.contains(&"__pxm0_offset"));
+        assert!(names.contains(&"__pxm1_offset"));
+        assert!(names.contains(&"__pxm0_value"));
+        assert!(names.contains(&"__pxm1_value"));
+        assert!(output.generated.is_some());
+    }
+
+    #[test]
+    fn project_modules_reject_private_members_and_cycles() {
+        let mut private_files = files("\n");
+        private_files.insert(
+            "src/main.pxl".to_owned(),
+            b"import src.math as math\non draw:\n  clear(math.secret())\n".to_vec(),
+        );
+        private_files.insert(
+            "src/math.pxl".to_owned(),
+            b"private fn secret() -> Int:\n  return 1\n".to_vec(),
+        );
+        let private_error = compile_project(manifest(), &private_files, CompileMode::Release)
+            .expect_err("private member is hidden");
+        assert_eq!(private_error.code, "PX4009");
+        assert!(
+            private_error
+                .message
+                .contains("no exported member 'secret'")
+        );
+
+        let mut cycle_files = files("\n");
+        cycle_files.insert(
+            "src/main.pxl".to_owned(),
+            b"import src.first\non draw:\n  clear(0)\n".to_vec(),
+        );
+        cycle_files.insert(
+            "src/first.pxl".to_owned(),
+            b"import src.second\nfn first() -> Int:\n  return 1\n".to_vec(),
+        );
+        cycle_files.insert(
+            "src/second.pxl".to_owned(),
+            b"import src.first\nfn second() -> Int:\n  return 2\n".to_vec(),
+        );
+        let cycle_error = compile_project(manifest(), &cycle_files, CompileMode::Release)
+            .expect_err("cycle is rejected");
+        assert_eq!(cycle_error.code, "PX4008");
+        assert!(
+            cycle_error
+                .message
+                .contains("src/first.pxl -> src/second.pxl")
+        );
     }
 
     #[test]

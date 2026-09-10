@@ -6,7 +6,7 @@ use crate::{
         ConditionalBranch, Constant, Enum, EnumVariant, Expression, ExpressionKind, Function,
         IfStatement, Import, Item, Literal, MatchArm, MatchStatement, Module, Name, Parameter,
         Pattern, PatternKind, Record, RecordField, State, Statement, StatementKind, Task,
-        TypeArgument, TypeKind, TypeNode, UnaryOperator,
+        TypeArgument, TypeKind, TypeNode, UnaryOperator, Visibility,
     },
     diagnostic::Diagnostic,
     lexer::{LexOutput, lex},
@@ -76,15 +76,51 @@ impl<'tokens> Parser<'tokens> {
     }
 
     fn parse_item(&mut self) -> Option<Item> {
+        let explicit_visibility = match self.current().kind {
+            TokenKind::Pub => {
+                self.advance();
+                Some(Visibility::Public)
+            }
+            TokenKind::Private => {
+                self.advance();
+                Some(Visibility::Private)
+            }
+            _ => None,
+        };
+        let visibility = explicit_visibility.unwrap_or_default();
+        if explicit_visibility.is_some()
+            && !matches!(
+                self.current().kind,
+                TokenKind::Const
+                    | TokenKind::State
+                    | TokenKind::Fn
+                    | TokenKind::Task
+                    | TokenKind::Record
+                    | TokenKind::Enum
+            )
+        {
+            let token = self.current();
+            self.diagnostics.push(
+                Diagnostic::error(
+                    "PX2001",
+                    token.span,
+                    "visibility modifier does not apply to this module item",
+                )
+                .with_primary_label(
+                    "visibility applies only to `const`, `state`, `fn`, `task`, `record`, or `enum`",
+                ),
+            );
+            return None;
+        }
         match &self.current().kind {
             TokenKind::Import => self.parse_import().map(Item::Import),
-            TokenKind::Const => self.parse_constant().map(Item::Constant),
-            TokenKind::State => self.parse_state().map(Item::State),
-            TokenKind::Fn => self.parse_function().map(Item::Function),
-            TokenKind::Task => self.parse_task().map(Item::Task),
+            TokenKind::Const => self.parse_constant(visibility).map(Item::Constant),
+            TokenKind::State => self.parse_state(visibility).map(Item::State),
+            TokenKind::Fn => self.parse_function(visibility).map(Item::Function),
+            TokenKind::Task => self.parse_task(visibility).map(Item::Task),
             TokenKind::On => self.parse_callback().map(Item::Callback),
-            TokenKind::Record => self.parse_record().map(Item::Record),
-            TokenKind::Enum => self.parse_enum().map(Item::Enum),
+            TokenKind::Record => self.parse_record(visibility).map(Item::Record),
+            TokenKind::Enum => self.parse_enum(visibility).map(Item::Enum),
             TokenKind::Assert => self.parse_assertion(true).map(Item::Assertion),
             _ => {
                 let token = self.current();
@@ -119,7 +155,7 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_constant(&mut self) -> Option<Constant> {
+    fn parse_constant(&mut self, visibility: Visibility) -> Option<Constant> {
         let start = self.advance().span;
         let name = self.expect_name("constant name")?;
         let type_annotation = if self.consume(&TokenKind::Colon).is_some() {
@@ -131,6 +167,7 @@ impl<'tokens> Parser<'tokens> {
         let value = self.parse_expression()?;
         let end = self.finish_line();
         Some(Constant {
+            visibility,
             name,
             type_annotation,
             value,
@@ -138,7 +175,7 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_state(&mut self) -> Option<State> {
+    fn parse_state(&mut self, visibility: Visibility) -> Option<State> {
         let start = self.advance().span;
         let name = self.expect_name("state name")?;
         self.expect(&TokenKind::Colon, "explicit state type");
@@ -147,6 +184,7 @@ impl<'tokens> Parser<'tokens> {
         let value = self.parse_expression()?;
         let end = self.finish_line();
         Some(State {
+            visibility,
             name,
             type_annotation,
             value,
@@ -154,7 +192,7 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_function(&mut self) -> Option<Function> {
+    fn parse_function(&mut self, visibility: Visibility) -> Option<Function> {
         let start = self.advance().span;
         let name = self.expect_name("function name")?;
         let parameters = self.parse_parameters()?;
@@ -163,6 +201,7 @@ impl<'tokens> Parser<'tokens> {
         self.expect(&TokenKind::Colon, "function header");
         let (body, end) = self.parse_block();
         Some(Function {
+            visibility,
             name,
             parameters,
             return_type,
@@ -171,13 +210,14 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_task(&mut self) -> Option<Task> {
+    fn parse_task(&mut self, visibility: Visibility) -> Option<Task> {
         let start = self.advance().span;
         let name = self.expect_name("task name")?;
         let parameters = self.parse_parameters()?;
         self.expect(&TokenKind::Colon, "task header");
         let (body, end) = self.parse_block();
         Some(Task {
+            visibility,
             name,
             parameters,
             body,
@@ -213,7 +253,7 @@ impl<'tokens> Parser<'tokens> {
         })
     }
 
-    fn parse_record(&mut self) -> Option<Record> {
+    fn parse_record(&mut self, visibility: Visibility) -> Option<Record> {
         let start = self.advance().span;
         let name = self.expect_name("record name")?;
         self.expect(&TokenKind::Colon, "record header");
@@ -221,6 +261,7 @@ impl<'tokens> Parser<'tokens> {
         if self.consume(&TokenKind::Indent).is_none() {
             self.expected_indented_block();
             return Some(Record {
+                visibility,
                 name,
                 fields: Vec::new(),
                 span: start.through(self.current().span),
@@ -257,13 +298,14 @@ impl<'tokens> Parser<'tokens> {
             .consume(&TokenKind::Dedent)
             .map_or(self.eof, |token| token.span);
         Some(Record {
+            visibility,
             name,
             fields,
             span: start.through(end),
         })
     }
 
-    fn parse_enum(&mut self) -> Option<Enum> {
+    fn parse_enum(&mut self, visibility: Visibility) -> Option<Enum> {
         let start = self.advance().span;
         let name = self.expect_name("enum name")?;
         self.expect(&TokenKind::Colon, "enum header");
@@ -271,6 +313,7 @@ impl<'tokens> Parser<'tokens> {
         if self.consume(&TokenKind::Indent).is_none() {
             self.expected_indented_block();
             return Some(Enum {
+                visibility,
                 name,
                 variants: Vec::new(),
                 span: start.through(self.current().span),
@@ -310,6 +353,7 @@ impl<'tokens> Parser<'tokens> {
             .consume(&TokenKind::Dedent)
             .map_or(self.eof, |token| token.span);
         Some(Enum {
+            visibility,
             name,
             variants,
             span: start.through(end),
@@ -1076,7 +1120,30 @@ fn binary_operator(kind: &TokenKind) -> Option<(BinaryOperator, u8)> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{FileId, SourceFile, ast::Item, parse};
+    use crate::{
+        FileId, SourceFile,
+        ast::{Item, Visibility},
+        parse,
+    };
+
+    #[test]
+    fn parses_explicit_public_and_private_declarations() {
+        let source = SourceFile::new(
+            FileId(0),
+            "visibility.pxl",
+            "pub fn shown() -> Int:\n  return 1\nprivate fn hidden() -> Int:\n  return 2\n",
+        );
+        let output = parse(&source);
+        assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+        assert!(matches!(
+            &output.module.items[0],
+            Item::Function(function) if function.visibility == Visibility::Public
+        ));
+        assert!(matches!(
+            &output.module.items[1],
+            Item::Function(function) if function.visibility == Visibility::Private
+        ));
+    }
 
     #[test]
     fn parses_required_declaration_shapes() {

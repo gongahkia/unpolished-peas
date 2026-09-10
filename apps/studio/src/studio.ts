@@ -1032,6 +1032,9 @@ function splitCommand(source: string): string[] {
 }
 
 const COMPLETIONS = [
+  'import',
+  'pub',
+  'private',
   'state',
   'let',
   'var',
@@ -1098,7 +1101,7 @@ function gotoDefinition(textarea: HTMLTextAreaElement): void {
 
 function renderHighlight(target: HTMLElement, source: string): void {
   const pattern =
-    /\/\/.*$|"(?:\\.|[^"\\])*"|#[A-Za-z_][A-Za-z0-9_]*|\b(?:and|as|assert|break|case|const|continue|draw|elif|else|enum|false|fn|for|if|import|in|let|match|none|not|on|or|raster|record|return|start|state|task|true|update|var|wait|while)\b|\b\d+(?:\.\d+)?(?:f|s)?\b/gm;
+    /\/\/.*$|"(?:\\.|[^"\\])*"|#[A-Za-z_][A-Za-z0-9_]*|\b(?:and|as|assert|break|case|const|continue|draw|elif|else|enum|false|fn|for|if|import|in|let|match|none|not|on|or|private|pub|raster|record|return|start|state|task|true|update|var|wait|while)\b|\b\d+(?:\.\d+)?(?:f|s)?\b/gm;
   target.replaceChildren();
   let cursor = 0;
   for (const match of source.matchAll(pattern)) {

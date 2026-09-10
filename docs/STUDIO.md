@@ -11,8 +11,8 @@ real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, rec
 editable project, and preserves the previous same-ID revision for recovery. `inspect` displays the
 canonical packed metadata and all original source modules. `export` downloads one offline HTML
 player with its own visible source inspector.
-The source editor has PXCL highlighting, live compiler diagnostics, completion, same-file symbol
-navigation, canonical formatting, explicit save, run, and external-revision reload controls.
+The source editor has PXCL highlighting, live compiler diagnostics, completion, symbol navigation,
+canonical formatting, explicit save, run, and external-revision reload controls.
 Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
 newer revision stops the save and surfaces F6 reload instead of knowingly overwriting it. Explicit
 F3 save and leaving the editor flush the same serialized path. Every successful write retains the
@@ -45,6 +45,7 @@ From the repository, use `cargo run --package px240c-cli --` in place of an inst
 px240c new my-game --title "MY GAME"
 px240c check my-game
 px240c build my-game
+px240c test my-game
 px240c watch my-game
 px240c pack my-game
 px240c export html my-game
@@ -54,8 +55,10 @@ px240c info my-game/dist/my-game.pxc
 px240c lsp
 ```
 
-`watch --once` performs the same initial deterministic build and exits for CI checks. Otherwise it
-polls project content every 250 ms and repacks only when bytes change. `fmt --check` reports source
+`watch --once` performs the same initial deterministic pack and exits for CI checks. Otherwise it
+serves a loopback-only offline player, rebuilds only when project bytes change, and reloads after a
+successful revision. A compiler failure stays in the terminal without replacing the last good
+player. `fmt --check` reports source
 that differs from canonical two-space formatting. `run` writes the same standalone HTML artifact to
 `dist/` and opens it with `xdg-open`; `--no-open` performs only the validated export for CI or a
 headless environment. `run --headless` instead drives the production console core under Node and
@@ -71,9 +74,10 @@ app manifest and maskable icon are static repository assets.
 
 ## Language-server clients
 
-The stdio server supports full-document synchronization, diagnostics, completion, hover,
-go-to-definition, same-document references, and same-document rename. PXCL/1 is ASCII-only, so LSP
-UTF-16 columns and compiler byte columns coincide for valid files.
+The stdio server supports full-document synchronization, dependency-aware diagnostics, project
+completion, hover/signature help, cross-file definition/references/rename, formatting, and document
+and workspace symbols. PXCL/1 is ASCII-only, so LSP UTF-16 columns and compiler byte columns
+coincide for valid files.
 
 Generic Neovim setup:
 
@@ -87,5 +91,5 @@ vim.api.nvim_create_autocmd('FileType', {
 ```
 
 For another LSP-capable editor, register `.pxl` as PXCL and configure the server command as
-`px240c lsp`. Project-wide symbol navigation and incremental text edits are not implemented yet;
-clients must send full document changes.
+`px240c lsp`. Clients send full-document changes; the server invalidates the edited module and its
+direct importers without reanalyzing unrelated open modules.

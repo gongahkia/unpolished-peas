@@ -136,11 +136,11 @@ stopping contracts in the brief remain authoritative in addition to this checkli
 
 ### 4. PXCL projects and external tools
 
-- [ ] Namespaced symbols, public/private, aliases/qualified names, deterministic initialization, cycles/collisions; legacy flat and single-file carts valid.
+- [x] Namespaced symbols, public/private, aliases/qualified names, deterministic initialization, cycles/collisions; legacy flat and single-file carts valid.
 - [ ] Shared native/Wasm/Studio/formatter/explorer/LSP semantic model, original-file locations, dependency-based incremental invalidation.
 - [ ] Semantic cross-file definition/reference/rename/completion/hover/signature/diagnostics/document and workspace symbols; comment/format-preserving rename.
 - [ ] Coherent new/fmt/check/build/test/watch/run/pack/info/export; watch refresh/restart and diagnostics, conflict-safe opt-in browser folders with IDB/file fallbacks.
-- [ ] Pure assertions, expected compile failure, scripted frames, framebuffer hashes, seeds, save fixtures and source-located test failures; test-only content excluded from release.
+- [x] Pure assertions, expected compile failure, scripted frames, framebuffer hashes, seeds, save fixtures and source-located test failures; test-only content excluded from release.
 - [ ] Repeat baseline benchmark after changes, target warm median below 300 ms without material regression; deterministic restart, no fake state-preserving reload.
 
 ### 5. Source debugger and replay

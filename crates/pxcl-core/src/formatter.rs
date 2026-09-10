@@ -170,6 +170,8 @@ fn render(kind: &TokenKind) -> String {
         TokenKind::Comment(value) => format!("//{value}"),
         TokenKind::Import => "import".to_owned(),
         TokenKind::As => "as".to_owned(),
+        TokenKind::Pub => "pub".to_owned(),
+        TokenKind::Private => "private".to_owned(),
         TokenKind::Const => "const".to_owned(),
         TokenKind::State => "state".to_owned(),
         TokenKind::Let => "let".to_owned(),
