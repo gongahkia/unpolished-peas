@@ -41,8 +41,21 @@ import type {
 
 export type ConsoleFrame = Omit<Extract<WorkerResponse, { type: 'frame' }>, 'id' | 'type'>;
 
+export interface ConsoleDebugPause {
+  readonly event: DebugTraceEvent;
+  readonly inspection: {
+    readonly state: unknown;
+    readonly tasks: unknown;
+    readonly callStack: unknown;
+  };
+}
+
+export type ConsoleDebugResult =
+  ConsoleDebugPause | { readonly booted: true } | { readonly frame: ConsoleFrame };
+
 export interface ConsoleRuntime {
   runFrame(input: InputFrame): ConsoleFrame;
+  stepDebug(input: InputFrame): ConsoleDebugResult;
   snapshot(): ConsoleRuntimeSnapshot;
   restore(snapshot: unknown): void;
   inspectMemory(
@@ -103,6 +116,7 @@ export function createConsoleRuntime(
   let drawCommands: ConsoleCommand[] = [];
   let audioCommands: ConsoleCommand[] = [];
   let frameOutput: ConsoleFrame['output'] | undefined;
+  let debugFrameActive = false;
   const mapQueries = new MapQueryStore(source === undefined ? (configuration.maps ?? []) : []);
   const saveMemory = new SaveMemory(configuration.save ?? {});
   const cartridgeRom = configuration.rom?.slice() ?? new Uint8Array();
@@ -198,11 +212,12 @@ export function createConsoleRuntime(
   graphics.beginFrame();
   rendering = true;
   try {
-    machine.boot();
+    if (!debugEnabled) machine.boot();
   } finally {
     rendering = false;
   }
   graphics.finishFrame();
+  let boundarySnapshot = captureSnapshot();
 
   return {
     runFrame(input) {
@@ -226,6 +241,7 @@ export function createConsoleRuntime(
       const output = completedOutput();
       const saveWrites = saveMemory.takeWrites();
       const saveCommit = saveMemory.takeCommit();
+      boundarySnapshot = captureSnapshot();
       return {
         ...report,
         drawCommands,
@@ -244,12 +260,75 @@ export function createConsoleRuntime(
           : {}),
       };
     },
+    stepDebug(input) {
+      if (!debugEnabled)
+        throw new RuntimeFault('PX9104', 'statement stepping requires a debug cartridge', {
+          start: 0,
+          end: 0,
+        });
+      if (!isInputFrame(input))
+        throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+      if (!debugFrameActive) {
+        drawCommands = [];
+        audioCommands = [];
+        frameOutput = undefined;
+        debugTrace = [];
+        debugTraceTruncated = false;
+        graphics.beginFrame();
+        debugFrameActive = true;
+      }
+      rendering = true;
+      let step;
+      try {
+        step = requireMachine().stepDebug(input);
+      } finally {
+        rendering = false;
+      }
+      if (step.event !== undefined) {
+        const inspection = structuredClone(requireMachine().inspect());
+        const event: DebugTraceEvent = {
+          ...step.event,
+          callStack: structuredClone(debugCallStack),
+        };
+        return { event, inspection };
+      }
+      if (step.booted === true) {
+        debugFrameActive = false;
+        graphics.finishFrame();
+        boundarySnapshot = captureSnapshot();
+        return { booted: true };
+      }
+      const report = step.report;
+      if (report === undefined) throw new TypeError('debug step produced no event or frame');
+      debugFrameActive = false;
+      const output = completedOutput();
+      const saveWrites = saveMemory.takeWrites();
+      const saveCommit = saveMemory.takeCommit();
+      const inspection = structuredClone(requireMachine().inspect());
+      boundarySnapshot = captureSnapshot();
+      return {
+        frame: {
+          ...report,
+          drawCommands,
+          audioCommands,
+          saveWrites,
+          ...(saveCommit === undefined ? {} : { saveCommit }),
+          output,
+          debug: {
+            trace: debugTrace,
+            truncated: debugTraceTruncated,
+            inspection,
+          },
+        },
+      };
+    },
     snapshot: captureSnapshot,
     restore(value) {
       const snapshot = readWorkerSnapshot(value);
-      const before = captureSnapshot();
+      const before = debugFrameActive ? boundarySnapshot : captureSnapshot();
       try {
         requireMachine().restore(snapshot.machine);
+        debugFrameActive = false;
         if (snapshot.revision === 6)
           saveMemory.restoreDevice(snapshot.save, snapshot.pendingSaveWrites);
         else saveMemory.restore(snapshot.save, snapshot.pendingSaveWrites);
@@ -274,6 +353,7 @@ export function createConsoleRuntime(
             visualStore.memoryRegions()[0]?.bytes.set(visual.bytes);
           }
         }
+        boundarySnapshot = captureSnapshot();
       } catch (error) {
         requireMachine().restore(before.machine);
         saveMemory.restoreDevice(before.save, before.pendingSaveWrites);

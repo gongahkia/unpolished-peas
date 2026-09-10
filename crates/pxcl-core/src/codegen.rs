@@ -311,7 +311,12 @@ impl<'input> Generator<'input> {
                 .collect::<String>();
             self.writer.line(
                 format!(
-                    "function s{}({}){{work({},0,0);{defaults}return {{{fields}}};}}",
+                    "function{} s{}({}){{work({},0,0);{defaults}return {{{fields}}};}}",
+                    if self.mode == CompileMode::Debug {
+                        "*"
+                    } else {
+                        ""
+                    },
                     record.symbol.0,
                     parameters.join(","),
                     self.work.allocation
@@ -336,7 +341,8 @@ impl<'input> Generator<'input> {
                         .join(",");
                     self.writer.line(
                         format!(
-                            "function s{}({parameters}){{work({}, {}, {});return {{__enum:{},__variant:{},fields:[{parameters}]}};}}",
+                            "function{} s{}({parameters}){{work({}, {}, {});return {{__enum:{},__variant:{},fields:[{parameters}]}};}}",
+                            if self.mode == CompileMode::Debug { "*" } else { "" },
                             variant.symbol.0,
                             self.work.allocation,
                             variant.span.start,
@@ -369,7 +375,14 @@ impl<'input> Generator<'input> {
                 .collect::<Vec<_>>()
                 .join(",");
             self.writer.line(
-                format!("function {name}({parameters}){{"),
+                format!(
+                    "function{} {name}({parameters}){{",
+                    if self.mode == CompileMode::Debug {
+                        "*"
+                    } else {
+                        ""
+                    }
+                ),
                 Some(routine.span),
             );
             self.writer.indent += 1;
@@ -407,9 +420,20 @@ impl<'input> Generator<'input> {
     }
 
     fn generate_globals(&mut self) {
-        self.writer.line("function initialize(){", None);
+        self.writer.line(
+            format!(
+                "function{} initialize(){{",
+                if self.mode == CompileMode::Debug {
+                    "*"
+                } else {
+                    ""
+                }
+            ),
+            None,
+        );
         self.writer.indent += 1;
         for global in &self.ir.globals {
+            self.generate_probe(global.span, ValueContext::Routine);
             let initializer = self.expression(&global.initializer, ValueContext::Routine);
             self.writer.line(
                 format!("state.s{}={initializer};", global.symbol.0),
@@ -490,7 +514,15 @@ impl<'input> Generator<'input> {
 
     fn generate_task_step(&mut self, program: &TaskProgram, routine: &IrRoutine) {
         self.writer.line(
-            format!("function stepTask_s{}(task){{", program.symbol.0),
+            format!(
+                "function{} stepTask_s{}(task){{",
+                if self.mode == CompileMode::Debug {
+                    "*"
+                } else {
+                    ""
+                },
+                program.symbol.0
+            ),
             Some(routine.span),
         );
         self.writer.indent += 1;
@@ -680,10 +712,17 @@ impl<'input> Generator<'input> {
     }
 
     fn generate_scheduler(&mut self) {
-        self.writer.line(
-            "const stepTasks=()=>{for(const task of tasks){if(task.done)continue;if(task.wait>0){task.wait-=1;continue;}taskSteppers[`s${task.kind}`](task);}for(let index=tasks.length-1;index>=0;index-=1){if(tasks[index].done)tasks.splice(index,1);}};",
-            None,
-        );
+        if self.mode == CompileMode::Debug {
+            self.writer.line(
+                "function* stepTasks(){for(const task of tasks){if(task.done)continue;if(task.wait>0){task.wait-=1;continue;}yield* taskSteppers[`s${task.kind}`](task);}for(let index=tasks.length-1;index>=0;index-=1){if(tasks[index].done)tasks.splice(index,1);}}",
+                None,
+            );
+        } else {
+            self.writer.line(
+                "const stepTasks=()=>{for(const task of tasks){if(task.done)continue;if(task.wait>0){task.wait-=1;continue;}taskSteppers[`s${task.kind}`](task);}for(let index=tasks.length-1;index>=0;index-=1){if(tasks[index].done)tasks.splice(index,1);}};",
+                None,
+            );
+        }
     }
 
     fn generate_instance(&mut self) {
@@ -691,6 +730,10 @@ impl<'input> Generator<'input> {
         let has_update = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Update));
         let has_draw = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Draw));
         let has_raster = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Raster));
+        if self.mode == CompileMode::Debug {
+            self.generate_debug_instance();
+            return;
+        }
         self.writer.line("return Object.freeze({", None);
         self.writer.indent += 1;
         self.writer.line(
@@ -729,6 +772,74 @@ impl<'input> Generator<'input> {
         );
         self.writer.line(
             "restore:snapshot=>{for(const key of Object.keys(state))delete state[key];Object.assign(state,structuredClone(snapshot.state));tasks.splice(0,tasks.length,...structuredClone(snapshot.tasks));nextTaskId=snapshot.nextTaskId;},",
+            None,
+        );
+        self.writer
+            .line("inspect:()=>({state,tasks,callStack:[...callStack]})", None);
+        self.writer.indent -= 1;
+        self.writer.line("});", None);
+    }
+
+    fn generate_debug_instance(&mut self) {
+        let has_start = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Start));
+        let has_update = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Update));
+        let has_draw = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Draw));
+        let has_raster = self.has_callback(RoutineKind::Callback(crate::ast::CallbackKind::Raster));
+        self.writer
+            .line("const debugExecutions=Object.create(null);", None);
+        self.writer.line(
+            "const advance=(name,factory,args=[])=>{let execution=debugExecutions[name];if(execution===undefined){execution=factory(...args);debugExecutions[name]=execution;}const step=execution.next();if(step.done)delete debugExecutions[name];return step.done?{done:true}:{done:false,event:step.value};};",
+            None,
+        );
+        self.writer.line("function* debug_start(){", None);
+        self.writer.indent += 1;
+        self.writer.line("yield* initialize();", None);
+        if has_start {
+            self.writer.line("yield* cb_start();", None);
+        }
+        self.writer.line("yield* stepTasks();", None);
+        self.writer.indent -= 1;
+        self.writer.line("}", None);
+        self.writer.line("function* debug_update(){", None);
+        self.writer.indent += 1;
+        if has_update {
+            self.writer.line("yield* cb_update();", None);
+        }
+        self.writer.line("yield* stepTasks();", None);
+        self.writer.indent -= 1;
+        self.writer.line("}", None);
+        self.writer.line("function* debug_draw(){", None);
+        self.writer.indent += 1;
+        if has_draw {
+            self.writer.line("yield* cb_draw();", None);
+        }
+        self.writer.indent -= 1;
+        self.writer.line("}", None);
+        self.writer.line("function* debug_raster(line){", None);
+        self.writer.indent += 1;
+        if has_raster {
+            self.writer.line("yield* cb_raster(line);", None);
+        } else {
+            self.writer.line("void line;", None);
+        }
+        self.writer.indent -= 1;
+        self.writer.line("}", None);
+        self.writer.line("return Object.freeze({", None);
+        self.writer.indent += 1;
+        self.writer
+            .line("start:()=>advance('start',debug_start),", None);
+        self.writer
+            .line("update:()=>advance('update',debug_update),", None);
+        self.writer
+            .line("draw:()=>advance('draw',debug_draw),", None);
+        self.writer
+            .line("raster:line=>advance('raster',debug_raster,[line]),", None);
+        self.writer.line(
+            "snapshot:()=>({state:structuredClone(state),tasks:structuredClone(tasks),nextTaskId}),",
+            None,
+        );
+        self.writer.line(
+            "restore:snapshot=>{for(const key of Object.keys(debugExecutions))delete debugExecutions[key];for(const key of Object.keys(state))delete state[key];Object.assign(state,structuredClone(snapshot.state));tasks.splice(0,tasks.length,...structuredClone(snapshot.tasks));nextTaskId=snapshot.nextTaskId;},",
             None,
         );
         self.writer
@@ -956,7 +1067,7 @@ impl<'input> Generator<'input> {
         };
         self.writer.line(
             format!(
-                "api.probe?.({id},{{start:{},end:{}}},{locals});",
+                "yield {{id:{id},sourceSpan:{{start:{},end:{}}},locals:{locals}}};",
                 span.start, span.end
             ),
             Some(span),
@@ -1076,6 +1187,11 @@ impl<'input> Generator<'input> {
                         ),
                     },
                     SymbolKind::Task => format!("startTask({},[{arguments}])", callee.0),
+                    SymbolKind::Function | SymbolKind::Record | SymbolKind::Variant
+                        if self.mode == CompileMode::Debug =>
+                    {
+                        format!("(yield* s{}({arguments}))", callee.0)
+                    }
                     _ => format!("s{}({arguments})", callee.0),
                 }
             }
@@ -1881,9 +1997,9 @@ mod tests {
         assert_eq!(release.analysis.ir, debug.analysis.ir);
         let release = release.generated.expect("release output");
         let debug = debug.generated.expect("debug output");
-        assert!(!release.javascript.contains("api.probe?."));
-        assert!(debug.javascript.contains("api.probe?."));
-        assert!(debug.javascript.contains("},{s"));
+        assert!(!release.javascript.contains("yield {id:"));
+        assert!(debug.javascript.contains("yield {id:"));
+        assert!(debug.javascript.contains("locals:{s"));
         assert!(!release.relationships.is_empty());
         assert!(release.source_map_json.contains("\"version\":3"));
     }

@@ -70,8 +70,9 @@ const api={{
   probe(){{}},enter(){{}},leave(){{}}
 }};
 const cartridge=createCartridge(api);
-cartridge.start();
-for(let frame=0;frame<6;frame+=1)cartridge.update();
+const complete=callback=>{{for(;;){{const step=callback();if(step===undefined||step.done)break;}}}};
+complete(()=>cartridge.start());
+for(let frame=0;frame<6;frame+=1)complete(()=>cartridge.update());
 process.stdout.write(JSON.stringify({{snapshot:cartridge.snapshot(),workUnits}}));
 "#,
         program.javascript
@@ -125,7 +126,7 @@ const api={{
 }};
 const cartridge=createCartridge(api);
 if(workUnits!==0||calls.length!==0||Object.keys(cartridge.snapshot().state).length!==0)throw new Error("factory executed globals");
-cartridge.start();
+for(;;){{const step=cartridge.start();if(step===undefined||step.done)break;}}
 if(Object.values(cartridge.snapshot().state)[0]!==8||calls.length!==1||calls[0][0]!=="mem_read"||workUnits===0)throw new Error("boot did not initialize globals");
 "#,
             program.javascript
@@ -271,4 +272,81 @@ on start:
     );
     assert!(!oversized_range.status.success());
     assert!(String::from_utf8_lossy(&oversized_range.stderr).contains("PX9001"));
+}
+
+#[test]
+fn debug_output_suspends_through_nested_calls_loops_and_tasks() {
+    let source = SourceFile::new(
+        FileId(0),
+        "debug-steps.pxl",
+        r"state total: Int = 0
+fn add_twice(value: Int) -> Int:
+  var result = 0
+  for index in 0..2:
+    result += value
+  return result
+task tick():
+  total += 1
+  wait 1f
+  total += 1
+on start:
+  start tick()
+on update:
+  total += add_twice(3)
+",
+    );
+    let output = compile(&source, &AssetCatalog::default(), CompileMode::Debug);
+    assert!(
+        output.analysis.diagnostics.is_empty(),
+        "{:#?}",
+        output.analysis.diagnostics
+    );
+    let program = output.generated.expect("debug fixture compiles");
+    let script = format!(
+        r#"{}
+const api={{work(){{}},call(){{throw new Error("unexpected API");}},fault(code,message){{throw new Error(`${{code}}: ${{message}}`);}},enter(){{}},leave(){{}}}};
+const cartridge=createCartridge(api);
+const events=[];
+const complete=callback=>{{for(;;){{const step=callback();if(step.done)break;events.push({{event:step.event,stack:structuredClone(cartridge.inspect().callStack)}});}}}};
+complete(()=>cartridge.start());
+complete(()=>cartridge.update());
+process.stdout.write(JSON.stringify({{events,snapshot:cartridge.snapshot()}}));
+"#,
+        program.javascript
+    );
+    let result = Command::new("node")
+        .args(["--input-type=module", "-e", &script])
+        .output()
+        .expect("Node.js executes debug suspension fixture");
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let result: serde_json::Value =
+        serde_json::from_slice(&result.stdout).expect("debug fixture prints JSON");
+    let events = result["events"].as_array().expect("events are an array");
+    assert!(
+        events.len() >= 10,
+        "expected statement boundaries: {events:#?}"
+    );
+    assert!(
+        events.iter().any(|entry| entry["stack"]
+            .as_array()
+            .is_some_and(|stack| stack.len() >= 2)),
+        "nested function stack was not live at a suspension: {events:#?}"
+    );
+    assert!(
+        events.iter().any(|entry| entry["stack"]
+            .as_array()
+            .is_some_and(|stack| stack.iter().any(|frame| frame["name"] == "tick"))),
+        "task stack was not live at a suspension: {events:#?}"
+    );
+    assert_eq!(
+        result["snapshot"]["state"]
+            .as_object()
+            .and_then(|state| state.values().next())
+            .and_then(serde_json::Value::as_i64),
+        Some(7)
+    );
 }

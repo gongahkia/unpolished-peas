@@ -47,6 +47,19 @@ async function handleRequest(request: HostRequest): Promise<void> {
         ...requireRuntime().runFrame(request.input),
       } satisfies WorkerResponse);
       break;
+    case 'debug-step': {
+      const result = requireRuntime().stepDebug(request.input);
+      send({
+        id: request.id,
+        type: 'debug-step',
+        ...('frame' in result
+          ? { frame: result.frame }
+          : 'booted' in result
+            ? { booted: true as const }
+            : { event: result.event, inspection: result.inspection }),
+      } satisfies WorkerResponse);
+      break;
+    }
     case 'audit': {
       const globals = globalThis as Record<string, unknown>;
       const math = globals.Math;

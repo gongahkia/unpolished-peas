@@ -7,6 +7,8 @@ import {
   type CartridgeFactory,
   type CartridgeSnapshot,
   type ExecutionContext,
+  type DebugProbeEvent,
+  type DebugStep,
 } from './machine';
 
 interface TestState {
@@ -46,6 +48,64 @@ const counterFactory: CartridgeFactory = (api: CartridgeApi) => {
 };
 
 describe('DeterministicMachine', () => {
+  it('suspends before debug statements without advancing frame time or resampling input', () => {
+    const observed: DebugProbeEvent[] = [];
+    const indexes = { start: 0, update: 0, draw: 0 };
+    const event = (id: number): DebugProbeEvent => ({
+      id,
+      sourceSpan: { start: id * 10, end: id * 10 + 5 },
+      locals: { id },
+    });
+    const advance = (phase: keyof typeof indexes, id: number): DebugStep => {
+      if (indexes[phase] === 0) {
+        indexes[phase] += 1;
+        return { done: false, event: event(id) };
+      }
+      indexes[phase] = 0;
+      return { done: true };
+    };
+    const machine = new DeterministicMachine(
+      () => ({
+        start: () => advance('start', 1),
+        update: () => advance('update', 2),
+        draw: () => advance('draw', 3),
+        raster: () => ({ done: true }),
+        snapshot: () => ({ state: {}, tasks: [], nextTaskId: 1 }),
+        restore: () => {
+          indexes.start = 0;
+          indexes.update = 0;
+          indexes.draw = 0;
+        },
+        inspect: () => ({ state: {}, tasks: [], callStack: [] }),
+      }),
+      { seed: 1, workUnitsPerFrame: 100, updateRate: 60, debug: true },
+      { probe: (id, sourceSpan, locals) => observed.push({ id, sourceSpan, locals }) },
+    );
+    const released = emptyInputFrame();
+    const input = {
+      ...released,
+      controllers: [
+        { buttons: { ...released.controllers[0].buttons, a: true } },
+        released.controllers[1],
+        released.controllers[2],
+        released.controllers[3],
+      ] as const,
+    };
+    expect(machine.stepDebug(input)).toEqual({ event: event(1) });
+    expect(machine.frame).toBe(0);
+    expect(() => machine.snapshot()).toThrow('completed frame or fault boundary');
+    expect(machine.stepDebug(input)).toEqual({ booted: true });
+    expect(machine.snapshot().execution.booted).toBe(true);
+    expect(machine.stepDebug(input)).toEqual({ event: event(2) });
+    expect(machine.call('btnp', [0, 'a'], { start: 0, end: 1 })).toBe(true);
+    const changed = emptyInputFrame();
+    expect(machine.stepDebug(changed)).toEqual({ event: event(3) });
+    expect(machine.call('btn', [0, 'a'], { start: 0, end: 1 })).toBe(true);
+    expect(machine.stepDebug(changed).report).toMatchObject({ frame: 0 });
+    expect(machine.frame).toBe(1);
+    expect(observed).toEqual([event(1), event(2), event(3)]);
+  });
+
   it('samples button edges per display frame, including skipped 30 Hz updates', () => {
     const updates: unknown[] = [];
     const draws: unknown[] = [];

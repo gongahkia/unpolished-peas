@@ -5,12 +5,21 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { createConsoleRuntime } from './console-runtime';
+import { createConsoleRuntime, type ConsoleRuntime } from './console-runtime';
 import { MEMORY } from './bus';
 import { BUTTONS, emptyInputFrame } from './input';
 import type { CartridgeFactory } from './machine';
 import type { ProjectAssetDeclaration } from './asset-codec';
 import { decodeSaveValues } from './save';
+
+function completeDebugBoot(runtime: ConsoleRuntime, debug: boolean): void {
+  if (!debug) return;
+  for (;;) {
+    const result = runtime.stepDebug(emptyInputFrame());
+    if ('booted' in result) return;
+    if ('frame' in result) throw new Error('debug boot unexpectedly completed a frame');
+  }
+}
 
 describe('public PXCL hardware conformance', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
@@ -82,6 +91,7 @@ describe('public PXCL hardware conformance', () => {
         workUnitsPerFrame: 50_000,
         debug: mode === 'debug',
       });
+      completeDebugBoot(runtime, mode === 'debug');
       const boot = runtime.snapshot();
       expect([...boot.graphics.front.slice(0, 3)]).toEqual([0, 11, 23]);
       const callback = readFileSync(source, 'utf8').indexOf('on start:');
@@ -97,17 +107,19 @@ describe('public PXCL hardware conformance', () => {
         workUnitsPerFrame: bootLimit,
         debug: mode === 'debug',
       });
+      completeDebugBoot(exact, mode === 'debug');
       expect(exact.snapshot().machine.budget.used).toBe(bootLimit);
       const finalCall = 'pixel(2, 0, 23)';
       const finalStart = readFileSync(source, 'utf8').indexOf(finalCall);
-      expect(() =>
-        createConsoleRuntime(generated.default, {
+      expect(() => {
+        const limited = createConsoleRuntime(generated.default, {
           seed: 1,
           updateRate: 60,
           workUnitsPerFrame: bootLimit - 1,
           debug: mode === 'debug',
-        }),
-      ).toThrow(
+        });
+        completeDebugBoot(limited, mode === 'debug');
+      }).toThrow(
         expect.objectContaining({
           code: 'PX9001',
           sourceSpan: { start: finalStart, end: finalStart + finalCall.length },
@@ -382,6 +394,7 @@ describe('public PXCL hardware conformance', () => {
         debug: mode === 'debug',
         rom: Uint8Array.of(80, 88, 50, 52, 48, 67, 26, 1, 3, 0, 0, 0),
       });
+      completeDebugBoot(runtime, mode === 'debug');
       const boot = runtime.snapshot();
       expect(boot.graphics.front[3]).toBe(7);
       expect(boot.graphics.front[4]).toBe(23);

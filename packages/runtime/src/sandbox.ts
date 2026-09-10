@@ -50,6 +50,14 @@ export class SandboxSession {
     return response;
   }
 
+  public async debugStep(
+    input: InputFrame,
+  ): Promise<Extract<WorkerResponse, { type: 'debug-step' }>> {
+    const response = await this.request((id) => ({ id, type: 'debug-step', input }));
+    this.expectResponse(response, 'debug-step');
+    return response;
+  }
+
   public async snapshot(): Promise<unknown> {
     const response = await this.request((id) => ({ id, type: 'snapshot' }));
     this.expectResponse(response, 'snapshot');

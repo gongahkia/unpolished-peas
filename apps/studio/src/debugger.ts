@@ -39,6 +39,8 @@ interface DebuggerSnapshot {
 }
 
 type FrameResponse = Awaited<ReturnType<SandboxSession['frame']>>;
+type DebugStepResponse = Awaited<ReturnType<SandboxSession['debugStep']>>;
+type DebugFrameInspection = NonNullable<DebugStepResponse['inspection']>;
 type DebugTab = 'SOURCE' | 'STATE' | 'TASKS' | 'PROFILE' | 'MEMORY' | 'AUDIO';
 
 const SNAPSHOT_INTERVAL = 30;
@@ -86,6 +88,9 @@ class DebuggerController {
   private readonly displayRasterRows: number;
   private audioSink: WebAudioSink | undefined;
   private lastFrame: FrameResponse | undefined;
+  private pausedEvent: DebugTraceEvent | undefined;
+  private pausedInspection: DebugFrameInspection | undefined;
+  private activeInput: InputFrame | undefined;
   private selectedTrace = -1;
   private currentFrame = 0;
   private tab: DebugTab = 'SOURCE';
@@ -213,7 +218,7 @@ class DebuggerController {
   private renderShell(): void {
     this.root.innerHTML = `
       <section class="display debugger" data-view="debugger" aria-label="PXCL source debugger" aria-busy="true" tabindex="-1">
-        <header class="system-bar"><span>DEBUG / ${escapeHtml(this.project.id)}</span><span>FRAME TRACE</span></header>
+        <header class="system-bar"><span>DEBUG / ${escapeHtml(this.project.id)}</span><span>STATEMENT/1</span></header>
         <main class="debug-stage">
           <div class="debug-left">
             <canvas class="debug-screen" width="240" height="144" aria-label="Debug framebuffer"></canvas>
@@ -296,16 +301,16 @@ class DebuggerController {
           if (this.running) this.schedule();
           break;
         case 'frame':
-          await this.advance(false);
+          await this.advance();
           break;
         case 'in':
-          await this.stepTrace('in');
+          await this.stepStatement('in');
           break;
         case 'over':
-          await this.stepTrace('over');
+          await this.stepStatement('over');
           break;
         case 'out':
-          await this.stepTrace('out');
+          await this.stepStatement('out');
           break;
         case 'rewind':
           await this.rewind(Math.max(this.journal.oldestFrame, this.currentFrame - 1));
@@ -357,45 +362,80 @@ class DebuggerController {
 
   private async tick(): Promise<void> {
     if (!this.running || this.busy || this.stopped) return;
-    await this.advance(false);
+    await this.advance();
     this.schedule();
   }
 
-  private async advance(selectFirstTrace: boolean): Promise<void> {
+  private async advance(): Promise<void> {
     this.busy = true;
     try {
       if (this.currentFrame < this.journal.cursor) this.journal.truncate(this.currentFrame);
-      const input = this.input.poll();
-      const response = await this.executeFrame(input, true);
-      if (response.frame !== this.currentFrame) {
-        throw new Error(
-          `replay cursor expected frame ${String(this.currentFrame)}, received ${String(response.frame)}`,
-        );
-      }
-      this.journal.recordFrame(response.frame, input, consoleReplayObservable(response));
-      this.currentFrame = response.frame + 1;
-      if (this.currentFrame % SNAPSHOT_INTERVAL === 0) {
-        this.journal.recordSnapshot(this.currentFrame, await this.captureSnapshot());
-      }
-      this.selectedTrace = selectFirstTrace && (response.debug?.trace.length ?? 0) > 0 ? 0 : -1;
-      this.collectProfile(response);
-      const memoryHit = await this.changedMemoryWatchpoint();
-      const breakpoint = this.hitBreakpoint(response);
-      if (memoryHit !== undefined) {
-        this.running = false;
-        this.message = `WATCH ${hexAddress(memoryHit.address)} ${byteHex(memoryHit.before)}>${byteHex(memoryHit.after)}`;
-      } else if (breakpoint !== undefined) {
-        this.running = false;
-        this.selectedTrace = breakpoint.trace;
-        this.message = `BREAK LINE ${String(breakpoint.line)} / FRAME ${String(response.frame)}`;
-      } else if (!this.running) {
-        this.message = `PAUSED AT FRAME ${String(this.currentFrame)}`;
+      for (;;) {
+        const input = (this.activeInput ??= this.input.poll());
+        const response = await this.sandbox.debugStep(input);
+        if (response.booted === true) {
+          this.activeInput = undefined;
+          this.pausedEvent = undefined;
+          this.pausedInspection = undefined;
+          continue;
+        }
+        if (response.frame !== undefined) {
+          await this.acceptDebugFrame(response.frame, input, true);
+          if (!this.running) this.message = `PAUSED AT FRAME ${String(this.currentFrame)}`;
+          break;
+        }
+        if (response.event === undefined || response.inspection === undefined)
+          throw new Error('debug worker omitted a statement event');
+        this.acceptDebugPause(response.event, response.inspection);
+        const memoryHit = await this.changedMemoryWatchpoint();
+        const breakpoint = this.breakpointFor(response.event);
+        if (memoryHit !== undefined) {
+          this.running = false;
+          this.message = `WATCH ${hexAddress(memoryHit.address)} ${byteHex(memoryHit.before)}>${byteHex(memoryHit.after)}`;
+          break;
+        }
+        if (breakpoint !== undefined) {
+          this.running = false;
+          this.message = `BREAK LINE ${String(breakpoint)} / FRAME ${String(this.currentFrame)}`;
+          break;
+        }
       }
       if (this.tab === 'MEMORY') await this.refreshMemory(true);
       this.render();
     } finally {
       this.busy = false;
     }
+  }
+
+  private acceptDebugPause(event: DebugTraceEvent, inspection: DebugFrameInspection): void {
+    this.pausedEvent = event;
+    this.pausedInspection = inspection;
+    this.selectedTrace = -1;
+  }
+
+  private async acceptDebugFrame(
+    frame: NonNullable<DebugStepResponse['frame']>,
+    input: InputFrame,
+    audible: boolean,
+  ): Promise<void> {
+    const response: FrameResponse = { id: 0, type: 'frame', ...frame };
+    if (response.frame !== this.currentFrame)
+      throw new Error(
+        `replay cursor expected frame ${String(this.currentFrame)}, received ${String(response.frame)}`,
+      );
+    this.journal.recordFrame(response.frame, input, consoleReplayObservable(response));
+    this.currentFrame = response.frame + 1;
+    this.activeInput = undefined;
+    this.pausedEvent = undefined;
+    this.pausedInspection = undefined;
+    this.lastPixels = response.output.indexedPixels;
+    this.lastAudio = response.output.audioState;
+    this.renderer.render(this.lastPixels);
+    if (audible) this.audioSink?.enqueue(response.output.audio);
+    this.lastFrame = response;
+    this.collectProfile(response);
+    if (this.currentFrame % SNAPSHOT_INTERVAL === 0)
+      this.journal.recordSnapshot(this.currentFrame, await this.captureSnapshot());
   }
 
   private async executeFrame(input: InputFrame, audible: boolean): Promise<FrameResponse> {
@@ -406,6 +446,9 @@ class DebuggerController {
     this.renderer.render(this.lastPixels);
     if (audible) this.audioSink?.enqueue(response.output.audio);
     this.lastFrame = response;
+    this.activeInput = undefined;
+    this.pausedEvent = undefined;
+    this.pausedInspection = undefined;
     return response;
   }
 
@@ -430,6 +473,9 @@ class DebuggerController {
     this.message = `REPLAYING TO ${String(target)}`;
     this.render();
     try {
+      this.activeInput = undefined;
+      this.pausedEvent = undefined;
+      this.pausedInspection = undefined;
       const result = await this.journal.replay(target, {
         restore: async (value) => {
           const snapshot = readDebuggerSnapshot(value);
@@ -454,45 +500,55 @@ class DebuggerController {
     }
   }
 
-  private async stepTrace(kind: 'in' | 'over' | 'out'): Promise<void> {
-    const trace = this.lastFrame?.debug?.trace ?? [];
-    if (trace.length === 0 || this.selectedTrace < 0) {
-      await this.advance(true);
-      return;
-    }
-    const current = trace[this.selectedTrace];
-    if (current === undefined) return;
-    const depth = current.callStack.length;
-    const next = trace.findIndex((event, index) => {
-      if (index <= this.selectedTrace) return false;
-      if (kind === 'in') return true;
-      if (kind === 'over') return event.callStack.length <= depth;
-      return event.callStack.length < depth;
-    });
-    if (next >= 0) {
-      this.selectedTrace = next;
-      this.message = `TRACE ${String(next + 1)}/${String(trace.length)} / EXECUTION PAUSED`;
+  private async stepStatement(kind: 'in' | 'over' | 'out'): Promise<void> {
+    this.busy = true;
+    const origin = this.pausedEvent;
+    const depth = origin?.callStack.length;
+    try {
+      for (;;) {
+        const input = (this.activeInput ??= this.input.poll());
+        const response = await this.sandbox.debugStep(input);
+        if (response.booted === true) {
+          this.activeInput = undefined;
+          this.pausedEvent = undefined;
+          this.pausedInspection = undefined;
+          this.message = 'BOOT COMPLETE';
+          break;
+        }
+        if (response.frame !== undefined) {
+          await this.acceptDebugFrame(response.frame, input, false);
+          this.message = `FRAME ${String(this.currentFrame - 1)} COMPLETE`;
+          break;
+        }
+        if (response.event === undefined || response.inspection === undefined)
+          throw new Error('debug worker omitted a statement event');
+        const event = response.event;
+        this.acceptDebugPause(event, response.inspection);
+        if (
+          kind === 'in' ||
+          depth === undefined ||
+          (kind === 'over' && event.callStack.length <= depth) ||
+          (kind === 'out' && event.callStack.length < depth) ||
+          this.breakpointFor(event) !== undefined
+        ) {
+          this.message = `PAUSED L${String(lineForOffset(this.source, event.sourceSpan.start))} / DEPTH ${String(event.callStack.length)}`;
+          break;
+        }
+      }
+      if (this.tab === 'MEMORY') await this.refreshMemory(true);
+    } finally {
+      this.busy = false;
       this.render();
-    } else {
-      await this.advance(true);
     }
   }
 
-  private hitBreakpoint(
-    response: FrameResponse,
-  ): { readonly line: number; readonly trace: number } | undefined {
-    const trace = response.debug?.trace ?? [];
-    for (let index = 0; index < trace.length; index += 1) {
-      const event = trace[index];
-      if (event === undefined) continue;
-      const line = lineForOffset(this.source, event.sourceSpan.start);
-      const condition = this.breakpoints.get(line);
-      if (condition === undefined) continue;
-      if (condition.length === 0 || evaluateBreakpoint(condition, this.environment(event))) {
-        return { line, trace: index };
-      }
-    }
-    return undefined;
+  private breakpointFor(event: DebugTraceEvent): number | undefined {
+    const line = lineForOffset(this.source, event.sourceSpan.start);
+    const condition = this.breakpoints.get(line);
+    if (condition === undefined) return undefined;
+    return condition.length === 0 || evaluateBreakpoint(condition, this.environment(event))
+      ? line
+      : undefined;
   }
 
   private toggleBreakpoint(): void {
@@ -632,11 +688,11 @@ class DebuggerController {
   }
 
   private selectedEvent(): DebugTraceEvent | undefined {
-    return this.lastFrame?.debug?.trace[this.selectedTrace];
+    return this.pausedEvent ?? this.lastFrame?.debug?.trace[this.selectedTrace];
   }
 
   private environment(event: DebugTraceEvent | undefined): Readonly<Record<string, unknown>> {
-    const state = this.lastFrame?.debug?.inspection.state;
+    const state = this.pausedInspection?.state ?? this.lastFrame?.debug?.inspection.state;
     return {
       ...namedValues(state, this.symbolNames),
       ...namedValues(event?.locals, this.symbolNames),
@@ -658,7 +714,7 @@ class DebuggerController {
     location.textContent =
       event === undefined
         ? `F${String(this.currentFrame).padStart(4, '0')} / NO TRACE SELECTED`
-        : `F${String(this.currentFrame - 1).padStart(4, '0')} L${String(lineForOffset(this.source, event.sourceSpan.start))} P${String(event.id)}`;
+        : `F${String(this.pausedEvent === undefined ? this.currentFrame - 1 : this.currentFrame).padStart(4, '0')} L${String(lineForOffset(this.source, event.sourceSpan.start))} P${String(event.id)}`;
     const output = requireElement(this.root, '.debug-output');
     output.textContent = this.tabOutput(this.tab, event);
     this.root.querySelectorAll<HTMLButtonElement>('.debug-tabs button').forEach((button) => {
@@ -695,7 +751,7 @@ class DebuggerController {
         return [...values, ...watches].join('\n') || 'NO STATE AT CURRENT TRACE';
       }
       case 'TASKS': {
-        const tasks = this.lastFrame?.debug?.inspection.tasks;
+        const tasks = this.pausedInspection?.tasks ?? this.lastFrame?.debug?.inspection.tasks;
         const stack = event?.callStack ?? [];
         return `CALL STACK\n${stack.map((frame) => frame.name).join('\n') || '(FRAME BOUNDARY)'}\n\nTASKS\n${namedTaskValue(tasks, this.symbolNames)}`;
       }
