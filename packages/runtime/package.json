@@ -12,7 +12,7 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.build.json",
+    "build": "tsc -p tsconfig.build.json && vite build --config vite.headless.config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   }
 }

@@ -2,8 +2,9 @@ use std::{
     collections::BTreeMap,
     fs,
     hash::{DefaultHasher, Hash, Hasher},
+    io::Write as _,
     path::{Path, PathBuf},
-    process::{Command as ProcessCommand, ExitCode},
+    process::{Command as ProcessCommand, ExitCode, Stdio},
     thread,
     time::Duration,
 };
@@ -12,8 +13,11 @@ use clap::{Parser, Subcommand};
 use pxcl_core::{
     AssetCatalog, CompileMode, Diagnostic, FileId, GeneratedProgram, ProjectManifest, SourceFile,
     analyze_module, compile, compile_project, decode_cartridge, export_standalone_html,
-    format_source, pack_project, parse_project_manifest,
+    format_source, pack_project, parse_project_manifest, unpack_cartridge_project,
 };
+
+const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
+const MAX_TRACE_BYTES: u64 = 8 * 1024 * 1024;
 
 mod lsp;
 
@@ -87,6 +91,21 @@ enum Command {
         /// Write and validate the player without opening a browser.
         #[arg(long)]
         no_open: bool,
+        /// Execute deterministically without a browser and emit a revisioned JSON trace.
+        #[arg(long)]
+        headless: bool,
+        /// Number of display frames for a headless run.
+        #[arg(long, default_value_t = 60)]
+        frames: u32,
+        /// Unsigned 32-bit deterministic seed for a headless run.
+        #[arg(long, default_value_t = 604_772_761)]
+        seed: u32,
+        /// Optional revision-1 scripted controller trace JSON.
+        #[arg(long)]
+        input: Option<PathBuf>,
+        /// Optional raw save image of at most 8 KiB.
+        #[arg(long)]
+        save: Option<PathBuf>,
     },
     /// Repack a project whenever its files change.
     Watch {
@@ -138,7 +157,25 @@ fn main() -> ExitCode {
             path,
             output,
             no_open,
-        } => run_directory(&path, output.as_deref(), no_open),
+            headless,
+            frames,
+            seed,
+            input,
+            save,
+        } => {
+            if headless {
+                run_headless(
+                    &path,
+                    output.as_deref(),
+                    frames,
+                    seed,
+                    input.as_deref(),
+                    save.as_deref(),
+                )
+            } else {
+                run_directory(&path, output.as_deref(), no_open)
+            }
+        }
         Command::Watch { path, output, once } => watch_directory(&path, output.as_deref(), once),
         Command::Info { path } => info(path.as_deref()),
         Command::Lsp => lsp::run(),
@@ -190,6 +227,194 @@ fn run_directory(path: &Path, output: Option<&Path>, no_open: bool) -> ExitCode 
             ExitCode::FAILURE
         }
     }
+}
+
+fn run_headless(
+    path: &Path,
+    output: Option<&Path>,
+    frames: u32,
+    seed: u32,
+    input: Option<&Path>,
+    save: Option<&Path>,
+) -> ExitCode {
+    let Ok((rom, cartridge)) = load_headless_cartridge(path) else {
+        return ExitCode::FAILURE;
+    };
+    let Some(javascript) = cartridge.entries.get("build/cartridge.js") else {
+        eprintln!(
+            "{}: canonical cartridge has no compiled program",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    };
+    let Ok(javascript) = std::str::from_utf8(javascript) else {
+        eprintln!("{}: compiled program is not UTF-8", path.display());
+        return ExitCode::FAILURE;
+    };
+    let trace = match read_json_input(input) {
+        Ok(value) => value,
+        Err(()) => return ExitCode::FAILURE,
+    };
+    let save_bytes = match read_save_image(save) {
+        Ok(bytes) => bytes,
+        Err(()) => return ExitCode::FAILURE,
+    };
+    let manifest = &cartridge.manifest;
+    let request = serde_json::json!({
+        "revision": 1,
+        "javascript": javascript,
+        "manifest": {
+            "id": manifest.id,
+            "updateRate": manifest.update_rate,
+            "display": manifest.display,
+            "assets": manifest.assets,
+        },
+        "entries": cartridge.entries,
+        "rom": rom,
+        "seed": seed,
+        "frames": frames,
+        "trace": trace,
+        "save": save_bytes,
+    });
+    let Ok(request) = serde_json::to_vec(&request) else {
+        eprintln!("{}: could not encode headless request", path.display());
+        return ExitCode::FAILURE;
+    };
+    let host_path = std::env::temp_dir().join(format!(
+        "px240c-headless-{}-{}.mjs",
+        std::process::id(),
+        frames
+    ));
+    if let Err(error) = fs::write(&host_path, HEADLESS_HOST) {
+        eprintln!("{}: {error}", host_path.display());
+        return ExitCode::FAILURE;
+    }
+    let node = std::env::var_os("PX240C_NODE").unwrap_or_else(|| "node".into());
+    let child = ProcessCommand::new(node)
+        .arg(&host_path)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn();
+    let mut child = match child {
+        Ok(child) => child,
+        Err(error) => {
+            let _ = fs::remove_file(&host_path);
+            eprintln!("could not start the PX-240C Node headless host: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Some(mut stdin) = child.stdin.take()
+        && let Err(error) = stdin.write_all(&request)
+    {
+        let _ = child.kill();
+        let _ = fs::remove_file(&host_path);
+        eprintln!("could not send cartridge to headless host: {error}");
+        return ExitCode::FAILURE;
+    }
+    let result = child.wait_with_output();
+    let _ = fs::remove_file(&host_path);
+    let result = match result {
+        Ok(result) if result.status.success() => result,
+        Ok(result) => {
+            eprint!("{}", String::from_utf8_lossy(&result.stderr));
+            return ExitCode::FAILURE;
+        }
+        Err(error) => {
+            eprintln!("headless host did not complete: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let parsed: serde_json::Value = match serde_json::from_slice(&result.stdout) {
+        Ok(parsed) => parsed,
+        Err(error) => {
+            eprintln!("headless host returned invalid JSON: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let serialized = serde_json::to_vec_pretty(&parsed).expect("JSON value always serializes");
+    if let Some(output) = output {
+        if let Some(parent) = output.parent()
+            && let Err(error) = fs::create_dir_all(parent)
+        {
+            eprintln!("{}: {error}", parent.display());
+            return ExitCode::FAILURE;
+        }
+        if let Err(error) = fs::write(output, &serialized) {
+            eprintln!("{}: {error}", output.display());
+            return ExitCode::FAILURE;
+        }
+        println!(
+            "ran {} headlessly for {frames} frames -> {}",
+            path.display(),
+            output.display()
+        );
+    } else {
+        println!("{}", String::from_utf8_lossy(&serialized));
+    }
+    ExitCode::SUCCESS
+}
+
+fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCartridge), ()> {
+    let packed = if path.is_dir() {
+        let project = load_project(path)?;
+        pack_project(&project.manifest_source, &project.files).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?
+    } else if path.extension().is_some_and(|extension| extension == "pxc") {
+        let bytes = fs::read(path).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?;
+        let project = unpack_cartridge_project(&bytes).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?;
+        pack_project(&project.manifest, &project.files).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?
+    } else {
+        eprintln!(
+            "{}: expected a project directory or .pxc cartridge",
+            path.display()
+        );
+        return Err(());
+    };
+    let cartridge = decode_cartridge(&packed.bytes).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    Ok((packed.bytes, cartridge))
+}
+
+fn read_json_input(path: Option<&Path>) -> Result<serde_json::Value, ()> {
+    let Some(path) = path else {
+        return Ok(serde_json::json!({ "revision": 1, "frames": [] }));
+    };
+    let metadata = fs::metadata(path).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    if metadata.len() > MAX_TRACE_BYTES {
+        eprintln!("{}: controller trace exceeds 8 MiB", path.display());
+        return Err(());
+    }
+    let source = fs::read(path).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    serde_json::from_slice(&source).map_err(|error| {
+        eprintln!("{}: invalid controller trace JSON: {error}", path.display());
+    })
+}
+
+fn read_save_image(path: Option<&Path>) -> Result<Vec<u8>, ()> {
+    let Some(path) = path else {
+        return Ok(Vec::new());
+    };
+    let bytes = fs::read(path).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    if bytes.len() > 8 * 1024 {
+        eprintln!("{}: save image exceeds 8 KiB", path.display());
+        return Err(());
+    }
+    Ok(bytes)
 }
 
 fn new_project(path: &Path, title: Option<&str>, author: &str) -> ExitCode {

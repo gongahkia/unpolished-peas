@@ -149,6 +149,79 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
 }
 
 #[test]
+fn headless_run_emits_deterministic_machine_readable_traces_for_projects_and_cartridges() {
+    let project = std::env::temp_dir().join(format!(
+        "px240c-headless-{}-{}",
+        std::process::id(),
+        line!()
+    ));
+    let create = binary()
+        .args([
+            "new",
+            project.to_str().expect("UTF-8 project path"),
+            "--title",
+            "HEADLESS TEST",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(create.status.success());
+    let cartridge = project.with_extension("pxc");
+    let pack = binary()
+        .args([
+            "pack",
+            project.to_str().expect("UTF-8 project path"),
+            "--output",
+            cartridge.to_str().expect("UTF-8 cartridge path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(pack.status.success());
+    let first = project.with_extension("project-trace.json");
+    let second = project.with_extension("cartridge-trace.json");
+    for (input, result) in [(&project, &first), (&cartridge, &second)] {
+        let run = binary()
+            .args([
+                "run",
+                input.to_str().expect("UTF-8 input path"),
+                "--headless",
+                "--frames",
+                "3",
+                "--seed",
+                "7",
+                "--output",
+                result.to_str().expect("UTF-8 result path"),
+            ])
+            .output()
+            .expect("CLI starts");
+        assert!(
+            run.status.success(),
+            "{}",
+            String::from_utf8_lossy(&run.stderr)
+        );
+    }
+    let project_trace: Value =
+        serde_json::from_slice(&fs::read(&first).expect("project trace reads"))
+            .expect("project trace is JSON");
+    let cartridge_trace: Value =
+        serde_json::from_slice(&fs::read(&second).expect("cartridge trace reads"))
+            .expect("cartridge trace is JSON");
+    assert_eq!(project_trace, cartridge_trace);
+    assert_eq!(project_trace["revision"], 1);
+    assert_eq!(project_trace["summary"]["completedFrames"], 3);
+    assert_eq!(project_trace["frames"].as_array().map(Vec::len), Some(3));
+    assert_eq!(
+        project_trace["summary"]["finalFramebufferSha256"]
+            .as_str()
+            .map(str::len),
+        Some(64)
+    );
+    for path in [first, second, cartridge] {
+        fs::remove_file(path).expect("temporary headless artifact removes");
+    }
+    fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+#[test]
 fn bundled_cartridges_compile_and_pack_within_capacity() {
     let cartridges = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cartridges");
     for id in ["cinder-circuit", "ashvault", "raster-rush"] {
