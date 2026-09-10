@@ -724,6 +724,39 @@ Each group may produce several coherent commits, and integration occurs througho
   release Wasm builds. Cross-browser parity and the remaining V1 milestones remain open. Nothing was
   pushed, published or deployed.
 
+## 2026-09-10 — V1 milestone 4a: namespaced projects, tests, and live external loop
+
+- Extended PXCL/1 project linking without changing single-file meaning. Top-level declarations are
+  public by default, may use explicit `pub`, and may use `private` to reject imported access.
+  Dependency modules now own separate namespaces: duplicate constants/state/functions/tasks/records/
+  enums are deterministically linked, qualified aliases resolve the correct owner, local shadowing is
+  retained, dependencies initialize before importers, and cycles/dependency callbacks remain stable
+  project errors. Core fixtures cover aliases, visibility, duplicate public and private names, local
+  shadowing, missing private members, and cycle paths.
+- Added `px240c test PROJECT`. Sorted ordinary `.pxl` test entries run compiler-produced debug code
+  for a deterministic frame, `*.fail.pxl` locks an expected stable diagnostic, and revision-1
+  `*.pxrun.json` files accept frames, seed, compact input, raw save fixture, and arbitrary headless
+  summary expectations including framebuffer/state/audio/save hashes. Integration tests exercise all
+  three modes and source-located runtime faults. `tests/` PXCL sources are excluded from canonical
+  release archives.
+- Expanded the stdio LSP with project completion, cross-file definition/references/rename,
+  signature help, dependency-aware diagnostics, canonical formatting, and document/workspace
+  symbols. Editing a module republishes it and direct importers rather than unrelated open files;
+  tests exercise a public member across two modules and verify a later `private` edit invalidates its
+  importer. The same Rust lexer/parser/compiler remains behind CLI, Wasm and Studio builds.
+- `fmt` and `check` now default to the current project, and `fmt` recursively handles project source.
+  Long-running `watch` serves a loopback-only source-inspectable player, hashes bytes, preserves the
+  last good output on a failed build, and reloads after a successful revision. A real TCP integration
+  test edits a watched project and observes revision 1 become revision 2; `--no-open` supports CI.
+- Added the required stable `LANGUAGE.md` and `TOOLS.md` entry points and updated PXCL grammar/tool
+  behavior. The complete repository gate passed: Prettier, ESLint, strict TypeScript, **134 Vitest
+  tests**, production builds, complete Firefox E2E in **35.5 s**, Rust fmt/Clippy with warnings
+  denied, **57 Rust tests**, native and release Wasm builds. The original games and service cart
+  remain byte-identical. Main JS grew 31 bytes to **137,196**; compiler Wasm grew 36,894 bytes to
+  **1,351,844**; Worker and generated host/player remain 75,926 / 149,795 / 179,384 bytes. The shared
+  original-file project index, Studio cross-file UX, folder-backed editing, repeat latency sample,
+  and genuine debugger suspension remain open. Nothing was pushed, published or deployed.
+
 ## Current risks (alpha baseline; V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable

@@ -5,7 +5,8 @@ use std::{
 };
 
 use pxcl_core::{
-    AssetCatalog, Diagnostic, FileId, SourceFile, Span, TokenKind, analyze_module, lex,
+    AssetCatalog, Diagnostic, FileId, SourceFile, Span, TokenKind, analyze_module, format_source,
+    lex, parse,
 };
 use serde_json::{Value, json};
 
@@ -13,8 +14,8 @@ const MAX_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 const KEYWORDS: &[&str] = &[
     "and", "as", "assert", "break", "case", "const", "continue", "draw", "elif", "else", "enum",
     "false", "fn", "for", "if", "import", "in", "let", "match", "none", "not", "on", "or",
-    "raster", "record", "return", "start", "state", "task", "true", "update", "var", "wait",
-    "while",
+    "private", "pub", "raster", "record", "return", "start", "state", "task", "true", "update",
+    "var", "wait", "while",
 ];
 const BUILTINS: &[(&str, &str)] = &[
     ("clear", "fn clear(color: Color)"),
@@ -167,7 +168,11 @@ impl Server {
                         "hoverProvider": true,
                         "definitionProvider": true,
                         "referencesProvider": true,
-                        "renameProvider": { "prepareProvider": false }
+                        "renameProvider": { "prepareProvider": false },
+                        "signatureHelpProvider": { "triggerCharacters": ["(", ","] },
+                        "documentSymbolProvider": true,
+                        "workspaceSymbolProvider": true,
+                        "documentFormattingProvider": true
                     },
                     "serverInfo": { "name": "px240c", "version": env!("CARGO_PKG_VERSION") }
                 }),
@@ -182,31 +187,26 @@ impl Server {
             Some("textDocument/didChange") => self.did_change(message, writer),
             Some("textDocument/didClose") => self.did_close(message, writer),
             Some("textDocument/completion") => {
-                respond(writer, id, &completion_items());
+                respond(writer, id, &self.completion_items());
             }
             Some("textDocument/hover") => {
-                let result = self.symbol_request(message).and_then(|(_, _, symbol)| {
-                    hover_text(&symbol).map(|contents| json!({ "contents": contents }))
+                let result = self.symbol_request(message).and_then(|target| {
+                    hover_text(&target.name).map(|contents| json!({ "contents": contents }))
                 });
                 respond(writer, id, &result.unwrap_or(Value::Null));
             }
             Some("textDocument/definition") => {
-                let result = self
-                    .symbol_request(message)
-                    .and_then(|(uri, source, symbol)| {
-                        definition_span(&source, &symbol).map(|span| location(&uri, &source, span))
-                    });
+                let result = self.symbol_request(message).and_then(|target| {
+                    let source = self.source(&target.uri)?;
+                    definition_span(&source, &target.name)
+                        .map(|span| location(&target.uri, &source, span))
+                });
                 respond(writer, id, &result.unwrap_or(Value::Null));
             }
             Some("textDocument/references") => {
                 let result = self
                     .symbol_request(message)
-                    .map(|(uri, source, symbol)| {
-                        identifier_spans(&source, &symbol)
-                            .into_iter()
-                            .map(|span| location(&uri, &source, span))
-                            .collect::<Vec<_>>()
-                    })
+                    .map(|target| self.reference_locations(&target))
                     .unwrap_or_default();
                 respond(writer, id, &json!(result));
             }
@@ -215,21 +215,40 @@ impl Server {
                     .pointer("/params/newName")
                     .and_then(Value::as_str)
                     .filter(|name| valid_identifier(name));
-                let result = self
-                    .symbol_request(message)
-                    .and_then(|(uri, source, symbol)| {
-                        new_name.map(|name| {
-                            let edits = identifier_spans(&source, &symbol)
-                                .into_iter()
-                                .map(|span| {
-                                    json!({ "range": range(&source, span), "newText": name })
-                                })
-                                .collect::<Vec<_>>();
-                            let changes = BTreeMap::from([(uri, edits)]);
-                            json!({ "changes": changes })
-                        })
-                    });
+                let result = self.symbol_request(message).and_then(|target| {
+                    new_name.map(|name| {
+                        let mut changes = BTreeMap::<String, Vec<Value>>::new();
+                        for (uri, source, span) in self.reference_spans(&target) {
+                            changes
+                                .entry(uri)
+                                .or_default()
+                                .push(json!({ "range": range(&source, span), "newText": name }));
+                        }
+                        json!({ "changes": changes })
+                    })
+                });
                 respond(writer, id, &result.unwrap_or(Value::Null));
+            }
+            Some("textDocument/signatureHelp") => {
+                let result = self.signature_help(message).unwrap_or(Value::Null);
+                respond(writer, id, &result);
+            }
+            Some("textDocument/documentSymbol") => {
+                let uri = message
+                    .pointer("/params/textDocument/uri")
+                    .and_then(Value::as_str);
+                let result = uri.map_or_else(Vec::new, |uri| self.document_symbols(uri));
+                respond(writer, id, &json!(result));
+            }
+            Some("workspace/symbol") => {
+                let query = message
+                    .pointer("/params/query")
+                    .and_then(Value::as_str)
+                    .unwrap_or("");
+                respond(writer, id, &json!(self.workspace_symbols(query)));
+            }
+            Some("textDocument/formatting") => {
+                respond(writer, id, &json!(self.formatting_edits(message)));
             }
             Some(method) if id.is_some() => send_error(writer, id, -32601, method),
             _ => {}
@@ -261,7 +280,7 @@ impl Server {
                 version,
             },
         );
-        self.publish_diagnostics(writer, uri);
+        self.publish_affected_diagnostics(writer, uri);
     }
 
     fn did_change(&mut self, message: &Value, writer: &mut impl Write) {
@@ -288,7 +307,7 @@ impl Server {
                 version,
             },
         );
-        self.publish_diagnostics(writer, uri);
+        self.publish_affected_diagnostics(writer, uri);
     }
 
     fn did_close(&mut self, message: &Value, writer: &mut impl Write) {
@@ -304,6 +323,9 @@ impl Server {
             "textDocument/publishDiagnostics",
             &json!({ "uri": uri, "diagnostics": [] }),
         );
+        for dependent in self.dependents_of(uri) {
+            self.publish_diagnostics(writer, &dependent);
+        }
     }
 
     fn publish_diagnostics(&self, writer: &mut impl Write, uri: &str) {
@@ -314,6 +336,7 @@ impl Server {
         let diagnostics = analyze_module(&source, &AssetCatalog::default())
             .diagnostics
             .iter()
+            .filter(|diagnostic| !self.resolved_import_diagnostic(&source, diagnostic))
             .map(|diagnostic| lsp_diagnostic(&source, diagnostic))
             .collect::<Vec<_>>();
         notify(
@@ -323,7 +346,230 @@ impl Server {
         );
     }
 
-    fn symbol_request(&self, message: &Value) -> Option<(String, SourceFile, String)> {
+    fn publish_affected_diagnostics(&self, writer: &mut impl Write, uri: &str) {
+        self.publish_diagnostics(writer, uri);
+        for dependent in self.dependents_of(uri) {
+            self.publish_diagnostics(writer, &dependent);
+        }
+    }
+
+    fn dependents_of(&self, target_uri: &str) -> Vec<String> {
+        self.documents
+            .keys()
+            .filter(|uri| uri.as_str() != target_uri)
+            .filter_map(|uri| {
+                let source = self.source(uri)?;
+                import_aliases(&source)
+                    .values()
+                    .any(|path| target_uri.ends_with(&format!("/{path}")))
+                    .then(|| uri.clone())
+            })
+            .collect()
+    }
+
+    fn resolved_import_diagnostic(&self, source: &SourceFile, diagnostic: &Diagnostic) -> bool {
+        if diagnostic.code != "PX3007" {
+            return false;
+        }
+        let aliases = import_aliases(source);
+        lex(source).tokens.windows(3).any(|window| {
+            let TokenKind::Identifier(alias) = &window[0].kind else {
+                return false;
+            };
+            let TokenKind::Identifier(member) = &window[2].kind else {
+                return false;
+            };
+            matches!(window[1].kind, TokenKind::Dot)
+                && window[0].span.start <= diagnostic.primary.span.start
+                && diagnostic.primary.span.end <= window[2].span.end
+                && aliases
+                    .get(alias)
+                    .and_then(|path| self.import_uri(path))
+                    .and_then(|uri| self.source(&uri))
+                    .is_some_and(|target| public_declaration(&target, member))
+        })
+    }
+
+    fn source(&self, uri: &str) -> Option<SourceFile> {
+        self.documents
+            .get(uri)
+            .map(|document| SourceFile::new(FileId(0), uri, document.text.clone()))
+    }
+
+    fn formatting_edits(&self, message: &Value) -> Vec<Value> {
+        message
+            .pointer("/params/textDocument/uri")
+            .and_then(Value::as_str)
+            .and_then(|uri| self.source(uri))
+            .and_then(|source| format_source(&source).ok().map(|text| (source, text)))
+            .map(|(source, text)| {
+                vec![json!({
+                    "range": range(&source, Span::new(source.id(), 0, source.eof_span().end)),
+                    "newText": text
+                })]
+            })
+            .unwrap_or_default()
+    }
+
+    fn import_uri(&self, path: &str) -> Option<String> {
+        let suffix = format!("/{path}");
+        self.documents
+            .keys()
+            .find(|uri| uri.ends_with(&suffix))
+            .cloned()
+    }
+
+    fn reference_spans(&self, target: &SymbolTarget) -> Vec<(String, SourceFile, Span)> {
+        let mut result = Vec::new();
+        if let Some(source) = self.source(&target.uri) {
+            result.extend(
+                identifier_spans(&source, &target.name)
+                    .into_iter()
+                    .map(|span| (target.uri.clone(), source.clone(), span)),
+            );
+        }
+        for uri in self.documents.keys().filter(|uri| **uri != target.uri) {
+            let Some(source) = self.source(uri) else {
+                continue;
+            };
+            let aliases = import_aliases(&source);
+            let imported_aliases: Vec<_> = aliases
+                .iter()
+                .filter_map(|(alias, path)| {
+                    (self.import_uri(path).as_deref() == Some(target.uri.as_str()))
+                        .then_some(alias.as_str())
+                })
+                .collect();
+            if imported_aliases.is_empty() {
+                continue;
+            }
+            let tokens = lex(&source).tokens;
+            for window in tokens.windows(3) {
+                if matches!(&window[0].kind, TokenKind::Identifier(alias) if imported_aliases.contains(&alias.as_str()))
+                    && matches!(window[1].kind, TokenKind::Dot)
+                    && matches!(&window[2].kind, TokenKind::Identifier(name) if name == &target.name)
+                {
+                    result.push((uri.clone(), source.clone(), window[2].span));
+                }
+            }
+        }
+        result
+    }
+
+    fn reference_locations(&self, target: &SymbolTarget) -> Vec<Value> {
+        self.reference_spans(target)
+            .into_iter()
+            .map(|(uri, source, span)| location(&uri, &source, span))
+            .collect()
+    }
+
+    fn completion_items(&self) -> Value {
+        let mut items = completion_items().as_array().cloned().unwrap_or_default();
+        let mut seen: std::collections::BTreeSet<String> = items
+            .iter()
+            .filter_map(|item| item.get("label").and_then(Value::as_str).map(str::to_owned))
+            .collect();
+        for uri in self.documents.keys() {
+            let Some(source) = self.source(uri) else {
+                continue;
+            };
+            for (name, _, kind) in declaration_spans(&source) {
+                if seen.insert(name.clone()) {
+                    items.push(
+                        json!({ "label": name, "kind": kind, "detail": "PXCL project symbol" }),
+                    );
+                }
+            }
+        }
+        Value::Array(items)
+    }
+
+    fn document_symbols(&self, uri: &str) -> Vec<Value> {
+        let Some(source) = self.source(uri) else {
+            return Vec::new();
+        };
+        declaration_spans(&source)
+            .into_iter()
+            .map(|(name, span, kind)| {
+                json!({
+                    "name": name, "kind": kind, "range": range(&source, span),
+                    "selectionRange": range(&source, span)
+                })
+            })
+            .collect()
+    }
+
+    fn workspace_symbols(&self, query: &str) -> Vec<Value> {
+        let query = query.to_ascii_lowercase();
+        self.documents
+            .keys()
+            .flat_map(|uri| {
+                let Some(source) = self.source(uri) else {
+                    return Vec::new();
+                };
+                declaration_spans(&source)
+                    .into_iter()
+                    .filter(|(name, _, _)| name.to_ascii_lowercase().contains(&query))
+                    .map(|(name, span, kind)| {
+                        json!({ "name": name, "kind": kind, "location": location(uri, &source, span) })
+                    })
+                    .collect()
+            })
+            .collect()
+    }
+
+    fn signature_help(&self, message: &Value) -> Option<Value> {
+        let uri = message.pointer("/params/textDocument/uri")?.as_str()?;
+        let source = self.source(uri)?;
+        let line = u32::try_from(message.pointer("/params/position/line")?.as_u64()?).ok()?;
+        let character =
+            u32::try_from(message.pointer("/params/position/character")?.as_u64()?).ok()?;
+        let offset = offset_at(&source, line, character)?;
+        let prefix = source.text().get(..usize::try_from(offset).ok()?)?;
+        let open = prefix.rfind('(')?;
+        let callee = prefix[..open]
+            .trim_end()
+            .rsplit(|character: char| !(character.is_ascii_alphanumeric() || character == '_'))
+            .next()?;
+        let active_parameter = prefix[open + 1..]
+            .bytes()
+            .filter(|byte| *byte == b',')
+            .count();
+        let label = BUILTINS
+            .iter()
+            .find(|(name, _)| *name == callee)
+            .map(|(_, label)| (*label).to_owned())
+            .or_else(|| self.declaration_label(callee))?;
+        Some(json!({
+            "signatures": [{ "label": label }],
+            "activeSignature": 0,
+            "activeParameter": active_parameter
+        }))
+    }
+
+    fn declaration_label(&self, name: &str) -> Option<String> {
+        for document in self.documents.values() {
+            for line in document.text.lines() {
+                let declaration = line
+                    .trim_start_matches([' ', '\t'])
+                    .strip_prefix("pub ")
+                    .or_else(|| {
+                        line.trim_start_matches([' ', '\t'])
+                            .strip_prefix("private ")
+                    })
+                    .unwrap_or_else(|| line.trim_start_matches([' ', '\t']));
+                if (declaration.starts_with(&format!("fn {name}("))
+                    || declaration.starts_with(&format!("task {name}(")))
+                    && let Some(header) = declaration.strip_suffix(':')
+                {
+                    return Some(header.to_owned());
+                }
+            }
+        }
+        None
+    }
+
+    fn symbol_request(&self, message: &Value) -> Option<SymbolTarget> {
         let uri = message
             .pointer("/params/textDocument/uri")?
             .as_str()?
@@ -334,17 +580,41 @@ impl Server {
         let character =
             u32::try_from(message.pointer("/params/position/character")?.as_u64()?).ok()?;
         let offset = offset_at(&source, line, character)?;
-        let symbol = lex(&source).tokens.into_iter().find_map(|token| {
+        let tokens = lex(&source).tokens;
+        let token_index = tokens.iter().position(|token| {
             if (token.span.contains(offset)
                 || (token.span.end == offset && token.span.start < offset))
-                && let TokenKind::Identifier(name) = token.kind
+                && matches!(token.kind, TokenKind::Identifier(_))
             {
-                return Some(name);
+                return true;
             }
-            None
+            false
         })?;
-        Some((uri, source, symbol))
+        let TokenKind::Identifier(name) = &tokens[token_index].kind else {
+            return None;
+        };
+        if token_index >= 2
+            && matches!(tokens[token_index - 1].kind, TokenKind::Dot)
+            && let TokenKind::Identifier(alias) = &tokens[token_index - 2].kind
+            && let Some(path) = import_aliases(&source).get(alias)
+            && let Some(import_uri) = self.import_uri(path)
+        {
+            return Some(SymbolTarget {
+                uri: import_uri,
+                name: name.clone(),
+            });
+        }
+        Some(SymbolTarget {
+            uri,
+            name: name.clone(),
+        })
     }
+}
+
+#[derive(Clone, Debug)]
+struct SymbolTarget {
+    uri: String,
+    name: String,
 }
 
 fn respond(writer: &mut impl Write, id: Option<&Value>, result: &Value) {
@@ -476,6 +746,66 @@ fn definition_span(source: &SourceFile, symbol: &str) -> Option<Span> {
         }
     }
     None
+}
+
+fn import_aliases(source: &SourceFile) -> BTreeMap<String, String> {
+    parse(source)
+        .module
+        .items
+        .into_iter()
+        .filter_map(|item| {
+            let pxcl_core::ast::Item::Import(import) = item else {
+                return None;
+            };
+            let alias = import
+                .alias
+                .map(|name| name.value)
+                .or_else(|| import.path.last().map(|name| name.value.clone()))?;
+            let path = format!(
+                "{}.pxl",
+                import
+                    .path
+                    .iter()
+                    .map(|part| part.value.as_str())
+                    .collect::<Vec<_>>()
+                    .join("/")
+            );
+            Some((alias, path))
+        })
+        .collect()
+}
+
+fn declaration_spans(source: &SourceFile) -> Vec<(String, Span, u8)> {
+    let tokens = lex(source).tokens;
+    tokens
+        .windows(2)
+        .filter_map(|pair| {
+            let kind = match pair[0].kind {
+                TokenKind::Fn | TokenKind::Task => 12,
+                TokenKind::Record => 23,
+                TokenKind::Enum => 10,
+                TokenKind::Const | TokenKind::State => 13,
+                _ => return None,
+            };
+            let TokenKind::Identifier(name) = &pair[1].kind else {
+                return None;
+            };
+            Some((name.clone(), pair[1].span, kind))
+        })
+        .collect()
+}
+
+fn public_declaration(source: &SourceFile, name: &str) -> bool {
+    use pxcl_core::ast::{Item, Visibility};
+    parse(source).module.items.iter().any(|item| match item {
+        Item::Constant(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::State(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::Function(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::Task(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::Record(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::Enum(value) => value.visibility == Visibility::Public && value.name.value == name,
+        Item::Import(_) | Item::Callback(_) | Item::Assertion(_) => false,
+    })
 }
 
 fn is_definition_prefix(kind: &TokenKind) -> bool {

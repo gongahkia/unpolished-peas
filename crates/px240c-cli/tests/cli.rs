@@ -1,8 +1,11 @@
 use std::{
     fs,
-    io::Write,
+    io::{BufRead, BufReader, Read, Write},
+    net::TcpStream,
     path::PathBuf,
     process::{Command, Stdio},
+    thread,
+    time::Duration,
 };
 
 use serde_json::{Value, json};
@@ -232,6 +235,149 @@ fn headless_run_emits_deterministic_machine_readable_traces_for_projects_and_car
         fs::remove_file(path).expect("temporary headless artifact removes");
     }
     fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+#[test]
+fn project_test_command_runs_pxcl_compile_fail_and_scripted_snapshot_tests() {
+    let project =
+        std::env::temp_dir().join(format!("px240c-tests-{}-{}", std::process::id(), line!()));
+    let create = binary()
+        .args(["new", project.to_str().expect("UTF-8 project path")])
+        .output()
+        .expect("CLI starts");
+    assert!(create.status.success());
+    fs::create_dir(project.join("tests")).expect("test directory creates");
+    fs::write(
+        project.join("tests/pure.pxl"),
+        "fn twice(value: Int) -> Int:\n  return value * 2\non start:\n  assert twice(3) == 6, \"pure assertion\"\n",
+    )
+    .expect("pure test writes");
+    fs::write(
+        project.join("tests/name.fail.pxl"),
+        "// expect PX3002\non start:\n  missing_name()\n",
+    )
+    .expect("compile-fail test writes");
+
+    let baseline_path = project.join("baseline.json");
+    let baseline = binary()
+        .args([
+            "run",
+            project.to_str().expect("UTF-8 project path"),
+            "--headless",
+            "--frames",
+            "2",
+            "--seed",
+            "9",
+            "--output",
+            baseline_path.to_str().expect("UTF-8 baseline path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(baseline.status.success());
+    let baseline: Value =
+        serde_json::from_slice(&fs::read(&baseline_path).expect("headless baseline reads"))
+            .expect("baseline is JSON");
+    let snapshot = json!({
+        "revision": 1,
+        "frames": 2,
+        "seed": 9,
+        "input": { "revision": 1, "frames": [] },
+        "expect": {
+            "completedFrames": 2,
+            "finalFramebufferSha256": baseline["summary"]["finalFramebufferSha256"],
+            "finalStateSha256": baseline["summary"]["finalStateSha256"]
+        }
+    });
+    fs::write(
+        project.join("tests/boot.pxrun.json"),
+        serde_json::to_vec_pretty(&snapshot).expect("snapshot serializes"),
+    )
+    .expect("scripted test writes");
+    let output = binary()
+        .args(["test", project.to_str().expect("UTF-8 project path")])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("test result: 3 passed; 0 failed"));
+    assert!(stdout.contains("pure.pxl"));
+    assert!(stdout.contains("name.fail.pxl"));
+    assert!(stdout.contains("boot.pxrun.json"));
+    fs::remove_file(baseline_path).expect("baseline removes");
+    fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+#[test]
+fn watch_serves_and_refreshes_a_loopback_player() {
+    let project =
+        std::env::temp_dir().join(format!("px240c-watch-{}-{}", std::process::id(), line!()));
+    let create = binary()
+        .args(["new", project.to_str().expect("UTF-8 project path")])
+        .output()
+        .expect("CLI starts");
+    assert!(create.status.success());
+    let mut child = binary()
+        .args([
+            "watch",
+            project.to_str().expect("UTF-8 project path"),
+            "--no-open",
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .expect("watch starts");
+    let mut output = BufReader::new(child.stdout.take().expect("watch stdout"));
+    let mut line = String::new();
+    output.read_line(&mut line).expect("watch announces URL");
+    let url = line
+        .split_whitespace()
+        .find(|part| part.starts_with("http://"))
+        .expect("watch URL")
+        .trim_end_matches('/');
+    let address = url.strip_prefix("http://").expect("loopback URL");
+    let html = http_get(address, "/");
+    assert!(html.contains("PX-240C standalone cartridge player"));
+    assert!(html.contains("fetch('/revision'"));
+    assert!(http_get(address, "/revision").ends_with('1'));
+
+    fs::write(project.join("src/main.pxl"), "on draw:\n  clear(1)\n")
+        .expect("watched source changes");
+    let mut refreshed = false;
+    for _ in 0..40 {
+        thread::sleep(Duration::from_millis(50));
+        if http_get(address, "/revision").ends_with('2') {
+            refreshed = true;
+            break;
+        }
+    }
+    child.kill().expect("watch stops");
+    let _ = child.wait();
+    assert!(refreshed, "watch did not publish rebuilt revision");
+    fs::remove_dir_all(project).expect("temporary project removes");
+}
+
+fn http_get(address: &str, path: &str) -> String {
+    let mut stream = TcpStream::connect(address).expect("watch server accepts request");
+    write!(
+        stream,
+        "GET {path} HTTP/1.1\r\nHost: {address}\r\nConnection: close\r\n\r\n"
+    )
+    .expect("request writes");
+    let mut response = Vec::new();
+    let mut chunk = [0_u8; 4096];
+    loop {
+        match stream.read(&mut chunk) {
+            Ok(0) => break,
+            Ok(length) => response.extend_from_slice(&chunk[..length]),
+            Err(error) if error.kind() == std::io::ErrorKind::ConnectionReset => break,
+            Err(error) => panic!("response reads: {error}"),
+        }
+    }
+    String::from_utf8(response).expect("response is UTF-8")
 }
 
 #[test]
@@ -543,6 +689,114 @@ fn lsp_serves_diagnostics_completion_and_symbol_navigation() {
     assert!(responses.iter().any(|value| {
         value.get("method") == Some(&Value::String("textDocument/publishDiagnostics".to_owned()))
             && value["params"]["diagnostics"] == json!([])
+    }));
+}
+
+#[test]
+#[allow(clippy::too_many_lines)]
+fn lsp_navigates_and_renames_symbols_across_project_modules() {
+    let math_uri = "file:///tmp/px-project/src/math.pxl";
+    let main_uri = "file:///tmp/px-project/src/main.pxl";
+    let math = "pub fn twice(value: Int) -> Int:\n  return value * 2\n";
+    let main =
+        "import src.math as math\nstate score: Int = 1\non update:\n  score = math.twice(score)\n";
+    let messages = [
+        json!({ "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {} }),
+        json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": math_uri, "languageId": "pxcl", "version": 1, "text": math } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "method": "textDocument/didOpen",
+            "params": { "textDocument": { "uri": main_uri, "languageId": "pxcl", "version": 1, "text": main } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/definition",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 3, "method": "textDocument/references",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 }, "context": { "includeDeclaration": true } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 4, "method": "textDocument/rename",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 16 }, "newName": "double" }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 5, "method": "textDocument/signatureHelp",
+            "params": { "textDocument": { "uri": main_uri }, "position": { "line": 3, "character": 21 } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 6, "method": "textDocument/documentSymbol",
+            "params": { "textDocument": { "uri": math_uri } }
+        }),
+        json!({
+            "jsonrpc": "2.0", "id": 7, "method": "workspace/symbol", "params": { "query": "twi" }
+        }),
+        json!({
+            "jsonrpc": "2.0", "method": "textDocument/didChange",
+            "params": { "textDocument": { "uri": math_uri, "version": 2 },
+                "contentChanges": [{ "text": "private fn twice(value: Int) -> Int:\n  return value * 2\n" }] }
+        }),
+        json!({ "jsonrpc": "2.0", "id": 8, "method": "shutdown", "params": null }),
+        json!({ "jsonrpc": "2.0", "method": "exit", "params": null }),
+    ];
+    let mut child = binary()
+        .arg("lsp")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .expect("LSP starts");
+    {
+        let input = child.stdin.as_mut().expect("LSP stdin");
+        for message in messages {
+            let bytes = serde_json::to_vec(&message).expect("request serializes");
+            write!(input, "Content-Length: {}\r\n\r\n", bytes.len()).expect("header writes");
+            input.write_all(&bytes).expect("body writes");
+        }
+    }
+    let output = child.wait_with_output().expect("LSP exits");
+    assert!(output.status.success());
+    let responses = decode_lsp_messages(&output.stdout);
+    let response = |id: i64| {
+        responses
+            .iter()
+            .find(|value| value.get("id").and_then(Value::as_i64) == Some(id))
+            .expect("response id exists")
+    };
+    assert_eq!(response(2)["result"]["uri"], math_uri);
+    assert_eq!(response(2)["result"]["range"]["start"]["line"], 0);
+    assert_eq!(response(3)["result"].as_array().map(Vec::len), Some(2));
+    assert_eq!(
+        response(4)["result"]["changes"][math_uri]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert_eq!(
+        response(4)["result"]["changes"][main_uri]
+            .as_array()
+            .map(Vec::len),
+        Some(1)
+    );
+    assert!(
+        response(5)["result"]["signatures"][0]["label"]
+            .as_str()
+            .is_some_and(|label| label.starts_with("fn twice("))
+    );
+    assert_eq!(response(6)["result"][0]["name"], "twice");
+    assert_eq!(response(7)["result"][0]["name"], "twice");
+    assert!(responses.iter().any(|value| {
+        value.get("method") == Some(&Value::String("textDocument/publishDiagnostics".to_owned()))
+            && value["params"]["uri"] == main_uri
+            && value["params"]["diagnostics"] == json!([])
+    }));
+    assert!(responses.iter().any(|value| {
+        value.get("method") == Some(&Value::String("textDocument/publishDiagnostics".to_owned()))
+            && value["params"]["uri"] == main_uri
+            && value["params"]["diagnostics"]
+                .as_array()
+                .is_some_and(|diagnostics| !diagnostics.is_empty())
     }));
 }
 

@@ -2,7 +2,8 @@ use std::{
     collections::BTreeMap,
     fs,
     hash::{DefaultHasher, Hash, Hasher},
-    io::Write as _,
+    io::{Read as _, Write as _},
+    net::{TcpListener, TcpStream},
     path::{Path, PathBuf},
     process::{Command as ProcessCommand, ExitCode, Stdio},
     thread,
@@ -77,6 +78,11 @@ enum Command {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Run ordinary PXCL tests, expected compiler failures, and scripted frame snapshots.
+    Test {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+    },
     /// Export a project in a redistributable format.
     Export {
         #[command(subcommand)]
@@ -116,6 +122,9 @@ enum Command {
         /// Build once and exit; useful for editor and CI integration checks.
         #[arg(long)]
         once: bool,
+        /// Serve the refreshing player without opening the system browser.
+        #[arg(long)]
+        no_open: bool,
     },
     /// Print toolchain revisions, a project manifest, or packed-cartridge metadata.
     Info { path: Option<PathBuf> },
@@ -149,6 +158,7 @@ fn main() -> ExitCode {
         Command::Check { paths } => check_files(&paths),
         Command::Fmt { check, paths } => format_files(&paths, check),
         Command::Pack { path, output } => pack_directory(&path, output.as_deref()),
+        Command::Test { path } => test_directory(&path),
         Command::Export {
             command: ExportCommand::Html { path, output },
         } => export_html_directory(&path, output.as_deref())
@@ -176,7 +186,12 @@ fn main() -> ExitCode {
                 run_directory(&path, output.as_deref(), no_open)
             }
         }
-        Command::Watch { path, output, once } => watch_directory(&path, output.as_deref(), once),
+        Command::Watch {
+            path,
+            output,
+            once,
+            no_open,
+        } => watch_directory(&path, output.as_deref(), once, no_open),
         Command::Info { path } => info(path.as_deref()),
         Command::Lsp => lsp::run(),
     }
@@ -214,7 +229,7 @@ fn run_directory(path: &Path, output: Option<&Path>, no_open: bool) -> ExitCode 
     if no_open {
         return ExitCode::SUCCESS;
     }
-    match ProcessCommand::new("xdg-open").arg(&output).spawn() {
+    match browser_command(&output.display().to_string()).spawn() {
         Ok(_) => {
             println!("opened {}", output.display());
             ExitCode::SUCCESS
@@ -417,6 +432,238 @@ fn read_save_image(path: Option<&Path>) -> Result<Vec<u8>, ()> {
     Ok(bytes)
 }
 
+fn test_directory(path: &Path) -> ExitCode {
+    let Ok(project) = load_project(path) else {
+        return ExitCode::FAILURE;
+    };
+    let tests_root = path.join("tests");
+    let mut test_paths = Vec::new();
+    if tests_root.is_dir()
+        && let Err(error) = collect_test_paths(&tests_root, &mut test_paths)
+    {
+        eprintln!("{}: {error}", tests_root.display());
+        return ExitCode::FAILURE;
+    }
+    test_paths.sort();
+    let mut passed = 0_usize;
+    let mut failed = 0_usize;
+    let main_cartridge = test_paths
+        .iter()
+        .any(|test| {
+            test.file_name()
+                .and_then(|name| name.to_str())
+                .is_some_and(|name| name.ends_with(".pxrun.json"))
+        })
+        .then(|| pack_project(&project.manifest_source, &project.files));
+    for test_path in &test_paths {
+        let result = if test_path
+            .extension()
+            .is_some_and(|extension| extension == "pxl")
+        {
+            run_pxcl_test(path, &project, test_path)
+        } else if test_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".pxrun.json"))
+        {
+            match &main_cartridge {
+                Some(Ok(cartridge)) => run_scripted_test(path, cartridge, test_path),
+                Some(Err(error)) => Err(error.to_string()),
+                None => Err("internal test runner error".to_owned()),
+            }
+        } else {
+            continue;
+        };
+        match result {
+            Ok(()) => {
+                passed += 1;
+                println!("PASS {}", test_path.display());
+            }
+            Err(error) => {
+                failed += 1;
+                eprintln!("FAIL {}: {error}", test_path.display());
+            }
+        }
+    }
+    println!("test result: {passed} passed; {failed} failed");
+    status(failed > 0)
+}
+
+fn collect_test_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            collect_test_paths(&entry.path(), paths)?;
+        } else {
+            paths.push(entry.path());
+        }
+    }
+    Ok(())
+}
+
+fn run_pxcl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Result<(), String> {
+    let relative = test_path
+        .strip_prefix(root)
+        .map_err(|error| error.to_string())?
+        .to_str()
+        .ok_or_else(|| "test path is not valid UTF-8".to_owned())?;
+    let source = fs::read_to_string(test_path).map_err(|error| error.to_string())?;
+    let compile_fail = test_path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .is_some_and(|name| name.ends_with(".fail.pxl"));
+    let expected_code = source.lines().find_map(|line| {
+        line.trim()
+            .strip_prefix("// expect ")
+            .map(str::trim)
+            .filter(|code| code.starts_with("PX"))
+    });
+    let mut manifest = project.manifest.clone();
+    relative.clone_into(&mut manifest.entry);
+    manifest.assets.clear();
+    manifest.label = None;
+    manifest.thumbnail = None;
+    manifest.display = None;
+    let manifest_source = toml::to_string(&manifest).map_err(|error| error.to_string())?;
+    let compilation = compile_project(&manifest_source, &project.files, CompileMode::Debug);
+    if compile_fail {
+        let code = match compilation {
+            Err(error) => Some(error.code.to_owned()),
+            Ok(output) => output
+                .analysis
+                .diagnostics
+                .first()
+                .map(|diagnostic| diagnostic.code.clone()),
+        };
+        return match (expected_code, code) {
+            (Some(expected), Some(actual)) if expected == actual => Ok(()),
+            (Some(expected), Some(actual)) => {
+                Err(format!("expected {expected}, compiler returned {actual}"))
+            }
+            (Some(expected), None) => {
+                Err(format!("expected {expected}, but compilation succeeded"))
+            }
+            (None, _) => Err("compile-fail test needs `// expect PX....`".to_owned()),
+        };
+    }
+    let compilation = compilation.map_err(|error| error.to_string())?;
+    if let Some(diagnostic) = compilation.analysis.diagnostics.first() {
+        return Err(format!("error[{}] {}", diagnostic.code, diagnostic.message));
+    }
+    let generated = compilation
+        .generated
+        .ok_or_else(|| "test produced no executable program".to_owned())?;
+    let request = serde_json::json!({
+        "revision": 1,
+        "javascript": generated.javascript,
+        "manifest": { "id": project.manifest.id, "updateRate": project.manifest.update_rate,
+            "display": null, "assets": {} },
+        "entries": {}, "rom": [0], "seed": 0x240c_1999_u32, "frames": 1,
+        "trace": { "revision": 1, "frames": [] }, "save": [],
+    });
+    let result = execute_headless_host(
+        &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
+        1,
+    )
+    .map_err(|()| "headless test host failed".to_owned())?;
+    let result: serde_json::Value =
+        serde_json::from_slice(&result).map_err(|error| error.to_string())?;
+    if let Some(fault) = result.get("fault") {
+        return Err(format!(
+            "error[{}] {} at {}..{}",
+            fault["code"].as_str().unwrap_or("PX????"),
+            fault["message"].as_str().unwrap_or("runtime fault"),
+            fault["sourceSpan"]["start"].as_u64().unwrap_or_default(),
+            fault["sourceSpan"]["end"].as_u64().unwrap_or_default()
+        ));
+    }
+    Ok(())
+}
+
+fn run_scripted_test(
+    root: &Path,
+    packed: &pxcl_core::PackedCartridge,
+    test_path: &Path,
+) -> Result<(), String> {
+    let source = fs::read(test_path).map_err(|error| error.to_string())?;
+    if source.len() > usize::try_from(MAX_TRACE_BYTES).unwrap_or(usize::MAX) {
+        return Err("scripted test exceeds 8 MiB".to_owned());
+    }
+    let spec: serde_json::Value =
+        serde_json::from_slice(&source).map_err(|error| error.to_string())?;
+    if spec.get("revision").and_then(serde_json::Value::as_u64) != Some(1) {
+        return Err("scripted test revision must be 1".to_owned());
+    }
+    let frames = spec
+        .get("frames")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .ok_or_else(|| "scripted test needs a u32 `frames`".to_owned())?;
+    let seed = spec
+        .get("seed")
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u32::try_from(value).ok())
+        .unwrap_or(0x240c_1999);
+    let trace = spec
+        .get("input")
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({ "revision": 1, "frames": [] }));
+    let save = match spec.get("save").and_then(serde_json::Value::as_str) {
+        Some(relative) => read_save_image(Some(&root.join(relative)))
+            .map_err(|()| "could not load scripted save fixture".to_owned())?,
+        None => Vec::new(),
+    };
+    let cartridge = decode_cartridge(&packed.bytes).map_err(|error| error.to_string())?;
+    let javascript = cartridge
+        .entries
+        .get("build/cartridge.js")
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .ok_or_else(|| "packed project has no UTF-8 program".to_owned())?;
+    let manifest = &cartridge.manifest;
+    let request = serde_json::json!({
+        "revision": 1, "javascript": javascript,
+        "manifest": { "id": manifest.id, "updateRate": manifest.update_rate,
+            "display": manifest.display, "assets": manifest.assets },
+        "entries": cartridge.entries, "rom": packed.bytes, "seed": seed, "frames": frames,
+        "trace": trace, "save": save,
+    });
+    let result = execute_headless_host(
+        &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
+        frames,
+    )
+    .map_err(|()| "headless scripted test host failed".to_owned())?;
+    let result: serde_json::Value =
+        serde_json::from_slice(&result).map_err(|error| error.to_string())?;
+    if let Some(fault) = result.get("fault") {
+        return Err(format!(
+            "runtime error[{}] {}",
+            fault["code"].as_str().unwrap_or("PX????"),
+            fault["message"].as_str().unwrap_or("runtime fault")
+        ));
+    }
+    let expected = spec
+        .get("expect")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "scripted test needs an `expect` object".to_owned())?;
+    let summary = result
+        .get("summary")
+        .and_then(serde_json::Value::as_object)
+        .ok_or_else(|| "headless host returned no summary".to_owned())?;
+    for (key, expected_value) in expected {
+        if summary.get(key) != Some(expected_value) {
+            return Err(format!(
+                "snapshot `{key}` expected {expected_value}, got {}",
+                summary.get(key).unwrap_or(&serde_json::Value::Null)
+            ));
+        }
+    }
+    Ok(())
+}
+
 fn new_project(path: &Path, title: Option<&str>, author: &str) -> ExitCode {
     if path.exists() {
         eprintln!("{}: refusing to overwrite an existing path", path.display());
@@ -490,22 +737,103 @@ fn pack_directory(path: &Path, output: Option<&Path>) -> ExitCode {
     ExitCode::SUCCESS
 }
 
-fn watch_directory(path: &Path, output: Option<&Path>, once: bool) -> ExitCode {
-    let first = pack_directory(path, output);
+fn watch_directory(path: &Path, output: Option<&Path>, once: bool, no_open: bool) -> ExitCode {
     if once {
-        return first;
+        return pack_directory(path, output);
+    }
+    let output = output.map_or_else(|| path.join("dist/watch.html"), Path::to_path_buf);
+    if export_watch_html(path, &output).is_err() {
+        return ExitCode::FAILURE;
+    }
+    let listener = match TcpListener::bind("127.0.0.1:0") {
+        Ok(listener) => listener,
+        Err(error) => {
+            eprintln!("px240c watch: could not bind local player: {error}");
+            return ExitCode::FAILURE;
+        }
+    };
+    if let Err(error) = listener.set_nonblocking(true) {
+        eprintln!("px240c watch: could not configure local player: {error}");
+        return ExitCode::FAILURE;
+    }
+    let address = listener
+        .local_addr()
+        .expect("bound listener has an address");
+    let url = format!("http://{address}/");
+    println!("watching {} at {url}", path.display());
+    if !no_open && let Err(error) = browser_command(&url).spawn() {
+        eprintln!("px240c watch: could not open system browser: {error}");
     }
     let mut fingerprint = directory_fingerprint(path).ok();
-    println!("watching {}", path.display());
+    let mut revision = 1_u64;
     loop {
-        thread::sleep(Duration::from_millis(250));
-        let current = directory_fingerprint(path).ok();
-        if current == fingerprint {
-            continue;
+        match listener.accept() {
+            Ok((stream, _)) => serve_watch_request(stream, &output, revision),
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => eprintln!("px240c watch: local player request failed: {error}"),
         }
-        fingerprint = current;
-        let _ = pack_directory(path, output);
+        let current = directory_fingerprint(path).ok();
+        if current != fingerprint {
+            fingerprint = current;
+            if export_watch_html(path, &output).is_ok() {
+                revision = revision.wrapping_add(1);
+                println!("rebuilt revision {revision}");
+            }
+        }
+        thread::sleep(Duration::from_millis(50));
     }
+}
+
+fn browser_command(target: &str) -> ProcessCommand {
+    let mut command = if cfg!(target_os = "macos") {
+        ProcessCommand::new("open")
+    } else {
+        ProcessCommand::new("xdg-open")
+    };
+    command.arg(target);
+    command
+}
+
+fn export_watch_html(path: &Path, output: &Path) -> Result<(), ()> {
+    let project = load_project(path)?;
+    let html =
+        export_standalone_html(&project.manifest_source, &project.files).map_err(|error| {
+            eprintln!("{}: {error}", path.display());
+        })?;
+    let reload = r"<script>(()=>{let revision;setInterval(async()=>{try{const next=await fetch('/revision',{cache:'no-store'}).then(response=>response.text());if(revision!==undefined&&next!==revision)location.reload();revision=next}catch{}},250)})()</script>";
+    let html = html.replace("</body>", &format!("{reload}</body>"));
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|error| {
+            eprintln!("{}: {error}", parent.display());
+        })?;
+    }
+    fs::write(output, html).map_err(|error| {
+        eprintln!("{}: {error}", output.display());
+    })
+}
+
+fn serve_watch_request(mut stream: TcpStream, output: &Path, revision: u64) {
+    let _ = stream.set_read_timeout(Some(Duration::from_millis(100)));
+    let mut request = [0_u8; 4096];
+    let length = stream.read(&mut request).unwrap_or_default();
+    let revision_request = request[..length].starts_with(b"GET /revision ");
+    let (content_type, body) = if revision_request {
+        (
+            "text/plain; charset=utf-8",
+            revision.to_string().into_bytes(),
+        )
+    } else {
+        (
+            "text/html; charset=utf-8",
+            fs::read(output).unwrap_or_else(|_| b"PX-240C WATCH BUILD UNAVAILABLE".to_vec()),
+        )
+    };
+    let header = format!(
+        "HTTP/1.1 200 OK\r\nContent-Type: {content_type}\r\nContent-Length: {}\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n",
+        body.len()
+    );
+    let _ = stream.write_all(header.as_bytes());
+    let _ = stream.write_all(&body);
 }
 
 fn directory_fingerprint(path: &Path) -> Result<u64, std::io::Error> {
@@ -811,10 +1139,12 @@ fn write_program(generated: &GeneratedProgram, output: &Path) -> ExitCode {
 }
 
 fn check_files(paths: &[PathBuf]) -> ExitCode {
-    if paths.is_empty() {
-        eprintln!("px240c check: expected at least one .pxl source path");
-        return ExitCode::from(2);
-    }
+    let defaults = [PathBuf::from(".")];
+    let paths = if paths.is_empty() {
+        &defaults[..]
+    } else {
+        paths
+    };
     let mut failed = false;
     for (index, path) in paths.iter().enumerate() {
         if path.is_dir() {
@@ -865,10 +1195,24 @@ fn emit_project_diagnostics(path: &Path, diagnostics: &[Diagnostic]) {
 }
 
 fn format_files(paths: &[PathBuf], check: bool) -> ExitCode {
-    if paths.is_empty() {
-        eprintln!("px240c fmt: expected at least one .pxl source path");
-        return ExitCode::from(2);
+    let defaults = [PathBuf::from(".")];
+    let requested = if paths.is_empty() {
+        &defaults[..]
+    } else {
+        paths
+    };
+    let mut paths = Vec::new();
+    for requested_path in requested {
+        if requested_path.is_dir() {
+            if let Err(error) = collect_pxl_paths(requested_path, &mut paths) {
+                eprintln!("{}: {error}", requested_path.display());
+                return ExitCode::FAILURE;
+            }
+        } else {
+            paths.push(requested_path.clone());
+        }
     }
+    paths.sort();
     let mut failed = false;
     for (index, path) in paths.iter().enumerate() {
         let Ok(text) = read_source(path) else {
@@ -895,6 +1239,31 @@ fn format_files(paths: &[PathBuf], check: bool) -> ExitCode {
         }
     }
     status(failed)
+}
+
+fn collect_pxl_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
+    for entry in fs::read_dir(directory)? {
+        let entry = entry?;
+        let file_type = entry.file_type()?;
+        if file_type.is_symlink() {
+            continue;
+        }
+        if file_type.is_dir() {
+            if !matches!(
+                entry.file_name().to_str(),
+                Some(".git" | "dist" | "node_modules" | "target")
+            ) {
+                collect_pxl_paths(&entry.path(), paths)?;
+            }
+        } else if entry
+            .path()
+            .extension()
+            .is_some_and(|extension| extension == "pxl")
+        {
+            paths.push(entry.path());
+        }
+    }
+    Ok(())
 }
 
 fn read_source(path: &Path) -> Result<String, ()> {

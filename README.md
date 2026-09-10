@@ -60,13 +60,14 @@ For the native external-editor workflow:
 ```sh
 cargo run -p px240c-cli -- new my-game --title "MY GAME"
 cargo run -p px240c-cli -- check my-game
+cargo run -p px240c-cli -- test my-game
 cargo run -p px240c-cli -- run my-game
 cargo run -p px240c-cli -- run my-game --headless --frames 120 --input path/to/replay.json
 cargo run -p px240c-cli -- export html my-game
 ```
 
-See the [from-scratch tutorial](docs/TUTORIAL.md), [Studio/CLI guide](docs/STUDIO.md),
-[PXCL reference](docs/PXCL.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
+See the [from-scratch tutorial](docs/TUTORIAL.md), [tool guide](docs/TOOLS.md),
+[PXCL language contract](docs/LANGUAGE.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
 
 ## Boundaries
 

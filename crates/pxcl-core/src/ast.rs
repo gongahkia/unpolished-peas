@@ -4,6 +4,15 @@ use crate::span::{Span, Spanned};
 
 pub type Name = Spanned<String>;
 
+/// Project-link visibility. Declarations default to public for alpha compatibility.
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Visibility {
+    #[default]
+    Public,
+    Private,
+}
+
 /// Parsed PXCL module. Name resolution intentionally happens in a later phase.
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Module {
@@ -34,6 +43,7 @@ pub struct Import {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Constant {
+    pub visibility: Visibility,
     pub name: Name,
     pub type_annotation: Option<TypeNode>,
     pub value: Expression,
@@ -42,6 +52,7 @@ pub struct Constant {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct State {
+    pub visibility: Visibility,
     pub name: Name,
     pub type_annotation: TypeNode,
     pub value: Expression,
@@ -57,6 +68,7 @@ pub struct Parameter {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Function {
+    pub visibility: Visibility,
     pub name: Name,
     pub parameters: Vec<Parameter>,
     pub return_type: TypeNode,
@@ -66,6 +78,7 @@ pub struct Function {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Task {
+    pub visibility: Visibility,
     pub name: Name,
     pub parameters: Vec<Parameter>,
     pub body: Block,
@@ -91,6 +104,7 @@ pub struct Callback {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Record {
+    pub visibility: Visibility,
     pub name: Name,
     pub fields: Vec<RecordField>,
     pub span: Span,
@@ -106,6 +120,7 @@ pub struct RecordField {
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct Enum {
+    pub visibility: Visibility,
     pub name: Name,
     pub variants: Vec<EnumVariant>,
     pub span: Span,

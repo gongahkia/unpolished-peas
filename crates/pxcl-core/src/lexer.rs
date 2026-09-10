@@ -386,6 +386,8 @@ fn keyword(text: &str) -> Option<TokenKind> {
     Some(match text {
         "import" => TokenKind::Import,
         "as" => TokenKind::As,
+        "pub" => TokenKind::Pub,
+        "private" => TokenKind::Private,
         "const" => TokenKind::Const,
         "state" => TokenKind::State,
         "let" => TokenKind::Let,
