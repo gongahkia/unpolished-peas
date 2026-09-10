@@ -21,6 +21,21 @@ describe('sandbox protocol', () => {
         configuration: { ...load.configuration, workUnitsPerFrame: 50_001 },
       }),
     ).toBe(false);
+    expect(
+      isHostRequest({
+        ...load,
+        configuration: { ...load.configuration, rom: Uint8Array.of(80, 88) },
+      }),
+    ).toBe(true);
+    expect(
+      isHostRequest({
+        ...load,
+        configuration: {
+          ...load.configuration,
+          rom: new Uint8Array(HARDWARE.cartridgeCapacityBytes + 1),
+        },
+      }),
+    ).toBe(false);
   });
 
   it('accepts complete frame messages and denies non-blob cartridge module URLs', () => {
@@ -32,6 +47,14 @@ describe('sandbox protocol', () => {
         moduleUrl: 'https://example.test/cartridge.js',
         configuration: { seed: 1, workUnitsPerFrame: 100, updateRate: 60 },
       }),
+    ).toBe(false);
+    expect(isHostRequest({ id: 3, type: 'memory', address: 0x50000, length: 64 })).toBe(true);
+    expect(isHostRequest({ id: 4, type: 'memory-edit', address: 0, bytes: Uint8Array.of(7) })).toBe(
+      true,
+    );
+    expect(isHostRequest({ id: 5, type: 'memory', address: 0x400000, length: 1 })).toBe(false);
+    expect(
+      isHostRequest({ id: 6, type: 'memory-edit', address: 0, bytes: new Uint8Array(257) }),
     ).toBe(false);
   });
 
@@ -102,6 +125,18 @@ describe('sandbox protocol', () => {
     expect(isWorkerResponse({ ...frame, ambient: true })).toBe(false);
     expect(isWorkerResponse({ ...frame, drawCommands: [{ name: 'clear' }] })).toBe(false);
     expect(isWorkerResponse({ ...frame, debug: { trace: [], inspection: {} } })).toBe(false);
+    const memory = {
+      id: 2,
+      type: 'memory',
+      address: 0,
+      bytes: Uint8Array.of(1, 2),
+      regions: [{ name: 'RAM', address: 0, length: 65_536, writable: true }],
+    };
+    expect(isWorkerResponse(memory)).toBe(true);
+    expect(isWorkerResponse({ ...memory, bytes: new Uint8Array(257) })).toBe(false);
+    expect(isWorkerResponse({ ...memory, regions: [{ ...memory.regions[0], extra: true }] })).toBe(
+      false,
+    );
     for (const output of [
       undefined,
       { ...frame.output, indexedPixels: new Uint8Array(1) },

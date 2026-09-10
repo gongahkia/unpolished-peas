@@ -2,6 +2,7 @@ import { RuntimeFault } from './errors';
 import type { HostRequest, SandboxConfiguration, WorkerResponse } from './protocol';
 import { isWorkerResponse } from './protocol';
 import type { InputFrame } from './input';
+import type { MemoryRegionDescriptor } from './bus';
 
 interface PendingRequest {
   readonly resolve: (response: WorkerResponse) => void;
@@ -64,6 +65,24 @@ export class SandboxSession {
   public async restore(snapshot: unknown): Promise<void> {
     const response = await this.request((id) => ({ id, type: 'restore', snapshot }));
     this.expectResponse(response, 'restored');
+  }
+
+  public async inspectMemory(
+    address: number,
+    length: number,
+  ): Promise<{
+    readonly address: number;
+    readonly bytes: Uint8Array;
+    readonly regions: readonly MemoryRegionDescriptor[];
+  }> {
+    const response = await this.request((id) => ({ id, type: 'memory', address, length }));
+    this.expectResponse(response, 'memory');
+    return response;
+  }
+
+  public async editMemory(address: number, bytes: Uint8Array): Promise<void> {
+    const response = await this.request((id) => ({ id, type: 'memory-edit', address, bytes }));
+    this.expectResponse(response, 'memory-edited');
   }
 
   public dispose(): void {

@@ -8,6 +8,35 @@ import { HARDWARE } from './hardware';
 const span = { start: 23, end: 31 };
 
 describe('hardware byte bus', () => {
+  it('provides uncharged bounded debugger reads, region labels, and transactional edits', () => {
+    const ram = Uint8Array.of(1, 2, 3, 4);
+    const rom = Uint8Array.of(5, 6);
+    const costs: number[] = [];
+    const bus = new MemoryBus(
+      [
+        { name: 'work RAM', address: 0, bytes: ram, writable: true },
+        { name: 'ROM', address: 8, bytes: rom, writable: false },
+      ],
+      (units) => costs.push(units),
+    );
+    expect(bus.inspect(0, 10)).toEqual(Uint8Array.of(1, 2, 3, 4, 0, 0, 0, 0, 5, 6));
+    expect(bus.describe()).toEqual([
+      { name: 'work RAM', address: 0, length: 4, writable: true },
+      { name: 'ROM', address: 8, length: 2, writable: false },
+    ]);
+    expect(costs).toEqual([]);
+    bus.edit(1, Uint8Array.of(7, 8));
+    expect(ram).toEqual(Uint8Array.of(1, 7, 8, 4));
+    const before = ram.slice();
+    expect(() => {
+      bus.edit(3, Uint8Array.of(9, 9));
+    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    expect(ram).toEqual(before);
+    expect(() => {
+      bus.inspect(MEMORY.size, 1);
+    }).toThrow(expect.objectContaining({ code: 'PX9020' }));
+  });
+
   it('prepares writable device operations without shadow state or partial cross-region commits', () => {
     const owners = [0x0403, 0x0605];
     let commits = 0;

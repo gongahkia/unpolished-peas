@@ -727,6 +727,7 @@ export class StudioApp {
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
+    const rom = await this.compiler.packProject(project.manifest, project.files);
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
     this.root.innerHTML = `
@@ -761,6 +762,7 @@ export class StudioApp {
           displayPath: parsedManifest.display,
         },
         save,
+        rom,
       });
     } catch (error) {
       input.destroy();
@@ -833,11 +835,21 @@ export class StudioApp {
     const project = this.requireProject();
     const save = await this.repository.cartridgeSave(project.id).read();
     try {
-      this.activeDebugger = await openDebugger(this.root, project, this.compiler, save, () => {
-        this.activeDebugger = undefined;
-        this.appendLines([`DEBUG STOPPED ${project.id}`]);
-        this.renderShell();
-      });
+      this.activeDebugger = await openDebugger(
+        this.root,
+        project,
+        this.compiler,
+        save,
+        () => {
+          this.activeDebugger = undefined;
+          this.appendLines([`DEBUG STOPPED ${project.id}`]);
+          this.renderShell();
+        },
+        () => {
+          this.activeDebugger = undefined;
+          this.openManual();
+        },
+      );
     } catch (error: unknown) {
       this.renderShell();
       throw error;

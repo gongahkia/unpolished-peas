@@ -885,7 +885,20 @@ body,
   bottom: 23px;
 }
 
-.debug-entry input {
+.source-debug-entry,
+.memory-debug-entry {
+  display: flex;
+  width: 100%;
+  gap: 1px;
+}
+
+.source-debug-entry[hidden],
+.memory-debug-entry[hidden] {
+  display: none;
+}
+
+.debug-entry input,
+.debug-entry select {
   min-width: 0;
   height: 9px;
   padding: 0 1px;
@@ -897,6 +910,19 @@ body,
   font:
     4px/6px 'PX-240C Bitmap',
     monospace;
+}
+
+.memory-address {
+  width: 30px;
+}
+
+.memory-length,
+.memory-value {
+  width: 20px;
+}
+
+.memory-radix {
+  width: 28px;
 }
 
 .debug-entry input:focus {
