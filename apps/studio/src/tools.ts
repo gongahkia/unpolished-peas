@@ -1,12 +1,15 @@
 import {
   AudioAssetStore,
+  BITMAP_FONT,
   HARDWARE,
   MASTER_PALETTE_RGBA,
   Synthesizer,
   WebAudioSink,
+  decodeRuntimeAssets,
   encodeAssetFile,
   encodeMusicAssetFile,
   encodeSoundAssetFile,
+  glyphRows,
   type MusicAsset,
   type SoundAsset,
   type TrackerCell,
@@ -14,10 +17,11 @@ import {
 
 import type { ProjectManifest } from './compiler';
 
-export type CreationTool = 'sprite' | 'map' | 'palette' | 'sfx' | 'music' | 'project';
+export type CreationTool = 'sprite' | 'map' | 'palette' | 'font' | 'sfx' | 'music' | 'project';
 
 export interface ToolProject {
   readonly id: string;
+  revision: number;
   title: string;
   manifest: string;
   readonly files: Record<string, Uint8Array>;
@@ -42,10 +46,13 @@ export async function openCreationTool(
       openSpriteEditor(root, project, callbacks);
       break;
     case 'map':
-      openMapEditor(root, project, callbacks);
+      await openMapEditor(root, project, callbacks);
       break;
     case 'palette':
       openPaletteEditor(root, project, callbacks);
+      break;
+    case 'font':
+      openFontEditor(root, project, callbacks);
       break;
     case 'sfx':
       openSoundEditor(root, project, callbacks);
@@ -57,6 +64,311 @@ export async function openCreationTool(
       await openProjectSettings(root, project, callbacks);
       break;
   }
+}
+
+interface MutableFontDocument {
+  revision: 1;
+  kind: 'font';
+  glyphWidth: number;
+  glyphHeight: number;
+  baseline: number;
+  advanceX: number;
+  advanceY: number;
+  missingGlyph: number;
+  glyphs: { code: number; pixels: number[] }[];
+}
+
+function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
+  const path = 'assets/typeface.pxf';
+  const document = readJson<MutableFontDocument>(project.files[path], defaultFont());
+  root.innerHTML = toolFrame(
+    'BITMAP FONT',
+    `<div class="font-layout">
+      <canvas class="font-canvas" width="64" height="64" aria-label="Font glyph pixels"></canvas>
+      <div class="font-controls">
+        <p>GLYPH <span class="glyph-readout"></span></p>
+        <div><button data-font="prev">&lt;G</button><button data-font="next">G&gt;</button><input class="glyph-code" aria-label="Glyph code" type="number" min="0" max="255"><button data-font="add">+</button><button data-font="delete">-</button></div>
+        <div><button data-font="undo">UNDO</button><button data-font="redo">REDO</button><button data-font="select">SELECT</button></div>
+        <div><button data-font="flip-h">FLIP H</button><button data-font="flip-v">FLIP V</button><button data-font="rotate">ROTATE</button></div>
+        <div class="font-metrics"><label>W <input data-font-metric="glyphWidth" type="number" min="1" max="16"></label><label>H <input data-font-metric="glyphHeight" type="number" min="1" max="16"></label><label>BASE <input data-font-metric="baseline" type="number" min="0" max="15"></label><label>AX <input data-font-metric="advanceX" type="number" min="1" max="32"></label><label>AY <input data-font-metric="advanceY" type="number" min="1" max="32"></label><label>MISS <input data-font-metric="missingGlyph" type="number" min="0" max="255"></label></div>
+        <p class="capacity"></p>
+      </div>
+      <label class="font-preview-label">TEXT <input class="font-preview-text" aria-label="Font preview text" maxlength="64" value="PX-240C ?"></label>
+      <canvas class="font-preview" width="128" height="24" aria-label="Font preview"></canvas>
+    </div>`,
+  );
+  bindCommon(root, callbacks);
+  const canvas = requireElement(root, '.font-canvas') as HTMLCanvasElement;
+  const context = requireContext(canvas);
+  const preview = requireElement(root, '.font-preview') as HTMLCanvasElement;
+  const previewContext = requireContext(preview);
+  const codeInput = requireElement(root, '.glyph-code') as HTMLInputElement;
+  let glyphIndex = Math.max(
+    0,
+    document.glyphs.findIndex((glyph) => glyph.code === 65),
+  );
+  let painting = false;
+  let selecting = false;
+  let anchor: [number, number] | undefined;
+  let selection: [number, number, number, number] | undefined;
+  const undo: string[] = [];
+  const redo: string[] = [];
+  const snapshot = (): string => JSON.stringify(document);
+  const remember = (): void => {
+    undo.push(snapshot());
+    if (undo.length > 32) undo.shift();
+    redo.length = 0;
+  };
+  const restore = (encoded: string): void => {
+    Object.assign(document, JSON.parse(encoded) as MutableFontDocument);
+    glyphIndex = Math.min(glyphIndex, document.glyphs.length - 1);
+    selection = undefined;
+    syncControls();
+    draw();
+  };
+  const fontBytes = (): number =>
+    8 + document.glyphs.length * (2 + document.glyphWidth * document.glyphHeight);
+  const syncControls = (): void => {
+    for (const metric of [
+      'glyphWidth',
+      'glyphHeight',
+      'baseline',
+      'advanceX',
+      'advanceY',
+      'missingGlyph',
+    ] as const) {
+      (requireElement(root, `[data-font-metric="${metric}"]`) as HTMLInputElement).value = String(
+        document[metric],
+      );
+    }
+    codeInput.value = String(document.glyphs[glyphIndex]?.code ?? document.missingGlyph);
+  };
+  const draw = (): void => {
+    const glyph = document.glyphs[glyphIndex];
+    if (glyph === undefined) return;
+    context.clearRect(0, 0, canvas.width, canvas.height);
+    const scale = Math.max(
+      1,
+      Math.floor(
+        Math.min(canvas.width / document.glyphWidth, canvas.height / document.glyphHeight),
+      ),
+    );
+    const offsetX = Math.floor((canvas.width - document.glyphWidth * scale) / 2);
+    const offsetY = Math.floor((canvas.height - document.glyphHeight * scale) / 2);
+    drawMask(
+      context,
+      glyph.pixels,
+      document.glyphWidth,
+      document.glyphHeight,
+      scale,
+      offsetX,
+      offsetY,
+      23,
+    );
+    context.strokeStyle = paletteCss(10);
+    context.beginPath();
+    context.moveTo(offsetX, offsetY + (document.baseline + 1) * scale - 0.5);
+    context.lineTo(
+      offsetX + document.glyphWidth * scale,
+      offsetY + (document.baseline + 1) * scale - 0.5,
+    );
+    context.stroke();
+    if (selection !== undefined) {
+      const [left, top, right, bottom] = selection;
+      context.strokeStyle = paletteCss(24);
+      context.strokeRect(
+        offsetX + left * scale + 0.5,
+        offsetY + top * scale + 0.5,
+        (right - left + 1) * scale - 1,
+        (bottom - top + 1) * scale - 1,
+      );
+    }
+    setText(
+      root,
+      '.glyph-readout',
+      `${String(glyphIndex + 1)}/${String(document.glyphs.length)} $${glyph.code.toString(16).toUpperCase().padStart(2, '0')}`,
+    );
+    setText(root, '.capacity', `${String(fontBytes())} / ${String(HARDWARE.visualCapacityBytes)}B`);
+    codeInput.value = String(glyph.code);
+    drawFontPreview(
+      previewContext,
+      document,
+      (requireElement(root, '.font-preview-text') as HTMLInputElement).value,
+    );
+  };
+  const point = (event: PointerEvent): [number, number] | undefined => {
+    const bounds = canvas.getBoundingClientRect();
+    const scale = Math.max(
+      1,
+      Math.floor(
+        Math.min(canvas.width / document.glyphWidth, canvas.height / document.glyphHeight),
+      ),
+    );
+    const offsetX = Math.floor((canvas.width - document.glyphWidth * scale) / 2);
+    const offsetY = Math.floor((canvas.height - document.glyphHeight * scale) / 2);
+    const x = Math.floor(((event.clientX - bounds.left) * canvas.width) / bounds.width - offsetX);
+    const y = Math.floor(((event.clientY - bounds.top) * canvas.height) / bounds.height - offsetY);
+    const column = Math.floor(x / scale);
+    const row = Math.floor(y / scale);
+    return column >= 0 && row >= 0 && column < document.glyphWidth && row < document.glyphHeight
+      ? [column, row]
+      : undefined;
+  };
+  const paint = (event: PointerEvent): void => {
+    const selected = point(event);
+    const glyph = document.glyphs[glyphIndex];
+    if (selected === undefined || glyph === undefined) return;
+    glyph.pixels[selected[1] * document.glyphWidth + selected[0]] = event.buttons === 2 ? 0 : 1;
+    draw();
+  };
+  canvas.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+  });
+  canvas.addEventListener('pointerdown', (event) => {
+    const selected = point(event);
+    if (selected === undefined) return;
+    if (selecting) {
+      if (anchor === undefined) anchor = selected;
+      else {
+        selection = [
+          Math.min(anchor[0], selected[0]),
+          Math.min(anchor[1], selected[1]),
+          Math.max(anchor[0], selected[0]),
+          Math.max(anchor[1], selected[1]),
+        ];
+        anchor = undefined;
+        selecting = false;
+      }
+      draw();
+      return;
+    }
+    remember();
+    painting = true;
+    canvas.setPointerCapture(event.pointerId);
+    paint(event);
+  });
+  canvas.addEventListener('pointermove', (event) => {
+    if (painting) paint(event);
+  });
+  canvas.addEventListener('pointerup', () => {
+    painting = false;
+  });
+  root.querySelectorAll<HTMLElement>('[data-font]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.font;
+      if (action === 'undo' || action === 'redo') {
+        const from = action === 'undo' ? undo : redo;
+        const to = action === 'undo' ? redo : undo;
+        const state = from.pop();
+        if (state !== undefined) {
+          to.push(snapshot());
+          restore(state);
+        }
+        return;
+      }
+      if (action === 'prev' || action === 'next') {
+        glyphIndex =
+          (glyphIndex + document.glyphs.length + (action === 'prev' ? -1 : 1)) %
+          document.glyphs.length;
+        selection = undefined;
+      } else if (action === 'add') {
+        const code = clamp(Number(codeInput.value), 0, 255);
+        const existing = document.glyphs.findIndex((glyph) => glyph.code === code);
+        if (existing >= 0) glyphIndex = existing;
+        else if (document.glyphs.length < 256) {
+          remember();
+          document.glyphs.push({
+            code,
+            pixels: Array.from({ length: document.glyphWidth * document.glyphHeight }, () => 0),
+          });
+          document.glyphs.sort((left, right) => left.code - right.code);
+          glyphIndex = document.glyphs.findIndex((glyph) => glyph.code === code);
+        }
+      } else if (action === 'delete') {
+        const glyph = document.glyphs[glyphIndex];
+        if (
+          document.glyphs.length > 1 &&
+          glyph !== undefined &&
+          glyph.code !== document.missingGlyph
+        ) {
+          remember();
+          document.glyphs.splice(glyphIndex, 1);
+          glyphIndex = Math.min(glyphIndex, document.glyphs.length - 1);
+        }
+      } else if (action === 'select') {
+        selecting = true;
+        anchor = undefined;
+      } else if (action === 'flip-h' || action === 'flip-v' || action === 'rotate') {
+        remember();
+        const glyph = document.glyphs[glyphIndex];
+        if (glyph !== undefined)
+          transformMask(glyph.pixels, document.glyphWidth, document.glyphHeight, action, selection);
+      }
+      syncControls();
+      draw();
+    });
+  });
+  root.querySelectorAll<HTMLInputElement>('[data-font-metric]').forEach((input) => {
+    input.addEventListener('change', () => {
+      const width = clamp(
+        Number((requireElement(root, '[data-font-metric="glyphWidth"]') as HTMLInputElement).value),
+        1,
+        16,
+      );
+      const height = clamp(
+        Number(
+          (requireElement(root, '[data-font-metric="glyphHeight"]') as HTMLInputElement).value,
+        ),
+        1,
+        16,
+      );
+      const proposed = 8 + document.glyphs.length * (2 + width * height);
+      if (proposed > HARDWARE.visualCapacityBytes) {
+        syncControls();
+        setToolStatus(root, 'FONT EXCEEDS VISUAL CAPACITY', true);
+        return;
+      }
+      remember();
+      if (width !== document.glyphWidth || height !== document.glyphHeight)
+        resizeFont(document, width, height);
+      document.baseline = clamp(
+        Number((requireElement(root, '[data-font-metric="baseline"]') as HTMLInputElement).value),
+        0,
+        document.glyphHeight - 1,
+      );
+      document.advanceX = clamp(
+        Number((requireElement(root, '[data-font-metric="advanceX"]') as HTMLInputElement).value),
+        1,
+        32,
+      );
+      document.advanceY = clamp(
+        Number((requireElement(root, '[data-font-metric="advanceY"]') as HTMLInputElement).value),
+        1,
+        32,
+      );
+      const missing = clamp(
+        Number(
+          (requireElement(root, '[data-font-metric="missingGlyph"]') as HTMLInputElement).value,
+        ),
+        0,
+        255,
+      );
+      if (document.glyphs.some((glyph) => glyph.code === missing)) document.missingGlyph = missing;
+      else setToolStatus(root, 'MISSING GLYPH CODE MUST EXIST', true);
+      selection = undefined;
+      syncControls();
+      draw();
+    });
+  });
+  requireElement(root, '.font-preview-text').addEventListener('input', draw);
+  bindSave(root, async () => {
+    document.glyphs.sort((left, right) => left.code - right.code);
+    project.files[path] = encodeAssetFile(document);
+    project.manifest = upsertAsset(project.manifest, 'typeface', 'font', path);
+    await callbacks.save();
+  });
+  syncControls();
+  draw();
 }
 
 interface SpriteDocument {
@@ -299,34 +611,99 @@ interface MapDocument {
   layers: { width: number; height: number; cells: number[]; tileSet: string }[];
 }
 
-function openMapEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
-  const path = 'assets/room.pxm';
-  const tilesPath = 'assets/tiles.pxg';
-  const document = readJson<MapDocument>(project.files[path], {
-    revision: 1,
-    kind: 'map',
-    layers: [
-      { width: 30, height: 18, cells: Array.from({ length: 540 }, () => 0), tileSet: 'tiles' },
-    ],
-  });
-  const tiles = readJson<{ revision: 1; kind: 'tile_set'; tiles: number[][]; flags: number[] }>(
-    project.files[tilesPath],
-    {
+interface TileSetDocument {
+  revision: 1;
+  kind: 'tile_set';
+  tiles: number[][];
+  flags: number[];
+}
+
+async function openMapEditor(
+  root: HTMLElement,
+  project: ToolProject,
+  callbacks: ToolCallbacks,
+): Promise<void> {
+  const manifest = await callbacks.parseManifest();
+  const mapEntry = Object.entries(manifest.assets)
+    .filter(([, asset]) => asset.kind === 'map')
+    .sort(([left], [right]) => left.localeCompare(right))[0];
+  const mapName = mapEntry?.[0] ?? 'room';
+  const path = mapEntry?.[1].path ?? 'assets/room.pxm';
+  const declaredTileSets = Object.entries(manifest.assets)
+    .filter(([, asset]) => asset.kind === 'tile_set')
+    .sort(([left], [right]) => left.localeCompare(right));
+  if (declaredTileSets.length === 0)
+    declaredTileSets.push(['tiles', { kind: 'tile_set', path: 'assets/tiles.pxg' }]);
+  const tileSets = new Map<string, { path: string; document: TileSetDocument }>();
+  for (const [name, asset] of declaredTileSets) {
+    const loaded = readJson<TileSetDocument>(project.files[asset.path], {
       revision: 1,
       kind: 'tile_set',
       tiles: defaultTiles(),
       flags: [0, 1, 2, 3],
-    },
-  );
+    });
+    loaded.flags = loaded.tiles.map((_tile, index) => loaded.flags[index] ?? 0);
+    tileSets.set(name, {
+      path: asset.path,
+      document: loaded,
+    });
+  }
+  const firstTileSet = tileSets.keys().next().value;
+  if (firstTileSet === undefined) throw new Error('map editor requires a tile set');
+  const document = readJson<MapDocument>(project.files[path], {
+    revision: 1,
+    kind: 'map',
+    layers: [
+      {
+        width: 30,
+        height: 18,
+        cells: Array.from({ length: 540 }, () => 0),
+        tileSet: firstTileSet,
+      },
+    ],
+  });
+  for (const layer of document.layers) {
+    if (!tileSets.has(layer.tileSet)) {
+      tileSets.set(layer.tileSet, {
+        path: `assets/${layer.tileSet}.pxg`,
+        document: {
+          revision: 1,
+          kind: 'tile_set',
+          tiles: defaultTiles(),
+          flags: [0, 1, 2, 3],
+        },
+      });
+    }
+  }
+  const editedBytes = (): number =>
+    document.layers.reduce((total, layer) => total + layer.cells.length * 2, 0) +
+    [...tileSets.values()].reduce(
+      (total, tileSet) =>
+        total + tileSet.document.tiles.length * 64 + tileSet.document.flags.length,
+      0,
+    );
+  let otherVisualBytes = 0;
+  try {
+    otherVisualBytes = Math.max(
+      0,
+      decodeRuntimeAssets(manifest.assets, project.files, manifest.display).visualBytes -
+        editedBytes(),
+    );
+  } catch {
+    // A fresh/incomplete project is still editable; save will create the required assets.
+  }
   root.innerHTML = toolFrame(
     'LAYERED TILE MAP',
     `<div class="map-layout">
       <canvas class="map-canvas" width="180" height="108" aria-label="Tile map"></canvas>
       <aside class="map-controls">
-        <p>ROOM <span class="layer-readout"></span></p>
+        <p>${mapName.toUpperCase()} <span class="layer-readout"></span> <span class="layer-mode"></span></p>
+        <label>ATLAS <select class="tileset-select"></select></label>
         <div class="tile-picks"></div>
-        <div><button data-map="prev">&lt;L</button><button data-map="next">L&gt;</button><button data-map="add">+L</button></div>
+        <div><button data-map="prev">&lt;L</button><button data-map="next">L&gt;</button><button data-map="add">+L</button><button data-map="remove">-L</button><button data-map="visible">EYE</button></div>
+        <div><button data-map="up">UP</button><button data-map="down">DOWN</button><button data-map="select">SEL</button><button data-map="copy">COPY</button><button data-map="stamp">STAMP</button><button data-map="move">MOVE</button><button data-map="fill">FILL</button></div>
         <div><button data-map="undo">UNDO</button><button data-map="redo">REDO</button></div>
+        <div><label>W <input class="map-width" type="number" min="1" max="256"></label><label>H <input class="map-height" type="number" min="1" max="256"></label><button data-map="resize">SIZE</button></div>
         <label>FLAG <select class="flag-select"><option value="0">0</option><option value="1">1</option><option value="2">2</option><option value="3">3</option></select></label>
         <button data-map="toggle-flag">TOGGLE</button>
         <p class="capacity"></p>
@@ -336,17 +713,48 @@ function openMapEditor(root: HTMLElement, project: ToolProject, callbacks: ToolC
   bindCommon(root, callbacks);
   const canvas = requireElement(root, '.map-canvas') as HTMLCanvasElement;
   const context = requireContext(canvas);
+  const tileSetSelect = requireElement(root, '.tileset-select') as HTMLSelectElement;
+  for (const name of tileSets.keys()) {
+    const nativeOption = root.ownerDocument.createElement('option');
+    nativeOption.value = name;
+    nativeOption.textContent = name.toUpperCase();
+    tileSetSelect.append(nativeOption);
+  }
   let layer = 0;
-  let selectedTile = 1;
+  let selectedTile = 0;
   let painting = false;
+  let mode: 'paint' | 'select' | 'stamp' | 'move' | 'fill' = 'paint';
+  let selection: [number, number, number, number] | undefined;
+  let anchor: [number, number] | undefined;
+  let clipboard: { width: number; height: number; cells: number[] } | undefined;
+  const visible = new Set(document.layers.map((_entry, index) => index));
   const undo: string[] = [];
   const redo: string[] = [];
-  const snapshot = (): string => JSON.stringify({ document, tiles });
+  const snapshot = (): string =>
+    JSON.stringify({
+      document,
+      tileSets: Object.fromEntries(
+        [...tileSets].map(([name, entry]) => [
+          name,
+          { path: entry.path, document: entry.document },
+        ]),
+      ),
+      visible: [...visible],
+    });
   const restore = (value: string): void => {
-    const state = JSON.parse(value) as { document: MapDocument; tiles: typeof tiles };
+    const state = JSON.parse(value) as {
+      document: MapDocument;
+      tileSets: Record<string, { path: string; document: TileSetDocument }>;
+      visible: number[];
+    };
     Object.assign(document, state.document);
-    Object.assign(tiles, state.tiles);
+    tileSets.clear();
+    for (const [name, entry] of Object.entries(state.tileSets)) tileSets.set(name, entry);
+    visible.clear();
+    for (const index of state.visible) visible.add(index);
     layer = Math.min(layer, document.layers.length - 1);
+    selection = undefined;
+    refreshTilePicks();
     draw();
   };
   const remember = (): void => {
@@ -359,35 +767,85 @@ function openMapEditor(root: HTMLElement, project: ToolProject, callbacks: ToolC
     if (current === undefined) return;
     context.fillStyle = paletteCss(1);
     context.fillRect(0, 0, canvas.width, canvas.height);
-    const scale = 6;
-    for (let y = 0; y < current.height; y += 1) {
-      for (let x = 0; x < current.width; x += 1) {
-        const tile = current.cells[y * current.width + x] ?? 0;
-        context.fillStyle = paletteCss([1, 23, 10, 15][tile] ?? 7);
-        context.fillRect(x * scale, y * scale, scale, scale);
+    const scale = mapScale(canvas, current);
+    for (const [layerIndex, mapLayer] of document.layers.entries()) {
+      if (!visible.has(layerIndex)) continue;
+      const tileSet = tileSets.get(mapLayer.tileSet)?.document;
+      if (tileSet === undefined) continue;
+      for (let y = 0; y < mapLayer.height; y += 1) {
+        for (let x = 0; x < mapLayer.width; x += 1) {
+          const tile = mapLayer.cells[y * mapLayer.width + x] ?? 0;
+          context.fillStyle = paletteCss(tileColor(tileSet.tiles[tile]));
+          context.fillRect(x * scale, y * scale, scale, scale);
+        }
       }
     }
+    if (selection !== undefined) {
+      const [left, top, right, bottom] = selection;
+      context.strokeStyle = paletteCss(24);
+      context.strokeRect(
+        left * scale + 0.5,
+        top * scale + 0.5,
+        (right - left + 1) * scale - 1,
+        (bottom - top + 1) * scale - 1,
+      );
+    }
+    tileSetSelect.value = current.tileSet;
+    (requireElement(root, '.map-width') as HTMLInputElement).value = String(current.width);
+    (requireElement(root, '.map-height') as HTMLInputElement).value = String(current.height);
     setText(root, '.layer-readout', `${String(layer + 1)}/${String(document.layers.length)}`);
+    setText(root, '.layer-mode', `${visible.has(layer) ? 'ON' : 'OFF'} ${mode.toUpperCase()}`);
     setText(
       root,
       '.capacity',
-      `${String(current.cells.length * 2 + tiles.tiles.length * 64)}B USED`,
+      `${String(otherVisualBytes + editedBytes())}/${String(HARDWARE.visualCapacityBytes)}B`,
     );
   };
-  const paint = (event: PointerEvent): void => {
+  const point = (event: PointerEvent): [number, number] | undefined => {
+    const current = document.layers[layer];
+    if (current === undefined) return undefined;
+    const bounds = canvas.getBoundingClientRect();
+    const scale = mapScale(canvas, current);
+    const x = Math.floor(((event.clientX - bounds.left) * canvas.width) / bounds.width / scale);
+    const y = Math.floor(((event.clientY - bounds.top) * canvas.height) / bounds.height / scale);
+    return x >= 0 && y >= 0 && x < current.width && y < current.height ? [x, y] : undefined;
+  };
+  const applyAt = (selected: [number, number]): void => {
     const current = document.layers[layer];
     if (current === undefined) return;
-    const bounds = canvas.getBoundingClientRect();
-    const x = Math.floor(((event.clientX - bounds.left) * canvas.width) / bounds.width / 6);
-    const y = Math.floor(((event.clientY - bounds.top) * canvas.height) / bounds.height / 6);
-    if (x >= 0 && y >= 0 && x < current.width && y < current.height) {
-      current.cells[y * current.width + x] = selectedTile;
-      draw();
-    }
+    const [x, y] = selected;
+    if (mode === 'select') {
+      if (anchor === undefined) anchor = selected;
+      else {
+        selection = [
+          Math.min(anchor[0], x),
+          Math.min(anchor[1], y),
+          Math.max(anchor[0], x),
+          Math.max(anchor[1], y),
+        ];
+        anchor = undefined;
+        mode = 'paint';
+      }
+    } else if (mode === 'fill') {
+      floodMap(current, x, y, selectedTile);
+      mode = 'paint';
+    } else if ((mode === 'stamp' || mode === 'move') && clipboard !== undefined) {
+      if (mode === 'move' && selection !== undefined) clearMapRegion(current, selection);
+      stampMap(current, clipboard, x, y);
+      selection = [x, y, x + clipboard.width - 1, y + clipboard.height - 1];
+      mode = 'paint';
+    } else current.cells[y * current.width + x] = selectedTile;
+    draw();
+  };
+  const paint = (event: PointerEvent): void => {
+    const selected = point(event);
+    if (selected !== undefined) applyAt(selected);
   };
   canvas.addEventListener('pointerdown', (event) => {
+    if (point(event) === undefined) return;
     remember();
-    painting = true;
+    painting = mode === 'paint';
+    canvas.setPointerCapture(event.pointerId);
     paint(event);
   });
   canvas.addEventListener('pointermove', (event) => {
@@ -396,15 +854,33 @@ function openMapEditor(root: HTMLElement, project: ToolProject, callbacks: ToolC
   canvas.addEventListener('pointerup', () => {
     painting = false;
   });
-  const picks = requireElement(root, '.tile-picks');
-  for (let index = 0; index < tiles.tiles.length; index += 1) {
-    const button = documentElement('button', String(index));
-    button.style.background = paletteCss([1, 23, 10, 15][index] ?? 7);
-    button.addEventListener('click', () => {
-      selectedTile = index;
-    });
-    picks.append(button);
+  function refreshTilePicks(): void {
+    const picks = requireElement(root, '.tile-picks');
+    picks.replaceChildren();
+    const current = document.layers[layer];
+    const tiles = current === undefined ? undefined : tileSets.get(current.tileSet)?.document.tiles;
+    if (tiles === undefined) return;
+    selectedTile = Math.min(selectedTile, tiles.length - 1);
+    for (let index = 0; index < tiles.length; index += 1) {
+      const button = documentElement('button', String(index));
+      button.style.background = paletteCss(tileColor(tiles[index]));
+      button.addEventListener('click', () => {
+        selectedTile = index;
+      });
+      picks.append(button);
+    }
   }
+  tileSetSelect.addEventListener('change', () => {
+    const current = document.layers[layer];
+    const selected = tileSets.get(tileSetSelect.value)?.document;
+    if (current === undefined || selected === undefined) return;
+    remember();
+    current.tileSet = tileSetSelect.value;
+    current.cells = current.cells.map((cell) => (cell < selected.tiles.length ? cell : 0));
+    selectedTile = 0;
+    refreshTilePicks();
+    draw();
+  });
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((button) => {
     button.addEventListener('click', () => {
       const action = button.dataset.map;
@@ -421,33 +897,111 @@ function openMapEditor(root: HTMLElement, project: ToolProject, callbacks: ToolC
       if (action === 'prev' || action === 'next') {
         layer =
           (layer + document.layers.length + (action === 'prev' ? -1 : 1)) % document.layers.length;
+        selection = undefined;
+        refreshTilePicks();
       } else if (action === 'add' && document.layers.length < 8) {
-        remember();
         const base = document.layers[0];
         if (base !== undefined) {
+          if (
+            otherVisualBytes + editedBytes() + base.cells.length * 2 >
+            HARDWARE.visualCapacityBytes
+          ) {
+            setToolStatus(root, 'LAYER EXCEEDS VISUAL CAPACITY', true);
+            return;
+          }
+          remember();
           document.layers.push({
             width: base.width,
             height: base.height,
             cells: Array.from({ length: base.cells.length }, () => 0),
-            tileSet: 'tiles',
+            tileSet: tileSetSelect.value,
           });
           layer = document.layers.length - 1;
+          visible.add(layer);
+          refreshTilePicks();
+        }
+      } else if (action === 'remove' && document.layers.length > 1) {
+        remember();
+        document.layers.splice(layer, 1);
+        layer = Math.min(layer, document.layers.length - 1);
+        visible.clear();
+        for (let index = 0; index < document.layers.length; index += 1) visible.add(index);
+        refreshTilePicks();
+      } else if (action === 'visible') {
+        if (visible.has(layer)) visible.delete(layer);
+        else visible.add(layer);
+      } else if (
+        (action === 'up' && layer > 0) ||
+        (action === 'down' && layer + 1 < document.layers.length)
+      ) {
+        remember();
+        const target = layer + (action === 'up' ? -1 : 1);
+        const current = document.layers[layer];
+        const other = document.layers[target];
+        if (current !== undefined && other !== undefined) {
+          document.layers[layer] = other;
+          document.layers[target] = current;
+          layer = target;
+        }
+      } else if (action === 'select') {
+        mode = 'select';
+        anchor = undefined;
+      } else if (action === 'copy' && selection !== undefined) {
+        const current = document.layers[layer];
+        if (current !== undefined) clipboard = copyMapRegion(current, selection);
+      } else if (action === 'stamp' || action === 'move') {
+        if (selection !== undefined && clipboard === undefined) {
+          const current = document.layers[layer];
+          if (current !== undefined) clipboard = copyMapRegion(current, selection);
+        }
+        if (clipboard !== undefined) mode = action;
+      } else if (action === 'fill') {
+        mode = 'fill';
+      } else if (action === 'resize') {
+        const current = document.layers[layer];
+        if (current !== undefined) {
+          const width = clamp(
+            Number((requireElement(root, '.map-width') as HTMLInputElement).value),
+            1,
+            256,
+          );
+          const height = clamp(
+            Number((requireElement(root, '.map-height') as HTMLInputElement).value),
+            1,
+            256,
+          );
+          const proposed =
+            otherVisualBytes + editedBytes() - current.cells.length * 2 + width * height * 2;
+          if (proposed > HARDWARE.visualCapacityBytes) {
+            setToolStatus(root, 'RESIZE EXCEEDS VISUAL CAPACITY', true);
+            draw();
+            return;
+          }
+          remember();
+          resizeMapLayer(current, width, height);
+          selection = undefined;
         }
       } else if (action === 'toggle-flag') {
         remember();
         const flag = Number((requireElement(root, '.flag-select') as HTMLSelectElement).value);
-        tiles.flags[selectedTile] = (tiles.flags[selectedTile] ?? 0) ^ (1 << flag);
+        const current = document.layers[layer];
+        const tiles = current === undefined ? undefined : tileSets.get(current.tileSet)?.document;
+        if (tiles !== undefined)
+          tiles.flags[selectedTile] = (tiles.flags[selectedTile] ?? 0) ^ (1 << flag);
       }
       draw();
     });
   });
   bindSave(root, async () => {
     project.files[path] = encodeAssetFile(document);
-    project.files[tilesPath] = encodeAssetFile(tiles);
-    project.manifest = upsertAsset(project.manifest, 'tiles', 'tile_set', tilesPath);
-    project.manifest = upsertAsset(project.manifest, 'room', 'map', path);
+    project.manifest = upsertAsset(project.manifest, mapName, 'map', path);
+    for (const [name, tileSet] of tileSets) {
+      project.files[tileSet.path] = encodeAssetFile(tileSet.document);
+      project.manifest = upsertAsset(project.manifest, name, 'tile_set', tileSet.path);
+    }
     await callbacks.save();
   });
+  refreshTilePicks();
   draw();
 }
 
@@ -475,56 +1029,193 @@ function openPaletteEditor(
   root.innerHTML = toolFrame(
     'PALETTE / RASTER',
     `<div class="palette-tool">
-      <p>MASTER PALETTE IS FIXED / SELECT LOGICAL THEN PHYSICAL</p>
+      <canvas class="raster-preview" width="240" height="144" aria-label="Raster timeline preview"></canvas>
+      <p>MASTER PALETTE / LOGICAL <input class="logical-index-input" aria-label="Logical palette index" type="number" min="0" max="31" value="0"> -&gt; <span class="physical-index">0</span></p>
       <div class="master-palette"></div>
-      <p>LOGICAL <span class="logical-index">0</span> -&gt; <span class="physical-index">0</span></p>
       <label>RASTER LINE <input class="raster-line" type="range" min="0" max="143" value="${String(document.raster[0]?.line ?? 96)}"></label>
-      <label>SCROLL X <input class="scroll-x" type="range" min="-32" max="32" value="${String(document.raster[0]?.scrollX ?? 0)}"></label>
-      <label>SCROLL Y <input class="scroll-y" type="range" min="-32" max="32" value="${String(document.raster[0]?.scrollY ?? 0)}"></label>
+      <div class="raster-fields"><label><input class="raster-enabled" type="checkbox"> KEYFRAME</label><label><input class="edit-default" type="checkbox"> DEFAULT</label><label>X <input class="scroll-x" type="number" min="-32768" max="32767"></label><label>Y <input class="scroll-y" type="number" min="-32768" max="32767"></label></div>
+      <div class="raster-range"><label>FROM <input class="range-start" type="number" min="0" max="143" value="0"></label><label>TO <input class="range-end" type="number" min="0" max="143" value="143"></label><button data-raster="copy">COPY</button><button data-raster="paste">PASTE</button><button data-raster="fill">FILL</button><button data-raster="interpolate">TWEEN</button><button data-raster="undo">UNDO</button><button data-raster="redo">REDO</button></div>
       <p class="raster-readout"></p>
     </div>`,
   );
   bindCommon(root, callbacks);
-  let logical = 0;
+  const preview = requireElement(root, '.raster-preview') as HTMLCanvasElement;
+  const previewContext = requireContext(preview);
+  const lineInput = requireElement(root, '.raster-line') as HTMLInputElement;
+  const enabledInput = requireElement(root, '.raster-enabled') as HTMLInputElement;
+  const defaultInput = requireElement(root, '.edit-default') as HTMLInputElement;
+  const scrollXInput = requireElement(root, '.scroll-x') as HTMLInputElement;
+  const scrollYInput = requireElement(root, '.scroll-y') as HTMLInputElement;
+  const logicalInput = requireElement(root, '.logical-index-input') as HTMLInputElement;
+  const undo: string[] = [];
+  const redo: string[] = [];
+  let clipboard: PaletteDocument['raster'][number] | undefined;
+  let syncing = false;
+  const snapshot = (): string => JSON.stringify(document);
+  const remember = (): void => {
+    undo.push(snapshot());
+    if (undo.length > 32) undo.shift();
+    redo.length = 0;
+  };
+  const restore = (encoded: string): void => {
+    Object.assign(document, JSON.parse(encoded) as PaletteDocument);
+    syncControls();
+    drawRasterPreview(previewContext, document);
+  };
+  const selectedLine = (): number => clamp(Number(lineInput.value), 0, 143);
+  const rowAt = (line: number): PaletteDocument['raster'][number] | undefined =>
+    document.raster.find((row) => row.line === line);
+  const effectiveAt = (line: number): PaletteDocument['raster'][number] => {
+    let state: PaletteDocument['raster'][number] = {
+      line,
+      scrollX: 0,
+      scrollY: 0,
+      remap: [...document.remap],
+    };
+    for (const row of document.raster) {
+      if (row.line > line) break;
+      state = { line, scrollX: row.scrollX, scrollY: row.scrollY, remap: [...row.remap] };
+    }
+    return state;
+  };
+  const ensureRow = (line: number): PaletteDocument['raster'][number] => {
+    const existing = rowAt(line);
+    if (existing !== undefined) return existing;
+    const row = effectiveAt(line);
+    document.raster.push(row);
+    document.raster.sort((left, right) => left.line - right.line);
+    return row;
+  };
+  const currentState = (): PaletteDocument['raster'][number] => {
+    if (defaultInput.checked)
+      return { line: selectedLine(), scrollX: 0, scrollY: 0, remap: document.remap };
+    return rowAt(selectedLine()) ?? effectiveAt(selectedLine());
+  };
+  const syncControls = (): void => {
+    syncing = true;
+    const line = selectedLine();
+    const row = rowAt(line);
+    const state = defaultInput.checked ? currentState() : (row ?? effectiveAt(line));
+    enabledInput.checked = row !== undefined;
+    enabledInput.disabled = defaultInput.checked;
+    scrollXInput.value = String(state.scrollX);
+    scrollYInput.value = String(state.scrollY);
+    scrollXInput.disabled = defaultInput.checked;
+    scrollYInput.disabled = defaultInput.checked;
+    const logical = clamp(Number(logicalInput.value), 0, 31);
+    logicalInput.value = String(logical);
+    setText(root, '.physical-index', String(state.remap[logical] ?? logical));
+    setText(
+      root,
+      '.raster-readout',
+      `LINE ${String(line).padStart(3, '0')} ${row === undefined ? 'PASS' : 'KEY'} ${String(document.raster.length)}/144 / ${String(32 + document.raster.length * 38)}B`,
+    );
+    syncing = false;
+  };
+  const changed = (): void => {
+    syncControls();
+    drawRasterPreview(previewContext, document);
+  };
   const palette = requireElement(root, '.master-palette');
   for (let index = 0; index < 32; index += 1) {
     const button = documentElement('button', String(index));
     button.style.background = paletteCss(index);
     button.title = `master color ${String(index)}`;
     button.addEventListener('click', () => {
-      if (logical === index) {
-        logical = (logical + 1) % 32;
-      } else {
-        document.remap[logical] = index;
-      }
-      refresh();
+      remember();
+      const logical = clamp(Number(logicalInput.value), 0, 31);
+      const state = defaultInput.checked ? currentState() : ensureRow(selectedLine());
+      state.remap[logical] = index;
+      changed();
     });
     palette.append(button);
   }
-  const refresh = (): void => {
-    const raster = document.raster[0];
-    if (raster === undefined) return;
-    raster.line = Number((requireElement(root, '.raster-line') as HTMLInputElement).value);
-    raster.scrollX = Number((requireElement(root, '.scroll-x') as HTMLInputElement).value);
-    raster.scrollY = Number((requireElement(root, '.scroll-y') as HTMLInputElement).value);
-    setText(root, '.logical-index', String(logical));
-    setText(root, '.physical-index', String(document.remap[logical] ?? logical));
-    setText(
-      root,
-      '.raster-readout',
-      `LINE ${String(raster.line)} SCROLL ${String(raster.scrollX)},${String(raster.scrollY)}`,
-    );
-  };
-  root.querySelectorAll<HTMLInputElement>('input[type="range"]').forEach((input) => {
-    input.addEventListener('input', refresh);
+  lineInput.addEventListener('input', syncControls);
+  logicalInput.addEventListener('change', syncControls);
+  defaultInput.addEventListener('change', syncControls);
+  enabledInput.addEventListener('change', () => {
+    if (syncing) return;
+    remember();
+    const line = selectedLine();
+    if (enabledInput.checked) ensureRow(line);
+    else document.raster = document.raster.filter((row) => row.line !== line);
+    changed();
+  });
+  for (const input of [scrollXInput, scrollYInput]) {
+    input.addEventListener('change', () => {
+      if (syncing || defaultInput.checked) return;
+      remember();
+      const row = ensureRow(selectedLine());
+      row.scrollX = clamp(Number(scrollXInput.value), -32768, 32767);
+      row.scrollY = clamp(Number(scrollYInput.value), -32768, 32767);
+      changed();
+    });
+  }
+  root.querySelectorAll<HTMLElement>('[data-raster]').forEach((button) => {
+    button.addEventListener('click', () => {
+      const action = button.dataset.raster;
+      if (action === 'undo' || action === 'redo') {
+        const from = action === 'undo' ? undo : redo;
+        const to = action === 'undo' ? redo : undo;
+        const state = from.pop();
+        if (state !== undefined) {
+          to.push(snapshot());
+          restore(state);
+        }
+        return;
+      }
+      if (action === 'copy') {
+        clipboard = structuredClone(currentState());
+        setToolStatus(root, `COPIED LINE ${String(selectedLine())}`, false);
+        return;
+      }
+      const start = clamp(
+        Number((requireElement(root, '.range-start') as HTMLInputElement).value),
+        0,
+        143,
+      );
+      const end = clamp(
+        Number((requireElement(root, '.range-end') as HTMLInputElement).value),
+        start,
+        143,
+      );
+      remember();
+      if (action === 'paste' && clipboard !== undefined) {
+        const row = ensureRow(selectedLine());
+        row.scrollX = clipboard.scrollX;
+        row.scrollY = clipboard.scrollY;
+        row.remap = [...clipboard.remap];
+      } else if (action === 'fill') {
+        const source = structuredClone(currentState());
+        for (let line = start; line <= end; line += 1) {
+          const row = ensureRow(line);
+          row.scrollX = source.scrollX;
+          row.scrollY = source.scrollY;
+          row.remap = [...source.remap];
+        }
+      } else if (action === 'interpolate') {
+        const first = effectiveAt(start);
+        const last = effectiveAt(end);
+        const distance = Math.max(1, end - start);
+        for (let line = start; line <= end; line += 1) {
+          const amount = (line - start) / distance;
+          const row = ensureRow(line);
+          row.scrollX = Math.round(first.scrollX + (last.scrollX - first.scrollX) * amount);
+          row.scrollY = Math.round(first.scrollY + (last.scrollY - first.scrollY) * amount);
+          row.remap = amount < 0.5 ? [...first.remap] : [...last.remap];
+        }
+      }
+      changed();
+    });
   });
   bindSave(root, async () => {
-    refresh();
+    document.raster.sort((left, right) => left.line - right.line);
     project.files[path] = encodeAssetFile(document);
     project.manifest = upsertTopLevel(project.manifest, 'display', path);
     await callbacks.save();
   });
-  refresh();
+  syncControls();
+  drawRasterPreview(previewContext, document);
 }
 
 function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
@@ -758,14 +1449,37 @@ function bindCommon(root: HTMLElement, callbacks: ToolCallbacks): void {
 }
 
 function bindSave(root: HTMLElement, save: () => Promise<void>): void {
-  root.querySelector('[data-common="save"]')?.addEventListener('click', () => {
-    void save()
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let saves = Promise.resolve();
+  const run = (): void => {
+    if (timer !== undefined) clearTimeout(timer);
+    timer = undefined;
+    saves = saves
+      .then(save)
       .then(() => {
         setToolStatus(root, 'SAVED', false);
       })
       .catch((error: unknown) => {
         setToolStatus(root, errorMessage(error), true);
       });
+  };
+  root.querySelector('[data-common="save"]')?.addEventListener('click', run);
+  const dirty = (): void => {
+    setToolStatus(root, 'DIRTY / AUTOSAVE', false);
+    if (timer !== undefined) clearTimeout(timer);
+    timer = setTimeout(run, 750);
+  };
+  const panel = requireElement(root, '.asset-tool');
+  panel.addEventListener('input', dirty);
+  panel.addEventListener('change', dirty);
+  panel.addEventListener('pointerup', (event) => {
+    const target = event.target;
+    if (
+      target instanceof HTMLElement &&
+      (target.closest('[data-common]') !== null || target.closest('[data-preview]') !== null)
+    )
+      return;
+    dirty();
   });
 }
 
@@ -807,6 +1521,136 @@ function drawPixels(
         context.fillStyle = paletteCss(color);
         context.fillRect(offsetX + x * scale, offsetY + y * scale, scale, scale);
       }
+    }
+  }
+}
+
+function drawMask(
+  context: CanvasRenderingContext2D,
+  pixels: readonly number[],
+  width: number,
+  height: number,
+  scale: number,
+  offsetX: number,
+  offsetY: number,
+  color: number,
+): void {
+  context.fillStyle = paletteCss(color);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      if (pixels[y * width + x] === 1)
+        context.fillRect(offsetX + x * scale, offsetY + y * scale, scale, scale);
+    }
+  }
+}
+
+function defaultFont(): MutableFontDocument {
+  return {
+    revision: 1,
+    kind: 'font',
+    glyphWidth: BITMAP_FONT.glyphWidth,
+    glyphHeight: BITMAP_FONT.glyphHeight,
+    baseline: BITMAP_FONT.glyphHeight - 1,
+    advanceX: BITMAP_FONT.advanceX,
+    advanceY: BITMAP_FONT.advanceY,
+    missingGlyph: 63,
+    glyphs: Array.from({ length: 95 }, (_, index) => {
+      const code = index + 32;
+      const rows = glyphRows(String.fromCodePoint(code));
+      return {
+        code,
+        pixels: rows.flatMap((row) =>
+          Array.from({ length: BITMAP_FONT.glyphWidth }, (_, x) =>
+            (row & (1 << (BITMAP_FONT.glyphWidth - x - 1))) === 0 ? 0 : 1,
+          ),
+        ),
+      };
+    }),
+  };
+}
+
+function resizeFont(document: MutableFontDocument, width: number, height: number): void {
+  for (const glyph of document.glyphs) {
+    const resized = Array.from({ length: width * height }, () => 0);
+    for (let y = 0; y < Math.min(height, document.glyphHeight); y += 1) {
+      for (let x = 0; x < Math.min(width, document.glyphWidth); x += 1) {
+        resized[y * width + x] = glyph.pixels[y * document.glyphWidth + x] ?? 0;
+      }
+    }
+    glyph.pixels = resized;
+  }
+  document.glyphWidth = width;
+  document.glyphHeight = height;
+  document.baseline = Math.min(document.baseline, height - 1);
+}
+
+function transformMask(
+  pixels: number[],
+  glyphWidth: number,
+  glyphHeight: number,
+  action: string,
+  selection: [number, number, number, number] | undefined,
+): void {
+  const [left, top, right, bottom] = selection ?? [0, 0, glyphWidth - 1, glyphHeight - 1];
+  const width = right - left + 1;
+  const height = bottom - top + 1;
+  const source = [...pixels];
+  for (let y = top; y <= bottom; y += 1) {
+    for (let x = left; x <= right; x += 1) {
+      let sourceX = action === 'flip-h' ? right - (x - left) : x;
+      let sourceY = action === 'flip-v' ? bottom - (y - top) : y;
+      if (action === 'rotate' && width === height) {
+        sourceX = left + (y - top);
+        sourceY = bottom - (x - left);
+      }
+      pixels[y * glyphWidth + x] = source[sourceY * glyphWidth + sourceX] ?? 0;
+    }
+  }
+}
+
+function drawFontPreview(
+  context: CanvasRenderingContext2D,
+  document: MutableFontDocument,
+  text: string,
+): void {
+  context.fillStyle = paletteCss(1);
+  context.fillRect(0, 0, context.canvas.width, context.canvas.height);
+  let x = 2;
+  let y = 2;
+  for (const character of text) {
+    if (character === '\n') {
+      x = 2;
+      y += document.advanceY;
+      continue;
+    }
+    const code = character.codePointAt(0) ?? document.missingGlyph;
+    const glyph =
+      document.glyphs.find((candidate) => candidate.code === code) ??
+      document.glyphs.find((candidate) => candidate.code === document.missingGlyph);
+    if (glyph !== undefined)
+      drawMask(context, glyph.pixels, document.glyphWidth, document.glyphHeight, 1, x, y, 23);
+    x += document.advanceX;
+  }
+}
+
+function drawRasterPreview(context: CanvasRenderingContext2D, document: PaletteDocument): void {
+  const rows = new Map(document.raster.map((row) => [row.line, row]));
+  let scrollX = 0;
+  let scrollY = 0;
+  let remap = document.remap;
+  for (let y = 0; y < HARDWARE.height; y += 1) {
+    const row = rows.get(y);
+    if (row !== undefined) {
+      scrollX = row.scrollX;
+      scrollY = row.scrollY;
+      remap = row.remap;
+    }
+    for (let x = 0; x < HARDWARE.width; x += 1) {
+      const pattern = Math.floor((x + scrollX) / 12) + Math.floor((y + scrollY) / 12);
+      const logical =
+        ((pattern % HARDWARE.paletteSize) + HARDWARE.paletteSize) % HARDWARE.paletteSize;
+      context.fillStyle = paletteCss(remap[logical] ?? logical);
+      context.fillRect(x, y, 1, 1);
     }
   }
 }
@@ -856,6 +1700,119 @@ function defaultTiles(): number[][] {
       tile === 0 || (index + Math.floor(index / 8)) % (tile + 2) === 0 ? color : 1,
     ),
   );
+}
+
+function mapScale(canvas: HTMLCanvasElement, layer: MapDocument['layers'][number]): number {
+  return Math.max(
+    1,
+    Math.floor(Math.min(canvas.width / layer.width, canvas.height / layer.height)),
+  );
+}
+
+function tileColor(tile: readonly number[] | undefined): number {
+  if (tile === undefined) return 0;
+  const counts = new Uint16Array(HARDWARE.paletteSize);
+  for (const color of tile) {
+    if (color > 0 && color < HARDWARE.paletteSize) counts[color] = (counts[color] ?? 0) + 1;
+  }
+  let selected = 0;
+  for (let color = 1; color < counts.length; color += 1) {
+    if ((counts[color] ?? 0) > (counts[selected] ?? 0)) selected = color;
+  }
+  return selected;
+}
+
+function copyMapRegion(
+  layer: MapDocument['layers'][number],
+  selection: [number, number, number, number],
+): { width: number; height: number; cells: number[] } {
+  const [left, top, right, bottom] = selection;
+  const width = right - left + 1;
+  const height = bottom - top + 1;
+  return {
+    width,
+    height,
+    cells: Array.from({ length: width * height }, (_, index) => {
+      const x = left + (index % width);
+      const y = top + Math.floor(index / width);
+      return layer.cells[y * layer.width + x] ?? 0;
+    }),
+  };
+}
+
+function clearMapRegion(
+  layer: MapDocument['layers'][number],
+  selection: [number, number, number, number],
+): void {
+  const [left, top, right, bottom] = selection;
+  for (let y = top; y <= bottom; y += 1) {
+    for (let x = left; x <= right; x += 1) layer.cells[y * layer.width + x] = 0;
+  }
+}
+
+function stampMap(
+  layer: MapDocument['layers'][number],
+  clipboard: { width: number; height: number; cells: number[] },
+  left: number,
+  top: number,
+): void {
+  for (let y = 0; y < clipboard.height; y += 1) {
+    for (let x = 0; x < clipboard.width; x += 1) {
+      const targetX = left + x;
+      const targetY = top + y;
+      if (targetX < layer.width && targetY < layer.height)
+        layer.cells[targetY * layer.width + targetX] =
+          clipboard.cells[y * clipboard.width + x] ?? 0;
+    }
+  }
+}
+
+function floodMap(
+  layer: MapDocument['layers'][number],
+  startX: number,
+  startY: number,
+  replacement: number,
+): void {
+  const target = layer.cells[startY * layer.width + startX];
+  if (target === undefined || target === replacement) return;
+  const queue: [number, number][] = [[startX, startY]];
+  layer.cells[startY * layer.width + startX] = replacement;
+  for (let cursor = 0; cursor < queue.length; cursor += 1) {
+    const point = queue[cursor];
+    if (point === undefined) continue;
+    const [x, y] = point;
+    const neighbors: readonly { x: number; y: number }[] = [
+      { x: x - 1, y },
+      { x: x + 1, y },
+      { x, y: y - 1 },
+      { x, y: y + 1 },
+    ];
+    for (const neighbor of neighbors) {
+      const nextX = neighbor.x;
+      const nextY = neighbor.y;
+      if (
+        nextX >= 0 &&
+        nextY >= 0 &&
+        nextX < layer.width &&
+        nextY < layer.height &&
+        layer.cells[nextY * layer.width + nextX] === target
+      ) {
+        layer.cells[nextY * layer.width + nextX] = replacement;
+        queue.push([nextX, nextY]);
+      }
+    }
+  }
+}
+
+function resizeMapLayer(layer: MapDocument['layers'][number], width: number, height: number): void {
+  const cells = Array.from({ length: width * height }, () => 0);
+  for (let y = 0; y < Math.min(height, layer.height); y += 1) {
+    for (let x = 0; x < Math.min(width, layer.width); x += 1)
+      cells[y * width + x] = layer.cells[y * layer.width + x] ?? 0;
+  }
+  layer.width = width;
+  layer.height = height;
+  layer.cells = cells;
 }
 
 function defaultSound(): Record<string, unknown> {

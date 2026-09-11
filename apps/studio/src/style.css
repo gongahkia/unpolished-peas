@@ -440,14 +440,67 @@ body,
   color: transparent;
 }
 
+.font-layout {
+  display: grid;
+  grid-template: 86px 14px / 88px 1fr;
+  gap: 2px 4px;
+}
+
+.font-canvas {
+  width: 86px;
+  height: 86px;
+  background: var(--deep);
+  image-rendering: pixelated;
+  touch-action: none;
+}
+
+.font-controls {
+  display: flex;
+  min-width: 0;
+  flex-flow: column nowrap;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.font-controls > div,
+.font-metrics label,
+.font-preview-label {
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.font-controls input {
+  width: 26px;
+}
+
+.font-metrics {
+  flex-wrap: wrap;
+}
+
+.font-preview-label {
+  grid-column: 1;
+}
+
+.font-preview-label input {
+  width: 60px;
+}
+
+.font-preview {
+  width: 128px;
+  height: 14px;
+  background: var(--deep);
+  image-rendering: pixelated;
+}
+
 .map-layout {
   display: grid;
-  grid-template-columns: 180px 1fr;
+  grid-template-columns: 148px 1fr;
   gap: 3px;
 }
 
 .map-canvas {
-  width: 180px;
+  width: 148px;
   height: 108px;
   image-rendering: pixelated;
   touch-action: none;
@@ -462,7 +515,16 @@ body,
 
 .map-controls div {
   display: flex;
+  flex-wrap: wrap;
   gap: 1px;
+}
+
+.map-controls select {
+  max-width: 56px;
+}
+
+.map-controls input {
+  width: 25px;
 }
 
 .tile-picks button {
@@ -473,9 +535,49 @@ body,
 }
 
 .palette-tool {
+  position: relative;
   display: flex;
   flex-flow: column nowrap;
   gap: 3px;
+}
+
+.raster-preview {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 70px;
+  height: 42px;
+  border: 1px solid var(--cyan);
+  image-rendering: pixelated;
+}
+
+.palette-tool > p:first-of-type,
+.palette-tool > .master-palette {
+  width: 160px;
+}
+
+.palette-tool .master-palette button {
+  height: 7px;
+}
+
+.raster-fields,
+.raster-range {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.raster-fields label,
+.raster-range label {
+  display: flex;
+  grid-template-columns: none;
+  gap: 1px;
+}
+
+.raster-fields input[type='number'],
+.raster-range input,
+.logical-index-input {
+  width: 26px;
 }
 
 .master-palette {

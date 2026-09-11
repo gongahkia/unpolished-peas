@@ -339,7 +339,16 @@ on draw:
 
   await shellCommand(page, 'palette');
   await page.locator('.raster-line').fill('80');
-  await expect(page.locator('.raster-readout')).toContainText('LINE 80');
+  await expect(page.locator('.raster-readout')).toContainText('LINE 080');
+  await saveAndCloseTool(page);
+
+  await shellCommand(page, 'font');
+  await expect(page.locator('.glyph-readout')).toContainText('$41');
+  await page.locator('.font-canvas').click({ position: { x: 43, y: 43 } });
+  await page.locator('[data-font="next"]').click();
+  await expect(page.locator('.glyph-readout')).toContainText('$42');
+  await page.locator('[data-font="undo"]').click();
+  await page.getByLabel('Font preview text').fill('AB?');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'sfx');
