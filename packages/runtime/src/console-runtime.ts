@@ -619,6 +619,7 @@ const DRAW_CALLS = new Set([
   'pal_reset',
   'raster_scroll',
   'print',
+  'font_print',
 ]);
 
 const AUDIO_CALLS = new Set(['sfx', 'music', 'music_stop']);
@@ -659,6 +660,8 @@ export function consoleWorkCost(name: string, arguments_: readonly unknown[]): n
       return 128;
     case 'print':
       return Math.max(1, (typeof arguments_[0] === 'string' ? arguments_[0].length : 0) * 6);
+    case 'font_print':
+      return Math.max(1, (typeof arguments_[1] === 'string' ? arguments_[1].length : 0) * 8);
     case 'sfx':
     case 'music':
     case 'music_stop':

@@ -64,7 +64,7 @@ export class VisualAssetStore {
       const offset = id * MEMORY.assetStride;
       descriptorView.setUint32(
         offset,
-        ['sprite', 'animation', 'tile_set', 'map'].indexOf(asset.kind) + 1,
+        ['sprite', 'animation', 'tile_set', 'map', 'font'].indexOf(asset.kind) + 1,
         true,
       );
       descriptorView.setUint32(offset + 4, this.allocations.length - first, true);
@@ -259,6 +259,52 @@ export class VisualAssetStore {
             };
           }),
         };
+      case 'font': {
+        const glyphs = [...asset.glyphs.entries()].sort(([left], [right]) => left - right);
+        const glyphBytes = asset.glyphWidth * asset.glyphHeight;
+        const encoded = new Uint8Array(8 + glyphs.length * (2 + glyphBytes));
+        encoded.set(
+          [
+            asset.glyphWidth,
+            asset.glyphHeight,
+            asset.baseline,
+            asset.advanceX,
+            asset.advanceY,
+            asset.missingGlyph,
+          ],
+          0,
+        );
+        new DataView(encoded.buffer).setUint16(6, glyphs.length, true);
+        const bitmapOffsets = new Set<number>();
+        for (const [index, [code, pixels]] of glyphs.entries()) {
+          const offset = 8 + index * (2 + glyphBytes);
+          new DataView(encoded.buffer).setUint16(offset, code, true);
+          encoded.set(pixels, offset + 2);
+          for (let byte = offset + 2; byte < offset + 2 + glyphBytes; byte += 1)
+            bitmapOffsets.add(byte);
+        }
+        const bytes = this.allocate(
+          6,
+          asset.glyphWidth,
+          asset.glyphHeight,
+          encoded,
+          asset.missingGlyph,
+          (offset, part) =>
+            part.every((value, index) => {
+              const absolute = offset + index;
+              return bitmapOffsets.has(absolute) ? value <= 1 : value === encoded[absolute];
+            }),
+        );
+        return {
+          ...asset,
+          glyphs: new Map(
+            glyphs.map(([code], index) => {
+              const offset = 8 + index * (2 + glyphBytes) + 2;
+              return [code, bytes.subarray(offset, offset + glyphBytes)];
+            }),
+          ),
+        };
+      }
     }
   }
 
@@ -368,6 +414,43 @@ function validateAsset(asset: VisualAsset): void {
           layer.tileSet.length === 0
         )
           throw new RangeError(`map '${asset.name}' has an invalid layer`);
+      return;
+    case 'font':
+      if (
+        !Number.isSafeInteger(asset.glyphWidth) ||
+        !Number.isSafeInteger(asset.glyphHeight) ||
+        asset.glyphWidth < 1 ||
+        asset.glyphWidth > 16 ||
+        asset.glyphHeight < 1 ||
+        asset.glyphHeight > 16 ||
+        !Number.isSafeInteger(asset.baseline) ||
+        asset.baseline < 0 ||
+        asset.baseline >= asset.glyphHeight ||
+        !Number.isSafeInteger(asset.advanceX) ||
+        asset.advanceX < 1 ||
+        asset.advanceX > 32 ||
+        !Number.isSafeInteger(asset.advanceY) ||
+        asset.advanceY < 1 ||
+        asset.advanceY > 32 ||
+        !Number.isSafeInteger(asset.missingGlyph) ||
+        asset.missingGlyph < 0 ||
+        asset.missingGlyph > 255 ||
+        asset.glyphs.size === 0 ||
+        asset.glyphs.size > 256 ||
+        !asset.glyphs.has(asset.missingGlyph)
+      )
+        throw new RangeError(`font '${asset.name}' has invalid metrics or glyph map`);
+      for (const [code, pixels] of asset.glyphs) {
+        if (
+          !Number.isSafeInteger(code) ||
+          code < 0 ||
+          code > 255 ||
+          pixels.length !== asset.glyphWidth * asset.glyphHeight ||
+          pixels.some((value) => value > 1)
+        )
+          throw new RangeError(`font '${asset.name}' has an invalid glyph`);
+      }
+      return;
   }
 }
 
@@ -398,5 +481,7 @@ export function visualAssetBytes(asset: VisualAsset): number {
       );
     case 'map':
       return asset.layers.reduce((total, layer) => total + layer.cells.byteLength, 0);
+    case 'font':
+      return 8 + asset.glyphs.size * (2 + asset.glyphWidth * asset.glyphHeight);
   }
 }

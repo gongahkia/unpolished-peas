@@ -54,6 +54,33 @@ descriptors and `visual_id` expose their addresses; drawing and map queries read
 See [HARDWARE.md](HARDWARE.md#visual-image-and-allocation-descriptors) for encoding and write rules.
 Asset files and the alpha packed format remain unchanged.
 
+## Bitmap fonts
+
+A `font` contains fixed-size 1-16 pixel glyph masks, explicit horizontal and vertical advances, a
+baseline for editor/layout alignment, and a required fallback code. Glyph codes are byte values
+0-255, must be unique and strictly increasing in the source file, and each row-major pixel is 0 or
+
+1. A font contains 1-256 glyphs and the fallback code must be present:
+
+```json
+{
+  "revision": 1,
+  "kind": "font",
+  "glyphWidth": 3,
+  "glyphHeight": 5,
+  "baseline": 4,
+  "advanceX": 4,
+  "advanceY": 6,
+  "missingGlyph": 63,
+  "glyphs": [{ "code": 63, "pixels": [1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 1, 0] }]
+}
+```
+
+The exact visual cost is `8 + glyph_count * (2 + glyph_width * glyph_height)` bytes. The packed
+header and glyph codes are immutable at runtime; mask bytes alias the visual bus and may be changed
+to 0 or 1 while paused or by legal cartridge bus writes. `font_print` renders a selected font;
+ordinary `print` deliberately retains the unchanged built-in system font.
+
 ## Display state
 
 The optional top-level `display = "assets/display.pxp"` manifest key names a default palette and
@@ -131,5 +158,4 @@ is null or a note naming a declared sound patch. Patterns have 1-256 rows and `f
 }
 ```
 
-Arbitrary PCM data is intentionally not representable. Custom `font` assets are reserved by the
-manifest schema but are not implemented in revision 1; cartridges use the built-in bitmap font.
+Arbitrary PCM data is intentionally not representable.

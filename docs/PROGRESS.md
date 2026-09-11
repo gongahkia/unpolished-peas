@@ -812,10 +812,35 @@ Each group may produce several coherent commits, and integration occurs througho
   standalone, 141,783-byte Studio main JS, 79,373-byte Worker JS and 1,368,539-byte compiler Wasm.
   Nothing was pushed, published or deployed.
 
+## 2026-09-11 — V1 milestone 6a: custom-font hardware and runtime path
+
+- Added deterministic revision-1 bitmap font files with 1-16 pixel fixed glyph cells, byte-code
+  maps, baseline, horizontal/vertical advances and a required missing glyph. Font payloads now
+  occupy the real shared visual image, publish asset kind 5/allocation kind 6 descriptors, and
+  charge exactly `8 + glyphs * (2 + width * height)` bytes. Metadata and glyph codes remain
+  immutable while 0/1 masks safely alias the writable bus.
+- Added typed `font_print(Font, Text, Int, Int, Color)` compilation and production rendering with
+  newline and fallback behavior. It is installed lazily by the compiler so unused V1 functionality
+  does not shift alpha symbol IDs; all four original artifacts rebuild byte-identically after a
+  full compatibility test caught and drove that constraint. The original built-in `print` font is
+  unchanged.
+- The complete repository gate passed: Prettier, ESLint, strict TypeScript, **140 Vitest tests**,
+  production builds, full Firefox E2E in **31.2 s**, Clippy with warnings denied, **60 Rust tests**,
+  native and release Wasm builds. Current generated sizes are 161,589-byte headless,
+  191,935-byte standalone, 144,027-byte Studio main JS, 82,217-byte Worker JS and 1,374,049-byte
+  compiler Wasm. Cartridge sizes and SHA-256 hashes remain 42,904 / `225f164c...`, 41,315 /
+  `44abf739...`, 38,091 / `3f4172ea...`, and 27,869 / `0175b0e7...`. Nothing was pushed,
+  published or deployed.
+
 ## Current risks (V1 work in progress)
 
-- The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
-  raster row, and no custom font asset decoding/editor.
+- Custom revision-1 bitmap fonts now decode into the real visual image, expose deterministic
+  descriptors and bus-writable glyph masks, and render through typed `font_print` calls while the
+  original `print` system font remains unchanged. Runtime/codec/storage/compiler tests cover exact
+  accounting, malformed files, fallback rendering and bus aliasing. The custom font editor and
+  interchange UI are still required before the creation-tools milestone is complete.
+- The asset editors intentionally expose a compact alpha subset: one map tileset and one editable
+  raster row.
 - Folder-backed editing and incremental compiler invalidation beyond direct importer diagnostics
   remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.

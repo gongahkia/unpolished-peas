@@ -4,6 +4,7 @@ import {
   type DisplayConfiguration,
   type IndexedAnimation,
   type IndexedMap,
+  type IndexedFont,
   type IndexedSprite,
   type IndexedTileSet,
   type VisualAsset,
@@ -122,6 +123,21 @@ export interface MapAssetFile {
   }[];
 }
 
+export interface FontAssetFile {
+  readonly revision: 1;
+  readonly kind: 'font';
+  readonly glyphWidth: number;
+  readonly glyphHeight: number;
+  readonly baseline: number;
+  readonly advanceX: number;
+  readonly advanceY: number;
+  readonly missingGlyph: number;
+  readonly glyphs: readonly {
+    readonly code: number;
+    readonly pixels: readonly number[];
+  }[];
+}
+
 /** Decodes documented JSON asset files into validated hardware stores and worker map views. */
 export function decodeRuntimeAssets(
   declarations: Readonly<Record<string, ProjectAssetDeclaration>>,
@@ -158,7 +174,8 @@ export function decodeRuntimeAssets(
         audio.push(decodeMusic(name, value));
         break;
       case 'font':
-        throw new TypeError(`custom font asset '${name}' is not implemented in revision 1`);
+        visual.push(decodeFont(name, value));
+        break;
     }
   }
   const visualStore = new VisualAssetStore(visual);
@@ -304,6 +321,52 @@ function decodeMap(name: string, value: unknown): IndexedMap {
     };
   });
   return { kind: 'map', name, layers };
+}
+
+function decodeFont(name: string, value: unknown): IndexedFont {
+  if (
+    !isRecord(value) ||
+    value.revision !== 1 ||
+    value.kind !== 'font' ||
+    !boundedInteger(value.glyphWidth, 1, 16) ||
+    !boundedInteger(value.glyphHeight, 1, 16) ||
+    !boundedInteger(value.baseline, 0, value.glyphHeight - 1) ||
+    !boundedInteger(value.advanceX, 1, 32) ||
+    !boundedInteger(value.advanceY, 1, 32) ||
+    !boundedInteger(value.missingGlyph, 0, 255) ||
+    !Array.isArray(value.glyphs) ||
+    value.glyphs.length === 0 ||
+    value.glyphs.length > 256
+  ) {
+    throw new TypeError(`font asset '${name}' is invalid`);
+  }
+  const glyphs = new Map<number, Uint8Array>();
+  let previous = -1;
+  for (const glyph of value.glyphs) {
+    if (
+      !isRecord(glyph) ||
+      !boundedInteger(glyph.code, 0, 255) ||
+      glyph.code <= previous ||
+      !isNumberArray(glyph.pixels, value.glyphWidth * value.glyphHeight, 0, 1)
+    ) {
+      throw new TypeError(`font asset '${name}' has an invalid glyph map`);
+    }
+    previous = glyph.code;
+    glyphs.set(glyph.code, Uint8Array.from(glyph.pixels));
+  }
+  if (!glyphs.has(value.missingGlyph))
+    throw new TypeError(`font asset '${name}' is missing its fallback glyph`);
+  return {
+    kind: 'font',
+    name,
+    glyphWidth: value.glyphWidth,
+    glyphHeight: value.glyphHeight,
+    baseline: value.baseline,
+    advanceX: value.advanceX,
+    advanceY: value.advanceY,
+    missingGlyph: value.missingGlyph,
+    glyphs,
+  };
 }
 
 function decodeSound(name: string, value: unknown): SoundAsset {
