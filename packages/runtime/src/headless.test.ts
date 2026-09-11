@@ -37,7 +37,15 @@ describe('production headless host', () => {
     expect(second).toEqual(first);
     expect(first.frames).toHaveLength(3);
     expect(new Set(first.frames.map((frame) => frame.framebufferSha256)).size).toBe(3);
-    expect(first.summary).toMatchObject({ completedFrames: 3, workPeak: 1 });
+    expect(first.summary).toMatchObject({
+      completedFrames: 3,
+      workPeak: 1,
+      commandPeak: 1,
+      drawCommandPeak: 1,
+      audioCommandPeak: 0,
+      voicePeak: 0,
+    });
+    expect(first.summary.busMappedBytes).toBeGreaterThan(128 * 1024);
     for (const hash of [
       first.summary.finalFramebufferSha256,
       first.summary.finalStateSha256,

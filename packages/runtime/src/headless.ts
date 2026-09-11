@@ -57,6 +57,11 @@ export interface HeadlessResult {
   readonly summary: {
     readonly completedFrames: number;
     readonly workPeak: number;
+    readonly commandPeak: number;
+    readonly drawCommandPeak: number;
+    readonly audioCommandPeak: number;
+    readonly voicePeak: number;
+    readonly busMappedBytes: number;
     readonly finalFramebufferSha256: string;
     readonly finalStateSha256: string;
     readonly audioCommandsSha256: string;
@@ -101,6 +106,10 @@ export async function runHeadless(value: unknown): Promise<HeadlessResult> {
   const commandHash = createHash('sha256');
   const pcmHash = createHash('sha256');
   let workPeak = 0;
+  let commandPeak = 0;
+  let drawCommandPeak = 0;
+  let audioCommandPeak = 0;
+  let voicePeak = 0;
   let fault: HeadlessResult['fault'];
 
   for (let frame = 0; frame < request.frames; frame += 1) {
@@ -112,6 +121,10 @@ export async function runHeadless(value: unknown): Promise<HeadlessResult> {
       commandHash.update(commands);
       pcmHash.update(framePcm);
       workPeak = Math.max(workPeak, result.workUnits);
+      drawCommandPeak = Math.max(drawCommandPeak, result.drawCommands.length);
+      audioCommandPeak = Math.max(audioCommandPeak, result.audioCommands.length);
+      commandPeak = Math.max(commandPeak, result.drawCommands.length + result.audioCommands.length);
+      voicePeak = Math.max(voicePeak, result.output.audio.activeVoices);
       frameResults.push({
         frame: result.frame,
         workUnits: result.workUnits,
@@ -153,6 +166,13 @@ export async function runHeadless(value: unknown): Promise<HeadlessResult> {
     summary: {
       completedFrames: frameResults.length,
       workPeak,
+      commandPeak,
+      drawCommandPeak,
+      audioCommandPeak,
+      voicePeak,
+      busMappedBytes: runtime
+        .inspectMemory(0, 1)
+        .regions.reduce((total, region) => total + region.length, 0),
       finalFramebufferSha256: final?.framebufferSha256 ?? sha256(new Uint8Array()),
       finalStateSha256: sha256(canonicalBytes(finalSnapshot)),
       audioCommandsSha256: commandHash.digest('hex'),

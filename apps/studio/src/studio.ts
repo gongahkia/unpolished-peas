@@ -25,7 +25,12 @@ import {
   type StoredProject,
 } from '@px240c/runtime';
 
-import { BrowserCompiler, type CompilerDiagnostic } from './compiler';
+import {
+  BrowserCompiler,
+  type CompilationResult,
+  type CompilerDiagnostic,
+  type ProjectManifest,
+} from './compiler';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { openCreationTool, type CreationTool } from './tools';
 
@@ -148,6 +153,8 @@ export class StudioApp {
     const cart = this.root.querySelector<HTMLElement>('.active-cart');
     if (cart !== null) {
       cart.textContent = this.activeProject?.id.toUpperCase() ?? 'NO CART';
+      if (this.activeProject !== undefined)
+        void this.refreshActiveCartMeter(cart, this.activeProject);
     }
     const form = requireElement(this.root, '.command-line') as HTMLFormElement;
     const input = requireElement(this.root, '#command') as HTMLInputElement;
@@ -723,7 +730,13 @@ export class StudioApp {
 
   private async openExplorer(): Promise<void> {
     const project = this.requireProject();
-    const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
+    const [compilation, manifest, packed] = await Promise.all([
+      this.compiler.compileProject(project.manifest, project.files, false),
+      this.compiler.parseManifest(project.manifest),
+      this.compiler.packProject(project.manifest, project.files),
+    ]);
+    const cartridge = await this.compiler.decodeCartridge(packed);
+    const report = projectSizeReport(packed, cartridge.entries, manifest, compilation);
     const panes: Readonly<Record<string, unknown>> = {
       TOKENS: compilation.analysis.tokens,
       AST: compilation.analysis.module,
@@ -733,7 +746,7 @@ export class StudioApp {
       MAP: compilation.generated?.source_map_json ?? 'NO SOURCE MAP',
       DIAG: compilation.analysis.diagnostics,
       SIZE: {
-        generatedBytes: compilation.generated?.generated_bytes ?? 0,
+        ...report,
         probes: compilation.generated?.probe_count ?? 0,
         workModel: compilation.generated?.work_model ?? {},
       },
@@ -963,7 +976,7 @@ export class StudioApp {
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
         if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
-        status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
+        status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')} D${String(result.drawCommands.length).padStart(4, '0')} V${String(result.output.audio.activeVoices)}`;
         requestAnimationFrame(() => void frame());
       } catch (error: unknown) {
         status.textContent = errorMessage(error);
@@ -1293,13 +1306,50 @@ export class StudioApp {
   private async info(): Promise<void> {
     const identity = await this.compiler.identity();
     const project = this.activeProject;
+    const detail =
+      project === undefined
+        ? undefined
+        : await this.compiler.packProject(project.manifest, project.files).then(async (packed) => {
+            const [manifest, decoded, compilation] = await Promise.all([
+              this.compiler.parseManifest(project.manifest),
+              this.compiler.decodeCartridge(packed),
+              this.compiler.compileProject(project.manifest, project.files, false),
+            ]);
+            return projectSizeReport(packed, decoded.entries, manifest, compilation);
+          });
     this.appendLines([
       `${identity.language} COMPILER ${identity.compiler}`,
       project === undefined
         ? 'NO CARTRIDGE LOADED'
         : `${project.id} / ${project.title} / R${String(project.revision)}`,
       '240X144 / 32 COLOR / 60HZ',
+      ...(detail === undefined
+        ? []
+        : [
+            `${detail.sizeClass} ${String(detail.canonicalCartridgeBytes)}B / SRC ${String(detail.sourceBytes)} / GEN ${String(detail.generatedReleaseBytes)}`,
+            `VIS ${String(detail.visualBytes)} MAP ${String(detail.mapBytes)} FONT ${String(detail.fontBytes)} AUDIO ${String(detail.audioBytes)}`,
+            `META ${String(detail.metadataBytes)} OVER ${String(detail.containerOverheadBytes)} GAIN ${String(detail.compressionGainBytes)}`,
+            `SAVE 8192 / ${detail.warning}`,
+          ]),
     ]);
+  }
+
+  private async refreshActiveCartMeter(
+    target: HTMLElement,
+    project: WorkingProject,
+  ): Promise<void> {
+    try {
+      const bytes = await this.compiler.packProject(project.manifest, project.files);
+      if (
+        this.activeProject?.id === project.id &&
+        this.activeProject.revision === project.revision
+      ) {
+        target.textContent = `${project.id.toUpperCase()} ${String(bytes.byteLength)}B/${sizeClass(bytes.byteLength)}`;
+      }
+    } catch {
+      if (this.activeProject?.id === project.id)
+        target.textContent = `${project.id.toUpperCase()} !BUILD`;
+    }
   }
 
   private async openInspector(): Promise<void> {
@@ -1648,6 +1698,128 @@ function sizeClass(bytes: number): '4K' | '16K' | '64K' | '256K' {
   if (bytes <= 16_384) return '16K';
   if (bytes <= 65_536) return '64K';
   return '256K';
+}
+
+interface ProjectSizeReport {
+  readonly sizeClass: '4K' | '16K' | '64K' | '256K';
+  readonly canonicalCartridgeBytes: number;
+  readonly sourceBytes: number;
+  readonly generatedReleaseBytes: number;
+  readonly visualBytes: number;
+  readonly mapBytes: number;
+  readonly fontBytes: number;
+  readonly audioBytes: number;
+  readonly metadataBytes: number;
+  readonly containerOverheadBytes: number;
+  readonly compressionGainBytes: number;
+  readonly saveAllocationBytes: 8192;
+  readonly largestEntries: readonly { readonly path: string; readonly bytes: number }[];
+  readonly largestSymbols: readonly {
+    readonly name: string;
+    readonly kind: string;
+    readonly definitionBytes: number;
+  }[];
+  readonly warning: string;
+}
+
+function projectSizeReport(
+  packed: Uint8Array,
+  entries: Readonly<Record<string, readonly number[]>>,
+  manifest: ProjectManifest,
+  compilation: CompilationResult,
+): ProjectSizeReport {
+  const encoded = archiveEncodedBytes(packed);
+  let sourceBytes = 0;
+  let visualBytes = 0;
+  let mapBytes = 0;
+  let fontBytes = 0;
+  let audioBytes = 0;
+  let metadataBytes = 0;
+  for (const [path, bytes] of Object.entries(entries)) {
+    if (path.startsWith('source/')) sourceBytes += bytes.length;
+    if (path === 'manifest.json' || path.startsWith('presentation/')) metadataBytes += bytes.length;
+  }
+  for (const asset of Object.values(manifest.assets)) {
+    const archivePath = `assets/${asset.path}`;
+    const bytes = entries[archivePath]?.length ?? 0;
+    if (asset.kind === 'map') {
+      mapBytes += bytes;
+      visualBytes += bytes;
+    } else if (asset.kind === 'font') {
+      fontBytes += bytes;
+      visualBytes += bytes;
+    } else if (asset.kind === 'sound' || asset.kind === 'music') {
+      audioBytes += bytes;
+    } else {
+      visualBytes += bytes;
+    }
+  }
+  const rawArchiveBytes = Object.values(entries).reduce((total, bytes) => total + bytes.length, 0);
+  const generatedReleaseBytes = compilation.generated?.generated_bytes ?? 0;
+  const work = Object.values(compilation.generated?.work_model ?? {}).reduce(
+    (total, value) => total + value,
+    0,
+  );
+  const warning =
+    packed.length > 196_608
+      ? 'PACK >75%; INSPECT LARGEST ENTRY'
+      : visualBytes > 98_304
+        ? 'VISUAL >75%; TRIM LARGEST ASSET'
+        : work > 40_000
+          ? 'STATIC WORK MODEL HIGH; PROFILE RUN'
+          : 'BUDGETS WITHIN FIXED LIMITS';
+  return {
+    sizeClass: sizeClass(packed.length),
+    canonicalCartridgeBytes: packed.length,
+    sourceBytes,
+    generatedReleaseBytes,
+    visualBytes,
+    mapBytes,
+    fontBytes,
+    audioBytes,
+    metadataBytes,
+    containerOverheadBytes: packed.length - encoded,
+    compressionGainBytes: rawArchiveBytes - encoded,
+    saveAllocationBytes: 8192,
+    largestEntries: Object.entries(entries)
+      .map(([path, bytes]) => ({ path, bytes: bytes.length }))
+      .sort((left, right) => right.bytes - left.bytes || left.path.localeCompare(right.path))
+      .slice(0, 8),
+    largestSymbols: compilation.analysis.symbols
+      .filter((symbol) => symbol.defined_at !== undefined)
+      .map((symbol) => ({
+        name: symbol.name,
+        kind: symbol.kind,
+        definitionBytes: (symbol.defined_at?.end ?? 0) - (symbol.defined_at?.start ?? 0),
+      }))
+      .sort(
+        (left, right) =>
+          right.definitionBytes - left.definitionBytes || left.name.localeCompare(right.name),
+      )
+      .slice(0, 8),
+    warning,
+  };
+}
+
+function archiveEncodedBytes(bytes: Uint8Array): number {
+  if (bytes.length < 12) throw new TypeError('PXC HEADER IS TRUNCATED');
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const count = view.getUint32(8, true);
+  let cursor = 12;
+  let encoded = 0;
+  for (let index = 0; index < count; index += 1) {
+    if (cursor + 42 > bytes.length) throw new TypeError('PXC ENTRY HEADER IS TRUNCATED');
+    const pathLength = view.getUint16(cursor, true);
+    const encodedLength = view.getUint32(cursor + 6, true);
+    cursor += 42;
+    const end = cursor + pathLength + encodedLength;
+    if (!Number.isSafeInteger(end) || end > bytes.length)
+      throw new TypeError('PXC ENTRY IS TRUNCATED');
+    encoded += encodedLength;
+    cursor = end;
+  }
+  if (cursor !== bytes.length) throw new TypeError('PXC HAS TRAILING DATA');
+  return encoded;
 }
 
 function shelfLabel(

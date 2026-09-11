@@ -12,11 +12,11 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use pxcl_core::{
-    AssetCatalog, CartridgePngMetadata, CompileMode, Diagnostic, FileId, GeneratedProgram,
-    ProjectManifest, SourceFile, analyze_module, compile, compile_project, decode_cartridge,
-    decode_cartridge_png, encode_cartridge_png, export_itch_zip, export_standalone_html,
-    format_source, load_cartridge_program, pack_project, parse_project_manifest,
-    unpack_cartridge_project,
+    AssetCatalog, AssetKind, CartridgePngMetadata, CompileMode, Diagnostic, FileId,
+    GeneratedProgram, ProjectManifest, SourceFile, analyze_module, compile, compile_project,
+    decode_cartridge, decode_cartridge_png, encode_cartridge_png, export_itch_zip,
+    export_standalone_html, format_source, load_cartridge_program, pack_project,
+    parse_project_manifest, unpack_cartridge_project,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -986,36 +986,9 @@ fn info(path: Option<&Path>) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     };
-    let metadata = if path
-        .extension()
-        .is_some_and(|extension| extension == "pxc" || extension == "png")
-    {
-        fs::read(path)
-            .map_err(|error| error.to_string())
-            .and_then(|bytes| {
-                if path.extension().is_some_and(|extension| extension == "png") {
-                    decode_cartridge_png(&bytes).map(|decoded| decoded.cartridge)
-                } else {
-                    Ok(bytes)
-                }
-            })
-            .and_then(|bytes| decode_cartridge(&bytes).map_err(|error| error.to_string()))
-            .and_then(|cartridge| {
-                serde_json::to_string_pretty(&cartridge.manifest).map_err(|error| error.to_string())
-            })
-    } else {
-        let manifest_path = if path.is_dir() {
-            path.join("cart.toml")
-        } else {
-            path.to_path_buf()
-        };
-        fs::read_to_string(&manifest_path)
-            .map_err(|error| error.to_string())
-            .and_then(|source| parse_project_manifest(&source).map_err(|error| error.to_string()))
-            .and_then(|manifest| {
-                serde_json::to_string_pretty(&manifest).map_err(|error| error.to_string())
-            })
-    };
+    let metadata = cartridge_report(path).and_then(|report| {
+        serde_json::to_string_pretty(&report).map_err(|error| error.to_string())
+    });
     match metadata {
         Ok(metadata) => {
             println!("{metadata}");
@@ -1026,6 +999,199 @@ fn info(path: Option<&Path>) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
+    let (bytes, cartridge, program) = load_headless_cartridge(path)
+        .map_err(|()| "could not load cartridge for analysis".to_owned())?;
+    let sections = archive_sections(&bytes)?;
+    let unpacked = unpack_cartridge_project(&bytes).map_err(|error| error.to_string())?;
+    let compilation = compile_project(&unpacked.manifest, &unpacked.files, CompileMode::Release)
+        .map_err(|error| error.to_string())?;
+    let generated = compilation
+        .generated
+        .ok_or_else(|| "release compilation produced no program".to_owned())?;
+
+    let mut source_bytes = 0_usize;
+    let mut map_bytes = 0_usize;
+    let mut font_bytes = 0_usize;
+    let mut audio_bytes = 0_usize;
+    let mut visual_bytes = 0_usize;
+    let mut metadata_bytes = 0_usize;
+    let mut largest_entries = cartridge
+        .entries
+        .iter()
+        .map(|(name, value)| (name.clone(), value.len()))
+        .collect::<Vec<_>>();
+    largest_entries.sort_by(|left, right| right.1.cmp(&left.1).then(left.0.cmp(&right.0)));
+    largest_entries.truncate(8);
+    for (name, value) in &cartridge.entries {
+        if name.starts_with("source/") {
+            source_bytes += value.len();
+        } else if name == "manifest.json" || name.starts_with("presentation/") {
+            metadata_bytes += value.len();
+        }
+    }
+    for asset in cartridge.manifest.assets.values() {
+        let length = cartridge
+            .entries
+            .get(&asset.path)
+            .map_or(0, std::vec::Vec::len);
+        match asset.kind {
+            AssetKind::Map => {
+                map_bytes += length;
+                visual_bytes += length;
+            }
+            AssetKind::Font => {
+                font_bytes += length;
+                visual_bytes += length;
+            }
+            AssetKind::Sound | AssetKind::Music => audio_bytes += length,
+            AssetKind::Sprite | AssetKind::Animation | AssetKind::TileSet => {
+                visual_bytes += length;
+            }
+        }
+    }
+    let raw_bytes = sections.iter().map(|(_, raw, _)| raw).sum::<usize>();
+    let encoded_bytes = sections
+        .iter()
+        .map(|(_, _, encoded)| encoded)
+        .sum::<usize>();
+    let container_overhead = bytes.len().saturating_sub(encoded_bytes);
+    let mut largest_symbols = compilation
+        .analysis
+        .ir
+        .as_ref()
+        .map(|ir| {
+            ir.routines
+                .iter()
+                .map(|routine| {
+                    serde_json::json!({
+                        "name": routine.name,
+                        "sourceBytes": routine.span.end.saturating_sub(routine.span.start),
+                    })
+                })
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    largest_symbols
+        .sort_by_key(|value| std::cmp::Reverse(value["sourceBytes"].as_u64().unwrap_or_default()));
+    largest_symbols.truncate(8);
+
+    let manifest = &cartridge.manifest;
+    let request = serde_json::json!({
+        "revision": 1,
+        "javascript": std::str::from_utf8(&program).map_err(|_| "compiled program is not UTF-8")?,
+        "manifest": { "id": manifest.id, "updateRate": manifest.update_rate,
+            "display": manifest.display, "assets": manifest.assets },
+        "entries": cartridge.entries, "rom": bytes, "seed": 0x240c_1999_u32,
+        "frames": 60, "trace": { "revision": 1, "frames": [] }, "save": [],
+    });
+    let runtime = execute_headless_host(
+        &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
+        60,
+    )
+    .map_err(|()| "headless profile failed".to_owned())?;
+    let runtime: serde_json::Value =
+        serde_json::from_slice(&runtime).map_err(|error| error.to_string())?;
+    let summary = runtime
+        .get("summary")
+        .cloned()
+        .ok_or_else(|| "headless profile returned no summary".to_owned())?;
+
+    let size_class = match bytes.len() {
+        0..=4096 => "4K",
+        4097..=16384 => "16K",
+        16385..=65536 => "64K",
+        _ => "256K",
+    };
+    let mut warnings = Vec::new();
+    if bytes.len() > 196_608 {
+        warnings.push("cartridge is above 75% of 256 KiB; inspect largestEntries");
+    }
+    if visual_bytes > 98_304 {
+        warnings.push("visual assets are above 75% of 128 KiB; reduce the largest visual asset");
+    }
+    if summary["workPeak"].as_u64().unwrap_or_default() > 40_000 {
+        warnings.push("work peak is above 80% of 50,000; inspect the largest routine/call site");
+    }
+    if warnings.is_empty() {
+        warnings.push("within fixed cartridge, visual, work, command and voice limits");
+    }
+    Ok(serde_json::json!({
+        "revision": 1,
+        "manifest": manifest,
+        "sizeClass": size_class,
+        "sections": {
+            "canonicalCartridgeBytes": bytes.len(),
+            "sourceBytes": source_bytes,
+            "generatedReleaseBytes": generated.generated_bytes,
+            "visualBytes": visual_bytes,
+            "mapBytes": map_bytes,
+            "fontBytes": font_bytes,
+            "audioBytes": audio_bytes,
+            "metadataBytes": metadata_bytes,
+            "containerOverheadBytes": container_overhead,
+            "rawArchiveBytes": raw_bytes,
+            "encodedArchiveBytes": encoded_bytes,
+            "compressionGainBytes": i64::try_from(raw_bytes).unwrap_or(i64::MAX)
+                - i64::try_from(encoded_bytes).unwrap_or(i64::MAX),
+            "saveAllocationBytes": 8192,
+        },
+        "runtime60Frames": summary,
+        "largestEntries": largest_entries.into_iter().map(|(path, bytes)|
+            serde_json::json!({ "path": path, "bytes": bytes })).collect::<Vec<_>>(),
+        "largestSymbols": largest_symbols,
+        "warnings": warnings,
+    }))
+}
+
+fn archive_sections(bytes: &[u8]) -> Result<Vec<(String, usize, usize)>, String> {
+    if bytes.len() < 12 {
+        return Err("cartridge header is truncated".to_owned());
+    }
+    let mut cursor = 8_usize;
+    let count = u32::from_le_bytes(
+        bytes[cursor..cursor + 4]
+            .try_into()
+            .map_err(|_| "invalid cartridge entry count")?,
+    );
+    cursor += 4;
+    let mut sections = Vec::new();
+    for _ in 0..count {
+        if cursor + 42 > bytes.len() {
+            return Err("cartridge entry header is truncated".to_owned());
+        }
+        let path_length = usize::from(u16::from_le_bytes(
+            bytes[cursor..cursor + 2]
+                .try_into()
+                .map_err(|_| "invalid path length")?,
+        ));
+        let raw_length = usize::try_from(u32::from_le_bytes(
+            bytes[cursor + 2..cursor + 6]
+                .try_into()
+                .map_err(|_| "invalid raw length")?,
+        ))
+        .map_err(|_| "raw length does not fit this host")?;
+        let encoded_length = usize::try_from(u32::from_le_bytes(
+            bytes[cursor + 6..cursor + 10]
+                .try_into()
+                .map_err(|_| "invalid encoded length")?,
+        ))
+        .map_err(|_| "encoded length does not fit this host")?;
+        cursor += 42;
+        let end = cursor
+            .checked_add(path_length)
+            .and_then(|value| value.checked_add(encoded_length))
+            .filter(|end| *end <= bytes.len())
+            .ok_or_else(|| "cartridge entry payload is truncated".to_owned())?;
+        let path = std::str::from_utf8(&bytes[cursor..cursor + path_length])
+            .map_err(|_| "cartridge path is not UTF-8")?
+            .to_owned();
+        sections.push((path, raw_length, encoded_length));
+        cursor = end;
+    }
+    Ok(sections)
 }
 
 fn load_project(path: &Path) -> Result<LoadedProject, ()> {
