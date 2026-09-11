@@ -108,6 +108,8 @@ pub struct ProjectManifest {
     pub version: String,
     pub entry: String,
     pub update_rate: u8,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub compile_on_load: bool,
     #[serde(default)]
     pub label: Option<String>,
     #[serde(default)]
@@ -137,6 +139,10 @@ pub struct PackedManifest {
     pub version: String,
     pub entry: String,
     pub update_rate: u8,
+    #[serde(default, skip_serializing_if = "is_false")]
+    pub compile_on_load: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compiled_program: Option<FileIntegrity>,
     pub label: Option<String>,
     pub thumbnail: Option<String>,
     pub display: Option<String>,
@@ -239,6 +245,10 @@ pub fn pack_project(
             "entry source produced no release program".to_owned(),
         )
     })?;
+    let compiled_program = manifest.compile_on_load.then(|| FileIntegrity {
+        bytes: u32::try_from(generated.javascript.len()).unwrap_or(u32::MAX),
+        sha256: sha256_hex(generated.javascript.as_bytes()),
+    });
 
     let (mut entries, packed_assets, label, thumbnail, display) = collect_project_entries(
         &manifest,
@@ -246,6 +256,10 @@ pub fn pack_project(
         generated.javascript,
         generated.source_map_json,
     )?;
+    if manifest.compile_on_load {
+        entries.remove("build/cartridge.js");
+        entries.remove("build/cartridge.js.map");
+    }
 
     let files = entries
         .iter()
@@ -269,6 +283,8 @@ pub fn pack_project(
         version: manifest.version,
         entry: format!("source/{normalized_entry}"),
         update_rate: manifest.update_rate,
+        compile_on_load: manifest.compile_on_load,
+        compiled_program,
         label,
         thumbnail,
         display,
@@ -1100,6 +1116,7 @@ pub fn unpack_cartridge_project(bytes: &[u8]) -> Result<UnpackedProject, Cartrid
         version: packed.version.clone(),
         entry,
         update_rate: packed.update_rate,
+        compile_on_load: packed.compile_on_load,
         label,
         thumbnail,
         display,
@@ -1113,6 +1130,60 @@ pub fn unpack_cartridge_project(bytes: &[u8]) -> Result<UnpackedProject, Cartrid
     })?;
     parse_project_manifest(&manifest)?;
     Ok(UnpackedProject { manifest, files })
+}
+
+/// Validates a cartridge and returns the executable release program, compiling source-only carts.
+///
+/// # Errors
+///
+/// Rejects malformed archives, compilation diagnostics, or a generated program that does not match
+/// the hash frozen when the source-only cartridge was packed.
+pub fn load_cartridge_program(bytes: &[u8]) -> Result<(DecodedCartridge, Vec<u8>), CartridgeError> {
+    let cartridge = decode_cartridge(bytes)?;
+    if let Some(program) = cartridge.entries.get("build/cartridge.js") {
+        return Ok((cartridge.clone(), program.clone()));
+    }
+    if !cartridge.manifest.compile_on_load {
+        return Err(cartridge_error(
+            "PX4015",
+            "cartridge has no executable program".to_owned(),
+        ));
+    }
+    let project = unpack_cartridge_project(bytes)?;
+    let compilation = compile_project(&project.manifest, &project.files, CompileMode::Release)?;
+    if let Some(diagnostic) = compilation.analysis.diagnostics.first() {
+        return Err(cartridge_error(
+            "PX4015",
+            format!(
+                "compile-on-load source failed: error[{}] {}",
+                diagnostic.code, diagnostic.message
+            ),
+        ));
+    }
+    let program = compilation
+        .generated
+        .ok_or_else(|| cartridge_error("PX4015", "source produced no program".to_owned()))?
+        .javascript
+        .into_bytes();
+    let expected = cartridge
+        .manifest
+        .compiled_program
+        .as_ref()
+        .ok_or_else(|| {
+            cartridge_error(
+                "PX4015",
+                "source cartridge has no build identity".to_owned(),
+            )
+        })?;
+    if usize::try_from(expected.bytes).ok() != Some(program.len())
+        || expected.sha256 != sha256_hex(&program)
+    {
+        return Err(cartridge_error(
+            "PX4015",
+            "compiled program does not match the cartridge build identity".to_owned(),
+        ));
+    }
+    Ok((cartridge, program))
 }
 
 fn strip_archive_prefix(path: &str, prefix: &str, role: &str) -> Result<String, CartridgeError> {
@@ -1264,13 +1335,31 @@ fn validate_packed_manifest(
             "packed manifest file inventory does not match the archive".to_owned(),
         ));
     }
-    if !entries.contains_key(&manifest.entry)
-        || !entries.contains_key("build/cartridge.js")
-        || !entries.contains_key("build/cartridge.js.map")
-    {
+    if !entries.contains_key(&manifest.entry) {
         return Err(cartridge_error(
             "PX4012",
-            "packed manifest is missing source or build entry points".to_owned(),
+            "packed manifest is missing its source entry point".to_owned(),
+        ));
+    }
+    let has_javascript = entries.contains_key("build/cartridge.js");
+    let has_source_map = entries.contains_key("build/cartridge.js.map");
+    if manifest.compile_on_load {
+        let valid_hash = manifest.compiled_program.as_ref().is_some_and(|compiled| {
+            compiled.bytes > 0
+                && compiled.bytes <= u32::try_from(MAX_UNPACKED_BYTES).unwrap_or(u32::MAX)
+                && compiled.sha256.len() == 64
+                && compiled.sha256.bytes().all(|byte| byte.is_ascii_hexdigit())
+        });
+        if has_javascript || has_source_map || !valid_hash {
+            return Err(cartridge_error(
+                "PX4012",
+                "compile-on-load cartridge has invalid archived build state".to_owned(),
+            ));
+        }
+    } else if !has_javascript || !has_source_map || manifest.compiled_program.is_some() {
+        return Err(cartridge_error(
+            "PX4012",
+            "packed manifest is missing build entry points".to_owned(),
         ));
     }
     for asset in manifest.assets.values() {
@@ -1315,6 +1404,11 @@ fn include_presentation_file(
     let archive_path = format!("presentation/{role}/{project_path}");
     insert_unique(entries, archive_path.clone(), bytes.clone())?;
     Ok(Some(archive_path))
+}
+
+#[allow(clippy::trivially_copy_pass_by_ref)]
+const fn is_false(value: &bool) -> bool {
+    !*value
 }
 
 fn insert_unique(
@@ -1630,8 +1724,8 @@ impl<'a> Reader<'a> {
 #[cfg(test)]
 mod tests {
     use super::{
-        CARTRIDGE_CAPACITY_BYTES, compile_project, decode_cartridge, pack_project, rle_decode,
-        rle_encode, sha256_hex, unpack_cartridge_project,
+        CARTRIDGE_CAPACITY_BYTES, compile_project, decode_cartridge, load_cartridge_program,
+        pack_project, rle_decode, rle_encode, sha256_hex, unpack_cartridge_project,
     };
     use crate::CompileMode;
     use std::collections::BTreeMap;
@@ -1707,6 +1801,32 @@ path = "assets/hero.pxg"
             decoded
                 .entries
                 .contains_key("presentation/display/assets/display.pxp")
+        );
+    }
+
+    #[test]
+    fn source_only_cartridges_fit_4k_and_verify_the_recompiled_program() {
+        let manifest = manifest().replace(
+            "update_rate = 60",
+            "update_rate = 60\ncompile_on_load = true",
+        );
+        let first = pack_project(&manifest, &files("\n")).expect("source cart packs");
+        let second = pack_project(&manifest, &files("\n")).expect("source cart repacks");
+        assert_eq!(first.bytes, second.bytes);
+        assert!(first.bytes.len() <= 4_096, "{} bytes", first.bytes.len());
+        let (decoded, program) = load_cartridge_program(&first.bytes).expect("source cart loads");
+        assert!(decoded.manifest.compile_on_load);
+        assert!(!decoded.entries.contains_key("build/cartridge.js"));
+        assert!(
+            std::str::from_utf8(&program)
+                .expect("program is UTF-8")
+                .contains("createCartridge")
+        );
+        assert!(
+            unpack_cartridge_project(&first.bytes)
+                .expect("source cart unpacks")
+                .manifest
+                .contains("compile_on_load = true")
         );
     }
 

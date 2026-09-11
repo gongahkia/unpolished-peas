@@ -15,7 +15,8 @@ use pxcl_core::{
     AssetCatalog, CartridgePngMetadata, CompileMode, Diagnostic, FileId, GeneratedProgram,
     ProjectManifest, SourceFile, analyze_module, compile, compile_project, decode_cartridge,
     decode_cartridge_png, encode_cartridge_png, export_itch_zip, export_standalone_html,
-    format_source, pack_project, parse_project_manifest, unpack_cartridge_project,
+    format_source, load_cartridge_program, pack_project, parse_project_manifest,
+    unpack_cartridge_project,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -350,17 +351,10 @@ fn run_headless(
     input: Option<&Path>,
     save: Option<&Path>,
 ) -> ExitCode {
-    let Ok((rom, cartridge)) = load_headless_cartridge(path) else {
+    let Ok((rom, cartridge, program)) = load_headless_cartridge(path) else {
         return ExitCode::FAILURE;
     };
-    let Some(javascript) = cartridge.entries.get("build/cartridge.js") else {
-        eprintln!(
-            "{}: canonical cartridge has no compiled program",
-            path.display()
-        );
-        return ExitCode::FAILURE;
-    };
-    let Ok(javascript) = std::str::from_utf8(javascript) else {
+    let Ok(javascript) = std::str::from_utf8(&program) else {
         eprintln!("{}: compiled program is not UTF-8", path.display());
         return ExitCode::FAILURE;
     };
@@ -468,7 +462,9 @@ fn execute_headless_host(request: &[u8], frames: u32) -> Result<Vec<u8>, ()> {
     Ok(serde_json::to_vec_pretty(&parsed).expect("JSON value always serializes"))
 }
 
-fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCartridge), ()> {
+fn load_headless_cartridge(
+    path: &Path,
+) -> Result<(Vec<u8>, pxcl_core::DecodedCartridge, Vec<u8>), ()> {
     let packed = if path.is_dir() {
         let project = load_project(path)?;
         pack_project(&project.manifest_source, &project.files).map_err(|error| {
@@ -501,10 +497,10 @@ fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCa
         );
         return Err(());
     };
-    let cartridge = decode_cartridge(&packed.bytes).map_err(|error| {
+    let (cartridge, program) = load_cartridge_program(&packed.bytes).map_err(|error| {
         eprintln!("{}: {error}", path.display());
     })?;
-    Ok((packed.bytes, cartridge))
+    Ok((packed.bytes, cartridge, program))
 }
 
 fn read_json_input(path: Option<&Path>) -> Result<serde_json::Value, ()> {
@@ -725,12 +721,10 @@ fn run_scripted_test(
             .map_err(|()| "could not load scripted save fixture".to_owned())?,
         None => Vec::new(),
     };
-    let cartridge = decode_cartridge(&packed.bytes).map_err(|error| error.to_string())?;
-    let javascript = cartridge
-        .entries
-        .get("build/cartridge.js")
-        .and_then(|bytes| std::str::from_utf8(bytes).ok())
-        .ok_or_else(|| "packed project has no UTF-8 program".to_owned())?;
+    let (cartridge, program) =
+        load_cartridge_program(&packed.bytes).map_err(|error| error.to_string())?;
+    let javascript = std::str::from_utf8(&program)
+        .map_err(|_| "packed project has no UTF-8 program".to_owned())?;
     let manifest = &cartridge.manifest;
     let request = serde_json::json!({
         "revision": 1, "javascript": javascript,

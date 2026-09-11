@@ -17,8 +17,8 @@ pub mod types;
 
 pub use cartridge::{
     CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
-    ProjectManifest, UnpackedProject, compile_project, decode_cartridge, pack_project,
-    parse_project_manifest, unpack_cartridge_project,
+    ProjectManifest, UnpackedProject, compile_project, decode_cartridge, load_cartridge_program,
+    pack_project, parse_project_manifest, unpack_cartridge_project,
 };
 pub use cartridge_png::{
     CartridgePng, CartridgePngMetadata, decode_cartridge_png, encode_cartridge_png,

@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::{CartridgeError, PackedManifest, decode_cartridge, pack_project};
+use crate::{CartridgeError, PackedManifest, load_cartridge_program, pack_project};
 
 const STANDALONE_PLAYER: &str = include_str!("../../../packages/runtime/standalone/player.js");
 
@@ -36,18 +36,21 @@ pub fn export_standalone_html(
     project_files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<String, CartridgeError> {
     let packed = pack_project(manifest_source, project_files)?;
-    let cartridge = decode_cartridge(&packed.bytes)?;
+    let (cartridge, program) = load_cartridge_program(&packed.bytes)?;
     let title = escape_html(&cartridge.manifest.title);
     let author = escape_html(&cartridge.manifest.author);
     let presentation = standalone_presentation(&cartridge.entries);
     let year = presentation.year;
     let players = presentation.players;
     let controls = escape_html(&presentation.controls);
+    let mut files = cartridge.entries;
+    files
+        .entry("build/cartridge.js".to_owned())
+        .or_insert(program);
     let payload = StandalonePayload {
         manifest: cartridge.manifest,
         presentation,
-        files: cartridge
-            .entries
+        files: files
             .into_iter()
             .map(|(path, contents)| (path, base64(&contents)))
             .collect(),
@@ -336,5 +339,14 @@ update_rate = 60
             zip.windows(first.len())
                 .any(|window| window == first.as_bytes())
         );
+
+        let source_only = manifest.replace(
+            "update_rate = 60",
+            "update_rate = 60\ncompile_on_load = true",
+        );
+        let compact = export_standalone_html(&source_only, &files)
+            .expect("source-only project exports with its verified runtime program");
+        assert!(compact.contains("createConsoleRuntime"));
+        assert!(compact.contains("build/cartridge.js"));
     }
 }

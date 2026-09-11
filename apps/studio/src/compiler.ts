@@ -68,6 +68,7 @@ export interface ProjectManifest {
   readonly version: string;
   readonly entry: string;
   readonly update_rate: 30 | 60;
+  readonly compile_on_load?: boolean;
   readonly label: string | null;
   readonly thumbnail: string | null;
   readonly display: string | null;

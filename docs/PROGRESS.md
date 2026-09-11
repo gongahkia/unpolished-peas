@@ -915,6 +915,30 @@ Each group may produce several coherent commits, and integration occurs througho
   capture, editors, debug and offline paths remained green. Nothing was pushed, published or
   deployed.
 
+## 2026-09-11 — V1 milestone 9a: truthful size classes and showcase dogfood
+
+- Added optional `compile_on_load = true` within cartridge format revision 1. It removes only
+  redundant archived release JavaScript/source-map entries, retains all normalized editable source,
+  assets/presentation metadata plus expected generated-program byte count/SHA-256, and recompiles
+  through the authoritative compiler. Load refuses a build-identity mismatch. Old/default project
+  serialization skips the new false/empty fields, so all four prior first-party `.pxc` files retain
+  their exact bytes and hashes.
+- Added three original source-visible public-API cartridges with distinct labels: **Signal 4K** is a
+  procedural bus/raster/synth transmission; **Pocket Relay** is an interactive RNG/custom-font/audio/
+  save mini-game; **Hardware Gauntlet** stresses endian RAM/ROM/framebuffer aliases, raster, all four
+  ports, wavetable synth, font, task scheduler and counters. Studio first-installs, shelves, runs and
+  source-debugs all three; the PWA precache includes every built-in cartridge.
+- Two clean packs of all seven first-party carts byte-compare. Exact new artifacts are Signal 4K
+  **2,364 bytes**, SHA-256 `8025fd248b327a41b1d2a983fba2f1339c99ef507ef78a77ba7c01dd71c23b05`;
+  Pocket Relay **4,609 bytes**, `6d36d38187f30ea08e7b25f7492104543231e061900d86b03af4a596cea75ea2`;
+  Hardware Gauntlet **4,619 bytes**, `903aa05766b0c5ef88a7f85340e05a721da923a569cbbf6da2625a94d832afdf`.
+  Their five-frame work peaks are 5,529 / 4,743 / 8,266, with no faults.
+- Original artifacts remain exactly 42,904 / 41,315 / 38,091 / 27,869 bytes and retain hashes
+  `225f164c...` / `44abf739...` / `3f4172ea...` / `0175b0e7...`. Strict Rust tests/Clippy and
+  TypeScript types/lint/build pass; CLI rebuilds/runs every showcase and enforces 4K/16K/64K ceilings.
+  Expanded production Firefox runs and debugs the showcase set and passed in **46.5 s**. Nothing was
+  pushed, published or deployed.
+
 ## Current risks (V1 work in progress)
 
 - Cartridge artifact, capture, shelf, ZIP/embed and URL-fragment flows are implemented;
