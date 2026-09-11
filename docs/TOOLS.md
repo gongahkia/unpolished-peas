@@ -14,6 +14,7 @@ px240c run my-cart --headless --frames 120 --input tests/path.json
 px240c pack my-cart
 px240c info my-cart/dist/my-cart.pxc
 px240c export html my-cart
+px240c export png my-cart --output my-cart.pxc.png
 px240c lsp
 ```
 
@@ -46,6 +47,11 @@ its direct importers. It supplies project completion, hover, signature help, cro
 references and rename, diagnostics, formatting, and document/workspace symbols. Renaming an imported
 member edits its declaration and qualified member references, not the import alias or comments.
 PXCL/1 is ASCII-only, so valid source has identical byte and LSP UTF-16 columns.
+
+`export html` writes the source-inspectable single-file player. `export png` writes the deterministic
+physical cartridge image with the same complete canonical bytes in its validated PNG chunk. `info`
+accepts raw or PNG cartridges and reports the inner archive rather than trusting presentation
+metadata.
 
 Studio commands, project persistence, editor recovery, runtime launch, and browser fallbacks remain
 documented in [STUDIO.md](STUDIO.md). Headless traces and cartridge layout are documented in

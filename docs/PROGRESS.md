@@ -856,15 +856,43 @@ Each group may produce several coherent commits, and integration occurs througho
   first-party cartridge sizes and hashes remain unchanged. Nothing was pushed, published or
   deployed.
 
+## 2026-09-11 — V1 milestone 7a: deterministic interchange, cartridge image, and capture
+
+- Added dependency-free deterministic PNG encoding and bounded RGB/RGBA/indexed PNG decoding with
+  filters 0-4, palette conversion, alpha mapping, CRC/decompressed-size/dimension checks, nearest
+  and ordered-dither conversion. Sprite and tile tools import/preview/export PNG, settings validate
+  240x144 label PNG, and font assets round-trip through their documented `.pxf` JSON bytes.
+- Added production-synth PCM16 stereo WAV export for patches and complete tracker orders, with a
+  ten-minute ceiling and canonical fixture SHA-256
+  `094f8a60e627c49f6c6209704bd24bb3e6c64e0517cc938b05fee1360e85c503`. Sound editing now displays the
+  production PCM oscilloscope; patch and music WAV controls share the runtime synthesizer.
+- Added the original 320x240 PX-240C physical `.pxc.png` design. Its CRC-checked `pxCa` chunk retains
+  the byte-exact source-visible canonical cartridge and `pxCm` retains bounded identity metadata.
+  Studio captures the last run frame for the label, imports raw/PNG forms transactionally, and the
+  native CLI exports/inspects/runs PNG cartridges. TypeScript and Rust codecs independently reject
+  corrupt/duplicate/oversize chunks and round-trip the canonical bytes.
+- Added exact native/2x-4x PNG screenshots, a deterministic fixed-palette 30 fps GIF limited to the
+  most recent five seconds, and bounded canonical `.pxrec` export/import. Replay input restarts the
+  Worker at frame zero and uses the same trace validator as headless execution. Firefox decoded the
+  downloaded GIF as 240x144, checked a 480x288 PNG, and re-imported a downloaded replay in the real
+  player workflow. Expanded asset/raw/PNG/HTML downloads also re-imported successfully.
+- Focused verification passed strict TypeScript and ESLint, 12 PNG/WAV/GIF/replay/headless Vitest
+  tests, Rust PNG codec/CLI tests and Clippy, production builds, and the complete expanded Firefox
+  workflow in **48.8 s**. The deterministic 2x2 GIF fixture is
+  `be91301d85c0c8ba5c9f20ac0d37042224946f0e265bfd13eab744dd7871ef28`; the PNG fixture is
+  `c52601bf655b456ad11ef15bf558b902ec9003b205225d58d1d77d74951678be`. Original cartridge builds remain byte-identical at 42,904 / 41,315 / 38,091 / 27,869
+  bytes with their prior hashes. Shelf/distribution/embed/URL forms and broader V1 work remain open.
+  Nothing was pushed, published or deployed.
+- The complete gate subsequently passed **150 Vitest tests**, the full Firefox workflow in **1.1
+  min**, **52 Rust tests**, strict formatting/lint/types/Clippy, native/release Wasm, and production
+  builds. Four CPU-heavy tests initially exceeded Vitest's five-second default while two unrelated
+  host test suites saturated the machine; bounding Vitest to four workers with a 15-second per-test
+  ceiling made the repository gate repeatably pass without weakening assertions or skipping tests.
+
 ## Current risks (V1 work in progress)
 
-- Custom revision-1 bitmap fonts now decode into the real visual image, expose deterministic
-  descriptors and bus-writable glyph masks, and render through typed `font_print` calls while the
-  original `print` system font remains unchanged. Runtime/codec/storage/compiler tests cover exact
-  accounting, malformed files, fallback rendering and bus aliasing. The custom font editor and
-  interchange UI are still required before the creation-tools milestone is complete.
-- Deterministic PNG/WAV interchange and capture/export remain open around the now-complete core map,
-  raster and font editing paths.
+- Cartridge image and bounded PNG/WAV/GIF/replay paths are implemented; local shelf, ZIP/embed, URL
+  fragment sharing, and save-management surfaces remain open.
 - Folder-backed editing and incremental compiler invalidation beyond direct importer diagnostics
   remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.

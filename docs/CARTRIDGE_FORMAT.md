@@ -66,6 +66,21 @@ Validated cartridges can be reconstructed into their source-visible project form
 the `source/`, `assets/`, and `presentation/` prefixes, regenerates a validated `cart.toml`, and
 never exposes compiled build entries as editable source.
 
+## Cartridge PNG and presentation identity
+
+`.pxc.png` is a deterministic 320x240 RGBA PNG depicting PX-240C's own sloped-shell cartridge
+object and label, not another fantasy console's silhouette. A required private `pxCa` ancillary
+chunk contains the byte-exact canonical `.pxc`; a required `pxCm` chunk contains bounded canonical
+JSON title, author, year, player-count, and control metadata. Both normal PNG chunk CRCs and the
+inner canonical cartridge hashes are checked before project reconstruction. Exactly one payload and
+metadata chunk are required. Studio accepts raw `.pxc` and `.pxc.png`; `px240c export png PROJECT
+--output FILE` writes the image and `px240c info FILE.pxc.png` inspects its embedded cartridge.
+
+The image pixels are presentation only. Import always reconstructs source and assets from `pxCa`,
+so label capture and image conversion cannot change program identity. Studio uses the most recent
+240x144 run frame for the label when available, otherwise its fixed factory screen. Project settings
+store optional `presentation/cartridge.json`; label PNG import is strictly 240x144.
+
 ## Standalone HTML
 
 `px240c export html` and the Studio `export` command call the same Rust exporter. It first packs and
@@ -91,6 +106,11 @@ audio/PCM hashes, completed/requested frames, peak work and any stable PX9xxx fa
 are bounded to 36,000 frames, 8 MiB of trace JSON, 2 MiB of decoded files, 256 KiB of ROM and 8 KiB
 of save data. A modeled cartridge fault is a successful trace result; malformed input or a host
 failure exits unsuccessfully.
+
+The same revision-1 trace is the `.pxrec` interchange form. Studio records exact four-port and
+pointer input, compacts adjacent identical frames with `duration`, exports canonical JSON, and can
+restart the active cartridge from an imported trace. Import is UTF-8/schema/count/range validated
+before the Worker receives any input.
 
 ## Reproducibility
 
