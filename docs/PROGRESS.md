@@ -889,10 +889,36 @@ Each group may produce several coherent commits, and integration occurs througho
   host test suites saturated the machine; bounding Vitest to four workers with a 15-second per-test
   ceiling made the repository gate repeatably pass without weakening assertions or skipping tests.
 
+## 2026-09-11 — V1 milestone 8a: offline distribution and PX-240C Cart Bay
+
+- Extended the one canonical standalone host with title/author/year/player/control metadata,
+  deterministic pause with audio-queue closure, fresh-Worker reset, fullscreen, source inspection,
+  and `#embed` chrome reduction. Runtime semantics, source/assets, save namespace and offline behavior
+  remain the same shared path used before this change.
+- Added deterministic timestamp-free stored ZIP codecs in Rust and TypeScript. `px240c export zip`
+  and Studio `EXPORT ZIP` place the byte-exact single-file player at `index.html`; core/CLI/browser
+  tests validate ZIP headers, repeat bytes, the embedded HTML and absence of external URLs. The small
+  codec fixture SHA-256 is `cd29362199db5175e8d1a169d5a969809745eef09f4a735f218f2696cc896871`.
+- Added conservative tiny-cart links: a complete cartridge must be at most 6,000 bytes and the
+  `#pxc=` base64url fragment at most 8,192 characters. Studio shows both counts before copying,
+  validates and imports on boot, removes the fragment after local recovery-backed storage, and
+  reports malformed input without blocking boot. Firefox loaded a real 4,533-byte default cart from
+  the link and proved no request URL contained the fragment bytes.
+- Added the local-only **PX-240C CART BAY** over the existing repository. It displays bundled,
+  imported, created, fragment and duplicate carts with safe labels, exact 4K/16K/64K/256K class,
+  players, favorites, recents and save presence. Launch/source/duplicate/title rename/raw export all
+  operate on canonical projects. Removal requires a second confirmation and moves the exact current
+  revision into a recoverable bin without deleting recovery history or its isolated save.
+- Focused repository/storage/exporter/CLI tests, strict formatting/lint/types/Clippy, and production
+  builds pass. The expanded Firefox workflow in **1.2 min** exercised shelf play, source, favorite,
+  duplicate, rename with stable ID, export, remove and restore; raw/PNG/fragment/HTML/ZIP/embed,
+  capture, editors, debug and offline paths remained green. Nothing was pushed, published or
+  deployed.
+
 ## Current risks (V1 work in progress)
 
-- Cartridge image and bounded PNG/WAV/GIF/replay paths are implemented; local shelf, ZIP/embed, URL
-  fragment sharing, and save-management surfaces remain open.
+- Cartridge artifact, capture, shelf, ZIP/embed and URL-fragment flows are implemented;
+  checksum/versioned save management remains open.
 - Folder-backed editing and incremental compiler invalidation beyond direct importer diagnostics
   remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.

@@ -16,6 +16,11 @@ interface StandalonePayload {
     readonly display: string | null;
     readonly assets: Readonly<Record<string, ProjectAssetDeclaration>>;
   };
+  readonly presentation: {
+    readonly year: number;
+    readonly players: number;
+    readonly controls: string;
+  };
   readonly files: Readonly<Record<string, string>>;
   readonly rom: string;
 }
@@ -28,6 +33,9 @@ const payload = globalThis.__PX240C_CARTRIDGE__;
 const canvas = requireElement('#screen') as HTMLCanvasElement;
 const status = requireElement('#status') as HTMLOutputElement;
 const soundButton = requireElement('#sound') as HTMLButtonElement;
+const pauseButton = requireElement('#pause') as HTMLButtonElement;
+const resetButton = requireElement('#reset') as HTMLButtonElement;
+const fullscreenButton = requireElement('#fullscreen') as HTMLButtonElement;
 const sourceButton = requireElement('#source') as HTMLButtonElement;
 const inspector = requireElement('#inspector') as HTMLElement;
 const sourceSelect = requireElement('#source-file') as HTMLSelectElement;
@@ -60,38 +68,72 @@ sourceButton.addEventListener('click', () => {
   sourceButton.textContent = 'SOURCE';
 });
 
-const worker = new InlineSandboxWorker({ name: `px240c-standalone-${payload.manifest.id}` });
-const sandbox = new SandboxSession(worker, 1_000);
-const input = new BrowserInput(canvas);
 const renderer = new WebGlIndexedRenderer(canvas);
+let sandbox: SandboxSession | undefined;
+let input: BrowserInput | undefined;
 let audio: WebAudioSink | undefined;
 let stopped = false;
+let paused = false;
+let generation = 0;
 
-soundButton.addEventListener(
-  'click',
-  () => {
-    audio = new WebAudioSink();
-    void audio.resume().then(() => {
-      soundButton.textContent = 'SOUND ON';
-      soundButton.disabled = true;
-    });
-  },
-  { once: true },
-);
+document.documentElement.dataset.embed = String(location.hash === '#embed');
+
+soundButton.addEventListener('click', () => {
+  audio = new WebAudioSink();
+  void audio.resume().then(() => {
+    soundButton.textContent = 'SOUND ON';
+    soundButton.disabled = true;
+  });
+});
+
+pauseButton.addEventListener('click', () => {
+  paused = !paused;
+  pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
+  if (paused) {
+    status.textContent = 'PAUSED';
+    void closeAudio();
+  }
+});
+
+resetButton.addEventListener('click', () => {
+  void restart().catch(showError);
+});
+
+fullscreenButton.addEventListener('click', () => {
+  void document.querySelector('.unit')?.requestFullscreen();
+});
 
 globalThis.addEventListener('pagehide', () => {
   stopped = true;
-  input.destroy();
-  sandbox.dispose();
+  generation += 1;
+  input?.destroy();
+  sandbox?.dispose();
   if (audio !== undefined) void audio.close();
 });
 
-void start().catch(showError);
+void restart().catch(showError);
 
-async function start(): Promise<void> {
+async function restart(): Promise<void> {
+  generation += 1;
+  const currentGeneration = generation;
+  input?.destroy();
+  sandbox?.dispose();
+  await closeAudio();
+  stopped = false;
+  paused = false;
+  pauseButton.textContent = 'PAUSE';
+  soundButton.textContent = 'SOUND';
+  soundButton.disabled = false;
+  const nextWorker = new InlineSandboxWorker({
+    name: `px240c-standalone-${payload.manifest.id}-${String(currentGeneration)}`,
+  });
+  const nextSandbox = new SandboxSession(nextWorker, 1_000);
+  const nextInput = new BrowserInput(canvas);
+  sandbox = nextSandbox;
+  input = nextInput;
   const javascript = new TextDecoder().decode(requireFile('build/cartridge.js'));
   const rom = decodeBase64(payload.rom);
-  await sandbox.load(javascript, {
+  await nextSandbox.load(javascript, {
     seed: 0x240c1999,
     workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
     updateRate: payload.manifest.updateRate,
@@ -104,22 +146,37 @@ async function start(): Promise<void> {
     rom,
   });
   canvas.focus();
-  requestAnimationFrame(() => void frame());
+  requestAnimationFrame(() => void frame(currentGeneration, nextSandbox, nextInput));
 }
 
-async function frame(): Promise<void> {
-  if (stopped) return;
+async function frame(
+  currentGeneration: number,
+  currentSandbox: SandboxSession,
+  currentInput: BrowserInput,
+): Promise<void> {
+  if (stopped || currentGeneration !== generation) return;
+  if (paused) {
+    requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
+    return;
+  }
   try {
-    const result = await sandbox.frame(input.poll());
+    const result = await currentSandbox.frame(currentInput.poll());
+    if (currentGeneration !== generation) return;
     renderer.render(result.output.indexedPixels);
     audio?.enqueue(result.output.audio);
     if (result.saveCommit !== undefined) writeSave(result.saveCommit);
     status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
-    requestAnimationFrame(() => void frame());
+    requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
   } catch (error: unknown) {
     stopped = true;
     showError(error);
   }
+}
+
+async function closeAudio(): Promise<void> {
+  const current = audio;
+  audio = undefined;
+  if (current !== undefined) await current.close();
 }
 
 function readSave(): Uint8Array {

@@ -14,8 +14,8 @@ use clap::{Parser, Subcommand};
 use pxcl_core::{
     AssetCatalog, CartridgePngMetadata, CompileMode, Diagnostic, FileId, GeneratedProgram,
     ProjectManifest, SourceFile, analyze_module, compile, compile_project, decode_cartridge,
-    decode_cartridge_png, encode_cartridge_png, export_standalone_html, format_source,
-    pack_project, parse_project_manifest, unpack_cartridge_project,
+    decode_cartridge_png, encode_cartridge_png, export_itch_zip, export_standalone_html,
+    format_source, pack_project, parse_project_manifest, unpack_cartridge_project,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -149,6 +149,13 @@ enum ExportCommand {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Export an itch.io-ready ZIP containing the offline player as `index.html`.
+    Zip {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -174,6 +181,10 @@ fn main() -> ExitCode {
         Command::Export {
             command: ExportCommand::Png { path, output },
         } => export_png_directory(&path, output.as_deref())
+            .map_or(ExitCode::FAILURE, |_| ExitCode::SUCCESS),
+        Command::Export {
+            command: ExportCommand::Zip { path, output },
+        } => export_zip_directory(&path, output.as_deref())
             .map_or(ExitCode::FAILURE, |_| ExitCode::SUCCESS),
         Command::Run {
             path,
@@ -286,6 +297,26 @@ fn export_png_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, (
     }
     fs::write(&output, &png).map_err(|error| eprintln!("{}: {error}", output.display()))?;
     println!("exported {} ({} bytes)", output.display(), png.len());
+    Ok(output)
+}
+
+fn export_zip_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
+    let project = load_project(path)?;
+    let zip = export_itch_zip(&project.manifest_source, &project.files).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    let output = output.map_or_else(
+        || {
+            path.join("dist")
+                .join(format!("{}-itch.zip", project.manifest.id))
+        },
+        Path::to_path_buf,
+    );
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|error| eprintln!("{}: {error}", parent.display()))?;
+    }
+    fs::write(&output, &zip).map_err(|error| eprintln!("{}: {error}", output.display()))?;
+    println!("exported {} ({} bytes)", output.display(), zip.len());
     Ok(output)
 }
 

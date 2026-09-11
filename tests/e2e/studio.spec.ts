@@ -266,6 +266,65 @@ on draw:
   await expect(page.locator('.player-status')).not.toHaveClass(/error/);
   await page.locator('.stop-player').click();
 
+  await shellCommand(page, 'new e2e-link TINY LINK');
+  await shellCommand(page, 'share');
+  await expect(page.locator('[data-view="share"]')).toBeVisible();
+  await expect(page.locator('[data-view="share"]')).toContainText('FRAGMENT ONLY / NO UPLOAD');
+  const shareUrl = await page.getByLabel('Cartridge share URL').inputValue();
+  expect(shareUrl).toContain('#pxc=');
+  expect(shareUrl.length).toBeLessThanOrEqual(8_256);
+  const fragmentRequests: string[] = [];
+  const fragmentPage = await context.newPage();
+  fragmentPage.on('request', (request) => fragmentRequests.push(request.url()));
+  await fragmentPage.goto(shareUrl);
+  await expect(fragmentPage.locator('html')).toHaveAttribute('data-studio-ready', 'true');
+  await expect(fragmentPage.locator('.terminal')).toContainText('FRAGMENT IMPORT e2e-link');
+  expect(fragmentRequests.every((url) => !url.includes('pxc='))).toBe(true);
+  await fragmentPage.close();
+  await page.locator('[data-back]').click();
+
+  await shellCommand(page, 'shelf');
+  await expect(page.locator('[data-view="shelf"]')).toContainText('PX-240C CART BAY');
+  await page.locator('.shelf-item[data-id="e2e-link"]').click();
+  await page.locator('[data-shelf="play"]').click();
+  await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await page.locator('.stop-player').click();
+  await shellCommand(page, 'shelf');
+  await page.locator('.shelf-item[data-id="e2e-link"]').click();
+  await page.locator('[data-shelf="source"]').click();
+  await page.getByRole('button', { name: 'main.pxl' }).click();
+  await expect(page.locator('[data-view="inspector"]')).toContainText('Made by @gongahkia');
+  await page.locator('[data-back]').click();
+  await shellCommand(page, 'shelf');
+  await page.locator('.shelf-item[data-id="e2e-link"]').click();
+  await page.locator('[data-shelf="favorite"]').click();
+  await expect(page.locator('.shelf-item[data-id="e2e-link"] strong')).toContainText('★');
+  await page.locator('.shelf-item[data-id="e2e-link"]').click();
+  await page.locator('[data-shelf="copy"]').click();
+  await expect(page.locator('.shelf-item[data-id="e2e-link.copy"]')).toBeVisible();
+  await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
+  await page.locator('[data-shelf="rename"]').click();
+  await page.getByRole('textbox', { name: 'TITLE' }).fill('LINK ARCHIVE COPY');
+  await page.getByRole('button', { name: 'SAVE NAME' }).click();
+  await expect(page.locator('.shelf-item[data-id="e2e-link.copy"] strong')).toContainText(
+    'LINK ARCHIVE COPY',
+  );
+  await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
+  const shelfExportPromise = page.waitForEvent('download');
+  await page.locator('[data-shelf="export"]').click();
+  expect((await shelfExportPromise).suggestedFilename()).toBe('e2e-link.copy.pxc');
+  await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
+  await page.locator('[data-shelf="remove"]').click();
+  await expect(page.locator('.shelf-status')).toContainText('CONFIRM REMOVE');
+  await page.locator('[data-shelf="remove"]').click();
+  const removedCopy = page.locator('.shelf-item.removed[data-id="e2e-link.copy"]');
+  await expect(removedCopy).toBeVisible();
+  await removedCopy.click();
+  await expect(page.locator('[data-shelf="remove"]')).toHaveText('RESTORE');
+  await page.locator('[data-shelf="remove"]').click();
+  await expect(page.locator('.shelf-item[data-id="e2e-link.copy"]')).not.toHaveClass(/removed/);
+  await page.locator('[data-shelf="back"]').click();
+
   await shellCommand(page, 'new e2e-alpha E2E ALPHA');
   await expect(page.locator('.active-cart')).toHaveText('E2E-ALPHA');
   await shellCommand(page, 'edit');
@@ -476,6 +535,22 @@ on draw:
   expect(htmlPath).not.toBeNull();
   await expect(page.locator('.terminal')).toContainText(/EXPORTED e2e-alpha\.html \d+ BYTES/);
 
+  const zipDownloadPromise = page.waitForEvent('download');
+  await shellCommand(page, 'export zip');
+  const zipDownload = await zipDownloadPromise;
+  expect(zipDownload.suggestedFilename()).toBe('e2e-alpha-itch.zip');
+  const zipPath = await zipDownload.path();
+  expect(zipPath).not.toBeNull();
+  const zipBytes = await readFile(zipPath);
+  expect(zipBytes.readUInt32LE(0)).toBe(0x04034b50);
+  const zipNameLength = zipBytes.readUInt16LE(26);
+  expect(zipBytes.subarray(30, 30 + zipNameLength).toString()).toBe('index.html');
+  const zipHtmlSize = zipBytes.readUInt32LE(18);
+  const zipHtml = zipBytes
+    .subarray(30 + zipNameLength, 30 + zipNameLength + zipHtmlSize)
+    .toString('utf8');
+  expect(zipHtml).toBe(await readFile(htmlPath, 'utf8'));
+
   const standalone = await context.newPage();
   const standaloneErrors: string[] = [];
   standalone.on('pageerror', (error) => standaloneErrors.push(error.message));
@@ -485,11 +560,26 @@ on draw:
   await standalone.goto('/');
   await standalone.setContent(await readFile(htmlPath, 'utf8'));
   await expect(standalone.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await expect(standalone.locator('#fullscreen')).toBeVisible();
+  await standalone.locator('#pause').click();
+  await expect(standalone.locator('#status')).toHaveText('PAUSED');
+  await standalone.locator('#pause').click();
+  await expect(standalone.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await standalone.locator('#reset').click();
+  await expect(standalone.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
   await standalone.locator('#source').click();
   await expect(standalone.locator('#inspector')).toBeVisible();
   await expect(standalone.locator('#source-view')).toContainText('Made by @gongahkia');
   expect(standaloneErrors).toEqual([]);
   await standalone.close();
+
+  const embedded = await context.newPage();
+  await embedded.goto('/#embed');
+  await embedded.setContent(zipHtml);
+  await expect(embedded.locator('html')).toHaveAttribute('data-embed', 'true');
+  await expect(embedded.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await expect(embedded.locator('main > header')).toBeHidden();
+  await embedded.close();
 
   const moduleProject = testInfo.outputPath('module-project');
   await mkdir(`${moduleProject}/src`, { recursive: true });

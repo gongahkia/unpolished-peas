@@ -6,13 +6,21 @@ cartridge worker receives only a validated copy of its own integer save values; 
 the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
-`import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `inspect`, `info`, `help`, and `reboot`
+`shelf`, `import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, and `reboot`
 operate on real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, reconstructs
 its editable project, and also accepts a `.pxc.png` only after validating its bounded PNG chunks and
 embedded canonical cartridge. It preserves the previous same-ID revision for recovery. `inspect` displays the
 canonical packed metadata and all original source modules. `export` downloads one offline HTML
 player with its own visible source inspector. `cart` downloads the PX-240C 320x240 cartridge-object
 PNG with title/author/year/player/control identity and the byte-exact `.pxc` payload.
+
+`shelf` opens the local-only **PX-240C CART BAY**. It derives exact packed class and identity from
+each current project and lists bundled/created/imported/fragment/duplicate origin, validated label,
+favorite, recent play, player count, and save presence. Selected carts launch, expose packed source,
+duplicate under a new immutable ID, change display title without changing their save key, export, or
+move to a two-step-confirmed recoverable bin. Bin restore retains the exact project revision,
+recovery history, shelf state, and isolated save. All records are IndexedDB-local and survive offline
+reload; there is no account, sync, gallery, rating, or telemetry path.
 The source editor has PXCL highlighting, live compiler diagnostics, completion, symbol navigation,
 canonical formatting, explicit save, run, and external-revision reload controls.
 Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
@@ -65,6 +73,7 @@ px240c watch my-game
 px240c pack my-game
 px240c export html my-game
 px240c export png my-game --output dist/my-game.pxc.png
+px240c export zip my-game --output dist/my-game-itch.zip
 px240c run my-game
 px240c run my-game --headless --frames 120 --input tests/replays/my-game.json
 px240c info my-game/dist/my-game.pxc
@@ -80,6 +89,11 @@ that differs from canonical two-space formatting. `run` writes the same standalo
 headless environment. `run --headless` instead drives the production console core under Node and
 emits revisioned JSON framebuffer/state/audio/PCM/save hashes. It accepts a project directory or
 `.pxc`, an explicit seed/frame count, compact controller trace and optional raw save image.
+
+The HTML player has pause/reset/fullscreen/source controls, presentation metadata, and a `#embed`
+mode. Studio `EXPORT ZIP` stores the same single HTML as `index.html`. `SHARE` offers only complete
+carts up to 6,000 bytes as an 8,192-character maximum `#pxc=` fragment, displays the exact count
+before copy, and never sends cartridge bytes in a request or query string.
 
 The browser production build runs `scripts/build-wasm.sh`, which builds the Rust compiler for
 `wasm32-unknown-unknown` and generates pinned web bindings before Vite bundles it. Cartridge

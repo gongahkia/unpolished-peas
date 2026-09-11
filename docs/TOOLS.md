@@ -15,6 +15,7 @@ px240c pack my-cart
 px240c info my-cart/dist/my-cart.pxc
 px240c export html my-cart
 px240c export png my-cart --output my-cart.pxc.png
+px240c export zip my-cart --output my-cart-itch.zip
 px240c lsp
 ```
 
@@ -51,7 +52,8 @@ PXCL/1 is ASCII-only, so valid source has identical byte and LSP UTF-16 columns.
 `export html` writes the source-inspectable single-file player. `export png` writes the deterministic
 physical cartridge image with the same complete canonical bytes in its validated PNG chunk. `info`
 accepts raw or PNG cartridges and reports the inner archive rather than trusting presentation
-metadata.
+metadata. `export zip` stores the exact offline HTML as `index.html` with fixed zero timestamps for a
+byte-identical itch.io-ready artifact.
 
 Studio commands, project persistence, editor recovery, runtime launch, and browser fallbacks remain
 documented in [STUDIO.md](STUDIO.md). Headless traces and cartridge layout are documented in

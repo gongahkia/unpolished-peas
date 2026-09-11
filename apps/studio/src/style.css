@@ -345,6 +345,138 @@ body,
   font: inherit;
 }
 
+.share-view main {
+  padding: 18px 12px 0;
+  text-align: center;
+}
+
+.share-view p {
+  margin: 4px 0;
+  font-size: 7px;
+}
+
+.share-url {
+  width: 208px;
+  height: 38px;
+  resize: none;
+  border: 1px solid var(--cyan);
+  background: var(--deep);
+  color: var(--cream);
+  font: 5px/1.3 monospace;
+}
+
+.share-copy {
+  display: block;
+  margin: 4px auto;
+}
+
+.shelf-list {
+  position: absolute;
+  inset: 16px 0 28px;
+  overflow-y: auto;
+  padding: 2px 4px 16px;
+}
+
+.shelf-item {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  width: 100%;
+  min-height: 30px;
+  margin: 0 0 2px;
+  padding: 2px;
+  border: 1px solid #7b746d;
+  background: var(--deep);
+  color: var(--cream);
+  text-align: left;
+}
+
+.shelf-item[aria-selected='true'] {
+  border-color: var(--cyan);
+  background: #292725;
+}
+
+.shelf-item img,
+.shelf-label {
+  width: 38px;
+  height: 24px;
+  object-fit: cover;
+  border: 1px solid #7b746d;
+  background: var(--screen);
+}
+
+.shelf-label {
+  display: grid;
+  place-items: center;
+  color: var(--amber);
+  font-size: 7px;
+}
+
+.shelf-item strong,
+.shelf-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-item strong {
+  font-size: 6px;
+}
+
+.shelf-item small {
+  margin-top: 3px;
+  color: #bcb19c;
+  font-size: 4px;
+}
+
+.shelf-item.removed {
+  opacity: 0.72;
+}
+
+.shelf-status {
+  position: absolute;
+  right: 3px;
+  bottom: 15px;
+  left: 3px;
+  height: 9px;
+  margin: 0;
+  overflow: hidden;
+  color: var(--amber);
+  font-size: 5px;
+  white-space: nowrap;
+}
+
+.shelf-actions {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  left: 2px;
+  display: flex;
+  gap: 1px;
+}
+
+.shelf-actions button {
+  flex: 1;
+  min-width: 0;
+  padding: 2px 0;
+  font-size: 4px;
+}
+
+.shelf-rename form {
+  display: grid;
+  gap: 8px;
+  padding: 28px 14px;
+  font-size: 7px;
+}
+
+.shelf-rename input {
+  width: 180px;
+}
+
+.shelf-rename p {
+  font-size: 5px;
+}
+
 .stop-player {
   left: 2px;
 }
