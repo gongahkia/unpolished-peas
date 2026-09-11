@@ -30,6 +30,22 @@ map to the visible camera/clip region.
 - Eight synth voices, eight tracker channels, and 48 kHz stereo host output.
 - Four controller ports, 1-64 pixel sprite axes, 8x8 tiles, integer nearest-neighbor transforms.
 
+## V1 complete-artifact size classes
+
+The class meter uses exact canonical `.pxc` length: 4K is <=4,096 bytes, 16K <=16,384, 64K
+<=65,536, and 256K <=262,144. It includes source, assets, metadata, hashes, compression and container
+overhead. `compile_on_load = true` may remove archived generated JS only while retaining the original
+source plus expected generated-program length/hash.
+
+| Cartridge         | Complete `.pxc` | Class | Five-frame headless work peak |
+| ----------------- | --------------: | ----: | ----------------------------: |
+| Signal 4K         |         2,364 B |    4K |                         5,529 |
+| Pocket Relay      |         4,609 B |   16K |                         4,743 |
+| Hardware Gauntlet |         4,619 B |   16K |                         8,266 |
+
+Hardware Gauntlet is the required <=64K stress showcase; its compact public-API implementation also
+qualifies for the stricter 16K class. This is reported as measured rather than padded to a badge.
+
 No limit required adjustment from the brief's initial values; the previously unspecified work
 ceiling is frozen at 50,000. Later format revisions may change a profile only with a revisioned,
 measured compatibility decision.

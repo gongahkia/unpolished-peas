@@ -41,6 +41,9 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await expect(page.locator('.terminal')).toContainText('ashvault');
   await expect(page.locator('.terminal')).toContainText('raster-rush');
   await expect(page.locator('.terminal')).toContainText('px240c-service');
+  await expect(page.locator('.terminal')).toContainText('signal-4k');
+  await expect(page.locator('.terminal')).toContainText('pocket-relay');
+  await expect(page.locator('.terminal')).toContainText('hardware-gauntlet');
 
   for (const cartridge of [
     { id: 'cinder-circuit', key: 'z', work: ['W03274', 'W03342'] },
@@ -87,6 +90,24 @@ test('complete local Studio and distribution workflow', async ({ page, context }
     .toBeGreaterThanOrEqual(3);
   await expect(page.locator('.player-status')).not.toHaveClass(/error/);
   await page.locator('.stop-player').click();
+
+  for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet']) {
+    await shellCommand(page, `load ${id}`);
+    await shellCommand(page, 'run');
+    await expect
+      .poll(async () => {
+        const status = await page.locator('.player-status').innerText();
+        return /^F\d{5} W\d{5}$/.test(status) ? Number(status.slice(1, 6)) : -1;
+      })
+      .toBeGreaterThanOrEqual(2);
+    await expect(page.locator('.player-status')).not.toHaveClass(/error/);
+    await page.locator('.stop-player').click();
+  }
+  await shellCommand(page, 'load signal-4k');
+  await shellCommand(page, 'debug');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toContainText('main.pxl');
+  await page.locator('[data-debug="back"]').click();
 
   await shellCommand(page, 'new e2e-bus MEMORY CONFORMANCE');
   await shellCommand(page, 'edit');

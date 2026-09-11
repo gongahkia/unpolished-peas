@@ -15,6 +15,10 @@ function offlineServiceWorker(): Plugin {
         'cartridges/ashvault.pxc',
         'cartridges/cinder-circuit.pxc',
         'cartridges/raster-rush.pxc',
+        'cartridges/px240c-service.pxc',
+        'cartridges/signal-4k.pxc',
+        'cartridges/pocket-relay.pxc',
+        'cartridges/hardware-gauntlet.pxc',
       ];
       const files = [
         './',

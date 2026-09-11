@@ -491,6 +491,9 @@ fn bundled_cartridges_compile_and_pack_within_capacity() {
         "ashvault",
         "raster-rush",
         "px240c-service",
+        "signal-4k",
+        "pocket-relay",
+        "hardware-gauntlet",
     ] {
         let project = cartridges.join(id);
         let check = binary()
@@ -522,6 +525,35 @@ fn bundled_cartridges_compile_and_pack_within_capacity() {
             .expect("packed cartridge metadata")
             .len();
         assert!(size < 256 * 1024, "{id} exceeds the cartridge capacity");
+        let class_limit = match id {
+            "signal-4k" => 4_096,
+            "pocket-relay" => 16_384,
+            _ => 65_536,
+        };
+        assert!(
+            size <= class_limit,
+            "{id} misses its complete-artifact class"
+        );
+        if matches!(id, "signal-4k" | "pocket-relay" | "hardware-gauntlet") {
+            let headless = binary()
+                .args([
+                    "run",
+                    project.to_str().expect("UTF-8 cartridge path"),
+                    "--headless",
+                    "--frames",
+                    "3",
+                ])
+                .output()
+                .expect("showcase headless run starts");
+            assert!(
+                headless.status.success(),
+                "{id}: {}",
+                String::from_utf8_lossy(&headless.stderr)
+            );
+            let result: Value = serde_json::from_slice(&headless.stdout).expect("headless JSON");
+            assert_eq!(result["summary"]["completedFrames"], 3, "{id}");
+            assert!(result.get("fault").is_none(), "{id}: {result}");
+        }
         fs::remove_file(packed).expect("temporary cartridge removes");
     }
 }

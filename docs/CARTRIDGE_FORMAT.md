@@ -62,6 +62,13 @@ Packed size is limited to 256 KiB. Decoding additionally limits expansion to 2 M
 entries, checks every length and hash, rejects trailing bytes, and verifies the manifest inventory.
 `px240c pack` performs a decode after encoding before it writes the artifact.
 
+Projects may opt into `compile_on_load = true`. This source-visible V1 form omits the two redundant
+`build/` payloads but stores the exact expected generated-program length and SHA-256 in the canonical
+manifest. A standard host recompiles with the authoritative PXCL compiler and refuses execution if
+the result does not match that frozen identity. Old/default carts retain their archived release JS
+and source map and rebuild byte-for-byte; the option exists specifically to make honest tiny carts
+possible without hiding or minifying editable source.
+
 Validated cartridges can be reconstructed into their source-visible project form. Import reverses
 the `source/`, `assets/`, and `presentation/` prefixes, regenerates a validated `cart.toml`, and
 never exposes compiled build entries as editable source.
@@ -137,3 +144,8 @@ For identical manifest, source, asset bytes, and compiler revision, `px240c pack
 bytes. The CLI integration suite builds two artifacts and byte-compares them; core tests also prove
 LF/CRLF normalization and bounded malformed-input handling. Standalone exports are likewise
 byte-identical for identical inputs.
+
+Complete-artifact classes are 4K (at most 4,096 bytes), 16K (16,384), 64K (65,536), and 256K
+(262,144). Every archive header, source module, asset, presentation file, manifest, build identity,
+and required payload counts. The shared compiler/player does not. `SIGNAL 4K`, `POCKET RELAY`, and
+`HARDWARE GAUNTLET` are first-party fixtures for the first three ceilings.
