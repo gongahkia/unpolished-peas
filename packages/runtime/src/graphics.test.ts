@@ -6,6 +6,7 @@ import {
   VisualAssetStore,
   orderedDither,
   type IndexedMap,
+  type IndexedFont,
   type IndexedSprite,
   type IndexedTileSet,
 } from './graphics';
@@ -245,5 +246,32 @@ describe('indexed graphics hardware', () => {
     expect(frame.indexedPixels[3]).toBe(7);
     expect(frame.indexedPixels[6 + 2]).toBe(7);
     expect(frame.indexedPixels[6 * HARDWARE.width + 6 + 2]).toBe(7);
+  });
+
+  it('renders custom bitmap fonts with newlines and fallback glyphs', () => {
+    const font: IndexedFont = {
+      kind: 'font',
+      name: 'tiny',
+      glyphWidth: 2,
+      glyphHeight: 2,
+      baseline: 1,
+      advanceX: 3,
+      advanceY: 4,
+      missingGlyph: 63,
+      glyphs: new Map([
+        [63, Uint8Array.of(1, 1, 0, 1)],
+        [65, Uint8Array.of(1, 0, 1, 1)],
+      ]),
+    };
+    const frame = new IndexedGraphics(new VisualAssetStore([font])).executeFrame([
+      command('clear', [0]),
+      command('font_print', [{ kind: 'Font', name: 'tiny' }, 'AZ\nA', 1, 2, 9]),
+    ]);
+    expect(frame.indexedPixels[2 * HARDWARE.width + 1]).toBe(9);
+    expect(frame.indexedPixels[3 * HARDWARE.width + 2]).toBe(9);
+    expect(frame.indexedPixels[2 * HARDWARE.width + 4]).toBe(9);
+    expect(frame.indexedPixels[3 * HARDWARE.width + 5]).toBe(9);
+    expect(frame.indexedPixels[6 * HARDWARE.width + 1]).toBe(9);
+    expect(frame.indexedPixels[6 * HARDWARE.width + 2]).toBe(0);
   });
 });

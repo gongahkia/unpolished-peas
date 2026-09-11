@@ -23,6 +23,21 @@ const sound = {
   pitch: { slideSemitonesPerFrame: 0, vibratoDepthSemitones: 0, vibratoPeriodFrames: 0 },
 };
 
+const font = {
+  revision: 1,
+  kind: 'font',
+  glyphWidth: 3,
+  glyphHeight: 5,
+  baseline: 4,
+  advanceX: 4,
+  advanceY: 6,
+  missingGlyph: 63,
+  glyphs: [
+    { code: 63, pixels: [1, 1, 1, 0, 0, 1, 0, 1, 0, 0, 0, 0, 0, 1, 0] },
+    { code: 65, pixels: [0, 1, 0, 1, 0, 1, 1, 1, 1, 1, 0, 1, 1, 0, 1] },
+  ],
+};
+
 describe('source-visible asset codec', () => {
   it('rejects malformed and numerically unsafe sound JSON at the public asset boundary', () => {
     for (const invalid of [
@@ -103,6 +118,38 @@ describe('source-visible asset codec', () => {
     expect(encodedMusic).toMatchObject({ revision: 1, kind: 'music' });
     expect(encodedSound).not.toHaveProperty('name');
     expect(encodedMusic).not.toHaveProperty('name');
+  });
+
+  it('decodes canonical bitmap fonts and charges their exact packed size', () => {
+    const bundle = decodeRuntimeAssets(
+      { tiny: { kind: 'font', path: 'tiny.pxf' } },
+      { 'tiny.pxf': encodeAssetFile(font) },
+    );
+    expect(bundle.visualBytes).toBe(42);
+    expect(bundle.visual).toHaveLength(1);
+    const decoded = bundle.visual[0];
+    expect(decoded?.kind).toBe('font');
+    if (decoded?.kind !== 'font') throw new Error('missing decoded font');
+    expect(decoded.glyphs.get(65)).toEqual(Uint8Array.from(font.glyphs[1]?.pixels ?? []));
+  });
+
+  it('rejects noncanonical or incomplete bitmap font files', () => {
+    for (const invalid of [
+      { ...font, glyphs: [...font.glyphs].reverse() },
+      { ...font, glyphs: [font.glyphs[0], font.glyphs[0]] },
+      { ...font, missingGlyph: 64 },
+      {
+        ...font,
+        glyphs: [{ code: 63, pixels: [2, ...(font.glyphs[0]?.pixels.slice(1) ?? [])] }],
+      },
+    ]) {
+      expect(() =>
+        decodeRuntimeAssets(
+          { tiny: { kind: 'font', path: 'tiny.pxf' } },
+          { 'tiny.pxf': encodeAssetFile(invalid) },
+        ),
+      ).toThrow(/font/);
+    }
   });
 
   it('loads indexed graphics, map query views, synth patches, and tracker patterns', () => {

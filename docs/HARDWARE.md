@@ -365,30 +365,38 @@ exporter parity, the full hardware viewer and the remaining hardware regions are
 `visual_id(name: Text) -> Int` returns a visual asset's zero-based descriptor ID, or `-1` if absent.
 IDs follow ascending ASCII manifest-name order, independent of declaration order. The lookup costs
 `1 + name.length` runtime units plus the usual compiler call charge and is legal in raster callbacks.
-Sound/music are not visual assets; custom fonts remain unimplemented at this checkpoint.
+Sound/music are not visual assets. Custom bitmap fonts are visual assets and the built-in system
+font remains separate and immutable.
 
 The six `50300` status words are asset count, declared visual bytes, descriptor base `a0000`,
 allocation count, allocation base `c0000`, and display-default byte address (zero if absent).
 All descriptor fields below are unaligned-safe, little-endian unsigned 32-bit values.
 
-| Record               | Offset           | Meaning                                                                                           |
-| :------------------- | :--------------- | :------------------------------------------------------------------------------------------------ |
-| Asset, 32 bytes      | `00`             | Kind: sprite 1, animation 2, tile set 3, map 4.                                                   |
-| Asset                | `04`, `08`, `0c` | Allocation count, first allocation descriptor address, total payload bytes.                       |
-| Asset                | `10`–`1f`        | Reserved zero.                                                                                    |
-| Allocation, 24 bytes | `00`             | Payload kind: indexed pixels 1, map cells 2, tile flags 3, display remap 4, default raster row 5. |
-| Allocation           | `04`, `08`       | Payload byte address and length.                                                                  |
-| Allocation           | `0c`, `10`       | Pixel/cell width and height; byte-width and 1 for flags/display records.                          |
-| Allocation           | `14`             | Map tileset asset ID plus one, otherwise zero.                                                    |
+| Record               | Offset           | Meaning                                                                              |
+| :------------------- | :--------------- | :----------------------------------------------------------------------------------- |
+| Asset, 32 bytes      | `00`             | Kind: sprite 1, animation 2, tile set 3, map 4, font 5.                              |
+| Asset                | `04`, `08`, `0c` | Allocation count, first allocation descriptor address, total payload bytes.          |
+| Asset                | `10`–`1f`        | Reserved zero.                                                                       |
+| Allocation, 24 bytes | `00`             | Payload kind: pixels 1, map cells 2, flags 3, display remap 4, raster row 5, font 6. |
+| Allocation           | `04`, `08`       | Payload byte address and length.                                                     |
+| Allocation           | `0c`, `10`       | Pixel/cell width and height; byte-width and 1 for flags/display records.             |
+| Allocation           | `14`             | Map tileset asset ID plus one, otherwise zero.                                       |
 
 Assets are packed consecutively in ID order with **no alignment padding**: a sprite's pixels;
 an animation's frames in order; a tileset's tile pixels in order followed by its flag bytes;
-a map's layers in order. Map cells are unsigned little-endian 16-bit indices regardless of host
+a map's layers in order; a font as one header and sorted glyph table. Map cells are unsigned little-endian 16-bit indices regardless of host
 endianness. The renderer and `map_cell` read these exact words; `map_flag` reads the current mapped
 tile flags. Pixel bytes must remain 0–31 and map words must reference an existing tile. A partial
 word write validates the resulting whole word. Multi-allocation writes validate before any changes.
 Sprite/map/flag changes affect subsequent high-level calls immediately. Raster callbacks may read
 these regions but cannot write them. Assets and allocation metadata cannot be resized at runtime.
+
+A font allocation starts with six bytes for glyph width, glyph height, baseline, horizontal
+advance, vertical advance and fallback code, then a little-endian u16 glyph count. Each strictly
+ascending glyph record is a little-endian u16 code followed by `width * height` one-byte mask
+values. Font allocation width/height repeat the glyph dimensions and its reference is the fallback
+code. Header/code bytes are immutable; glyph masks accept only 0 or 1 and affect later
+`font_print` calls immediately.
 
 Optional display defaults follow the named assets: 32 remap bytes then 38 bytes per configured
 raster row (LE u16 line, LE i16 X/Y scroll, 32 remap bytes). The line bytes must retain their original

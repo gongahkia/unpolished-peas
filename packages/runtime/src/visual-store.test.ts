@@ -26,6 +26,20 @@ const assets: readonly VisualAsset[] = [
   },
   { kind: 'sprite', name: 'hero', width: 1, height: 1, pixels: Uint8Array.of(7) },
 ];
+const font: VisualAsset = {
+  kind: 'font',
+  name: 'tiny',
+  glyphWidth: 2,
+  glyphHeight: 2,
+  baseline: 1,
+  advanceX: 3,
+  advanceY: 4,
+  missingGlyph: 63,
+  glyphs: new Map([
+    [63, Uint8Array.of(1, 1, 0, 1)],
+    [65, Uint8Array.of(1, 0, 1, 1)],
+  ]),
+};
 const command = (name: string, arguments_: unknown[]) => ({
   name,
   arguments: arguments_,
@@ -177,5 +191,32 @@ describe('packed visual hardware storage', () => {
     expect(
       MEMORY.allocations + HARDWARE.visualCapacityBytes * MEMORY.allocationStride,
     ).toBeLessThanOrEqual(MEMORY.size);
+  });
+
+  it('packs font metadata immutably while glyph bitmap bytes alias the visual bus', () => {
+    const store = new VisualAssetStore([font]);
+    const bus = new MemoryBus(store.memoryRegions(), () => {});
+    expect(store.usedBytes).toBe(20);
+    expect(word32(bus, MEMORY.assets)).toBe(5);
+    expect(word32(bus, MEMORY.allocations)).toBe(6);
+    expect(
+      Array.from({ length: 8 }, (_, index) => bus.read(MEMORY.visual + index, 1, span)),
+    ).toEqual([2, 2, 1, 3, 4, 63, 2, 0]);
+    const stored = store.get('tiny');
+    if (stored?.kind !== 'font') throw new Error('missing stored font');
+    expect(stored.glyphs.get(63)).toEqual(Uint8Array.of(1, 1, 0, 1));
+    bus.write(MEMORY.visual + 10, 0, 1, span);
+    expect(stored.glyphs.get(63)?.[0]).toBe(0);
+    const saved = bus.snapshot();
+    for (const [address, value] of [
+      [MEMORY.visual, 3],
+      [MEMORY.visual + 8, 64],
+      [MEMORY.visual + 10, 2],
+    ]) {
+      expect(() => {
+        bus.write(address ?? 0, value ?? 0, 1, span);
+      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      deepStrictEqual(bus.snapshot(), saved);
+    }
   });
 });

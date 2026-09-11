@@ -22,6 +22,7 @@ colour.
 | `circle_fill(x, y, radius, color)`        | Draw a filled midpoint circle.                                             |
 | `triangle(x0, y0, x1, y1, x2, y2, color)` | Draw a filled integer triangle.                                            |
 | `print(text, x, y, color)`                | Draw text using the original built-in 5x7 revision-1 bitmap font.          |
+| `font_print(font, text, x, y, color)`     | Draw text with a declared custom bitmap `Font`, using its advances.        |
 | `camera(x, y)`                            | Subtract an integer world-space camera origin from later draws.            |
 | `clip(x, y, width, height)`               | Restrict later writes to a screen-space rectangle.                         |
 | `clip_reset()`                            | Restore the full-screen clip.                                              |
@@ -38,6 +39,9 @@ quarter turns. Transformed output is charged more heavily than an ordinary blit.
 read bounded map data with `map_cell(asset, layer, x, y)`, which returns `-1` outside the map, and
 `map_flag(asset, layer, x, y, flag)`, which returns `false` outside the map or for a flag outside
 0-7. Sprite pixels, animation frames, tiles, map cells, fonts, and raster data share 128 KiB.
+Custom fonts do not replace the built-in console font: `print` always uses the fixed system glyphs,
+while `font_print` uses the supplied asset and substitutes its declared missing glyph for unsupported
+characters. Newlines reset X and move by the font's vertical advance.
 The project display file can supply an initial logical remap and scanline states; source-level
 palette and raster commands override those defaults. Asset file schemas are documented in
 [ASSETS.md](ASSETS.md).

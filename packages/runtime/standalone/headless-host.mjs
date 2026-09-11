@@ -1106,7 +1106,7 @@ var VisualAssetStore = class {
       const offset = id * MEMORY.assetStride;
       descriptorView.setUint32(
         offset,
-        ['sprite', 'animation', 'tile_set', 'map'].indexOf(asset.kind) + 1,
+        ['sprite', 'animation', 'tile_set', 'map', 'font'].indexOf(asset.kind) + 1,
         true,
       );
       descriptorView.setUint32(offset + 4, this.allocations.length - first, true);
@@ -1290,6 +1290,52 @@ var VisualAssetStore = class {
             };
           }),
         };
+      case 'font': {
+        const glyphs = [...asset.glyphs.entries()].sort(([left], [right]) => left - right);
+        const glyphBytes = asset.glyphWidth * asset.glyphHeight;
+        const encoded = new Uint8Array(8 + glyphs.length * (2 + glyphBytes));
+        encoded.set(
+          [
+            asset.glyphWidth,
+            asset.glyphHeight,
+            asset.baseline,
+            asset.advanceX,
+            asset.advanceY,
+            asset.missingGlyph,
+          ],
+          0,
+        );
+        new DataView(encoded.buffer).setUint16(6, glyphs.length, true);
+        const bitmapOffsets = /* @__PURE__ */ new Set();
+        for (const [index, [code, pixels]] of glyphs.entries()) {
+          const offset = 8 + index * (2 + glyphBytes);
+          new DataView(encoded.buffer).setUint16(offset, code, true);
+          encoded.set(pixels, offset + 2);
+          for (let byte = offset + 2; byte < offset + 2 + glyphBytes; byte += 1)
+            bitmapOffsets.add(byte);
+        }
+        const bytes = this.allocate(
+          6,
+          asset.glyphWidth,
+          asset.glyphHeight,
+          encoded,
+          asset.missingGlyph,
+          (offset, part) =>
+            part.every((value, index) => {
+              const absolute = offset + index;
+              return bitmapOffsets.has(absolute) ? value <= 1 : value === encoded[absolute];
+            }),
+        );
+        return {
+          ...asset,
+          glyphs: new Map(
+            glyphs.map(([code], index) => {
+              const offset = 8 + index * (2 + glyphBytes) + 2;
+              return [code, bytes.subarray(offset, offset + glyphBytes)];
+            }),
+          ),
+        };
+      }
     }
   }
   storeDisplay(display) {
@@ -1400,6 +1446,42 @@ function validateAsset(asset) {
           layer.tileSet.length === 0
         )
           throw new RangeError(`map '${asset.name}' has an invalid layer`);
+      return;
+    case 'font':
+      if (
+        !Number.isSafeInteger(asset.glyphWidth) ||
+        !Number.isSafeInteger(asset.glyphHeight) ||
+        asset.glyphWidth < 1 ||
+        asset.glyphWidth > 16 ||
+        asset.glyphHeight < 1 ||
+        asset.glyphHeight > 16 ||
+        !Number.isSafeInteger(asset.baseline) ||
+        asset.baseline < 0 ||
+        asset.baseline >= asset.glyphHeight ||
+        !Number.isSafeInteger(asset.advanceX) ||
+        asset.advanceX < 1 ||
+        asset.advanceX > 32 ||
+        !Number.isSafeInteger(asset.advanceY) ||
+        asset.advanceY < 1 ||
+        asset.advanceY > 32 ||
+        !Number.isSafeInteger(asset.missingGlyph) ||
+        asset.missingGlyph < 0 ||
+        asset.missingGlyph > 255 ||
+        asset.glyphs.size === 0 ||
+        asset.glyphs.size > 256 ||
+        !asset.glyphs.has(asset.missingGlyph)
+      )
+        throw new RangeError(`font '${asset.name}' has invalid metrics or glyph map`);
+      for (const [code, pixels] of asset.glyphs)
+        if (
+          !Number.isSafeInteger(code) ||
+          code < 0 ||
+          code > 255 ||
+          pixels.length !== asset.glyphWidth * asset.glyphHeight ||
+          pixels.some((value) => value > 1)
+        )
+          throw new RangeError(`font '${asset.name}' has an invalid glyph`);
+      return;
   }
 }
 function validateSprite(sprite) {
@@ -1428,6 +1510,8 @@ function visualAssetBytes(asset) {
       );
     case 'map':
       return asset.layers.reduce((total, layer) => total + layer.cells.byteLength, 0);
+    case 'font':
+      return 8 + asset.glyphs.size * (2 + asset.glyphWidth * asset.glyphHeight);
   }
 }
 //#endregion
@@ -1774,6 +1858,18 @@ var IndexedGraphics = class {
         );
         return;
       }
+      case 'font_print': {
+        const [handle, text, x, y, color] = command.arguments;
+        this.printFont(
+          readAssetName(handle, 'Font'),
+          expectText(text),
+          expectInteger$1(x),
+          expectInteger$1(y),
+          expectInteger$1(color),
+          state,
+        );
+        return;
+      }
       default:
         throw new TypeError(`unknown graphics command '${command.name}'`);
     }
@@ -1971,6 +2067,28 @@ var IndexedGraphics = class {
             this.plot(cursorX + column, cursorY + row, color, state);
       });
       cursorX += BITMAP_FONT.advanceX;
+    }
+  }
+  printFont(name, text, x, y, color, state) {
+    const font = this.assets.get(name);
+    if (font?.kind !== 'font') throw new TypeError(`missing Font asset '${name}'`);
+    let cursorX = x;
+    let cursorY = y;
+    for (const character of text) {
+      if (character === '\n') {
+        cursorX = x;
+        cursorY += font.advanceY;
+        continue;
+      }
+      const code = character.codePointAt(0) ?? font.missingGlyph;
+      const glyph = font.glyphs.get(code) ?? font.glyphs.get(font.missingGlyph);
+      if (glyph !== void 0) {
+        for (let row = 0; row < font.glyphHeight; row += 1)
+          for (let column = 0; column < font.glyphWidth; column += 1)
+            if (glyph[row * font.glyphWidth + column] === 1)
+              this.plot(cursorX + column, cursorY + row, color, state);
+      }
+      cursorX += font.advanceX;
     }
   }
 };
@@ -2220,7 +2338,7 @@ function decodeRuntimeAssets(declarations, files, displayPath) {
         audio.push(decodeMusic(name, value));
         break;
       case 'font':
-        throw new TypeError(`custom font asset '${name}' is not implemented in revision 1`);
+        visual.push(decodeFont(name, value));
     }
   }
   const visualStore = new VisualAssetStore(visual);
@@ -2350,6 +2468,49 @@ function decodeMap(name, value) {
         tileSet: layer.tileSet,
       };
     }),
+  };
+}
+function decodeFont(name, value) {
+  if (
+    !isRecord$8(value) ||
+    value.revision !== 1 ||
+    value.kind !== 'font' ||
+    !boundedInteger(value.glyphWidth, 1, 16) ||
+    !boundedInteger(value.glyphHeight, 1, 16) ||
+    !boundedInteger(value.baseline, 0, value.glyphHeight - 1) ||
+    !boundedInteger(value.advanceX, 1, 32) ||
+    !boundedInteger(value.advanceY, 1, 32) ||
+    !boundedInteger(value.missingGlyph, 0, 255) ||
+    !Array.isArray(value.glyphs) ||
+    value.glyphs.length === 0 ||
+    value.glyphs.length > 256
+  )
+    throw new TypeError(`font asset '${name}' is invalid`);
+  const glyphs = /* @__PURE__ */ new Map();
+  let previous = -1;
+  for (const glyph of value.glyphs) {
+    if (
+      !isRecord$8(glyph) ||
+      !boundedInteger(glyph.code, 0, 255) ||
+      glyph.code <= previous ||
+      !isNumberArray(glyph.pixels, value.glyphWidth * value.glyphHeight, 0, 1)
+    )
+      throw new TypeError(`font asset '${name}' has an invalid glyph map`);
+    previous = glyph.code;
+    glyphs.set(glyph.code, Uint8Array.from(glyph.pixels));
+  }
+  if (!glyphs.has(value.missingGlyph))
+    throw new TypeError(`font asset '${name}' is missing its fallback glyph`);
+  return {
+    kind: 'font',
+    name,
+    glyphWidth: value.glyphWidth,
+    glyphHeight: value.glyphHeight,
+    baseline: value.baseline,
+    advanceX: value.advanceX,
+    advanceY: value.advanceY,
+    missingGlyph: value.missingGlyph,
+    glyphs,
   };
 }
 function decodeSound(name, value) {
@@ -4260,6 +4421,7 @@ var DRAW_CALLS = /* @__PURE__ */ new Set([
   'pal_reset',
   'raster_scroll',
   'print',
+  'font_print',
 ]);
 var AUDIO_CALLS = /* @__PURE__ */ new Set(['sfx', 'music', 'music_stop']);
 function consoleWorkCost(name, arguments_) {
@@ -4298,6 +4460,8 @@ function consoleWorkCost(name, arguments_) {
       return 128;
     case 'print':
       return Math.max(1, (typeof arguments_[0] === 'string' ? arguments_[0].length : 0) * 6);
+    case 'font_print':
+      return Math.max(1, (typeof arguments_[1] === 'string' ? arguments_[1].length : 0) * 8);
     case 'sfx':
     case 'music':
     case 'music_stop':

@@ -39,7 +39,20 @@ export interface IndexedMap {
   readonly layers: readonly IndexedMapLayer[];
 }
 
-export type VisualAsset = IndexedSprite | IndexedAnimation | IndexedTileSet | IndexedMap;
+export interface IndexedFont {
+  readonly kind: 'font';
+  readonly name: string;
+  readonly glyphWidth: number;
+  readonly glyphHeight: number;
+  readonly baseline: number;
+  readonly advanceX: number;
+  readonly advanceY: number;
+  readonly missingGlyph: number;
+  readonly glyphs: ReadonlyMap<number, Uint8Array>;
+}
+
+export type VisualAsset =
+  IndexedSprite | IndexedAnimation | IndexedTileSet | IndexedMap | IndexedFont;
 
 export interface DisplayRasterState {
   readonly line: number;
@@ -411,6 +424,18 @@ export class IndexedGraphics {
         );
         return;
       }
+      case 'font_print': {
+        const [handle, text, x, y, color] = command.arguments;
+        this.printFont(
+          readAssetName(handle, 'Font'),
+          expectText(text),
+          expectInteger(x),
+          expectInteger(y),
+          expectInteger(color),
+          state,
+        );
+        return;
+      }
       default:
         throw new TypeError(`unknown graphics command '${command.name}'`);
     }
@@ -705,6 +730,38 @@ export class IndexedGraphics {
         }
       });
       cursorX += BITMAP_FONT.advanceX;
+    }
+  }
+
+  private printFont(
+    name: string,
+    text: string,
+    x: number,
+    y: number,
+    color: number,
+    state: DrawState,
+  ): void {
+    const font = this.assets.get(name);
+    if (font?.kind !== 'font') throw new TypeError(`missing Font asset '${name}'`);
+    let cursorX = x;
+    let cursorY = y;
+    for (const character of text) {
+      if (character === '\n') {
+        cursorX = x;
+        cursorY += font.advanceY;
+        continue;
+      }
+      const code = character.codePointAt(0) ?? font.missingGlyph;
+      const glyph = font.glyphs.get(code) ?? font.glyphs.get(font.missingGlyph);
+      if (glyph !== undefined) {
+        for (let row = 0; row < font.glyphHeight; row += 1) {
+          for (let column = 0; column < font.glyphWidth; column += 1) {
+            if (glyph[row * font.glyphWidth + column] === 1)
+              this.plot(cursorX + column, cursorY + row, color, state);
+          }
+        }
+      }
+      cursorX += font.advanceX;
     }
   }
 }

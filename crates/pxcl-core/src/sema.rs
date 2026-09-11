@@ -1307,6 +1307,21 @@ impl<'syntax> Analyzer<'syntax> {
     }
 
     fn memory_builtin(&mut self, name: &str) -> Option<SymbolId> {
+        if name == "font_print" {
+            // Lazy V1 installation preserves every alpha program's generated symbol IDs.
+            self.builtin(
+                "font_print",
+                vec![
+                    Type::Asset(AssetKind::Font),
+                    Type::Text,
+                    Type::Int,
+                    Type::Int,
+                    Type::Color,
+                ],
+                Type::Unit,
+            );
+            return self.lookup(name);
+        }
         if name == "visual_id" {
             self.builtin("visual_id", vec![Type::Text], Type::Int);
             return self.lookup(name);
@@ -2306,6 +2321,15 @@ on draw:
         let ir = output.ir.expect("valid program has IR");
         assert_eq!(ir.globals.len(), 1);
         assert_eq!(ir.routines.len(), 4);
+    }
+
+    #[test]
+    fn types_custom_font_drawing_against_the_asset_catalog() {
+        let mut assets = AssetCatalog::default();
+        assets.insert("tiny", AssetKind::Font);
+        let output = analyze("on draw:\n  font_print(#tiny, \"AZ\", 1, 2, 9)\n", &assets);
+        assert!(output.diagnostics.is_empty(), "{:#?}", output.diagnostics);
+        assert!(output.ir.is_some());
     }
 
     #[test]
