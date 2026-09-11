@@ -2818,6 +2818,30 @@ Object.freeze({
   KeyB: [1, 'r'],
   Digit1: [1, 'start'],
   Backquote: [1, 'menu'],
+  Numpad8: [2, 'up'],
+  Numpad5: [2, 'down'],
+  Numpad4: [2, 'left'],
+  Numpad6: [2, 'right'],
+  Numpad1: [2, 'a'],
+  Numpad2: [2, 'b'],
+  Numpad7: [2, 'x'],
+  Numpad9: [2, 'y'],
+  NumpadAdd: [2, 'l'],
+  NumpadSubtract: [2, 'r'],
+  NumpadEnter: [2, 'start'],
+  NumpadDecimal: [2, 'menu'],
+  KeyY: [3, 'up'],
+  KeyH: [3, 'down'],
+  KeyU: [3, 'left'],
+  KeyO: [3, 'right'],
+  KeyC: [3, 'a'],
+  KeyD: [3, 'b'],
+  KeyE: [3, 'x'],
+  KeyM: [3, 'y'],
+  KeyN: [3, 'l'],
+  KeyP: [3, 'r'],
+  Digit2: [3, 'start'],
+  Digit3: [3, 'menu'],
 });
 Object.freeze({
   up: 12,
@@ -4214,6 +4238,9 @@ function createConsoleRuntime(factory, configuration) {
         });
       bus.edit(address, bytes);
     },
+    memoryRegions() {
+      return bus.describe();
+    },
   };
   function captureSnapshot() {
     return {
@@ -4680,6 +4707,10 @@ async function runHeadless(value) {
   const commandHash = createHash('sha256');
   const pcmHash = createHash('sha256');
   let workPeak = 0;
+  let commandPeak = 0;
+  let drawCommandPeak = 0;
+  let audioCommandPeak = 0;
+  let voicePeak = 0;
   let fault;
   for (let frame = 0; frame < request.frames; frame += 1)
     try {
@@ -4690,6 +4721,10 @@ async function runHeadless(value) {
       commandHash.update(commands);
       pcmHash.update(framePcm);
       workPeak = Math.max(workPeak, result.workUnits);
+      drawCommandPeak = Math.max(drawCommandPeak, result.drawCommands.length);
+      audioCommandPeak = Math.max(audioCommandPeak, result.audioCommands.length);
+      commandPeak = Math.max(commandPeak, result.drawCommands.length + result.audioCommands.length);
+      voicePeak = Math.max(voicePeak, result.output.audio.activeVoices);
       frameResults.push({
         frame: result.frame,
         workUnits: result.workUnits,
@@ -4729,6 +4764,11 @@ async function runHeadless(value) {
     summary: {
       completedFrames: frameResults.length,
       workPeak,
+      commandPeak,
+      drawCommandPeak,
+      audioCommandPeak,
+      voicePeak,
+      busMappedBytes: runtime.memoryRegions().reduce((total, region) => total + region.length, 0),
       finalFramebufferSha256: final?.framebufferSha256 ?? sha256(/* @__PURE__ */ new Uint8Array()),
       finalStateSha256: sha256(canonicalBytes(finalSnapshot)),
       audioCommandsSha256: commandHash.digest('hex'),

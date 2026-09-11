@@ -19,6 +19,7 @@ function offlineServiceWorker(): Plugin {
         'cartridges/signal-4k.pxc',
         'cartridges/pocket-relay.pxc',
         'cartridges/hardware-gauntlet.pxc',
+        'cartridges/pxcl-tutorial.pxc',
       ];
       const files = [
         './',

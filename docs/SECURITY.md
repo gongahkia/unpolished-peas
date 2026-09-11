@@ -1,6 +1,6 @@
 # Security boundaries
 
-PX-240C cartridges are untrusted inputs, but the alpha is not a claim of process-level isolation.
+PX-240C cartridges are untrusted inputs, but V1 is not a claim of process-level isolation.
 The practical boundary combines a restricted source language, compiler-owned generation, a
 disposable Web Worker, a validated message protocol, deterministic budgets, and browser origin
 controls.
@@ -52,9 +52,24 @@ The PWA service worker caches only same-origin GET requests and an exact build-g
 Its cache revision covers hashed bundles and bundled-cartridge bytes. It adds offline availability,
 not a new cartridge capability or a trust boundary.
 
+The production Studio document carries an explicit policy: same-origin scripts/styles/fonts/images
+and connections only, no objects or form submission, and `blob:` only for the inlined locked-down
+Worker and compiler-created cartridge modules, with the narrowly required Wasm execution permission.
+Imported JavaScript is never executed. Normal cartridge run/capture/export performs no request.
+Folder access is available only after the author invokes `FOLDER` and the browser grants
+a directory handle; handles stay in the current Studio session and are never passed to a cartridge.
+
+All untrusted formats preflight packed/decompressed byte length, entry/file count, dimensions,
+frame/count/depth limits and canonical paths before mutation. Cartridge archives reject traversal,
+duplicate or unsorted entries, noncanonical compression, trailing data and integrity failure. PNG
+chunks, visual/font/map/audio JSON, fragments, replay and save containers have bounded strict
+decoders. Imported archived JavaScript is never executed: source is reconstructed and passed through
+the authoritative compiler, including headless and source-only carts. Save imports also bind the
+immutable cartridge ID and verify their CRC before transactional replacement.
+
 ## Verified evidence
 
-On 2026-09-07, the production Vite worker bundle was exercised in Firefox 155 through Playwright:
+The production Vite worker bundle is exercised in pinned Firefox and Chromium through Playwright:
 
 - compiler-produced code completed a frame and returned one validated draw command;
 - the worker audit found none of the denied globals exposed and no `Math.random`;

@@ -1,0 +1,9 @@
+format = 1
+language = "PXCL/1"
+id = "four-player-start"
+title = "FOUR PLAYER START"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.pxl"
+update_rate = 60
+[assets]

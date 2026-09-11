@@ -19,8 +19,11 @@ to `@gongahkia`.
   feedback, deterministic RNG and isolated best-score save.
 - `hardware-gauntlet`: complete 4,619-byte public-API stress display for bus/ROM, endian access,
   framebuffers, raster, four ports, wavetable audio, custom font, task scheduling and work counters.
+- `pxcl-tutorial`: source-visible FIRST SIGNAL lesson that walks through a pixel, drawing, input,
+  animation, synth sound, an application save commit, and the final pack command in five-to-ten
+  minutes. A advances and B returns to the prior page.
 
-The first three entries are the preserved games; the final three are truthful size-class dogfood.
+The first three entries are the preserved games; Signal/Pocket/Gauntlet are truthful size-class dogfood.
 Their class is determined from the complete canonical source-visible `.pxc`, never just source or
 compressed code.
 

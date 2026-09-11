@@ -21,12 +21,20 @@ duplicate under a new immutable ID, change display title without changing their 
 move to a two-step-confirmed recoverable bin. Bin restore retains the exact project revision,
 recovery history, shelf state, and isolated save. All records are IndexedDB-local and survive offline
 reload; there is no account, sync, gallery, rating, or telemetry path.
+The selected cart's `SAVE` service displays stable cartridge identity and schema, exports/imports a
+bounded `.pxsave` with checksum validation, and requires a second action before reset or delete.
+Every replacement retains a local recovery envelope. Raw alpha save bytes migrate to schema zero
+without deleting the original; application code can explicitly migrate to a higher schema.
 The source editor has PXCL highlighting, live compiler diagnostics, completion, symbol navigation,
 canonical formatting, explicit save, run, and external-revision reload controls.
 Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
 newer revision stops the save and surfaces F6 reload instead of knowingly overwriting it. Explicit
 F3 save and leaving the editor flush the same serialized path. Every successful write retains the
 previous revision in the ten-entry recovery ring.
+`folder` uses the File System Access API only after an explicit read/write directory grant. It
+preflights modification times for every file before any write. F6 pulls a conflicting folder
+revision; F7 is the explicit overwrite action. The handle remains session-local. Browsers without
+that API continue to use import/download and IndexedDB with no reduced cartridge compatibility.
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
 from a cartridge to the shell. Player capture writes deterministic native or 2x-4x nearest PNG,
@@ -50,9 +58,12 @@ patterns can be previewed after a browser audio gesture. The tracker edits named
 ordered playback sequence, preserves existing patch references, loops on request, and provides
 bounded note/pattern undo/redo. The shell, editors, controls, and cartridges use the same original
 PX-240C glyph design; the Studio font is generated locally from the runtime's glyph matrix.
-`manual` searches built-in help and
-`explore` exposes tokens, AST, symbols, typed IR, JavaScript, source maps, diagnostics, and size
-accounting. `debug` opens source breakpoints and trace stepping, state/task/watch inspection,
+`manual`, `man <topic>`, and `help <symbol>` search built-in syntax/API/hardware/diagnostic help;
+F1 in the source editor opens help for the symbol at the cursor. `load pxcl-tutorial` starts the
+ordinary public-API FIRST SIGNAL lesson. The compact runnable API tour and genre starters are
+indexed in `examples/README.md` and `templates/README.md`. `explore` exposes tokens, AST, symbols,
+typed IR, JavaScript, source maps, diagnostics, and exact size accounting.
+`debug` opens source breakpoints and trace stepping, state/task/watch inspection,
 synthetic-work profiling, hardware inspectors, and deterministic frame rewind. Its precise
 source stepping and pause semantics are documented in [DEBUGGING.md](DEBUGGING.md). Escape
 returns from a creation tool; F3 saves asset changes.

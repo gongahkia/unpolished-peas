@@ -11,6 +11,7 @@ import {
   WebGlIndexedRenderer,
 } from '@px240c/runtime';
 import { StudioApp } from './studio';
+import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
 import './style.css';
 
 const studio = document.querySelector<HTMLElement>('#studio');
@@ -183,10 +184,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
   if (status === null) {
     throw new Error('sandbox diagnostic output is missing');
   }
-  const worker = new Worker(
-    new URL('../../../packages/runtime/src/sandbox-worker.ts', import.meta.url),
-    { type: 'module', name: 'px240c-cartridge' },
-  );
+  const worker = new InlineSandboxWorker({ name: 'px240c-cartridge' });
   const sandbox = new SandboxSession(worker, 1_000);
   try {
     const audit = await sandbox.audit();

@@ -1,0 +1,13 @@
+format = 1
+language = "PXCL/1"
+id = "pxcl-tutorial"
+title = "FIRST SIGNAL: PXCL TUTORIAL"
+author = "@gongahkia"
+version = "1.0.0"
+entry = "src/main.pxl"
+update_rate = 60
+label = "presentation/label.svg"
+
+[assets.beep]
+kind = "sound"
+path = "assets/beep.pxs"

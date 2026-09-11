@@ -20,6 +20,22 @@
   --amber: #e7bd50;
 }
 
+:root[data-high-contrast='true'] {
+  --cream: #fffbe8;
+  --screen: #211f1d;
+  --deep: #000;
+  --cyan: #94fff4;
+  --amber: #ffd75c;
+}
+
+:root[data-reduced-motion='true'] *,
+:root[data-reduced-motion='true'] *::before,
+:root[data-reduced-motion='true'] *::after {
+  scroll-behavior: auto !important;
+  animation: none !important;
+  transition: none !important;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -311,6 +327,7 @@ body,
 
 .stop-player,
 .enable-player-audio,
+.player-budget,
 .player-status {
   position: absolute;
   z-index: 2;
@@ -321,6 +338,12 @@ body,
   background: var(--deep);
   font-size: 4px;
   line-height: 6px;
+}
+
+.player-budget {
+  top: 2px;
+  right: 2px;
+  bottom: auto;
 }
 
 .capture-player {
@@ -444,6 +467,57 @@ body,
   color: var(--amber);
   font-size: 5px;
   white-space: nowrap;
+}
+
+.save-manager-body {
+  position: absolute;
+  inset: 15px 5px 18px;
+  overflow: auto;
+  font-size: 6px;
+  line-height: 8px;
+}
+
+.save-manager-body h1,
+.save-manager-body p {
+  margin: 0 0 6px;
+}
+
+.save-manager-status {
+  color: var(--amber);
+}
+
+.settings-body {
+  position: absolute;
+  inset: 14px 4px 17px;
+  overflow: auto;
+  font-size: 5px;
+  line-height: 8px;
+}
+
+.settings-body > label {
+  display: inline-block;
+  width: 49%;
+}
+
+.settings-body input[type='range'] {
+  width: 72px;
+}
+
+.remap-row,
+.gamepad-row {
+  display: flex;
+  gap: 3px;
+  margin-top: 4px;
+}
+
+.settings-status {
+  margin: 5px 0 0;
+  color: var(--amber);
+}
+
+:root[data-large-help='true'] .manual-page {
+  font-size: 7px;
+  line-height: 9px;
 }
 
 .shelf-actions {

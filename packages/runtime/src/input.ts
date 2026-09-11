@@ -129,7 +129,15 @@ export function isInputFrame(value: unknown): value is InputFrame {
   );
 }
 
-const KEY_BINDINGS: Readonly<Record<string, readonly [number, Button]>> = Object.freeze({
+export interface ControllerProfile {
+  readonly revision: 1;
+  readonly name: string;
+  readonly keyboard: Readonly<Record<string, readonly [number, Button]>>;
+  /** Physical standard-gamepad index assigned to each logical port; null disconnects that slot. */
+  readonly gamepads: readonly [number | null, number | null, number | null, number | null];
+}
+
+const DEFAULT_KEY_BINDINGS: Readonly<Record<string, readonly [number, Button]>> = Object.freeze({
   ArrowUp: [0, 'up'],
   ArrowDown: [0, 'down'],
   ArrowLeft: [0, 'left'],
@@ -154,7 +162,98 @@ const KEY_BINDINGS: Readonly<Record<string, readonly [number, Button]>> = Object
   KeyB: [1, 'r'],
   Digit1: [1, 'start'],
   Backquote: [1, 'menu'],
+  Numpad8: [2, 'up'],
+  Numpad5: [2, 'down'],
+  Numpad4: [2, 'left'],
+  Numpad6: [2, 'right'],
+  Numpad1: [2, 'a'],
+  Numpad2: [2, 'b'],
+  Numpad7: [2, 'x'],
+  Numpad9: [2, 'y'],
+  NumpadAdd: [2, 'l'],
+  NumpadSubtract: [2, 'r'],
+  NumpadEnter: [2, 'start'],
+  NumpadDecimal: [2, 'menu'],
+  KeyY: [3, 'up'],
+  KeyH: [3, 'down'],
+  KeyU: [3, 'left'],
+  KeyO: [3, 'right'],
+  KeyC: [3, 'a'],
+  KeyD: [3, 'b'],
+  KeyE: [3, 'x'],
+  KeyM: [3, 'y'],
+  KeyN: [3, 'l'],
+  KeyP: [3, 'r'],
+  Digit2: [3, 'start'],
+  Digit3: [3, 'menu'],
 });
+
+export function defaultControllerProfile(): ControllerProfile {
+  return {
+    revision: 1,
+    name: 'DEFAULT',
+    keyboard: structuredClone(DEFAULT_KEY_BINDINGS),
+    gamepads: [0, 1, 2, 3],
+  };
+}
+
+export function isControllerProfile(value: unknown): value is ControllerProfile {
+  if (
+    !isRecord(value) ||
+    value.revision !== 1 ||
+    typeof value.name !== 'string' ||
+    value.name.length === 0 ||
+    value.name.length > 24 ||
+    !isRecord(value.keyboard) ||
+    Object.keys(value.keyboard).length > BUTTONS.length * 4 ||
+    !Array.isArray(value.gamepads) ||
+    value.gamepads.length !== 4 ||
+    Object.keys(value.gamepads).length !== 4
+  )
+    return false;
+  const assignments = new Set<string>();
+  for (const [code, binding] of Object.entries(value.keyboard)) {
+    if (
+      !/^\w{1,32}$/.test(code) ||
+      !Array.isArray(binding) ||
+      binding.length !== 2 ||
+      !Number.isSafeInteger(binding[0]) ||
+      binding[0] < 0 ||
+      binding[0] > 3 ||
+      !isButton(binding[1])
+    )
+      return false;
+    const target = `${String(binding[0])}/${binding[1]}`;
+    if (assignments.has(target)) return false;
+    assignments.add(target);
+  }
+  const connected = value.gamepads.filter((index): index is number => index !== null);
+  return (
+    connected.every((index) => Number.isSafeInteger(index) && index >= 0 && index <= 255) &&
+    new Set(connected).size === connected.length
+  );
+}
+
+export function remapControllerKey(
+  profile: ControllerProfile,
+  code: string,
+  port: number,
+  button: Button,
+): ControllerProfile {
+  if (!isControllerProfile(profile) || !/^\w{1,32}$/.test(code) || port < 0 || port > 3)
+    throw new TypeError('invalid controller remap');
+  const keyboard = Object.fromEntries(
+    Object.entries(profile.keyboard).filter(
+      ([existingCode, binding]) =>
+        existingCode !== code && !(binding[0] === port && binding[1] === button),
+    ),
+  );
+  keyboard[code] = [port, button] as const;
+  const next = { ...profile, keyboard };
+  if (!isControllerProfile(next))
+    throw new TypeError('controller remap conflicts with this profile');
+  return next;
+}
 
 const GAMEPAD_BUTTONS: Readonly<Record<Button, number>> = Object.freeze({
   up: 12,
@@ -183,6 +282,7 @@ export type GamepadProvider = () => readonly (StandardGamepad | null)[];
 export class BrowserInput {
   private readonly surface: HTMLCanvasElement;
   private readonly gamepads: GamepadProvider;
+  private readonly profile: ControllerProfile;
   private readonly keys = new Set<string>();
   private pointer: PointerState = {
     x: 0,
@@ -195,9 +295,12 @@ export class BrowserInput {
   public constructor(
     surface: HTMLCanvasElement,
     gamepads: GamepadProvider = () => navigator.getGamepads(),
+    profile: ControllerProfile = defaultControllerProfile(),
   ) {
+    if (!isControllerProfile(profile)) throw new TypeError('invalid controller profile');
     this.surface = surface;
     this.gamepads = gamepads;
+    this.profile = structuredClone(profile);
     globalThis.addEventListener('keydown', this.handleKeyDown);
     globalThis.addEventListener('keyup', this.handleKeyUp);
     globalThis.addEventListener('blur', this.handleBlur);
@@ -211,32 +314,13 @@ export class BrowserInput {
   }
 
   public poll(): InputFrame {
-    const buttons = Array.from({ length: 4 }, () => emptyButtons());
-    for (const code of this.keys) {
-      const binding = KEY_BINDINGS[code];
-      if (binding !== undefined) {
-        const [port, button] = binding;
-        const controller = buttons[port];
-        if (controller !== undefined) {
-          controller[button] = true;
-        }
-      }
-    }
-    for (const gamepad of this.gamepads()) {
-      if (gamepad === null || gamepad.index < 0 || gamepad.index >= buttons.length) {
-        continue;
-      }
-      const controller = buttons[gamepad.index];
-      if (controller !== undefined) {
-        applyStandardGamepad(controller, gamepad);
-      }
-    }
+    const buttons = profiledControllerButtons(this.profile, this.keys, this.gamepads());
     return {
       controllers: [
-        { buttons: buttons[0] as Record<Button, boolean> },
-        { buttons: buttons[1] as Record<Button, boolean> },
-        { buttons: buttons[2] as Record<Button, boolean> },
-        { buttons: buttons[3] as Record<Button, boolean> },
+        { buttons: buttons[0] },
+        { buttons: buttons[1] },
+        { buttons: buttons[2] },
+        { buttons: buttons[3] },
       ],
       pointer: { ...this.pointer },
     };
@@ -256,14 +340,14 @@ export class BrowserInput {
   }
 
   private readonly handleKeyDown = (event: KeyboardEvent): void => {
-    if (KEY_BINDINGS[event.code] !== undefined) {
+    if (this.profile.keyboard[event.code] !== undefined) {
       event.preventDefault();
       this.keys.add(event.code);
     }
   };
 
   private readonly handleKeyUp = (event: KeyboardEvent): void => {
-    if (KEY_BINDINGS[event.code] !== undefined) {
+    if (this.profile.keyboard[event.code] !== undefined) {
       event.preventDefault();
       this.keys.delete(event.code);
     }
@@ -324,6 +408,38 @@ export class BrowserInput {
       inside: x >= 0 && x < HARDWARE.width && y >= 0 && y < HARDWARE.height,
     };
   }
+}
+
+export function profiledControllerButtons(
+  profile: ControllerProfile,
+  keys: Iterable<string>,
+  gamepads: readonly (StandardGamepad | null)[],
+): readonly [
+  Record<Button, boolean>,
+  Record<Button, boolean>,
+  Record<Button, boolean>,
+  Record<Button, boolean>,
+] {
+  if (!isControllerProfile(profile)) throw new TypeError('invalid controller profile');
+  const buttons = Array.from({ length: 4 }, () => emptyButtons());
+  for (const code of keys) {
+    const binding = profile.keyboard[code];
+    if (binding === undefined) continue;
+    const controller = buttons[binding[0]];
+    if (controller !== undefined) controller[binding[1]] = true;
+  }
+  for (const gamepad of gamepads) {
+    if (gamepad === null) continue;
+    const port = profile.gamepads.indexOf(gamepad.index);
+    const controller = port < 0 ? undefined : buttons[port];
+    if (controller !== undefined) applyStandardGamepad(controller, gamepad);
+  }
+  return buttons as [
+    Record<Button, boolean>,
+    Record<Button, boolean>,
+    Record<Button, boolean>,
+    Record<Button, boolean>,
+  ];
 }
 
 export function standardGamepadButtons(

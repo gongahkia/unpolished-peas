@@ -1,19 +1,19 @@
 # PX-240C Color Development Unit
 
 PX-240C is a complete local-first fantasy console presented as a technically unusual, commercially
-unsuccessful colour handheld from 1999. Its alpha includes the statically typed PXCL/1 language,
+unsuccessful colour handheld from 1999. Its V1 candidate includes the statically typed PXCL/1 language,
 Rust/Wasm compiler, deterministic worker runtime, 240x144 integrated Studio, source debugger and
-rewind, native Linux CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, and three original
-pack-in games.
+rewind, native CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, three
+original pack-in games, three size-class showcases, a service cartridge, and a source-visible tutorial.
 
 Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository is private and
 proprietary; cartridge authors retain ownership of their source and assets.
 
 ![PX-240C Studio boot monitor with bundled cartridges](docs/images/studio-shell.png)
 
-## Alpha status
+## V1 candidate status
 
-The cohesive alpha workflow is implemented: create/import a cartridge, edit code and source-visible
+The cohesive V1 workflow is implemented: create/import a cartridge, edit code and source-visible
 assets, compile, run, debug, rewind, save/recover, pack, inspect, and export without an account or
 backend. The production app is a relative-path static PWA and works offline after its first
 successful load. Compiler/runtime rules, measurements, known limitations, and milestone evidence
@@ -33,9 +33,9 @@ The original bundled cartridges are ordinary public-facility PXCL projects:
 
 ## Quick start
 
-Requirements are Linux, Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt,
+Requirements are Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt,
 and `wasm32-unknown-unknown`. The one setup command installs locked dependencies, installs the pinned
-`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox test browser, and
+`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox and Chromium test browsers, and
 builds the complete project:
 
 ```sh
@@ -43,7 +43,7 @@ make setup
 pnpm dev
 ```
 
-Open the printed local URL. The monitor shell starts with all three cartridges installed. Use `dir`,
+Open the printed local URL. The monitor shell starts with all built-in cartridges installed. Use `dir`,
 `load raster-rush`, and `run`; Shift+Escape stops a game. `help` lists integrated commands. Keyboard
 port one uses arrows plus Z/X/A/S, while standard gamepads populate all four ports.
 
@@ -53,7 +53,7 @@ Run every repository gate with:
 make check
 ```
 
-This includes the production build and the pinned Firefox end-to-end workflow.
+This includes the production build and the pinned Firefox and Chromium end-to-end workflows.
 
 For the native external-editor workflow:
 
@@ -66,12 +66,13 @@ cargo run -p px240c-cli -- run my-game --headless --frames 120 --input path/to/r
 cargo run -p px240c-cli -- export html my-game
 ```
 
-See the [from-scratch tutorial](docs/TUTORIAL.md), [tool guide](docs/TOOLS.md),
+See the [interactive/from-scratch tutorial](docs/TUTORIAL.md), [runnable examples](examples/README.md),
+[starter cartridges](templates/README.md), [tool guide](docs/TOOLS.md),
 [PXCL language contract](docs/LANGUAGE.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
 
 ## Boundaries
 
-This alpha has no cloud account, synchronization, hosted backend, gallery, network/multiplayer API,
+This V1 candidate has no cloud account, synchronization, hosted backend, gallery, network/multiplayer API,
 desktop GUI, third-party cartridge compatibility, raw JavaScript escape, true-colour path, samples,
 physics engine, ECS, scene graph, or real 3D renderer. Worker containment is a practical browser
 boundary, not process-level isolation; [SECURITY.md](docs/SECURITY.md) states the exact limits.
