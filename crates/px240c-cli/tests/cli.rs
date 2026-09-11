@@ -2,7 +2,7 @@ use std::{
     fs,
     io::{BufRead, BufReader, Read, Write},
     net::TcpStream,
-    path::PathBuf,
+    path::{Path, PathBuf},
     process::{Command, Stdio},
     thread,
     time::Duration,
@@ -562,6 +562,31 @@ fn bundled_cartridges_compile_and_pack_within_capacity() {
     }
 }
 
+fn assert_project_info(path: &Path) {
+    let info = binary()
+        .args(["info", path.to_str().expect("UTF-8 cartridge path")])
+        .output()
+        .expect("CLI starts");
+    assert!(info.status.success());
+    let report: serde_json::Value =
+        serde_json::from_slice(&info.stdout).expect("info is structured JSON");
+    assert_eq!(report["title"], "CLI TEST");
+    assert_eq!(report["analysis"]["sections"]["saveAllocationBytes"], 8192);
+    assert_eq!(
+        report["analysis"]["runtime60Frames"]["summary"]["completedFrames"],
+        52
+    );
+    assert_eq!(
+        report["analysis"]["runtime60Frames"]["fault"]["code"],
+        "PX9002"
+    );
+    assert!(
+        report["analysis"]["largestEntries"]
+            .as_array()
+            .is_some_and(|entries| !entries.is_empty())
+    );
+}
+
 #[test]
 fn new_pack_and_info_form_a_deterministic_project_workflow() {
     let project =
@@ -651,28 +676,7 @@ fn new_pack_and_info_form_a_deterministic_project_workflow() {
         fs::read(&first).expect("first cartridge reads"),
         fs::read(&watched).expect("watched cartridge reads")
     );
-    let info = binary()
-        .args(["info", first.to_str().expect("UTF-8 cartridge path")])
-        .output()
-        .expect("CLI starts");
-    assert!(info.status.success());
-    let report: serde_json::Value =
-        serde_json::from_slice(&info.stdout).expect("info is structured JSON");
-    assert_eq!(report["title"], "CLI TEST");
-    assert_eq!(report["analysis"]["sections"]["saveAllocationBytes"], 8192);
-    assert_eq!(
-        report["analysis"]["runtime60Frames"]["summary"]["completedFrames"],
-        52
-    );
-    assert_eq!(
-        report["analysis"]["runtime60Frames"]["fault"]["code"],
-        "PX9002"
-    );
-    assert!(
-        report["analysis"]["largestEntries"]
-            .as_array()
-            .is_some_and(|v| !v.is_empty())
-    );
+    assert_project_info(&first);
 
     fs::remove_file(first).expect("first cartridge removes");
     fs::remove_file(second).expect("second cartridge removes");

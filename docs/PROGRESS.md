@@ -985,11 +985,33 @@ Each group may produce several coherent commits, and integration occurs througho
   service-worker control, cold offline reload and the zero-request audit. Nothing was pushed,
   published or deployed.
 
-## Current risks (V1 work in progress)
+## 2026-09-11 — V1 milestone 11: release-candidate gate
 
-- Release-artifact double builds/exports, final edit-run latency, dependency audit and direct visual
-  inspection still need to be consolidated into the release-candidate evidence and root gate.
-- The File System Access picker itself cannot be automated by Playwright; its pure bounded path,
-  timestamp conflict and recovery logic is covered, while real browser-picker approval is manual.
-- Safari is not available on this host and will not be claimed. Worker containment remains a browser
+- Added a root-gate artifact verifier that rebuilds all eight first-party cartridges twice, exports
+  raw/`.pxc.png`/HTML/ZIP twice, byte-compares all 32 pairs, validates every cartridge PNG and boots
+  every raw artifact through five production-core headless frames. Exact SHA-256 values are recorded
+  in `docs/V1_RELEASE_EVIDENCE.md`; the original games remain 42,904/41,315/38,091 bytes and all
+  showcase thresholds remain truthful.
+- Repeated the edit/save/run/first-render benchmark against the two-module public API tour. Firefox
+  155 produced a 211.48 ms ten-sample warm median (593.71 ms cold), improving on the preserved
+  282.11 ms alpha split-module median and remaining below the 300 ms target.
+- Directly inspected final shell, scaled player and exact 240x144 capture images in Firefox 155 and
+  Chrome for Testing 153.0.8010.12. A Chromium-native select arrow and an obscured live budget meter
+  were corrected without touching cartridge output; the repeated images are legible, unclipped,
+  palette-consistent and byte-clean outside host overlays.
+- Final `./scripts/check.sh` passed formatting, ESLint, strict TypeScript, **162 Vitest tests**, both
+  clean-storage browser workflows in **54.4 s**, Clippy with warnings denied, **63 Rust tests**,
+  native/release Wasm builds and all artifact comparisons. `pnpm audit --prod` found no known
+  vulnerabilities; `cargo audit` 0.22.2 scanned 48 locked dependencies against 1,243 RustSec
+  advisories with no finding. No required test was skipped.
+- Hardware, architecture, assets, limits, audit checklist and final evidence now describe the
+  implemented V1 rather than intermediate checkpoints. Nothing was pushed, published or deployed.
+
+## Remaining intentional limits
+
+- The File System Access picker itself cannot be automated by Playwright; bounded path, timestamp
+  conflict and recovery logic is covered, while real browser-picker approval remains a user gesture.
+- Safari is not available on this macOS host and is not claimed. Worker containment remains a browser
   isolation boundary rather than operating-system process isolation.
+- Synchronized replay/audio muxing is not emitted; deterministic replay and offline WAV remain
+  separate. All other omissions are the brief's explicit non-goals, not unfinished V1 scope.

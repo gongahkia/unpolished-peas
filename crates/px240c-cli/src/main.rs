@@ -12,9 +12,9 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use pxcl_core::{
-    AssetCatalog, AssetKind, CartridgePngMetadata, CompileMode, Diagnostic, FileId,
-    GeneratedProgram, ProjectManifest, SourceFile, analyze_module, compile, compile_project,
-    decode_cartridge, decode_cartridge_png, encode_cartridge_png, export_itch_zip,
+    AssetCatalog, AssetKind, CartridgePngMetadata, CompileMode, DecodedCartridge, Diagnostic,
+    FileId, GeneratedProgram, ProjectManifest, SourceFile, analyze_module, compile,
+    compile_project, decode_cartridge, decode_cartridge_png, encode_cartridge_png, export_itch_zip,
     export_standalone_html, format_source, load_cartridge_program, pack_project,
     parse_project_manifest, unpack_cartridge_project,
 };
@@ -1001,23 +1001,19 @@ fn info(path: Option<&Path>) -> ExitCode {
     }
 }
 
-fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
-    let (bytes, cartridge, program) = load_headless_cartridge(path)
-        .map_err(|()| "could not load cartridge for analysis".to_owned())?;
-    let sections = archive_sections(&bytes)?;
-    let unpacked = unpack_cartridge_project(&bytes).map_err(|error| error.to_string())?;
-    let compilation = compile_project(&unpacked.manifest, &unpacked.files, CompileMode::Release)
-        .map_err(|error| error.to_string())?;
-    let generated = compilation
-        .generated
-        .ok_or_else(|| "release compilation produced no program".to_owned())?;
+#[derive(Default)]
+struct ReportSectionSizes {
+    source: usize,
+    map: usize,
+    font: usize,
+    audio: usize,
+    visual: usize,
+    metadata: usize,
+}
 
+fn report_sections(cartridge: &DecodedCartridge) -> (ReportSectionSizes, Vec<(String, usize)>) {
+    let mut sizes = ReportSectionSizes::default();
     let mut source_bytes = 0_usize;
-    let mut map_bytes = 0_usize;
-    let mut font_bytes = 0_usize;
-    let mut audio_bytes = 0_usize;
-    let mut visual_bytes = 0_usize;
-    let mut metadata_bytes = 0_usize;
     let mut largest_entries = cartridge
         .entries
         .iter()
@@ -1029,9 +1025,10 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
         if name.starts_with("source/") {
             source_bytes += value.len();
         } else if name == "manifest.json" || name.starts_with("presentation/") {
-            metadata_bytes += value.len();
+            sizes.metadata += value.len();
         }
     }
+    sizes.source = source_bytes;
     for asset in cartridge.manifest.assets.values() {
         let length = cartridge
             .entries
@@ -1039,19 +1036,55 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
             .map_or(0, std::vec::Vec::len);
         match asset.kind {
             AssetKind::Map => {
-                map_bytes += length;
-                visual_bytes += length;
+                sizes.map += length;
+                sizes.visual += length;
             }
             AssetKind::Font => {
-                font_bytes += length;
-                visual_bytes += length;
+                sizes.font += length;
+                sizes.visual += length;
             }
-            AssetKind::Sound | AssetKind::Music => audio_bytes += length,
+            AssetKind::Sound | AssetKind::Music => sizes.audio += length,
             AssetKind::Sprite | AssetKind::Animation | AssetKind::TileSet => {
-                visual_bytes += length;
+                sizes.visual += length;
             }
         }
     }
+    (sizes, largest_entries)
+}
+
+fn profile_cartridge(
+    bytes: &[u8],
+    cartridge: &DecodedCartridge,
+    program: &[u8],
+) -> Result<serde_json::Value, String> {
+    let manifest = &cartridge.manifest;
+    let request = serde_json::json!({
+        "revision": 1,
+        "javascript": std::str::from_utf8(program).map_err(|_| "compiled program is not UTF-8")?,
+        "manifest": { "id": manifest.id, "updateRate": manifest.update_rate,
+            "display": manifest.display, "assets": manifest.assets },
+        "entries": cartridge.entries, "rom": bytes, "seed": 0x240c_1999_u32,
+        "frames": 60, "trace": { "revision": 1, "frames": [] }, "save": [],
+    });
+    let runtime = execute_headless_host(
+        &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
+        60,
+    )
+    .map_err(|()| "headless profile failed".to_owned())?;
+    serde_json::from_slice(&runtime).map_err(|error| error.to_string())
+}
+
+fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
+    let (bytes, cartridge, program) = load_headless_cartridge(path)
+        .map_err(|()| "could not load cartridge for analysis".to_owned())?;
+    let sections = archive_sections(&bytes)?;
+    let unpacked = unpack_cartridge_project(&bytes).map_err(|error| error.to_string())?;
+    let compilation = compile_project(&unpacked.manifest, &unpacked.files, CompileMode::Release)
+        .map_err(|error| error.to_string())?;
+    let generated = compilation
+        .generated
+        .ok_or_else(|| "release compilation produced no program".to_owned())?;
+    let (section_sizes, largest_entries) = report_sections(&cartridge);
     let raw_bytes = sections.iter().map(|(_, raw, _)| raw).sum::<usize>();
     let encoded_bytes = sections
         .iter()
@@ -1078,22 +1111,7 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
         .sort_by_key(|value| std::cmp::Reverse(value["sourceBytes"].as_u64().unwrap_or_default()));
     largest_symbols.truncate(8);
 
-    let manifest = &cartridge.manifest;
-    let request = serde_json::json!({
-        "revision": 1,
-        "javascript": std::str::from_utf8(&program).map_err(|_| "compiled program is not UTF-8")?,
-        "manifest": { "id": manifest.id, "updateRate": manifest.update_rate,
-            "display": manifest.display, "assets": manifest.assets },
-        "entries": cartridge.entries, "rom": bytes, "seed": 0x240c_1999_u32,
-        "frames": 60, "trace": { "revision": 1, "frames": [] }, "save": [],
-    });
-    let runtime = execute_headless_host(
-        &serde_json::to_vec(&request).map_err(|error| error.to_string())?,
-        60,
-    )
-    .map_err(|()| "headless profile failed".to_owned())?;
-    let runtime: serde_json::Value =
-        serde_json::from_slice(&runtime).map_err(|error| error.to_string())?;
+    let runtime = profile_cartridge(&bytes, &cartridge, &program)?;
     let summary = runtime
         .get("summary")
         .cloned()
@@ -1109,7 +1127,7 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
     if bytes.len() > 196_608 {
         warnings.push("cartridge is above 75% of 256 KiB; inspect largestEntries");
     }
-    if visual_bytes > 98_304 {
+    if section_sizes.visual > 98_304 {
         warnings.push("visual assets are above 75% of 128 KiB; reduce the largest visual asset");
     }
     if summary["workPeak"].as_u64().unwrap_or_default() > 40_000 {
@@ -1123,13 +1141,13 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
         "sizeClass": size_class,
         "sections": {
             "canonicalCartridgeBytes": bytes.len(),
-            "sourceBytes": source_bytes,
+            "sourceBytes": section_sizes.source,
             "generatedReleaseBytes": generated.generated_bytes,
-            "visualBytes": visual_bytes,
-            "mapBytes": map_bytes,
-            "fontBytes": font_bytes,
-            "audioBytes": audio_bytes,
-            "metadataBytes": metadata_bytes,
+            "visualBytes": section_sizes.visual,
+            "mapBytes": section_sizes.map,
+            "fontBytes": section_sizes.font,
+            "audioBytes": section_sizes.audio,
+            "metadataBytes": section_sizes.metadata,
             "containerOverheadBytes": container_overhead,
             "rawArchiveBytes": raw_bytes,
             "encodedArchiveBytes": encoded_bytes,
@@ -1152,7 +1170,7 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
         )
         .map_err(|error| error.to_string())?
     } else {
-        serde_json::to_value(manifest).map_err(|error| error.to_string())?
+        serde_json::to_value(&cartridge.manifest).map_err(|error| error.to_string())?
     };
     report
         .as_object_mut()

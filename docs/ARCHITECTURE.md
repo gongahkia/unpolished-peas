@@ -1,7 +1,7 @@
 # Architecture
 
 PX-240C is a static browser application backed by one compiler and cartridge implementation shared
-with a native Linux CLI.
+with the native CLI.
 
 ## Package ownership
 
@@ -26,9 +26,9 @@ bounded source asset bank; map queries and drawing use the same visual store. Co
 program order, then frame completion resolves indexed scanout and renders deterministic PCM.
 The page presents those pixels/samples and handles input and storage; it no longer re-executes
 cartridge graphics or audio. Tests drive this same core with native-compiled PXCL and compare
-actual alpha browser recordings. `MemoryBus` now aliases work RAM and the actual graphics/raster
-storage with transactional byte/word/copy/fill access. Its candidate layout and implemented subset
-are documented in HARDWARE. The browser Worker, the embedded offline standalone Worker, and the
+actual alpha browser recordings. `MemoryBus` aliases work RAM and the actual graphics/raster
+storage with transactional byte/word/copy/fill access. Its frozen layout is documented in HARDWARE.
+The browser Worker, the embedded offline standalone Worker, and the
 native CLI's Node headless adapter all drive this same core rather than reimplementing console calls.
 
 ## Data flow
@@ -56,8 +56,9 @@ synthesizer and retained bus state. Restore validates all components and rolls b
 The Studio journal still retains its revision-1 wrapper, now populated from that authoritative
 snapshot; recorded inputs and canonical fingerprints provide deterministic rewind with explicit
 divergence detection. Raw legacy Worker snapshots restore only their original scheduler/save fields;
-they do not contain graphics/audio. Full public replay migration remains required. The debugger does
-not grant cartridges DOM, persistence, or network capabilities.
+they do not contain graphics/audio. Public revision-0 replay records migrate into the bounded
+revision-1 envelope without replacing the original input. The debugger does not grant cartridges
+DOM, persistence, or network capabilities.
 
 Visual assets now occupy one packed 128 KiB image. Byte views back pixels/flags and explicit
 little-endian DataViews back map cells; the renderer and map query API read those views directly.

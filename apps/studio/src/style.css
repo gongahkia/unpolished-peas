@@ -342,7 +342,8 @@ body,
 
 .player-budget {
   top: 2px;
-  right: 2px;
+  right: auto;
+  left: 2px;
   bottom: auto;
 }
 
@@ -366,6 +367,10 @@ body,
   background: #5b2938;
   border: 1px solid var(--cyan);
   font: inherit;
+}
+
+.capture-player select {
+  appearance: none;
 }
 
 .share-view main {

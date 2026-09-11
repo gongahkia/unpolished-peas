@@ -16,3 +16,4 @@ cargo clippy --workspace --all-targets --all-features -- -D warnings
 cargo test --workspace --all-features
 cargo build --workspace --all-features
 cargo build --package pxcl-wasm --target wasm32-unknown-unknown --release
+./scripts/verify-release-artifacts.sh

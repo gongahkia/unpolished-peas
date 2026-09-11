@@ -1,7 +1,8 @@
-# Frozen alpha hardware profile
+# PX-240C Hardware Revision 1
 
-These centrally defined revision-1 limits were frozen after measuring all three bundled cartridges.
-See [LIMITS.md](LIMITS.md) for the calibration evidence.
+This is the frozen byte-addressed machine contract used by the Worker, standalone player and
+headless host. Its public limits retain the measured alpha profile; [LIMITS.md](LIMITS.md) records
+both the baseline and V1 measurements.
 
 | Facility                        |          Current value |
 | ------------------------------- | ---------------------: |
@@ -39,16 +40,14 @@ during scanout but cannot change these values.
 |     6 | `#d5b992` |    14 | `#c18436` |    22 | `#43969a` |    30 | `#936397` |
 |     7 | `#f4e5bd` |    15 | `#e7bd50` |    23 | `#75cbc0` |    31 | `#c38aae` |
 
-## V1 candidate byte bus (in progress)
+## Byte bus
 
-The Worker-owned production core now exposes the following **implemented subset**, not the finished
-Hardware Revision 1 contract. The remaining freeze work is the complete aggregate conformance gate
-and cross-host verification.
-The standalone exporter still uses its
-alpha runtime and does **not** support these new calls yet. Do not use this checkpoint to claim V1
-hardware conformance or standalone parity.
+The Worker-owned production core exposes the following complete Hardware Revision 1 map. Studio,
+standalone HTML and native headless execution all drive that production core. Executable conformance
+projects plus lower-level property tests cover mapped regions, reserved holes, permissions, timing,
+mixed high/low access and cross-host behavior.
 
-The candidate address space is 22 bits: `0x000000` through `0x3fffff` (4 MiB of addresses, not 4 MiB
+The address space is 22 bits: `0x000000` through `0x3fffff` (4 MiB of addresses, not 4 MiB
 of work RAM). It leaves room for cartridge descriptors without taking bytes from the fixed 128 KiB
 visual capacity. There are no address wraps or mirrored mappings. Every currently unmapped address
 reads zero; writing one faults. Offsets below are hexadecimal; lengths and counts are decimal.
@@ -169,13 +168,14 @@ retain their complete device/bus images. All four legacy formats require a revis
 missing work/attribution become zero/empty, completed updates are derived from frame/cadence, and
 phase/fault become idle/none. Existing boot status is preserved, or set true when a legacy frame is
 nonzero. Raw alpha revision-1 snapshots still restore only their original machine/save fields, plus
-these explicit metadata defaults. This is frame-boundary compatibility, not public `.pxrec` migration
-or source-statement suspension. Full source-level pause state remains required.
+these explicit metadata defaults. Bus snapshots remain frame-boundary records; source-statement
+suspension is represented by compiler-generated debug continuations, and public revision-0 replays
+migrate to the revision-1 `.pxrec` envelope before execution.
 
 `tests/conformance/memory.pxl` runs through the native compiler and shared production core in release
-and debug tests, and through Wasm and the actual Worker in Firefox E2E. The lower-level bus tests
+and debug tests, and through Wasm and the actual Worker in the browser matrix. Lower-level bus tests
 cover all mapped regions, all 144 raster rows, mixed high/low writes, reset, permissions, bounds,
-unaligned words, overlaps, exact work charges and rollback. These tests cover this subset only.
+unaligned words, overlaps, exact work charges and rollback.
 
 ### Cartridge save image and commit control
 
@@ -357,8 +357,8 @@ faults; restoring a healthy checkpoint is the recovery path.
 
 `tests/conformance/audio` is an ordinary source-visible cartridge. Native Release/Debug tests verify
 all eight voices, descriptors, command/register aliases, alternating raw-muted/audible PCM and full
-replay. Firefox E2E imports, compiles and runs the packed cartridge through the Worker. Standalone
-exporter parity, the full hardware viewer and the remaining hardware regions are still required.
+replay. The browser matrix imports, compiles and runs it through the Worker; standalone exports use
+the same inlined Worker/core. Studio's paused memory panel exposes these registers and watchpoints.
 
 ### Visual image and allocation descriptors
 
@@ -410,7 +410,8 @@ consumes at least one payload byte, bounding the table at 131,072 records (3 MiB
 Only actual descriptor records are mapped; unused slots remain reserved zero/read-only holes.
 `tests/conformance/visual/` is an ordinary source-visible project exercising descriptor discovery,
 unaligned cells, sprite/tile/flag writes and mixed high-level drawing/query calls in Release/Debug
-core tests and Firefox import/compile/run. It is not the complete V1 service cartridge.
+core tests and the browser matrix. The bundled source-visible `px240c-service` and
+`hardware-gauntlet` cartridges expose the author-facing diagnostic pages.
 
 ### Controller and pointer registers
 
@@ -441,13 +442,13 @@ stable throughout that frame's update/draw/raster calls. This deliberately prese
 timing: in a 30 Hz cartridge a press first sampled on an odd, skipped-update frame is visible to
 that frame's drawing but is not latched for the next update. A held button is still visible through
 `btn`. The focused scheduler test reproduces this exact sequence and its restore behavior; it is
-not inferred from browser key timing. This checkpoint does not introduce update-latched edges.
+not inferred from browser key timing. Hardware Revision 1 does not introduce update-latched edges.
 
 `tests/conformance/input.pxl` checks all twelve buttons on every port, high/low API equivalence,
 held/press/release transitions, pointer state, reset and copying registers to RAM. Native tests run
-36-frame scripted traces at both 30/60 Hz in Release/Debug with restore/forward checks. Firefox
-also compiles and executes it with real keyboard presses on the existing two keyboard mappings.
-Four-port keyboard remapping and the wider accessibility pass remain required.
+36-frame scripted traces at both 30/60 Hz in Release/Debug with restore/forward checks. The browser
+matrix also compiles and executes it; locally stored controller profiles cover four keyboard ports,
+physical-gamepad assignment, conflict handling and disconnect/reconnect behavior.
 
 ## Synthetic work model
 
