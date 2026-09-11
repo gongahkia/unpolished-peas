@@ -1,5 +1,11 @@
 # Tutorial: build a playable cartridge
 
+For the in-console five-to-ten-minute route, boot Studio and enter `load pxcl-tutorial`, `run`.
+FIRST SIGNAL advances from a pixel through drawing, input, animation, production synth, the 8 KiB
+application save, and packing. It is an ordinary source-visible PXCL cartridge: stop with
+Shift+Escape and use `edit` or `inspect` to see every line. The repository walkthrough below builds
+a slightly larger game from scratch.
+
 This builds a complete source-only catching game, runs it locally, and exports one offline HTML
 file. Commands assume the repository toolchain from the README.
 

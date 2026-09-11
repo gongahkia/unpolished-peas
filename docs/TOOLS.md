@@ -55,6 +55,20 @@ accepts raw or PNG cartridges and reports the inner archive rather than trusting
 metadata. `export zip` stores the exact offline HTML as `index.html` with fixed zero timestamps for a
 byte-identical itch.io-ready artifact.
 
+`info` keeps manifest fields at the JSON top level and adds an `analysis` object. It reconciles the
+exact canonical size/class with source, release-generated code, visual/map/font/audio data,
+metadata, encoded payload, container overhead, compression gain, and the fixed 8 KiB save
+allocation. It lists the largest archive entries and routines, actionable warnings, and a
+deterministic 60-frame production-core profile (work, command, voice and mapped-bus peaks, hashes,
+and any fault). That default profile uses seed `0x240c1999`, empty input and an empty save; use
+`run --headless --input ... --save ...` for an intentional gameplay path.
+
+Studio `SETTINGS`/`CONTROLS` stores one named four-port keyboard/gamepad profile locally. A key
+capture moves an existing conflicting assignment instead of producing two bindings; physical
+gamepad indices remain assigned across disconnect/reconnect. Reduced flashing, muted startup, UI
+contrast, larger help text and output volume affect only host presentation/audio, never indexed
+cartridge pixels, captures, replay state, or the fixed palette.
+
 Studio commands, project persistence, editor recovery, runtime launch, and browser fallbacks remain
 documented in [STUDIO.md](STUDIO.md). Headless traces and cartridge layout are documented in
 [CARTRIDGE_FORMAT.md](CARTRIDGE_FORMAT.md).

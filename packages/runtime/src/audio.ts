@@ -633,10 +633,20 @@ export class Synthesizer {
 /** Small Web Audio queue used only after an explicit host-side resume gesture. */
 export class WebAudioSink {
   private readonly context: AudioContext;
+  private readonly output: AudioNode;
   private cursor = 0;
 
-  public constructor(context = new AudioContext({ sampleRate: HARDWARE.audioSampleRate })) {
+  public constructor(
+    context = new AudioContext({ sampleRate: HARDWARE.audioSampleRate }),
+    volume = 1,
+  ) {
+    if (!Number.isFinite(volume) || volume < 0 || volume > 1)
+      throw new RangeError('audio volume must be between zero and one');
     this.context = context;
+    const gain = context.createGain();
+    gain.gain.value = volume;
+    gain.connect(context.destination);
+    this.output = gain;
   }
 
   public get state(): AudioContextState {
@@ -657,7 +667,7 @@ export class WebAudioSink {
     buffer.getChannelData(1).set(frame.right);
     const source = this.context.createBufferSource();
     source.buffer = buffer;
-    source.connect(this.context.destination);
+    source.connect(this.output);
     this.cursor = Math.max(this.cursor, this.context.currentTime);
     source.start(this.cursor);
     this.cursor += frame.left.length / HARDWARE.audioSampleRate;

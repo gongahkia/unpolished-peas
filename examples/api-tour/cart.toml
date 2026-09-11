@@ -1,0 +1,27 @@
+format = 1
+language = "PXCL/1"
+id = "api-tour"
+title = "PXCL API TOUR"
+author = "@gongahkia"
+version = "1.0.0"
+entry = "src/main.pxl"
+update_rate = 60
+
+[assets.dot]
+kind = "sprite"
+path = "assets/dot.pxg"
+[assets.tiles]
+kind = "tile_set"
+path = "assets/tiles.pxg"
+[assets.room]
+kind = "map"
+path = "assets/room.pxm"
+[assets.typeface]
+kind = "font"
+path = "assets/typeface.pxf"
+[assets.beep]
+kind = "sound"
+path = "assets/beep.pxs"
+[assets.loop]
+kind = "music"
+path = "assets/loop.pxt"

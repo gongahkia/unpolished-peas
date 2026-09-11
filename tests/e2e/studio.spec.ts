@@ -17,11 +17,21 @@ async function saveAndCloseTool(page: Page): Promise<void> {
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
 }
 
-test('complete local Studio and distribution workflow', async ({ page, context }, testInfo) => {
+test('complete local Studio and distribution workflow', async ({
+  browser,
+  page,
+  context,
+}, testInfo) => {
   const browserErrors: string[] = [];
+  const runtimeNetworkRequests: string[] = [];
+  let auditRuntimeNetwork = false;
   page.on('pageerror', (error) => browserErrors.push(error.message));
   page.on('console', (message) => {
     if (message.type() === 'error') browserErrors.push(message.text());
+  });
+  page.on('request', (request) => {
+    if (auditRuntimeNetwork && /^https?:/.test(request.url()))
+      runtimeNetworkRequests.push(request.url());
   });
 
   await page.goto('/');
@@ -44,6 +54,8 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await expect(page.locator('.terminal')).toContainText('signal-4k');
   await expect(page.locator('.terminal')).toContainText('pocket-relay');
   await expect(page.locator('.terminal')).toContainText('hardware-gauntlet');
+  await expect(page.locator('.terminal')).toContainText('pxcl-tutorial');
+  auditRuntimeNetwork = true;
 
   for (const cartridge of [
     { id: 'cinder-circuit', key: 'z', work: ['W03274', 'W03342'] },
@@ -51,7 +63,7 @@ test('complete local Studio and distribution workflow', async ({ page, context }
     { id: 'raster-rush', key: 'Enter', work: ['W31682'] },
   ]) {
     await shellCommand(page, `load ${cartridge.id}`);
-    await expect(page.locator('.active-cart')).toHaveText(cartridge.id.toUpperCase());
+    await expect(page.locator('.active-cart')).toContainText(cartridge.id.toUpperCase());
     await shellCommand(page, 'run');
     await expect(page.locator('[data-view="player"]')).toBeVisible();
     await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
@@ -91,7 +103,7 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await expect(page.locator('.player-status')).not.toHaveClass(/error/);
   await page.locator('.stop-player').click();
 
-  for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet']) {
+  for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet', 'pxcl-tutorial']) {
     await shellCommand(page, `load ${id}`);
     await shellCommand(page, 'run');
     await expect
@@ -108,6 +120,22 @@ test('complete local Studio and distribution workflow', async ({ page, context }
   await page.locator('[data-debug="in"]').click();
   await expect(page.locator('.debug-status')).toContainText('main.pxl');
   await page.locator('[data-debug="back"]').click();
+
+  await shellCommand(page, 'help mem_read');
+  await expect(page.locator('[data-view="manual"]')).toBeVisible();
+  await expect(page.locator('.manual-page')).toContainText('mem_read16');
+  await page.locator('[data-back]').click();
+  await shellCommand(page, 'settings');
+  await page.locator('[data-setting="highContrast"]').check();
+  await page.locator('[data-setting="largeHelp"]').check();
+  await page.locator('[data-remap-key]').click();
+  await page.keyboard.press('KeyC');
+  await expect(page.locator('.settings-status')).toContainText('PRIOR CONFLICT REASSIGNED');
+  await page.locator('[data-settings="save"]').click();
+  await expect(page.locator('.settings-status')).toContainText('PROFILE SAVED');
+  await expect(page.locator('html')).toHaveAttribute('data-high-contrast', 'true');
+  await expect(page.locator('html')).toHaveAttribute('data-large-help', 'true');
+  await page.locator('[data-settings="back"]').click();
 
   await shellCommand(page, 'new e2e-bus MEMORY CONFORMANCE');
   await shellCommand(page, 'edit');
@@ -346,8 +374,31 @@ on draw:
   await expect(page.locator('.shelf-item[data-id="e2e-link.copy"]')).not.toHaveClass(/removed/);
   await page.locator('[data-shelf="back"]').click();
 
+  await shellCommand(page, 'shelf');
+  await page.locator('.shelf-item[data-id="e2e-save"]').click();
+  await page.locator('[data-shelf="save"]').click();
+  await expect(page.locator('[data-view="save-manager"]')).toContainText('CHECKSUM VERIFIED');
+  const saveDownloadPromise = page.waitForEvent('download');
+  await page.locator('[data-save="out"]').click();
+  const saveDownload = await saveDownloadPromise;
+  expect(saveDownload.suggestedFilename()).toBe('e2e-save.pxsave');
+  const savePath = await saveDownload.path();
+  expect(savePath).not.toBeNull();
+  await page.locator('[data-save="reset"]').click();
+  await expect(page.locator('.save-manager-status')).toContainText('CONFIRM RESET');
+  await page.locator('[data-save="reset"]').click();
+  await expect(page.locator('.save-manager-status')).toContainText('RESET TO EMPTY');
+  await page.locator('[data-save-input]').setInputFiles(savePath);
+  await expect(page.locator('.save-manager-status')).toContainText('IMPORTED / CHECKSUM VERIFIED');
+  await page.locator('[data-save="delete"]').click();
+  await expect(page.locator('.save-manager-status')).toContainText('CONFIRM DELETE');
+  await page.locator('[data-save="delete"]').click();
+  await expect(page.locator('.save-manager-status')).toContainText('SAVE DELETED');
+  await page.locator('[data-save="back"]').click();
+  await page.locator('[data-shelf="back"]').click();
+
   await shellCommand(page, 'new e2e-alpha E2E ALPHA');
-  await expect(page.locator('.active-cart')).toHaveText('E2E-ALPHA');
+  await expect(page.locator('.active-cart')).toContainText('E2E-ALPHA');
   await shellCommand(page, 'edit');
   const source = page.locator('textarea.source-input');
   await source.fill(`// Made by @gongahkia
@@ -572,14 +623,19 @@ on draw:
     .toString('utf8');
   expect(zipHtml).toBe(await readFile(htmlPath, 'utf8'));
 
-  const standalone = await context.newPage();
+  const exportContext = await browser.newContext({ serviceWorkers: 'block' });
+  const exportedPlayerUrl = 'http://127.0.0.1:4173/__px240c_export.html';
+  await exportContext.route('**/__px240c_export.html', async (route) => {
+    await route.fulfill({ contentType: 'text/html', body: zipHtml });
+  });
+
+  const standalone = await exportContext.newPage();
   const standaloneErrors: string[] = [];
   standalone.on('pageerror', (error) => standaloneErrors.push(error.message));
   standalone.on('console', (message) => {
     if (message.type() === 'error') standaloneErrors.push(message.text());
   });
-  await standalone.goto('/');
-  await standalone.setContent(await readFile(htmlPath, 'utf8'));
+  await standalone.goto(exportedPlayerUrl);
   await expect(standalone.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
   await expect(standalone.locator('#fullscreen')).toBeVisible();
   await standalone.locator('#pause').click();
@@ -594,13 +650,13 @@ on draw:
   expect(standaloneErrors).toEqual([]);
   await standalone.close();
 
-  const embedded = await context.newPage();
-  await embedded.goto('/#embed');
-  await embedded.setContent(zipHtml);
+  const embedded = await exportContext.newPage();
+  await embedded.goto(`${exportedPlayerUrl}#embed`);
   await expect(embedded.locator('html')).toHaveAttribute('data-embed', 'true');
   await expect(embedded.locator('#status')).toHaveText(/^F\d{5} W\d{5}$/);
   await expect(embedded.locator('main > header')).toBeHidden();
   await embedded.close();
+  await exportContext.close();
 
   const moduleProject = testInfo.outputPath('module-project');
   await mkdir(`${moduleProject}/src`, { recursive: true });
@@ -663,6 +719,8 @@ on draw:
   await page.locator('[data-debug="back"]').click();
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
 
+  auditRuntimeNetwork = false;
+  expect(runtimeNetworkRequests).toEqual([]);
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.reload();
   await expect

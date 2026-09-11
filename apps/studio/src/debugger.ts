@@ -10,6 +10,7 @@ import {
   WebAudioSink,
   WebGlIndexedRenderer,
   type DebugTraceEvent,
+  type ControllerProfile,
   type GraphicsSnapshot,
   type InputFrame,
   type MemoryRegionDescriptor,
@@ -19,6 +20,7 @@ import {
 } from '@px240c/runtime';
 
 import { BrowserCompiler, type CompilationResult } from './compiler';
+import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
 
 export interface DebugProject {
   readonly id: string;
@@ -61,8 +63,19 @@ export async function openDebugger(
   save: SaveImage,
   back: () => void,
   manual: () => void,
+  controllerProfile: ControllerProfile,
+  audioVolume: number,
 ): Promise<ActiveDebugger> {
-  const controller = await DebuggerController.create(root, project, compiler, save, back, manual);
+  const controller = await DebuggerController.create(
+    root,
+    project,
+    compiler,
+    save,
+    back,
+    manual,
+    controllerProfile,
+    audioVolume,
+  );
   try {
     await controller.start();
   } catch (error) {
@@ -122,6 +135,8 @@ class DebuggerController {
     save: SaveImage,
     back: () => void,
     manual: () => void,
+    controllerProfile: ControllerProfile,
+    audioVolume: number,
   ): Promise<DebuggerController> {
     const compilation = await compiler.compileProject(project.manifest, project.files, true);
     const diagnostic = compilation.analysis.diagnostics[0];
@@ -152,6 +167,8 @@ class DebuggerController {
       debugSource.entry,
       debugSource.entryPath,
       debugSource.files,
+      controllerProfile,
+      audioVolume,
     );
   }
 
@@ -170,6 +187,8 @@ class DebuggerController {
     source: string,
     sourcePath: string,
     sources: ReadonlyMap<string, string>,
+    controllerProfile: ControllerProfile,
+    private readonly audioVolume: number,
   ) {
     this.source = source;
     this.sourcePath = sourcePath;
@@ -185,13 +204,12 @@ class DebuggerController {
     this.renderShell();
     const canvas = requireElement(this.root, '.debug-screen') as HTMLCanvasElement;
     this.sandbox = new SandboxSession(
-      new Worker(new URL('../../../packages/runtime/src/sandbox-worker.ts', import.meta.url), {
-        type: 'module',
+      new InlineSandboxWorker({
         name: `px240c-debug-${project.id}`,
       }),
       1_000,
     );
-    this.input = new BrowserInput(canvas);
+    this.input = new BrowserInput(canvas, undefined, controllerProfile);
     this.renderer = new WebGlIndexedRenderer(canvas);
     this.initialization = this.sandbox.load(javascript, {
       seed: 0x240c1999,
@@ -310,6 +328,7 @@ class DebuggerController {
       switch (action) {
         case 'run':
           this.running = !this.running;
+          if (!this.running) this.closeAudioQueue();
           this.message = this.running ? 'RUNNING' : `PAUSED AT FRAME ${String(this.currentFrame)}`;
           this.render();
           if (this.running) this.schedule();
@@ -363,6 +382,7 @@ class DebuggerController {
       }
     } catch (error: unknown) {
       this.running = false;
+      this.closeAudioQueue();
       this.message = errorMessage(error);
       this.render();
     }
@@ -405,11 +425,13 @@ class DebuggerController {
         const breakpoint = this.breakpointFor(response.event);
         if (memoryHit !== undefined) {
           this.running = false;
+          this.closeAudioQueue();
           this.message = `WATCH ${hexAddress(memoryHit.address)} ${byteHex(memoryHit.before)}>${byteHex(memoryHit.after)}`;
           break;
         }
         if (breakpoint !== undefined) {
           this.running = false;
+          this.closeAudioQueue();
           this.message = `BREAK ${shortSource(breakpoint.source)}:${String(breakpoint.line)} / FRAME ${String(this.currentFrame)}`;
           break;
         }
@@ -483,6 +505,7 @@ class DebuggerController {
 
   private async rewind(target: number): Promise<void> {
     this.running = false;
+    this.closeAudioQueue();
     this.busy = true;
     this.message = `REPLAYING TO ${String(target)}`;
     this.render();
@@ -611,12 +634,23 @@ class DebuggerController {
   }
 
   private async enableSound(): Promise<void> {
-    this.audioSink ??= new WebAudioSink();
+    this.audioSink ??= new WebAudioSink(undefined, this.audioVolume);
     await this.audioSink.resume();
     const button = this.root.querySelector<HTMLButtonElement>('[data-debug="sound"]');
     if (button !== null) {
       button.textContent = 'ON';
       button.disabled = true;
+    }
+  }
+
+  private closeAudioQueue(): void {
+    const current = this.audioSink;
+    this.audioSink = undefined;
+    if (current !== undefined) void current.close();
+    const button = this.root.querySelector<HTMLButtonElement>('[data-debug="sound"]');
+    if (button !== null) {
+      button.textContent = 'SOUND';
+      button.disabled = false;
     }
   }
 
@@ -646,6 +680,7 @@ class DebuggerController {
 
   private async editMemory(): Promise<void> {
     this.running = false;
+    this.closeAudioQueue();
     const address = parseDebuggerAddress(
       (requireElement(this.root, '.memory-address') as HTMLInputElement).value,
     );

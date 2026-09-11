@@ -494,6 +494,7 @@ fn bundled_cartridges_compile_and_pack_within_capacity() {
         "signal-4k",
         "pocket-relay",
         "hardware-gauntlet",
+        "pxcl-tutorial",
     ] {
         let project = cartridges.join(id);
         let check = binary()
@@ -534,7 +535,10 @@ fn bundled_cartridges_compile_and_pack_within_capacity() {
             size <= class_limit,
             "{id} misses its complete-artifact class"
         );
-        if matches!(id, "signal-4k" | "pocket-relay" | "hardware-gauntlet") {
+        if matches!(
+            id,
+            "signal-4k" | "pocket-relay" | "hardware-gauntlet" | "pxcl-tutorial"
+        ) {
             let headless = binary()
                 .args([
                     "run",
@@ -652,7 +656,23 @@ fn new_pack_and_info_form_a_deterministic_project_workflow() {
         .output()
         .expect("CLI starts");
     assert!(info.status.success());
-    assert!(String::from_utf8_lossy(&info.stdout).contains("\"title\": \"CLI TEST\""));
+    let report: serde_json::Value =
+        serde_json::from_slice(&info.stdout).expect("info is structured JSON");
+    assert_eq!(report["title"], "CLI TEST");
+    assert_eq!(report["analysis"]["sections"]["saveAllocationBytes"], 8192);
+    assert_eq!(
+        report["analysis"]["runtime60Frames"]["summary"]["completedFrames"],
+        52
+    );
+    assert_eq!(
+        report["analysis"]["runtime60Frames"]["fault"]["code"],
+        "PX9002"
+    );
+    assert!(
+        report["analysis"]["largestEntries"]
+            .as_array()
+            .is_some_and(|v| !v.is_empty())
+    );
 
     fs::remove_file(first).expect("first cartridge removes");
     fs::remove_file(second).expect("second cartridge removes");

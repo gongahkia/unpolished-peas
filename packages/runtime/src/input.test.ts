@@ -3,8 +3,12 @@ import { describe, expect, it } from 'vitest';
 import {
   BUTTONS,
   emptyInputFrame,
+  defaultControllerProfile,
   inputRegisterByte,
+  isControllerProfile,
   isInputFrame,
+  profiledControllerButtons,
+  remapControllerKey,
   standardGamepadButtons,
 } from './input';
 
@@ -65,5 +69,32 @@ describe('four-port input model', () => {
     expect(isInputFrame({ ...frame, controllers: Array(4) as unknown[] })).toBe(false);
     expect(isInputFrame({ ...frame, pointer: { ...frame.pointer, x: 0.5 } })).toBe(false);
     expect(isInputFrame({ ...frame, extra: true })).toBe(false);
+  });
+
+  it('validates four-port profiles, remaps conflicts atomically, and preserves gamepad slots', () => {
+    const profile = defaultControllerProfile();
+    expect(isControllerProfile(profile)).toBe(true);
+    expect(Object.values(profile.keyboard).some(([port]) => port === 3)).toBe(true);
+    const remapped = remapControllerKey(profile, 'KeyZ', 3, 'a');
+    expect(remapped.keyboard.KeyZ).toEqual([3, 'a']);
+    expect(Object.entries(remapped.keyboard)).not.toContainEqual(['KeyC', [3, 'a']]);
+    expect(profile.keyboard.KeyZ).toEqual([0, 'a']);
+    expect(isControllerProfile({ ...profile, gamepads: [0, 0, 2, 3] })).toBe(false);
+    expect(isControllerProfile({ ...profile, keyboard: { KeyA: [0, 'a'], KeyB: [0, 'a'] } })).toBe(
+      false,
+    );
+  });
+
+  it('keeps physical gamepad assignment stable across disconnect and reconnect', () => {
+    const profile = { ...defaultControllerProfile(), gamepads: [2, 0, null, 3] } as const;
+    const pad = {
+      index: 2,
+      buttons: [{ pressed: true }],
+      axes: [],
+    };
+    expect(profiledControllerButtons(profile, [], [null])[0].a).toBe(false);
+    expect(profiledControllerButtons(profile, [], [pad])[0].a).toBe(true);
+    expect(profiledControllerButtons(profile, ['KeyC'], [pad])[3].a).toBe(true);
+    expect(profiledControllerButtons(profile, [], [null])[0].a).toBe(false);
   });
 });

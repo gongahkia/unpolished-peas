@@ -1118,9 +1118,8 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
     if warnings.is_empty() {
         warnings.push("within fixed cartridge, visual, work, command and voice limits");
     }
-    Ok(serde_json::json!({
+    let analysis = serde_json::json!({
         "revision": 1,
-        "manifest": manifest,
         "sizeClass": size_class,
         "sections": {
             "canonicalCartridgeBytes": bytes.len(),
@@ -1138,12 +1137,28 @@ fn cartridge_report(path: &Path) -> Result<serde_json::Value, String> {
                 - i64::try_from(encoded_bytes).unwrap_or(i64::MAX),
             "saveAllocationBytes": 8192,
         },
-        "runtime60Frames": summary,
+        "runtime60Frames": {
+            "summary": summary,
+            "fault": runtime.get("fault").cloned(),
+        },
         "largestEntries": largest_entries.into_iter().map(|(path, bytes)|
             serde_json::json!({ "path": path, "bytes": bytes })).collect::<Vec<_>>(),
         "largestSymbols": largest_symbols,
         "warnings": warnings,
-    }))
+    });
+    let mut report = if path.is_dir() {
+        serde_json::to_value(
+            parse_project_manifest(&unpacked.manifest).map_err(|error| error.to_string())?,
+        )
+        .map_err(|error| error.to_string())?
+    } else {
+        serde_json::to_value(manifest).map_err(|error| error.to_string())?
+    };
+    report
+        .as_object_mut()
+        .ok_or_else(|| "manifest report is not an object".to_owned())?
+        .insert("analysis".to_owned(), analysis);
+    Ok(report)
 }
 
 fn archive_sections(bytes: &[u8]) -> Result<Vec<(String, usize, usize)>, String> {

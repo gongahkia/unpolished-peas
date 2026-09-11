@@ -170,9 +170,7 @@ export async function runHeadless(value: unknown): Promise<HeadlessResult> {
       drawCommandPeak,
       audioCommandPeak,
       voicePeak,
-      busMappedBytes: runtime
-        .inspectMemory(0, 1)
-        .regions.reduce((total, region) => total + region.length, 0),
+      busMappedBytes: runtime.memoryRegions().reduce((total, region) => total + region.length, 0),
       finalFramebufferSha256: final?.framebufferSha256 ?? sha256(new Uint8Array()),
       finalStateSha256: sha256(canonicalBytes(finalSnapshot)),
       audioCommandsSha256: commandHash.digest('hex'),

@@ -1,4 +1,5 @@
 import {
+  BUTTONS,
   BrowserInput,
   HARDWARE,
   IndexedDbStorage,
@@ -11,6 +12,7 @@ import {
   decodeCartridgePng,
   decodeCartridgeFragment,
   decodeReplayTrace,
+  defaultControllerProfile,
   emptyInputFrame,
   encodeCartridgePng,
   encodeCartridgeFragment,
@@ -19,10 +21,13 @@ import {
   encodeRgbaPng,
   encodeSingleFileZip,
   replayInputFrames,
+  remapControllerKey,
+  type Button,
   type DecodedPng,
   type InputFrame,
   type ReplayTrace,
   type StoredProject,
+  type StudioSettings,
 } from '@px240c/runtime';
 
 import {
@@ -31,6 +36,7 @@ import {
   type CompilerDiagnostic,
   type ProjectManifest,
 } from './compiler';
+import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { openCreationTool, type CreationTool } from './tools';
 
@@ -48,6 +54,11 @@ interface ActivePlayer {
   readonly stop: () => void;
 }
 
+interface FolderBinding {
+  readonly handle: FileSystemDirectoryHandle;
+  modified: Map<string, number>;
+}
+
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PROJECT_ID = /^[a-z0-9][a-z0-9.-]{2,63}$/;
@@ -59,6 +70,7 @@ const BUNDLED_CARTRIDGES = [
   'signal-4k',
   'pocket-relay',
   'hardware-gauntlet',
+  'pxcl-tutorial',
 ] as const;
 
 /** Diegetic boot monitor, command shell, source editor, and cartridge player foundation. */
@@ -73,6 +85,7 @@ export class StudioApp {
   private player: ActivePlayer | undefined;
   private activeDebugger: ActiveDebugger | undefined;
   private readonly capturedFrames = new Map<string, Uint8Array>();
+  private readonly folderBindings = new Map<string, FolderBinding>();
 
   public constructor(root: HTMLElement, databaseName = 'px240c-studio') {
     this.root = root;
@@ -82,6 +95,7 @@ export class StudioApp {
   public async boot(): Promise<void> {
     this.stopPlayer();
     this.stopDebugger();
+    this.applySettings(await this.repository.settings());
     this.terminalLines.length = 0;
     this.appendLines([
       'PX-240C COLOR DEVELOPMENT UNIT',
@@ -227,7 +241,8 @@ export class StudioApp {
           await this.openTool(command as CreationTool);
           return;
         case 'manual':
-          this.openManual();
+        case 'man':
+          this.openManual(arguments_.join(' ') || 'START');
           return;
         case 'explore':
           await this.openExplorer();
@@ -250,15 +265,26 @@ export class StudioApp {
         case 'info':
           await this.info();
           break;
+        case 'settings':
+        case 'controls':
+          await this.openSettings();
+          return;
+        case 'folder':
+          await this.openProjectFolder();
+          break;
         case 'inspect':
           await this.openInspector();
           return;
         case 'help':
+          if (arguments_.length > 0) {
+            this.openManual(arguments_.join(' '));
+            return;
+          }
           this.appendLines([
             'DIR SHELF NEW LOAD SAVE RECOVER IMPORT',
             'EDIT RUN DEBUG PACK CART EXPORT SHARE INSPECT INFO',
             'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
-            'MANUAL EXPLORE',
+            'MANUAL MAN HELP EXPLORE SETTINGS CONTROLS FOLDER',
             'NEW <ID> [TITLE] / LOAD <ID>',
           ]);
           break;
@@ -419,8 +445,95 @@ export class StudioApp {
     }
   }
 
+  private async openProjectFolder(): Promise<void> {
+    if (window.showDirectoryPicker === undefined)
+      throw new Error('FOLDER API UNAVAILABLE / USE IMPORT + DOWNLOAD');
+    const handle = await window.showDirectoryPicker({ mode: 'readwrite' });
+    const loaded = await this.readProjectFolder(handle);
+    const stored = await this.repository.saveProject(loaded.project);
+    this.activeProject = fromStored(stored);
+    this.folderBindings.set(stored.id, { handle, modified: loaded.modified });
+    await this.repository.setShelfOrigin(stored.id, 'imported');
+    this.appendLines([
+      `FOLDER OPEN ${stored.id} / R${String(stored.revision)}`,
+      'F6 PULLS EXTERNAL CHANGES / F7 EXPLICITLY OVERWRITES A CONFLICT',
+    ]);
+  }
+
+  private async readProjectFolder(
+    handle: FileSystemDirectoryHandle,
+  ): Promise<{ project: WorkingProject; modified: Map<string, number> }> {
+    const modified = new Map<string, number>();
+    const manifestFile = await readFolderFile(handle, 'cart.toml');
+    if (manifestFile === undefined) throw new Error('FOLDER HAS NO CART.TOML');
+    modified.set('cart.toml', manifestFile.lastModified);
+    const manifest = decoder.decode(manifestFile.bytes);
+    const parsed = await this.compiler.parseManifest(manifest);
+    const files: Record<string, Uint8Array> = {};
+    await collectFolderSources(handle, 'src', files, modified, 0);
+    const paths = new Set<string>([
+      parsed.entry,
+      ...Object.values(parsed.assets).map((asset) => asset.path),
+      ...[parsed.label, parsed.thumbnail, parsed.display].filter(
+        (path): path is string => path !== null,
+      ),
+    ]);
+    for (const path of paths) {
+      if (files[path] !== undefined) continue;
+      const file = await readFolderFile(handle, path);
+      if (file === undefined) throw new Error(`FOLDER FILE ${path} IS MISSING`);
+      files[path] = file.bytes;
+      modified.set(path, file.lastModified);
+    }
+    const identity = await readFolderFile(handle, 'presentation/cartridge.json', true);
+    if (identity !== undefined) {
+      files['presentation/cartridge.json'] = identity.bytes;
+      modified.set('presentation/cartridge.json', identity.lastModified);
+    }
+    const total = Object.values(files).reduce((sum, bytes) => sum + bytes.byteLength, 0);
+    if (Object.keys(files).length > 4096 || total > 2 * 1024 * 1024)
+      throw new RangeError('FOLDER PROJECT EXCEEDS FILE OR BYTE LIMIT');
+    return {
+      project: {
+        id: parsed.id,
+        title: parsed.title,
+        manifest,
+        revision: (await this.repository.loadProject(parsed.id))?.revision ?? 0,
+        files,
+      },
+      modified,
+    };
+  }
+
+  private async syncProjectFolder(project: WorkingProject, overwrite: boolean): Promise<void> {
+    const binding = this.folderBindings.get(project.id);
+    if (binding === undefined) return;
+    const outputs = new Map<string, Uint8Array>([
+      ['cart.toml', encoder.encode(project.manifest)],
+      ...Object.entries(project.files),
+    ]);
+    if (!overwrite) {
+      for (const path of outputs.keys()) {
+        const current = await readFolderFile(binding.handle, path, true);
+        const expected = binding.modified.get(path);
+        if (
+          (current === undefined && expected !== undefined) ||
+          (current !== undefined && current.lastModified !== expected)
+        )
+          throw new Error(`FOLDER CONFLICT ${path} / F6 PULL OR F7 PUSH`);
+      }
+    }
+    const modified = new Map(binding.modified);
+    for (const [path, bytes] of outputs) {
+      const file = await writeFolderFile(binding.handle, path, bytes);
+      modified.set(path, file.lastModified);
+    }
+    binding.modified = modified;
+  }
+
   private async saveProject(): Promise<void> {
     const project = this.requireProject();
+    await this.syncProjectFolder(project, false);
     const stored = await this.repository.saveProject(project);
     Object.assign(project, fromStored(stored));
     this.activeProject = project;
@@ -464,11 +577,13 @@ export class StudioApp {
         <div class="diagnostic-strip" role="status" aria-live="polite">CHECKING...</div>
         <footer class="tool-bar">
           <button type="button" data-action="back">ESC BACK</button>
+          <button type="button" data-action="help">F1 HELP</button>
           <button type="button" data-action="format">F2 FORMAT</button>
           <button type="button" data-action="save">F3 SAVE</button>
           <button type="button" data-action="symbol">F4 SYMBOL</button>
           <button type="button" data-action="run">F5 RUN</button>
           <button type="button" data-action="reload">F6 RELOAD</button>
+          <button type="button" data-action="overwrite">F7 PUSH</button>
         </footer>
       </section>
     `;
@@ -494,6 +609,7 @@ export class StudioApp {
       saveQueue = saveQueue
         .catch(() => undefined)
         .then(async () => {
+          await this.syncProjectFolder(project, false);
           const stored = await this.repository.loadProject(project.id);
           if (stored !== undefined && stored.revision !== project.revision) {
             dirty = true;
@@ -601,6 +717,20 @@ export class StudioApp {
           void this.reloadEditorProject(project, selectedPath, textarea, highlight).then(() => {
             dirty = false;
           });
+        } else if (action === 'help') {
+          this.openManual(manualTitleForSymbol(symbolAtCursor(textarea)));
+        } else if (action === 'overwrite') {
+          updateWorkingCopy();
+          void this.syncProjectFolder(project, true)
+            .then(() => this.repository.saveProject(project))
+            .then((stored) => {
+              Object.assign(project, fromStored(stored));
+              dirty = false;
+              this.setDiagnostic(`FOLDER PUSHED / R${String(stored.revision)}`, false);
+            })
+            .catch((error: unknown) => {
+              this.setDiagnostic(errorMessage(error), true);
+            });
         }
       },
       { once: false },
@@ -609,17 +739,21 @@ export class StudioApp {
       const action =
         event.key === 'Escape'
           ? 'back'
-          : event.key === 'F2'
-            ? 'format'
-            : event.key === 'F3'
-              ? 'save'
-              : event.key === 'F5'
-                ? 'run'
-                : event.key === 'F4'
-                  ? 'symbol'
-                  : event.key === 'F6'
-                    ? 'reload'
-                    : undefined;
+          : event.key === 'F1'
+            ? 'help'
+            : event.key === 'F2'
+              ? 'format'
+              : event.key === 'F3'
+                ? 'save'
+                : event.key === 'F5'
+                  ? 'run'
+                  : event.key === 'F4'
+                    ? 'symbol'
+                    : event.key === 'F6'
+                      ? 'reload'
+                      : event.key === 'F7'
+                        ? 'overwrite'
+                        : undefined;
       if (event.ctrlKey && event.code === 'Space') {
         event.preventDefault();
         completeAtCursor(textarea);
@@ -644,6 +778,18 @@ export class StudioApp {
     textarea: HTMLTextAreaElement,
     highlight: HTMLElement,
   ): Promise<void> {
+    const binding = this.folderBindings.get(project.id);
+    if (binding !== undefined) {
+      const external = await this.readProjectFolder(binding.handle);
+      Object.assign(project, external);
+      this.activeProject = project;
+      const source = project.files[path];
+      if (source === undefined) throw new Error('SOURCE REMOVED FROM FOLDER');
+      textarea.value = decoder.decode(source);
+      renderHighlight(highlight, textarea.value);
+      await this.showDiagnostics(path, textarea.value);
+      return;
+    }
     const stored = await this.repository.loadProject(project.id);
     const source = stored?.files[path];
     if (stored === undefined || source === undefined) {
@@ -673,7 +819,7 @@ export class StudioApp {
     });
   }
 
-  private openManual(initialTitle = 'START'): void {
+  private openManual(initialQuery = 'START'): void {
     const topics = manualTopics();
     this.root.innerHTML = `
       <section class="display manual" data-view="manual" aria-label="PX-240C manual browser">
@@ -723,8 +869,12 @@ export class StudioApp {
       if ((event as KeyboardEvent).key === 'Escape') back();
     });
     renderTopics();
-    const initial = topics.find((topic) => topic.title === initialTitle);
+    const initial = topics.find((topic) => topic.title === initialQuery.toUpperCase());
     if (initial !== undefined) show(initial);
+    else {
+      search.value = initialQuery;
+      renderTopics();
+    }
     search.focus();
   }
 
@@ -819,26 +969,25 @@ export class StudioApp {
     const rom = await this.compiler.packProject(project.manifest, project.files);
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
+    const settings = await this.repository.settings();
     this.root.innerHTML = `
       <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
         <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">PXREC OUT</button><label class="file-button">PXREC IN<input class="replay-input" type="file" accept=".pxrec,application/json"></label></div>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
         <button class="enable-player-audio" type="button">SOUND</button>
+        <p class="player-budget">${String(rom.byteLength)}B/${sizeClass(rom.byteLength)} D0000 V0</p>
         <p class="player-status" role="status"></p>
       </section>
     `;
     const canvas = requireElement(this.root, '.player-screen') as HTMLCanvasElement;
     const status = requireElement(this.root, '.player-status') as HTMLElement;
-    const worker = new Worker(
-      new URL('../../../packages/runtime/src/sandbox-worker.ts', import.meta.url),
-      {
-        type: 'module',
-        name: `px240c-${project.id}`,
-      },
-    );
+    const budget = requireElement(this.root, '.player-budget') as HTMLElement;
+    const worker = new InlineSandboxWorker({
+      name: `px240c-${project.id}`,
+    });
     const sandbox = new SandboxSession(worker, 1_000);
-    const input = new BrowserInput(canvas);
+    const input = new BrowserInput(canvas, undefined, settings.controllerProfile);
     const renderer = new WebGlIndexedRenderer(canvas);
     let audioSink: WebAudioSink | undefined;
     const capturedFrames: Uint8Array[] = [];
@@ -896,7 +1045,7 @@ export class StudioApp {
       'click',
       (event) => {
         const button = event.currentTarget as HTMLButtonElement;
-        audioSink = new WebAudioSink();
+        audioSink = new WebAudioSink(undefined, settings.audioVolume);
         void audioSink.resume().then(() => {
           button.textContent = 'SOUND ON';
           button.disabled = true;
@@ -976,7 +1125,8 @@ export class StudioApp {
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
         if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
-        status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')} D${String(result.drawCommands.length).padStart(4, '0')} V${String(result.output.audio.activeVoices)}`;
+        status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
+        budget.textContent = `${String(rom.byteLength)}B/${sizeClass(rom.byteLength)} D${String(result.drawCommands.length).padStart(4, '0')} V${String(result.output.audio.activeVoices)}`;
         requestAnimationFrame(() => void frame());
       } catch (error: unknown) {
         status.textContent = errorMessage(error);
@@ -991,6 +1141,7 @@ export class StudioApp {
     this.stopPlayer();
     const project = this.requireProject();
     const save = await this.repository.cartridgeSave(project.id).read();
+    const settings = await this.repository.settings();
     try {
       this.activeDebugger = await openDebugger(
         this.root,
@@ -1006,6 +1157,8 @@ export class StudioApp {
           this.activeDebugger = undefined;
           this.openManual('HARDWARE');
         },
+        settings.controllerProfile,
+        settings.audioVolume,
       );
     } catch (error: unknown) {
       this.renderShell();
@@ -1125,7 +1278,7 @@ export class StudioApp {
             .join('')}
         </main>
         <p class="shelf-status" role="status">LOCAL ONLY / OFFLINE</p>
-        <footer class="shelf-actions"><button data-shelf="play">PLAY</button><button data-shelf="source">SOURCE</button><button data-shelf="copy">COPY</button><button data-shelf="rename">NAME</button><button data-shelf="favorite">STAR</button><button data-shelf="export">OUT</button><button data-shelf="remove">REMOVE</button><button data-shelf="back">BACK</button></footer>
+        <footer class="shelf-actions"><button data-shelf="play">PLAY</button><button data-shelf="source">SOURCE</button><button data-shelf="copy">COPY</button><button data-shelf="rename">NAME</button><button data-shelf="favorite">STAR</button><button data-shelf="save">SAVE</button><button data-shelf="export">OUT</button><button data-shelf="remove">REMOVE</button><button data-shelf="back">BACK</button></footer>
       </section>
     `;
     let selected = this.root.querySelector<HTMLElement>('.shelf-item');
@@ -1203,6 +1356,8 @@ export class StudioApp {
         await this.openShelf();
       } else if (action === 'rename') {
         this.openShelfRename(project);
+      } else if (action === 'save') {
+        await this.openSaveManager(project);
       }
     };
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-shelf]')) {
@@ -1214,6 +1369,66 @@ export class StudioApp {
       });
     }
     selected?.focus();
+  }
+
+  private async openSaveManager(project: WorkingProject): Promise<void> {
+    const access = this.repository.cartridgeSave(project.id);
+    const [bytes, schema] = await Promise.all([access.read(), access.schemaVersion()]);
+    this.root.innerHTML = `
+      <section class="display save-manager" data-view="save-manager" aria-label="Cartridge save manager">
+        <header class="system-bar"><span>SAVE SERVICE</span><span>${escapeHtml(project.id.toUpperCase())}</span></header>
+        <main class="save-manager-body">
+          <h1>LOCAL SAVE</h1>
+          <p>SCHEMA ${String(schema)} / ${String(bytes.byteLength)} OF 8192 BYTES</p>
+          <p>IDENTITY: ${escapeHtml(project.id)}</p>
+          <p>CHECKSUM VERIFIED ON READ AND IMPORT. OLD RAW SAVES MIGRATE WITH A RETAINED BACKUP.</p>
+          <p class="save-manager-status" role="status">READY</p>
+        </main>
+        <footer class="tool-bar"><button data-save="out">OUT</button><label class="file-button">IN<input data-save-input type="file" accept=".pxsave,application/json"></label><button data-save="reset">RESET</button><button data-save="delete">DELETE</button><button data-save="back">BACK</button></footer>
+      </section>
+    `;
+    const status = requireElement(this.root, '.save-manager-status');
+    let confirm: 'reset' | 'delete' | undefined;
+    const act = async (action: string): Promise<void> => {
+      if (action === 'back') {
+        await this.openShelf();
+      } else if (action === 'out') {
+        const exported = await access.export();
+        downloadBytes(`${project.id}.pxsave`, exported, 'application/json');
+        status.textContent = `EXPORTED ${String(exported.byteLength)} BYTES`;
+      } else if (action === 'reset' || action === 'delete') {
+        if (confirm !== action) {
+          confirm = action;
+          status.textContent = `CONFIRM ${action.toUpperCase()} / RECOVERY COPY RETAINED`;
+          return;
+        }
+        if (action === 'reset') await access.reset(schema);
+        else await access.clear();
+        status.textContent = action === 'reset' ? 'RESET TO EMPTY SAVE' : 'SAVE DELETED';
+        confirm = undefined;
+      }
+    };
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-save]'))
+      button.addEventListener('click', () => {
+        void act(button.dataset.save ?? '').catch((error: unknown) => {
+          status.textContent = errorMessage(error);
+        });
+      });
+    this.root
+      .querySelector<HTMLInputElement>('[data-save-input]')
+      ?.addEventListener('change', (event) => {
+        const file = (event.currentTarget as HTMLInputElement).files?.[0];
+        if (file === undefined) return;
+        void file
+          .arrayBuffer()
+          .then((value) => access.import(new Uint8Array(value)))
+          .then(() => {
+            status.textContent = 'IMPORTED / CHECKSUM VERIFIED';
+          })
+          .catch((error: unknown) => {
+            status.textContent = errorMessage(error);
+          });
+      });
   }
 
   private async duplicateShelfProject(project: WorkingProject): Promise<WorkingProject> {
@@ -1332,6 +1547,106 @@ export class StudioApp {
             `SAVE 8192 / ${detail.warning}`,
           ]),
     ]);
+  }
+
+  private async openSettings(): Promise<void> {
+    const settings = await this.repository.settings();
+    let profile = structuredClone(settings.controllerProfile);
+    const buttonOptions = BUTTONS.map(
+      (button) => `<option value="${button}">${button.toUpperCase()}</option>`,
+    ).join('');
+    const gamepadOptions = (assigned: number | null): string =>
+      [null, 0, 1, 2, 3]
+        .map(
+          (index) =>
+            `<option value="${index === null ? '-1' : String(index)}"${assigned === index ? ' selected' : ''}>${index === null ? 'NONE' : `PAD ${String(index)}`}</option>`,
+        )
+        .join('');
+    this.root.innerHTML = `
+      <section class="display settings" data-view="settings" aria-label="Controller and accessibility settings">
+        <header class="system-bar"><span>SETTINGS / CONTROLS</span><span>LOCAL PROFILE</span></header>
+        <main class="settings-body">
+          <label><input data-setting="reducedMotion" type="checkbox"${settings.reducedMotion ? ' checked' : ''}> REDUCED FLASHING</label>
+          <label><input data-setting="mutedStartup" type="checkbox"${settings.mutedStartup ? ' checked' : ''}> MUTED STARTUP</label>
+          <label><input data-setting="highContrast" type="checkbox"${settings.highContrast ? ' checked' : ''}> HIGH CONTRAST UI</label>
+          <label><input data-setting="largeHelp" type="checkbox"${settings.largeHelp ? ' checked' : ''}> LARGE HELP TEXT</label>
+          <label>VOLUME <input data-setting="audioVolume" type="range" min="0" max="1" step="0.05" value="${String(settings.audioVolume)}"></label>
+          <div class="remap-row"><label>PORT <select data-remap-port>${[0, 1, 2, 3].map((port) => `<option value="${String(port)}">${String(port + 1)}</option>`).join('')}</select></label><label>BUTTON <select data-remap-button>${buttonOptions}</select></label><button data-remap-key type="button">PRESS KEY</button></div>
+          <div class="gamepad-row">${profile.gamepads.map((gamepad, port) => `<label>P${String(port + 1)} <select data-gamepad="${String(port)}">${gamepadOptions(gamepad)}</select></label>`).join('')}</div>
+          <p class="settings-status" role="status">KEYBOARD + STANDARD GAMEPAD / FOUR PORTS</p>
+        </main>
+        <footer class="tool-bar"><button data-settings="defaults">DEFAULT</button><button data-settings="save">SAVE</button><button data-settings="back">BACK</button></footer>
+      </section>
+    `;
+    const status = requireElement(this.root, '.settings-status');
+    const save = async (): Promise<void> => {
+      const gamepads = [0, 1, 2, 3].map((port) => {
+        const value = Number(
+          this.root.querySelector<HTMLSelectElement>(`[data-gamepad="${String(port)}"]`)?.value,
+        );
+        return value < 0 ? null : value;
+      }) as [number | null, number | null, number | null, number | null];
+      const active = gamepads.filter((value): value is number => value !== null);
+      if (new Set(active).size !== active.length)
+        throw new Error('GAMEPAD CONFLICT / ONE PORT EACH');
+      profile = { ...profile, gamepads };
+      const checked = (name: string): boolean =>
+        this.root.querySelector<HTMLInputElement>(`[data-setting="${name}"]`)?.checked ?? false;
+      const next: StudioSettings = {
+        ...settings,
+        revision: 2,
+        reducedMotion: checked('reducedMotion'),
+        mutedStartup: checked('mutedStartup'),
+        highContrast: checked('highContrast'),
+        largeHelp: checked('largeHelp'),
+        audioVolume: Number(
+          this.root.querySelector<HTMLInputElement>('[data-setting="audioVolume"]')?.value ?? '0.8',
+        ),
+        controllerProfile: profile,
+      };
+      await this.repository.saveSettings(next);
+      this.applySettings(next);
+      status.textContent = 'PROFILE SAVED / RESTART RUN TO APPLY INPUT';
+    };
+    this.root.querySelector('[data-remap-key]')?.addEventListener('click', () => {
+      status.textContent = 'PRESS A KEY / EXISTING CONFLICT WILL MOVE';
+      globalThis.addEventListener(
+        'keydown',
+        (event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          const port = Number(
+            this.root.querySelector<HTMLSelectElement>('[data-remap-port]')?.value ?? '0',
+          );
+          const button = (this.root.querySelector<HTMLSelectElement>('[data-remap-button]')
+            ?.value ?? 'a') as Button;
+          const previous = profile.keyboard[event.code];
+          profile = remapControllerKey(profile, event.code, port, button);
+          status.textContent = `${event.code.toUpperCase()} -> P${String(port + 1)} ${button.toUpperCase()}${previous === undefined ? '' : ' / PRIOR CONFLICT REASSIGNED'}`;
+        },
+        { capture: true, once: true },
+      );
+    });
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-settings]'))
+      button.addEventListener('click', () => {
+        const action = button.dataset.settings;
+        if (action === 'back') this.renderShell();
+        else if (action === 'defaults') {
+          profile = defaultControllerProfile();
+          status.textContent = 'DEFAULT PROFILE LOADED / SAVE TO APPLY';
+        } else if (action === 'save') {
+          void save().catch((error: unknown) => {
+            status.textContent = errorMessage(error);
+          });
+        }
+      });
+  }
+
+  private applySettings(settings: StudioSettings): void {
+    document.documentElement.dataset.reducedMotion = String(settings.reducedMotion);
+    document.documentElement.dataset.highContrast = String(settings.highContrast);
+    document.documentElement.dataset.largeHelp = String(settings.largeHelp);
+    document.documentElement.dataset.mutedStartup = String(settings.mutedStartup);
   }
 
   private async refreshActiveCartMeter(
@@ -1457,6 +1772,88 @@ export class StudioApp {
   }
 }
 
+async function readFolderFile(
+  root: FileSystemDirectoryHandle,
+  path: string,
+  optional = false,
+): Promise<{ readonly bytes: Uint8Array; readonly lastModified: number } | undefined> {
+  try {
+    const parts = safeFolderPath(path);
+    const name = parts.pop();
+    if (name === undefined) throw new TypeError('FOLDER PATH IS EMPTY');
+    let directory = root;
+    for (const part of parts) directory = await directory.getDirectoryHandle(part);
+    const file = await (await directory.getFileHandle(name)).getFile();
+    if (file.size > 2 * 1024 * 1024) throw new RangeError(`FOLDER FILE ${path} EXCEEDS 2 MIB`);
+    return { bytes: new Uint8Array(await file.arrayBuffer()), lastModified: file.lastModified };
+  } catch (error: unknown) {
+    if (optional && error instanceof DOMException && error.name === 'NotFoundError')
+      return undefined;
+    throw error;
+  }
+}
+
+async function writeFolderFile(
+  root: FileSystemDirectoryHandle,
+  path: string,
+  bytes: Uint8Array,
+): Promise<File> {
+  const parts = safeFolderPath(path);
+  const name = parts.pop();
+  if (name === undefined) throw new TypeError('FOLDER PATH IS EMPTY');
+  let directory = root;
+  for (const part of parts) directory = await directory.getDirectoryHandle(part, { create: true });
+  const handle = await directory.getFileHandle(name, { create: true });
+  const writable = await handle.createWritable();
+  await writable.write(bytes.slice().buffer);
+  await writable.close();
+  return handle.getFile();
+}
+
+async function collectFolderSources(
+  root: FileSystemDirectoryHandle,
+  path: string,
+  files: Record<string, Uint8Array>,
+  modified: Map<string, number>,
+  depth: number,
+): Promise<void> {
+  if (depth > 8) throw new RangeError('FOLDER SOURCE DEPTH EXCEEDS 8');
+  const parts = safeFolderPath(path);
+  let directory = root;
+  try {
+    for (const part of parts) directory = await directory.getDirectoryHandle(part);
+  } catch (error: unknown) {
+    if (error instanceof DOMException && error.name === 'NotFoundError') return;
+    throw error;
+  }
+  for await (const entry of directory.values()) {
+    const child = `${path}/${entry.name}`;
+    if (entry.kind === 'directory') {
+      await collectFolderSources(root, child, files, modified, depth + 1);
+    } else if (entry.name.endsWith('.pxl')) {
+      const file = await readFolderFile(root, child);
+      if (file !== undefined) {
+        files[child] = file.bytes;
+        modified.set(child, file.lastModified);
+      }
+    }
+    if (Object.keys(files).length > 4096) throw new RangeError('FOLDER FILE COUNT EXCEEDS 4096');
+  }
+}
+
+function safeFolderPath(path: string): string[] {
+  const parts = path.split('/');
+  if (
+    path.length === 0 ||
+    path.length > 1024 ||
+    path.startsWith('/') ||
+    path.includes('\\') ||
+    parts.some((part) => !/^[A-Za-z0-9._-]+$/.test(part) || part === '.' || part === '..')
+  )
+    throw new TypeError(`UNSAFE FOLDER PATH ${path}`);
+  return parts;
+}
+
 function fromStored(project: StoredProject): WorkingProject {
   return {
     id: project.id,
@@ -1554,6 +1951,41 @@ function gotoDefinition(textarea: HTMLTextAreaElement): void {
   textarea.scrollTop = Math.max(0, line * 7 - 28);
 }
 
+function symbolAtCursor(textarea: HTMLTextAreaElement): string {
+  const cursor = textarea.selectionStart;
+  const before = /[A-Za-z_][A-Za-z0-9_]*$/.exec(textarea.value.slice(0, cursor))?.[0] ?? '';
+  const after = /^[A-Za-z0-9_]*/.exec(textarea.value.slice(cursor))?.[0] ?? '';
+  return `${before}${after}`;
+}
+
+function manualTitleForSymbol(symbol: string): string {
+  if (
+    ['mem_read', 'mem_read16', 'mem_write', 'mem_write16', 'mem_copy', 'mem_fill'].includes(symbol)
+  )
+    return 'MEMORY';
+  if (['btn', 'btnp', 'pad1', 'pad2', 'pad3', 'pad4'].includes(symbol)) return 'INPUT';
+  if (['sfx', 'music', 'music_stop'].includes(symbol)) return 'AUDIO';
+  if (['task', 'start', 'wait'].includes(symbol)) return 'TASKS';
+  if (['save_get_int', 'save_set_int', 'save_commit'].includes(symbol)) return 'ARTIFACTS';
+  if (
+    [
+      'clear',
+      'pixel',
+      'line',
+      'rect',
+      'rect_fill',
+      'circle',
+      'circle_fill',
+      'sprite',
+      'map',
+      'print',
+      'font_print',
+    ].includes(symbol)
+  )
+    return 'DRAWING';
+  return symbol.length === 0 ? 'START' : symbol;
+}
+
 function renderHighlight(target: HTMLElement, source: string): void {
   const pattern =
     /\/\/.*$|"(?:\\.|[^"\\])*"|#[A-Za-z_][A-Za-z0-9_]*|\b(?:and|as|assert|break|case|const|continue|draw|elif|else|enum|false|fn|for|if|import|in|let|match|none|not|on|or|private|pub|raster|record|return|start|state|task|true|update|var|wait|while)\b|\b\d+(?:\.\d+)?(?:f|s)?\b/gm;
@@ -1584,7 +2016,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
   return [
     {
       title: 'START',
-      body: 'Create with NEW id, open EDIT, then RUN. Save explicitly with F3 or SAVE. PACK downloads a deterministic source-inspectable cartridge.',
+      body: 'Create with NEW id, open EDIT, then RUN. Save with F3 or SAVE. PACK downloads a deterministic source-inspectable cartridge. LOAD pxcl-tutorial runs the five-to-ten-minute FIRST SIGNAL lesson.',
     },
     {
       title: 'PXCL',
@@ -1617,6 +2049,18 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     {
       title: 'HARDWARE',
       body: 'Hardware Revision 1 uses a 22-bit byte bus. In DEBUG choose MEMO, enter a hexadecimal address and 1-64 byte length, then GET. HEX/DEC changes display and SET edits one writable byte while paused. WP adds up to eight change watchpoints. RAM begins 000000, framebuffers 010000, visual store 030000, registers 050000, save 058000, cartridge ROM 060000. Reserved bytes read zero and reject writes.',
+    },
+    {
+      title: 'MEMORY',
+      body: 'mem_read/mem_write access bytes; mem_read16/mem_write16 use little-endian words. mem_copy is overlap-safe and mem_fill is transactional. Fault PX9005 marks bounds/permission errors. The debugger MEMO page links the same named regions.',
+    },
+    {
+      title: 'DIAGNOSTICS',
+      body: 'PX10xx lexes, PX20xx parses, PX30xx resolves/types, PX40xx validates cartridges, and PX90xx reports deterministic runtime/hardware faults. A diagnostic includes its source range; F1 on a symbol opens the matching API page.',
+    },
+    {
+      title: 'TUTORIAL',
+      body: 'LOAD pxcl-tutorial then RUN. A advances through pixel, drawing, input, animation, synth, save and pack; B moves back. Inspect its ordinary src/main.pxl at any time.',
     },
     {
       title: 'LIMITS',

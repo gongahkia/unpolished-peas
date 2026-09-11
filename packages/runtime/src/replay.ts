@@ -77,8 +77,12 @@ export function decodeReplayTrace(bytes: Uint8Array): ReplayTrace {
   } catch {
     throw new TypeError('replay JSON is invalid');
   }
-  if (!isReplayTrace(value, REPLAY_MAX_FRAMES)) throw new TypeError('replay schema is invalid');
-  return structuredClone(value);
+  if (isReplayTrace(value, REPLAY_MAX_FRAMES)) return structuredClone(value);
+  if (isRecord(value) && hasExactKeys(value, ['frames'])) {
+    const migrated = { revision: 1 as const, frames: value.frames };
+    if (isReplayTrace(migrated, REPLAY_MAX_FRAMES)) return structuredClone(migrated);
+  }
+  throw new TypeError('replay schema is invalid');
 }
 
 export function replayInputFrames(trace: ReplayTrace): ReadonlyMap<number, InputFrame> {

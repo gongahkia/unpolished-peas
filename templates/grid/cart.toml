@@ -1,0 +1,9 @@
+format = 1
+language = "PXCL/1"
+id = "grid-start"
+title = "GRID START"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.pxl"
+update_rate = 30
+[assets]

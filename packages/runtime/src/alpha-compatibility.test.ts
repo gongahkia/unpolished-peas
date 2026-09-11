@@ -14,7 +14,7 @@ import { createConsoleRuntime, type ConsoleRuntimeSnapshot } from './console-run
 import { IndexedGraphics, VisualAssetStore } from './graphics';
 import type { InputFrame } from './input';
 import type { CartridgeFactory } from './machine';
-import type { StoredProject } from './persistence';
+import { MemoryStorage, StudioRepository, type StoredProject } from './persistence';
 import type { ConsoleCommand, SandboxConfiguration } from './protocol';
 import { SaveMemory } from './save';
 
@@ -79,6 +79,27 @@ const audioMetrics = JSON.parse(read('audio.json').toString()) as Record<
 >;
 
 describe('immutable alpha recordings', () => {
+  it('migrates the preserved raw alpha project and save while retaining backups', async () => {
+    const legacy = projects.get('project/ashvault');
+    if (legacy === undefined) throw new Error('missing alpha project fixture');
+    const storage = new MemoryStorage();
+    await storage.set('project/ashvault', legacy);
+    await storage.set('save/ashvault', new Uint8Array(read('save.json')));
+    const repository = new StudioRepository(storage);
+    expect(await repository.loadProject('ashvault')).toMatchObject({
+      id: 'ashvault',
+      revision: 1,
+      storageRevision: 1,
+    });
+    expect(await storage.get('migration/project/ashvault/alpha')).toEqual(legacy);
+    const save = repository.cartridgeSave('ashvault');
+    expect(new TextDecoder().decode(await save.read())).toContain('deepest_vault');
+    expect(await save.schemaVersion()).toBe(0);
+    expect(await storage.get('migration/save/ashvault/alpha')).toEqual(
+      new Uint8Array(read('save.json')),
+    );
+  });
+
   for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
     it(`renders every ${id} browser frame through the production graphics and audio core`, () => {
       const project = projects.get(`project/${id}`);

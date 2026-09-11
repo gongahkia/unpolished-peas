@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
 
 import { emptyInputFrame } from './input';
 import {
@@ -67,5 +68,17 @@ describe('PXREC revision 1', () => {
         },
       ]);
     }).toThrow(/schema/);
+  });
+
+  it('migrates the preserved raw alpha revision-0 trace without changing its file', () => {
+    const bytes = new Uint8Array(
+      readFileSync(new URL('../../../tests/fixtures/alpha/replay-v0.json', import.meta.url)),
+    );
+    const before = bytes.slice();
+    expect(decodeReplayTrace(bytes)).toEqual({
+      revision: 1,
+      frames: [{ frame: 0, controllers: [{ port: 1, buttons: ['a'] }] }],
+    });
+    expect(bytes).toEqual(before);
   });
 });
