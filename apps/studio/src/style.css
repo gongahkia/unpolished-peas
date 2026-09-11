@@ -423,6 +423,21 @@ body,
   appearance: none;
 }
 
+.file-button {
+  display: inline-flex;
+  padding: 0 2px;
+  color: var(--cream);
+  background: #5b2938;
+  border: 1px solid var(--cyan);
+  font-size: 4px;
+  line-height: 6px;
+  cursor: pointer;
+}
+
+.file-button input {
+  display: none;
+}
+
 .palette-grid {
   display: grid;
   grid-column: 1 / -1;
@@ -613,6 +628,13 @@ body,
 
 .sound-controls select {
   width: 60px;
+}
+
+.sound-scope {
+  width: 120px;
+  height: 24px;
+  background: var(--deep);
+  image-rendering: pixelated;
 }
 
 .project-settings {

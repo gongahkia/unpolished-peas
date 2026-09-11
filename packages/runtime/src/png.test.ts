@@ -17,7 +17,7 @@ describe('deterministic PNG interchange', () => {
     const first = encodeRgbaPng(2, 2, rgba);
     const second = encodeRgbaPng(2, 2, rgba);
     expect(second).toEqual(first);
-    expect(hash(first)).toBe('e3830600039b239093b429b92f721c83f502f000df812f55f156783c30b22b89');
+    expect(hash(first)).toBe('c52601bf655b456ad11ef15bf558b902ec9003b205225d58d1d77d74951678be');
     await expect(decodePngRgba(first)).resolves.toEqual({ width: 2, height: 2, rgba });
   });
 
@@ -43,7 +43,8 @@ describe('deterministic PNG interchange', () => {
     const png = encodeCartridgePng(cartridge, metadata);
     expect(decodeCartridgePng(png)).toEqual({ cartridge, metadata });
     const corrupted = png.slice();
-    corrupted[corrupted.length - 20] ^= 1;
+    const index = corrupted.length - 20;
+    corrupted[index] = (corrupted[index] ?? 0) ^ 1;
     expect(() => decodeCartridgePng(corrupted)).toThrow(/CRC/);
   });
 

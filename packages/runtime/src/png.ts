@@ -311,7 +311,9 @@ function zlibStored(bytes: Uint8Array): Uint8Array {
 }
 
 async function inflateBounded(compressed: Uint8Array, expected: number): Promise<Uint8Array> {
-  const stream = new Blob([compressed]).stream().pipeThrough(new DecompressionStream('deflate'));
+  const stream = new Blob([new Uint8Array(compressed).buffer])
+    .stream()
+    .pipeThrough(new DecompressionStream('deflate'));
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
   let length = 0;
@@ -402,7 +404,10 @@ function fillRgba(
   for (let row = y; row < y + height; row += 1) {
     for (let column = x; column < x + width; column += 1) {
       const offset = (row * stride + column) * 4;
-      rgba.set(MASTER_PALETTE_RGBA.subarray(palette, palette + 4), offset);
+      rgba[offset] = MASTER_PALETTE_RGBA[palette] ?? 0;
+      rgba[offset + 1] = MASTER_PALETTE_RGBA[palette + 1] ?? 0;
+      rgba[offset + 2] = MASTER_PALETTE_RGBA[palette + 2] ?? 0;
+      rgba[offset + 3] = MASTER_PALETTE_RGBA[palette + 3] ?? 255;
     }
   }
 }
@@ -435,7 +440,7 @@ function drawLabelText(
   color: number,
   maximum: number,
 ): void {
-  for (const [index, character] of [...text.slice(0, maximum)].entries()) {
+  for (const [index, character] of Array.from(text.slice(0, maximum)).entries()) {
     const rows = glyphRows(character);
     for (const [y, bits] of rows.entries()) {
       for (let x = 0; x < 5; x += 1) {

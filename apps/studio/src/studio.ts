@@ -2,10 +2,14 @@ import {
   BrowserInput,
   HARDWARE,
   IndexedDbStorage,
+  MASTER_PALETTE_RGBA,
   SandboxSession,
   StudioRepository,
   WebAudioSink,
   WebGlIndexedRenderer,
+  decodeCartridgePng,
+  encodeCartridgePng,
+  type DecodedPng,
   type StoredProject,
 } from '@px240c/runtime';
 
@@ -43,6 +47,7 @@ export class StudioApp {
   private historyCursor = 0;
   private player: ActivePlayer | undefined;
   private activeDebugger: ActiveDebugger | undefined;
+  private readonly capturedFrames = new Map<string, Uint8Array>();
 
   public constructor(root: HTMLElement, databaseName = 'px240c-studio') {
     this.root = root;
@@ -202,6 +207,9 @@ export class StudioApp {
         case 'pack':
           await this.packProject();
           break;
+        case 'cart':
+          await this.exportCartridgePng();
+          break;
         case 'info':
           await this.info();
           break;
@@ -211,7 +219,7 @@ export class StudioApp {
         case 'help':
           this.appendLines([
             'DIR NEW LOAD SAVE RECOVER IMPORT',
-            'EDIT RUN DEBUG PACK EXPORT INSPECT INFO',
+            'EDIT RUN DEBUG PACK CART EXPORT INSPECT INFO',
             'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
@@ -289,9 +297,9 @@ export class StudioApp {
       <section class="display cartridge-import" data-view="import" aria-label="PX-240C cartridge import">
         <header class="system-bar"><span>CARTRIDGE IMPORT</span><span>PXC/1</span></header>
         <main>
-          <p>SELECT A SOURCE-INSPECTABLE .PXC.</p>
+          <p>SELECT A SOURCE-INSPECTABLE .PXC OR .PXC.PNG.</p>
           <p>AN EXISTING ID IS REPLACED WITH A RECOVERY SNAPSHOT.</p>
-          <label class="import-pick">OPEN <input type="file" accept=".pxc,application/x-px240c-cartridge"></label>
+          <label class="import-pick">OPEN <input type="file" accept=".pxc,.pxc.png,application/x-px240c-cartridge,image/png"></label>
         </main>
         <p class="import-status" role="status" aria-live="polite">WAITING FOR CARTRIDGE</p>
         <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
@@ -321,10 +329,12 @@ export class StudioApp {
   }
 
   private async importCartridge(file: File): Promise<void> {
-    if (file.size > HARDWARE.cartridgeCapacityBytes) {
-      throw new RangeError('CARTRIDGE EXCEEDS THE 256 KIB CAPACITY');
-    }
-    const unpacked = await this.compiler.unpackCartridge(new Uint8Array(await file.arrayBuffer()));
+    const imported = new Uint8Array(await file.arrayBuffer());
+    const isPng = file.name.toLowerCase().endsWith('.png');
+    if (isPng ? file.size > 8 * 1024 * 1024 : file.size > HARDWARE.cartridgeCapacityBytes)
+      throw new RangeError('CARTRIDGE FILE EXCEEDS ITS FORMAT CAPACITY');
+    const cartridge = isPng ? decodeCartridgePng(imported).cartridge : imported;
+    const unpacked = await this.compiler.unpackCartridge(cartridge);
     const manifest = await this.compiler.parseManifest(unpacked.manifest);
     const project = await this.repository.saveProject({
       id: manifest.id,
@@ -822,6 +832,7 @@ export class StudioApp {
       }
       try {
         const result = await sandbox.frame(input.poll());
+        this.capturedFrames.set(project.id, result.output.indexedPixels.slice());
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
         if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
@@ -874,6 +885,32 @@ export class StudioApp {
     link.click();
     URL.revokeObjectURL(url);
     this.appendLines([`PACKED ${project.id}.pxc ${String(bytes.byteLength)} BYTES`]);
+  }
+
+  private async exportCartridgePng(): Promise<void> {
+    const project = this.requireProject();
+    const manifest = await this.compiler.parseManifest(project.manifest);
+    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const identity = decodeIdentity(project.files['presentation/cartridge.json']);
+    const frame = this.capturedFrames.get(project.id);
+    const png = encodeCartridgePng(
+      cartridge,
+      {
+        title: manifest.title,
+        author: manifest.author,
+        year: identity.year,
+        players: identity.players,
+        controls: identity.controls,
+      },
+      frame === undefined ? undefined : indexedFrame(frame),
+    );
+    downloadBytes(`${project.id}.pxc.png`, png, 'image/png');
+    this.appendLines([
+      `CART IMAGE ${project.id}.pxc.png ${String(png.byteLength)} BYTES`,
+      frame === undefined
+        ? 'LABEL USED FACTORY SCREEN / RUN TO CAPTURE FRAME'
+        : 'LABEL CAPTURED LAST RUN FRAME',
+    ]);
   }
 
   private async exportHtml(): Promise<void> {
@@ -1172,7 +1209,70 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
       title: 'LIMITS',
       body: '240x144, 32 colors, 128 KiB visual assets, 8 KiB save, 256 KiB packed cartridge, 50,000 work units, 4096 draw commands, 8 synth voices, 4 local ports.',
     },
+    {
+      title: 'ARTIFACTS',
+      body: 'PACK downloads raw source-visible .pxc. CART downloads the PX-240C cartridge-object .pxc.png with the same complete bytes and project identity metadata; run first to use the last game frame as its label. EXPORT writes the single-file offline HTML player.',
+    },
   ];
+}
+
+function decodeIdentity(bytes: Uint8Array | undefined): {
+  readonly year: number;
+  readonly players: number;
+  readonly controls: string;
+} {
+  if (bytes !== undefined) {
+    try {
+      const value: unknown = JSON.parse(decoder.decode(bytes));
+      if (
+        typeof value === 'object' &&
+        value !== null &&
+        'revision' in value &&
+        value.revision === 1 &&
+        'year' in value &&
+        typeof value.year === 'number' &&
+        Number.isSafeInteger(value.year) &&
+        value.year >= 1970 &&
+        value.year <= 9999 &&
+        'players' in value &&
+        typeof value.players === 'number' &&
+        Number.isSafeInteger(value.players) &&
+        value.players >= 1 &&
+        value.players <= 4 &&
+        'controls' in value &&
+        typeof value.controls === 'string' &&
+        value.controls.length <= 64
+      )
+        return { year: value.year, players: value.players, controls: value.controls };
+    } catch {
+      // A malformed optional identity file falls back without blocking raw project access.
+    }
+  }
+  return { year: 1999, players: 1, controls: 'PAD' };
+}
+
+function indexedFrame(indexed: Uint8Array): DecodedPng {
+  if (indexed.length !== HARDWARE.width * HARDWARE.height)
+    throw new RangeError('captured framebuffer dimensions are invalid');
+  const rgba = new Uint8Array(indexed.length * 4);
+  for (let pixel = 0; pixel < indexed.length; pixel += 1) {
+    const color = (indexed[pixel] ?? 0) * 4;
+    rgba[pixel * 4] = MASTER_PALETTE_RGBA[color] ?? 0;
+    rgba[pixel * 4 + 1] = MASTER_PALETTE_RGBA[color + 1] ?? 0;
+    rgba[pixel * 4 + 2] = MASTER_PALETTE_RGBA[color + 2] ?? 0;
+    rgba[pixel * 4 + 3] = 255;
+  }
+  return { width: HARDWARE.width, height: HARDWARE.height, rgba };
+}
+
+function downloadBytes(name: string, bytes: Uint8Array, type: string): void {
+  const buffer = new Uint8Array(bytes).buffer;
+  const url = URL.createObjectURL(new Blob([buffer], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function errorMessage(error: unknown): string {

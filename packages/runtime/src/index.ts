@@ -19,3 +19,4 @@ export * from './rng';
 export * from './sandbox';
 export * from './save';
 export * from './system';
+export * from './wav';
