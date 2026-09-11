@@ -181,6 +181,7 @@ export class StudioApp {
         case 'sprite':
         case 'map':
         case 'palette':
+        case 'font':
         case 'sfx':
         case 'music':
         case 'project':
@@ -211,7 +212,7 @@ export class StudioApp {
           this.appendLines([
             'DIR NEW LOAD SAVE RECOVER IMPORT',
             'EDIT RUN DEBUG PACK EXPORT INSPECT INFO',
-            'PROJECT SPRITE MAP PALETTE SFX MUSIC',
+            'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
           ]);
@@ -586,6 +587,9 @@ export class StudioApp {
         this.renderShell();
       },
       save: async () => {
+        const stored = await this.repository.loadProject(project.id);
+        if (stored !== undefined && stored.revision !== project.revision)
+          throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / REOPEN TOOL`);
         await this.saveProject();
       },
       parseManifest: async () => this.compiler.parseManifest(project.manifest),
@@ -1061,6 +1065,7 @@ const COMPLETIONS = [
   'animation',
   'map',
   'print',
+  'font_print',
   'btn',
   'btnp',
   'rng_int',
@@ -1145,7 +1150,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'DRAWING',
-      body: 'Use clear, pixel, line, rect/rect_fill, circle/circle_fill, triangle, sprite/sprite_xform, animation, map/map_cell/map_flag, print, camera, clip, pal, dither, and raster_scroll. Colors are fixed indices 0-31.',
+      body: 'Use clear, pixel, line, rect/rect_fill, circle/circle_fill, triangle, sprite/sprite_xform, animation, map/map_cell/map_flag, print/font_print, camera, clip, pal, dither, and raster_scroll. FONT edits custom glyphs; print keeps the fixed system font. Colors are fixed indices 0-31.',
     },
     {
       title: 'INPUT',

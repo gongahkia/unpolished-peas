@@ -832,6 +832,30 @@ Each group may produce several coherent commits, and integration occurs througho
   `44abf739...`, 38,091 / `3f4172ea...`, and 27,869 / `0175b0e7...`. Nothing was pushed,
   published or deployed.
 
+## 2026-09-11 — V1 milestone 6b: complete map, raster, and font editors
+
+- Replaced the fixed map-tool assumptions with manifest-driven map and tileset selection. The map
+  tool now preserves each layer's atlas, renders layers in order, exposes editor visibility,
+  add/remove/reorder, semantic flag bits, region selection/copy/stamp/move, flood fill, and
+  transactional 1-256 cell resize. Capacity includes the edited map, every tileset's pixels/flags,
+  display and other loaded visual assets. Existing one-tileset maps need no file-format rewrite.
+- Replaced the single mutable raster row with a complete 0-143 sparse timeline. Authors can toggle
+  keyframes, edit default/row remaps and full signed-16-bit scroll, copy/paste/fill ranges, generate
+  deterministic scroll/remap interpolation, undo/redo, see exact `32 + rows * 38` cost, and inspect
+  a live scanout preview. No non-hardware clip or shader state was invented.
+- Added the `FONT` Studio command and a canonical custom-font editor seeded from the system glyph
+  matrix. It provides byte-code navigation/add/delete, pixel painting/erasing, selection flips and
+  square rotation, baseline/advance/fallback metrics, preview text, undo/redo, exact cost and
+  transactional resizing. It writes a separate `typeface` `.pxf`; the immutable system font remains
+  unchanged. All creation tools now show dirty/autosave state, serialize writes, and reject a newer
+  stored project revision instead of overwriting it. The complete repository gate passed:
+  Prettier, ESLint, strict TypeScript, **140 Vitest tests**, production builds, the expanded real
+  Firefox workflow in **32.0 s**, Clippy with warnings denied, **60 Rust tests**, native and release
+  Wasm builds. Current generated sizes are 161,589-byte headless, 191,935-byte standalone,
+  160,817-byte Studio main JS, 82,217-byte Worker JS and 1,374,049-byte compiler Wasm. All four
+  first-party cartridge sizes and hashes remain unchanged. Nothing was pushed, published or
+  deployed.
+
 ## Current risks (V1 work in progress)
 
 - Custom revision-1 bitmap fonts now decode into the real visual image, expose deterministic
@@ -839,8 +863,8 @@ Each group may produce several coherent commits, and integration occurs througho
   original `print` system font remains unchanged. Runtime/codec/storage/compiler tests cover exact
   accounting, malformed files, fallback rendering and bus aliasing. The custom font editor and
   interchange UI are still required before the creation-tools milestone is complete.
-- The asset editors intentionally expose a compact alpha subset: one map tileset and one editable
-  raster row.
+- Deterministic PNG/WAV interchange and capture/export remain open around the now-complete core map,
+  raster and font editing paths.
 - Folder-backed editing and incremental compiler invalidation beyond direct importer diagnostics
   remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.

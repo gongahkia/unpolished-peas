@@ -21,11 +21,18 @@ Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker,
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
 from a cartridge to the shell.
 
-`project`, `sprite`, `map`, `palette`, `sfx`, and `music` open cartridge settings and source-visible
+`project`, `sprite`, `map`, `palette`, `font`, `sfx`, and `music` open cartridge settings and source-visible
 asset editors in the same 240x144 display. The sprite tool provides frames, onion skinning,
 selection transforms, palette painting, undo/redo, and capacity feedback. The map tool provides
-layers, tile flags, painting, undo/redo, and shared-capacity feedback. Palette/raster defaults feed
-the runtime without changing the fixed master palette. Sound patches and eight-channel tracker
+every declared tileset, ordered/visible layers, tile flags, region select/copy/stamp/move, fill,
+transactional resize, undo/redo, and whole-project shared-capacity feedback. Visibility is an editor
+view aid; revision-1 map files preserve runtime layer order and tileset references without adding
+host-only fields. Old one-tileset maps open directly and gain no incompatible wrapper.
+Palette/raster editing covers all 144 lines as sparse keyframes with enable/disable, exact cost,
+default or per-row remaps, signed scroll, copy/paste/fill/range interpolation, undo/redo, and a live
+scanout preview. It exposes only the scroll/remap state present in the Hardware Revision 1 raster
+table. The font tool edits canonical byte-code glyph maps, baseline and advances, required fallback,
+selection transforms and preview text while leaving `print`'s system font unchanged. Sound patches and eight-channel tracker
 patterns can be previewed after a browser audio gesture. The tracker edits named patterns and an
 ordered playback sequence, preserves existing patch references, loops on request, and provides
 bounded note/pattern undo/redo. The shell, editors, controls, and cartridges use the same original
@@ -36,6 +43,9 @@ accounting. `debug` opens source breakpoints and trace stepping, state/task/watc
 synthetic-work profiling, hardware inspectors, and deterministic frame rewind. Its precise
 source stepping and pause semantics are documented in [DEBUGGING.md](DEBUGGING.md). Escape
 returns from a creation tool; F3 saves asset changes.
+Creation-tool changes show a dirty state and autosave through the same 750 ms serialized path as an
+explicit F3 save. A newer stored revision rejects the write and asks the author to reopen instead
+of overwriting another tab.
 
 ## Native commands
 
