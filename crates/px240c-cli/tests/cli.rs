@@ -107,6 +107,7 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
     assert!(create.status.success());
     let first = project.with_extension("first.html");
     let second = project.with_extension("second.html");
+    let zip = project.with_extension("zip");
     let export = binary()
         .args([
             "export",
@@ -144,8 +145,33 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
     );
     assert!(first_html.contains("PX-240C standalone cartridge player"));
     assert!(first_html.contains("id=\"source-view\""));
+    assert!(first_html.contains("id=\"pause\""));
+    assert!(first_html.contains("id=\"reset\""));
+    assert!(first_html.contains("id=\"fullscreen\""));
     assert!(!first_html.contains("https://"));
-    for path in [first, second] {
+    let zip_export = binary()
+        .args([
+            "export",
+            "zip",
+            project.to_str().expect("UTF-8 project path"),
+            "--output",
+            zip.to_str().expect("UTF-8 ZIP path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        zip_export.status.success(),
+        "{}",
+        String::from_utf8_lossy(&zip_export.stderr)
+    );
+    let zip_bytes = fs::read(&zip).expect("ZIP reads");
+    assert_eq!(&zip_bytes[..4], &[0x50, 0x4b, 0x03, 0x04]);
+    assert!(
+        zip_bytes
+            .windows(first_html.len())
+            .any(|window| window == first_html.as_bytes())
+    );
+    for path in [first, second, zip] {
         fs::remove_file(path).expect("temporary HTML removes");
     }
     fs::remove_dir_all(project).expect("temporary project removes");

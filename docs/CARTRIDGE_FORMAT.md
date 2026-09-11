@@ -92,6 +92,25 @@ graphics, raster state, synth/tracker PCM, four gamepad ports, keyboard and poin
 work limits and byte saves therefore have the same semantics as Studio. Saves use a cartridge-ID
 scoped V1 key and migrate the prior standalone integer-JSON key without cross-cartridge access.
 
+The player publishes `px240c-format`, `px240c-embed`, `px240c-players`, and `px240c-controls` metadata
+and displays title, author, year, player count, and controls. Pause stops frame/input time and closes
+the host audio queue; reset constructs a fresh production Worker while retaining the isolated save;
+fullscreen and source inspection are explicit controls. Loading the same file with `#embed` removes
+the outer product chrome but retains all controls, metadata, source, and deterministic output.
+
+`px240c export zip` and Studio `EXPORT ZIP` wrap that exact HTML byte sequence as `index.html` in a
+deterministic stored ZIP. The archive uses no timestamps, comments, paths, compression variability,
+or external files and is ready for itch.io's HTML upload mode.
+
+## Tiny URL fragments
+
+Studio `SHARE` is intentionally secondary to file export. It accepts only complete canonical carts
+at or below 6,000 bytes and emits base64url bytes after `#pxc=`. The entire fragment is limited to
+8,192 characters, is displayed before copying, contains no query parameter, and by URL semantics is
+never included in HTTP requests. On boot Studio validates the encoding, byte limit, canonical
+cartridge, manifest, paths, source, and assets before saving a recovery-backed local project. Invalid
+fragments report an error without preventing the local Studio from booting.
+
 ## Headless traces
 
 `px240c run PROJECT_OR_PXC --headless` recompiles source through the authoritative Rust compiler and

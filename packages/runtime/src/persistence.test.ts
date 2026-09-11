@@ -58,4 +58,33 @@ describe('browser project and save persistence', () => {
       /8 KiB/,
     );
   });
+
+  it('tracks shelf origin, favorites, recents, save presence, and recoverable removal', async () => {
+    const repository = new StudioRepository(new MemoryStorage());
+    const stored = await repository.saveProject(project('on draw:\n  clear(0)\n'));
+    await repository.setShelfOrigin(stored.id, 'imported');
+    await repository.saveShelfState(stored.id, {
+      ...(await repository.shelfState(stored.id)),
+      favorite: true,
+    });
+    await repository.markPlayed(stored.id, 240);
+    await repository.cartridgeSave(stored.id).write(Uint8Array.of(1));
+    expect(await repository.shelfState(stored.id)).toEqual({
+      revision: 1,
+      origin: 'imported',
+      favorite: true,
+      lastPlayed: 240,
+    });
+    expect(await repository.hasCartridgeSave(stored.id)).toBe(true);
+
+    await repository.removeProjectRecoverably(stored.id, 241);
+    expect(await repository.loadProject(stored.id)).toBeUndefined();
+    expect((await repository.removedProjects())[0]).toMatchObject({
+      removedAt: 241,
+      project: { id: stored.id, revision: stored.revision },
+    });
+    expect(await repository.hasCartridgeSave(stored.id)).toBe(true);
+    expect((await repository.restoreRemovedProject(stored.id)).revision).toBe(stored.revision);
+    expect((await repository.loadProject(stored.id))?.id).toBe(stored.id);
+  });
 });

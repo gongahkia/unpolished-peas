@@ -1115,6 +1115,9 @@
   var canvas = requireElement('#screen');
   var status = requireElement('#status');
   var soundButton = requireElement('#sound');
+  var pauseButton = requireElement('#pause');
+  var resetButton = requireElement('#reset');
+  var fullscreenButton = requireElement('#fullscreen');
   var sourceButton = requireElement('#source');
   var inspector = requireElement('#inspector');
   var sourceSelect = requireElement('#source-file');
@@ -1145,36 +1148,66 @@
     inspector.hidden = true;
     sourceButton.textContent = 'SOURCE';
   });
-  var sandbox = new SandboxSession(
-    new WorkerWrapper({ name: `px240c-standalone-${payload.manifest.id}` }),
-    1e3,
-  );
-  var input = new BrowserInput(canvas);
   var renderer = new WebGlIndexedRenderer(canvas);
+  var sandbox;
+  var input;
   var audio;
   var stopped = false;
-  soundButton.addEventListener(
-    'click',
-    () => {
-      audio = new WebAudioSink();
-      audio.resume().then(() => {
-        soundButton.textContent = 'SOUND ON';
-        soundButton.disabled = true;
-      });
-    },
-    { once: true },
-  );
+  var paused = false;
+  var generation = 0;
+  document.documentElement.dataset.embed = String(location.hash === '#embed');
+  soundButton.addEventListener('click', () => {
+    audio = new WebAudioSink();
+    audio.resume().then(() => {
+      soundButton.textContent = 'SOUND ON';
+      soundButton.disabled = true;
+    });
+  });
+  pauseButton.addEventListener('click', () => {
+    paused = !paused;
+    pauseButton.textContent = paused ? 'RESUME' : 'PAUSE';
+    if (paused) {
+      status.textContent = 'PAUSED';
+      closeAudio();
+    }
+  });
+  resetButton.addEventListener('click', () => {
+    restart().catch(showError);
+  });
+  fullscreenButton.addEventListener('click', () => {
+    document.querySelector('.unit')?.requestFullscreen();
+  });
   globalThis.addEventListener('pagehide', () => {
     stopped = true;
-    input.destroy();
-    sandbox.dispose();
+    generation += 1;
+    input?.destroy();
+    sandbox?.dispose();
     if (audio !== void 0) audio.close();
   });
-  start().catch(showError);
-  async function start() {
+  restart().catch(showError);
+  async function restart() {
+    generation += 1;
+    const currentGeneration = generation;
+    input?.destroy();
+    sandbox?.dispose();
+    await closeAudio();
+    stopped = false;
+    paused = false;
+    pauseButton.textContent = 'PAUSE';
+    soundButton.textContent = 'SOUND';
+    soundButton.disabled = false;
+    const nextSandbox = new SandboxSession(
+      new WorkerWrapper({
+        name: `px240c-standalone-${payload.manifest.id}-${String(currentGeneration)}`,
+      }),
+      1e3,
+    );
+    const nextInput = new BrowserInput(canvas);
+    sandbox = nextSandbox;
+    input = nextInput;
     const javascript = new TextDecoder().decode(requireFile('build/cartridge.js'));
     const rom = decodeBase64(payload.rom);
-    await sandbox.load(javascript, {
+    await nextSandbox.load(javascript, {
       seed: 604772761,
       workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
       updateRate: payload.manifest.updateRate,
@@ -1187,21 +1220,31 @@
       rom,
     });
     canvas.focus();
-    requestAnimationFrame(() => void frame());
+    requestAnimationFrame(() => void frame(currentGeneration, nextSandbox, nextInput));
   }
-  async function frame() {
-    if (stopped) return;
+  async function frame(currentGeneration, currentSandbox, currentInput) {
+    if (stopped || currentGeneration !== generation) return;
+    if (paused) {
+      requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
+      return;
+    }
     try {
-      const result = await sandbox.frame(input.poll());
+      const result = await currentSandbox.frame(currentInput.poll());
+      if (currentGeneration !== generation) return;
       renderer.render(result.output.indexedPixels);
       audio?.enqueue(result.output.audio);
       if (result.saveCommit !== void 0) writeSave(result.saveCommit);
       status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
-      requestAnimationFrame(() => void frame());
+      requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
     } catch (error) {
       stopped = true;
       showError(error);
     }
+  }
+  async function closeAudio() {
+    const current = audio;
+    audio = void 0;
+    if (current !== void 0) await current.close();
   }
   function readSave() {
     const current = localStorage.getItem(`px240c/v1/${payload.manifest.id}`);

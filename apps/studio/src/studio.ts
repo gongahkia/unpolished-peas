@@ -9,12 +9,15 @@ import {
   WebAudioSink,
   WebGlIndexedRenderer,
   decodeCartridgePng,
+  decodeCartridgeFragment,
   decodeReplayTrace,
   emptyInputFrame,
   encodeCartridgePng,
+  encodeCartridgeFragment,
   encodeIndexedGif,
   encodeReplayTrace,
   encodeRgbaPng,
+  encodeSingleFileZip,
   replayInputFrames,
   type DecodedPng,
   type InputFrame,
@@ -79,8 +82,9 @@ export class StudioApp {
     if (installed > 0) {
       this.appendLines([`${String(installed)} BUILT-IN CARTRIDGES INSTALLED`]);
     }
+    await this.importUrlFragment();
     const projects = await this.repository.listProjects();
-    if (projects.length > 0) {
+    if (projects.length > 0 && this.activeProject === undefined) {
       this.activeProject = fromStored(projects[0] as StoredProject);
       this.appendLines([
         `AUTOLOAD ${this.activeProject.id} R${String(this.activeProject.revision)}`,
@@ -93,7 +97,9 @@ export class StudioApp {
   private async installBundledCartridges(): Promise<number> {
     let installed = 0;
     for (const id of BUNDLED_CARTRIDGES) {
+      if (await this.repository.isProjectRemoved(id)) continue;
       if ((await this.repository.loadProject(id)) !== undefined) {
+        await this.repository.setShelfOrigin(id, 'bundled');
         continue;
       }
       const response = await fetch(new URL(`./cartridges/${id}.pxc`, document.baseURI));
@@ -112,6 +118,7 @@ export class StudioApp {
           Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
         ),
       });
+      await this.repository.setShelfOrigin(id, 'bundled');
       installed += 1;
     }
     return installed;
@@ -180,6 +187,9 @@ export class StudioApp {
         case 'load':
           await this.loadProject(arguments_[0]);
           break;
+        case 'shelf':
+          await this.openShelf();
+          return;
         case 'import':
           this.openImporter();
           return;
@@ -219,6 +229,9 @@ export class StudioApp {
         case 'cart':
           await this.exportCartridgePng();
           break;
+        case 'share':
+          await this.openShare();
+          return;
         case 'info':
           await this.info();
           break;
@@ -227,8 +240,8 @@ export class StudioApp {
           return;
         case 'help':
           this.appendLines([
-            'DIR NEW LOAD SAVE RECOVER IMPORT',
-            'EDIT RUN DEBUG PACK CART EXPORT INSPECT INFO',
+            'DIR SHELF NEW LOAD SAVE RECOVER IMPORT',
+            'EDIT RUN DEBUG PACK CART EXPORT SHARE INSPECT INFO',
             'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL EXPLORE',
             'NEW <ID> [TITLE] / LOAD <ID>',
@@ -238,7 +251,8 @@ export class StudioApp {
           await this.boot();
           return;
         case 'export':
-          await this.exportHtml();
+          if (arguments_[0]?.toLowerCase() === 'zip') await this.exportZip();
+          else await this.exportHtml();
           break;
         case '':
           break;
@@ -286,6 +300,7 @@ export class StudioApp {
       },
     });
     this.activeProject = fromStored(project);
+    await this.repository.setShelfOrigin(id, 'created');
     this.appendLines([`CREATED ${id}`, "EDIT 'src/main.pxl' OR RUN"]);
   }
 
@@ -358,11 +373,35 @@ export class StudioApp {
       ),
     });
     this.activeProject = fromStored(project);
+    await this.repository.setShelfOrigin(manifest.id, 'imported');
     this.appendLines([
       `IMPORTED ${manifest.id} R${String(project.revision)}`,
       `${String(Object.keys(project.files).length)} SOURCE/ASSET FILES`,
     ]);
     this.renderShell();
+  }
+
+  private async importUrlFragment(): Promise<void> {
+    try {
+      const cartridge = decodeCartridgeFragment(globalThis.location.hash);
+      if (cartridge === undefined) return;
+      const unpacked = await this.compiler.unpackCartridge(cartridge);
+      const manifest = await this.compiler.parseManifest(unpacked.manifest);
+      const project = await this.repository.saveProject({
+        id: manifest.id,
+        title: manifest.title,
+        manifest: unpacked.manifest,
+        files: Object.fromEntries(
+          Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        ),
+      });
+      this.activeProject = fromStored(project);
+      await this.repository.setShelfOrigin(manifest.id, 'fragment');
+      this.appendLines([`FRAGMENT IMPORT ${manifest.id} / ${String(cartridge.byteLength)} BYTES`]);
+      history.replaceState(null, '', `${location.pathname}${location.search}`);
+    } catch (error: unknown) {
+      this.appendLines([`!FRAGMENT ${errorMessage(error)}`]);
+    }
   }
 
   private async saveProject(): Promise<void> {
@@ -798,6 +837,7 @@ export class StudioApp {
         save,
         rom,
       });
+      await this.repository.markPlayed(project.id);
     } catch (error) {
       input.destroy();
       sandbox.dispose();
@@ -1004,6 +1044,242 @@ export class StudioApp {
     this.appendLines([
       `EXPORTED ${project.id}.html ${String(encoder.encode(html).byteLength)} BYTES`,
     ]);
+  }
+
+  private async exportZip(): Promise<void> {
+    const project = this.requireProject();
+    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const zip = encodeSingleFileZip('index.html', encoder.encode(html));
+    downloadBytes(`${project.id}-itch.zip`, zip, 'application/zip');
+    this.appendLines([
+      `EXPORTED ${project.id}-itch.zip ${String(zip.byteLength)} BYTES / INDEX.HTML`,
+    ]);
+  }
+
+  private async openShelf(): Promise<void> {
+    this.stopPlayer();
+    const projects = await this.repository.listProjects();
+    const removed = await this.repository.removedProjects();
+    const items = await Promise.all(
+      projects.map(async (project) => {
+        const [manifest, state, save, cartridge] = await Promise.all([
+          this.compiler.parseManifest(project.manifest),
+          this.repository.shelfState(project.id),
+          this.repository.hasCartridgeSave(project.id),
+          this.compiler.packProject(project.manifest, project.files),
+        ]);
+        const identity = decodeIdentity(project.files['presentation/cartridge.json']);
+        return {
+          project,
+          manifest,
+          state,
+          save,
+          bytes: cartridge.byteLength,
+          players: identity.players,
+          label: shelfLabel(project, manifest.label, state.origin),
+        };
+      }),
+    );
+    items.sort(
+      (left, right) =>
+        Number(right.state.favorite) - Number(left.state.favorite) ||
+        (right.state.lastPlayed ?? 0) - (left.state.lastPlayed ?? 0) ||
+        left.project.id.localeCompare(right.project.id),
+    );
+    this.root.innerHTML = `
+      <section class="display shelf" data-view="shelf" aria-label="PX-240C Cart Bay">
+        <header class="system-bar"><span>PX-240C CART BAY</span><span>${String(items.length)} LIVE / ${String(removed.length)} BIN</span></header>
+        <main class="shelf-list" role="listbox" aria-label="Local cartridges">
+          ${items
+            .map(
+              (item, index) =>
+                `<button type="button" class="shelf-item" role="option" data-id="${item.project.id}" aria-selected="${String(index === 0)}">${item.label === undefined ? '<span class="shelf-label">PX</span>' : `<img alt="${escapeHtml(item.project.title)} label" src="${item.label}">`}<span><strong>${item.state.favorite ? '★ ' : ''}${escapeHtml(item.project.title)}</strong><small>${item.project.id} / ${sizeClass(item.bytes)} / ${String(item.players)}P${item.save ? ' / SAVE' : ''} / ${item.state.origin.toUpperCase()}</small></span></button>`,
+            )
+            .join('')}
+          ${removed
+            .map(
+              (item) =>
+                `<button type="button" class="shelf-item removed" role="option" data-id="${item.project.id}" data-removed="true" aria-selected="false"><span class="shelf-label">BIN</span><span><strong>${escapeHtml(item.project.title)}</strong><small>${item.project.id} / RECOVERABLE</small></span></button>`,
+            )
+            .join('')}
+        </main>
+        <p class="shelf-status" role="status">LOCAL ONLY / OFFLINE</p>
+        <footer class="shelf-actions"><button data-shelf="play">PLAY</button><button data-shelf="source">SOURCE</button><button data-shelf="copy">COPY</button><button data-shelf="rename">NAME</button><button data-shelf="favorite">STAR</button><button data-shelf="export">OUT</button><button data-shelf="remove">REMOVE</button><button data-shelf="back">BACK</button></footer>
+      </section>
+    `;
+    let selected = this.root.querySelector<HTMLElement>('.shelf-item');
+    let confirmation: string | undefined;
+    for (const element of this.root.querySelectorAll<HTMLElement>('.shelf-item')) {
+      element.addEventListener('click', () => {
+        for (const option of this.root.querySelectorAll<HTMLElement>('.shelf-item'))
+          option.setAttribute('aria-selected', String(option === element));
+        selected = element;
+        confirmation = undefined;
+        const remove = this.root.querySelector<HTMLButtonElement>('[data-shelf="remove"]');
+        if (remove !== null)
+          remove.textContent = element.dataset.removed === 'true' ? 'RESTORE' : 'REMOVE';
+      });
+    }
+    const selectedId = (): string => {
+      const id = selected?.dataset.id;
+      if (id === undefined) throw new Error('CART BAY IS EMPTY');
+      return id;
+    };
+    const liveProject = async (): Promise<WorkingProject> => {
+      const id = selectedId();
+      if (selected?.dataset.removed === 'true') throw new Error('RESTORE CARTRIDGE FIRST');
+      const project = await this.repository.loadProject(id);
+      if (project === undefined) throw new Error('CARTRIDGE IS NO LONGER PRESENT');
+      return fromStored(project);
+    };
+    const act = async (action: string): Promise<void> => {
+      if (action === 'back') {
+        this.renderShell();
+        return;
+      }
+      const id = selectedId();
+      if (action === 'remove' && selected?.dataset.removed === 'true') {
+        const restored = await this.repository.restoreRemovedProject(id);
+        this.activeProject = fromStored(restored);
+        this.appendLines([`RESTORED ${id} FROM CART BAY BIN`]);
+        await this.openShelf();
+        return;
+      }
+      if (action === 'remove') {
+        if (confirmation !== id) {
+          confirmation = id;
+          const status = requireElement(this.root, '.shelf-status');
+          status.textContent = `CONFIRM REMOVE ${id.toUpperCase()} / RECOVERABLE`;
+          const button = requireElement(this.root, '[data-shelf="remove"]');
+          button.textContent = 'CONFIRM';
+          return;
+        }
+        await this.repository.removeProjectRecoverably(id);
+        if (this.activeProject?.id === id) this.activeProject = undefined;
+        this.appendLines([`REMOVED ${id} TO CART BAY BIN`]);
+        await this.openShelf();
+        return;
+      }
+      const project = await liveProject();
+      if (action === 'play') {
+        this.activeProject = project;
+        await this.runProject();
+      } else if (action === 'source') {
+        this.activeProject = project;
+        await this.openInspector();
+      } else if (action === 'export') {
+        this.activeProject = project;
+        await this.packProject();
+        await this.openShelf();
+      } else if (action === 'favorite') {
+        const state = await this.repository.shelfState(id);
+        await this.repository.saveShelfState(id, { ...state, favorite: !state.favorite });
+        await this.openShelf();
+      } else if (action === 'copy') {
+        const copy = await this.duplicateShelfProject(project);
+        this.activeProject = copy;
+        this.appendLines([`DUPLICATED ${id} AS ${copy.id}`]);
+        await this.openShelf();
+      } else if (action === 'rename') {
+        this.openShelfRename(project);
+      }
+    };
+    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-shelf]')) {
+      button.addEventListener('click', () => {
+        void act(button.dataset.shelf ?? '').catch((error: unknown) => {
+          const status = this.root.querySelector<HTMLElement>('.shelf-status');
+          if (status !== null) status.textContent = errorMessage(error);
+        });
+      });
+    }
+    selected?.focus();
+  }
+
+  private async duplicateShelfProject(project: WorkingProject): Promise<WorkingProject> {
+    let suffix = 1;
+    let id = `${project.id}.copy`;
+    while (
+      (await this.repository.loadProject(id)) !== undefined ||
+      (await this.repository.isProjectRemoved(id))
+    ) {
+      suffix += 1;
+      id = `${project.id.slice(0, Math.max(3, 58 - String(suffix).length))}.copy${String(suffix)}`;
+    }
+    const title = `${project.title} COPY`.slice(0, 64);
+    const manifest = replaceManifestIdentity(project.manifest, id, title);
+    const stored = await this.repository.saveProject({ id, title, manifest, files: project.files });
+    await this.repository.setShelfOrigin(id, 'duplicate');
+    return fromStored(stored);
+  }
+
+  private openShelfRename(project: WorkingProject): void {
+    this.root.innerHTML = `
+      <section class="display shelf-rename" data-view="shelf-rename" aria-label="Rename cartridge title">
+        <header class="system-bar"><span>CART NAMEPLATE</span><span>${project.id.toUpperCase()}</span></header>
+        <form><label>TITLE <input name="title" maxlength="64" value="${escapeHtml(project.title)}"></label><button type="submit">SAVE NAME</button><button type="button" data-cancel>BACK</button><p role="status">ID AND SAVE KEY STAY ${project.id.toUpperCase()}</p></form>
+      </section>
+    `;
+    const form = requireElement(this.root, 'form') as HTMLFormElement;
+    form.addEventListener('submit', (event) => {
+      event.preventDefault();
+      void (async () => {
+        const title = (requireElement(form, '[name="title"]') as HTMLInputElement).value
+          .trim()
+          .slice(0, 64);
+        if (title.length === 0 || !/^[\x20-\x7e]+$/.test(title))
+          throw new TypeError('TITLE MUST BE 1-64 ASCII CHARACTERS');
+        const manifest = replaceManifestIdentity(project.manifest, project.id, title);
+        const stored = await this.repository.saveProject({ ...project, title, manifest });
+        this.activeProject = fromStored(stored);
+        this.appendLines([`RENAMED ${project.id} / SAVE ID UNCHANGED`]);
+        await this.openShelf();
+      })().catch((error: unknown) => {
+        const status = this.root.querySelector<HTMLElement>('[role="status"]');
+        if (status !== null) status.textContent = errorMessage(error);
+      });
+    });
+    this.root
+      .querySelector('[data-cancel]')
+      ?.addEventListener('click', () => void this.openShelf());
+    (requireElement(this.root, '[name="title"]') as HTMLInputElement).focus();
+  }
+
+  private async openShare(): Promise<void> {
+    const project = this.requireProject();
+    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const fragment = encodeCartridgeFragment(cartridge);
+    const url = new URL(location.href);
+    url.hash = fragment;
+    this.root.innerHTML = `
+      <section class="display share-view" data-view="share" aria-label="Tiny cartridge fragment share">
+        <header class="system-bar"><span>TINY CART LINK</span><span>${String(cartridge.byteLength)}B</span></header>
+        <main><p>FRAGMENT ONLY / NO UPLOAD</p><p>${String(fragment.length)} / 8192 CHARACTERS</p><textarea class="share-url" readonly aria-label="Cartridge share URL"></textarea><button class="share-copy" type="button">COPY LINK</button><p class="share-status" role="status">READY</p></main>
+        <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
+      </section>
+    `;
+    const text = requireElement(this.root, '.share-url') as HTMLTextAreaElement;
+    text.value = url.href;
+    const back = (): void => {
+      this.renderShell();
+    };
+    this.root.querySelector('[data-back]')?.addEventListener('click', back);
+    this.root.querySelector('.share-copy')?.addEventListener('click', () => {
+      text.select();
+      void navigator.clipboard
+        .writeText(text.value)
+        .then(() => {
+          const status = this.root.querySelector<HTMLElement>('.share-status');
+          if (status !== null) status.textContent = 'COPIED';
+        })
+        .catch(() => {
+          const status = this.root.querySelector<HTMLElement>('.share-status');
+          if (status !== null) status.textContent = 'SELECTED / COPY MANUALLY';
+        });
+    });
+    this.root.querySelector('[data-view="share"]')?.addEventListener('keydown', (event) => {
+      if ((event as KeyboardEvent).key === 'Escape') back();
+    });
+    text.focus();
   }
 
   private async info(): Promise<void> {
@@ -1357,6 +1633,51 @@ function scaleRgba(image: DecodedPng, scale: number): DecodedPng {
     }
   }
   return { width, height, rgba };
+}
+
+function sizeClass(bytes: number): '4K' | '16K' | '64K' | '256K' {
+  if (bytes <= 4_096) return '4K';
+  if (bytes <= 16_384) return '16K';
+  if (bytes <= 65_536) return '64K';
+  return '256K';
+}
+
+function shelfLabel(
+  project: WorkingProject,
+  path: string | null,
+  origin: 'bundled' | 'created' | 'imported' | 'fragment' | 'duplicate',
+): string | undefined {
+  if (path === null) return undefined;
+  const bytes = project.files[path];
+  if (bytes === undefined || bytes.length > 256 * 1024) return undefined;
+  const png =
+    bytes.length >= 8 &&
+    [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
+  const trustedSvg = origin === 'bundled' && path.endsWith('.svg');
+  if (!png && !trustedSvg) return undefined;
+  let binary = '';
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return `data:${png ? 'image/png' : 'image/svg+xml'};base64,${btoa(binary)}`;
+}
+
+function replaceManifestIdentity(manifest: string, id: string, title: string): string {
+  if (!PROJECT_ID.test(id)) throw new TypeError('duplicate cartridge id is invalid');
+  const idMatches = manifest.match(/^id\s*=.*$/gm);
+  const titleMatches = manifest.match(/^title\s*=.*$/gm);
+  if (idMatches?.length !== 1 || titleMatches?.length !== 1)
+    throw new TypeError('manifest identity is ambiguous');
+  return manifest
+    .replace(/^id\s*=.*$/m, `id = ${JSON.stringify(id)}`)
+    .replace(/^title\s*=.*$/m, `title = ${JSON.stringify(title)}`);
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 function downloadBytes(name: string, bytes: Uint8Array, type: string): void {

@@ -23,6 +23,21 @@ export interface StudioSettings {
   readonly editorTabSize: 2;
 }
 
+export type ShelfOrigin = 'bundled' | 'created' | 'imported' | 'fragment' | 'duplicate';
+
+export interface ShelfState {
+  readonly revision: 1;
+  readonly origin: ShelfOrigin;
+  readonly favorite: boolean;
+  readonly lastPlayed: number | null;
+}
+
+export interface RemovedProject {
+  readonly revision: 1;
+  readonly removedAt: number;
+  readonly project: StoredProject;
+}
+
 export interface StorageBackend {
   get(key: string): Promise<unknown>;
   set(key: string, value: unknown): Promise<void>;
@@ -172,6 +187,78 @@ export class StudioRepository {
     return new CartridgeSaveAccess(this.storage, id);
   }
 
+  public async shelfState(id: string): Promise<ShelfState> {
+    validateId(id);
+    const value = await this.storage.get(shelfKey(id));
+    return isShelfState(value)
+      ? structuredClone(value)
+      : { revision: 1, origin: 'created', favorite: false, lastPlayed: null };
+  }
+
+  public async saveShelfState(id: string, state: ShelfState): Promise<void> {
+    validateId(id);
+    if (!isShelfState(state)) throw new TypeError('invalid cartridge shelf state');
+    await this.storage.set(shelfKey(id), state);
+  }
+
+  public async setShelfOrigin(id: string, origin: ShelfOrigin): Promise<void> {
+    const state = await this.shelfState(id);
+    await this.saveShelfState(id, { ...state, origin });
+  }
+
+  public async markPlayed(id: string, at = Date.now()): Promise<void> {
+    if (!Number.isSafeInteger(at) || at < 0) throw new RangeError('invalid recent timestamp');
+    const state = await this.shelfState(id);
+    await this.saveShelfState(id, { ...state, lastPlayed: at });
+  }
+
+  public async hasCartridgeSave(id: string): Promise<boolean> {
+    validateId(id);
+    const value = await this.storage.get(saveKey(id));
+    return (
+      value instanceof Uint8Array && value.length > 0 && value.length <= HARDWARE.saveCapacityBytes
+    );
+  }
+
+  /** Moves the only current project copy to local trash; saves and recovery remain isolated. */
+  public async removeProjectRecoverably(id: string, at = Date.now()): Promise<void> {
+    validateId(id);
+    if (!Number.isSafeInteger(at) || at < 0) throw new RangeError('invalid removal timestamp');
+    const project = await this.loadProject(id);
+    if (project === undefined) throw new Error(`cartridge '${id}' does not exist`);
+    const removed: RemovedProject = { revision: 1, removedAt: at, project };
+    await this.storage.set(removedKey(id), removed);
+    await this.storage.delete(projectKey(id));
+  }
+
+  public async removedProjects(): Promise<readonly RemovedProject[]> {
+    const removed: RemovedProject[] = [];
+    for (const key of await this.storage.keys('removed/')) {
+      const value = await this.storage.get(key);
+      if (isRemovedProject(value)) removed.push(structuredClone(value));
+    }
+    return removed.sort(
+      (left, right) =>
+        right.removedAt - left.removedAt || left.project.id.localeCompare(right.project.id),
+    );
+  }
+
+  public async restoreRemovedProject(id: string): Promise<StoredProject> {
+    validateId(id);
+    if ((await this.loadProject(id)) !== undefined)
+      throw new Error(`cartridge '${id}' already exists`);
+    const value = await this.storage.get(removedKey(id));
+    if (!isRemovedProject(value)) throw new Error(`removed cartridge '${id}' was not found`);
+    await this.storage.set(projectKey(id), value.project);
+    await this.storage.delete(removedKey(id));
+    return structuredClone(value.project);
+  }
+
+  public async isProjectRemoved(id: string): Promise<boolean> {
+    validateId(id);
+    return isRemovedProject(await this.storage.get(removedKey(id)));
+  }
+
   private async pruneRecovery(id: string): Promise<void> {
     const keys = await this.storage.keys(recoveryPrefix(id));
     for (const key of keys.slice(0, Math.max(0, keys.length - RECOVERY_LIMIT))) {
@@ -258,6 +345,30 @@ function isStudioSettings(value: unknown): value is StudioSettings {
   );
 }
 
+function isShelfState(value: unknown): value is ShelfState {
+  return (
+    isRecord(value) &&
+    value.revision === 1 &&
+    ['bundled', 'created', 'imported', 'fragment', 'duplicate'].includes(String(value.origin)) &&
+    typeof value.favorite === 'boolean' &&
+    (value.lastPlayed === null ||
+      (typeof value.lastPlayed === 'number' &&
+        Number.isSafeInteger(value.lastPlayed) &&
+        value.lastPlayed >= 0))
+  );
+}
+
+function isRemovedProject(value: unknown): value is RemovedProject {
+  return (
+    isRecord(value) &&
+    value.revision === 1 &&
+    typeof value.removedAt === 'number' &&
+    Number.isSafeInteger(value.removedAt) &&
+    value.removedAt >= 0 &&
+    isStoredProject(value.project)
+  );
+}
+
 function validateId(id: string): void {
   if (!/^[a-z0-9][a-z0-9.-]{2,63}$/.test(id)) {
     throw new TypeError('invalid cartridge id');
@@ -293,6 +404,14 @@ function recoveryKey(id: string, revision: number): string {
 
 function saveKey(id: string): string {
   return `save/${id}`;
+}
+
+function shelfKey(id: string): string {
+  return `shelf/${id}`;
+}
+
+function removedKey(id: string): string {
+  return `removed/${id}`;
 }
 
 function openDatabase(name: string): Promise<IDBDatabase> {
