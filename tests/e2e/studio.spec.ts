@@ -319,6 +319,8 @@ on draw:
   await shellCommand(page, 'project');
   await page.locator('[name="title"]').fill('E2E TOOL CART');
   await page.locator('[name="update"]').selectOption('30');
+  await page.locator('[name="players"]').fill('2');
+  await page.locator('[name="controls"]').fill('PAD + POINTER');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'sprite');
@@ -327,6 +329,11 @@ on draw:
   await expect(page.locator('.frame-readout')).toHaveText('2/2');
   await page.locator('[data-act="undo"]').click();
   await expect(page.locator('.frame-readout')).toHaveText('1/1');
+  const spritePngPromise = page.waitForEvent('download');
+  await page.locator('[data-png-export]').click();
+  const spritePng = await spritePngPromise;
+  await page.locator('.sprite-png-input').setInputFiles(await spritePng.path());
+  await expect(page.locator('.tool-status')).toContainText('PNG 16X16 PREVIEW');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'map');
@@ -335,6 +342,11 @@ on draw:
   await expect(page.locator('.layer-readout')).toHaveText('2/2');
   await page.locator('[data-map="undo"]').click();
   await expect(page.locator('.layer-readout')).toHaveText('1/1');
+  const tilePngPromise = page.waitForEvent('download');
+  await page.locator('[data-map="png-out"]').click();
+  const tilePng = await tilePngPromise;
+  await page.locator('.tile-png-input').setInputFiles(await tilePng.path());
+  await expect(page.locator('.tool-status')).toContainText('ATLAS IMPORTED 4 TILES');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'palette');
@@ -349,11 +361,19 @@ on draw:
   await expect(page.locator('.glyph-readout')).toContainText('$42');
   await page.locator('[data-font="undo"]').click();
   await page.getByLabel('Font preview text').fill('AB?');
+  const fontPromise = page.waitForEvent('download');
+  await page.locator('[data-font-export]').click();
+  const fontFile = await fontPromise;
+  await page.locator('.font-file-input').setInputFiles(await fontFile.path());
+  await expect(page.locator('.tool-status')).toContainText('FONT IMPORTED 95 GLYPHS');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'sfx');
   await page.locator('[name="wave"]').selectOption('triangle');
   await page.locator('[name="pan"]').fill('0.4');
+  const soundWavPromise = page.waitForEvent('download');
+  await page.locator('[data-wav]').click();
+  expect((await soundWavPromise).suggestedFilename()).toBe('blip.wav');
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'music');
@@ -386,6 +406,15 @@ on draw:
 
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(packedPath);
+  await expect(page.locator('[data-view="shell"]')).toBeVisible();
+  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-alpha');
+
+  const cartridgePngPromise = page.waitForEvent('download');
+  await shellCommand(page, 'cart');
+  const cartridgePng = await cartridgePngPromise;
+  expect(cartridgePng.suggestedFilename()).toBe('e2e-alpha.pxc.png');
+  await shellCommand(page, 'import');
+  await page.locator('input[type="file"]').setInputFiles(await cartridgePng.path());
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
   await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-alpha');
 
