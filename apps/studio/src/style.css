@@ -323,6 +323,28 @@ body,
   line-height: 6px;
 }
 
+.capture-player {
+  position: absolute;
+  z-index: 3;
+  top: 2px;
+  right: 2px;
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  background: var(--deep);
+  font-size: 4px;
+  line-height: 6px;
+}
+
+.capture-player button,
+.capture-player select {
+  padding: 0 1px;
+  color: var(--cream);
+  background: #5b2938;
+  border: 1px solid var(--cyan);
+  font: inherit;
+}
+
 .stop-player {
   left: 2px;
 }

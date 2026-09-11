@@ -605,6 +605,49 @@ fn new_pack_and_info_form_a_deterministic_project_workflow() {
 }
 
 #[test]
+fn png_export_contains_the_canonical_cartridge_and_supports_info() {
+    let project = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../../cartridges/cinder-circuit");
+    let stem = std::env::temp_dir().join(format!("px240c-png-{}-{}", std::process::id(), line!()));
+    let raw = stem.with_extension("pxc");
+    let png = stem.with_extension("pxc.png");
+    for (command, output) in [("pack", &raw), ("export", &png)] {
+        let mut process = binary();
+        if command == "export" {
+            process.args(["export", "png"]);
+        } else {
+            process.arg("pack");
+        }
+        let result = process
+            .arg(&project)
+            .arg("--output")
+            .arg(output)
+            .output()
+            .expect("CLI starts");
+        assert!(
+            result.status.success(),
+            "{}",
+            String::from_utf8_lossy(&result.stderr)
+        );
+    }
+    let image = pxcl_core::decode_cartridge_png(&fs::read(&png).expect("PNG reads"))
+        .expect("cartridge PNG decodes");
+    assert_eq!(
+        image.cartridge,
+        fs::read(&raw).expect("raw cartridge reads")
+    );
+    assert_eq!(image.metadata.title, "CINDER CIRCUIT");
+    let info = binary()
+        .args(["info"])
+        .arg(&png)
+        .output()
+        .expect("CLI starts");
+    assert!(info.status.success());
+    assert!(String::from_utf8_lossy(&info.stdout).contains("CINDER CIRCUIT"));
+    fs::remove_file(raw).expect("raw cartridge removes");
+    fs::remove_file(png).expect("PNG cartridge removes");
+}
+
+#[test]
 fn lsp_serves_diagnostics_completion_and_symbol_navigation() {
     let uri = "file:///tmp/lsp-test.pxl";
     let source = "state score: Int = 0\n\non update:\n  score += 1\n\non draw:\n  clear(0)\n";

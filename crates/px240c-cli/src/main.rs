@@ -12,9 +12,10 @@ use std::{
 
 use clap::{Parser, Subcommand};
 use pxcl_core::{
-    AssetCatalog, CompileMode, Diagnostic, FileId, GeneratedProgram, ProjectManifest, SourceFile,
-    analyze_module, compile, compile_project, decode_cartridge, export_standalone_html,
-    format_source, pack_project, parse_project_manifest, unpack_cartridge_project,
+    AssetCatalog, CartridgePngMetadata, CompileMode, Diagnostic, FileId, GeneratedProgram,
+    ProjectManifest, SourceFile, analyze_module, compile, compile_project, decode_cartridge,
+    decode_cartridge_png, encode_cartridge_png, export_standalone_html, format_source,
+    pack_project, parse_project_manifest, unpack_cartridge_project,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -141,6 +142,13 @@ enum ExportCommand {
         #[arg(short, long)]
         output: Option<PathBuf>,
     },
+    /// Export a PX-240C cartridge-object PNG containing the complete canonical `.pxc`.
+    Png {
+        #[arg(default_value = ".")]
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
 }
 
 fn main() -> ExitCode {
@@ -162,6 +170,10 @@ fn main() -> ExitCode {
         Command::Export {
             command: ExportCommand::Html { path, output },
         } => export_html_directory(&path, output.as_deref())
+            .map_or(ExitCode::FAILURE, |_| ExitCode::SUCCESS),
+        Command::Export {
+            command: ExportCommand::Png { path, output },
+        } => export_png_directory(&path, output.as_deref())
             .map_or(ExitCode::FAILURE, |_| ExitCode::SUCCESS),
         Command::Run {
             path,
@@ -219,6 +231,61 @@ fn export_html_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, 
         eprintln!("{}: {error}", output.display());
     })?;
     println!("exported {} ({} bytes)", output.display(), html.len());
+    Ok(output)
+}
+
+fn export_png_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
+    let project = load_project(path)?;
+    let packed = pack_project(&project.manifest_source, &project.files).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    let identity = project
+        .files
+        .get("presentation/cartridge.json")
+        .and_then(|bytes| serde_json::from_slice::<serde_json::Value>(bytes).ok());
+    let year = identity
+        .as_ref()
+        .and_then(|value| value.get("year"))
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u16::try_from(value).ok())
+        .filter(|value| (1970..=9999).contains(value))
+        .unwrap_or(1999);
+    let players = identity
+        .as_ref()
+        .and_then(|value| value.get("players"))
+        .and_then(serde_json::Value::as_u64)
+        .and_then(|value| u8::try_from(value).ok())
+        .filter(|value| (1..=4).contains(value))
+        .unwrap_or(1);
+    let controls = identity
+        .as_ref()
+        .and_then(|value| value.get("controls"))
+        .and_then(serde_json::Value::as_str)
+        .filter(|value| value.len() <= 64)
+        .unwrap_or("PAD")
+        .to_owned();
+    let metadata = CartridgePngMetadata {
+        title: project.manifest.title.clone(),
+        author: project.manifest.author.clone(),
+        year,
+        players,
+        controls,
+    };
+    let png = encode_cartridge_png(&packed.bytes, &metadata).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    let output = output.map_or_else(
+        || {
+            path.join("dist")
+                .join(format!("{}.pxc.png", project.manifest.id))
+        },
+        Path::to_path_buf,
+    );
+    if let Some(parent) = output.parent() {
+        fs::create_dir_all(parent).map_err(|error| eprintln!("{}: {error}", parent.display()))?;
+    }
+    fs::write(&output, &png).map_err(|error| eprintln!("{}: {error}", output.display()))?;
+    println!("exported {} ({} bytes)", output.display(), png.len());
     Ok(output)
 }
 
@@ -376,10 +443,20 @@ fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCa
         pack_project(&project.manifest_source, &project.files).map_err(|error| {
             eprintln!("{}: {error}", path.display());
         })?
-    } else if path.extension().is_some_and(|extension| extension == "pxc") {
-        let bytes = fs::read(path).map_err(|error| {
+    } else if path
+        .extension()
+        .is_some_and(|extension| extension == "pxc" || extension == "png")
+    {
+        let file_bytes = fs::read(path).map_err(|error| {
             eprintln!("{}: {error}", path.display());
         })?;
+        let bytes = if path.extension().is_some_and(|extension| extension == "png") {
+            decode_cartridge_png(&file_bytes)
+                .map_err(|error| eprintln!("{}: {error}", path.display()))?
+                .cartridge
+        } else {
+            file_bytes
+        };
         let project = unpack_cartridge_project(&bytes).map_err(|error| {
             eprintln!("{}: {error}", path.display());
         })?;
@@ -388,7 +465,7 @@ fn load_headless_cartridge(path: &Path) -> Result<(Vec<u8>, pxcl_core::DecodedCa
         })?
     } else {
         eprintln!(
-            "{}: expected a project directory or .pxc cartridge",
+            "{}: expected a project directory, .pxc, or .pxc.png cartridge",
             path.display()
         );
         return Err(());
@@ -884,9 +961,19 @@ fn info(path: Option<&Path>) -> ExitCode {
         );
         return ExitCode::SUCCESS;
     };
-    let metadata = if path.extension().is_some_and(|extension| extension == "pxc") {
+    let metadata = if path
+        .extension()
+        .is_some_and(|extension| extension == "pxc" || extension == "png")
+    {
         fs::read(path)
             .map_err(|error| error.to_string())
+            .and_then(|bytes| {
+                if path.extension().is_some_and(|extension| extension == "png") {
+                    decode_cartridge_png(&bytes).map(|decoded| decoded.cartridge)
+                } else {
+                    Ok(bytes)
+                }
+            })
             .and_then(|bytes| decode_cartridge(&bytes).map_err(|error| error.to_string()))
             .and_then(|cartridge| {
                 serde_json::to_string_pretty(&cartridge.manifest).map_err(|error| error.to_string())

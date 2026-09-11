@@ -1,4 +1,5 @@
 import {
+  BUTTONS,
   BrowserInput,
   HARDWARE,
   IndexedDbStorage,
@@ -9,7 +10,10 @@ import {
   WebGlIndexedRenderer,
   decodeCartridgePng,
   encodeCartridgePng,
+  encodeIndexedGif,
+  encodeRgbaPng,
   type DecodedPng,
+  type InputFrame,
   type StoredProject,
 } from '@px240c/runtime';
 
@@ -329,9 +333,13 @@ export class StudioApp {
   }
 
   private async importCartridge(file: File): Promise<void> {
+    if (file.size > 8 * 1024 * 1024)
+      throw new RangeError('CARTRIDGE FILE EXCEEDS ITS FORMAT CAPACITY');
     const imported = new Uint8Array(await file.arrayBuffer());
-    const isPng = file.name.toLowerCase().endsWith('.png');
-    if (isPng ? file.size > 8 * 1024 * 1024 : file.size > HARDWARE.cartridgeCapacityBytes)
+    const isPng =
+      imported.length >= 8 &&
+      [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => imported[index] === byte);
+    if (!isPng && file.size > HARDWARE.cartridgeCapacityBytes)
       throw new RangeError('CARTRIDGE FILE EXCEEDS ITS FORMAT CAPACITY');
     const cartridge = isPng ? decodeCartridgePng(imported).cartridge : imported;
     const unpacked = await this.compiler.unpackCartridge(cartridge);
@@ -749,6 +757,7 @@ export class StudioApp {
     this.root.innerHTML = `
       <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
+        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">PXREC</button></div>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
         <button class="enable-player-audio" type="button">SOUND</button>
         <p class="player-status" role="status"></p>
@@ -767,6 +776,8 @@ export class StudioApp {
     const input = new BrowserInput(canvas);
     const renderer = new WebGlIndexedRenderer(canvas);
     let audioSink: WebAudioSink | undefined;
+    const capturedFrames: Uint8Array[] = [];
+    const capturedInputs: { frame: number; input: InputFrame }[] = [];
     try {
       await sandbox.load(compilation.generated.javascript, {
         seed: 0x240c1999,
@@ -825,14 +836,68 @@ export class StudioApp {
       },
       { once: true },
     );
+    (requireElement(this.root, '.capture-shot') as HTMLButtonElement).addEventListener(
+      'click',
+      () => {
+        const last = capturedFrames.at(-1);
+        if (last === undefined) return;
+        const scale = Number(
+          (requireElement(this.root, '.capture-scale') as HTMLSelectElement).value,
+        );
+        const image = scaleRgba(indexedFrame(last), scale);
+        downloadBytes(
+          `${project.id}-${String(capturedInputs.at(-1)?.frame ?? 0).padStart(5, '0')}@${String(scale)}x.png`,
+          encodeRgbaPng(image.width, image.height, image.rgba),
+          'image/png',
+        );
+      },
+    );
+    (requireElement(this.root, '.capture-gif') as HTMLButtonElement).addEventListener(
+      'click',
+      () => {
+        status.textContent = 'GIF ENCODING 30FPS';
+        const sampled = capturedFrames.filter(
+          (_frame, index) => index % 2 === capturedFrames.length % 2,
+        );
+        if (sampled.length === 0) return;
+        downloadBytes(`${project.id}.gif`, encodeIndexedGif(sampled.slice(-150)), 'image/gif');
+        status.textContent = `GIF SAVED ${String(Math.min(150, sampled.length))}F`;
+      },
+    );
+    (requireElement(this.root, '.capture-replay') as HTMLButtonElement).addEventListener(
+      'click',
+      () => {
+        const replay = {
+          revision: 1,
+          frames: capturedInputs.map(({ frame: capturedFrame, input: capturedInput }) => ({
+            frame: capturedFrame,
+            controllers: capturedInput.controllers.flatMap((controller, port) => {
+              const buttons = BUTTONS.filter((button) => controller.buttons[button]);
+              return buttons.length === 0 ? [] : [{ port: port + 1, buttons }];
+            }),
+            pointer: capturedInput.pointer,
+          })),
+        };
+        downloadBytes(
+          `${project.id}.pxrec`,
+          encoder.encode(`${JSON.stringify(replay)}\n`),
+          'application/json',
+        );
+      },
+    );
     globalThis.addEventListener('keydown', stopKey, true);
     const frame = async (): Promise<void> => {
       if (stopped) {
         return;
       }
       try {
-        const result = await sandbox.frame(input.poll());
+        const inputFrame = input.poll();
+        const result = await sandbox.frame(inputFrame);
         this.capturedFrames.set(project.id, result.output.indexedPixels.slice());
+        capturedFrames.push(result.output.indexedPixels.slice());
+        capturedInputs.push({ frame: result.frame, input: inputFrame });
+        if (capturedFrames.length > 300) capturedFrames.shift();
+        if (capturedInputs.length > 300) capturedInputs.shift();
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
         if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
@@ -1263,6 +1328,21 @@ function indexedFrame(indexed: Uint8Array): DecodedPng {
     rgba[pixel * 4 + 3] = 255;
   }
   return { width: HARDWARE.width, height: HARDWARE.height, rgba };
+}
+
+function scaleRgba(image: DecodedPng, scale: number): DecodedPng {
+  if (!Number.isSafeInteger(scale) || scale < 1 || scale > 4)
+    throw new RangeError('capture scale must be 1-4');
+  const width = image.width * scale;
+  const height = image.height * scale;
+  const rgba = new Uint8Array(width * height * 4);
+  for (let y = 0; y < height; y += 1) {
+    for (let x = 0; x < width; x += 1) {
+      const source = (Math.floor(y / scale) * image.width + Math.floor(x / scale)) * 4;
+      rgba.set(image.rgba.subarray(source, source + 4), (y * width + x) * 4);
+    }
+  }
+  return { width, height, rgba };
 }
 
 function downloadBytes(name: string, bytes: Uint8Array, type: string): void {
