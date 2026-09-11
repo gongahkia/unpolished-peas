@@ -15,6 +15,7 @@ export * from './machine';
 export * from './map-query';
 export * from './persistence';
 export * from './protocol';
+export * from './replay';
 export * from './png';
 export * from './rng';
 export * from './sandbox';

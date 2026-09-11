@@ -1519,7 +1519,7 @@ function visualAssetBytes(asset) {
 function isGraphicsSnapshot(value) {
   const pixels = HARDWARE.width * HARDWARE.height;
   return (
-    isRecord$9(value) &&
+    isRecord$10(value) &&
     value.revision === 1 &&
     value.front instanceof Uint8Array &&
     value.front.length === pixels &&
@@ -2193,7 +2193,7 @@ function validRemap(remap) {
     remap.length === HARDWARE.paletteSize && remap.every((color) => color < HARDWARE.paletteSize)
   );
 }
-function isRecord$9(value) {
+function isRecord$10(value) {
   return typeof value === 'object' && value !== null;
 }
 function identityRemap() {
@@ -2262,9 +2262,9 @@ function clampInt16(value) {
 /** Bounded, data-only source bank sent to the restricted Worker for authoritative decoding. */
 function isRuntimeAssetSource(value) {
   if (
-    !isRecord$8(value) ||
-    !isRecord$8(value.declarations) ||
-    !isRecord$8(value.files) ||
+    !isRecord$9(value) ||
+    !isRecord$9(value.declarations) ||
+    !isRecord$9(value.files) ||
     Array.isArray(value.declarations) ||
     Array.isArray(value.files) ||
     Object.keys(value).some((key) => !['declarations', 'files', 'displayPath'].includes(key)) ||
@@ -2284,7 +2284,7 @@ function isRuntimeAssetSource(value) {
   for (const [name, declaration] of Object.entries(value.declarations)) {
     if (
       !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name) ||
-      !isRecord$8(declaration) ||
+      !isRecord$9(declaration) ||
       Object.keys(declaration).length !== 2 ||
       !canonicalAssetPath(declaration.path) ||
       typeof declaration.kind !== 'string' ||
@@ -2376,7 +2376,7 @@ function decodeRuntimeAssets(declarations, files, displayPath) {
 }
 function decodeSprite(name, value, animation) {
   if (
-    !isRecord$8(value) ||
+    !isRecord$9(value) ||
     value.revision !== 1 ||
     value.kind !== 'sprite' ||
     !boundedInteger(value.width, 1, 64) ||
@@ -2413,7 +2413,7 @@ function decodeSprite(name, value, animation) {
 }
 function decodeTileSet(name, value) {
   if (
-    !isRecord$8(value) ||
+    !isRecord$9(value) ||
     value.revision !== 1 ||
     value.kind !== 'tile_set' ||
     !Array.isArray(value.tiles) ||
@@ -2441,7 +2441,7 @@ function decodeTileSet(name, value) {
 }
 function decodeMap(name, value) {
   if (
-    !isRecord$8(value) ||
+    !isRecord$9(value) ||
     value.revision !== 1 ||
     value.kind !== 'map' ||
     !Array.isArray(value.layers) ||
@@ -2454,7 +2454,7 @@ function decodeMap(name, value) {
     name,
     layers: value.layers.map((layer) => {
       if (
-        !isRecord$8(layer) ||
+        !isRecord$9(layer) ||
         !boundedInteger(layer.width, 1, 256) ||
         !boundedInteger(layer.height, 1, 256) ||
         typeof layer.tileSet !== 'string' ||
@@ -2472,7 +2472,7 @@ function decodeMap(name, value) {
 }
 function decodeFont(name, value) {
   if (
-    !isRecord$8(value) ||
+    !isRecord$9(value) ||
     value.revision !== 1 ||
     value.kind !== 'font' ||
     !boundedInteger(value.glyphWidth, 1, 16) ||
@@ -2490,7 +2490,7 @@ function decodeFont(name, value) {
   let previous = -1;
   for (const glyph of value.glyphs) {
     if (
-      !isRecord$8(glyph) ||
+      !isRecord$9(glyph) ||
       !boundedInteger(glyph.code, 0, 255) ||
       glyph.code <= previous ||
       !isNumberArray(glyph.pixels, value.glyphWidth * value.glyphHeight, 0, 1)
@@ -2514,7 +2514,7 @@ function decodeFont(name, value) {
   };
 }
 function decodeSound(name, value) {
-  if (!isRecord$8(value) || value.revision !== 1 || value.kind !== 'sound')
+  if (!isRecord$9(value) || value.revision !== 1 || value.kind !== 'sound')
     throw new TypeError(`sound asset '${name}' is invalid`);
   const sound = {
     ...value,
@@ -2524,7 +2524,7 @@ function decodeSound(name, value) {
   return sound;
 }
 function decodeMusic(name, value) {
-  if (!isRecord$8(value) || value.revision !== 1 || value.kind !== 'music')
+  if (!isRecord$9(value) || value.revision !== 1 || value.kind !== 'music')
     throw new TypeError(`music asset '${name}' is invalid`);
   return {
     ...value,
@@ -2537,7 +2537,7 @@ function decodeDisplay(path, files) {
   if (bytes === void 0) throw new TypeError(`display configuration is missing '${path}'`);
   const value = JSON.parse(new TextDecoder().decode(bytes));
   if (
-    !isRecord$8(value) ||
+    !isRecord$9(value) ||
     value.revision !== 1 ||
     value.kind !== 'display' ||
     !isNumberArray(value.remap, HARDWARE.paletteSize, 0, HARDWARE.paletteSize - 1) ||
@@ -2548,7 +2548,7 @@ function decodeDisplay(path, files) {
   let previousLine = -1;
   const raster = value.raster.map((state) => {
     if (
-      !isRecord$8(state) ||
+      !isRecord$9(state) ||
       !boundedInteger(state.line, 0, HARDWARE.height - 1) ||
       state.line <= previousLine ||
       !boundedInteger(state.scrollX, -32768, 32767) ||
@@ -2586,14 +2586,14 @@ function boundedInteger(value, minimum, maximum) {
     Number.isSafeInteger(value) && typeof value === 'number' && value >= minimum && value <= maximum
   );
 }
-function isRecord$8(value) {
+function isRecord$9(value) {
   return typeof value === 'object' && value !== null;
 }
 //#endregion
 //#region src/budget.ts
 function isWorkBudgetSnapshot(value) {
   if (
-    !isRecord$7(value) ||
+    !isRecord$8(value) ||
     Object.keys(value).length !== 4 ||
     value.revision !== 1 ||
     typeof value.limit !== 'number' ||
@@ -2613,13 +2613,13 @@ function isWorkBudgetSnapshot(value) {
   const spans = /* @__PURE__ */ new Set();
   for (const entry of value.attribution) {
     if (
-      !isRecord$7(entry) ||
+      !isRecord$8(entry) ||
       Object.keys(entry).length !== 2 ||
       typeof entry.units !== 'number' ||
       !Number.isSafeInteger(entry.units) ||
       entry.units < 0 ||
       entry.units > value.used - total ||
-      !isRecord$7(entry.sourceSpan) ||
+      !isRecord$8(entry.sourceSpan) ||
       Object.keys(entry.sourceSpan).length !== 2 ||
       typeof entry.sourceSpan.start !== 'number' ||
       !Number.isSafeInteger(entry.sourceSpan.start) ||
@@ -2640,7 +2640,7 @@ function isWorkBudgetSnapshot(value) {
   }
   return total === value.used;
 }
-function isRecord$7(value) {
+function isRecord$8(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 /** Per-frame synthetic execution budget and source-span attribution. */
@@ -2765,8 +2765,8 @@ function isButton(value) {
 }
 function isInputFrame(value) {
   if (
-    !isRecord$6(value) ||
-    !hasExactKeys$2(value, ['controllers', 'pointer']) ||
+    !isRecord$7(value) ||
+    !hasExactKeys$3(value, ['controllers', 'pointer']) ||
     !Array.isArray(value.controllers) ||
     value.controllers.length !== 4
   )
@@ -2774,12 +2774,12 @@ function isInputFrame(value) {
   if (
     Object.keys(value.controllers).length !== 4 ||
     !Array.from(value.controllers).every(isControllerState) ||
-    !isRecord$6(value.pointer)
+    !isRecord$7(value.pointer)
   )
     return false;
   const pointer = value.pointer;
   return (
-    hasExactKeys$2(pointer, ['x', 'y', 'primary', 'secondary', 'inside']) &&
+    hasExactKeys$3(pointer, ['x', 'y', 'primary', 'secondary', 'inside']) &&
     typeof pointer.x === 'number' &&
     Number.isSafeInteger(pointer.x) &&
     pointer.x >= 0 &&
@@ -2834,18 +2834,18 @@ Object.freeze({
   menu: 8,
 });
 function isControllerState(value) {
-  if (!isRecord$6(value) || !hasExactKeys$2(value, ['buttons']) || !isRecord$6(value.buttons))
+  if (!isRecord$7(value) || !hasExactKeys$3(value, ['buttons']) || !isRecord$7(value.buttons))
     return false;
   const buttons = value.buttons;
   return (
-    hasExactKeys$2(buttons, BUTTONS) &&
+    hasExactKeys$3(buttons, BUTTONS) &&
     BUTTONS.every((button) => typeof buttons[button] === 'boolean')
   );
 }
-function isRecord$6(value) {
+function isRecord$7(value) {
   return typeof value === 'object' && value !== null;
 }
-function hasExactKeys$2(value, expected) {
+function hasExactKeys$3(value, expected) {
   const keys = Object.keys(value);
   return keys.length === expected.length && expected.every((key) => keys.includes(key));
 }
@@ -2903,7 +2903,7 @@ function normalizeSeed(seed) {
 var EXECUTION_PHASES = ['idle', 'start', 'update', 'draw', 'raster', 'output'];
 function isExecutionSnapshot(value, frame, rate, budget) {
   if (
-    !isRecord$5(value) ||
+    !isRecord$6(value) ||
     Object.keys(value).length !== 5 ||
     typeof value.booted !== 'boolean' ||
     typeof value.updates !== 'number' ||
@@ -2936,7 +2936,7 @@ function isExecutionSnapshot(value, frame, rate, budget) {
 }
 function isMachineFault(value) {
   return (
-    isRecord$5(value) &&
+    isRecord$6(value) &&
     Object.keys(value).length === 2 &&
     typeof value.code === 'number' &&
     Number.isInteger(value.code) &&
@@ -2947,7 +2947,7 @@ function isMachineFault(value) {
 }
 function isFaultSpan(value) {
   return (
-    isRecord$5(value) &&
+    isRecord$6(value) &&
     Object.keys(value).length === 2 &&
     typeof value.start === 'number' &&
     Number.isInteger(value.start) &&
@@ -2958,7 +2958,7 @@ function isFaultSpan(value) {
     value.end <= 4294967295
   );
 }
-function isRecord$5(value) {
+function isRecord$6(value) {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 /** Wire encoding of current device-owned state, not a retained register image. */
@@ -3502,7 +3502,7 @@ function isMapQueryCatalog(value) {
 }
 function isMapQueryAsset(value) {
   return (
-    isRecord$4(value) &&
+    isRecord$5(value) &&
     typeof value.name === 'string' &&
     value.name.length > 0 &&
     Array.isArray(value.layers) &&
@@ -3512,7 +3512,7 @@ function isMapQueryAsset(value) {
 }
 function isMapQueryLayer(value) {
   if (
-    !isRecord$4(value) ||
+    !isRecord$5(value) ||
     !Number.isSafeInteger(value.width) ||
     typeof value.width !== 'number' ||
     value.width <= 0 ||
@@ -3527,7 +3527,7 @@ function isMapQueryLayer(value) {
   const tileFlags = value.tileFlags;
   return value.cells.every((tile) => tile < tileFlags.length);
 }
-function isRecord$4(value) {
+function isRecord$5(value) {
   return typeof value === 'object' && value !== null;
 }
 //#endregion
@@ -3721,7 +3721,7 @@ function isSaveImage(value) {
 }
 function isSaveSnapshot(value) {
   return (
-    isRecord$3(value) &&
+    isRecord$4(value) &&
     Object.keys(value).length === 5 &&
     value.revision === 1 &&
     value.bytes instanceof Uint8Array &&
@@ -3774,7 +3774,7 @@ function isPendingSaveWrites(value, values) {
   const keys = /* @__PURE__ */ new Set();
   for (const write of value) {
     if (
-      !isRecord$3(write) ||
+      !isRecord$4(write) ||
       Object.keys(write).length !== 2 ||
       typeof write.key !== 'string' ||
       !Object.hasOwn(values, write.key) ||
@@ -3787,7 +3787,7 @@ function isPendingSaveWrites(value, values) {
   return true;
 }
 function isSaveValues(value) {
-  if (!isRecord$3(value) || Array.isArray(value)) return false;
+  if (!isRecord$4(value) || Array.isArray(value)) return false;
   try {
     for (const [key, entry] of Object.entries(value)) {
       validateKey(key);
@@ -3832,15 +3832,15 @@ function validateInteger(value) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value))
     throw new TypeError('save values must be safe integers');
 }
-function isRecord$3(value) {
+function isRecord$4(value) {
   return typeof value === 'object' && value !== null;
 }
 //#endregion
 //#region src/protocol.ts
 function isSandboxConfiguration(value) {
   return (
-    isRecord$2(value) &&
-    hasExactKeys$1(value, [
+    isRecord$3(value) &&
+    hasExactKeys$2(value, [
       'seed',
       'workUnitsPerFrame',
       'updateRate',
@@ -3865,13 +3865,13 @@ function isSandboxConfiguration(value) {
         value.rom.length <= HARDWARE.cartridgeCapacityBytes))
   );
 }
-function isRecord$2(value) {
+function isRecord$3(value) {
   return typeof value === 'object' && value !== null;
 }
 function isNonNegativeInteger(value) {
   return typeof value === 'number' && Number.isSafeInteger(value) && value >= 0;
 }
-function hasExactKeys$1(value, expected) {
+function hasExactKeys$2(value, expected) {
   const actual = Object.keys(value).sort();
   return actual.length === expected.length && expected.every((key) => actual.includes(key));
 }
@@ -3879,7 +3879,7 @@ function hasExactKeys$1(value, expected) {
 //#region src/console-runtime.ts
 function isConsoleRuntimeSnapshot(value) {
   return (
-    isRecord$1(value) &&
+    isRecord$2(value) &&
     value.revision === 6 &&
     Object.keys(value).length === 7 &&
     isMachineSnapshot(value.machine) &&
@@ -4470,12 +4470,12 @@ function consoleWorkCost(name, arguments_) {
       return 1;
   }
 }
-function isRecord$1(value) {
+function isRecord$2(value) {
   return typeof value === 'object' && value !== null;
 }
 function isAssetHandle(value, kind) {
   return (
-    isRecord$1(value) &&
+    isRecord$2(value) &&
     typeof value.name === 'string' &&
     value.name.length > 0 &&
     value.kind === kind
@@ -4488,7 +4488,7 @@ function readInteger(value, sourceSpan) {
 }
 function readWorkerSnapshot(value) {
   if (
-    !isRecord$1(value) ||
+    !isRecord$2(value) ||
     (value.revision === 6 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
   )
     throw new RuntimeFault('PX9103', 'invalid worker snapshot', {
@@ -4546,6 +4546,108 @@ var MEMORY_CALLS = /* @__PURE__ */ new Map([
   ['mem_copy', 3],
   ['mem_fill', 3],
 ]);
+new TextEncoder();
+new TextDecoder('utf-8', { fatal: true });
+var REPLAY_MAX_FRAMES = 36e3;
+function replayInputFrames(trace) {
+  if (!isReplayTrace(trace, 36e3)) throw new TypeError('replay schema is invalid');
+  const inputs = /* @__PURE__ */ new Map();
+  for (const item of trace.frames)
+    for (let offset = 0; offset < (item.duration ?? 1); offset += 1)
+      inputs.set(item.frame + offset, replayFrameInput(item));
+  return inputs;
+}
+function isReplayTrace(value, frameLimit = REPLAY_MAX_FRAMES) {
+  if (
+    !isRecord$1(value) ||
+    !hasExactKeys$1(value, ['revision', 'frames']) ||
+    value.revision !== 1 ||
+    !Array.isArray(value.frames) ||
+    value.frames.length > frameLimit
+  )
+    return false;
+  let previousEnd = 0;
+  for (const item of value.frames) {
+    if (
+      !isRecord$1(item) ||
+      !hasOnlyKeys(item, ['frame', 'duration', 'controllers', 'pointer']) ||
+      !('controllers' in item) ||
+      typeof item.frame !== 'number' ||
+      !Number.isSafeInteger(item.frame) ||
+      item.frame < previousEnd ||
+      item.frame >= frameLimit ||
+      (item.duration !== void 0 &&
+        (typeof item.duration !== 'number' ||
+          !Number.isSafeInteger(item.duration) ||
+          item.duration < 1 ||
+          item.duration > frameLimit - item.frame)) ||
+      !isReplayControllers(item.controllers) ||
+      (item.pointer !== void 0 && !isReplayPointer(item.pointer))
+    )
+      return false;
+    previousEnd = item.frame + (item.duration ?? 1);
+  }
+  return true;
+}
+function replayFrameInput(frame) {
+  const input = emptyInputFrame();
+  for (const controller of frame.controllers) {
+    const target = input.controllers[controller.port - 1];
+    if (target === void 0) continue;
+    for (const button of controller.buttons) target.buttons[button] = true;
+  }
+  return {
+    ...input,
+    ...(frame.pointer === void 0 ? {} : { pointer: frame.pointer }),
+  };
+}
+function isReplayPointer(value) {
+  return (
+    isRecord$1(value) &&
+    hasExactKeys$1(value, ['x', 'y', 'primary', 'secondary', 'inside']) &&
+    typeof value.x === 'number' &&
+    Number.isSafeInteger(value.x) &&
+    value.x >= 0 &&
+    value.x < HARDWARE.width &&
+    typeof value.y === 'number' &&
+    Number.isSafeInteger(value.y) &&
+    value.y >= 0 &&
+    value.y < HARDWARE.height &&
+    typeof value.primary === 'boolean' &&
+    typeof value.secondary === 'boolean' &&
+    typeof value.inside === 'boolean'
+  );
+}
+function isReplayControllers(value) {
+  if (!Array.isArray(value) || value.length > 4) return false;
+  const ports = /* @__PURE__ */ new Set();
+  for (const controller of value) {
+    if (
+      !isRecord$1(controller) ||
+      !hasExactKeys$1(controller, ['port', 'buttons']) ||
+      typeof controller.port !== 'number' ||
+      ![1, 2, 3, 4].includes(controller.port) ||
+      ports.has(controller.port) ||
+      !Array.isArray(controller.buttons) ||
+      controller.buttons.length > BUTTONS.length ||
+      new Set(controller.buttons).size !== controller.buttons.length ||
+      !controller.buttons.every(isButton)
+    )
+      return false;
+    ports.add(controller.port);
+  }
+  return true;
+}
+function isRecord$1(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
+}
+function hasExactKeys$1(value, expected) {
+  const actual = Object.keys(value).sort();
+  return actual.length === expected.length && expected.every((key) => actual.includes(key));
+}
+function hasOnlyKeys(value, expected) {
+  return Object.keys(value).every((key) => expected.includes(key));
+}
 //#endregion
 //#region src/headless.ts
 /** Runs validated compiler output through the same production core used by the browser Worker. */
@@ -4573,10 +4675,7 @@ async function runHeadless(value) {
     save: Uint8Array.from(request.save),
     rom: Uint8Array.from(request.rom),
   });
-  const inputs = /* @__PURE__ */ new Map();
-  for (const trace of request.trace.frames)
-    for (let offset = 0; offset < (trace.duration ?? 1); offset += 1)
-      inputs.set(trace.frame + offset, traceInput(trace));
+  const inputs = replayInputFrames(request.trace);
   const frameResults = [];
   const commandHash = createHash('sha256');
   const pcmHash = createHash('sha256');
@@ -4656,7 +4755,7 @@ function isHeadlessRequest(value) {
     !Number.isSafeInteger(value.frames) ||
     value.frames < 0 ||
     value.frames > 36e3 ||
-    !isTrace(value.trace, value.frames) ||
+    !isReplayTrace(value.trace, value.frames) ||
     !isByteArray(value.save, HARDWARE.saveCapacityBytes)
   )
     return false;
@@ -4696,87 +4795,6 @@ function isAssetDeclarations(value) {
       asset.path.length > 0 &&
       asset.path.length <= 1024,
   );
-}
-function isTrace(value, frameLimit) {
-  if (
-    !isRecord(value) ||
-    !hasExactKeys(value, ['revision', 'frames']) ||
-    value.revision !== 1 ||
-    !Array.isArray(value.frames) ||
-    value.frames.length > frameLimit
-  )
-    return false;
-  let previousEnd = 0;
-  for (const item of value.frames) {
-    if (
-      !isRecord(item) ||
-      !hasOnlyKeys(item, ['frame', 'duration', 'controllers', 'pointer']) ||
-      !('controllers' in item) ||
-      typeof item.frame !== 'number' ||
-      !Number.isSafeInteger(item.frame) ||
-      item.frame < previousEnd ||
-      item.frame >= frameLimit ||
-      (item.duration !== void 0 &&
-        (typeof item.duration !== 'number' ||
-          !Number.isSafeInteger(item.duration) ||
-          item.duration < 1 ||
-          item.duration > frameLimit - item.frame)) ||
-      !isTraceControllers(item.controllers) ||
-      (item.pointer !== void 0 && !isHeadlessPointer(item.pointer))
-    )
-      return false;
-    previousEnd = item.frame + (item.duration ?? 1);
-  }
-  return true;
-}
-function isHeadlessPointer(value) {
-  return (
-    isRecord(value) &&
-    hasExactKeys(value, ['x', 'y', 'primary', 'secondary', 'inside']) &&
-    typeof value.x === 'number' &&
-    Number.isSafeInteger(value.x) &&
-    value.x >= 0 &&
-    value.x < HARDWARE.width &&
-    typeof value.y === 'number' &&
-    Number.isSafeInteger(value.y) &&
-    value.y >= 0 &&
-    value.y < HARDWARE.height &&
-    typeof value.primary === 'boolean' &&
-    typeof value.secondary === 'boolean' &&
-    typeof value.inside === 'boolean'
-  );
-}
-function isTraceControllers(value) {
-  if (!Array.isArray(value) || value.length > 4) return false;
-  const ports = /* @__PURE__ */ new Set();
-  for (const controller of value) {
-    if (
-      !isRecord(controller) ||
-      !hasExactKeys(controller, ['port', 'buttons']) ||
-      typeof controller.port !== 'number' ||
-      ![1, 2, 3, 4].includes(controller.port) ||
-      ports.has(controller.port) ||
-      !Array.isArray(controller.buttons) ||
-      controller.buttons.length > BUTTONS.length ||
-      new Set(controller.buttons).size !== controller.buttons.length ||
-      !controller.buttons.every(isButton)
-    )
-      return false;
-    ports.add(controller.port);
-  }
-  return true;
-}
-function traceInput(frame) {
-  const input = emptyInputFrame();
-  for (const controller of frame.controllers) {
-    const target = input.controllers[controller.port - 1];
-    if (target === void 0) continue;
-    for (const button of controller.buttons) target.buttons[button] = true;
-  }
-  return {
-    ...input,
-    ...(frame.pointer === void 0 ? {} : { pointer: frame.pointer }),
-  };
 }
 function isByteRecord(value, entryLimit, byteLimit) {
   if (!isRecord(value) || Object.keys(value).length > entryLimit) return false;
@@ -4836,9 +4854,6 @@ function hasExactKeys(value, keys) {
   return (
     actual.length === keys.length && [...keys].sort().every((key, index) => actual[index] === key)
   );
-}
-function hasOnlyKeys(value, keys) {
-  return Object.keys(value).every((key) => keys.includes(key));
 }
 function isRecord(value) {
   return typeof value === 'object' && value !== null;

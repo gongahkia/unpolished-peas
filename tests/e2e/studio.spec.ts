@@ -291,6 +291,57 @@ on draw:
   await shellCommand(page, 'run');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
   await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await page.locator('.capture-scale').selectOption('2');
+  const screenshotPromise = page.waitForEvent('download');
+  await page.locator('.capture-shot').click();
+  const screenshot = await screenshotPromise;
+  const screenshotPath = await screenshot.path();
+  expect(screenshotPath).not.toBeNull();
+  const screenshotBytes = await readFile(screenshotPath);
+  expect(screenshotBytes.subarray(0, 8)).toEqual(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]));
+  expect(screenshotBytes.readUInt32BE(16)).toBe(480);
+  expect(screenshotBytes.readUInt32BE(20)).toBe(288);
+
+  const gifPromise = page.waitForEvent('download');
+  await page.locator('.capture-gif').click();
+  const gif = await gifPromise;
+  const gifPath = await gif.path();
+  expect(gifPath).not.toBeNull();
+  const gifBytes = await readFile(gifPath);
+  expect(gifBytes.subarray(0, 6).toString('ascii')).toBe('GIF89a');
+  expect(gifBytes.readUInt16LE(6)).toBe(240);
+  expect(gifBytes.readUInt16LE(8)).toBe(144);
+  expect(gifBytes.at(-1)).toBe(0x3b);
+  expect(
+    await page.evaluate(async (data) => {
+      const image = new Image();
+      const loaded = new Promise<[number, number]>((resolve, reject) => {
+        image.addEventListener('load', () => {
+          resolve([image.naturalWidth, image.naturalHeight]);
+        });
+        image.addEventListener('error', () => {
+          reject(new Error('GIF did not decode'));
+        });
+      });
+      image.src = `data:image/gif;base64,${data}`;
+      return await loaded;
+    }, gifBytes.toString('base64')),
+  ).toEqual([240, 144]);
+
+  const replayPromise = page.waitForEvent('download');
+  await page.locator('.capture-replay').click();
+  const replay = await replayPromise;
+  const replayPath = await replay.path();
+  expect(replayPath).not.toBeNull();
+  const replayJson = JSON.parse(await readFile(replayPath, 'utf8')) as {
+    revision: number;
+    frames: unknown[];
+  };
+  expect(replayJson.revision).toBe(1);
+  expect(replayJson.frames.length).toBeGreaterThan(0);
+  await page.locator('.replay-input').setInputFiles(replayPath);
+  await expect(page.locator('[data-view="player"]')).toHaveAttribute('data-replay', 'true');
+  await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
   await page.locator('.stop-player').click();
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
 

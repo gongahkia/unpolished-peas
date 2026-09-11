@@ -6,11 +6,13 @@ cartridge worker receives only a validated copy of its own integer save values; 
 the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
-`import`, `edit`, `run`, `debug`, `pack`, `export`, `inspect`, `info`, `help`, and `reboot` operate on
-real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, reconstructs its
-editable project, and preserves the previous same-ID revision for recovery. `inspect` displays the
+`import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `inspect`, `info`, `help`, and `reboot`
+operate on real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, reconstructs
+its editable project, and also accepts a `.pxc.png` only after validating its bounded PNG chunks and
+embedded canonical cartridge. It preserves the previous same-ID revision for recovery. `inspect` displays the
 canonical packed metadata and all original source modules. `export` downloads one offline HTML
-player with its own visible source inspector.
+player with its own visible source inspector. `cart` downloads the PX-240C 320x240 cartridge-object
+PNG with title/author/year/player/control identity and the byte-exact `.pxc` payload.
 The source editor has PXCL highlighting, live compiler diagnostics, completion, symbol navigation,
 canonical formatting, explicit save, run, and external-revision reload controls.
 Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
@@ -19,7 +21,10 @@ F3 save and leaving the editor flush the same serialized path. Every successful 
 previous revision in the ten-entry recovery ring.
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
-from a cartridge to the shell.
+from a cartridge to the shell. Player capture writes deterministic native or 2x-4x nearest PNG,
+bounded five-second 30 fps GIF sampled from the 60 Hz indexed stream, and revision-1 `.pxrec` input.
+The same player validates an imported `.pxrec`, restarts from frame zero, and applies its four-port
+and pointer stream without mixing live input. GIF and replay histories are independently bounded.
 
 `project`, `sprite`, `map`, `palette`, `font`, `sfx`, and `music` open cartridge settings and source-visible
 asset editors in the same 240x144 display. The sprite tool provides frames, onion skinning,
@@ -59,6 +64,7 @@ px240c test my-game
 px240c watch my-game
 px240c pack my-game
 px240c export html my-game
+px240c export png my-game --output dist/my-game.pxc.png
 px240c run my-game
 px240c run my-game --headless --frames 120 --input tests/replays/my-game.json
 px240c info my-game/dist/my-game.pxc

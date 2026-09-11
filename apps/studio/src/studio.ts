@@ -1,19 +1,24 @@
 import {
-  BUTTONS,
   BrowserInput,
   HARDWARE,
   IndexedDbStorage,
   MASTER_PALETTE_RGBA,
+  REPLAY_MAX_BYTES,
   SandboxSession,
   StudioRepository,
   WebAudioSink,
   WebGlIndexedRenderer,
   decodeCartridgePng,
+  decodeReplayTrace,
+  emptyInputFrame,
   encodeCartridgePng,
   encodeIndexedGif,
+  encodeReplayTrace,
   encodeRgbaPng,
+  replayInputFrames,
   type DecodedPng,
   type InputFrame,
+  type ReplayTrace,
   type StoredProject,
 } from '@px240c/runtime';
 
@@ -741,7 +746,7 @@ export class StudioApp {
     }
   }
 
-  private async runProject(): Promise<void> {
+  private async runProject(replay?: ReplayTrace): Promise<void> {
     this.stopDebugger();
     const project = this.requireProject();
     const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
@@ -755,9 +760,9 @@ export class StudioApp {
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
     this.root.innerHTML = `
-      <section class="display player" data-view="player" aria-label="Running PX-240C cartridge">
+      <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running PX-240C cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
-        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">PXREC</button></div>
+        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">PXREC OUT</button><label class="file-button">PXREC IN<input class="replay-input" type="file" accept=".pxrec,application/json"></label></div>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
         <button class="enable-player-audio" type="button">SOUND</button>
         <p class="player-status" role="status"></p>
@@ -778,6 +783,8 @@ export class StudioApp {
     let audioSink: WebAudioSink | undefined;
     const capturedFrames: Uint8Array[] = [];
     const capturedInputs: { frame: number; input: InputFrame }[] = [];
+    const importedInputs = replay === undefined ? undefined : replayInputFrames(replay);
+    let frameCursor = 0;
     try {
       await sandbox.load(compilation.generated.javascript, {
         seed: 0x240c1999,
@@ -867,22 +874,26 @@ export class StudioApp {
     (requireElement(this.root, '.capture-replay') as HTMLButtonElement).addEventListener(
       'click',
       () => {
-        const replay = {
-          revision: 1,
-          frames: capturedInputs.map(({ frame: capturedFrame, input: capturedInput }) => ({
-            frame: capturedFrame,
-            controllers: capturedInput.controllers.flatMap((controller, port) => {
-              const buttons = BUTTONS.filter((button) => controller.buttons[button]);
-              return buttons.length === 0 ? [] : [{ port: port + 1, buttons }];
-            }),
-            pointer: capturedInput.pointer,
-          })),
-        };
-        downloadBytes(
-          `${project.id}.pxrec`,
-          encoder.encode(`${JSON.stringify(replay)}\n`),
-          'application/json',
-        );
+        downloadBytes(`${project.id}.pxrec`, encodeReplayTrace(capturedInputs), 'application/json');
+      },
+    );
+    (requireElement(this.root, '.replay-input') as HTMLInputElement).addEventListener(
+      'change',
+      (event) => {
+        const file = (event.currentTarget as HTMLInputElement).files?.[0];
+        if (file === undefined) return;
+        void (async () => {
+          if (file.size > REPLAY_MAX_BYTES) throw new RangeError('replay byte length is invalid');
+          const trace = decodeReplayTrace(new Uint8Array(await file.arrayBuffer()));
+          stop();
+          await this.runProject(trace);
+          const replayStatus = this.root.querySelector<HTMLElement>('.player-status');
+          if (replayStatus !== null)
+            replayStatus.textContent = `PXREC ${String(trace.frames.length)}F`;
+        })().catch((error: unknown) => {
+          status.textContent = errorMessage(error);
+          status.classList.add('error');
+        });
       },
     );
     globalThis.addEventListener('keydown', stopKey, true);
@@ -891,13 +902,16 @@ export class StudioApp {
         return;
       }
       try {
-        const inputFrame = input.poll();
+        const inputFrame =
+          importedInputs?.get(frameCursor) ??
+          (importedInputs === undefined ? input.poll() : emptyInputFrame());
         const result = await sandbox.frame(inputFrame);
         this.capturedFrames.set(project.id, result.output.indexedPixels.slice());
         capturedFrames.push(result.output.indexedPixels.slice());
         capturedInputs.push({ frame: result.frame, input: inputFrame });
+        frameCursor += 1;
         if (capturedFrames.length > 300) capturedFrames.shift();
-        if (capturedInputs.length > 300) capturedInputs.shift();
+        if (capturedInputs.length > 36_000) capturedInputs.shift();
         renderer.render(result.output.indexedPixels);
         audioSink?.enqueue(result.output.audio);
         if (result.saveCommit !== undefined) await saveAccess.write(result.saveCommit);
