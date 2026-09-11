@@ -34,7 +34,7 @@ PX-240C glyph design; the Studio font is generated locally from the runtime's gl
 `explore` exposes tokens, AST, symbols, typed IR, JavaScript, source maps, diagnostics, and size
 accounting. `debug` opens source breakpoints and trace stepping, state/task/watch inspection,
 synthetic-work profiling, hardware inspectors, and deterministic frame rewind. Its precise
-frame-boundary semantics and limitations are documented in [DEBUGGER.md](DEBUGGER.md). Escape
+source stepping and pause semantics are documented in [DEBUGGING.md](DEBUGGING.md). Escape
 returns from a creation tool; F3 saves asset changes.
 
 ## Native commands

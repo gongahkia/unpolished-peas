@@ -787,15 +787,37 @@ Each group may produce several coherent commits, and integration occurs througho
   milestone; no debugger-completion or V1-completion claim is made. Nothing was pushed, published or
   deployed.
 
+## 2026-09-11 — V1 milestone 5b: original-module debugging and persistent breakpoints
+
+- Project debug builds now retain a byte-boundary origin map while imports and colliding symbols are
+  rewritten into the linked compiler input. Source-map v3 output lists every reachable original
+  module and its exact content; statement events and call-stack frames carry original module paths
+  and offsets. Release compilation still uses its prior linked map, preserving canonical cartridge
+  bytes and all four existing artifact hashes.
+- Studio follows live stops across modules, shows module-qualified stack/source locations, and keys
+  breakpoints by module plus line. Breakpoints are stored locally per project with bounded revision-1
+  data. On reopen or an edit, exact trimmed-statement anchors move to the nearest matching line;
+  deleted statements and malformed/oversize storage are discarded without blocking the debugger.
+- Added compiler mapping tests across an aliased dependency, protocol rejection for malformed source
+  names, pure breakpoint-remapping coverage, and a production Firefox workflow that imports a real
+  two-module cartridge, steps from the entry callback into its dependency, stops on a dependency
+  breakpoint, closes the Worker, reopens the debugger, and hits the persisted breakpoint again.
+  The complete repository gate passed formatting, ESLint, strict TypeScript, **136 Vitest tests**,
+  production builds, the expanded Firefox E2E in **52.9 s**, Clippy with warnings denied, **59 Rust
+  tests**, native and release Wasm builds. No required gate check was skipped.
+- Added the required canonical `docs/DEBUGGING.md`; the former alpha filename remains as a
+  compatibility link. Work-attribution/profile locations still use linked spans, while executable
+  statements and stacks use original files. Debugger fault/pause-audio matrix coverage and final
+  Chromium parity remain open. Current generated sizes are 155,782-byte headless, 186,865-byte
+  standalone, 141,783-byte Studio main JS, 79,373-byte Worker JS and 1,368,539-byte compiler Wasm.
+  Nothing was pushed, published or deployed.
+
 ## Current risks (V1 work in progress)
 
 - The asset editors intentionally expose a compact alpha subset: one map tileset, one editable
   raster row, and no custom font asset decoding/editor.
-- Generated project source maps still identify the deterministic linked source rather than each
-  original module; live stops therefore need original-file remapping before the debugger milestone
-  is complete.
-- Breakpoint persistence/remapping after edits, folder-backed editing and incremental compiler
-  invalidation beyond direct importer diagnostics remain open.
+- Folder-backed editing and incremental compiler invalidation beyond direct importer diagnostics
+  remain open.
 - Broader WebGL2/Web Audio device coverage remains beyond the local Firefox validation.
 - Broader worker-hardening audits remain; the current boundary must not be described as stronger
   isolation than the browser actually provides.

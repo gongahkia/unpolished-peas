@@ -10,7 +10,8 @@ use crate::{
     AssetCatalog, AssetKind, CARTRIDGE_FORMAT_REVISION, CompilationOutput, CompileMode, FileId,
     LANGUAGE_REVISION, SourceFile, TokenKind,
     ast::{Item, Module},
-    compile, compiler_version, parse,
+    codegen::{SourceOriginMap, SourceOriginRange, compile_with_origins},
+    compiler_version, parse,
 };
 
 const MAGIC: &[u8; 8] = b"PX240C\x1a\x01";
@@ -327,20 +328,32 @@ fn compile_linked_project(
     mode: CompileMode,
 ) -> Result<CompilationOutput, CartridgeError> {
     let entry = normalize_project_path(&manifest.entry)?;
-    let source = link_project_sources(&entry, project_files)?;
-    Ok(compile(&source, assets, mode))
+    let linked = link_project_sources(&entry, project_files)?;
+    let origins = (mode == CompileMode::Debug).then_some(&linked.origins);
+    Ok(compile_with_origins(&linked.source, assets, mode, origins))
 }
 
 #[derive(Clone, Debug)]
 struct ProjectModule {
+    file: FileId,
     text: String,
     syntax: Module,
+}
+
+struct LinkedProject {
+    source: SourceFile,
+    origins: SourceOriginMap,
+}
+
+struct RenderedModule {
+    text: String,
+    offsets: Vec<u32>,
 }
 
 fn link_project_sources(
     entry: &str,
     project_files: &BTreeMap<String, Vec<u8>>,
-) -> Result<SourceFile, CartridgeError> {
+) -> Result<LinkedProject, CartridgeError> {
     let mut modules = BTreeMap::new();
     for (index, (path, bytes)) in project_files
         .iter()
@@ -367,6 +380,7 @@ fn link_project_sources(
         modules.insert(
             path,
             ProjectModule {
+                file: source.id(),
                 text,
                 syntax: parsed.module,
             },
@@ -385,20 +399,33 @@ fn link_project_sources(
     validate_link_modules(entry, &order, &modules)?;
     let renames = module_renames(&order, &modules);
 
+    let sources = modules
+        .iter()
+        .map(|(path, module)| SourceFile::new(module.file, path, module.text.clone()))
+        .collect::<Vec<_>>();
     let mut linked = String::new();
+    let mut ranges = Vec::new();
     for path in order {
         let module = modules.get(&path).expect("visited modules exist");
-        linked.push_str(&render_module(&path, module, &modules, &renames)?);
+        let rendered = render_module(&path, module, &modules, &renames)?;
+        let linked_start = u32::try_from(linked.len()).unwrap_or(u32::MAX);
+        linked.push_str(&rendered.text);
+        let linked_end = u32::try_from(linked.len()).unwrap_or(u32::MAX);
+        ranges.push(SourceOriginRange {
+            linked_start,
+            linked_end,
+            file: module.file,
+            offsets: rendered.offsets,
+        });
         if !linked.ends_with('\n') {
             linked.push('\n');
         }
         linked.push('\n');
     }
-    Ok(SourceFile::new(
-        FileId(0),
-        format!("project/{entry}"),
-        linked,
-    ))
+    Ok(LinkedProject {
+        source: SourceFile::new(FileId(u32::MAX), format!("project/{entry}"), linked),
+        origins: SourceOriginMap::new(sources, ranges),
+    })
 }
 
 fn visit_module(
@@ -489,7 +516,7 @@ fn render_module(
     module: &ProjectModule,
     modules: &BTreeMap<String, ProjectModule>,
     renames: &BTreeMap<String, BTreeMap<String, String>>,
-) -> Result<String, CartridgeError> {
+) -> Result<RenderedModule, CartridgeError> {
     let mut replacements = Vec::<(usize, usize, String)>::new();
     let mut aliases = BTreeMap::<String, (String, BTreeSet<String>)>::new();
     for item in &module.syntax.items {
@@ -561,18 +588,79 @@ fn render_module(
         ));
     }
     add_namespace_replacements(&tokens, &mut replacements, &renames[path], &module.syntax);
-    replacements.sort_by_key(|(start, _, _)| *start);
-    let mut output = module.text.clone();
-    for (start, end, replacement) in replacements.into_iter().rev() {
-        let Some(_) = output.get(start..end) else {
+    replacements.sort_by_key(|(start, end, _)| (*start, *end));
+    render_replacements(path, &module.text, replacements)
+}
+
+fn render_replacements(
+    path: &str,
+    source: &str,
+    replacements: Vec<(usize, usize, String)>,
+) -> Result<RenderedModule, CartridgeError> {
+    let mut output = String::new();
+    let mut offsets = vec![0];
+    let mut cursor = 0;
+    for (start, end, replacement) in replacements {
+        if start < cursor || start > end {
+            return Err(cartridge_error(
+                "PX4009",
+                format!("module '{path}' produced an invalid link span"),
+            ));
+        }
+        append_mapped_source(&mut output, &mut offsets, source, cursor, start, path)?;
+        let Some(_) = source.get(start..end) else {
             return Err(cartridge_error(
                 "PX4009",
                 format!("module '{path}' produced an invalid link span"),
             ));
         };
-        output.replace_range(start..end, &replacement);
+        output.push_str(&replacement);
+        if replacement.is_empty()
+            && let Some(offset) = offsets.last_mut()
+        {
+            *offset = u32::try_from(end).unwrap_or(u32::MAX);
+        }
+        for index in 1..=replacement.len() {
+            let original = start
+                + (end - start)
+                    .saturating_mul(index)
+                    .checked_div(replacement.len())
+                    .unwrap_or_default();
+            offsets.push(u32::try_from(original).unwrap_or(u32::MAX));
+        }
+        cursor = end;
     }
-    Ok(output)
+    append_mapped_source(
+        &mut output,
+        &mut offsets,
+        source,
+        cursor,
+        source.len(),
+        path,
+    )?;
+    Ok(RenderedModule {
+        text: output,
+        offsets,
+    })
+}
+
+fn append_mapped_source(
+    output: &mut String,
+    offsets: &mut Vec<u32>,
+    source: &str,
+    start: usize,
+    end: usize,
+    path: &str,
+) -> Result<(), CartridgeError> {
+    let Some(text) = source.get(start..end) else {
+        return Err(cartridge_error(
+            "PX4009",
+            format!("module '{path}' produced an invalid link span"),
+        ));
+    };
+    output.push_str(text);
+    offsets.extend((start + 1..=end).map(|offset| u32::try_from(offset).unwrap_or(u32::MAX)));
+    Ok(())
 }
 
 fn add_namespace_replacements(
@@ -1665,6 +1753,52 @@ path = "assets/hero.pxg"
                 .is_empty()
         );
         assert!(pack_project(manifest(), &project_files).is_ok());
+    }
+
+    #[test]
+    fn debug_projects_map_generated_statements_to_original_modules() {
+        let mut project_files = files("\n");
+        let main = "import src.math as math\nstate score: Int = 1\non update:\n  score = math.twice(score)\n";
+        let math = "fn twice(value: Int) -> Int:\n  return value * 2\n";
+        project_files.insert("src/main.pxl".to_owned(), main.as_bytes().to_vec());
+        project_files.insert("src/math.pxl".to_owned(), math.as_bytes().to_vec());
+        let output = compile_project(manifest(), &project_files, CompileMode::Debug)
+            .expect("debug project links");
+        assert!(output.analysis.diagnostics.is_empty());
+        let generated = output.generated.expect("debug project generates");
+        assert!(
+            generated.javascript.contains(&format!(
+                "source:\"src/main.pxl\",start:{},end:",
+                main.find("state score").expect("state exists")
+            )),
+            "{}",
+            generated.javascript
+        );
+        assert!(generated.javascript.contains(&format!(
+            "source:\"src/math.pxl\",start:{},end:",
+            math.find("return value").expect("return exists")
+        )));
+        assert!(
+            generated
+                .javascript
+                .contains("enter(\"twice\", {source:\"src/math.pxl\"")
+        );
+        assert!(
+            generated
+                .javascript
+                .contains("enter(\"@update\", {source:\"src/main.pxl\"")
+        );
+        let source_map: serde_json::Value =
+            serde_json::from_str(&generated.source_map_json).expect("source map is JSON");
+        assert_eq!(
+            source_map["sources"],
+            serde_json::json!(["src/main.pxl", "src/math.pxl"])
+        );
+        assert_eq!(
+            source_map["sourcesContent"],
+            serde_json::json!([main, math])
+        );
+        assert_ne!(source_map["mappings"], "");
     }
 
     #[test]

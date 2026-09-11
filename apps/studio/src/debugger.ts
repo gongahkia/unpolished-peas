@@ -43,6 +43,13 @@ type DebugStepResponse = Awaited<ReturnType<SandboxSession['debugStep']>>;
 type DebugFrameInspection = NonNullable<DebugStepResponse['inspection']>;
 type DebugTab = 'SOURCE' | 'STATE' | 'TASKS' | 'PROFILE' | 'MEMORY' | 'AUDIO';
 
+export interface SourceBreakpoint {
+  readonly source: string;
+  readonly line: number;
+  readonly condition: string;
+  readonly anchor: string;
+}
+
 const SNAPSHOT_INTERVAL = 30;
 const WORK_LIMIT = HARDWARE.workUnitsPerFrame;
 const decoder = new TextDecoder();
@@ -71,11 +78,12 @@ export async function openDebugger(
 
 class DebuggerController {
   private readonly journal = new ReplayJournal(3_600);
-  private readonly breakpoints = new Map<number, string>();
+  private readonly breakpoints: Map<string, SourceBreakpoint>;
   private readonly watches: string[] = [];
   private readonly profile = new Map<string, { start: number; end: number; units: number }>();
   private readonly source: string;
-  private readonly sourceLines: readonly string[];
+  private readonly sourcePath: string;
+  private readonly sources: ReadonlyMap<string, string>;
   private readonly symbolNames: ReadonlyMap<number, string>;
   private readonly sandbox: SandboxSession;
   private readonly input: BrowserInput;
@@ -128,7 +136,7 @@ class DebuggerController {
     const manifest = await compiler.parseManifest(project.manifest);
     const assets = decodeRuntimeAssets(manifest.assets, project.files, manifest.display);
     const rom = await compiler.packProject(project.manifest, project.files);
-    const source = debugSource(compilation, project);
+    const debugSource = debugSources(compilation, project);
     return new DebuggerController(
       root,
       project,
@@ -141,7 +149,9 @@ class DebuggerController {
       assets,
       { declarations: manifest.assets, files: project.files, displayPath: manifest.display },
       rom,
-      source,
+      debugSource.entry,
+      debugSource.entryPath,
+      debugSource.files,
     );
   }
 
@@ -158,9 +168,13 @@ class DebuggerController {
     assetSource: RuntimeAssetSource,
     rom: Uint8Array,
     source: string,
+    sourcePath: string,
+    sources: ReadonlyMap<string, string>,
   ) {
     this.source = source;
-    this.sourceLines = source.split('\n');
+    this.sourcePath = sourcePath;
+    this.sources = sources;
+    this.breakpoints = loadBreakpoints(project.id, sources);
     this.symbolNames = new Map(
       compilation.analysis.symbols.map((symbol) => [symbol.id, symbol.name]),
     );
@@ -235,7 +249,7 @@ class DebuggerController {
         </div>
         <div class="debug-entry">
           <div class="source-debug-entry">
-            <input class="break-line" type="number" min="1" max="${String(this.sourceLines.length)}" value="1" aria-label="Breakpoint line"><input class="break-condition" type="text" placeholder="CONDITION" aria-label="Breakpoint condition"><button type="button" data-debug="break">BRK</button>
+            <input class="break-line" type="number" min="1" max="${String(this.source.split('\n').length)}" value="1" aria-label="Breakpoint line"><input class="break-condition" type="text" placeholder="CONDITION" aria-label="Breakpoint condition"><button type="button" data-debug="break">BRK</button>
             <input class="watch-expression" type="text" placeholder="WATCH" aria-label="Watch expression"><button type="button" data-debug="watch">ADD</button>
           </div>
           <div class="memory-debug-entry" hidden>
@@ -396,7 +410,7 @@ class DebuggerController {
         }
         if (breakpoint !== undefined) {
           this.running = false;
-          this.message = `BREAK LINE ${String(breakpoint)} / FRAME ${String(this.currentFrame)}`;
+          this.message = `BREAK ${shortSource(breakpoint.source)}:${String(breakpoint.line)} / FRAME ${String(this.currentFrame)}`;
           break;
         }
       }
@@ -531,7 +545,8 @@ class DebuggerController {
           (kind === 'out' && event.callStack.length < depth) ||
           this.breakpointFor(event) !== undefined
         ) {
-          this.message = `PAUSED L${String(lineForOffset(this.source, event.sourceSpan.start))} / DEPTH ${String(event.callStack.length)}`;
+          const location = this.eventLocation(event);
+          this.message = `PAUSED ${shortSource(location.source)}:${String(location.line)} / DEPTH ${String(event.callStack.length)}`;
           break;
         }
       }
@@ -542,31 +557,42 @@ class DebuggerController {
     }
   }
 
-  private breakpointFor(event: DebugTraceEvent): number | undefined {
-    const line = lineForOffset(this.source, event.sourceSpan.start);
-    const condition = this.breakpoints.get(line);
-    if (condition === undefined) return undefined;
-    return condition.length === 0 || evaluateBreakpoint(condition, this.environment(event))
-      ? line
+  private breakpointFor(event: DebugTraceEvent): SourceBreakpoint | undefined {
+    const location = this.eventLocation(event);
+    const breakpoint = this.breakpoints.get(breakpointKey(location.source, location.line));
+    if (breakpoint === undefined) return undefined;
+    return breakpoint.condition.length === 0 ||
+      evaluateBreakpoint(breakpoint.condition, this.environment(event))
+      ? breakpoint
       : undefined;
   }
 
   private toggleBreakpoint(): void {
     const line = Number((requireElement(this.root, '.break-line') as HTMLInputElement).value);
-    if (!Number.isSafeInteger(line) || line < 1 || line > this.sourceLines.length) {
-      throw new RangeError('breakpoint line is outside the linked debug source');
+    const event = this.selectedEvent();
+    const source = event?.sourceSpan.source ?? this.sourcePath;
+    const sourceText = this.sources.get(source) ?? this.source;
+    if (!Number.isSafeInteger(line) || line < 1 || line > sourceText.split('\n').length) {
+      throw new RangeError('breakpoint line is outside the current source module');
     }
     const condition = (
       requireElement(this.root, '.break-condition') as HTMLInputElement
     ).value.trim();
-    if (this.breakpoints.has(line) && condition.length === 0) {
-      this.breakpoints.delete(line);
-      this.message = `REMOVED BREAKPOINT ${String(line)}`;
+    const key = breakpointKey(source, line);
+    if (this.breakpoints.has(key) && condition.length === 0) {
+      this.breakpoints.delete(key);
+      this.message = `REMOVED BREAKPOINT ${shortSource(source)}:${String(line)}`;
     } else {
       if (condition.length > 0) evaluateWatch(condition, this.environment(this.selectedEvent()));
-      this.breakpoints.set(line, condition);
-      this.message = `BREAKPOINT ${String(line)}${condition.length > 0 ? ' IF ' + condition : ''}`;
+      this.breakpoints.set(key, {
+        source,
+        line,
+        condition,
+        anchor: sourceText.split('\n')[line - 1]?.trim() ?? '',
+      });
+      this.message = `BREAKPOINT ${shortSource(source)}:${String(line)}${condition.length > 0 ? ' IF ' + condition : ''}`;
     }
+    saveBreakpoints(this.project.id, this.breakpoints);
     this.tab = 'SOURCE';
     this.render();
   }
@@ -691,6 +717,17 @@ class DebuggerController {
     return this.pausedEvent ?? this.lastFrame?.debug?.trace[this.selectedTrace];
   }
 
+  private eventLocation(event: DebugTraceEvent): {
+    readonly source: string;
+    readonly line: number;
+  } {
+    const source = event.sourceSpan.source ?? this.sourcePath;
+    return {
+      source,
+      line: lineForOffset(this.sources.get(source) ?? this.source, event.sourceSpan.start),
+    };
+  }
+
   private environment(event: DebugTraceEvent | undefined): Readonly<Record<string, unknown>> {
     const state = this.pausedInspection?.state ?? this.lastFrame?.debug?.inspection.state;
     return {
@@ -710,11 +747,15 @@ class DebuggerController {
     timeline.max = String(this.journal.cursor);
     timeline.value = String(this.currentFrame);
     const event = this.selectedEvent();
+    const eventLocation = event === undefined ? undefined : this.eventLocation(event);
     const location = requireElement(this.root, '.debug-location');
     location.textContent =
-      event === undefined
+      eventLocation === undefined
         ? `F${String(this.currentFrame).padStart(4, '0')} / NO TRACE SELECTED`
-        : `F${String(this.pausedEvent === undefined ? this.currentFrame - 1 : this.currentFrame).padStart(4, '0')} L${String(lineForOffset(this.source, event.sourceSpan.start))} P${String(event.id)}`;
+        : `F${String(this.pausedEvent === undefined ? this.currentFrame - 1 : this.currentFrame).padStart(4, '0')} ${shortSource(eventLocation.source)}:L${String(eventLocation.line)} P${String(event?.id ?? '?')}`;
+    const breakpointLine = requireElement(this.root, '.break-line') as HTMLInputElement;
+    const activeSource = eventLocation?.source ?? this.sourcePath;
+    breakpointLine.max = String((this.sources.get(activeSource) ?? this.source).split('\n').length);
     const output = requireElement(this.root, '.debug-output');
     output.textContent = this.tabOutput(this.tab, event);
     this.root.querySelectorAll<HTMLButtonElement>('.debug-tabs button').forEach((button) => {
@@ -729,13 +770,17 @@ class DebuggerController {
 
   private tabOutput(tab: DebugTab, event: DebugTraceEvent | undefined): string {
     switch (tab) {
-      case 'SOURCE':
+      case 'SOURCE': {
+        const sourcePath = event?.sourceSpan.source ?? this.sourcePath;
+        const source = this.sources.get(sourcePath) ?? this.source;
         return sourceOutput(
-          this.sourceLines,
+          sourcePath,
+          source,
           event,
           this.breakpoints,
           this.lastFrame?.debug?.truncated ?? false,
         );
+      }
       case 'STATE': {
         const environment = this.environment(event);
         const values = Object.entries(environment).map(
@@ -753,7 +798,18 @@ class DebuggerController {
       case 'TASKS': {
         const tasks = this.pausedInspection?.tasks ?? this.lastFrame?.debug?.inspection.tasks;
         const stack = event?.callStack ?? [];
-        return `CALL STACK\n${stack.map((frame) => frame.name).join('\n') || '(FRAME BOUNDARY)'}\n\nTASKS\n${namedTaskValue(tasks, this.symbolNames)}`;
+        return `CALL STACK\n${
+          stack
+            .map((frame) => {
+              const source = frame.sourceSpan.source ?? this.sourcePath;
+              const line = lineForOffset(
+                this.sources.get(source) ?? this.source,
+                frame.sourceSpan.start,
+              );
+              return `${frame.name} ${shortSource(source)}:${String(line)}`;
+            })
+            .join('\n') || '(FRAME BOUNDARY)'
+        }\n\nTASKS\n${namedTaskValue(tasks, this.symbolNames)}`;
       }
       case 'PROFILE':
         return (
@@ -874,41 +930,162 @@ function byteHex(value: number): string {
   return value.toString(16).toUpperCase().padStart(2, '0');
 }
 
-function debugSource(compilation: CompilationResult, project: DebugProject): string {
+function debugSources(
+  compilation: CompilationResult,
+  project: DebugProject,
+): {
+  readonly entry: string;
+  readonly entryPath: string;
+  readonly files: ReadonlyMap<string, string>;
+} {
   const sourceMap: unknown = JSON.parse(compilation.generated?.source_map_json ?? '{}');
+  const mapped = new Map<string, string>();
   if (
     typeof sourceMap === 'object' &&
     sourceMap !== null &&
+    Array.isArray((sourceMap as { sources?: unknown }).sources) &&
     Array.isArray((sourceMap as { sourcesContent?: unknown }).sourcesContent) &&
-    typeof (sourceMap as { sourcesContent: unknown[] }).sourcesContent[0] === 'string'
+    (sourceMap as { sources: unknown[] }).sources.length ===
+      (sourceMap as { sourcesContent: unknown[] }).sourcesContent.length
   ) {
-    return (sourceMap as { sourcesContent: string[] }).sourcesContent[0] ?? '';
+    const sources = (sourceMap as { sources: unknown[] }).sources;
+    const contents = (sourceMap as { sourcesContent: unknown[] }).sourcesContent;
+    for (const [index, source] of sources.entries()) {
+      const content = contents[index];
+      if (typeof source === 'string' && typeof content === 'string') mapped.set(source, content);
+    }
   }
-  const entry = /^entry\s*=\s*"([A-Za-z0-9_./-]+)"\s*$/m.exec(project.manifest)?.[1];
-  return entry === undefined || project.files[entry] === undefined
-    ? ''
-    : decoder.decode(project.files[entry]);
+  for (const [path, bytes] of Object.entries(project.files)) {
+    if (path.endsWith('.pxl') && !mapped.has(path)) mapped.set(path, decoder.decode(bytes));
+  }
+  const entryPath =
+    /^entry\s*=\s*"([A-Za-z0-9_./-]+)"\s*$/m.exec(project.manifest)?.[1] ??
+    mapped.keys().next().value ??
+    'src/main.pxl';
+  return { entry: mapped.get(entryPath) ?? '', entryPath, files: mapped };
 }
 
 function sourceOutput(
-  lines: readonly string[],
+  sourcePath: string,
+  source: string,
   event: DebugTraceEvent | undefined,
-  breakpoints: ReadonlyMap<number, string>,
+  breakpoints: ReadonlyMap<string, SourceBreakpoint>,
   truncated: boolean,
 ): string {
-  const line = event === undefined ? 1 : lineForOffset(lines.join('\n'), event.sourceSpan.start);
+  const lines = source.split('\n');
+  const line = event === undefined ? 1 : lineForOffset(source, event.sourceSpan.start);
   const start = Math.max(1, line - 3);
   const end = Math.min(lines.length, line + 4);
   const excerpt: string[] = [];
   for (let current = start; current <= end; current += 1) {
     excerpt.push(
-      `${current === line ? '>' : ' '} ${breakpoints.has(current) ? '*' : ' '} ${String(current).padStart(3, '0')} ${lines[current - 1] ?? ''}`,
+      `${current === line ? '>' : ' '} ${breakpoints.has(breakpointKey(sourcePath, current)) ? '*' : ' '} ${String(current).padStart(3, '0')} ${lines[current - 1] ?? ''}`,
     );
   }
-  const listed = [...breakpoints.entries()]
-    .sort(([left], [right]) => left - right)
-    .map(([number, condition]) => `L${String(number)}${condition ? ' IF ' + condition : ''}`);
-  return `${truncated ? 'TRACE TRUNCATED AT 4096 EVENTS\n' : ''}${excerpt.join('\n')}\n\nBREAKPOINTS\n${listed.join('\n') || '(NONE)'}`;
+  const listed = [...breakpoints.values()]
+    .sort((left, right) => left.source.localeCompare(right.source) || left.line - right.line)
+    .map(
+      (breakpoint) =>
+        `${shortSource(breakpoint.source)}:${String(breakpoint.line)}${breakpoint.condition ? ' IF ' + breakpoint.condition : ''}`,
+    );
+  return `${truncated ? 'TRACE TRUNCATED AT 4096 EVENTS\n' : ''}MODULE ${sourcePath}\n${excerpt.join('\n')}\n\nBREAKPOINTS\n${listed.join('\n') || '(NONE)'}`;
+}
+
+function breakpointKey(source: string, line: number): string {
+  return `${source}\u0000${String(line)}`;
+}
+
+function shortSource(source: string): string {
+  return source.split('/').at(-1) ?? source;
+}
+
+const BREAKPOINT_LIMIT = 128;
+
+function breakpointStorageKey(projectId: string): string {
+  return `px240c:v1:breakpoints:${projectId}`;
+}
+
+function loadBreakpoints(
+  projectId: string,
+  sources: ReadonlyMap<string, string>,
+): Map<string, SourceBreakpoint> {
+  try {
+    const stored = globalThis.localStorage.getItem(breakpointStorageKey(projectId));
+    if (stored === null || stored.length > 65_536) return new Map();
+    return new Map(
+      remapBreakpoints(JSON.parse(stored), sources).map((breakpoint) => [
+        breakpointKey(breakpoint.source, breakpoint.line),
+        breakpoint,
+      ]),
+    );
+  } catch {
+    return new Map();
+  }
+}
+
+function saveBreakpoints(
+  projectId: string,
+  breakpoints: ReadonlyMap<string, SourceBreakpoint>,
+): void {
+  try {
+    const values = [...breakpoints.values()]
+      .sort((left, right) => left.source.localeCompare(right.source) || left.line - right.line)
+      .slice(0, BREAKPOINT_LIMIT);
+    globalThis.localStorage.setItem(
+      breakpointStorageKey(projectId),
+      JSON.stringify({ revision: 1, breakpoints: values }),
+    );
+  } catch {
+    // Debugging remains usable when storage is unavailable or full.
+  }
+}
+
+export function remapBreakpoints(
+  value: unknown,
+  sources: ReadonlyMap<string, string>,
+): readonly SourceBreakpoint[] {
+  if (!isRecord(value) || value.revision !== 1 || !Array.isArray(value.breakpoints)) return [];
+  const remapped = new Map<string, SourceBreakpoint>();
+  for (const candidate of value.breakpoints.slice(0, BREAKPOINT_LIMIT)) {
+    if (
+      !isRecord(candidate) ||
+      typeof candidate.source !== 'string' ||
+      !Number.isSafeInteger(candidate.line) ||
+      (candidate.line as number) < 1 ||
+      typeof candidate.condition !== 'string' ||
+      candidate.condition.length > 256 ||
+      /[\r\n]/u.test(candidate.condition) ||
+      typeof candidate.anchor !== 'string' ||
+      candidate.anchor.length > 512
+    ) {
+      continue;
+    }
+    const source = sources.get(candidate.source);
+    if (source === undefined) continue;
+    const lines = source.split('\n');
+    const previousLine = candidate.line as number;
+    let line = Math.min(previousLine, lines.length);
+    if (candidate.anchor.length > 0 && lines[line - 1]?.trim() !== candidate.anchor) {
+      const matches = lines
+        .map((text, index) => ({ text: text.trim(), line: index + 1 }))
+        .filter((entry) => entry.text === candidate.anchor)
+        .sort(
+          (left, right) =>
+            Math.abs(left.line - previousLine) - Math.abs(right.line - previousLine) ||
+            left.line - right.line,
+        );
+      if (matches[0] === undefined) continue;
+      line = matches[0].line;
+    }
+    const breakpoint = {
+      source: candidate.source,
+      line,
+      condition: candidate.condition,
+      anchor: candidate.anchor,
+    };
+    remapped.set(breakpointKey(breakpoint.source, breakpoint.line), breakpoint);
+  }
+  return [...remapped.values()];
 }
 
 function namedValues(

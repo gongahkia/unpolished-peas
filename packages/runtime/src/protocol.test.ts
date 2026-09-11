@@ -112,7 +112,7 @@ describe('sandbox protocol', () => {
           trace: [
             {
               id: 0,
-              sourceSpan: { start: 1, end: 2 },
+              sourceSpan: { source: 'src/main.pxl', start: 1, end: 2 },
               locals: { s1: 4 },
               callStack: [{ name: 'update', sourceSpan: { start: 0, end: 8 } }],
             },
@@ -121,6 +121,23 @@ describe('sandbox protocol', () => {
         },
       }),
     ).toBe(true);
+    expect(
+      isWorkerResponse({
+        ...frame,
+        debug: {
+          truncated: false,
+          trace: [
+            {
+              id: 0,
+              sourceSpan: { source: 'src/\u0000main.pxl', start: 1, end: 2 },
+              locals: {},
+              callStack: [],
+            },
+          ],
+          inspection: { state: {}, tasks: [], callStack: [] },
+        },
+      }),
+    ).toBe(false);
     expect(isWorkerResponse({ id: 1, type: 'frame' })).toBe(false);
     expect(isWorkerResponse({ ...frame, ambient: true })).toBe(false);
     expect(isWorkerResponse({ ...frame, drawCommands: [{ name: 'clear' }] })).toBe(false);

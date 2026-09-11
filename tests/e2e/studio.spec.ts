@@ -1,4 +1,4 @@
-import { readFile } from 'node:fs/promises';
+import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { execFileSync } from 'node:child_process';
 
 import { expect, test, type Page } from '@playwright/test';
@@ -297,14 +297,14 @@ on draw:
   await shellCommand(page, 'debug');
   await expect(page.locator('[data-view="debugger"]')).toBeVisible();
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED L3 / DEPTH 0');
-  await expect(page.locator('.debug-location')).toContainText('F0000 L3');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:3 / DEPTH 0');
+  await expect(page.locator('.debug-location')).toContainText('F0000 main.pxl:L3');
   await expect(page.locator('.debug-output')).toContainText('state player_x: Int = 112');
   await page.locator('[data-debug="in"]').click();
   await expect(page.locator('.debug-status')).toHaveText('BOOT COMPLETE');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED L6 / DEPTH 1');
-  await expect(page.locator('.debug-location')).toContainText('F0000 L6');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:6 / DEPTH 1');
+  await expect(page.locator('.debug-location')).toContainText('F0000 main.pxl:L6');
   await page.locator('[data-debug="frame"]').click();
   await expect(page.locator('.debug-status')).toHaveText('PAUSED AT FRAME 1');
   await page.getByLabel('Watch expression').fill('player_x');
@@ -401,6 +401,67 @@ on draw:
   await expect(standalone.locator('#source-view')).toContainText('Made by @gongahkia');
   expect(standaloneErrors).toEqual([]);
   await standalone.close();
+
+  const moduleProject = testInfo.outputPath('module-project');
+  await mkdir(`${moduleProject}/src`, { recursive: true });
+  await writeFile(
+    `${moduleProject}/cart.toml`,
+    `format = 1
+language = "PXCL/1"
+id = "e2e-modules"
+title = "E2E MODULES"
+author = "@gongahkia"
+version = "1.0.0"
+entry = "src/main.pxl"
+update_rate = 60
+`,
+  );
+  await writeFile(
+    `${moduleProject}/src/main.pxl`,
+    `import src.math as math
+state result: Int = 0
+on update:
+  result = math.twice(3)
+on draw:
+  clear(0)
+`,
+  );
+  await writeFile(
+    `${moduleProject}/src/math.pxl`,
+    `fn twice(value: Int) -> Int:
+  var result = value
+  result += value
+  return result
+`,
+  );
+  const moduleCartridge = testInfo.outputPath('e2e-modules.pxc');
+  execFileSync('target/debug/px240c', ['pack', moduleProject, '--output', moduleCartridge]);
+  await shellCommand(page, 'import');
+  await page.locator('input[type="file"]').setInputFiles(moduleCartridge);
+  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-modules');
+  await shellCommand(page, 'debug');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:2 / DEPTH 0');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('BOOT COMPLETE');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:4 / DEPTH 1');
+  await page.locator('[data-debug="in"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED math.pxl:2 / DEPTH 2');
+  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.pxl');
+  await page.getByLabel('Breakpoint line').fill('3');
+  await page.locator('[data-debug="break"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('BREAKPOINT math.pxl:3');
+  await page.locator('[data-debug="frame"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('BREAK math.pxl:3 / FRAME 0');
+  await page.locator('[data-debug="back"]').click();
+  await expect(page.locator('[data-view="shell"]')).toBeVisible();
+  await shellCommand(page, 'debug');
+  await page.locator('[data-debug="frame"]').click();
+  await expect(page.locator('.debug-status')).toHaveText('BREAK math.pxl:3 / FRAME 0');
+  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.pxl');
+  await page.locator('[data-debug="back"]').click();
+  await expect(page.locator('[data-view="shell"]')).toBeVisible();
 
   await page.evaluate(async () => navigator.serviceWorker.ready);
   await page.reload();
