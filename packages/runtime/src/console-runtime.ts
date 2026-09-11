@@ -67,7 +67,6 @@ export interface ConsoleRuntime {
     readonly regions: readonly MemoryRegionDescriptor[];
   };
   editMemory(address: number, bytes: Uint8Array): void;
-  memoryRegions(): readonly MemoryRegionDescriptor[];
 }
 
 export interface ConsoleRuntimeSnapshot {
@@ -393,9 +392,6 @@ export function createConsoleRuntime(
           end: 0,
         });
       bus.edit(address, bytes);
-    },
-    memoryRegions() {
-      return bus.describe();
     },
   };
 

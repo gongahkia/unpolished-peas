@@ -63,19 +63,8 @@ export async function openDebugger(
   save: SaveImage,
   back: () => void,
   manual: () => void,
-  controllerProfile: ControllerProfile,
-  audioVolume: number,
 ): Promise<ActiveDebugger> {
-  const controller = await DebuggerController.create(
-    root,
-    project,
-    compiler,
-    save,
-    back,
-    manual,
-    controllerProfile,
-    audioVolume,
-  );
+  const controller = await DebuggerController.create(root, project, compiler, save, back, manual);
   try {
     await controller.start();
   } catch (error) {
@@ -135,8 +124,6 @@ class DebuggerController {
     save: SaveImage,
     back: () => void,
     manual: () => void,
-    controllerProfile: ControllerProfile,
-    audioVolume: number,
   ): Promise<DebuggerController> {
     const compilation = await compiler.compileProject(project.manifest, project.files, true);
     const diagnostic = compilation.analysis.diagnostics[0];
@@ -151,7 +138,7 @@ class DebuggerController {
     const manifest = await compiler.parseManifest(project.manifest);
     const assets = decodeRuntimeAssets(manifest.assets, project.files, manifest.display);
     const rom = await compiler.packProject(project.manifest, project.files);
-    const debugSource = debugSources(compilation, project);
+    const source = debugSource(compilation, project);
     return new DebuggerController(
       root,
       project,
@@ -164,11 +151,7 @@ class DebuggerController {
       assets,
       { declarations: manifest.assets, files: project.files, displayPath: manifest.display },
       rom,
-      debugSource.entry,
-      debugSource.entryPath,
-      debugSource.files,
-      controllerProfile,
-      audioVolume,
+      source,
     );
   }
 
@@ -267,7 +250,7 @@ class DebuggerController {
         </div>
         <div class="debug-entry">
           <div class="source-debug-entry">
-            <input class="break-line" type="number" min="1" max="${String(this.source.split('\n').length)}" value="1" aria-label="Breakpoint line"><input class="break-condition" type="text" placeholder="CONDITION" aria-label="Breakpoint condition"><button type="button" data-debug="break">BRK</button>
+            <input class="break-line" type="number" min="1" max="${String(this.sourceLines.length)}" value="1" aria-label="Breakpoint line"><input class="break-condition" type="text" placeholder="CONDITION" aria-label="Breakpoint condition"><button type="button" data-debug="break">BRK</button>
             <input class="watch-expression" type="text" placeholder="WATCH" aria-label="Watch expression"><button type="button" data-debug="watch">ADD</button>
           </div>
           <div class="memory-debug-entry" hidden>
@@ -404,37 +387,31 @@ class DebuggerController {
     this.busy = true;
     try {
       if (this.currentFrame < this.journal.cursor) this.journal.truncate(this.currentFrame);
-      for (;;) {
-        const input = (this.activeInput ??= this.input.poll());
-        const response = await this.sandbox.debugStep(input);
-        if (response.booted === true) {
-          this.activeInput = undefined;
-          this.pausedEvent = undefined;
-          this.pausedInspection = undefined;
-          continue;
-        }
-        if (response.frame !== undefined) {
-          await this.acceptDebugFrame(response.frame, input, true);
-          if (!this.running) this.message = `PAUSED AT FRAME ${String(this.currentFrame)}`;
-          break;
-        }
-        if (response.event === undefined || response.inspection === undefined)
-          throw new Error('debug worker omitted a statement event');
-        this.acceptDebugPause(response.event, response.inspection);
-        const memoryHit = await this.changedMemoryWatchpoint();
-        const breakpoint = this.breakpointFor(response.event);
-        if (memoryHit !== undefined) {
-          this.running = false;
-          this.closeAudioQueue();
-          this.message = `WATCH ${hexAddress(memoryHit.address)} ${byteHex(memoryHit.before)}>${byteHex(memoryHit.after)}`;
-          break;
-        }
-        if (breakpoint !== undefined) {
-          this.running = false;
-          this.closeAudioQueue();
-          this.message = `BREAK ${shortSource(breakpoint.source)}:${String(breakpoint.line)} / FRAME ${String(this.currentFrame)}`;
-          break;
-        }
+      const input = this.input.poll();
+      const response = await this.executeFrame(input, true);
+      if (response.frame !== this.currentFrame) {
+        throw new Error(
+          `replay cursor expected frame ${String(this.currentFrame)}, received ${String(response.frame)}`,
+        );
+      }
+      this.journal.recordFrame(response.frame, input, consoleReplayObservable(response));
+      this.currentFrame = response.frame + 1;
+      if (this.currentFrame % SNAPSHOT_INTERVAL === 0) {
+        this.journal.recordSnapshot(this.currentFrame, await this.captureSnapshot());
+      }
+      this.selectedTrace = selectFirstTrace && (response.debug?.trace.length ?? 0) > 0 ? 0 : -1;
+      this.collectProfile(response);
+      const memoryHit = await this.changedMemoryWatchpoint();
+      const breakpoint = this.hitBreakpoint(response);
+      if (memoryHit !== undefined) {
+        this.running = false;
+        this.message = `WATCH ${hexAddress(memoryHit.address)} ${byteHex(memoryHit.before)}>${byteHex(memoryHit.after)}`;
+      } else if (breakpoint !== undefined) {
+        this.running = false;
+        this.selectedTrace = breakpoint.trace;
+        this.message = `BREAK LINE ${String(breakpoint.line)} / FRAME ${String(response.frame)}`;
+      } else if (!this.running) {
+        this.message = `PAUSED AT FRAME ${String(this.currentFrame)}`;
       }
       if (this.tab === 'MEMORY') await this.refreshMemory(true);
       this.render();
@@ -643,17 +620,6 @@ class DebuggerController {
     }
   }
 
-  private closeAudioQueue(): void {
-    const current = this.audioSink;
-    this.audioSink = undefined;
-    if (current !== undefined) void current.close();
-    const button = this.root.querySelector<HTMLButtonElement>('[data-debug="sound"]');
-    if (button !== null) {
-      button.textContent = 'SOUND';
-      button.disabled = false;
-    }
-  }
-
   private async refreshMemory(updateAddress: boolean): Promise<void> {
     const addressInput = this.root.querySelector<HTMLInputElement>('.memory-address');
     const lengthInput = this.root.querySelector<HTMLInputElement>('.memory-length');
@@ -680,7 +646,6 @@ class DebuggerController {
 
   private async editMemory(): Promise<void> {
     this.running = false;
-    this.closeAudioQueue();
     const address = parseDebuggerAddress(
       (requireElement(this.root, '.memory-address') as HTMLInputElement).value,
     );
@@ -965,14 +930,7 @@ function byteHex(value: number): string {
   return value.toString(16).toUpperCase().padStart(2, '0');
 }
 
-function debugSources(
-  compilation: CompilationResult,
-  project: DebugProject,
-): {
-  readonly entry: string;
-  readonly entryPath: string;
-  readonly files: ReadonlyMap<string, string>;
-} {
+function debugSource(compilation: CompilationResult, project: DebugProject): string {
   const sourceMap: unknown = JSON.parse(compilation.generated?.source_map_json ?? '{}');
   const mapped = new Map<string, string>();
   if (

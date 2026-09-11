@@ -1155,10 +1155,8 @@ export class StudioApp {
         },
         () => {
           this.activeDebugger = undefined;
-          this.openManual('HARDWARE');
+          this.openManual();
         },
-        settings.controllerProfile,
-        settings.audioVolume,
       );
     } catch (error: unknown) {
       this.renderShell();
