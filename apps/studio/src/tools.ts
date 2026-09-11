@@ -5,11 +5,16 @@ import {
   MASTER_PALETTE_RGBA,
   Synthesizer,
   WebAudioSink,
+  convertRgbaToIndexed,
   decodeRuntimeAssets,
+  decodePngRgba,
   encodeAssetFile,
   encodeMusicAssetFile,
   encodeSoundAssetFile,
+  encodeRgbaPng,
   glyphRows,
+  renderMusicWav,
+  renderSoundWav,
   type MusicAsset,
   type SoundAsset,
   type TrackerCell,
@@ -90,6 +95,7 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
         <div><button data-font="prev">&lt;G</button><button data-font="next">G&gt;</button><input class="glyph-code" aria-label="Glyph code" type="number" min="0" max="255"><button data-font="add">+</button><button data-font="delete">-</button></div>
         <div><button data-font="undo">UNDO</button><button data-font="redo">REDO</button><button data-font="select">SELECT</button></div>
         <div><button data-font="flip-h">FLIP H</button><button data-font="flip-v">FLIP V</button><button data-font="rotate">ROTATE</button></div>
+        <div><button data-font-export>PXF OUT</button><label class="file-button">PXF IN<input class="font-file-input" type="file" accept=".pxf,application/json"></label></div>
         <div class="font-metrics"><label>W <input data-font-metric="glyphWidth" type="number" min="1" max="16"></label><label>H <input data-font-metric="glyphHeight" type="number" min="1" max="16"></label><label>BASE <input data-font-metric="baseline" type="number" min="0" max="15"></label><label>AX <input data-font-metric="advanceX" type="number" min="1" max="32"></label><label>AY <input data-font-metric="advanceY" type="number" min="1" max="32"></label><label>MISS <input data-font-metric="missingGlyph" type="number" min="0" max="255"></label></div>
         <p class="capacity"></p>
       </div>
@@ -361,6 +367,49 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
     });
   });
   requireElement(root, '.font-preview-text').addEventListener('input', draw);
+  root.querySelector('[data-font-export]')?.addEventListener('click', () => {
+    downloadToolBytes('typeface.pxf', encodeAssetFile(document), 'application/json');
+  });
+  (requireElement(root, '.font-file-input') as HTMLInputElement).addEventListener(
+    'change',
+    (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file === undefined) return;
+      if (file.size > HARDWARE.visualCapacityBytes) {
+        setToolStatus(root, 'FONT FILE EXCEEDS VISUAL CAPACITY', true);
+        return;
+      }
+      void file
+        .arrayBuffer()
+        .then((buffer) => {
+          const bytes = new Uint8Array(buffer);
+          const bundle = decodeRuntimeAssets(
+            { imported: { kind: 'font', path: 'imported.pxf' } },
+            { 'imported.pxf': bytes },
+          );
+          const font = bundle.visual[0];
+          if (font?.kind !== 'font') throw new TypeError('font file did not decode as a font');
+          remember();
+          Object.assign(document, {
+            revision: 1,
+            kind: 'font',
+            glyphWidth: font.glyphWidth,
+            glyphHeight: font.glyphHeight,
+            baseline: font.baseline,
+            advanceX: font.advanceX,
+            advanceY: font.advanceY,
+            missingGlyph: font.missingGlyph,
+            glyphs: [...font.glyphs].map(([code, pixels]) => ({ code, pixels: [...pixels] })),
+          } satisfies MutableFontDocument);
+          glyphIndex = 0;
+          selection = undefined;
+          syncControls();
+          draw();
+          setToolStatus(root, `FONT IMPORTED ${String(document.glyphs.length)} GLYPHS`, false);
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    },
+  );
   bindSave(root, async () => {
     document.glyphs.sort((left, right) => left.code - right.code);
     project.files[path] = encodeAssetFile(document);
@@ -398,6 +447,7 @@ function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: To
         <div><button data-act="undo">UNDO</button><button data-act="redo">REDO</button></div>
         <div><button data-act="flip-h">FLIP H</button><button data-act="flip-v">FLIP V</button></div>
         <div><button data-act="rotate">ROTATE</button><button data-act="select">SELECT</button></div>
+        <div><select class="png-mode" aria-label="PNG conversion mode"><option value="nearest">NEAR</option><option value="ordered">DITHER</option></select><label>A&lt;= <input class="png-alpha" aria-label="PNG alpha threshold" type="number" min="0" max="255" value="127"></label><button data-png-export>PNG OUT</button><label class="file-button">PNG IN<input class="sprite-png-input" type="file" accept="image/png,.png"></label></div>
         <label>W <input data-size="width" type="number" min="1" max="64" value="${String(document.width)}"></label>
         <label>H <input data-size="height" type="number" min="1" max="64" value="${String(document.height)}"></label>
         <p class="capacity"></p>
@@ -414,6 +464,7 @@ function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: To
   let selecting = false;
   let anchor: [number, number] | undefined;
   let selection: [number, number, number, number] | undefined;
+  let importedPng: Awaited<ReturnType<typeof decodePngRgba>> | undefined;
   const undo: string[] = [];
   const redo: string[] = [];
 
@@ -532,6 +583,58 @@ function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: To
   });
   createPalette(root, (index) => {
     color = index;
+  });
+  const applyPng = (): void => {
+    if (importedPng === undefined) return;
+    const mode = (requireElement(root, '.png-mode') as HTMLSelectElement).value as
+      'nearest' | 'ordered';
+    const alpha = clamp(
+      Number((requireElement(root, '.png-alpha') as HTMLInputElement).value),
+      0,
+      255,
+    );
+    const frame = convertRgbaToIndexed(importedPng, mode, alpha, 0);
+    resizeSprite(document, importedPng.width, importedPng.height);
+    document.frames[frameIndex] = [...frame];
+    selection = undefined;
+    draw();
+  };
+  (requireElement(root, '.sprite-png-input') as HTMLInputElement).addEventListener(
+    'change',
+    (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file === undefined) return;
+      void file
+        .arrayBuffer()
+        .then((bytes) => decodePngRgba(new Uint8Array(bytes)))
+        .then((image) => {
+          if (image.width > 64 || image.height > 64)
+            throw new RangeError('sprite PNG must be at most 64x64');
+          remember();
+          importedPng = image;
+          applyPng();
+          setToolStatus(root, `PNG ${String(image.width)}X${String(image.height)} PREVIEW`, false);
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    },
+  );
+  for (const selector of ['.png-mode', '.png-alpha'])
+    requireElement(root, selector).addEventListener('change', applyPng);
+  root.querySelector('[data-png-export]')?.addEventListener('click', () => {
+    const width = document.width * document.frames.length;
+    const indexed = new Uint8Array(width * document.height);
+    for (const [index, frame] of document.frames.entries()) {
+      for (let y = 0; y < document.height; y += 1)
+        indexed.set(
+          frame.slice(y * document.width, (y + 1) * document.width),
+          y * width + index * document.width,
+        );
+    }
+    downloadToolBytes(
+      'hero.png',
+      encodeRgbaPng(width, document.height, indexedRgba(indexed, true)),
+      'image/png',
+    );
   });
   root.querySelectorAll<HTMLElement>('[data-act]').forEach((button) => {
     button.addEventListener('click', () => {
@@ -699,6 +802,7 @@ async function openMapEditor(
       <aside class="map-controls">
         <p>${mapName.toUpperCase()} <span class="layer-readout"></span> <span class="layer-mode"></span></p>
         <label>ATLAS <select class="tileset-select"></select></label>
+        <div><select class="tile-png-mode" aria-label="Tile PNG conversion mode"><option value="nearest">NEAR</option><option value="ordered">DITHER</option></select><button data-map="png-out">PNG OUT</button><label class="file-button">PNG IN<input class="tile-png-input" type="file" accept="image/png,.png"></label></div>
         <div class="tile-picks"></div>
         <div><button data-map="prev">&lt;L</button><button data-map="next">L&gt;</button><button data-map="add">+L</button><button data-map="remove">-L</button><button data-map="visible">EYE</button></div>
         <div><button data-map="up">UP</button><button data-map="down">DOWN</button><button data-map="select">SEL</button><button data-map="copy">COPY</button><button data-map="stamp">STAMP</button><button data-map="move">MOVE</button><button data-map="fill">FILL</button></div>
@@ -881,6 +985,56 @@ async function openMapEditor(
     refreshTilePicks();
     draw();
   });
+  (requireElement(root, '.tile-png-input') as HTMLInputElement).addEventListener(
+    'change',
+    (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file === undefined) return;
+      void file
+        .arrayBuffer()
+        .then((bytes) => decodePngRgba(new Uint8Array(bytes)))
+        .then((image) => {
+          if (image.width % 8 !== 0 || image.height % 8 !== 0)
+            throw new RangeError('tile PNG dimensions must be multiples of 8');
+          const count = (image.width / 8) * (image.height / 8);
+          if (count < 1 || count > 4096) throw new RangeError('tile PNG must contain 1-4096 tiles');
+          const current = document.layers[layer];
+          const tileSet =
+            current === undefined ? undefined : tileSets.get(current.tileSet)?.document;
+          if (current === undefined || tileSet === undefined)
+            throw new Error('selected atlas is missing');
+          const proposed =
+            otherVisualBytes + editedBytes() - tileSet.tiles.length * 65 + count * 65;
+          if (proposed > HARDWARE.visualCapacityBytes)
+            throw new RangeError('tile PNG exceeds visual capacity');
+          const mode = (requireElement(root, '.tile-png-mode') as HTMLSelectElement).value as
+            'nearest' | 'ordered';
+          const indexed = convertRgbaToIndexed(image, mode, 127, 0);
+          remember();
+          tileSet.tiles = [];
+          for (let tileY = 0; tileY < image.height / 8; tileY += 1) {
+            for (let tileX = 0; tileX < image.width / 8; tileX += 1) {
+              const tile = Array.from({ length: 64 }, (_, pixel) => {
+                const x = tileX * 8 + (pixel % 8);
+                const y = tileY * 8 + Math.floor(pixel / 8);
+                return indexed[y * image.width + x] ?? 0;
+              });
+              tileSet.tiles.push(tile);
+            }
+          }
+          tileSet.flags = tileSet.tiles.map((_tile, index) => tileSet.flags[index] ?? 0);
+          for (const mapLayer of document.layers) {
+            if (mapLayer.tileSet === current.tileSet)
+              mapLayer.cells = mapLayer.cells.map((cell) => (cell < count ? cell : 0));
+          }
+          selectedTile = 0;
+          refreshTilePicks();
+          draw();
+          setToolStatus(root, `ATLAS IMPORTED ${String(count)} TILES`, false);
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    },
+  );
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((button) => {
     button.addEventListener('click', () => {
       const action = button.dataset.map;
@@ -892,6 +1046,27 @@ async function openMapEditor(
           to.push(snapshot());
           restore(state);
         }
+        return;
+      }
+      if (action === 'png-out') {
+        const current = document.layers[layer];
+        const tiles =
+          current === undefined ? undefined : tileSets.get(current.tileSet)?.document.tiles;
+        if (current === undefined || tiles === undefined) return;
+        const columns = Math.min(16, tiles.length);
+        const rows = Math.ceil(tiles.length / columns);
+        const indexed = new Uint8Array(columns * 8 * rows * 8);
+        for (const [index, tile] of tiles.entries()) {
+          const tileX = (index % columns) * 8;
+          const tileY = Math.floor(index / columns) * 8;
+          for (let y = 0; y < 8; y += 1)
+            indexed.set(tile.slice(y * 8, (y + 1) * 8), (tileY + y) * columns * 8 + tileX);
+        }
+        downloadToolBytes(
+          `${current.tileSet}.png`,
+          encodeRgbaPng(columns * 8, rows * 8, indexedRgba(indexed, true)),
+          'image/png',
+        );
         return;
       }
       if (action === 'prev' || action === 'next') {
@@ -1010,6 +1185,13 @@ interface PaletteDocument {
   kind: 'display';
   remap: number[];
   raster: { line: number; scrollX: number; scrollY: number; remap: number[] }[];
+}
+
+interface CartridgeIdentityDocument {
+  revision: 1;
+  year: number;
+  players: number;
+  controls: string;
 }
 
 function openPaletteEditor(
@@ -1226,16 +1408,24 @@ function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: Too
   (requireElement(root, '[name="wave"]') as HTMLSelectElement).value =
     typeof document.waveform === 'string' ? document.waveform : 'pulse';
   const read = (): SoundAsset => soundFromControls(root);
+  const drawScope = (): void => drawWavScope(root, renderSoundWav(read()));
   root.querySelector('[data-preview]')?.addEventListener('click', () => {
     void previewSound(read()).catch((error: unknown) => {
       setToolStatus(root, errorMessage(error), true);
     });
   });
+  root.querySelector('[data-wav]')?.addEventListener('click', () => {
+    const wav = renderSoundWav(read());
+    drawWavScope(root, wav);
+    downloadToolBytes('blip.wav', wav, 'audio/wav');
+  });
+  root.querySelector('.sound-controls')?.addEventListener('input', drawScope);
   bindSave(root, async () => {
     project.files[path] = encodeSoundAssetFile(read());
     project.manifest = upsertAsset(project.manifest, 'blip', 'sound', path);
     await callbacks.save();
   });
+  drawScope();
 }
 
 function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
@@ -1245,7 +1435,7 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
   root.innerHTML = toolFrame(
     '8-CHANNEL TRACKER',
     `<div class="tracker">
-      <div class="tracker-head"><label>F/ROW <input class="tempo" type="number" min="1" max="60" value="${String(numberValue(existing?.framesPerRow, 6))}"></label><label><input class="loop" type="checkbox"${existing?.loop === false ? '' : ' checked'}> LOOP</label><button data-preview>PLAY</button><label>PAT <select class="pattern-select"></select></label><button data-add-pattern title="Add pattern">+PAT</button></div>
+      <div class="tracker-head"><label>F/ROW <input class="tempo" type="number" min="1" max="60" value="${String(numberValue(existing?.framesPerRow, 6))}"></label><label><input class="loop" type="checkbox"${existing?.loop === false ? '' : ' checked'}> LOOP</label><button data-preview>PLAY</button><button data-music-wav>WAV</button><label>PAT <select class="pattern-select"></select></label><button data-add-pattern title="Add pattern">+PAT</button></div>
       <div class="tracker-order"><label>ORDER <input value=""></label><button data-track-undo>UNDO</button><button data-track-redo>REDO</button></div>
       <div class="tracker-grid" role="grid"></div>
     </div>`,
@@ -1373,6 +1563,13 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
         setToolStatus(root, errorMessage(error), true);
       });
   });
+  root.querySelector('[data-music-wav]')?.addEventListener('click', () => {
+    void callbacks
+      .parseManifest()
+      .then((manifest) => renderMusicWav(read(), musicSounds(project, manifest)))
+      .then((wav) => downloadToolBytes('theme.wav', wav, 'audio/wav'))
+      .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+  });
   bindSave(root, async () => {
     const music = read();
     const usesBlip = Object.values(music.patterns).some((pattern) =>
@@ -1394,6 +1591,10 @@ async function openProjectSettings(
   callbacks: ToolCallbacks,
 ): Promise<void> {
   const manifest = await callbacks.parseManifest();
+  const identity = readJson<CartridgeIdentityDocument>(
+    project.files['presentation/cartridge.json'],
+    { revision: 1, year: 1999, players: 1, controls: 'PAD' },
+  );
   root.innerHTML = toolFrame(
     'CARTRIDGE SETTINGS',
     `<form class="project-settings">
@@ -1402,6 +1603,10 @@ async function openProjectSettings(
       <label>AUTHOR <input name="author" maxlength="64"></label>
       <label>VERSION <input name="version" maxlength="32"></label>
       <label>UPDATE <select name="update"><option value="60">60 HZ</option><option value="30">30 HZ</option></select></label>
+      <label>YEAR <input name="year" type="number" min="1970" max="9999"></label>
+      <label>PLAYERS <input name="players" type="number" min="1" max="4"></label>
+      <label>CONTROLS <input name="controls" maxlength="64"></label>
+      <div><label class="file-button">LABEL IN<input class="label-file-input" type="file" accept="image/png,.png"></label><button type="button" data-label-export>LABEL OUT</button></div>
       <p>SOURCE AND CARTRIDGE OWNERSHIP REMAIN WITH THE AUTHOR.</p>
     </form>`,
   );
@@ -1412,12 +1617,48 @@ async function openProjectSettings(
     author: HTMLInputElement;
     version: HTMLInputElement;
     update: HTMLSelectElement;
+    year: HTMLInputElement;
+    players: HTMLInputElement;
+    controls: HTMLInputElement;
   };
   (form.querySelector('input[disabled]') as HTMLInputElement).value = manifest.id;
   controls.title.value = manifest.title;
   controls.author.value = manifest.author;
   controls.version.value = manifest.version;
   controls.update.value = String(manifest.update_rate);
+  controls.year.value = String(identity.year);
+  controls.players.value = String(identity.players);
+  controls.controls.value = identity.controls;
+  (requireElement(root, '.label-file-input') as HTMLInputElement).addEventListener(
+    'change',
+    (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file === undefined) return;
+      void file
+        .arrayBuffer()
+        .then((buffer) => {
+          const bytes = new Uint8Array(buffer);
+          return decodePngRgba(bytes).then((image) => ({ bytes, image }));
+        })
+        .then(({ bytes, image }) => {
+          if (image.width !== HARDWARE.width || image.height !== HARDWARE.height)
+            throw new RangeError('label PNG must be exactly 240x144');
+          project.files['presentation/label.png'] = bytes;
+          project.manifest = upsertTopLevel(project.manifest, 'label', 'presentation/label.png');
+          setToolStatus(root, 'LABEL PNG READY / SAVE', false);
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    },
+  );
+  root.querySelector('[data-label-export]')?.addEventListener('click', () => {
+    const labelPath = manifest.label;
+    const bytes = labelPath === null ? undefined : project.files[labelPath];
+    if (bytes === undefined) {
+      setToolStatus(root, 'NO LABEL FILE', true);
+      return;
+    }
+    downloadToolBytes(labelPath?.split('/').at(-1) ?? 'label', bytes, 'application/octet-stream');
+  });
   bindSave(root, async () => {
     project.title = controls.title.value;
     project.manifest = upsertTopLevel(project.manifest, 'title', controls.title.value);
@@ -1428,6 +1669,12 @@ async function openProjectSettings(
       'update_rate',
       Number(controls.update.value),
     );
+    project.files['presentation/cartridge.json'] = encodeAssetFile({
+      revision: 1,
+      year: clamp(Number(controls.year.value), 1970, 9999),
+      players: clamp(Number(controls.players.value), 1, 4),
+      controls: controls.controls.value,
+    });
     await callbacks.save();
   });
 }
@@ -1845,8 +2092,28 @@ function soundControls(value: Record<string, unknown>): string {
     ${rangeControl('RELEASE', 'release', numberValue(envelope.releaseFrames, 4), 0, 30, 1)}
     ${rangeControl('SLIDE', 'slide', numberValue(pitch.slideSemitonesPerFrame, 0), -1, 1, 0.05)}
     ${rangeControl('VIBRATO', 'vibrato', numberValue(pitch.vibratoDepthSemitones, 0), 0, 4, 0.1)}
-    <button type="button" data-preview>PREVIEW</button>
+    <div><button type="button" data-preview>PREVIEW</button><button type="button" data-wav>WAV</button><span class="voice-readout">8V / PRODUCTION PCM</span></div>
+    <canvas class="sound-scope" width="120" height="24" aria-label="Sound oscilloscope"></canvas>
   </div>`;
+}
+
+function drawWavScope(root: ParentNode, wav: Uint8Array): void {
+  const canvas = requireElement(root, '.sound-scope') as HTMLCanvasElement;
+  const context = requireContext(canvas);
+  const view = new DataView(wav.buffer, wav.byteOffset, wav.byteLength);
+  const samples = Math.floor((wav.length - 44) / 4);
+  context.fillStyle = paletteCss(1);
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  context.strokeStyle = paletteCss(23);
+  context.beginPath();
+  for (let x = 0; x < canvas.width; x += 1) {
+    const sample = Math.min(samples - 1, Math.floor((x * samples) / canvas.width));
+    const value = sample < 0 ? 0 : view.getInt16(44 + sample * 4, true) / 32_768;
+    const y = Math.round(canvas.height / 2 - value * (canvas.height / 2 - 1));
+    if (x === 0) context.moveTo(x, y);
+    else context.lineTo(x, y);
+  }
+  context.stroke();
 }
 
 function rangeControl(
@@ -2053,6 +2320,28 @@ function paletteCss(index: number): string {
   const green = MASTER_PALETTE_RGBA[offset + 1] ?? 0;
   const blue = MASTER_PALETTE_RGBA[offset + 2] ?? 0;
   return `rgb(${String(red)} ${String(green)} ${String(blue)})`;
+}
+
+function indexedRgba(indexed: Uint8Array, transparentZero: boolean): Uint8Array {
+  const rgba = new Uint8Array(indexed.length * 4);
+  for (let pixel = 0; pixel < indexed.length; pixel += 1) {
+    const color = clamp(indexed[pixel] ?? 0, 0, 31);
+    const palette = color * 4;
+    rgba[pixel * 4] = MASTER_PALETTE_RGBA[palette] ?? 0;
+    rgba[pixel * 4 + 1] = MASTER_PALETTE_RGBA[palette + 1] ?? 0;
+    rgba[pixel * 4 + 2] = MASTER_PALETTE_RGBA[palette + 2] ?? 0;
+    rgba[pixel * 4 + 3] = transparentZero && color === 0 ? 0 : 255;
+  }
+  return rgba;
+}
+
+function downloadToolBytes(name: string, bytes: Uint8Array, type: string): void {
+  const url = URL.createObjectURL(new Blob([new Uint8Array(bytes).buffer], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 function readJson<Value>(bytes: Uint8Array | undefined, fallback: Value): Value {
