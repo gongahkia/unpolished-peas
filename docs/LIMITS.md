@@ -1,6 +1,6 @@
-# Alpha limit calibration
+# PX-240C limits and calibration
 
-The experimental profile was frozen after building and running all three original game cartridges through
+The public profile was frozen during alpha after building and running all three original game cartridges through
 the public compiler, packer, worker, indexed renderer, and asset decoder. Work units are synthetic
 deterministic costs, not elapsed time or CPU instructions. Measurements below are representative
 active-play frames observed in the production Studio on 2026-09-07; control flow can vary slightly,
@@ -46,6 +46,21 @@ source plus expected generated-program length/hash.
 Hardware Gauntlet is the required <=64K stress showcase; its compact public-API implementation also
 qualifies for the stricter 16K class. This is reported as measured rather than padded to a badge.
 
+The final V1 section accountant reports the following empty-input 60-frame profiles. Intentional
+gameplay compatibility paths remain separately frozen at 10,477/19,140/31,722 peak work,
+90/120/470 draw commands and 4/5/5 active voices.
+
+| Cartridge         | `.pxc` | Source | Release JS | Visual |   Work | Draw | Voices | Bus mapped |
+| ----------------- | -----: | -----: | ---------: | -----: | -----: | ---: | -----: | ---------: |
+| Cinder Circuit    | 42,904 |  5,163 |     14,689 | 10,695 | 10,477 |   90 |      0 |    366,905 |
+| Ashvault          | 41,315 |  6,574 |     19,623 |    908 | 13,485 |   84 |      0 |    365,204 |
+| Raster Rush 99    | 38,091 |  6,355 |     17,337 |    440 | 11,326 |   21 |      0 |    361,868 |
+| Service cartridge | 27,869 |  5,244 |     15,060 |      0 |  5,130 |   12 |      1 |    351,382 |
+| Signal 4K         |  2,364 |    600 |      4,699 |      0 |  5,769 |   20 |      1 |    325,877 |
+| Pocket Relay      |  4,609 |  1,354 |      5,965 |    711 |  4,743 |   18 |      0 |    328,210 |
+| Hardware Gauntlet |  4,619 |  1,941 |      8,543 |    407 |  8,282 |  150 |      1 |    328,188 |
+| First Signal      | 11,706 |  1,558 |      6,025 |      0 |  1,413 |    6 |      0 |    335,219 |
+
 No limit required adjustment from the brief's initial values; the previously unspecified work
 ceiling is frozen at 50,000. Later format revisions may change a profile only with a revisioned,
 measured compatibility decision.
@@ -57,6 +72,7 @@ node scripts/generate-cartridge-assets.mjs
 cargo test -p px240c-cli --test cli bundled_cartridges_compile_and_pack_within_capacity
 pnpm test -- --run packages/runtime/src/bundled-cartridges.test.ts
 pnpm --filter @px240c/studio build
+./scripts/verify-release-artifacts.sh
 ```
 
 The frame figures come from the Studio's visible `W` counter during active play. Use `debug`, choose

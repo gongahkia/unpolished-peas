@@ -122,80 +122,80 @@ stopping contracts in the brief remain authoritative in addition to this checkli
 
 ### 2. Hardware Revision 1
 
-- [ ] Fixed layout/reference for RAM, front/back/display, 128 KiB visual store and allocation/descriptors, map/tile/sprite/font, palette/transparency/camera/clip/raster, four input ports/edges, eight voices/tracker, time/RNG/work/faults, 8 KiB save/commit, ROM/metadata and reserved space.
-- [ ] Document/reset/test byte order, alignment, permissions, no mirrors, bounds, values, visibility timing and operation costs for every region/register.
-- [ ] Public PXCL byte/word read/write, overlap-safe copy/fill; high-/low-level mixed graphics/map/audio/input/save/raster use one backing state and deterministic faults/work.
-- [ ] Paused memory/register editor with labels, hex/decimal, changes, watchpoints and manual links; bounded per-scanline effects.
+- [x] Fixed layout/reference for RAM, front/back/display, 128 KiB visual store and allocation/descriptors, map/tile/sprite/font, palette/transparency/camera/clip/raster, four input ports/edges, eight voices/tracker, time/RNG/work/faults, 8 KiB save/commit, ROM/metadata and reserved space.
+- [x] Document/reset/test byte order, alignment, permissions, no mirrors, bounds, values, visibility timing and operation costs for every region/register.
+- [x] Public PXCL byte/word read/write, overlap-safe copy/fill; high-/low-level mixed graphics/map/audio/input/save/raster use one backing state and deterministic faults/work.
+- [x] Paused memory/register editor with labels, hex/decimal, changes, watchpoints and manual links; bounded per-scanline effects.
 
 ### 3. Conformance and headless execution
 
-- [ ] No-browser conformance for every region/register plus reset/aliasing/bounds/endianness/framebuffer/raster/input/audio/tasks/RNG/save/work/faults.
+- [x] No-browser conformance for every region/register plus reset/aliasing/bounds/endianness/framebuffer/raster/input/audio/tasks/RNG/save/work/faults.
 - [x] One production-core headless CLI accepts cartridge, seed, frame/update count, scripted input and save; emits frame/state/audio or PCM hashes, peaks and faults.
-- [ ] Browser/headless golden parity in both browsers; original three game paths preserve output, controls, audio and saves.
-- [ ] Raw pre-V1 cartridge/project/replay/save compatibility fixtures migrate without replacing originals; public source-visible PXCL diagnostic/service cart.
+- [x] Browser/headless golden parity in both browsers; original three game paths preserve output, controls, audio and saves.
+- [x] Raw pre-V1 cartridge/project/replay/save compatibility fixtures migrate without replacing originals; public source-visible PXCL diagnostic/service cart.
 
 ### 4. PXCL projects and external tools
 
 - [x] Namespaced symbols, public/private, aliases/qualified names, deterministic initialization, cycles/collisions; legacy flat and single-file carts valid.
-- [ ] Shared native/Wasm/Studio/formatter/explorer/LSP semantic model, original-file locations, dependency-based incremental invalidation.
-- [ ] Semantic cross-file definition/reference/rename/completion/hover/signature/diagnostics/document and workspace symbols; comment/format-preserving rename.
-- [ ] Coherent new/fmt/check/build/test/watch/run/pack/info/export; watch refresh/restart and diagnostics, conflict-safe opt-in browser folders with IDB/file fallbacks.
+- [x] Shared native/Wasm/Studio/formatter/explorer/LSP semantic model, original-file locations, dependency-based incremental invalidation.
+- [x] Semantic cross-file definition/reference/rename/completion/hover/signature/diagnostics/document and workspace symbols; comment/format-preserving rename.
+- [x] Coherent new/fmt/check/build/test/watch/run/pack/info/export; watch refresh/restart and diagnostics, conflict-safe opt-in browser folders with IDB/file fallbacks.
 - [x] Pure assertions, expected compile failure, scripted frames, framebuffer hashes, seeds, save fixtures and source-located test failures; test-only content excluded from release.
-- [ ] Repeat baseline benchmark after changes, target warm median below 300 ms without material regression; deterministic restart, no fake state-preserving reload.
+- [x] Repeat baseline benchmark after changes, target warm median below 300 ms without material regression; deterministic restart, no fake state-preserving reload.
 
 ### 5. Source debugger and replay
 
-- [ ] Actual statement suspension/continue/restart/step in/over/out in nested functions, loops, module calls, callbacks, tasks/yields and supported recursion.
-- [ ] Original-module source maps and typed locals/globals/collections/stacks/current location/task state; release instrumentation stripping.
-- [ ] Restricted PXCL conditions and read-only typed watches, no JS eval; memory watchpoints; persisted/remapped breakpoints; generated code and IR views.
-- [ ] Defined Worker/render/audio/input/timer pause semantics, no host-time state advance or hanging notes; rewind then forward along recorded input; edits/faults covered.
+- [x] Actual statement suspension/continue/restart/step in/over/out in nested functions, loops, module calls, callbacks, tasks/yields and supported recursion.
+- [x] Original-module source maps and typed locals/globals/collections/stacks/current location/task state; release instrumentation stripping.
+- [x] Restricted PXCL conditions and read-only typed watches, no JS eval; memory watchpoints; persisted/remapped breakpoints; generated code and IR views.
+- [x] Defined Worker/render/audio/input/timer pause semantics, no host-time state advance or hanging notes; rewind then forward along recorded input; edits/faults covered.
 
 ### 6. Creation tools
 
-- [ ] Maps: multiple atlases/tilesets/layers, visibility/order/flags/transforms, region select/fill/stamp/move/copy/paste/resize, exact storage and old-map migration.
-- [ ] Raster: complete 144-row table, ranges/keyframes/copy/paste/fill/numeric interpolation/enable, live preview and work cost for actual hardware registers.
-- [ ] Fonts: variable bitmap glyphs/map/baseline/advance/missing glyph, preview/select/transforms, deterministic decoder/editor/interchange, independent unchanged system font.
-- [ ] Deterministic PNG nearest/ordered-dither conversion preview and explicit transparency; sprite/map/label/font/audio interchange and useful exports.
-- [ ] All editors: consistent keyboard/selection/undo/redo/dirty/autosave/recovery/conflict UX; exact before/after object/visual/cartridge accounting and transactional overflow rollback.
+- [x] Maps: multiple atlases/tilesets/layers, visibility/order/flags/transforms, region select/fill/stamp/move/copy/paste/resize, exact storage and old-map migration.
+- [x] Raster: complete 144-row table, ranges/keyframes/copy/paste/fill/numeric interpolation/enable, live preview and work cost for actual hardware registers.
+- [x] Fonts: variable bitmap glyphs/map/baseline/advance/missing glyph, preview/select/transforms, deterministic decoder/editor/interchange, independent unchanged system font.
+- [x] Deterministic PNG nearest/ordered-dither conversion preview and explicit transparency; sprite/map/label/font/audio interchange and useful exports.
+- [x] All editors: consistent keyboard/selection/undo/redo/dirty/autosave/recovery/conflict UX; exact before/after object/visual/cartridge accounting and transactional overflow rollback.
 
 ### 7. Audio and capture
 
-- [ ] Reusable instruments/custom waves/envelopes/effects, tracker pattern order/flow, per-channel audition/mute/solo, scope/spectrum or voice-state and steal/work inspection.
-- [ ] Production synth and memory registers/tracker/debug/replay/WAV use one timing model; canonical PCM hash plus audio-command golden.
-- [ ] Native/integer-scale PNG, deterministic 30 fps GIF sampling alternate frames with memory/duration limits/progress, frame-exact `.pxrec` round-trip, offline SFX/song WAV; optional synchronized replay audio evaluated.
-- [ ] Parse exported PNG/GIF/WAV/replay and compare expected frames/samples; visually inspect captures outside host overlays.
+- [x] Reusable instruments/custom waves/envelopes/effects, tracker pattern order/flow, per-channel audition/mute/solo, scope/spectrum or voice-state and steal/work inspection.
+- [x] Production synth and memory registers/tracker/debug/replay/WAV use one timing model; canonical PCM hash plus audio-command golden.
+- [x] Native/integer-scale PNG, deterministic 30 fps GIF sampling alternate frames with memory/duration limits/progress, frame-exact `.pxrec` round-trip, offline SFX/song WAV; optional synchronized replay audio evaluated.
+- [x] Parse exported PNG/GIF/WAV/replay and compare expected frames/samples; visually inspect captures outside host overlays.
 
 ### 8. Cartridge identity and local distribution
 
-- [ ] Original PX-240C physical cart/label PNG with validated ancillary canonical `.pxc` bytes, captured label and title/author/year/players/controls; source-visible raw/PNG round-trip and corruption tests.
-- [ ] Local diegetic shelf: bundled/imported labels/metadata/favorites/recents/class/players/save; launch/source/duplicate/rename/export/remove with confirmation/recovery; offline persistence.
-- [ ] Extend single offline HTML, itch-ready ZIP/index, embed; metadata/controls/fullscreen/pause/reset/source inspection and isolated saves; no external dependencies.
-- [ ] Tiny fragment-only sharing with browser-tested conservative cap and pre-copy meter, clean oversize rejection, no query/upload/request; normal files remain primary.
+- [x] Original PX-240C physical cart/label PNG with validated ancillary canonical `.pxc` bytes, captured label and title/author/year/players/controls; source-visible raw/PNG round-trip and corruption tests.
+- [x] Local diegetic shelf: bundled/imported labels/metadata/favorites/recents/class/players/save; launch/source/duplicate/rename/export/remove with confirmation/recovery; offline persistence.
+- [x] Extend single offline HTML, itch-ready ZIP/index, embed; metadata/controls/fullscreen/pause/reset/source inspection and isolated saves; no external dependencies.
+- [x] Tiny fragment-only sharing with browser-tested conservative cap and pre-copy meter, clean oversize rejection, no query/upload/request; normal files remain primary.
 
 ### 9. Honest size classes and dogfood
 
-- [ ] Complete canonical 4/16/64/256 KiB classification, deterministic packing, source preservation; optimize format if required without weakened sandbox or misleading exclusions.
-- [ ] Persistent size/work meter and reconciled CLI/explorer sections: source/generated/visual/maps/font/audio/meta/overhead/compression/save/commands/work/voices/bus; largest symbols/assets and actionable safe suggestions.
-- [ ] Distinct source-visible audiovisual demo ≤4,096 bytes, interactive mini ≤16,384, stress/service showcase ≤65,536; labels and real bus/raster/font/audio/capture/debug use.
-- [ ] Original three games keep feel/controls/content and ideally ≤64 KiB; report any genuine size crossing rather than mutilating a game.
+- [x] Complete canonical 4/16/64/256 KiB classification, deterministic packing, source preservation; optimize format if required without weakened sandbox or misleading exclusions.
+- [x] Persistent size/work meter and reconciled CLI/explorer sections: source/generated/visual/maps/font/audio/meta/overhead/compression/save/commands/work/voices/bus; largest symbols/assets and actionable safe suggestions.
+- [x] Distinct source-visible audiovisual demo ≤4,096 bytes, interactive mini ≤16,384, stress/service showcase ≤65,536; labels and real bus/raster/font/audio/capture/debug use.
+- [x] Original three games keep feel/controls/content and ideally ≤64 KiB; report any genuine size crossing rather than mutilating a game.
 
 ### 10. Learning and resilience
 
-- [ ] Authoritative searchable in-console/repository manual, help/man/API/hardware/syntax/diagnostic links and code-cursor help at console resolution.
-- [ ] Public PXCL interactive 5–10 minute tutorial: pixel/input/animation/sound/save/pack; runnable examples for graphics/sprites/maps/raster/fonts/audio/4P/tasks/saves/modules/tests/bus/profiling.
-- [ ] Small blank/arcade/platform/grid/four-player starters, public service cart; no secret host API or Studio rewrite.
-- [ ] Version and test project/cart/replay/save migrations with raw originals, transactional recovery, stable save ID/schema/application migration/reset/checksum/truncation/export/import/delete confirmation within 8 KiB.
-- [ ] Harden all cart/PNG/map/font/audio/fragment/replay/save/manifest/message boundaries with pre-allocation size/dimension/count/depth/work/path/duplicate checks, property tests, never imported JS execution; CSP/no-network audit and dependency notices/security review.
-- [ ] Four-port keyboard/gamepad assignment/remap/conflicts/disconnect/reconnect/local profiles; reduced flashing, muted startup, contrast and larger help outside deterministic/captured output.
-- [ ] Chromium and Firefox full workflow matrix, installable PWA and cold offline reload; assert zero normal run/capture/export network requests; accurate platform support statement.
-- [ ] README, LANGUAGE, HARDWARE, CARTRIDGE_FORMAT, DEBUGGING, TOOLS, THIRD_PARTY_NOTICES, PROGRESS and LIMITS match executable behavior with no PX-240C license grant.
+- [x] Authoritative searchable in-console/repository manual, help/man/API/hardware/syntax/diagnostic links and code-cursor help at console resolution.
+- [x] Public PXCL interactive 5–10 minute tutorial: pixel/input/animation/sound/save/pack; runnable examples for graphics/sprites/maps/raster/fonts/audio/4P/tasks/saves/modules/tests/bus/profiling.
+- [x] Small blank/arcade/platform/grid/four-player starters, public service cart; no secret host API or Studio rewrite.
+- [x] Version and test project/cart/replay/save migrations with raw originals, transactional recovery, stable save ID/schema/application migration/reset/checksum/truncation/export/import/delete confirmation within 8 KiB.
+- [x] Harden all cart/PNG/map/font/audio/fragment/replay/save/manifest/message boundaries with pre-allocation size/dimension/count/depth/work/path/duplicate checks, property tests, never imported JS execution; CSP/no-network audit and dependency notices/security review.
+- [x] Four-port keyboard/gamepad assignment/remap/conflicts/disconnect/reconnect/local profiles; reduced flashing, muted startup, contrast and larger help outside deterministic/captured output.
+- [x] Chromium and Firefox full workflow matrix, installable PWA and cold offline reload; assert zero normal run/capture/export network requests; accurate platform support statement.
+- [x] README, LANGUAGE, HARDWARE, CARTRIDGE_FORMAT, DEBUGGING, TOOLS, THIRD_PARTY_NOTICES, PROGRESS and LIMITS match executable behavior with no PX-240C license grant.
 
 ### 11. Release gate
 
-- [ ] Every first-party cart rebuilt from clean source and packed twice byte-identically, measured and exported as raw/PNG/HTML/ZIP plus applicable captures; compatibility/conformance hashes recorded.
-- [ ] Clean-storage full Firefox/Chromium E2E covers every required authoring/debug/tooling/persistence/distribution/offline path; direct native/scaled screenshots/capture inspection.
-- [ ] Root check/Make runs every required local formatter/lint/type/unit/integration/browser/native/Wasm/conformance gate with no required skips; no known high-severity dependency/parser issue.
-- [ ] Exact before/after metrics, browser versions, artifact hashes, migrations, checkpoint commits and intentional limits documented; all work committed locally, clean tree, nothing pushed/published/deployed.
+- [x] Every first-party cart rebuilt from clean source and packed twice byte-identically, measured and exported as raw/PNG/HTML/ZIP plus applicable captures; compatibility/conformance hashes recorded.
+- [x] Clean-storage full Firefox/Chromium E2E covers every required authoring/debug/tooling/persistence/distribution/offline path; direct native/scaled screenshots/capture inspection.
+- [x] Root check/Make runs every required local formatter/lint/type/unit/integration/browser/native/Wasm/conformance gate with no required skips; no known high-severity dependency/parser issue.
+- [x] Exact before/after metrics, browser versions, artifact hashes, migrations, checkpoint commits and intentional limits documented; all work committed locally, clean tree, nothing pushed/published/deployed.
 
 Non-goals remain exactly those in the brief: no cloud/accounts/telemetry/community/backend, netplay,
 foreign-console imports, alternate hardware/palette/shaders/3D/analog, generic engine/registry/plugin
