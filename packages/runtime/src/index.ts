@@ -8,6 +8,7 @@ export * from './debugger';
 export * from './errors';
 export * from './font';
 export * from './graphics';
+export * from './gif';
 export * from './hardware';
 export * from './input';
 export * from './machine';

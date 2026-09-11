@@ -2,6 +2,7 @@
 
 pub mod ast;
 pub mod cartridge;
+pub mod cartridge_png;
 pub mod codegen;
 pub mod diagnostic;
 pub mod exporter;
@@ -18,6 +19,9 @@ pub use cartridge::{
     CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
     ProjectManifest, UnpackedProject, compile_project, decode_cartridge, pack_project,
     parse_project_manifest, unpack_cartridge_project,
+};
+pub use cartridge_png::{
+    CartridgePng, CartridgePngMetadata, decode_cartridge_png, encode_cartridge_png,
 };
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};
