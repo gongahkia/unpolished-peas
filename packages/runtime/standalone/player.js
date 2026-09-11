@@ -884,11 +884,23 @@
   function isSourceSpan(value) {
     return (
       isRecord(value) &&
-      hasExactKeys(value, ['start', 'end']) &&
+      hasExactKeys(
+        value,
+        value.source === void 0 ? ['start', 'end'] : ['source', 'start', 'end'],
+      ) &&
+      (value.source === void 0 || isSourceName(value.source)) &&
       isNonNegativeInteger(value.start) &&
       isNonNegativeInteger(value.end) &&
       value.start <= value.end
     );
+  }
+  function isSourceName(value) {
+    if (typeof value !== 'string' || value.length === 0 || value.length > 512) return false;
+    for (let index = 0; index < value.length; index += 1) {
+      const code = value.charCodeAt(index);
+      if (code <= 31 || code === 127) return false;
+    }
+    return true;
   }
   function isAttribution(value) {
     return (

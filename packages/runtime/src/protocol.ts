@@ -7,6 +7,7 @@ import { isSaveImage, isSaveValues, type SaveImage, type SaveWrite } from './sav
 import type { MemoryRegionDescriptor } from './bus';
 
 export interface SourceSpan {
+  readonly source?: string;
   readonly start: number;
   readonly end: number;
 }
@@ -382,11 +383,24 @@ function isNonNegativeInteger(value: unknown): value is number {
 function isSourceSpan(value: unknown): value is SourceSpan {
   return (
     isRecord(value) &&
-    hasExactKeys(value, ['start', 'end']) &&
+    hasExactKeys(
+      value,
+      value.source === undefined ? ['start', 'end'] : ['source', 'start', 'end'],
+    ) &&
+    (value.source === undefined || isSourceName(value.source)) &&
     isNonNegativeInteger(value.start) &&
     isNonNegativeInteger(value.end) &&
     value.start <= value.end
   );
+}
+
+function isSourceName(value: unknown): value is string {
+  if (typeof value !== 'string' || value.length === 0 || value.length > 512) return false;
+  for (let index = 0; index < value.length; index += 1) {
+    const code = value.charCodeAt(index);
+    if (code <= 31 || code === 127) return false;
+  }
+  return true;
 }
 
 function isAttribution(value: unknown): boolean {

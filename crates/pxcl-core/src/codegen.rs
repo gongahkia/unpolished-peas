@@ -72,16 +72,69 @@ pub struct CompilationOutput {
     pub generated: Option<GeneratedProgram>,
 }
 
+/// Maps spans in a synthetic linked project source back to the original project modules.
+#[derive(Clone, Debug)]
+pub(crate) struct SourceOriginMap {
+    sources: Vec<SourceFile>,
+    ranges: Vec<SourceOriginRange>,
+}
+
+#[derive(Clone, Debug)]
+pub(crate) struct SourceOriginRange {
+    pub linked_start: u32,
+    pub linked_end: u32,
+    pub file: crate::span::FileId,
+    /// Original byte offset for every byte boundary in the rendered linked module.
+    pub offsets: Vec<u32>,
+}
+
+impl SourceOriginMap {
+    #[must_use]
+    pub(crate) const fn new(sources: Vec<SourceFile>, ranges: Vec<SourceOriginRange>) -> Self {
+        Self { sources, ranges }
+    }
+
+    fn map_span(&self, span: Span) -> Span {
+        let Some(range) = self
+            .ranges
+            .iter()
+            .find(|range| span.start >= range.linked_start && span.start < range.linked_end)
+        else {
+            return span;
+        };
+        let start = usize::try_from(span.start - range.linked_start).unwrap_or(usize::MAX);
+        let end = usize::try_from(span.end.min(range.linked_end) - range.linked_start)
+            .unwrap_or(usize::MAX);
+        match (range.offsets.get(start), range.offsets.get(end)) {
+            (Some(start), Some(end)) => Span::new(range.file, *start, *end),
+            _ => span,
+        }
+    }
+
+    fn source(&self, file: crate::span::FileId) -> Option<&SourceFile> {
+        self.sources.iter().find(|source| source.id() == file)
+    }
+}
+
 /// Runs source through parsing, resolution, type checking, typed IR, instrumentation, JavaScript
 /// generation, and source-map generation.
 #[must_use]
 pub fn compile(source: &SourceFile, assets: &AssetCatalog, mode: CompileMode) -> CompilationOutput {
+    compile_with_origins(source, assets, mode, None)
+}
+
+pub(crate) fn compile_with_origins(
+    source: &SourceFile,
+    assets: &AssetCatalog,
+    mode: CompileMode,
+    origins: Option<&SourceOriginMap>,
+) -> CompilationOutput {
     let analysis = analyze_module(source, assets);
     let generated = if analysis.diagnostics.is_empty() {
         analysis
             .ir
             .as_ref()
-            .map(|ir| Generator::new(source, &analysis.symbols, ir, mode).generate())
+            .map(|ir| Generator::new(source, &analysis.symbols, ir, mode, origins).generate())
     } else {
         None
     };
@@ -93,11 +146,11 @@ pub fn compile(source: &SourceFile, assets: &AssetCatalog, mode: CompileMode) ->
 
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct StandardSourceMap<'source> {
+struct StandardSourceMap {
     version: u8,
-    file: &'source str,
-    sources: Vec<&'source str>,
-    sources_content: Vec<&'source str>,
+    file: String,
+    sources: Vec<String>,
+    sources_content: Vec<String>,
     names: Vec<String>,
     mappings: String,
 }
@@ -114,6 +167,7 @@ struct Generator<'input> {
     task_programs: Vec<TaskProgram>,
     debug_locals: Vec<SymbolId>,
     work: WorkModel,
+    origins: Option<&'input SourceOriginMap>,
 }
 
 impl<'input> Generator<'input> {
@@ -122,6 +176,7 @@ impl<'input> Generator<'input> {
         symbols: &'input [Symbol],
         ir: &'input IrModule,
         mode: CompileMode,
+        origins: Option<&'input SourceOriginMap>,
     ) -> Self {
         let symbol_index = symbols
             .iter()
@@ -140,6 +195,7 @@ impl<'input> Generator<'input> {
             task_programs: Vec::new(),
             debug_locals: Vec::new(),
             work: WorkModel::default(),
+            origins,
         }
     }
 
@@ -242,7 +298,11 @@ impl<'input> Generator<'input> {
             None,
         );
         self.writer.line(
-            "const enter=(name,start,end)=>{callStack.push({name,start,end});api.enter?.(name,{start,end});};",
+            if self.mode == CompileMode::Debug {
+                "const enter=(name,sourceSpan)=>{callStack.push({name,sourceSpan});api.enter?.(name,sourceSpan);};"
+            } else {
+                "const enter=(name,start,end)=>{callStack.push({name,start,end});api.enter?.(name,{start,end});};"
+            },
             None,
         );
         self.writer
@@ -258,23 +318,43 @@ impl<'input> Generator<'input> {
         self.writer.indent -= 1;
         self.writer.line("}", None);
 
-        let mappings = self.writer.standard_mappings(self.source);
+        let mappings = self.writer.standard_mappings(self.source, self.origins);
+        let source_files = self.origins.map_or_else(
+            || vec![self.source],
+            |origins| origins.sources.iter().collect(),
+        );
         let source_map = StandardSourceMap {
             version: 3,
-            file: "cartridge.js",
-            sources: vec![self.source.name()],
-            sources_content: vec![self.source.text()],
+            file: "cartridge.js".to_owned(),
+            sources: source_files
+                .iter()
+                .map(|source| source.name().to_owned())
+                .collect(),
+            sources_content: source_files
+                .iter()
+                .map(|source| source.text().to_owned())
+                .collect(),
             names: Vec::new(),
             mappings,
         };
         let source_map_json =
             serde_json::to_string(&source_map).expect("source-map fields always serialize to JSON");
         let generated_bytes = u32::try_from(self.writer.output.len()).unwrap_or(u32::MAX);
+        let relationships = self
+            .writer
+            .relationships
+            .iter()
+            .map(|relationship| SourceRelationship {
+                generated_line: relationship.generated_line,
+                generated_column: relationship.generated_column,
+                source_span: self.map_span(relationship.source_span),
+            })
+            .collect();
         GeneratedProgram {
             mode: self.mode,
             javascript: self.writer.output,
             source_map_json,
-            relationships: self.writer.relationships,
+            relationships,
             generated_bytes,
             probe_count: self.probe_count,
             work_model: self.work,
@@ -396,10 +476,9 @@ impl<'input> Generator<'input> {
             if self.mode == CompileMode::Debug {
                 self.writer.line(
                     format!(
-                        "enter({}, {}, {});",
+                        "enter({}, {});",
                         js_string(&routine.name),
-                        routine.span.start,
-                        routine.span.end
+                        self.source_span_js(routine.span)
                     ),
                     Some(routine.span),
                 );
@@ -529,10 +608,9 @@ impl<'input> Generator<'input> {
         if self.mode == CompileMode::Debug {
             self.writer.line(
                 format!(
-                    "enter({}, {}, {});",
+                    "enter({}, {});",
                     js_string(&routine.name),
-                    routine.span.start,
-                    routine.span.end
+                    self.source_span_js(routine.span)
                 ),
                 Some(routine.span),
             );
@@ -852,6 +930,24 @@ impl<'input> Generator<'input> {
         self.ir.routines.iter().any(|routine| routine.kind == kind)
     }
 
+    fn map_span(&self, span: Span) -> Span {
+        self.origins.map_or(span, |origins| origins.map_span(span))
+    }
+
+    fn source_span_js(&self, span: Span) -> String {
+        let span = self.map_span(span);
+        let source = self
+            .origins
+            .and_then(|origins| origins.source(span.file))
+            .unwrap_or(self.source);
+        format!(
+            "{{source:{},start:{},end:{}}}",
+            js_string(source.name()),
+            span.start,
+            span.end
+        )
+    }
+
     fn generate_statements(&mut self, statements: &[IrStatement], context: ValueContext) {
         let debug_locals_base = self.debug_locals.len();
         for statement in statements {
@@ -1067,8 +1163,8 @@ impl<'input> Generator<'input> {
         };
         self.writer.line(
             format!(
-                "yield {{id:{id},sourceSpan:{{start:{},end:{}}},locals:{locals}}};",
-                span.start, span.end
+                "yield {{id:{id},sourceSpan:{},locals:{locals}}};",
+                self.source_span_js(span)
             ),
             Some(span),
         );
@@ -1761,7 +1857,7 @@ impl Writer {
         self.line += 1;
     }
 
-    fn standard_mappings(&self, source: &SourceFile) -> String {
+    fn standard_mappings(&self, source: &SourceFile, origins: Option<&SourceOriginMap>) -> String {
         let by_line: BTreeMap<_, _> = self
             .relationships
             .iter()
@@ -1778,20 +1874,32 @@ impl Writer {
             let Some(span) = by_line.get(&line) else {
                 continue;
             };
+            let span = origins.map_or(*span, |origins| origins.map_span(*span));
+            let original_source = origins
+                .and_then(|origins| origins.source(span.file))
+                .unwrap_or(source);
+            let source_index = origins
+                .and_then(|origins| {
+                    origins
+                        .sources
+                        .iter()
+                        .position(|candidate| candidate.id() == span.file)
+                })
+                .unwrap_or(0);
             let LineColumn {
                 line: original_line,
                 column: original_column,
-            } = source.line_column(span.start);
+            } = original_source.line_column(span.start);
             let segment = [
                 0_i64,
-                -previous_source,
+                i64::try_from(source_index).unwrap_or(i64::MAX) - previous_source,
                 i64::from(original_line) - previous_original_line,
                 i64::from(original_column) - previous_original_column,
             ];
             for value in segment {
                 mappings.push_str(&base64_vlq(value));
             }
-            previous_source = 0;
+            previous_source = i64::try_from(source_index).unwrap_or(i64::MAX);
             previous_original_line = i64::from(original_line);
             previous_original_column = i64::from(original_column);
         }
