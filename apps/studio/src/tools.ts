@@ -407,7 +407,9 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
           draw();
           setToolStatus(root, `FONT IMPORTED ${String(document.glyphs.length)} GLYPHS`, false);
         })
-        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+        .catch((error: unknown) => {
+          setToolStatus(root, errorMessage(error), true);
+        });
     },
   );
   bindSave(root, async () => {
@@ -615,7 +617,9 @@ function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: To
           applyPng();
           setToolStatus(root, `PNG ${String(image.width)}X${String(image.height)} PREVIEW`, false);
         })
-        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+        .catch((error: unknown) => {
+          setToolStatus(root, errorMessage(error), true);
+        });
     },
   );
   for (const selector of ['.png-mode', '.png-alpha'])
@@ -1032,7 +1036,9 @@ async function openMapEditor(
           draw();
           setToolStatus(root, `ATLAS IMPORTED ${String(count)} TILES`, false);
         })
-        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+        .catch((error: unknown) => {
+          setToolStatus(root, errorMessage(error), true);
+        });
     },
   );
   root.querySelectorAll<HTMLElement>('[data-map]').forEach((button) => {
@@ -1408,7 +1414,9 @@ function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: Too
   (requireElement(root, '[name="wave"]') as HTMLSelectElement).value =
     typeof document.waveform === 'string' ? document.waveform : 'pulse';
   const read = (): SoundAsset => soundFromControls(root);
-  const drawScope = (): void => drawWavScope(root, renderSoundWav(read()));
+  const drawScope = (): void => {
+    drawWavScope(root, renderSoundWav(read()));
+  };
   root.querySelector('[data-preview]')?.addEventListener('click', () => {
     void previewSound(read()).catch((error: unknown) => {
       setToolStatus(root, errorMessage(error), true);
@@ -1567,8 +1575,12 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
     void callbacks
       .parseManifest()
       .then((manifest) => renderMusicWav(read(), musicSounds(project, manifest)))
-      .then((wav) => downloadToolBytes('theme.wav', wav, 'audio/wav'))
-      .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+      .then((wav) => {
+        downloadToolBytes('theme.wav', wav, 'audio/wav');
+      })
+      .catch((error: unknown) => {
+        setToolStatus(root, errorMessage(error), true);
+      });
   });
   bindSave(root, async () => {
     const music = read();
@@ -1647,7 +1659,9 @@ async function openProjectSettings(
           project.manifest = upsertTopLevel(project.manifest, 'label', 'presentation/label.png');
           setToolStatus(root, 'LABEL PNG READY / SAVE', false);
         })
-        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+        .catch((error: unknown) => {
+          setToolStatus(root, errorMessage(error), true);
+        });
     },
   );
   root.querySelector('[data-label-export]')?.addEventListener('click', () => {
