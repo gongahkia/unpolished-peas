@@ -45,9 +45,19 @@ self.addEventListener('fetch',event=>{const request=event.request;if(request.met
   };
 }
 
+function developmentStylePolicy(): Plugin {
+  return {
+    name: 'px240c-development-style-policy',
+    apply: 'serve',
+    transformIndexHtml(html) {
+      return html.replace("style-src 'self';", "style-src 'self' 'unsafe-inline';");
+    },
+  };
+}
+
 export default defineConfig({
   base: './',
-  plugins: [offlineServiceWorker()],
+  plugins: [offlineServiceWorker(), developmentStylePolicy()],
   build: {
     outDir: '../../dist/studio',
     emptyOutDir: true,

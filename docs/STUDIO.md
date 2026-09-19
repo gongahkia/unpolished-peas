@@ -16,9 +16,10 @@ PNG with title/author/year/player/control identity and the byte-exact `.pxc` pay
 
 `shelf` opens the local-only **PX-240C CART BAY**. It derives exact packed class and identity from
 each current project and lists bundled/created/imported/fragment/duplicate origin, validated label,
-favorite, recent play, player count, and save presence. Selected carts launch, expose packed source,
-duplicate under a new immutable ID, change display title without changing their save key, export, or
-move to a two-step-confirmed recoverable bin. Bin restore retains the exact project revision,
+favorite, recent play, player count, and save presence. Its controls dispatch the same monitor
+commands as the shell: `run <id>`, `inspect <id>`, `copy <id>`, `name <id> [title]`, `star <id>`,
+`save <id>`, `pack <id>`, and `remove <id>`. `remove <id>` requires the exact command a second time;
+running it for a bin item restores the cartridge. Bin restore retains the exact project revision,
 recovery history, shelf state, and isolated save. All records are IndexedDB-local and survive offline
 reload; there is no account, sync, gallery, rating, or telemetry path.
 The selected cart's `SAVE` service displays stable cartridge identity and schema, exports/imports a
