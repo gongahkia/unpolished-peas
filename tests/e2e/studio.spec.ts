@@ -62,9 +62,7 @@ test('complete local Studio and distribution workflow', async ({
     { id: 'ashvault', key: 'z', work: ['W12031'] },
     { id: 'raster-rush', key: 'Enter', work: ['W31682'] },
   ]) {
-    await shellCommand(page, `load ${cartridge.id}`);
-    await expect(page.locator('.active-cart')).toContainText(cartridge.id.toUpperCase());
-    await shellCommand(page, 'run');
+    await shellCommand(page, `run ${cartridge.id}`);
     await expect(page.locator('[data-view="player"]')).toBeVisible();
     await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
     const keyCode = cartridge.key === 'Enter' ? 'Enter' : 'KeyZ';
@@ -91,8 +89,7 @@ test('complete local Studio and distribution workflow', async ({
     await expect(page.locator('[data-view="shell"]')).toBeVisible();
   }
 
-  await shellCommand(page, 'load px240c-service');
-  await shellCommand(page, 'run');
+  await shellCommand(page, 'run px240c-service');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
   await expect
     .poll(async () => {
@@ -104,8 +101,7 @@ test('complete local Studio and distribution workflow', async ({
   await page.locator('.stop-player').click();
 
   for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet', 'pxcl-tutorial']) {
-    await shellCommand(page, `load ${id}`);
-    await shellCommand(page, 'run');
+    await shellCommand(page, `run ${id}`);
     await expect
       .poll(async () => {
         const status = await page.locator('.player-status').innerText();
@@ -115,8 +111,7 @@ test('complete local Studio and distribution workflow', async ({
     await expect(page.locator('.player-status')).not.toHaveClass(/error/);
     await page.locator('.stop-player').click();
   }
-  await shellCommand(page, 'load signal-4k');
-  await shellCommand(page, 'debug');
+  await shellCommand(page, 'debug signal-4k');
   await page.locator('[data-debug="in"]').click();
   await expect(page.locator('.debug-status')).toContainText('main.pxl');
   await page.locator('[data-debug="back"]').click();
@@ -347,9 +342,13 @@ on draw:
   await shellCommand(page, 'shelf');
   await page.locator('.shelf-item[data-id="e2e-link"]').click();
   await page.locator('[data-shelf="favorite"]').click();
+  await expect(page.locator('.terminal')).toContainText('STARRED e2e-link');
+  await shellCommand(page, 'shelf');
   await expect(page.locator('.shelf-item[data-id="e2e-link"] strong')).toContainText('★');
   await page.locator('.shelf-item[data-id="e2e-link"]').click();
   await page.locator('[data-shelf="copy"]').click();
+  await expect(page.locator('.terminal')).toContainText('DUPLICATED e2e-link AS e2e-link.copy');
+  await shellCommand(page, 'shelf');
   await expect(page.locator('.shelf-item[data-id="e2e-link.copy"]')).toBeVisible();
   await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
   await page.locator('[data-shelf="rename"]').click();
@@ -362,15 +361,18 @@ on draw:
   const shelfExportPromise = page.waitForEvent('download');
   await page.locator('[data-shelf="export"]').click();
   expect((await shelfExportPromise).suggestedFilename()).toBe('e2e-link.copy.pxc');
+  await shellCommand(page, 'shelf');
   await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
   await page.locator('[data-shelf="remove"]').click();
-  await expect(page.locator('.shelf-status')).toContainText('CONFIRM REMOVE');
-  await page.locator('[data-shelf="remove"]').click();
+  await expect(page.locator('.terminal')).toContainText('CONFIRM REMOVE E2E-LINK.COPY');
+  await shellCommand(page, 'remove e2e-link.copy');
+  await shellCommand(page, 'shelf');
   const removedCopy = page.locator('.shelf-item.removed[data-id="e2e-link.copy"]');
   await expect(removedCopy).toBeVisible();
   await removedCopy.click();
-  await expect(page.locator('[data-shelf="remove"]')).toHaveText('RESTORE');
   await page.locator('[data-shelf="remove"]').click();
+  await expect(page.locator('.terminal')).toContainText('RESTORED e2e-link.copy FROM CART BAY BIN');
+  await shellCommand(page, 'shelf');
   await expect(page.locator('.shelf-item[data-id="e2e-link.copy"]')).not.toHaveClass(/removed/);
   await page.locator('[data-shelf="back"]').click();
 

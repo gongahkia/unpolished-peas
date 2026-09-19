@@ -86,6 +86,7 @@ export class StudioApp {
   private activeDebugger: ActiveDebugger | undefined;
   private readonly capturedFrames = new Map<string, Uint8Array>();
   private readonly folderBindings = new Map<string, FolderBinding>();
+  private pendingRemovalId: string | undefined;
 
   public constructor(root: HTMLElement, databaseName = 'px240c-studio') {
     this.root = root;
@@ -159,7 +160,6 @@ export class StudioApp {
         <form class="command-line">
           <label for="command">&gt;</label>
           <input id="command" name="command" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="PX-240C command" />
-          <span class="cursor" aria-hidden="true">_</span>
         </form>
       </section>
     `;
@@ -205,8 +205,10 @@ export class StudioApp {
 
   private async execute(commandLine: string): Promise<void> {
     const [command = '', ...arguments_] = splitCommand(commandLine);
+    const normalizedCommand = command.toLowerCase();
+    if (normalizedCommand !== 'remove') this.pendingRemovalId = undefined;
     try {
-      switch (command.toLowerCase()) {
+      switch (normalizedCommand) {
         case 'dir':
           await this.directory();
           break;
@@ -223,8 +225,9 @@ export class StudioApp {
           this.openImporter();
           return;
         case 'save':
-          await this.saveProject();
-          break;
+          if (arguments_[0] === undefined) await this.saveProject();
+          else await this.openSaveManager(await this.cartridgeForCommand(arguments_[0], 'SAVE'));
+          return;
         case 'recover':
           await this.recoverProject(arguments_[0]);
           break;
@@ -248,15 +251,20 @@ export class StudioApp {
           await this.openExplorer();
           return;
         case 'run':
+          await this.activateCartridgeForCommand(arguments_[0], 'RUN');
           await this.runProject();
           return;
         case 'debug':
+          await this.activateCartridgeForCommand(arguments_[0], 'DEBUG');
           await this.debugProject();
           return;
         case 'pack':
+        case 'out':
+          await this.activateCartridgeForCommand(arguments_[0], 'PACK');
           await this.packProject();
           break;
         case 'cart':
+          await this.activateCartridgeForCommand(arguments_[0], 'CART');
           await this.exportCartridgePng();
           break;
         case 'share':
@@ -273,7 +281,40 @@ export class StudioApp {
           await this.openProjectFolder();
           break;
         case 'inspect':
+        case 'source':
+          await this.activateCartridgeForCommand(arguments_[0], 'INSPECT');
           await this.openInspector();
+          return;
+        case 'copy': {
+          const project = await this.cartridgeForCommand(arguments_[0], 'COPY');
+          const copy = await this.duplicateShelfProject(project);
+          this.activeProject = copy;
+          this.appendLines([`DUPLICATED ${project.id} AS ${copy.id}`]);
+          break;
+        }
+        case 'name': {
+          const project = await this.cartridgeForCommand(arguments_[0], 'NAME');
+          const title = arguments_.slice(1).join(' ');
+          if (title.length === 0) {
+            this.activeProject = project;
+            this.openShelfRename(project);
+            return;
+          }
+          await this.renameCartridge(project, title);
+          break;
+        }
+        case 'star': {
+          const project = await this.cartridgeForCommand(arguments_[0], 'STAR');
+          const state = await this.repository.shelfState(project.id);
+          await this.repository.saveShelfState(project.id, { ...state, favorite: !state.favorite });
+          this.appendLines([`${state.favorite ? 'UNSTARRED' : 'STARRED'} ${project.id}`]);
+          break;
+        }
+        case 'remove':
+          await this.removeCartridgeFromCommand(arguments_[0]);
+          break;
+        case 'shell':
+          this.renderShell();
           return;
         case 'help':
           if (arguments_.length > 0) {
@@ -282,10 +323,12 @@ export class StudioApp {
           }
           this.appendLines([
             'DIR SHELF NEW LOAD SAVE RECOVER IMPORT',
-            'EDIT RUN DEBUG PACK CART EXPORT SHARE INSPECT INFO',
+            'EDIT RUN [ID] DEBUG [ID] PACK [ID] OUT [ID] CART [ID] EXPORT SHARE',
+            'INSPECT [ID] SOURCE [ID] INFO',
+            'COPY <ID> NAME <ID> [TITLE] STAR <ID> SAVE <ID> REMOVE <ID> SHELL',
             'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL MAN HELP EXPLORE SETTINGS CONTROLS FOLDER',
-            'NEW <ID> [TITLE] / LOAD <ID>',
+            'NEW <ID> [TITLE] / LOAD <ID> / RUN <ID>',
           ]);
           break;
         case 'reboot':
@@ -355,6 +398,47 @@ export class StudioApp {
     }
     this.activeProject = fromStored(project);
     this.appendLines([`LOADED ${id} R${String(project.revision)}`]);
+  }
+
+  private async cartridgeForCommand(
+    id: string | undefined,
+    operation: string,
+  ): Promise<WorkingProject> {
+    const cartridgeId = id ?? this.activeProject?.id;
+    if (cartridgeId === undefined) throw new Error(`${operation} REQUIRES A CARTRIDGE ID`);
+    const project = await this.repository.loadProject(cartridgeId);
+    if (project === undefined) throw new Error(`CARTRIDGE '${cartridgeId}' NOT FOUND`);
+    return fromStored(project);
+  }
+
+  private async activateCartridgeForCommand(
+    id: string | undefined,
+    operation: string,
+  ): Promise<WorkingProject> {
+    const project = await this.cartridgeForCommand(id, operation);
+    this.activeProject = project;
+    return project;
+  }
+
+  private async removeCartridgeFromCommand(id: string | undefined): Promise<void> {
+    if (id === undefined) throw new Error('REMOVE REQUIRES A CARTRIDGE ID');
+    if (await this.repository.isProjectRemoved(id)) {
+      const restored = await this.repository.restoreRemovedProject(id);
+      this.activeProject = fromStored(restored);
+      this.pendingRemovalId = undefined;
+      this.appendLines([`RESTORED ${id} FROM CART BAY BIN`]);
+      return;
+    }
+    await this.cartridgeForCommand(id, 'REMOVE');
+    if (this.pendingRemovalId !== id) {
+      this.pendingRemovalId = id;
+      this.appendLines([`CONFIRM REMOVE ${id.toUpperCase()} / TYPE 'REMOVE ${id}' AGAIN`]);
+      return;
+    }
+    await this.repository.removeProjectRecoverably(id);
+    if (this.activeProject?.id === id) this.activeProject = undefined;
+    this.pendingRemovalId = undefined;
+    this.appendLines([`REMOVED ${id} TO CART BAY BIN`]);
   }
 
   private openImporter(): void {
@@ -1277,98 +1361,51 @@ export class StudioApp {
             )
             .join('')}
         </main>
-        <p class="shelf-status" role="status">LOCAL ONLY / OFFLINE</p>
+        <p class="shelf-status" role="status">LOCAL ONLY / OFFLINE / ACTIONS ISSUE CONSOLE COMMANDS</p>
         <footer class="shelf-actions"><button data-shelf="play">PLAY</button><button data-shelf="source">SOURCE</button><button data-shelf="copy">COPY</button><button data-shelf="rename">NAME</button><button data-shelf="favorite">STAR</button><button data-shelf="save">SAVE</button><button data-shelf="export">OUT</button><button data-shelf="remove">REMOVE</button><button data-shelf="back">BACK</button></footer>
       </section>
     `;
     let selected = this.root.querySelector<HTMLElement>('.shelf-item');
-    let confirmation: string | undefined;
     for (const element of this.root.querySelectorAll<HTMLElement>('.shelf-item')) {
       element.addEventListener('click', () => {
         for (const option of this.root.querySelectorAll<HTMLElement>('.shelf-item'))
           option.setAttribute('aria-selected', String(option === element));
         selected = element;
-        confirmation = undefined;
         const remove = this.root.querySelector<HTMLButtonElement>('[data-shelf="remove"]');
         if (remove !== null)
           remove.textContent = element.dataset.removed === 'true' ? 'RESTORE' : 'REMOVE';
       });
     }
-    const selectedId = (): string => {
-      const id = selected?.dataset.id;
-      if (id === undefined) throw new Error('CART BAY IS EMPTY');
-      return id;
-    };
-    const liveProject = async (): Promise<WorkingProject> => {
-      const id = selectedId();
-      if (selected?.dataset.removed === 'true') throw new Error('RESTORE CARTRIDGE FIRST');
-      const project = await this.repository.loadProject(id);
-      if (project === undefined) throw new Error('CARTRIDGE IS NO LONGER PRESENT');
-      return fromStored(project);
-    };
-    const act = async (action: string): Promise<void> => {
-      if (action === 'back') {
-        this.renderShell();
-        return;
-      }
-      const id = selectedId();
-      if (action === 'remove' && selected?.dataset.removed === 'true') {
-        const restored = await this.repository.restoreRemovedProject(id);
-        this.activeProject = fromStored(restored);
-        this.appendLines([`RESTORED ${id} FROM CART BAY BIN`]);
-        await this.openShelf();
-        return;
-      }
-      if (action === 'remove') {
-        if (confirmation !== id) {
-          confirmation = id;
-          const status = requireElement(this.root, '.shelf-status');
-          status.textContent = `CONFIRM REMOVE ${id.toUpperCase()} / RECOVERABLE`;
-          const button = requireElement(this.root, '[data-shelf="remove"]');
-          button.textContent = 'CONFIRM';
-          return;
-        }
-        await this.repository.removeProjectRecoverably(id);
-        if (this.activeProject?.id === id) this.activeProject = undefined;
-        this.appendLines([`REMOVED ${id} TO CART BAY BIN`]);
-        await this.openShelf();
-        return;
-      }
-      const project = await liveProject();
-      if (action === 'play') {
-        this.activeProject = project;
-        await this.runProject();
-      } else if (action === 'source') {
-        this.activeProject = project;
-        await this.openInspector();
-      } else if (action === 'export') {
-        this.activeProject = project;
-        await this.packProject();
-        await this.openShelf();
-      } else if (action === 'favorite') {
-        const state = await this.repository.shelfState(id);
-        await this.repository.saveShelfState(id, { ...state, favorite: !state.favorite });
-        await this.openShelf();
-      } else if (action === 'copy') {
-        const copy = await this.duplicateShelfProject(project);
-        this.activeProject = copy;
-        this.appendLines([`DUPLICATED ${id} AS ${copy.id}`]);
-        await this.openShelf();
-      } else if (action === 'rename') {
-        this.openShelfRename(project);
-      } else if (action === 'save') {
-        await this.openSaveManager(project);
-      }
-    };
     for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-shelf]')) {
       button.addEventListener('click', () => {
-        void act(button.dataset.shelf ?? '').catch((error: unknown) => {
-          const status = this.root.querySelector<HTMLElement>('.shelf-status');
-          if (status !== null) status.textContent = errorMessage(error);
-        });
+        const action = button.dataset.shelf;
+        if (action === 'back') {
+          this.dispatchShellCommand('shell');
+          return;
+        }
+        const commands: Record<string, string> = {
+          copy: 'copy',
+          export: 'pack',
+          favorite: 'star',
+          play: 'run',
+          remove: 'remove',
+          rename: 'name',
+          save: 'save',
+          source: 'inspect',
+        };
+        const command = commands[action ?? ''];
+        if (command === undefined) return;
+        const id = selected?.dataset.id;
+        this.dispatchShellCommand(id === undefined ? command : `${command} ${id}`);
       });
     }
     selected?.focus();
+  }
+
+  private dispatchShellCommand(command: string): void {
+    this.appendLines([`> ${command}`]);
+    this.renderShell();
+    void this.execute(command);
   }
 
   private async openSaveManager(project: WorkingProject): Promise<void> {
@@ -1459,15 +1496,10 @@ export class StudioApp {
     form.addEventListener('submit', (event) => {
       event.preventDefault();
       void (async () => {
-        const title = (requireElement(form, '[name="title"]') as HTMLInputElement).value
-          .trim()
-          .slice(0, 64);
-        if (title.length === 0 || !/^[\x20-\x7e]+$/.test(title))
-          throw new TypeError('TITLE MUST BE 1-64 ASCII CHARACTERS');
-        const manifest = replaceManifestIdentity(project.manifest, project.id, title);
-        const stored = await this.repository.saveProject({ ...project, title, manifest });
-        this.activeProject = fromStored(stored);
-        this.appendLines([`RENAMED ${project.id} / SAVE ID UNCHANGED`]);
+        await this.renameCartridge(
+          project,
+          (requireElement(form, '[name="title"]') as HTMLInputElement).value,
+        );
         await this.openShelf();
       })().catch((error: unknown) => {
         const status = this.root.querySelector<HTMLElement>('[role="status"]');
@@ -1478,6 +1510,16 @@ export class StudioApp {
       .querySelector('[data-cancel]')
       ?.addEventListener('click', () => void this.openShelf());
     (requireElement(this.root, '[name="title"]') as HTMLInputElement).focus();
+  }
+
+  private async renameCartridge(project: WorkingProject, requestedTitle: string): Promise<void> {
+    const title = requestedTitle.trim().slice(0, 64);
+    if (title.length === 0 || !/^[\x20-\x7e]+$/.test(title))
+      throw new TypeError('TITLE MUST BE 1-64 ASCII CHARACTERS');
+    const manifest = replaceManifestIdentity(project.manifest, project.id, title);
+    const stored = await this.repository.saveProject({ ...project, title, manifest });
+    this.activeProject = fromStored(stored);
+    this.appendLines([`RENAMED ${project.id} / SAVE ID UNCHANGED`]);
   }
 
   private async openShare(): Promise<void> {

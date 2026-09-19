@@ -44,7 +44,7 @@ pnpm dev
 ```
 
 Open the printed local URL. The monitor shell starts with all built-in cartridges installed. Use `dir`,
-`load raster-rush`, and `run`; Shift+Escape stops a game. `help` lists integrated commands. Keyboard
+`load raster-rush`, `run`, or `run ashvault` to launch a cartridge directly; Shift+Escape stops a game. `help` lists integrated commands. Keyboard
 port one uses arrows plus Z/X/A/S, while standard gamepads populate all four ports.
 
 Run every repository gate with:
