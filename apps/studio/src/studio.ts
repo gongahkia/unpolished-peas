@@ -40,6 +40,7 @@ import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?wo
 import mod01Cursor from './assets/mod01-cursor.svg?inline';
 import mod01Logo from './assets/mod01-logo.png?inline';
 import { openDebugger, type ActiveDebugger } from './debugger';
+import { enhancePixelSelects } from './pixel-select';
 import { openCreationTool, type CreationTool } from './tools';
 
 interface WorkingProject {
@@ -1064,10 +1065,12 @@ export class StudioApp {
       </section>
     `;
     const tabs = requireElement(this.root, '.explorer-tabs');
-    const output = requireElement(this.root, '.explorer-output');
+    const output = requireElement(this.root, '.explorer-output') as HTMLElement;
     const show = (name: string): void => {
       const value = panes[name];
-      output.textContent = typeof value === 'string' ? value : JSON.stringify(value, undefined, 2);
+      const source = typeof value === 'string' ? value : JSON.stringify(value, undefined, 2);
+      if (name === 'JS') renderHighlight(output, source);
+      else renderJsonHighlight(output, source);
     };
     for (const name of Object.keys(panes)) {
       const button = document.createElement('button');
@@ -1086,7 +1089,7 @@ export class StudioApp {
       if ((event as KeyboardEvent).key === 'Escape') back();
     });
     show('TOKENS');
-    (output as HTMLElement).focus();
+    output.focus();
   }
 
   private async showDiagnostics(path: string, source: string): Promise<void> {
@@ -1575,6 +1578,7 @@ export class StudioApp {
         <footer class="tool-bar"><button data-settings="defaults">DEFAULT</button><button data-settings="save">SAVE</button><button data-settings="back">BACK</button></footer>
       </section>
     `;
+    enhancePixelSelects(this.root);
     const status = requireElement(this.root, '.settings-status');
     const save = async (): Promise<void> => {
       const gamepads = [0, 1, 2, 3].map((port) => {
@@ -1663,7 +1667,7 @@ export class StudioApp {
       </section>
     `;
     const navigation = requireElement(this.root, '.inspector-files');
-    const output = requireElement(this.root, '.inspector-output');
+    const output = requireElement(this.root, '.inspector-output') as HTMLElement;
     const panes = new Map<string, string>([
       ['MANIFEST', JSON.stringify(cartridge.manifest, undefined, 2)],
       ...sources.map(
@@ -1674,16 +1678,20 @@ export class StudioApp {
           ],
       ),
     ]);
+    const show = (name: string, contents: string): void => {
+      if (name === 'MANIFEST') renderJsonHighlight(output, contents);
+      else renderHighlight(output, contents);
+    };
     for (const [name, contents] of panes) {
       const button = document.createElement('button');
       button.type = 'button';
       button.textContent = name;
       button.addEventListener('click', () => {
-        output.textContent = contents;
+        show(name, contents);
       });
       navigation.append(button);
     }
-    output.textContent = panes.get('MANIFEST') ?? '';
+    show('MANIFEST', panes.get('MANIFEST') ?? '');
     const back = (): void => {
       this.renderShell();
     };
@@ -1691,7 +1699,7 @@ export class StudioApp {
     this.root.querySelector('[data-view="inspector"]')?.addEventListener('keydown', (event) => {
       if ((event as KeyboardEvent).key === 'Escape') back();
     });
-    (output as HTMLElement).focus();
+    output.focus();
   }
 
   private reportCompilerDiagnostic(diagnostic: CompilerDiagnostic | undefined): void {
@@ -1749,7 +1757,20 @@ export class StudioApp {
     terminal.replaceChildren(
       ...this.terminalLines.slice(0, this.visibleTerminalLines).map((line) => {
         const paragraph = document.createElement('p');
-        paragraph.textContent = line || '\u00a0';
+        if (line.startsWith('> ')) {
+          paragraph.className = 'terminal-command';
+          const prompt = document.createElement('span');
+          prompt.className = 'terminal-prompt';
+          prompt.textContent = '>';
+          const command = document.createElement('span');
+          command.className = 'terminal-input';
+          command.textContent = line.slice(1);
+          paragraph.append(prompt, command);
+        } else {
+          paragraph.className =
+            line.startsWith('!') || line.startsWith('?') ? 'terminal-error' : 'terminal-output';
+          paragraph.textContent = line || '\u00a0';
+        }
         return paragraph;
       }),
     );
@@ -2020,6 +2041,30 @@ function renderHighlight(target: HTMLElement, source: string): void {
           : /^\d/.test(text)
             ? 'syntax-number'
             : 'syntax-keyword';
+    token.textContent = text;
+    target.append(token);
+    cursor = index + text.length;
+  }
+  target.append(document.createTextNode(source.slice(cursor)));
+}
+
+function renderJsonHighlight(target: HTMLElement, source: string): void {
+  const pattern =
+    /"(?:\\.|[^"\\])*"(?=\s*:)|"(?:\\.|[^"\\])*"|\b(?:true|false|null)\b|-?\b\d+(?:\.\d+)?(?:e[+-]?\d+)?\b/gi;
+  target.replaceChildren();
+  let cursor = 0;
+  for (const match of source.matchAll(pattern)) {
+    const index = match.index;
+    if (index > cursor) target.append(document.createTextNode(source.slice(cursor, index)));
+    const token = document.createElement('span');
+    const text = match[0];
+    token.className = text.startsWith('"')
+      ? source.slice(index + text.length).match(/^\s*:/) === null
+        ? 'syntax-text'
+        : 'syntax-json-key'
+      : /^-?\d/.test(text)
+        ? 'syntax-number'
+        : 'syntax-literal';
     token.textContent = text;
     target.append(token);
     cursor = index + text.length;
