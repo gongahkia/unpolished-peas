@@ -262,14 +262,6 @@ body,
   image-rendering: pixelated;
 }
 
-.boot-logo {
-  display: block;
-  width: 28px;
-  height: 28px;
-  margin: 0 auto 4px;
-  image-rendering: pixelated;
-}
-
 .shell::after {
   position: absolute;
   inset: 11px 0 0;
