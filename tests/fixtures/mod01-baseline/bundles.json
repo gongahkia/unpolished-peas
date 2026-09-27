@@ -1,18 +1,14 @@
 {
-  "index-CaLGlYXc.js": {
-    "bytes": 121103,
-    "sha256": "a23660056431d43b36724fd3cbf8fa7df92176cc4183892db0820aa8dfa6bd2f"
+  "index-BtRDdli-.js": {
+    "bytes": 305217,
+    "sha256": "a3f158a3a9abf4abc230aaba08ea50c122a81c7bc818671fbc36181f8a1a0838"
   },
-  "index-DLEVuQSJ.css": {
-    "bytes": 12372,
-    "sha256": "a3bdd27b5c698a387f4e1c3ac5e3a9c9d0972899a47dcb900b0a1df52cecc5c9"
+  "index-CBhsc2F_.css": {
+    "bytes": 18658,
+    "sha256": "a348387ef8c7d217487cf25dad51a84ed81df7f1e9b22c733c38afa1279b995c"
   },
-  "modl_wasm_bg-BOMWrNDL.wasm": {
-    "bytes": 1165346,
-    "sha256": "d5051018628688cf675ff801959673fd678d26f1c47cfc2a1243dea5b04f3336"
-  },
-  "sandbox-worker-CM4mRpOT.js": {
-    "bytes": 18722,
-    "sha256": "5cf91913e8d53013418fcc7309f0fce2372c4827a96ee4ebab46f21c8c632f7a"
+  "modl_wasm_bg-DpTCNE86.wasm": {
+    "bytes": 1427484,
+    "sha256": "6984b7e2600038aca4f08a2950ddcc143d7ca996fc74be879ee4ad2df7531333"
   }
 }

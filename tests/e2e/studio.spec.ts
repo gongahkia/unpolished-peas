@@ -399,8 +399,8 @@ on draw:
   await page.locator('[data-save="back"]').click();
   await page.locator('[data-shelf="back"]').click();
 
-  await shellCommand(page, 'new e2e-alpha E2E MOD-01 BASELINE');
-  await expect(page.locator('.active-cart')).toContainText('E2E-MOD-01 BASELINE');
+  await shellCommand(page, 'new e2e-release E2E RELEASE');
+  await expect(page.locator('.active-cart')).toContainText('E2E-RELEASE');
   await shellCommand(page, 'edit');
   const source = page.locator('textarea.source-input');
   await source.fill(`// Made by @gongahkia
@@ -586,33 +586,33 @@ on draw:
   const packedDownload = await packedDownloadPromise;
   const packedPath = await packedDownload.path();
   expect(packedPath).not.toBeNull();
-  await expect(page.locator('.terminal')).toContainText(/PACKED e2e-alpha\.m01c \d+ BYTES/);
+  await expect(page.locator('.terminal')).toContainText(/PACKED e2e-release\.m01c \d+ BYTES/);
 
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(packedPath);
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
-  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-alpha');
+  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-release');
 
   const cartridgePngPromise = page.waitForEvent('download');
   await shellCommand(page, 'cart');
   const cartridgePng = await cartridgePngPromise;
-  expect(cartridgePng.suggestedFilename()).toBe('e2e-alpha.m01c.png');
+  expect(cartridgePng.suggestedFilename()).toBe('e2e-release.m01c.png');
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(await cartridgePng.path());
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
-  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-alpha');
+  await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-release');
 
   const htmlDownloadPromise = page.waitForEvent('download');
   await shellCommand(page, 'export');
   const htmlDownload = await htmlDownloadPromise;
   const htmlPath = await htmlDownload.path();
   expect(htmlPath).not.toBeNull();
-  await expect(page.locator('.terminal')).toContainText(/EXPORTED e2e-alpha\.html \d+ BYTES/);
+  await expect(page.locator('.terminal')).toContainText(/EXPORTED e2e-release\.html \d+ BYTES/);
 
   const zipDownloadPromise = page.waitForEvent('download');
   await shellCommand(page, 'export zip');
   const zipDownload = await zipDownloadPromise;
-  expect(zipDownload.suggestedFilename()).toBe('e2e-alpha-itch.zip');
+  expect(zipDownload.suggestedFilename()).toBe('e2e-release-itch.zip');
   const zipPath = await zipDownload.path();
   expect(zipPath).not.toBeNull();
   const zipBytes = await readFile(zipPath);
