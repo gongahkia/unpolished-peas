@@ -7,6 +7,19 @@ if [[ ! -x "${cli}" ]]; then
   exit 1
 fi
 
+if command -v shasum >/dev/null 2>&1; then
+  sha256() {
+    shasum -a 256 "$1" | awk '{print $1}'
+  }
+elif command -v sha256sum >/dev/null 2>&1; then
+  sha256() {
+    sha256sum "$1" | awk '{print $1}'
+  }
+else
+  echo "release artifact verifier requires shasum or sha256sum" >&2
+  exit 1
+fi
+
 artifact_dir=$(mktemp -d)
 cleanup() {
   if [[ -n "${artifact_dir}" && -d "${artifact_dir}" ]]; then
@@ -49,10 +62,10 @@ for cartridge in "${cartridges[@]}"; do
   "${cli}" run "${first}.pxc" --headless --frames 5 >/dev/null
 
   pxc_bytes=$(wc -c < "${first}.pxc" | tr -d ' ')
-  pxc_hash=$(shasum -a 256 "${first}.pxc" | awk '{print $1}')
-  png_hash=$(shasum -a 256 "${first}.pxc.png" | awk '{print $1}')
-  html_hash=$(shasum -a 256 "${first}.html" | awk '{print $1}')
-  zip_hash=$(shasum -a 256 "${first}.zip" | awk '{print $1}')
+  pxc_hash=$(sha256 "${first}.pxc")
+  png_hash=$(sha256 "${first}.pxc.png")
+  html_hash=$(sha256 "${first}.html")
+  zip_hash=$(sha256 "${first}.zip")
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
     "${cartridge}" "${pxc_bytes}" "${pxc_hash}" "${png_hash}" "${html_hash}" "${zip_hash}"
 done

@@ -45,6 +45,7 @@ Requirements are Node.js 22.22 or newer and Rust 1.98. `corepack enable` supplie
 browsers, and builds the complete project:
 
 ```sh
+corepack enable
 make setup
 pnpm dev
 ```
@@ -83,7 +84,13 @@ desktop GUI, third-party cartridge compatibility, raw JavaScript escape, true-co
 physics engine, ECS, scene graph, or real 3D renderer. Worker containment is a practical browser
 boundary, not process-level isolation; [SECURITY.md](docs/SECURITY.md) states the exact limits.
 
-To refresh the Studio boot capture, build and serve `dist/studio`, then run
-`node scripts/capture-v1-visuals.mjs` against the preview URL. Copy its 1280x720 Firefox shell
-capture from `output/playwright/v1-firefox-shell.png` to `docs/images/studio-shell.png`. The checked
-images use exact integer scale Playwright captures; no mockups are used.
+To refresh the Studio boot capture, run the production preview in one terminal:
+
+```sh
+pnpm build
+pnpm --dir apps/studio exec vite preview --host 127.0.0.1 --port 4173 --strictPort
+```
+
+Then, in another terminal, run `node scripts/capture-v1-visuals.mjs` and copy its 1280x720 Firefox
+shell capture from `output/playwright/v1-firefox-shell.png` to `docs/images/studio-shell.png`. The
+checked images use exact integer scale Playwright captures; no mockups are used.
