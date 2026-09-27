@@ -131,7 +131,7 @@ export class StudioRepository {
     validateProject(project);
     const key = projectKey(project.id);
     const previous = await this.storage.get(key);
-    const previousProject = readStoredProject(previous);
+    const previousProject = isStoredProject(previous) ? structuredClone(previous) : undefined;
     if (previousProject !== undefined) {
       await this.storage.set(recoveryKey(project.id, previousProject.revision), previousProject);
       await this.pruneRecovery(project.id);
@@ -148,14 +148,7 @@ export class StudioRepository {
   public async loadProject(id: string): Promise<StoredProject | undefined> {
     validateId(id);
     const value = await this.storage.get(projectKey(id));
-    const project = readStoredProject(value);
-    if (project === undefined) return undefined;
-    if (!isStoredProject(value)) {
-      const backup = projectMigrationKey(id);
-      if ((await this.storage.get(backup)) === undefined) await this.storage.set(backup, value);
-      await this.storage.set(projectKey(id), project);
-    }
-    return structuredClone(project);
+    return isStoredProject(value) ? structuredClone(value) : undefined;
   }
 
   public async listProjects(): Promise<readonly StoredProject[]> {
@@ -173,8 +166,7 @@ export class StudioRepository {
     const snapshots: StoredProject[] = [];
     for (const key of await this.storage.keys(recoveryPrefix(id))) {
       const value = await this.storage.get(key);
-      const project = readStoredProject(value);
-      if (project !== undefined) snapshots.push(project);
+      if (isStoredProject(value)) snapshots.push(structuredClone(value));
     }
     return snapshots.sort((left, right) => right.revision - left.revision);
   }
@@ -190,19 +182,7 @@ export class StudioRepository {
   public async settings(): Promise<StudioSettings> {
     const value = await this.storage.get('settings/main');
     if (isStudioSettings(value)) return structuredClone(value);
-    const defaults = defaultStudioSettings();
-    if (isLegacySettings(value)) {
-      if ((await this.storage.get('migration/settings/alpha')) === undefined)
-        await this.storage.set('migration/settings/alpha', value);
-      const migrated = {
-        ...defaults,
-        reducedMotion: value.reducedMotion,
-        audioVolume: value.audioVolume,
-      };
-      await this.storage.set('settings/main', migrated);
-      return migrated;
-    }
-    return defaults;
+    return defaultStudioSettings();
   }
 
   public async saveSettings(settings: StudioSettings): Promise<void> {
@@ -389,16 +369,6 @@ export class CartridgeSaveAccess {
   private async envelope(): Promise<StoredSave> {
     const value = await this.storage.get(saveKey(this.#id));
     if (value === undefined) return saveEnvelope(new Uint8Array(), 1);
-    if (value instanceof Uint8Array) {
-      if (value.length > HARDWARE.saveCapacityBytes)
-        throw new RangeError('stored cartridge save exceeds the 8 KiB capacity');
-      const migrated = saveEnvelope(value, 0);
-      const backupKey = saveMigrationKey(this.#id);
-      if ((await this.storage.get(backupKey)) === undefined)
-        await this.storage.set(backupKey, value.slice());
-      await this.storage.set(saveKey(this.#id), migrated);
-      return migrated;
-    }
     if (!isStoredSave(value))
       throw new TypeError('stored cartridge save checksum or schema failed');
     return structuredClone(value);
@@ -440,28 +410,6 @@ function isStoredProject(value: unknown): value is StoredProject {
     return true;
   } catch {
     return false;
-  }
-}
-
-function readStoredProject(value: unknown): StoredProject | undefined {
-  if (isStoredProject(value)) return structuredClone(value);
-  if (
-    !isRecord(value) ||
-    'storageRevision' in value ||
-    typeof value.revision !== 'number' ||
-    !Number.isSafeInteger(value.revision) ||
-    value.revision < 1
-  )
-    return undefined;
-  try {
-    validateProject(value as unknown as ProjectDocument);
-    return {
-      ...(structuredClone(value) as unknown as ProjectDocument),
-      storageRevision: 1,
-      revision: value.revision,
-    };
-  } catch {
-    return undefined;
   }
 }
 
@@ -553,24 +501,6 @@ function isStudioSettings(value: unknown): value is StudioSettings {
   );
 }
 
-function isLegacySettings(value: unknown): value is {
-  revision: 1;
-  reducedMotion: boolean;
-  audioVolume: number;
-  editorTabSize: 2;
-} {
-  return (
-    isRecord(value) &&
-    value.revision === 1 &&
-    typeof value.reducedMotion === 'boolean' &&
-    typeof value.audioVolume === 'number' &&
-    Number.isFinite(value.audioVolume) &&
-    value.audioVolume >= 0 &&
-    value.audioVolume <= 1 &&
-    value.editorTabSize === 2
-  );
-}
-
 function defaultStudioSettings(): StudioSettings {
   return {
     revision: 2,
@@ -643,14 +573,6 @@ function recoveryKey(id: string, revision: number): string {
 
 function saveKey(id: string): string {
   return `save/${id}`;
-}
-
-function projectMigrationKey(id: string): string {
-  return `migration/project/${id}/alpha`;
-}
-
-function saveMigrationKey(id: string): string {
-  return `migration/save/${id}/alpha`;
 }
 
 function saveRecoveryKey(id: string): string {

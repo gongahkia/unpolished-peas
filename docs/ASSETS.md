@@ -52,7 +52,7 @@ indices before execution.
 In Hardware Revision 1 these payloads occupy the actual bus image at `0x30000`. Allocation
 descriptors and `visual_id` expose their addresses; drawing and map queries read that same storage.
 See [HARDWARE.md](HARDWARE.md#visual-image-and-allocation-descriptors) for encoding and write rules.
-Revision-1 asset files remain backward-compatible with alpha projects.
+Revision-1 asset files remain backward-compatible with MOD-01 baseline projects.
 
 ## Bitmap fonts
 

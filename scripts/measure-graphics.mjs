@@ -15,11 +15,11 @@ const baseline = execFileSync('git', ['show', '2bd8c4d:packages/runtime/src/grap
   cwd: root,
   encoding: 'utf8',
 });
-const fixtures = new URL('../tests/fixtures/alpha/', import.meta.url);
+const fixtures = new URL('../tests/fixtures/mod01-baseline/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, fixtures));
 const projects = new Map(
   JSON.parse(gunzipSync(read('indexeddb.json.gz')), (_key, value) =>
-    value?.alphaUint8Array === undefined ? value : Uint8Array.from(value.alphaUint8Array),
+    value?.mod01BaselineUint8Array === undefined ? value : Uint8Array.from(value.mod01BaselineUint8Array),
   ),
 );
 const catalogs = JSON.parse(read('catalogs.json'));

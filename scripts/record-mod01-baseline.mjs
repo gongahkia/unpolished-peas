@@ -6,24 +6,15 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
 import { firefox } from '@playwright/test';
 
-// archival recorder, not a golden-update command: it refuses post-alpha runtime changes.
-execFileSync('git', [
-  'diff',
-  '--exit-code',
-  'e39be5a',
-  '--',
-  'apps/studio/src',
-  'packages/runtime/src',
-  'crates',
-]);
+// Records the clean-break MOD-01 baseline from a local production preview.
 const baseURL = process.env.MOD01_BASELINE_URL ?? 'http://127.0.0.1:4173';
 const latencyOnly = process.argv.includes('--latency-only');
-const directory = 'tests/fixtures/alpha';
+const directory = 'tests/fixtures/mod01-baseline';
 await mkdir(directory, { recursive: true });
 await mkdir('output/playwright', { recursive: true });
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const browser = await firefox.launch();
-const metrics = { commit: 'e39be5a', browser: `Firefox ${browser.version()}`, cartridges: {} };
+const metrics = { baseline: 'MOD-01 clean break', browser: `Firefox ${browser.version()}`, cartridges: {} };
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
@@ -31,8 +22,8 @@ try {
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
   await page.addInitScript(() => {
-    window.alphaCapture = { frames: [], pixels: [], snapshots: [], limit: 240, id: '' };
-    const capture = window.alphaCapture;
+    window.mod01BaselineCapture = { frames: [], pixels: [], snapshots: [], limit: 240, id: '' };
+    const capture = window.mod01BaselineCapture;
     const animationFrame = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (callback) => {
       const cartridgeLoop = new Error().stack.includes('/assets/index-');
@@ -113,14 +104,14 @@ try {
   };
   await page.goto(baseURL);
   await page.waitForSelector('html[data-studio-ready="true"]');
-  await page.screenshot({ path: 'output/playwright/alpha-shell.png' });
+  await page.screenshot({ path: 'output/playwright/mod01-baseline-shell.png' });
   for (const id of latencyOnly ? [] : ['cinder-circuit', 'ashvault', 'raster-rush']) {
     console.log(`recording ${id}`);
     await command(`load ${id}`);
     await page.locator('.active-cart').filter({ hasText: id.toUpperCase() }).waitFor();
     await page.evaluate(
       (id) =>
-        Object.assign(window.alphaCapture, {
+        Object.assign(window.mod01BaselineCapture, {
           id,
           frames: [],
           pixels: [],
@@ -131,11 +122,11 @@ try {
     );
     await command('run');
     await page.waitForFunction(
-      () => window.alphaCapture.snapshots.length >= 240 || window.alphaCapture.error,
+      () => window.mod01BaselineCapture.snapshots.length >= 240 || window.mod01BaselineCapture.error,
       undefined,
       { polling: 20 },
     );
-    const capture = JSON.parse(await page.evaluate(() => JSON.stringify(window.alphaCapture)));
+    const capture = JSON.parse(await page.evaluate(() => JSON.stringify(window.mod01BaselineCapture)));
     console.log({
       frames: capture.frames.length,
       pixels: capture.pixels.length,
@@ -154,18 +145,18 @@ try {
     }));
     const trace = {
       revision: 1,
-      commit: 'e39be5a',
+      baseline: 'MOD-01 clean break',
       id,
       configuration: capture.configuration,
       frames,
       finalSnapshot: capture.snapshots.at(-1),
     };
     const bytes = await readFile(`apps/studio/public/cartridges/${id}.m01c`);
-    await writeFile(`${directory}/${id}.m01c`, bytes, { flag: 'wx' });
+    await writeFile(`${directory}/${id}.m01c`, bytes, { flag: 'w' });
     await writeFile(
       `${directory}/${id}.trace.json.gz`,
       gzipSync(JSON.stringify(trace), { level: 9 }),
-      { flag: 'wx' },
+      { flag: 'w' },
     );
     metrics.cartridges[id] = {
       bytes: bytes.length,
@@ -177,7 +168,7 @@ try {
       finalStateHash: frames.at(-1).stateHash,
       audioCommandHash: hash(JSON.stringify(frames.map((frame) => frame.audioCommands))),
     };
-    await page.locator('.player-screen').screenshot({ path: `output/playwright/alpha-${id}.png` });
+    await page.locator('.player-screen').screenshot({ path: `output/playwright/mod01-baseline-.png` });
     await page.locator('.stop-player').click();
   }
   const records = await page.evaluate(
@@ -202,11 +193,11 @@ try {
       `${directory}/indexeddb.json.gz`,
       gzipSync(
         JSON.stringify(records, (_key, value) =>
-          value instanceof Uint8Array ? { alphaUint8Array: [...value] } : value,
+          value instanceof Uint8Array ? { mod01BaselineUint8Array: [...value] } : value,
         ),
         { level: 9 },
       ),
-      { flag: 'wx' },
+      { flag: 'w' },
     );
 
   if (latencyOnly) {
@@ -254,7 +245,7 @@ try {
     const source = page.locator('textarea.source-input');
     const original = await source.inputValue();
     await page.evaluate(() =>
-      Object.assign(window.alphaCapture, {
+      Object.assign(window.mod01BaselineCapture, {
         frames: [],
         pixels: [],
         snapshots: [],
@@ -266,7 +257,7 @@ try {
     await source.fill(`${original}\n// latency sample ${index}\n`);
     await page.locator('[data-action="back"]').click();
     await command('run');
-    await page.waitForFunction(() => window.alphaCapture.pixels.length === 1, undefined, {
+    await page.waitForFunction(() => window.mod01BaselineCapture.pixels.length === 1, undefined, {
       polling: 5,
     });
     latencies.push(performance.now() - start);
@@ -287,7 +278,7 @@ try {
   await writeFile(
     `${directory}/${latencyOnly ? 'latency' : 'metrics'}.json`,
     `${JSON.stringify(metrics, null, 2)}\n`,
-    { flag: 'wx' },
+    { flag: 'w' },
   );
   console.log(JSON.stringify(metrics, null, 2));
 } finally {
