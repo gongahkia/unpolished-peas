@@ -6,7 +6,7 @@ cartridge worker receives only a validated copy of its own integer save values; 
 the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
-`import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, and `reboot`
+`import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, `clear`/`cls`, and `reboot`
 operate on real project/compiler/runtime paths. `import` validates an untrusted `.m01c`, reconstructs
 its editable project, and also accepts a `.m01c.png` only after validating its bounded PNG chunks and
 embedded canonical cartridge. It preserves the previous same-ID revision for recovery. `inspect` displays the

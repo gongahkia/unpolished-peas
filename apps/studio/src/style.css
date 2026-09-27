@@ -548,7 +548,7 @@ body,
 }
 
 .tool-bar button:focus-visible,
-.stop-player:focus-visible {
+.player-controls button:focus-visible {
   outline: 1px solid var(--amber);
   outline-offset: 0;
 }
@@ -557,13 +557,29 @@ body,
   outline: 0;
 }
 
-.stop-player,
-.enable-player-audio,
 .player-budget,
 .player-status {
   position: absolute;
   z-index: 2;
   bottom: 2px;
+  margin: 0;
+  padding: 1px 2px;
+  color: var(--cream);
+  background: var(--deep);
+  font-size: 4px;
+  line-height: 6px;
+}
+
+.player-controls {
+  position: absolute;
+  z-index: 2;
+  bottom: 2px;
+  left: 2px;
+  display: flex;
+  gap: 1px;
+}
+
+.player-controls button {
   margin: 0;
   padding: 1px 2px;
   color: var(--cream);
@@ -676,14 +692,6 @@ body,
 :root[data-large-help='true'] .manual-page {
   font-size: 7px;
   line-height: 9px;
-}
-
-.stop-player {
-  left: 2px;
-}
-
-.enable-player-audio {
-  left: 52px;
 }
 
 .player-status {
