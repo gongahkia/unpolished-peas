@@ -37,7 +37,8 @@ import {
   type ProjectManifest,
 } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
-import mod01Logo from './assets/mod01-logo.png';
+import mod01Cursor from './assets/mod01-cursor.svg?inline';
+import mod01Logo from './assets/mod01-logo.png?inline';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { openCreationTool, type CreationTool } from './tools';
 
@@ -95,6 +96,9 @@ export class StudioApp {
   }
 
   public async boot(): Promise<void> {
+    delete document.documentElement.dataset.studioReady;
+    document.documentElement.style.setProperty('--mod01-cursor', `url("${mod01Cursor}") 2 2`);
+    const startup = this.playStartupSequence();
     this.stopPlayer();
     this.stopDebugger();
     this.applySettings(await this.repository.settings());
@@ -119,8 +123,71 @@ export class StudioApp {
         `AUTOLOAD ${this.activeProject.id} R${String(this.activeProject.revision)}`,
       ]);
     }
+    await startup;
     this.renderShell();
     document.documentElement.dataset.studioReady = 'true';
+  }
+
+  /** A short, skippable power-on sequence; all checks name local browser subsystems. */
+  private playStartupSequence(): Promise<void> {
+    this.root.innerHTML = `
+      <section class="display boot-screen" data-view="boot" aria-label="MOD-01 startup sequence">
+        <div class="boot-power" aria-hidden="true"></div>
+        <img class="boot-emblem" src="${mod01Logo}" alt="" />
+        <div class="boot-terminal" role="status" aria-live="polite" aria-label="MOD-01 startup checks">
+          <p class="boot-rom">MOD-01 SYSTEM ROM 1.0</p>
+        </div>
+        <button class="boot-skip" type="button">PRESS ENTER TO SKIP</button>
+      </section>
+    `;
+    const terminal = requireElement(this.root, '.boot-terminal');
+    const skip = requireElement(this.root, '.boot-skip') as HTMLButtonElement;
+    const checks = [
+      'POWER RELAY // WHIRR',
+      'VISUAL SRAM 128K ....... OK',
+      'SOUND ASIC / 8 VOICES ... OK',
+      'LOCAL STORE ............ OK',
+      'CARTRIDGE BUS .......... SCANNED',
+      'WORKER SANDBOX ......... ARMED',
+      'MODL/1 MONITOR ......... READY',
+    ];
+
+    return new Promise((resolve) => {
+      let finished = false;
+      const timers: number[] = [];
+      const finish = (): void => {
+        if (finished) return;
+        finished = true;
+        for (const timer of timers) window.clearTimeout(timer);
+        window.removeEventListener('keydown', onKeyDown);
+        skip.removeEventListener('click', finish);
+        this.root.querySelector<HTMLElement>('.boot-screen')?.classList.add('boot-complete');
+        resolve();
+      };
+      const onKeyDown = (event: KeyboardEvent): void => {
+        if (event.key !== 'Enter' && event.key !== ' ' && event.key !== 'Escape') return;
+        event.preventDefault();
+        finish();
+      };
+
+      skip.addEventListener('click', finish);
+      window.addEventListener('keydown', onKeyDown);
+      checks.forEach((check, index) => {
+        timers.push(
+          window.setTimeout(
+            () => {
+              if (finished) return;
+              const line = document.createElement('p');
+              line.className = 'boot-check';
+              line.textContent = check;
+              terminal.append(line);
+            },
+            100 + index * 125,
+          ),
+        );
+      });
+      timers.push(window.setTimeout(finish, 1_250));
+    });
   }
 
   private async installBundledCartridges(): Promise<number> {
