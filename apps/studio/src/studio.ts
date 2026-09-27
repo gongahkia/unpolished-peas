@@ -37,6 +37,7 @@ import {
   type ProjectManifest,
 } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
+import mod01Logo from './assets/mod01-logo.png';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { openCreationTool, type CreationTool } from './tools';
 
@@ -155,7 +156,7 @@ export class StudioApp {
   private renderShell(): void {
     this.root.innerHTML = `
       <section class="display shell" data-view="shell" aria-label="MOD-01 monitor shell">
-        <header class="system-bar"><span class="system-product-brand"><img class="shell-logo" src="./mod01-logo.png" alt="" />MOD-01</span><span class="active-cart"></span></header>
+        <header class="system-bar"><span class="system-product-brand"><img class="shell-logo" src="${mod01Logo}" alt="" />MOD-01</span><span class="active-cart"></span></header>
         <div class="terminal" role="log" aria-live="polite" aria-relevant="additions text"></div>
         <form class="command-line">
           <label for="command">&gt;</label>
@@ -1812,7 +1813,7 @@ export class StudioApp {
         ? [
             Object.assign(document.createElement('img'), {
               className: 'boot-logo',
-              src: './mod01-logo.png',
+              src: mod01Logo,
               alt: 'MOD-01 M01 logo',
             }),
           ]

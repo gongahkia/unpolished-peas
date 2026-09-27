@@ -254,7 +254,8 @@ fn escape_script_data(value: &str) -> String {
 }
 
 fn base64(bytes: &[u8]) -> String {
-    const BASE64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const BASE64_ALPHABET: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let first = u32::from(chunk[0]);
@@ -323,7 +324,7 @@ update_rate = 60
         assert!(first.contains("name=\"mod01-embed\""));
         assert!(first.contains("source/src/main.modl"));
         assert!(first.contains(&base64(&files["src/main.modl"])));
-        assert!(first.contains("\"rom\":\"UFgyNDBD"));
+        assert!(first.contains("\"rom\":\"TU9ELTAx"));
         assert!(first.contains("createConsoleRuntime"));
         assert!(!first.contains("https://"));
         assert!(!first.contains("SCRIPT </script> TEST"));

@@ -30,8 +30,8 @@ test('complete local Studio and distribution workflow', async ({
     if (message.type() === 'error') browserErrors.push(message.text());
   });
   page.on('request', (request) => {
-    if (auditRuntimeNetwork && /^https?:/.test(request.url()))
-      runtimeNetworkRequests.push(request.url());
+    const url = request.url();
+    if (auditRuntimeNetwork && /^https?:/.test(url)) runtimeNetworkRequests.push(url);
   });
 
   await page.goto('/');

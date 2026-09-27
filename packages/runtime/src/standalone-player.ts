@@ -162,13 +162,17 @@ async function frame(
   try {
     const result = await currentSandbox.frame(currentInput.poll());
     if (currentGeneration !== generation) return;
+    if (paused) {
+      requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
+      return;
+    }
     renderer.render(result.output.indexedPixels);
     audio?.enqueue(result.output.audio);
     if (result.saveCommit !== undefined) writeSave(result.saveCommit);
     status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
     requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
   } catch (error: unknown) {
-    if (currentGeneration !== generation || stopped) return;
+    if (currentGeneration !== generation) return;
     stopped = true;
     showError(error);
   }
