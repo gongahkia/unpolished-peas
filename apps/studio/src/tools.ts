@@ -18,7 +18,7 @@ import {
   type MusicAsset,
   type SoundAsset,
   type TrackerCell,
-} from '@px240c/runtime';
+} from '@mod01/runtime';
 
 import type { ProjectManifest } from './compiler';
 
@@ -84,7 +84,7 @@ interface MutableFontDocument {
 }
 
 function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
-  const path = 'assets/typeface.pxf';
+  const path = 'assets/typeface.m01f';
   const document = readJson<MutableFontDocument>(project.files[path], defaultFont());
   root.innerHTML = toolFrame(
     'BITMAP FONT',
@@ -95,11 +95,11 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
         <div><button data-font="prev">&lt;G</button><button data-font="next">G&gt;</button><input class="glyph-code" aria-label="Glyph code" type="number" min="0" max="255"><button data-font="add">+</button><button data-font="delete">-</button></div>
         <div><button data-font="undo">UNDO</button><button data-font="redo">REDO</button><button data-font="select">SELECT</button></div>
         <div><button data-font="flip-h">FLIP H</button><button data-font="flip-v">FLIP V</button><button data-font="rotate">ROTATE</button></div>
-        <div><button data-font-export>PXF OUT</button><label class="file-button">PXF IN<input class="font-file-input" type="file" accept=".pxf,application/json"></label></div>
+        <div><button data-font-export>M01F OUT</button><label class="file-button">M01F IN<input class="font-file-input" type="file" accept=".m01f,application/json"></label></div>
         <div class="font-metrics"><label>W <input data-font-metric="glyphWidth" type="number" min="1" max="16"></label><label>H <input data-font-metric="glyphHeight" type="number" min="1" max="16"></label><label>BASE <input data-font-metric="baseline" type="number" min="0" max="15"></label><label>AX <input data-font-metric="advanceX" type="number" min="1" max="32"></label><label>AY <input data-font-metric="advanceY" type="number" min="1" max="32"></label><label>MISS <input data-font-metric="missingGlyph" type="number" min="0" max="255"></label></div>
         <p class="capacity"></p>
       </div>
-      <label class="font-preview-label">TEXT <input class="font-preview-text" aria-label="Font preview text" maxlength="64" value="PX-240C ?"></label>
+      <label class="font-preview-label">TEXT <input class="font-preview-text" aria-label="Font preview text" maxlength="64" value="MOD-01 ?"></label>
       <canvas class="font-preview" width="128" height="24" aria-label="Font preview"></canvas>
     </div>`,
   );
@@ -368,7 +368,7 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
   });
   requireElement(root, '.font-preview-text').addEventListener('input', draw);
   root.querySelector('[data-font-export]')?.addEventListener('click', () => {
-    downloadToolBytes('typeface.pxf', encodeAssetFile(document), 'application/json');
+    downloadToolBytes('typeface.m01f', encodeAssetFile(document), 'application/json');
   });
   (requireElement(root, '.font-file-input') as HTMLInputElement).addEventListener(
     'change',
@@ -384,8 +384,8 @@ function openFontEditor(root: HTMLElement, project: ToolProject, callbacks: Tool
         .then((buffer) => {
           const bytes = new Uint8Array(buffer);
           const bundle = decodeRuntimeAssets(
-            { imported: { kind: 'font', path: 'imported.pxf' } },
-            { 'imported.pxf': bytes },
+            { imported: { kind: 'font', path: 'imported.m01f' } },
+            { 'imported.m01f': bytes },
           );
           const font = bundle.visual[0];
           if (font?.kind !== 'font') throw new TypeError('font file did not decode as a font');
@@ -431,7 +431,7 @@ interface SpriteDocument {
 }
 
 function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
-  const path = 'assets/hero.pxg';
+  const path = 'assets/hero.m01g';
   const document = readJson<SpriteDocument>(project.files[path], {
     revision: 1,
     kind: 'sprite',
@@ -735,12 +735,12 @@ async function openMapEditor(
     .filter(([, asset]) => asset.kind === 'map')
     .sort(([left], [right]) => left.localeCompare(right))[0];
   const mapName = mapEntry?.[0] ?? 'room';
-  const path = mapEntry?.[1].path ?? 'assets/room.pxm';
+  const path = mapEntry?.[1].path ?? 'assets/room.m01m';
   const declaredTileSets = Object.entries(manifest.assets)
     .filter(([, asset]) => asset.kind === 'tile_set')
     .sort(([left], [right]) => left.localeCompare(right));
   if (declaredTileSets.length === 0)
-    declaredTileSets.push(['tiles', { kind: 'tile_set', path: 'assets/tiles.pxg' }]);
+    declaredTileSets.push(['tiles', { kind: 'tile_set', path: 'assets/tiles.m01g' }]);
   const tileSets = new Map<string, { path: string; document: TileSetDocument }>();
   for (const [name, asset] of declaredTileSets) {
     const loaded = readJson<TileSetDocument>(project.files[asset.path], {
@@ -772,7 +772,7 @@ async function openMapEditor(
   for (const layer of document.layers) {
     if (!tileSets.has(layer.tileSet)) {
       tileSets.set(layer.tileSet, {
-        path: `assets/${layer.tileSet}.pxg`,
+        path: `assets/${layer.tileSet}.m01g`,
         document: {
           revision: 1,
           kind: 'tile_set',
@@ -1205,7 +1205,7 @@ function openPaletteEditor(
   project: ToolProject,
   callbacks: ToolCallbacks,
 ): void {
-  const path = 'assets/display.pxp';
+  const path = 'assets/display.m01p';
   const document = readJson<PaletteDocument>(project.files[path], {
     revision: 1,
     kind: 'display',
@@ -1407,7 +1407,7 @@ function openPaletteEditor(
 }
 
 function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
-  const path = 'assets/blip.pxs';
+  const path = 'assets/blip.m01s';
   const document = readJson<Record<string, unknown>>(project.files[path], defaultSound());
   root.innerHTML = toolFrame('SOUND EFFECT / 8V SYNTH', soundControls(document));
   bindCommon(root, callbacks);
@@ -1437,7 +1437,7 @@ function openSoundEditor(root: HTMLElement, project: ToolProject, callbacks: Too
 }
 
 function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
-  const path = 'assets/theme.pxt';
+  const path = 'assets/theme.m01t';
   const existing = readJson<Record<string, unknown> | undefined>(project.files[path], undefined);
   let song = musicDocument(existing);
   root.innerHTML = toolFrame(
@@ -1587,9 +1587,9 @@ function openMusicEditor(root: HTMLElement, project: ToolProject, callbacks: Too
     const usesBlip = Object.values(music.patterns).some((pattern) =>
       pattern.rows.some((row) => row.some((cell) => cell?.sound === 'blip')),
     );
-    if (usesBlip && project.files['assets/blip.pxs'] === undefined) {
-      project.files['assets/blip.pxs'] = encodeAssetFile(defaultSound());
-      project.manifest = upsertAsset(project.manifest, 'blip', 'sound', 'assets/blip.pxs');
+    if (usesBlip && project.files['assets/blip.m01s'] === undefined) {
+      project.files['assets/blip.m01s'] = encodeAssetFile(defaultSound());
+      project.manifest = upsertAsset(project.manifest, 'blip', 'sound', 'assets/blip.m01s');
     }
     project.files[path] = encodeMusicAssetFile(music);
     project.manifest = upsertAsset(project.manifest, 'theme', 'music', path);
@@ -1746,7 +1746,7 @@ function bindSave(root: HTMLElement, save: () => Promise<void>): void {
 
 function toolFrame(title: string, body: string): string {
   return `<section class="display asset-tool" data-view="tool" aria-label="${title}">
-    <header class="system-bar"><span>${title}</span><span>PXCL/1</span></header>
+    <header class="system-bar"><span>${title}</span><span>MODL/1</span></header>
     <main class="tool-stage">${body}</main>
     <p class="tool-status" role="status" aria-live="polite">READY</p>
     <footer class="tool-bar"><button type="button" data-common="back">ESC BACK</button><button type="button" data-common="save">F3 SAVE</button></footer>

@@ -6,7 +6,7 @@ export default defineConfig({
     lib: {
       entry: 'src/standalone-player.ts',
       formats: ['iife'],
-      name: 'PX240CStandalone',
+      name: 'MOD-01Standalone',
       fileName: () => 'player.js',
     },
     minify: false,

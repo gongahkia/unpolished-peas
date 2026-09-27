@@ -1,4 +1,4 @@
-# PX-240C source debugging
+# MOD-01 source debugging
 
 Run `debug` in the Studio monitor with a cartridge loaded. Studio compiles the complete project in
 debug mode from the same typed IR as a release build and starts a fresh restricted Worker. Debug
@@ -10,7 +10,7 @@ cannot silently overwrite player progress.
 
 - The initial cursor is before the first global initializer. `on start` is fully step-able. A
   separate `BOOT COMPLETE` boundary follows it and still precedes frame 0.
-- `IN` executes up to the next PXCL statement, including statements inside a called function or
+- `IN` executes up to the next MODL statement, including statements inside a called function or
   task. `OVER` continues until the next boundary at the same or shallower call depth. `OUT`
   continues until the current routine returns or the frame finishes.
 - `FRAME` advances until a whole display frame completes, unless a source breakpoint, condition, or
@@ -19,7 +19,7 @@ cannot silently overwrite player progress.
   debug build, Studio anchors each breakpoint to its trimmed source statement and moves it to the
   nearest matching line; entries whose statement was deleted are discarded.
 - A condition is evaluated at the pre-statement boundary. The evaluator is a restricted,
-  non-mutating PXCL expression interpreter, never JavaScript `eval`. It supports literals, names,
+  non-mutating MODL expression interpreter, never JavaScript `eval`. It supports literals, names,
   fields, collection indices, parentheses, `not`, arithmetic, comparisons, `and`, and `or`. Calls,
   assignments, prototype fields, and a non-`Bool` result are rejected.
 
@@ -32,7 +32,7 @@ returns all devices to the last completed boot/frame snapshot.
 
 ## Source, state, tasks, and watches
 
-The compiler emits source-map v3 data with every reachable original `.pxl` module and maps yielded
+The compiler emits source-map v3 data with every reachable original `.modl` module and maps yielded
 statement spans and call-stack frames back through import removal and namespace rewriting. SOURCE
 automatically follows the current module. STATE combines live globals and locals using stable symbol
 IDs. TASKS shows the live call stack with module/line positions plus serialized task program

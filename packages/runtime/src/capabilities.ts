@@ -24,7 +24,7 @@ export function lockDownWorkerGlobals(target: Record<string, unknown>): void {
         writable: false,
       });
     } catch {
-      // Some browser globals are non-configurable; PXCL code still has no syntax that can name them.
+      // Some browser globals are non-configurable; MODL code still has no syntax that can name them.
     }
   }
   const deterministicMath = Object.freeze({

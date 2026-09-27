@@ -181,7 +181,7 @@ export class DeterministicMachine implements CartridgeApi {
 
   public runFrame(input: InputFrame): FrameReport {
     if (!isInputFrame(input))
-      throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+      throw new RuntimeFault('M019008', 'invalid controller input frame', { start: 0, end: 0 });
     this.assertRunnable();
     if (this.debugEnabled) {
       for (;;) {
@@ -228,12 +228,12 @@ export class DeterministicMachine implements CartridgeApi {
   /** Advances a debug build to exactly one statement boundary or one completed frame. */
   public stepDebug(input: InputFrame): MachineDebugStep {
     if (!this.debugEnabled)
-      throw new RuntimeFault('PX9015', 'statement stepping requires a debug cartridge', {
+      throw new RuntimeFault('M019015', 'statement stepping requires a debug cartridge', {
         start: 0,
         end: 0,
       });
     if (!isInputFrame(input))
-      throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+      throw new RuntimeFault('M019008', 'invalid controller input frame', { start: 0, end: 0 });
     if (this.lastFault !== null) this.assertRunnable();
     try {
       if (this.phase === 'idle') {
@@ -357,7 +357,7 @@ export class DeterministicMachine implements CartridgeApi {
 
   public restore(value: unknown): void {
     if (!isMachineSnapshot(value)) {
-      throw new TypeError('invalid PX-240C machine snapshot');
+      throw new TypeError('invalid MOD-01 machine snapshot');
     }
     const snapshot = value;
     if (
@@ -425,14 +425,14 @@ export class DeterministicMachine implements CartridgeApi {
   public assertRunnable(): void {
     if (this.lastFault !== null)
       throw new RuntimeFault(
-        'PX9014',
+        'M019014',
         'cartridge faulted; restart or restore a healthy checkpoint',
         this.lastFault.sourceSpan,
       );
     if (this.phase !== 'idle')
-      throw new RuntimeFault('PX9014', 'cartridge is already executing', { start: 0, end: 0 });
+      throw new RuntimeFault('M019014', 'cartridge is already executing', { start: 0, end: 0 });
     if (this.currentFrame === Number.MAX_SAFE_INTEGER)
-      this.fault('PX9012', 'display-frame counter is exhausted', { start: 0, end: 0 });
+      this.fault('M019012', 'display-frame counter is exhausted', { start: 0, end: 0 });
   }
 
   public work(units: number, sourceSpan: SourceSpan): void {
@@ -457,7 +457,7 @@ export class DeterministicMachine implements CartridgeApi {
           return this.rng.nextInt(minimum, maximum);
         } catch (error: unknown) {
           return this.fault(
-            'PX9007',
+            'M019007',
             error instanceof Error ? error.message : 'invalid RNG bounds',
             sourceSpan,
           );
@@ -493,7 +493,7 @@ export class DeterministicMachine implements CartridgeApi {
         const port = expectInteger(arguments_[0], sourceSpan);
         const button = arguments_[1];
         if (port < 0 || port >= 4 || !isButton(button)) {
-          return this.fault('PX9008', 'invalid controller port or button', sourceSpan);
+          return this.fault('M019008', 'invalid controller port or button', sourceSpan);
         }
         const pressed = this.input.controllers[port]?.buttons[button] ?? false;
         if (name === 'btn') {
@@ -524,7 +524,7 @@ export class DeterministicMachine implements CartridgeApi {
         };
         const result = this.hooks.call?.(name, arguments_, sourceSpan, context);
         if (this.hooks.call === undefined) {
-          return this.fault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
+          return this.fault('M019004', `console API call '${name}' is unavailable`, sourceSpan);
         }
         return result;
       }
@@ -604,7 +604,7 @@ function expectArguments(
 ): void {
   if (arguments_.length !== count) {
     throw new RuntimeFault(
-      'PX9009',
+      'M019009',
       `${name} expected ${String(count)} arguments, received ${String(arguments_.length)}`,
       sourceSpan,
     );
@@ -613,7 +613,7 @@ function expectArguments(
 
 function expectNumber(value: unknown, sourceSpan: SourceSpan): number {
   if (typeof value !== 'number' || !Number.isFinite(value)) {
-    throw new RuntimeFault('PX9009', 'expected a finite number', sourceSpan);
+    throw new RuntimeFault('M019009', 'expected a finite number', sourceSpan);
   }
   return value;
 }
@@ -621,7 +621,7 @@ function expectNumber(value: unknown, sourceSpan: SourceSpan): number {
 function expectInteger(value: unknown, sourceSpan: SourceSpan): number {
   const number = expectNumber(value, sourceSpan);
   if (!Number.isSafeInteger(number)) {
-    throw new RuntimeFault('PX9009', 'expected a safe integer', sourceSpan);
+    throw new RuntimeFault('M019009', 'expected a safe integer', sourceSpan);
   }
   return number;
 }

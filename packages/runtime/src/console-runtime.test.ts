@@ -38,7 +38,7 @@ const factory: CartridgeFactory = (api) => ({
 describe('production console dispatcher', () => {
   it('exposes cloned ROM/status bytes and permits debugger-only transactional RAM edits', () => {
     let observed = -1;
-    const rom = Uint8Array.of(80, 88, 50, 52, 48, 67, 26, 1, 3, 0, 0, 0, 77);
+    const rom = Uint8Array.of(77, 79, 68, 45, 48, 49, 26, 1, 3, 0, 0, 0, 77);
     const runtime = createConsoleRuntime(
       (api) => ({
         ...factory(api),
@@ -64,17 +64,17 @@ describe('production console dispatcher', () => {
     expect(runtime.inspectMemory(MEMORY.ram, 2).bytes).toEqual(Uint8Array.of(9, 8));
     expect(() => {
       runtime.editMemory(MEMORY.cartridgeRom, Uint8Array.of(0));
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     runtime.runFrame(emptyInputFrame());
     expect(observed).toBe(77);
 
     const release = createConsoleRuntime(factory, { ...configuration, rom });
     expect(() => {
       release.inspectMemory(0, 1);
-    }).toThrow(expect.objectContaining({ code: 'PX9104' }));
+    }).toThrow(expect.objectContaining({ code: 'M019104' }));
     expect(() => {
       release.editMemory(0, Uint8Array.of(1));
-    }).toThrow(expect.objectContaining({ code: 'PX9104' }));
+    }).toThrow(expect.objectContaining({ code: 'M019104' }));
   });
 
   it('latches output-stage audio exhaustion before advancing the completed frame counter', () => {
@@ -90,11 +90,11 @@ describe('production console dispatcher', () => {
         ...configuration,
         assets: {
           declarations: {
-            tone: { kind: 'sound', path: 'tone.pxs' },
-            song: { kind: 'music', path: 'song.pxt' },
+            tone: { kind: 'sound', path: 'tone.m01s' },
+            song: { kind: 'music', path: 'song.m01t' },
           },
           files: {
-            'tone.pxs': new TextEncoder().encode(
+            'tone.m01s': new TextEncoder().encode(
               JSON.stringify({
                 revision: 1,
                 kind: 'sound',
@@ -111,7 +111,7 @@ describe('production console dispatcher', () => {
                 },
               }),
             ),
-            'song.pxt': new TextEncoder().encode(
+            'song.m01t': new TextEncoder().encode(
               JSON.stringify({
                 revision: 1,
                 kind: 'music',
@@ -135,7 +135,7 @@ describe('production console dispatcher', () => {
       audio: { ...healthy.audio, nextSequence: Number.MAX_SAFE_INTEGER },
     });
     expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9012' }),
+      expect.objectContaining({ code: 'M019012' }),
     );
     const faulted = runtime.snapshot();
     expect(faulted.machine.frame).toBe(0);
@@ -148,7 +148,7 @@ describe('production console dispatcher', () => {
       fault: { code: 9012, sourceSpan: { start: 0, end: 0 } },
     });
     expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9014' }),
+      expect.objectContaining({ code: 'M019014' }),
     );
     deepStrictEqual(runtime.snapshot(), faulted);
     runtime.restore(healthy);
@@ -168,7 +168,7 @@ describe('production console dispatcher', () => {
         },
         { ...configuration, workUnitsPerFrame: 50_001 },
       ),
-    ).toThrow(expect.objectContaining({ code: 'PX9100' }));
+    ).toThrow(expect.objectContaining({ code: 'M019100' }));
     expect(constructed).toBe(false);
   });
 
@@ -187,7 +187,7 @@ describe('production console dispatcher', () => {
     const input = emptyInputFrame();
     expect(() => {
       runtime.runFrame({ ...input, pointer: { ...input.pointer, x: 240 } });
-    }).toThrow(expect.objectContaining({ code: 'PX9008' }));
+    }).toThrow(expect.objectContaining({ code: 'M019008' }));
     deepStrictEqual(runtime.snapshot(), before);
   });
 
@@ -279,9 +279,9 @@ describe('production console dispatcher', () => {
       {
         ...configuration,
         assets: {
-          declarations: { dot: { kind: 'sprite', path: 'dot.pxg' } },
+          declarations: { dot: { kind: 'sprite', path: 'dot.m01g' } },
           files: {
-            'dot.pxg': new TextEncoder().encode(
+            'dot.m01g': new TextEncoder().encode(
               JSON.stringify({ revision: 1, kind: 'sprite', width: 1, height: 1, frames: [[7]] }),
             ),
           },
@@ -361,7 +361,7 @@ describe('production console dispatcher', () => {
     );
     const healthy = runtime.snapshot();
     expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9021' }),
+      expect.objectContaining({ code: 'M019021' }),
     );
     const faulted = runtime.snapshot();
     expect(faulted.machine.execution).toEqual({
@@ -373,7 +373,7 @@ describe('production console dispatcher', () => {
     });
     for (let attempt = 0; attempt < 2; attempt += 1) {
       expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
-        expect.objectContaining({ code: 'PX9014' }),
+        expect.objectContaining({ code: 'M019014' }),
       );
       deepStrictEqual(runtime.snapshot(), faulted);
     }
@@ -382,7 +382,7 @@ describe('production console dispatcher', () => {
     runtime.restore(faulted);
     deepStrictEqual(runtime.snapshot(), faulted);
     expect(() => runtime.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9014' }),
+      expect.objectContaining({ code: 'M019014' }),
     );
   });
 
@@ -448,7 +448,7 @@ describe('production console dispatcher', () => {
       configuration,
     );
     expect(() => illegalRaster.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9011', sourceSpan: span }),
+      expect.objectContaining({ code: 'M019011', sourceSpan: span }),
     );
     const commands = createConsoleRuntime(
       (api) => ({
@@ -460,25 +460,25 @@ describe('production console dispatcher', () => {
       configuration,
     );
     expect(() => commands.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9010', sourceSpan: span }),
+      expect.objectContaining({ code: 'M019010', sourceSpan: span }),
     );
     const limited = createConsoleRuntime(factory, { ...configuration, workUnitsPerFrame: 2 });
     expect(() => limited.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9001', sourceSpan: span }),
+      expect.objectContaining({ code: 'M019001', sourceSpan: span }),
     );
   });
 
   it('reports source-mapped bus faults without changing memory for invalid operations', () => {
     const operations: readonly [string, number[], string][] = [
-      ['mem_read', [-1], 'PX9020'],
-      ['mem_read16', [MEMORY.size - 1], 'PX9020'],
-      ['mem_write', [MEMORY.palette, 0], 'PX9021'],
-      ['mem_write', [MEMORY.transparency, 1], 'PX9021'],
-      ['mem_write', [MEMORY.display, 0], 'PX9021'],
-      ['mem_write', [MEMORY.rasterLive, 0], 'PX9021'],
-      ['mem_write', [MEMORY.back, 32], 'PX9022'],
-      ['mem_write16', [0, 65536], 'PX9022'],
-      ['mem_fill', [MEMORY.back, 1, 50_000], 'PX9001'],
+      ['mem_read', [-1], 'M019020'],
+      ['mem_read16', [MEMORY.size - 1], 'M019020'],
+      ['mem_write', [MEMORY.palette, 0], 'M019021'],
+      ['mem_write', [MEMORY.transparency, 1], 'M019021'],
+      ['mem_write', [MEMORY.display, 0], 'M019021'],
+      ['mem_write', [MEMORY.rasterLive, 0], 'M019021'],
+      ['mem_write', [MEMORY.back, 32], 'M019022'],
+      ['mem_write16', [0, 65536], 'M019022'],
+      ['mem_fill', [MEMORY.back, 1, 50_000], 'M019001'],
     ];
     for (const [name, args, code] of operations) {
       const runtime = createConsoleRuntime(

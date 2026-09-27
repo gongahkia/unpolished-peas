@@ -1,4 +1,4 @@
-# PX-240C limits and calibration
+# MOD-01 limits and calibration
 
 The public profile was frozen during alpha after building and running all three original game cartridges through
 the public compiler, packer, worker, indexed renderer, and asset decoder. Work units are synthetic
@@ -6,12 +6,12 @@ deterministic costs, not elapsed time or CPU instructions. Measurements below ar
 active-play frames observed in the production Studio on 2026-09-07; control flow can vary slightly,
 and the enforced ceiling remains the authority.
 
-| Cartridge      | Packed `.pxc` | Visual store | Release JS | Representative work/frame |
-| -------------- | ------------: | -----------: | ---------: | ------------------------: |
-| Cinder Circuit |      42,121 B |      9,766 B |   13,896 B |                     3,342 |
-| Ashvault       |      40,532 B |        288 B |   18,832 B |                    12,031 |
-| Raster Rush 1P |      37,311 B |        160 B |   16,546 B |                    28,034 |
-| Raster Rush 4P |      37,311 B |        160 B |   16,546 B |                    31,682 |
+| Cartridge      | Packed `.m01c` | Visual store | Release JS | Representative work/frame |
+| -------------- | -------------: | -----------: | ---------: | ------------------------: |
+| Cinder Circuit |       42,121 B |      9,766 B |   13,896 B |                     3,342 |
+| Ashvault       |       40,532 B |        288 B |   18,832 B |                    12,031 |
+| Raster Rush 1P |       37,311 B |        160 B |   16,546 B |                    28,034 |
+| Raster Rush 4P |       37,311 B |        160 B |   16,546 B |                    31,682 |
 
 Raster Rush four-player is the governing frame case at about 63% of the 50,000-unit ceiling. It
 executes four independent controller paths and view projections plus 144 raster callbacks while
@@ -32,16 +32,16 @@ map to the visible camera/clip region.
 
 ## V1 complete-artifact size classes
 
-The class meter uses exact canonical `.pxc` length: 4K is <=4,096 bytes, 16K <=16,384, 64K
+The class meter uses exact canonical `.m01c` length: 4K is <=4,096 bytes, 16K <=16,384, 64K
 <=65,536, and 256K <=262,144. It includes source, assets, metadata, hashes, compression and container
 overhead. `compile_on_load = true` may remove archived generated JS only while retaining the original
 source plus expected generated-program length/hash.
 
-| Cartridge         | Complete `.pxc` | Class | Five-frame headless work peak |
-| ----------------- | --------------: | ----: | ----------------------------: |
-| Signal 4K         |         2,364 B |    4K |                         5,529 |
-| Pocket Relay      |         4,609 B |   16K |                         4,743 |
-| Hardware Gauntlet |         4,619 B |   16K |                         8,266 |
+| Cartridge         | Complete `.m01c` | Class | Five-frame headless work peak |
+| ----------------- | ---------------: | ----: | ----------------------------: |
+| Signal 4K         |          2,364 B |    4K |                         5,529 |
+| Pocket Relay      |          4,609 B |   16K |                         4,743 |
+| Hardware Gauntlet |          4,619 B |   16K |                         8,266 |
 
 Hardware Gauntlet is the required <=64K stress showcase; its compact public-API implementation also
 qualifies for the stricter 16K class. This is reported as measured rather than padded to a badge.
@@ -50,16 +50,16 @@ The final V1 section accountant reports the following empty-input 60-frame profi
 gameplay compatibility paths remain separately frozen at 10,477/19,140/31,722 peak work,
 90/120/470 draw commands and 4/5/5 active voices.
 
-| Cartridge         | `.pxc` | Source | Release JS | Visual |   Work | Draw | Voices | Bus mapped |
-| ----------------- | -----: | -----: | ---------: | -----: | -----: | ---: | -----: | ---------: |
-| Cinder Circuit    | 42,904 |  5,163 |     14,689 | 10,695 | 10,477 |   90 |      0 |    366,905 |
-| Ashvault          | 41,315 |  6,574 |     19,623 |    908 | 13,485 |   84 |      0 |    365,204 |
-| Raster Rush 99    | 38,091 |  6,355 |     17,337 |    440 | 11,326 |   21 |      0 |    361,868 |
-| Service cartridge | 27,869 |  5,244 |     15,060 |      0 |  5,130 |   12 |      1 |    351,382 |
-| Signal 4K         |  2,364 |    600 |      4,699 |      0 |  5,769 |   20 |      1 |    325,877 |
-| Pocket Relay      |  4,609 |  1,354 |      5,965 |    711 |  4,743 |   18 |      0 |    328,210 |
-| Hardware Gauntlet |  4,619 |  1,941 |      8,543 |    407 |  8,282 |  150 |      1 |    328,188 |
-| First Signal      | 11,706 |  1,558 |      6,025 |      0 |  1,413 |    6 |      0 |    335,219 |
+| Cartridge         | `.m01c` | Source | Release JS | Visual |   Work | Draw | Voices | Bus mapped |
+| ----------------- | ------: | -----: | ---------: | -----: | -----: | ---: | -----: | ---------: |
+| Cinder Circuit    |  42,904 |  5,163 |     14,689 | 10,695 | 10,477 |   90 |      0 |    366,905 |
+| Ashvault          |  41,315 |  6,574 |     19,623 |    908 | 13,485 |   84 |      0 |    365,204 |
+| Raster Rush 99    |  38,091 |  6,355 |     17,337 |    440 | 11,326 |   21 |      0 |    361,868 |
+| Service cartridge |  27,869 |  5,244 |     15,060 |      0 |  5,130 |   12 |      1 |    351,382 |
+| Signal 4K         |   2,364 |    600 |      4,699 |      0 |  5,769 |   20 |      1 |    325,877 |
+| Pocket Relay      |   4,609 |  1,354 |      5,965 |    711 |  4,743 |   18 |      0 |    328,210 |
+| Hardware Gauntlet |   4,619 |  1,941 |      8,543 |    407 |  8,282 |  150 |      1 |    328,188 |
+| First Signal      |  11,706 |  1,558 |      6,025 |      0 |  1,413 |    6 |      0 |    335,219 |
 
 No limit required adjustment from the brief's initial values; the previously unspecified work
 ceiling is frozen at 50,000. Later format revisions may change a profile only with a revisioned,
@@ -69,9 +69,9 @@ measured compatibility decision.
 
 ```sh
 node scripts/generate-cartridge-assets.mjs
-cargo test -p px240c-cli --test cli bundled_cartridges_compile_and_pack_within_capacity
+cargo test -p mod01-cli --test cli bundled_cartridges_compile_and_pack_within_capacity
 pnpm test -- --run packages/runtime/src/bundled-cartridges.test.ts
-pnpm --filter @px240c/studio build
+pnpm --filter @mod01/studio build
 ./scripts/verify-release-artifacts.sh
 ```
 

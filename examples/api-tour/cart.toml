@@ -1,27 +1,27 @@
 format = 1
-language = "PXCL/1"
+language = "MODL/1"
 id = "api-tour"
-title = "PXCL API TOUR"
+title = "MODL API TOUR"
 author = "@gongahkia"
 version = "1.0.0"
-entry = "src/main.pxl"
+entry = "src/main.modl"
 update_rate = 60
 
 [assets.dot]
 kind = "sprite"
-path = "assets/dot.pxg"
+path = "assets/dot.m01g"
 [assets.tiles]
 kind = "tile_set"
-path = "assets/tiles.pxg"
+path = "assets/tiles.m01g"
 [assets.room]
 kind = "map"
-path = "assets/room.pxm"
+path = "assets/room.m01m"
 [assets.typeface]
 kind = "font"
-path = "assets/typeface.pxf"
+path = "assets/typeface.m01f"
 [assets.beep]
 kind = "sound"
-path = "assets/beep.pxs"
+path = "assets/beep.m01s"
 [assets.loop]
 kind = "music"
-path = "assets/loop.pxt"
+path = "assets/loop.m01t"

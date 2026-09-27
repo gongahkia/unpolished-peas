@@ -4,7 +4,7 @@ import { execFileSync } from 'node:child_process';
 import { expect, test, type Page } from '@playwright/test';
 
 async function shellCommand(page: Page, command: string): Promise<void> {
-  const input = page.getByLabel('PX-240C command');
+  const input = page.getByLabel('MOD-01 command');
   await expect(input).toBeEnabled();
   await input.fill(command);
   await input.press('Enter');
@@ -36,12 +36,12 @@ test('complete local Studio and distribution workflow', async ({
 
   await page.goto('/');
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
-  await expect(page.locator('[data-view="shell"]')).toContainText('PXCL/1 READY');
+  await expect(page.locator('[data-view="shell"]')).toContainText('MODL/1 READY');
   await expect
     .poll(() =>
       page.evaluate(async () => {
         await document.fonts.ready;
-        return document.fonts.check('8px "PX-240C Bitmap"');
+        return document.fonts.check('8px "MOD-01 Bitmap"');
       }),
     )
     .toBe(true);
@@ -50,11 +50,11 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('.terminal')).toContainText('cinder-circuit');
   await expect(page.locator('.terminal')).toContainText('ashvault');
   await expect(page.locator('.terminal')).toContainText('raster-rush');
-  await expect(page.locator('.terminal')).toContainText('px240c-service');
+  await expect(page.locator('.terminal')).toContainText('mod01-service');
   await expect(page.locator('.terminal')).toContainText('signal-4k');
   await expect(page.locator('.terminal')).toContainText('pocket-relay');
   await expect(page.locator('.terminal')).toContainText('hardware-gauntlet');
-  await expect(page.locator('.terminal')).toContainText('pxcl-tutorial');
+  await expect(page.locator('.terminal')).toContainText('modl-tutorial');
   auditRuntimeNetwork = true;
 
   for (const cartridge of [
@@ -89,7 +89,7 @@ test('complete local Studio and distribution workflow', async ({
     await expect(page.locator('[data-view="shell"]')).toBeVisible();
   }
 
-  await shellCommand(page, 'run px240c-service');
+  await shellCommand(page, 'run mod01-service');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
   await expect
     .poll(async () => {
@@ -100,7 +100,7 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('.player-status')).not.toHaveClass(/error/);
   await page.locator('.stop-player').click();
 
-  for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet', 'pxcl-tutorial']) {
+  for (const id of ['signal-4k', 'pocket-relay', 'hardware-gauntlet', 'modl-tutorial']) {
     await shellCommand(page, `run ${id}`);
     await expect
       .poll(async () => {
@@ -113,7 +113,7 @@ test('complete local Studio and distribution workflow', async ({
   }
   await shellCommand(page, 'debug signal-4k');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toContainText('main.pxl');
+  await expect(page.locator('.debug-status')).toContainText('main.modl');
   await page.locator('[data-debug="back"]').click();
 
   await shellCommand(page, 'help mem_read');
@@ -136,7 +136,7 @@ test('complete local Studio and distribution workflow', async ({
   await shellCommand(page, 'edit');
   await page
     .locator('textarea.source-input')
-    .fill(await readFile('tests/conformance/memory.pxl', 'utf8'));
+    .fill(await readFile('tests/conformance/memory.modl', 'utf8'));
   await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
   await page.locator('[data-action="back"]').click();
   await shellCommand(page, 'run');
@@ -176,8 +176,8 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('.manual-page')).toContainText('Hardware Revision 1');
   await page.locator('[data-back]').click();
 
-  const visualCartridge = testInfo.outputPath('visual-conformance.pxc');
-  execFileSync('target/debug/px240c', [
+  const visualCartridge = testInfo.outputPath('visual-conformance.m01c');
+  execFileSync('target/debug/mod01', [
     'pack',
     'tests/conformance/visual',
     '--output',
@@ -195,8 +195,8 @@ test('complete local Studio and distribution workflow', async ({
     .toBeGreaterThanOrEqual(3);
   await page.locator('.stop-player').click();
 
-  const audioCartridge = testInfo.outputPath('audio-conformance.pxc');
-  execFileSync('target/debug/px240c', [
+  const audioCartridge = testInfo.outputPath('audio-conformance.m01c');
+  execFileSync('target/debug/mod01', [
     'pack',
     'tests/conformance/audio',
     '--output',
@@ -218,7 +218,7 @@ test('complete local Studio and distribution workflow', async ({
   await shellCommand(page, 'edit');
   await page
     .locator('textarea.source-input')
-    .fill(await readFile('tests/conformance/input.pxl', 'utf8'));
+    .fill(await readFile('tests/conformance/input.modl', 'utf8'));
   await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
   await page.locator('[data-action="back"]').click();
   await shellCommand(page, 'run');
@@ -240,7 +240,7 @@ test('complete local Studio and distribution workflow', async ({
   await shellCommand(page, 'edit');
   await page
     .locator('textarea.source-input')
-    .fill(await readFile('tests/conformance/system.pxl', 'utf8'));
+    .fill(await readFile('tests/conformance/system.modl', 'utf8'));
   await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
   await page.locator('[data-action="back"]').click();
   await shellCommand(page, 'run');
@@ -264,7 +264,7 @@ test('complete local Studio and distribution workflow', async ({
   await shellCommand(page, 'edit');
   await page
     .locator('textarea.source-input')
-    .fill(await readFile('tests/conformance/boot.pxl', 'utf8'));
+    .fill(await readFile('tests/conformance/boot.modl', 'utf8'));
   await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
   await page.locator('[data-action="back"]').click();
   await shellCommand(page, 'run');
@@ -297,7 +297,7 @@ on draw:
   await shellCommand(page, 'edit');
   await page
     .locator('textarea.source-input')
-    .fill(await readFile('tests/conformance/save.pxl', 'utf8'));
+    .fill(await readFile('tests/conformance/save.modl', 'utf8'));
   await expect(page.locator('.diagnostic-strip')).toContainText('AUTOSAVED R');
   await page.locator('[data-action="back"]').click();
   await shellCommand(page, 'run');
@@ -315,7 +315,7 @@ on draw:
   await expect(page.locator('[data-view="share"]')).toBeVisible();
   await expect(page.locator('[data-view="share"]')).toContainText('FRAGMENT ONLY / NO UPLOAD');
   const shareUrl = await page.getByLabel('Cartridge share URL').inputValue();
-  expect(shareUrl).toContain('#pxc=');
+  expect(shareUrl).toContain('#m01c=');
   expect(shareUrl.length).toBeLessThanOrEqual(8_256);
   const fragmentRequests: string[] = [];
   const fragmentPage = await context.newPage();
@@ -323,12 +323,12 @@ on draw:
   await fragmentPage.goto(shareUrl);
   await expect(fragmentPage.locator('html')).toHaveAttribute('data-studio-ready', 'true');
   await expect(fragmentPage.locator('.terminal')).toContainText('FRAGMENT IMPORT e2e-link');
-  expect(fragmentRequests.every((url) => !url.includes('pxc='))).toBe(true);
+  expect(fragmentRequests.every((url) => !url.includes('m01c='))).toBe(true);
   await fragmentPage.close();
   await page.locator('[data-back]').click();
 
   await shellCommand(page, 'shelf');
-  await expect(page.locator('[data-view="shelf"]')).toContainText('PX-240C CART BAY');
+  await expect(page.locator('[data-view="shelf"]')).toContainText('MOD-01 CART BAY');
   await page.locator('.shelf-item[data-id="e2e-link"]').click();
   await page.locator('[data-shelf="play"]').click();
   await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
@@ -336,7 +336,7 @@ on draw:
   await shellCommand(page, 'shelf');
   await page.locator('.shelf-item[data-id="e2e-link"]').click();
   await page.locator('[data-shelf="source"]').click();
-  await page.getByRole('button', { name: 'main.pxl' }).click();
+  await page.getByRole('button', { name: 'main.modl' }).click();
   await expect(page.locator('[data-view="inspector"]')).toContainText('Made by @gongahkia');
   await page.locator('[data-back]').click();
   await shellCommand(page, 'shelf');
@@ -360,7 +360,7 @@ on draw:
   await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
   const shelfExportPromise = page.waitForEvent('download');
   await page.locator('[data-shelf="export"]').click();
-  expect((await shelfExportPromise).suggestedFilename()).toBe('e2e-link.copy.pxc');
+  expect((await shelfExportPromise).suggestedFilename()).toBe('e2e-link.copy.m01c');
   await shellCommand(page, 'shelf');
   await page.locator('.shelf-item[data-id="e2e-link.copy"]').click();
   await page.locator('[data-shelf="remove"]').click();
@@ -383,7 +383,7 @@ on draw:
   const saveDownloadPromise = page.waitForEvent('download');
   await page.locator('[data-save="out"]').click();
   const saveDownload = await saveDownloadPromise;
-  expect(saveDownload.suggestedFilename()).toBe('e2e-save.pxsave');
+  expect(saveDownload.suggestedFilename()).toBe('e2e-save.m01save');
   const savePath = await saveDownload.path();
   expect(savePath).not.toBeNull();
   await page.locator('[data-save="reset"]').click();
@@ -481,14 +481,14 @@ on draw:
   await shellCommand(page, 'debug');
   await expect(page.locator('[data-view="debugger"]')).toBeVisible();
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:3 / DEPTH 0');
-  await expect(page.locator('.debug-location')).toContainText('F0000 main.pxl:L3');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.modl:3 / DEPTH 0');
+  await expect(page.locator('.debug-location')).toContainText('F0000 main.modl:L3');
   await expect(page.locator('.debug-output')).toContainText('state player_x: Int = 112');
   await page.locator('[data-debug="in"]').click();
   await expect(page.locator('.debug-status')).toHaveText('BOOT COMPLETE');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:6 / DEPTH 1');
-  await expect(page.locator('.debug-location')).toContainText('F0000 main.pxl:L6');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.modl:6 / DEPTH 1');
+  await expect(page.locator('.debug-location')).toContainText('F0000 main.modl:L6');
   await page.locator('[data-debug="frame"]').click();
   await expect(page.locator('.debug-status')).toHaveText('PAUSED AT FRAME 1');
   await page.getByLabel('Watch expression').fill('player_x');
@@ -586,7 +586,7 @@ on draw:
   const packedDownload = await packedDownloadPromise;
   const packedPath = await packedDownload.path();
   expect(packedPath).not.toBeNull();
-  await expect(page.locator('.terminal')).toContainText(/PACKED e2e-alpha\.pxc \d+ BYTES/);
+  await expect(page.locator('.terminal')).toContainText(/PACKED e2e-alpha\.m01c \d+ BYTES/);
 
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(packedPath);
@@ -596,7 +596,7 @@ on draw:
   const cartridgePngPromise = page.waitForEvent('download');
   await shellCommand(page, 'cart');
   const cartridgePng = await cartridgePngPromise;
-  expect(cartridgePng.suggestedFilename()).toBe('e2e-alpha.pxc.png');
+  expect(cartridgePng.suggestedFilename()).toBe('e2e-alpha.m01c.png');
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(await cartridgePng.path());
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
@@ -626,8 +626,8 @@ on draw:
   expect(zipHtml).toBe(await readFile(htmlPath, 'utf8'));
 
   const exportContext = await browser.newContext({ serviceWorkers: 'block' });
-  const exportedPlayerUrl = 'http://127.0.0.1:4173/__px240c_export.html';
-  await exportContext.route('**/__px240c_export.html', async (route) => {
+  const exportedPlayerUrl = 'http://127.0.0.1:4173/__mod01_export.html';
+  await exportContext.route('**/__mod01_export.html', async (route) => {
     await route.fulfill({ contentType: 'text/html', body: zipHtml });
   });
 
@@ -665,17 +665,17 @@ on draw:
   await writeFile(
     `${moduleProject}/cart.toml`,
     `format = 1
-language = "PXCL/1"
+language = "MODL/1"
 id = "e2e-modules"
 title = "E2E MODULES"
 author = "@gongahkia"
 version = "1.0.0"
-entry = "src/main.pxl"
+entry = "src/main.modl"
 update_rate = 60
 `,
   );
   await writeFile(
-    `${moduleProject}/src/main.pxl`,
+    `${moduleProject}/src/main.modl`,
     `import src.math as math
 state result: Int = 0
 on update:
@@ -685,39 +685,39 @@ on draw:
 `,
   );
   await writeFile(
-    `${moduleProject}/src/math.pxl`,
+    `${moduleProject}/src/math.modl`,
     `fn twice(value: Int) -> Int:
   var result = value
   result += value
   return result
 `,
   );
-  const moduleCartridge = testInfo.outputPath('e2e-modules.pxc');
-  execFileSync('target/debug/px240c', ['pack', moduleProject, '--output', moduleCartridge]);
+  const moduleCartridge = testInfo.outputPath('e2e-modules.m01c');
+  execFileSync('target/debug/mod01', ['pack', moduleProject, '--output', moduleCartridge]);
   await shellCommand(page, 'import');
   await page.locator('input[type="file"]').setInputFiles(moduleCartridge);
   await expect(page.locator('.terminal')).toContainText('IMPORTED e2e-modules');
   await shellCommand(page, 'debug');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:2 / DEPTH 0');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.modl:2 / DEPTH 0');
   await page.locator('[data-debug="in"]').click();
   await expect(page.locator('.debug-status')).toHaveText('BOOT COMPLETE');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.pxl:4 / DEPTH 1');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED main.modl:4 / DEPTH 1');
   await page.locator('[data-debug="in"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('PAUSED math.pxl:2 / DEPTH 2');
-  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.pxl');
+  await expect(page.locator('.debug-status')).toHaveText('PAUSED math.modl:2 / DEPTH 2');
+  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.modl');
   await page.getByLabel('Breakpoint line').fill('3');
   await page.locator('[data-debug="break"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('BREAKPOINT math.pxl:3');
+  await expect(page.locator('.debug-status')).toHaveText('BREAKPOINT math.modl:3');
   await page.locator('[data-debug="frame"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('BREAK math.pxl:3 / FRAME 0');
+  await expect(page.locator('.debug-status')).toHaveText('BREAK math.modl:3 / FRAME 0');
   await page.locator('[data-debug="back"]').click();
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
   await shellCommand(page, 'debug');
   await page.locator('[data-debug="frame"]').click();
-  await expect(page.locator('.debug-status')).toHaveText('BREAK math.pxl:3 / FRAME 0');
-  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.pxl');
+  await expect(page.locator('.debug-status')).toHaveText('BREAK math.modl:3 / FRAME 0');
+  await expect(page.locator('.debug-output')).toContainText('MODULE src/math.modl');
   await page.locator('[data-debug="back"]').click();
   await expect(page.locator('[data-view="shell"]')).toBeVisible();
 
@@ -732,7 +732,7 @@ on draw:
   await context.setOffline(true);
   await page.reload();
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
-  await expect(page.locator('[data-view="shell"]')).toContainText('PXCL/1 READY');
+  await expect(page.locator('[data-view="shell"]')).toContainText('MODL/1 READY');
   await context.setOffline(false);
 
   expect(browserErrors).toEqual([]);

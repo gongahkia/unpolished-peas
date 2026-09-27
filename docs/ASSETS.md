@@ -1,8 +1,8 @@
-# PX-240C asset files
+# MOD-01 asset files
 
 Project assets are UTF-8 JSON with a trailing newline. They remain readable in a project directory
-and inside a `.pxc`; the Studio editors write the same revision-1 representation documented here.
-Manifest names, rather than filenames, become typed PXCL handles such as `#hero` and `#theme`.
+and inside a `.m01c`; the Studio editors write the same revision-1 representation documented here.
+Manifest names, rather than filenames, become typed MODL handles such as `#hero` and `#theme`.
 
 Every file has `"revision": 1` and a `kind`. Indexed colour values are integers from 0 through 31.
 Colour 0 is transparent when a sprite is blitted. The fixed master RGB palette itself is not stored
@@ -83,7 +83,7 @@ ordinary `print` deliberately retains the unchanged built-in system font.
 
 ## Display state
 
-The optional top-level `display = "assets/display.pxp"` manifest key names a default palette and
+The optional top-level `display = "assets/display.m01p"` manifest key names a default palette and
 raster configuration. `remap` sets the initial logical drawing palette. Raster rows are strictly
 increasing scanline changes with signed 16-bit scroll offsets and a complete 32-entry display
 remap:
@@ -110,7 +110,7 @@ remap:
 }
 ```
 
-PXCL `pal`, `pal_reset`, and `on raster` commands may override these defaults while a cartridge is
+MODL `pal`, `pal_reset`, and `on raster` commands may override these defaults while a cartridge is
 running. Display state is charged as 32 bytes plus 38 bytes per raster row.
 
 ## Synth patches and tracker music

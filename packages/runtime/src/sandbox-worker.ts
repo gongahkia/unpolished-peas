@@ -20,7 +20,7 @@ workerPort.onmessage = (event: MessageEvent<unknown>): void => {
     send({
       id: requestId(event.data),
       type: 'error',
-      code: 'PX9100',
+      code: 'M019100',
       message: 'invalid sandbox protocol message',
     } satisfies WorkerResponse);
     return;
@@ -104,7 +104,7 @@ async function handleRequest(request: HostRequest): Promise<void> {
 
 function readFactory(module: unknown): CartridgeFactory {
   if (!isRecord(module) || typeof module.default !== 'function') {
-    throw new RuntimeFault('PX9101', 'compiled module does not export a cartridge factory', {
+    throw new RuntimeFault('M019101', 'compiled module does not export a cartridge factory', {
       start: 0,
       end: 0,
     });
@@ -114,7 +114,7 @@ function readFactory(module: unknown): CartridgeFactory {
 
 function requireRuntime(): ConsoleRuntime {
   if (runtime === undefined) {
-    throw new RuntimeFault('PX9102', 'no cartridge is loaded', { start: 0, end: 0 });
+    throw new RuntimeFault('M019102', 'no cartridge is loaded', { start: 0, end: 0 });
   }
   return runtime;
 }
@@ -132,7 +132,7 @@ function errorResponse(id: number, error: unknown): WorkerResponse {
   return {
     id,
     type: 'error',
-    code: 'PX9199',
+    code: 'M019199',
     message: error instanceof Error ? error.message : 'unknown sandbox failure',
   };
 }

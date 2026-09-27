@@ -31,7 +31,7 @@ export class SaveMemory {
 
   public constructor(initial: SaveImage = {}) {
     if (!isSaveImage(initial)) {
-      throw new TypeError('invalid PX-240C save image');
+      throw new TypeError('invalid MOD-01 save image');
     }
     this.bytes.set(initial instanceof Uint8Array ? initial : encodeValues(initial));
     this.committed.set(this.bytes);
@@ -76,7 +76,7 @@ export class SaveMemory {
 
   public restoreDevice(value: unknown, pendingWrites: readonly SaveWrite[] = []): void {
     if (!isSaveSnapshot(value) || !isPendingDeviceWrites(pendingWrites, value))
-      throw new TypeError('invalid PX-240C save snapshot');
+      throw new TypeError('invalid MOD-01 save snapshot');
     this.bytes.set(value.bytes);
     this.committed.set(value.committed);
     this.values = undefined;
@@ -105,7 +105,7 @@ export class SaveMemory {
 
   public restore(value: unknown, pendingWrites: readonly SaveWrite[] = []): void {
     if (!isSaveValues(value) || !isPendingSaveWrites(pendingWrites, value)) {
-      throw new TypeError('invalid PX-240C save snapshot');
+      throw new TypeError('invalid MOD-01 save snapshot');
     }
     const initial = new SaveMemory(value).deviceSnapshot();
     this.restoreDevice({ ...initial, pendingCommit: pendingWrites.length > 0 }, pendingWrites);
@@ -161,7 +161,7 @@ export class SaveMemory {
             this.checkCommitCounter();
           } catch (error) {
             throw new RuntimeFault(
-              'PX9012',
+              'M019012',
               error instanceof Error ? error.message : 'save counter exhausted',
               span,
             );

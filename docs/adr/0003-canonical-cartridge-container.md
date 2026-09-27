@@ -4,8 +4,8 @@ Status: accepted for format revision 1.
 
 ## Decision
 
-Use a small PX-240C-specific sorted container with per-entry SHA-256 and a deterministic
-PackBits-style RLE encoding. Store all original PXCL modules, public assets, release JavaScript,
+Use a small MOD-01-specific sorted container with per-entry SHA-256 and a deterministic
+PackBits-style RLE encoding. Store all original MODL modules, public assets, release JavaScript,
 source map, presentation files, and a canonical JSON inventory. Omit timestamps and host metadata.
 
 ## Reasoning

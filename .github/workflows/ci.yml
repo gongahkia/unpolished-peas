@@ -1,4 +1,4 @@
-name: Modal CI/CD on Push
+name: MOD-01 CI
 
 on:
   pull_request:

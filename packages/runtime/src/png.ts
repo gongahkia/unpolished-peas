@@ -145,7 +145,7 @@ export function convertRgbaToIndexed(
   return output;
 }
 
-/** Creates the PX-240C's own rectangular 1999 cartridge-object design and embeds canonical PXC. */
+/** Creates the MOD-01's own rectangular 1999 cartridge-object design and embeds canonical M01C. */
 export function encodeCartridgePng(
   cartridge: Uint8Array,
   metadata: CartridgePngMetadata,
@@ -185,15 +185,15 @@ export function encodeCartridgePng(
   const metadataBytes = encoder.encode(JSON.stringify(metadata));
   if (metadataBytes.length > 2048) throw new RangeError('cartridge PNG metadata is too large');
   return encodeRgbaPng(width, height, rgba, [
-    { type: 'pxCm', data: metadataBytes },
-    { type: 'pxCa', data: cartridge },
+    { type: 'moCm', data: metadataBytes },
+    { type: 'moCa', data: cartridge },
   ]);
 }
 
 export function decodeCartridgePng(bytes: Uint8Array): DecodedCartridgePng {
   const parsed = parsePng(bytes);
-  const cartridges = parsed.chunks.filter((chunk) => chunk.type === 'pxCa');
-  const metadataChunks = parsed.chunks.filter((chunk) => chunk.type === 'pxCm');
+  const cartridges = parsed.chunks.filter((chunk) => chunk.type === 'moCa');
+  const metadataChunks = parsed.chunks.filter((chunk) => chunk.type === 'moCm');
   if (cartridges.length !== 1 || metadataChunks.length !== 1)
     throw new TypeError('cartridge PNG must contain one payload and one metadata chunk');
   const cartridge = cartridges[0]?.data;

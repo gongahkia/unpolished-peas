@@ -7,11 +7,11 @@ import { dirname, join } from 'node:path';
 
 import { firefox } from '@playwright/test';
 
-const baseURL = process.env.PX240C_BENCHMARK_URL ?? 'http://127.0.0.1:4173';
-const output = process.env.PX240C_BENCHMARK_OUTPUT ?? 'output/v1-latency.json';
-const temporary = await mkdtemp(join(tmpdir(), 'px240c-v1-latency-'));
-const cartridge = join(temporary, 'api-tour.pxc');
-execFileSync('target/debug/px240c', ['pack', 'examples/api-tour', '--output', cartridge]);
+const baseURL = process.env.MOD01_BENCHMARK_URL ?? 'http://127.0.0.1:4173';
+const output = process.env.MOD01_BENCHMARK_OUTPUT ?? 'output/v1-latency.json';
+const temporary = await mkdtemp(join(tmpdir(), 'mod01-v1-latency-'));
+const cartridge = join(temporary, 'api-tour.m01c');
+execFileSync('target/debug/mod01', ['pack', 'examples/api-tour', '--output', cartridge]);
 
 const browser = await firefox.launch();
 try {
@@ -24,7 +24,7 @@ try {
     if (message.type() === 'error') errors.push(message.text());
   });
   const command = async (text) => {
-    const input = page.getByLabel('PX-240C command');
+    const input = page.getByLabel('MOD-01 command');
     await input.fill(text);
     await input.press('Enter');
   };

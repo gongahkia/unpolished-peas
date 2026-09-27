@@ -1,6 +1,6 @@
-# PX-240C cartridge API
+# MOD-01 cartridge API
 
-This reference covers the currently implemented PXCL/1 console surface. Calls are statically typed,
+This reference covers the currently implemented MODL/1 console surface. Calls are statically typed,
 charged to the synthetic work budget, and unavailable as raw host functions. Coordinates and sizes
 are `Int`; drawing outside the active clip is discarded.
 
@@ -11,7 +11,7 @@ at the start of each frame. `Color` is always one of the 32 immutable master-pal
 Logical index 0 is transparent while blitting sprites and remains an ordinary drawable framebuffer
 colour.
 
-| PXCL call                                 | Behavior                                                                   |
+| MODL call                                 | Behavior                                                                   |
 | ----------------------------------------- | -------------------------------------------------------------------------- |
 | `clear(color)`                            | Fill the full back buffer, independent of camera and clip.                 |
 | `pixel(x, y, color)`                      | Write one indexed pixel.                                                   |
@@ -66,7 +66,7 @@ registers, not the full V1 device set.
 the name length. Descriptors expose sprite/frame/tile/map addresses, dimensions and flags. These
 bytes are the backing state used by drawing and map queries. See the exact candidate
 addresses, field encodings, timing, permissions and fault behavior in [HARDWARE.md](HARDWARE.md).
-Studio, the offline standalone player, and `px240c run --headless` all execute this surface through
+Studio, the offline standalone player, and `mod01 run --headless` all execute this surface through
 the same production console core.
 
 ## Input and deterministic utilities

@@ -49,9 +49,9 @@ describe('source-visible asset codec', () => {
     ]) {
       expect(() =>
         decodeRuntimeAssets(
-          { tone: { kind: 'sound', path: 'tone.pxs' } },
+          { tone: { kind: 'sound', path: 'tone.m01s' } },
           {
-            'tone.pxs': encodeAssetFile(invalid),
+            'tone.m01s': encodeAssetFile(invalid),
           },
         ),
       ).toThrow();
@@ -60,8 +60,8 @@ describe('source-visible asset codec', () => {
 
   it('bounds Worker asset banks and rejects noncanonical paths and structural payloads', () => {
     const source = {
-      declarations: { hero: { kind: 'sprite', path: 'hero.pxg' } },
-      files: { 'hero.pxg': new Uint8Array(4) },
+      declarations: { hero: { kind: 'sprite', path: 'hero.m01g' } },
+      files: { 'hero.m01g': new Uint8Array(4) },
     };
     expect(isRuntimeAssetSource(source)).toBe(true);
     for (const bad of [
@@ -69,11 +69,11 @@ describe('source-visible asset codec', () => {
       { declarations: [], files: {} },
       { declarations: {}, files: [] },
       { ...source, host: true },
-      { ...source, displayPath: '../display.pxp' },
-      { ...source, files: { '/hero.pxg': new Uint8Array(1) } },
-      { ...source, files: { 'hero.pxg': [1, 2] } },
-      { ...source, files: { 'hero.pxg': new Uint8Array(2 * 1024 * 1024) } },
-      { ...source, declarations: { hero: { kind: 'javascript', path: 'hero.pxg' } } },
+      { ...source, displayPath: '../display.m01p' },
+      { ...source, files: { '/hero.m01g': new Uint8Array(1) } },
+      { ...source, files: { 'hero.m01g': [1, 2] } },
+      { ...source, files: { 'hero.m01g': new Uint8Array(2 * 1024 * 1024) } },
+      { ...source, declarations: { hero: { kind: 'javascript', path: 'hero.m01g' } } },
     ]) {
       expect(isRuntimeAssetSource(bad)).toBe(false);
     }
@@ -82,9 +82,9 @@ describe('source-visible asset codec', () => {
   it('rejects tracker orders that name inherited object properties', () => {
     expect(() =>
       decodeRuntimeAssets(
-        { song: { kind: 'music', path: 'song.pxt' } },
+        { song: { kind: 'music', path: 'song.m01t' } },
         {
-          'song.pxt': encodeAssetFile({
+          'song.m01t': encodeAssetFile({
             revision: 1,
             kind: 'music',
             framesPerRow: 2,
@@ -122,8 +122,8 @@ describe('source-visible asset codec', () => {
 
   it('decodes canonical bitmap fonts and charges their exact packed size', () => {
     const bundle = decodeRuntimeAssets(
-      { tiny: { kind: 'font', path: 'tiny.pxf' } },
-      { 'tiny.pxf': encodeAssetFile(font) },
+      { tiny: { kind: 'font', path: 'tiny.m01f' } },
+      { 'tiny.m01f': encodeAssetFile(font) },
     );
     expect(bundle.visualBytes).toBe(42);
     expect(bundle.visual).toHaveLength(1);
@@ -145,8 +145,8 @@ describe('source-visible asset codec', () => {
     ]) {
       expect(() =>
         decodeRuntimeAssets(
-          { tiny: { kind: 'font', path: 'tiny.pxf' } },
-          { 'tiny.pxf': encodeAssetFile(invalid) },
+          { tiny: { kind: 'font', path: 'tiny.m01f' } },
+          { 'tiny.m01f': encodeAssetFile(invalid) },
         ),
       ).toThrow(/font/);
     }
@@ -154,26 +154,26 @@ describe('source-visible asset codec', () => {
 
   it('loads indexed graphics, map query views, synth patches, and tracker patterns', () => {
     const files = {
-      'hero.pxg': encodeAssetFile({
+      'hero.m01g': encodeAssetFile({
         revision: 1,
         kind: 'sprite',
         width: 2,
         height: 2,
         frames: [[0, 7, 7, 0]],
       }),
-      'tiles.pxg': encodeAssetFile({
+      'tiles.m01g': encodeAssetFile({
         revision: 1,
         kind: 'tile_set',
         tiles: [Array.from({ length: 64 }, () => 3)],
         flags: [1],
       }),
-      'room.pxm': encodeAssetFile({
+      'room.m01m': encodeAssetFile({
         revision: 1,
         kind: 'map',
         layers: [{ width: 2, height: 1, cells: [0, 0], tileSet: 'tiles' }],
       }),
-      'beep.pxs': encodeAssetFile(sound),
-      'theme.pxt': encodeAssetFile({
+      'beep.m01s': encodeAssetFile(sound),
+      'theme.m01t': encodeAssetFile({
         revision: 1,
         kind: 'music',
         framesPerRow: 4,
@@ -185,7 +185,7 @@ describe('source-visible asset codec', () => {
         },
         loop: true,
       }),
-      'display.pxp': encodeAssetFile({
+      'display.m01p': encodeAssetFile({
         revision: 1,
         kind: 'display',
         remap: Array.from({ length: 32 }, (_, index) => (index === 1 ? 7 : index)),
@@ -201,14 +201,14 @@ describe('source-visible asset codec', () => {
     };
     const bundle = decodeRuntimeAssets(
       {
-        hero: { kind: 'sprite', path: 'hero.pxg' },
-        tiles: { kind: 'tile_set', path: 'tiles.pxg' },
-        room: { kind: 'map', path: 'room.pxm' },
-        beep: { kind: 'sound', path: 'beep.pxs' },
-        theme: { kind: 'music', path: 'theme.pxt' },
+        hero: { kind: 'sprite', path: 'hero.m01g' },
+        tiles: { kind: 'tile_set', path: 'tiles.m01g' },
+        room: { kind: 'map', path: 'room.m01m' },
+        beep: { kind: 'sound', path: 'beep.m01s' },
+        theme: { kind: 'music', path: 'theme.m01t' },
       },
       files,
-      'display.pxp',
+      'display.m01p',
     );
     expect(bundle.visual.map((asset) => asset.kind)).toEqual(['sprite', 'map', 'tile_set']);
     expect(bundle.audio.map((asset) => asset.kind)).toEqual(['sound', 'music']);
@@ -226,9 +226,9 @@ describe('source-visible asset codec', () => {
     expect(decodeRuntimeAssets({}, {}, null).display).toBeUndefined();
     expect(() =>
       decodeRuntimeAssets(
-        { hero: { kind: 'sprite', path: 'hero.pxg' } },
+        { hero: { kind: 'sprite', path: 'hero.m01g' } },
         {
-          'hero.pxg': encodeAssetFile({
+          'hero.m01g': encodeAssetFile({
             revision: 1,
             kind: 'sprite',
             width: 1,
@@ -240,9 +240,9 @@ describe('source-visible asset codec', () => {
     ).toThrow(/indexed pixels/);
     expect(() =>
       decodeRuntimeAssets(
-        { theme: { kind: 'music', path: 'theme.pxt' } },
+        { theme: { kind: 'music', path: 'theme.m01t' } },
         {
-          'theme.pxt': encodeAssetFile({
+          'theme.m01t': encodeAssetFile({
             revision: 1,
             kind: 'music',
             framesPerRow: 4,

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { glyphRows } from '../packages/runtime/src/font.ts';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const output = resolve(root, 'apps/studio/public/px240c.ttf');
+const output = resolve(root, 'apps/studio/public/mod01.ttf');
 const unitsPerEm = 1024;
 const pixel = 128;
 const advance = 6 * pixel;
@@ -167,11 +167,11 @@ function cmapTable() {
 
 function nameTable() {
   const names = [
-    [1, 'PX-240C Bitmap'],
+    [1, 'MOD-01 Bitmap'],
     [2, 'Regular'],
-    [4, 'PX-240C Bitmap'],
+    [4, 'MOD-01 Bitmap'],
     [5, 'Version 1.0'],
-    [6, 'PX-240C-Bitmap'],
+    [6, 'MOD-01-Bitmap'],
   ];
   const strings = [];
   const records = [];
@@ -215,7 +215,7 @@ function buildFont() {
         u32(0),
         u32(0),
         u32(0),
-        tag('PX24'),
+        tag('M001'),
         u16(0x40),
         u16(32),
         u16(126),

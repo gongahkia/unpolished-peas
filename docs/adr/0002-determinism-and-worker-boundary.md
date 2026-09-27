@@ -8,7 +8,7 @@
 Generated cartridge JavaScript executes in a dedicated disposable module worker. The worker receives
 only validated input frames and console API messages. Cartridge time, RNG, task scheduling, work
 accounting, save access, and replay events are console-owned deterministic state. Network, DOM,
-dynamic code construction, arbitrary imports, and ambient time are unavailable to PXCL programs.
+dynamic code construction, arbitrary imports, and ambient time are unavailable to MODL programs.
 
 Compile deterministic work checks at function entries, loop back-edges, task transitions, bounded
 capacity operations, and expensive console calls. Treat browser worker termination as the final

@@ -2,8 +2,8 @@ target
 node_modules
 dist
 coverage
-crates/pxcl-wasm/pkg
+crates/modl-wasm/pkg
 pnpm-lock.yaml
-PX240C_ALPHA_BRIEF.md
+MOD01_ALPHA_BRIEF.md
 .playwright-cli
 output

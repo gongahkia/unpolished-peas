@@ -43,7 +43,7 @@ function handle(name: string, kind: 'Sound' | 'Music'): object {
   return { name, kind };
 }
 
-describe('PX-240C synthesizer and tracker', () => {
+describe('MOD-01 synthesizer and tracker', () => {
   it('faults at exact audio counters before mutating voices or advancing samples', () => {
     const synth = new Synthesizer(new AudioAssetStore([sound('tone')]));
     const initial = synth.snapshot();
@@ -51,11 +51,11 @@ describe('PX-240C synthesizer and tracker', () => {
     const beforeTrigger = synth.snapshot();
     expect(() => {
       synth.executeCommand(command('sfx', [handle('tone', 'Sound')]));
-    }).toThrow(expect.objectContaining({ code: 'PX9012', sourceSpan }));
+    }).toThrow(expect.objectContaining({ code: 'M019012', sourceSpan }));
     expect(synth.snapshot()).toEqual(beforeTrigger);
     synth.restore({ ...initial, frame: Number.MAX_SAFE_INTEGER });
     const beforeFrame = synth.snapshot();
-    expect(() => synth.finishFrame()).toThrow(expect.objectContaining({ code: 'PX9012' }));
+    expect(() => synth.finishFrame()).toThrow(expect.objectContaining({ code: 'M019012' }));
     expect(synth.snapshot()).toEqual(beforeFrame);
   });
 
@@ -122,7 +122,7 @@ describe('PX-240C synthesizer and tracker', () => {
     ]) {
       expect(() => {
         bus.write(base + (offset ?? 0), value ?? 0, 1, sourceSpan);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
       expect(synth.snapshot()).toEqual(before);
     }
     for (const [offset, value] of [
@@ -135,22 +135,22 @@ describe('PX-240C synthesizer and tracker', () => {
       new DataView(ram.buffer).setFloat64(0, value ?? 0, true);
       expect(() => {
         bus.copy(base + (offset ?? 0), 0, 8, sourceSpan);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
       expect(synth.snapshot()).toEqual(before);
     }
     new DataView(ram.buffer).setBigUint64(0, BigInt(Number.MAX_SAFE_INTEGER), true);
     expect(() => {
       bus.copy(base + 24, 0, 8, sourceSpan);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.fill(base + 40, 0, 4, sourceSpan);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.fill(base + 44, 0, 8, sourceSpan);
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     expect(() => {
       bus.write(base, 0, 1, sourceSpan, true);
-    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    }).toThrow(expect.objectContaining({ code: 'M019011' }));
     expect(synth.snapshot()).toEqual(before);
     bus.write(base, 0, 1, sourceSpan);
     expect(synth.inspectVoices()[0]?.active).toBe(false);
@@ -202,7 +202,7 @@ describe('PX-240C synthesizer and tracker', () => {
     ]) {
       expect(() => {
         bus.write(MEMORY.audioTracker + (offset ?? 0), value ?? 0, 2, sourceSpan);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
       expect(low.snapshot()).toEqual(before);
     }
     bus.write(MEMORY.audioTracker, 0, 2, sourceSpan);

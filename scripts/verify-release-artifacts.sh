@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-cli="${PX240C_CLI:-target/debug/px240c}"
+cli="${MOD01_CLI:-target/debug/mod01}"
 if [[ ! -x "${cli}" ]]; then
   echo "release artifact verifier requires executable ${cli}" >&2
   exit 1
@@ -32,40 +32,40 @@ cartridges=(
   cinder-circuit
   ashvault
   raster-rush
-  px240c-service
+  mod01-service
   signal-4k
   pocket-relay
   hardware-gauntlet
-  pxcl-tutorial
+  modl-tutorial
 )
 
-printf 'cartridge\tpxc-bytes\tpxc-sha256\tpxc.png-sha256\thtml-sha256\tzip-sha256\n'
+printf 'cartridge\tm01c-bytes\tm01c-sha256\tm01c.png-sha256\thtml-sha256\tzip-sha256\n'
 for cartridge in "${cartridges[@]}"; do
   project="cartridges/${cartridge}"
   first="${artifact_dir}/${cartridge}-a"
   second="${artifact_dir}/${cartridge}-b"
 
-  "${cli}" pack "${project}" --output "${first}.pxc" >/dev/null
-  "${cli}" pack "${project}" --output "${second}.pxc" >/dev/null
-  "${cli}" export png "${project}" --output "${first}.pxc.png" >/dev/null
-  "${cli}" export png "${project}" --output "${second}.pxc.png" >/dev/null
+  "${cli}" pack "${project}" --output "${first}.m01c" >/dev/null
+  "${cli}" pack "${project}" --output "${second}.m01c" >/dev/null
+  "${cli}" export png "${project}" --output "${first}.m01c.png" >/dev/null
+  "${cli}" export png "${project}" --output "${second}.m01c.png" >/dev/null
   "${cli}" export html "${project}" --output "${first}.html" >/dev/null
   "${cli}" export html "${project}" --output "${second}.html" >/dev/null
   "${cli}" export zip "${project}" --output "${first}.zip" >/dev/null
   "${cli}" export zip "${project}" --output "${second}.zip" >/dev/null
 
-  cmp "${first}.pxc" "${second}.pxc"
-  cmp "${first}.pxc.png" "${second}.pxc.png"
+  cmp "${first}.m01c" "${second}.m01c"
+  cmp "${first}.m01c.png" "${second}.m01c.png"
   cmp "${first}.html" "${second}.html"
   cmp "${first}.zip" "${second}.zip"
-  "${cli}" info "${first}.pxc.png" >/dev/null
-  "${cli}" run "${first}.pxc" --headless --frames 5 >/dev/null
+  "${cli}" info "${first}.m01c.png" >/dev/null
+  "${cli}" run "${first}.m01c" --headless --frames 5 >/dev/null
 
-  pxc_bytes=$(wc -c < "${first}.pxc" | tr -d ' ')
-  pxc_hash=$(sha256 "${first}.pxc")
-  png_hash=$(sha256 "${first}.pxc.png")
+  m01c_bytes=$(wc -c < "${first}.m01c" | tr -d ' ')
+  m01c_hash=$(sha256 "${first}.m01c")
+  png_hash=$(sha256 "${first}.m01c.png")
   html_hash=$(sha256 "${first}.html")
   zip_hash=$(sha256 "${first}.zip")
   printf '%s\t%s\t%s\t%s\t%s\t%s\n' \
-    "${cartridge}" "${pxc_bytes}" "${pxc_hash}" "${png_hash}" "${html_hash}" "${zip_hash}"
+    "${cartridge}" "${m01c_bytes}" "${m01c_hash}" "${png_hash}" "${html_hash}" "${zip_hash}"
 done

@@ -38,7 +38,7 @@ importers:
 
   apps/studio:
     dependencies:
-      '@px240c/runtime':
+      '@mod01/runtime':
         specifier: workspace:*
         version: link:../../packages/runtime
 
@@ -458,7 +458,7 @@ packages:
     resolution: {integrity: sha512-+PFTHITI08JIGhnNpGNI8T8inUpgZfk3GNEqfT9R2zZV2iFXg3CvqzSl/uEhs7TSGujYRELEANyDvS8Fj7+S7Q==}
 
   find-up@5.0.0:
-    resolution: {integrity: sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
+    resolution: {integrity: sha512-78/M01T1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==}
     engines: {node: '>=10'}
 
   flat-cache@6.1.23:

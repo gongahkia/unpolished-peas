@@ -78,7 +78,7 @@ export interface HeadlessResult {
 
 /** Runs validated compiler output through the same production core used by the browser Worker. */
 export async function runHeadless(value: unknown): Promise<HeadlessResult> {
-  if (!isHeadlessRequest(value)) throw new TypeError('invalid PX-240C headless request');
+  if (!isHeadlessRequest(value)) throw new TypeError('invalid MOD-01 headless request');
   const request = value;
   const loaded: unknown = await import(
     `data:text/javascript;base64,${Buffer.from(request.javascript).toString('base64')}`
@@ -271,7 +271,7 @@ function isByteArray(value: unknown, limit: number): value is readonly number[] 
 
 function readFactory(value: unknown): CartridgeFactory {
   if (!isRecord(value) || typeof value.default !== 'function') {
-    throw new RuntimeFault('PX9101', 'compiled module does not export a cartridge factory', {
+    throw new RuntimeFault('M019101', 'compiled module does not export a cartridge factory', {
       start: 0,
       end: 0,
     });

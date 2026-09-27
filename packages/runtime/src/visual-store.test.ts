@@ -80,7 +80,7 @@ describe('packed visual hardware storage', () => {
     ])
       expect(() => {
         bus.write(address, 0, 1, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+      }).toThrow(expect.objectContaining({ code: 'M019021' }));
     expect(bus.read(MEMORY.assets + 3 * 32, 2, span)).toBe(0);
   });
 
@@ -126,10 +126,10 @@ describe('packed visual hardware storage', () => {
     ])
       expect(() => {
         bus.write(address ?? 0, value ?? 0, 1, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.fill(MEMORY.visual, 2, 5, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     deepStrictEqual(bus.snapshot(), saved);
     const invalid = structuredClone(saved);
     const bytes = invalid.regions[0]?.bytes;
@@ -144,7 +144,7 @@ describe('packed visual hardware storage', () => {
     expect(bus.read(MEMORY.visual + HARDWARE.visualCapacityBytes - 1, 1, span)).toBe(255);
     expect(() => {
       bus.write(MEMORY.visual, 1, 1, span, true);
-    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    }).toThrow(expect.objectContaining({ code: 'M019011' }));
   });
 
   it('keeps display defaults in the same charged image with next-frame visibility', () => {
@@ -167,10 +167,10 @@ describe('packed visual hardware storage', () => {
     expect(store.display?.raster[0]?.scrollX).toBe(-1);
     expect(() => {
       bus.write(MEMORY.visual + 32, 1, 1, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.write(MEMORY.visual + 38, 32, 1, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
   });
 
   it('accounts for exact capacity and bounds descriptors independently of host alignment', () => {
@@ -215,7 +215,7 @@ describe('packed visual hardware storage', () => {
     ]) {
       expect(() => {
         bus.write(address ?? 0, value ?? 0, 1, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
       deepStrictEqual(bus.snapshot(), saved);
     }
   });

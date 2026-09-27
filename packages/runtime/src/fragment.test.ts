@@ -9,9 +9,9 @@ import {
 
 describe('tiny cartridge URL fragments', () => {
   it('round-trips bytes using a fragment-only base64url form', () => {
-    const bytes = Uint8Array.of(80, 88, 50, 52, 48, 67, 0, 255);
+    const bytes = Uint8Array.of(77, 79, 68, 45, 48, 49, 0, 255);
     const fragment = encodeCartridgeFragment(bytes);
-    expect(fragment).toMatch(/^#pxc=[A-Za-z0-9_-]+$/);
+    expect(fragment).toMatch(/^#m01c=[A-Za-z0-9_-]+$/);
     expect(fragment).not.toContain('?');
     expect(decodeCartridgeFragment(fragment)).toEqual(bytes);
     expect(decodeCartridgeFragment('#embed')).toBeUndefined();
@@ -21,9 +21,9 @@ describe('tiny cartridge URL fragments', () => {
     expect(() => encodeCartridgeFragment(new Uint8Array(CART_FRAGMENT_BYTE_LIMIT + 1))).toThrow(
       /6000-byte/,
     );
-    expect(() => decodeCartridgeFragment(`#pxc=${'A'.repeat(CART_FRAGMENT_LIMIT)}`)).toThrow(
+    expect(() => decodeCartridgeFragment(`#m01c=${'A'.repeat(CART_FRAGMENT_LIMIT)}`)).toThrow(
       /long/,
     );
-    expect(() => decodeCartridgeFragment('#pxc=../bad')).toThrow(/encoding/);
+    expect(() => decodeCartridgeFragment('#m01c=../bad')).toThrow(/encoding/);
   });
 });

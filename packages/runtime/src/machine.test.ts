@@ -245,7 +245,7 @@ describe('DeterministicMachine', () => {
     expect(machine.call('pointer_primary', [], { start: 0, end: 1 })).toBe(true);
     expect(() => {
       machine.runFrame({ ...input, pointer: { ...input.pointer, x: 240 } });
-    }).toThrow(expect.objectContaining({ code: 'PX9008' }));
+    }).toThrow(expect.objectContaining({ code: 'M019008' }));
     expect(machine.snapshot()).toEqual(first);
   });
 });

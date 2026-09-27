@@ -5,4 +5,4 @@ packages:
 minimumReleaseAge: 1440
 
 minimumReleaseAgeExclude:
-  - '@px240c/*'
+  - '@mod01/*'

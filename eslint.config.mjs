@@ -13,7 +13,7 @@ export default tseslint.config(
       '**/coverage/**',
       '**/node_modules/**',
       'apps/studio/public/generated/**',
-      'crates/pxcl-wasm/pkg/**',
+      'crates/modl-wasm/pkg/**',
       'packages/runtime/standalone/**',
       'packages/runtime/vite.*.config.ts',
     ],

@@ -1,8 +1,8 @@
 {
-  "name": "px-240c",
+  "name": "mod01",
   "version": "0.1.0-alpha.1",
   "private": true,
-  "description": "PX-240C Color Development Unit",
+  "description": "MOD-01 Color Development Unit",
   "author": "@gongahkia",
   "license": "UNLICENSED",
   "packageManager": "pnpm@10.32.1",
@@ -12,7 +12,7 @@
   "scripts": {
     "build": "pnpm --recursive --if-present run build",
     "check": "./scripts/check.sh",
-    "dev": "pnpm --filter @px240c/studio dev",
+    "dev": "pnpm --filter @mod01/studio dev",
     "format": "prettier --write . && cargo fmt --all",
     "format:check": "prettier --check .",
     "lint": "eslint .",

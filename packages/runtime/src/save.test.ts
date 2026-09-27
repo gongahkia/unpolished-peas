@@ -110,11 +110,11 @@ describe('worker save memory', () => {
     const { save, bus, budget } = device();
     const before = save.deviceSnapshot();
     for (const [address, value, width, raster, code] of [
-      [MEMORY.saveControl, 1, 2, false, 'PX9021'],
-      [MEMORY.saveControl, 2, 1, false, 'PX9022'],
-      [MEMORY.saveCommitted, 1, 1, false, 'PX9021'],
-      [MEMORY.save, 1, 1, true, 'PX9011'],
-      [MEMORY.saveControl, 1, 1, true, 'PX9011'],
+      [MEMORY.saveControl, 1, 2, false, 'M019021'],
+      [MEMORY.saveControl, 2, 1, false, 'M019022'],
+      [MEMORY.saveCommitted, 1, 1, false, 'M019021'],
+      [MEMORY.save, 1, 1, true, 'M019011'],
+      [MEMORY.saveControl, 1, 1, true, 'M019011'],
     ] as const) {
       expect(() => {
         bus.write(address, value, width, span, raster);
@@ -131,7 +131,7 @@ describe('worker save memory', () => {
     save.restoreDevice(overflow);
     expect(() => {
       bus.write(MEMORY.saveControl, 1, 1, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9012' }));
+    }).toThrow(expect.objectContaining({ code: 'M019012' }));
     expect(() => {
       save.set('score', 1);
     }).toThrow(/counter exhausted/);
@@ -141,7 +141,7 @@ describe('worker save memory', () => {
     budget.charge(HARDWARE.workUnitsPerFrame - 8192, span);
     expect(() => {
       bus.write(MEMORY.saveControl, 1, 1, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9001' }));
+    }).toThrow(expect.objectContaining({ code: 'M019001' }));
     expect(save.deviceSnapshot()).toEqual(before);
   });
 

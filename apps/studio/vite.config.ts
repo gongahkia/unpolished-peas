@@ -5,21 +5,21 @@ import { defineConfig, type Plugin } from 'vite';
 
 function offlineServiceWorker(): Plugin {
   return {
-    name: 'px240c-offline-service-worker',
+    name: 'mod01-offline-service-worker',
     apply: 'build',
     generateBundle(_options, bundle) {
       const publicFiles = [
-        'icon.svg',
+        'mod01-logo.png',
         'manifest.webmanifest',
-        'px240c.ttf',
-        'cartridges/ashvault.pxc',
-        'cartridges/cinder-circuit.pxc',
-        'cartridges/raster-rush.pxc',
-        'cartridges/px240c-service.pxc',
-        'cartridges/signal-4k.pxc',
-        'cartridges/pocket-relay.pxc',
-        'cartridges/hardware-gauntlet.pxc',
-        'cartridges/pxcl-tutorial.pxc',
+        'mod01.ttf',
+        'cartridges/ashvault.m01c',
+        'cartridges/cinder-circuit.m01c',
+        'cartridges/raster-rush.m01c',
+        'cartridges/mod01-service.m01c',
+        'cartridges/signal-4k.m01c',
+        'cartridges/pocket-relay.m01c',
+        'cartridges/hardware-gauntlet.m01c',
+        'cartridges/modl-tutorial.m01c',
       ];
       const files = [
         './',
@@ -34,7 +34,7 @@ function offlineServiceWorker(): Plugin {
       this.emitFile({
         type: 'asset',
         fileName: 'sw.js',
-        source: `const CACHE='px240c-studio-${revision.digest('hex').slice(0, 16)}';
+        source: `const CACHE='mod01-studio-${revision.digest('hex').slice(0, 16)}';
 const PRECACHE=${JSON.stringify(files)};
 self.addEventListener('install',event=>event.waitUntil(caches.open(CACHE).then(cache=>cache.addAll(PRECACHE)).then(()=>self.skipWaiting())));
 self.addEventListener('activate',event=>event.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(key=>key!==CACHE).map(key=>caches.delete(key)))).then(()=>self.clients.claim())));
@@ -47,7 +47,7 @@ self.addEventListener('fetch',event=>{const request=event.request;if(request.met
 
 function developmentStylePolicy(): Plugin {
   return {
-    name: 'px240c-development-style-policy',
+    name: 'mod01-development-style-policy',
     apply: 'serve',
     transformIndexHtml(html) {
       return html.replace("style-src 'self';", "style-src 'self' 'unsafe-inline';");

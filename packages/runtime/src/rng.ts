@@ -1,4 +1,4 @@
-const NON_ZERO_FALLBACK = 0x240c1999;
+const NON_ZERO_FALLBACK = 0x4d30_3031;
 
 /** Console-owned xorshift32 stream with an explicit serializable state. */
 export class DeterministicRng {

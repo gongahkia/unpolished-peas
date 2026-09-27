@@ -1,13 +1,13 @@
 # Security boundaries
 
-PX-240C cartridges are untrusted inputs, but V1 is not a claim of process-level isolation.
+MOD-01 cartridges are untrusted inputs, but V1 is not a claim of process-level isolation.
 The practical boundary combines a restricted source language, compiler-owned generation, a
 disposable Web Worker, a validated message protocol, deterministic budgets, and browser origin
 controls.
 
 ## Cartridge capabilities
 
-PXCL/1 has no syntax for raw JavaScript, host values, dynamic code, ambient globals, arbitrary
+MODL/1 has no syntax for raw JavaScript, host values, dynamic code, ambient globals, arbitrary
 imports, DOM access, network access, wall-clock time, or host persistence. Named console operations
 lower to a fixed dispatcher. Unknown calls fail at the nearest runtime boundary.
 
@@ -26,7 +26,7 @@ commits through a capability bound to the immutable current cartridge ID.
 
 The compiler charges synthetic work units at function entries, loop back-edges, task transitions,
 integer/capacity operations, allocations, and console calls. Exceeding the per-frame limit throws a
-source-spanned `PX9001` fault. Tasks are explicit serializable program-counter machines and do not
+source-spanned `M019001` fault. Tasks are explicit serializable program-counter machines and do not
 receive promises. The host also applies a response deadline and terminates a worker that stops
 responding, covering malformed or non-compiler JavaScript that never reaches an inserted check.
 
@@ -45,7 +45,7 @@ user who edits the exported HTML can also edit its runtime and must not treat it
 The native headless adapter does not execute an imported cartridge's archived JavaScript. Rust
 first performs bounded canonical decode, reconstructs its source-visible project, recompiles it with
 the authoritative compiler and sends that output plus bounded data to the embedded production-core
-Node host. PXCL has no path to Node globals; malformed host requests reject before boot. Node is a
+Node host. MODL has no path to Node globals; malformed host requests reject before boot. Node is a
 documented CLI runtime dependency, not a cartridge capability.
 
 The PWA service worker caches only same-origin GET requests and an exact build-generated inventory.
@@ -73,7 +73,7 @@ The production Vite worker bundle is exercised in pinned Firefox and Chromium th
 
 - compiler-produced code completed a frame and returned one validated draw command;
 - the worker audit found none of the denied globals exposed and no `Math.random`;
-- an infinite PXCL `while true` loop stopped with source-spanned `PX9001` while the page remained
+- an infinite MODL `while true` loop stopped with source-spanned `M019001` while the page remained
   responsive;
 - the display remained unclipped and crisp at exact 2x and 3x viewports.
 

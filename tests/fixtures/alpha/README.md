@@ -3,7 +3,7 @@
 Origin: alpha `e39be5a`, recorded on 2026-09-09 before product implementation changes.
 Never update these from V1 to make a compatibility test pass.
 
-- The three `.pxc` files are exact complete alpha build outputs, not rebuilt V1 carts.
+- The three `.m01c` files are exact complete alpha build outputs, not rebuilt V1 carts.
 - `*.trace.json.gz` contains each actual 240-frame Firefox Worker path: initial configuration,
   inputs, draw/audio/save commands, work, per-frame indexed framebuffer and Worker snapshot SHA-256,
   and final Worker snapshot. State hashes use `JSON.stringify` of the original snapshot shape;
@@ -13,7 +13,7 @@ Never update these from V1 to make a compatibility test pass.
 - `save.json` is a synthetic non-empty alpha save using the actual Ashvault key/schema, not progress
   earned by the short recording. The recorded game paths start with empty saves. Alpha has no public
   replay file format; its frame/input records and final revision-1 snapshot are the pre-V1 replay
-  compatibility inputs. Do not invent a historical `.pxrec` envelope.
+  compatibility inputs. Do not invent a historical `.m01rec` envelope.
 - `metrics.json`, `latency.json`, `bundles.json`, `audio.json` freeze the measured baseline. PCM is
   48 kHz, interleaved left/right IEEE float32 little-endian over 240×800 samples per channel. Voice
   peaks use the alpha production synth's post-frame active-voice count. The PCM fixture is measured

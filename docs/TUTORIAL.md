@@ -1,8 +1,8 @@
 # Tutorial: build a playable cartridge
 
-For the in-console five-to-ten-minute route, boot Studio and enter `load pxcl-tutorial`, `run`.
+For the in-console five-to-ten-minute route, boot Studio and enter `load modl-tutorial`, `run`.
 FIRST SIGNAL advances from a pixel through drawing, input, animation, production synth, the 8 KiB
-application save, and packing. It is an ordinary source-visible PXCL cartridge: stop with
+application save, and packing. It is an ordinary source-visible MODL cartridge: stop with
 Shift+Escape and use `edit` or `inspect` to see every line. The repository walkthrough below builds
 a slightly larger game from scratch.
 
@@ -12,12 +12,12 @@ file. Commands assume the repository toolchain from the README.
 ## 1. Create the project
 
 ```sh
-cargo run -p px240c-cli -- new relay-catch --title "RELAY CATCH"
+cargo run -p mod01-cli -- new relay-catch --title "RELAY CATCH"
 ```
 
-Keep the generated `cart.toml`. Replace `relay-catch/src/main.pxl` with:
+Keep the generated `cart.toml`. Replace `relay-catch/src/main.modl` with:
 
-```pxl
+```modl
 // RELAY CATCH
 // Made by @gongahkia
 
@@ -88,15 +88,15 @@ on draw:
 
 The same checked example is kept at `examples/relay-catch` in this repository.
 
-PXCL uses two-space indentation, explicit persistent-state types, inferred local types, and
+MODL uses two-space indentation, explicit persistent-state types, inferred local types, and
 half-open ranges. `rng_int` is deterministic and `btnp` is true only on the press transition.
 
 ## 2. Check, format, and run
 
 ```sh
-cargo run -p px240c-cli -- check relay-catch
-cargo run -p px240c-cli -- fmt --check relay-catch/src/main.pxl
-cargo run -p px240c-cli -- run relay-catch
+cargo run -p mod01-cli -- check relay-catch
+cargo run -p mod01-cli -- fmt --check relay-catch/src/main.modl
+cargo run -p mod01-cli -- run relay-catch
 ```
 
 `run` writes `relay-catch/dist/relay-catch.html` and opens it through `xdg-open`. Use `--no-open` in
@@ -106,11 +106,11 @@ and `inspect` then operate on the same compiler representation.
 ## 3. Pack and export
 
 ```sh
-cargo run -p px240c-cli -- pack relay-catch
-cargo run -p px240c-cli -- export html relay-catch
+cargo run -p mod01-cli -- pack relay-catch
+cargo run -p mod01-cli -- export html relay-catch
 ```
 
-The `.pxc` contains the original PXCL, compiled JavaScript, source map, integrity inventory, and
+The `.m01c` contains the original MODL, compiled JavaScript, source map, integrity inventory, and
 manifest. The standalone HTML `SOURCE` button shows the original module and needs no server after
 download. Add source-visible JSON graphics or synth assets using [ASSETS.md](ASSETS.md), declare
 them in `cart.toml`, and reference them as typed handles such as `#hero`.

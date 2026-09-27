@@ -92,7 +92,7 @@ describe('debugger replay and watches', () => {
   it('evaluates a deliberately safe watch subset without calls or prototype access', () => {
     const environment = { score: 7, alive: true, hero: { x: 3 }, cells: [4, 9] };
     expect(evaluateWatch('alive and score >= hero.x + cells[0]', environment)).toBe(true);
-    expect(evaluateWatch('not false and "PX" + "CL" == "PXCL"', environment)).toBe(true);
+    expect(evaluateWatch('not false and "PX" + "CL" == "MODL"', environment)).toBe(true);
     expect(() => evaluateWatch('alert()', environment)).toThrow(/unknown watch name/);
     expect(() => evaluateWatch('hero.constructor', environment)).toThrow(/prototype/);
     expect(() => evaluateWatch('score = 2', environment)).toThrow(/unsupported watch token/);
