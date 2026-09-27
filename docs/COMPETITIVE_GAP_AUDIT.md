@@ -2,22 +2,23 @@
 
 ## Baseline and evidence
 
-The starting product is `e39be5a` (`feat: complete alpha release candidate`). The only initial
-worktree addition was the supplied `PX240C_V1_PRODUCT_PASS.md`. No product code was changed before
-running the complete gate. Its first invocation stopped at formatting of that new brief; formatting
-the brief and rerunning `./scripts/check.sh` passed: Prettier, ESLint, all TypeScript projects,
+The starting product is `e39be5a` (`feat: complete alpha release candidate`). The audit used the
+then-supplied V1 product pass, which was retired after this closeout. No product code was changed
+before running the complete gate. Its first invocation stopped at formatting of that pass; formatting
+it and rerunning `./scripts/check.sh` passed: Prettier, ESLint, all TypeScript projects,
 42 Vitest tests, production asset/build generation, one complete Firefox E2E, Rust formatting,
 Clippy with warnings denied, 45 Rust tests, native build, and release Wasm build.
 
-The product brief is the scope contract, including all P0/P1 and named P2 requirements. This audit
-does not promote unverified competitor claims into facts. No implementation decision currently
+The current scope contract is [PRODUCT.md](PRODUCT.md), [LIMITS.md](LIMITS.md), and
+[V1_RELEASE_EVIDENCE.md](V1_RELEASE_EVIDENCE.md). This historical audit does not promote unverified
+competitor claims into facts. No implementation decision currently
 requires a competitor's present price, specification, licensing, or API behavior: the decisions
 below follow the requested product contract and inspected PX-240C code. Official sources will be
 checked before relying on any such external claim. No competitor code, art, or branding is imported.
 
-Inspected instructions and handoffs: `AGENTS.md`, both product briefs, root README, PROGRESS, LIMITS,
-ARCHITECTURE, all three ADRs, HARDWARE, SECURITY, DEBUGGER, CARTRIDGE_FORMAT, PXCL, API, ASSETS,
-STUDIO, TUTORIAL, PRODUCT, cartridge README, COPYRIGHT, and root THIRD_PARTY_NOTICES. Package
+Inspected instructions and handoffs at the time: `AGENTS.md`, both product passes, root README,
+PROGRESS, LIMITS, ARCHITECTURE, all three ADRs, HARDWARE, SECURITY, DEBUGGER, CARTRIDGE_FORMAT,
+PXCL, API, ASSETS, STUDIO, TUTORIAL, PRODUCT, cartridge README, COPYRIGHT, and third-party notices. Package
 manifests, Makefile, build/check scripts, lockfiles, runtime, compiler/linker, CLI/LSP, Studio,
 debugger and E2E are stronger evidence than aspirational prose. This is a Vite application, not
 a Next.js application; the generic Next.js AGENTS block has no installed Next.js guide to apply.
@@ -109,8 +110,8 @@ below stays open until the complete outcomes pass.
 
 ## Required implementation checklist
 
-Checkboxes represent verified outcomes, not files merely created. The complete verification and
-stopping contracts in the brief remain authoritative in addition to this checklist.
+Checkboxes represent verified outcomes, not files merely created. The current V1 contract linked
+above remains authoritative in addition to this historical checklist.
 
 ### 1. Audit
 

@@ -1,7 +1,7 @@
 # PX-240C Color Development Unit
 
 PX-240C is a complete local-first fantasy console presented as a technically unusual, commercially
-unsuccessful colour handheld from 1999. Its V1 candidate includes the statically typed PXCL/1 language,
+unsuccessful colour handheld from 1999. Its V1 release candidate includes the statically typed PXCL/1 language,
 Rust/Wasm compiler, deterministic worker runtime, 240x144 integrated Studio, source debugger and
 rewind, native CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, three
 original pack-in games, three size-class showcases, a service cartridge, and a source-visible tutorial.
@@ -9,9 +9,9 @@ original pack-in games, three size-class showcases, a service cartridge, and a s
 Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository is private and
 proprietary; cartridge authors retain ownership of their source and assets.
 
-![PX-240C Studio boot monitor with bundled cartridges](docs/images/studio-shell.png)
+![Fresh PX-240C Studio boot monitor with all eight bundled cartridges](docs/images/studio-shell.png)
 
-## V1 candidate status
+## V1 release-candidate status
 
 The cohesive V1 workflow is implemented: create/import a cartridge, edit code and source-visible
 assets, compile, run, debug, rewind, save/recover, pack, inspect, and export without an account or
@@ -19,7 +19,8 @@ backend. The production app is a relative-path static PWA and works offline afte
 successful load. Compiler/runtime rules, measurements, known limitations, and milestone evidence
 are in [`docs/`](docs/PROGRESS.md).
 
-The original bundled cartridges are ordinary public-facility PXCL projects:
+The monitor preinstalls eight source-visible first-party cartridges. The three preserved original
+games are ordinary public-facility PXCL projects:
 
 | Game                                        | Focus                                                                               |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -29,14 +30,18 @@ The original bundled cartridges are ordinary public-facility PXCL projects:
 
 ![Cinder Circuit gameplay](docs/images/cinder-circuit.png)
 ![Ashvault gameplay](docs/images/ashvault.png)
-![Raster Rush 99 four-player gameplay](docs/images/raster-rush.png)
+![Raster Rush 99 standalone player](docs/images/raster-rush.png)
+
+The [full bundled-cartridge catalog](cartridges/README.md) also covers the Hardware Revision 1
+service cart, three size-class showcases, and the FIRST SIGNAL tutorial.
 
 ## Quick start
 
-Requirements are Node.js 22.22 or newer, pnpm 10.32.1, and Rust 1.98 with Clippy, rustfmt,
-and `wasm32-unknown-unknown`. The one setup command installs locked dependencies, installs the pinned
-`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox and Chromium test browsers, and
-builds the complete project:
+Requirements are Node.js 22.22 or newer and Rust 1.98. `corepack enable` supplies the pinned pnpm
+10.32.1; the repository's `rust-toolchain.toml` selects Rust, Clippy, rustfmt, and
+`wasm32-unknown-unknown`. The one setup command installs locked dependencies, installs the pinned
+`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox and Chromium test
+browsers, and builds the complete project:
 
 ```sh
 make setup
@@ -77,6 +82,7 @@ desktop GUI, third-party cartridge compatibility, raw JavaScript escape, true-co
 physics engine, ECS, scene graph, or real 3D renderer. Worker containment is a practical browser
 boundary, not process-level isolation; [SECURITY.md](docs/SECURITY.md) states the exact limits.
 
-To refresh documentation screenshots, build and serve `dist/studio`, then use any browser capture at
-an exact integer viewport scale. The checked images above were captured from Firefox at 5x with the
-Playwright CLI; no mockups are used.
+To refresh the Studio boot capture, build and serve `dist/studio`, then run
+`node scripts/capture-v1-visuals.mjs` against the preview URL. Copy its 1280x720 Firefox shell
+capture from `output/playwright/v1-firefox-shell.png` to `docs/images/studio-shell.png`. The checked
+images use exact integer scale Playwright captures; no mockups are used.

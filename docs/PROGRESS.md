@@ -1,6 +1,8 @@
 # Implementation progress
 
-This log records verified milestones and remaining risks. The product brief is the stopping contract.
+This historical log records verified milestones and resolved risks. The current V1 contract is
+[PRODUCT.md](PRODUCT.md), [LIMITS.md](LIMITS.md), and
+[V1_RELEASE_EVIDENCE.md](V1_RELEASE_EVIDENCE.md).
 
 ## Plan
 
@@ -12,7 +14,7 @@ This log records verified milestones and remaining risks. The product brief is t
 6. Add debugger/profiler/time travel and use pack-in cartridges to calibrate public facilities.
 7. Finish PWA/export, documentation, accessibility and visual validation, then run the full audit.
 
-These are execution groups rather than substitutes for the brief's thirteen milestone outcomes.
+These are execution groups rather than substitutes for the V1 contract's thirteen milestone outcomes.
 Each group may produce several coherent commits, and integration occurs throughout.
 
 ## 2026-09-07 — Milestone 1: foundation

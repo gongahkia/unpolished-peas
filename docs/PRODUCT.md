@@ -5,6 +5,20 @@ technically ambitious colour handheld released in 1999 that found a devoted nich
 market. The fiction appears in boot ROM language, restrained industrial surfaces, cartridge labels,
 and revision markings; it never takes priority over readable tools or predictable behavior.
 
+## V1 release-candidate contract
+
+This document, [LIMITS.md](LIMITS.md), and [V1_RELEASE_EVIDENCE.md](V1_RELEASE_EVIDENCE.md) are the
+current V1 scope, constraints, and verification record. [PROGRESS.md](PROGRESS.md) and
+[COMPETITIVE_GAP_AUDIT.md](COMPETITIVE_GAP_AUDIT.md) are historical implementation records, not
+additional open scope.
+
+PXCL/1 and cartridge format revision 1 are frozen. The private workspace remains
+`0.1.0-alpha.1` until a deliberately versioned public release; the compiler version is embedded in
+canonical cartridge metadata, so changing it must rebuild and re-record release artifacts. The three
+preserved alpha game projects retain their `1.0.0-alpha.1` manifests and frozen compatibility hashes.
+V1-added cartridges use their authored `1.0.0` game versions. This distinction is intentional and
+does not imply unfinished V1 product scope.
+
 ## Audience
 
 The primary audience is experienced game developers, size coders, demo-scene authors, language-tool
