@@ -52,6 +52,11 @@ test('complete local Studio and distribution workflow', async ({
     .toContain('data:image/svg+xml');
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
   await expect(page.locator('[data-view="shell"]')).toContainText('MODL/1 READY');
+  await expect(page.locator('.terminal')).toContainText('CATALOG // RUN <ID> TO PLAY');
+  await expect(page.locator('.terminal')).toContainText('CINDER CIRCUIT / RUN cinder-circuit');
+  await expect(page.locator('.terminal')).toContainText('FIRST SIGNAL / RUN modl-tutorial');
+  await shellCommand(page, 'shelf');
+  await expect(page.locator('.terminal')).toContainText('?UNKNOWN COMMAND: SHELF');
   await expect
     .poll(() =>
       page.evaluate(async () => {

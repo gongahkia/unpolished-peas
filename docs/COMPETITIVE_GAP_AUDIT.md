@@ -169,7 +169,7 @@ above remains authoritative in addition to this historical checklist.
 ### 8. Cartridge identity and local distribution
 
 - [x] Original MOD-01 physical cart/label PNG with validated ancillary canonical `.m01c` bytes, captured label and title/author/year/players/controls; source-visible raw/PNG round-trip and corruption tests.
-- [x] Local diegetic shelf: bundled/imported labels/metadata/favorites/recents/class/players/save; launch/source/duplicate/rename/export/remove with confirmation/recovery; offline persistence.
+- [x] Terminal-first cartridge catalog: eight bundled carts are printed at boot and launch only through `run <id>`; `dir`, source, duplicate, rename, export, remove/recovery, and saves remain local terminal workflows.
 - [x] Extend single offline HTML, itch-ready ZIP/index, embed; metadata/controls/fullscreen/pause/reset/source inspection and isolated saves; no external dependencies.
 - [x] Tiny fragment-only sharing with browser-tested conservative cap and pre-copy meter, clean oversize rejection, no query/upload/request; normal files remain primary.
 
