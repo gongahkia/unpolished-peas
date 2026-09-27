@@ -541,8 +541,8 @@ export class DeterministicMachine implements CartridgeApi {
     const span = error instanceof RuntimeFault ? error.sourceSpan : fallback;
     this.lastFault = {
       code:
-        error instanceof RuntimeFault && /^PX9\d{3}$/.test(error.code)
-          ? Number(error.code.slice(2))
+        error instanceof RuntimeFault && /^M019\d{3}$/.test(error.code)
+          ? Number(error.code.slice(3))
           : 9199,
       sourceSpan: isFaultSpan(span) ? { ...span } : { start: 0, end: 0 },
     };

@@ -4,6 +4,6 @@ dist
 coverage
 crates/modl-wasm/pkg
 pnpm-lock.yaml
-MOD01_ALPHA_BRIEF.md
+MOD01_BASELINE_BRIEF.md
 .playwright-cli
 output

@@ -399,8 +399,8 @@ on draw:
   await page.locator('[data-save="back"]').click();
   await page.locator('[data-shelf="back"]').click();
 
-  await shellCommand(page, 'new e2e-alpha E2E ALPHA');
-  await expect(page.locator('.active-cart')).toContainText('E2E-ALPHA');
+  await shellCommand(page, 'new e2e-alpha E2E MOD-01 BASELINE');
+  await expect(page.locator('.active-cart')).toContainText('E2E-MOD-01 BASELINE');
   await shellCommand(page, 'edit');
   const source = page.locator('textarea.source-input');
   await source.fill(`// Made by @gongahkia

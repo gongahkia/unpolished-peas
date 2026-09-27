@@ -25,7 +25,7 @@ a Next.js application; the generic Next.js AGENTS block has no installed Next.js
 
 ## Measured alpha
 
-`tests/fixtures/alpha/` preserves original complete cartridges, an actual first-install IndexedDB
+`tests/fixtures/mod01-baseline/` preserves original complete cartridges, an actual first-install IndexedDB
 project snapshot, and 240-frame production-Worker recordings per game. Each frame records exact
 input, work, draw/audio/save commands, SHA-256 of the indexed pixels sent to WebGL, and SHA-256 of
 the Worker snapshot. The final snapshot is retained in full. These are observations of alpha,

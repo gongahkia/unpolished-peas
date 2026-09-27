@@ -268,7 +268,7 @@ fields represent exact integers through `2^53-1`; their unused upper bits are ze
 | `28`       | u64           | Actual work limit, 50,000 in production; internal diagnostic hosts may lower it.       |
 | `30`       | u8            | Status bits: 0 boot completed, 1 callback active, 2 terminal fault.                    |
 | `31`–`33`  | zero          | Reserved.                                                                              |
-| `34`       | u16           | Numeric `PX9xxx` fault code; zero when healthy, 9199 for an unexpected host exception. |
+| `34`       | u16           | Numeric `M019xxx` fault code; zero when healthy, 9199 for an unexpected host exception. |
 | `36`–`37`  | zero          | Reserved.                                                                              |
 | `38`, `3c` | u32           | Fault source span start/end; zero when absent or unavailable.                          |
 

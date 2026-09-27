@@ -2111,7 +2111,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'DIAGNOSTICS',
-      body: 'PX10xx lexes, PX20xx parses, PX30xx resolves/types, PX40xx validates cartridges, and PX90xx reports deterministic runtime/hardware faults. A diagnostic includes its source range; F1 on a symbol opens the matching API page.',
+      body: 'M011xxx lexes, M012xxx parses, M013xxx resolves/types, M014xxx validates cartridges, and M019xxx reports deterministic runtime/hardware faults. A diagnostic includes its source range; F1 on a symbol opens the matching API page.',
     },
     {
       title: 'TUTORIAL',

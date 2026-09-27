@@ -254,22 +254,22 @@ fn escape_script_data(value: &str) -> String {
 }
 
 fn base64(bytes: &[u8]) -> String {
-    const ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    const BASE64_ALPHABET: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
     let mut output = String::with_capacity(bytes.len().div_ceil(3) * 4);
     for chunk in bytes.chunks(3) {
         let first = u32::from(chunk[0]);
         let second = u32::from(*chunk.get(1).unwrap_or(&0));
         let third = u32::from(*chunk.get(2).unwrap_or(&0));
         let value = (first << 16) | (second << 8) | third;
-        output.push(char::from(ALPHABET[((value >> 18) & 63) as usize]));
-        output.push(char::from(ALPHABET[((value >> 12) & 63) as usize]));
+        output.push(char::from(BASE64_ALPHABET[((value >> 18) & 63) as usize]));
+        output.push(char::from(BASE64_ALPHABET[((value >> 12) & 63) as usize]));
         output.push(if chunk.len() > 1 {
-            char::from(ALPHABET[((value >> 6) & 63) as usize])
+            char::from(BASE64_ALPHABET[((value >> 6) & 63) as usize])
         } else {
             '='
         });
         output.push(if chunk.len() > 2 {
-            char::from(ALPHABET[(value & 63) as usize])
+            char::from(BASE64_ALPHABET[(value & 63) as usize])
         } else {
             '='
         });

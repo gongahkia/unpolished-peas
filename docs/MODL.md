@@ -33,7 +33,7 @@ state recent: List[Int, 16] = []
 state ports: [Int, 4] = [0, 0, 0, 0]
 ```
 
-Top-level declarations are public by default so every alpha project remains valid. `pub` may make
+Top-level declarations are public by default so every MOD-01 baseline project remains valid. `pub` may make
 that intent explicit; `private` prevents access through an import alias. Visibility applies to
 constants, state, functions, tasks, records, and enums. Imports are absolute project paths and
 always use qualified member access:

@@ -9,7 +9,7 @@ Never update these from V1 to make a compatibility test pass.
   and final Worker snapshot. State hashes use `JSON.stringify` of the original snapshot shape;
   compare the migrated legacy projection, not a V1 envelope's incidental representation.
 - `indexeddb.json.gz` is the alpha first-install repository snapshot. Typed arrays are losslessly
-  tagged `{ "alphaUint8Array": [...] }`. `catalogs.json` is the alpha CLI's parsed project metadata.
+  tagged `{ "mod01BaselineUint8Array": [...] }`. `catalogs.json` is the alpha CLI's parsed project metadata.
 - `save.json` is a synthetic non-empty alpha save using the actual Ashvault key/schema, not progress
   earned by the short recording. The recorded game paths start with empty saves. Alpha has no public
   replay file format; its frame/input records and final revision-1 snapshot are the pre-V1 replay
@@ -31,9 +31,9 @@ Recording commands (archival only, refuse post-alpha implementation diffs and ex
 
 ```sh
 pnpm --dir apps/studio exec vite preview --host 127.0.0.1 --port 4173 --strictPort
-node scripts/record-alpha-baseline.mjs
-node scripts/record-alpha-baseline.mjs --latency-only
-node scripts/record-alpha-metadata.mjs
+node scripts/record-mod01-baseline-baseline.mjs
+node scripts/record-mod01-baseline-baseline.mjs --latency-only
+node scripts/record-mod01-baseline-metadata.mjs
 ```
 
 The separate latency-only run splits Cinder's declarations/functions and callbacks into two modules

@@ -18,7 +18,7 @@ import { MemoryStorage, StudioRepository, type StoredProject } from './persisten
 import type { ConsoleCommand, SandboxConfiguration } from './protocol';
 import { SaveMemory } from './save';
 
-const directory = new URL('../../../tests/fixtures/alpha/', import.meta.url);
+const directory = new URL('../../../tests/fixtures/mod01-baseline/', import.meta.url);
 const read = (name: string): Buffer => readFileSync(new URL(name, directory));
 const hash = (bytes: Uint8Array | string): string =>
   createHash('sha256').update(bytes).digest('hex');
@@ -50,10 +50,10 @@ const projects = new Map(
       if (
         typeof value === 'object' &&
         value !== null &&
-        'alphaUint8Array' in value &&
-        Array.isArray(value.alphaUint8Array)
+        'mod01BaselineUint8Array' in value &&
+        Array.isArray(value.mod01BaselineUint8Array)
       ) {
-        return Uint8Array.from(value.alphaUint8Array as number[]);
+        return Uint8Array.from(value.mod01BaselineUint8Array as number[]);
       }
       return value;
     },
@@ -78,26 +78,21 @@ const audioMetrics = JSON.parse(read('audio.json').toString()) as Record<
   }
 >;
 
-describe('immutable alpha recordings', () => {
-  it('migrates the preserved raw alpha project and save while retaining backups', async () => {
+describe('MOD-01 baseline recordings', () => {
+  it('loads the fresh MOD-01 baseline project without legacy migration state', async () => {
     const legacy = projects.get('project/ashvault');
-    if (legacy === undefined) throw new Error('missing alpha project fixture');
+    if (legacy === undefined) throw new Error('missing MOD-01 baseline project fixture');
     const storage = new MemoryStorage();
     await storage.set('project/ashvault', legacy);
-    await storage.set('save/ashvault', new Uint8Array(read('save.json')));
     const repository = new StudioRepository(storage);
     expect(await repository.loadProject('ashvault')).toMatchObject({
       id: 'ashvault',
       revision: 1,
       storageRevision: 1,
     });
-    expect(await storage.get('migration/project/ashvault/alpha')).toEqual(legacy);
     const save = repository.cartridgeSave('ashvault');
-    expect(new TextDecoder().decode(await save.read())).toContain('deepest_vault');
-    expect(await save.schemaVersion()).toBe(0);
-    expect(await storage.get('migration/save/ashvault/alpha')).toEqual(
-      new Uint8Array(read('save.json')),
-    );
+    expect(await save.read()).toEqual(new Uint8Array());
+    expect(await save.schemaVersion()).toBe(1);
   });
 
   for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
@@ -109,7 +104,7 @@ describe('immutable alpha recordings', () => {
       expect(catalog).toBeDefined();
       expect(metric).toBeDefined();
       if (project === undefined || catalog === undefined || metric === undefined)
-        throw new Error('missing alpha fixture');
+        throw new Error('missing MOD-01 baseline fixture');
       const packed = read(`${id}.m01c`);
       expect(packed.length).toBe(metric.bytes);
       expect(hash(packed)).toBe(metric.sha256);
@@ -148,11 +143,11 @@ describe('immutable alpha recordings', () => {
   }
 });
 
-describe('shared Worker core versus alpha browser execution', () => {
+describe('shared Worker core versus MOD-01 browser execution', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   let temporary: string;
   beforeAll(() => {
-    temporary = mkdtempSync(join(tmpdir(), 'mod01-alpha-core-'));
+    temporary = mkdtempSync(join(tmpdir(), 'mod01-mod01-baseline-core-'));
     execFileSync('cargo', ['build', '--quiet', '--package', 'mod01-cli'], { cwd: root });
   }, 120_000);
   afterAll(() => {
@@ -187,7 +182,8 @@ describe('shared Worker core versus alpha browser execution', () => {
       };
       const project = projects.get(`project/${id}`);
       const catalog = catalogs[id];
-      if (project === undefined || catalog === undefined) throw new Error('missing alpha assets');
+      if (project === undefined || catalog === undefined)
+        throw new Error('missing MOD-01 baseline assets');
       const assets = decodeRuntimeAssets(catalog.assets, project.files, catalog.display);
       const runtime = createConsoleRuntime(generated.default, {
         ...trace.configuration,

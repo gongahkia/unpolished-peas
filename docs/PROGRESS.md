@@ -967,7 +967,7 @@ Each group may produce several coherent commits, and integration occurs througho
   sprites, maps, raster, fonts, synth/tracker, four ports, tasks, saves, modules, tests, bus access
   and profiling to runnable sources.
 - Versioned IndexedDB project/settings/save records without changing cartridge format revision 1.
-  Raw alpha project, replay and save fixtures migrate transactionally with recovery copies. Saves
+  Raw MOD-01 baseline project, replay and save fixtures migrate transactionally with recovery copies. Saves
   now carry stable cartridge identity, application schema, CRC32, bounded `.m01save` import/export,
   application-controlled migration and double-confirmed reset/delete. Corruption, truncation,
   oversize and cross-cartridge imports are rejected before mutation.

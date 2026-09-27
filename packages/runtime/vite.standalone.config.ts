@@ -6,7 +6,7 @@ export default defineConfig({
     lib: {
       entry: 'src/standalone-player.ts',
       formats: ['iife'],
-      name: 'MOD-01Standalone',
+      name: 'MOD01Standalone',
       fileName: () => 'player.js',
     },
     minify: false,

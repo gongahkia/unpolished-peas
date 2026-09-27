@@ -21,7 +21,7 @@ cart and production-core Worker, and `.m01rec` plus `.m01save` are bounded revis
 
 ## Before and after measurements
 
-Alpha values are immutable measurements from `tests/fixtures/alpha`; V1 values come from the final
+Alpha values are immutable measurements from `tests/fixtures/mod01-baseline`; V1 values come from the final
 `mod01 info` section accountant. V1 profile values below use an empty 60-frame input. The archived
 intentional gameplay paths still match all 720 alpha framebuffer/state/work/command observations
 and their PCM goldens.
