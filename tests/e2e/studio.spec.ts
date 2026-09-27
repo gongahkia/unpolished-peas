@@ -38,6 +38,16 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('[data-view="boot"]')).toBeVisible();
   await expect(page.locator('.boot-terminal')).toContainText('POWER RELAY // WHIRR');
   await expect
+    .poll(() =>
+      page.locator('[data-view="boot"]').evaluate((element) => {
+        const scale = Number(
+          getComputedStyle(document.documentElement).getPropertyValue('--px-scale'),
+        );
+        return Math.round(element.getBoundingClientRect().width) === 240 * scale;
+      }),
+    )
+    .toBe(true);
+  await expect
     .poll(() => page.locator('#studio').evaluate((element) => getComputedStyle(element).cursor))
     .toContain('data:image/svg+xml');
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
