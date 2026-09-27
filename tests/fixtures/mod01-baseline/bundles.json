@@ -1,14 +1,18 @@
 {
-  "index-BiC5MxY6.js": {
-    "bytes": 305218,
-    "sha256": "7ac32f8169b3c12acc43e8f7cc6133c59d10e93648d2c3f921551a3ef21a0b3f"
-  },
   "index-CBhsc2F_.css": {
     "bytes": 18658,
     "sha256": "a348387ef8c7d217487cf25dad51a84ed81df7f1e9b22c733c38afa1279b995c"
   },
-  "modl_wasm_bg-DpTCNE86.wasm": {
-    "bytes": 1427484,
-    "sha256": "6984b7e2600038aca4f08a2950ddcc143d7ca996fc74be879ee4ad2df7531333"
+  "index-Lp3AxelF.js": {
+    "bytes": 305253,
+    "sha256": "ba7adc972997495ef85c689baa4e1af47aba3ce1c1601e386bc7c2fb0e009660"
+  },
+  "mod01-logo-DlzD-6lA.png": {
+    "bytes": 58708,
+    "sha256": "3d3e737336df97050eeeec014b00349eb1998add1e1e1a2ce277b7275dda7a27"
+  },
+  "modl_wasm_bg-vB5Ji2-4.wasm": {
+    "bytes": 1427676,
+    "sha256": "db4001a8c082e33fecb4bfa1aa406667719e4df314486c19215e0e45deeb181d"
   }
 }

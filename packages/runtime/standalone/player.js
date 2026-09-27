@@ -1247,6 +1247,7 @@
   var stopped = false;
   var paused = false;
   var generation = 0;
+  var isPaused = () => paused;
   document.documentElement.dataset.embed = String(location.hash === '#embed');
   soundButton.addEventListener('click', () => {
     audio = new WebAudioSink();
@@ -1323,7 +1324,7 @@
     try {
       const result = await currentSandbox.frame(currentInput.poll());
       if (currentGeneration !== generation) return;
-      if (paused) {
+      if (isPaused()) {
         requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
         return;
       }

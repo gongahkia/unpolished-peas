@@ -75,6 +75,7 @@ let audio: WebAudioSink | undefined;
 let stopped = false;
 let paused = false;
 let generation = 0;
+const isPaused = (): boolean => paused;
 
 document.documentElement.dataset.embed = String(location.hash === '#embed');
 
@@ -162,7 +163,7 @@ async function frame(
   try {
     const result = await currentSandbox.frame(currentInput.poll());
     if (currentGeneration !== generation) return;
-    if (paused) {
+    if (isPaused()) {
       requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
       return;
     }
