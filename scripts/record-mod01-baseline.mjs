@@ -31,6 +31,24 @@ try {
     });
   });
   await page.addInitScript(() => {
+    const baselineSnapshot = (snapshot) => {
+      const bytes = snapshot.save.bytes;
+      const zero = bytes.indexOf(0);
+      const end = zero === -1 ? bytes.length : zero;
+      const save = end === 0 ? {} : JSON.parse(new TextDecoder().decode(bytes.slice(0, end)));
+      return {
+        revision: 1,
+        machine: {
+          revision: 1,
+          frame: snapshot.machine.frame,
+          rngState: snapshot.machine.rngState,
+          cartridge: snapshot.machine.cartridge,
+          input: snapshot.machine.input,
+          previousInput: snapshot.machine.previousInput,
+        },
+        save,
+      };
+    };
     window.mod01BaselineCapture = {
       frames: [],
       pixels: [],
@@ -60,9 +78,10 @@ try {
           } else if (event.data.type === 'snapshot') {
             const index = capture.snapshotCount;
             capture.snapshotCount += 1;
-            capture.finalSnapshot = event.data.snapshot;
+            const snapshot = baselineSnapshot(event.data.snapshot);
+            capture.finalSnapshot = snapshot;
             void crypto.subtle
-              .digest('SHA-256', new TextEncoder().encode(JSON.stringify(event.data.snapshot)))
+              .digest('SHA-256', new TextEncoder().encode(JSON.stringify(snapshot)))
               .then((digest) => {
                 capture.stateHashes[index] = Array.from(new Uint8Array(digest), (byte) =>
                   byte.toString(16).padStart(2, '0'),

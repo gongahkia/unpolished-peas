@@ -39,9 +39,9 @@ and complete runtime snapshots.
 | Ashvault       | 41,354 | `387cf0a12d3de5fb93270e91b7ecf60973f07582ba204fb944a57949e9d6aa5f` |         19,299 / 117 / 2 |
 | Raster Rush    | 38,124 | `96016c679dbb5d302274d5e813fcd5c803bc2f78ebd0357e964679b62ee4f729` |         31,722 / 470 / 1 |
 
-The clean edit/save/run/first-render measurement is 273.58 ms cold and 245.60
+The clean edit/save/run/first-render measurement is 153.89 ms cold and 168.42
 ms median across the recorded warm samples. The split-module latency pass is
-325.86 ms cold and 218.56 ms median warm.
+205.54 ms cold and 174.65 ms median warm.
 
 ## Deterministic release artifacts
 
