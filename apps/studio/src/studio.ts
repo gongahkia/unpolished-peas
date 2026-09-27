@@ -120,11 +120,7 @@ export class StudioApp {
     this.stopTerminalReveal();
     this.terminalLines.length = 0;
     this.visibleTerminalLines = 0;
-    this.appendLines([
-      'MODL/1 READY',
-      ...STARTUP_CATALOG,
-      "TYPE 'HELP' FOR COMMANDS",
-    ]);
+    this.appendLines(['MODL/1 READY', ...STARTUP_CATALOG, "TYPE 'HELP' FOR COMMANDS"]);
     const installed = await this.installBundledCartridges();
     if (installed > 0) {
       this.appendLines([`${String(installed)} BUILT-IN CARTRIDGES INSTALLED`]);
@@ -1738,15 +1734,6 @@ export class StudioApp {
       return;
     }
     terminal.replaceChildren(
-      ...(this.history.length === 0
-        ? [
-            Object.assign(document.createElement('img'), {
-              className: 'boot-logo',
-              src: mod01Logo,
-              alt: 'MOD-01 M01 logo',
-            }),
-          ]
-        : []),
       ...this.terminalLines.slice(0, this.visibleTerminalLines).map((line) => {
         const paragraph = document.createElement('p');
         paragraph.textContent = line || '\u00a0';
