@@ -270,6 +270,23 @@ body,
   image-rendering: pixelated;
 }
 
+.shell::after {
+  position: absolute;
+  inset: 11px 0 0;
+  z-index: 3;
+  pointer-events: none;
+  content: '';
+  background:
+    radial-gradient(ellipse at center, transparent 52%, rgb(10 8 14 / 16%) 100%),
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0,
+      transparent 1px,
+      rgb(0 0 0 / 11%) 1px,
+      rgb(0 0 0 / 11%) 2px
+    );
+}
+
 .boot-screen {
   background: var(--deep);
   animation: boot-power-on 180ms steps(2, end) both;
