@@ -21,8 +21,25 @@ try {
   page.setDefaultTimeout(30000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
+  page.on('framenavigated', (frame) => {
+    if (frame === page.mainFrame()) console.log(`navigated ${frame.url()}`);
+  });
   await page.addInitScript(() => {
-    window.mod01BaselineCapture = { frames: [], pixels: [], snapshots: [], limit: 240, id: '' };
+    Object.defineProperty(navigator, 'serviceWorker', {
+      configurable: true,
+      value: { register: () => Promise.resolve(undefined) },
+    });
+  });
+  await page.addInitScript(() => {
+    window.mod01BaselineCapture = {
+      frames: [],
+      pixels: [],
+      stateHashes: [],
+      snapshotCount: 0,
+      finalSnapshot: undefined,
+      limit: 240,
+      id: '',
+    };
     const capture = window.mod01BaselineCapture;
     const animationFrame = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (callback) => {
@@ -41,7 +58,19 @@ try {
             capture.frames.push({ frame, workUnits, drawCommands, audioCommands, saveWrites });
             post.call(this, { id: 900000 + frame, type: 'snapshot' });
           } else if (event.data.type === 'snapshot') {
-            capture.snapshots.push(event.data.snapshot);
+            const index = capture.snapshotCount;
+            capture.snapshotCount += 1;
+            capture.finalSnapshot = event.data.snapshot;
+            void crypto.subtle
+              .digest('SHA-256', new TextEncoder().encode(JSON.stringify(event.data.snapshot)))
+              .then((digest) => {
+                capture.stateHashes[index] = Array.from(new Uint8Array(digest), (byte) =>
+                  byte.toString(16).padStart(2, '0'),
+                ).join('');
+              })
+              .catch((error) => {
+                capture.error = { message: String(error) };
+              });
           } else if (event.data.type === 'error') {
             capture.error = event.data;
           }
@@ -115,14 +144,19 @@ try {
           id,
           frames: [],
           pixels: [],
-          snapshots: [],
+          stateHashes: [],
+          snapshotCount: 0,
+          finalSnapshot: undefined,
           inputs: [],
         }),
       id,
     );
     await command('run');
     await page.waitForFunction(
-      () => window.mod01BaselineCapture.snapshots.length >= 240 || window.mod01BaselineCapture.error,
+      () =>
+        (window.mod01BaselineCapture.snapshotCount >= 240 &&
+          window.mod01BaselineCapture.stateHashes.filter(Boolean).length >= 240) ||
+        window.mod01BaselineCapture.error,
       undefined,
       { polling: 20 },
     );
@@ -130,7 +164,7 @@ try {
     console.log({
       frames: capture.frames.length,
       pixels: capture.pixels.length,
-      snapshots: capture.snapshots.length,
+      snapshots: capture.snapshotCount,
       first: capture.frames.slice(0, 3).map((frame) => frame.frame),
       last: capture.frames.slice(-3).map((frame) => frame.frame),
     });
@@ -141,7 +175,7 @@ try {
       ...frame,
       input: capture.inputs[index],
       framebufferHash: hash(Uint8Array.from(capture.pixels[index])),
-      stateHash: hash(JSON.stringify(capture.snapshots[index])),
+      stateHash: capture.stateHashes[index],
     }));
     const trace = {
       revision: 1,
@@ -149,7 +183,7 @@ try {
       id,
       configuration: capture.configuration,
       frames,
-      finalSnapshot: capture.snapshots.at(-1),
+      finalSnapshot: capture.finalSnapshot,
     };
     const bytes = await readFile(`apps/studio/public/cartridges/${id}.m01c`);
     await writeFile(`${directory}/${id}.m01c`, bytes, { flag: 'w' });
@@ -168,7 +202,9 @@ try {
       finalStateHash: frames.at(-1).stateHash,
       audioCommandHash: hash(JSON.stringify(frames.map((frame) => frame.audioCommands))),
     };
-    await page.locator('.player-screen').screenshot({ path: `output/playwright/mod01-baseline-.png` });
+    await page
+      .locator('.player-screen')
+      .screenshot({ path: `output/playwright/mod01-baseline-${id}.png` });
     await page.locator('.stop-player').click();
   }
   const records = await page.evaluate(
@@ -248,7 +284,9 @@ try {
       Object.assign(window.mod01BaselineCapture, {
         frames: [],
         pixels: [],
-        snapshots: [],
+        stateHashes: [],
+        snapshotCount: 0,
+        finalSnapshot: undefined,
         inputs: [],
         limit: 1,
       }),

@@ -8,7 +8,7 @@ for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
   );
 }
 await writeFile('tests/fixtures/mod01-baseline/catalogs.json', `${JSON.stringify(catalogs, null, 2)}\n`, {
-  flag: 'wx',
+  flag: 'w',
 });
 const bundles = {};
 for (const path of await readdir('dist/studio/assets')) {
@@ -16,5 +16,5 @@ for (const path of await readdir('dist/studio/assets')) {
   bundles[path] = { bytes: bytes.length, sha256: createHash('sha256').update(bytes).digest('hex') };
 }
 await writeFile('tests/fixtures/mod01-baseline/bundles.json', `${JSON.stringify(bundles, null, 2)}\n`, {
-  flag: 'wx',
+  flag: 'w',
 });
