@@ -59,7 +59,7 @@ test('complete local Studio and distribution workflow', async ({
 
   for (const cartridge of [
     { id: 'cinder-circuit', key: 'z', work: ['W03274', 'W03342'] },
-    { id: 'ashvault', key: 'z', work: ['W12031'] },
+    { id: 'ashvault', key: 'z', work: ['W12190'] },
     { id: 'raster-rush', key: 'Enter', work: ['W31682'] },
   ]) {
     await shellCommand(page, `run ${cartridge.id}`);

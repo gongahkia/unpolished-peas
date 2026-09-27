@@ -168,6 +168,7 @@ async function frame(
     status.textContent = `F${String(result.frame).padStart(5, '0')} W${String(result.workUnits).padStart(5, '0')}`;
     requestAnimationFrame(() => void frame(currentGeneration, currentSandbox, currentInput));
   } catch (error: unknown) {
+    if (currentGeneration !== generation || stopped) return;
     stopped = true;
     showError(error);
   }
