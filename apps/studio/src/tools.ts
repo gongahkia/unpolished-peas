@@ -446,11 +446,12 @@ function spriteToTileSet(sprite: SpriteDocument): TileSetDocument {
       }
     }
   }
+  const atlas = tiles.length > 0 ? tiles : defaultTiles();
   return {
     revision: 1,
     kind: 'tile_set',
-    tiles: tiles.length > 0 ? tiles : defaultTiles(),
-    flags: tiles.map(() => 0),
+    tiles: atlas,
+    flags: atlas.map(() => 0),
   };
 }
 
@@ -1026,21 +1027,18 @@ async function openMapEditor(
         height: 8,
         frames: [Array.from({ length: 64 }, () => 0)],
       });
-      const baseName = `${spriteName}-tiles`;
+      const baseName = `${spriteName}_tiles`;
       selectedName = baseName;
-      let suffix = 2;
-      while (tileSets.has(selectedName)) {
-        selectedName = `${baseName}-${String(suffix)}`;
-        suffix += 1;
+      if (!tileSets.has(selectedName)) {
+        tileSets.set(selectedName, {
+          path: `assets/${selectedName}.m01g`,
+          document: spriteToTileSet(source),
+        });
+        const nativeOption = root.ownerDocument.createElement('option');
+        nativeOption.value = selectedName;
+        nativeOption.textContent = `${spriteName.toUpperCase()} TILES`;
+        tileSetSelect.append(nativeOption);
       }
-      tileSets.set(selectedName, {
-        path: `assets/${selectedName}.m01g`,
-        document: spriteToTileSet(source),
-      });
-      const nativeOption = root.ownerDocument.createElement('option');
-      nativeOption.value = selectedName;
-      nativeOption.textContent = `${spriteName.toUpperCase()} TILES`;
-      tileSetSelect.append(nativeOption);
     }
     const selected = tileSets.get(selectedName)?.document;
     if (current === undefined || selected === undefined) return;

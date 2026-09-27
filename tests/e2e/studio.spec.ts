@@ -57,6 +57,9 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('.terminal')).toContainText('FIRST SIGNAL / RUN modl-tutorial');
   await shellCommand(page, 'shelf');
   await expect(page.locator('.terminal')).toContainText('?UNKNOWN COMMAND: SHELF');
+  await expect(page.locator('.terminal-command .terminal-prompt')).toHaveText('>');
+  await expect(page.locator('.terminal-command .terminal-input')).toContainText(' shelf');
+  await expect(page.locator('.terminal-error')).toContainText('?UNKNOWN COMMAND: SHELF');
   await shellCommand(page, 'cls');
   await expect(page.locator('.terminal')).toBeEmpty();
   await expect
@@ -355,6 +358,7 @@ on draw:
   await shellCommand(page, 'source e2e-link');
   await page.getByRole('button', { name: 'main.modl' }).click();
   await expect(page.locator('[data-view="inspector"]')).toContainText('Made by @gongahkia');
+  await expect(page.locator('.inspector-output .syntax-comment')).not.toHaveCount(0);
   await page.locator('[data-back]').click();
   await shellCommand(page, 'star e2e-link');
   await expect(page.locator('.terminal')).toContainText('STARRED e2e-link');
@@ -527,6 +531,11 @@ on draw:
   await saveAndCloseTool(page);
 
   await shellCommand(page, 'map');
+  await expect(page.locator('.pixel-select-menu:visible')).toHaveCount(0);
+  await page.locator('.tileset-select + .pixel-select-toggle').click();
+  await page.getByRole('option', { name: 'HERO SPRITE', exact: true }).click();
+  await expect(page.locator('.tileset-select')).toHaveValue('hero_tiles');
+  await expect(page.locator('.tileset-select + .pixel-select-toggle')).toHaveText('HERO TILES');
   await page.locator('.map-canvas').click({ position: { x: 30, y: 30 } });
   await page.locator('[data-map="add"]').click();
   await expect(page.locator('.layer-readout')).toHaveText('2/2');
@@ -582,6 +591,9 @@ on draw:
   await shellCommand(page, 'explore');
   await page.getByRole('button', { name: 'IR', exact: true }).click();
   await expect(page.locator('.explorer-output')).toContainText('routines');
+  await expect(page.locator('.explorer-output .syntax-json-key')).not.toHaveCount(0);
+  await page.getByRole('button', { name: 'JS', exact: true }).click();
+  await expect(page.locator('.explorer-output .syntax-keyword')).not.toHaveCount(0);
   await page.locator('[data-back]').click();
 
   await shellCommand(page, 'recover');
