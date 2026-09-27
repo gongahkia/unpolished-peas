@@ -415,7 +415,7 @@ on draw:
   await page.locator('[data-shelf="back"]').click();
 
   await shellCommand(page, 'new e2e-release E2E RELEASE');
-  await expect(page.locator('.active-cart')).toContainText('E2E-RELEASE');
+  await expect(page.locator('.terminal')).toContainText('CREATED e2e-release');
   await shellCommand(page, 'edit');
   const source = page.locator('textarea.source-input');
   await source.fill(`// Made by @gongahkia

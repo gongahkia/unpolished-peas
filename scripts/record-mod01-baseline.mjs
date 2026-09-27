@@ -156,7 +156,10 @@ try {
   for (const id of latencyOnly ? [] : ['cinder-circuit', 'ashvault', 'raster-rush']) {
     console.log(`recording ${id}`);
     await command(`load ${id}`);
-    await page.locator('.active-cart').filter({ hasText: id.toUpperCase() }).waitFor();
+    await page
+      .locator('.terminal')
+      .filter({ hasText: `LOADED ${id}` })
+      .waitFor();
     await page.evaluate(
       (id) =>
         Object.assign(window.mod01BaselineCapture, {
@@ -295,7 +298,7 @@ try {
 
   // includes filling an actual source edit, saving/back, compilation, Worker boot and first render.
   await command('load cinder-circuit');
-  await page.locator('.active-cart').filter({ hasText: 'CINDER-CIRCUIT' }).waitFor();
+  await page.locator('.terminal').filter({ hasText: 'LOADED cinder-circuit' }).waitFor();
   const latencies = [];
   for (let index = 0; index < 11; index += 1) {
     await command('edit');
