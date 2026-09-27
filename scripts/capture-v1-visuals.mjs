@@ -37,7 +37,6 @@ for (const [name, engine] of [
     await page.waitForTimeout(500);
     await page.screenshot({ path: `${output}/v1-${name}-scaled.png` });
 
-    await page.locator('.capture-scale').selectOption('1');
     const download = page.waitForEvent('download');
     await page.locator('.capture-shot').click();
     const native = await download;

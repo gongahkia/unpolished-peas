@@ -1123,7 +1123,7 @@ export class StudioApp {
     this.root.innerHTML = `
       <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running MOD-01 cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
-        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">M01REC OUT</button><label class="file-button">M01REC IN<input class="replay-input" type="file" accept=".m01rec,application/json"></label></div>
+        <div class="capture-player"><button class="capture-scale" type="button" aria-label="Capture scale">SCALE 1X</button><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">M01REC OUT</button><label class="file-button">M01REC IN<input class="replay-input" type="file" accept=".m01rec,application/json"></label></div>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
         <button class="enable-player-audio" type="button">SOUND</button>
         <p class="player-budget">${String(rom.byteLength)}B/${sizeClass(rom.byteLength)} D0000 V0</p>
@@ -1140,6 +1140,7 @@ export class StudioApp {
     const input = new BrowserInput(canvas, undefined, settings.controllerProfile);
     const renderer = new WebGlIndexedRenderer(canvas);
     let audioSink: WebAudioSink | undefined;
+    let captureScale = 1;
     const capturedFrames: Uint8Array[] = [];
     const capturedInputs: { frame: number; input: InputFrame }[] = [];
     const importedInputs = replay === undefined ? undefined : replayInputFrames(replay);
@@ -1208,15 +1209,19 @@ export class StudioApp {
       () => {
         const last = capturedFrames.at(-1);
         if (last === undefined) return;
-        const scale = Number(
-          (requireElement(this.root, '.capture-scale') as HTMLSelectElement).value,
-        );
-        const image = scaleRgba(indexedFrame(last), scale);
+        const image = scaleRgba(indexedFrame(last), captureScale);
         downloadBytes(
-          `${project.id}-${String(capturedInputs.at(-1)?.frame ?? 0).padStart(5, '0')}@${String(scale)}x.png`,
+          `${project.id}-${String(capturedInputs.at(-1)?.frame ?? 0).padStart(5, '0')}@${String(captureScale)}x.png`,
           encodeRgbaPng(image.width, image.height, image.rgba),
           'image/png',
         );
+      },
+    );
+    (requireElement(this.root, '.capture-scale') as HTMLButtonElement).addEventListener(
+      'click',
+      (event) => {
+        captureScale = captureScale === 4 ? 1 : captureScale + 1;
+        (event.currentTarget as HTMLButtonElement).textContent = `SCALE ${String(captureScale)}X`;
       },
     );
     (requireElement(this.root, '.capture-gif') as HTMLButtonElement).addEventListener(

@@ -592,17 +592,12 @@ body,
   line-height: 6px;
 }
 
-.capture-player button,
-.capture-player select {
+.capture-player button {
   padding: 0 1px;
   color: var(--cream);
   background-color: #5b2938;
   border: 1px solid var(--cyan);
   font: inherit;
-}
-
-.capture-player select {
-  appearance: none;
 }
 
 .share-view main {

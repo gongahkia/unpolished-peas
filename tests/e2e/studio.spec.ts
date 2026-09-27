@@ -418,7 +418,7 @@ on draw:
   await shellCommand(page, 'run');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
   await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
-  await page.locator('.capture-scale').selectOption('2');
+  await page.locator('.capture-scale').click();
   const screenshotPromise = page.waitForEvent('download');
   await page.locator('.capture-shot').click();
   const screenshot = await screenshotPromise;
