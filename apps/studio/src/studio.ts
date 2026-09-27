@@ -223,7 +223,7 @@ export class StudioApp {
   private renderShell(): void {
     this.root.innerHTML = `
       <section class="display shell" data-view="shell" aria-label="MOD-01 monitor shell">
-        <header class="system-bar"><span class="system-product-brand"><img class="shell-logo" src="${mod01Logo}" alt="" />MOD-01</span><span class="active-cart"></span></header>
+        <header class="system-bar"><span class="system-product-brand"><img class="shell-logo" src="${mod01Logo}" alt="" />MOD-01</span></header>
         <div class="terminal" role="log" aria-live="polite" aria-relevant="additions text"></div>
         <form class="command-line">
           <label for="command">&gt;</label>
@@ -232,12 +232,6 @@ export class StudioApp {
       </section>
     `;
     this.refreshTerminal();
-    const cart = this.root.querySelector<HTMLElement>('.active-cart');
-    if (cart !== null) {
-      cart.textContent = this.activeProject?.id.toUpperCase() ?? 'NO CART';
-      if (this.activeProject !== undefined)
-        void this.refreshActiveCartMeter(cart, this.activeProject);
-    }
     const form = requireElement(this.root, '.command-line') as HTMLFormElement;
     const input = requireElement(this.root, '#command') as HTMLInputElement;
     form.addEventListener('submit', (event) => {
@@ -1763,24 +1757,6 @@ export class StudioApp {
     document.documentElement.dataset.mutedStartup = String(settings.mutedStartup);
   }
 
-  private async refreshActiveCartMeter(
-    target: HTMLElement,
-    project: WorkingProject,
-  ): Promise<void> {
-    try {
-      const bytes = await this.compiler.packProject(project.manifest, project.files);
-      if (
-        this.activeProject?.id === project.id &&
-        this.activeProject.revision === project.revision
-      ) {
-        target.textContent = `${project.id.toUpperCase()} ${String(bytes.byteLength)}B/${sizeClass(bytes.byteLength)}`;
-      }
-    } catch {
-      if (this.activeProject?.id === project.id)
-        target.textContent = `${project.id.toUpperCase()} !BUILD`;
-    }
-  }
-
   private async openInspector(): Promise<void> {
     const project = this.requireProject();
     const cartridge = await this.compiler.decodeCartridge(
@@ -1867,10 +1843,6 @@ export class StudioApp {
   }
 
   private refreshTerminal(): void {
-    const cart = this.root.querySelector<HTMLElement>('.active-cart');
-    if (cart !== null) {
-      cart.textContent = this.activeProject?.id.toUpperCase() ?? 'NO CART';
-    }
     const terminal = this.root.querySelector<HTMLElement>('.terminal');
     if (terminal === null) {
       return;
