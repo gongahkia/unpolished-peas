@@ -64,6 +64,7 @@ interface FolderBinding {
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
 const PROJECT_ID = /^[a-z0-9][a-z0-9.-]{2,63}$/;
+const TERMINAL_LINE_DELAY_MS = 52;
 const BUNDLED_CARTRIDGES = [
   'cinder-circuit',
   'ashvault',
@@ -82,6 +83,9 @@ export class StudioApp {
   private readonly compiler = new BrowserCompiler();
   private activeProject: WorkingProject | undefined;
   private readonly terminalLines: string[] = [];
+  private visibleTerminalLines = 0;
+  private terminalRevealTimer: number | undefined;
+  private readonly terminalIdleResolvers: Array<() => void> = [];
   private readonly history: string[] = [];
   private historyCursor = 0;
   private player: ActivePlayer | undefined;
@@ -102,7 +106,9 @@ export class StudioApp {
     this.stopPlayer();
     this.stopDebugger();
     this.applySettings(await this.repository.settings());
+    this.stopTerminalReveal();
     this.terminalLines.length = 0;
+    this.visibleTerminalLines = 0;
     this.appendLines([
       'MOD-01 COLOR DEVELOPMENT UNIT',
       'SYSTEM ROM 1.0  (C) 1999',
@@ -125,6 +131,7 @@ export class StudioApp {
     }
     await startup;
     this.renderShell();
+    await this.waitForTerminalIdle();
     document.documentElement.dataset.studioReady = 'true';
   }
 
@@ -1838,8 +1845,11 @@ export class StudioApp {
   private appendLines(lines: readonly string[]): void {
     this.terminalLines.push(...lines);
     if (this.terminalLines.length > 80) {
-      this.terminalLines.splice(0, this.terminalLines.length - 80);
+      const removed = this.terminalLines.length - 80;
+      this.terminalLines.splice(0, removed);
+      this.visibleTerminalLines = Math.max(0, this.visibleTerminalLines - removed);
     }
+    this.refreshTerminal();
   }
 
   private refreshTerminal(): void {
@@ -1857,13 +1867,43 @@ export class StudioApp {
             }),
           ]
         : []),
-      ...this.terminalLines.map((line) => {
+      ...this.terminalLines.slice(0, this.visibleTerminalLines).map((line) => {
         const paragraph = document.createElement('p');
         paragraph.textContent = line || '\u00a0';
         return paragraph;
       }),
     );
     terminal.scrollTop = terminal.scrollHeight;
+    this.scheduleTerminalReveal();
+  }
+
+  private scheduleTerminalReveal(): void {
+    if (this.terminalRevealTimer !== undefined) return;
+    if (this.visibleTerminalLines >= this.terminalLines.length) {
+      this.resolveTerminalIdle();
+      return;
+    }
+    if (this.root.querySelector('.terminal') === null) return;
+    this.terminalRevealTimer = window.setTimeout(() => {
+      this.terminalRevealTimer = undefined;
+      if (this.root.querySelector('.terminal') === null) return;
+      this.visibleTerminalLines += 1;
+      this.refreshTerminal();
+    }, TERMINAL_LINE_DELAY_MS);
+  }
+
+  private stopTerminalReveal(): void {
+    if (this.terminalRevealTimer !== undefined) window.clearTimeout(this.terminalRevealTimer);
+    this.terminalRevealTimer = undefined;
+  }
+
+  private waitForTerminalIdle(): Promise<void> {
+    if (this.visibleTerminalLines >= this.terminalLines.length) return Promise.resolve();
+    return new Promise((resolve) => this.terminalIdleResolvers.push(resolve));
+  }
+
+  private resolveTerminalIdle(): void {
+    while (this.terminalIdleResolvers.length > 0) this.terminalIdleResolvers.shift()?.();
   }
 }
 
