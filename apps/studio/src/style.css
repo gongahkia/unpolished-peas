@@ -57,6 +57,12 @@ body,
   background: #292725;
 }
 
+/* The cursor is intentionally scoped to the console, never the surrounding page. */
+#studio,
+#studio * {
+  cursor: var(--mod01-cursor), default;
+}
+
 .display {
   position: relative;
   width: 240px;
@@ -262,6 +268,126 @@ body,
   height: 28px;
   margin: 0 auto 4px;
   image-rendering: pixelated;
+}
+
+.boot-screen {
+  background: var(--deep);
+  animation: boot-power-on 180ms steps(2, end) both;
+}
+
+.boot-screen::after {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  pointer-events: none;
+  content: '';
+  background: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 2px,
+    rgb(0 0 0 / 14%) 2px,
+    rgb(0 0 0 / 14%) 3px
+  );
+}
+
+.boot-power {
+  position: absolute;
+  inset: 0 0 auto;
+  z-index: 2;
+  height: 1px;
+  background: var(--cyan);
+  box-shadow:
+    0 1px 0 var(--amber),
+    0 2px 0 var(--coral);
+  animation: boot-sweep 360ms steps(4, end) both;
+}
+
+.boot-emblem {
+  position: absolute;
+  top: 12px;
+  left: 106px;
+  z-index: 2;
+  width: 28px;
+  height: 28px;
+  image-rendering: pixelated;
+  animation: boot-emblem-on 360ms steps(3, end) both;
+}
+
+.boot-terminal {
+  position: absolute;
+  inset: 48px 8px 15px;
+  z-index: 2;
+  overflow: hidden;
+  font-size: 6px;
+  line-height: 7px;
+}
+
+.boot-terminal p {
+  min-height: 7px;
+  margin: 0;
+}
+
+.boot-rom {
+  color: var(--amber);
+}
+
+.boot-check:last-child {
+  color: var(--cyan);
+}
+
+.boot-skip {
+  position: absolute;
+  right: 5px;
+  bottom: 3px;
+  z-index: 3;
+  min-height: 7px;
+  padding: 0 !important;
+  color: #9e968a !important;
+  background: transparent !important;
+  border: 0 !important;
+  font-size: 5px !important;
+  line-height: 7px;
+}
+
+.boot-skip:focus-visible {
+  color: var(--amber) !important;
+  outline: 1px solid var(--amber);
+}
+
+@keyframes boot-power-on {
+  0% {
+    opacity: 0;
+    transform: scaleY(0.02);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scaleY(1);
+  }
+}
+
+@keyframes boot-sweep {
+  0% {
+    top: 72px;
+    opacity: 1;
+  }
+
+  100% {
+    top: 0;
+    opacity: 0.45;
+  }
+}
+
+@keyframes boot-emblem-on {
+  0% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
 }
 
 .active-cart,
