@@ -23,4 +23,4 @@ player and author-owned cartridge material, not the Node toolchain or a third-pa
 
 Installed upstream package directories contain their full licenses and notices. Any external binary
 distribution must accompany notices required by those terms; this repository task does not publish
-or deploy one. The root `THIRD_PARTY_NOTICES.md` retains the matching workspace-level inventory.
+or deploy one. This file is the repository's workspace-level dependency inventory.

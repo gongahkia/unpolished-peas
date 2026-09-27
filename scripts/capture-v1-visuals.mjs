@@ -14,7 +14,7 @@ for (const [name, engine] of [
 ]) {
   const browser = await engine.launch();
   try {
-    const context = await browser.newContext({ viewport: { width: 1180, height: 760 } });
+    const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
     const page = await context.newPage();
     const errors = [];
     page.on('pageerror', (error) => errors.push(error.message));

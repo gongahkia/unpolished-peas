@@ -80,5 +80,6 @@ Generated factories do not execute global initializers. The runtime first attach
 devices, then `boot()` runs global initialization and `on start` in one start-phase work budget. This
 keeps initialization-time console calls inside the same execution and device boundary as callbacks.
 
-Architecture decisions live in [`docs/adr`](adr/). The product brief remains authoritative when a
+Architecture decisions live in [`docs/adr`](adr/). The V1 contract in [PRODUCT.md](PRODUCT.md),
+[LIMITS.md](LIMITS.md), and [V1_RELEASE_EVIDENCE.md](V1_RELEASE_EVIDENCE.md) takes precedence when a
 documented implementation detail conflicts with this overview.
