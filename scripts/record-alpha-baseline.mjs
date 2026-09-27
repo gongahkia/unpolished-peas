@@ -16,7 +16,7 @@ execFileSync('git', [
   'packages/runtime/src',
   'crates',
 ]);
-const baseURL = process.env.PX240C_BASELINE_URL ?? 'http://127.0.0.1:4173';
+const baseURL = process.env.MOD01_BASELINE_URL ?? 'http://127.0.0.1:4173';
 const latencyOnly = process.argv.includes('--latency-only');
 const directory = 'tests/fixtures/alpha';
 await mkdir(directory, { recursive: true });
@@ -107,7 +107,7 @@ try {
     };
   });
   const command = async (text) => {
-    const input = page.getByLabel('PX-240C command');
+    const input = page.getByLabel('MOD-01 command');
     await input.fill(text);
     await input.press('Enter');
   };
@@ -160,8 +160,8 @@ try {
       frames,
       finalSnapshot: capture.snapshots.at(-1),
     };
-    const bytes = await readFile(`apps/studio/public/cartridges/${id}.pxc`);
-    await writeFile(`${directory}/${id}.pxc`, bytes, { flag: 'wx' });
+    const bytes = await readFile(`apps/studio/public/cartridges/${id}.m01c`);
+    await writeFile(`${directory}/${id}.m01c`, bytes, { flag: 'wx' });
     await writeFile(
       `${directory}/${id}.trace.json.gz`,
       gzipSync(JSON.stringify(trace), { level: 9 }),
@@ -183,7 +183,7 @@ try {
   const records = await page.evaluate(
     () =>
       new Promise((resolve, reject) => {
-        const request = indexedDB.open('px240c-studio');
+        const request = indexedDB.open('mod01-studio');
         request.onerror = () => reject(request.error);
         request.onsuccess = () => {
           const database = request.result;
@@ -213,7 +213,7 @@ try {
     await page.evaluate(
       () =>
         new Promise((resolve, reject) => {
-          const request = indexedDB.open('px240c-studio');
+          const request = indexedDB.open('mod01-studio');
           request.onerror = () => reject(request.error);
           request.onsuccess = () => {
             const database = request.result;
@@ -222,15 +222,15 @@ try {
             const read = store.get('project/cinder-circuit');
             read.onsuccess = () => {
               const project = read.result;
-              const source = new TextDecoder().decode(project.files['src/main.pxl']);
+              const source = new TextDecoder().decode(project.files['src/main.modl']);
               const split = source.indexOf('\non start:');
               if (split < 0) {
                 transaction.abort();
                 reject(new Error('missing benchmark split'));
                 return;
               }
-              project.files['src/logic.pxl'] = new TextEncoder().encode(source.slice(0, split));
-              project.files['src/main.pxl'] = new TextEncoder().encode(
+              project.files['src/logic.modl'] = new TextEncoder().encode(source.slice(0, split));
+              project.files['src/main.modl'] = new TextEncoder().encode(
                 `import src.logic as logic\n${source.slice(split)}`,
               );
               store.put(project, 'project/cinder-circuit');

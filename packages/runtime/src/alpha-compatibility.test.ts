@@ -110,7 +110,7 @@ describe('immutable alpha recordings', () => {
       expect(metric).toBeDefined();
       if (project === undefined || catalog === undefined || metric === undefined)
         throw new Error('missing alpha fixture');
-      const packed = read(`${id}.pxc`);
+      const packed = read(`${id}.m01c`);
       expect(packed.length).toBe(metric.bytes);
       expect(hash(packed)).toBe(metric.sha256);
       const trace = JSON.parse(gunzipSync(read(`${id}.trace.json.gz`)).toString()) as {
@@ -152,8 +152,8 @@ describe('shared Worker core versus alpha browser execution', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   let temporary: string;
   beforeAll(() => {
-    temporary = mkdtempSync(join(tmpdir(), 'px240c-alpha-core-'));
-    execFileSync('cargo', ['build', '--quiet', '--package', 'px240c-cli'], { cwd: root });
+    temporary = mkdtempSync(join(tmpdir(), 'mod01-alpha-core-'));
+    execFileSync('cargo', ['build', '--quiet', '--package', 'mod01-cli'], { cwd: root });
   }, 120_000);
   afterAll(() => {
     if (temporary) rmSync(temporary, { recursive: true, force: true });
@@ -161,7 +161,7 @@ describe('shared Worker core versus alpha browser execution', () => {
   for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
     it(`recompiles and executes ${id} with identical work, commands, saves and state`, async () => {
       const generatedPath = join(temporary, `${id}.mjs`);
-      execFileSync(join(root, 'target/debug/px240c'), [
+      execFileSync(join(root, 'target/debug/mod01'), [
         'build',
         join(root, 'cartridges', id),
         '--output',

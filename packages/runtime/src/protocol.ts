@@ -42,7 +42,7 @@ export interface SandboxConfiguration {
   readonly save?: SaveImage;
   readonly debug?: boolean;
   readonly assets?: RuntimeAssetSource;
-  /** Host-validated canonical `.pxc` bytes exposed read-only on the hardware bus. */
+  /** Host-validated canonical `.m01c` bytes exposed read-only on the hardware bus. */
   readonly rom?: Uint8Array;
 }
 

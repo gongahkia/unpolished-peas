@@ -1,7 +1,7 @@
 import { HARDWARE } from './hardware';
 import { defaultControllerProfile, isControllerProfile, type ControllerProfile } from './input';
 
-const DATABASE_NAME = 'px240c-studio';
+const DATABASE_NAME = 'mod01-studio';
 const STORE_NAME = 'records';
 const DATABASE_VERSION = 1;
 const RECOVERY_LIMIT = 10;
@@ -207,7 +207,7 @@ export class StudioRepository {
 
   public async saveSettings(settings: StudioSettings): Promise<void> {
     if (!isStudioSettings(settings)) {
-      throw new TypeError('invalid PX-240C studio settings');
+      throw new TypeError('invalid MOD-01 studio settings');
     }
     await this.storage.set('settings/main', settings);
   }
@@ -412,7 +412,7 @@ export class CartridgeSaveAccess {
 function validateProject(project: ProjectDocument): void {
   validateId(project.id);
   if (project.title.length === 0 || project.title.length > 64 || project.manifest.length === 0) {
-    throw new TypeError('invalid PX-240C project title or manifest');
+    throw new TypeError('invalid MOD-01 project title or manifest');
   }
   const entries = Object.entries(project.files);
   if (entries.length === 0 || entries.length > 4096) {

@@ -1,7 +1,17 @@
-# PX-240C Color Development Unit
+<p align="center">
+  <a href="#mod-01-color-development-unit"><img src="apps/studio/public/mod01-logo.png" width="220" alt="MOD-01 M01 logo" /></a>
+</p>
 
-PX-240C is a complete local-first fantasy console presented as a technically unusual, commercially
-unsuccessful colour handheld from 1999. Its V1 release candidate includes the statically typed PXCL/1 language,
+<p align="center">
+  <a href="https://github.com/gongahkia/MOD-01/actions/workflows/ci.yml"><img src="https://github.com/gongahkia/MOD-01/actions/workflows/ci.yml/badge.svg" alt="MOD-01 CI" /></a>
+</p>
+
+# MOD-01 Color Development Unit
+
+<p align="center"><strong>A local-first colour fantasy console from an alternate 1999.</strong></p>
+
+MOD-01 is a complete local-first fantasy console presented as a technically unusual, commercially
+unsuccessful colour handheld from 1999. Its V1 release candidate includes the statically typed MODL/1 language,
 Rust/Wasm compiler, deterministic worker runtime, 240x144 integrated Studio, source debugger and
 rewind, native CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, three
 original pack-in games, three size-class showcases, a service cartridge, and a source-visible tutorial.
@@ -9,7 +19,13 @@ original pack-in games, three size-class showcases, a service cartridge, and a s
 Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository is private and
 proprietary; cartridge authors retain ownership of their source and assets.
 
-![Fresh PX-240C Studio boot monitor with all eight bundled cartridges](docs/images/studio-shell.png)
+## Contents
+
+- [V1 release-candidate status](#v1-release-candidate-status)
+- [Quick start](#quick-start)
+- [Boundaries](#boundaries)
+
+![Fresh MOD-01 Studio boot monitor with all eight bundled cartridges](docs/images/studio-shell.png)
 
 ## V1 release-candidate status
 
@@ -21,7 +37,7 @@ successful load. The V1 contract is recorded in [product principles](docs/PRODUC
 and history remain in [`docs/`](docs/PROGRESS.md).
 
 The monitor preinstalls eight source-visible first-party cartridges. The three preserved original
-games are ordinary public-facility PXCL projects:
+games are ordinary public-facility MODL projects:
 
 | Game                                        | Focus                                                                               |
 | ------------------------------------------- | ----------------------------------------------------------------------------------- |
@@ -65,17 +81,17 @@ This includes the production build and the pinned Firefox and Chromium end-to-en
 For the native external-editor workflow:
 
 ```sh
-cargo run -p px240c-cli -- new my-game --title "MY GAME"
-cargo run -p px240c-cli -- check my-game
-cargo run -p px240c-cli -- test my-game
-cargo run -p px240c-cli -- run my-game
-cargo run -p px240c-cli -- run my-game --headless --frames 120 --input path/to/replay.json
-cargo run -p px240c-cli -- export html my-game
+cargo run -p mod01-cli -- new my-game --title "MY GAME"
+cargo run -p mod01-cli -- check my-game
+cargo run -p mod01-cli -- test my-game
+cargo run -p mod01-cli -- run my-game
+cargo run -p mod01-cli -- run my-game --headless --frames 120 --input path/to/replay.json
+cargo run -p mod01-cli -- export html my-game
 ```
 
 See the [interactive/from-scratch tutorial](docs/TUTORIAL.md), [runnable examples](examples/README.md),
 [starter cartridges](templates/README.md), [tool guide](docs/TOOLS.md),
-[PXCL language contract](docs/LANGUAGE.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
+[MODL language contract](docs/LANGUAGE.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
 
 ## Boundaries
 

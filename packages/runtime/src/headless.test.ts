@@ -21,7 +21,7 @@ function request(overrides: Partial<HeadlessRequest> = {}): HeadlessRequest {
     javascript,
     manifest: { id: 'headless-test', updateRate: 60, display: null, assets: {} },
     entries: {},
-    rom: [80, 88, 50, 52, 48, 67, 26, 1, 0, 0, 0, 0],
+    rom: [77, 79, 68, 45, 48, 49, 26, 1, 0, 0, 0, 0],
     seed: 7,
     frames: 3,
     trace: { revision: 1, frames: [] },
@@ -60,14 +60,14 @@ describe('production headless host', () => {
     const faulting = request({
       javascript: javascript.replace(
         'frame += 1;',
-        "api.fault('PX9998', 'fixture fault', { start: 4, end: 9 });",
+        "api.fault('M019998', 'fixture fault', { start: 4, end: 9 });",
       ),
     });
     await expect(runHeadless(faulting)).resolves.toMatchObject({
       frames: [],
       fault: {
         frame: 0,
-        code: 'PX9998',
+        code: 'M019998',
         message: 'fixture fault',
         sourceSpan: { start: 4, end: 9 },
       },
@@ -77,6 +77,6 @@ describe('production headless host', () => {
         ...request(),
         trace: { revision: 1, frames: [{ frame: 3, controllers: [] }] },
       }),
-    ).rejects.toThrow(/invalid PX-240C headless request/);
+    ).rejects.toThrow(/invalid MOD-01 headless request/);
   });
 });

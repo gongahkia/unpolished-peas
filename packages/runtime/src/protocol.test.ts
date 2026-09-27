@@ -11,7 +11,7 @@ describe('sandbox protocol', () => {
     const load = {
       id: 1,
       type: 'load',
-      moduleUrl: 'blob:https://px240c.test/module',
+      moduleUrl: 'blob:https://mod01.test/module',
       configuration: { seed: 1, updateRate: 60, workUnitsPerFrame: 50_000 },
     };
     expect(isHostRequest(load)).toBe(true);
@@ -112,7 +112,7 @@ describe('sandbox protocol', () => {
           trace: [
             {
               id: 0,
-              sourceSpan: { source: 'src/main.pxl', start: 1, end: 2 },
+              sourceSpan: { source: 'src/main.modl', start: 1, end: 2 },
               locals: { s1: 4 },
               callStack: [{ name: 'update', sourceSpan: { start: 0, end: 8 } }],
             },
@@ -129,7 +129,7 @@ describe('sandbox protocol', () => {
           trace: [
             {
               id: 0,
-              sourceSpan: { source: 'src/\u0000main.pxl', start: 1, end: 2 },
+              sourceSpan: { source: 'src/\u0000main.modl', start: 1, end: 2 },
               locals: {},
               callStack: [],
             },

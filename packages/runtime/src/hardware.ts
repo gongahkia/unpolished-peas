@@ -19,7 +19,7 @@ export const HARDWARE = Object.freeze({
 
 export type HardwareProfile = typeof HARDWARE;
 
-/** Original PX-240C RGB master palette. Logical index 0 is also the sprite transparency key. */
+/** Original MOD-01 RGB master palette. Logical index 0 is also the sprite transparency key. */
 export const MASTER_PALETTE = Object.freeze([
   '#17141f',
   '#292532',

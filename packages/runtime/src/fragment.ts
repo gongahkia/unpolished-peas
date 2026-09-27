@@ -7,14 +7,14 @@ export function encodeCartridgeFragment(cartridge: Uint8Array): string {
     throw new RangeError('tiny cartridge exceeds the 6000-byte URL-sharing limit');
   let binary = '';
   for (const byte of cartridge) binary += String.fromCharCode(byte);
-  const fragment = `#pxc=${btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')}`;
+  const fragment = `#m01c=${btoa(binary).replaceAll('+', '-').replaceAll('/', '_').replaceAll('=', '')}`;
   if (fragment.length > CART_FRAGMENT_LIMIT)
     throw new RangeError('encoded cartridge exceeds the 8192-character fragment limit');
   return fragment;
 }
 
 export function decodeCartridgeFragment(fragment: string): Uint8Array | undefined {
-  if (!fragment.startsWith('#pxc=')) return undefined;
+  if (!fragment.startsWith('#m01c=')) return undefined;
   if (fragment.length > CART_FRAGMENT_LIMIT) throw new RangeError('cartridge fragment is too long');
   const encoded = fragment.slice(5);
   if (encoded.length === 0 || !/^[A-Za-z0-9_-]+$/.test(encoded))

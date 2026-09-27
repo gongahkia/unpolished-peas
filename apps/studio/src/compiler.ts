@@ -9,7 +9,7 @@ import initWasm, {
   packProject as wasmPackProject,
   parseProjectManifest as wasmParseProjectManifest,
   unpackCartridge as wasmUnpackCartridge,
-} from '../../../crates/pxcl-wasm/pkg/pxcl_wasm';
+} from '../../../crates/modl-wasm/pkg/modl_wasm';
 
 export interface SourceSpan {
   readonly file: number;

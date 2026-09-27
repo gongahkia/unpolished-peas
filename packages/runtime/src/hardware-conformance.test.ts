@@ -21,12 +21,12 @@ function completeDebugBoot(runtime: ConsoleRuntime, debug: boolean): void {
   }
 }
 
-describe('public PXCL hardware conformance', () => {
+describe('public MODL hardware conformance', () => {
   const root = fileURLToPath(new URL('../../../', import.meta.url));
   let temporary: string;
   beforeAll(() => {
-    temporary = mkdtempSync(join(tmpdir(), 'px240c-conformance-'));
-    execFileSync('cargo', ['build', '--quiet', '--package', 'px240c-cli'], { cwd: root });
+    temporary = mkdtempSync(join(tmpdir(), 'mod01-conformance-'));
+    execFileSync('cargo', ['build', '--quiet', '--package', 'mod01-cli'], { cwd: root });
   }, 120_000);
   afterAll(() => {
     if (temporary) rmSync(temporary, { recursive: true, force: true });
@@ -35,9 +35,9 @@ describe('public PXCL hardware conformance', () => {
   for (const mode of ['release', 'debug']) {
     it(`runs mixed save access and explicit commits in ${mode}`, async () => {
       const output = join(temporary, `save-${mode}.mjs`);
-      execFileSync(join(root, 'target/debug/px240c'), [
+      execFileSync(join(root, 'target/debug/mod01'), [
         'build',
-        join(root, 'tests/conformance/save.pxl'),
+        join(root, 'tests/conformance/save.modl'),
         '--output',
         output,
         ...(mode === 'debug' ? ['--debug'] : []),
@@ -73,9 +73,9 @@ describe('public PXCL hardware conformance', () => {
     });
 
     it(`runs runtime-call globals inside the boot boundary in ${mode}`, async () => {
-      const source = join(root, 'tests/conformance/boot.pxl');
+      const source = join(root, 'tests/conformance/boot.modl');
       const output = join(temporary, `boot-${mode}.mjs`);
-      execFileSync(join(root, 'target/debug/px240c'), [
+      execFileSync(join(root, 'target/debug/mod01'), [
         'build',
         source,
         '--output',
@@ -121,7 +121,7 @@ describe('public PXCL hardware conformance', () => {
         completeDebugBoot(limited, mode === 'debug');
       }).toThrow(
         expect.objectContaining({
-          code: 'PX9001',
+          code: 'M019001',
           sourceSpan: { start: finalStart, end: finalStart + finalCall.length },
         }),
       );
@@ -135,7 +135,7 @@ describe('public PXCL hardware conformance', () => {
     });
 
     it(`runs mixed audio controls and retains exact PCM on replay in ${mode}`, async () => {
-      const cli = join(root, 'target/debug/px240c');
+      const cli = join(root, 'target/debug/mod01');
       const project = join(root, 'tests/conformance/audio');
       const output = join(temporary, `audio-${mode}.mjs`);
       execFileSync(cli, [
@@ -226,9 +226,9 @@ describe('public PXCL hardware conformance', () => {
     for (const updateRate of [30, 60] as const) {
       it(`runs system conformance in ${mode} at ${String(updateRate)} Hz`, async () => {
         const output = join(temporary, `system-${mode}-${String(updateRate)}.mjs`);
-        execFileSync(join(root, 'target/debug/px240c'), [
+        execFileSync(join(root, 'target/debug/mod01'), [
           'build',
-          join(root, 'tests/conformance/system.pxl'),
+          join(root, 'tests/conformance/system.modl'),
           '--output',
           output,
           ...(mode === 'debug' ? ['--debug'] : []),
@@ -274,9 +274,9 @@ describe('public PXCL hardware conformance', () => {
 
       it(`runs all-port input conformance in ${mode} at ${String(updateRate)} Hz`, async () => {
         const output = join(temporary, `input-${mode}-${String(updateRate)}.mjs`);
-        execFileSync(join(root, 'target/debug/px240c'), [
+        execFileSync(join(root, 'target/debug/mod01'), [
           'build',
-          join(root, 'tests/conformance/input.pxl'),
+          join(root, 'tests/conformance/input.modl'),
           '--output',
           output,
           ...(mode === 'debug' ? ['--debug'] : []),
@@ -334,7 +334,7 @@ describe('public PXCL hardware conformance', () => {
     }
 
     it(`compiles and runs visual allocation conformance in ${mode} with full replay`, async () => {
-      const cli = join(root, 'target/debug/px240c');
+      const cli = join(root, 'target/debug/mod01');
       const project = join(root, 'tests/conformance/visual');
       const output = join(temporary, `visual-${mode}.mjs`);
       execFileSync(cli, [
@@ -377,9 +377,9 @@ describe('public PXCL hardware conformance', () => {
 
     it(`compiles and runs memory conformance in ${mode} with full replay`, async () => {
       const output = join(temporary, `memory-${mode}.mjs`);
-      execFileSync(join(root, 'target/debug/px240c'), [
+      execFileSync(join(root, 'target/debug/mod01'), [
         'build',
-        join(root, 'tests/conformance/memory.pxl'),
+        join(root, 'tests/conformance/memory.modl'),
         '--output',
         output,
         ...(mode === 'debug' ? ['--debug'] : []),
@@ -392,7 +392,7 @@ describe('public PXCL hardware conformance', () => {
         updateRate: 60,
         workUnitsPerFrame: 50_000,
         debug: mode === 'debug',
-        rom: Uint8Array.of(80, 88, 50, 52, 48, 67, 26, 1, 3, 0, 0, 0),
+        rom: Uint8Array.of(77, 79, 68, 45, 48, 49, 26, 1, 3, 0, 0, 0),
       });
       completeDebugBoot(runtime, mode === 'debug');
       const boot = runtime.snapshot();

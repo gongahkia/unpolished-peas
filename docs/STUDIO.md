@@ -7,14 +7,14 @@ the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
 `shelf`, `import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, and `reboot`
-operate on real project/compiler/runtime paths. `import` validates an untrusted `.pxc`, reconstructs
-its editable project, and also accepts a `.pxc.png` only after validating its bounded PNG chunks and
+operate on real project/compiler/runtime paths. `import` validates an untrusted `.m01c`, reconstructs
+its editable project, and also accepts a `.m01c.png` only after validating its bounded PNG chunks and
 embedded canonical cartridge. It preserves the previous same-ID revision for recovery. `inspect` displays the
 canonical packed metadata and all original source modules. `export` downloads one offline HTML
-player with its own visible source inspector. `cart` downloads the PX-240C 320x240 cartridge-object
-PNG with title/author/year/player/control identity and the byte-exact `.pxc` payload.
+player with its own visible source inspector. `cart` downloads the MOD-01 320x240 cartridge-object
+PNG with title/author/year/player/control identity and the byte-exact `.m01c` payload.
 
-`shelf` opens the local-only **PX-240C CART BAY**. It derives exact packed class and identity from
+`shelf` opens the local-only **MOD-01 CART BAY**. It derives exact packed class and identity from
 each current project and lists bundled/created/imported/fragment/duplicate origin, validated label,
 favorite, recent play, player count, and save presence. Its controls dispatch the same monitor
 commands as the shell: `run <id>`, `inspect <id>`, `copy <id>`, `name <id> [title]`, `star <id>`,
@@ -23,10 +23,10 @@ running it for a bin item restores the cartridge. Bin restore retains the exact 
 recovery history, shelf state, and isolated save. All records are IndexedDB-local and survive offline
 reload; there is no account, sync, gallery, rating, or telemetry path.
 The selected cart's `SAVE` service displays stable cartridge identity and schema, exports/imports a
-bounded `.pxsave` with checksum validation, and requires a second action before reset or delete.
+bounded `.m01save` with checksum validation, and requires a second action before reset or delete.
 Every replacement retains a local recovery envelope. Raw alpha save bytes migrate to schema zero
 without deleting the original; application code can explicitly migrate to a higher schema.
-The source editor has PXCL highlighting, live compiler diagnostics, completion, symbol navigation,
+The source editor has MODL highlighting, live compiler diagnostics, completion, symbol navigation,
 canonical formatting, explicit save, run, and external-revision reload controls.
 Edits debounce to a 750 ms autosave and pass through a revision check before writing; an externally
 newer revision stops the save and surfaces F6 reload instead of knowingly overwriting it. Explicit
@@ -39,8 +39,8 @@ that API continue to use import/download and IndexedDB with no reduced cartridge
 Running a project uses the Rust compiler WebAssembly bridge, a dedicated worker, indexed WebGL
 output, four-port browser input, frame/work status, and isolated save flushing. Shift+Escape returns
 from a cartridge to the shell. Player capture writes deterministic native or 2x-4x nearest PNG,
-bounded five-second 30 fps GIF sampled from the 60 Hz indexed stream, and revision-1 `.pxrec` input.
-The same player validates an imported `.pxrec`, restarts from frame zero, and applies its four-port
+bounded five-second 30 fps GIF sampled from the 60 Hz indexed stream, and revision-1 `.m01rec` input.
+The same player validates an imported `.m01rec`, restarts from frame zero, and applies its four-port
 and pointer stream without mixing live input. GIF and replay histories are independently bounded.
 
 `project`, `sprite`, `map`, `palette`, `font`, `sfx`, and `music` open cartridge settings and source-visible
@@ -58,9 +58,9 @@ selection transforms and preview text while leaving `print`'s system font unchan
 patterns can be previewed after a browser audio gesture. The tracker edits named patterns and an
 ordered playback sequence, preserves existing patch references, loops on request, and provides
 bounded note/pattern undo/redo. The shell, editors, controls, and cartridges use the same original
-PX-240C glyph design; the Studio font is generated locally from the runtime's glyph matrix.
+MOD-01 glyph design; the Studio font is generated locally from the runtime's glyph matrix.
 `manual`, `man <topic>`, and `help <symbol>` search built-in syntax/API/hardware/diagnostic help;
-F1 in the source editor opens help for the symbol at the cursor. `load pxcl-tutorial` starts the
+F1 in the source editor opens help for the symbol at the cursor. `load modl-tutorial` starts the
 ordinary public-API FIRST SIGNAL lesson. The compact runnable API tour and genre starters are
 indexed in `examples/README.md` and `templates/README.md`. `explore` exposes tokens, AST, symbols,
 typed IR, JavaScript, source maps, diagnostics, and exact size accounting.
@@ -74,22 +74,22 @@ of overwriting another tab.
 
 ## Native commands
 
-From the repository, use `cargo run --package px240c-cli --` in place of an installed `px240c`:
+From the repository, use `cargo run --package mod01-cli --` in place of an installed `mod01`:
 
 ```sh
-px240c new my-game --title "MY GAME"
-px240c check my-game
-px240c build my-game
-px240c test my-game
-px240c watch my-game
-px240c pack my-game
-px240c export html my-game
-px240c export png my-game --output dist/my-game.pxc.png
-px240c export zip my-game --output dist/my-game-itch.zip
-px240c run my-game
-px240c run my-game --headless --frames 120 --input tests/replays/my-game.json
-px240c info my-game/dist/my-game.pxc
-px240c lsp
+mod01 new my-game --title "MY GAME"
+mod01 check my-game
+mod01 build my-game
+mod01 test my-game
+mod01 watch my-game
+mod01 pack my-game
+mod01 export html my-game
+mod01 export png my-game --output dist/my-game.m01c.png
+mod01 export zip my-game --output dist/my-game-itch.zip
+mod01 run my-game
+mod01 run my-game --headless --frames 120 --input tests/replays/my-game.json
+mod01 info my-game/dist/my-game.m01c
+mod01 lsp
 ```
 
 `watch --once` performs the same initial deterministic pack and exits for CI checks. Otherwise it
@@ -100,11 +100,11 @@ that differs from canonical two-space formatting. `run` writes the same standalo
 `dist/` and opens it with `xdg-open`; `--no-open` performs only the validated export for CI or a
 headless environment. `run --headless` instead drives the production console core under Node and
 emits revisioned JSON framebuffer/state/audio/PCM/save hashes. It accepts a project directory or
-`.pxc`, an explicit seed/frame count, compact controller trace and optional raw save image.
+`.m01c`, an explicit seed/frame count, compact controller trace and optional raw save image.
 
 The HTML player has pause/reset/fullscreen/source controls, presentation metadata, and a `#embed`
 mode. Studio `EXPORT ZIP` stores the same single HTML as `index.html`. `SHARE` offers only complete
-carts up to 6,000 bytes as an 8,192-character maximum `#pxc=` fragment, displays the exact count
+carts up to 6,000 bytes as an 8,192-character maximum `#m01c=` fragment, displays the exact count
 before copy, and never sends cartridge bytes in a request or query string.
 
 The browser production build runs `scripts/build-wasm.sh`, which builds the Rust compiler for
@@ -118,20 +118,20 @@ app manifest and maskable icon are static repository assets.
 
 The stdio server supports full-document synchronization, dependency-aware diagnostics, project
 completion, hover/signature help, cross-file definition/references/rename, formatting, and document
-and workspace symbols. PXCL/1 is ASCII-only, so LSP UTF-16 columns and compiler byte columns
+and workspace symbols. MODL/1 is ASCII-only, so LSP UTF-16 columns and compiler byte columns
 coincide for valid files.
 
 Generic Neovim setup:
 
 ```lua
 vim.api.nvim_create_autocmd('FileType', {
-  pattern = 'pxcl',
+  pattern = 'modl',
   callback = function()
-    vim.lsp.start({ name = 'px240c', cmd = { 'px240c', 'lsp' }, root_dir = vim.fn.getcwd() })
+    vim.lsp.start({ name = 'mod01', cmd = { 'mod01', 'lsp' }, root_dir = vim.fn.getcwd() })
   end,
 })
 ```
 
-For another LSP-capable editor, register `.pxl` as PXCL and configure the server command as
-`px240c lsp`. Clients send full-document changes; the server invalidates the edited module and its
+For another LSP-capable editor, register `.modl` as MODL and configure the server command as
+`mod01 lsp`. Clients send full-document changes; the server invalidates the edited module and its
 direct importers without reanalyzing unrelated open modules.

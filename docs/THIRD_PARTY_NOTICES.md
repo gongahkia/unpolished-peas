@@ -1,7 +1,7 @@
 # Third-party notices
 
-PX-240C is private proprietary software. This notice inventories dependencies; it does not grant a
-license to PX-240C source, cartridges, identity, art, font, music, or other first-party material.
+MOD-01 is private proprietary software. This notice inventories dependencies; it does not grant a
+license to MOD-01 source, cartridges, identity, art, font, music, or other first-party material.
 
 The Rust graph recorded in `Cargo.lock` uses MIT, Apache-2.0, MIT OR Apache-2.0, Unlicense OR MIT,
 or combined MIT/Apache-2.0/Unicode-3.0 terms. Direct crates are clap 4.6.6, serde 1.0.229,
@@ -17,7 +17,7 @@ reproduces the inventory. Build/test packages and Playwright browser binaries ar
 assets or embedded runtime dependencies.
 
 No third-party game code, palette, font, artwork, or audio is bundled. The console palette, bitmap
-font, icon, labels, graphics, and synth compositions are original. `px240c.ttf` is generated from
+font, icon, labels, graphics, and synth compositions are original. `mod01.ttf` is generated from
 the same first-party glyph matrix. Standalone exports contain the dependency-free first-party
 player and author-owned cartridge material, not the Node toolchain or a third-party game engine.
 

@@ -11,7 +11,7 @@ test-results/
 *.log
 .DS_Store
 .vite/
-crates/pxcl-wasm/pkg/
+crates/modl-wasm/pkg/
 apps/studio/public/generated/
 apps/studio/public/cartridges/
 output/

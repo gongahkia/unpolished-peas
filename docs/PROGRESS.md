@@ -7,10 +7,10 @@ This historical log records verified milestones and resolved risks. The current 
 ## Plan
 
 1. Establish pinned workspaces, trust-boundary ADRs, and strict native/browser quality gates.
-2. Implement PXCL spans, indentation-aware lexer/parser, formatter, fixtures, and stable diagnostics.
+2. Implement MODL spans, indentation-aware lexer/parser, formatter, fixtures, and stable diagnostics.
 3. Add resolution, type checking, typed assets, typed IR, tasks, and cross-mode code generation.
 4. Build deterministic runtime, worker sandbox, indexed graphics, input, audio, and replay primitives.
-5. Implement project persistence, canonical `.pxc`, CLI/watch/LSP, shell, and integrated editors.
+5. Implement project persistence, canonical `.m01c`, CLI/watch/LSP, shell, and integrated editors.
 6. Add debugger/profiler/time travel and use pack-in cartridges to calibrate public facilities.
 7. Finish PWA/export, documentation, accessibility and visual validation, then run the full audit.
 
@@ -27,13 +27,13 @@ Each group may produce several coherent commits, and integration occurs througho
 - Verification: `make setup` and `./scripts/check.sh`; TypeScript format/lint/type tests, Vitest,
   browser production build, Rust formatting/Clippy/tests/native build, and release WASM build pass.
 
-## 2026-09-07 — Milestone 2: PXCL syntax front end
+## 2026-09-07 — Milestone 2: MODL syntax front end
 
 - Added byte-accurate source spans, line indexing, serializable stable diagnostics, and an
   ASCII-only indentation lexer with comments, assets, duration literals, CRLF handling, and recovery.
 - Added a recovery parser and serializable AST for modules, records, enums, typed state/functions,
   deterministic tasks, callbacks, control flow, exhaustive-match syntax, types, and expressions.
-- Added an idempotent two-space formatter, `px240c check`, `px240c fmt`, file-backed positive and
+- Added an idempotent two-space formatter, `mod01 check`, `mod01 fmt`, file-backed positive and
   negative fixtures, exact diagnostic-span assertions, and 512 bounded generated parser inputs.
 - Exposed tokens, AST, and diagnostics as JSON through the WebAssembly boundary.
 - Verification: `./scripts/check.sh`; 17 Rust tests, one Vitest test, strict Rust/TypeScript lint and
@@ -80,7 +80,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added scanline scroll/palette display state, phase-aware console calls, facility-specific work
   costs, the 4,096-command limit, and exact browser protocol validation.
 - Added keyboard, pointer/touch, and standard-gamepad translation into four complete controller
-  ports, plus statically constructible controller and button values in PXCL.
+  ports, plus statically constructible controller and button values in MODL.
 - Added five oscillator sources, envelopes, pitch slide/vibrato, pan, deterministic eight-voice
   allocation, an eight-channel pattern/order tracker, snapshot restore, and a user-gesture Web Audio
   queue. Imported sample data is not representable.
@@ -88,14 +88,14 @@ Each group may produce several coherent commits, and integration occurs througho
   2x and 3x scales, preserved capability/runaway behavior, and started Web Audio after a button click.
 - Verification: `./scripts/check.sh`; 29 Rust tests and 25 Vitest tests, formatting, ESLint, strict
   Clippy and TypeScript checks, native/browser production builds, and release WASM compilation pass.
-  Browser adapter checks used Firefox 155 and compiler-produced PXCL fixtures.
+  Browser adapter checks used Firefox 155 and compiler-produced MODL fixtures.
 
 ## 2026-09-07 — Milestone 6: projects, cartridges, persistence, CLI, and LSP
 
 - Added strict `cart.toml` parsing, dependency-ordered dotted module imports, project-wide typed
   compilation, and explicit errors for missing/cyclic modules, dependency callbacks, and name
   collisions.
-- Added the bounded deterministic `.pxc` revision-1 container with canonical paths/JSON/RLE,
+- Added the bounded deterministic `.m01c` revision-1 container with canonical paths/JSON/RLE,
   original normalized source, release JavaScript/source map, assets/presentation files, SHA-256
   inventory, post-pack decode, corruption checks, and 256 KiB enforcement.
 - Added `new`, project-aware `check`/`build`, `pack`, content-based `watch`, project/cartridge `info`,
@@ -116,9 +116,9 @@ Each group may produce several coherent commits, and integration occurs througho
   formatter, packer, and decoder; the pinned binding tool is part of the reproducible setup path.
 - Replaced the static boot mockup with a keyboard-operable 240x144 monitor shell backed by the real
   IndexedDB repository. Project creation/loading, explicit saves, bounded recovery selection,
-  directory/info output, editing, running, and `.pxc` download are functional.
+  directory/info output, editing, running, and `.m01c` download are functional.
 - Added a compact source editor with live compiler diagnostics, canonical formatting, persistent
-  save, and direct run controls. The default project is valid PXCL/1 and visibly responds to input.
+  save, and direct run controls. The default project is valid MODL/1 and visibly responds to input.
 - Integrated project execution with the dedicated worker, indexed WebGL output, four-port browser
   input, frame/work meters, and per-cartridge save write flushing. Shift+Escape stops and disposes
   the worker/input adapters before returning to the shell.
@@ -135,13 +135,13 @@ Each group may produce several coherent commits, and integration occurs througho
   The graphics tools provide bounded painting, navigation, selection/transforms, onion skinning,
   undo/redo, and capacity feedback; audio tools provide patch/pattern editing and gesture-gated
   previews.
-- Expanded the editor with PXCL highlighting, completion, same-file definition lookup, and explicit
+- Expanded the editor with MODL highlighting, completion, same-file definition lookup, and explicit
   external-revision reload. Added searchable built-in manual and compiler-explorer views for every
   exposed pipeline stage and size/work accounting.
 - Connected saved visual/audio assets to the production player. Project display defaults now affect
   indexed drawing and scanout, count toward the shared visual capacity, and remain overridable by
-  public PXCL palette/raster calls.
-- Playwright/Firefox exercised each editor, persistent saves, deterministic `.pxc` download, asset
+  public MODL palette/raster calls.
+- Playwright/Firefox exercised each editor, persistent saves, deterministic `.m01c` download, asset
   loading, running audio enablement, stop/reload, manual search, and compiler-explorer switching.
   The initial sound/music file-revision integration fault was reproduced and regression-tested;
   the corrected run reported no console errors. Sprite, map, and palette tools were visually
@@ -174,12 +174,12 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## 2026-09-07 — Distribution workflow
 
-- Added bounded `.pxc` project reconstruction and wired explicit cartridge import and source/
+- Added bounded `.m01c` project reconstruction and wired explicit cartridge import and source/
   metadata inspection through the shared Rust/Wasm boundary.
 - Added one deterministic offline HTML exporter shared by the Studio and native CLI. The embedded
-  player runs verified compiled output, exposes every original PXCL module, preserves indexed
+  player runs verified compiled output, exposes every original MODL module, preserves indexed
   graphics/input/save/audio facilities, and performs no CDN or backend requests.
-- Added `px240c export html` and `px240c run` with a headless `--no-open` verification path. Studio
+- Added `mod01 export html` and `mod01 run` with a headless `--no-open` verification path. Studio
   `pack`, `import`, and `export` downloads were exercised end to end.
 - Added a relative-path web app manifest, original maskable icon, and build-generated precache
   inventory. Playwright/Firefox proved a production reload completes with the network context
@@ -213,7 +213,7 @@ Each group may produce several coherent commits, and integration occurs througho
 
 - Added serialized, revision-checked editor autosave with a 750 ms debounce, bounded recovery, and
   external-change refusal/reload behavior; Firefox verified persistence through a real page reload.
-- Added public pointer/touch coordinates and button-edge queries to PXCL, matched standalone input,
+- Added public pointer/touch coordinates and button-edge queries to MODL, matched standalone input,
   completed standalone synth waveforms/pitch effects, and aligned its facility work accounting and
   raster phase restrictions with the Studio runtime.
 - Expanded the Studio tracker from a hard-coded pattern to named pattern creation, editable order
@@ -248,7 +248,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added `COMPETITIVE_GAP_AUDIT.md` with the full required checklist, actual architectural gaps,
   consolidation strategy, verified measurements and explicitly untested areas. No scope was waived.
 - Recorded actual production Firefox 155.0 Worker input/commands/state and indexed-output hashes
-  over 240 intentional frames for each original game; archived exact alpha `.pxc` files, original
+  over 240 intentional frames for each original game; archived exact alpha `.m01c` files, original
   first-install project records, final replay snapshots and a separately labeled synthetic save.
 - New compatibility tests compare all 720 recorded framebuffer hashes using the production
   rasterizer and freeze 48 kHz stereo float32 PCM hashes using the production synth. Measured
@@ -262,7 +262,7 @@ Each group may produce several coherent commits, and integration occurs througho
   run between Worker message listeners. Gating the game callback at execution time produced exactly
   240 contiguous renders/snapshots per retained trace. This was a harness issue, not a gameplay change.
 - Checkpoint verification passed: focused Prettier/ESLint, runtime strict TypeScript and all three
-  new compatibility tests. No production implementation has changed. Chromium and full PXCL
+  new compatibility tests. No production implementation has changed. Chromium and full MODL
   headless re-execution remain required, not claimed by command-replay checks.
 - Next: extract the Worker dispatcher into the shared production core, verify alpha parity, then
   implement actual Worker-owned hardware state and the Revision 1 bus/reference/conformance tests.
@@ -345,7 +345,7 @@ Each group may produce several coherent commits, and integration occurs througho
   The 22-bit address layout is a candidate subset, **not frozen Hardware Revision 1**. Visual-store,
   input, audio, save and system mappings, the viewer and the complete conformance cartridge remain.
   Most implementation was retained in local snapshot commit `38848d6` before this follow-up.
-- Camera/clip registers use little-endian binary64 safe integers to preserve the existing PXCL Int
+- Camera/clip registers use little-endian binary64 safe integers to preserve the existing MODL Int
   range. Register-backed getters initially caused a substantial rasterizer slowdown; atomic drawing
   commands now latch their read-only register values outside pixel loops. Five alternating paired
   CPU measurements against `2bd8c4d` give 240-frame medians of 242.4→253.1 ms (Cinder), 246.1→218.6 ms
@@ -356,7 +356,7 @@ Each group may produce several coherent commits, and integration occurs througho
   none of the three games depend on that behavior, and their recorded outputs remain identical.
   Core snapshot revision 3 retains writable bus storage; revision-2 migration initializes new RAM
   to zero, and malformed full restores roll back all devices. This remains frame-boundary replay.
-- Ordinary PXCL conformance source exercises the public APIs through native Release/Debug builds
+- Ordinary MODL conformance source exercises the public APIs through native Release/Debug builds
   and the real Firefox Worker. Tests cover address/value faults, work-before-allocation, byte order,
   aliasing, every raster row, reset/scanout and restore. New builtin names are installed lazily so
   old symbol identities and existing user-defined functions remain compatible.
@@ -395,7 +395,7 @@ Each group may produce several coherent commits, and integration occurs througho
   bus state and reloads newly mapped visuals from source; revision-2 migration also zeroes work RAM.
   Malformed images and wrong layouts roll back without partial changes. Alpha archive/project files
   and the public packed format were not changed; full public replay migrations remain pending.
-- Added five visual-store tests, revision-3 migration/rollback coverage and a public PXCL visual
+- Added five visual-store tests, revision-3 migration/rollback coverage and a public MODL visual
   conformance project compiled in Release and Debug. The camera-culling regression now instruments
   the actual mapped DataView, checking exactly ten visible cells instead of an obsolete source array.
   Initial focused lint rejected nine void-expression callbacks; its standard fixes were applied and
@@ -439,7 +439,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - The public input fixture tests every button on all four ports, current/previous/pressed/released
   masks, pointer coordinates/edges, reset, MMIO-to-RAM copy and restore. Native Release/Debug tests
   each exercise 36 scripted frames at both 30 and 60 Hz. Its initial array `const` declarations failed
-  PXCL's existing compile-time-expression restriction; using fixed state arrays made the fixture
+  MODL's existing compile-time-expression restriction; using fixed state arrays made the fixture
   valid without changing the language or weakening validation.
 - Found and reproduced two boundary defects while checking malformed input. A pointer outside the
   screen failed only after the core had reset live draw registers; the core now validates before
@@ -490,7 +490,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added read-only system MMIO at `0x50200`: completed frame/update counts, frame-derived binary64
   time, actual RNG state, cadence, callback phase/scanline, charged work/limit and terminal fault
   status/source span. Reads encode device-owned state directly; no shadow register image is saved.
-  All four callback phases and all 144 scanlines are exercised by ordinary PXCL conformance source.
+  All four callback phases and all 144 scanlines are exercised by ordinary MODL conformance source.
 - Machine snapshot revision 2 now retains boot/counter/cadence, work accounting/attribution and fault
   boundaries; aggregate core snapshots advance to revision 5. Legacy core revisions 1–4 explicitly
   require their original revision-1 machine shape. Migration derives update counts, defaults missing
@@ -557,7 +557,7 @@ Each group may produce several coherent commits, and integration occurs througho
   retains every mapped mutable field.
 - Reproduced audio allocation overflow and corrected the output-stage boundary. Scanout and audio
   mixing now run in machine phase 5 before its completed-frame increment. Audio/frame allocation
-  exhaustion faults with PX9012 before overflow; output failures latch phase/counters/source status
+  exhaustion faults with M019012 before overflow; output failures latch phase/counters/source status
   and reject retry before reset. Healthy and faulted checkpoint restore are tested. Normal synthesis
   calculations, game scheduling and all frozen alpha PCM/frame/work/state traces remain unchanged.
 - Added ordinary `tests/conformance/audio` source/assets. Native Release/Debug cases exercise all
@@ -588,7 +588,7 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## 2026-09-10 — V1 milestone 2k: runtime-call globals execute inside boot
 
-- Reproduced PX9102 in native Release and Debug when a mutable global initializer called `mem_read`:
+- Reproduced M019102 in native Release and Debug when a mutable global initializer called `mem_read`:
   generated factories executed initializers while the core was still constructing its machine.
   The emitter now generates an initialization routine invoked first by `start()`, after attachment
   and before `on start`. Initializers retain linked declaration order and run in the existing start
@@ -633,7 +633,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - Aggregate snapshots advance to revision 6 and retain working/committed bytes, pending state and
   count. Legacy revisions 1–5 migrate their integer objects into both images; malformed/sparse state
   rejects before mutation. The existing alpha save fixture and all frozen game traces remain intact.
-- Added ordinary `tests/conformance/save.pxl` plus Release/Debug native runs for initial host bytes,
+- Added ordinary `tests/conformance/save.modl` plus Release/Debug native runs for initial host bytes,
   raw/high-level aliasing, status, explicit/compatibility commits, host output and restore/forward
   equality. Firefox now persists a seed save, edits that same project's source, then runs the public
   conformance program against the retained identity. This also verifies source edits do not erase
@@ -667,7 +667,7 @@ Each group may produce several coherent commits, and integration occurs througho
   state, task, profile, audio, replay and control surfaces remain available. Firefox E2E reads RAM in
   both number formats, edits it, trips a watchpoint on the next frame, and follows the manual link.
 - Unit/conformance coverage now checks bus inspection/edit transactionality, protocol validation,
-  ROM cloning/status/permissions, debug/release access and public PXCL ROM reads. A first Firefox run
+  ROM cloning/status/permissions, debug/release access and public MODL ROM reads. A first Firefox run
   exposed an unhandled service-worker registration `AbortError` during the existing intentional
   offline reload; its trace located the aborted best-effort registration. Registration now handles
   navigation aborts without hiding other failures, and the unchanged complete workflow passed on
@@ -689,11 +689,11 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## 2026-09-10 — V1 milestone 3a: shared headless/standalone core and golden game replays
 
-- Added `px240c run PROJECT_OR_PXC --headless` on the existing CLI surface. It accepts an unsigned
+- Added `mod01 run PROJECT_OR_M01C --headless` on the existing CLI surface. It accepts an unsigned
   seed, 0–36,000 frames, compact duration-aware four-port/pointer trace JSON, an optional raw 8 KiB
   save and an optional result path. Revision-1 output records per-frame framebuffer/state/audio
   command/little-endian Float32 PCM/save SHA-256 and work, aggregate hashes/peak and modeled fault
-  code/span. Project and `.pxc` inputs produce identical output; imported artifacts are bounded,
+  code/span. Project and `.m01c` inputs produce identical output; imported artifacts are bounded,
   reconstructed and recompiled from source before execution rather than trusting archived JS.
 - The generated 149,795-byte Node adapter directly drives `createConsoleRuntime`, the production
   core used by the browser Worker. Focused host tests cover deterministic output, modeled faults and
@@ -711,7 +711,7 @@ Each group may produce several coherent commits, and integration occurs througho
   Rush's 120 frames peak at **28,140 WU** and end `d133c8d0...` / `fe417b70...` / `11af7f6c...` /
   `ca00a064...`. Automated CLI tests also lock beginning/middle/end framebuffer checkpoints and the
   complete original cartridge hashes.
-- Added `px240c-service`, an ordinary source-visible PXCL service cartridge with eight diagnostic
+- Added `mod01-service`, an ordinary source-visible MODL service cartridge with eight diagnostic
   pages and live public-API checks for reset/bus/display/raster/input/audio/save/ROM/scheduler/RNG/
   tasks. It is now a fourth built-in Studio cartridge, packs byte-identically at **27,869 bytes**,
   SHA-256 `0175b0e7d06bd401ee48ef695b095cdbdf78a0832b1acd9dc88648322a0f12b8`, and completes five
@@ -728,18 +728,18 @@ Each group may produce several coherent commits, and integration occurs througho
 
 ## 2026-09-10 — V1 milestone 4a: namespaced projects, tests, and live external loop
 
-- Extended PXCL/1 project linking without changing single-file meaning. Top-level declarations are
+- Extended MODL/1 project linking without changing single-file meaning. Top-level declarations are
   public by default, may use explicit `pub`, and may use `private` to reject imported access.
   Dependency modules now own separate namespaces: duplicate constants/state/functions/tasks/records/
   enums are deterministically linked, qualified aliases resolve the correct owner, local shadowing is
   retained, dependencies initialize before importers, and cycles/dependency callbacks remain stable
   project errors. Core fixtures cover aliases, visibility, duplicate public and private names, local
   shadowing, missing private members, and cycle paths.
-- Added `px240c test PROJECT`. Sorted ordinary `.pxl` test entries run compiler-produced debug code
-  for a deterministic frame, `*.fail.pxl` locks an expected stable diagnostic, and revision-1
+- Added `mod01 test PROJECT`. Sorted ordinary `.modl` test entries run compiler-produced debug code
+  for a deterministic frame, `*.fail.modl` locks an expected stable diagnostic, and revision-1
   `*.pxrun.json` files accept frames, seed, compact input, raw save fixture, and arbitrary headless
   summary expectations including framebuffer/state/audio/save hashes. Integration tests exercise all
-  three modes and source-located runtime faults. `tests/` PXCL sources are excluded from canonical
+  three modes and source-located runtime faults. `tests/` MODL sources are excluded from canonical
   release archives.
 - Expanded the stdio LSP with project completion, cross-file definition/references/rename,
   signature help, dependency-aware diagnostics, canonical formatting, and document/workspace
@@ -750,7 +750,7 @@ Each group may produce several coherent commits, and integration occurs througho
   Long-running `watch` serves a loopback-only source-inspectable player, hashes bytes, preserves the
   last good output on a failed build, and reloads after a successful revision. A real TCP integration
   test edits a watched project and observes revision 1 become revision 2; `--no-open` supports CI.
-- Added the required stable `LANGUAGE.md` and `TOOLS.md` entry points and updated PXCL grammar/tool
+- Added the required stable `LANGUAGE.md` and `TOOLS.md` entry points and updated MODL grammar/tool
   behavior. The complete repository gate passed: Prettier, ESLint, strict TypeScript, **134 Vitest
   tests**, production builds, complete Firefox E2E in **35.5 s**, Rust fmt/Clippy with warnings
   denied, **57 Rust tests**, native and release Wasm builds. The original games and service cart
@@ -848,7 +848,7 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added the `FONT` Studio command and a canonical custom-font editor seeded from the system glyph
   matrix. It provides byte-code navigation/add/delete, pixel painting/erasing, selection flips and
   square rotation, baseline/advance/fallback metrics, preview text, undo/redo, exact cost and
-  transactional resizing. It writes a separate `typeface` `.pxf`; the immutable system font remains
+  transactional resizing. It writes a separate `typeface` `.m01f`; the immutable system font remains
   unchanged. All creation tools now show dirty/autosave state, serialize writes, and reject a newer
   stored project revision instead of overwriting it. The complete repository gate passed:
   Prettier, ESLint, strict TypeScript, **140 Vitest tests**, production builds, the expanded real
@@ -863,18 +863,18 @@ Each group may produce several coherent commits, and integration occurs througho
 - Added dependency-free deterministic PNG encoding and bounded RGB/RGBA/indexed PNG decoding with
   filters 0-4, palette conversion, alpha mapping, CRC/decompressed-size/dimension checks, nearest
   and ordered-dither conversion. Sprite and tile tools import/preview/export PNG, settings validate
-  240x144 label PNG, and font assets round-trip through their documented `.pxf` JSON bytes.
+  240x144 label PNG, and font assets round-trip through their documented `.m01f` JSON bytes.
 - Added production-synth PCM16 stereo WAV export for patches and complete tracker orders, with a
   ten-minute ceiling and canonical fixture SHA-256
   `094f8a60e627c49f6c6209704bd24bb3e6c64e0517cc938b05fee1360e85c503`. Sound editing now displays the
   production PCM oscilloscope; patch and music WAV controls share the runtime synthesizer.
-- Added the original 320x240 PX-240C physical `.pxc.png` design. Its CRC-checked `pxCa` chunk retains
-  the byte-exact source-visible canonical cartridge and `pxCm` retains bounded identity metadata.
+- Added the original 320x240 MOD-01 physical `.m01c.png` design. Its CRC-checked `moCa` chunk retains
+  the byte-exact source-visible canonical cartridge and `moCm` retains bounded identity metadata.
   Studio captures the last run frame for the label, imports raw/PNG forms transactionally, and the
   native CLI exports/inspects/runs PNG cartridges. TypeScript and Rust codecs independently reject
   corrupt/duplicate/oversize chunks and round-trip the canonical bytes.
 - Added exact native/2x-4x PNG screenshots, a deterministic fixed-palette 30 fps GIF limited to the
-  most recent five seconds, and bounded canonical `.pxrec` export/import. Replay input restarts the
+  most recent five seconds, and bounded canonical `.m01rec` export/import. Replay input restarts the
   Worker at frame zero and uses the same trace validator as headless execution. Firefox decoded the
   downloaded GIF as 240x144, checked a 480x288 PNG, and re-imported a downloaded replay in the real
   player workflow. Expanded asset/raw/PNG/HTML downloads also re-imported successfully.
@@ -891,22 +891,22 @@ Each group may produce several coherent commits, and integration occurs througho
   host test suites saturated the machine; bounding Vitest to four workers with a 15-second per-test
   ceiling made the repository gate repeatably pass without weakening assertions or skipping tests.
 
-## 2026-09-11 — V1 milestone 8a: offline distribution and PX-240C Cart Bay
+## 2026-09-11 — V1 milestone 8a: offline distribution and MOD-01 Cart Bay
 
 - Extended the one canonical standalone host with title/author/year/player/control metadata,
   deterministic pause with audio-queue closure, fresh-Worker reset, fullscreen, source inspection,
   and `#embed` chrome reduction. Runtime semantics, source/assets, save namespace and offline behavior
   remain the same shared path used before this change.
-- Added deterministic timestamp-free stored ZIP codecs in Rust and TypeScript. `px240c export zip`
+- Added deterministic timestamp-free stored ZIP codecs in Rust and TypeScript. `mod01 export zip`
   and Studio `EXPORT ZIP` place the byte-exact single-file player at `index.html`; core/CLI/browser
   tests validate ZIP headers, repeat bytes, the embedded HTML and absence of external URLs. The small
   codec fixture SHA-256 is `cd29362199db5175e8d1a169d5a969809745eef09f4a735f218f2696cc896871`.
 - Added conservative tiny-cart links: a complete cartridge must be at most 6,000 bytes and the
-  `#pxc=` base64url fragment at most 8,192 characters. Studio shows both counts before copying,
+  `#m01c=` base64url fragment at most 8,192 characters. Studio shows both counts before copying,
   validates and imports on boot, removes the fragment after local recovery-backed storage, and
   reports malformed input without blocking boot. Firefox loaded a real 4,533-byte default cart from
   the link and proved no request URL contained the fragment bytes.
-- Added the local-only **PX-240C CART BAY** over the existing repository. It displays bundled,
+- Added the local-only **MOD-01 CART BAY** over the existing repository. It displays bundled,
   imported, created, fragment and duplicate carts with safe labels, exact 4K/16K/64K/256K class,
   players, favorites, recents and save presence. Launch/source/duplicate/title rename/raw export all
   operate on canonical projects. Removal requires a second confirmation and moves the exact current
@@ -923,7 +923,7 @@ Each group may produce several coherent commits, and integration occurs througho
   redundant archived release JavaScript/source-map entries, retains all normalized editable source,
   assets/presentation metadata plus expected generated-program byte count/SHA-256, and recompiles
   through the authoritative compiler. Load refuses a build-identity mismatch. Old/default project
-  serialization skips the new false/empty fields, so all four prior first-party `.pxc` files retain
+  serialization skips the new false/empty fields, so all four prior first-party `.m01c` files retain
   their exact bytes and hashes.
 - Added three original source-visible public-API cartridges with distinct labels: **Signal 4K** is a
   procedural bus/raster/synth transmission; **Pocket Relay** is an interactive RNG/custom-font/audio/
@@ -947,7 +947,7 @@ Each group may produce several coherent commits, and integration occurs througho
   peak, and the sum of mapped Hardware Revision 1 regions. Studio's live player strip now reports
   frame, work, draw commands and voices every frame; the shell header continuously shows the active
   cart's exact packed bytes and truthful class.
-- `px240c info` retains its top-level manifest compatibility and adds revisioned analysis. It
+- `mod01 info` retains its top-level manifest compatibility and adds revisioned analysis. It
   reconciles canonical, raw, encoded, overhead and compression bytes; source, release-generated,
   visual/map/font/audio/metadata sections; 8 KiB save allocation; largest entries/routines;
   actionable warnings; and a deterministic 60-frame production-core profile including faults.
@@ -968,7 +968,7 @@ Each group may produce several coherent commits, and integration occurs througho
   and profiling to runnable sources.
 - Versioned IndexedDB project/settings/save records without changing cartridge format revision 1.
   Raw alpha project, replay and save fixtures migrate transactionally with recovery copies. Saves
-  now carry stable cartridge identity, application schema, CRC32, bounded `.pxsave` import/export,
+  now carry stable cartridge identity, application schema, CRC32, bounded `.m01save` import/export,
   application-controlled migration and double-confirmed reset/delete. Corruption, truncation,
   oversize and cross-cartridge imports are rejected before mutation.
 - Added four-port keyboard/gamepad profiles, deterministic conflict reassignment, physical-gamepad
@@ -979,7 +979,7 @@ Each group may produce several coherent commits, and integration occurs througho
   modification-time conflict detection and explicit pull/overwrite choices; IndexedDB and file
   import/export remain universal fallbacks. Added a restrictive Studio CSP, inlined the locked-down
   cartridge Worker, and proved that normal run/capture/export performs no HTTP request after boot.
-  Third-party notices remain dependency notices, not a PX-240C license grant.
+  Third-party notices remain dependency notices, not a MOD-01 license grant.
 - Strict formatting, ESLint, TypeScript and **162 Vitest tests** pass. The complete clean-storage
   workflow passes Firefox 155 (Playwright build 1543) in **32.3 s** and Chrome for Testing 153.0.8010.12
   (Chromium build 1243) in **23.6 s**, including every bundled cart, authoring tools, debugger,
@@ -990,7 +990,7 @@ Each group may produce several coherent commits, and integration occurs througho
 ## 2026-09-11 — V1 milestone 11: release-candidate gate
 
 - Added a root-gate artifact verifier that rebuilds all eight first-party cartridges twice, exports
-  raw/`.pxc.png`/HTML/ZIP twice, byte-compares all 32 pairs, validates every cartridge PNG and boots
+  raw/`.m01c.png`/HTML/ZIP twice, byte-compares all 32 pairs, validates every cartridge PNG and boots
   every raw artifact through five production-core headless frames. Exact SHA-256 values are recorded
   in `docs/V1_RELEASE_EVIDENCE.md`; the original games remain 42,904/41,315/38,091 bytes and all
   showcase thresholds remain truthful.

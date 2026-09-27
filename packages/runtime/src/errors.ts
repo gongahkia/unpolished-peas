@@ -18,7 +18,7 @@ export class BudgetExceeded extends RuntimeFault {
 
   public constructor(used: number, limit: number, sourceSpan: SourceSpan) {
     super(
-      'PX9001',
+      'M019001',
       `frame used ${String(used)} synthetic work units; limit is ${String(limit)}`,
       sourceSpan,
     );

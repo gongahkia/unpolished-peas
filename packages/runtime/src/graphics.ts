@@ -779,7 +779,7 @@ export class WebGlIndexedRenderer {
     canvas.height = HARDWARE.height;
     const gl = canvas.getContext('webgl2', { alpha: false, antialias: false, depth: false });
     if (gl === null) {
-      throw new Error('WebGL2 is required by the PX-240C alpha renderer');
+      throw new Error('WebGL2 is required by the MOD-01 alpha renderer');
     }
     this.gl = gl;
     this.program = createProgram(gl);

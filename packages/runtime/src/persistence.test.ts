@@ -8,7 +8,7 @@ function project(source: string): ProjectDocument {
     id: 'test.project',
     title: 'TEST PROJECT',
     manifest: 'format = 1',
-    files: { 'src/main.pxl': new TextEncoder().encode(source) },
+    files: { 'src/main.modl': new TextEncoder().encode(source) },
   };
 }
 
@@ -22,7 +22,7 @@ describe('browser project and save persistence', () => {
       expect(stored.revision).toBe(revision + 1);
     }
     const loaded = await repository.loadProject('test.project');
-    expect(new TextDecoder().decode(loaded?.files['src/main.pxl'])).toContain('11');
+    expect(new TextDecoder().decode(loaded?.files['src/main.modl'])).toContain('11');
     const recovery = await repository.recoverySnapshots('test.project');
     expect(recovery).toHaveLength(10);
     expect(recovery[0]?.revision).toBe(11);

@@ -116,7 +116,7 @@ describe('authoritative system registers and execution snapshots', () => {
       }, configuration);
       const healthy = machine.snapshot();
       expect(() => machine.runFrame(emptyInputFrame())).toThrow(
-        expect.objectContaining({ code: 'PX9001' }),
+        expect.objectContaining({ code: 'M019001' }),
       );
       const faulted = machine.snapshot();
       expect(isMachineSnapshot(faulted)).toBe(true);
@@ -135,7 +135,7 @@ describe('authoritative system registers and execution snapshots', () => {
       expect(view.getUint32(60, true)).toBe(21);
       expect(view.getBigUint64(32, true)).toBe(101n);
       expect(() => machine.runFrame(emptyInputFrame())).toThrow(
-        expect.objectContaining({ code: 'PX9014' }),
+        expect.objectContaining({ code: 'M019014' }),
       );
       expect(calls).toBe(1);
       expect(machine.snapshot()).toEqual(faulted);
@@ -147,7 +147,7 @@ describe('authoritative system registers and execution snapshots', () => {
       expect(machine.snapshot()).toEqual(faulted);
       expect(() => {
         machine.boot();
-      }).toThrow(expect.objectContaining({ code: 'PX9014' }));
+      }).toThrow(expect.objectContaining({ code: 'M019014' }));
     });
   }
 
@@ -191,7 +191,7 @@ describe('authoritative system registers and execution snapshots', () => {
     });
     expect(registers(machine).getBigUint64(0, true)).toBe(BigInt(Number.MAX_SAFE_INTEGER));
     expect(() => machine.runFrame(emptyInputFrame())).toThrow(
-      expect.objectContaining({ code: 'PX9012' }),
+      expect.objectContaining({ code: 'M019012' }),
     );
     expect(machine.frame).toBe(Number.MAX_SAFE_INTEGER);
     expect(isMachineSnapshot(machine.snapshot())).toBe(true);

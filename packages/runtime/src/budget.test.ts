@@ -51,7 +51,7 @@ describe('WorkBudget', () => {
       budget.charge(8, { start: 0, end: 1 });
       expect(() => {
         budget.charge(units, { start: 2, end: 3 });
-      }).toThrow(expect.objectContaining({ code: 'PX9001', sourceSpan: { start: 2, end: 3 } }));
+      }).toThrow(expect.objectContaining({ code: 'M019001', sourceSpan: { start: 2, end: 3 } }));
       expect(budget.used).toBe(Number.MAX_SAFE_INTEGER);
       expect(isWorkBudgetSnapshot(budget.snapshot())).toBe(true);
       const restored = new WorkBudget(50_000);
@@ -77,7 +77,7 @@ describe('WorkBudget', () => {
       budget.charge(1, { start: 100, end: 101 });
     } catch (error: unknown) {
       expect(error).toMatchObject({
-        code: 'PX9001',
+        code: 'M019001',
         sourceSpan: { start: 100, end: 101 },
         limit: 10,
       });

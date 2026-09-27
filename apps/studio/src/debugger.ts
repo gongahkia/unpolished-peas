@@ -17,7 +17,7 @@ import {
   type SaveImage,
   type SynthSnapshot,
   type RuntimeAssetSource,
-} from '@px240c/runtime';
+} from '@mod01/runtime';
 
 import { BrowserCompiler, type CompilationResult } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
@@ -205,14 +205,14 @@ class DebuggerController {
     const canvas = requireElement(this.root, '.debug-screen') as HTMLCanvasElement;
     this.sandbox = new SandboxSession(
       new InlineSandboxWorker({
-        name: `px240c-debug-${project.id}`,
+        name: `mod01-debug-${project.id}`,
       }),
       1_000,
     );
     this.input = new BrowserInput(canvas, undefined, controllerProfile);
     this.renderer = new WebGlIndexedRenderer(canvas);
     this.initialization = this.sandbox.load(javascript, {
-      seed: 0x240c1999,
+      seed: 0x4d30_3031,
       workUnitsPerFrame: WORK_LIMIT,
       updateRate,
       assets: assetSource,
@@ -249,7 +249,7 @@ class DebuggerController {
 
   private renderShell(): void {
     this.root.innerHTML = `
-      <section class="display debugger" data-view="debugger" aria-label="PXCL source debugger" aria-busy="true" tabindex="-1">
+      <section class="display debugger" data-view="debugger" aria-label="MODL source debugger" aria-busy="true" tabindex="-1">
         <header class="system-bar"><span>DEBUG / ${escapeHtml(this.project.id)}</span><span>STATEMENT/1</span></header>
         <main class="debug-stage">
           <div class="debug-left">
@@ -991,12 +991,12 @@ function debugSources(
     }
   }
   for (const [path, bytes] of Object.entries(project.files)) {
-    if (path.endsWith('.pxl') && !mapped.has(path)) mapped.set(path, decoder.decode(bytes));
+    if (path.endsWith('.modl') && !mapped.has(path)) mapped.set(path, decoder.decode(bytes));
   }
   const entryPath =
     /^entry\s*=\s*"([A-Za-z0-9_./-]+)"\s*$/m.exec(project.manifest)?.[1] ??
     mapped.keys().next().value ??
-    'src/main.pxl';
+    'src/main.modl';
   return { entry: mapped.get(entryPath) ?? '', entryPath, files: mapped };
 }
 
@@ -1037,7 +1037,7 @@ function shortSource(source: string): string {
 const BREAKPOINT_LIMIT = 128;
 
 function breakpointStorageKey(projectId: string): string {
-  return `px240c:v1:breakpoints:${projectId}`;
+  return `mod01:v1:breakpoints:${projectId}`;
 }
 
 function loadBreakpoints(

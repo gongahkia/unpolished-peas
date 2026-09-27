@@ -278,10 +278,10 @@ export class MemoryBus {
         (entry) => cursor >= entry.address && cursor < entry.address + regionLength(entry),
       );
       if (region === undefined || !region.writable)
-        throw new RuntimeFault('PX9021', 'write to read-only or reserved hardware memory', span);
+        throw new RuntimeFault('M019021', 'write to read-only or reserved hardware memory', span);
       if (raster && !region.rasterWritable)
         throw new RuntimeFault(
-          'PX9011',
+          'M019011',
           'hardware write is not valid in the raster callback',
           span,
         );
@@ -298,7 +298,7 @@ export class MemoryBus {
           : region.prepareWrite(offset, part, span, debugEdit);
       if (commit === undefined)
         throw new RuntimeFault(
-          'PX9022',
+          'M019022',
           `invalid value for hardware region '${region.name}'`,
           span,
         );
@@ -318,13 +318,13 @@ export class MemoryBus {
       address > MEMORY.size ||
       length > MEMORY.size - address
     )
-      throw new RuntimeFault('PX9020', 'hardware address or range is out of bounds', span);
+      throw new RuntimeFault('M019020', 'hardware address or range is out of bounds', span);
   }
 
   private value(value: number, maximum: number, span: SourceSpan): void {
     if (!Number.isSafeInteger(value) || value < 0 || value > maximum)
       throw new RuntimeFault(
-        'PX9022',
+        'M019022',
         'hardware value is outside the unsigned operation width',
         span,
       );

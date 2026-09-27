@@ -30,11 +30,11 @@ describe('hardware byte bus', () => {
     const before = ram.slice();
     expect(() => {
       bus.edit(3, Uint8Array.of(9, 9));
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     expect(ram).toEqual(before);
     expect(() => {
       bus.inspect(MEMORY.size, 1);
-    }).toThrow(expect.objectContaining({ code: 'PX9020' }));
+    }).toThrow(expect.objectContaining({ code: 'M019020' }));
   });
 
   it('prepares writable device operations without shadow state or partial cross-region commits', () => {
@@ -75,13 +75,13 @@ describe('hardware byte bus', () => {
     expect(saved.regions).toHaveLength(1);
     expect(() => {
       bus.fill(0, 7, 7, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     expect(() => {
       bus.fill(0, 255, 6, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.write(2, 9, 1, span, true);
-    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    }).toThrow(expect.objectContaining({ code: 'M019011' }));
     expect(commits).toBe(2);
     expect(owners).toEqual([0x0302, 0x0504]);
     deepStrictEqual(bus.snapshot(), saved);
@@ -119,7 +119,7 @@ describe('hardware byte bus', () => {
     expect(saved.regions).toHaveLength(1);
     expect(() => {
       bus.fill(0, 0, 4, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     deepStrictEqual(bus.snapshot(), saved);
     for (const length of [0, -1, 0.5, Infinity, MEMORY.size + 1])
       expect(
@@ -158,12 +158,12 @@ describe('hardware byte bus', () => {
       new DataView(ram.buffer).setFloat64(0, value, true);
       expect(() => {
         bus.copy(MEMORY.draw, 0, 8, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
     }
     new DataView(ram.buffer).setFloat64(0, -1, true);
     expect(() => {
       bus.copy(MEMORY.draw + 32, 0, 8, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     deepStrictEqual(bus.snapshot().regions.slice(1), before.regions.slice(1));
     graphics.executeCommand(command('clip_reset', []));
     graphics.executeCommand(command('pal_reset', []));
@@ -202,7 +202,7 @@ describe('hardware byte bus', () => {
     ]) {
       expect(() => {
         bus.write(MEMORY.raster + (offset ?? 0), value ?? 0, 1, span, true);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
     }
     deepStrictEqual(bus.snapshot(), before);
     const frame = graphics.finishFrame();
@@ -255,15 +255,15 @@ describe('hardware byte bus', () => {
     expect(bus.read(MEMORY.size - 1, 1, span)).toBe(0);
     for (const address of [-1, 0.5, NaN, Infinity, MEMORY.size, Number.MAX_SAFE_INTEGER])
       expect(() => bus.read(address, 1, span)).toThrow(
-        expect.objectContaining({ code: 'PX9020', sourceSpan: span }),
+        expect.objectContaining({ code: 'M019020', sourceSpan: span }),
       );
     expect(() => bus.read(MEMORY.size - 1, 2, span)).toThrow(
-      expect.objectContaining({ code: 'PX9020' }),
+      expect.objectContaining({ code: 'M019020' }),
     );
     for (const length of [-1, 0.5, Infinity, MEMORY.size + 1])
       expect(() => {
         bus.copy(0, 0, length, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9020' }));
+      }).toThrow(expect.objectContaining({ code: 'M019020' }));
   });
 
   it('validates the entire operation before cross-region, permission or value mutations', () => {
@@ -287,26 +287,26 @@ describe('hardware byte bus', () => {
     const before = bus.snapshot();
     expect(() => {
       bus.fill(0, 1, 5, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     expect(() => {
       bus.fill(0, 32, 3, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.write(1, 0x2001, 2, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+    }).toThrow(expect.objectContaining({ code: 'M019022' }));
     expect(() => {
       bus.fill(0, 1, 3, span, true);
-    }).toThrow(expect.objectContaining({ code: 'PX9011' }));
+    }).toThrow(expect.objectContaining({ code: 'M019011' }));
     for (const value of [-1, 0.5, 256, NaN])
       expect(() => {
         bus.write(0, value, 1, span);
-      }).toThrow(expect.objectContaining({ code: 'PX9022' }));
+      }).toThrow(expect.objectContaining({ code: 'M019022' }));
     deepStrictEqual(bus.snapshot(), before);
     expect([...readOnly]).toEqual([7, 8]);
     expect(bus.read(6, 1, span)).toBe(0);
     expect(() => {
       bus.write(6, 0, 1, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9021' }));
+    }).toThrow(expect.objectContaining({ code: 'M019021' }));
     bus.write(1, 0x0201, 2, span);
     expect([...first, ...second]).toEqual([3, 1, 2, 6]);
   });
@@ -323,7 +323,7 @@ describe('hardware byte bus', () => {
     const before = bus.snapshot();
     expect(() => {
       bus.fill(0, 1, MEMORY.size, span);
-    }).toThrow(expect.objectContaining({ code: 'PX9001', sourceSpan: span }));
+    }).toThrow(expect.objectContaining({ code: 'M019001', sourceSpan: span }));
     deepStrictEqual(bus.snapshot(), before);
     bytes[0] = 2;
     bus.restore(before);

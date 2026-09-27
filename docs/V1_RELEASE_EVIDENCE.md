@@ -1,6 +1,6 @@
 # V1 release-candidate evidence
 
-This is the reproducible closing record for the PX-240C V1 product pass. The implementation began
+This is the reproducible closing record for the MOD-01 V1 product pass. The implementation began
 at `e39be5a` and the final release-candidate commit is recorded in `docs/PROGRESS.md`. Nothing in
 this pass was pushed, published or deployed.
 
@@ -15,14 +15,14 @@ working/committed saves `58000`/`5a000`, canonical ROM `60000`, visual descripto
 `c0000`, and audio descriptors `3c0000`. Unmapped reads return zero; writes fault.
 
 The canonical cartridge remains format revision 1. Optional `compile_on_load` carts retain editable
-source and a generated-code identity while omitting redundant generated payloads. `.pxc.png` stores
-the byte-exact canonical cart in a CRC-checked `pxCa` chunk, HTML and ZIP embed the same verified
-cart and production-core Worker, and `.pxrec` plus `.pxsave` are bounded revision-1 envelopes.
+source and a generated-code identity while omitting redundant generated payloads. `.m01c.png` stores
+the byte-exact canonical cart in a CRC-checked `moCa` chunk, HTML and ZIP embed the same verified
+cart and production-core Worker, and `.m01rec` plus `.m01save` are bounded revision-1 envelopes.
 
 ## Before and after measurements
 
 Alpha values are immutable measurements from `tests/fixtures/alpha`; V1 values come from the final
-`px240c info` section accountant. V1 profile values below use an empty 60-frame input. The archived
+`mod01 info` section accountant. V1 profile values below use an empty 60-frame input. The archived
 intentional gameplay paths still match all 720 alpha framebuffer/state/work/command observations
 and their PCM goldens.
 
@@ -61,7 +61,7 @@ revision-safe save, deterministic restart, compile, inline Worker boot and first
 `scripts/verify-release-artifacts.sh` packs and exports every first-party cart twice, byte-compares
 raw/PNG/HTML/ZIP pairs, validates each PNG, and boots each raw cart for five headless frames.
 
-| Cartridge             |  Bytes | `.pxc` SHA-256                                                     | `.pxc.png` SHA-256                                                 | HTML SHA-256                                                       | ZIP SHA-256                                                        |
+| Cartridge             |  Bytes | `.m01c` SHA-256                                                    | `.m01c.png` SHA-256                                                | HTML SHA-256                                                       | ZIP SHA-256                                                        |
 | --------------------- | -----: | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ | ------------------------------------------------------------------ |
 | Cinder Circuit        | 42,904 | `225f164cc7cb9a891b353fb41df025d7a4d9be09ef713888c4f7a8b766408ea8` | `92be98e7ff7f0f1b541b73614feaab2e67528bcbbd63f05b8c5a03f2da761055` | `4232fa1a74542939c829f0394b31ebc16fc56597e9d7eaadff3f63a540751566` | `4036e384df1bed4c86224c227ea188c108640f55a8763ebe40337f8c5a00e039` |
 | Ashvault              | 41,315 | `44abf7399348c4790de27ad316d63fcfea1c064e3c99980c644026e75d604986` | `09ea6a29503b8d7938ab8f9b7398f495e8f57294819f7eaa35ead0e13a4cbe31` | `9b77b45b0232b5bbb3524b86f5594d0041ae4c8c23e5322bbf92369a5c06ce67` | `e0c7d0331c7d41f7dc46e9c4a793c0823ae39ac166b93065e81a3d4ae0db973a` |
@@ -76,7 +76,7 @@ Canonical codec fixtures: PNG `c52601bf655b456ad11ef15bf558b902ec9003b205225d58d
 GIF `be91301d85c0c8ba5c9f20ac0d37042224946f0e265bfd13eab744dd7871ef28`, 48 kHz PCM16 WAV
 `094f8a60e627c49f6c6209704bd24bb3e6c64e0517cc938b05fee1360e85c503`, and deterministic ZIP
 `cd29362199db5175e8d1a169d5a969809745eef09f4a735f218f2696cc896871`. Browser downloads parse and
-round-trip raw carts, cart PNGs, native/scaled PNG captures, 30 fps GIF, `.pxrec`, WAV, standalone
+round-trip raw carts, cart PNGs, native/scaled PNG captures, 30 fps GIF, `.m01rec`, WAV, standalone
 HTML and ZIP. Directly inspected 240x144 and scaled Signal 4K captures are retained locally under
 `output/playwright/v1-{firefox,chromium}-{native,scaled}.png`; the native output is free of host UI.
 
@@ -84,7 +84,7 @@ HTML and ZIP. Directly inspected 240x144 and scaled Signal 4K captures are retai
 
 The gate exercises the three raw alpha carts and 720 recorded frames, the gzip-preserved first-install
 IndexedDB project, raw alpha save JSON, revision-0 replay JSON, snapshot revisions 1-5, old flat and
-single-file PXCL, one-tileset maps, existing built-in font behavior and legacy standalone integer
+single-file MODL, one-tileset maps, existing built-in font behavior and legacy standalone integer
 saves. Migration writes a separate recovery key before a V1 record and never replaces the fixture.
 
 Untrusted cartridge, PNG, map/font/audio JSON, URL fragment, replay, save, manifest, folder and
@@ -107,4 +107,4 @@ macOS host and is not claimed.
   replay exports remain separate. Arbitrary samples are intentionally outside the synth contract.
 - The fixed machine/non-goals remain: no accounts, backend, telemetry, cloud gallery, netplay,
   compatibility importers, package/plugin system, generic engine, alternate hardware, RGB/shaders,
-  native desktop wrapper, or PX-240C license grant.
+  native desktop wrapper, or MOD-01 license grant.

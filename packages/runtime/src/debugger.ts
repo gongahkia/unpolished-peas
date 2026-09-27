@@ -160,7 +160,7 @@ export function debugFingerprint(value: unknown): string {
   return (hash >>> 0).toString(16).padStart(8, '0');
 }
 
-/** Evaluates a non-mutating PXCL-like watch subset without dynamic JavaScript execution. */
+/** Evaluates a non-mutating MODL-like watch subset without dynamic JavaScript execution. */
 export function evaluateWatch(
   source: string,
   environment: Readonly<Record<string, unknown>>,

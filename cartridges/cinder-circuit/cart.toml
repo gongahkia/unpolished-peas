@@ -1,43 +1,43 @@
 format = 1
-language = "PXCL/1"
+language = "MODL/1"
 id = "cinder-circuit"
 title = "CINDER CIRCUIT"
 author = "@gongahkia"
 version = "1.0.0-alpha.1"
-entry = "src/main.pxl"
+entry = "src/main.modl"
 update_rate = 30
 label = "presentation/label.svg"
 thumbnail = "presentation/thumbnail.svg"
-display = "assets/display.pxp"
+display = "assets/display.m01p"
 
 [assets.runner]
 kind = "animation"
-path = "assets/runner.pxg"
+path = "assets/runner.m01g"
 
 [assets.tiles]
 kind = "tile_set"
-path = "assets/tiles.pxg"
+path = "assets/tiles.m01g"
 
 [assets.world]
 kind = "map"
-path = "assets/world.pxm"
+path = "assets/world.m01m"
 
 [assets.jump]
 kind = "sound"
-path = "assets/jump.pxs"
+path = "assets/jump.m01s"
 
 [assets.hurt]
 kind = "sound"
-path = "assets/hurt.pxs"
+path = "assets/hurt.m01s"
 
 [assets.chime]
 kind = "sound"
-path = "assets/chime.pxs"
+path = "assets/chime.m01s"
 
 [assets.bass]
 kind = "sound"
-path = "assets/bass.pxs"
+path = "assets/bass.m01s"
 
 [assets.theme]
 kind = "music"
-path = "assets/theme.pxt"
+path = "assets/theme.m01t"

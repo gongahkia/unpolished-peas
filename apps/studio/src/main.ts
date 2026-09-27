@@ -9,14 +9,14 @@ import {
   Synthesizer,
   WebAudioSink,
   WebGlIndexedRenderer,
-} from '@px240c/runtime';
+} from '@mod01/runtime';
 import { StudioApp } from './studio';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
 import './style.css';
 
 const studio = document.querySelector<HTMLElement>('#studio');
 if (studio === null) {
-  throw new Error('PX-240C studio root is missing');
+  throw new Error('MOD-01 studio root is missing');
 }
 const studioRoot = studio;
 
@@ -29,7 +29,7 @@ if ('serviceWorker' in navigator) {
       .catch((error: unknown) => {
         // A navigation can abort an otherwise successful best-effort registration.
         if (!(error instanceof DOMException && error.name === 'AbortError')) {
-          console.warn('PX-240C offline cache registration failed', error);
+          console.warn('MOD-01 offline cache registration failed', error);
         }
       });
   });
@@ -43,7 +43,7 @@ if (diagnosticMode !== null || audioDiagnostic || persistenceDiagnostic) {
   renderDiagnosticScaffold();
 } else {
   void new StudioApp(studioRoot).boot().catch((error: unknown) => {
-    studioRoot.textContent = error instanceof Error ? error.message : 'PX-240C boot failed';
+    studioRoot.textContent = error instanceof Error ? error.message : 'MOD-01 boot failed';
     document.documentElement.dataset.studioReady = 'failed';
   });
 }
@@ -61,12 +61,12 @@ function renderDiagnosticScaffold(): void {
   const visualKilobytes = String(HARDWARE.visualCapacityBytes / 1024);
   const audioVoices = String(HARDWARE.audioVoices);
   studioRoot.innerHTML = `
-    <section class="display diagnostic-display" aria-label="PX-240C monitor">
-      <canvas id="screen" aria-label="PX-240C indexed display"></canvas>
-      <p>PX-240C COLOR DEVELOPMENT UNIT</p>
+    <section class="display diagnostic-display" aria-label="MOD-01 monitor">
+      <canvas id="screen" aria-label="MOD-01 indexed display"></canvas>
+      <p>MOD-01 COLOR DEVELOPMENT UNIT</p>
       <p>SYSTEM ROM 1.0&nbsp; (C) 1999</p>
       <p>${visualKilobytes}K VISUAL STORE / ${audioVoices}V SOUND</p>
-      <p>PXCL/1 READY</p>
+      <p>MODL/1 READY</p>
       <p class="prompt" aria-label="command prompt">&gt;<span aria-hidden="true">_</span></p>
       <button id="audio-test" type="button" hidden>ENABLE AUDIO TEST</button>
       <p id="diagnostic" class="diagnostic" role="status" aria-live="polite"></p>
@@ -79,12 +79,12 @@ async function runPersistenceDiagnostic(): Promise<void> {
   if (status === null) {
     throw new Error('persistence diagnostic output is missing');
   }
-  const repository = new StudioRepository(new IndexedDbStorage('px240c-diagnostic'));
+  const repository = new StudioRepository(new IndexedDbStorage('mod01-diagnostic'));
   const project = {
     id: 'diagnostic.project',
     title: 'DIAGNOSTIC PROJECT',
     manifest: 'format = 1',
-    files: { 'src/main.pxl': new TextEncoder().encode('on draw:\n  clear(0)\n') },
+    files: { 'src/main.modl': new TextEncoder().encode('on draw:\n  clear(0)\n') },
   };
   const firstSave = repository.cartridgeSave('diagnostic.first');
   const secondSave = repository.cartridgeSave('diagnostic.second');
@@ -92,7 +92,7 @@ async function runPersistenceDiagnostic(): Promise<void> {
     await repository.saveProject(project);
     await repository.saveProject({
       ...project,
-      files: { 'src/main.pxl': new TextEncoder().encode('on draw:\n  clear(1)\n') },
+      files: { 'src/main.modl': new TextEncoder().encode('on draw:\n  clear(1)\n') },
     });
     await firstSave.write(Uint8Array.of(1, 2, 3));
     await secondSave.write(Uint8Array.of(9));
@@ -184,7 +184,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
   if (status === null) {
     throw new Error('sandbox diagnostic output is missing');
   }
-  const worker = new InlineSandboxWorker({ name: 'px240c-cartridge' });
+  const worker = new InlineSandboxWorker({ name: 'mod01-cartridge' });
   const sandbox = new SandboxSession(worker, 1_000);
   try {
     const audit = await sandbox.audit();
@@ -202,7 +202,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
       throw new Error(`sandbox fixture failed to load: ${String(response.status)}`);
     }
     await sandbox.load(await response.text(), {
-      seed: 0x240c1999,
+      seed: 0x4d30_3031,
       workUnitsPerFrame: mode === 'runaway' ? 96 : 20_000,
       updateRate: 60,
       ...(mode === 'runaway' ? {} : { save: { boots: 4 } }),
@@ -213,7 +213,7 @@ async function runSandboxDiagnostic(mode: string): Promise<void> {
       } catch (error: unknown) {
         if (
           error instanceof RuntimeFault &&
-          error.code === 'PX9001' &&
+          error.code === 'M019001' &&
           error.sourceSpan.start > 0
         ) {
           showResult(status, 'RUNAWAY STOPPED / SOURCE MAPPED', true);

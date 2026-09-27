@@ -9,7 +9,7 @@ import {
   REPLAY_MAX_BYTES,
 } from './replay';
 
-describe('PXREC revision 1', () => {
+describe('M01REC revision 1', () => {
   it('round-trips exact bounded controller and pointer frames', () => {
     const input = emptyInputFrame();
     (input.controllers[1].buttons as Record<string, boolean>).a = true;

@@ -6,7 +6,7 @@
 ## Decision
 
 Use a Cargo workspace for compiler-owned behavior and a pnpm workspace for browser-owned behavior.
-Keep `pxcl-core` free of browser APIs. Expose it to the studio through a small `wasm-bindgen` crate
+Keep `modl-core` free of browser APIs. Expose it to the studio through a small `wasm-bindgen` crate
 and to external editors through the native CLI. Keep hardware coordination in a framework-light
 TypeScript package and use Vite only as the static build shell.
 

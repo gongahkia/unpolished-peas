@@ -13,7 +13,7 @@ execFileSync('git', [
 const catalogs = {};
 for (const id of ['cinder-circuit', 'ashvault', 'raster-rush']) {
   catalogs[id] = JSON.parse(
-    execFileSync('target/debug/px240c', ['info', `cartridges/${id}`], { encoding: 'utf8' }),
+    execFileSync('target/debug/mod01', ['info', `cartridges/${id}`], { encoding: 'utf8' }),
   );
 }
 await writeFile('tests/fixtures/alpha/catalogs.json', `${JSON.stringify(catalogs, null, 2)}\n`, {

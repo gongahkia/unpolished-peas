@@ -1,15 +1,15 @@
 # Architecture
 
-PX-240C is a static browser application backed by one compiler and cartridge implementation shared
+MOD-01 is a static browser application backed by one compiler and cartridge implementation shared
 with the native CLI.
 
 ## Package ownership
 
-- `crates/pxcl-core`: PXCL syntax, semantic analysis, typed IR, code generation, debug metadata,
+- `crates/modl-core`: MODL syntax, semantic analysis, typed IR, code generation, debug metadata,
   deterministic cartridge encoding, standalone HTML export, formatter, and language-service
   analysis.
-- `crates/pxcl-wasm`: a deliberately narrow WebAssembly boundary over `pxcl-core`.
-- `crates/px240c-cli`: native command family and stdio language server, both using `pxcl-core`.
+- `crates/modl-wasm`: a deliberately narrow WebAssembly boundary over `modl-core`.
+- `crates/mod01-cli`: native command family and stdio language server, both using `modl-core`.
 - `packages/runtime`: deterministic hardware model, worker protocol, indexed graphics, input, audio,
   persistence adapters, debugger, replay, and export support.
 - `apps/studio`: 240x144 shell and integrated tools. It consumes the runtime and compiler bridge but
@@ -25,7 +25,7 @@ configuration with the same schema as the Worker protocol, rejects budgets above
 bounded source asset bank; map queries and drawing use the same visual store. Commands execute in
 program order, then frame completion resolves indexed scanout and renders deterministic PCM.
 The page presents those pixels/samples and handles input and storage; it no longer re-executes
-cartridge graphics or audio. Tests drive this same core with native-compiled PXCL and compare
+cartridge graphics or audio. Tests drive this same core with native-compiled MODL and compare
 actual alpha browser recordings. `MemoryBus` aliases work RAM and the actual graphics/raster
 storage with transactional byte/word/copy/fill access. Its frozen layout is documented in HARDWARE.
 The browser Worker, the embedded offline standalone Worker, and the
@@ -33,10 +33,10 @@ native CLI's Node headless adapter all drive this same core rather than reimplem
 
 ## Data flow
 
-PXCL source is tokenized, parsed, resolved to stable symbol IDs, type-checked against a typed asset
+MODL source is tokenized, parsed, resolved to stable symbol IDs, type-checked against a typed asset
 catalog, and lowered to a serializable structured IR. That IR is instrumented and generated as
 compact JavaScript plus source maps; the same IR produces debug and release output.
-Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.pxc`
+Projects remain Git-friendly directories; packing creates a canonical, content-addressed `.m01c`
 artifact containing original source and compiled output.
 
 Standalone export deliberately reuses the pack/decode boundary: verified archive entries and the
@@ -44,7 +44,7 @@ exact canonical ROM are embedded with a generated host whose inline Worker is bu
 `sandbox-worker.ts` and production core as Studio. The generated player is checked in so Rust/Wasm
 exports are reproducible without a JavaScript build step; the runtime package build regenerates it.
 The headless host is generated from `headless.ts`, embedded in the native CLI, and accepts only a
-bounded JSON request prepared by Rust. Imported `.pxc` files are unpacked and recompiled from their
+bounded JSON request prepared by Rust. Imported `.m01c` files are unpacked and recompiled from their
 source before execution, so their archived build entry is never trusted as executable input.
 The Vite build emits a service worker from the final hashed asset inventory, so offline caching
 tracks the actual build instead of a handwritten filename list.

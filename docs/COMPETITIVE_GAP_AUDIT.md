@@ -13,12 +13,12 @@ The current scope contract is [PRODUCT.md](PRODUCT.md), [LIMITS.md](LIMITS.md), 
 [V1_RELEASE_EVIDENCE.md](V1_RELEASE_EVIDENCE.md). This historical audit does not promote unverified
 competitor claims into facts. No implementation decision currently
 requires a competitor's present price, specification, licensing, or API behavior: the decisions
-below follow the requested product contract and inspected PX-240C code. Official sources will be
+below follow the requested product contract and inspected MOD-01 code. Official sources will be
 checked before relying on any such external claim. No competitor code, art, or branding is imported.
 
 Inspected instructions and handoffs at the time: `AGENTS.md`, both product passes, root README,
 PROGRESS, LIMITS, ARCHITECTURE, all three ADRs, HARDWARE, SECURITY, DEBUGGER, CARTRIDGE_FORMAT,
-PXCL, API, ASSETS, STUDIO, TUTORIAL, PRODUCT, cartridge README, COPYRIGHT, and third-party notices. Package
+MODL, API, ASSETS, STUDIO, TUTORIAL, PRODUCT, cartridge README, COPYRIGHT, and third-party notices. Package
 manifests, Makefile, build/check scripts, lockfiles, runtime, compiler/linker, CLI/LSP, Studio,
 debugger and E2E are stronger evidence than aspirational prose. This is a Vite application, not
 a Next.js application; the generic Next.js AGENTS block has no installed Next.js guide to apply.
@@ -31,15 +31,15 @@ input, work, draw/audio/save commands, SHA-256 of the indexed pixels sent to Web
 the Worker snapshot. The final snapshot is retained in full. These are observations of alpha,
 not expected values synthesized from a proposed V1 implementation. Do not regenerate them from V1.
 
-| Game                          | Complete `.pxc` bytes | Visual bytes | Short-path work peak | Draw-command peak | Audio-command peak |
-| ----------------------------- | --------------------: | -----------: | -------------------: | ----------------: | -----------------: |
-| Cinder Circuit                |                42,121 |        9,766 |               10,477 |                90 |                  1 |
-| Ashvault                      |                40,532 |          288 |               19,140 |               120 |                  3 |
-| Raster Rush 99 (four players) |                37,311 |          160 |               31,722 |               470 |                  1 |
+| Game                          | Complete `.m01c` bytes | Visual bytes | Short-path work peak | Draw-command peak | Audio-command peak |
+| ----------------------------- | ---------------------: | -----------: | -------------------: | ----------------: | -----------------: |
+| Cinder Circuit                |                 42,121 |        9,766 |               10,477 |                90 |                  1 |
+| Ashvault                      |                 40,532 |          288 |               19,140 |               120 |                  3 |
+| Raster Rush 99 (four players) |                 37,311 |          160 |               31,722 |               470 |                  1 |
 
 Paths: Cinder starts, runs right, jumps and encounters hazards; Ashvault starts and takes discrete
 cardinal turns; Raster Rush starts four players, accelerates, boosts each port and steers in opposite
-directions. All use seed `0x240c1999` and initially empty save data. The older PROGRESS work figures
+directions. All use seed `0x4d30_3031` and initially empty save data. The older PROGRESS work figures
 3,342/12,031/31,682 describe representative active frames, **not whole-path peaks**. Keep this
 distinction in the new profiler and handoff. These short paths are regression boundaries, not proof
 of every level or ending.
@@ -125,7 +125,7 @@ above remains authoritative in addition to this historical checklist.
 
 - [x] Fixed layout/reference for RAM, front/back/display, 128 KiB visual store and allocation/descriptors, map/tile/sprite/font, palette/transparency/camera/clip/raster, four input ports/edges, eight voices/tracker, time/RNG/work/faults, 8 KiB save/commit, ROM/metadata and reserved space.
 - [x] Document/reset/test byte order, alignment, permissions, no mirrors, bounds, values, visibility timing and operation costs for every region/register.
-- [x] Public PXCL byte/word read/write, overlap-safe copy/fill; high-/low-level mixed graphics/map/audio/input/save/raster use one backing state and deterministic faults/work.
+- [x] Public MODL byte/word read/write, overlap-safe copy/fill; high-/low-level mixed graphics/map/audio/input/save/raster use one backing state and deterministic faults/work.
 - [x] Paused memory/register editor with labels, hex/decimal, changes, watchpoints and manual links; bounded per-scanline effects.
 
 ### 3. Conformance and headless execution
@@ -133,9 +133,9 @@ above remains authoritative in addition to this historical checklist.
 - [x] No-browser conformance for every region/register plus reset/aliasing/bounds/endianness/framebuffer/raster/input/audio/tasks/RNG/save/work/faults.
 - [x] One production-core headless CLI accepts cartridge, seed, frame/update count, scripted input and save; emits frame/state/audio or PCM hashes, peaks and faults.
 - [x] Browser/headless golden parity in both browsers; original three game paths preserve output, controls, audio and saves.
-- [x] Raw pre-V1 cartridge/project/replay/save compatibility fixtures migrate without replacing originals; public source-visible PXCL diagnostic/service cart.
+- [x] Raw pre-V1 cartridge/project/replay/save compatibility fixtures migrate without replacing originals; public source-visible MODL diagnostic/service cart.
 
-### 4. PXCL projects and external tools
+### 4. MODL projects and external tools
 
 - [x] Namespaced symbols, public/private, aliases/qualified names, deterministic initialization, cycles/collisions; legacy flat and single-file carts valid.
 - [x] Shared native/Wasm/Studio/formatter/explorer/LSP semantic model, original-file locations, dependency-based incremental invalidation.
@@ -148,7 +148,7 @@ above remains authoritative in addition to this historical checklist.
 
 - [x] Actual statement suspension/continue/restart/step in/over/out in nested functions, loops, module calls, callbacks, tasks/yields and supported recursion.
 - [x] Original-module source maps and typed locals/globals/collections/stacks/current location/task state; release instrumentation stripping.
-- [x] Restricted PXCL conditions and read-only typed watches, no JS eval; memory watchpoints; persisted/remapped breakpoints; generated code and IR views.
+- [x] Restricted MODL conditions and read-only typed watches, no JS eval; memory watchpoints; persisted/remapped breakpoints; generated code and IR views.
 - [x] Defined Worker/render/audio/input/timer pause semantics, no host-time state advance or hanging notes; rewind then forward along recorded input; edits/faults covered.
 
 ### 6. Creation tools
@@ -163,12 +163,12 @@ above remains authoritative in addition to this historical checklist.
 
 - [x] Reusable instruments/custom waves/envelopes/effects, tracker pattern order/flow, per-channel audition/mute/solo, scope/spectrum or voice-state and steal/work inspection.
 - [x] Production synth and memory registers/tracker/debug/replay/WAV use one timing model; canonical PCM hash plus audio-command golden.
-- [x] Native/integer-scale PNG, deterministic 30 fps GIF sampling alternate frames with memory/duration limits/progress, frame-exact `.pxrec` round-trip, offline SFX/song WAV; optional synchronized replay audio evaluated.
+- [x] Native/integer-scale PNG, deterministic 30 fps GIF sampling alternate frames with memory/duration limits/progress, frame-exact `.m01rec` round-trip, offline SFX/song WAV; optional synchronized replay audio evaluated.
 - [x] Parse exported PNG/GIF/WAV/replay and compare expected frames/samples; visually inspect captures outside host overlays.
 
 ### 8. Cartridge identity and local distribution
 
-- [x] Original PX-240C physical cart/label PNG with validated ancillary canonical `.pxc` bytes, captured label and title/author/year/players/controls; source-visible raw/PNG round-trip and corruption tests.
+- [x] Original MOD-01 physical cart/label PNG with validated ancillary canonical `.m01c` bytes, captured label and title/author/year/players/controls; source-visible raw/PNG round-trip and corruption tests.
 - [x] Local diegetic shelf: bundled/imported labels/metadata/favorites/recents/class/players/save; launch/source/duplicate/rename/export/remove with confirmation/recovery; offline persistence.
 - [x] Extend single offline HTML, itch-ready ZIP/index, embed; metadata/controls/fullscreen/pause/reset/source inspection and isolated saves; no external dependencies.
 - [x] Tiny fragment-only sharing with browser-tested conservative cap and pre-copy meter, clean oversize rejection, no query/upload/request; normal files remain primary.
@@ -183,13 +183,13 @@ above remains authoritative in addition to this historical checklist.
 ### 10. Learning and resilience
 
 - [x] Authoritative searchable in-console/repository manual, help/man/API/hardware/syntax/diagnostic links and code-cursor help at console resolution.
-- [x] Public PXCL interactive 5–10 minute tutorial: pixel/input/animation/sound/save/pack; runnable examples for graphics/sprites/maps/raster/fonts/audio/4P/tasks/saves/modules/tests/bus/profiling.
+- [x] Public MODL interactive 5–10 minute tutorial: pixel/input/animation/sound/save/pack; runnable examples for graphics/sprites/maps/raster/fonts/audio/4P/tasks/saves/modules/tests/bus/profiling.
 - [x] Small blank/arcade/platform/grid/four-player starters, public service cart; no secret host API or Studio rewrite.
 - [x] Version and test project/cart/replay/save migrations with raw originals, transactional recovery, stable save ID/schema/application migration/reset/checksum/truncation/export/import/delete confirmation within 8 KiB.
 - [x] Harden all cart/PNG/map/font/audio/fragment/replay/save/manifest/message boundaries with pre-allocation size/dimension/count/depth/work/path/duplicate checks, property tests, never imported JS execution; CSP/no-network audit and dependency notices/security review.
 - [x] Four-port keyboard/gamepad assignment/remap/conflicts/disconnect/reconnect/local profiles; reduced flashing, muted startup, contrast and larger help outside deterministic/captured output.
 - [x] Chromium and Firefox full workflow matrix, installable PWA and cold offline reload; assert zero normal run/capture/export network requests; accurate platform support statement.
-- [x] README, LANGUAGE, HARDWARE, CARTRIDGE_FORMAT, DEBUGGING, TOOLS, THIRD_PARTY_NOTICES, PROGRESS and LIMITS match executable behavior with no PX-240C license grant.
+- [x] README, LANGUAGE, HARDWARE, CARTRIDGE_FORMAT, DEBUGGING, TOOLS, THIRD_PARTY_NOTICES, PROGRESS and LIMITS match executable behavior with no MOD-01 license grant.
 
 ### 11. Release gate
 
@@ -200,5 +200,5 @@ above remains authoritative in addition to this historical checklist.
 
 Non-goals remain exactly those in the brief: no cloud/accounts/telemetry/community/backend, netplay,
 foreign-console imports, alternate hardware/palette/shaders/3D/analog, generic engine/registry/plugin
-or multi-language platform, native desktop rewrite, wholesale PXCL Studio, game redesign, copied
+or multi-language platform, native desktop rewrite, wholesale MODL Studio, game redesign, copied
 branding/assets or license grant. A failed check leaves its requirement open; it is not a scope waiver.

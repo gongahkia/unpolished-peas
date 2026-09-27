@@ -26,10 +26,10 @@ interface StandalonePayload {
 }
 
 declare global {
-  var __PX240C_CARTRIDGE__: StandalonePayload;
+  var __MOD01_CARTRIDGE__: StandalonePayload;
 }
 
-const payload = globalThis.__PX240C_CARTRIDGE__;
+const payload = globalThis.__MOD01_CARTRIDGE__;
 const canvas = requireElement('#screen') as HTMLCanvasElement;
 const status = requireElement('#status') as HTMLOutputElement;
 const soundButton = requireElement('#sound') as HTMLButtonElement;
@@ -125,7 +125,7 @@ async function restart(): Promise<void> {
   soundButton.textContent = 'SOUND';
   soundButton.disabled = false;
   const nextWorker = new InlineSandboxWorker({
-    name: `px240c-standalone-${payload.manifest.id}-${String(currentGeneration)}`,
+    name: `mod01-standalone-${payload.manifest.id}-${String(currentGeneration)}`,
   });
   const nextSandbox = new SandboxSession(nextWorker, 1_000);
   const nextInput = new BrowserInput(canvas);
@@ -134,7 +134,7 @@ async function restart(): Promise<void> {
   const javascript = new TextDecoder().decode(requireFile('build/cartridge.js'));
   const rom = decodeBase64(payload.rom);
   await nextSandbox.load(javascript, {
-    seed: 0x240c1999,
+    seed: 0x4d30_3031,
     workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
     updateRate: payload.manifest.updateRate,
     assets: {
@@ -180,7 +180,7 @@ async function closeAudio(): Promise<void> {
 }
 
 function readSave(): Uint8Array {
-  const current = localStorage.getItem(`px240c/v1/${payload.manifest.id}`);
+  const current = localStorage.getItem(`mod01/v1/${payload.manifest.id}`);
   if (current !== null) {
     try {
       const bytes = decodeBase64(current);
@@ -189,7 +189,7 @@ function readSave(): Uint8Array {
       // A malformed local value is isolated to this cartridge and replaced only after a commit.
     }
   }
-  const alpha = localStorage.getItem(`px240c/${payload.manifest.id}`);
+  const alpha = localStorage.getItem(`mod01/${payload.manifest.id}`);
   if (alpha === null) return new Uint8Array();
   try {
     const parsed: unknown = JSON.parse(alpha);
@@ -201,7 +201,7 @@ function readSave(): Uint8Array {
 }
 
 function writeSave(bytes: Uint8Array): void {
-  localStorage.setItem(`px240c/v1/${payload.manifest.id}`, encodeBase64(bytes));
+  localStorage.setItem(`mod01/v1/${payload.manifest.id}`, encodeBase64(bytes));
 }
 
 function isIntegerSave(value: unknown): value is Readonly<Record<string, number>> {
@@ -231,7 +231,7 @@ function requireFile(path: string): Uint8Array {
 }
 
 function showError(error: unknown): void {
-  status.textContent = error instanceof Error ? error.message : 'PX-240C standalone failed';
+  status.textContent = error instanceof Error ? error.message : 'MOD-01 standalone failed';
   status.classList.add('error');
 }
 

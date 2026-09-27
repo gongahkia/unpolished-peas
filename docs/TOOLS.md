@@ -1,22 +1,22 @@
-# PX-240C tools
+# MOD-01 tools
 
-The `px240c` executable is the external workflow over the same Rust compiler used by Studio:
+The `mod01` executable is the external workflow over the same Rust compiler used by Studio:
 
 ```sh
-px240c new my-cart --title "MY CART"
-px240c fmt my-cart
-px240c check my-cart
-px240c build my-cart --debug
-px240c test my-cart
-px240c watch my-cart
-px240c run my-cart
-px240c run my-cart --headless --frames 120 --input tests/path.json
-px240c pack my-cart
-px240c info my-cart/dist/my-cart.pxc
-px240c export html my-cart
-px240c export png my-cart --output my-cart.pxc.png
-px240c export zip my-cart --output my-cart-itch.zip
-px240c lsp
+mod01 new my-cart --title "MY CART"
+mod01 fmt my-cart
+mod01 check my-cart
+mod01 build my-cart --debug
+mod01 test my-cart
+mod01 watch my-cart
+mod01 run my-cart
+mod01 run my-cart --headless --frames 120 --input tests/path.json
+mod01 pack my-cart
+mod01 info my-cart/dist/my-cart.m01c
+mod01 export html my-cart
+mod01 export png my-cart --output my-cart.m01c.png
+mod01 export zip my-cart --output my-cart-itch.zip
+mod01 lsp
 ```
 
 `fmt` and `check` default to the current project and accept files or project directories. Project
@@ -28,26 +28,26 @@ good player intact.
 
 ## Cartridge tests
 
-`px240c test PROJECT` discovers a sorted `tests/` tree:
+`mod01 test PROJECT` discovers a sorted `tests/` tree:
 
-- ordinary `.pxl` entries compile in debug mode and run for one deterministic frame; `on start`
+- ordinary `.modl` entries compile in debug mode and run for one deterministic frame; `on start`
   assertions are the compact pure-test convention;
-- `*.fail.pxl` must begin with `// expect PX....` and pass only for that compiler diagnostic;
+- `*.fail.modl` must begin with `// expect M01....` and pass only for that compiler diagnostic;
 - `*.pxrun.json` revision 1 drives the main cartridge with a frame count, seed, compact `input`
   trace, optional raw `save` fixture path, and an `expect` object matched against the headless
   summary. Framebuffer/state/audio/save hashes are ordinary expected fields.
 
 Test entries are selected only by the test runner and are never used as a release entry point.
-Runtime assertion failures include the stable PX fault and source span. The runner never uses host
+Runtime assertion failures include the stable M01 fault and source span. The runner never uses host
 evaluation; it invokes compiler-produced code in the bounded production headless host.
 
 ## Language server
 
-`px240c lsp` uses full-document synchronization and incrementally republishes the edited module and
+`mod01 lsp` uses full-document synchronization and incrementally republishes the edited module and
 its direct importers. It supplies project completion, hover, signature help, cross-file definition,
 references and rename, diagnostics, formatting, and document/workspace symbols. Renaming an imported
 member edits its declaration and qualified member references, not the import alias or comments.
-PXCL/1 is ASCII-only, so valid source has identical byte and LSP UTF-16 columns.
+MODL/1 is ASCII-only, so valid source has identical byte and LSP UTF-16 columns.
 
 `export html` writes the source-inspectable single-file player. `export png` writes the deterministic
 physical cartridge image with the same complete canonical bytes in its validated PNG chunk. `info`
@@ -60,7 +60,7 @@ exact canonical size/class with source, release-generated code, visual/map/font/
 metadata, encoded payload, container overhead, compression gain, and the fixed 8 KiB save
 allocation. It lists the largest archive entries and routines, actionable warnings, and a
 deterministic 60-frame production-core profile (work, command, voice and mapped-bus peaks, hashes,
-and any fault). That default profile uses seed `0x240c1999`, empty input and an empty save; use
+and any fault). That default profile uses seed `0x4d30_3031`, empty input and an empty save; use
 `run --headless --input ... --save ...` for an intentional gameplay path.
 
 Studio `SETTINGS`/`CONTROLS` stores one named four-port keyboard/gamepad profile locally. A key

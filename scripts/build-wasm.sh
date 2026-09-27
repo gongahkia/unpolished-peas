@@ -15,9 +15,9 @@ if ! command -v wasm-bindgen >/dev/null 2>&1; then
   exit 1
 fi
 
-cargo build --locked --package pxcl-wasm --target wasm32-unknown-unknown --release
+cargo build --locked --package modl-wasm --target wasm32-unknown-unknown --release
 wasm-bindgen \
-  target/wasm32-unknown-unknown/release/pxcl_wasm.wasm \
+  target/wasm32-unknown-unknown/release/modl_wasm.wasm \
   --target web \
-  --out-dir crates/pxcl-wasm/pkg \
-  --out-name pxcl_wasm
+  --out-dir crates/modl-wasm/pkg \
+  --out-name modl_wasm

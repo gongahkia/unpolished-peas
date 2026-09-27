@@ -465,7 +465,7 @@ function validateSprite(sprite: IndexedSprite): void {
     sprite.pixels.length !== sprite.width * sprite.height ||
     sprite.pixels.some((color) => color >= HARDWARE.paletteSize)
   )
-    throw new RangeError(`sprite '${sprite.name}' is outside PX-240C limits`);
+    throw new RangeError(`sprite '${sprite.name}' is outside MOD-01 limits`);
 }
 
 export function visualAssetBytes(asset: VisualAsset): number {

@@ -69,7 +69,7 @@ function cinderCircuit() {
     11, 0, 0, 0, 0, 11, 15, 11, 15, 11, 0, 0, 0, 11, 15, 15, 11, 0, 0, 0, 11, 11, 0, 0, 11, 11, 0,
     0, 0, 15, 0, 0, 0, 15, 0,
   ];
-  writeJson(`${path}/runner.pxg`, {
+  writeJson(`${path}/runner.m01g`, {
     revision: 1,
     kind: 'sprite',
     width: 8,
@@ -90,7 +90,7 @@ function cinderCircuit() {
     tile((x, y) => (y > 2 && (x + y) % 4 < 2 ? 11 : 8)),
     tile((x, y) => (x === 3 || x === 4 ? (y % 2 === 0 ? 23 : 27) : 0)),
   ];
-  writeJson(`${path}/tiles.pxg`, {
+  writeJson(`${path}/tiles.m01g`, {
     revision: 1,
     kind: 'tile_set',
     tiles,
@@ -128,23 +128,23 @@ function cinderCircuit() {
     }
   }
   cells[15 * width + 253] = 5;
-  writeJson(`${path}/world.pxm`, {
+  writeJson(`${path}/world.m01m`, {
     revision: 1,
     kind: 'map',
     layers: [{ width, height, cells, tileSet: 'tiles' }],
   });
-  writeJson(`${path}/display.pxp`, display());
+  writeJson(`${path}/display.m01p`, display());
   writeJson(
-    `${path}/jump.pxs`,
+    `${path}/jump.m01s`,
     sound('pulse', 72, 7, 0.45, {
       pitch: { slideSemitonesPerFrame: 0.8, vibratoDepthSemitones: 0, vibratoPeriodFrames: 0 },
     }),
   );
-  writeJson(`${path}/hurt.pxs`, sound('noise', 35, 14, 0.48));
-  writeJson(`${path}/chime.pxs`, sound('triangle', 84, 12, 0.42));
-  writeJson(`${path}/bass.pxs`, sound('saw', 40, 9, 0.22));
+  writeJson(`${path}/hurt.m01s`, sound('noise', 35, 14, 0.48));
+  writeJson(`${path}/chime.m01s`, sound('triangle', 84, 12, 0.42));
+  writeJson(`${path}/bass.m01s`, sound('saw', 40, 9, 0.22));
   writeJson(
-    `${path}/theme.pxt`,
+    `${path}/theme.m01t`,
     tracker(9, ['A', 'B'], {
       A: {
         rows: [
@@ -169,7 +169,7 @@ function cinderCircuit() {
 function ashvault() {
   const path = 'cartridges/ashvault/assets';
   writeJson(
-    `${path}/seeker.pxg`,
+    `${path}/seeker.m01g`,
     sprite8([
       0, 0, 15, 15, 15, 15, 0, 0, 0, 15, 7, 7, 7, 7, 15, 0, 0, 15, 7, 23, 23, 7, 15, 0, 0, 15, 7, 7,
       7, 7, 15, 0, 0, 0, 15, 15, 0, 0, 0, 0, 15, 0, 15, 15, 15, 15, 0, 15, 0, 15, 0, 15, 0, 0, 15,
@@ -177,7 +177,7 @@ function ashvault() {
     ]),
   );
   writeJson(
-    `${path}/wraith.pxg`,
+    `${path}/wraith.m01g`,
     sprite8([
       0, 0, 29, 29, 29, 29, 0, 0, 0, 29, 31, 31, 31, 31, 29, 0, 29, 31, 7, 31, 31, 7, 31, 29, 29,
       31, 31, 31, 31, 31, 31, 29, 0, 29, 31, 31, 31, 31, 29, 0, 0, 29, 31, 29, 31, 29, 0, 0, 0, 29,
@@ -185,7 +185,7 @@ function ashvault() {
     ]),
   );
   writeJson(
-    `${path}/relic.pxg`,
+    `${path}/relic.m01g`,
     sprite8([
       0, 0, 0, 15, 15, 0, 0, 0, 0, 0, 15, 7, 7, 15, 0, 0, 0, 15, 7, 14, 14, 7, 15, 0, 15, 7, 14, 15,
       15, 14, 7, 15, 0, 15, 7, 14, 14, 7, 15, 0, 0, 0, 15, 7, 7, 15, 0, 0, 0, 0, 0, 15, 15, 0, 0, 0,
@@ -193,28 +193,28 @@ function ashvault() {
     ]),
   );
   writeJson(
-    `${path}/gate.pxg`,
+    `${path}/gate.m01g`,
     sprite8([
       22, 22, 23, 23, 23, 23, 22, 22, 22, 23, 7, 7, 7, 7, 23, 22, 23, 7, 20, 20, 20, 20, 7, 23, 23,
       7, 20, 23, 23, 20, 7, 23, 23, 7, 20, 23, 23, 20, 7, 23, 23, 7, 20, 20, 20, 20, 7, 23, 22, 23,
       7, 7, 7, 7, 23, 22, 22, 22, 23, 23, 23, 23, 22, 22,
     ]),
   );
-  writeJson(`${path}/display.pxp`, display());
-  writeJson(`${path}/step.pxs`, sound('pulse', 42, 3, 0.16));
-  writeJson(`${path}/bump.pxs`, sound('noise', 28, 7, 0.35));
+  writeJson(`${path}/display.m01p`, display());
+  writeJson(`${path}/step.m01s`, sound('pulse', 42, 3, 0.16));
+  writeJson(`${path}/bump.m01s`, sound('noise', 28, 7, 0.35));
   writeJson(
-    `${path}/found.pxs`,
+    `${path}/found.m01s`,
     sound('triangle', 79, 14, 0.46, {
       pitch: { slideSemitonesPerFrame: 0.35, vibratoDepthSemitones: 0.15, vibratoPeriodFrames: 5 },
     }),
   );
   writeJson(
-    `${path}/drone.pxs`,
+    `${path}/drone.m01s`,
     sound('wavetable', 38, 18, 0.2, { wavetable: [-1, -0.4, 0.1, 0.65, 1, 0.5, -0.2, -0.7] }),
   );
   writeJson(
-    `${path}/lament.pxt`,
+    `${path}/lament.m01t`,
     tracker(15, ['A', 'B'], {
       A: {
         rows: [
@@ -239,7 +239,7 @@ function ashvault() {
 function rasterRush() {
   const path = 'cartridges/raster-rush/assets';
   writeJson(
-    `${path}/car.pxg`,
+    `${path}/car.m01g`,
     sprite8([
       0, 0, 0, 11, 11, 0, 0, 0, 0, 0, 11, 15, 15, 11, 0, 0, 0, 11, 15, 7, 7, 15, 11, 0, 11, 15, 15,
       11, 11, 15, 15, 11, 11, 15, 7, 11, 11, 7, 15, 11, 11, 15, 15, 15, 15, 15, 15, 11, 0, 1, 1, 0,
@@ -247,30 +247,30 @@ function rasterRush() {
     ]),
   );
   writeJson(
-    `${path}/beacon.pxg`,
+    `${path}/beacon.m01g`,
     sprite8([
       0, 0, 15, 15, 15, 15, 0, 0, 0, 15, 7, 7, 7, 7, 15, 0, 0, 0, 0, 15, 15, 0, 0, 0, 0, 0, 0, 15,
       15, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0, 0, 23, 23, 0, 0, 0, 0, 0,
       22, 22, 22, 22, 22, 22, 0, 0, 22, 22, 22, 22, 22, 22, 0,
     ]),
   );
-  writeJson(`${path}/display.pxp`, display());
-  writeJson(`${path}/motor.pxs`, sound('saw', 38, 9, 0.18));
+  writeJson(`${path}/display.m01p`, display());
+  writeJson(`${path}/motor.m01s`, sound('saw', 38, 9, 0.18));
   writeJson(
-    `${path}/boost.pxs`,
+    `${path}/boost.m01s`,
     sound('noise', 64, 16, 0.34, {
       pitch: { slideSemitonesPerFrame: 0.5, vibratoDepthSemitones: 0, vibratoPeriodFrames: 0 },
     }),
   );
-  writeJson(`${path}/crash.pxs`, sound('noise', 24, 16, 0.5));
+  writeJson(`${path}/crash.m01s`, sound('noise', 24, 16, 0.5));
   writeJson(
-    `${path}/fanfare.pxs`,
+    `${path}/fanfare.m01s`,
     sound('triangle', 84, 30, 0.52, {
       pitch: { slideSemitonesPerFrame: 0.18, vibratoDepthSemitones: 0.12, vibratoPeriodFrames: 6 },
     }),
   );
   writeJson(
-    `${path}/race-theme.pxt`,
+    `${path}/race-theme.m01t`,
     tracker(7, ['A', 'B', 'A', 'C'], {
       A: {
         rows: [

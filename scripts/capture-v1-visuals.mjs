@@ -4,7 +4,7 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 
 import { chromium, firefox } from '@playwright/test';
 
-const baseURL = process.env.PX240C_VISUAL_URL ?? 'http://127.0.0.1:4173';
+const baseURL = process.env.MOD01_VISUAL_URL ?? 'http://127.0.0.1:4173';
 const output = 'output/playwright';
 await mkdir(output, { recursive: true });
 
@@ -25,7 +25,7 @@ for (const [name, engine] of [
     await page.locator('html[data-studio-ready="true"]').waitFor();
     await page.screenshot({ path: `${output}/v1-${name}-shell.png` });
 
-    const command = page.getByLabel('PX-240C command');
+    const command = page.getByLabel('MOD-01 command');
     await command.fill('load signal-4k');
     await command.press('Enter');
     await command.fill('run');

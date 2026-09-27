@@ -1,4 +1,4 @@
-# PX-240C Hardware Revision 1
+# MOD-01 Hardware Revision 1
 
 This is the frozen byte-addressed machine contract used by the Worker, standalone player and
 headless host. Its public limits retain the measured alpha profile; [LIMITS.md](LIMITS.md) records
@@ -26,7 +26,7 @@ No operation exposes arbitrary alpha, bilinear filtering, imported samples, or t
 
 ## Fixed master palette
 
-The RGB values below are original to PX-240C. Authors can remap logical indices while drawing and
+The RGB values below are original to MOD-01. Authors can remap logical indices while drawing and
 during scanout but cannot change these values.
 
 | Index | RGB       | Index | RGB       | Index | RGB       | Index | RGB       |
@@ -74,7 +74,7 @@ reads zero; writing one faults. Offsets below are hexadecimal; lengths and count
 | `55000`  |    5,760 | RW     | 144 scanline records, 40 bytes each; layout below.                                                                  |
 | `58000`  |    8,192 | RW     | Cartridge save working image, initialized from the isolated persisted block.                                        |
 | `5a000`  |    8,192 | R      | Last committed save image.                                                                                          |
-| `60000`  | variable | R      | Exact canonical `.pxc` bytes supplied by the trusted host, up to 256 KiB.                                           |
+| `60000`  | variable | R      | Exact canonical `.m01c` bytes supplied by the trusted host, up to 256 KiB.                                          |
 | `a0000`  | variable | R      | Up to 4,096 visual asset descriptors, 32 bytes each.                                                                |
 | `c0000`  | variable | R      | Visual allocations, 24 bytes each; at most 131,072 entries.                                                         |
 | `3c0000` | variable | R      | Audio asset descriptors, 32 bytes each; sorted by name, at most 4,096 entries.                                      |
@@ -88,7 +88,7 @@ the compatibility boundary for their actual behavior.
 
 Global bindings initialize before `on start` inside that same start phase, after device attachment.
 Initialization-time runtime calls share its work budget and live device state. The generated factory
-does not execute these calls during construction. `tests/conformance/boot.pxl` checks reset reads,
+does not execute these calls during construction. `tests/conformance/boot.modl` checks reset reads,
 RNG/memory/drawing aliases, start-phase status, retained initializer attribution and the exact combined
 boot-budget boundary in native Release/Debug tests; Firefox runs it through Wasm and the Worker.
 
@@ -109,7 +109,7 @@ Draw-state offsets from `50000`:
 | `30`–`4f`  | 32 unsigned bytes           | Logical palette remap, identity or cartridge display-file default. |
 
 The six binary64 fields must remain safe integers; widths/heights must also be nonnegative. This
-encoding preserves the existing PXCL `Int` coordinate range instead of silently narrowing old camera
+encoding preserves the existing MODL `Int` coordinate range instead of silently narrowing old camera
 and clip calls. High-level `camera`/`clip`/`pal` access these exact bytes. Low-level code can copy an
 entire eight-byte field transactionally from RAM; an intermediate noninteger, infinity or NaN faults.
 For example binary64 `2` has word `0x4000` at field offset six and zero in its other three words.
@@ -132,7 +132,7 @@ the raster table. Effects remain bounded by the normal frame work budget.
 
 ### Memory operations, faults and snapshots
 
-All arguments/results below are PXCL `Int` except the unit-returning writes. Words are unsigned
+All arguments/results below are MODL `Int` except the unit-returning writes. Words are unsigned
 little-endian 16-bit and need not be aligned. `mem_copy` uses source bytes as they stood before the
 operation, including when source and destination overlap.
 
@@ -150,9 +150,9 @@ destination's permission and resulting register value is checked before any dest
 including operations crossing region boundaries. Failed operations retain their charged work.
 An empty copy/fill costs one unit and accepts the one-past-end address `0x400000`; no byte is accessed.
 
-`PX9020` denotes an invalid address/range, `PX9021` a reserved/read-only destination, `PX9022` an
-invalid byte/word/register value, and `PX9011` a write outside the raster facility during `on raster`.
-`PX9001` remains the work-limit fault. All carry the originating PXCL span. Type-invalid source is
+`M019020` denotes an invalid address/range, `M019021` a reserved/read-only destination, `M019022` an
+invalid byte/word/register value, and `M019011` a write outside the raster facility during `on raster`.
+`M019001` remains the work-limit fault. All carry the originating MODL span. Type-invalid source is
 rejected by the compiler before execution. New memory built-ins are resolved on first use to retain
 old programs' symbol IDs and existing user functions with those names.
 
@@ -170,9 +170,9 @@ phase/fault become idle/none. Existing boot status is preserved, or set true whe
 nonzero. Raw alpha revision-1 snapshots still restore only their original machine/save fields, plus
 these explicit metadata defaults. Bus snapshots remain frame-boundary records; source-statement
 suspension is represented by compiler-generated debug continuations, and public revision-0 replays
-migrate to the revision-1 `.pxrec` envelope before execution.
+migrate to the revision-1 `.m01rec` envelope before execution.
 
-`tests/conformance/memory.pxl` runs through the native compiler and shared production core in release
+`tests/conformance/memory.modl` runs through the native compiler and shared production core in release
 and debug tests, and through Wasm and the actual Worker in the browser matrix. Lower-level bus tests
 cover all mapped regions, all 144 raster rows, mixed high/low writes, reset, permissions, bounds,
 unaligned words, overlaps, exact work charges and rollback.
@@ -208,14 +208,14 @@ retains working bytes, the committed latch, dirty/pending status, count, and com
 pending integer-write reports. Restores validate everything before mutation; alpha snapshot
 revisions 1–5 migrate their integer object into both images without changing archived fixtures.
 
-`tests/conformance/save.pxl` is ordinary PXCL source. Native Release/Debug runs cover initial host
+`tests/conformance/save.modl` is ordinary MODL source. Native Release/Debug runs cover initial host
 bytes, raw/high-level aliasing, dirty state, explicit and compatibility commits, host output and
 restore/forward equality. Lower-level tests cover binary images, permissions, capacity, work and
 counter faults, sparse/malformed snapshots, complete-image cloning and transactional rollback.
 
 ### Cartridge status and ROM
 
-The trusted host may provide the exact canonical `.pxc` image when it constructs a runtime. The
+The trusted host may provide the exact canonical `.m01c` image when it constructs a runtime. The
 Worker clones it, maps those immutable bytes at `60000`, and never exposes a host file, URL or
 JavaScript object. A configuration over the fixed 256 KiB cartridge limit is rejected before the
 machine starts. Hosts that have no canonical image leave the ROM range reserved; the status block
@@ -235,10 +235,10 @@ The 64 read-only bytes at `50600` are:
 | `18`–`3f` | zero     | Reserved.                                                                |
 
 Header validation here is informational and deliberately small: the trusted pack/import boundary
-does complete cartridge validation. The status flag recognizes `PX240C`, byte `1a`, revision 1 and
+does complete cartridge validation. The status flag recognizes `MOD-01`, byte `1a`, revision 1 and
 a complete 12-byte header. ROM and status writes fault transactionally. The Studio run and debugger
 pack the active project first and pass the resulting bytes, so cartridge code and the debugger see
-the same artifact the user would export. `tests/conformance/memory.pxl` reads the status and magic
+the same artifact the user would export. `tests/conformance/memory.modl` reads the status and magic
 through public bus calls in native Release/Debug and Firefox.
 
 The debug-only Worker protocol permits bounded 1–256 byte inspection and editing only at idle
@@ -277,13 +277,13 @@ only after its callback returns successfully; draw/raster see that completed cou
 counter advances only after all callbacks, scanout and audio mixing complete. Work resets before start and before each frame,
 not when read or snapshotted. A fault retains the active phase/line, work and source span; the active
 status bit clears. Ordinary fault attempts leave the original exception and message intact. Further
-execution attempts fail with `PX9014` before resetting devices, without replacing the original latch.
+execution attempts fail with `M019014` before resetting devices, without replacing the original latch.
 Restart or restore a healthy checkpoint to resume. Restoring a faulted checkpoint keeps it faulted.
-Attempting another frame at `2^53-1` completed frames faults with `PX9012`, without counter wrap.
+Attempting another frame at `2^53-1` completed frames faults with `M019012`, without counter wrap.
 
 Current machine snapshots are accepted only at idle or terminal-fault boundaries, not during a live
 callback. They validate cadence, limit and counter/phase consistency before restore. This does not
-implement resumable source-statement pauses. The public `tests/conformance/system.pxl` exercises
+implement resumable source-statement pauses. The public `tests/conformance/system.modl` exercises
 all callback phases and scanlines, mixed RNG/register access, counters, status and charged reads.
 Native Release/Debug tests run it at 30/60 Hz, check binary64 time and copied register bytes, and
 replay complete snapshots. Firefox E2E compiles/runs it in the Worker and rewinds a debug frame.
@@ -349,7 +349,7 @@ Raw note/volume/phase changes affect the next output mix. Tracker notes may subs
 or steal voices in that same frame. Rendering uses the existing exact binary64 state and oscillator
 calculations; the three alpha PCM traces remain unchanged.
 
-Audio-frame and allocation-counter exhaustion fault with `PX9012` before the overflowing increment.
+Audio-frame and allocation-counter exhaustion fault with `M019012` before the overflowing increment.
 An `sfx` fault carries its source span; output-stage hardware faults have span `(0,0)`. Output faults
 are latched inside the machine's frame boundary, retaining phase 5 and not advancing its completed
 frame counter. Earlier successful commands may remain in the fault snapshot, just as with callback
@@ -410,7 +410,7 @@ consumes at least one payload byte, bounding the table at 131,072 records (3 MiB
 Only actual descriptor records are mapped; unused slots remain reserved zero/read-only holes.
 `tests/conformance/visual/` is an ordinary source-visible project exercising descriptor discovery,
 unaligned cells, sprite/tile/flag writes and mixed high-level drawing/query calls in Release/Debug
-core tests and the browser matrix. The bundled source-visible `px240c-service` and
+core tests and the browser matrix. The bundled source-visible `mod01-service` and
 `hardware-gauntlet` cartridges expose the author-facing diagnostic pages.
 
 ### Controller and pointer registers
@@ -419,7 +419,7 @@ The input region is read-only memory-mapped I/O (MMIO): reads encode the actual 
 by `btn`, `btnp` and pointer calls. There is no separately refreshed register image. Machine
 snapshots already retain these frames, so restoring them immediately changes both API and bus
 observations without a new snapshot revision. Byte/word/copy costs are the ordinary bus costs;
-reading input does not consume or acknowledge an edge. Writes fault with `PX9021` in every phase.
+reading input does not consume or acknowledge an edge. Writes fault with `M019021` in every phase.
 
 Each of four ports occupies eight bytes at `50100 + (port-1)*8`:
 
@@ -435,7 +435,7 @@ The pointer follows at `50120`: current X/Y at offsets `00`/`02`, previous X/Y a
 (LE u16). Offsets `08`/`09` are current/previous flags, `0a`/`0b` are pressed/released flag
 edges. Flag bits 0/1/2 mean primary, secondary and inside. Offsets `0c`–`0f` read zero.
 Coordinates remain within 0–239 and 0–143; invalid frames, missing ports or malformed button sets
-are rejected with `PX9008` by the core before any device frame reset.
+are rejected with `M019008` by the core before any device frame reset.
 
 Inputs are sampled once at the start of **each 60 Hz display frame**, before callbacks. They remain
 stable throughout that frame's update/draw/raster calls. This deliberately preserves alpha's `btnp`
@@ -444,7 +444,7 @@ that frame's drawing but is not latched for the next update. A held button is st
 `btn`. The focused scheduler test reproduces this exact sequence and its restore behavior; it is
 not inferred from browser key timing. Hardware Revision 1 does not introduce update-latched edges.
 
-`tests/conformance/input.pxl` checks all twelve buttons on every port, high/low API equivalence,
+`tests/conformance/input.modl` checks all twelve buttons on every port, high/low API equivalence,
 held/press/release transitions, pointer state, reset and copying registers to RAM. Native tests run
 36-frame scripted traces at both 30/60 Hz in Release/Debug with restore/forward checks. The browser
 matrix also compiles and executes it; locally stored controller profiles cover four keyboard ports,
@@ -475,7 +475,7 @@ making the limit visible during ordinary development.
 
 The protocol and shared core reject a configuration above the fixed ceiling before constructing a
 cartridge; internal diagnostic tests may use a stricter limit. Studio takes its normal limit from the
-same `HARDWARE.workUnitsPerFrame` constant. A faulted work counter saturates at the largest safe PXCL
+same `HARDWARE.workUnitsPerFrame` constant. A faulted work counter saturates at the largest safe MODL
 integer (`2^53-1`) if an enormous charge would overflow it; the charge still faults at its source
 span before a bulk operation proceeds. Attribution retains the same saturated total. Ordinary
 in-budget accounting and first-party frame costs are unchanged.

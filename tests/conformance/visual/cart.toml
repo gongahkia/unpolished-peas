@@ -1,20 +1,20 @@
 format = 1
-language = "PXCL/1"
+language = "MODL/1"
 id = "visual-conformance"
 title = "VISUAL CONFORMANCE"
 author = "@gongahkia"
 version = "0.1.0"
-entry = "main.pxl"
+entry = "main.modl"
 update_rate = 60
 
 [assets.dot]
 kind = "sprite"
-path = "dot.pxg"
+path = "dot.m01g"
 
 [assets.level]
 kind = "map"
-path = "level.pxm"
+path = "level.m01m"
 
 [assets.terrain]
 kind = "tile_set"
-path = "terrain.pxg"
+path = "terrain.m01g"

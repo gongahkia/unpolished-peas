@@ -102,7 +102,7 @@ export function createConsoleRuntime(
   configuration: SandboxConfiguration,
 ): ConsoleRuntime {
   if (!isSandboxConfiguration(configuration))
-    throw new RuntimeFault('PX9100', 'invalid sandbox configuration', { start: 0, end: 0 });
+    throw new RuntimeFault('M019100', 'invalid sandbox configuration', { start: 0, end: 0 });
   const source = configuration.assets;
   const assets =
     source === undefined
@@ -223,7 +223,7 @@ export function createConsoleRuntime(
   return {
     runFrame(input) {
       if (!isInputFrame(input))
-        throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+        throw new RuntimeFault('M019008', 'invalid controller input frame', { start: 0, end: 0 });
       const active = requireMachine();
       active.assertRunnable();
       drawCommands = [];
@@ -263,12 +263,12 @@ export function createConsoleRuntime(
     },
     stepDebug(input) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'statement stepping requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'statement stepping requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!isInputFrame(input))
-        throw new RuntimeFault('PX9008', 'invalid controller input frame', { start: 0, end: 0 });
+        throw new RuntimeFault('M019008', 'invalid controller input frame', { start: 0, end: 0 });
       if (!debugFrameActive) {
         drawCommands = [];
         audioCommands = [];
@@ -362,7 +362,7 @@ export function createConsoleRuntime(
         synthesizer.restore(before.audio);
         bus.restore(before.memory);
         throw new RuntimeFault(
-          'PX9103',
+          'M019103',
           error instanceof Error ? error.message : 'invalid device snapshot',
           { start: 0, end: 0 },
         );
@@ -370,12 +370,12 @@ export function createConsoleRuntime(
     },
     inspectMemory(address, length) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'memory inspection requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'memory inspection requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!Number.isSafeInteger(length) || length < 1 || length > 256)
-        throw new RuntimeFault('PX9020', 'debug memory reads require 1-256 bytes', {
+        throw new RuntimeFault('M019020', 'debug memory reads require 1-256 bytes', {
           start: 0,
           end: 0,
         });
@@ -383,12 +383,12 @@ export function createConsoleRuntime(
     },
     editMemory(address, bytes) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'memory editing requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'memory editing requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > 256)
-        throw new RuntimeFault('PX9020', 'debug memory edits require 1-256 bytes', {
+        throw new RuntimeFault('M019020', 'debug memory edits require 1-256 bytes', {
           start: 0,
           end: 0,
         });
@@ -413,7 +413,7 @@ export function createConsoleRuntime(
 
   function completedOutput(): ConsoleFrame['output'] {
     if (frameOutput === undefined)
-      throw new RuntimeFault('PX9102', 'frame completed without device output', {
+      throw new RuntimeFault('M019102', 'frame completed without device output', {
         start: 0,
         end: 0,
       });
@@ -428,13 +428,13 @@ export function createConsoleRuntime(
   ): unknown {
     if (name === 'visual_id' || name === 'audio_id') {
       if (arguments_.length !== 1 || typeof arguments_[0] !== 'string')
-        throw new RuntimeFault('PX9009', `${name} expects one Text name`, sourceSpan);
+        throw new RuntimeFault('M019009', `${name} expects one Text name`, sourceSpan);
       requireMachine().work(1 + arguments_[0].length, sourceSpan);
       return (name === 'visual_id' ? visualStore : audioStore).id(arguments_[0]);
     }
     if (MEMORY_CALLS.has(name)) {
       if (arguments_.length !== MEMORY_CALLS.get(name))
-        throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+        throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
       const values = arguments_.map((value) => readInteger(value, sourceSpan));
       const address = values[0] ?? 0;
       const second = values[1] ?? 0;
@@ -466,27 +466,27 @@ export function createConsoleRuntime(
     requireMachine().work(consoleWorkCost(name, arguments_), sourceSpan);
     if (context.phase === 'raster' && name !== 'pal' && name !== 'raster_scroll') {
       throw new RuntimeFault(
-        'PX9011',
+        'M019011',
         `console API call '${name}' is not valid in the raster callback`,
         sourceSpan,
       );
     }
     if (name === 'raster_scroll' && context.phase !== 'raster') {
       throw new RuntimeFault(
-        'PX9011',
+        'M019011',
         'raster_scroll is only valid in the raster callback',
         sourceSpan,
       );
     }
     if (name === 'save_commit') {
       if (arguments_.length !== 0)
-        throw new RuntimeFault('PX9009', 'save_commit expects no arguments', sourceSpan);
+        throw new RuntimeFault('M019009', 'save_commit expects no arguments', sourceSpan);
       requireMachine().work(HARDWARE.saveCapacityBytes, sourceSpan);
       try {
         saveMemory.commit();
       } catch (error) {
         throw new RuntimeFault(
-          'PX9012',
+          'M019012',
           error instanceof Error ? error.message : 'invalid save commit',
           sourceSpan,
         );
@@ -496,7 +496,7 @@ export function createConsoleRuntime(
     if (name === 'map_cell' || name === 'map_flag') {
       const handle = arguments_[0];
       if (!isAssetHandle(handle, 'Map')) {
-        throw new RuntimeFault('PX9009', 'expected a Map asset handle', sourceSpan);
+        throw new RuntimeFault('M019009', 'expected a Map asset handle', sourceSpan);
       }
       const integers = arguments_.slice(1).map((value) => readInteger(value, sourceSpan));
       if (name === 'map_cell' && integers.length === 3) {
@@ -528,12 +528,12 @@ export function createConsoleRuntime(
           integers[3] ?? 0,
         );
       }
-      throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+      throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
     }
     if (name === 'save_get_int' || name === 'save_set_int') {
       const key = arguments_[0];
       if (typeof key !== 'string') {
-        throw new RuntimeFault('PX9009', 'save key must be Text', sourceSpan);
+        throw new RuntimeFault('M019009', 'save key must be Text', sourceSpan);
       }
       try {
         if (name === 'save_get_int' && arguments_.length === 2) {
@@ -545,12 +545,12 @@ export function createConsoleRuntime(
         }
       } catch (error: unknown) {
         throw new RuntimeFault(
-          'PX9012',
+          'M019012',
           error instanceof Error ? error.message : 'invalid cartridge save operation',
           sourceSpan,
         );
       }
-      throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+      throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
     }
     const command = {
       name,
@@ -560,7 +560,7 @@ export function createConsoleRuntime(
     };
     if (DRAW_CALLS.has(name)) {
       if (drawCommands.length >= HARDWARE.drawCommandsPerFrame) {
-        throw new RuntimeFault('PX9010', 'draw-command ceiling exceeded', sourceSpan);
+        throw new RuntimeFault('M019010', 'draw-command ceiling exceeded', sourceSpan);
       }
       drawCommands.push(command);
       if (rendering) graphics.executeCommand(command);
@@ -571,12 +571,12 @@ export function createConsoleRuntime(
       if (rendering) synthesizer.executeCommand(command);
       return undefined;
     }
-    throw new RuntimeFault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
+    throw new RuntimeFault('M019004', `console API call '${name}' is unavailable`, sourceSpan);
   }
 
   function requireMachine(): DeterministicMachine {
     if (machine === undefined) {
-      throw new RuntimeFault('PX9102', 'no cartridge is loaded', { start: 0, end: 0 });
+      throw new RuntimeFault('M019102', 'no cartridge is loaded', { start: 0, end: 0 });
     }
     return machine;
   }
@@ -587,7 +587,7 @@ function createCartridgeInfo(rom: Uint8Array): Uint8Array {
   const view = new DataView(bytes.buffer);
   const validHeader =
     rom.length >= 12 &&
-    [80, 88, 50, 52, 48, 67, 26].every((byte, index) => rom[index] === byte) &&
+    [77, 79, 68, 45, 48, 49, 26].every((byte, index) => rom[index] === byte) &&
     rom[7] === 1;
   view.setUint16(0, 1, true);
   view.setUint16(2, validHeader ? (rom[7] ?? 0) : 0, true);
@@ -690,7 +690,7 @@ function isAssetHandle(value: unknown, kind: string): value is { name: string; k
 
 function readInteger(value: unknown, sourceSpan: SourceSpan): number {
   if (typeof value !== 'number' || !Number.isSafeInteger(value)) {
-    throw new RuntimeFault('PX9009', 'console arguments must be safe integers', sourceSpan);
+    throw new RuntimeFault('M019009', 'console arguments must be safe integers', sourceSpan);
   }
   return value;
 }
@@ -708,7 +708,7 @@ function readWorkerSnapshot(value: unknown): {
     !isRecord(value) ||
     (value.revision === 6 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
   ) {
-    throw new RuntimeFault('PX9103', 'invalid worker snapshot', { start: 0, end: 0 });
+    throw new RuntimeFault('M019103', 'invalid worker snapshot', { start: 0, end: 0 });
   }
   return {
     revision: value.revision as 1 | 2 | 3 | 4 | 5 | 6,

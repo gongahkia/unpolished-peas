@@ -28,7 +28,7 @@ import {
   type ReplayTrace,
   type StoredProject,
   type StudioSettings,
-} from '@px240c/runtime';
+} from '@mod01/runtime';
 
 import {
   BrowserCompiler,
@@ -66,11 +66,11 @@ const BUNDLED_CARTRIDGES = [
   'cinder-circuit',
   'ashvault',
   'raster-rush',
-  'px240c-service',
+  'mod01-service',
   'signal-4k',
   'pocket-relay',
   'hardware-gauntlet',
-  'pxcl-tutorial',
+  'modl-tutorial',
 ] as const;
 
 /** Diegetic boot monitor, command shell, source editor, and cartridge player foundation. */
@@ -88,7 +88,7 @@ export class StudioApp {
   private readonly folderBindings = new Map<string, FolderBinding>();
   private pendingRemovalId: string | undefined;
 
-  public constructor(root: HTMLElement, databaseName = 'px240c-studio') {
+  public constructor(root: HTMLElement, databaseName = 'mod01-studio') {
     this.root = root;
     this.repository = new StudioRepository(new IndexedDbStorage(databaseName));
   }
@@ -99,10 +99,10 @@ export class StudioApp {
     this.applySettings(await this.repository.settings());
     this.terminalLines.length = 0;
     this.appendLines([
-      'PX-240C COLOR DEVELOPMENT UNIT',
+      'MOD-01 COLOR DEVELOPMENT UNIT',
       'SYSTEM ROM 1.0  (C) 1999',
       `${String(HARDWARE.visualCapacityBytes / 1024)}K VISUAL STORE / ${String(HARDWARE.audioVoices)}V SOUND`,
-      'PXCL/1 READY',
+      'MODL/1 READY',
       '',
       "TYPE 'HELP' FOR COMMANDS",
     ]);
@@ -130,7 +130,7 @@ export class StudioApp {
         await this.repository.setShelfOrigin(id, 'bundled');
         continue;
       }
-      const response = await fetch(new URL(`./cartridges/${id}.pxc`, document.baseURI));
+      const response = await fetch(new URL(`./cartridges/${id}.m01c`, document.baseURI));
       if (!response.ok) {
         throw new Error(`BUILT-IN CARTRIDGE ${id} COULD NOT BE READ`);
       }
@@ -154,12 +154,12 @@ export class StudioApp {
 
   private renderShell(): void {
     this.root.innerHTML = `
-      <section class="display shell" data-view="shell" aria-label="PX-240C monitor shell">
-        <header class="system-bar"><span>PX-240C</span><span class="active-cart"></span></header>
+      <section class="display shell" data-view="shell" aria-label="MOD-01 monitor shell">
+        <header class="system-bar"><span class="system-product-brand"><img class="shell-logo" src="./mod01-logo.png" alt="" />MOD-01</span><span class="active-cart"></span></header>
         <div class="terminal" role="log" aria-live="polite" aria-relevant="additions text"></div>
         <form class="command-line">
           <label for="command">&gt;</label>
-          <input id="command" name="command" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="PX-240C command" />
+          <input id="command" name="command" autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="MOD-01 command" />
         </form>
       </section>
     `;
@@ -372,20 +372,20 @@ export class StudioApp {
       throw new Error(`CARTRIDGE '${id}' ALREADY EXISTS`);
     }
     const title = (titleParts.join(' ') || id.replaceAll(/[.-]+/g, ' ')).toUpperCase().slice(0, 64);
-    const manifest = `format = 1\nlanguage = "PXCL/1"\nid = "${id}"\ntitle = ${JSON.stringify(title)}\nauthor = "@gongahkia"\nversion = "0.1.0"\nentry = "src/main.pxl"\nupdate_rate = 60\n\n[assets]\n`;
+    const manifest = `format = 1\nlanguage = "MODL/1"\nid = "${id}"\ntitle = ${JSON.stringify(title)}\nauthor = "@gongahkia"\nversion = "0.1.0"\nentry = "src/main.modl"\nupdate_rate = 60\n\n[assets]\n`;
     const project = await this.repository.saveProject({
       id,
       title,
       manifest,
       files: {
-        'src/main.pxl': encoder.encode(
-          '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("PXCL/1", 98, 88, 7)\n',
+        'src/main.modl': encoder.encode(
+          '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("MODL/1", 98, 88, 7)\n',
         ),
       },
     });
     this.activeProject = fromStored(project);
     await this.repository.setShelfOrigin(id, 'created');
-    this.appendLines([`CREATED ${id}`, "EDIT 'src/main.pxl' OR RUN"]);
+    this.appendLines([`CREATED ${id}`, "EDIT 'src/main.modl' OR RUN"]);
   }
 
   private async loadProject(id: string | undefined): Promise<void> {
@@ -443,12 +443,12 @@ export class StudioApp {
 
   private openImporter(): void {
     this.root.innerHTML = `
-      <section class="display cartridge-import" data-view="import" aria-label="PX-240C cartridge import">
-        <header class="system-bar"><span>CARTRIDGE IMPORT</span><span>PXC/1</span></header>
+      <section class="display cartridge-import" data-view="import" aria-label="MOD-01 cartridge import">
+        <header class="system-bar"><span>CARTRIDGE IMPORT</span><span>M01C/1</span></header>
         <main>
-          <p>SELECT A SOURCE-INSPECTABLE .PXC OR .PXC.PNG.</p>
+          <p>SELECT A SOURCE-INSPECTABLE .M01C OR .M01C.PNG.</p>
           <p>AN EXISTING ID IS REPLACED WITH A RECOVERY SNAPSHOT.</p>
-          <label class="import-pick">OPEN <input type="file" accept=".pxc,.pxc.png,application/x-px240c-cartridge,image/png"></label>
+          <label class="import-pick">OPEN <input type="file" accept=".m01c,.m01c.png,application/x-mod01-cartridge,image/png"></label>
         </main>
         <p class="import-status" role="status" aria-live="polite">WAITING FOR CARTRIDGE</p>
         <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
@@ -650,14 +650,14 @@ export class StudioApp {
     const project = this.requireProject();
     const selectedPath = path ?? manifestEntry(project.manifest);
     const bytes = project.files[selectedPath];
-    if (bytes === undefined || !selectedPath.endsWith('.pxl')) {
+    if (bytes === undefined || !selectedPath.endsWith('.modl')) {
       throw new Error(`SOURCE '${selectedPath}' NOT FOUND`);
     }
     this.root.innerHTML = `
-      <section class="display editor" data-view="editor" aria-label="PXCL source editor">
+      <section class="display editor" data-view="editor" aria-label="MODL source editor">
         <header class="system-bar"><span>CODE</span><span class="editor-file"></span></header>
         <pre class="source-highlight" aria-hidden="true"></pre>
-        <textarea class="source-input" spellcheck="false" aria-label="PXCL source"></textarea>
+        <textarea class="source-input" spellcheck="false" aria-label="MODL source"></textarea>
         <div class="diagnostic-strip" role="status" aria-live="polite">CHECKING...</div>
         <footer class="tool-bar">
           <button type="button" data-action="back">ESC BACK</button>
@@ -906,8 +906,8 @@ export class StudioApp {
   private openManual(initialQuery = 'START'): void {
     const topics = manualTopics();
     this.root.innerHTML = `
-      <section class="display manual" data-view="manual" aria-label="PX-240C manual browser">
-        <header class="system-bar"><span>PXCL/1 MANUAL</span><span>ROM 1.0</span></header>
+      <section class="display manual" data-view="manual" aria-label="MOD-01 manual browser">
+        <header class="system-bar"><span>MODL/1 MANUAL</span><span>ROM 1.0</span></header>
         <input class="manual-search" type="search" aria-label="Search manual" placeholder="SEARCH">
         <nav class="manual-topics" aria-label="Manual topics"></nav>
         <article class="manual-page" tabindex="0"></article>
@@ -986,7 +986,7 @@ export class StudioApp {
       },
     };
     this.root.innerHTML = `
-      <section class="display explorer" data-view="explorer" aria-label="PXCL compiler explorer">
+      <section class="display explorer" data-view="explorer" aria-label="MODL compiler explorer">
         <header class="system-bar"><span>COMPILER EXPLORER</span><span>RELEASE</span></header>
         <nav class="explorer-tabs" aria-label="Compiler stages"></nav>
         <pre class="explorer-output" tabindex="0"></pre>
@@ -1055,9 +1055,9 @@ export class StudioApp {
     const save = await saveAccess.read();
     const settings = await this.repository.settings();
     this.root.innerHTML = `
-      <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running PX-240C cartridge">
+      <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running MOD-01 cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
-        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">PXREC OUT</button><label class="file-button">PXREC IN<input class="replay-input" type="file" accept=".pxrec,application/json"></label></div>
+        <div class="capture-player"><label>SCALE <select class="capture-scale"><option>1</option><option>2</option><option>3</option><option>4</option></select></label><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">M01REC OUT</button><label class="file-button">M01REC IN<input class="replay-input" type="file" accept=".m01rec,application/json"></label></div>
         <button class="stop-player" type="button">SHIFT+ESC STOP</button>
         <button class="enable-player-audio" type="button">SOUND</button>
         <p class="player-budget">${String(rom.byteLength)}B/${sizeClass(rom.byteLength)} D0000 V0</p>
@@ -1068,7 +1068,7 @@ export class StudioApp {
     const status = requireElement(this.root, '.player-status') as HTMLElement;
     const budget = requireElement(this.root, '.player-budget') as HTMLElement;
     const worker = new InlineSandboxWorker({
-      name: `px240c-${project.id}`,
+      name: `mod01-${project.id}`,
     });
     const sandbox = new SandboxSession(worker, 1_000);
     const input = new BrowserInput(canvas, undefined, settings.controllerProfile);
@@ -1080,7 +1080,7 @@ export class StudioApp {
     let frameCursor = 0;
     try {
       await sandbox.load(compilation.generated.javascript, {
-        seed: 0x240c1999,
+        seed: 0x4d30_3031,
         workUnitsPerFrame: HARDWARE.workUnitsPerFrame,
         updateRate: manifestUpdateRate(project.manifest),
         assets: {
@@ -1168,7 +1168,11 @@ export class StudioApp {
     (requireElement(this.root, '.capture-replay') as HTMLButtonElement).addEventListener(
       'click',
       () => {
-        downloadBytes(`${project.id}.pxrec`, encodeReplayTrace(capturedInputs), 'application/json');
+        downloadBytes(
+          `${project.id}.m01rec`,
+          encodeReplayTrace(capturedInputs),
+          'application/json',
+        );
       },
     );
     (requireElement(this.root, '.replay-input') as HTMLInputElement).addEventListener(
@@ -1183,7 +1187,7 @@ export class StudioApp {
           await this.runProject(trace);
           const replayStatus = this.root.querySelector<HTMLElement>('.player-status');
           if (replayStatus !== null)
-            replayStatus.textContent = `PXREC ${String(trace.frames.length)}F`;
+            replayStatus.textContent = `M01REC ${String(trace.frames.length)}F`;
         })().catch((error: unknown) => {
           status.textContent = errorMessage(error);
           status.classList.add('error');
@@ -1255,13 +1259,13 @@ export class StudioApp {
     const bytes = await this.compiler.packProject(project.manifest, project.files);
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
-    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/x-px240c-cartridge' }));
+    const url = URL.createObjectURL(new Blob([buffer], { type: 'application/x-mod01-cartridge' }));
     const link = document.createElement('a');
     link.href = url;
-    link.download = `${project.id}.pxc`;
+    link.download = `${project.id}.m01c`;
     link.click();
     URL.revokeObjectURL(url);
-    this.appendLines([`PACKED ${project.id}.pxc ${String(bytes.byteLength)} BYTES`]);
+    this.appendLines([`PACKED ${project.id}.m01c ${String(bytes.byteLength)} BYTES`]);
   }
 
   private async exportCartridgePng(): Promise<void> {
@@ -1281,9 +1285,9 @@ export class StudioApp {
       },
       frame === undefined ? undefined : indexedFrame(frame),
     );
-    downloadBytes(`${project.id}.pxc.png`, png, 'image/png');
+    downloadBytes(`${project.id}.m01c.png`, png, 'image/png');
     this.appendLines([
-      `CART IMAGE ${project.id}.pxc.png ${String(png.byteLength)} BYTES`,
+      `CART IMAGE ${project.id}.m01c.png ${String(png.byteLength)} BYTES`,
       frame === undefined
         ? 'LABEL USED FACTORY SCREEN / RUN TO CAPTURE FRAME'
         : 'LABEL CAPTURED LAST RUN FRAME',
@@ -1345,8 +1349,8 @@ export class StudioApp {
         left.project.id.localeCompare(right.project.id),
     );
     this.root.innerHTML = `
-      <section class="display shelf" data-view="shelf" aria-label="PX-240C Cart Bay">
-        <header class="system-bar"><span>PX-240C CART BAY</span><span>${String(items.length)} LIVE / ${String(removed.length)} BIN</span></header>
+      <section class="display shelf" data-view="shelf" aria-label="MOD-01 Cart Bay">
+        <header class="system-bar"><span>MOD-01 CART BAY</span><span>${String(items.length)} LIVE / ${String(removed.length)} BIN</span></header>
         <main class="shelf-list" role="listbox" aria-label="Local cartridges">
           ${items
             .map(
@@ -1421,7 +1425,7 @@ export class StudioApp {
           <p>CHECKSUM VERIFIED ON READ AND IMPORT. OLD RAW SAVES MIGRATE WITH A RETAINED BACKUP.</p>
           <p class="save-manager-status" role="status">READY</p>
         </main>
-        <footer class="tool-bar"><button data-save="out">OUT</button><label class="file-button">IN<input data-save-input type="file" accept=".pxsave,application/json"></label><button data-save="reset">RESET</button><button data-save="delete">DELETE</button><button data-save="back">BACK</button></footer>
+        <footer class="tool-bar"><button data-save="out">OUT</button><label class="file-button">IN<input data-save-input type="file" accept=".m01save,application/json"></label><button data-save="reset">RESET</button><button data-save="delete">DELETE</button><button data-save="back">BACK</button></footer>
       </section>
     `;
     const status = requireElement(this.root, '.save-manager-status');
@@ -1431,7 +1435,7 @@ export class StudioApp {
         await this.openShelf();
       } else if (action === 'out') {
         const exported = await access.export();
-        downloadBytes(`${project.id}.pxsave`, exported, 'application/json');
+        downloadBytes(`${project.id}.m01save`, exported, 'application/json');
         status.textContent = `EXPORTED ${String(exported.byteLength)} BYTES`;
       } else if (action === 'reset' || action === 'delete') {
         if (confirm !== action) {
@@ -1719,7 +1723,7 @@ export class StudioApp {
       .sort(([left], [right]) => left.localeCompare(right));
     this.root.innerHTML = `
       <section class="display cartridge-inspector" data-view="inspector" aria-label="Packed cartridge inspector">
-        <header class="system-bar"><span>PXC INSPECTOR</span><span>SOURCE VISIBLE</span></header>
+        <header class="system-bar"><span>M01C INSPECTOR</span><span>SOURCE VISIBLE</span></header>
         <nav class="inspector-files" aria-label="Cartridge contents"></nav>
         <pre class="inspector-output" tabindex="0"></pre>
         <footer class="tool-bar"><button type="button" data-back>ESC BACK</button></footer>
@@ -1804,6 +1808,15 @@ export class StudioApp {
       return;
     }
     terminal.replaceChildren(
+      ...(this.history.length === 0
+        ? [
+            Object.assign(document.createElement('img'), {
+              className: 'boot-logo',
+              src: './mod01-logo.png',
+              alt: 'MOD-01 M01 logo',
+            }),
+          ]
+        : []),
       ...this.terminalLines.map((line) => {
         const paragraph = document.createElement('p');
         paragraph.textContent = line || '\u00a0';
@@ -1872,7 +1885,7 @@ async function collectFolderSources(
     const child = `${path}/${entry.name}`;
     if (entry.kind === 'directory') {
       await collectFolderSources(root, child, files, modified, depth + 1);
-    } else if (entry.name.endsWith('.pxl')) {
+    } else if (entry.name.endsWith('.modl')) {
       const file = await readFolderFile(root, child);
       if (file !== undefined) {
         files[child] = file.bytes;
@@ -1909,7 +1922,7 @@ function fromStored(project: StoredProject): WorkingProject {
 }
 
 function manifestEntry(manifest: string): string {
-  return /^entry\s*=\s*"([A-Za-z0-9_./-]+)"\s*$/m.exec(manifest)?.[1] ?? 'src/main.pxl';
+  return /^entry\s*=\s*"([A-Za-z0-9_./-]+)"\s*$/m.exec(manifest)?.[1] ?? 'src/main.modl';
 }
 
 function manifestUpdateRate(manifest: string): 30 | 60 {
@@ -2058,11 +2071,11 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
   return [
     {
       title: 'START',
-      body: 'Create with NEW id, open EDIT, then RUN. Save with F3 or SAVE. PACK downloads a deterministic source-inspectable cartridge. LOAD pxcl-tutorial runs the five-to-ten-minute FIRST SIGNAL lesson.',
+      body: 'Create with NEW id, open EDIT, then RUN. Save with F3 or SAVE. PACK downloads a deterministic source-inspectable cartridge. LOAD modl-tutorial runs the five-to-ten-minute FIRST SIGNAL lesson.',
     },
     {
-      title: 'PXCL',
-      body: 'PXCL/1 is ASCII-only, statically typed, indentation-based, and deterministic. Mutable top-level values use state with an explicit type. Arrays and Lists have fixed checked capacities; use none/some/is_some/unwrap_or with Option values.',
+      title: 'MODL',
+      body: 'MODL/1 is ASCII-only, statically typed, indentation-based, and deterministic. Mutable top-level values use state with an explicit type. Arrays and Lists have fixed checked capacities; use none/some/is_some/unwrap_or with Option values.',
     },
     {
       title: 'CALLBACKS',
@@ -2094,7 +2107,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'MEMORY',
-      body: 'mem_read/mem_write access bytes; mem_read16/mem_write16 use little-endian words. mem_copy is overlap-safe and mem_fill is transactional. Fault PX9005 marks bounds/permission errors. The debugger MEMO page links the same named regions.',
+      body: 'mem_read/mem_write access bytes; mem_read16/mem_write16 use little-endian words. mem_copy is overlap-safe and mem_fill is transactional. Fault M019005 marks bounds/permission errors. The debugger MEMO page links the same named regions.',
     },
     {
       title: 'DIAGNOSTICS',
@@ -2102,7 +2115,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'TUTORIAL',
-      body: 'LOAD pxcl-tutorial then RUN. A advances through pixel, drawing, input, animation, synth, save and pack; B moves back. Inspect its ordinary src/main.pxl at any time.',
+      body: 'LOAD modl-tutorial then RUN. A advances through pixel, drawing, input, animation, synth, save and pack; B moves back. Inspect its ordinary src/main.modl at any time.',
     },
     {
       title: 'LIMITS',
@@ -2110,7 +2123,7 @@ function manualTopics(): readonly { readonly title: string; readonly body: strin
     },
     {
       title: 'ARTIFACTS',
-      body: 'PACK downloads raw source-visible .pxc. CART downloads the PX-240C cartridge-object .pxc.png with the same complete bytes and project identity metadata; run first to use the last game frame as its label. EXPORT writes the single-file offline HTML player.',
+      body: 'PACK downloads raw source-visible .m01c. CART downloads the MOD-01 cartridge-object .m01c.png with the same complete bytes and project identity metadata; run first to use the last game frame as its label. EXPORT writes the single-file offline HTML player.',
     },
   ];
 }
@@ -2288,23 +2301,23 @@ function projectSizeReport(
 }
 
 function archiveEncodedBytes(bytes: Uint8Array): number {
-  if (bytes.length < 12) throw new TypeError('PXC HEADER IS TRUNCATED');
+  if (bytes.length < 12) throw new TypeError('M01C HEADER IS TRUNCATED');
   const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   const count = view.getUint32(8, true);
   let cursor = 12;
   let encoded = 0;
   for (let index = 0; index < count; index += 1) {
-    if (cursor + 42 > bytes.length) throw new TypeError('PXC ENTRY HEADER IS TRUNCATED');
+    if (cursor + 42 > bytes.length) throw new TypeError('M01C ENTRY HEADER IS TRUNCATED');
     const pathLength = view.getUint16(cursor, true);
     const encodedLength = view.getUint32(cursor + 6, true);
     cursor += 42;
     const end = cursor + pathLength + encodedLength;
     if (!Number.isSafeInteger(end) || end > bytes.length)
-      throw new TypeError('PXC ENTRY IS TRUNCATED');
+      throw new TypeError('M01C ENTRY IS TRUNCATED');
     encoded += encodedLength;
     cursor = end;
   }
-  if (cursor !== bytes.length) throw new TypeError('PXC HAS TRAILING DATA');
+  if (cursor !== bytes.length) throw new TypeError('M01C HAS TRAILING DATA');
   return encoded;
 }
 

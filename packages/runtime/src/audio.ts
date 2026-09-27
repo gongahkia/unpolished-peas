@@ -284,7 +284,7 @@ export class Synthesizer {
 
   public finishFrame(): AudioFrame {
     if (this.frame === Number.MAX_SAFE_INTEGER)
-      throw new RuntimeFault('PX9012', 'audio-frame counter is exhausted', { start: 0, end: 0 });
+      throw new RuntimeFault('M019012', 'audio-frame counter is exhausted', { start: 0, end: 0 });
     this.advanceTracker();
     const sampleCount = HARDWARE.audioSampleRate / HARDWARE.frameRate;
     const left = new Float32Array(sampleCount);
@@ -328,7 +328,7 @@ export class Synthesizer {
 
   public restore(snapshot: unknown): void {
     if (!isSynthSnapshot(snapshot)) {
-      throw new TypeError('invalid PX-240C synthesizer snapshot');
+      throw new TypeError('invalid MOD-01 synthesizer snapshot');
     }
     for (const voice of snapshot.voices) {
       const sound = this.assets.get(voice.sound);
@@ -543,7 +543,7 @@ export class Synthesizer {
       throw new TypeError(`missing Sound asset '${soundName}'`);
     }
     if (this.nextSequence === Number.MAX_SAFE_INTEGER)
-      throw new RuntimeFault('PX9012', 'voice-allocation counter is exhausted', sourceSpan);
+      throw new RuntimeFault('M019012', 'voice-allocation counter is exhausted', sourceSpan);
     const voice =
       this.voices.find((candidate) => !candidate.active) ??
       this.voices.reduce((oldest, candidate) =>
@@ -717,7 +717,7 @@ function validateAudioAsset(asset: unknown): asserts asset is AudioAsset {
       !validEnvelope(asset.envelope) ||
       !validPitch(asset.pitch, asset.durationFrames + asset.envelope.releaseFrames)
     ) {
-      throw new RangeError(`sound '${asset.name}' is outside PX-240C limits`);
+      throw new RangeError(`sound '${asset.name}' is outside MOD-01 limits`);
     }
     if (
       asset.waveform === 'pulse' &&

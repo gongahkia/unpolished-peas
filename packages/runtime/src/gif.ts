@@ -21,7 +21,7 @@ export function encodeIndexedGif(
     throw new RangeError('GIF dimensions or 5-second frame limit are invalid');
   for (const frame of frames) {
     if (frame.length !== width * height || frame.some((color) => color >= HARDWARE.paletteSize))
-      throw new TypeError('GIF frame is not canonical indexed PX-240C output');
+      throw new TypeError('GIF frame is not canonical indexed MOD-01 output');
   }
   const chunks: Uint8Array[] = [];
   chunks.push(encoder.encode('GIF89a'));

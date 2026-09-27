@@ -18,7 +18,7 @@ var HARDWARE = Object.freeze({
   spriteMaximumAxis: 64,
   tileSize: 8,
 });
-/** Original PX-240C RGB master palette. Logical index 0 is also the sprite transparency key. */
+/** Original MOD-01 RGB master palette. Logical index 0 is also the sprite transparency key. */
 var MASTER_PALETTE = Object.freeze([
   '#17141f',
   '#292532',
@@ -78,7 +78,7 @@ var BudgetExceeded = class extends RuntimeFault {
   limit;
   constructor(used, limit, sourceSpan) {
     super(
-      'PX9001',
+      'M019001',
       `frame used ${String(used)} synthetic work units; limit is ${String(limit)}`,
       sourceSpan,
     );
@@ -284,10 +284,10 @@ var MemoryBus = class {
         (entry) => cursor >= entry.address && cursor < entry.address + regionLength(entry),
       );
       if (region === void 0 || !region.writable)
-        throw new RuntimeFault('PX9021', 'write to read-only or reserved hardware memory', span);
+        throw new RuntimeFault('M019021', 'write to read-only or reserved hardware memory', span);
       if (raster && !region.rasterWritable)
         throw new RuntimeFault(
-          'PX9011',
+          'M019011',
           'hardware write is not valid in the raster callback',
           span,
         );
@@ -304,7 +304,7 @@ var MemoryBus = class {
           : region.prepareWrite(offset, part, span, debugEdit);
       if (commit === void 0)
         throw new RuntimeFault(
-          'PX9022',
+          'M019022',
           `invalid value for hardware region '${region.name}'`,
           span,
         );
@@ -322,12 +322,12 @@ var MemoryBus = class {
       address > MEMORY.size ||
       length > MEMORY.size - address
     )
-      throw new RuntimeFault('PX9020', 'hardware address or range is out of bounds', span);
+      throw new RuntimeFault('M019020', 'hardware address or range is out of bounds', span);
   }
   value(value, maximum, span) {
     if (!Number.isSafeInteger(value) || value < 0 || value > maximum)
       throw new RuntimeFault(
-        'PX9022',
+        'M019022',
         'hardware value is outside the unsigned operation width',
         span,
       );
@@ -479,7 +479,7 @@ var Synthesizer = class {
   }
   finishFrame() {
     if (this.frame === Number.MAX_SAFE_INTEGER)
-      throw new RuntimeFault('PX9012', 'audio-frame counter is exhausted', {
+      throw new RuntimeFault('M019012', 'audio-frame counter is exhausted', {
         start: 0,
         end: 0,
       });
@@ -517,7 +517,7 @@ var Synthesizer = class {
     });
   }
   restore(snapshot) {
-    if (!isSynthSnapshot(snapshot)) throw new TypeError('invalid PX-240C synthesizer snapshot');
+    if (!isSynthSnapshot(snapshot)) throw new TypeError('invalid MOD-01 synthesizer snapshot');
     for (const voice of snapshot.voices) {
       const sound = this.assets.get(voice.sound);
       if ((voice.active || voice.sound !== '') && sound?.kind !== 'sound')
@@ -722,7 +722,7 @@ var Synthesizer = class {
     const sound = this.assets.get(soundName);
     if (sound?.kind !== 'sound') throw new TypeError(`missing Sound asset '${soundName}'`);
     if (this.nextSequence === Number.MAX_SAFE_INTEGER)
-      throw new RuntimeFault('PX9012', 'voice-allocation counter is exhausted', sourceSpan);
+      throw new RuntimeFault('M019012', 'voice-allocation counter is exhausted', sourceSpan);
     const voice =
       this.voices.find((candidate) => !candidate.active) ??
       this.voices.reduce((oldest, candidate) =>
@@ -831,7 +831,7 @@ function validateAudioAsset(asset) {
       !validEnvelope(asset.envelope) ||
       !validPitch(asset.pitch, asset.durationFrames + asset.envelope.releaseFrames)
     )
-      throw new RangeError(`sound '${asset.name}' is outside PX-240C limits`);
+      throw new RangeError(`sound '${asset.name}' is outside MOD-01 limits`);
     if (
       asset.waveform === 'pulse' &&
       (!audioNumber(asset.duty, 0, 1) || asset.duty === 0 || asset.duty === 1)
@@ -1495,7 +1495,7 @@ function validateSprite(sprite) {
     sprite.pixels.length !== sprite.width * sprite.height ||
     sprite.pixels.some((color) => color >= HARDWARE.paletteSize)
   )
-    throw new RangeError(`sprite '${sprite.name}' is outside PX-240C limits`);
+    throw new RangeError(`sprite '${sprite.name}' is outside MOD-01 limits`);
 }
 function visualAssetBytes(asset) {
   switch (asset.kind) {
@@ -3066,7 +3066,7 @@ var DeterministicMachine = class {
   }
   runFrame(input) {
     if (!isInputFrame(input))
-      throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+      throw new RuntimeFault('M019008', 'invalid controller input frame', {
         start: 0,
         end: 0,
       });
@@ -3112,12 +3112,12 @@ var DeterministicMachine = class {
   /** Advances a debug build to exactly one statement boundary or one completed frame. */
   stepDebug(input) {
     if (!this.debugEnabled)
-      throw new RuntimeFault('PX9015', 'statement stepping requires a debug cartridge', {
+      throw new RuntimeFault('M019015', 'statement stepping requires a debug cartridge', {
         start: 0,
         end: 0,
       });
     if (!isInputFrame(input))
-      throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+      throw new RuntimeFault('M019008', 'invalid controller input frame', {
         start: 0,
         end: 0,
       });
@@ -3234,7 +3234,7 @@ var DeterministicMachine = class {
     });
   }
   restore(value) {
-    if (!isMachineSnapshot(value)) throw new TypeError('invalid PX-240C machine snapshot');
+    if (!isMachineSnapshot(value)) throw new TypeError('invalid MOD-01 machine snapshot');
     const snapshot = value;
     if (
       snapshot.revision === 2 &&
@@ -3297,17 +3297,17 @@ var DeterministicMachine = class {
   assertRunnable() {
     if (this.lastFault !== null)
       throw new RuntimeFault(
-        'PX9014',
+        'M019014',
         'cartridge faulted; restart or restore a healthy checkpoint',
         this.lastFault.sourceSpan,
       );
     if (this.phase !== 'idle')
-      throw new RuntimeFault('PX9014', 'cartridge is already executing', {
+      throw new RuntimeFault('M019014', 'cartridge is already executing', {
         start: 0,
         end: 0,
       });
     if (this.currentFrame === Number.MAX_SAFE_INTEGER)
-      this.fault('PX9012', 'display-frame counter is exhausted', {
+      this.fault('M019012', 'display-frame counter is exhausted', {
         start: 0,
         end: 0,
       });
@@ -3333,7 +3333,7 @@ var DeterministicMachine = class {
           return this.rng.nextInt(minimum, maximum);
         } catch (error) {
           return this.fault(
-            'PX9007',
+            'M019007',
             error instanceof Error ? error.message : 'invalid RNG bounds',
             sourceSpan,
           );
@@ -3368,7 +3368,7 @@ var DeterministicMachine = class {
         const port = expectInteger(arguments_[0], sourceSpan);
         const button = arguments_[1];
         if (port < 0 || port >= 4 || !isButton(button))
-          return this.fault('PX9008', 'invalid controller port or button', sourceSpan);
+          return this.fault('M019008', 'invalid controller port or button', sourceSpan);
         const pressed = this.input.controllers[port]?.buttons[button] ?? false;
         if (name === 'btn') return pressed;
         return pressed && !(this.previousInput.controllers[port]?.buttons[button] ?? false);
@@ -3396,7 +3396,7 @@ var DeterministicMachine = class {
         };
         const result = this.hooks.call?.(name, arguments_, sourceSpan, context);
         if (this.hooks.call === void 0)
-          return this.fault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
+          return this.fault('M019004', `console API call '${name}' is unavailable`, sourceSpan);
         return result;
       }
     }
@@ -3471,20 +3471,20 @@ function isMachineSnapshot(value) {
 function expectArguments(name, arguments_, count, sourceSpan) {
   if (arguments_.length !== count)
     throw new RuntimeFault(
-      'PX9009',
+      'M019009',
       `${name} expected ${String(count)} arguments, received ${String(arguments_.length)}`,
       sourceSpan,
     );
 }
 function expectNumber(value, sourceSpan) {
   if (typeof value !== 'number' || !Number.isFinite(value))
-    throw new RuntimeFault('PX9009', 'expected a finite number', sourceSpan);
+    throw new RuntimeFault('M019009', 'expected a finite number', sourceSpan);
   return value;
 }
 function expectInteger(value, sourceSpan) {
   const number = expectNumber(value, sourceSpan);
   if (!Number.isSafeInteger(number))
-    throw new RuntimeFault('PX9009', 'expected a safe integer', sourceSpan);
+    throw new RuntimeFault('M019009', 'expected a safe integer', sourceSpan);
   return number;
 }
 //#endregion
@@ -3566,7 +3566,7 @@ var SaveMemory = class SaveMemory {
   dirtyBytes = 0;
   writes = /* @__PURE__ */ new Map();
   constructor(initial = {}) {
-    if (!isSaveImage(initial)) throw new TypeError('invalid PX-240C save image');
+    if (!isSaveImage(initial)) throw new TypeError('invalid MOD-01 save image');
     this.bytes.set(initial instanceof Uint8Array ? initial : encodeValues(initial));
     this.committed.set(this.bytes);
   }
@@ -3608,7 +3608,7 @@ var SaveMemory = class SaveMemory {
   }
   restoreDevice(value, pendingWrites = []) {
     if (!isSaveSnapshot(value) || !isPendingDeviceWrites(pendingWrites, value))
-      throw new TypeError('invalid PX-240C save snapshot');
+      throw new TypeError('invalid MOD-01 save snapshot');
     this.bytes.set(value.bytes);
     this.committed.set(value.committed);
     this.values = void 0;
@@ -3634,7 +3634,7 @@ var SaveMemory = class SaveMemory {
   }
   restore(value, pendingWrites = []) {
     if (!isSaveValues(value) || !isPendingSaveWrites(pendingWrites, value))
-      throw new TypeError('invalid PX-240C save snapshot');
+      throw new TypeError('invalid MOD-01 save snapshot');
     const initial = new SaveMemory(value).deviceSnapshot();
     this.restoreDevice(
       {
@@ -3695,7 +3695,7 @@ var SaveMemory = class SaveMemory {
             this.checkCommitCounter();
           } catch (error) {
             throw new RuntimeFault(
-              'PX9012',
+              'M019012',
               error instanceof Error ? error.message : 'save counter exhausted',
               span,
             );
@@ -3919,7 +3919,7 @@ function isConsoleRuntimeSnapshot(value) {
 /** One production dispatcher for restricted Workers and deterministic headless hosts. */
 function createConsoleRuntime(factory, configuration) {
   if (!isSandboxConfiguration(configuration))
-    throw new RuntimeFault('PX9100', 'invalid sandbox configuration', {
+    throw new RuntimeFault('M019100', 'invalid sandbox configuration', {
       start: 0,
       end: 0,
     });
@@ -4049,7 +4049,7 @@ function createConsoleRuntime(factory, configuration) {
   return {
     runFrame(input) {
       if (!isInputFrame(input))
-        throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+        throw new RuntimeFault('M019008', 'invalid controller input frame', {
           start: 0,
           end: 0,
         });
@@ -4092,12 +4092,12 @@ function createConsoleRuntime(factory, configuration) {
     },
     stepDebug(input) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'statement stepping requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'statement stepping requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!isInputFrame(input))
-        throw new RuntimeFault('PX9008', 'invalid controller input frame', {
+        throw new RuntimeFault('M019008', 'invalid controller input frame', {
           start: 0,
           end: 0,
         });
@@ -4199,7 +4199,7 @@ function createConsoleRuntime(factory, configuration) {
         synthesizer.restore(before.audio);
         bus.restore(before.memory);
         throw new RuntimeFault(
-          'PX9103',
+          'M019103',
           error instanceof Error ? error.message : 'invalid device snapshot',
           {
             start: 0,
@@ -4210,12 +4210,12 @@ function createConsoleRuntime(factory, configuration) {
     },
     inspectMemory(address, length) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'memory inspection requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'memory inspection requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!Number.isSafeInteger(length) || length < 1 || length > 256)
-        throw new RuntimeFault('PX9020', 'debug memory reads require 1-256 bytes', {
+        throw new RuntimeFault('M019020', 'debug memory reads require 1-256 bytes', {
           start: 0,
           end: 0,
         });
@@ -4227,12 +4227,12 @@ function createConsoleRuntime(factory, configuration) {
     },
     editMemory(address, bytes) {
       if (!debugEnabled)
-        throw new RuntimeFault('PX9104', 'memory editing requires a debug cartridge', {
+        throw new RuntimeFault('M019104', 'memory editing requires a debug cartridge', {
           start: 0,
           end: 0,
         });
       if (!(bytes instanceof Uint8Array) || bytes.length < 1 || bytes.length > 256)
-        throw new RuntimeFault('PX9020', 'debug memory edits require 1-256 bytes', {
+        throw new RuntimeFault('M019020', 'debug memory edits require 1-256 bytes', {
           start: 0,
           end: 0,
         });
@@ -4255,7 +4255,7 @@ function createConsoleRuntime(factory, configuration) {
   }
   function completedOutput() {
     if (frameOutput === void 0)
-      throw new RuntimeFault('PX9102', 'frame completed without device output', {
+      throw new RuntimeFault('M019102', 'frame completed without device output', {
         start: 0,
         end: 0,
       });
@@ -4264,13 +4264,13 @@ function createConsoleRuntime(factory, configuration) {
   function handleConsoleCall(name, arguments_, sourceSpan, context) {
     if (name === 'visual_id' || name === 'audio_id') {
       if (arguments_.length !== 1 || typeof arguments_[0] !== 'string')
-        throw new RuntimeFault('PX9009', `${name} expects one Text name`, sourceSpan);
+        throw new RuntimeFault('M019009', `${name} expects one Text name`, sourceSpan);
       requireMachine().work(1 + arguments_[0].length, sourceSpan);
       return (name === 'visual_id' ? visualStore : audioStore).id(arguments_[0]);
     }
     if (MEMORY_CALLS.has(name)) {
       if (arguments_.length !== MEMORY_CALLS.get(name))
-        throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+        throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
       const values = arguments_.map((value) => readInteger(value, sourceSpan));
       const address = values[0] ?? 0;
       const second = values[1] ?? 0;
@@ -4298,25 +4298,25 @@ function createConsoleRuntime(factory, configuration) {
     requireMachine().work(consoleWorkCost(name, arguments_), sourceSpan);
     if (context.phase === 'raster' && name !== 'pal' && name !== 'raster_scroll')
       throw new RuntimeFault(
-        'PX9011',
+        'M019011',
         `console API call '${name}' is not valid in the raster callback`,
         sourceSpan,
       );
     if (name === 'raster_scroll' && context.phase !== 'raster')
       throw new RuntimeFault(
-        'PX9011',
+        'M019011',
         'raster_scroll is only valid in the raster callback',
         sourceSpan,
       );
     if (name === 'save_commit') {
       if (arguments_.length !== 0)
-        throw new RuntimeFault('PX9009', 'save_commit expects no arguments', sourceSpan);
+        throw new RuntimeFault('M019009', 'save_commit expects no arguments', sourceSpan);
       requireMachine().work(HARDWARE.saveCapacityBytes, sourceSpan);
       try {
         saveMemory.commit();
       } catch (error) {
         throw new RuntimeFault(
-          'PX9012',
+          'M019012',
           error instanceof Error ? error.message : 'invalid save commit',
           sourceSpan,
         );
@@ -4326,7 +4326,7 @@ function createConsoleRuntime(factory, configuration) {
     if (name === 'map_cell' || name === 'map_flag') {
       const handle = arguments_[0];
       if (!isAssetHandle(handle, 'Map'))
-        throw new RuntimeFault('PX9009', 'expected a Map asset handle', sourceSpan);
+        throw new RuntimeFault('M019009', 'expected a Map asset handle', sourceSpan);
       const integers = arguments_.slice(1).map((value) => readInteger(value, sourceSpan));
       if (name === 'map_cell' && integers.length === 3) {
         if (source !== void 0)
@@ -4357,12 +4357,12 @@ function createConsoleRuntime(factory, configuration) {
           integers[3] ?? 0,
         );
       }
-      throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+      throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
     }
     if (name === 'save_get_int' || name === 'save_set_int') {
       const key = arguments_[0];
       if (typeof key !== 'string')
-        throw new RuntimeFault('PX9009', 'save key must be Text', sourceSpan);
+        throw new RuntimeFault('M019009', 'save key must be Text', sourceSpan);
       try {
         if (name === 'save_get_int' && arguments_.length === 2)
           return saveMemory.get(key, readInteger(arguments_[1], sourceSpan));
@@ -4372,12 +4372,12 @@ function createConsoleRuntime(factory, configuration) {
         }
       } catch (error) {
         throw new RuntimeFault(
-          'PX9012',
+          'M019012',
           error instanceof Error ? error.message : 'invalid cartridge save operation',
           sourceSpan,
         );
       }
-      throw new RuntimeFault('PX9009', `${name} received the wrong argument count`, sourceSpan);
+      throw new RuntimeFault('M019009', `${name} received the wrong argument count`, sourceSpan);
     }
     const command = {
       name,
@@ -4387,7 +4387,7 @@ function createConsoleRuntime(factory, configuration) {
     };
     if (DRAW_CALLS.has(name)) {
       if (drawCommands.length >= HARDWARE.drawCommandsPerFrame)
-        throw new RuntimeFault('PX9010', 'draw-command ceiling exceeded', sourceSpan);
+        throw new RuntimeFault('M019010', 'draw-command ceiling exceeded', sourceSpan);
       drawCommands.push(command);
       if (rendering) graphics.executeCommand(command);
       return;
@@ -4397,11 +4397,11 @@ function createConsoleRuntime(factory, configuration) {
       if (rendering) synthesizer.executeCommand(command);
       return;
     }
-    throw new RuntimeFault('PX9004', `console API call '${name}' is unavailable`, sourceSpan);
+    throw new RuntimeFault('M019004', `console API call '${name}' is unavailable`, sourceSpan);
   }
   function requireMachine() {
     if (machine === void 0)
-      throw new RuntimeFault('PX9102', 'no cartridge is loaded', {
+      throw new RuntimeFault('M019102', 'no cartridge is loaded', {
         start: 0,
         end: 0,
       });
@@ -4413,7 +4413,7 @@ function createCartridgeInfo(rom) {
   const view = new DataView(bytes.buffer);
   const validHeader =
     rom.length >= 12 &&
-    [80, 88, 50, 52, 48, 67, 26].every((byte, index) => rom[index] === byte) &&
+    [77, 79, 68, 45, 48, 49, 26].every((byte, index) => rom[index] === byte) &&
     rom[7] === 1;
   view.setUint16(0, 1, true);
   view.setUint16(2, validHeader ? (rom[7] ?? 0) : 0, true);
@@ -4510,7 +4510,7 @@ function isAssetHandle(value, kind) {
 }
 function readInteger(value, sourceSpan) {
   if (typeof value !== 'number' || !Number.isSafeInteger(value))
-    throw new RuntimeFault('PX9009', 'console arguments must be safe integers', sourceSpan);
+    throw new RuntimeFault('M019009', 'console arguments must be safe integers', sourceSpan);
   return value;
 }
 function readWorkerSnapshot(value) {
@@ -4518,7 +4518,7 @@ function readWorkerSnapshot(value) {
     !isRecord$2(value) ||
     (value.revision === 6 ? !isConsoleRuntimeSnapshot(value) : !isLegacyWorkerSnapshot(value))
   )
-    throw new RuntimeFault('PX9103', 'invalid worker snapshot', {
+    throw new RuntimeFault('M019103', 'invalid worker snapshot', {
       start: 0,
       end: 0,
     });
@@ -4679,7 +4679,7 @@ function hasOnlyKeys(value, expected) {
 //#region src/headless.ts
 /** Runs validated compiler output through the same production core used by the browser Worker. */
 async function runHeadless(value) {
-  if (!isHeadlessRequest(value)) throw new TypeError('invalid PX-240C headless request');
+  if (!isHeadlessRequest(value)) throw new TypeError('invalid MOD-01 headless request');
   const request = value;
   const factory = readFactory(
     await import(
@@ -4856,7 +4856,7 @@ function isByteArray(value, limit) {
 }
 function readFactory(value) {
   if (!isRecord(value) || typeof value.default !== 'function')
-    throw new RuntimeFault('PX9101', 'compiled module does not export a cartridge factory', {
+    throw new RuntimeFault('M019101', 'compiled module does not export a cartridge factory', {
       start: 0,
       end: 0,
     });
