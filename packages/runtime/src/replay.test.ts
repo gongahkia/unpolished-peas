@@ -71,7 +71,10 @@ describe('M01REC revision 1', () => {
 
   it('rejects pre-MOD-01 replay envelopes', () => {
     const legacy = new TextEncoder().encode(
-      JSON.stringify({ revision: 0, frames: [{ frame: 0, controllers: [{ port: 1, buttons: ['a'] }] }] }),
+      JSON.stringify({
+        revision: 0,
+        frames: [{ frame: 0, controllers: [{ port: 1, buttons: ['a'] }] }],
+      }),
     );
     expect(() => decodeReplayTrace(legacy)).toThrow(/schema/);
   });

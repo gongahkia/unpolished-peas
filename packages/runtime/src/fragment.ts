@@ -16,7 +16,7 @@ export function encodeCartridgeFragment(cartridge: Uint8Array): string {
 export function decodeCartridgeFragment(fragment: string): Uint8Array | undefined {
   if (!fragment.startsWith('#m01c=')) return undefined;
   if (fragment.length > CART_FRAGMENT_LIMIT) throw new RangeError('cartridge fragment is too long');
-  const encoded = fragment.slice(5);
+  const encoded = fragment.slice(6);
   if (encoded.length === 0 || !/^[A-Za-z0-9_-]+$/.test(encoded))
     throw new TypeError('cartridge fragment encoding is invalid');
   const padding = '='.repeat((4 - (encoded.length % 4)) % 4);

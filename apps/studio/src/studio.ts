@@ -1355,7 +1355,7 @@ export class StudioApp {
           ${items
             .map(
               (item, index) =>
-                `<button type="button" class="shelf-item" role="option" data-id="${item.project.id}" aria-selected="${String(index === 0)}">${item.label === undefined ? '<span class="shelf-label">PX</span>' : `<img alt="${escapeHtml(item.project.title)} label" src="${item.label}">`}<span><strong>${item.state.favorite ? '★ ' : ''}${escapeHtml(item.project.title)}</strong><small>${item.project.id} / ${sizeClass(item.bytes)} / ${String(item.players)}P${item.save ? ' / SAVE' : ''} / ${item.state.origin.toUpperCase()}</small></span></button>`,
+                `<button type="button" class="shelf-item" role="option" data-id="${item.project.id}" aria-selected="${String(index === 0)}">${item.label === undefined ? '<span class="shelf-label">M01</span>' : `<img alt="${escapeHtml(item.project.title)} label" src="${item.label}">`}<span><strong>${item.state.favorite ? '★ ' : ''}${escapeHtml(item.project.title)}</strong><small>${item.project.id} / ${sizeClass(item.bytes)} / ${String(item.players)}P${item.save ? ' / SAVE' : ''} / ${item.state.origin.toUpperCase()}</small></span></button>`,
             )
             .join('')}
           ${removed

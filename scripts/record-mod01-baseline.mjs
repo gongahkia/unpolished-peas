@@ -1,6 +1,5 @@
-/* global console, process, window, Worker, WebGL2RenderingContext, indexedDB, performance, TextEncoder, TextDecoder */
+/* global console, process, window, Worker, WebGL2RenderingContext, indexedDB, performance, TextEncoder, TextDecoder, navigator, crypto */
 import assert from 'node:assert/strict';
-import { execFileSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { gzipSync } from 'node:zlib';
@@ -14,16 +13,17 @@ await mkdir(directory, { recursive: true });
 await mkdir('output/playwright', { recursive: true });
 const hash = (bytes) => createHash('sha256').update(bytes).digest('hex');
 const browser = await firefox.launch();
-const metrics = { baseline: 'MOD-01 clean break', browser: `Firefox ${browser.version()}`, cartridges: {} };
+const metrics = {
+  baseline: 'MOD-01 clean break',
+  browser: `Firefox ${browser.version()}`,
+  cartridges: {},
+};
 try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 1000 } });
   const page = await context.newPage();
   page.setDefaultTimeout(30000);
   const errors = [];
   page.on('pageerror', (error) => errors.push(error.message));
-  page.on('framenavigated', (frame) => {
-    if (frame === page.mainFrame()) console.log(`navigated ${frame.url()}`);
-  });
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'serviceWorker', {
       configurable: true,
@@ -160,7 +160,9 @@ try {
       undefined,
       { polling: 20 },
     );
-    const capture = JSON.parse(await page.evaluate(() => JSON.stringify(window.mod01BaselineCapture)));
+    const capture = JSON.parse(
+      await page.evaluate(() => JSON.stringify(window.mod01BaselineCapture)),
+    );
     console.log({
       frames: capture.frames.length,
       pixels: capture.pixels.length,

@@ -311,7 +311,7 @@ fn project_test_command_runs_modl_compile_fail_and_scripted_snapshot_tests() {
         }
     });
     fs::write(
-        project.join("tests/boot.pxrun.json"),
+        project.join("tests/boot.m01run.json"),
         serde_json::to_vec_pretty(&snapshot).expect("snapshot serializes"),
     )
     .expect("scripted test writes");
@@ -328,7 +328,7 @@ fn project_test_command_runs_modl_compile_fail_and_scripted_snapshot_tests() {
     assert!(stdout.contains("test result: 3 passed; 0 failed"));
     assert!(stdout.contains("pure.modl"));
     assert!(stdout.contains("name.fail.modl"));
-    assert!(stdout.contains("boot.pxrun.json"));
+    assert!(stdout.contains("boot.m01run.json"));
     fs::remove_file(baseline_path).expect("baseline removes");
     fs::remove_dir_all(project).expect("temporary project removes");
 }

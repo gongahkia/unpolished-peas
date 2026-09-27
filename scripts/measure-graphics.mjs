@@ -19,7 +19,9 @@ const fixtures = new URL('../tests/fixtures/mod01-baseline/', import.meta.url);
 const read = (name) => readFileSync(new URL(name, fixtures));
 const projects = new Map(
   JSON.parse(gunzipSync(read('indexeddb.json.gz')), (_key, value) =>
-    value?.mod01BaselineUint8Array === undefined ? value : Uint8Array.from(value.mod01BaselineUint8Array),
+    value?.mod01BaselineUint8Array === undefined
+      ? value
+      : Uint8Array.from(value.mod01BaselineUint8Array),
   ),
 );
 const catalogs = JSON.parse(read('catalogs.json'));

@@ -45,7 +45,7 @@ on start:
   assert mem_read16(CART_INFO) == 1, "hardware revision"
   assert mem_read16(CART_INFO + 2) == 1, "format revision"
   assert mem_read(CART_INFO + 16) == 3, "canonical ROM flags"
-  assert mem_read(CART_ROM) == 80 and mem_read(CART_ROM + 1) == 88, "ROM magic"
+  assert mem_read(CART_ROM) == 77 and mem_read(CART_ROM + 1) == 79, "M01 ROM magic"
   assert mem_read(AUDIO + 17) == 8 and mem_read(AUDIO + 18) == 8, "audio capacities"
   assert mem_read16(AUDIO + 20) == 48000, "sample rate"
   assert mem_read16(AUDIO + 24) == 1, "audio asset count"

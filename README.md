@@ -91,7 +91,7 @@ cargo run -p mod01-cli -- export html my-game
 
 See the [interactive/from-scratch tutorial](docs/TUTORIAL.md), [runnable examples](examples/README.md),
 [starter cartridges](templates/README.md), [tool guide](docs/TOOLS.md),
-[MODL language contract](docs/LANGUAGE.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
+[MODL language contract](docs/MODL.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
 
 ## Boundaries
 

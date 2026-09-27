@@ -556,7 +556,7 @@ fn test_directory(path: &Path) -> ExitCode {
         .any(|test| {
             test.file_name()
                 .and_then(|name| name.to_str())
-                .is_some_and(|name| name.ends_with(".pxrun.json"))
+                .is_some_and(|name| name.ends_with(".m01run.json"))
         })
         .then(|| pack_project(&project.manifest_source, &project.files));
     for test_path in &test_paths {
@@ -568,7 +568,7 @@ fn test_directory(path: &Path) -> ExitCode {
         } else if test_path
             .file_name()
             .and_then(|name| name.to_str())
-            .is_some_and(|name| name.ends_with(".pxrun.json"))
+            .is_some_and(|name| name.ends_with(".m01run.json"))
         {
             match &main_cartridge {
                 Some(Ok(cartridge)) => run_scripted_test(path, cartridge, test_path),
@@ -624,7 +624,7 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
         line.trim()
             .strip_prefix("// expect ")
             .map(str::trim)
-            .filter(|code| code.starts_with("PX"))
+            .filter(|code| code.starts_with("M01"))
     });
     let mut manifest = project.manifest.clone();
     relative.clone_into(&mut manifest.entry);
@@ -679,7 +679,7 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
     if let Some(fault) = result.get("fault") {
         return Err(format!(
             "error[{}] {} at {}..{}",
-            fault["code"].as_str().unwrap_or("PX????"),
+            fault["code"].as_str().unwrap_or("M01????"),
             fault["message"].as_str().unwrap_or("runtime fault"),
             fault["sourceSpan"]["start"].as_u64().unwrap_or_default(),
             fault["sourceSpan"]["end"].as_u64().unwrap_or_default()
@@ -743,7 +743,7 @@ fn run_scripted_test(
     if let Some(fault) = result.get("fault") {
         return Err(format!(
             "runtime error[{}] {}",
-            fault["code"].as_str().unwrap_or("PX????"),
+            fault["code"].as_str().unwrap_or("M01????"),
             fault["message"].as_str().unwrap_or("runtime fault")
         ));
     }

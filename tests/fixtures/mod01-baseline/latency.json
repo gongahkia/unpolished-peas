@@ -6,16 +6,8 @@
     "description": "Playwright wall clock, fill edit + save/back + run + first rendered frame; one cold, ten warm; Cinder Circuit split into two modules in an isolated browser profile",
     "coldMilliseconds": 325.8567600000001,
     "warmMilliseconds": [
-      223.831408,
-      216.59784200000013,
-      212.96746900000016,
-      201.7751699999999,
-      199.9959340000005,
-      250.25522,
-      239.97258599999986,
-      191.5074080000004,
-      220.51266100000066,
-      260.97812200000044
+      223.831408, 216.59784200000013, 212.96746900000016, 201.7751699999999, 199.9959340000005,
+      250.25522, 239.97258599999986, 191.5074080000004, 220.51266100000066, 260.97812200000044
     ],
     "medianMilliseconds": 218.5552515000004
   }
