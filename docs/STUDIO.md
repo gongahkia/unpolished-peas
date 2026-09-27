@@ -6,7 +6,7 @@ cartridge worker receives only a validated copy of its own integer save values; 
 the repository, another cartridge ID, or an IndexedDB handle.
 
 The production app boots directly into the monitor shell. `new`, `dir`, `load`, `save`, `recover`,
-`shelf`, `import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, and `reboot`
+`import`, `edit`, `run`, `debug`, `pack`, `cart`, `export`, `share`, `inspect`, `info`, `help`, and `reboot`
 operate on real project/compiler/runtime paths. `import` validates an untrusted `.m01c`, reconstructs
 its editable project, and also accepts a `.m01c.png` only after validating its bounded PNG chunks and
 embedded canonical cartridge. It preserves the previous same-ID revision for recovery. `inspect` displays the
@@ -14,14 +14,13 @@ canonical packed metadata and all original source modules. `export` downloads on
 player with its own visible source inspector. `cart` downloads the MOD-01 320x240 cartridge-object
 PNG with title/author/year/player/control identity and the byte-exact `.m01c` payload.
 
-`shelf` opens the local-only **MOD-01 CART BAY**. It derives exact packed class and identity from
-each current project and lists bundled/created/imported/fragment/duplicate origin, validated label,
-favorite, recent play, player count, and save presence. Its controls dispatch the same monitor
-commands as the shell: `run <id>`, `inspect <id>`, `copy <id>`, `name <id> [title]`, `star <id>`,
-`save <id>`, `pack <id>`, and `remove <id>`. `remove <id>` requires the exact command a second time;
-running it for a bin item restores the cartridge. Bin restore retains the exact project revision,
-recovery history, shelf state, and isolated save. All records are IndexedDB-local and survive offline
-reload; there is no account, sync, gallery, rating, or telemetry path.
+The monitor prints a fixed catalog of the eight bundled cartridges at boot. There is no graphical
+shelf or click-to-launch path: players launch a cartridge with `run <id>`, and `dir` prints every
+current local/imported project. The remaining project operations are terminal commands: `inspect <id>`,
+`copy <id>`, `name <id> <title>`, `star <id>`, `save <id>`, `pack <id>`, and `remove <id>`. `remove <id>`
+requires the exact command a second time; running it for a bin item restores the cartridge. Bin
+restore retains the exact project revision, recovery history, and isolated save. All records are
+IndexedDB-local and survive offline reload; there is no account, sync, gallery, rating, or telemetry path.
 The selected cart's `SAVE` service displays stable cartridge identity and schema, exports/imports a
 bounded `.m01save` with checksum validation, and requires a second action before reset or delete.
 Every replacement retains a local recovery envelope. Raw alpha save bytes migrate to schema zero

@@ -906,13 +906,11 @@ Each group may produce several coherent commits, and integration occurs througho
   validates and imports on boot, removes the fragment after local recovery-backed storage, and
   reports malformed input without blocking boot. Firefox loaded a real 4,533-byte default cart from
   the link and proved no request URL contained the fragment bytes.
-- Added the local-only **MOD-01 CART BAY** over the existing repository. It displays bundled,
-  imported, created, fragment and duplicate carts with safe labels, exact 4K/16K/64K/256K class,
-  players, favorites, recents and save presence. Launch/source/duplicate/title rename/raw export all
-  operate on canonical projects. Removal requires a second confirmation and moves the exact current
-  revision into a recoverable bin without deleting recovery history or its isolated save.
+- Replaced the CART BAY with a terminal-first cartridge catalog. The eight bundled carts print at
+  boot and launch only through `run <id>`; directory, source, duplicate, title rename, raw export,
+  save, removal, and recovery remain explicit terminal workflows on canonical projects.
 - Focused repository/storage/exporter/CLI tests, strict formatting/lint/types/Clippy, and production
-  builds pass. The expanded Firefox workflow in **1.2 min** exercised shelf play, source, favorite,
+  builds pass. The expanded Firefox workflow in **1.2 min** exercised command-driven play, source, favorite,
   duplicate, rename with stable ID, export, remove and restore; raw/PNG/fragment/HTML/ZIP/embed,
   capture, editors, debug and offline paths remained green. Nothing was pushed, published or
   deployed.
