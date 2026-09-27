@@ -16,8 +16,9 @@ proprietary; cartridge authors retain ownership of their source and assets.
 The cohesive V1 workflow is implemented: create/import a cartridge, edit code and source-visible
 assets, compile, run, debug, rewind, save/recover, pack, inspect, and export without an account or
 backend. The production app is a relative-path static PWA and works offline after its first
-successful load. Compiler/runtime rules, measurements, known limitations, and milestone evidence
-are in [`docs/`](docs/PROGRESS.md).
+successful load. The V1 contract is recorded in [product principles](docs/PRODUCT.md),
+[limits](docs/LIMITS.md), and [release evidence](docs/V1_RELEASE_EVIDENCE.md); implementation detail
+and history remain in [`docs/`](docs/PROGRESS.md).
 
 The monitor preinstalls eight source-visible first-party cartridges. The three preserved original
 games are ordinary public-facility PXCL projects:
