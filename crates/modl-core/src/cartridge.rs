@@ -200,7 +200,7 @@ impl std::error::Error for CartridgeError {}
 ///
 /// # Errors
 ///
-/// Returns a stable `PX40xx` error when TOML decoding or manifest validation fails.
+/// Returns a stable `M014xxx` error when TOML decoding or manifest validation fails.
 pub fn parse_project_manifest(source: &str) -> Result<ProjectManifest, CartridgeError> {
     let manifest: ProjectManifest = toml::from_str(source)
         .map_err(|error| cartridge_error("M014001", format!("invalid cart.toml: {error}")))?;
@@ -212,7 +212,7 @@ pub fn parse_project_manifest(source: &str) -> Result<ProjectManifest, Cartridge
 ///
 /// # Errors
 ///
-/// Returns a stable `PX40xx` error for invalid manifests, missing files, compiler diagnostics,
+/// Returns a stable `M014xxx` error for invalid manifests, missing files, compiler diagnostics,
 /// archive collisions, or capacity violations.
 pub fn pack_project(
     manifest_source: &str,
@@ -322,7 +322,7 @@ pub fn pack_project(
 ///
 /// # Errors
 ///
-/// Returns a stable `PX40xx` error for an invalid manifest, missing module, import cycle, parse
+/// Returns a stable `M014xxx` error for an invalid manifest, missing module, import cycle, parse
 /// failure, unsupported dependency callback, or cross-module top-level name collision.
 pub fn compile_project(
     manifest_source: &str,
@@ -972,7 +972,7 @@ type CollectedEntries = (
 ///
 /// # Errors
 ///
-/// Returns a stable `PX40xx` error for malformed, oversized, non-canonical, or corrupted input.
+/// Returns a stable `M014xxx` error for malformed, oversized, non-canonical, or corrupted input.
 pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError> {
     if bytes.len() > CARTRIDGE_CAPACITY_BYTES {
         return Err(cartridge_error(

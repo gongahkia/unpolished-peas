@@ -25,8 +25,8 @@ on start:
   assert mem_read16(CART_INFO + 12) == 0, "ROM base low word"
   assert mem_read16(CART_INFO + 14) == 6, "ROM base high word"
   assert mem_read(CART_INFO + 16) == 3, "present and canonical flags"
-  assert mem_read(CART_ROM) == 80, "ROM magic P"
-  assert mem_read(CART_ROM + 1) == 88, "ROM magic X"
+  assert mem_read(CART_ROM) == 77, "ROM magic M"
+  assert mem_read(CART_ROM + 1) == 79, "ROM magic O"
   pixel(3, 0, 7)
   assert mem_read(102403) == 7, "boot draw alias"
   mem_write(102404, 23)

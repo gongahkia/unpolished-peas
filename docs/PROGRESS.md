@@ -737,7 +737,7 @@ Each group may produce several coherent commits, and integration occurs througho
   shadowing, missing private members, and cycle paths.
 - Added `mod01 test PROJECT`. Sorted ordinary `.modl` test entries run compiler-produced debug code
   for a deterministic frame, `*.fail.modl` locks an expected stable diagnostic, and revision-1
-  `*.pxrun.json` files accept frames, seed, compact input, raw save fixture, and arbitrary headless
+  `*.m01run.json` files accept frames, seed, compact input, raw save fixture, and arbitrary headless
   summary expectations including framebuffer/state/audio/save hashes. Integration tests exercise all
   three modes and source-located runtime faults. `tests/` MODL sources are excluded from canonical
   release archives.

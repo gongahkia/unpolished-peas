@@ -3,7 +3,7 @@
   "cartridges": {
     "cinder-circuit": {
       "frames": 120,
-      "cartridgeSha256": "225f164cc7cb9a891b353fb41df025d7a4d9be09ef713888c4f7a8b766408ea8",
+      "cartridgeSha256": "192a4c6845418cf7e2a7ea638f8a98c022fcb7a039e1a36c70d0b65abf91d6cd",
       "inputTraceSha256": "4800bc0d0be78e939128a1290c0a18a6c2919b90a6849bd73f2dae7e42240951",
       "workPeak": 3498,
       "framebufferSha256": "7d94f65ddec856bcc0cfd364db57c3130369678e9dc712fa28ffb9ca23d98254",
@@ -27,7 +27,7 @@
     },
     "ashvault": {
       "frames": 30,
-      "cartridgeSha256": "44abf7399348c4790de27ad316d63fcfea1c064e3c99980c644026e75d604986",
+      "cartridgeSha256": "387cf0a12d3de5fb93270e91b7ecf60973f07582ba204fb944a57949e9d6aa5f",
       "inputTraceSha256": "58e1ae69d7f24fd5c6adaa0d183bd2e2c1f4b2325be63bc84f765fa42176a0fa",
       "workPeak": 19140,
       "framebufferSha256": "7a954d160b1ad0b56b8aa2eef053fd8cee17cec8971c7ca807927286f652c48a",
@@ -51,7 +51,7 @@
     },
     "raster-rush": {
       "frames": 120,
-      "cartridgeSha256": "3f4172ea7f5538d860143f555a9243dac38449e4a51cabffab8b2279ab41d5b1",
+      "cartridgeSha256": "96016c679dbb5d302274d5e813fcd5c803bc2f78ebd0357e964679b62ee4f729",
       "inputTraceSha256": "3cbe0ae9b95bae0658fac4b2158d6fb19c1c2c604677185a4f974597007c8541",
       "workPeak": 28140,
       "framebufferSha256": "d133c8d0e21bf432056bd30c20c9e6de07dd56a82ace21a978f874be60aad866",

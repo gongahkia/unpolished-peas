@@ -33,7 +33,7 @@ good player intact.
 - ordinary `.modl` entries compile in debug mode and run for one deterministic frame; `on start`
   assertions are the compact pure-test convention;
 - `*.fail.modl` must begin with `// expect M01....` and pass only for that compiler diagnostic;
-- `*.pxrun.json` revision 1 drives the main cartridge with a frame count, seed, compact `input`
+- `*.m01run.json` revision 1 drives the main cartridge with a frame count, seed, compact `input`
   trace, optional raw `save` fixture path, and an `expect` object matched against the headless
   summary. Framebuffer/state/audio/save hashes are ordinary expected fields.
 

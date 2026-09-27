@@ -1,43 +1,19 @@
-# Immutable pre-V1 fixtures
+# MOD-01 baseline fixtures
 
-Origin: alpha `e39be5a`, recorded on 2026-09-09 before product implementation changes.
-Never update these from V1 to make a compatibility test pass.
+These are reproducible MOD-01 V1 browser-baseline artifacts. Refresh them only
+from a clean local production Studio preview using the commands in
+[`docs/V1_RELEASE_EVIDENCE.md`](../../../docs/V1_RELEASE_EVIDENCE.md).
 
-- The three `.m01c` files are exact complete alpha build outputs, not rebuilt V1 carts.
-- `*.trace.json.gz` contains each actual 240-frame Firefox Worker path: initial configuration,
-  inputs, draw/audio/save commands, work, per-frame indexed framebuffer and Worker snapshot SHA-256,
-  and final Worker snapshot. State hashes use `JSON.stringify` of the original snapshot shape;
-  compare the migrated legacy projection, not a V1 envelope's incidental representation.
-- `indexeddb.json.gz` is the alpha first-install repository snapshot. Typed arrays are losslessly
-  tagged `{ "mod01BaselineUint8Array": [...] }`. `catalogs.json` is the alpha CLI's parsed project metadata.
-- `save.json` is a synthetic non-empty alpha save using the actual Ashvault key/schema, not progress
-  earned by the short recording. The recorded game paths start with empty saves. Alpha has no public
-  replay file format; its frame/input records and final revision-1 snapshot are the pre-V1 replay
-  compatibility inputs. Do not invent a historical `.m01rec` envelope.
-- `metrics.json`, `latency.json`, `bundles.json`, `audio.json` freeze the measured baseline. PCM is
-  48 kHz, interleaved left/right IEEE float32 little-endian over 240×800 samples per channel. Voice
-  peaks use the alpha production synth's post-frame active-voice count. The PCM fixture is measured
-  by feeding actual recorded browser commands to the unchanged production synth, not a new synth.
+- The three `.m01c` files are the canonical MOD-01 cartridge outputs.
+- Each compressed trace records a controlled 240-frame production Worker run:
+  configuration, input, work, draw/audio/save commands, indexed framebuffer
+  hashes, complete runtime snapshot hashes, and the final snapshot.
+- `indexeddb.json.gz` is a fresh Studio repository capture. Typed arrays are
+  stored losslessly as `{ "mod01BaselineUint8Array": [...] }`.
+- `catalogs.json`, `bundles.json`, `metrics.json`, `latency.json`, and
+  `audio.json` hold the corresponding build, latency, catalog, and synth data.
 
-Production-rasterizer tests compare all 720 recorded framebuffer hashes and canonical synth output.
-Shared-core tests also recompile all three original sources using the native compiler, execute the
-recorded inputs and compare every work/command/save/state result plus the core's own pixel/PCM output,
-then restore and forward-run the full Worker-owned devices. Legacy state hashes use the explicit
-revision-1 projection; the complete new snapshot is also compared after replay.
-This is not yet a public CLI headless runner or Chromium parity check; those remain required.
-Short paths do not cover complete game progression or save writes.
-
-Recording commands (archival only, refuse post-alpha implementation diffs and existing outputs):
-
-```sh
-pnpm --dir apps/studio exec vite preview --host 127.0.0.1 --port 4173 --strictPort
-node scripts/record-mod01-baseline-baseline.mjs
-node scripts/record-mod01-baseline-baseline.mjs --latency-only
-node scripts/record-mod01-baseline-metadata.mjs
-```
-
-The separate latency-only run splits Cinder's declarations/functions and callbacks into two modules
-inside an isolated test browser profile. No original source files or user browser data are edited.
-Initial recorder attempts failed on an off-by-one capture boundary; the final recorder gates the
-game callback at execution time because Promise continuations may run between message listeners.
-All retained traces have contiguous frames 0–239 and 240 corresponding renders/snapshots.
+The suite recompiles each captured source with the native MODL compiler and
+compares it with the production runtime for the same deterministic inputs. No
+legacy input, storage, cartridge, or replay format is a fixture or compatibility
+target here.

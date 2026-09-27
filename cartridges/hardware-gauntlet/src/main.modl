@@ -19,7 +19,7 @@ fn word(address: Int) -> Int:
   return mem_read16(address) + mem_read16(address + 2) * 65536
 
 on start:
-  assert mem_read(ROM) == 80 and mem_read(ROM + 1) == 88, "ROM"
+  assert mem_read(ROM) == 77 and mem_read(ROM + 1) == 79, "M01 ROM"
   assert mem_read16(SYSTEM + 40) == 50000, "WORK"
   mem_write16(32, 4660)
   assert mem_read16(32) == 4660, "ENDIAN"

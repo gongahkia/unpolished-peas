@@ -181,7 +181,7 @@ line-end     = [ comment ], NEWLINE ;
 ## Diagnostics and formatting
 
 Diagnostics carry stable codes, exact half-open UTF-8 byte spans, primary and secondary labels, and
-notes. `PX1xxx` identifies lexical errors, `PX2xxx` parsing errors, and `PX3xxx` resolution/type
+notes. `M011xxx` identifies lexical errors, `M012xxx` parsing errors, and `M013xxx` resolution/type
 errors. Tooling consumes the structured representation rather than scraping prose.
 
 `mod01 fmt` writes canonical two-space indentation and token spacing. `mod01 fmt --check` reports

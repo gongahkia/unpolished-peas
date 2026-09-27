@@ -10,30 +10,17 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { decodeRuntimeAssets, type ProjectAssetDeclaration } from './asset-codec';
 import { AudioAssetStore, Synthesizer, type AudioFrame } from './audio';
-import { createConsoleRuntime, type ConsoleRuntimeSnapshot } from './console-runtime';
+import { createConsoleRuntime } from './console-runtime';
 import { IndexedGraphics, VisualAssetStore } from './graphics';
 import type { InputFrame } from './input';
 import type { CartridgeFactory } from './machine';
 import { MemoryStorage, StudioRepository, type StoredProject } from './persistence';
 import type { ConsoleCommand, SandboxConfiguration } from './protocol';
-import { SaveMemory } from './save';
 
 const directory = new URL('../../../tests/fixtures/mod01-baseline/', import.meta.url);
 const read = (name: string): Buffer => readFileSync(new URL(name, directory));
 const hash = (bytes: Uint8Array | string): string =>
   createHash('sha256').update(bytes).digest('hex');
-const legacySnapshot = (snapshot: ConsoleRuntimeSnapshot): unknown => ({
-  revision: 1,
-  machine: {
-    revision: 1,
-    frame: snapshot.machine.frame,
-    rngState: snapshot.machine.rngState,
-    cartridge: snapshot.machine.cartridge,
-    input: snapshot.machine.input,
-    previousInput: snapshot.machine.previousInput,
-  },
-  save: new SaveMemory(snapshot.save.bytes).snapshot(),
-});
 function pcmBytes(audio: AudioFrame): Uint8Array {
   const pcm = new Uint8Array(audio.left.length * 8);
   const view = new DataView(pcm.buffer);
@@ -167,7 +154,7 @@ describe('shared Worker core versus MOD-01 browser execution', () => {
         default: CartridgeFactory;
       };
       const trace = JSON.parse(gunzipSync(read(`${id}.trace.json.gz`)).toString()) as {
-        configuration: SandboxConfiguration;
+        configuration: Pick<SandboxConfiguration, 'seed' | 'workUnitsPerFrame' | 'updateRate'>;
         frames: {
           frame: number;
           input: InputFrame;
@@ -186,13 +173,16 @@ describe('shared Worker core versus MOD-01 browser execution', () => {
         throw new Error('missing MOD-01 baseline assets');
       const assets = decodeRuntimeAssets(catalog.assets, project.files, catalog.display);
       const runtime = createConsoleRuntime(generated.default, {
-        ...trace.configuration,
+        seed: trace.configuration.seed,
+        workUnitsPerFrame: trace.configuration.workUnitsPerFrame,
+        updateRate: trace.configuration.updateRate,
         maps: assets.maps,
         assets: {
           declarations: catalog.assets,
           files: project.files,
           displayPath: catalog.display,
         },
+        rom: read(`${id}.m01c`),
       });
       const original = runtime.snapshot();
       const snapshots: unknown[] = [];
@@ -208,13 +198,12 @@ describe('shared Worker core versus MOD-01 browser execution', () => {
         expect(hash(actual.output.indexedPixels)).toBe(expected.framebufferHash);
         pcmHash.update(pcmBytes(actual.output.audio));
         peakVoices = Math.max(peakVoices, actual.output.audio.activeVoices);
-        expect(
-          hash(JSON.stringify(legacySnapshot(runtime.snapshot()))),
-          `frame ${String(expected.frame)}`,
-        ).toBe(expected.stateHash);
+        expect(hash(JSON.stringify(runtime.snapshot())), `frame ${String(expected.frame)}`).toBe(
+          expected.stateHash,
+        );
         if (expected.frame < 10) snapshots.push(runtime.snapshot());
       }
-      expect(legacySnapshot(runtime.snapshot())).toEqual(trace.finalSnapshot);
+      expect(runtime.snapshot()).toEqual(trace.finalSnapshot);
       expect({
         pcmHash: pcmHash.digest('hex'),
         peakVoices,
@@ -225,7 +214,7 @@ describe('shared Worker core versus MOD-01 browser execution', () => {
       for (const expected of trace.frames.slice(0, 10)) {
         runtime.runFrame(expected.input);
         deepStrictEqual(runtime.snapshot(), snapshots[expected.frame]);
-        expect(hash(JSON.stringify(legacySnapshot(runtime.snapshot())))).toBe(expected.stateHash);
+        expect(hash(JSON.stringify(runtime.snapshot()))).toBe(expected.stateHash);
       }
     }, 30_000);
   }
