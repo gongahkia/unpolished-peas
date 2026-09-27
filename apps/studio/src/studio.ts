@@ -75,6 +75,17 @@ const BUNDLED_CARTRIDGES = [
   'hardware-gauntlet',
   'modl-tutorial',
 ] as const;
+const STARTUP_CATALOG = [
+  'CATALOG // RUN <ID> TO PLAY',
+  'CINDER CIRCUIT / RUN cinder-circuit',
+  'ASHVAULT / RUN ashvault',
+  'RASTER RUSH 99 / RUN raster-rush',
+  'MOD-01 SERVICE / RUN mod01-service',
+  'SIGNAL 4K / RUN signal-4k',
+  'POCKET RELAY / RUN pocket-relay',
+  'HARDWARE GAUNTLET / RUN hardware-gauntlet',
+  'FIRST SIGNAL / RUN modl-tutorial',
+] as const;
 
 /** Diegetic boot monitor, command shell, source editor, and cartridge player foundation. */
 export class StudioApp {
@@ -110,11 +121,8 @@ export class StudioApp {
     this.terminalLines.length = 0;
     this.visibleTerminalLines = 0;
     this.appendLines([
-      'MOD-01 COLOR DEVELOPMENT UNIT',
-      'SYSTEM ROM 1.0  (C) 1999',
-      `${String(HARDWARE.visualCapacityBytes / 1024)}K VISUAL STORE / ${String(HARDWARE.audioVoices)}V SOUND`,
       'MODL/1 READY',
-      '',
+      ...STARTUP_CATALOG,
       "TYPE 'HELP' FOR COMMANDS",
     ]);
     const installed = await this.installBundledCartridges();
@@ -287,9 +295,6 @@ export class StudioApp {
         case 'load':
           await this.loadProject(arguments_[0]);
           break;
-        case 'shelf':
-          await this.openShelf();
-          return;
         case 'import':
           this.openImporter();
           return;
@@ -364,11 +369,7 @@ export class StudioApp {
         case 'name': {
           const project = await this.cartridgeForCommand(arguments_[0], 'NAME');
           const title = arguments_.slice(1).join(' ');
-          if (title.length === 0) {
-            this.activeProject = project;
-            this.openShelfRename(project);
-            return;
-          }
+          if (title.length === 0) throw new Error('NAME REQUIRES A TITLE');
           await this.renameCartridge(project, title);
           break;
         }
@@ -391,7 +392,7 @@ export class StudioApp {
             return;
           }
           this.appendLines([
-            'DIR SHELF NEW LOAD SAVE RECOVER IMPORT',
+            'DIR NEW LOAD SAVE RECOVER IMPORT',
             'EDIT RUN [ID] DEBUG [ID] PACK [ID] OUT [ID] CART [ID] EXPORT SHARE',
             'INSPECT [ID] SOURCE [ID] INFO',
             'COPY <ID> NAME <ID> [TITLE] STAR <ID> SAVE <ID> REMOVE <ID> SHELL',
@@ -1387,100 +1388,6 @@ export class StudioApp {
     ]);
   }
 
-  private async openShelf(): Promise<void> {
-    this.stopPlayer();
-    const projects = await this.repository.listProjects();
-    const removed = await this.repository.removedProjects();
-    const items = await Promise.all(
-      projects.map(async (project) => {
-        const [manifest, state, save, cartridge] = await Promise.all([
-          this.compiler.parseManifest(project.manifest),
-          this.repository.shelfState(project.id),
-          this.repository.hasCartridgeSave(project.id),
-          this.compiler.packProject(project.manifest, project.files),
-        ]);
-        const identity = decodeIdentity(project.files['presentation/cartridge.json']);
-        return {
-          project,
-          manifest,
-          state,
-          save,
-          bytes: cartridge.byteLength,
-          players: identity.players,
-          label: shelfLabel(project, manifest.label, state.origin),
-        };
-      }),
-    );
-    items.sort(
-      (left, right) =>
-        Number(right.state.favorite) - Number(left.state.favorite) ||
-        (right.state.lastPlayed ?? 0) - (left.state.lastPlayed ?? 0) ||
-        left.project.id.localeCompare(right.project.id),
-    );
-    this.root.innerHTML = `
-      <section class="display shelf" data-view="shelf" aria-label="MOD-01 Cart Bay">
-        <header class="system-bar"><span>MOD-01 CART BAY</span><span>${String(items.length)} LIVE / ${String(removed.length)} BIN</span></header>
-        <main class="shelf-list" role="listbox" aria-label="Local cartridges">
-          ${items
-            .map(
-              (item, index) =>
-                `<button type="button" class="shelf-item" role="option" data-id="${item.project.id}" aria-selected="${String(index === 0)}">${item.label === undefined ? '<span class="shelf-label">M01</span>' : `<img alt="${escapeHtml(item.project.title)} label" src="${item.label}">`}<span><strong>${item.state.favorite ? '★ ' : ''}${escapeHtml(item.project.title)}</strong><small>${item.project.id} / ${sizeClass(item.bytes)} / ${String(item.players)}P${item.save ? ' / SAVE' : ''} / ${item.state.origin.toUpperCase()}</small></span></button>`,
-            )
-            .join('')}
-          ${removed
-            .map(
-              (item) =>
-                `<button type="button" class="shelf-item removed" role="option" data-id="${item.project.id}" data-removed="true" aria-selected="false"><span class="shelf-label">BIN</span><span><strong>${escapeHtml(item.project.title)}</strong><small>${item.project.id} / RECOVERABLE</small></span></button>`,
-            )
-            .join('')}
-        </main>
-        <p class="shelf-status" role="status">LOCAL ONLY / OFFLINE / ACTIONS ISSUE CONSOLE COMMANDS</p>
-        <footer class="shelf-actions"><button data-shelf="play">PLAY</button><button data-shelf="source">SOURCE</button><button data-shelf="copy">COPY</button><button data-shelf="rename">NAME</button><button data-shelf="favorite">STAR</button><button data-shelf="save">SAVE</button><button data-shelf="export">OUT</button><button data-shelf="remove">REMOVE</button><button data-shelf="back">BACK</button></footer>
-      </section>
-    `;
-    let selected = this.root.querySelector<HTMLElement>('.shelf-item');
-    for (const element of this.root.querySelectorAll<HTMLElement>('.shelf-item')) {
-      element.addEventListener('click', () => {
-        for (const option of this.root.querySelectorAll<HTMLElement>('.shelf-item'))
-          option.setAttribute('aria-selected', String(option === element));
-        selected = element;
-        const remove = this.root.querySelector<HTMLButtonElement>('[data-shelf="remove"]');
-        if (remove !== null)
-          remove.textContent = element.dataset.removed === 'true' ? 'RESTORE' : 'REMOVE';
-      });
-    }
-    for (const button of this.root.querySelectorAll<HTMLButtonElement>('[data-shelf]')) {
-      button.addEventListener('click', () => {
-        const action = button.dataset.shelf;
-        if (action === 'back') {
-          this.dispatchShellCommand('shell');
-          return;
-        }
-        const commands: Record<string, string> = {
-          copy: 'copy',
-          export: 'pack',
-          favorite: 'star',
-          play: 'run',
-          remove: 'remove',
-          rename: 'name',
-          save: 'save',
-          source: 'inspect',
-        };
-        const command = commands[action ?? ''];
-        if (command === undefined) return;
-        const id = selected?.dataset.id;
-        this.dispatchShellCommand(id === undefined ? command : `${command} ${id}`);
-      });
-    }
-    selected?.focus();
-  }
-
-  private dispatchShellCommand(command: string): void {
-    this.appendLines([`> ${command}`]);
-    this.renderShell();
-    void this.execute(command);
-  }
-
   private async openSaveManager(project: WorkingProject): Promise<void> {
     const access = this.repository.cartridgeSave(project.id);
     const [bytes, schema] = await Promise.all([access.read(), access.schemaVersion()]);
@@ -1501,7 +1408,7 @@ export class StudioApp {
     let confirm: 'reset' | 'delete' | undefined;
     const act = async (action: string): Promise<void> => {
       if (action === 'back') {
-        await this.openShelf();
+        this.renderShell();
       } else if (action === 'out') {
         const exported = await access.export();
         downloadBytes(`${project.id}.m01save`, exported, 'application/json');
@@ -1556,33 +1463,6 @@ export class StudioApp {
     const stored = await this.repository.saveProject({ id, title, manifest, files: project.files });
     await this.repository.setShelfOrigin(id, 'duplicate');
     return fromStored(stored);
-  }
-
-  private openShelfRename(project: WorkingProject): void {
-    this.root.innerHTML = `
-      <section class="display shelf-rename" data-view="shelf-rename" aria-label="Rename cartridge title">
-        <header class="system-bar"><span>CART NAMEPLATE</span><span>${project.id.toUpperCase()}</span></header>
-        <form><label>TITLE <input name="title" maxlength="64" value="${escapeHtml(project.title)}"></label><button type="submit">SAVE NAME</button><button type="button" data-cancel>BACK</button><p role="status">ID AND SAVE KEY STAY ${project.id.toUpperCase()}</p></form>
-      </section>
-    `;
-    const form = requireElement(this.root, 'form') as HTMLFormElement;
-    form.addEventListener('submit', (event) => {
-      event.preventDefault();
-      void (async () => {
-        await this.renameCartridge(
-          project,
-          (requireElement(form, '[name="title"]') as HTMLInputElement).value,
-        );
-        await this.openShelf();
-      })().catch((error: unknown) => {
-        const status = this.root.querySelector<HTMLElement>('[role="status"]');
-        if (status !== null) status.textContent = errorMessage(error);
-      });
-    });
-    this.root
-      .querySelector('[data-cancel]')
-      ?.addEventListener('click', () => void this.openShelf());
-    (requireElement(this.root, '[name="title"]') as HTMLInputElement).focus();
   }
 
   private async renameCartridge(project: WorkingProject, requestedTitle: string): Promise<void> {
@@ -2399,24 +2279,6 @@ function archiveEncodedBytes(bytes: Uint8Array): number {
   }
   if (cursor !== bytes.length) throw new TypeError('M01C HAS TRAILING DATA');
   return encoded;
-}
-
-function shelfLabel(
-  project: WorkingProject,
-  path: string | null,
-  origin: 'bundled' | 'created' | 'imported' | 'fragment' | 'duplicate',
-): string | undefined {
-  if (path === null) return undefined;
-  const bytes = project.files[path];
-  if (bytes === undefined || bytes.length > 256 * 1024) return undefined;
-  const png =
-    bytes.length >= 8 &&
-    [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte);
-  const trustedSvg = origin === 'bundled' && path.endsWith('.svg');
-  if (!png && !trustedSvg) return undefined;
-  let binary = '';
-  for (const byte of bytes) binary += String.fromCharCode(byte);
-  return `data:${png ? 'image/png' : 'image/svg+xml'};base64,${btoa(binary)}`;
 }
 
 function replaceManifestIdentity(manifest: string, id: string, title: string): string {
