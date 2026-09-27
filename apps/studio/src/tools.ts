@@ -21,6 +21,7 @@ import {
 } from '@mod01/runtime';
 
 import type { ProjectManifest } from './compiler';
+import { enhancePixelSelects, refreshPixelSelect } from './pixel-select';
 
 export type CreationTool = 'sprite' | 'map' | 'palette' | 'font' | 'sfx' | 'music' | 'project';
 
@@ -430,6 +431,29 @@ interface SpriteDocument {
   frames: number[][];
 }
 
+function spriteToTileSet(sprite: SpriteDocument): TileSetDocument {
+  const tiles: number[][] = [];
+  for (const frame of sprite.frames) {
+    for (let top = 0; top < sprite.height; top += 8) {
+      for (let left = 0; left < sprite.width; left += 8) {
+        tiles.push(
+          Array.from({ length: 64 }, (_pixel, index) => {
+            const x = left + (index % 8);
+            const y = top + Math.floor(index / 8);
+            return x < sprite.width && y < sprite.height ? (frame[y * sprite.width + x] ?? 0) : 0;
+          }),
+        );
+      }
+    }
+  }
+  return {
+    revision: 1,
+    kind: 'tile_set',
+    tiles: tiles.length > 0 ? tiles : defaultTiles(),
+    flags: tiles.map(() => 0),
+  };
+}
+
 function openSpriteEditor(root: HTMLElement, project: ToolProject, callbacks: ToolCallbacks): void {
   const path = 'assets/hero.m01g';
   const document = readJson<SpriteDocument>(project.files[path], {
@@ -739,6 +763,9 @@ async function openMapEditor(
   const declaredTileSets = Object.entries(manifest.assets)
     .filter(([, asset]) => asset.kind === 'tile_set')
     .sort(([left], [right]) => left.localeCompare(right));
+  const declaredSprites = Object.entries(manifest.assets)
+    .filter(([, asset]) => asset.kind === 'sprite' || asset.kind === 'animation')
+    .sort(([left], [right]) => left.localeCompare(right));
   if (declaredTileSets.length === 0)
     declaredTileSets.push(['tiles', { kind: 'tile_set', path: 'assets/tiles.m01g' }]);
   const tileSets = new Map<string, { path: string; document: TileSetDocument }>();
@@ -828,6 +855,12 @@ async function openMapEditor(
     nativeOption.textContent = name.toUpperCase();
     tileSetSelect.append(nativeOption);
   }
+  for (const [name] of declaredSprites) {
+    const nativeOption = root.ownerDocument.createElement('option');
+    nativeOption.value = `sprite:${name}`;
+    nativeOption.textContent = `${name.toUpperCase()} SPRITE`;
+    tileSetSelect.append(nativeOption);
+  }
   let layer = 0;
   let selectedTile = 0;
   let painting = false;
@@ -899,6 +932,7 @@ async function openMapEditor(
       );
     }
     tileSetSelect.value = current.tileSet;
+    refreshPixelSelect(tileSetSelect);
     (requireElement(root, '.map-width') as HTMLInputElement).value = String(current.width);
     (requireElement(root, '.map-height') as HTMLInputElement).value = String(current.height);
     setText(root, '.layer-readout', `${String(layer + 1)}/${String(document.layers.length)}`);
@@ -980,10 +1014,38 @@ async function openMapEditor(
   }
   tileSetSelect.addEventListener('change', () => {
     const current = document.layers[layer];
-    const selected = tileSets.get(tileSetSelect.value)?.document;
+    let selectedName = tileSetSelect.value;
+    if (selectedName.startsWith('sprite:')) {
+      const spriteName = selectedName.slice('sprite:'.length);
+      const spriteAsset = manifest.assets[spriteName];
+      if (spriteAsset === undefined) return;
+      const source = readJson<SpriteDocument>(project.files[spriteAsset.path], {
+        revision: 1,
+        kind: 'sprite',
+        width: 8,
+        height: 8,
+        frames: [Array.from({ length: 64 }, () => 0)],
+      });
+      const baseName = `${spriteName}-tiles`;
+      selectedName = baseName;
+      let suffix = 2;
+      while (tileSets.has(selectedName)) {
+        selectedName = `${baseName}-${String(suffix)}`;
+        suffix += 1;
+      }
+      tileSets.set(selectedName, {
+        path: `assets/${selectedName}.m01g`,
+        document: spriteToTileSet(source),
+      });
+      const nativeOption = root.ownerDocument.createElement('option');
+      nativeOption.value = selectedName;
+      nativeOption.textContent = `${spriteName.toUpperCase()} TILES`;
+      tileSetSelect.append(nativeOption);
+    }
+    const selected = tileSets.get(selectedName)?.document;
     if (current === undefined || selected === undefined) return;
     remember();
-    current.tileSet = tileSetSelect.value;
+    current.tileSet = selectedName;
     current.cells = current.cells.map((cell) => (cell < selected.tiles.length ? cell : 0));
     selectedTile = 0;
     refreshTilePicks();
@@ -1696,6 +1758,7 @@ async function openProjectSettings(
 function bindCommon(root: HTMLElement, callbacks: ToolCallbacks): void {
   root.querySelector('[data-common="back"]')?.addEventListener('click', callbacks.back);
   const panel = requireElement(root, '.asset-tool') as HTMLElement;
+  enhancePixelSelects(panel);
   panel.tabIndex = -1;
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {

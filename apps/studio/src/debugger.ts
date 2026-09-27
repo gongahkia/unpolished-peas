@@ -21,6 +21,7 @@ import {
 
 import { BrowserCompiler, type CompilationResult } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
+import { enhancePixelSelects } from './pixel-select';
 
 export interface DebugProject {
   readonly id: string;
@@ -278,6 +279,7 @@ class DebuggerController {
         <button class="debug-back" type="button" data-debug="back">ESC BACK</button>
       </section>
     `;
+    enhancePixelSelects(this.root);
     this.setControlsEnabled(false);
   }
 

@@ -118,6 +118,65 @@ body,
   background-size: 2px 2px;
 }
 
+.pixel-select {
+  position: relative;
+  display: inline-flex;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.pixel-select-native {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pixel-select-toggle {
+  min-width: 0;
+  padding-right: 5px !important;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--amber) 50%),
+    linear-gradient(135deg, var(--amber) 50%, transparent 50%) !important;
+  background-position:
+    calc(100% - 4px) 50%,
+    calc(100% - 2px) 50% !important;
+  background-repeat: no-repeat !important;
+  background-size: 2px 2px !important;
+}
+
+.pixel-select-menu {
+  position: absolute;
+  z-index: 20;
+  top: calc(100% + 1px);
+  left: 0;
+  min-width: 100%;
+  padding: 1px;
+  background: #302d2a;
+  border: 1px solid var(--cyan);
+}
+
+.pixel-select-option {
+  display: block;
+  width: 100%;
+  min-width: max-content;
+  padding: 0 2px;
+  color: var(--cream);
+  background: #302d2a;
+  border: 0 !important;
+  font: inherit;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.pixel-select-option:hover,
+.pixel-select-option:focus-visible {
+  color: var(--deep);
+  background: var(--cyan);
+  outline: 0;
+}
+
 .display input[type='checkbox'] {
   width: 6px;
   height: 6px;
@@ -434,7 +493,7 @@ body,
   min-width: 0;
   height: 10px;
   padding: 0;
-  color: var(--cream);
+  color: var(--cyan);
   background: transparent;
   border: 0;
   border-radius: 0;
@@ -500,6 +559,30 @@ body,
 
 .syntax-asset {
   color: #bfa3da;
+}
+
+.syntax-json-key {
+  color: var(--cyan);
+}
+
+.syntax-literal {
+  color: var(--coral);
+}
+
+.terminal-command .terminal-prompt {
+  color: var(--amber);
+}
+
+.terminal-command .terminal-input {
+  color: var(--cyan);
+}
+
+.terminal-output {
+  color: var(--cream);
+}
+
+.terminal-error {
+  color: var(--coral);
 }
 
 .source-input:focus {
