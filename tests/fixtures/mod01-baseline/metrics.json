@@ -9,7 +9,7 @@
       "peakDrawCommands": 90,
       "peakAudioCommands": 1,
       "finalFramebufferHash": "37e05608feb0c99751e17cd08dd74d62eb5bd100230a56c67eaed68c71daf9fe",
-      "finalStateHash": "3a2a8a5314846a22dea812fcc5398f45115e651ef6eff879560c9aac143a75e8",
+      "finalStateHash": "30846745350ea113d80d8a35cd91bf2925341c2e90f8e1c4eda088e2129cb4a0",
       "audioCommandHash": "33fe706d73358f446bfb83e218755620ac9a2a8514706bd9d140ffe6a4ad6195"
     },
     "ashvault": {
@@ -19,7 +19,7 @@
       "peakDrawCommands": 117,
       "peakAudioCommands": 2,
       "finalFramebufferHash": "3aca7a762abeac8e82296ef2de15336517141257a9535c672bdcd221486b6db7",
-      "finalStateHash": "5aadf5d8c4f656f8f5cc51209fbc9d67fe6a6c182165e9db718761b70214ff32",
+      "finalStateHash": "cbf49092320f30df50ce77bd3c4d6280bc901eff056023044817b51c30796079",
       "audioCommandHash": "caa69a9017b2a5f272411cc4d055707cb5182ac4afc1553bcb41e530711a2fee"
     },
     "raster-rush": {
@@ -29,17 +29,18 @@
       "peakDrawCommands": 470,
       "peakAudioCommands": 1,
       "finalFramebufferHash": "05e33801457c0d6e38f6a7ff29a8a1703041917bc7ef55d186f958aba5b2ef53",
-      "finalStateHash": "490e949efefb33d1eb93ba36ff75b5ec4d6847f08b39c82687c69f6367e1ed92",
+      "finalStateHash": "60de5466914680d6089505b8819097dc5a2714634ddd0819cb983333dd7259f5",
       "audioCommandHash": "e7adc2bcc93c6591eaf4aac055f187d44df40dfc0935d1730933ba14ef64a563"
     }
   },
   "editRun": {
     "description": "Playwright wall clock, fill edit + save/back + run + first rendered frame; one cold, ten warm; Cinder Circuit original single-file project",
-    "coldMilliseconds": 273.58038699999815,
+    "coldMilliseconds": 153.88951499999894,
     "warmMilliseconds": [
-      219.524942, 244.76957000000039, 264.3235730000015, 246.4266309999948, 222.90474300000642,
-      231.06710100000055, 291.6765410000007, 277.0739890000041, 255.043144999996, 217.9653330000001
+      162.99310799999876, 185.05561999999918, 211.96372699999847, 167.55124799999976,
+      176.94760999999926, 161.99244700000054, 180.15390500000285, 169.28950500000064,
+      165.25253599999996, 163.3570299999992
     ],
-    "medianMilliseconds": 245.5981004999976
+    "medianMilliseconds": 168.4203765000002
   }
 }
