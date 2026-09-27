@@ -1,4 +1,4 @@
-name: Quality gate
+name: Modal CI/CD on Push
 
 on:
   pull_request:
