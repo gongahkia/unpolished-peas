@@ -382,6 +382,10 @@ export class StudioApp {
         case 'shell':
           this.renderShell();
           return;
+        case 'clear':
+        case 'cls':
+          this.clearTerminal();
+          return;
         case 'help':
           if (arguments_.length > 0) {
             this.openManual(arguments_.join(' '));
@@ -393,7 +397,7 @@ export class StudioApp {
             'INSPECT [ID] SOURCE [ID] INFO',
             'COPY <ID> NAME <ID> [TITLE] STAR <ID> SAVE <ID> REMOVE <ID> SHELL',
             'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
-            'MANUAL MAN HELP EXPLORE SETTINGS CONTROLS FOLDER',
+            'MANUAL MAN HELP CLEAR CLS REBOOT SETTINGS CONTROLS FOLDER',
             'NEW <ID> [TITLE] / LOAD <ID> / RUN <ID>',
           ]);
           break;
@@ -1124,8 +1128,7 @@ export class StudioApp {
       <section class="display player" data-view="player"${replay === undefined ? '' : ' data-replay="true"'} aria-label="Running MOD-01 cartridge">
         <canvas class="player-screen" width="240" height="144" tabindex="0" aria-label="Cartridge display"></canvas>
         <div class="capture-player"><button class="capture-scale" type="button" aria-label="Capture scale">SCALE 1X</button><button class="capture-shot" type="button">PNG</button><button class="capture-gif" type="button">GIF 5S</button><button class="capture-replay" type="button">M01REC OUT</button><label class="file-button">M01REC IN<input class="replay-input" type="file" accept=".m01rec,application/json"></label></div>
-        <button class="stop-player" type="button">SHIFT+ESC STOP</button>
-        <button class="enable-player-audio" type="button">SOUND</button>
+        <div class="player-controls"><button class="stop-player" type="button" aria-label="Stop cartridge (Shift+Escape)">STOP</button><button class="enable-player-audio" type="button" aria-label="Enable sound">SOUND</button></div>
         <p class="player-budget">${String(rom.byteLength)}B/${sizeClass(rom.byteLength)} D0000 V0</p>
         <p class="player-status" role="status"></p>
       </section>
@@ -1730,6 +1733,13 @@ export class StudioApp {
       this.terminalLines.splice(0, removed);
       this.visibleTerminalLines = Math.max(0, this.visibleTerminalLines - removed);
     }
+    this.refreshTerminal();
+  }
+
+  private clearTerminal(): void {
+    this.stopTerminalReveal();
+    this.terminalLines.length = 0;
+    this.visibleTerminalLines = 0;
     this.refreshTerminal();
   }
 

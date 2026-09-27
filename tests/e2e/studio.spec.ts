@@ -57,6 +57,8 @@ test('complete local Studio and distribution workflow', async ({
   await expect(page.locator('.terminal')).toContainText('FIRST SIGNAL / RUN modl-tutorial');
   await shellCommand(page, 'shelf');
   await expect(page.locator('.terminal')).toContainText('?UNKNOWN COMMAND: SHELF');
+  await shellCommand(page, 'cls');
+  await expect(page.locator('.terminal')).toBeEmpty();
   await expect
     .poll(() =>
       page.evaluate(async () => {
@@ -418,6 +420,16 @@ on draw:
   await shellCommand(page, 'run');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
   await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
+  await expect(page.locator('.capture-player select')).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.locator('.player-controls').evaluate((controls) => {
+        const [stop, sound] = Array.from(controls.querySelectorAll('button'));
+        if (stop === undefined || sound === undefined) return false;
+        return stop.getBoundingClientRect().right <= sound.getBoundingClientRect().left;
+      }),
+    )
+    .toBe(true);
   await page.locator('.capture-scale').click();
   const screenshotPromise = page.waitForEvent('download');
   await page.locator('.capture-shot').click();
