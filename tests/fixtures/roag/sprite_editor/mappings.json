@@ -1,0 +1,6 @@
+{
+  "version": 1,
+  "sprites": {
+    "player": {"column": 1, "row": 1}
+  }
+}

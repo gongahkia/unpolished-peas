@@ -91,12 +91,12 @@ function Studio:reload()
   self.workspace = Workspace.new(self.bridge.target)
   local loaded, failure = self.workspace:load()
   if not loaded then
-    self.data = nil
+    self.data, self.roag_error = nil, failure
     self:load_native_project()
     self.status = "Could not open ROAG JSON workspace: " .. failure.reason .. ". Native project tools remain available."
     return nil, failure
   end
-  self.data, self.corpora, self.dirty, self.room_dirty, self.undo_stack, self.redo_stack, self.active = loaded.presentation, loaded.corpora, false, false, {}, {}, nil
+  self.data, self.corpora, self.roag_error, self.dirty, self.room_dirty, self.undo_stack, self.redo_stack, self.active = loaded.presentation, loaded.corpora, nil, false, false, {}, {}, nil
   self.selected_screen = clamp(self.selected_screen, 1, #self.data.screens.screens)
   self.selected_action = clamp(self.selected_action, 1, #self.data.flow.title_actions)
   self.selected_room = clamp(self.selected_room, 1, #(self.corpora[self.selected_corpus].rooms))
@@ -367,6 +367,10 @@ end
 function Studio:begin_field(kind, field)
   self:commit_field()
   local item = kind == "screen" and self:current_screen() or self:current_action()
+  if kind == "action" and not Bridge.is_title_action_editable(item) then
+    self.status = "This ROAG title action is preserved read-only by this Studio version."
+    return
+  end
   self.active, self.draft = { kind = kind, field = field }, tostring(item[field] or "")
 end
 
@@ -861,7 +865,10 @@ function Studio:draw()
   if self.tab == "projects" then Launcher.draw_projects(self, view)
   elseif self.tab == "native" then self:draw_native(view)
   elseif not self.data then
-    self:panel(view.body); self:text("ROAG workspace unavailable", view.body.x + 24, view.body.y + 24, 1.5, COLORS.red); self:text(self.status, view.body.x + 24, view.body.y + 70, .82, COLORS.muted, view.body.width - 48)
+    self:panel(view.body)
+    self:text("ROAG WORKSPACE FAILED TO LOAD", view.body.x + 24, view.body.y + 24, 1.5, COLORS.red)
+    self:text("Reason: " .. tostring(self.roag_error and self.roag_error.reason or "Unknown ROAG workspace error"), view.body.x + 24, view.body.y + 70, .82, COLORS.text, view.body.width - 48)
+    self:text(self.project_manifest and "The native project is still open. Choose PROJECT to continue native editing." or "No native project is open. Choose OPEN to select a project folder or manifest.", view.body.x + 24, view.body.y + 112, .74, COLORS.muted, view.body.width - 48)
   elseif self.tab == "rooms" then self:draw_rooms(view)
   elseif self.tab == "art" then ArtView.draw(self, view)
   elseif self.tab == "scenes" then Presentation.draw_scenes(self, view)
@@ -1163,7 +1170,13 @@ function Studio:activate(action)
   elseif kind == "screen" then self:commit_field(); self.selected_screen = action.index
   elseif kind == "screen_move" then self:commit_field(); self:move(self.data.screens.screens, self.selected_screen, action.delta); self.selected_screen = self.selected_screen + action.delta
   elseif kind == "action" then self:commit_field(); self.selected_action = action.index
-  elseif kind == "action_move" then self:commit_field(); self:move(self.data.flow.title_actions, self.selected_action, action.delta); self.selected_action = self.selected_action + action.delta
+  elseif kind == "action_move" then
+    self:commit_field()
+    if Bridge.is_title_action_editable(self:current_action()) then
+      self:move(self.data.flow.title_actions, self.selected_action, action.delta); self.selected_action = self.selected_action + action.delta
+    else
+      self.status = "This ROAG title action is preserved read-only and cannot be reordered here."
+    end
   elseif kind == "cycle_layout" then self:cycle("layout", { "title_menu", "catalog", "list_detail", "route", "menu", "notice" })
   elseif kind == "cycle_accent" then self:cycle("accent", { "cyan", "amber", "mint", "coral", "violet" })
   elseif kind == "field" then self:begin_field(action.kind, action.field)

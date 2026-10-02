@@ -83,16 +83,30 @@ local function validate_screens(data)
   return true
 end
 
-local FLOW_TARGETS = { new_run = "replace_save", continue = "game", research = "research", fallen = "fallen_archive" }
+-- These pairs are the title actions that this Studio version understands well
+-- enough to edit. They are intentionally not the complete ROAG flow schema:
+-- newer ROAG builds may add structurally valid actions that must survive a
+-- load/edit/publish cycle even when this editor cannot safely change them.
+local EDITABLE_FLOW_TARGETS = { new_run = "replace_save", continue = "game", research = "research", fallen = "fallen_archive" }
+
+local function valid_action_id(value)
+  return type(value) == "string" and value:match("^[a-z][a-z0-9_]*$") ~= nil
+end
+
+function Bridge.is_title_action_editable(action)
+  return type(action) == "table" and EDITABLE_FLOW_TARGETS[action.id] == action.target
+end
+
 local function validate_flow(data)
   if type(data) ~= "table" or data.format ~= "roag.presentation_flow" or data.version ~= 1 or data.home ~= "title" or type(data.title_actions) ~= "table" then
     return failure("invalid_flow", "ROAG presentation flow is not the supported v1 data format")
   end
   local ids = {}
-  for _, action in ipairs(data.title_actions) do
-    if type(action) ~= "table" or not FLOW_TARGETS[action.id] or ids[action.id] or action.target ~= FLOW_TARGETS[action.id]
+  for index, action in ipairs(data.title_actions) do
+    if type(action) ~= "table" or not valid_action_id(action.id) or ids[action.id]
+      or type(action.target) ~= "string" or action.target == ""
       or type(action.label) ~= "string" or action.label == "" or type(action.description) ~= "string" or action.description == "" then
-      return failure("invalid_flow", "A title action is not a supported declared ROAG transition")
+      return failure("invalid_flow", "Title action " .. tostring(index) .. " needs a unique safe id plus non-empty target, label, and description")
     end
     ids[action.id] = true
   end
@@ -189,7 +203,7 @@ function Bridge.copy(data)
 end
 
 function Bridge.title_targets()
-  return copy(FLOW_TARGETS)
+  return copy(EDITABLE_FLOW_TARGETS)
 end
 
 return Bridge
