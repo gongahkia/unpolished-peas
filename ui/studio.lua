@@ -745,8 +745,6 @@ function Studio:draw_nav(view)
   for index, item in ipairs(tabs) do
     self:button({ x = view.nav.x + 7, y = view.nav.y + 30 + (index - 1) * 46, width = view.nav.width - 14, height = 38 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
   end
-  self:line("JSON", view.nav.x + 4, view.nav.y + view.nav.height - 32, .52, COLORS.mint, view.nav.width - 8, "center")
-  self:line("ONLY", view.nav.x + 4, view.nav.y + view.nav.height - 17, .52, COLORS.muted, view.nav.width - 8, "center")
 end
 
 function Studio:draw_home(view)
