@@ -14,9 +14,10 @@ local Studio = {}
 Studio.__index = Studio
 
 local COLORS = {
-  backdrop = { 0.025, 0.045, 0.075 }, surface = { 0.055, 0.09, 0.14 }, surface2 = { 0.075, 0.125, 0.19 },
-  border = { 0.16, 0.31, 0.42 }, text = { 0.88, 0.94, 0.98 }, muted = { 0.54, 0.67, 0.76 },
-  blue = { 0.28, 0.72, 1.0 }, mint = { 0.35, 0.90, 0.67 }, gold = { 1.0, 0.79, 0.25 }, red = { 1.0, 0.38, 0.32 }, dark = { 0.015, 0.027, 0.045 },
+  backdrop = { 0.075, 0.078, 0.085 }, canvas = { 0.055, 0.057, 0.062 }, surface = { 0.115, 0.12, 0.13 }, surface2 = { 0.16, 0.165, 0.18 },
+  border = { 0.245, 0.25, 0.27 }, text = { 0.88, 0.885, 0.90 }, muted = { 0.57, 0.59, 0.63 },
+  blue = { 0.43, 0.68, 0.73 }, mint = { 0.48, 0.73, 0.62 }, gold = { 0.80, 0.66, 0.38 }, red = { 0.75, 0.39, 0.36 }, dark = { 0.045, 0.047, 0.052 },
+  selected = { 0.20, 0.30, 0.32 }, selected_border = { 0.45, 0.70, 0.66 }, danger = { 0.28, 0.125, 0.12 },
 }
 
 local ROLES = {
@@ -37,6 +38,13 @@ end
 
 local function clamp(value, minimum, maximum)
   return math.max(minimum, math.min(maximum, value))
+end
+
+-- Docks should remain a useful working width on a large monitor instead of
+-- consuming the canvas merely because the window grew.  Keeping these bounds
+-- here also makes every editor tab share the same desktop-workspace rhythm.
+local function dock_width(available, fraction, minimum, maximum)
+  return math.floor(clamp(available * fraction, minimum, maximum))
 end
 
 local function path_arg(arguments, flag)
@@ -68,14 +76,12 @@ end
 
 function Studio:load_assets()
   love.graphics.setDefaultFilter("nearest", "nearest")
-  local font_path = "assets/kenney/ui_pack/Font/Kenney Future Narrow.ttf"
   self.fonts = {
-    small = love.graphics.newFont(font_path, 13), normal = love.graphics.newFont(font_path, 16), large = love.graphics.newFont(font_path, 23), title = love.graphics.newFont(font_path, 36),
+    -- The built-in proportional face is deliberately neutral: UI copy and
+    -- user-authored names should be readable rather than part of the game's
+    -- visual identity. Pixel assets still render with nearest-neighbor.
+    small = love.graphics.newFont(12), normal = love.graphics.newFont(14), large = love.graphics.newFont(20), title = love.graphics.newFont(28),
   }
-  self.images.button = love.graphics.newImage("assets/kenney/ui_pack/PNG/Blue/Default/button_rectangle_depth_gradient.png")
-  self.images.button_selected = love.graphics.newImage("assets/kenney/ui_pack/PNG/Green/Default/button_rectangle_depth_gradient.png")
-  self.images.button_danger = love.graphics.newImage("assets/kenney/ui_pack/PNG/Red/Default/button_rectangle_depth_gradient.png")
-  self.images.icon_check = love.graphics.newImage("assets/kenney/ui_pack/PNG/Blue/Default/icon_checkmark.png")
   local cursor_base = "assets/kenney/cursor_pack/PNG/Basic/Default/"
   self.cursors.default = love.mouse.newCursor(cursor_base .. "pointer_scifi_a.png", 3, 2)
   self.cursors.action = love.mouse.newCursor(cursor_base .. "hand_point.png", 3, 3)
@@ -262,7 +268,13 @@ end
 
 function Studio:layout()
   local width, height = love.graphics.getDimensions()
-  return { width = width, height = height, header = { x = 0, y = 0, width = width, height = 86 }, nav = { x = 16, y = 104, width = 182, height = height - 176 }, body = { x = 218, y = 104, width = width - 234, height = height - 176 }, footer = { x = 16, y = height - 56, width = width - 32, height = 38 } }
+  return {
+    width = width, height = height,
+    header = { x = 0, y = 0, width = width, height = 66 },
+    nav = { x = 8, y = 74, width = 56, height = height - 110 },
+    body = { x = 74, y = 74, width = width - 82, height = height - 110 },
+    footer = { x = 8, y = height - 28, width = width - 16, height = 20 },
+  }
 end
 
 function Studio:font(scale)
@@ -294,70 +306,97 @@ function Studio:line(value, x, y, scale, tint, width, align)
 end
 
 function Studio:panel(rect, fill, outline)
-  color(fill or COLORS.surface); love.graphics.rectangle("fill", rect.x, rect.y, rect.width, rect.height, 8, 8)
-  color(outline or COLORS.border); love.graphics.setLineWidth(1); love.graphics.rectangle("line", rect.x + .5, rect.y + .5, rect.width - 1, rect.height - 1, 8, 8)
+  color(fill or COLORS.surface); love.graphics.rectangle("fill", rect.x, rect.y, rect.width, rect.height, 3, 3)
+  color(outline or COLORS.border); love.graphics.setLineWidth(1); love.graphics.rectangle("line", rect.x + .5, rect.y + .5, rect.width - 1, rect.height - 1, 3, 3)
+end
+
+function Studio:workspace(rect)
+  color(COLORS.canvas); love.graphics.rectangle("fill", rect.x, rect.y, rect.width, rect.height, 3, 3)
+  love.graphics.setScissor(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2)
+  color({ .09, .093, .10 }, .55)
+  for x = rect.x - (rect.x % 16), rect.x + rect.width, 16 do love.graphics.line(x, rect.y, x, rect.y + rect.height) end
+  for y = rect.y - (rect.y % 16), rect.y + rect.height, 16 do love.graphics.line(rect.x, y, rect.x + rect.width, y) end
+  love.graphics.setScissor()
+  color(COLORS.border); love.graphics.rectangle("line", rect.x + .5, rect.y + .5, rect.width - 1, rect.height - 1, 3, 3)
 end
 
 function Studio:button(rect, label, action, options)
   options = options or {}; self.controls[#self.controls + 1] = { rect = rect, action = action, enabled = options.enabled ~= false, cursor = options.cursor or "action" }
   local selected = options.selected == true
-  local image = options.danger and self.images.button_danger or (selected and self.images.button_selected or self.images.button)
   local enabled = options.enabled ~= false
-  color({ 1, 1, 1 }, enabled and 1 or .28)
-  love.graphics.draw(image, rect.x, rect.y, 0, rect.width / image:getWidth(), rect.height / image:getHeight())
+  local fill, outline, tint = COLORS.surface2, COLORS.border, COLORS.text
+  if options.danger then fill, outline, tint = COLORS.danger, COLORS.red, COLORS.text
+  elseif selected then fill, outline, tint = COLORS.selected, COLORS.selected_border, COLORS.text end
+  if not enabled then fill, outline, tint = COLORS.surface, COLORS.border, COLORS.muted end
+  self:panel(rect, fill, outline)
   local font = self:font(.78)
   local text_y = rect.y + math.floor((rect.height - font:getHeight()) / 2) - 1
-  self:line(label, rect.x + 10, text_y, .78, enabled and (selected and COLORS.dark or COLORS.text) or COLORS.muted, rect.width - 20, "center")
+  self:line(label, rect.x + 8, text_y, .78, tint, rect.width - 16, "center")
 end
 
 function Studio:field(rect, label, kind, field)
   local focused = self.active and self.active.kind == kind and self.active.field == field
   self:panel(rect, focused and { .08, .20, .29 } or COLORS.surface2, focused and COLORS.blue or COLORS.border)
-  self:text(label, rect.x + 12, rect.y + 7, .68, COLORS.muted)
+  self:line(label, rect.x + 12, rect.y + 7, .68, COLORS.muted, rect.width - 24)
   local value = focused and self.draft or (kind == "screen" and self:current_screen()[field] or self:current_action()[field])
-  self:text(value, rect.x + 12, rect.y + 27, .88, focused and COLORS.gold or COLORS.text, rect.width - 24)
-  if focused then self:text("|", rect.x + 13 + #value * 8, rect.y + 27, .88, COLORS.blue) end
+  local font, visible = self:font(.88), ellipsize(self:font(.88), value, rect.width - 24)
+  self:line(visible, rect.x + 12, rect.y + 27, .88, focused and COLORS.gold or COLORS.text, rect.width - 24)
+  if focused then self:text("|", rect.x + 13 + math.min(font:getWidth(visible), rect.width - 30), rect.y + 27, .88, COLORS.blue) end
   self.controls[#self.controls + 1] = { rect = rect, action = { type = "field", kind = kind, field = field }, cursor = "text" }
 end
 
 function Studio:native_field(rect, label, target, field, value_type)
   local focused = self.active and self.active.kind == "native_field" and self.active.target == target and self.active.field == field
   self:panel(rect, focused and { .08, .20, .29 } or COLORS.surface2, focused and COLORS.blue or COLORS.border)
-  self:text(label, rect.x + 10, rect.y + 5, .58, COLORS.muted)
+  self:line(label, rect.x + 10, rect.y + 5, .58, COLORS.muted, rect.width - 20)
   local value = focused and self.draft or tostring(target[field] == nil and "" or target[field])
-  self:text(value, rect.x + 10, rect.y + 21, .72, focused and COLORS.gold or COLORS.text, rect.width - 20)
-  if focused then self:text("|", rect.x + 11 + #value * 7, rect.y + 21, .72, COLORS.blue) end
+  local font, visible = self:font(.72), ellipsize(self:font(.72), value, rect.width - 20)
+  self:line(visible, rect.x + 10, rect.y + 21, .72, focused and COLORS.gold or COLORS.text, rect.width - 20)
+  if focused then self:text("|", rect.x + 11 + math.min(font:getWidth(visible), rect.width - 26), rect.y + 21, .72, COLORS.blue) end
   self.controls[#self.controls + 1] = { rect = rect, action = { type = "native_field", target = target, field = field, value_type = value_type }, cursor = "text" }
+end
+
+function Studio:dock_title(rect, title, detail)
+  self:line(title, rect.x + 12, rect.y + 10, .64, COLORS.muted, rect.width - 24)
+  if detail then self:line(detail, rect.x + 12, rect.y + 10, .56, COLORS.muted, rect.width - 24, "right") end
+  color(COLORS.border); love.graphics.line(rect.x + 1, rect.y + 31.5, rect.x + rect.width - 1, rect.y + 31.5)
+end
+
+function Studio:status_mark(x, y, tint)
+  color(tint or COLORS.mint); love.graphics.setLineWidth(2)
+  love.graphics.line(x, y + 5, x + 4, y + 9, x + 11, y + 1)
+  love.graphics.setLineWidth(1)
 end
 
 function Studio:draw_header(view)
   color(COLORS.dark); love.graphics.rectangle("fill", 0, 0, view.width, view.header.height)
-  color(COLORS.blue); love.graphics.rectangle("fill", 0, view.header.height - 2, view.width, 2)
-  self:text("UNPOLISHED BEES", 20, 14, 2.1, COLORS.blue)
-  self:text("DATA-DRIVEN 2D STUDIO", 20, 55, .76, COLORS.muted)
-  local target = self.bridge.target
-  self:text("TARGET  " .. target, view.width - 450, 20, .72, COLORS.muted, 300, "right")
+  self:line("FILE    EDIT    VIEW    PROJECT    HELP", 12, 6, .64, COLORS.muted, 330)
+  local tabs = { home = "OVERVIEW", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
+  local title = tabs[self.tab] or "PROJECT"
+  self:panel({ x = 8, y = 27, width = 232, height = 30 }, COLORS.surface, COLORS.border)
+  self:line("UNPOLISHED BEES  /  " .. title, 18, 35, .70, COLORS.text, 212)
   local unsaved = self.dirty or self.room_dirty or self.native_dirty
-  self:text(unsaved and "UNSAVED" or "SYNCHRONIZED", view.width - 150, 20, .72, unsaved and COLORS.gold or COLORS.mint, 132, "right")
-  self:button({ x = view.width - 252, y = 46, width = 112, height = 30 }, "RELOAD", { type = "reload" })
-  self:button({ x = view.width - 128, y = 46, width = 112, height = 30 }, "PUBLISH", { type = "save" }, { selected = self.dirty })
+  self:line(unsaved and "UNSAVED" or "SAVED", view.width - 302, 7, .62, unsaved and COLORS.gold or COLORS.mint, 82, "right")
+  self:line("TARGET " .. self.bridge.target, view.width - 220, 7, .58, COLORS.muted, 210, "right")
+  self:button({ x = view.width - 176, y = 29, width = 78, height = 26 }, "RELOAD", { type = "reload" })
+  self:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save" }, { selected = self.dirty })
 end
 
 function Studio:draw_nav(view)
   self:panel(view.nav)
-  self:text("WORKSPACE", view.nav.x + 13, view.nav.y + 14, .72, COLORS.gold)
-  local tabs = { { "home", "OVERVIEW" }, { "native", "NATIVE PROJECT" }, { "rooms", "ROAG ROOMS" }, { "art", "ART & SPRITES" }, { "scenes", "SCENES" }, { "flow", "TITLE FLOW" }, { "publish", "PUBLISH" } }
+  self:line("TOOLS", view.nav.x + 5, view.nav.y + 8, .52, COLORS.muted, view.nav.width - 10, "center")
+  local tabs = { { "home", "HOME" }, { "native", "ASSET" }, { "rooms", "ROOM" }, { "art", "ART" }, { "scenes", "SCENE" }, { "flow", "FLOW" }, { "publish", "SAVE" } }
   for index, item in ipairs(tabs) do
-    self:button({ x = view.nav.x + 10, y = view.nav.y + 48 + (index - 1) * 52, width = view.nav.width - 20, height = 42 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
+    self:button({ x = view.nav.x + 7, y = view.nav.y + 30 + (index - 1) * 46, width = view.nav.width - 14, height = 38 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
   end
-  self:text("JSON ONLY", view.nav.x + 13, view.nav.y + view.nav.height - 70, .7, COLORS.mint)
-  self:text("Native assets and ROAG JSON are editable. Lua and saves stay read-only.", view.nav.x + 13, view.nav.y + view.nav.height - 50, .60, COLORS.muted, view.nav.width - 26)
+  self:line("JSON", view.nav.x + 4, view.nav.y + view.nav.height - 32, .52, COLORS.mint, view.nav.width - 8, "center")
+  self:line("ONLY", view.nav.x + 4, view.nav.y + view.nav.height - 17, .52, COLORS.muted, view.nav.width - 8, "center")
 end
 
 function Studio:draw_home(view)
-  self:panel(view.body)
-  self:text("A focused authoring boundary", view.body.x + 24, view.body.y + 24, 1.5, COLORS.text)
-  self:text("Edit ROAG’s presentation without loading, changing, or depending on a live run, account profile, fallen archive, route, or simulation system.", view.body.x + 24, view.body.y + 62, .86, COLORS.muted, view.body.width - 48)
+  self:workspace(view.body)
+  self:line("WORKSPACE OVERVIEW", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40)
+  self:text("Author the declared presentation layer without loading, changing, or depending on a live run, account profile, archive, route, or simulation.", view.body.x + 20, view.body.y + 49, .78, COLORS.muted, math.min(view.body.width - 40, 820))
   local cards = {
     { "NATIVE PROJECT", "Browse serializable scenes and flow assets, run the main scene, and inspect the data-first runtime preview.", "native", COLORS.mint },
     { "ROAG ROOMS", "Paint declared room-template geometry and preview deterministic connector-based room assembly.", "rooms", COLORS.gold },
@@ -368,8 +407,9 @@ function Studio:draw_home(view)
   }
   for index, card in ipairs(cards) do
     local column, row = (index - 1) % 2, math.floor((index - 1) / 2)
-    local rect = { x = view.body.x + 24 + column * (view.body.width * .48), y = view.body.y + 132 + row * 180, width = view.body.width * .43, height = 148 }
-    self:panel(rect, COLORS.surface2, card[4]); self:text(card[1], rect.x + 16, rect.y + 16, 1.05, card[4]); self:text(card[2], rect.x + 16, rect.y + 49, .76, COLORS.muted, rect.width - 32); self:button({ x = rect.x + 16, y = rect.y + 101, width = 140, height = 32 }, "OPEN", { type = "tab", tab = card[3] })
+    local gap, card_width = 14, math.min(390, (view.body.width - 54) / 2)
+    local rect = { x = view.body.x + 20 + column * (card_width + gap), y = view.body.y + 112 + row * 146, width = card_width, height = 128 }
+    self:panel(rect, COLORS.surface, card[4]); self:line(card[1], rect.x + 12, rect.y + 13, .82, COLORS.text, rect.width - 24); self:text(card[2], rect.x + 12, rect.y + 39, .68, COLORS.muted, rect.width - 24); self:button({ x = rect.x + 12, y = rect.y + 88, width = 90, height = 26 }, "OPEN", { type = "tab", tab = card[3] })
   end
 end
 
@@ -390,8 +430,8 @@ function Studio:draw_native_scene_node(node, canvas)
   elseif node.type == "label" then
     self:text(properties.text or node.id, x, y + 4, .9, selected and COLORS.gold or COLORS.text, width)
   elseif node.type == "button" then
-    self:panel({ x = x, y = y, width = width, height = height }, selected and { .12, .33, .36 } or COLORS.surface2, selected and COLORS.gold or COLORS.blue)
-    self:text(properties.text or node.id, x + 8, y + math.floor(height / 2 - 8), .74, COLORS.text, width - 16, "center")
+    self:panel({ x = x, y = y, width = width, height = height }, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line(properties.text or node.id, x + 8, y + math.floor(height / 2 - 8), .74, COLORS.text, width - 16, "center")
   else
     self:panel({ x = x, y = y, width = width, height = height }, COLORS.surface2, selected and COLORS.gold or COLORS.border)
     self:text(node.type:upper(), x + 7, y + 7, .58, COLORS.muted)
@@ -413,9 +453,9 @@ function Studio:draw_native_flow(flow, canvas)
   for _, node in ipairs(flow.nodes) do
     local point, selected = positions[node.id], self.native_selected_flow_node == node
     local rect = { x = canvas.x + point.x, y = canvas.y + point.y, width = 120, height = 60 }
-    self:panel(rect, selected and { .10, .27, .34 } or COLORS.surface2, selected and COLORS.gold or COLORS.blue)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
     self:text(node.type:upper(), rect.x + 7, rect.y + 8, .58, selected and COLORS.gold or COLORS.muted)
-    self:text(node.id:gsub("^graph%.", ""), rect.x + 7, rect.y + 28, .68, COLORS.text, rect.width - 14)
+    self:line(node.id:gsub("^graph%.", ""), rect.x + 7, rect.y + 28, .68, COLORS.text, rect.width - 14)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "native_flow_node", node = node }, cursor = "action" }
   end
 end
@@ -524,23 +564,22 @@ function Studio:current_room()
 end
 
 function Studio:draw_native(view)
-  local list = { x = view.body.x, y = view.body.y, width = math.max(282, view.body.width * .27), height = view.body.height }
+  local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .24, 258, 332), height = view.body.height }
   local canvas = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:panel(canvas)
-  self:text("NATIVE PROJECT", list.x + 14, list.y + 14, .74, COLORS.gold)
+  self:panel(list); self:workspace(canvas); self:dock_title(list, "ASSETS", "JSON")
   if not self.project_manifest then
     self:text("Project manifest unavailable:\n" .. tostring(self.project_error), list.x + 14, list.y + 48, .78, COLORS.red, list.width - 28)
     return
   end
-  self:text(self.project_manifest.name, list.x + 14, list.y + 36, .82, COLORS.text, list.width - 28)
-  self:text("CREATE", list.x + 14, list.y + 67, .62, COLORS.muted)
+  self:line(self.project_manifest.name, list.x + 14, list.y + 41, .72, COLORS.text, list.width - 28)
+  self:line("CREATE", list.x + 14, list.y + 65, .56, COLORS.muted, list.width - 28)
   local creates = { { "SCENE", "scene" }, { "TILESET", "tileset" }, { "MAP", "tilemap" }, { "FLOW", "flow" }, { "ROOM", "room_template" }, { "GEN", "generator" } }
   for index, item in ipairs(creates) do
     local column, row = (index - 1) % 3, math.floor((index - 1) / 3)
     self:button({ x = list.x + 10 + column * (list.width - 26) / 3, y = list.y + 83 + row * 36, width = (list.width - 32) / 3, height = 32 }, "+ " .. item[1], { type = "create_native_asset", asset_type = item[2] })
   end
-  self:text("DROP PNG / TILED JSON TO IMPORT", list.x + 14, list.y + 158, .56, COLORS.mint, list.width - 28)
-  self:text("JSON ASSETS  ·  WHEEL TO SCROLL", list.x + 14, list.y + 178, .58, COLORS.muted)
+  self:line("DROP PNG / TILED JSON TO IMPORT", list.x + 14, list.y + 158, .56, COLORS.mint, list.width - 28)
+  self:line("JSON ASSETS · WHEEL TO SCROLL", list.x + 14, list.y + 178, .58, COLORS.muted, list.width - 28)
   local asset_top, asset_bottom, row_height = list.y + 197, list.y + list.height - 214, 34
   local visible_rows = math.max(1, math.floor((asset_bottom - asset_top) / row_height))
   self.native_asset_scroll = clamp(self.native_asset_scroll or 0, 0, math.max(0, #self.native_assets - visible_rows))
@@ -548,9 +587,9 @@ function Studio:draw_native(view)
     local asset = self.native_assets[index]
     local selected = index == self.selected_asset
     local rect = { x = list.x + 9, y = asset_top + (index - self.native_asset_scroll - 1) * row_height, width = list.width - 18, height = 29 }
-    self:panel(rect, selected and { .10, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:text(asset.id, rect.x + 8, rect.y + 4, .68, selected and COLORS.gold or COLORS.text, rect.width - 16)
-    self:text(asset.entry.type:upper(), rect.x + 8, rect.y + 18, .50, COLORS.muted, rect.width - 16)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line(asset.id, rect.x + 8, rect.y + 4, .68, selected and COLORS.text or COLORS.text, rect.width - 16)
+    self:line(asset.entry.type:upper(), rect.x + 8, rect.y + 18, .50, COLORS.muted, rect.width - 16)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "native_asset", index = index }, cursor = "action" }
   end
   self.native_asset_list_rect = { x = list.x + 6, y = asset_top, width = list.width - 12, height = math.max(0, asset_bottom - asset_top) }
@@ -561,14 +600,17 @@ function Studio:draw_native(view)
   self:button({ x = list.x + 10, y = list.y + list.height - 77, width = (list.width - 28) / 2, height = 36 }, "RUN PROJECT", { type = "run_project" }, { selected = self.runtime and self.runtime.scene ~= nil })
   self:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 77, width = (list.width - 28) / 2, height = 36 }, "RUN MAIN", { type = "run_scene" })
   self:button({ x = list.x + 10, y = list.y + list.height - 36, width = list.width - 20, height = 30 }, "REMOVE FROM INDEX", { type = "remove_native_asset" }, { danger = true, enabled = self:current_native_asset() and self:current_native_asset().id ~= self.project_manifest.main_scene_id })
-  self:text("PLAY PROJECT and MAIN remain distinct. Native assets are declared JSON only.", canvas.x + 16, canvas.y + 12, .62, COLORS.muted, canvas.width - 32)
+  local context = { x = canvas.x + 8, y = canvas.y + 8, width = canvas.width - 16, height = 146 }
+  self:panel(context, COLORS.surface, COLORS.border)
+  self:line("DOCUMENT", context.x + 8, context.y + 8, .54, COLORS.muted, context.width - 16)
+  self:line("PLAY PROJECT and MAIN remain distinct. Native assets are declared JSON only.", context.x + 8, context.y + 24, .58, COLORS.muted, context.width - 16)
   local selected = self:current_native_asset()
   local inspector_height = 168
   if selected then
-    self:text("INSPECTOR  " .. selected.id:upper(), canvas.x + 16, canvas.y + 36, .84, COLORS.blue)
-    self:text("TYPE " .. selected.entry.type:upper() .. "  ·  " .. selected.entry.path, canvas.x + 16, canvas.y + 58, .57, COLORS.muted, canvas.width - 32)
+    self:line(selected.id:upper(), context.x + 8, context.y + 43, .80, COLORS.text, context.width - 16)
+    self:line("TYPE " .. selected.entry.type:upper() .. " · " .. selected.entry.path, context.x + 8, context.y + 65, .56, COLORS.muted, context.width - 16)
   end
-  local info_y = canvas.y + 78
+  local info_y = context.y + 79
   if self.native_asset_data and self.native_asset_data.type == "scene" then
     local node, props = self.native_selected_node, self.native_selected_node and (self.native_selected_node.properties or {})
     if node then
@@ -625,8 +667,8 @@ function Studio:draw_native(view)
   elseif self.native_asset_data and self.native_asset_data.type == "room_template" then
     self:text("Room-template assets are serializable primitives. Use ROAG ROOMS for its live companion corpus and connector diagnostics.", canvas.x + 16, info_y + 12, .68, COLORS.muted, canvas.width - 32)
   end
-  local preview = { x = canvas.x + 16, y = canvas.y + inspector_height, width = canvas.width - 32, height = canvas.height - inspector_height - 16 }
-  self:panel(preview, COLORS.dark, COLORS.border)
+  local preview = { x = canvas.x + 8, y = canvas.y + inspector_height, width = canvas.width - 16, height = canvas.height - inspector_height - 8 }
+  self:workspace(preview)
   if self.native_asset_data and self.native_asset_data.type == "scene" then
     local tree = { x = preview.x + 8, y = preview.y + 8, width = math.min(178, math.max(128, preview.width * .24)), height = preview.height - 16 }
     local scene_canvas = { x = tree.x + tree.width + 10, y = preview.y + 1, width = preview.width - tree.width - 20, height = preview.height - 2 }
@@ -637,8 +679,8 @@ function Studio:draw_native(view)
       if row >= math.floor((tree.height - 44) / 28) then return end
       local selected_node = node == self.native_selected_node
       local rect = { x = tree.x + 6, y = tree.y + 27 + row * 28, width = tree.width - 12, height = 24 }
-      self:panel(rect, selected_node and { .10, .27, .34 } or COLORS.surface2, selected_node and COLORS.gold or COLORS.border)
-      self:text(string.rep("· ", nesting) .. node.id:gsub("^node%.", ""), rect.x + 5, rect.y + 5, .53, selected_node and COLORS.gold or COLORS.text, rect.width - 10)
+      self:panel(rect, selected_node and COLORS.selected or COLORS.surface2, selected_node and COLORS.selected_border or COLORS.border)
+      self:line(string.rep("· ", nesting) .. node.id:gsub("^node%.", ""), rect.x + 5, rect.y + 5, .53, selected_node and COLORS.text or COLORS.text, rect.width - 10)
       self.controls[#self.controls + 1] = { rect = rect, action = { type = self.native_reparent_source and "native_reparent_here" or "native_node", node = node }, cursor = "action" }
       row = row + 1
       for _, child in ipairs(node.children or {}) do draw_tree(child, nesting + 1) end
@@ -673,10 +715,9 @@ function Studio:draw_native(view)
 end
 
 function Studio:draw_rooms(view)
-  local list = { x = view.body.x, y = view.body.y, width = math.max(264, view.body.width * .25), height = view.body.height }
+  local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .23, 246, 320), height = view.body.height }
   local editor = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:panel(editor)
-  self:text("ROAG ROOM JSON", list.x + 14, list.y + 14, .74, COLORS.gold)
+  self:panel(list); self:workspace(editor); self:dock_title(list, "ROOMS", "JSON")
   for index, corpus_id in ipairs(Workspace.CORPORA) do
     self:button({ x = list.x + 10, y = list.y + 43 + (index - 1) * 43, width = list.width - 20, height = 34 }, corpus_id:upper(), { type = "corpus", id = corpus_id }, { selected = self.selected_corpus == corpus_id })
   end
@@ -689,8 +730,8 @@ function Studio:draw_rooms(view)
     local room = corpus.rooms[index]
     local selected = index == self.selected_room
     local rect = { x = list.x + 8, y = list_top + (index - self.room_scroll - 1) * row_height, width = list.width - 16, height = 28 }
-    self:panel(rect, selected and { .10, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:line(room.data.id:gsub("^room%." .. self.selected_corpus .. "%.", ""), rect.x + 7, rect.y + 6, .64, selected and COLORS.gold or COLORS.text, rect.width - 14)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line(room.data.id:gsub("^room%." .. self.selected_corpus .. "%.", ""), rect.x + 7, rect.y + 6, .64, COLORS.text, rect.width - 14)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "room", index = index }, cursor = "action" }
   end
   self.room_list_rect = { x = list.x + 6, y = list_top, width = list.width - 12, height = math.max(0, controls_top - list_top - 6) }
@@ -702,17 +743,18 @@ function Studio:draw_rooms(view)
   self:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 91, width = (list.width - 28) / 2, height = 32 }, "REDO", { type = "redo_room" }, { enabled = self.room_histories[self:room_history_key()] and self.room_histories[self:room_history_key()]:can_redo() })
   self:button({ x = list.x + 10, y = list.y + list.height - 48, width = list.width - 20, height = 40 }, self.room_dirty and "SAVE ROOM" or "VALIDATE ROOM", { type = "save_room" }, { selected = self.room_dirty })
   local room = self:current_room()
-  self:text("TEMPLATE: " .. room.data.id:upper(), editor.x + 16, editor.y + 16, .88, COLORS.blue)
-  self:text("Click a cell to paint. The edit changes only this declared JSON template; Lua generation code is untouched.", editor.x + 16, editor.y + 42, .66, COLORS.muted, editor.width - 32)
+  self:panel({ x = editor.x + 8, y = editor.y + 8, width = editor.width - 16, height = 62 }, COLORS.surface, COLORS.border)
+  self:line(room.data.id:upper(), editor.x + 18, editor.y + 19, .78, COLORS.text, editor.width - 36)
+  self:line("Click cells to paint the declared JSON template. Runtime generator code stays untouched.", editor.x + 18, editor.y + 43, .60, COLORS.muted, editor.width - 36)
   local grid = { x = editor.x + 18, y = editor.y + 82, width = math.min(editor.width * .48, editor.height - 154), height = math.min(editor.width * .48, editor.height - 154) }
-  self:panel(grid, COLORS.dark, COLORS.border)
+  self:workspace(grid)
   local tile = math.floor(math.min((grid.width - 20) / room.data.width, (grid.height - 20) / room.data.height))
   local grid_width, grid_height = room.data.width * tile, room.data.height * tile
   local origin_x, origin_y = grid.x + (grid.width - grid_width) / 2, grid.y + (grid.height - grid_height) / 2
   for row = 1, room.data.height do
     for column = 1, room.data.width do
       local glyph = room.data.layout[row]:sub(column, column)
-      local fill = glyph == "#" and { .28, .39, .48 } or { .08, .15, .19 }
+      local fill = glyph == "#" and { .34, .38, .40 } or { .075, .09, .095 }
       color(fill); love.graphics.rectangle("fill", origin_x + (column - 1) * tile, origin_y + (row - 1) * tile, tile - 1, tile - 1)
       self.controls[#self.controls + 1] = { rect = { x = origin_x + (column - 1) * tile, y = origin_y + (row - 1) * tile, width = tile, height = tile }, action = { type = "room_paint", row = row, column = column }, cursor = "picker" }
     end
@@ -756,26 +798,26 @@ function Studio:draw_rooms(view)
 end
 
 function Studio:draw_art(view)
-  local left = { x = view.body.x, y = view.body.y, width = math.max(290, view.body.width * .29), height = view.body.height }
+  local left = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .26, 270, 350), height = view.body.height }
   local middle = { x = left.x + left.width + 16, y = view.body.y, width = view.body.width - left.width - 16, height = view.body.height }
-  self:panel(left); self:panel(middle)
-  self:text("PRESENTATION PACK", left.x + 14, left.y + 14, .74, COLORS.gold)
+  self:panel(left); self:workspace(middle); self:dock_title(left, "ART PACKS", "LICENSED")
   local packs = self.data.catalog.art_packs
   for index, pack in ipairs(packs) do
     local selected = pack.id == self.data.art_pack.art_pack_id
     local row_y = left.y + 43 + (index - 1) * 56
     self:button({ x = left.x + 10, y = row_y, width = left.width - 20, height = 36 }, pack.label, { type = "pack", index = index }, { selected = selected })
-    self:line(pack.license .. " · " .. pack.credit, left.x + 18, row_y + 39, .54, selected and COLORS.dark or COLORS.muted, left.width - 36)
+    self:line(pack.license .. " · " .. pack.credit, left.x + 18, row_y + 39, .54, COLORS.muted, left.width - 36)
   end
   local selected_pack
   for _, pack in ipairs(packs) do if pack.id == self.data.art_pack.art_pack_id then selected_pack = pack end end
-  self:text("ROLE MAPPER", middle.x + 16, middle.y + 14, .74, COLORS.gold)
-  self:text(selected_pack.editable_roles and "Original ROAG 1-bit mapping — changes below are live role assignments." or "This pack ships its own stable starter mapping. Choose ROAG 1-BIT to edit individual role tiles.", middle.x + 16, middle.y + 39, .74, selected_pack.editable_roles and COLORS.mint or COLORS.muted, middle.width - 32)
+  self:panel({ x = middle.x + 8, y = middle.y + 8, width = middle.width - 16, height = 58 }, COLORS.surface, COLORS.border)
+  self:line("SPRITE MAPPING", middle.x + 18, middle.y + 18, .72, COLORS.text, middle.width - 36)
+  self:line(selected_pack.editable_roles and "ROAG 1-bit mapping — assignments are live." or "This pack provides its own stable mapping. Choose ROAG 1-BIT to edit individual role tiles.", middle.x + 18, middle.y + 40, .60, selected_pack.editable_roles and COLORS.mint or COLORS.muted, middle.width - 36)
   if not selected_pack.editable_roles then return end
   local roles_rect = { x = middle.x + 14, y = middle.y + 78, width = 224, height = middle.height - 92 }
   local sheet_rect = { x = roles_rect.x + roles_rect.width + 16, y = roles_rect.y, width = middle.width - roles_rect.width - 44, height = roles_rect.height }
-  self:panel(roles_rect, COLORS.surface2); self:panel(sheet_rect, COLORS.surface2)
-  self:text("ROLES", roles_rect.x + 10, roles_rect.y + 9, .7, COLORS.muted)
+  self:panel(roles_rect, COLORS.surface); self:workspace(sheet_rect)
+  self:dock_title(roles_rect, "ROLES", "MAP")
   self:button({ x = roles_rect.x + 10, y = roles_rect.y + roles_rect.height - 42, width = roles_rect.width - 20, height = 30 }, "UNDO", { type = "undo" }, { enabled = #self.undo_stack > 0 })
   local visible, y = {}, roles_rect.y + 35
   for index, role in ipairs(ROLES) do
@@ -786,8 +828,8 @@ function Studio:draw_art(view)
   for local_index = self.scroll + 1, math.min(#visible, self.scroll + max_rows) do
     local item = visible[local_index]; local role = item.role; local selected = item.source == self.selected_role
     local rect = { x = roles_rect.x + 7, y = y, width = roles_rect.width - 14, height = 27 }
-    self:panel(rect, selected and { .1, .27, .34 } or COLORS.surface, selected and COLORS.blue or COLORS.border)
-    self:line(role[2], rect.x + 7, rect.y + 5, .73, selected and COLORS.gold or COLORS.text, rect.width - 56)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line(role[2], rect.x + 7, rect.y + 5, .73, COLORS.text, rect.width - 56)
     local map = self.data.sprites.sprites[role[1]]; self:line(map and (map.column .. "," .. map.row) or "—", rect.x + rect.width - 44, rect.y + 6, .62, COLORS.muted, 36, "right")
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "role", index = item.source }, cursor = "action" }
     y = y + 31
@@ -813,54 +855,53 @@ function Studio:draw_sheet(rect)
 end
 
 function Studio:draw_scenes(view)
-  local list = { x = view.body.x, y = view.body.y, width = math.max(254, view.body.width * .26), height = view.body.height }
+  local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .23, 246, 320), height = view.body.height }
   local edit = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:panel(edit)
-  self:text("SCENES", list.x + 14, list.y + 14, .74, COLORS.gold)
+  self:panel(list); self:workspace(edit); self:dock_title(list, "SCENES", "ORDER")
   for index, screen in ipairs(self.data.screens.screens) do
     local selected = index == self.selected_screen; local rect = { x = list.x + 10, y = list.y + 44 + (index - 1) * 47, width = list.width - 20, height = 39 }
-    self:panel(rect, selected and { .1, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:text(screen.title, rect.x + 8, rect.y + 6, .8, selected and COLORS.gold or COLORS.text, rect.width - 16); self:text(screen.id .. " · " .. screen.layout, rect.x + 8, rect.y + 23, .57, COLORS.muted, rect.width - 16)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line(screen.title, rect.x + 8, rect.y + 6, .8, COLORS.text, rect.width - 16); self:line(screen.id .. " · " .. screen.layout, rect.x + 8, rect.y + 23, .57, COLORS.muted, rect.width - 16)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "screen", index = index }, cursor = "action" }
   end
   self:button({ x = list.x + 10, y = list.y + list.height - 86, width = (list.width - 28) / 2, height = 32 }, "MOVE UP", { type = "screen_move", delta = -1 }, { enabled = self.selected_screen > 1 })
   self:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 86, width = (list.width - 28) / 2, height = 32 }, "MOVE DOWN", { type = "screen_move", delta = 1 }, { enabled = self.selected_screen < #self.data.screens.screens })
   self:text("Ordering is editor/inspection order; ROAG’s safe runtime behavior stays in App.", list.x + 12, list.y + list.height - 46, .57, COLORS.muted, list.width - 24)
-  local screen = self:current_screen(); self:text("SCENE: " .. screen.id:upper(), edit.x + 18, edit.y + 16, 1.05, COLORS.blue); self:text("Validated presentation copy and visual tokens", edit.x + 18, edit.y + 44, .73, COLORS.muted)
+  local screen = self:current_screen(); self:panel({ x = edit.x + 8, y = edit.y + 8, width = edit.width - 16, height = 62 }, COLORS.surface, COLORS.border); self:line(screen.id:upper(), edit.x + 18, edit.y + 19, .84, COLORS.text, edit.width - 36); self:line("Validated presentation copy and visual tokens", edit.x + 18, edit.y + 44, .60, COLORS.muted, edit.width - 36)
   self:field({ x = edit.x + 18, y = edit.y + 82, width = edit.width - 36, height = 60 }, "TITLE", "screen", "title")
   self:field({ x = edit.x + 18, y = edit.y + 151, width = edit.width - 36, height = 60 }, "SUBTITLE", "screen", "subtitle")
   self:field({ x = edit.x + 18, y = edit.y + 220, width = edit.width - 36, height = 60 }, "FOOTER", "screen", "footer")
   self:button({ x = edit.x + 18, y = edit.y + 303, width = 215, height = 36 }, "LAYOUT: " .. screen.layout:upper(), { type = "cycle_layout" })
   self:button({ x = edit.x + 245, y = edit.y + 303, width = 215, height = 36 }, "ACCENT: " .. screen.accent:upper(), { type = "cycle_accent" })
-  local preview = { x = edit.x + 18, y = edit.y + 367, width = edit.width - 36, height = edit.height - 385 }; self:panel(preview, COLORS.dark, COLORS.border)
+  local preview = { x = edit.x + 18, y = edit.y + 367, width = edit.width - 36, height = edit.height - 385 }; self:workspace(preview)
   self:text(screen.title, preview.x + 24, preview.y + 24, 1.5, COLORS[screen.accent] or COLORS.blue, preview.width - 48, "center"); self:text(screen.subtitle, preview.x + 24, preview.y + 66, .76, COLORS.muted, preview.width - 48, "center")
   self:panel({ x = preview.x + preview.width * .16, y = preview.y + 118, width = preview.width * .68, height = 44 }, COLORS.surface2, COLORS[screen.accent] or COLORS.blue); self:text("LIVE SCREEN PREVIEW", preview.x + 24, preview.y + 132, .8, COLORS.gold, preview.width - 48, "center")
   self:text(screen.footer, preview.x + 24, preview.y + preview.height - 33, .72, COLORS.muted, preview.width - 48, "center")
 end
 
 function Studio:draw_flow(view)
-  local list = { x = view.body.x, y = view.body.y, width = math.max(310, view.body.width * .34), height = view.body.height }
+  local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .28, 280, 370), height = view.body.height }
   local edit = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:panel(edit)
-  self:text("TITLE FLOW", list.x + 14, list.y + 14, .74, COLORS.gold); self:text("Order determines what the player sees. Targets are fixed safe actions.", list.x + 14, list.y + 36, .66, COLORS.muted, list.width - 28)
+  self:panel(list); self:workspace(edit); self:dock_title(list, "TITLE FLOW", "SAFE")
+  self:text("Order determines what the player sees. Targets are fixed safe actions.", list.x + 14, list.y + 39, .66, COLORS.muted, list.width - 28)
   for index, action in ipairs(self.data.flow.title_actions) do
     local selected = index == self.selected_action; local rect = { x = list.x + 10, y = list.y + 75 + (index - 1) * 64, width = list.width - 20, height = 55 }
-    self:panel(rect, selected and { .1, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:text((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, selected and COLORS.gold or COLORS.text, rect.width - 20); self:text("> " .. action.target, rect.x + 10, rect.y + 29, .63, COLORS.muted, rect.width - 20)
+    self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
+    self:line((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, COLORS.text, rect.width - 20); self:line("> " .. action.target, rect.x + 10, rect.y + 29, .63, COLORS.muted, rect.width - 20)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "action", index = index }, cursor = "action" }
   end
   self:button({ x = list.x + 10, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE UP", { type = "action_move", delta = -1 }, { enabled = self.selected_action > 1 })
   self:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE DOWN", { type = "action_move", delta = 1 }, { enabled = self.selected_action < #self.data.flow.title_actions })
-  local action = self:current_action(); self:text("ACTION: " .. action.id:upper(), edit.x + 18, edit.y + 18, 1.05, COLORS.blue); self:text("Declared target: " .. action.target .. " (game behavior is not scriptable here)", edit.x + 18, edit.y + 46, .74, COLORS.muted)
+  local action = self:current_action(); self:panel({ x = edit.x + 8, y = edit.y + 8, width = edit.width - 16, height = 62 }, COLORS.surface, COLORS.border); self:line(action.id:upper(), edit.x + 18, edit.y + 19, .84, COLORS.text, edit.width - 36); self:line("Declared target: " .. action.target .. " (game behavior is not scriptable here)", edit.x + 18, edit.y + 44, .60, COLORS.muted, edit.width - 36)
   self:field({ x = edit.x + 18, y = edit.y + 88, width = edit.width - 36, height = 60 }, "VISIBLE LABEL", "action", "label")
   self:field({ x = edit.x + 18, y = edit.y + 157, width = edit.width - 36, height = 60 }, "HELPER DESCRIPTION", "action", "description")
-  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:panel(flow, COLORS.dark, COLORS.border); self:text("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .72, COLORS.gold); self:text("TITLE", flow.x + 20, flow.y + 66, 1.1, COLORS.blue); self:text(">", flow.x + flow.width * .38, flow.y + 68, 1.15, COLORS.muted); self:text(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.1, COLORS.mint); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
+  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:workspace(flow); self:line("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .62, COLORS.muted, flow.width - 32); self:line("TITLE", flow.x + 20, flow.y + 66, 1.0, COLORS.text, flow.width * .30); self:line(">", flow.x + flow.width * .38, flow.y + 68, 1.0, COLORS.muted); self:line(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.0, COLORS.mint, flow.width * .42); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
 end
 
 function Studio:draw_publish(view)
-  self:panel(view.body); self:text("Validate, then publish", view.body.x + 24, view.body.y + 24, 1.5, COLORS.text); self:text("A publish operation validates every document before it writes. It uses verified atomic replacement on four explicit paths only.", view.body.x + 24, view.body.y + 63, .82, COLORS.muted, view.body.width - 48)
+  self:workspace(view.body); self:line("VALIDATE, THEN PUBLISH", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40); self:text("A publish operation validates every document before it writes. It uses verified atomic replacement on four explicit paths only.", view.body.x + 20, view.body.y + 49, .75, COLORS.muted, math.min(view.body.width - 40, 760))
   local files = { "content/screens/legacy.json", "content/presentation/flow.json", "content/presentation/art_pack.json", "sprite_editor/mappings.json" }
-  for index, path in ipairs(files) do local y = view.body.y + 125 + (index - 1) * 56; self:panel({ x = view.body.x + 24, y = y, width = view.body.width - 48, height = 42 }, COLORS.surface2, COLORS.border); color(COLORS.mint); love.graphics.draw(self.images.icon_check, view.body.x + 38, y + 10, 0, .55, .55); self:text(path, view.body.x + 68, y + 12, .8, COLORS.text) end
+  for index, path in ipairs(files) do local y = view.body.y + 125 + (index - 1) * 56; self:panel({ x = view.body.x + 24, y = y, width = view.body.width - 48, height = 42 }, COLORS.surface2, COLORS.border); self:status_mark(view.body.x + 38, y + 13); self:line(path, view.body.x + 68, y + 12, .8, COLORS.text, view.body.width - 104) end
   self:button({ x = view.body.x + 24, y = view.body.y + 386, width = 228, height = 48 }, self.dirty and "PUBLISH CHANGES" or "VALIDATE & PUBLISH", { type = "save" }, { selected = self.dirty })
   self:text("Not writable: active_run.json, meta_profile.json, fallen_characters.json, simulation source, route content, boss content, or any world/persistence data.", view.body.x + 24, view.body.y + 456, .7, COLORS.muted, view.body.width - 48)
 end
@@ -877,7 +918,7 @@ function Studio:draw()
   elseif self.tab == "flow" then self:draw_flow(view)
   elseif self.tab == "publish" then self:draw_publish(view)
   else self:draw_home(view) end
-  self:panel(view.footer, COLORS.dark, COLORS.border); self:text(self.status, view.footer.x + 12, view.footer.y + 11, .68, COLORS.muted, view.footer.width - 24)
+  self:panel(view.footer, COLORS.dark, COLORS.border); self:line(self.status, view.footer.x + 10, view.footer.y + 4, .58, COLORS.muted, view.footer.width - 20)
 end
 
 function Studio:move(list, index, delta)
