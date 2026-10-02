@@ -271,8 +271,8 @@ function Studio:layout()
   return {
     width = width, height = height,
     header = { x = 0, y = 0, width = width, height = 66 },
-    nav = { x = 8, y = 74, width = 56, height = height - 110 },
-    body = { x = 74, y = 74, width = width - 82, height = height - 110 },
+    nav = { x = 8, y = 74, width = 78, height = height - 110 },
+    body = { x = 96, y = 74, width = width - 104, height = height - 110 },
     footer = { x = 8, y = height - 28, width = width - 16, height = 20 },
   }
 end
@@ -336,7 +336,7 @@ end
 
 function Studio:field(rect, label, kind, field)
   local focused = self.active and self.active.kind == kind and self.active.field == field
-  self:panel(rect, focused and { .08, .20, .29 } or COLORS.surface2, focused and COLORS.blue or COLORS.border)
+  self:panel(rect, focused and COLORS.selected or COLORS.surface2, focused and COLORS.selected_border or COLORS.border)
   self:line(label, rect.x + 12, rect.y + 7, .68, COLORS.muted, rect.width - 24)
   local value = focused and self.draft or (kind == "screen" and self:current_screen()[field] or self:current_action()[field])
   local font, visible = self:font(.88), ellipsize(self:font(.88), value, rect.width - 24)
@@ -347,7 +347,7 @@ end
 
 function Studio:native_field(rect, label, target, field, value_type)
   local focused = self.active and self.active.kind == "native_field" and self.active.target == target and self.active.field == field
-  self:panel(rect, focused and { .08, .20, .29 } or COLORS.surface2, focused and COLORS.blue or COLORS.border)
+  self:panel(rect, focused and COLORS.selected or COLORS.surface2, focused and COLORS.selected_border or COLORS.border)
   self:line(label, rect.x + 10, rect.y + 5, .58, COLORS.muted, rect.width - 20)
   local value = focused and self.draft or tostring(target[field] == nil and "" or target[field])
   local font, visible = self:font(.72), ellipsize(self:font(.72), value, rect.width - 20)
@@ -531,7 +531,7 @@ function Studio:draw_native_tilemap(map, canvas)
   end
   love.graphics.setScissor()
   self.map_viewport = canvas
-  self:text((map.infinite and "INFINITE / SPARSE" or (map.width .. " × " .. map.height)) .. "  ·  " .. layer.id .. "  ·  " .. (image and "IMAGE TILESET" or "NO IMAGE / NUMBER PREVIEW"), canvas.x + 10, canvas.y + canvas.height - 22, .58, COLORS.mint, canvas.width - 20)
+  self:line((map.infinite and "INFINITE / SPARSE" or (map.width .. " × " .. map.height)) .. "  ·  " .. layer.id .. "  ·  " .. (image and "IMAGE TILESET" or "NO IMAGE / NUMBER PREVIEW"), canvas.x + 10, canvas.y + canvas.height - 22, .58, COLORS.mint, canvas.width - 20)
 end
 
 function Studio:draw_native_tileset(tileset, canvas)
@@ -555,7 +555,7 @@ function Studio:draw_native_tileset(tileset, canvas)
     end
   end
   love.graphics.setLineWidth(1)
-  self:text("" .. columns .. " × " .. rows .. " TILES  ·  CLICK A CELL TO MAKE IT THE MAP BRUSH", x, y + height + 12, .62, COLORS.mint, math.min(width, canvas.width - 32))
+  self:line("" .. columns .. " × " .. rows .. " TILES · CLICK A CELL TO MAKE IT THE MAP BRUSH", x, y + height + 12, .62, COLORS.mint, math.min(width, canvas.width - 32))
 end
 
 function Studio:current_room()
@@ -615,7 +615,7 @@ function Studio:draw_native(view)
     local node, props = self.native_selected_node, self.native_selected_node and (self.native_selected_node.properties or {})
     if node then
       node.properties = props
-      self:text(node.id .. "  ·  " .. node.type:upper(), canvas.x + 16, info_y, .67, COLORS.gold)
+      self:line(node.id .. " · " .. node.type:upper(), canvas.x + 16, info_y, .67, COLORS.gold, canvas.width - 32)
       self:native_field({ x = canvas.x + 16, y = info_y + 20, width = 78, height = 42 }, "X", props, "x", "number")
       self:native_field({ x = canvas.x + 100, y = info_y + 20, width = 78, height = 42 }, "Y", props, "y", "number")
       self:native_field({ x = canvas.x + 184, y = info_y + 20, width = 78, height = 42 }, "WIDTH", props, "width", "number")
@@ -630,7 +630,7 @@ function Studio:draw_native(view)
     end
   elseif self.native_asset_data and self.native_asset_data.type == "tilemap" then
     local map, layer = self.native_asset_data, self:current_map_layer(self.native_asset_data)
-    self:text("LAYERS  ·  brush " .. tostring(self.map_brush or 1) .. "  ·  WHEEL ZOOMS · RIGHT DRAG PANS", canvas.x + 16, info_y, .62, COLORS.gold, canvas.width - 32)
+    self:line("LAYERS · BRUSH " .. tostring(self.map_brush or 1) .. " · WHEEL ZOOMS · RIGHT DRAG PANS", canvas.x + 16, info_y, .62, COLORS.gold, canvas.width - 32)
     for index, item in ipairs(map.layers) do
       self:button({ x = canvas.x + 16 + (index - 1) * 112, y = info_y + 22, width = 106, height = 31 }, item.id:gsub("^layer%.", ""), { type = "select_map_layer", index = index }, { selected = index == self.selected_map_layer })
     end
@@ -643,14 +643,14 @@ function Studio:draw_native(view)
     self:native_field({ x = canvas.x + 16, y = info_y + 8, width = 184, height = 42 }, "PNG PATH", data.texture, "path", "text")
     self:native_field({ x = canvas.x + 206, y = info_y + 8, width = 100, height = 42 }, "TILE W", data, "tile_width", "number")
     self:native_field({ x = canvas.x + 312, y = info_y + 8, width = 100, height = 42 }, "TILE H", data, "tile_height", "number")
-    self:text("Click a visible tile to select it for tilemap painting.", canvas.x + 16, info_y + 62, .62, COLORS.mint)
+    self:line("Click a visible tile to select it for tilemap painting.", canvas.x + 16, info_y + 62, .62, COLORS.mint, canvas.width - 32)
   elseif self.native_asset_data and self.native_asset_data.type == "flow" then
     local flow, node = self.native_asset_data, self.native_selected_flow_node
     self:button({ x = canvas.x + 16, y = info_y + 8, width = 100, height = 32 }, "+ EVENT", { type = "add_flow_node", node_type = "event" })
     self:button({ x = canvas.x + 122, y = info_y + 8, width = 118, height = 32 }, "+ TRANSITION", { type = "add_flow_node", node_type = "transition" })
     self:button({ x = canvas.x + 246, y = info_y + 8, width = 110, height = 32 }, "+ VARIABLE", { type = "add_flow_node", node_type = "set_variable" })
     if node then
-      self:text(node.id .. "  ·  " .. node.type:upper(), canvas.x + 16, info_y + 48, .64, COLORS.gold)
+      self:line(node.id .. " · " .. node.type:upper(), canvas.x + 16, info_y + 48, .64, COLORS.gold, canvas.width - 32)
       if node.event then self:native_field({ x = canvas.x + 16, y = info_y + 68, width = 160, height = 42 }, "EVENT", node, "event", "text") end
       if node.scene_id then self:native_field({ x = canvas.x + 182, y = info_y + 68, width = 160, height = 42 }, "SCENE ID", node, "scene_id", "text") end
       if node.variable then self:native_field({ x = canvas.x + 348, y = info_y + 68, width = 120, height = 42 }, "VARIABLE", node, "variable", "text") end
@@ -663,7 +663,7 @@ function Studio:draw_native(view)
     self:native_field({ x = canvas.x + 132, y = info_y + 8, width = 110, height = 42 }, "HEIGHT", settings, "height", "number")
     self:native_field({ x = canvas.x + 248, y = info_y + 8, width = 110, height = 42 }, "SEED", settings, "seed", "number")
     self:native_field({ x = canvas.x + 364, y = info_y + 8, width = 110, height = 42 }, "THRESHOLD", settings, "threshold", "number")
-    self:text("" .. data.generator_type:upper() .. " is deterministic: same JSON settings, same generated map.", canvas.x + 16, info_y + 62, .62, COLORS.mint)
+    self:line("" .. data.generator_type:upper() .. " is deterministic: same JSON settings, same generated map.", canvas.x + 16, info_y + 62, .62, COLORS.mint, canvas.width - 32)
   elseif self.native_asset_data and self.native_asset_data.type == "room_template" then
     self:text("Room-template assets are serializable primitives. Use ROAG ROOMS for its live companion corpus and connector diagnostics.", canvas.x + 16, info_y + 12, .68, COLORS.muted, canvas.width - 32)
   end
@@ -673,7 +673,7 @@ function Studio:draw_native(view)
     local tree = { x = preview.x + 8, y = preview.y + 8, width = math.min(178, math.max(128, preview.width * .24)), height = preview.height - 16 }
     local scene_canvas = { x = tree.x + tree.width + 10, y = preview.y + 1, width = preview.width - tree.width - 20, height = preview.height - 2 }
     self:panel(tree, COLORS.surface, COLORS.border)
-    self:text(self.native_reparent_source and "PICK NEW PARENT" or "SCENE TREE", tree.x + 8, tree.y + 8, .58, self.native_reparent_source and COLORS.gold or COLORS.muted, tree.width - 16)
+    self:line(self.native_reparent_source and "PICK NEW PARENT" or "SCENE TREE", tree.x + 8, tree.y + 8, .58, self.native_reparent_source and COLORS.gold or COLORS.muted, tree.width - 16)
     local row = 0
     local function draw_tree(node, nesting)
       if row >= math.floor((tree.height - 44) / 28) then return end
@@ -686,13 +686,13 @@ function Studio:draw_native(view)
       for _, child in ipairs(node.children or {}) do draw_tree(child, nesting + 1) end
     end
     draw_tree(self.native_asset_data.root, 0)
-    self:text("SELECT NODE · DRAG CANVAS", tree.x + 7, tree.y + tree.height - 18, .49, COLORS.muted, tree.width - 14, "center")
+    self:line("SELECT NODE · DRAG CANVAS", tree.x + 7, tree.y + tree.height - 18, .49, COLORS.muted, tree.width - 14, "center")
     love.graphics.setScissor(scene_canvas.x + 1, scene_canvas.y + 1, scene_canvas.width - 2, scene_canvas.height - 2)
     self:draw_native_scene_node(self.native_asset_data.root, scene_canvas)
     love.graphics.setScissor()
     local node = self.native_selected_node
     if node then
-      self:text("SELECTED " .. node.id .. "  ·  DRAG TO MOVE", scene_canvas.x + 12, preview.y + preview.height - 22, .6, COLORS.mint)
+      self:line("SELECTED " .. node.id .. " · DRAG TO MOVE", scene_canvas.x + 12, preview.y + preview.height - 22, .6, COLORS.mint, scene_canvas.width - 24)
     end
   elseif self.native_asset_data and self.native_asset_data.type == "tilemap" then
     self:draw_native_tilemap(self.native_asset_data, preview)
@@ -704,11 +704,11 @@ function Studio:draw_native(view)
     end
   elseif self.native_asset_data and self.native_asset_data.type == "flow" then
     self:draw_native_flow(self.native_asset_data, preview)
-    self:text("FLOW GRAPH  ·  DRAG NODES TO ORGANIZE. Select CONNECT FROM then its destination to add a declared edge.", preview.x + 12, preview.y + preview.height - 24, .6, COLORS.mint)
+    self:line("FLOW GRAPH · DRAG NODES TO ORGANIZE · CONNECT FROM THEN DESTINATION", preview.x + 12, preview.y + preview.height - 24, .6, COLORS.mint, preview.width - 24)
   elseif self.runtime and self.runtime.scene then
     love.graphics.setScissor(preview.x + 1, preview.y + 1, preview.width - 2, preview.height - 2)
     love.graphics.push(); love.graphics.translate(preview.x, preview.y); self.runtime:draw(); love.graphics.pop(); love.graphics.setScissor()
-    self:text("LIVE DATA-RUNTIME PREVIEW  " .. self.runtime.scene_id, preview.x + 12, preview.y + preview.height - 24, .62, COLORS.mint)
+    self:line("LIVE DATA-RUNTIME PREVIEW · " .. self.runtime.scene_id, preview.x + 12, preview.y + preview.height - 24, .62, COLORS.mint, preview.width - 24)
   else
     self:text("Select RUN PROJECT to load the flow entry scene, or RUN MAIN SCENE to preview the project’s configured root.", preview.x + 24, preview.y + 28, .8, COLORS.muted, preview.width - 48)
   end
@@ -722,7 +722,7 @@ function Studio:draw_rooms(view)
     self:button({ x = list.x + 10, y = list.y + 43 + (index - 1) * 43, width = list.width - 20, height = 34 }, corpus_id:upper(), { type = "corpus", id = corpus_id }, { selected = self.selected_corpus == corpus_id })
   end
   local corpus = self.corpora[self.selected_corpus]
-  self:text("DECLARED TEMPLATES · WHEEL TO SCROLL", list.x + 14, list.y + 142, .58, COLORS.muted, list.width - 28)
+  self:line("DECLARED TEMPLATES · WHEEL TO SCROLL", list.x + 14, list.y + 142, .58, COLORS.muted, list.width - 28)
   local list_top, controls_top, row_height = list.y + 161, list.y + list.height - 213, 34
   local visible_rows = math.max(1, math.floor((controls_top - list_top - 6) / row_height))
   self.room_scroll = clamp(self.room_scroll or 0, 0, math.max(0, #corpus.rooms - visible_rows))
@@ -760,7 +760,7 @@ function Studio:draw_rooms(view)
     end
   end
   local palette_x = grid.x + grid.width + 20
-  self:text("PALETTE", palette_x, grid.y + 5, .68, COLORS.gold)
+  self:line("PALETTE", palette_x, grid.y + 5, .68, COLORS.gold, editor.x + editor.width - palette_x - 16)
   local glyphs = {}; for glyph in pairs(room.data.legend or {}) do glyphs[#glyphs + 1] = glyph end; table.sort(glyphs)
   self.room_brush = self.room_brush or glyphs[1]
   for index, glyph in ipairs(glyphs) do
@@ -788,11 +788,11 @@ function Studio:draw_rooms(view)
   end
   if self.room_graph then
     local preview_y = grid.y + grid.height + 22
-    self:text("DETERMINISTIC ROOM-GRAPH PREVIEW", editor.x + 18, preview_y, .7, COLORS.mint)
+    self:line("DETERMINISTIC ROOM-GRAPH PREVIEW", editor.x + 18, preview_y, .7, COLORS.mint, editor.width - 36)
     for _, cell in ipairs(self.room_graph.cells) do
       local x, y = editor.x + 18 + cell.x * 116, preview_y + 24 + cell.y * 37
       self:panel({ x = x, y = y, width = 108, height = 30 }, COLORS.surface2, COLORS.border)
-      self:text(cell.template_id:gsub("^room%." .. self.selected_corpus .. "%.", ""), x + 6, y + 8, .52, COLORS.text, 96)
+      self:line(cell.template_id:gsub("^room%." .. self.selected_corpus .. "%.", ""), x + 6, y + 8, .52, COLORS.text, 96)
     end
   end
 end
@@ -834,7 +834,7 @@ function Studio:draw_art(view)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "role", index = item.source }, cursor = "action" }
     y = y + 31
   end
-  self:text("F FILTER · WHEEL SCROLL", roles_rect.x + 10, roles_rect.y + roles_rect.height - 66, .58, COLORS.muted, roles_rect.width - 20)
+  self:line("F FILTER · WHEEL SCROLL", roles_rect.x + 10, roles_rect.y + roles_rect.height - 66, .58, COLORS.muted, roles_rect.width - 20)
   self:draw_sheet(sheet_rect)
 end
 
@@ -850,7 +850,7 @@ function Studio:draw_sheet(rect)
   local mx, my = love.mouse.getPosition(); local column, row = math.floor((mx - origin_x) / size) + 1, math.floor((my - origin_y) / size) + 1
   if column >= 1 and column <= 49 and row >= 1 and row <= 22 and inside(mx, my, rect) then color(COLORS.gold); love.graphics.setLineWidth(2); love.graphics.rectangle("line", origin_x + (column - 1) * size, origin_y + (row - 1) * size, size, size); self.sheet_hover = { column = column, row = row } else self.sheet_hover = nil end
   love.graphics.setLineWidth(1); love.graphics.setScissor()
-  self:text(self.sheet_hover and ("[" .. self.sheet_hover.column .. ", " .. self.sheet_hover.row .. "] CLICK TO ASSIGN") or "CLICK TO ASSIGN · WHEEL ZOOMS · RIGHT DRAG PANS", rect.x + 12, rect.y + rect.height - 25, .64, self.sheet_hover and COLORS.gold or COLORS.muted, rect.width - 24, "center")
+  self:line(self.sheet_hover and ("[" .. self.sheet_hover.column .. ", " .. self.sheet_hover.row .. "] CLICK TO ASSIGN") or "CLICK TO ASSIGN · WHEEL ZOOMS · RIGHT DRAG PANS", rect.x + 12, rect.y + rect.height - 25, .64, self.sheet_hover and COLORS.gold or COLORS.muted, rect.width - 24, "center")
   self.controls[#self.controls + 1] = { rect = rect, action = { type = "sheet" }, cursor = "picker" }
 end
 
