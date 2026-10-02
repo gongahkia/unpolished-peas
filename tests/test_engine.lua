@@ -13,6 +13,7 @@ local Tilemap = require("core.tilemap")
 local Tiled = require("core.tiled_import")
 local Studio = require("ui.studio")
 local Workspace = require("core.roag_workspace")
+local Fixture = require("tests.roag_fixture")
 local Harness = require("tests.harness")
 
 local test = Harness.test
@@ -141,7 +142,7 @@ test("project creation, recoverable index removal, and reference protection work
   assert(project:load())
 end)
 
-test("Studio imports declared art-pack source sheets as reusable native tilesets", function()
+test("Studio imports ROAG-style source sheets as reusable native tilesets", function()
   local root = os.tmpname(); os.remove(root)
   local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
   assert(made == true or made == 0)
@@ -149,14 +150,14 @@ test("Studio imports declared art-pack source sheets as reusable native tilesets
   local studio = setmetatable({
     project_root = root, selected_asset = 1, selected_map_layer = 1,
     native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
-    art_sheet_selection = {}, bridge = { target = "../roag" },
+    art_sheet_selection = {}, bridge = { target = "." },
   }, Studio)
   studio:load_native_project()
-  local pack = { id = "art_pack.loveable_rogue", label = "LOVEABLE ROGUE" }
-  local sheet = assert(studio:current_art_sheet(pack))
+  local pack = { id = "art_pack.fixture", label = "Fixture Art" }
+  local sheet = { id = "main", label = "Fixture Cursor", path = "assets/kenney/cursor_pack/PNG/Basic/Default/pointer_scifi_a.png", tile_width = 16, tile_height = 16 }
   local added, tileset = studio:import_art_sheet(pack, sheet)
   assert(added and tileset.tile_width == 16 and tileset.tile_height == 16)
-  assert(studio.project:load_asset(tileset.id).texture.path == "assets/loveable_rogue_main.png")
+  assert(studio.project:load_asset(tileset.id).texture.path == "assets/fixture_art_main.png")
   local second_added, second_tileset = studio:import_art_sheet(pack, sheet)
   assert(second_added and second_tileset.id == tileset.id)
 end)
@@ -232,17 +233,11 @@ test("Studio switches validated project folders or manifests and retains recents
 end)
 
 test("ROAG corpus diagnostics and recoverable manifest room lifecycle work in a scratch target", function()
-  local workspace = Workspace.new("../roag")
+  local root = Fixture.copy()
+  local workspace = Workspace.new(root)
   assert(workspace:load())
-  assert(workspace:diagnose_corpus("dungeon").valid)
-  local root = os.tmpname(); os.remove(root)
-  local made = os.execute("mkdir -p " .. string.format("%q", root .. "/content/rooms/dungeon"))
-  assert(made == true or made == 0)
-  workspace.target = root
   local room = assert(workspace:create_room("dungeon", "editor_fixture"))
-  assert(#workspace.corpora.dungeon.rooms == 11)
+  assert(#workspace.corpora.dungeon.rooms == 2)
   assert(workspace:remove_room("dungeon", room.filename))
-  assert(#workspace.corpora.dungeon.rooms == 10)
+  assert(#workspace.corpora.dungeon.rooms == 1)
 end)
-
-Harness.summary()

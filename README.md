@@ -33,6 +33,19 @@ To run the headless suite:
 luajit tests/run.lua
 ```
 
+The normal suite uses the small checked-in ROAG fixture under
+`tests/fixtures/roag`; it never requires a sibling `../roag` checkout. To
+perform an explicit read-only compatibility smoke check against a real ROAG
+checkout, run:
+
+```console
+luajit tests/test_live_roag.lua ../roag
+```
+
+ROAG title actions whose identity/target pair is known to this Studio version
+remain editable. Structurally valid newer actions load as preserved read-only
+data, so publishing an unrelated presentation edit does not remove them.
+
 ## Current workspaces
 
 - **Native Project** creates scenes, tilesets, maps, flow graphs, room

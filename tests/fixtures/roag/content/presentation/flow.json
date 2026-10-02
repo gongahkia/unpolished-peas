@@ -1,0 +1,12 @@
+{
+  "format": "roag.presentation_flow",
+  "version": 1,
+  "home": "title",
+  "title_actions": [
+    {"id":"new_run","label":"NEW RUN","description":"Begin a descent.","target":"replace_save"},
+    {"id":"continue","label":"CONTINUE","description":"Resume the active run.","target":"game"},
+    {"id":"research","label":"RESEARCH","description":"Spend persistent research.","target":"research"},
+    {"id":"fallen","label":"FALLEN","description":"Inspect earlier bodies.","target":"fallen_archive"},
+    {"id":"help","label":"HOW TO PLAY","description":"Read current controls.","target":"help","extension":{"topic":"controls","revision":1}}
+  ]
+}

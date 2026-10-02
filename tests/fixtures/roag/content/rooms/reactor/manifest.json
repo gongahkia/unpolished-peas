@@ -1,0 +1,5 @@
+{
+  "format": "roag.room_manifest",
+  "version": 1,
+  "files": ["fixture.room.json"]
+}

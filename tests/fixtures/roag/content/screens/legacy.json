@@ -1,0 +1,14 @@
+{
+  "format": "roag.screen_definitions",
+  "version": 1,
+  "screens": [
+    {
+      "id": "title",
+      "layout": "title_menu",
+      "title": "ROAG FIXTURE",
+      "subtitle": "DETERMINISTIC TEST WORKSPACE",
+      "footer": "ENTER CONFIRM",
+      "accent": "cyan"
+    }
+  ]
+}

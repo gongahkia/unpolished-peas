@@ -1,5 +1,6 @@
 -- ROAG presentation editing views. They render only declared presentation
 -- data; Studio retains validation, history, and publishing actions.
+local Bridge = require("core.roag_bridge")
 local Theme = require("ui.theme")
 local COLORS = Theme.colors
 local dock_width = Theme.dock_width
@@ -38,23 +39,28 @@ function Presentation.draw_flow(studio, view)
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .28, 280, 370), height = view.body.height }
   local edit = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
   studio:panel(list); studio:canvas_surface(edit); studio:dock_title(list, "TITLE FLOW", "SAFE")
-  studio:text("Order determines what the player sees. Targets are fixed safe actions.", list.x + 14, list.y + 39, .66, COLORS.muted, list.width - 28)
+  studio:text("Supported actions are editable. Newer ROAG actions remain visible and read-only.", list.x + 14, list.y + 39, .66, COLORS.muted, list.width - 28)
   for index, action in ipairs(studio.data.flow.title_actions) do
-    local selected = index == studio.selected_action; local rect = { x = list.x + 10, y = list.y + 75 + (index - 1) * 64, width = list.width - 20, height = 55 }
+    local selected, editable = index == studio.selected_action, Bridge.is_title_action_editable(action); local rect = { x = list.x + 10, y = list.y + 75 + (index - 1) * 64, width = list.width - 20, height = 55 }
     studio:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
-    studio:line((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, COLORS.text, rect.width - 20); studio:line("> " .. action.target, rect.x + 10, rect.y + 29, .63, COLORS.muted, rect.width - 20)
+    studio:line((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, COLORS.text, rect.width - 20); studio:line("> " .. action.target .. (editable and "" or "  ·  PRESERVED"), rect.x + 10, rect.y + 29, .63, editable and COLORS.muted or COLORS.gold, rect.width - 20)
     studio.controls[#studio.controls + 1] = { rect = rect, action = { type = "action", index = index }, cursor = "action" }
   end
-  studio:button({ x = list.x + 10, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE UP", { type = "action_move", delta = -1 }, { enabled = studio.selected_action > 1 })
-  studio:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE DOWN", { type = "action_move", delta = 1 }, { enabled = studio.selected_action < #studio.data.flow.title_actions })
-  local action = studio:current_action(); studio:panel({ x = edit.x + 8, y = edit.y + 8, width = edit.width - 16, height = 62 }, COLORS.surface, COLORS.border)
-  studio:line(action.id:upper(), edit.x + 18, edit.y + 19, .84, COLORS.text, edit.width - 36); studio:line("Declared target: " .. action.target .. " (game behavior is not scriptable here)", edit.x + 18, edit.y + 44, .60, COLORS.muted, edit.width - 36)
-  studio:field({ x = edit.x + 18, y = edit.y + 88, width = edit.width - 36, height = 60 }, "VISIBLE LABEL", "action", "label")
-  studio:field({ x = edit.x + 18, y = edit.y + 157, width = edit.width - 36, height = 60 }, "HELPER DESCRIPTION", "action", "description")
+  local action = studio:current_action(); local editable = Bridge.is_title_action_editable(action)
+  studio:button({ x = list.x + 10, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE UP", { type = "action_move", delta = -1 }, { enabled = editable and studio.selected_action > 1 })
+  studio:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE DOWN", { type = "action_move", delta = 1 }, { enabled = editable and studio.selected_action < #studio.data.flow.title_actions })
+  studio:panel({ x = edit.x + 8, y = edit.y + 8, width = edit.width - 16, height = 62 }, COLORS.surface, COLORS.border)
+  studio:line(action.id:upper(), edit.x + 18, edit.y + 19, .84, COLORS.text, edit.width - 36); studio:line(editable and ("Declared target: " .. action.target .. " (game behavior is not scriptable here)") or ("Preserved target: " .. action.target .. " (read-only in this Studio version)"), edit.x + 18, edit.y + 44, .60, editable and COLORS.muted or COLORS.gold, edit.width - 36)
+  if editable then
+    studio:field({ x = edit.x + 18, y = edit.y + 88, width = edit.width - 36, height = 60 }, "VISIBLE LABEL", "action", "label")
+    studio:field({ x = edit.x + 18, y = edit.y + 157, width = edit.width - 36, height = 60 }, "HELPER DESCRIPTION", "action", "description")
+  else
+    studio:text("This action is structurally valid but not editable by this Studio version. It will be preserved unchanged when you publish other presentation edits.", edit.x + 18, edit.y + 94, .72, COLORS.muted, edit.width - 36)
+  end
   local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; studio:canvas_surface(flow)
   studio:line("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .62, COLORS.muted, flow.width - 32); studio:line("TITLE", flow.x + 20, flow.y + 66, 1.0, COLORS.text, flow.width * .30)
   studio:line(">", flow.x + flow.width * .38, flow.y + 68, 1.0, COLORS.muted); studio:line(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.0, COLORS.mint, flow.width * .42)
-  studio:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
+  studio:text(editable and "The editor can change supported action order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks." or "Read-only actions keep their declared identity, target, ordering, and extra fields when other presentation data is published.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
 end
 
 function Presentation.draw_publish(studio, view)
