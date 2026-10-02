@@ -1,0 +1,30 @@
+{
+  "version": 1,
+  "sprites": {
+    "player": {"column": 26, "row": 1},
+    "target": {"column": 24, "row": 10},
+    "ammo": {"column": 23, "row": 5},
+    "torch": {"column": 15, "row": 11},
+    "door": {"column": 7, "row": 10},
+    "bullet": {"column": 28, "row": 21},
+    "bomb": {"column": 46, "row": 10},
+    "flare": {"column": 5, "row": 16},
+    "wolf": {"column": 29, "row": 9},
+    "bomber": {"column": 25, "row": 10},
+    "necromancer": {"column": 25, "row": 2},
+    "cultist": {"column": 27, "row": 10},
+    "ripper": {"column": 31, "row": 9},
+    "skirmisher": {"column": 29, "row": 10},
+    "conductor": {"column": 27, "row": 10},
+    "bulwark": {"column": 30, "row": 9},
+    "reclaimer": {"column": 26, "row": 10},
+    "gunner_elite": {"column": 25, "row": 10},
+    "shock_bruiser": {"column": 28, "row": 9},
+    "volatile_heavy": {"column": 25, "row": 10},
+    "boss": {"column": 27, "row": 11},
+    "arc_cutter": {"column": 27, "row": 10},
+    "maintenance_heavy": {"column": 30, "row": 9},
+    "reactor_suppressor": {"column": 29, "row": 10},
+    "arc_warden": {"column": 28, "row": 9}
+  }
+}
