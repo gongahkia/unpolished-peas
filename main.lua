@@ -40,3 +40,11 @@ end
 function love.wheelmoved(...)
   studio:wheelmoved(...)
 end
+
+function love.filedropped(...)
+  studio:filedropped(...)
+end
+
+function love.quit()
+  return studio:quit()
+end

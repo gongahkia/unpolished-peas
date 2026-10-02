@@ -1,70 +1,118 @@
 # Unpolished Bees
 
-Unpolished Bees is a standalone LÖVE authoring application for ROAG’s
-presentation layer. It is deliberately **not** a second game runtime and not a
-premature claim to be a general-purpose engine: ROAG’s simulation, saves,
-routes, body system, and persistence stay in ROAG.
+Unpolished Bees is a small, data-driven 2D game authoring application for
+Lua/LÖVE projects. It keeps authored state as versioned JSON, so scenes,
+tilemaps, tilesets, UI layouts, flow graphs, room templates, and generator
+settings can be read, validated, edited, reviewed, and serialized again
+without a hidden editor database.
 
-It owns a practical, editable presentation seam:
-
-- choose a declared art pack;
-- map ROAG’s stable rendering roles to the original 49×22 sheet;
-- edit visible scene labels, subtitles, footer copy, layout tokens, and accent
-  tokens;
-- reorder presentation scenes for authoring/inspection;
-- edit and order the title actions that ROAG explicitly supports;
-- validate then atomically publish only allow-listed presentation files.
-
-The separation is intentional. Mature 2D tools commonly separate reusable
-scenes/resources from runtime behavior and let room/layer tools compose
-content. For example, Godot documents scenes and nodes as reusable composing
-units, while GameMaker’s room editor organizes asset layers. Unpolished Bees
-keeps that useful authoring boundary without pretending that ROAG needs a new
-scene graph, scripting VM, physics engine, or a second save system.
+It is also the JSON-only content workbench for the sibling ROAG project. It
+may edit ROAG presentation and room-template JSON, but it never writes ROAG
+Lua, saves, profiles, archive data, routes, or simulation state.
 
 ## Run
 
-From this sibling repository:
-
 ```console
-love . --roag ../roag
+love . --roag ../roag --project .
 ```
 
-`--roag` may be an absolute path if the checkout is elsewhere. The default is
-`../roag`. The tool reads and writes only:
+- `--roag` chooses the ROAG source checkout to open; it defaults to `../roag`.
+- `--project` chooses a native Unpolished Bees project; it defaults to the
+  current directory. A small runnable fixture lives in `examples/starter`.
+
+To run the headless suite:
+
+```console
+luajit tests/run.lua
+```
+
+## Current workspaces
+
+- **Native Project** creates scenes, tilesets, maps, flow graphs, room
+  primitives, and generators without asking authors to start from raw JSON.
+  Its inspector edits serializable properties; its tree and graph controls add,
+  delete, reparent, and connect primitives; tilemaps have selectable layers,
+  sparse painting, pan/zoom, and image-backed tile selection. Native changes
+  have per-asset bounded undo/redo, validation on save, dirty-change warnings,
+  and reference-aware recoverable deletion (removal only unindexes the JSON
+  file). Drop a PNG to copy it into `assets/` and make a managed tileset; drop
+  Tiled JSON (`.json`/`.tmj`) to import an orthogonal sparse map.
+- **ROAG Rooms** reads the dungeon and reactor JSON manifests, creates or
+  recoverably removes manifest entries, paints a room template directly in
+  memory, structurally validates it, and atomically writes only that selected
+  `.room.json` file. It has per-room undo/redo, deterministic assembly preview,
+  and corpus diagnostics explaining invalid rooms, duplicate identities, or
+  missing connector patterns.
+- **Art & Sprites**, **Scenes**, and **Title Flow** retain the existing ROAG
+  presentation workflow: editable display copy, declared title transitions,
+  art-pack selection, and sprite-role mapping.
+
+## Native JSON contract
+
+`core/project.lua` owns the canonical formats. The project manifest is
+`unpolished_bees.project.json` (v2), with an explicit asset index. Native v1
+assets are JSON objects with `format`, `version`, `type`, and semantic `id`:
+
+```text
+unpolished_bees.scene
+unpolished_bees.tileset
+unpolished_bees.tilemap
+unpolished_bees.flow
+unpolished_bees.room_template
+unpolished_bees.generator
+```
+
+Tilemaps use sparse chunks, allowing fixed-size maps and infinite/chunked maps
+to share one representation. Tilesets can reference linked assets or managed
+imported copies by a safe relative path. The Tiled JSON importer intentionally
+supports orthogonal tile layers first and reports unsupported layers or tile
+transform flags instead of silently changing their meaning.
+
+The runtime supports scene loading, basic retained UI drawing, event-driven
+transitions, variables, arithmetic, and named Lua hooks. Lua hooks are
+references such as `game.open_shop`; source code is never embedded in JSON.
+
+## ROAG boundary
+
+The ROAG mode reads/writes only these declared JSON areas:
 
 ```text
 content/screens/legacy.json
 content/presentation/flow.json
 content/presentation/art_pack.json
 sprite_editor/mappings.json
+content/rooms/dungeon/*.room.json
+content/rooms/reactor/*.room.json
 ```
 
-It never writes `active_run.json`, `meta_profile.json`,
-`fallen_characters.json`, simulation code, route content, or body content.
-Click **Publish** (or press Cmd/Ctrl+S) to validate and atomically apply the
-four data files. Refocus or restart ROAG to load the saved presentation data.
+Presentation publication retains the existing allow-list. Room publication is
+one validated room file at a time. The application never opens a write handle
+for `src/`, active saves, meta profiles, fallen archives, or other ROAG state.
 
-## Workflow
+## Editing safeguards
 
-1. Use **Art & Sprites** to select one of ROAG’s declared packs. Individual
-   sprite mapping is purposely available only for the original ROAG 1-bit
-   sheet, because the other packs carry complete authored starter maps.
-2. Use **Scenes** to edit visible text and visual tokens. Its list ordering is
-   authoring/inspection order, not a way to bypass game state.
-3. Use **Title Flow** to reorder/edit New Run, Continue, Research, and Fallen.
-   Each still resolves to ROAG’s fixed safe transition; the tool does not run
-   arbitrary callbacks or Lua snippets.
-4. Use ROAG’s existing Room Workbench for level templates and Generation
-   Inspector for world verification. They remain specialized tools because
-   they consume validated ROAG geometry rather than generic presentation data.
+All authoring operations stay inside a project or ROAG JSON boundary. The
+Studio uses native undo/redo snapshots for each edited document and asks before
+discarding unsaved native, room, or presentation changes. Asset and room
+deletion is intentionally manifest-only: the source JSON remains on disk for
+recovery. Native asset removal also refuses to break declared scene instances,
+flow scene targets, or tilemap tileset references.
 
-## Asset handoff
+The Studio can load an image once for a tileset preview and reuse it while
+painting rather than decoding it every frame. PNG drop import copies bytes
+atomically into the project before indexing the resulting tileset. This keeps
+the project portable without treating external art paths as hidden state.
 
-`roag_assets/` holds a source staging copy of the existing ROAG sprite packs,
-including their attribution material. `assets/kenney/` contains the CC0 UI and
-cursor packs that make this editor self-contained. See [LICENSES.md](LICENSES.md).
+## Delivery direction
 
-The ROAG-side `luajit tools/export_unpolished_bees.lua <fresh-directory>`
-command can also make a safe presentation-only handoff snapshot. It refuses to
-overwrite an existing directory.
+The foundational contracts, runtime preview, editable scene composition,
+image-backed tileset rendering, visual flow authoring, Tiled import,
+room-graph assembly, sparse tile painting, and deterministic noise/WFC preview
+generation are implemented. Future work can grow the same formats with richer
+node-specific inspectors, viewport tooling, and runtime graph diagnostics;
+nothing in the current contract requires a ROAG Lua migration.
+
+## Assets
+
+`roag_assets/` contains source staging assets handed off from ROAG. The editor
+UI uses the CC0 Kenney assets under `assets/kenney/`. See [LICENSES.md](LICENSES.md).

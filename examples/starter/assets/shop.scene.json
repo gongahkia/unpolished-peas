@@ -1,0 +1,15 @@
+{
+  "format": "unpolished_bees.scene",
+  "id": "scene.shop",
+  "root": {
+    "children": [
+      {"id":"node.shop_panel","properties":{"color":[0.08,0.17,0.14,1],"height":200,"width":720,"x":40,"y":40},"type":"panel"},
+      {"id":"node.shop_title","properties":{"text":"SHOP","x":72,"y":76},"type":"label"}
+    ],
+    "id": "node.shop_root",
+    "properties": {},
+    "type": "scene"
+  },
+  "type": "scene",
+  "version": 1
+}
