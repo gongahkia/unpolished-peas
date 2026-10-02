@@ -1,0 +1,6 @@
+{
+  "format": "unpolished_bees.workspace",
+  "version": 1,
+  "target_project": "../roag",
+  "adapter": "roag.presentation.v1"
+}
