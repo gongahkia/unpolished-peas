@@ -118,6 +118,17 @@ painting rather than decoding it every frame. PNG drop import copies bytes
 atomically into the project before indexing the resulting tileset. This keeps
 the project portable without treating external art paths as hidden state.
 
+## Editor architecture
+
+`ui/studio.lua` is the state and action façade: it coordinates LÖVE callbacks,
+project/ROAG boundaries, undo state, and action dispatch. Reusable drawing
+primitives live in `ui/theme.lua` and `ui/widgets.lua`; global menus and
+navigation live in `ui/chrome.lua`; focused surfaces live under `ui/views/`.
+Art-pack source metadata lives in `core/art_sources.lua`, separate from both
+the editor and ROAG runtime code. New tools should add a focused view and
+action family rather than grow the controller with another mixed-purpose
+screen.
+
 ## Delivery direction
 
 The foundational contracts, runtime preview, editable scene composition,

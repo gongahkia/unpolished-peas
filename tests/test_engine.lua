@@ -13,12 +13,9 @@ local Tilemap = require("core.tilemap")
 local Tiled = require("core.tiled_import")
 local Studio = require("ui.studio")
 local Workspace = require("core.roag_workspace")
+local Harness = require("tests.harness")
 
-local function test(name, fn)
-  local ok, reason = pcall(fn)
-  assert(ok, name .. ": " .. tostring(reason))
-  print("PASS " .. name)
-end
+local test = Harness.test
 
 test("native project assets validate and round-trip through the starter fixture", function()
   local project = Project.new("examples/starter")
@@ -248,4 +245,4 @@ test("ROAG corpus diagnostics and recoverable manifest room lifecycle work in a 
   assert(#workspace.corpora.dungeon.rooms == 10)
 end)
 
-print("14 passed, 0 failed")
+Harness.summary()
