@@ -310,7 +310,7 @@ function Studio:panel(rect, fill, outline)
   color(outline or COLORS.border); love.graphics.setLineWidth(1); love.graphics.rectangle("line", rect.x + .5, rect.y + .5, rect.width - 1, rect.height - 1, 3, 3)
 end
 
-function Studio:workspace(rect)
+function Studio:canvas_surface(rect)
   color(COLORS.canvas); love.graphics.rectangle("fill", rect.x, rect.y, rect.width, rect.height, 3, 3)
   love.graphics.setScissor(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2)
   color({ .09, .093, .10 }, .55)
@@ -394,7 +394,7 @@ function Studio:draw_nav(view)
 end
 
 function Studio:draw_home(view)
-  self:workspace(view.body)
+  self:canvas_surface(view.body)
   self:line("WORKSPACE OVERVIEW", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40)
   self:text("Author the declared presentation layer without loading, changing, or depending on a live run, account profile, archive, route, or simulation.", view.body.x + 20, view.body.y + 49, .78, COLORS.muted, math.min(view.body.width - 40, 820))
   local cards = {
@@ -566,7 +566,7 @@ end
 function Studio:draw_native(view)
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .24, 258, 332), height = view.body.height }
   local canvas = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:workspace(canvas); self:dock_title(list, "ASSETS", "JSON")
+  self:panel(list); self:canvas_surface(canvas); self:dock_title(list, "ASSETS", "JSON")
   if not self.project_manifest then
     self:text("Project manifest unavailable:\n" .. tostring(self.project_error), list.x + 14, list.y + 48, .78, COLORS.red, list.width - 28)
     return
@@ -668,7 +668,7 @@ function Studio:draw_native(view)
     self:text("Room-template assets are serializable primitives. Use ROAG ROOMS for its live companion corpus and connector diagnostics.", canvas.x + 16, info_y + 12, .68, COLORS.muted, canvas.width - 32)
   end
   local preview = { x = canvas.x + 8, y = canvas.y + inspector_height, width = canvas.width - 16, height = canvas.height - inspector_height - 8 }
-  self:workspace(preview)
+  self:canvas_surface(preview)
   if self.native_asset_data and self.native_asset_data.type == "scene" then
     local tree = { x = preview.x + 8, y = preview.y + 8, width = math.min(178, math.max(128, preview.width * .24)), height = preview.height - 16 }
     local scene_canvas = { x = tree.x + tree.width + 10, y = preview.y + 1, width = preview.width - tree.width - 20, height = preview.height - 2 }
@@ -717,7 +717,7 @@ end
 function Studio:draw_rooms(view)
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .23, 246, 320), height = view.body.height }
   local editor = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:workspace(editor); self:dock_title(list, "ROOMS", "JSON")
+  self:panel(list); self:canvas_surface(editor); self:dock_title(list, "ROOMS", "JSON")
   for index, corpus_id in ipairs(Workspace.CORPORA) do
     self:button({ x = list.x + 10, y = list.y + 43 + (index - 1) * 43, width = list.width - 20, height = 34 }, corpus_id:upper(), { type = "corpus", id = corpus_id }, { selected = self.selected_corpus == corpus_id })
   end
@@ -747,7 +747,7 @@ function Studio:draw_rooms(view)
   self:line(room.data.id:upper(), editor.x + 18, editor.y + 19, .78, COLORS.text, editor.width - 36)
   self:line("Click cells to paint the declared JSON template. Runtime generator code stays untouched.", editor.x + 18, editor.y + 43, .60, COLORS.muted, editor.width - 36)
   local grid = { x = editor.x + 18, y = editor.y + 82, width = math.min(editor.width * .48, editor.height - 154), height = math.min(editor.width * .48, editor.height - 154) }
-  self:workspace(grid)
+  self:canvas_surface(grid)
   local tile = math.floor(math.min((grid.width - 20) / room.data.width, (grid.height - 20) / room.data.height))
   local grid_width, grid_height = room.data.width * tile, room.data.height * tile
   local origin_x, origin_y = grid.x + (grid.width - grid_width) / 2, grid.y + (grid.height - grid_height) / 2
@@ -798,9 +798,12 @@ function Studio:draw_rooms(view)
 end
 
 function Studio:draw_art(view)
+  -- These hit regions are retained for pointer-local wheel routing. A scroll
+  -- over the role dock must never also change the sheet zoom.
+  self.role_list_rect, self.sheet_rect, self.role_visible_count, self.role_max_rows = nil, nil, 0, 0
   local left = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .26, 270, 350), height = view.body.height }
   local middle = { x = left.x + left.width + 16, y = view.body.y, width = view.body.width - left.width - 16, height = view.body.height }
-  self:panel(left); self:workspace(middle); self:dock_title(left, "ART PACKS", "LICENSED")
+  self:panel(left); self:canvas_surface(middle); self:dock_title(left, "ART PACKS", "LICENSED")
   local packs = self.data.catalog.art_packs
   for index, pack in ipairs(packs) do
     local selected = pack.id == self.data.art_pack.art_pack_id
@@ -816,7 +819,7 @@ function Studio:draw_art(view)
   if not selected_pack.editable_roles then return end
   local roles_rect = { x = middle.x + 14, y = middle.y + 78, width = 224, height = middle.height - 92 }
   local sheet_rect = { x = roles_rect.x + roles_rect.width + 16, y = roles_rect.y, width = middle.width - roles_rect.width - 44, height = roles_rect.height }
-  self:panel(roles_rect, COLORS.surface); self:workspace(sheet_rect)
+  self:panel(roles_rect, COLORS.surface); self:canvas_surface(sheet_rect)
   self:dock_title(roles_rect, "ROLES", "MAP")
   self:button({ x = roles_rect.x + 10, y = roles_rect.y + roles_rect.height - 42, width = roles_rect.width - 20, height = 30 }, "UNDO", { type = "undo" }, { enabled = #self.undo_stack > 0 })
   local visible, y = {}, roles_rect.y + 35
@@ -824,6 +827,8 @@ function Studio:draw_art(view)
     if self.role_filter == "" or role[1]:find(self.role_filter:lower(), 1, true) or role[2]:lower():find(self.role_filter:lower(), 1, true) then visible[#visible + 1] = { source = index, role = role } end
   end
   local max_rows = math.floor((roles_rect.height - 88) / 31)
+  self.role_list_rect = { x = roles_rect.x + 1, y = roles_rect.y + 34, width = roles_rect.width - 2, height = math.max(0, roles_rect.height - 110) }
+  self.role_visible_count, self.role_max_rows = #visible, max_rows
   self.scroll = clamp(self.scroll, 0, math.max(0, #visible - max_rows))
   for local_index = self.scroll + 1, math.min(#visible, self.scroll + max_rows) do
     local item = visible[local_index]; local role = item.role; local selected = item.source == self.selected_role
@@ -835,6 +840,7 @@ function Studio:draw_art(view)
     y = y + 31
   end
   self:line("F FILTER · WHEEL SCROLL", roles_rect.x + 10, roles_rect.y + roles_rect.height - 66, .58, COLORS.muted, roles_rect.width - 20)
+  self.sheet_rect = sheet_rect
   self:draw_sheet(sheet_rect)
 end
 
@@ -857,7 +863,7 @@ end
 function Studio:draw_scenes(view)
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .23, 246, 320), height = view.body.height }
   local edit = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:workspace(edit); self:dock_title(list, "SCENES", "ORDER")
+  self:panel(list); self:canvas_surface(edit); self:dock_title(list, "SCENES", "ORDER")
   for index, screen in ipairs(self.data.screens.screens) do
     local selected = index == self.selected_screen; local rect = { x = list.x + 10, y = list.y + 44 + (index - 1) * 47, width = list.width - 20, height = 39 }
     self:panel(rect, selected and COLORS.selected or COLORS.surface2, selected and COLORS.selected_border or COLORS.border)
@@ -873,7 +879,7 @@ function Studio:draw_scenes(view)
   self:field({ x = edit.x + 18, y = edit.y + 220, width = edit.width - 36, height = 60 }, "FOOTER", "screen", "footer")
   self:button({ x = edit.x + 18, y = edit.y + 303, width = 215, height = 36 }, "LAYOUT: " .. screen.layout:upper(), { type = "cycle_layout" })
   self:button({ x = edit.x + 245, y = edit.y + 303, width = 215, height = 36 }, "ACCENT: " .. screen.accent:upper(), { type = "cycle_accent" })
-  local preview = { x = edit.x + 18, y = edit.y + 367, width = edit.width - 36, height = edit.height - 385 }; self:workspace(preview)
+  local preview = { x = edit.x + 18, y = edit.y + 367, width = edit.width - 36, height = edit.height - 385 }; self:canvas_surface(preview)
   self:text(screen.title, preview.x + 24, preview.y + 24, 1.5, COLORS[screen.accent] or COLORS.blue, preview.width - 48, "center"); self:text(screen.subtitle, preview.x + 24, preview.y + 66, .76, COLORS.muted, preview.width - 48, "center")
   self:panel({ x = preview.x + preview.width * .16, y = preview.y + 118, width = preview.width * .68, height = 44 }, COLORS.surface2, COLORS[screen.accent] or COLORS.blue); self:text("LIVE SCREEN PREVIEW", preview.x + 24, preview.y + 132, .8, COLORS.gold, preview.width - 48, "center")
   self:text(screen.footer, preview.x + 24, preview.y + preview.height - 33, .72, COLORS.muted, preview.width - 48, "center")
@@ -882,7 +888,7 @@ end
 function Studio:draw_flow(view)
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .28, 280, 370), height = view.body.height }
   local edit = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
-  self:panel(list); self:workspace(edit); self:dock_title(list, "TITLE FLOW", "SAFE")
+  self:panel(list); self:canvas_surface(edit); self:dock_title(list, "TITLE FLOW", "SAFE")
   self:text("Order determines what the player sees. Targets are fixed safe actions.", list.x + 14, list.y + 39, .66, COLORS.muted, list.width - 28)
   for index, action in ipairs(self.data.flow.title_actions) do
     local selected = index == self.selected_action; local rect = { x = list.x + 10, y = list.y + 75 + (index - 1) * 64, width = list.width - 20, height = 55 }
@@ -895,11 +901,11 @@ function Studio:draw_flow(view)
   local action = self:current_action(); self:panel({ x = edit.x + 8, y = edit.y + 8, width = edit.width - 16, height = 62 }, COLORS.surface, COLORS.border); self:line(action.id:upper(), edit.x + 18, edit.y + 19, .84, COLORS.text, edit.width - 36); self:line("Declared target: " .. action.target .. " (game behavior is not scriptable here)", edit.x + 18, edit.y + 44, .60, COLORS.muted, edit.width - 36)
   self:field({ x = edit.x + 18, y = edit.y + 88, width = edit.width - 36, height = 60 }, "VISIBLE LABEL", "action", "label")
   self:field({ x = edit.x + 18, y = edit.y + 157, width = edit.width - 36, height = 60 }, "HELPER DESCRIPTION", "action", "description")
-  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:workspace(flow); self:line("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .62, COLORS.muted, flow.width - 32); self:line("TITLE", flow.x + 20, flow.y + 66, 1.0, COLORS.text, flow.width * .30); self:line(">", flow.x + flow.width * .38, flow.y + 68, 1.0, COLORS.muted); self:line(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.0, COLORS.mint, flow.width * .42); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
+  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:canvas_surface(flow); self:line("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .62, COLORS.muted, flow.width - 32); self:line("TITLE", flow.x + 20, flow.y + 66, 1.0, COLORS.text, flow.width * .30); self:line(">", flow.x + flow.width * .38, flow.y + 68, 1.0, COLORS.muted); self:line(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.0, COLORS.mint, flow.width * .42); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
 end
 
 function Studio:draw_publish(view)
-  self:workspace(view.body); self:line("VALIDATE, THEN PUBLISH", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40); self:text("A publish operation validates every document before it writes. It uses verified atomic replacement on four explicit paths only.", view.body.x + 20, view.body.y + 49, .75, COLORS.muted, math.min(view.body.width - 40, 760))
+  self:canvas_surface(view.body); self:line("VALIDATE, THEN PUBLISH", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40); self:text("A publish operation validates every document before it writes. It uses verified atomic replacement on four explicit paths only.", view.body.x + 20, view.body.y + 49, .75, COLORS.muted, math.min(view.body.width - 40, 760))
   local files = { "content/screens/legacy.json", "content/presentation/flow.json", "content/presentation/art_pack.json", "sprite_editor/mappings.json" }
   for index, path in ipairs(files) do local y = view.body.y + 125 + (index - 1) * 56; self:panel({ x = view.body.x + 24, y = y, width = view.body.width - 48, height = 42 }, COLORS.surface2, COLORS.border); self:status_mark(view.body.x + 38, y + 13); self:line(path, view.body.x + 68, y + 12, .8, COLORS.text, view.body.width - 104) end
   self:button({ x = view.body.x + 24, y = view.body.y + 386, width = 228, height = 48 }, self.dirty and "PUBLISH CHANGES" or "VALIDATE & PUBLISH", { type = "save" }, { selected = self.dirty })
@@ -1231,8 +1237,13 @@ end
 
 function Studio:wheelmoved(_, dy)
   if self.tab == "art" then
-    self.sheet_zoom = clamp(self.sheet_zoom * (1.14 ^ dy), .45, 6)
-    self.scroll = clamp(self.scroll - dy, 0, math.max(0, #ROLES - 1))
+    local x, y = love.mouse.getPosition()
+    if self.sheet_rect and inside(x, y, self.sheet_rect) then
+      self.sheet_zoom = clamp(self.sheet_zoom * (1.14 ^ dy), .45, 6)
+    elseif self.role_list_rect and inside(x, y, self.role_list_rect) then
+      self.scroll = clamp(self.scroll - dy, 0, math.max(0, (self.role_visible_count or #ROLES) - (self.role_max_rows or 1)))
+    end
+    return
   end
   if self.tab == "native" and self.native_asset_data and self.native_asset_data.type == "tilemap" then
     local x, y = love.mouse.getPosition()
