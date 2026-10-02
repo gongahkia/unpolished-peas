@@ -16,6 +16,8 @@ local Theme = require("ui.theme")
 local Widgets = require("ui.widgets")
 local Chrome = require("ui.chrome")
 local ImageLoader = require("ui.image_loader")
+local Launcher = require("ui.views.launcher")
+local Presentation = require("ui.views.presentation")
 
 local Studio = {}
 Studio.__index = Studio
@@ -1036,21 +1038,21 @@ end
 
 function Studio:draw()
   local view = self:layout(); self.controls = {}; love.graphics.clear(COLORS.backdrop)
-  self:draw_header(view); self:draw_nav(view)
-  if self.tab == "projects" then self:draw_projects(view)
+  Chrome.draw_header(self, view); Chrome.draw_nav(self, view)
+  if self.tab == "projects" then Launcher.draw_projects(self, view)
   elseif self.tab == "native" then self:draw_native(view)
   elseif not self.data then
     self:panel(view.body); self:text("ROAG workspace unavailable", view.body.x + 24, view.body.y + 24, 1.5, COLORS.red); self:text(self.status, view.body.x + 24, view.body.y + 70, .82, COLORS.muted, view.body.width - 48)
   elseif self.tab == "rooms" then self:draw_rooms(view)
   elseif self.tab == "art" then self:draw_art(view)
-  elseif self.tab == "scenes" then self:draw_scenes(view)
-  elseif self.tab == "flow" then self:draw_flow(view)
-  elseif self.tab == "publish" then self:draw_publish(view)
-  else self:draw_home(view) end
+  elseif self.tab == "scenes" then Presentation.draw_scenes(self, view)
+  elseif self.tab == "flow" then Presentation.draw_flow(self, view)
+  elseif self.tab == "publish" then Presentation.draw_publish(self, view)
+  else Launcher.draw_home(self, view) end
   self:panel(view.footer, COLORS.dark, COLORS.border); self:line(self.status, view.footer.x + 10, view.footer.y + 4, .58, COLORS.muted, view.footer.width - 20)
   -- Menus are composited after every dock and canvas so they are never hidden
   -- behind the navigation rail and their controls receive the top-most click.
-  self:draw_header_menu(view)
+  Chrome.draw_menu(self)
 end
 
 function Studio:move(list, index, delta)
