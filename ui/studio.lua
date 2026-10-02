@@ -9,6 +9,8 @@ local Scene = require("core.scene")
 local Tilemap = require("core.tilemap")
 local Tiled = require("core.tiled_import")
 local Workspace = require("core.roag_workspace")
+local RecentProjects = require("core.recent_projects")
+local ProjectPicker = require("core.project_picker")
 
 local Studio = {}
 Studio.__index = Studio
@@ -26,6 +28,53 @@ local ROLES = {
   { "wolf", "Wolf", "Enemies" }, { "bomber", "Bomber", "Enemies" }, { "necromancer", "Necromancer", "Enemies" }, { "cultist", "Cultist", "Enemies" }, { "ripper", "Ripper", "Enemies" }, { "skirmisher", "Skirmisher", "Enemies" }, { "conductor", "Conductor", "Enemies" }, { "bulwark", "Bulwark", "Enemies" }, { "reclaimer", "Reclaimer", "Enemies" },
   { "gunner_elite", "Redundant gunner", "Elites" }, { "shock_bruiser", "Shock bruiser", "Elites" }, { "volatile_heavy", "Volatile heavy", "Elites" },
   { "arc_cutter", "Arc cutter", "Reactor" }, { "maintenance_heavy", "Maintenance heavy", "Reactor" }, { "reactor_suppressor", "Reactor suppressor", "Reactor" }, { "arc_warden", "Arc warden", "Reactor" }, { "boss", "Boss", "Boss" },
+}
+
+-- Read-only source-sheet metadata mirrors ROAG's declared art-pack contract.
+-- Keeping it as data (rather than loading/executing the game's Lua module)
+-- lets the Studio browse assets safely, including in a separate checkout.
+local ART_SHEETS = {
+  ["art_pack.roag_kenney_1bit"] = {
+    { id = "main", label = "ROAG 1-BIT", path = "assets/kenney/Tilesheet/colored-transparent_packed.png", tile_width = 16, tile_height = 16, columns = 49, rows = 22 },
+  },
+  ["art_pack.loveable_rogue"] = {
+    { id = "main", label = "LOVEABLE ROGUE", path = "assets/art_packs/loveable_rogue.png", tile_width = 16, tile_height = 16, columns = 64, rows = 64 },
+  },
+  ["art_pack.dawnlike"] = {
+    { id = "player", label = "PLAYER", path = "assets/art_packs/dawnlike/Characters/Player0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 15 },
+    { id = "humanoids", label = "HUMANOIDS", path = "assets/art_packs/dawnlike/Characters/Humanoid0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 27 },
+    { id = "undead", label = "UNDEAD", path = "assets/art_packs/dawnlike/Characters/Undead0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 10 },
+    { id = "quadrupeds", label = "QUADRUPEDS", path = "assets/art_packs/dawnlike/Characters/Quadraped0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 12 },
+    { id = "reptiles", label = "REPTILES", path = "assets/art_packs/dawnlike/Characters/Reptile0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 15 },
+    { id = "pests", label = "PESTS", path = "assets/art_packs/dawnlike/Characters/Pest0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 11 },
+    { id = "elementals", label = "ELEMENTALS", path = "assets/art_packs/dawnlike/Characters/Elemental0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 11 },
+    { id = "traps", label = "TRAPS", path = "assets/art_packs/dawnlike/Objects/Trap0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 5 },
+    { id = "doors", label = "DOORS", path = "assets/art_packs/dawnlike/Objects/Door0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 6 },
+    { id = "effects", label = "EFFECTS", path = "assets/art_packs/dawnlike/Objects/Effect0.png", tile_width = 16, tile_height = 16, columns = 8, rows = 26 },
+    { id = "ammo", label = "AMMO", path = "assets/art_packs/dawnlike/Items/Ammo.png", tile_width = 16, tile_height = 16, columns = 8, rows = 6 },
+    { id = "lights", label = "LIGHTS", path = "assets/art_packs/dawnlike/Items/Light.png", tile_width = 16, tile_height = 16, columns = 8, rows = 1 },
+    { id = "rocks", label = "ROCKS", path = "assets/art_packs/dawnlike/Items/Rock.png", tile_width = 16, tile_height = 16, columns = 8, rows = 2 },
+    { id = "floor", label = "FLOOR", path = "assets/art_packs/dawnlike/Objects/Floor.png", tile_width = 16, tile_height = 16, columns = 21, rows = 39 },
+    { id = "walls", label = "WALLS", path = "assets/art_packs/dawnlike/Objects/Wall.png", tile_width = 16, tile_height = 16, columns = 20, rows = 51 },
+  },
+  ["art_pack.kenney_micro_roguelike"] = {
+    { id = "main", label = "MICRO ROGUELIKE", path = "assets/art_packs/kenney_micro_roguelike/Tilemap/colored_tilemap_packed.png", tile_width = 8, tile_height = 8, columns = 16, rows = 10 },
+  },
+  ["art_pack.kenney_roguelike_indoors"] = {
+    { id = "main", label = "INDOORS", path = "assets/art_packs/kenney_roguelike_indoors/Tilesheets/roguelikeIndoor_transparent.png", tile_width = 16, tile_height = 16, spacing = 1, columns = 27, rows = 18 },
+  },
+  ["art_pack.kenney_roguelike_modern_city"] = {
+    { id = "main", label = "MODERN CITY", path = "assets/art_packs/kenney_roguelike_modern_city/Tilemap/tilemap_packed.png", tile_width = 16, tile_height = 16, columns = 37, rows = 28 },
+  },
+  ["art_pack.kenney_roguelike_caves_dungeons"] = {
+    { id = "main", label = "CAVES & DUNGEONS", path = "assets/art_packs/kenney_roguelike_caves_dungeons/Spritesheet/roguelikeDungeon_transparent.png", tile_width = 16, tile_height = 16, spacing = 1, columns = 29, rows = 18 },
+  },
+  ["art_pack.kenney_roguelike_rpg_pack"] = {
+    { id = "main", label = "RPG PACK", path = "assets/art_packs/kenney_roguelike_rpg_pack/Spritesheet/roguelikeSheet_transparent.png", tile_width = 16, tile_height = 16, columns = 57, rows = 31 },
+  },
+  ["art_pack.kenney_roguelike_characters"] = {
+    { id = "main", label = "CHARACTERS", path = "assets/art_packs/kenney_roguelike_characters/Spritesheet/roguelikeChar_transparent.png", tile_width = 16, tile_height = 16, spacing = 1, columns = 54, rows = 12 },
+  },
 }
 
 local function color(value, alpha)
@@ -56,6 +105,23 @@ local function path_arg(arguments, flag)
   end
 end
 
+local function normalize_project_root(path)
+  if type(path) ~= "string" then return nil, "Choose a project folder or " .. Project.MANIFEST end
+  path = path:gsub("^%s+", ""):gsub("%s+$", ""):gsub("\\", "/")
+  if path == "" then return nil, "Choose a project folder or " .. Project.MANIFEST end
+  local leaf = path:match("([^/]+)$")
+  if path:match("%.json$") and leaf ~= Project.MANIFEST then
+    return nil, "Choose the " .. Project.MANIFEST .. " file, not an arbitrary JSON file"
+  end
+  if leaf == Project.MANIFEST then path = path:match("^(.*)/[^/]+$") or "." end
+  if not path:match("^/") and not path:match("^[A-Za-z]:/") then
+    local base = love and love.filesystem and love.filesystem.getWorkingDirectory and love.filesystem.getWorkingDirectory()
+    if base and base ~= "" then path = base:gsub("/+$", "") .. "/" .. path end
+  end
+  if path ~= "/" then path = path:gsub("/+$", "") end
+  return path
+end
+
 -- LÖVE's virtual filesystem cannot open a sibling checkout by pathname. Read
 -- external project/ROAG image bytes through Lua, then hand LÖVE FileData.
 local function image_from_path(path)
@@ -68,8 +134,10 @@ end
 
 function Studio.new(arguments)
   local target = path_arg(arguments, "--roag") or Bridge.DEFAULT_TARGET
-  local self = setmetatable({ bridge = Bridge.new(target), project_root = path_arg(arguments, "--project") or ".", tab = "home", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, room_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {} }, Studio)
+  local project_root = normalize_project_root(path_arg(arguments, "--project") or ".") or "."
+  local self = setmetatable({ bridge = Bridge.new(target), project_root = project_root, tab = "projects", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, room_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, art_sheet_selection = {}, art_source_scroll = 0, art_sheet_zoom = 1, art_sheet_pan_x = 0, art_sheet_pan_y = 0, art_sheet_panning = false, art_images = {}, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {}, recent_projects = {} }, Studio)
   self:load_assets()
+  self:load_recent_projects()
   self:reload()
   return self
 end
@@ -98,7 +166,12 @@ end
 function Studio:reload()
   self.workspace = Workspace.new(self.bridge.target)
   local loaded, failure = self.workspace:load()
-  if not loaded then self.data, self.status = nil, "Could not open ROAG JSON workspace: " .. failure.reason; return nil, failure end
+  if not loaded then
+    self.data = nil
+    self:load_native_project()
+    self.status = "Could not open ROAG JSON workspace: " .. failure.reason .. ". Native project tools remain available."
+    return nil, failure
+  end
   self.data, self.corpora, self.dirty, self.room_dirty, self.undo_stack, self.redo_stack, self.active = loaded.presentation, loaded.corpora, false, false, {}, {}, nil
   self.selected_screen = clamp(self.selected_screen, 1, #self.data.screens.screens)
   self.selected_action = clamp(self.selected_action, 1, #self.data.flow.title_actions)
@@ -119,6 +192,70 @@ function Studio:load_native_project()
   self.selected_asset = clamp(self.selected_asset, 1, math.max(1, #self.native_assets))
   self.runtime = Runtime.new(self.project)
   self:select_native_asset(self.selected_asset)
+  self:remember_project(self.project.root, manifest.name)
+end
+
+function Studio:load_recent_projects()
+  self.recent_projects = RecentProjects.load()
+end
+
+function Studio:remember_project(path, name)
+  self.recent_projects = RecentProjects.remember(self.recent_projects, path, name)
+  -- Recents improve the launcher but must never make opening a valid project
+  -- fail if the platform save area is unavailable.
+  RecentProjects.save(self.recent_projects)
+end
+
+function Studio:confirm_project_switch()
+  if not (self.dirty or self.room_dirty or self.native_dirty) then return true end
+  local choice = self:choice("Switch project", "Save all pending Studio changes before switching projects?", { "Cancel", "Save all", "Discard" })
+  if choice == 3 then return true end
+  if choice ~= 2 then return false end
+  if self.native_dirty and not self:save_native() then return false end
+  if self.room_dirty and not self:save_room() then return false end
+  if self.dirty and not self:save() then return false end
+  return true
+end
+
+function Studio:open_project(path)
+  local root, reason = normalize_project_root(path)
+  if not root then self.status = reason; return nil, { reason = reason } end
+  local candidate = Project.new(root)
+  local manifest, failure = candidate:load()
+  if not manifest then
+    self.tab, self.status = "projects", "Could not open project: " .. failure.reason
+    return nil, failure
+  end
+  self.project_root, self.project, self.project_manifest, self.project_error = root, candidate, manifest, nil
+  self.native_images, self.native_quads = {}, {}
+  self:load_native_project()
+  self.tab, self.status = "native", "Opened " .. manifest.name .. "."
+  return true
+end
+
+function Studio:request_project_open(path)
+  local root, reason = normalize_project_root(path)
+  if not root then self.status = reason; return nil, { reason = reason } end
+  if root == self.project_root then self.tab, self.status = "native", "This project is already open."; return true end
+  if not self:confirm_project_switch() then return nil, { reason = "Project switch cancelled" } end
+  return self:open_project(root)
+end
+
+function Studio:choose_project(kind)
+  if not self:confirm_project_switch() then return end
+  local path, reason = kind == "manifest" and ProjectPicker.choose_manifest() or ProjectPicker.choose_folder()
+  if not path then
+    if reason ~= "cancelled" then self.status = "Project picker: " .. tostring(reason) end
+    return
+  end
+  self:open_project(path)
+end
+
+function Studio:begin_project_path()
+  self:commit_field()
+  -- Start blank so a clipboard paste replaces the path in one action instead
+  -- of requiring an author to erase the current absolute path first.
+  self.active, self.draft = { kind = "project_path" }, ""
 end
 
 function Studio:select_native_asset(index)
@@ -186,6 +323,78 @@ function Studio:load_sheet()
   self.sheet_error = ok and nil or tostring(image)
 end
 
+function Studio:art_sheets(pack)
+  return pack and ART_SHEETS[pack.id] or {}
+end
+
+function Studio:current_art_sheet(pack)
+  local sheets = self:art_sheets(pack)
+  if #sheets == 0 then return nil end
+  local index = clamp(self.art_sheet_selection[pack.id] or 1, 1, #sheets)
+  self.art_sheet_selection[pack.id] = index
+  return sheets[index], index
+end
+
+function Studio:art_sheet_path(sheet)
+  return self.bridge.target:gsub("/+$", "") .. "/" .. sheet.path
+end
+
+function Studio:art_sheet_image(sheet)
+  if not sheet then return nil, "No source sheet is declared for this art pack." end
+  local path = self:art_sheet_path(sheet)
+  local cached = self.art_images[path]
+  if cached then return cached.image, cached.error end
+  local ok, image = pcall(image_from_path, path)
+  local value = { image = ok and image or nil, error = ok and nil or tostring(image) }
+  self.art_images[path] = value
+  return value.image, value.error
+end
+
+function Studio:select_art_sheet(pack_id, index)
+  self.art_sheet_selection[pack_id] = index
+  self.art_sheet_zoom, self.art_sheet_pan_x, self.art_sheet_pan_y = 1, 0, 0
+end
+
+function Studio:select_imported_tileset(asset_id)
+  self.native_images, self.native_quads = {}, {}
+  self:load_native_project()
+  for index, asset in ipairs(self.native_assets or {}) do
+    if asset.id == asset_id then self:select_native_asset(index); break end
+  end
+  self.tab = "native"
+end
+
+function Studio:import_art_sheet(pack, sheet)
+  if not self.project_manifest or not self.project then
+    self.status = "Open a native project before adding this sheet. The source preview remains read-only."
+    return
+  end
+  local target_path = "assets/" .. Project.slug(pack.label) .. "_" .. Project.slug(sheet.id) .. ".png"
+  for asset_id, entry in pairs(self.project_manifest.assets) do
+    if entry.type == "tileset" then
+      local tileset = self.project:load_asset(asset_id)
+      if tileset and tileset.texture and tileset.texture.path == target_path then
+        self:select_imported_tileset(asset_id)
+        self.status = "This source sheet is already available as " .. asset_id .. "."
+        return
+      end
+    end
+  end
+  if not self:resolve_native_before_change() then return end
+  local source = self:art_sheet_path(sheet)
+  local tileset, failure = self.project:import_tileset(source, pack.label .. " " .. sheet.id, {
+    texture_path = target_path,
+    tile_width = sheet.tile_width,
+    tile_height = sheet.tile_height,
+  })
+  if not tileset then
+    self.status = "Could not add source sheet: " .. failure.reason
+    return
+  end
+  self:select_imported_tileset(tileset.id)
+  self.status = "Added " .. sheet.label .. " as " .. tileset.id .. ". It is now available to native tilemaps."
+end
+
 function Studio:record()
   self.undo_stack[#self.undo_stack + 1] = Bridge.copy(self.data)
   if #self.undo_stack > 60 then table.remove(self.undo_stack, 1) end
@@ -245,6 +454,12 @@ end
 
 function Studio:commit_field()
   if not self.active then return end
+  if self.active.kind == "project_path" then
+    local path = self.draft
+    self.active, self.draft = nil, ""
+    self:request_project_open(path)
+    return
+  end
   if self.active.kind == "native_field" then
     local target, field, value_type = self.active.target, self.active.field, self.active.value_type
     local value = self.draft
@@ -356,6 +571,19 @@ function Studio:native_field(rect, label, target, field, value_type)
   self.controls[#self.controls + 1] = { rect = rect, action = { type = "native_field", target = target, field = field, value_type = value_type }, cursor = "text" }
 end
 
+function Studio:project_path_field(rect)
+  local focused = self.active and self.active.kind == "project_path"
+  self:panel(rect, focused and COLORS.selected or COLORS.surface2, focused and COLORS.selected_border or COLORS.border)
+  self:line("PROJECT FOLDER OR MANIFEST PATH", rect.x + 10, rect.y + 3, .58, COLORS.muted, rect.width - 20)
+  local value = focused and self.draft or self.project_root or ""
+  if focused and value == "" then value = "Paste a folder or manifest path" end
+  local font, visible = self:font(.72), ellipsize(self:font(.72), value, rect.width - 20)
+  local value_tint = focused and (self.draft == "" and COLORS.muted or COLORS.gold) or COLORS.text
+  self:line(visible, rect.x + 10, rect.y + 16, .72, value_tint, rect.width - 20)
+  if focused then self:text("|", rect.x + 11 + math.min(font:getWidth(self.draft), rect.width - 26), rect.y + 16, .72, COLORS.blue) end
+  self.controls[#self.controls + 1] = { rect = rect, action = { type = "project_path" }, cursor = "text" }
+end
+
 function Studio:dock_title(rect, title, detail)
   self:line(title, rect.x + 12, rect.y + 10, .64, COLORS.muted, rect.width - 24)
   if detail then self:line(detail, rect.x + 12, rect.y + 10, .56, COLORS.muted, rect.width - 24, "right") end
@@ -371,13 +599,14 @@ end
 function Studio:draw_header(view)
   color(COLORS.dark); love.graphics.rectangle("fill", 0, 0, view.width, view.header.height)
   self:line("FILE    EDIT    VIEW    PROJECT    HELP", 12, 6, .64, COLORS.muted, 330)
-  local tabs = { home = "OVERVIEW", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
+  local tabs = { home = "OVERVIEW", projects = "PROJECTS", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
   local title = tabs[self.tab] or "PROJECT"
   self:panel({ x = 8, y = 27, width = 232, height = 30 }, COLORS.surface, COLORS.border)
   self:line("UNPOLISHED BEES  /  " .. title, 18, 35, .70, COLORS.text, 212)
   local unsaved = self.dirty or self.room_dirty or self.native_dirty
   self:line(unsaved and "UNSAVED" or "SAVED", view.width - 302, 7, .62, unsaved and COLORS.gold or COLORS.mint, 82, "right")
   self:line("TARGET " .. self.bridge.target, view.width - 220, 7, .58, COLORS.muted, 210, "right")
+  self:button({ x = view.width - 262, y = 29, width = 78, height = 26 }, "OPEN", { type = "tab", tab = "projects" })
   self:button({ x = view.width - 176, y = 29, width = 78, height = 26 }, "RELOAD", { type = "reload" })
   self:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save" }, { selected = self.dirty })
 end
@@ -385,7 +614,7 @@ end
 function Studio:draw_nav(view)
   self:panel(view.nav)
   self:line("TOOLS", view.nav.x + 5, view.nav.y + 8, .52, COLORS.muted, view.nav.width - 10, "center")
-  local tabs = { { "home", "HOME" }, { "native", "ASSET" }, { "rooms", "ROOM" }, { "art", "ART" }, { "scenes", "SCENE" }, { "flow", "FLOW" }, { "publish", "SAVE" } }
+  local tabs = { { "home", "HOME" }, { "projects", "OPEN" }, { "native", "ASSET" }, { "rooms", "ROOM" }, { "art", "ART" }, { "scenes", "SCENE" }, { "flow", "FLOW" }, { "publish", "SAVE" } }
   for index, item in ipairs(tabs) do
     self:button({ x = view.nav.x + 7, y = view.nav.y + 30 + (index - 1) * 46, width = view.nav.width - 14, height = 38 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
   end
@@ -410,6 +639,41 @@ function Studio:draw_home(view)
     local gap, card_width = 14, math.min(390, (view.body.width - 54) / 2)
     local rect = { x = view.body.x + 20 + column * (card_width + gap), y = view.body.y + 112 + row * 146, width = card_width, height = 128 }
     self:panel(rect, COLORS.surface, card[4]); self:line(card[1], rect.x + 12, rect.y + 13, .82, COLORS.text, rect.width - 24); self:text(card[2], rect.x + 12, rect.y + 39, .68, COLORS.muted, rect.width - 24); self:button({ x = rect.x + 12, y = rect.y + 88, width = 90, height = 26 }, "OPEN", { type = "tab", tab = card[3] })
+  end
+end
+
+function Studio:draw_projects(view)
+  self:canvas_surface(view.body)
+  self:line("PROJECT LAUNCHER", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40)
+  self:text("Open an Unpolished Bees project by folder or manifest. Recent projects are stored in this editor’s local settings, not in your game data.", view.body.x + 20, view.body.y + 49, .75, COLORS.muted, math.min(view.body.width - 40, 760))
+
+  local current = { x = view.body.x + 20, y = view.body.y + 85, width = math.min(760, view.body.width - 40), height = 138 }
+  self:panel(current, COLORS.surface, COLORS.border)
+  local name = self.project_manifest and self.project_manifest.name or "NO PROJECT OPEN"
+  self:line(name, current.x + 14, current.y + 14, .90, COLORS.text, current.width - 28)
+  self:line(self.project_manifest and "CURRENT PROJECT" or "SELECT A PROJECT TO BEGIN", current.x + 14, current.y + 37, .58, self.project_manifest and COLORS.mint or COLORS.gold, current.width - 28)
+  self:button({ x = current.x + 14, y = current.y + 61, width = 142, height = 34 }, "OPEN FOLDER", { type = "choose_project", kind = "folder" })
+  self:button({ x = current.x + 164, y = current.y + 61, width = 168, height = 34 }, "CHOOSE MANIFEST", { type = "choose_project", kind = "manifest" })
+  self:button({ x = current.x + 340, y = current.y + 61, width = 116, height = 34 }, "PASTE PATH", { type = "project_path" })
+  self:project_path_field({ x = current.x + 14, y = current.y + 102, width = current.width - 28, height = 30 })
+
+  local recent_y = current.y + current.height + 24
+  self:line("RECENT PROJECTS", view.body.x + 20, recent_y, .72, COLORS.muted, view.body.width - 40)
+  if #self.recent_projects == 0 then
+    self:text("No recent projects yet. Choose a folder or manifest above.", view.body.x + 20, recent_y + 28, .72, COLORS.muted, view.body.width - 40)
+    return
+  end
+  local columns = view.body.width >= 820 and 2 or 1
+  local gap = 12
+  local card_width = math.min(420, (view.body.width - 40 - gap * (columns - 1)) / columns)
+  for index, entry in ipairs(self.recent_projects) do
+    local column, row = (index - 1) % columns, math.floor((index - 1) / columns)
+    local rect = { x = view.body.x + 20 + column * (card_width + gap), y = recent_y + 27 + row * 62, width = card_width, height = 52 }
+    local selected = entry.path == self.project_root
+    self:panel(rect, selected and COLORS.selected or COLORS.surface, selected and COLORS.selected_border or COLORS.border)
+    self:line(entry.name, rect.x + 10, rect.y + 8, .76, COLORS.text, rect.width - 20)
+    self:line(entry.path, rect.x + 10, rect.y + 28, .56, COLORS.muted, rect.width - 20)
+    self.controls[#self.controls + 1] = { rect = rect, action = { type = "open_recent_project", path = entry.path }, cursor = "action" }
   end
 end
 
@@ -797,10 +1061,77 @@ function Studio:draw_rooms(view)
   end
 end
 
+function Studio:draw_pack_sheet(rect, pack, sheet)
+  local image, reason = self:art_sheet_image(sheet)
+  self.pack_sheet_rect = rect
+  if not image then
+    self:text("Could not load the declared source sheet:\n" .. tostring(reason), rect.x + 18, rect.y + 22, .78, COLORS.red, rect.width - 36)
+    return
+  end
+  local image_width, image_height = image:getDimensions()
+  local available_height = rect.height - 46
+  local base = math.min((rect.width - 30) / image_width, (available_height - 24) / image_height)
+  local scale = math.max(.05, base * self.art_sheet_zoom)
+  local width, height = image_width * scale, image_height * scale
+  local origin_x = rect.x + (rect.width - width) / 2 + self.art_sheet_pan_x
+  local origin_y = rect.y + (available_height - height) / 2 + self.art_sheet_pan_y
+  local grid_width = ((sheet.columns * (sheet.tile_width + (sheet.spacing or 0))) - (sheet.spacing or 0)) * scale
+  local grid_height = ((sheet.rows * (sheet.tile_height + (sheet.spacing or 0))) - (sheet.spacing or 0)) * scale
+  local pitch_x, pitch_y = (sheet.tile_width + (sheet.spacing or 0)) * scale, (sheet.tile_height + (sheet.spacing or 0)) * scale
+  love.graphics.setScissor(rect.x + 1, rect.y + 1, rect.width - 2, rect.height - 2)
+  color({ 1, 1, 1 }); love.graphics.draw(image, origin_x, origin_y, 0, scale, scale)
+  -- A light grid makes individual source sprites legible without treating a
+  -- third-party pack's fixed ROAG role mapping as editable data.
+  if math.min(pitch_x, pitch_y) >= 7 then
+    color(COLORS.border, .65); love.graphics.setLineWidth(1)
+    for column = 0, sheet.columns do
+      local x = origin_x + math.min(column * pitch_x, grid_width)
+      love.graphics.line(x, origin_y, x, origin_y + grid_height)
+    end
+    for row = 0, sheet.rows do
+      local y = origin_y + math.min(row * pitch_y, grid_height)
+      love.graphics.line(origin_x, y, origin_x + grid_width, y)
+    end
+  end
+  love.graphics.setLineWidth(1); love.graphics.setScissor()
+  local details = sheet.columns .. " × " .. sheet.rows .. " TILES  ·  " .. sheet.tile_width .. " × " .. sheet.tile_height .. " PX"
+  self:line(details .. "  ·  WHEEL ZOOMS  ·  RIGHT DRAG PANS", rect.x + 12, rect.y + rect.height - 25, .60, COLORS.muted, rect.width - 24, "center")
+end
+
+function Studio:draw_pack_sources(middle, pack)
+  local sheets = self:art_sheets(pack)
+  local source_width = dock_width(middle.width, .20, 205, 250)
+  local sources = { x = middle.x + 14, y = middle.y + 78, width = source_width, height = middle.height - 92 }
+  local sheet_rect = { x = sources.x + sources.width + 16, y = sources.y, width = middle.width - sources.width - 44, height = sources.height }
+  self:panel(sources, COLORS.surface); self:canvas_surface(sheet_rect); self:dock_title(sources, "SOURCE SHEETS", tostring(#sheets))
+  if #sheets == 0 then
+    self:text("This pack does not declare browsable PNG source sheets.", sources.x + 12, sources.y + 44, .72, COLORS.red, sources.width - 24)
+    self:text("The selected pack can still be used by ROAG, but there is no sheet to import into this native project.", sheet_rect.x + 18, sheet_rect.y + 20, .78, COLORS.muted, sheet_rect.width - 36)
+    return
+  end
+  local selected_sheet, selected_index = self:current_art_sheet(pack)
+  local button_y = sources.y + sources.height - 48
+  local list_rect = { x = sources.x + 1, y = sources.y + 35, width = sources.width - 2, height = math.max(0, button_y - sources.y - 41) }
+  local row_height, max_rows = 31, math.max(1, math.floor(list_rect.height / 31))
+  self.art_source_list_rect, self.art_source_visible_count, self.art_source_max_rows = list_rect, #sheets, max_rows
+  self.art_source_scroll = clamp(self.art_source_scroll or 0, 0, math.max(0, #sheets - max_rows))
+  local y = list_rect.y + 3
+  for index = self.art_source_scroll + 1, math.min(#sheets, self.art_source_scroll + max_rows) do
+    local item = sheets[index]
+    self:button({ x = sources.x + 7, y = y, width = sources.width - 14, height = 27 }, item.label, { type = "pack_sheet_source", pack_id = pack.id, index = index }, { selected = index == selected_index })
+    y = y + row_height
+  end
+  self:button({ x = sources.x + 10, y = button_y, width = sources.width - 20, height = 32 }, "ADD SHEET TO PROJECT", { type = "import_pack_sheet", pack = pack, sheet = selected_sheet }, { selected = false, enabled = self.project_manifest ~= nil })
+  self:line("COPIES PNG AS A NATIVE TILESET", sources.x + 10, sources.y + sources.height - 68, .51, COLORS.muted, sources.width - 20, "center")
+  self:line(pack.label .. " / " .. selected_sheet.label, sheet_rect.x + 14, sheet_rect.y + 13, .66, COLORS.text, sheet_rect.width - 28)
+  self:draw_pack_sheet(sheet_rect, pack, selected_sheet)
+end
+
 function Studio:draw_art(view)
-  -- These hit regions are retained for pointer-local wheel routing. A scroll
-  -- over the role dock must never also change the sheet zoom.
-  self.role_list_rect, self.sheet_rect, self.role_visible_count, self.role_max_rows = nil, nil, 0, 0
+  -- Hit regions make pointer-local scrolling predictable: a list scroll never
+  -- changes the sheet's zoom, and a source preview never scrolls its list.
+  self.role_list_rect, self.sheet_rect, self.pack_sheet_rect, self.art_source_list_rect = nil, nil, nil, nil
+  self.role_visible_count, self.role_max_rows, self.art_source_visible_count, self.art_source_max_rows = 0, 0, 0, 0
   local left = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .26, 270, 350), height = view.body.height }
   local middle = { x = left.x + left.width + 16, y = view.body.y, width = view.body.width - left.width - 16, height = view.body.height }
   self:panel(left); self:canvas_surface(middle); self:dock_title(left, "ART PACKS", "LICENSED")
@@ -814,9 +1145,9 @@ function Studio:draw_art(view)
   local selected_pack
   for _, pack in ipairs(packs) do if pack.id == self.data.art_pack.art_pack_id then selected_pack = pack end end
   self:panel({ x = middle.x + 8, y = middle.y + 8, width = middle.width - 16, height = 58 }, COLORS.surface, COLORS.border)
-  self:line("SPRITE MAPPING", middle.x + 18, middle.y + 18, .72, COLORS.text, middle.width - 36)
-  self:line(selected_pack.editable_roles and "ROAG 1-bit mapping — assignments are live." or "This pack provides its own stable mapping. Choose ROAG 1-BIT to edit individual role tiles.", middle.x + 18, middle.y + 40, .60, selected_pack.editable_roles and COLORS.mint or COLORS.muted, middle.width - 36)
-  if not selected_pack.editable_roles then return end
+  self:line(selected_pack.editable_roles and "SPRITE MAPPING" or "ART SOURCES", middle.x + 18, middle.y + 18, .72, COLORS.text, middle.width - 36)
+  self:line(selected_pack.editable_roles and "ROAG 1-bit mapping — assignments are live." or "Browse this pack's declared source sheets, then add any sheet to the open native project as a tileset.", middle.x + 18, middle.y + 40, .60, selected_pack.editable_roles and COLORS.mint or COLORS.muted, middle.width - 36)
+  if not selected_pack.editable_roles then self:draw_pack_sources(middle, selected_pack); return end
   local roles_rect = { x = middle.x + 14, y = middle.y + 78, width = 224, height = middle.height - 92 }
   local sheet_rect = { x = roles_rect.x + roles_rect.width + 16, y = roles_rect.y, width = middle.width - roles_rect.width - 44, height = roles_rect.height }
   self:panel(roles_rect, COLORS.surface); self:canvas_surface(sheet_rect)
@@ -915,9 +1246,10 @@ end
 function Studio:draw()
   local view = self:layout(); self.controls = {}; love.graphics.clear(COLORS.backdrop)
   self:draw_header(view); self:draw_nav(view)
-  if not self.data then
-    self:panel(view.body); self:text("ROAG workspace unavailable", view.body.x + 24, view.body.y + 24, 1.5, COLORS.red); self:text(self.status, view.body.x + 24, view.body.y + 70, .82, COLORS.muted, view.body.width - 48)
+  if self.tab == "projects" then self:draw_projects(view)
   elseif self.tab == "native" then self:draw_native(view)
+  elseif not self.data then
+    self:panel(view.body); self:text("ROAG workspace unavailable", view.body.x + 24, view.body.y + 24, 1.5, COLORS.red); self:text(self.status, view.body.x + 24, view.body.y + 70, .82, COLORS.muted, view.body.width - 48)
   elseif self.tab == "rooms" then self:draw_rooms(view)
   elseif self.tab == "art" then self:draw_art(view)
   elseif self.tab == "scenes" then self:draw_scenes(view)
@@ -1014,9 +1346,14 @@ function Studio:remove_native_asset()
 end
 
 function Studio:filedropped(file)
-  if not self.project_manifest or not file or not file.getFilename then return end
-  if not self:resolve_native_before_change() then return end
+  if not file or not file.getFilename then return end
   local path = file:getFilename()
+  if path:match("[^/\\]+$") == Project.MANIFEST then
+    self:request_project_open(path)
+    return
+  end
+  if not self.project_manifest then self.status = "Open a project before importing assets."; return end
+  if not self:resolve_native_before_change() then return end
   local extension = (path:match("%.([^.]+)$") or ""):lower()
   if extension == "png" then
     local tileset, failure = self.project:import_tileset(path)
@@ -1062,6 +1399,9 @@ function Studio:activate(action)
   if type(action) == "string" then return end
   local kind = action.type
   if kind == "tab" then self:commit_field(); self.tab = action.tab
+  elseif kind == "choose_project" then self:choose_project(action.kind)
+  elseif kind == "open_recent_project" then self:request_project_open(action.path)
+  elseif kind == "project_path" then self:begin_project_path()
   elseif kind == "native_asset" then
     if action.index ~= self.selected_asset and self:resolve_native_before_change() then self:select_native_asset(action.index) end
   elseif kind == "create_native_asset" then self:create_native_asset(action.asset_type)
@@ -1183,7 +1523,15 @@ function Studio:activate(action)
   elseif kind == "redo_native" then self:redo_native()
   elseif kind == "undo_room" then self:undo_room()
   elseif kind == "redo_room" then self:redo_room()
-  elseif kind == "pack" then self:commit_field(); self:record(); self.data.art_pack.art_pack_id = self.data.catalog.art_packs[action.index].id; self.status = "Selected pack. Publish to make ROAG use it on next focus/launch."
+  elseif kind == "pack" then
+    self:commit_field(); self:record(); self.data.art_pack.art_pack_id = self.data.catalog.art_packs[action.index].id
+    self.art_source_scroll, self.art_sheet_zoom, self.art_sheet_pan_x, self.art_sheet_pan_y = 0, 1, 0, 0
+    self.status = "Selected pack. Browse its source sheets here; publish to make ROAG use it on next focus/launch."
+  elseif kind == "pack_sheet_source" then
+    self:select_art_sheet(action.pack_id, action.index)
+    local sheet = (ART_SHEETS[action.pack_id] or {})[action.index]
+    self.status = "Viewing " .. (sheet and sheet.label or "source sheet") .. "."
+  elseif kind == "import_pack_sheet" then self:import_art_sheet(action.pack, action.sheet)
   elseif kind == "role" then self:commit_field(); self.selected_role = action.index
   elseif kind == "sheet" and self.sheet_hover then self:commit_field(); self:record(); local role = self:current_role(); self.data.sprites.sprites[role[1]] = { column = self.sheet_hover.column, row = self.sheet_hover.row }; self.status = role[2] .. " mapped to [" .. self.sheet_hover.column .. ", " .. self.sheet_hover.row .. "]."
   elseif kind == "screen" then self:commit_field(); self.selected_screen = action.index
@@ -1199,13 +1547,14 @@ end
 
 function Studio:update()
   local x, y = love.mouse.getPosition(); local cursor = "default"
-  if self.sheet_panning or self.map_panning then cursor = "pan" else
+  if self.sheet_panning or self.art_sheet_panning or self.map_panning then cursor = "pan" else
     for _, control in ipairs(self.controls) do if control.enabled ~= false and inside(x, y, control.rect) then cursor = control.cursor or "action" end end
   end
   love.mouse.setCursor(self.cursors[cursor])
 end
 
 function Studio:mousepressed(x, y, button)
+  if button == 2 and self.tab == "art" and self.pack_sheet_rect and inside(x, y, self.pack_sheet_rect) then self.art_sheet_panning = true; return end
   if button == 2 and self.tab == "art" and self.sheet_hover then self.sheet_panning = true; return end
   if button == 2 and self.tab == "native" and self.map_viewport and inside(x, y, self.map_viewport) then self.map_panning = true; return end
   if button ~= 1 then return end
@@ -1214,12 +1563,13 @@ function Studio:mousepressed(x, y, button)
 end
 
 function Studio:mousereleased(_, _, button)
-  if button == 2 then self.sheet_panning, self.map_panning = false, false end
+  if button == 2 then self.sheet_panning, self.art_sheet_panning, self.map_panning = false, false, false end
   if button == 1 then self.native_drag = nil end
 end
 
 function Studio:mousemoved(_, _, dx, dy)
   if self.sheet_panning then self.sheet_pan_x, self.sheet_pan_y = self.sheet_pan_x + dx, self.sheet_pan_y + dy end
+  if self.art_sheet_panning then self.art_sheet_pan_x, self.art_sheet_pan_y = self.art_sheet_pan_x + dx, self.art_sheet_pan_y + dy end
   if self.map_panning then self.map_pan_x, self.map_pan_y = self.map_pan_x + dx, self.map_pan_y + dy end
   if self.native_drag and self.tab == "native" then
     if not self.native_drag.recorded then self:record_native(); self.native_drag.recorded = true end
@@ -1238,7 +1588,11 @@ end
 function Studio:wheelmoved(_, dy)
   if self.tab == "art" then
     local x, y = love.mouse.getPosition()
-    if self.sheet_rect and inside(x, y, self.sheet_rect) then
+    if self.pack_sheet_rect and inside(x, y, self.pack_sheet_rect) then
+      self.art_sheet_zoom = clamp(self.art_sheet_zoom * (1.14 ^ dy), .20, 8)
+    elseif self.art_source_list_rect and inside(x, y, self.art_source_list_rect) then
+      self.art_source_scroll = clamp((self.art_source_scroll or 0) - dy, 0, math.max(0, (self.art_source_visible_count or 0) - (self.art_source_max_rows or 1)))
+    elseif self.sheet_rect and inside(x, y, self.sheet_rect) then
       self.sheet_zoom = clamp(self.sheet_zoom * (1.14 ^ dy), .45, 6)
     elseif self.role_list_rect and inside(x, y, self.role_list_rect) then
       self.scroll = clamp(self.scroll - dy, 0, math.max(0, (self.role_visible_count or #ROLES) - (self.role_max_rows or 1)))
@@ -1275,6 +1629,10 @@ end
 
 function Studio:keypressed(key)
   local modifier = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl") or love.keyboard.isDown("lgui") or love.keyboard.isDown("rgui")
+  if modifier and key == "o" then
+    self:choose_project("folder")
+    return
+  end
   if modifier and key == "s" then
     if self.tab == "native" then self:save_native() elseif self.tab == "rooms" then self:save_room() else self:save() end
     return

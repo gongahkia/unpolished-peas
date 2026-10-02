@@ -20,6 +20,13 @@ love . --roag ../roag --project .
 - `--project` chooses a native Unpolished Bees project; it defaults to the
   current directory. A small runnable fixture lives in `examples/starter`.
 
+The editor opens on **Project Launcher**. From there, or with `Cmd/Ctrl+O`,
+choose either a project folder or its `unpolished_bees.project.json` manifest.
+Recently opened projects are stored in the editor's own LÖVE settings
+directory—not in any selected project. A manifest can also be dropped onto the
+editor window to switch projects. The active project must validate before the
+current project is replaced.
+
 To run the headless suite:
 
 ```console
@@ -37,6 +44,10 @@ luajit tests/run.lua
   and reference-aware recoverable deletion (removal only unindexes the JSON
   file). Drop a PNG to copy it into `assets/` and make a managed tileset; drop
   Tiled JSON (`.json`/`.tmj`) to import an orthogonal sparse map.
+- **Project Launcher** keeps project selection separate from game data. It
+  uses a native folder chooser or JSON-manifest chooser when the host platform
+  provides one, accepts a pasted path as a fallback, and protects unsaved
+  Studio documents before changing projects.
 - **ROAG Rooms** reads the dungeon and reactor JSON manifests, creates or
   recoverably removes manifest entries, paints a room template directly in
   memory, structurally validates it, and atomically writes only that selected
