@@ -48,9 +48,19 @@ local function path_arg(arguments, flag)
   end
 end
 
+-- LÖVE's virtual filesystem cannot open a sibling checkout by pathname. Read
+-- external project/ROAG image bytes through Lua, then hand LÖVE FileData.
+local function image_from_path(path)
+  local handle, reason = io.open(path, "rb")
+  if not handle then error(reason) end
+  local payload = handle:read("*a"); handle:close()
+  local name = path:match("([^/\\]+)$") or "image.png"
+  return love.graphics.newImage(love.filesystem.newFileData(payload, name))
+end
+
 function Studio.new(arguments)
   local target = path_arg(arguments, "--roag") or Bridge.DEFAULT_TARGET
-  local self = setmetatable({ bridge = Bridge.new(target), project_root = path_arg(arguments, "--project") or ".", tab = "home", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {} }, Studio)
+  local self = setmetatable({ bridge = Bridge.new(target), project_root = path_arg(arguments, "--project") or ".", tab = "home", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, room_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {} }, Studio)
   self:load_assets()
   self:reload()
   return self
@@ -165,7 +175,7 @@ end
 
 function Studio:load_sheet()
   local path = self.bridge:sheet_path()
-  local ok, image = pcall(love.graphics.newImage, path)
+  local ok, image = pcall(image_from_path, path)
   self.sheet = ok and image or nil
   self.sheet_error = ok and nil or tostring(image)
 end
@@ -262,9 +272,25 @@ function Studio:font(scale)
   return self.fonts.normal
 end
 
+local function ellipsize(font, value, width)
+  value = tostring(value or ""):gsub("[\r\n]", " ")
+  if font:getWidth(value) <= width then return value end
+  local suffix = "..."
+  while #value > 0 and font:getWidth(value .. suffix) > width do value = value:sub(1, -2) end
+  return value .. suffix
+end
+
 function Studio:text(value, x, y, scale, tint, width, align)
   love.graphics.setFont(self:font(scale or 1)); color(tint or COLORS.text)
   if width then love.graphics.printf(tostring(value), x, y, width, align or "left") else love.graphics.print(tostring(value), x, y) end
+end
+
+-- Labels inside compact controls should never word-wrap: a wrapped pixel-font
+-- label is both hard to read and can visually escape its hit target.
+function Studio:line(value, x, y, scale, tint, width, align)
+  local font = self:font(scale or 1)
+  love.graphics.setFont(font); color(tint or COLORS.text)
+  if width then love.graphics.printf(ellipsize(font, value, width), x, y, width, align or "left") else love.graphics.print(tostring(value), x, y) end
 end
 
 function Studio:panel(rect, fill, outline)
@@ -279,7 +305,9 @@ function Studio:button(rect, label, action, options)
   local enabled = options.enabled ~= false
   color({ 1, 1, 1 }, enabled and 1 or .28)
   love.graphics.draw(image, rect.x, rect.y, 0, rect.width / image:getWidth(), rect.height / image:getHeight())
-  self:text(label, rect.x + 10, rect.y + math.floor(rect.height / 2 - 8), .78, enabled and (selected and COLORS.dark or COLORS.text) or COLORS.muted, rect.width - 20, "center")
+  local font = self:font(.78)
+  local text_y = rect.y + math.floor((rect.height - font:getHeight()) / 2) - 1
+  self:line(label, rect.x + 10, text_y, .78, enabled and (selected and COLORS.dark or COLORS.text) or COLORS.muted, rect.width - 20, "center")
 end
 
 function Studio:field(rect, label, kind, field)
@@ -322,8 +350,8 @@ function Studio:draw_nav(view)
   for index, item in ipairs(tabs) do
     self:button({ x = view.nav.x + 10, y = view.nav.y + 48 + (index - 1) * 52, width = view.nav.width - 20, height = 42 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
   end
-  self:text("JSON ONLY", view.nav.x + 13, view.nav.y + view.nav.height - 92, .7, COLORS.mint)
-  self:text("Native assets and declared ROAG JSON are editable. Lua, saves, and profiles are never opened for writing.", view.nav.x + 13, view.nav.y + view.nav.height - 70, .66, COLORS.muted, view.nav.width - 26)
+  self:text("JSON ONLY", view.nav.x + 13, view.nav.y + view.nav.height - 70, .7, COLORS.mint)
+  self:text("Native assets and ROAG JSON are editable. Lua and saves stay read-only.", view.nav.x + 13, view.nav.y + view.nav.height - 50, .60, COLORS.muted, view.nav.width - 26)
 end
 
 function Studio:draw_home(view)
@@ -404,7 +432,7 @@ function Studio:tileset_image(tileset)
   local path = self.project and self.project.root:gsub("/+$", "") .. "/" .. relative or relative
   local cached = self.native_images[path]
   if cached ~= nil then return cached or nil end
-  local ok, image = pcall(love.graphics.newImage, path)
+  local ok, image = pcall(image_from_path, path)
   self.native_images[path] = ok and image or false
   return ok and image or nil
 end
@@ -653,14 +681,19 @@ function Studio:draw_rooms(view)
     self:button({ x = list.x + 10, y = list.y + 43 + (index - 1) * 43, width = list.width - 20, height = 34 }, corpus_id:upper(), { type = "corpus", id = corpus_id }, { selected = self.selected_corpus == corpus_id })
   end
   local corpus = self.corpora[self.selected_corpus]
-  self:text("DECLARED TEMPLATES", list.x + 14, list.y + 142, .64, COLORS.muted)
-  for index, room in ipairs(corpus.rooms) do
+  self:text("DECLARED TEMPLATES · WHEEL TO SCROLL", list.x + 14, list.y + 142, .58, COLORS.muted, list.width - 28)
+  local list_top, controls_top, row_height = list.y + 161, list.y + list.height - 213, 34
+  local visible_rows = math.max(1, math.floor((controls_top - list_top - 6) / row_height))
+  self.room_scroll = clamp(self.room_scroll or 0, 0, math.max(0, #corpus.rooms - visible_rows))
+  for index = self.room_scroll + 1, math.min(#corpus.rooms, self.room_scroll + visible_rows) do
+    local room = corpus.rooms[index]
     local selected = index == self.selected_room
-    local rect = { x = list.x + 8, y = list.y + 161 + (index - 1) * 34, width = list.width - 16, height = 28 }
+    local rect = { x = list.x + 8, y = list_top + (index - self.room_scroll - 1) * row_height, width = list.width - 16, height = 28 }
     self:panel(rect, selected and { .10, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:text(room.data.id:gsub("^room%." .. self.selected_corpus .. "%.", ""), rect.x + 7, rect.y + 6, .64, selected and COLORS.gold or COLORS.text, rect.width - 14)
+    self:line(room.data.id:gsub("^room%." .. self.selected_corpus .. "%.", ""), rect.x + 7, rect.y + 6, .64, selected and COLORS.gold or COLORS.text, rect.width - 14)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "room", index = index }, cursor = "action" }
   end
+  self.room_list_rect = { x = list.x + 6, y = list_top, width = list.width - 12, height = math.max(0, controls_top - list_top - 6) }
   self:button({ x = list.x + 10, y = list.y + list.height - 205, width = (list.width - 28) / 2, height = 32 }, "+ ROOM", { type = "new_room" })
   self:button({ x = list.x + list.width / 2 + 4, y = list.y + list.height - 205, width = (list.width - 28) / 2, height = 32 }, "REMOVE", { type = "remove_room" }, { danger = true, enabled = #corpus.rooms > 1 })
   self:button({ x = list.x + 10, y = list.y + list.height - 167, width = list.width - 20, height = 32 }, "CORPUS DIAGNOSTICS", { type = "room_diagnostics" }, { selected = self.room_diagnostics ~= nil })
@@ -688,12 +721,16 @@ function Studio:draw_rooms(view)
   self:text("PALETTE", palette_x, grid.y + 5, .68, COLORS.gold)
   local glyphs = {}; for glyph in pairs(room.data.legend or {}) do glyphs[#glyphs + 1] = glyph end; table.sort(glyphs)
   self.room_brush = self.room_brush or glyphs[1]
-  for index, glyph in ipairs(glyphs) do self:button({ x = palette_x, y = grid.y + 30 + (index - 1) * 38, width = 130, height = 30 }, glyph .. "  " .. tostring(room.data.legend[glyph]):gsub("^material%.", ""), { type = "room_brush", glyph = glyph }, { selected = self.room_brush == glyph }) end
+  for index, glyph in ipairs(glyphs) do
+    local material = tostring(room.data.legend[glyph]):gsub("^material%.", "")
+    local label = material == "structure" and ("WALL " .. glyph) or (material == "terrain.air" and ("AIR " .. glyph) or glyph)
+    self:button({ x = palette_x, y = grid.y + 30 + (index - 1) * 38, width = 130, height = 32 }, label, { type = "room_brush", glyph = glyph }, { selected = self.room_brush == glyph })
+  end
   local connector_text = {}; for _, connector in ipairs(room.data.connectors or {}) do connector_text[#connector_text + 1] = connector.side .. "@" .. connector.offset end
-  self:text("CONNECTORS  " .. table.concat(connector_text, "  "), palette_x, grid.y + 30 + #glyphs * 42, .63, COLORS.muted, editor.x + editor.width - palette_x - 16)
+  self:line("CONNECTORS  " .. table.concat(connector_text, "  "), palette_x, grid.y + 30 + #glyphs * 42, .63, COLORS.muted, editor.x + editor.width - palette_x - 16)
   local valid, validation = Workspace.validate_room(room.data)
   local health_y = grid.y + 56 + #glyphs * 42
-  self:text(valid and "CURRENT ROOM: VALID" or ("CURRENT ROOM: " .. validation.reason), palette_x, health_y, .61, valid and COLORS.mint or COLORS.red, editor.x + editor.width - palette_x - 16)
+  self:line(valid and "CURRENT ROOM: VALID" or ("CURRENT ROOM: " .. validation.reason), palette_x, health_y, .61, valid and COLORS.mint or COLORS.red, editor.x + editor.width - palette_x - 16)
   if self.room_diagnostics then
     local report, detail_y = self.room_diagnostics, health_y + 26
     local message
@@ -726,8 +763,9 @@ function Studio:draw_art(view)
   local packs = self.data.catalog.art_packs
   for index, pack in ipairs(packs) do
     local selected = pack.id == self.data.art_pack.art_pack_id
-    self:button({ x = left.x + 10, y = left.y + 43 + (index - 1) * 49, width = left.width - 20, height = 42 }, pack.label, { type = "pack", index = index }, { selected = selected })
-    self:text(pack.license .. " · " .. pack.credit, left.x + 18, left.y + 78 + (index - 1) * 49, .58, selected and COLORS.dark or COLORS.muted, left.width - 36)
+    local row_y = left.y + 43 + (index - 1) * 56
+    self:button({ x = left.x + 10, y = row_y, width = left.width - 20, height = 36 }, pack.label, { type = "pack", index = index }, { selected = selected })
+    self:line(pack.license .. " · " .. pack.credit, left.x + 18, row_y + 39, .54, selected and COLORS.dark or COLORS.muted, left.width - 36)
   end
   local selected_pack
   for _, pack in ipairs(packs) do if pack.id == self.data.art_pack.art_pack_id then selected_pack = pack end end
@@ -749,8 +787,8 @@ function Studio:draw_art(view)
     local item = visible[local_index]; local role = item.role; local selected = item.source == self.selected_role
     local rect = { x = roles_rect.x + 7, y = y, width = roles_rect.width - 14, height = 27 }
     self:panel(rect, selected and { .1, .27, .34 } or COLORS.surface, selected and COLORS.blue or COLORS.border)
-    self:text(role[2], rect.x + 7, rect.y + 5, .73, selected and COLORS.gold or COLORS.text, rect.width - 56)
-    local map = self.data.sprites.sprites[role[1]]; self:text(map and (map.column .. "," .. map.row) or "—", rect.x + rect.width - 44, rect.y + 6, .62, COLORS.muted)
+    self:line(role[2], rect.x + 7, rect.y + 5, .73, selected and COLORS.gold or COLORS.text, rect.width - 56)
+    local map = self.data.sprites.sprites[role[1]]; self:line(map and (map.column .. "," .. map.row) or "—", rect.x + rect.width - 44, rect.y + 6, .62, COLORS.muted, 36, "right")
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "role", index = item.source }, cursor = "action" }
     y = y + 31
   end
@@ -808,7 +846,7 @@ function Studio:draw_flow(view)
   for index, action in ipairs(self.data.flow.title_actions) do
     local selected = index == self.selected_action; local rect = { x = list.x + 10, y = list.y + 75 + (index - 1) * 64, width = list.width - 20, height = 55 }
     self:panel(rect, selected and { .1, .27, .34 } or COLORS.surface2, selected and COLORS.blue or COLORS.border)
-    self:text((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, selected and COLORS.gold or COLORS.text, rect.width - 20); self:text("→ " .. action.target, rect.x + 10, rect.y + 29, .63, COLORS.muted, rect.width - 20)
+    self:text((index .. ". ") .. action.label, rect.x + 10, rect.y + 7, .82, selected and COLORS.gold or COLORS.text, rect.width - 20); self:text("> " .. action.target, rect.x + 10, rect.y + 29, .63, COLORS.muted, rect.width - 20)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "action", index = index }, cursor = "action" }
   end
   self:button({ x = list.x + 10, y = list.y + list.height - 44, width = (list.width - 28) / 2, height = 32 }, "MOVE UP", { type = "action_move", delta = -1 }, { enabled = self.selected_action > 1 })
@@ -816,7 +854,7 @@ function Studio:draw_flow(view)
   local action = self:current_action(); self:text("ACTION: " .. action.id:upper(), edit.x + 18, edit.y + 18, 1.05, COLORS.blue); self:text("Declared target: " .. action.target .. " (game behavior is not scriptable here)", edit.x + 18, edit.y + 46, .74, COLORS.muted)
   self:field({ x = edit.x + 18, y = edit.y + 88, width = edit.width - 36, height = 60 }, "VISIBLE LABEL", "action", "label")
   self:field({ x = edit.x + 18, y = edit.y + 157, width = edit.width - 36, height = 60 }, "HELPER DESCRIPTION", "action", "description")
-  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:panel(flow, COLORS.dark, COLORS.border); self:text("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .72, COLORS.gold); self:text("TITLE", flow.x + 20, flow.y + 66, 1.1, COLORS.blue); self:text("→", flow.x + flow.width * .38, flow.y + 68, 1.15, COLORS.muted); self:text(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.1, COLORS.mint); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
+  local flow = { x = edit.x + 18, y = edit.y + 248, width = edit.width - 36, height = 175 }; self:panel(flow, COLORS.dark, COLORS.border); self:text("SAFE NAVIGATION", flow.x + 16, flow.y + 15, .72, COLORS.gold); self:text("TITLE", flow.x + 20, flow.y + 66, 1.1, COLORS.blue); self:text(">", flow.x + flow.width * .38, flow.y + 68, 1.15, COLORS.muted); self:text(action.target:upper(), flow.x + flow.width * .48, flow.y + 66, 1.1, COLORS.mint); self:text("The editor can change the display order and copy. It cannot fabricate a new gameplay transition or invoke Lua callbacks.", flow.x + 16, flow.y + 119, .67, COLORS.muted, flow.width - 32)
 end
 
 function Studio:draw_publish(view)
@@ -1011,7 +1049,7 @@ function Studio:activate(action)
   elseif kind == "native_flow_node" then
     if self.native_connect_from and self.native_connect_from ~= action.node then
       self:record_native(); local ok, reason = Flow.connect(self.native_asset_data, self.native_connect_from.id, action.node.id)
-      if ok then self.status = "Connected " .. self.native_connect_from.id .. " → " .. action.node.id else self:undo_native(); self.status = "Could not connect nodes: " .. reason end
+      if ok then self.status = "Connected " .. self.native_connect_from.id .. " > " .. action.node.id else self:undo_native(); self.status = "Could not connect nodes: " .. reason end
       self.native_connect_from = nil
     end
     self.native_selected_flow_node, self.native_drag = action.node, { flow_node = action.node }
@@ -1055,7 +1093,7 @@ function Studio:activate(action)
     local ok, failure = self.runtime:load_scene(self.project_manifest.main_scene_id)
     self.status = ok and "Running configured main scene preview." or ("Could not run main scene: " .. failure.reason)
   elseif kind == "corpus" then
-    if self:resolve_room_before_change() then self.selected_corpus, self.selected_room, self.room_graph, self.room_brush, self.room_diagnostics = action.id, 1, nil, nil, nil end
+    if self:resolve_room_before_change() then self.selected_corpus, self.selected_room, self.room_graph, self.room_brush, self.room_diagnostics, self.room_scroll = action.id, 1, nil, nil, nil, 0 end
   elseif kind == "room" then if action.index ~= self.selected_room and self:resolve_room_before_change() then self.selected_room, self.room_graph, self.room_diagnostics = action.index, nil, nil end
   elseif kind == "room_brush" then self.room_brush = action.glyph
   elseif kind == "room_paint" then
@@ -1168,6 +1206,13 @@ function Studio:wheelmoved(_, dy)
     if inside(x, y, self.native_asset_list_rect) then
       local rows = math.max(1, math.floor(self.native_asset_list_rect.height / 34))
       self.native_asset_scroll = clamp((self.native_asset_scroll or 0) - dy, 0, math.max(0, #self.native_assets - rows))
+    end
+  elseif self.tab == "rooms" and self.room_list_rect then
+    local x, y = love.mouse.getPosition()
+    if inside(x, y, self.room_list_rect) then
+      local rows = math.max(1, math.floor(self.room_list_rect.height / 34))
+      local corpus = self.corpora[self.selected_corpus]
+      self.room_scroll = clamp((self.room_scroll or 0) - dy, 0, math.max(0, #corpus.rooms - rows))
     end
   end
 end
