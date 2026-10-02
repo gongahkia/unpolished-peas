@@ -1,0 +1,13 @@
+{
+  "edges": [{"from":"graph.start","to":"graph.go_shop"}],
+  "entry_scene_id": "scene.main",
+  "format": "unpolished_bees.flow",
+  "id": "flow.main",
+  "nodes": [
+    {"event":"open_shop","id":"graph.start","type":"event"},
+    {"id":"graph.go_shop","scene_id":"scene.shop","type":"transition"}
+  ],
+  "type": "flow",
+  "variables": {"credits":0},
+  "version": 1
+}

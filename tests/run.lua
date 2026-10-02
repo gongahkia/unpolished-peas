@@ -11,4 +11,7 @@ assert(data.art_pack.art_pack_id == "art_pack.roag_kenney_1bit")
 assert(Bridge.validate_sprite_data(data.sprites))
 assert(not pcall(function() bridge:path("active_run") end))
 print("PASS unpolished-bees bridge loads ROAG presentation-only workspace")
-print("1 passed, 0 failed")
+
+assert(loadfile("tests/test_engine.lua"))()
+assert(loadfile("tests/test_roag_workspace.lua"))()
+print("PASS complete suite")
