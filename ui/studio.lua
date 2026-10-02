@@ -245,7 +245,7 @@ function Studio:load_sheet()
 end
 
 function Studio:art_sheets(pack)
-  return pack and ART_SHEETS[pack.id] or {}
+  return ArtSources.for_pack(pack)
 end
 
 function Studio:current_art_sheet(pack)
@@ -466,145 +466,6 @@ function Studio:show_help(topic)
     pcall(love.window.showMessageBox, title, message, { "OK" }, "info", true)
   end
   self.status = topic == "shortcuts" and "Keyboard shortcuts shown." or "About Unpolished Bees shown."
-end
-
-function Studio:draw_header_menu(view)
-  local menu = self.header_menu
-  if not menu then return end
-  local definitions = {
-    file = {
-      x = 8, width = 184,
-      items = {
-        { "OPEN PROJECT…", { type = "choose_project", kind = "folder" } },
-        { "SAVE CURRENT", { type = "save_current" } },
-        { "RELOAD ROAG", { type = "reload" } },
-        { "QUIT", { type = "quit_app" }, danger = true },
-      },
-    },
-    edit = {
-      x = 59, width = 168,
-      items = {
-        { "UNDO", { type = "undo_current" }, enabled = self:can_undo_current() },
-        { "REDO", { type = "redo_current" }, enabled = self:can_redo_current() },
-      },
-    },
-    view = {
-      x = 112, width = 184,
-      items = {
-        { "OVERVIEW", { type = "tab", tab = "home" } },
-        { "NATIVE PROJECT", { type = "tab", tab = "native" } },
-        { "ROAG ROOMS", { type = "tab", tab = "rooms" } },
-        { "ART & SPRITES", { type = "tab", tab = "art" } },
-        { "SCENES", { type = "tab", tab = "scenes" } },
-        { "TITLE FLOW", { type = "tab", tab = "flow" } },
-        { "PUBLISH", { type = "tab", tab = "publish" } },
-      },
-    },
-    project = {
-      x = 167, width = 192,
-      items = {
-        { "PROJECT LAUNCHER", { type = "tab", tab = "projects" } },
-        { "OPEN PROJECT FOLDER…", { type = "choose_project", kind = "folder" } },
-        { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = self.project_manifest ~= nil },
-        { "RUN PROJECT PREVIEW", { type = "run_project" }, enabled = self.project_manifest ~= nil },
-      },
-    },
-    help = {
-      x = 252, width = 208,
-      items = {
-        { "KEYBOARD SHORTCUTS", { type = "show_help", topic = "shortcuts" } },
-        { "ABOUT UNPOLISHED BEES", { type = "show_help", topic = "about" } },
-      },
-    },
-  }
-  local definition = definitions[menu]
-  if not definition then return end
-  local height = #definition.items * 32 + 10
-  local rect = { x = definition.x, y = 27, width = definition.width, height = height }
-  self:panel(rect, COLORS.surface, COLORS.selected_border)
-  for index, item in ipairs(definition.items) do
-    self:header_menu_item({ x = rect.x + 5, y = rect.y + 5 + (index - 1) * 32, width = rect.width - 10, height = 28 }, item[1], item[2], { enabled = item.enabled, danger = item.danger })
-  end
-end
-
-function Studio:draw_header(view)
-  color(COLORS.dark); love.graphics.rectangle("fill", 0, 0, view.width, view.header.height)
-  local menus = { { "FILE", "file", 8, 45 }, { "EDIT", "edit", 59, 47 }, { "VIEW", "view", 112, 49 }, { "PROJECT", "project", 167, 79 }, { "HELP", "help", 252, 47 } }
-  for _, item in ipairs(menus) do self:header_menu_label({ x = item[3], y = 1, width = item[4], height = 25 }, item[1], item[2]) end
-  local tabs = { home = "OVERVIEW", projects = "PROJECTS", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
-  local title = tabs[self.tab] or "PROJECT"
-  self:panel({ x = 8, y = 27, width = 232, height = 30 }, COLORS.surface, COLORS.border)
-  self:line("UNPOLISHED BEES  /  " .. title, 18, 35, .70, COLORS.text, 212)
-  local unsaved = self.dirty or self.room_dirty or self.native_dirty
-  self:line(unsaved and "UNSAVED" or "SAVED", view.width - 302, 7, .62, unsaved and COLORS.gold or COLORS.mint, 82, "right")
-  self:line("TARGET " .. self.bridge.target, view.width - 220, 7, .58, COLORS.muted, 210, "right")
-  self:button({ x = view.width - 262, y = 29, width = 78, height = 26 }, "OPEN", { type = "tab", tab = "projects" })
-  self:button({ x = view.width - 176, y = 29, width = 78, height = 26 }, "RELOAD", { type = "reload" })
-  self:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save_current" }, { selected = self.dirty })
-end
-
-function Studio:draw_nav(view)
-  self:panel(view.nav)
-  self:line("TOOLS", view.nav.x + 5, view.nav.y + 8, .52, COLORS.muted, view.nav.width - 10, "center")
-  local tabs = { { "home", "HOME" }, { "projects", "OPEN" }, { "native", "ASSET" }, { "rooms", "ROOM" }, { "art", "ART" }, { "scenes", "SCENE" }, { "flow", "FLOW" }, { "publish", "SAVE" } }
-  for index, item in ipairs(tabs) do
-    self:button({ x = view.nav.x + 7, y = view.nav.y + 30 + (index - 1) * 46, width = view.nav.width - 14, height = 38 }, item[2], { type = "tab", tab = item[1] }, { selected = self.tab == item[1] })
-  end
-end
-
-function Studio:draw_home(view)
-  self:canvas_surface(view.body)
-  self:line("WORKSPACE OVERVIEW", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40)
-  self:text("Author the declared presentation layer without loading, changing, or depending on a live run, account profile, archive, route, or simulation.", view.body.x + 20, view.body.y + 49, .78, COLORS.muted, math.min(view.body.width - 40, 820))
-  local cards = {
-    { "NATIVE PROJECT", "Browse serializable scenes and flow assets, run the main scene, and inspect the data-first runtime preview.", "native", COLORS.mint },
-    { "ROAG ROOMS", "Paint declared room-template geometry and preview deterministic connector-based room assembly.", "rooms", COLORS.gold },
-    { "ART & SPRITES", "Choose the packaged visual language and map ROAG’s stable renderer roles to the original 49 × 22 sheet.", "art", COLORS.blue },
-    { "SCENES", "Edit screen copy, layout token, accent token, and source ordering with a live presentation preview.", "scenes", COLORS.mint },
-    { "TITLE FLOW", "Order the supported title actions and edit their labels/description. Gameplay targets stay validated and fixed.", "flow", COLORS.gold },
-    { "PUBLISH", "Validate then atomically write only four allow-listed ROAG presentation files.", "publish", COLORS.red },
-  }
-  for index, card in ipairs(cards) do
-    local column, row = (index - 1) % 2, math.floor((index - 1) / 2)
-    local gap, card_width = 14, math.min(390, (view.body.width - 54) / 2)
-    local rect = { x = view.body.x + 20 + column * (card_width + gap), y = view.body.y + 112 + row * 146, width = card_width, height = 128 }
-    self:panel(rect, COLORS.surface, card[4]); self:line(card[1], rect.x + 12, rect.y + 13, .82, COLORS.text, rect.width - 24); self:text(card[2], rect.x + 12, rect.y + 39, .68, COLORS.muted, rect.width - 24); self:button({ x = rect.x + 12, y = rect.y + 88, width = 90, height = 26 }, "OPEN", { type = "tab", tab = card[3] })
-  end
-end
-
-function Studio:draw_projects(view)
-  self:canvas_surface(view.body)
-  self:line("PROJECT LAUNCHER", view.body.x + 20, view.body.y + 20, 1.18, COLORS.text, view.body.width - 40)
-  self:text("Open an Unpolished Bees project by folder or manifest. Recent projects are stored in this editor’s local settings, not in your game data.", view.body.x + 20, view.body.y + 49, .75, COLORS.muted, math.min(view.body.width - 40, 760))
-
-  local current = { x = view.body.x + 20, y = view.body.y + 85, width = math.min(760, view.body.width - 40), height = 138 }
-  self:panel(current, COLORS.surface, COLORS.border)
-  local name = self.project_manifest and self.project_manifest.name or "NO PROJECT OPEN"
-  self:line(name, current.x + 14, current.y + 14, .90, COLORS.text, current.width - 28)
-  self:line(self.project_manifest and "CURRENT PROJECT" or "SELECT A PROJECT TO BEGIN", current.x + 14, current.y + 37, .58, self.project_manifest and COLORS.mint or COLORS.gold, current.width - 28)
-  self:button({ x = current.x + 14, y = current.y + 61, width = 142, height = 34 }, "OPEN FOLDER", { type = "choose_project", kind = "folder" })
-  self:button({ x = current.x + 164, y = current.y + 61, width = 168, height = 34 }, "CHOOSE MANIFEST", { type = "choose_project", kind = "manifest" })
-  self:button({ x = current.x + 340, y = current.y + 61, width = 116, height = 34 }, "PASTE PATH", { type = "project_path" })
-  self:project_path_field({ x = current.x + 14, y = current.y + 102, width = current.width - 28, height = 30 })
-
-  local recent_y = current.y + current.height + 24
-  self:line("RECENT PROJECTS", view.body.x + 20, recent_y, .72, COLORS.muted, view.body.width - 40)
-  if #self.recent_projects == 0 then
-    self:text("No recent projects yet. Choose a folder or manifest above.", view.body.x + 20, recent_y + 28, .72, COLORS.muted, view.body.width - 40)
-    return
-  end
-  local columns = view.body.width >= 820 and 2 or 1
-  local gap = 12
-  local card_width = math.min(420, (view.body.width - 40 - gap * (columns - 1)) / columns)
-  for index, entry in ipairs(self.recent_projects) do
-    local column, row = (index - 1) % columns, math.floor((index - 1) / columns)
-    local rect = { x = view.body.x + 20 + column * (card_width + gap), y = recent_y + 27 + row * 62, width = card_width, height = 52 }
-    local selected = entry.path == self.project_root
-    self:panel(rect, selected and COLORS.selected or COLORS.surface, selected and COLORS.selected_border or COLORS.border)
-    self:line(entry.name, rect.x + 10, rect.y + 8, .76, COLORS.text, rect.width - 20)
-    self:line(entry.path, rect.x + 10, rect.y + 28, .56, COLORS.muted, rect.width - 20)
-    self.controls[#self.controls + 1] = { rect = rect, action = { type = "open_recent_project", path = entry.path }, cursor = "action" }
-  end
 end
 
 function Studio:current_native_asset()
@@ -1473,7 +1334,7 @@ function Studio:activate(action)
     self.status = "Selected pack. Browse its source sheets here; publish to make ROAG use it on next focus/launch."
   elseif kind == "pack_sheet_source" then
     self:select_art_sheet(action.pack_id, action.index)
-    local sheet = (ART_SHEETS[action.pack_id] or {})[action.index]
+    local sheet = (ArtSources.sheets[action.pack_id] or {})[action.index]
     self.status = "Viewing " .. (sheet and sheet.label or "source sheet") .. "."
   elseif kind == "import_pack_sheet" then self:import_art_sheet(action.pack, action.sheet)
   elseif kind == "role" then self:commit_field(); self.selected_role = action.index
