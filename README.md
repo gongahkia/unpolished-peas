@@ -56,7 +56,11 @@ luajit tests/run.lua
   missing connector patterns.
 - **Art & Sprites**, **Scenes**, and **Title Flow** retain the existing ROAG
   presentation workflow: editable display copy, declared title transitions,
-  art-pack selection, and sprite-role mapping.
+  art-pack selection, and sprite-role mapping. Every supported art pack now
+  exposes its declared PNG source sheets in the Studio. ROAG 1-bit keeps live
+  role-tile editing; other packs retain their deliberate fixed ROAG mappings,
+  while any displayed source sheet can be copied into the open native project
+  as an editable image-backed tileset.
 
 ## Native JSON contract
 
