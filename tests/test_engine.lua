@@ -144,6 +144,49 @@ test("project creation, recoverable index removal, and reference protection work
   assert(project:load())
 end)
 
+test("Studio imports declared art-pack source sheets as reusable native tilesets", function()
+  local root = os.tmpname(); os.remove(root)
+  local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
+  assert(made == true or made == 0)
+  assert(Project.create(root, "Art Source Fixture"))
+  local studio = setmetatable({
+    project_root = root, selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+    art_sheet_selection = {}, bridge = { target = "../roag" },
+  }, Studio)
+  studio:load_native_project()
+  local pack = { id = "art_pack.loveable_rogue", label = "LOVEABLE ROGUE" }
+  local sheet = assert(studio:current_art_sheet(pack))
+  local added, tileset = studio:import_art_sheet(pack, sheet)
+  assert(added and tileset.tile_width == 16 and tileset.tile_height == 16)
+  assert(studio.project:load_asset(tileset.id).texture.path == "assets/loveable_rogue_main.png")
+  local second_added, second_tileset = studio:import_art_sheet(pack, sheet)
+  assert(second_added and second_tileset.id == tileset.id)
+end)
+
+test("Studio header menus expose contextual commands instead of decorative labels", function()
+  local root = os.tmpname(); os.remove(root)
+  local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
+  assert(made == true or made == 0)
+  assert(Project.create(root, "Header Menu Fixture"))
+  local studio = setmetatable({
+    project_root = root, tab = "native", selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+    undo_stack = {}, redo_stack = {}, room_histories = {},
+  }, Studio)
+  studio:load_native_project()
+  studio:activate({ type = "header_menu", menu = "file" })
+  assert(studio.header_menu == "file")
+  studio:activate({ type = "header_menu", menu = "file" })
+  assert(studio.header_menu == nil)
+  studio:activate({ type = "show_help", topic = "shortcuts" })
+  assert(studio.status == "Keyboard shortcuts shown.")
+  studio:activate({ type = "add_native_node", node_type = "panel" })
+  assert(studio.native_dirty and studio:can_undo_current())
+  studio:activate({ type = "save_current" })
+  assert(not studio.native_dirty)
+end)
+
 test("Studio native actions compose validated assets without a graphical runtime", function()
   local root = os.tmpname(); os.remove(root)
   local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
@@ -205,4 +248,4 @@ test("ROAG corpus diagnostics and recoverable manifest room lifecycle work in a 
   assert(#workspace.corpora.dungeon.rooms == 10)
 end)
 
-print("12 passed, 0 failed")
+print("14 passed, 0 failed")

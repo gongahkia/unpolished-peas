@@ -376,7 +376,7 @@ function Studio:import_art_sheet(pack, sheet)
       if tileset and tileset.texture and tileset.texture.path == target_path then
         self:select_imported_tileset(asset_id)
         self.status = "This source sheet is already available as " .. asset_id .. "."
-        return
+        return true, tileset
       end
     end
   end
@@ -393,6 +393,7 @@ function Studio:import_art_sheet(pack, sheet)
   end
   self:select_imported_tileset(tileset.id)
   self.status = "Added " .. sheet.label .. " as " .. tileset.id .. ". It is now available to native tilemaps."
+  return true, tileset
 end
 
 function Studio:record()
@@ -596,9 +597,135 @@ function Studio:status_mark(x, y, tint)
   love.graphics.setLineWidth(1)
 end
 
+function Studio:header_menu_label(rect, label, menu)
+  local selected = self.header_menu == menu
+  if selected then self:panel(rect, COLORS.surface2, COLORS.selected_border) end
+  self:line(label, rect.x + 7, rect.y + 6, .64, selected and COLORS.text or COLORS.muted, rect.width - 14, "center")
+  self.controls[#self.controls + 1] = { rect = rect, action = { type = "header_menu", menu = menu }, cursor = "action" }
+end
+
+function Studio:header_menu_item(rect, label, action, options)
+  options = options or {}
+  self:button(rect, label, action, { enabled = options.enabled ~= false, danger = options.danger })
+end
+
+function Studio:can_undo_current()
+  if self.tab == "native" then return self.native_history and self.native_history:can_undo() end
+  if self.tab == "rooms" then
+    local history = self.room_histories and self.room_histories[self:room_history_key()]
+    return history and history:can_undo()
+  end
+  return #self.undo_stack > 0
+end
+
+function Studio:can_redo_current()
+  if self.tab == "native" then return self.native_history and self.native_history:can_redo() end
+  if self.tab == "rooms" then
+    local history = self.room_histories and self.room_histories[self:room_history_key()]
+    return history and history:can_redo()
+  end
+  return #self.redo_stack > 0
+end
+
+function Studio:save_current()
+  if self.tab == "native" then return self:save_native() end
+  if self.tab == "rooms" then return self:save_room() end
+  if self.tab == "projects" then self.status = "Choose a project, then edit an asset before saving."; return end
+  return self:save()
+end
+
+function Studio:undo_current()
+  self:commit_field()
+  if self.tab == "native" then return self:undo_native() end
+  if self.tab == "rooms" then return self:undo_room() end
+  return self:undo()
+end
+
+function Studio:redo_current()
+  self:commit_field()
+  if self.tab == "native" then return self:redo_native() end
+  if self.tab == "rooms" then return self:redo_room() end
+  return self:redo()
+end
+
+function Studio:show_help(topic)
+  local title, message
+  if topic == "shortcuts" then
+    title = "Unpolished Bees shortcuts"
+    message = "Cmd/Ctrl+O  Open a project\nCmd/Ctrl+S  Save the current workspace\nCmd/Ctrl+Z  Undo\nCmd/Ctrl+Y or Cmd/Ctrl+R  Redo\nF (Art & Sprites)  Filter ROAG 1-bit roles\nWheel over a sheet  Zoom\nRight-drag a sheet  Pan"
+  else
+    title = "About Unpolished Bees"
+    message = "A small Lua/LÖVE authoring studio for serializable 2D project data and the safe ROAG presentation boundary.\n\nProject and asset data are JSON; ROAG Lua, saves, routes, and profiles are never edited."
+  end
+  if love and love.window and love.window.showMessageBox then
+    pcall(love.window.showMessageBox, title, message, { "OK" }, "info", true)
+  end
+  self.status = topic == "shortcuts" and "Keyboard shortcuts shown." or "About Unpolished Bees shown."
+end
+
+function Studio:draw_header_menu(view)
+  local menu = self.header_menu
+  if not menu then return end
+  local definitions = {
+    file = {
+      x = 8, width = 184,
+      items = {
+        { "OPEN PROJECT…", { type = "choose_project", kind = "folder" } },
+        { "SAVE CURRENT", { type = "save_current" } },
+        { "RELOAD ROAG", { type = "reload" } },
+        { "QUIT", { type = "quit_app" }, danger = true },
+      },
+    },
+    edit = {
+      x = 59, width = 168,
+      items = {
+        { "UNDO", { type = "undo_current" }, enabled = self:can_undo_current() },
+        { "REDO", { type = "redo_current" }, enabled = self:can_redo_current() },
+      },
+    },
+    view = {
+      x = 112, width = 184,
+      items = {
+        { "OVERVIEW", { type = "tab", tab = "home" } },
+        { "NATIVE PROJECT", { type = "tab", tab = "native" } },
+        { "ROAG ROOMS", { type = "tab", tab = "rooms" } },
+        { "ART & SPRITES", { type = "tab", tab = "art" } },
+        { "SCENES", { type = "tab", tab = "scenes" } },
+        { "TITLE FLOW", { type = "tab", tab = "flow" } },
+        { "PUBLISH", { type = "tab", tab = "publish" } },
+      },
+    },
+    project = {
+      x = 167, width = 192,
+      items = {
+        { "PROJECT LAUNCHER", { type = "tab", tab = "projects" } },
+        { "OPEN PROJECT FOLDER…", { type = "choose_project", kind = "folder" } },
+        { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = self.project_manifest ~= nil },
+        { "RUN PROJECT PREVIEW", { type = "run_project" }, enabled = self.project_manifest ~= nil },
+      },
+    },
+    help = {
+      x = 252, width = 208,
+      items = {
+        { "KEYBOARD SHORTCUTS", { type = "show_help", topic = "shortcuts" } },
+        { "ABOUT UNPOLISHED BEES", { type = "show_help", topic = "about" } },
+      },
+    },
+  }
+  local definition = definitions[menu]
+  if not definition then return end
+  local height = #definition.items * 32 + 10
+  local rect = { x = definition.x, y = 27, width = definition.width, height = height }
+  self:panel(rect, COLORS.surface, COLORS.selected_border)
+  for index, item in ipairs(definition.items) do
+    self:header_menu_item({ x = rect.x + 5, y = rect.y + 5 + (index - 1) * 32, width = rect.width - 10, height = 28 }, item[1], item[2], { enabled = item.enabled, danger = item.danger })
+  end
+end
+
 function Studio:draw_header(view)
   color(COLORS.dark); love.graphics.rectangle("fill", 0, 0, view.width, view.header.height)
-  self:line("FILE    EDIT    VIEW    PROJECT    HELP", 12, 6, .64, COLORS.muted, 330)
+  local menus = { { "FILE", "file", 8, 45 }, { "EDIT", "edit", 59, 47 }, { "VIEW", "view", 112, 49 }, { "PROJECT", "project", 167, 79 }, { "HELP", "help", 252, 47 } }
+  for _, item in ipairs(menus) do self:header_menu_label({ x = item[3], y = 1, width = item[4], height = 25 }, item[1], item[2]) end
   local tabs = { home = "OVERVIEW", projects = "PROJECTS", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
   local title = tabs[self.tab] or "PROJECT"
   self:panel({ x = 8, y = 27, width = 232, height = 30 }, COLORS.surface, COLORS.border)
@@ -608,7 +735,7 @@ function Studio:draw_header(view)
   self:line("TARGET " .. self.bridge.target, view.width - 220, 7, .58, COLORS.muted, 210, "right")
   self:button({ x = view.width - 262, y = 29, width = 78, height = 26 }, "OPEN", { type = "tab", tab = "projects" })
   self:button({ x = view.width - 176, y = 29, width = 78, height = 26 }, "RELOAD", { type = "reload" })
-  self:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save" }, { selected = self.dirty })
+  self:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save_current" }, { selected = self.dirty })
 end
 
 function Studio:draw_nav(view)
@@ -1257,6 +1384,9 @@ function Studio:draw()
   elseif self.tab == "publish" then self:draw_publish(view)
   else self:draw_home(view) end
   self:panel(view.footer, COLORS.dark, COLORS.border); self:line(self.status, view.footer.x + 10, view.footer.y + 4, .58, COLORS.muted, view.footer.width - 20)
+  -- Menus are composited after every dock and canvas so they are never hidden
+  -- behind the navigation rail and their controls receive the top-most click.
+  self:draw_header_menu(view)
 end
 
 function Studio:move(list, index, delta)
@@ -1398,7 +1528,18 @@ end
 function Studio:activate(action)
   if type(action) == "string" then return end
   local kind = action.type
+  if kind == "header_menu" then
+    if self.header_menu == action.menu then self.header_menu = nil else self.header_menu = action.menu end
+  else
+    self.header_menu = nil
+  end
   if kind == "tab" then self:commit_field(); self.tab = action.tab
+  elseif kind == "save_current" then self:save_current()
+  elseif kind == "undo_current" then self:undo_current()
+  elseif kind == "redo_current" then self:redo_current()
+  elseif kind == "show_help" then self:show_help(action.topic)
+  elseif kind == "quit_app" then
+    if love and love.event then love.event.quit() else self.status = "Quit is available when the Studio is running in LÖVE." end
   elseif kind == "choose_project" then self:choose_project(action.kind)
   elseif kind == "open_recent_project" then self:request_project_open(action.path)
   elseif kind == "project_path" then self:begin_project_path()
@@ -1559,6 +1700,7 @@ function Studio:mousepressed(x, y, button)
   if button == 2 and self.tab == "native" and self.map_viewport and inside(x, y, self.map_viewport) then self.map_panning = true; return end
   if button ~= 1 then return end
   for index = #self.controls, 1, -1 do local control = self.controls[index]; if control.enabled ~= false and inside(x, y, control.rect) then self:activate(control.action); return end end
+  self.header_menu = nil
   self:commit_field()
 end
 
@@ -1634,17 +1776,15 @@ function Studio:keypressed(key)
     return
   end
   if modifier and key == "s" then
-    if self.tab == "native" then self:save_native() elseif self.tab == "rooms" then self:save_room() else self:save() end
+    self:save_current()
     return
   end
   if modifier and key == "z" then
-    self:commit_field()
-    if self.tab == "native" then self:undo_native() elseif self.tab == "rooms" then self:undo_room() else self:undo() end
+    self:undo_current()
     return
   end
   if modifier and (key == "y" or key == "r") then
-    self:commit_field()
-    if self.tab == "native" then self:redo_native() elseif self.tab == "rooms" then self:redo_room() else self:redo() end
+    self:redo_current()
     return
   end
   if self.active then
@@ -1656,6 +1796,7 @@ function Studio:keypressed(key)
     return
   end
   if key == "f" and self.tab == "art" then self.role_filtering = true; return end
+  if key == "f1" then self:show_help("shortcuts"); return end
   if key == "escape" then love.event.quit() end
 end
 
