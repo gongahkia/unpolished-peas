@@ -19,3 +19,12 @@ The backend-neutral fixture is [`stable-core-v1.json`](../../src/fixtures/render
 Run `zig build test-renderer-conformance`, `zig build test-renderer-cross-backend`, `zig build test-browser-renderer-parity`, and `zig build test-renderer-three-backend`. The three-backend check compares the logical 64×32 capture before presentation chrome, using the same absolute per-channel tolerance of one; a mismatch retains the fixture, desktop raw pixels and OS/architecture/SDL-runtime/driver/shader metadata, browser PNGs, browser command traces, diagnostics, and browser user-agent/platform metadata under `zig-out/diagnostics/renderer-three-backend/`.
 
 The generic browser runtime now creates the same `Canvas` passed to a callback game and uploads its RGBA result through the browser host. Canvas effects and particle reference draws therefore share desktop/browser semantics. Existing specialised proof-game Wasm runtimes continue to use their direct command ABI.
+
+## Offscreen 2D composition
+
+[`RenderSurface`](render-surfaces.md) is the narrow persistent offscreen
+Canvas facility. It uses the same logical-pixel primitives, clip state, blend
+state, and presentation-independent color semantics as a normal Canvas, then
+composes onto another Canvas with nearest or linear sampling. It is a
+CPU-backed, backend-neutral surface—not a public GPU render target—and is
+available in headless tests as well as native and browser builds.

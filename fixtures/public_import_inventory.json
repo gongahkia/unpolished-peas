@@ -21,6 +21,7 @@
     {"path": "examples/puzzle_game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["input"]}]},
     {"path": "examples/puzzle_scene.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "input", "testSupport"]}]},
     {"path": "examples/puzzle_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
+    {"path": "examples/render_surface.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics"]}]},
     {"path": "examples/stress_audio_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/test_packaged_assets.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets"]}]},
     {"path": "examples/test_packaged_layout.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["appDataPath"]}]},
@@ -77,7 +78,7 @@
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["input"]}]},
     {"path": "templates/starter/build.zig", "imports": []},
-    {"path": "templates/starter/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "input", "preview", "testSupport"]}]},
+    {"path": "templates/starter/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics", "input", "preview", "testSupport"]}]},
     {"path": "templates/starter/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]}
   ]
 }

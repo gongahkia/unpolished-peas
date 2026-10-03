@@ -25,6 +25,7 @@ The default dependency fetches pinned SDL3 source; no system SDL installation is
 - [Seed Sprint starter](../../templates/starter/README.md)
 - [Core contract](core-contract.md)
 - [Rendering contract](rendering.md)
+- [Render surfaces](render-surfaces.md)
 - [Capability matrix](capabilities.md)
 - [Release policy](releases.md)
 - [Top-down proof game](../proof-games/topdown.md)

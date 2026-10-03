@@ -52,15 +52,17 @@ The [capability matrix](docs/guides/capabilities.md) defines exact renderer, bro
 - `ctx.requireCanvas()` returns the logical-pixel 2D canvas.
 - `ctx.requireSaveData()` returns a host-owned opaque-byte save store.
 - `Canvas` draws rectangles, sprites, text, clips, and blends.
+- `RenderSurface` owns an offscreen Canvas for deterministic 2D composition.
 - `Config` controls window, fixed timestep, presentation, renderer, and assets.
 
-Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [rendering contract](docs/guides/rendering.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
+Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [rendering contract](docs/guides/rendering.md), [render-surface guide](docs/guides/render-surfaces.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
 
 ## Copyable examples
 
 - [SDL bouncing square](examples/bounce_sdl.zig)
 - [Seed Sprint starter](templates/starter/README.md)
 - [Explicit core loop](examples/explicit_loop.zig)
+- [Offscreen render surface](examples/render_surface.zig)
 - [Top-down proof game](docs/proof-games/topdown.md)
 - [Puzzle proof game](docs/proof-games/puzzle.md)
 - [Platformer proof game](docs/proof-games/platformer.md)

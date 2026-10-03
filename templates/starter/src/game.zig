@@ -202,3 +202,13 @@ test "Seed Sprint initialization changes with its explicit seed" {
     defer second.deinit();
     try std.testing.expect(first.game.pickup.x != second.game.pickup.x or first.game.pickup.y != second.game.pickup.y);
 }
+
+test "Seed Sprint's external dependency exposes software render surfaces" {
+    var surface = try up.graphics.RenderSurface.init(std.testing.allocator, 1, 1);
+    defer surface.deinit();
+    surface.canvas().clear(up.core.Color.rgb(255, 198, 74));
+    var canvas = try up.graphics.Canvas.init(std.testing.allocator, 2, 2);
+    defer canvas.deinit();
+    try canvas.drawSurface(&surface, .{ .x = 0, .y = 0, .width = 2, .height = 2 });
+    try std.testing.expectEqual(up.core.Color.rgb(255, 198, 74), canvas.get(1, 1).?);
+}
