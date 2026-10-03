@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
     io::{Read as _, Write as _},
     net::{TcpListener, TcpStream},
@@ -17,8 +17,8 @@ use modl_core::{
     analyze_module, compile, compile_project, decode_cartridge, decode_cartridge_png,
     encode_cartridge_png, encode_workcart, export_itch_workcart, export_itch_zip,
     export_standalone_html, export_standalone_workcart, format_source, load_cartridge_program,
-    pack_project, pack_workcart, parse_project_manifest, parse_workcart, unpack_cartridge_project,
-    unpack_workcart,
+    materialize_workcart_recipe, pack_project, pack_workcart, parse_project_manifest,
+    parse_workcart, unpack_cartridge_project, unpack_workcart,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -92,6 +92,11 @@ enum Command {
         path: PathBuf,
         #[arg(short, long)]
         output: Option<PathBuf>,
+    },
+    /// Materialize a deterministic author-time asset recipe in an M01W/2 work-cart.
+    Generate {
+        #[command(subcommand)]
+        command: GenerateCommand,
     },
     /// Compile one MODL/1 source module to JavaScript and a source map.
     Build {
@@ -198,6 +203,18 @@ enum ExportCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum GenerateCommand {
+    /// Generate the map named by one stored Noise or WFC recipe.
+    Map {
+        path: PathBuf,
+        recipe: String,
+        /// Write a new work-cart instead of replacing the input atomically.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 fn main() -> ExitCode {
     match Arguments::parse().command {
         Command::New {
@@ -206,6 +223,14 @@ fn main() -> ExitCode {
             author,
         } => new_project(&path, title.as_deref(), &author),
         Command::Migrate { path, output } => migrate_project(&path, output.as_deref()),
+        Command::Generate {
+            command:
+                GenerateCommand::Map {
+                    path,
+                    recipe,
+                    output,
+                },
+        } => generate_map(&path, &recipe, output.as_deref()),
         Command::Build {
             path,
             debug,
@@ -981,6 +1006,88 @@ fn migrate_project(path: &Path, output: Option<&Path>) -> ExitCode {
     }
     println!("migrated {} -> {}", path.display(), output.display());
     ExitCode::SUCCESS
+}
+
+fn generate_map(path: &Path, recipe: &str, output: Option<&Path>) -> ExitCode {
+    if !is_workcart_path(path) {
+        eprintln!(
+            "{}: generate map expects an .m01w work-cart",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let generated = match materialize_workcart_recipe(&source, recipe) {
+        Ok(generated) => generated,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let output = output.map_or_else(|| path.to_path_buf(), Path::to_path_buf);
+    if output != path && output.exists() {
+        eprintln!(
+            "{}: refusing to overwrite an existing path",
+            output.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = write_workcart_atomically(&output, generated.as_bytes()) {
+        eprintln!("{}: {error}", output.display());
+        return ExitCode::FAILURE;
+    }
+    println!("generated map '{recipe}' in {}", output.display());
+    ExitCode::SUCCESS
+}
+
+fn write_workcart_atomically(path: &Path, source: &[u8]) -> Result<(), std::io::Error> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "output name is not valid UTF-8",
+            )
+        })?;
+    for attempt in 0..=100_u16 {
+        let temporary = parent.join(format!(
+            ".{name}.mod01-{}-{attempt}.tmp",
+            std::process::id()
+        ));
+        let mut file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        let result = file.write_all(source).and_then(|()| file.sync_all());
+        drop(file);
+        if let Err(error) = result {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        if let Err(error) = fs::rename(&temporary, path) {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        return Ok(());
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not reserve a temporary output path",
+    ))
 }
 
 fn pack_directory(path: &Path, output: Option<&Path>) -> ExitCode {

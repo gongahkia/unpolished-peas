@@ -256,6 +256,95 @@ on draw:
 }
 
 #[test]
+fn generate_map_materializes_a_stored_workcart_recipe_atomically() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-generate-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    let pixels = vec!["0"; 64].join(",");
+    fs::write(
+        &cart,
+        format!(
+            r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "generated-map"
+title = "GENERATED MAP"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = "on draw:\n  clear(0)\n"
+
+[[asset]]
+name = "tiles"
+kind = "tile_set"
+path = "assets/tiles.m01g"
+payload = '''{{"revision":1,"kind":"tile_set","tiles":[[{pixels}]],"flags":[0]}}'''
+
+[[asset]]
+name = "world"
+kind = "map"
+path = "assets/world.m01m"
+payload = '''{{"revision":1,"kind":"map","layers":[]}}'''
+
+[[recipe]]
+algorithm = "noise"
+id = "world-noise"
+output = "world"
+seed = 7
+width = 4
+height = 3
+tile_set = "tiles"
+tiles = [0]
+"#
+        ),
+    )
+    .expect("work-cart writes");
+    let generate = binary()
+        .args([
+            "generate",
+            "map",
+            cart.to_str().expect("UTF-8 work-cart path"),
+            "world-noise",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        generate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generate.stderr)
+    );
+    let generated = fs::read_to_string(&cart).expect("generated work-cart reads");
+    let project = modl_core::parse_workcart(&generated).expect("generated work-cart parses");
+    let map: Value =
+        serde_json::from_slice(&project.files["assets/world.m01m"]).expect("generated map is JSON");
+    assert_eq!(map["layers"][0]["width"], 4);
+    assert_eq!(map["layers"][0]["height"], 3);
+    assert_eq!(map["layers"][0]["cells"].as_array().map(Vec::len), Some(12));
+    let repeat = binary()
+        .args([
+            "generate",
+            "map",
+            cart.to_str().expect("UTF-8 work-cart path"),
+            "world-noise",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(repeat.status.success());
+    assert_eq!(
+        generated,
+        fs::read_to_string(&cart).expect("regenerated work-cart reads")
+    );
+    fs::remove_file(cart).expect("temporary generated work-cart removes");
+}
+
+#[test]
 fn migrate_turns_a_v1_project_and_its_tests_into_one_workcart() {
     let project =
         std::env::temp_dir().join(format!("mod01-migrate-{}-{}", std::process::id(), line!()));
