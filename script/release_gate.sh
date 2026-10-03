@@ -47,6 +47,7 @@ run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
 run proof-puzzle runtime script/test_proof_game_matrix.sh puzzle
 run proof-platformer runtime script/test_proof_game_matrix.sh platformer
+run package-starter "$package_script" zig-out/release-gate/packages/starter starter
 run package-bounce "$package_script" zig-out/release-gate/packages/bounce bounce
 run package-topdown "$package_script" zig-out/release-gate/packages/topdown topdown
 run package-puzzle "$package_script" zig-out/release-gate/packages/puzzle puzzle

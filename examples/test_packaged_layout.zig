@@ -2,7 +2,7 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
 
-const PackageGame = enum { bounce, topdown, puzzle, platformer };
+const PackageGame = enum { starter, bounce, topdown, puzzle, platformer };
 const Launcher = struct { game: []const u8 };
 
 pub fn main() !void {
@@ -22,16 +22,22 @@ fn verify() !void {
     const package = std.fs.path.dirname(bin) orelse return error.InvalidPackageLayout;
     const game = try packageGame(allocator, package);
 
-    var assets = try up.assets.AssetStore.initExecutable(allocator);
-    defer assets.deinit();
-    const image_handle = try assets.loadImage("ball.png");
-    const image = try assets.tryImage(image_handle);
-    if (image.width == 0 or image.height == 0) return error.InvalidRawImage;
-    _ = try assets.loadFont("fonts/Basic-Regular.ttf", .{});
-    _ = try assets.loadFont("fonts/bitmap.fnt", .{});
-    const sound_handle = try assets.loadSound("blip.wav");
-    const sound = try assets.trySound(sound_handle);
-    if (sound.frames.len == 0) return error.InvalidRawAudio;
+    if (game == .starter) {
+        const asset_readme = try readPackageFile(allocator, package, "assets/README.md");
+        defer allocator.free(asset_readme);
+        if (asset_readme.len == 0) return error.InvalidStarterAssets;
+    } else {
+        var assets = try up.assets.AssetStore.initExecutable(allocator);
+        defer assets.deinit();
+        const image_handle = try assets.loadImage("ball.png");
+        const image = try assets.tryImage(image_handle);
+        if (image.width == 0 or image.height == 0) return error.InvalidRawImage;
+        _ = try assets.loadFont("fonts/Basic-Regular.ttf", .{});
+        _ = try assets.loadFont("fonts/bitmap.fnt", .{});
+        const sound_handle = try assets.loadSound("blip.wav");
+        const sound = try assets.trySound(sound_handle);
+        if (sound.frames.len == 0) return error.InvalidRawAudio;
+    }
     try rejectNativeContent(allocator, package);
     try probeAppData(allocator, package, game);
 }
@@ -62,6 +68,7 @@ fn rejectNativeContent(allocator: std.mem.Allocator, package: []const u8) !void 
 
 fn probeAppData(allocator: std.mem.Allocator, package: []const u8, game: PackageGame) !void {
     const app_name = switch (game) {
+        .starter => "starter-package-smoke",
         .bounce => "bounce-package-smoke",
         .topdown => "topdown-package-smoke",
         .puzzle => "puzzle-package-smoke",

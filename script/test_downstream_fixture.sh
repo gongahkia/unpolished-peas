@@ -20,6 +20,9 @@ cd "$project"
 ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build
 test -d assets
 test -d zig-out/assets
+ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build package
+test -x zig-out/bin/seed-sprint
+test -f zig-out/assets/README.md
 if [[ "${RUN_GENERATED_PROJECT:-0}" == "1" ]]; then
   cd "$ROOT_DIR"
   case "$(uname -s)" in
