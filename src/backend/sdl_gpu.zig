@@ -6,6 +6,23 @@ const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
 const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
+
+/// Private presentation-frame to fixed-tick input buffering for this backend.
+const TickBuffer = struct {
+    const Self = @This();
+
+    pending: up.Input.Snapshot = .{},
+
+    fn submit(self: *Self, state: up.Input) void {
+        self.pending.merge(state.snapshot());
+    }
+
+    fn next(self: *Self) up.Input.Snapshot {
+        const result = self.pending;
+        self.pending.clearTransient();
+        return result;
+    }
+};
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });
@@ -678,6 +695,9 @@ pub const Config = struct {
     renderer: RendererPreference = .auto,
     required_renderer_features: []const RendererFeature = &.{},
     fixed_hz: u32 = 60,
+    /// Optional deterministic seed exposed to `GameProtocol` games during
+    /// initialization through `GameContext.simulation_seed`.
+    simulation_seed: ?u64 = null,
     audio_sample_rate: u32 = 48_000,
     audio_buffer_frames: u32 = 1024,
     strict_audio: bool = false,
@@ -749,6 +769,7 @@ pub const Context = struct {
     dt: f32,
     alpha: f32,
     frame: u64,
+    simulation_seed: ?u64 = null,
 
     pub fn clear(self: *Context, color: up.Color) void {
         self.canvas.clear(color);
@@ -1317,6 +1338,7 @@ fn ProtocolAdapter(comptime Game: type) type {
 
         fn init(self: *Self, ctx: *Context) !void {
             self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
+            self.context.simulation_seed = ctx.simulation_seed;
             self.protocol = up.GameProtocol(Game).bind(&self.game);
             try self.protocol.init(&self.context);
         }
@@ -1387,7 +1409,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     }
     defer if (audio_output) |*output| output.deinit(allocator);
 
+    // Platform input is sampled once per presentation frame. `input` is the
+    // normalized state exposed to fixed simulation callbacks.
     var input = up.Input{};
+    var platform_input = up.Input{};
+    var tick_input = TickBuffer{};
     var desktop_state = DesktopState{};
     var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, framebufferSize(renderer.window()) catch |err| {
         dev.failure(.gpu, err);
@@ -1407,7 +1433,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0 };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1429,7 +1455,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     while (running) {
         profiler.beginFrame(ctx.frame);
         frame_metrics.beginFrame(ctx.frame);
-        input.beginFrame();
+        platform_input.beginFrame();
+        ctx.input = &platform_input;
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
         advanced_renderer.beginFrame();
@@ -1438,7 +1465,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         var close_requested = false;
         var callback_failure: ?Failure = null;
         const callback_timer = profiler.scope(.callback);
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &input, renderer.window(), &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &platform_input, renderer.window(), &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
             const current = callback_failure orelse Failure{ .phase = .input, .err = err };
             if (callback_failure != null) dev.callbackFailure(current) else dev.failure(.input, err);
             dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -1446,7 +1473,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             break :blk !close_requested;
         };
         callback_timer.end();
-        actions.update(input);
         const prior_recovery_action = renderer_diagnostics.recovery_action;
         renderer.recover(config, &gpu_recovery, &renderer_diagnostics) catch |err| {
             dev.failure(.gpu_recovery, err);
@@ -1477,8 +1503,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
                 dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, ctx.frame, canvas, commands.commands.items, &profiler);
             }
         }
-        if (input.wasPressed(.debug)) dev.toggleOverlay();
-        if (inspector.visibility == .visible and input.wasPressed(.select)) inspector.next();
+        if (platform_input.wasPressed(.debug)) dev.toggleOverlay();
+        if (inspector.visibility == .visible and platform_input.wasPressed(.select)) inspector.next();
 
         const asset_timer = profiler.scope(.asset);
         const reload_events = assets.reloadChanged() catch |err| {
@@ -1497,8 +1523,12 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const paused = shouldPause(config.pause_policy, desktop_state);
 
         const timing = clock.frame(dt, paused);
+        tick_input.submit(platform_input);
         var step: u32 = 0;
         while (step < timing.update_steps) : (step += 1) {
+            tick_input.next().apply(&input);
+            ctx.input = &input;
+            actions.update(input);
             ctx.dt = timing.update_seconds;
             ctx.alpha = 0;
             const update_timer = profiler.scope(.update);
@@ -1514,6 +1544,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         }
         if (failure != null) continue;
 
+        ctx.input = &input;
         canvas.clear(config.clear_color);
         ctx.dt = timing.draw_seconds;
         ctx.alpha = timing.alpha;
@@ -1532,7 +1563,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         drawReloadOverlay(&canvas, reload_events);
         dev.drawOverlay(&canvas, timing.draw_seconds, ctx.frame);
         var screenshot_path: ?[]u8 = null;
-        if ((input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
+        if ((platform_input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
                 dev.failure(.screenshot_path, err);
                 dev.captureFailure(.{ .phase = .screenshot_path, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -1961,6 +1992,7 @@ test "desktop configuration errors are recoverable" {
 
 test "runtime Config validates dynamic settings centrally" {
     try (Config{}).validate();
+    try (Config{ .simulation_seed = 42 }).validate();
     try std.testing.expectError(error.InvalidConfig, (Config{ .title = "" }).validate());
     try std.testing.expectError(error.InvalidConfig, (Config{ .max_frames = 0 }).validate());
     try std.testing.expectError(error.InvalidConfig, (Config{ .width = 1_073_741_824, .scale = 3 }).validate());

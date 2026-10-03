@@ -274,13 +274,34 @@ fn writeReplay(allocator: std.mem.Allocator, options: Options, value: *const rep
     var writer = file.writer(&buffer);
     const out = &writer.interface;
     const count = @min(value.frames.len, options.max_replay_frames);
-    try out.print("{{\"version\":1,\"fixed_hz\":{d},\"frame_count\":{d},\"truncated\":{s},\"buttons\":[", .{ value.fixed_hz, value.frames.len, if (count != value.frames.len) "true" else "false" });
+    try out.print("{{\"version\":3,\"fixed_hz\":{d},\"frame_count\":{d},\"truncated\":{s},\"simulation_seed\":", .{ value.fixed_hz, value.frames.len, if (count != value.frames.len) "true" else "false" });
+    if (value.simulation_seed) |seed| {
+        // Keep the full `u64` exact in JavaScript JSON consumers.
+        try out.print("\"{d}\"", .{seed});
+    } else {
+        try out.writeAll("null");
+    }
+    try out.writeAll(",\"rng_algorithm\":");
+    if (value.rng_algorithm) |algorithm| {
+        try out.print("{d}", .{@intFromEnum(algorithm)});
+    } else {
+        try out.writeAll("null");
+    }
+    try out.writeAll(",\"key_down_masks\":[");
     for (value.frames[0..count], 0..) |frame, index| {
         if (index != 0) try out.writeByte(',');
-        try out.print("{d}", .{frame.buttons});
+        try out.print("{d}", .{keyMask(frame.down)});
     }
     try out.writeAll("]}");
     try out.flush();
+}
+
+fn keyMask(values: anytype) u16 {
+    var result: u16 = 0;
+    inline for (values, 0..) |value, index| {
+        if (value) result |= @as(u16, 1) << @intCast(index);
+    }
+    return result;
 }
 
 fn writeMetadata(allocator: std.mem.Allocator, options: Options, input: Input) !void {

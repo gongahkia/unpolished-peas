@@ -8,7 +8,7 @@ The root package exposes only the six named capability namespaces below. Direct 
 
 | Namespace | Frozen declarations | Contract |
 | --- | --- | --- |
-| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, errors, and basic 2D values |
+| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, errors, and basic 2D values |
 | `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized keyboard, pointer, gamepad, and action state |
 | `graphics` | drawing (`Canvas`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, text, post effects, particles, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, mixer/music/PCM-stream declarations, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, audio loading, and playback/mixing |
@@ -21,7 +21,7 @@ Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetSto
 
 ## Lifecycle and errors
 
-`GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes a checked core canvas capability. The desktop adapter owns asset, audio, and presentation handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
+`GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes a checked core canvas capability. It may also carry an explicit optional `simulation_seed` for initialization. The desktop adapter owns asset, audio, and presentation handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
 
 Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. Hosts clamp elapsed wall time to five fixed steps, run fixed `update` calls before one `draw`, and expose the remaining interpolation fraction through `alpha`. Desktop reads its step rate from `sdl.Config.fixed_hz`; browser uses 60 Hz. Paused frames run no updates with zero alpha, retaining the accumulator remainder; browser visibility pauses discard hidden elapsed time on resume.
 

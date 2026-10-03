@@ -7,6 +7,7 @@ pub const core = struct {
     pub const GameProtocol = @import("app.zig").GameProtocol;
     pub const GamePhase = @import("app.zig").GamePhase;
     pub const GameFailure = @import("app.zig").GameFailure;
+    pub const DeterministicRng = @import("rng.zig").DeterministicRng;
     pub const Color = @import("color.zig").Color;
     pub const Vec2 = @import("math.zig").Vec2;
     pub const Rect = @import("math.zig").Rect;
