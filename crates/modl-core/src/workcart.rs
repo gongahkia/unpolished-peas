@@ -198,6 +198,99 @@ pub fn parse_workcart(source: &str) -> Result<WorkcartProject, CartridgeError> {
     })
 }
 
+/// Canonically encodes a compiler-facing project as an `M01W/2` work-cart.
+///
+/// Only declared assets, non-test MODL modules, and declared presentation files are emitted.
+/// Tests and author-time recipes are supplied explicitly so they remain first-class work-cart
+/// data rather than hidden editor state.
+///
+/// # Errors
+///
+/// Returns a stable error when an authored payload is missing, non-UTF-8, invalid, or cannot be
+/// represented by the work-cart contract.
+pub fn encode_workcart(
+    manifest: &ProjectManifest,
+    files: &BTreeMap<String, Vec<u8>>,
+    recipes: &[WorkcartRecipe],
+    tests: &[WorkcartTest],
+) -> Result<String, CartridgeError> {
+    let mut modules = Vec::new();
+    for (path, bytes) in files {
+        if path.starts_with("tests/") || !has_extension(path, "modl") {
+            continue;
+        }
+        require_path(path, "module")?;
+        modules.push(WorkcartModule {
+            path: path.clone(),
+            source: utf8_payload(bytes, path, "module")?,
+        });
+    }
+    let mut assets = Vec::new();
+    for (name, asset) in &manifest.assets {
+        let bytes = files.get(&asset.path).ok_or_else(|| {
+            workcart_error(
+                "M014024",
+                format!("asset '{name}' file '{}' is missing", asset.path),
+            )
+        })?;
+        let payload = utf8_payload(bytes, &asset.path, "asset")?;
+        let _: serde_json::Value = serde_json::from_str(&payload).map_err(|error| {
+            workcart_error(
+                "M014023",
+                format!("asset '{name}' payload is not valid JSON: {error}"),
+            )
+        })?;
+        assets.push(WorkcartAsset {
+            name: name.clone(),
+            kind: asset.kind,
+            path: asset.path.clone(),
+            payload,
+        });
+    }
+    let mut files_to_embed = Vec::new();
+    let mut presentation_paths = BTreeSet::new();
+    for path in [&manifest.label, &manifest.thumbnail, &manifest.display]
+        .into_iter()
+        .flatten()
+    {
+        presentation_paths.insert(path.clone());
+    }
+    for path in presentation_paths {
+        let bytes = files.get(&path).ok_or_else(|| {
+            workcart_error("M014024", format!("presentation file '{path}' is missing"))
+        })?;
+        files_to_embed.push(WorkcartFile {
+            payload: utf8_payload(bytes, &path, "presentation")?,
+            path,
+        });
+    }
+    let document = WorkcartDocument {
+        format: WORKCART_FORMAT_REVISION,
+        cartridge: WorkcartCartridge {
+            language: manifest.language_revision.clone(),
+            id: manifest.id.clone(),
+            title: manifest.title.clone(),
+            author: manifest.author.clone(),
+            version: manifest.version.clone(),
+            entry: manifest.entry.clone(),
+            update_rate: manifest.update_rate,
+            compile_on_load: manifest.compile_on_load,
+            label: manifest.label.clone(),
+            thumbnail: manifest.thumbnail.clone(),
+            display: manifest.display.clone(),
+        },
+        module: modules,
+        asset: assets,
+        file: files_to_embed,
+        recipe: recipes.to_vec(),
+        test: tests.to_vec(),
+    };
+    let encoded = toml::to_string_pretty(&document)
+        .map_err(|error| workcart_error("M014020", error.to_string()))?;
+    parse_workcart(&encoded)?;
+    Ok(encoded)
+}
+
 fn materialize_files(document: &WorkcartDocument) -> Result<MaterializedFiles, CartridgeError> {
     let mut assets = BTreeMap::new();
     let mut files = BTreeMap::new();
@@ -493,11 +586,23 @@ fn has_extension(path: &str, extension: &str) -> bool {
         .is_some_and(|value| value == extension)
 }
 
+fn utf8_payload(bytes: &[u8], path: &str, role: &str) -> Result<String, CartridgeError> {
+    std::str::from_utf8(bytes).map_or_else(
+        |_| {
+            Err(workcart_error(
+                "M014023",
+                format!("{role} file '{path}' is not valid UTF-8"),
+            ))
+        },
+        |payload| Ok(payload.to_owned()),
+    )
+}
+
 #[cfg(test)]
 mod tests {
     use crate::{
-        decode_cartridge, export_standalone_workcart, pack_workcart, unpack_cartridge_project,
-        unpack_workcart,
+        decode_cartridge, encode_workcart, export_standalone_workcart, pack_workcart,
+        unpack_cartridge_project, unpack_workcart,
     };
 
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
@@ -607,5 +712,22 @@ payload = "on start:\n  assert true\n"
         let html = export_standalone_workcart(CART).expect("work-cart standalone exports");
         assert!(html.contains("name=\"mod01-format\" content=\"2\""));
         assert!(html.contains("CARTRIDGE FORMAT/2"));
+    }
+
+    #[test]
+    fn canonical_writer_preserves_the_compiler_facing_workcart_contents() {
+        let original = parse_workcart(CART).expect("original work-cart parses");
+        let encoded = encode_workcart(
+            &original.manifest,
+            &original.files,
+            &original.recipes,
+            &original.tests,
+        )
+        .expect("work-cart writes");
+        let reparsed = parse_workcart(&encoded).expect("encoded work-cart parses");
+        assert_eq!(reparsed.manifest, original.manifest);
+        assert_eq!(reparsed.files, original.files);
+        assert_eq!(reparsed.recipes, original.recipes);
+        assert_eq!(reparsed.tests, original.tests);
     }
 }
