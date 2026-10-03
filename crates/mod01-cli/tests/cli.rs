@@ -345,6 +345,70 @@ tiles = [0]
 }
 
 #[test]
+fn check_reports_packed_capacity_failures_for_workcarts() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-check-capacity-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    let padding = "0123456789abcdef".repeat(17_000);
+    fs::write(
+        &cart,
+        format!(
+            r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "capacity-check"
+title = "CAPACITY CHECK"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = "on draw:\n  clear(0)\n"
+
+[[asset]]
+name = "oversized"
+kind = "sprite"
+path = "assets/oversized.m01g"
+payload = '''{{"padding":"{padding}"}}'''
+"#
+        ),
+    )
+    .expect("oversized work-cart writes");
+    let output = binary()
+        .args(["check", cart.to_str().expect("UTF-8 work-cart path")])
+        .output()
+        .expect("CLI starts");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("M014005"));
+    fs::remove_file(cart).expect("temporary capacity work-cart removes");
+}
+
+#[test]
+fn migrate_explicitly_rejects_tiled_files() {
+    let tiled = std::env::temp_dir().join(format!(
+        "mod01-tiled-{}-{}.tmx",
+        std::process::id(),
+        line!()
+    ));
+    fs::write(&tiled, "<map version=\"1.10\"/>").expect("Tiled fixture writes");
+    let output = binary()
+        .args(["migrate", tiled.to_str().expect("UTF-8 tiled path")])
+        .output()
+        .expect("CLI starts");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("migrate expects a V1 cartridge project directory")
+    );
+    fs::remove_file(tiled).expect("temporary Tiled fixture removes");
+}
+
+#[test]
 fn migrate_turns_a_v1_project_and_its_tests_into_one_workcart() {
     let project =
         std::env::temp_dir().join(format!("mod01-migrate-{}-{}", std::process::id(), line!()));
