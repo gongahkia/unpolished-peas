@@ -36,6 +36,8 @@ pub fn createProject(allocator: std.mem.Allocator, template_root: []const u8, de
     try source.copyFile(".gitignore", output, ".gitignore", .{});
     try output.makePath("assets");
     try source.copyFile("assets/.gitkeep", output, "assets/.gitkeep", .{});
+    try source.copyFile("assets/README.md", output, "assets/README.md", .{});
+    try source.copyFile("src/game.zig", output, "src/game.zig", .{});
     try source.copyFile("src/main.zig", output, "src/main.zig", .{});
 }
 
@@ -64,17 +66,19 @@ test "starter creates a structured project and rejects invalid destinations" {
     defer project.close();
     try project.access("build.zig", .{});
     try project.access("build.zig.zon", .{});
+    try project.access("src/game.zig", .{});
     try project.access("src/main.zig", .{});
     try project.access("assets/.gitkeep", .{});
+    try project.access("assets/README.md", .{});
     const source = try project.readFileAlloc(std.testing.allocator, "src/main.zig", 8192);
     defer std.testing.allocator.free(source);
-    try std.testing.expect(std.mem.indexOf(u8, source, "const up = @import(\"unpolished-peas\");") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "up.core.Color") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "up.core.Vec2") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "*up.core.GameContext") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "*sdl.Context") == null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "pub const Game = @import(\"game.zig\").Game") != null);
+    const game = try project.readFileAlloc(std.testing.allocator, "src/game.zig", 16 * 1024);
+    defer std.testing.allocator.free(game);
+    try std.testing.expect(std.mem.indexOf(u8, game, "up.core.DeterministicRng") != null);
+    try std.testing.expect(std.mem.indexOf(u8, game, "*up.core.GameContext") != null);
+    try std.testing.expect(std.mem.indexOf(u8, game, "*sdl.Context") == null);
     try std.testing.expect(std.mem.indexOf(u8, source, "sdl.playGame(Game)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, source, "unpolished-peas").? < std.mem.indexOf(u8, source, "up.core.Color").?);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
     defer std.testing.allocator.free(manifest);
     const template_manifest = try std.fs.cwd().readFileAlloc(std.testing.allocator, "templates/bounce/build.zig.zon", 4096);

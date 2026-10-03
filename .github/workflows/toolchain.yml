@@ -97,6 +97,8 @@ jobs:
       - run: zig build test-modules
       - run: zig build test-peas
       - run: zig build test-starter
+      - run: zig build test-starter-external
+      - run: zig build test-starter-web-package
       - run: zig build test-docs
       - run: zig build docs
       - run: zig build test-replays
@@ -149,6 +151,18 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          - os: ubuntu-latest
+            target: linux
+            game: starter
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: starter
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: starter
+            package_script: script/test_windows_package.ps1
           - os: ubuntu-latest
             target: linux
             game: bounce

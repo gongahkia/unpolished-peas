@@ -17,7 +17,19 @@ zig build test -Dwith_sdl=false
 zig build browser -Dwith_sdl=false
 ```
 
-This verifies the source checkout's headless and browser contracts. The callback [starter](templates/bounce/src/main.zig) remains the small reference game: set `Game.config`, then implement `init`, fixed-step `update`, and `draw`. A release preparation step must replace its generated dependency coordinate with a real immutable tag URL and matching hash before it is usable as an independent project.
+This verifies the source checkout's headless and browser contracts.
+
+**New to Peas?** Start with [Seed Sprint](templates/bounce/README.md): a
+copyable one-screen game whose `src/game.zig` shows `Game.config`, `init`,
+fixed-step `update`, Canvas `draw`, deterministic RNG, replay testing, and a
+Canvas-command regression. A release preparation step must replace its
+generated dependency coordinate with a real immutable tag URL and matching
+hash before it is usable as an independent project.
+
+Peas fits small authored 2D games, deterministic simulations, strong
+headless testing, macOS/Linux native games, and browser-capable Zig projects.
+It intentionally does not provide an engine-owned ECS, physics, 3D renderer,
+editor, networking stack, or general scene hierarchy.
 
 ## Supported platforms
 
@@ -43,6 +55,7 @@ Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/gui
 ## Copyable examples
 
 - [SDL bouncing square](examples/bounce_sdl.zig)
+- [Seed Sprint starter](templates/bounce/README.md)
 - [Explicit core loop](examples/explicit_loop.zig)
 - [Top-down proof game](docs/proof-games/topdown.md)
 - [Puzzle proof game](docs/proof-games/puzzle.md)
