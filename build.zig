@@ -168,6 +168,17 @@ pub fn build(b: *std.Build) void {
     });
     const browser_audio_smoke_step = b.step("test-browser-audio-stream", "Compile the public browser PCM audio stream API");
     browser_audio_smoke_step.dependOn(&browser_audio_smoke.step);
+    const browser_render_surface_smoke = b.addObject(.{
+        .name = "unpolished-peas-browser-render-surface-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/render_surface_wasm_smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        }),
+    });
+    const browser_render_surface_test_step = b.step("test-browser-render-surfaces", "Compile the public render-surface API for the browser target");
+    browser_render_surface_test_step.dependOn(&browser_render_surface_smoke.step);
     const browser_ogg_decode_smoke = b.addExecutable(.{
         .name = "unpolished-peas-browser-ogg-decode-smoke",
         .root_module = b.createModule(.{
@@ -500,6 +511,7 @@ pub fn build(b: *std.Build) void {
     const atlas_demo = addExample(b, "unpolished-peas-atlas", "examples/atlas.zig", target, optimize, peas, sdl);
     const camera_demo = addExample(b, "unpolished-peas-camera", "examples/camera.zig", target, optimize, peas, sdl);
     const primitives_demo = addExample(b, "unpolished-peas-primitives", "examples/primitives.zig", target, optimize, peas, sdl);
+    const render_surface_demo = addExample(b, "unpolished-peas-render-surface", "examples/render_surface.zig", target, optimize, peas, null);
     const breakout = addExample(b, "unpolished-peas-breakout", "examples/breakout.zig", target, optimize, peas, null);
     const breakout_sdl = addExample(b, "unpolished-peas-breakout-sdl", "examples/breakout_sdl.zig", target, optimize, peas, sdl);
     const topdown_sdl = addExample(b, "unpolished-peas-topdown-sdl", "examples/topdown_sdl.zig", target, optimize, peas, sdl);
@@ -642,6 +654,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "run-atlas", "Run the unpolished-peas atlas sprite demo", atlas_demo);
     addRunStep(b, "run-camera", "Run the unpolished-peas camera demo", camera_demo);
     addRunStep(b, "run-primitives", "Run the unpolished-peas GPU primitive demo", primitives_demo);
+    addRunStep(b, "run-render-surface", "Render the software offscreen-surface example", render_surface_demo);
     addRunStep(b, "run-breakout", "Run the deterministic Breakout demo", breakout);
     addRunStep(b, "run-breakout-sdl", "Run the unpolished-peas SDL3 Breakout demo", breakout_sdl);
     addRunStep(b, "run-topdown-sdl", "Run the unpolished-peas SDL3 top-down demo", topdown_sdl);
@@ -689,7 +702,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-workloads", "Record versioned native workload metrics", workload_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -763,6 +776,16 @@ pub fn build(b: *std.Build) void {
     const storage_test_step = b.step("test-storage", "Run native opaque save-data storage tests");
     storage_test_step.dependOn(&run_storage_tests.step);
     test_step.dependOn(&run_storage_tests.step);
+    const render_surface_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/render_surface_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_render_surface_tests = b.addRunArtifact(render_surface_tests);
+    const render_surface_test_step = b.step("test-render-surfaces", "Run public offscreen render-surface tests");
+    render_surface_test_step.dependOn(&run_render_surface_tests.step);
+    test_step.dependOn(&run_render_surface_tests.step);
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);

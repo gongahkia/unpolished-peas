@@ -17,6 +17,7 @@ pub const Trace = struct {
     // cycle; Canvas converts its corresponding logical values at capture.
     pub const ClipRect = struct { x: i32, y: i32, w: i32, h: i32 };
     pub const BlendMode = enum { alpha, additive };
+    pub const SurfaceFilter = enum { nearest, linear };
 
     pub const Kind = enum(u8) {
         clear = 1,
@@ -34,6 +35,7 @@ pub const Trace = struct {
         image,
         atlas_frame,
         text,
+        surface,
     };
 
     pub const Resource = struct {
@@ -53,6 +55,15 @@ pub const Trace = struct {
     pub const Line = struct { x0: i32, y0: i32, x1: i32, y1: i32, color: Color };
     pub const SpriteDraw = struct { resource: Resource, x: i32, y: i32 };
     pub const ImageDraw = SpriteDraw;
+    pub const SurfaceDraw = struct {
+        resource: Resource,
+        x: i32,
+        y: i32,
+        width: u32,
+        height: u32,
+        tint: Color,
+        filter: SurfaceFilter,
+    };
     pub const Text = struct { value: []const u8, x: i32, y: i32, color: Color };
     pub const AtlasFrame = struct {
         x: i32,
@@ -94,6 +105,7 @@ pub const Trace = struct {
         image: ImageDraw,
         atlas_frame: AtlasFrameDraw,
         text: Text,
+        surface: SurfaceDraw,
     };
 
     pub const Difference = struct {
@@ -219,6 +231,18 @@ pub const Trace = struct {
 
     pub fn recordImage(self: *Self, width: u32, height: u32, pixels: []const Color, x: i32, y: i32) void {
         self.append(.{ .image = .{ .resource = resource(width, height, pixels), .x = x, .y = y } });
+    }
+
+    pub fn recordSurface(self: *Self, surface_width: u32, surface_height: u32, pixels: []const Color, x: i32, y: i32, width: u32, height: u32, tint: Color, filter: SurfaceFilter) void {
+        self.append(.{ .surface = .{
+            .resource = resource(surface_width, surface_height, pixels),
+            .x = x,
+            .y = y,
+            .width = width,
+            .height = height,
+            .tint = tint,
+            .filter = filter,
+        } });
     }
 
     pub fn recordAtlasFrame(self: *Self, image_width: u32, image_height: u32, image_pixels: []const Color, value: atlas.AtlasFrame, x: i32, y: i32, options: atlas.DrawSpriteOptions) void {
@@ -409,6 +433,15 @@ const Encoder = struct {
                 self.writeI32(draw.x);
                 self.writeI32(draw.y);
             },
+            .surface => |draw| {
+                self.resource(draw.resource);
+                self.writeI32(draw.x);
+                self.writeI32(draw.y);
+                self.writeU32(draw.width);
+                self.writeU32(draw.height);
+                self.color(draw.tint);
+                self.byte(@intFromEnum(draw.filter));
+            },
             .atlas_frame => |draw| {
                 self.resource(draw.resource);
                 self.writeI32(draw.frame.x);
@@ -464,6 +497,7 @@ fn commandDifference(expected: Trace.Command, actual: Trace.Command) ?[]const u8
         .line => differenceLine(expected.line, actual.line),
         .sprite => differenceSprite(expected.sprite, actual.sprite),
         .image => differenceSprite(expected.image, actual.image),
+        .surface => differenceSurface(expected.surface, actual.surface),
         .atlas_frame => differenceAtlas(expected.atlas_frame, actual.atlas_frame),
         .text => differenceText(expected.text, actual.text),
     };
@@ -523,6 +557,17 @@ fn differenceSprite(expected: Trace.SpriteDraw, actual: Trace.SpriteDraw) ?[]con
     if (!sameResource(expected.resource, actual.resource)) return "resource";
     if (expected.x != actual.x) return "x";
     if (expected.y != actual.y) return "y";
+    return null;
+}
+
+fn differenceSurface(expected: Trace.SurfaceDraw, actual: Trace.SurfaceDraw) ?[]const u8 {
+    if (!sameResource(expected.resource, actual.resource)) return "resource";
+    if (expected.x != actual.x) return "x";
+    if (expected.y != actual.y) return "y";
+    if (expected.width != actual.width) return "width";
+    if (expected.height != actual.height) return "height";
+    if (!sameColor(expected.tint, actual.tint)) return "tint";
+    if (expected.filter != actual.filter) return "filter";
     return null;
 }
 
@@ -600,6 +645,7 @@ fn formatOptionalCommand(command: ?Trace.Command, buffer: []u8) ![]const u8 {
         .fill_quad => |quad| std.fmt.bufPrint(buffer, "fill_quad a=({d},{d}) b=({d},{d}) c=({d},{d}) d=({d},{d})", .{ quad.a.x, quad.a.y, quad.b.x, quad.b.y, quad.c.x, quad.c.y, quad.d.x, quad.d.y }),
         .line => |line| std.fmt.bufPrint(buffer, "line ({d},{d})->({d},{d}) rgba({d},{d},{d},{d})", .{ line.x0, line.y0, line.x1, line.y1, line.color.r, line.color.g, line.color.b, line.color.a }),
         .sprite, .image => |draw| std.fmt.bufPrint(buffer, "{s} resource={d}x{d}#{x} x={d} y={d}", .{ @tagName(std.meta.activeTag(value)), draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.x, draw.y }),
+        .surface => |draw| std.fmt.bufPrint(buffer, "surface resource={d}x{d}#{x} x={d} y={d} w={d} h={d} tint=rgba({d},{d},{d},{d}) filter={s}", .{ draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.x, draw.y, draw.width, draw.height, draw.tint.r, draw.tint.g, draw.tint.b, draw.tint.a, @tagName(draw.filter) }),
         .atlas_frame => |draw| std.fmt.bufPrint(buffer, "atlas_frame resource={d}x{d}#{x} frame=({d},{d},{d},{d}) source=({d},{d}) offset=({d},{d}) rotated={} x={d} y={d} origin={s} scale={d} flip=({},{}) tint=rgba({d},{d},{d},{d}) rotation={d}", .{ draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.frame.x, draw.frame.y, draw.frame.w, draw.frame.h, draw.frame.source_w, draw.frame.source_h, draw.frame.offset_x, draw.frame.offset_y, draw.frame.rotated, draw.x, draw.y, @tagName(draw.origin), draw.scale, draw.flip_x, draw.flip_y, draw.tint.r, draw.tint.g, draw.tint.b, draw.tint.a, draw.rotation }),
         .text => |text| std.fmt.bufPrint(buffer, "text value={s} x={d} y={d} rgba({d},{d},{d},{d})", .{ text.value, text.x, text.y, text.color.r, text.color.g, text.color.b, text.color.a }),
     };

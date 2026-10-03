@@ -30,6 +30,9 @@ pub const input = struct {
 
 pub const graphics = struct {
     pub const Canvas = @import("canvas.zig").Canvas;
+    pub const RenderSurface = @import("canvas.zig").RenderSurface;
+    pub const SurfaceDrawOptions = @import("canvas.zig").SurfaceDrawOptions;
+    pub const SurfaceFilter = @import("canvas.zig").SurfaceFilter;
     pub const Sprite = @import("canvas.zig").Sprite;
     pub const ClipRect = @import("canvas.zig").ClipRect;
     pub const BlendMode = @import("canvas.zig").BlendMode;

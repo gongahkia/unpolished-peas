@@ -20,6 +20,21 @@ pub const ClipRect = struct {
 
 pub const BlendMode = enum { alpha, additive };
 
+/// Sampling used when a RenderSurface is scaled during composition.
+/// `nearest` is the default because it preserves pixel-art edges exactly.
+pub const SurfaceFilter = enum { nearest, linear };
+
+/// Destination geometry and sampling for `Canvas.drawSurface`.
+/// Width and height are explicit logical pixels; a zero size is rejected.
+pub const SurfaceDrawOptions = struct {
+    x: i32,
+    y: i32,
+    width: u32,
+    height: u32,
+    tint: Color = Color.white,
+    filter: SurfaceFilter = .nearest,
+};
+
 pub const Sprite = struct {
     width: u32,
     height: u32,
@@ -248,6 +263,35 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         self.drawSpriteImpl(image.sprite(), dst_x, dst_y);
     }
 
+    /// Composites the latest pixels of an owned offscreen RenderSurface. The
+    /// source may not be the Canvas currently receiving the draw; doing so is
+    /// a feedback loop and returns `error.SurfaceSelfSampling`.
+    pub fn drawSurface(self: *Canvas, surface: *const RenderSurface, options: SurfaceDrawOptions) !void {
+        if (options.width == 0 or options.height == 0) return error.InvalidSurfaceDrawSize;
+        if (options.width > std.math.maxInt(i32) or options.height > std.math.maxInt(i32)) return error.InvalidSurfaceDrawSize;
+        if (self == &surface.target) return error.SurfaceSelfSampling;
+        if (self.trace) |trace| trace.recordSurface(surface.target.width, surface.target.height, surface.target.pixels, options.x, options.y, options.width, options.height, options.tint, switch (options.filter) {
+            .nearest => .nearest,
+            .linear => .linear,
+        });
+
+        var destination_y: u32 = 0;
+        while (destination_y < options.height) : (destination_y += 1) {
+            const y_offset: i32 = @intCast(destination_y);
+            const y = std.math.add(i32, options.y, y_offset) catch continue;
+            var destination_x: u32 = 0;
+            while (destination_x < options.width) : (destination_x += 1) {
+                const x_offset: i32 = @intCast(destination_x);
+                const x = std.math.add(i32, options.x, x_offset) catch continue;
+                const source_color = switch (options.filter) {
+                    .nearest => sampleSurfaceNearest(&surface.target, destination_x, destination_y, options.width, options.height),
+                    .linear => sampleSurfaceLinear(&surface.target, destination_x, destination_y, options.width, options.height),
+                };
+                self.blendPixel(x, y, tint(source_color, options.tint));
+            }
+        }
+    }
+
     pub fn drawAtlasFrame(self: *Canvas, atlas: atlas_mod.Atlas, handle: atlas_mod.AtlasFrameHandle, dst_x: i32, dst_y: i32, options: atlas_mod.DrawSpriteOptions) void {
         if (options.scale == 0) return;
         const frame = atlas.frame(handle);
@@ -380,6 +424,76 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 };
 
+/// Persistent, Peas-owned offscreen 2D surface. It owns a Canvas-sized pixel
+/// buffer initialized to transparent black. Draw into `canvas()` with the
+/// ordinary Canvas API, then compose it onto another Canvas with
+/// `drawSurface`. There is no target stack or GPU-resource ownership exposed.
+pub const RenderSurface = struct {
+    target: Canvas,
+
+    pub fn init(allocator: std.mem.Allocator, surface_width: u32, surface_height: u32) !RenderSurface {
+        if (surface_width == 0 or surface_height == 0 or surface_width > std.math.maxInt(i32) or surface_height > std.math.maxInt(i32)) return error.InvalidRenderSurfaceSize;
+        return .{ .target = try Canvas.init(allocator, surface_width, surface_height) };
+    }
+
+    pub fn deinit(self: *RenderSurface) void {
+        self.target.deinit();
+        self.* = undefined;
+    }
+
+    /// Borrows the offscreen Canvas. Its contents become visible to later
+    /// `drawSurface` calls immediately after ordinary Canvas draw calls return.
+    pub fn canvas(self: *RenderSurface) *Canvas {
+        return &self.target;
+    }
+
+    pub fn width(self: *const RenderSurface) u32 {
+        return self.target.width;
+    }
+
+    pub fn height(self: *const RenderSurface) u32 {
+        return self.target.height;
+    }
+};
+
+fn sampleSurfaceNearest(source: *const Canvas, destination_x: u32, destination_y: u32, destination_width: u32, destination_height: u32) Color {
+    const source_x: u32 = @intCast((@as(u64, destination_x) * source.width) / destination_width);
+    const source_y: u32 = @intCast((@as(u64, destination_y) * source.height) / destination_height);
+    return source.pixels[@as(usize, source_y) * source.width + source_x];
+}
+
+fn sampleSurfaceLinear(source: *const Canvas, destination_x: u32, destination_y: u32, destination_width: u32, destination_height: u32) Color {
+    const source_x = ((@as(f32, @floatFromInt(destination_x)) + 0.5) * @as(f32, @floatFromInt(source.width)) / @as(f32, @floatFromInt(destination_width))) - 0.5;
+    const source_y = ((@as(f32, @floatFromInt(destination_y)) + 0.5) * @as(f32, @floatFromInt(source.height)) / @as(f32, @floatFromInt(destination_height))) - 0.5;
+    const left = std.math.clamp(@as(i32, @intFromFloat(@floor(source_x))), 0, @as(i32, @intCast(source.width - 1)));
+    const top = std.math.clamp(@as(i32, @intFromFloat(@floor(source_y))), 0, @as(i32, @intCast(source.height - 1)));
+    const right = @min(left + 1, @as(i32, @intCast(source.width - 1)));
+    const bottom = @min(top + 1, @as(i32, @intCast(source.height - 1)));
+    const horizontal = std.math.clamp(source_x - @as(f32, @floatFromInt(left)), 0, 1);
+    const vertical = std.math.clamp(source_y - @as(f32, @floatFromInt(top)), 0, 1);
+    const top_color = lerpColor(surfacePixel(source, left, top), surfacePixel(source, right, top), horizontal);
+    const bottom_color = lerpColor(surfacePixel(source, left, bottom), surfacePixel(source, right, bottom), horizontal);
+    return lerpColor(top_color, bottom_color, vertical);
+}
+
+fn surfacePixel(source: *const Canvas, x: i32, y: i32) Color {
+    return source.pixels[@as(usize, @intCast(y)) * source.width + @as(usize, @intCast(x))];
+}
+
+fn lerpColor(left: Color, right: Color, amount: f32) Color {
+    return .{
+        .r = lerpChannel(left.r, right.r, amount),
+        .g = lerpChannel(left.g, right.g, amount),
+        .b = lerpChannel(left.b, right.b, amount),
+        .a = lerpChannel(left.a, right.a, amount),
+    };
+}
+
+fn lerpChannel(left: u8, right: u8, amount: f32) u8 {
+    const value = @as(f32, @floatFromInt(left)) + (@as(f32, @floatFromInt(right)) - @as(f32, @floatFromInt(left))) * amount;
+    return @intFromFloat(@round(std.math.clamp(value, 0, 255)));
+}
+
 fn pngStoredDeflate(allocator: std.mem.Allocator, raw: []const u8) ![]u8 {
     const blocks = std.math.divCeil(usize, raw.len, 65535) catch return error.PngTooLarge;
     const block_bytes = std.math.mul(usize, blocks, 5) catch return error.PngTooLarge;
@@ -501,6 +615,102 @@ test "sprite draw honors alpha" {
     canvas.drawSprite(.{ .width = 2, .height = 1, .pixels = &pixels }, 0, 0);
     try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
+}
+
+test "render surfaces start transparent and validate their dimensions" {
+    var surface = try RenderSurface.init(std.testing.allocator, 2, 3);
+    defer surface.deinit();
+    try std.testing.expectEqual(@as(u32, 2), surface.width());
+    try std.testing.expectEqual(@as(u32, 3), surface.height());
+    try std.testing.expectEqual(Color.transparent, surface.canvas().get(0, 0).?);
+    try std.testing.expectError(error.InvalidRenderSurfaceSize, RenderSurface.init(std.testing.allocator, 0, 1));
+    try std.testing.expectError(error.InvalidRenderSurfaceSize, RenderSurface.init(std.testing.allocator, 1, 0));
+}
+
+test "render surfaces compose, scale, tint, and respect Canvas clipping" {
+    var surface = try RenderSurface.init(std.testing.allocator, 2, 1);
+    defer surface.deinit();
+    surface.canvas().clear(Color.transparent);
+    surface.canvas().pixel(0, 0, Color.rgb(255, 0, 0));
+    surface.canvas().pixel(1, 0, Color.rgb(0, 0, 255));
+
+    var canvas = try Canvas.init(std.testing.allocator, 6, 2);
+    defer canvas.deinit();
+    canvas.clear(Color.black);
+    try canvas.drawSurface(&surface, .{ .x = 0, .y = 0, .width = 3, .height = 1 });
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(1, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(2, 0).?);
+
+    try canvas.drawSurface(&surface, .{ .x = 3, .y = 0, .width = 3, .height = 1, .filter = .linear });
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(3, 0).?);
+    try std.testing.expectEqual(Color.rgb(128, 0, 128), canvas.get(4, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(5, 0).?);
+
+    const previous = canvas.pushClip(.{ .x = 0, .y = 1, .w = 1, .h = 1 });
+    try canvas.drawSurface(&surface, .{ .x = 0, .y = 1, .width = 2, .height = 1, .tint = Color.rgb(128, 255, 255) });
+    canvas.restoreClip(previous);
+    try std.testing.expectEqual(Color.rgb(128, 0, 0), canvas.get(0, 1).?);
+    try std.testing.expectEqual(Color.black, canvas.get(1, 1).?);
+}
+
+test "render surfaces remain mutable and reject self sampling" {
+    var first = try RenderSurface.init(std.testing.allocator, 1, 1);
+    defer first.deinit();
+    var second = try RenderSurface.init(std.testing.allocator, 1, 1);
+    defer second.deinit();
+    first.canvas().clear(Color.rgb(255, 0, 0));
+    second.canvas().clear(Color.rgb(0, 255, 0));
+
+    var canvas = try Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    canvas.clear(Color.black);
+    try canvas.drawSurface(&first, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    try canvas.drawSurface(&second, .{ .x = 1, .y = 0, .width = 1, .height = 1 });
+    try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 255, 0), canvas.get(1, 0).?);
+
+    first.canvas().clear(Color.rgb(0, 0, 255));
+    canvas.clear(Color.black);
+    try canvas.drawSurface(&first, .{ .x = 0, .y = 0, .width = 1, .height = 1 });
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(0, 0).?);
+    try std.testing.expectError(error.SurfaceSelfSampling, first.canvas().drawSurface(&first, .{ .x = 0, .y = 0, .width = 1, .height = 1 }));
+    try std.testing.expectError(error.InvalidSurfaceDrawSize, canvas.drawSurface(&second, .{ .x = 0, .y = 0, .width = 0, .height = 1 }));
+}
+
+test "render surface traces identify content rather than allocation" {
+    var first_surface = try RenderSurface.init(std.testing.allocator, 1, 1);
+    defer first_surface.deinit();
+    var second_surface = try RenderSurface.init(std.testing.allocator, 1, 1);
+    defer second_surface.deinit();
+    first_surface.canvas().clear(Color.rgb(255, 0, 0));
+    second_surface.canvas().clear(Color.rgb(255, 0, 0));
+
+    var first_canvas = try Canvas.init(std.testing.allocator, 2, 2);
+    defer first_canvas.deinit();
+    var second_canvas = try Canvas.init(std.testing.allocator, 2, 2);
+    defer second_canvas.deinit();
+    var first_trace = canvas_trace.Trace.init(std.testing.allocator);
+    defer first_trace.deinit();
+    var second_trace = canvas_trace.Trace.init(std.testing.allocator);
+    defer second_trace.deinit();
+    first_canvas.attachTrace(&first_trace);
+    second_canvas.attachTrace(&second_trace);
+    try first_canvas.drawSurface(&first_surface, .{ .x = 0, .y = 0, .width = 2, .height = 2 });
+    try second_canvas.drawSurface(&second_surface, .{ .x = 0, .y = 0, .width = 2, .height = 2 });
+    try std.testing.expect((try first_trace.firstDifference(&second_trace)) == null);
+    try std.testing.expectEqual(try first_trace.hash(), try second_trace.hash());
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.surface, std.meta.activeTag(first_trace.commandSlice()[0]));
+
+    second_trace.reset();
+    try second_canvas.drawSurface(&second_surface, .{ .x = 0, .y = 0, .width = 2, .height = 2, .filter = .linear });
+    try std.testing.expectEqualStrings("filter", (try first_trace.firstDifference(&second_trace)).?.field);
+
+    second_surface.canvas().clear(Color.rgb(0, 0, 255));
+    second_trace.reset();
+    try second_canvas.drawSurface(&second_surface, .{ .x = 0, .y = 0, .width = 2, .height = 2 });
+    const difference = (try first_trace.firstDifference(&second_trace)).?;
+    try std.testing.expectEqualStrings("resource", difference.field);
 }
 
 test "canvas trace records public operations without rasterization details" {

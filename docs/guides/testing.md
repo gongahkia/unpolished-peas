@@ -60,6 +60,13 @@ Canvas operations are fully traceable; GPU-material sprites, GPU particles,
 and final post passes belong to the separate advanced renderer path and are
 not represented by this Canvas trace yet.
 
+`Canvas.drawSurface` is also a core trace operation. Its record uses the
+surface's dimensions and current pixel digest—not its allocation address—plus
+the destination rectangle, tint, and nearest/linear filter. A test therefore
+detects a changed surface composition or changed surface contents while equal
+surfaces from separate allocations retain the same logical trace. See
+[Render surfaces](render-surfaces.md) for the target and lifetime rules.
+
 ## Fixed-tick input replay
 
 `up.preview.developer.InputReplayRecorder` records the normalized `Input` a game observes during each fixed update. It is independent of SDL, browser DOM events, and rendering. Record from the update boundary, then drive a fresh headless game with the resulting replay:
