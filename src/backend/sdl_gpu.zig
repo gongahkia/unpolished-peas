@@ -6,7 +6,7 @@ const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
 const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
-const NativeSaveStore = @import("../native_save_data.zig").NativeSaveStore;
+const NativeSaveStore = @import("native-save-data").NativeSaveStore;
 
 /// Private presentation-frame to fixed-tick input buffering for this backend.
 const TickBuffer = struct {
@@ -714,6 +714,9 @@ pub const Config = struct {
         const max_sdl_int: u32 = @intCast(std.math.maxInt(c_int));
         const max_sdl_bytes: usize = @intCast(max_sdl_int);
         if (self.title.len == 0 or self.organization.len == 0 or self.application.len == 0) return error.InvalidConfig;
+        // These values form the stable SDL preference-path namespace used by
+        // SaveStore. Keep them portable identifiers instead of path fragments.
+        if (!up.SaveStore.isValidApplicationId(self.organization) or !up.SaveStore.isValidApplicationId(self.application)) return error.InvalidConfig;
         if (self.width == 0 or self.height == 0 or self.scale == 0) return error.InvalidConfig;
         if (self.fixed_hz == 0 or self.audio_sample_rate == 0 or self.audio_buffer_frames == 0) return error.InvalidConfig;
         if (self.audio_sample_rate > max_sdl_int) return error.InvalidConfig;
@@ -1990,6 +1993,8 @@ test "desktop configuration errors are recoverable" {
     try std.testing.expectError(error.InvalidConfig, (Config{ .fixed_hz = 0 }).validate());
     try std.testing.expectError(error.InvalidConfig, (Config{ .audio_sample_rate = 0 }).validate());
     try std.testing.expectError(error.InvalidConfig, (Config{ .audio_buffer_frames = 0 }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .organization = "../outside" }).validate());
+    try std.testing.expectError(error.InvalidConfig, (Config{ .application = "save/path" }).validate());
     try std.testing.expectError(error.DuplicateBinding, (Config{ .actions = &.{
         .{ .name = "fire", .binding = .{ .key = .action } },
         .{ .name = "fire", .binding = .{ .key = .action } },

@@ -84,6 +84,13 @@ try runner.runReplay(replay);
 
 A replay reproduces normalized fixed-tick input, not arbitrary game state. A seed-bearing replay can reject a headless runner initialized with a different seed. Equivalent results still require the same initialization path and deterministic game code. In particular, wall-clock reads, random sources other than the game-owned Peas RNG, unordered iteration, asynchronous asset completion, and platform-dependent floating-point computation remain the game's responsibility.
 
+Save data is also external initial state. A `HeadlessGameRunner` owns an empty
+`InMemorySaveStore` by default, so replay tests never touch native user data.
+Preload `up.testSupport.InMemorySaveStore` and pass its capability to
+`initWithSaveData` or `initSeededWithSaveData` when a test intentionally needs
+saved settings or progression. [Save data](save-data.md) is not stored in a
+UPR replay.
+
 ## Safari WebDriver
 
 `zig build test-browser-safari` packages the browser proof game and drives Safari through its native WebDriver endpoint with forced `webgl2` and `webgpu` requests. Before running locally, enable WebDriver once with `safaridriver --enable`; Safari’s automation sessions are isolated from normal browsing data. The test writes the Safari version, WebDriver status, forced-renderer diagnostic, host artifacts, and screenshots under `zig-out/diagnostics/browser-safari/`.

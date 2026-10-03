@@ -6,7 +6,7 @@ pub const width: u32 = 160;
 pub const height: u32 = 90;
 pub const default_seed: u64 = 42;
 /// The browser host uses this stable ID to namespace small save blobs. Keep it
-/// aligned with the desktop `organization` and `application` in `main.zig`.
+/// stable alongside the desktop `organization` and `application` in `main.zig`.
 pub const storage_id = "your-name.seed-sprint";
 
 const player_start = up.core.Vec2{ .x = 80, .y = 45 };
@@ -160,7 +160,7 @@ test "Seed Sprint replays seeded movement into a pickup and one Canvas trace" {
     const first_trace_hash = try first_capture.canvas_trace.hash();
     // This is a compact golden for the final logical draw frame. Structural
     // comparison above keeps a future mismatch diagnosable at field level.
-    try std.testing.expectEqual(@as(u64, 12_736_125_027_304_076_616), first_trace_hash);
+    try std.testing.expectEqual(@as(u64, 3_849_701_052_811_511_551), first_trace_hash);
     try std.testing.expectEqual(first_trace_hash, try second_capture.canvas_trace.hash());
 }
 
@@ -175,6 +175,24 @@ test "Seed Sprint loads an explicitly injected in-memory best score" {
     var runner = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, saves.capability());
     defer runner.deinit();
     try std.testing.expectEqual(@as(u32, 7), runner.game.best_score);
+}
+
+test "Seed Sprint writes a new best score through its injected save store" {
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, saves.capability());
+    defer runner.deinit();
+
+    // Keep the proof about persistence narrow: place the player on the
+    // deterministic initial pickup, then execute one ordinary fixed update.
+    runner.game.player = runner.game.pickup;
+    try runner.run(&.{.{}});
+
+    var bytes: [4]u8 = undefined;
+    const stored = try saves.capability().read("best-score", &bytes);
+    try std.testing.expectEqual(@as(usize, 4), stored.len);
+    try std.testing.expectEqual(@as(u32, 1), std.mem.readInt(u32, &bytes, .little));
 }
 
 test "Seed Sprint initialization changes with its explicit seed" {

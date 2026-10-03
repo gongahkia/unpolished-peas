@@ -63,8 +63,7 @@ pub fn Store(comptime application_id: []const u8) type {
         }
 
         fn exists(context: *anyopaque, key: []const u8) SaveStore.Error!bool {
-            _ = context;
-            readSize(context, key) catch |err| switch (err) {
+            _ = readSize(context, key) catch |err| switch (err) {
                 error.NotFound => return false,
                 else => return err,
             };
@@ -81,7 +80,8 @@ pub fn Store(comptime application_id: []const u8) type {
 
         fn mapReadResult(value: i32) SaveStore.Error!usize {
             if (value >= 0) return @intCast(value);
-            return mapStatus(value);
+            mapStatus(value) catch |err| return err;
+            return error.Rejected;
         }
 
         fn mapStatus(value: i32) SaveStore.Error!void {

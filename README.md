@@ -48,12 +48,13 @@ The [capability matrix](docs/guides/capabilities.md) defines exact renderer, bro
 ## Compact API guide
 
 - `sdl.playGame(Game)` runs the callback starter.
-- `GameContext` provides input, canvas, assets, audio, and diagnostics.
+- `GameContext` provides input, canvas, and optional small save-data storage.
 - `ctx.requireCanvas()` returns the logical-pixel 2D canvas.
+- `ctx.requireSaveData()` returns a host-owned opaque-byte save store.
 - `Canvas` draws rectangles, sprites, text, clips, and blends.
 - `Config` controls window, fixed timestep, presentation, renderer, and assets.
 
-Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [rendering contract](docs/guides/rendering.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
+Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [rendering contract](docs/guides/rendering.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
 
 ## Copyable examples
 

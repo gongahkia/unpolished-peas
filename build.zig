@@ -444,12 +444,19 @@ pub fn build(b: *std.Build) void {
     const browser_wasm_host_test_step = b.step("test-browser-wasm-host", "Instantiate the browser Wasm module against its host ABI");
     browser_wasm_host_test_step.dependOn(&browser_wasm_host_test.step);
 
+    const native_save_data = b.createModule(.{
+        .root_source_file = b.path("src/native_save_data.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "native-save-data", .module = native_save_data },
             .{ .name = "frame-timing", .module = frame_timing },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
@@ -751,11 +758,7 @@ pub fn build(b: *std.Build) void {
     const run_test_support_tests = b.addRunArtifact(test_support_tests);
     const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
     test_support_step.dependOn(&run_test_support_tests.step);
-    const storage_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/native_save_data.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
+    const storage_tests = b.addTest(.{ .root_module = native_save_data });
     const run_storage_tests = b.addRunArtifact(storage_tests);
     const storage_test_step = b.step("test-storage", "Run native opaque save-data storage tests");
     storage_test_step.dependOn(&run_storage_tests.step);
