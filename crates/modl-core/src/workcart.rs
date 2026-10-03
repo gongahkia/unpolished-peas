@@ -6,8 +6,8 @@ use std::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    AssetKind, CARTRIDGE_FORMAT_REVISION, CartridgeError, ProjectAsset, ProjectManifest,
-    UnpackedProject, parse_project_manifest,
+    AssetKind, CARTRIDGE_FORMAT_REVISION, CartridgeError, FileId, ProjectAsset, ProjectManifest,
+    SourceFile, TokenKind, UnpackedProject, lex, parse_project_manifest,
 };
 
 /// The authored work-cart revision supported by this compiler.
@@ -327,6 +327,115 @@ pub fn rewrite_workcart(
     encode_workcart(&manifest, files, &original.recipes, &original.tests)
 }
 
+/// Deletes an unreferenced asset from an `M01W/2` work-cart.
+///
+/// References from authored MODL modules, stored MODL tests, and generation recipes prevent the
+/// deletion. The returned work-cart is canonical and removes the asset payload when it is not
+/// also needed as presentation data.
+///
+/// # Errors
+///
+/// Returns `M014028` when the asset does not exist or remains referenced, along with normal
+/// work-cart validation and encoding errors.
+pub fn delete_workcart_asset(source: &str, name: &str) -> Result<String, CartridgeError> {
+    let mut project = parse_workcart(source)?;
+    let Some(asset) = project.manifest.assets.get(name).cloned() else {
+        return Err(workcart_error(
+            "M014028",
+            format!("asset '{name}' is not declared"),
+        ));
+    };
+    let references = workcart_asset_references(&project, name);
+    if !references.is_empty() {
+        return Err(workcart_error(
+            "M014028",
+            format!(
+                "asset '{name}' cannot be deleted; referenced by {}",
+                references.join(", ")
+            ),
+        ));
+    }
+
+    project.manifest.assets.remove(name);
+    let still_needed = project
+        .manifest
+        .assets
+        .values()
+        .any(|candidate| candidate.path == asset.path)
+        || [
+            &project.manifest.label,
+            &project.manifest.thumbnail,
+            &project.manifest.display,
+        ]
+        .into_iter()
+        .flatten()
+        .any(|path| path == &asset.path);
+    if !still_needed {
+        project.files.remove(&asset.path);
+    }
+    encode_workcart(
+        &project.manifest,
+        &project.files,
+        &project.recipes,
+        &project.tests,
+    )
+}
+
+fn workcart_asset_references(project: &WorkcartProject, name: &str) -> Vec<String> {
+    let mut references = Vec::new();
+    for (index, (path, payload)) in project
+        .files
+        .iter()
+        .filter(|(path, _)| has_extension(path, "modl"))
+        .enumerate()
+    {
+        let Some(source) = std::str::from_utf8(payload).ok() else {
+            continue;
+        };
+        if source_references_asset(
+            FileId(u32::try_from(index).unwrap_or(u32::MAX)),
+            path,
+            source,
+            name,
+        ) {
+            references.push(format!("module '{path}'"));
+        }
+    }
+    for (index, test) in project.tests.iter().enumerate() {
+        if test.kind != WorkcartTestKind::Modl {
+            continue;
+        }
+        let file_id = u32::try_from(index).unwrap_or(u32::MAX);
+        if source_references_asset(FileId(file_id), &test.path, &test.payload, name) {
+            references.push(format!("test '{}'", test.name));
+        }
+    }
+    for recipe in &project.recipes {
+        let referenced = match recipe {
+            WorkcartRecipe::Noise {
+                output, tile_set, ..
+            } => output == name || tile_set == name,
+            WorkcartRecipe::Wfc {
+                output,
+                tile_set,
+                source_map,
+                ..
+            } => output == name || tile_set == name || source_map == name,
+        };
+        if referenced {
+            references.push(format!("recipe '{}'", recipe.id()));
+        }
+    }
+    references
+}
+
+fn source_references_asset(file: FileId, path: &str, source: &str, name: &str) -> bool {
+    lex(&SourceFile::new(file, path, source))
+        .tokens
+        .iter()
+        .any(|token| matches!(&token.kind, TokenKind::Asset(candidate) if candidate == name))
+}
+
 fn materialize_files(document: &WorkcartDocument) -> Result<MaterializedFiles, CartridgeError> {
     let mut assets = BTreeMap::new();
     let mut files = BTreeMap::new();
@@ -637,8 +746,9 @@ fn utf8_payload(bytes: &[u8], path: &str, role: &str) -> Result<String, Cartridg
 #[cfg(test)]
 mod tests {
     use crate::{
-        decode_cartridge, encode_workcart, export_standalone_workcart, pack_workcart,
-        rewrite_workcart, unpack_cartridge_project, unpack_workcart, workcart_project_view,
+        decode_cartridge, delete_workcart_asset, encode_workcart, export_standalone_workcart,
+        pack_workcart, rewrite_workcart, unpack_cartridge_project, unpack_workcart,
+        workcart_project_view,
     };
 
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
@@ -798,5 +908,51 @@ payload = "on start:\n  assert true\n"
         assert_eq!(project.recipes.len(), 1);
         assert_eq!(project.tests.len(), 1);
         assert_eq!(project.files, view.files);
+    }
+
+    #[test]
+    fn asset_deletion_refuses_module_test_and_recipe_references() {
+        let module_reference = CART.replace("clear(25)", "draw #tiles, 0, 0");
+        let error = delete_workcart_asset(&module_reference, "tiles").unwrap_err();
+        assert_eq!(error.code, "M014028");
+        assert!(error.message.contains("module 'src/main.modl'"));
+
+        let test_reference = CART.replace("assert true", "draw #tiles, 0, 0");
+        let error = delete_workcart_asset(&test_reference, "tiles").unwrap_err();
+        assert_eq!(error.code, "M014028");
+        assert!(error.message.contains("test 'smoke'"));
+
+        let error = delete_workcart_asset(CART, "world").unwrap_err();
+        assert_eq!(error.code, "M014028");
+        assert!(error.message.contains("recipe 'noise-world'"));
+    }
+
+    #[test]
+    fn asset_deletion_removes_an_unreferenced_payload() {
+        const UNUSED: &str = r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "unused-asset"
+title = "UNUSED ASSET"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = "on draw:\n  clear(25)\n"
+
+[[asset]]
+name = "unused"
+kind = "sprite"
+path = "assets/unused.m01g"
+payload = '''{"revision":1,"kind":"sprite","frames":[[0,0,0,0,0,0,0,0]]}'''
+"#;
+        let deleted = delete_workcart_asset(UNUSED, "unused").expect("asset deletes");
+        let project = parse_workcart(&deleted).expect("rewritten work-cart parses");
+        assert!(!project.manifest.assets.contains_key("unused"));
+        assert!(!project.files.contains_key("assets/unused.m01g"));
     }
 }
