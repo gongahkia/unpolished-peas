@@ -5,6 +5,34 @@ local COLORS = Theme.colors
 
 local Chrome = {}
 
+-- The shell owns these destinations so that navigation describes the product
+-- hierarchy rather than exposing the implementation's individual modes.
+function Chrome.navigation(studio)
+  local project_open = studio:has_project()
+  local roag_available = studio:is_roag_available()
+  return {
+    {
+      label = "PROJECT",
+      items = {
+        { tab = "home", label = "Overview", enabled = true },
+        { tab = "native", label = "Native Assets", enabled = project_open },
+      },
+    },
+    {
+      label = "ROAG",
+      detail = roag_available and "CONNECTED" or "UNAVAILABLE",
+      detail_tint = roag_available and COLORS.mint or COLORS.gold,
+      items = {
+        { tab = "rooms", label = "Rooms", enabled = roag_available },
+        { tab = "art", label = "Art & Sprites", enabled = roag_available },
+        { tab = "scenes", label = "Scenes", enabled = roag_available },
+        { tab = "flow", label = "Title Flow", enabled = roag_available },
+        { tab = "publish", label = "Publish", enabled = roag_available },
+      },
+    },
+  }
+end
+
 local function menu_label(studio, rect, label, menu)
   local selected = studio.header_menu == menu
   if selected then studio:panel(rect, COLORS.surface2, COLORS.selected_border) end
@@ -21,24 +49,33 @@ function Chrome.draw_header(studio, view)
   Theme.color(COLORS.dark); love.graphics.rectangle("fill", 0, 0, view.width, view.header.height)
   local menus = { { "FILE", "file", 8, 45 }, { "EDIT", "edit", 59, 47 }, { "VIEW", "view", 112, 49 }, { "PROJECT", "project", 167, 79 }, { "HELP", "help", 252, 47 } }
   for _, item in ipairs(menus) do menu_label(studio, { x = item[3], y = 1, width = item[4], height = 25 }, item[1], item[2]) end
-  local tabs = { home = "OVERVIEW", projects = "PROJECTS", native = "PROJECT", rooms = "ROOMS", art = "SPRITES", scenes = "SCENES", flow = "FLOW", publish = "EXPORT" }
-  local title = tabs[studio.tab] or "PROJECT"
-  studio:panel({ x = 8, y = 27, width = 232, height = 30 }, COLORS.surface, COLORS.border)
-  studio:line("UNPOLISHED BEES  /  " .. title, 18, 35, .70, COLORS.text, 212)
   local unsaved = studio.dirty or studio.room_dirty or studio.native_dirty
-  studio:line(unsaved and "UNSAVED" or "SAVED", view.width - 302, 7, .62, unsaved and COLORS.gold or COLORS.mint, 82, "right")
-  studio:line("TARGET " .. studio.bridge.target, view.width - 220, 7, .58, COLORS.muted, 210, "right")
-  studio:button({ x = view.width - 262, y = 29, width = 78, height = 26 }, "OPEN", { type = "tab", tab = "projects" })
-  studio:button({ x = view.width - 176, y = 29, width = 78, height = 26 }, "RELOAD", { type = "reload" })
-  studio:button({ x = view.width - 90, y = 29, width = 82, height = 26 }, "PUBLISH", { type = "save_current" }, { selected = studio.dirty })
+  studio:line(unsaved and "UNSAVED" or "SAVED", view.width - 116, 7, .62, unsaved and COLORS.gold or COLORS.mint, 108, "right")
+  local save_width = 86
+  local breadcrumb = { x = 8, y = 27, width = view.width - save_width - 24, height = 30 }
+  studio:panel(breadcrumb, COLORS.surface, COLORS.border)
+  studio:line(studio:workspace_breadcrumb(), breadcrumb.x + 10, breadcrumb.y + 8, .70, COLORS.text, breadcrumb.width - 20)
+  studio:button({ x = view.width - save_width - 8, y = 29, width = save_width, height = 26 }, "SAVE", { type = "save_current" }, { selected = unsaved, enabled = studio.tab ~= "projects" })
 end
 
 function Chrome.draw_nav(studio, view)
   studio:panel(view.nav)
-  studio:line("TOOLS", view.nav.x + 5, view.nav.y + 8, .52, COLORS.muted, view.nav.width - 10, "center")
-  local tabs = { { "home", "HOME" }, { "projects", "OPEN" }, { "native", "ASSET" }, { "rooms", "ROOM" }, { "art", "ART" }, { "scenes", "SCENE" }, { "flow", "FLOW" }, { "publish", "SAVE" } }
-  for index, item in ipairs(tabs) do
-    studio:button({ x = view.nav.x + 7, y = view.nav.y + 30 + (index - 1) * 46, width = view.nav.width - 14, height = 38 }, item[2], { type = "tab", tab = item[1] }, { selected = studio.tab == item[1] })
+  local y = view.nav.y + 10
+  for group_index, group in ipairs(Chrome.navigation(studio)) do
+    studio:line(group.label, view.nav.x + 10, y, .56, COLORS.muted, view.nav.width - 20)
+    y = y + 20
+    if group.detail then
+      studio:line(group.detail, view.nav.x + 10, y - 3, .50, group.detail_tint, view.nav.width - 20)
+      y = y + 14
+    end
+    for _, item in ipairs(group.items) do
+      studio:button({ x = view.nav.x + 8, y = y, width = view.nav.width - 16, height = 34 }, item.label, { type = "tab", tab = item.tab }, { selected = studio.tab == item.tab, enabled = item.enabled })
+      y = y + 40
+    end
+    if group_index < #Chrome.navigation(studio) then
+      Theme.color(COLORS.border); love.graphics.line(view.nav.x + 8, y - 4.5, view.nav.x + view.nav.width - 8, y - 4.5)
+      y = y + 8
+    end
   end
 end
 
@@ -47,19 +84,22 @@ function Chrome.draw_menu(studio)
   if not menu then return end
   local definitions = {
     file = { x = 8, width = 184, items = {
-      { "OPEN PROJECT…", { type = "choose_project", kind = "folder" } }, { "SAVE CURRENT", { type = "save_current" } },
-      { "RELOAD ROAG", { type = "reload" } }, { "QUIT", { type = "quit_app" }, danger = true },
+      { "NEW PROJECT…", { type = "new_project" } }, { "OPEN PROJECT…", { type = "choose_project", kind = "folder" } }, { "PROJECT LAUNCHER", { type = "tab", tab = "projects" } },
+      { "SAVE CURRENT", { type = "save_current" } }, { "QUIT", { type = "quit_app" }, danger = true },
     } },
     edit = { x = 59, width = 168, items = {
       { "UNDO", { type = "undo_current" }, enabled = studio:can_undo_current() }, { "REDO", { type = "redo_current" }, enabled = studio:can_redo_current() },
     } },
     view = { x = 112, width = 184, items = {
-      { "OVERVIEW", { type = "tab", tab = "home" } }, { "NATIVE PROJECT", { type = "tab", tab = "native" } }, { "ROAG ROOMS", { type = "tab", tab = "rooms" } },
-      { "ART & SPRITES", { type = "tab", tab = "art" } }, { "SCENES", { type = "tab", tab = "scenes" } }, { "TITLE FLOW", { type = "tab", tab = "flow" } }, { "PUBLISH", { type = "tab", tab = "publish" } },
+      { "OVERVIEW", { type = "tab", tab = "home" } }, { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = studio:has_project() },
+      { "ROAG — ROOMS", { type = "tab", tab = "rooms" }, enabled = studio:is_roag_available() }, { "ROAG — ART & SPRITES", { type = "tab", tab = "art" }, enabled = studio:is_roag_available() },
+      { "ROAG — SCENES", { type = "tab", tab = "scenes" }, enabled = studio:is_roag_available() }, { "ROAG — TITLE FLOW", { type = "tab", tab = "flow" }, enabled = studio:is_roag_available() },
+      { "ROAG — PUBLISH", { type = "tab", tab = "publish" }, enabled = studio:is_roag_available() },
     } },
     project = { x = 167, width = 192, items = {
       { "PROJECT LAUNCHER", { type = "tab", tab = "projects" } }, { "OPEN PROJECT FOLDER…", { type = "choose_project", kind = "folder" } },
-      { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = studio.project_manifest ~= nil }, { "RUN PROJECT PREVIEW", { type = "run_project" }, enabled = studio.project_manifest ~= nil },
+      { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = studio:has_project() }, { "RELOAD ROAG", { type = "reload" } },
+      { "PREVIEW PROJECT", { type = "run_project" }, enabled = studio:has_project() },
     } },
     help = { x = 252, width = 208, items = {
       { "KEYBOARD SHORTCUTS", { type = "show_help", topic = "shortcuts" } }, { "ABOUT UNPOLISHED BEES", { type = "show_help", topic = "about" } },

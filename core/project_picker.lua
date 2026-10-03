@@ -17,14 +17,21 @@ local function os_name()
   return love and love.system and love.system.getOS and love.system.getOS() or "Unknown"
 end
 
-function Picker.choose_folder()
+function Picker.choose_folder(purpose)
+  local creating = purpose == "new_project"
   local system = os_name()
   if system == "OS X" then
-    return run([[osascript -e 'POSIX path of (choose folder with prompt "Choose an Unpolished Bees project folder")']])
+    return run(creating
+      and [[osascript -e 'POSIX path of (choose folder with prompt "Choose the folder for the new Unpolished Bees project")']]
+      or [[osascript -e 'POSIX path of (choose folder with prompt "Choose an Unpolished Bees project folder")']])
   elseif system == "Windows" then
-    return run([[powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $picker = New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description = 'Choose an Unpolished Bees project folder'; if ($picker.ShowDialog() -eq 'OK') { [Console]::Write($picker.SelectedPath) }"]])
+    return run(creating
+      and [[powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $picker = New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description = 'Choose the folder for the new Unpolished Bees project'; if ($picker.ShowDialog() -eq 'OK') { [Console]::Write($picker.SelectedPath) }"]]
+      or [[powershell -NoProfile -Command "Add-Type -AssemblyName System.Windows.Forms; $picker = New-Object System.Windows.Forms.FolderBrowserDialog; $picker.Description = 'Choose an Unpolished Bees project folder'; if ($picker.ShowDialog() -eq 'OK') { [Console]::Write($picker.SelectedPath) }"]])
   elseif system == "Linux" then
-    local path = run([[zenity --file-selection --directory --title='Choose an Unpolished Bees project folder' 2>/dev/null]])
+    local path = run(creating
+      and [[zenity --file-selection --directory --title='Choose the folder for the new Unpolished Bees project' 2>/dev/null]]
+      or [[zenity --file-selection --directory --title='Choose an Unpolished Bees project folder' 2>/dev/null]])
     if path then return path end
     return run([[kdialog --getexistingdirectory 2>/dev/null]])
   end

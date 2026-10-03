@@ -1,6 +1,7 @@
 package.path = "./?.lua;./?/init.lua;" .. package.path
 
 local Json = require("core.json")
+local Fs = require("core.fs")
 local Generator = require("core.generator")
 local Flow = require("core.flow")
 local History = require("core.history")
@@ -12,11 +13,40 @@ local Scene = require("core.scene")
 local Tilemap = require("core.tilemap")
 local Tiled = require("core.tiled_import")
 local Studio = require("ui.studio")
+local Chrome = require("ui.chrome")
+local NativeWorkspace = require("ui.native_workspace")
 local Workspace = require("core.roag_workspace")
 local Fixture = require("tests.roag_fixture")
 local Harness = require("tests.harness")
 
 local test = Harness.test
+
+local function temporary_root()
+  local root = os.tmpname()
+  os.remove(root)
+  return root
+end
+
+local function remove_new_project(root)
+  os.remove(root .. "/assets/main.scene.json")
+  os.remove(root .. "/unpolished_bees.project.json")
+  os.remove(root .. "/assets")
+  os.remove(root)
+end
+
+test("native workspace geometry keeps common regions and a usable center at minimum width", function()
+  local workspace = NativeWorkspace.layout({ x = 10, y = 20, width = 536, height = 530 })
+  assert(workspace.header.y == 20 and workspace.toolbar.y > workspace.header.y)
+  assert(workspace.body.y > workspace.toolbar.y and workspace.footer.y > workspace.body.y)
+  assert(workspace.footer.y + workspace.footer.height == 550)
+  local scene = NativeWorkspace.three_columns(workspace.body)
+  assert(scene.left.width >= 108 and scene.center.width >= 180 and scene.right.width >= 146)
+  assert(scene.left.x + scene.left.width < scene.center.x and scene.center.x + scene.center.width < scene.right.x)
+  local flow = NativeWorkspace.editor_with_inspector(workspace.body)
+  assert(flow.center.width >= 220 and flow.right.width >= 146)
+  local generator = NativeWorkspace.settings_and_editor(workspace.body)
+  assert(generator.left.width >= 146 and generator.center.width >= 200)
+end)
 
 test("native project assets validate and round-trip through the starter fixture", function()
   local project = Project.new("examples/starter")
@@ -125,6 +155,124 @@ test("editor histories and primitive tree/flow/layer mutations remain serializab
   assert(Project.validate_asset(map, "tilemap"))
 end)
 
+test("Scene tree helpers protect the root, prevent cycles, and preserve sibling order", function()
+  local scene = assert(Project.asset_template("scene", "scene.tree"))
+  local panel = assert(Scene.add(scene, scene.root.id, "panel"))
+  local label = assert(Scene.add(scene, panel.id, "label"))
+  local button = assert(Scene.add(scene, scene.root.id, "button"))
+  assert(scene.root.children[1] == panel and scene.root.children[2] == button)
+  assert(Scene.move_sibling(scene, button.id, -1))
+  assert(scene.root.children[1] == button and scene.root.children[2] == panel)
+  assert(not Scene.move_sibling(scene, scene.root.id, -1))
+  assert(not Scene.move_sibling(scene, button.id, -1))
+  assert(not Scene.reparent(scene, label.id, panel.id))
+  assert(Scene.parent_of(scene, label.id).node == panel)
+  local allowed, reason = Scene.can_reparent(scene, panel.id, label.id)
+  assert(not allowed and reason:match("cannot become"))
+  assert(not Scene.reparent(scene, panel.id, label.id))
+  assert(Scene.parent_of(scene, label.id).node == panel)
+  assert(not Scene.reparent(scene, scene.root.id, button.id))
+  assert(not Scene.remove(scene, scene.root.id))
+  assert(Project.validate_asset(scene, "scene"))
+end)
+
+test("Studio Scene editing synchronizes selection, history, and persistence", function()
+  local root = temporary_root()
+  assert(Project.create(root, "Scene Editor Fixture"))
+  local studio = setmetatable({
+    project_root = root, tab = "native", selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+  }, Studio)
+  studio:load_native_project()
+  local scene = studio.native_asset_data
+  assert(scene.type == "scene" and studio.native_selected_node == scene.root)
+
+  studio:activate({ type = "add_native_node", node_type = "panel" })
+  local panel = studio.native_selected_node
+  assert(panel.type == "panel" and Scene.parent_of(scene, panel.id).node == scene.root)
+  studio:activate({ type = "add_native_node", node_type = "label" })
+  local label = studio.native_selected_node
+  assert(label.type == "label" and Scene.parent_of(scene, label.id).node == panel)
+  studio:activate({ type = "add_native_node", node_type = "button" })
+  local button = studio.native_selected_node
+  assert(button.type == "button" and Scene.parent_of(scene, button.id).node == panel)
+  assert(label.id ~= button.id)
+
+  studio:activate({ type = "move_scene_node", direction = -1 })
+  assert(panel.children[1] == button and panel.children[2] == label)
+  studio:activate({ type = "undo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  label, button = Scene.find(studio.native_asset_data, label.id), Scene.find(studio.native_asset_data, button.id)
+  assert(panel.children[1] == label and panel.children[2] == button)
+  studio:activate({ type = "redo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.children[1].id == button.id)
+
+  studio:select_scene_node(button.id)
+  studio:begin_native_field(studio.native_selected_node.properties, "text", "text")
+  studio.draft = ""
+  studio:commit_field()
+  assert(studio.native_selected_node.properties.text == "")
+  local original_x = panel.properties.x
+  studio:begin_native_field(panel.properties, "x", "number")
+  studio.draft = "not a number"
+  studio:commit_field()
+  assert(panel.properties.x == original_x and studio.status:match("valid number"))
+
+  studio:select_scene_node(panel.id)
+  studio:activate({ type = "native_node", node = studio.native_selected_node })
+  studio:mousemoved(0, 0, 9, 7); studio:mousereleased(0, 0, 1)
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.x == original_x + 9 and panel.properties.y == 47)
+  studio:activate({ type = "undo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.x == original_x and panel.properties.y == 40)
+  studio:activate({ type = "redo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.x == original_x + 9)
+
+  local original_width, original_height = panel.properties.width, panel.properties.height
+  studio:activate({ type = "native_scene_resize", node = panel })
+  studio:mousemoved(0, 0, 12, 8); studio:mousereleased(0, 0, 1)
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.width == original_width + 12 and panel.properties.height == original_height + 8)
+  studio:activate({ type = "undo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.width == original_width and panel.properties.height == original_height)
+  studio:activate({ type = "redo_native" })
+  panel = Scene.find(studio.native_asset_data, panel.id)
+  assert(panel.properties.width == original_width + 12)
+
+  studio:select_scene_node(button.id)
+  studio:activate({ type = "native_reparent_mode" })
+  assert(studio.native_reparent_source.id == button.id)
+  studio:activate({ type = "native_reparent_here", node = studio.native_asset_data.root })
+  button = Scene.find(studio.native_asset_data, button.id)
+  assert(Scene.parent_of(studio.native_asset_data, button.id).node == studio.native_asset_data.root and not studio.native_reparent_source)
+  studio:activate({ type = "undo_native" })
+  button = Scene.find(studio.native_asset_data, button.id)
+  assert(Scene.parent_of(studio.native_asset_data, button.id).node.id == panel.id)
+  studio:activate({ type = "redo_native" })
+  button = Scene.find(studio.native_asset_data, button.id)
+  assert(Scene.parent_of(studio.native_asset_data, button.id).node == studio.native_asset_data.root)
+
+  studio:select_scene_node(panel.id)
+  studio:activate({ type = "delete_native_node" })
+  assert(studio.native_selected_node == studio.native_asset_data.root)
+  studio:activate({ type = "undo_native" })
+  assert(Scene.find(studio.native_asset_data, panel.id))
+  studio:select_scene_node(button.id)
+  studio:activate({ type = "move_scene_node", direction = -1 })
+  assert(studio.native_asset_data.root.children[1].id == button.id)
+  assert(studio:save_native())
+  local reopened = assert(Project.new(root):load_asset("scene.main"))
+  local reopened_panel, reopened_button = Scene.find(reopened, panel.id), Scene.find(reopened, button.id)
+  assert(reopened_panel.properties.x == original_x + 9 and reopened_panel.properties.width == original_width + 12)
+  assert(reopened_button and Scene.parent_of(reopened, reopened_button.id).node == reopened.root)
+  assert(reopened.root.children[1].id == reopened_button.id)
+  remove_new_project(root)
+end)
+
 test("project creation, recoverable index removal, and reference protection work", function()
   local root = os.tmpname(); os.remove(root)
   local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
@@ -140,6 +288,51 @@ test("project creation, recoverable index removal, and reference protection work
   assert(project:remove_asset(map.id))
   assert(project:remove_asset(tileset.id))
   assert(project:load())
+end)
+
+test("new projects create a valid minimal scene scaffold and reopen cleanly", function()
+  local root = temporary_root()
+  local project = assert(Project.create(root, "  My First Game  "))
+  local manifest = assert(project:load())
+  assert(manifest.name == "My First Game" and manifest.main_scene_id == "scene.main")
+  assert(manifest.assets["scene.main"].path == "assets/main.scene.json")
+  assert(Fs.exists(root .. "/assets/main.scene.json") and Fs.exists(root .. "/" .. Project.MANIFEST))
+  assert(Project.validate_asset(assert(project:load_asset("scene.main")), "scene"))
+  local reopened = Project.new(root)
+  assert(reopened:load().name == "My First Game")
+  assert(reopened:load_asset("scene.main").root.id == "node.root")
+  remove_new_project(root)
+
+  local existing_empty_root = temporary_root()
+  assert(Fs.create_directory(existing_empty_root))
+  local existing_empty = assert(Project.create(existing_empty_root, "Existing Empty Folder"))
+  assert(existing_empty:load().name == "Existing Empty Folder")
+  remove_new_project(existing_empty_root)
+end)
+
+test("new project creation rejects unsafe destinations without modifying them", function()
+  local empty_name_root = temporary_root()
+  local missing, empty_name_failure = Project.create(empty_name_root, "   ")
+  assert(not missing and empty_name_failure.code == "project_name_required")
+  assert(Fs.directory_state(empty_name_root) == "missing")
+
+  local existing_root = temporary_root()
+  assert(Project.create(existing_root, "Original Project"))
+  local original_manifest = assert(Fs.read(existing_root .. "/" .. Project.MANIFEST))
+  local collision, collision_failure = Project.create(existing_root, "Replacement Project")
+  assert(not collision and collision_failure.code == "project_exists")
+  assert(Fs.read(existing_root .. "/" .. Project.MANIFEST) == original_manifest)
+  remove_new_project(existing_root)
+
+  local unrelated_root = temporary_root()
+  assert(Fs.create_directory(unrelated_root))
+  local note = assert(io.open(unrelated_root .. "/notes.txt", "wb")); assert(note:write("keep this")); note:close()
+  local adopted, adopted_failure = Project.create(unrelated_root, "Should Not Adopt")
+  assert(not adopted and adopted_failure.code == "project_folder_not_empty")
+  assert(Fs.read(unrelated_root .. "/notes.txt") == "keep this")
+  assert(not Fs.exists(unrelated_root .. "/" .. Project.MANIFEST))
+  os.remove(unrelated_root .. "/notes.txt")
+  assert(os.remove(unrelated_root))
 end)
 
 test("Studio imports ROAG-style source sheets as reusable native tilesets", function()
@@ -185,15 +378,39 @@ test("Studio header menus expose contextual commands instead of decorative label
   assert(not studio.native_dirty)
 end)
 
+test("Studio shell groups project and ROAG destinations without command tabs", function()
+  local studio = setmetatable({ project_manifest = { name = "Shell Fixture" }, data = {}, tab = "home", sounds = {} }, Studio)
+  local groups = Chrome.navigation(studio)
+  assert(#groups == 2 and groups[1].label == "PROJECT" and groups[2].label == "ROAG")
+  assert(groups[1].items[1].label == "Overview" and groups[1].items[2].label == "Native Assets")
+  assert(groups[2].items[2].label == "Art & Sprites" and groups[2].items[4].label == "Title Flow")
+  for _, group in ipairs(groups) do
+    for _, item in ipairs(group.items) do assert(item.tab ~= "projects" and item.tab ~= "save") end
+  end
+  assert(studio:workspace_breadcrumb() == "Shell Fixture  /  Overview")
+  studio.data = nil
+  assert(not Chrome.navigation(studio)[2].items[1].enabled)
+  studio:activate({ type = "tab", tab = "native" })
+  assert(studio.tab == "native" and studio:workspace_breadcrumb() == "Shell Fixture  /  Native Assets")
+end)
+
 test("Studio native actions compose validated assets without a graphical runtime", function()
   local root = os.tmpname(); os.remove(root)
   local made = os.execute("mkdir -p " .. string.format("%q", root .. "/assets"))
   assert(made == true or made == 0)
   assert(Project.create(root, "Studio Action Fixture"))
-  local studio = setmetatable({ project_root = root, selected_asset = 1, selected_map_layer = 1, native_images = {}, sounds = {}, status = "" }, Studio)
+  local studio = setmetatable({ project_root = root, tab = "native", selected_asset = 1, selected_map_layer = 1, native_images = {}, sounds = {}, status = "" }, Studio)
   studio:load_native_project()
   studio:activate({ type = "add_native_node", node_type = "panel" })
   assert(studio.native_dirty and #studio.native_asset_data.root.children == 1)
+  local panel = studio.native_asset_data.root.children[1]
+  local panel_x, panel_y = panel.properties.x, panel.properties.y
+  studio:activate({ type = "native_node", node = panel })
+  studio:mousemoved(0, 0, 9, 7); studio:mousereleased(0, 0, 1)
+  assert(studio.native_asset_data.root.children[1].properties.x == panel_x + 9)
+  assert(studio.native_asset_data.root.children[1].properties.y == panel_y + 7)
+  studio:activate({ type = "undo_native" })
+  assert(#studio.native_asset_data.root.children == 1 and studio.native_asset_data.root.children[1].properties.x == panel_x)
   studio:activate({ type = "undo_native" })
   assert(#studio.native_asset_data.root.children == 0)
   assert(studio:save_native())
@@ -207,9 +424,21 @@ test("Studio native actions compose validated assets without a graphical runtime
   studio:activate({ type = "create_native_asset", asset_type = "flow" })
   studio:activate({ type = "add_flow_node", node_type = "event" })
   local event = studio.native_selected_flow_node
+  local event_x, event_y = event.editor.x, event.editor.y
+  studio:activate({ type = "native_flow_node", node = event })
+  studio:mousemoved(0, 0, 11, 5); studio:mousereleased(0, 0, 1)
+  assert(event.editor.x == event_x + 11 and event.editor.y == event_y + 5)
+  studio:activate({ type = "undo_native" })
+  event = studio.native_asset_data.nodes[#studio.native_asset_data.nodes]
+  assert(event.editor.x == event_x and event.editor.y == event_y)
+  studio:activate({ type = "native_flow_node", node = event })
   studio:activate({ type = "start_flow_connection" })
   studio:activate({ type = "native_flow_node", node = studio.native_asset_data.nodes[1] })
   assert(#studio.native_asset_data.edges == 1 and event.id ~= studio.native_asset_data.nodes[1].id)
+  assert(studio:save_native())
+  studio:activate({ type = "create_native_asset", asset_type = "generator" })
+  studio:activate({ type = "generate_native" })
+  assert(studio.generated_preview and studio.generated_preview.type == "tilemap")
 end)
 
 test("Studio switches validated project folders or manifests and retains recents", function()
@@ -228,8 +457,58 @@ test("Studio switches validated project folders or manifests and retains recents
   local active_root = studio.project_root
   assert(not studio:open_project(second_root .. "/not-a-project"))
   assert(studio.project_root == active_root)
+  assert(not studio:request_project_open(second_root .. "/not-a-project"))
+  assert(studio.project_root == active_root)
   local recents = RecentProjects.remember(studio.recent_projects, "/another-project", "Another", 1)
   assert(recents[1].path == "/another-project" and #recents <= RecentProjects.LIMIT)
+end)
+
+test("Studio new-project lifecycle is cancellable, guarded, recent, and ROAG-independent", function()
+  local first_root, created_root, blocked_root = temporary_root(), temporary_root(), temporary_root()
+  assert(Project.create(first_root, "Existing Project"))
+  local roag_data = { marker = "unchanged" }
+  local studio = setmetatable({
+    project_root = first_root, selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+    bridge = { target = "fixture-roag-target" }, data = roag_data,
+  }, Studio)
+  assert(studio:open_project(first_root))
+  local recents_before = #studio.recent_projects
+  studio:begin_new_project()
+  assert(studio.new_project and studio.project_root == first_root)
+  studio:cancel_new_project()
+  assert(not studio.new_project and studio.project_root == first_root and #studio.recent_projects == recents_before)
+
+  studio:begin_new_project()
+  studio.new_project.name, studio.new_project.folder = "Created Through Studio", created_root
+  assert(studio:create_new_project())
+  assert(studio.project_root == created_root and studio.project_manifest.name == "Created Through Studio")
+  assert(studio.tab == "native" and not studio.native_dirty and studio.data == roag_data and studio.bridge.target == "fixture-roag-target")
+  local created_entries = 0
+  for _, entry in ipairs(studio.recent_projects) do if entry.path == created_root then created_entries = created_entries + 1 end end
+  assert(created_entries == 1)
+  studio:activate({ type = "open_recent_project", path = first_root })
+  assert(studio.project_root == first_root)
+  studio:activate({ type = "open_recent_project", path = created_root })
+  assert(studio.project_root == created_root)
+  local reopened_entries = 0
+  for _, entry in ipairs(studio.recent_projects) do if entry.path == created_root then reopened_entries = reopened_entries + 1 end end
+  assert(reopened_entries == 1)
+
+  studio.native_dirty = true
+  studio.choice = function() return 1 end -- Cancel the shared dirty-project switch guard.
+  studio:begin_new_project()
+  studio.new_project.name, studio.new_project.folder = "Blocked Create", blocked_root
+  local created, failure = studio:create_new_project()
+  assert(not created and failure.reason == "Project switch cancelled")
+  assert(studio.project_root == created_root and Fs.directory_state(blocked_root) == "missing")
+  assert(studio.data == roag_data and studio.bridge.target == "fixture-roag-target")
+  for _, entry in ipairs(studio.recent_projects) do assert(entry.path ~= blocked_root) end
+  assert(not studio:request_project_open(first_root))
+  assert(studio.project_root == created_root)
+
+  remove_new_project(first_root)
+  remove_new_project(created_root)
 end)
 
 test("ROAG corpus diagnostics and recoverable manifest room lifecycle work in a scratch target", function()

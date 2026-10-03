@@ -20,12 +20,14 @@ love . --roag ../roag --project .
 - `--project` chooses a native Unpolished Bees project; it defaults to the
   current directory. A small runnable fixture lives in `examples/starter`.
 
-The editor opens on **Project Launcher**. From there, or with `Cmd/Ctrl+O`,
-choose either a project folder or its `unpolished_bees.project.json` manifest.
-Recently opened projects are stored in the editor's own LÖVE settings
-directory—not in any selected project. A manifest can also be dropped onto the
-editor window to switch projects. The active project must validate before the
-current project is replaced.
+The editor opens on **Project Launcher**. Choose **New Project** to enter a
+display name and final empty project folder; the Studio creates its minimal
+valid JSON scaffold and opens it immediately. Choose **Open Project**, a
+manifest, or paste a path to reopen an existing project. Recently opened
+projects are stored in the editor's own LÖVE settings directory—not in any
+selected project. A manifest can also be dropped onto the editor window to
+switch projects. The active project must validate before the current project is
+replaced.
 
 To run the headless suite:
 
