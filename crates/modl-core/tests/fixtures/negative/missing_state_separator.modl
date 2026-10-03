@@ -1,0 +1,2 @@
+state score Int = 0
+state lives: Int = 3

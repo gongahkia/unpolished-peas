@@ -1,0 +1,10 @@
+{
+  "revision": 1,
+  "frames": [
+    { "frame": 0, "controllers": [{ "port": 1, "buttons": ["a"] }] },
+    { "frame": 2, "duration": 30, "controllers": [{ "port": 1, "buttons": ["a", "left"] }] },
+    { "frame": 32, "duration": 30, "controllers": [{ "port": 1, "buttons": ["a", "right"] }] },
+    { "frame": 62, "controllers": [{ "port": 1, "buttons": ["a", "x"] }] },
+    { "frame": 63, "duration": 57, "controllers": [{ "port": 1, "buttons": ["a"] }] }
+  ]
+}

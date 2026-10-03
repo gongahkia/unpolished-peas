@@ -1,0 +1,34 @@
+// frame-sampled inputs: the same state must be visible through APIs and hardware reads.
+state PORTS: [Controller, 4] = [pad1, pad2, pad3, pad4]
+state KEYS: [Button, 12] = [up, down, left, right, a, b, x, y, l, r, start_button, menu]
+state BITS: [Int, 12] = [1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024, 2048]
+
+fn bit(value: Int, mask: Int) -> Bool:
+  return (value / mask) % 2 == 1
+
+on start:
+  for offset in 0..48:
+    assert mem_read(327936 + offset) == 0, "input reset"
+
+on draw:
+  for port in 0..4:
+    let address = 327936 + port * 8
+    let current = mem_read16(address)
+    let previous = mem_read16(address + 2)
+    let pressed = mem_read16(address + 4)
+    let released = mem_read16(address + 6)
+    for key in 0..12:
+      let down = btn(PORTS[port], KEYS[key])
+      let old = bit(previous, BITS[key])
+      assert bit(current, BITS[key]) == down, "held input alias"
+      assert bit(pressed, BITS[key]) == btnp(PORTS[port], KEYS[key]), "press input alias"
+      assert bit(pressed, BITS[key]) == (down and not old), "press transition"
+      assert bit(released, BITS[key]) == (old and not down), "release transition"
+  assert mem_read16(327968) == pointer_x(), "pointer X alias"
+  assert mem_read16(327970) == pointer_y(), "pointer Y alias"
+  assert bit(mem_read(327976), 4) == pointer_inside(), "pointer inside alias"
+  assert bit(mem_read(327978), 1) == pointer_primary(), "pointer primary edge alias"
+  assert bit(mem_read(327978), 2) == pointer_secondary(), "pointer secondary edge alias"
+  mem_copy(0, 327936, 48)
+  clear(0)
+  print("INPUT BUS PASS", 4, 24, 11)

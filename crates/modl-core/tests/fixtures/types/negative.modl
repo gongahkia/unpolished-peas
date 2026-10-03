@@ -1,0 +1,20 @@
+enum Mode:
+  Title
+  Play
+
+state mode: Mode = Mode.Title
+state broken: Missing = 0
+
+fn wrong(value: Int) -> Bool:
+  let copy = value
+  copy = 4
+  return value
+
+on update:
+  wait 1f
+  match mode:
+    case Mode.Title:
+      mode = Mode.Play
+
+on draw:
+  sprite(#missing, 0, 0)

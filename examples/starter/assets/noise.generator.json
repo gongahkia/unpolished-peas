@@ -1,8 +1,0 @@
-{
-  "format": "unpolished_bees.generator",
-  "generator_type": "noise",
-  "id": "generator.noise_demo",
-  "settings": {"fill_tile":2,"height":14,"seed":73102,"threshold":0.58,"width":18},
-  "type": "generator",
-  "version": 1
-}

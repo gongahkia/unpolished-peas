@@ -1,0 +1,24 @@
+// globals and on-start execute against initialized devices in one boot phase.
+state reset_value: Int = mem_read(0)
+state initialized: Int = initialize()
+
+fn initialize() -> Int:
+  assert mem_read(328221) == 1, "initializer is in start phase"
+  assert mem_read(328240) == 2, "initializer boot status"
+  mem_write(0, rng_int(7, 8))
+  pal(3, 11)
+  pixel(1, 0, 3)
+  return mem_read(0)
+
+on start:
+  assert reset_value == 0, "initializer reads reset RAM"
+  assert initialized == 7, "initializer result"
+  assert mem_read(102401) == 11, "initializer drawing is real"
+  assert mem_read(328221) == 1, "on-start phase"
+  pixel(2, 0, 23)
+
+on draw:
+  assert mem_read(65537) == 11, "initializer pixels persist"
+  assert mem_read(65538) == 23, "on-start pixels persist"
+  mem_write(0, (mem_read(0) + 1) % 256)
+  print("BOOT BUS PASS", 4, 24, 11)

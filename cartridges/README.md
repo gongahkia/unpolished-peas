@@ -1,0 +1,40 @@
+# Bundled cartridges
+
+The three original MODL/1 games remain the primary play cartridges. Every source and asset
+file is inspectable, all cartridges build through the public `mod01` command, and each is credited
+to `@gongahkia`.
+
+- `cinder-circuit`: camera-scrolling tile platformer across four 2,048-pixel relay circuits. Arrow
+  keys move, Z jumps, and Z/Enter starts; its 30 Hz update rate makes a clean uninterrupted run about
+  4 1/2 minutes before platforming mistakes or life resets.
+- `ashvault`: deterministic turn-based fog-of-war roguelike. Arrow keys move and Z/Enter starts.
+- `raster-rush`: scanline pseudo-3D racer. Arrows steer, Z accelerates, X brakes, and A boosts. At
+  the title, Z selects solo, A two players, S three players, and Enter four players. Standard
+  gamepads map to the four controller ports; the second keyboard port uses I/J/K/L and F/G/R/T.
+- `mod01-service`: source-visible Hardware Revision 1 service cartridge. It runs live checks over
+  the public bus/API and presents eight diagnostic pages; A/right and B/left change pages.
+- `signal-4k`: complete 2,364-byte procedural audiovisual transmission. It drives work RAM, raster
+  palette/scroll and production synth; A retransmits its signal.
+- `pocket-relay`: complete 4,609-byte one-minute catching game with custom bitmap digits, synth
+  feedback, deterministic RNG and isolated best-score save.
+- `hardware-gauntlet`: complete 4,619-byte public-API stress display for bus/ROM, endian access,
+  framebuffers, raster, four ports, wavetable audio, custom font, task scheduling and work counters.
+- `modl-tutorial`: source-visible FIRST SIGNAL lesson that walks through a pixel, drawing, input,
+  animation, synth sound, an application save commit, and the final pack command in five-to-ten
+  minutes. A advances and B returns to the prior page.
+
+The first three entries are the preserved games; Signal/Pocket/Gauntlet are truthful size-class dogfood.
+Their class is determined from the complete canonical source-visible `.m01c`, never just source or
+compressed code.
+
+Regenerate source-visible JSON assets and pack all Studio copies with:
+
+```sh
+pnpm --filter @mod01/studio generate:cartridges
+```
+
+Generated `.m01c` and standalone `.html` artifacts stay out of Git. A direct local export is:
+
+```sh
+cargo run -p mod01-cli -- export html cartridges/cinder-circuit
+```

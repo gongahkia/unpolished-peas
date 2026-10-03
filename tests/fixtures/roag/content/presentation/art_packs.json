@@ -1,7 +1,0 @@
-{
-  "format": "roag.presentation_art_pack_catalog",
-  "version": 1,
-  "art_packs": [
-    {"id":"art_pack.roag_kenney_1bit","label":"ROAG 1-BIT","license":"CC0","credit":"Kenney","editable_roles":true}
-  ]
-}
