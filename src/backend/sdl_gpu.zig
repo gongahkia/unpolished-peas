@@ -1345,6 +1345,7 @@ fn ProtocolAdapter(comptime Game: type) type {
             self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
             self.context.simulation_seed = ctx.simulation_seed;
             self.context.save_data = ctx.save_data;
+            self.context.audio = ctx.audio;
             self.protocol = up.GameProtocol(Game).bind(&self.game);
             try self.protocol.init(&self.context);
         }
@@ -1413,6 +1414,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         return err;
     };
     if (audio_output == null) {
+        audio.setAvailability(.unavailable);
         dev.failure(.audio, error.SdlError);
         dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, 0, canvas, commands.commands.items, &profiler);
     }
@@ -1508,9 +1510,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
                 continue;
             };
             if (audio_output == null) {
+                audio.setAvailability(.unavailable);
                 dev.failure(.audio, error.SdlError);
                 dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, ctx.frame, canvas, commands.commands.items, &profiler);
             }
+            if (audio_output != null) audio.setAvailability(.ready);
         }
         if (platform_input.wasPressed(.debug)) dev.toggleOverlay();
         if (inspector.visibility == .visible and platform_input.wasPressed(.select)) inspector.next();

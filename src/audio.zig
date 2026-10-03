@@ -368,6 +368,143 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
     }
 };
 
+/// A small, host-owned sound-effect service for `GameProtocol` games.
+///
+/// `loadWav` decodes bytes once and returns a reusable handle. The service owns
+/// every decoded sound and releases it in `deinit`, after stopping its mixer.
+/// A game therefore stores handles but never frees individual sound resources.
+/// This intentionally covers short WAV effects; the lower-level `AudioMixer`
+/// and `AssetStore` APIs remain available for advanced/native use cases.
+pub const Audio = struct {
+    pub const Availability = enum {
+        /// Playback requests are accepted and can be mixed by the host.
+        ready,
+        /// The host exists but cannot play yet (for example browser autoplay
+        /// policy before the first user gesture).
+        blocked,
+        /// The host has no usable output device or audio implementation.
+        unavailable,
+    };
+
+    pub const Config = struct {
+        sample_rate: u32 = 48_000,
+        availability: Availability = .ready,
+    };
+
+    /// Stable only for the lifetime of its owning `Audio` service.
+    pub const SoundHandle = struct {
+        index: usize,
+        generation: u32,
+    };
+
+    /// Per-request controls. Volume is finite and in the inclusive range
+    /// `0.0...1.0`; looping repeats the decoded effect until stopped.
+    pub const PlayOptions = struct {
+        volume: f32 = 1,
+        loop: bool = false,
+    };
+
+    const OwnedSound = struct {
+        sound: Sound,
+        generation: u32,
+    };
+
+    allocator: std.mem.Allocator,
+    mixer: AudioMixer,
+    sounds: std.ArrayListUnmanaged(*OwnedSound) = .{},
+    availability_state: Availability,
+    next_generation: u32 = 1,
+
+    pub fn init(allocator: std.mem.Allocator, config: Config) !Audio {
+        return .{
+            .allocator = allocator,
+            .mixer = try AudioMixer.init(allocator, .{ .sample_rate = config.sample_rate }),
+            .availability_state = config.availability,
+        };
+    }
+
+    pub fn deinit(self: *Audio) void {
+        self.mixer.deinit();
+        for (self.sounds.items) |owned| {
+            owned.sound.deinit();
+            self.allocator.destroy(owned);
+        }
+        self.sounds.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn availability(self: *const Audio) Availability {
+        return self.availability_state;
+    }
+
+    /// Host adapters update availability as devices or browser gesture state
+    /// changes. Normal game code should only inspect `availability`.
+    pub fn setAvailability(self: *Audio, state: Availability) void {
+        self.availability_state = state;
+    }
+
+    /// Decodes a small WAV effect from game-owned bytes. This performs no I/O;
+    /// `@embedFile` is the portable way to load a starter-sized effect during
+    /// `Game.init` on both desktop and browser builds.
+    pub fn loadWav(self: *Audio, bytes: []const u8) !SoundHandle {
+        const owned = try self.allocator.create(OwnedSound);
+        errdefer self.allocator.destroy(owned);
+        owned.* = .{
+            .sound = try Sound.decodeWav(self.allocator, bytes),
+            .generation = self.takeGeneration(),
+        };
+        errdefer owned.sound.deinit();
+        try self.sounds.append(self.allocator, owned);
+        return .{ .index = self.sounds.items.len - 1, .generation = owned.generation };
+    }
+
+    /// Starts an independent playback instance. It is safe to play the same
+    /// loaded effect concurrently. A blocked or unavailable host returns a
+    /// recoverable error and does not create a hidden queued playback.
+    pub fn play(self: *Audio, sound: SoundHandle, options: PlayOptions) !PlaybackHandle {
+        if (self.availability_state != .ready) return error.AudioUnavailable;
+        if (std.math.isNan(options.volume) or options.volume < 0 or options.volume > 1) return error.InvalidVolume;
+        const owned = try self.resolve(sound);
+        return self.mixer.playSound(&owned.sound, .{ .volume = options.volume, .loop = options.loop });
+    }
+
+    pub fn stop(self: *Audio, playback: PlaybackHandle) bool {
+        return self.mixer.stop(playback);
+    }
+
+    /// Compatibility for the existing SDL callback context. Unlike the
+    /// high-level `play`, this permits silent legacy playbacks while no device
+    /// is attached so older examples retain their non-fatal muted behavior.
+    pub fn playSound(self: *Audio, sound: *const Sound, options: SoundOptions) !PlaybackHandle {
+        return self.mixer.playSound(sound, options);
+    }
+
+    pub fn mix(self: *Audio, out: []AudioSample) !void {
+        try self.mixer.mix(out);
+    }
+
+    /// True when a host should continue requesting PCM. This is a host helper,
+    /// not a game scheduling signal.
+    pub fn hasActivePlayback(self: *const Audio) bool {
+        for (self.mixer.playbacks.items) |playback| if (playback.active) return true;
+        return false;
+    }
+
+    fn resolve(self: *Audio, handle: SoundHandle) !*OwnedSound {
+        if (handle.index >= self.sounds.items.len) return error.InvalidSound;
+        const owned = self.sounds.items[handle.index];
+        if (owned.generation != handle.generation) return error.InvalidSound;
+        return owned;
+    }
+
+    fn takeGeneration(self: *Audio) u32 {
+        const generation = self.next_generation;
+        self.next_generation +%= 1;
+        if (self.next_generation == 0) self.next_generation = 1;
+        return generation;
+    }
+};
+
 const Bus = struct {
     name: []u8,
     parent: ?BusHandle,

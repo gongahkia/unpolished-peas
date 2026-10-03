@@ -1,5 +1,4 @@
 const root = @import("unpolished-peas");
-const audio = @import("audio_mixer.zig");
 
 pub const App = root.core.App;
 pub const StepClock = root.core.StepClock;
@@ -7,6 +6,7 @@ pub const GameContext = root.core.GameContext;
 pub const GameProtocol = root.core.GameProtocol;
 pub const GamePhase = root.core.GamePhase;
 pub const GameFailure = root.core.GameFailure;
+pub const Audio = root.core.Audio;
 pub const SaveStore = root.core.SaveStore;
 pub const Color = root.core.Color;
 pub const Vec2 = root.core.Vec2;
@@ -76,8 +76,8 @@ pub const SpriteBatchVertex = root.graphics.SpriteBatchVertex;
 pub const AssetStore = root.assets.AssetStore;
 pub const AssetFile = root.assets.AssetFile;
 pub const AudioHandle = root.assets.AudioHandle;
-pub const AudioMixer = audio.AudioMixer;
-pub const AudioSample = audio.AudioSample;
+pub const AudioMixer = root.core.Audio;
+pub const AudioSample = root.assets.AudioSample;
 pub const Image = root.assets.Image;
 pub const ImageHandle = root.assets.ImageHandle;
 pub const Atlas = root.assets.Atlas;

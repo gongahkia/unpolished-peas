@@ -62,7 +62,9 @@ are shipped by the Peas package, so copied projects use the same workflow.
 
 - `src/main.zig` is the desktop entry point.
 - `src/game.zig` owns all game state and the `GameProtocol` callbacks.
-- `assets/` is for game-owned raw files; this starter uses no binary assets.
+- `src/pickup_sound.zig` contains one tiny repository-authored WAV click,
+  embedded so the same audio code works on desktop and browser builds.
+- `assets/` is for game-owned raw files when a project needs them.
 - `build.zig` imports only the public `unpolished-peas` and
   `unpolished-peas-sdl3` package modules.
 
@@ -77,6 +79,14 @@ values before shipping. A failed save leaves the current session playable.
 
 See Peas's [save-data guide](../../docs/guides/save-data.md) for key rules,
 limits, and browser behavior.
+
+## Audio
+
+`Game.init` loads the tiny embedded pickup WAV once through `ctx.audio`; the
+pickup path reuses that handle with `audio.play`. Audio output is optional, so
+headless tests, missing desktop devices, and a browser awaiting its first user
+gesture keep gameplay running. See the [audio guide](../../docs/guides/audio-assets.md)
+for the supported high-level format and lifetime rules.
 
 ## Determinism
 

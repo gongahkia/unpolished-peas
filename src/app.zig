@@ -3,6 +3,7 @@ const Canvas = @import("canvas.zig").Canvas;
 const Input = @import("input.zig").Input;
 const Renderer2D = @import("advanced_2d.zig").Renderer2D;
 const SaveStore = @import("save_data.zig").SaveStore;
+const Audio = @import("audio.zig").Audio;
 
 pub const GamePhase = enum { init, update, draw };
 
@@ -18,6 +19,10 @@ pub const GameContext = struct {
     /// Host-provided persistence for small game-owned blobs. It is absent from
     /// bare core contexts and must be explicitly checked by games that use it.
     save_data: ?*SaveStore = null,
+    /// Host-provided sound-effect service. It is present in normal native,
+    /// browser, and headless protocol runs, but playback can still be blocked
+    /// or unavailable; inspect `Audio.availability` or handle `play` errors.
+    audio: ?*Audio = null,
     /// The explicit seed selected by the host for this simulation run.
     ///
     /// It is optional because existing games may not need deterministic random
@@ -49,6 +54,10 @@ pub const GameContext = struct {
 
     pub fn requireSaveData(self: GameContext) !*SaveStore {
         return self.save_data orelse error.SaveDataUnavailable;
+    }
+
+    pub fn requireAudio(self: GameContext) !*Audio {
+        return self.audio orelse error.AudioUnavailable;
     }
 };
 

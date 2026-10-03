@@ -7,6 +7,7 @@ const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
 const DeterministicRng = @import("rng.zig").DeterministicRng;
+const Audio = @import("audio.zig").Audio;
 const SaveStore = @import("save_data.zig").SaveStore;
 const render = @import("render.zig");
 const renderer_contract_fixture = @import("renderer_contract_fixture.zig");
@@ -177,6 +178,9 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         protocol: app.GameProtocol(Game) = undefined,
         owned_save_data: InMemorySaveStore = undefined,
         save_data: *SaveStore = undefined,
+        /// A device-free logical audio host. It lets protocol games load and
+        /// request sounds in tests without touching a real audio device.
+        audio: Audio = undefined,
         renderer: render.HeadlessRenderer = undefined,
         commands: render.CommandBuffer,
         trace: CanvasTrace,
@@ -216,11 +220,14 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             errdefer self.trace.deinit();
             self.owned_save_data.init(allocator);
             errdefer self.owned_save_data.deinit();
+            self.audio = try Audio.init(allocator, .{});
+            errdefer self.audio.deinit();
             self.save_data = supplied_save_data orelse self.owned_save_data.capability();
             self.canvas.attachTrace(&self.trace);
             self.context = .withRuntime(&self.input, &self.canvas);
             self.context.simulation_seed = simulation_seed;
             self.context.save_data = self.save_data;
+            self.context.audio = &self.audio;
             self.protocol = app.GameProtocol(Game).bind(&self.game);
             self.renderer = render.HeadlessRenderer.init(allocator, &self.canvas);
             errdefer self.renderer.deinit();
@@ -234,6 +241,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             self.commands.deinit();
             self.trace.deinit();
             self.canvas.deinit();
+            self.audio.deinit();
             self.owned_save_data.deinit();
             allocator.destroy(self);
         }
