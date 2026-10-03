@@ -4,11 +4,17 @@ import initWasm, {
   compiler_version as wasmCompilerVersion,
   decodeCartridge as wasmDecodeCartridge,
   exportHtml as wasmExportHtml,
+  exportHtmlWorkcart as wasmExportHtmlWorkcart,
   format as wasmFormat,
   language_revision as wasmLanguageRevision,
+  materializeWorkcartRecipe as wasmMaterializeWorkcartRecipe,
   packProject as wasmPackProject,
+  packWorkcart as wasmPackWorkcart,
   parseProjectManifest as wasmParseProjectManifest,
+  parseWorkcart as wasmParseWorkcart,
   unpackCartridge as wasmUnpackCartridge,
+  unpackWorkcart as wasmUnpackWorkcart,
+  compileWorkcart as wasmCompileWorkcart,
 } from '../../../crates/modl-wasm/pkg/modl_wasm';
 
 export interface SourceSpan {
@@ -88,6 +94,14 @@ export interface UnpackedProject {
   readonly files: Readonly<Record<string, readonly number[]>>;
 }
 
+export interface WorkcartProject {
+  readonly source: string;
+  readonly manifest: ProjectManifest;
+  readonly files: Readonly<Record<string, readonly number[]>>;
+  readonly recipes: readonly unknown[];
+  readonly tests: readonly unknown[];
+}
+
 /** Lazy WebAssembly bridge over the repository's authoritative Rust compiler and packer. */
 export class BrowserCompiler {
   private readonly initialized: Promise<void>;
@@ -117,6 +131,21 @@ export class BrowserCompiler {
     ) as CompilationResult;
   }
 
+  public async parseWorkcart(source: string): Promise<WorkcartProject> {
+    await this.initialized;
+    return JSON.parse(wasmParseWorkcart(source)) as WorkcartProject;
+  }
+
+  public async compileWorkcart(source: string, debug: boolean): Promise<CompilationResult> {
+    await this.initialized;
+    return JSON.parse(wasmCompileWorkcart(source, debug)) as CompilationResult;
+  }
+
+  public async materializeWorkcartRecipe(source: string, recipeId: string): Promise<string> {
+    await this.initialized;
+    return wasmMaterializeWorkcartRecipe(source, recipeId);
+  }
+
   public async format(fileName: string, source: string): Promise<string> {
     await this.initialized;
     return wasmFormat(fileName, source);
@@ -130,6 +159,11 @@ export class BrowserCompiler {
     return wasmPackProject(manifest, encodeProjectFiles(files));
   }
 
+  public async packWorkcart(source: string): Promise<Uint8Array> {
+    await this.initialized;
+    return wasmPackWorkcart(source);
+  }
+
   public async decodeCartridge(bytes: Uint8Array): Promise<DecodedCartridge> {
     await this.initialized;
     return JSON.parse(wasmDecodeCartridge(bytes)) as DecodedCartridge;
@@ -140,12 +174,22 @@ export class BrowserCompiler {
     return JSON.parse(wasmUnpackCartridge(bytes)) as UnpackedProject;
   }
 
+  public async unpackWorkcart(bytes: Uint8Array): Promise<string> {
+    await this.initialized;
+    return wasmUnpackWorkcart(bytes);
+  }
+
   public async exportHtml(
     manifest: string,
     files: Readonly<Record<string, Uint8Array>>,
   ): Promise<string> {
     await this.initialized;
     return wasmExportHtml(manifest, encodeProjectFiles(files));
+  }
+
+  public async exportHtmlWorkcart(source: string): Promise<string> {
+    await this.initialized;
+    return wasmExportHtmlWorkcart(source);
   }
 
   public async parseManifest(source: string): Promise<ProjectManifest> {
