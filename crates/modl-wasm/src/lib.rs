@@ -4,9 +4,10 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use modl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    compile_project, decode_cartridge, export_standalone_html, export_standalone_workcart,
-    format_source, materialize_workcart_recipe, pack_project, pack_workcart,
-    parse_project_manifest, parse_workcart, unpack_cartridge_project, unpack_workcart,
+    compile_project, decode_cartridge, encode_workcart, export_standalone_html,
+    export_standalone_workcart, format_source, materialize_workcart_recipe, pack_project,
+    pack_workcart, parse_project_manifest, parse_workcart, rewrite_workcart,
+    unpack_cartridge_project, unpack_workcart, workcart_project_view,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -124,6 +125,44 @@ pub fn compile_project_for_browser(
 pub fn parse_workcart_for_browser(source: &str) -> Result<String, String> {
     let project = parse_workcart(source).map_err(|error| error.to_string())?;
     serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+/// Materializes a work-cart into the manifest-and-file view used by existing browser editors.
+///
+/// # Errors
+///
+/// Returns work-cart validation or serialization errors.
+#[wasm_bindgen(js_name = workcartProjectView)]
+pub fn workcart_project_view_for_browser(source: &str) -> Result<String, String> {
+    let project = workcart_project_view(source).map_err(|error| error.to_string())?;
+    serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+/// Applies a manifest-and-file editor view back to an existing work-cart without losing recipes.
+///
+/// # Errors
+///
+/// Returns source, manifest, file, or work-cart validation errors.
+#[wasm_bindgen(js_name = rewriteWorkcart)]
+pub fn rewrite_workcart_for_browser(
+    source: &str,
+    manifest: &str,
+    files_json: &str,
+) -> Result<String, String> {
+    let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
+    rewrite_workcart(source, manifest, &files).map_err(|error| error.to_string())
+}
+
+/// Creates an M01W/2 source work-cart from a compiler-facing manifest and files.
+///
+/// # Errors
+///
+/// Returns manifest, file, or work-cart validation errors.
+#[wasm_bindgen(js_name = encodeWorkcart)]
+pub fn encode_workcart_for_browser(manifest: &str, files_json: &str) -> Result<String, String> {
+    let manifest = parse_project_manifest(manifest).map_err(|error| error.to_string())?;
+    let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
+    encode_workcart(&manifest, &files, &[], &[]).map_err(|error| error.to_string())
 }
 
 /// Links and compiles a work-cart using the shared Rust compiler.
