@@ -7,6 +7,7 @@ pub mod codegen;
 pub mod diagnostic;
 pub mod exporter;
 pub mod formatter;
+pub mod generator;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
@@ -14,25 +15,34 @@ pub mod sema;
 pub mod span;
 pub mod token;
 pub mod types;
+pub mod workcart;
 
 pub use cartridge::{
     CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
     ProjectManifest, UnpackedProject, compile_project, decode_cartridge, load_cartridge_program,
-    pack_project, parse_project_manifest, unpack_cartridge_project,
+    pack_project, pack_workcart, parse_project_manifest, unpack_cartridge_project, unpack_workcart,
 };
 pub use cartridge_png::{
     CartridgePng, CartridgePngMetadata, decode_cartridge_png, encode_cartridge_png,
 };
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};
-pub use exporter::{export_itch_zip, export_standalone_html};
+pub use exporter::{
+    export_itch_workcart, export_itch_zip, export_standalone_html, export_standalone_workcart,
+};
 pub use formatter::{FormatError, format_source};
+pub use generator::materialize_workcart_recipe;
 pub use lexer::lex;
 pub use parser::{ParseOutput, parse};
 pub use sema::{AnalysisOutput, analyze_module};
 pub use span::{FileId, LineColumn, SourceFile, Span, Spanned};
 pub use token::{Token, TokenKind};
 pub use types::{AssetCatalog, AssetKind, Type};
+pub use workcart::{
+    WORKCART_FORMAT_REVISION, WorkcartProject, WorkcartRecipe, WorkcartTest, WorkcartTestKind,
+    delete_workcart_asset, encode_workcart, parse_workcart, rewrite_workcart,
+    workcart_project_view,
+};
 
 /// The source-language revision understood by this compiler.
 pub const LANGUAGE_REVISION: &str = "MODL/1";

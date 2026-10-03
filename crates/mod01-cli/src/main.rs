@@ -1,6 +1,6 @@
 use std::{
     collections::BTreeMap,
-    fs,
+    fs::{self, OpenOptions},
     hash::{DefaultHasher, Hash, Hasher},
     io::{Read as _, Write as _},
     net::{TcpListener, TcpStream},
@@ -13,10 +13,12 @@ use std::{
 use clap::{Parser, Subcommand};
 use modl_core::{
     AssetCatalog, AssetKind, CartridgePngMetadata, CompileMode, DecodedCartridge, Diagnostic,
-    FileId, GeneratedProgram, ProjectManifest, SourceFile, analyze_module, compile,
-    compile_project, decode_cartridge, decode_cartridge_png, encode_cartridge_png, export_itch_zip,
-    export_standalone_html, format_source, load_cartridge_program, pack_project,
-    parse_project_manifest, unpack_cartridge_project,
+    FileId, GeneratedProgram, ProjectManifest, SourceFile, WorkcartTest, WorkcartTestKind,
+    analyze_module, compile, compile_project, decode_cartridge, decode_cartridge_png,
+    encode_cartridge_png, encode_workcart, export_itch_workcart, export_itch_zip,
+    export_standalone_html, export_standalone_workcart, format_source, load_cartridge_program,
+    materialize_workcart_recipe, pack_project, pack_workcart, parse_project_manifest,
+    parse_workcart, unpack_cartridge_project, unpack_workcart,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -39,9 +41,40 @@ struct Arguments {
 
 #[derive(Debug)]
 struct LoadedProject {
+    input: ProjectInput,
     manifest_source: String,
     manifest: ProjectManifest,
     files: BTreeMap<String, Vec<u8>>,
+    workcart_tests: Vec<WorkcartTest>,
+}
+
+#[derive(Debug)]
+enum ProjectInput {
+    Directory,
+    Workcart(String),
+}
+
+impl LoadedProject {
+    fn pack(&self) -> Result<modl_core::PackedCartridge, modl_core::CartridgeError> {
+        match &self.input {
+            ProjectInput::Directory => pack_project(&self.manifest_source, &self.files),
+            ProjectInput::Workcart(source) => pack_workcart(source),
+        }
+    }
+
+    fn standalone_html(&self) -> Result<String, modl_core::CartridgeError> {
+        match &self.input {
+            ProjectInput::Directory => export_standalone_html(&self.manifest_source, &self.files),
+            ProjectInput::Workcart(source) => export_standalone_workcart(source),
+        }
+    }
+
+    fn itch_zip(&self) -> Result<Vec<u8>, modl_core::CartridgeError> {
+        match &self.input {
+            ProjectInput::Directory => export_itch_zip(&self.manifest_source, &self.files),
+            ProjectInput::Workcart(source) => export_itch_workcart(source),
+        }
+    }
 }
 
 #[derive(Debug, Subcommand)]
@@ -53,6 +86,17 @@ enum Command {
         title: Option<String>,
         #[arg(long, default_value = "@gongahkia")]
         author: String,
+    },
+    /// Convert one V1 project directory into a source-visible M01W/2 work-cart.
+    Migrate {
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+    /// Materialize a deterministic author-time asset recipe in an M01W/2 work-cart.
+    Generate {
+        #[command(subcommand)]
+        command: GenerateCommand,
     },
     /// Compile one MODL/1 source module to JavaScript and a source map.
     Build {
@@ -159,6 +203,18 @@ enum ExportCommand {
     },
 }
 
+#[derive(Debug, Subcommand)]
+enum GenerateCommand {
+    /// Generate the map named by one stored Noise or WFC recipe.
+    Map {
+        path: PathBuf,
+        recipe: String,
+        /// Write a new work-cart instead of replacing the input atomically.
+        #[arg(short, long)]
+        output: Option<PathBuf>,
+    },
+}
+
 fn main() -> ExitCode {
     match Arguments::parse().command {
         Command::New {
@@ -166,6 +222,15 @@ fn main() -> ExitCode {
             title,
             author,
         } => new_project(&path, title.as_deref(), &author),
+        Command::Migrate { path, output } => migrate_project(&path, output.as_deref()),
+        Command::Generate {
+            command:
+                GenerateCommand::Map {
+                    path,
+                    recipe,
+                    output,
+                },
+        } => generate_map(&path, &recipe, output.as_deref()),
         Command::Build {
             path,
             debug,
@@ -223,15 +288,11 @@ fn main() -> ExitCode {
 
 fn export_html_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
     let project = load_project(path)?;
-    let html =
-        export_standalone_html(&project.manifest_source, &project.files).map_err(|error| {
-            eprintln!("{}: {error}", path.display());
-        })?;
+    let html = project.standalone_html().map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
     let output = output.map_or_else(
-        || {
-            path.join("dist")
-                .join(format!("{}.html", project.manifest.id))
-        },
+        || project_output_directory(path).join(format!("{}.html", project.manifest.id)),
         Path::to_path_buf,
     );
     if let Some(parent) = output.parent() {
@@ -248,7 +309,7 @@ fn export_html_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, 
 
 fn export_png_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
     let project = load_project(path)?;
-    let packed = pack_project(&project.manifest_source, &project.files).map_err(|error| {
+    let packed = project.pack().map_err(|error| {
         eprintln!("{}: {error}", path.display());
     })?;
     let identity = project
@@ -287,10 +348,7 @@ fn export_png_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, (
         eprintln!("{}: {error}", path.display());
     })?;
     let output = output.map_or_else(
-        || {
-            path.join("dist")
-                .join(format!("{}.m01c.png", project.manifest.id))
-        },
+        || project_output_directory(path).join(format!("{}.m01c.png", project.manifest.id)),
         Path::to_path_buf,
     );
     if let Some(parent) = output.parent() {
@@ -303,14 +361,11 @@ fn export_png_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, (
 
 fn export_zip_directory(path: &Path, output: Option<&Path>) -> Result<PathBuf, ()> {
     let project = load_project(path)?;
-    let zip = export_itch_zip(&project.manifest_source, &project.files).map_err(|error| {
+    let zip = project.itch_zip().map_err(|error| {
         eprintln!("{}: {error}", path.display());
     })?;
     let output = output.map_or_else(
-        || {
-            path.join("dist")
-                .join(format!("{}-itch.zip", project.manifest.id))
-        },
+        || project_output_directory(path).join(format!("{}-itch.zip", project.manifest.id)),
         Path::to_path_buf,
     );
     if let Some(parent) = output.parent() {
@@ -465,9 +520,9 @@ fn execute_headless_host(request: &[u8], frames: u32) -> Result<Vec<u8>, ()> {
 fn load_headless_cartridge(
     path: &Path,
 ) -> Result<(Vec<u8>, modl_core::DecodedCartridge, Vec<u8>), ()> {
-    let packed = if path.is_dir() {
+    let packed = if path.is_dir() || is_workcart_path(path) {
         let project = load_project(path)?;
-        pack_project(&project.manifest_source, &project.files).map_err(|error| {
+        project.pack().map_err(|error| {
             eprintln!("{}: {error}", path.display());
         })?
     } else if path
@@ -484,15 +539,27 @@ fn load_headless_cartridge(
         } else {
             file_bytes
         };
-        let project = unpack_cartridge_project(&bytes).map_err(|error| {
+        let decoded = decode_cartridge(&bytes).map_err(|error| {
             eprintln!("{}: {error}", path.display());
         })?;
-        pack_project(&project.manifest, &project.files).map_err(|error| {
-            eprintln!("{}: {error}", path.display());
-        })?
+        if decoded.manifest.format_revision == modl_core::WORKCART_FORMAT_REVISION {
+            let source = unpack_workcart(&bytes).map_err(|error| {
+                eprintln!("{}: {error}", path.display());
+            })?;
+            pack_workcart(&source).map_err(|error| {
+                eprintln!("{}: {error}", path.display());
+            })?
+        } else {
+            let project = unpack_cartridge_project(&bytes).map_err(|error| {
+                eprintln!("{}: {error}", path.display());
+            })?;
+            pack_project(&project.manifest, &project.files).map_err(|error| {
+                eprintln!("{}: {error}", path.display());
+            })?
+        }
     } else {
         eprintln!(
-            "{}: expected a project directory, .m01c, or .m01c.png cartridge",
+            "{}: expected a project directory, .m01w, .m01c, or .m01c.png cartridge",
             path.display()
         );
         return Err(());
@@ -540,6 +607,9 @@ fn test_directory(path: &Path) -> ExitCode {
     let Ok(project) = load_project(path) else {
         return ExitCode::FAILURE;
     };
+    if matches!(&project.input, ProjectInput::Workcart(_)) {
+        return test_workcart(&project);
+    }
     let tests_root = path.join("tests");
     let mut test_paths = Vec::new();
     if tests_root.is_dir()
@@ -558,7 +628,7 @@ fn test_directory(path: &Path) -> ExitCode {
                 .and_then(|name| name.to_str())
                 .is_some_and(|name| name.ends_with(".m01run.json"))
         })
-        .then(|| pack_project(&project.manifest_source, &project.files));
+        .then(|| project.pack());
     for test_path in &test_paths {
         let result = if test_path
             .extension()
@@ -593,6 +663,40 @@ fn test_directory(path: &Path) -> ExitCode {
     status(failed > 0)
 }
 
+fn test_workcart(project: &LoadedProject) -> ExitCode {
+    let main_cartridge = project
+        .workcart_tests
+        .iter()
+        .any(|test| test.kind == WorkcartTestKind::Replay)
+        .then(|| project.pack());
+    let mut passed = 0_usize;
+    let mut failed = 0_usize;
+    for test in &project.workcart_tests {
+        let result = match test.kind {
+            WorkcartTestKind::Modl => run_modl_test_payload(project, &test.path, &test.payload),
+            WorkcartTestKind::Replay => match &main_cartridge {
+                Some(Ok(cartridge)) => {
+                    run_scripted_test_payload(None, cartridge, test.payload.as_bytes())
+                }
+                Some(Err(error)) => Err(error.to_string()),
+                None => Err("internal test runner error".to_owned()),
+            },
+        };
+        match result {
+            Ok(()) => {
+                passed += 1;
+                println!("PASS {}", test.name);
+            }
+            Err(error) => {
+                failed += 1;
+                eprintln!("FAIL {}: {error}", test.name);
+            }
+        }
+    }
+    println!("test result: {passed} passed; {failed} failed");
+    status(failed > 0)
+}
+
 fn collect_test_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
@@ -616,10 +720,15 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
         .to_str()
         .ok_or_else(|| "test path is not valid UTF-8".to_owned())?;
     let source = fs::read_to_string(test_path).map_err(|error| error.to_string())?;
-    let compile_fail = test_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".fail.modl"));
+    run_modl_test_payload(project, relative, &source)
+}
+
+fn run_modl_test_payload(
+    project: &LoadedProject,
+    relative: &str,
+    source: &str,
+) -> Result<(), String> {
+    let compile_fail = relative.ends_with(".fail.modl");
     let expected_code = source.lines().find_map(|line| {
         line.trim()
             .strip_prefix("// expect ")
@@ -633,7 +742,9 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
     manifest.thumbnail = None;
     manifest.display = None;
     let manifest_source = toml::to_string(&manifest).map_err(|error| error.to_string())?;
-    let compilation = compile_project(&manifest_source, &project.files, CompileMode::Debug);
+    let mut files = project.files.clone();
+    files.insert(relative.to_owned(), source.as_bytes().to_vec());
+    let compilation = compile_project(&manifest_source, &files, CompileMode::Debug);
     if compile_fail {
         let code = match compilation {
             Err(error) => Some(error.code.to_owned()),
@@ -694,11 +805,19 @@ fn run_scripted_test(
     test_path: &Path,
 ) -> Result<(), String> {
     let source = fs::read(test_path).map_err(|error| error.to_string())?;
+    run_scripted_test_payload(Some(root), packed, &source)
+}
+
+fn run_scripted_test_payload(
+    root: Option<&Path>,
+    packed: &modl_core::PackedCartridge,
+    source: &[u8],
+) -> Result<(), String> {
     if source.len() > usize::try_from(MAX_TRACE_BYTES).unwrap_or(usize::MAX) {
         return Err("scripted test exceeds 8 MiB".to_owned());
     }
     let spec: serde_json::Value =
-        serde_json::from_slice(&source).map_err(|error| error.to_string())?;
+        serde_json::from_slice(source).map_err(|error| error.to_string())?;
     if spec.get("revision").and_then(serde_json::Value::as_u64) != Some(1) {
         return Err("scripted test revision must be 1".to_owned());
     }
@@ -717,8 +836,13 @@ fn run_scripted_test(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "revision": 1, "frames": [] }));
     let save = match spec.get("save").and_then(serde_json::Value::as_str) {
-        Some(relative) => read_save_image(Some(&root.join(relative)))
-            .map_err(|()| "could not load scripted save fixture".to_owned())?,
+        Some(relative) => {
+            let root = root.ok_or_else(|| {
+                "work-cart replay tests cannot reference external save fixtures".to_owned()
+            })?;
+            read_save_image(Some(&root.join(relative)))
+                .map_err(|()| "could not load scripted save fixture".to_owned())?
+        }
         None => Vec::new(),
     };
     let (cartridge, program) =
@@ -798,11 +922,179 @@ fn new_project(path: &Path, title: Option<&str>, author: &str) -> ExitCode {
     ExitCode::SUCCESS
 }
 
+fn migrate_project(path: &Path, output: Option<&Path>) -> ExitCode {
+    if is_workcart_path(path) || !path.is_dir() {
+        eprintln!(
+            "{}: migrate expects a V1 cartridge project directory",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    let Ok(project) = load_project(path) else {
+        return ExitCode::FAILURE;
+    };
+    let mut test_paths = Vec::new();
+    let tests_root = path.join("tests");
+    if tests_root.is_dir()
+        && let Err(error) = collect_test_paths(&tests_root, &mut test_paths)
+    {
+        eprintln!("{}: {error}", tests_root.display());
+        return ExitCode::FAILURE;
+    }
+    test_paths.sort();
+    let mut tests = Vec::new();
+    for test_path in test_paths {
+        let kind = if test_path
+            .extension()
+            .is_some_and(|extension| extension == "modl")
+        {
+            WorkcartTestKind::Modl
+        } else if test_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".m01run.json"))
+        {
+            WorkcartTestKind::Replay
+        } else {
+            continue;
+        };
+        let relative =
+            if let Some(relative) = test_path.strip_prefix(path).ok().and_then(Path::to_str) {
+                relative.to_owned()
+            } else {
+                eprintln!("{}: test path is not valid UTF-8", test_path.display());
+                return ExitCode::FAILURE;
+            };
+        let payload = match fs::read_to_string(&test_path) {
+            Ok(payload) => payload,
+            Err(error) => {
+                eprintln!("{}: {error}", test_path.display());
+                return ExitCode::FAILURE;
+            }
+        };
+        tests.push(WorkcartTest {
+            name: relative.clone(),
+            path: relative,
+            kind,
+            payload,
+        });
+    }
+    let source = match encode_workcart(&project.manifest, &project.files, &[], &tests) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let output = output.map_or_else(|| path.with_extension("m01w"), Path::to_path_buf);
+    if output.exists() {
+        eprintln!(
+            "{}: refusing to overwrite an existing path",
+            output.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Some(parent) = output.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("{}: {error}", parent.display());
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = fs::write(&output, source) {
+        eprintln!("{}: {error}", output.display());
+        return ExitCode::FAILURE;
+    }
+    println!("migrated {} -> {}", path.display(), output.display());
+    ExitCode::SUCCESS
+}
+
+fn generate_map(path: &Path, recipe: &str, output: Option<&Path>) -> ExitCode {
+    if !is_workcart_path(path) {
+        eprintln!(
+            "{}: generate map expects an .m01w work-cart",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    let source = match fs::read_to_string(path) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let generated = match materialize_workcart_recipe(&source, recipe) {
+        Ok(generated) => generated,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let output = output.map_or_else(|| path.to_path_buf(), Path::to_path_buf);
+    if output != path && output.exists() {
+        eprintln!(
+            "{}: refusing to overwrite an existing path",
+            output.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = write_workcart_atomically(&output, generated.as_bytes()) {
+        eprintln!("{}: {error}", output.display());
+        return ExitCode::FAILURE;
+    }
+    println!("generated map '{recipe}' in {}", output.display());
+    ExitCode::SUCCESS
+}
+
+fn write_workcart_atomically(path: &Path, source: &[u8]) -> Result<(), std::io::Error> {
+    let parent = path.parent().unwrap_or_else(|| Path::new("."));
+    fs::create_dir_all(parent)?;
+    let name = path
+        .file_name()
+        .and_then(|name| name.to_str())
+        .ok_or_else(|| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "output name is not valid UTF-8",
+            )
+        })?;
+    for attempt in 0..=100_u16 {
+        let temporary = parent.join(format!(
+            ".{name}.mod01-{}-{attempt}.tmp",
+            std::process::id()
+        ));
+        let mut file = match OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&temporary)
+        {
+            Ok(file) => file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(error) => return Err(error),
+        };
+        let result = file.write_all(source).and_then(|()| file.sync_all());
+        drop(file);
+        if let Err(error) = result {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        if let Err(error) = fs::rename(&temporary, path) {
+            let _ = fs::remove_file(&temporary);
+            return Err(error);
+        }
+        return Ok(());
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AlreadyExists,
+        "could not reserve a temporary output path",
+    ))
+}
+
 fn pack_directory(path: &Path, output: Option<&Path>) -> ExitCode {
     let Ok(project) = load_project(path) else {
         return ExitCode::FAILURE;
     };
-    let packed = match pack_project(&project.manifest_source, &project.files) {
+    let packed = match project.pack() {
         Ok(packed) => packed,
         Err(error) => {
             eprintln!("{}: {error}", path.display());
@@ -814,10 +1106,7 @@ fn pack_directory(path: &Path, output: Option<&Path>) -> ExitCode {
         return ExitCode::FAILURE;
     }
     let output = output.map_or_else(
-        || {
-            path.join("dist")
-                .join(format!("{}.m01c", project.manifest.id))
-        },
+        || project_output_directory(path).join(format!("{}.m01c", project.manifest.id)),
         Path::to_path_buf,
     );
     if let Some(parent) = output.parent()
@@ -843,7 +1132,10 @@ fn watch_directory(path: &Path, output: Option<&Path>, once: bool, no_open: bool
     if once {
         return pack_directory(path, output);
     }
-    let output = output.map_or_else(|| path.join("dist/watch.html"), Path::to_path_buf);
+    let output = output.map_or_else(
+        || project_output_directory(path).join("watch.html"),
+        Path::to_path_buf,
+    );
     if export_watch_html(path, &output).is_err() {
         return ExitCode::FAILURE;
     }
@@ -898,10 +1190,9 @@ fn browser_command(target: &str) -> ProcessCommand {
 
 fn export_watch_html(path: &Path, output: &Path) -> Result<(), ()> {
     let project = load_project(path)?;
-    let html =
-        export_standalone_html(&project.manifest_source, &project.files).map_err(|error| {
-            eprintln!("{}: {error}", path.display());
-        })?;
+    let html = project.standalone_html().map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
     let reload = r"<script>(()=>{let revision;setInterval(async()=>{try{const next=await fetch('/revision',{cache:'no-store'}).then(response=>response.text());if(revision!==undefined&&next!==revision)location.reload();revision=next}catch{}},250)})()</script>";
     let html = html.replace("</body>", &format!("{reload}</body>"));
     if let Some(parent) = output.parent() {
@@ -1228,8 +1519,14 @@ fn archive_sections(bytes: &[u8]) -> Result<Vec<(String, usize, usize)>, String>
 }
 
 fn load_project(path: &Path) -> Result<LoadedProject, ()> {
+    if is_workcart_path(path) {
+        return load_workcart(path);
+    }
     if !path.is_dir() {
-        eprintln!("{}: expected a cartridge project directory", path.display());
+        eprintln!(
+            "{}: expected a cartridge project directory or .m01w work-cart",
+            path.display()
+        );
         return Err(());
     }
     let manifest_path = path.join("cart.toml");
@@ -1259,10 +1556,47 @@ fn load_project(path: &Path) -> Result<LoadedProject, ()> {
         files.insert(relative.to_owned(), bytes);
     }
     Ok(LoadedProject {
+        input: ProjectInput::Directory,
         manifest_source,
         manifest,
         files,
+        workcart_tests: Vec::new(),
     })
+}
+
+fn load_workcart(path: &Path) -> Result<LoadedProject, ()> {
+    let source = fs::read_to_string(path).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    let project = parse_workcart(&source).map_err(|error| {
+        eprintln!("{}: {error}", path.display());
+    })?;
+    let manifest_source = toml::to_string(&project.manifest).map_err(|error| {
+        eprintln!(
+            "{}: could not materialize work-cart manifest: {error}",
+            path.display()
+        );
+    })?;
+    Ok(LoadedProject {
+        input: ProjectInput::Workcart(source),
+        manifest_source,
+        manifest: project.manifest,
+        files: project.files,
+        workcart_tests: project.tests,
+    })
+}
+
+fn is_workcart_path(path: &Path) -> bool {
+    path.extension()
+        .is_some_and(|extension| extension == "m01w")
+}
+
+fn project_output_directory(path: &Path) -> PathBuf {
+    if path.is_dir() {
+        path.join("dist")
+    } else {
+        path.parent().unwrap_or_else(|| Path::new(".")).join("dist")
+    }
 }
 
 fn collect_sources(
@@ -1354,7 +1688,7 @@ fn toml_string(value: &str) -> String {
 }
 
 fn build_file(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode {
-    if path.is_dir() {
+    if path.is_dir() || is_workcart_path(path) {
         return build_directory(path, output, debug);
     }
     let Ok(text) = read_source(path) else {
@@ -1409,7 +1743,10 @@ fn build_directory(path: &Path, output: Option<&Path>, debug: bool) -> ExitCode 
         eprintln!("{}: compiler produced no output", path.display());
         return ExitCode::FAILURE;
     };
-    let output = output.map_or_else(|| path.join("dist/cartridge.js"), Path::to_path_buf);
+    let output = output.map_or_else(
+        || project_output_directory(path).join("cartridge.js"),
+        Path::to_path_buf,
+    );
     write_program(&generated, &output)
 }
 
@@ -1458,7 +1795,7 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
     };
     let mut failed = false;
     for (index, path) in paths.iter().enumerate() {
-        if path.is_dir() {
+        if path.is_dir() || is_workcart_path(path) {
             let Ok(project) = load_project(path) else {
                 failed = true;
                 continue;
@@ -1468,7 +1805,13 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
                 &project.files,
                 CompileMode::Release,
             ) {
-                Ok(output) if output.analysis.diagnostics.is_empty() => {}
+                Ok(output) if output.analysis.diagnostics.is_empty() => match project.pack() {
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("{}: {error}", path.display());
+                        failed = true;
+                    }
+                },
                 Ok(output) => {
                     emit_project_diagnostics(path, &output.analysis.diagnostics);
                     failed = true;

@@ -29,6 +29,14 @@ describe('browser project and save persistence', () => {
     expect(recovery.at(-1)?.revision).toBe(2);
   });
 
+  it('preserves source-visible work-carts with their editor views', async () => {
+    const repository = new StudioRepository(new MemoryStorage());
+    const workcart = 'format = 2\n[cartridge]\nid = "test.project"\n';
+    await repository.saveProject({ ...project('on draw:\n  clear(0)\n'), workcart });
+    const loaded = await repository.loadProject('test.project');
+    expect(loaded?.workcart).toBe(workcart);
+  });
+
   it('lists/deletes projects and validates settings', async () => {
     const repository = new StudioRepository(new MemoryStorage());
     await repository.saveProject(project('on draw:\n  clear(0)\n'));
