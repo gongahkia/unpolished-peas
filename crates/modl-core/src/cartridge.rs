@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AssetCatalog, AssetKind, CARTRIDGE_FORMAT_REVISION, CompilationOutput, CompileMode, FileId,
-    LANGUAGE_REVISION, SourceFile, TokenKind,
+    LANGUAGE_REVISION, SourceFile, TokenKind, WORKCART_FORMAT_REVISION,
     ast::{Item, Module},
     codegen::{SourceOriginMap, SourceOriginRange, compile_with_origins},
     compiler_version, parse,
@@ -219,13 +219,37 @@ pub fn pack_project(
     project_files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<PackedCartridge, CartridgeError> {
     let manifest = parse_project_manifest(manifest_source)?;
+    pack_materialized_project(&manifest, project_files, CARTRIDGE_FORMAT_REVISION, None)
+}
+
+/// Packs an `M01W/2` work-cart and retains its exact source in the cartridge archive.
+///
+/// # Errors
+///
+/// Returns a stable work-cart, compilation, archive, or capacity error.
+pub fn pack_workcart(source: &str) -> Result<PackedCartridge, CartridgeError> {
+    let project = crate::parse_workcart(source)?;
+    pack_materialized_project(
+        &project.manifest,
+        &project.files,
+        WORKCART_FORMAT_REVISION,
+        Some(project.source.as_bytes()),
+    )
+}
+
+fn pack_materialized_project(
+    manifest: &ProjectManifest,
+    project_files: &BTreeMap<String, Vec<u8>>,
+    format_revision: u16,
+    workcart_source: Option<&[u8]>,
+) -> Result<PackedCartridge, CartridgeError> {
     let normalized_entry = normalize_project_path(&manifest.entry)?;
     let mut asset_catalog = AssetCatalog::default();
     for (name, asset) in &manifest.assets {
         asset_catalog.insert(name.clone(), asset.kind);
     }
     let compilation = compile_linked_project(
-        &manifest,
+        manifest,
         project_files,
         &asset_catalog,
         CompileMode::Release,
@@ -251,7 +275,7 @@ pub fn pack_project(
     });
 
     let (mut entries, packed_assets, label, thumbnail, display) = collect_project_entries(
-        &manifest,
+        manifest,
         project_files,
         generated.javascript,
         generated.source_map_json,
@@ -259,6 +283,13 @@ pub fn pack_project(
     if manifest.compile_on_load {
         entries.remove("build/cartridge.js");
         entries.remove("build/cartridge.js.map");
+    }
+    if let Some(source) = workcart_source {
+        insert_unique(
+            &mut entries,
+            "source/workcart.m01w".to_owned(),
+            source.to_vec(),
+        )?;
     }
 
     let files = entries
@@ -274,13 +305,13 @@ pub fn pack_project(
         })
         .collect();
     let packed_manifest = PackedManifest {
-        format_revision: CARTRIDGE_FORMAT_REVISION,
+        format_revision,
         language_revision: LANGUAGE_REVISION.to_owned(),
         compiler_version: compiler_version().to_owned(),
-        id: manifest.id,
-        title: manifest.title,
-        author: manifest.author,
-        version: manifest.version,
+        id: manifest.id.clone(),
+        title: manifest.title.clone(),
+        author: manifest.author.clone(),
+        version: manifest.version.clone(),
         entry: format!("source/{normalized_entry}"),
         update_rate: manifest.update_rate,
         compile_on_load: manifest.compile_on_load,
@@ -1132,6 +1163,38 @@ pub fn unpack_cartridge_project(bytes: &[u8]) -> Result<UnpackedProject, Cartrid
     Ok(UnpackedProject { manifest, files })
 }
 
+/// Restores the exact authored work-cart from a validated revision-2 cartridge.
+///
+/// # Errors
+///
+/// Returns a stable error when the cartridge is not revision 2 or has no valid work-cart source.
+pub fn unpack_workcart(bytes: &[u8]) -> Result<String, CartridgeError> {
+    let cartridge = decode_cartridge(bytes)?;
+    if cartridge.manifest.format_revision != WORKCART_FORMAT_REVISION {
+        return Err(cartridge_error(
+            "M014027",
+            "cartridge does not contain an M01W/2 work-cart".to_owned(),
+        ));
+    }
+    let source = cartridge
+        .entries
+        .get("source/workcart.m01w")
+        .ok_or_else(|| {
+            cartridge_error(
+                "M014027",
+                "revision-2 cartridge is missing source/workcart.m01w".to_owned(),
+            )
+        })?;
+    let source = std::str::from_utf8(source).map_err(|_| {
+        cartridge_error(
+            "M014027",
+            "revision-2 work-cart source is not valid UTF-8".to_owned(),
+        )
+    })?;
+    crate::parse_workcart(source)?;
+    Ok(source.to_owned())
+}
+
 /// Validates a cartridge and returns the executable release program, compiling source-only carts.
 ///
 /// # Errors
@@ -1308,8 +1371,10 @@ fn validate_packed_manifest(
     manifest: &PackedManifest,
     entries: &BTreeMap<String, Vec<u8>>,
 ) -> Result<(), CartridgeError> {
-    if manifest.format_revision != CARTRIDGE_FORMAT_REVISION
-        || manifest.language_revision != LANGUAGE_REVISION
+    if !matches!(
+        manifest.format_revision,
+        CARTRIDGE_FORMAT_REVISION | WORKCART_FORMAT_REVISION
+    ) || manifest.language_revision != LANGUAGE_REVISION
     {
         return Err(cartridge_error(
             "M014012",
@@ -1339,6 +1404,14 @@ fn validate_packed_manifest(
         return Err(cartridge_error(
             "M014012",
             "packed manifest is missing its source entry point".to_owned(),
+        ));
+    }
+    if manifest.format_revision == WORKCART_FORMAT_REVISION
+        && !entries.contains_key("source/workcart.m01w")
+    {
+        return Err(cartridge_error(
+            "M014012",
+            "revision-2 cartridge is missing source/workcart.m01w".to_owned(),
         ));
     }
     let has_javascript = entries.contains_key("build/cartridge.js");
