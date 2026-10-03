@@ -2,6 +2,7 @@
 
 - [Quickstart](guides/quickstart.md)
 - [Seed Sprint starter](../templates/starter/README.md)
+- [Neon Siege public-API dogfood game](../dogfood/neon-siege/README.md)
 - [Installation from a release](guides/installation.md)
 - [Game protocol](guides/game-protocol.md)
 - [Save data](guides/save-data.md)

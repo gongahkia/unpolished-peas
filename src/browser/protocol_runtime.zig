@@ -19,8 +19,13 @@ const HeadlessResult = struct {
 };
 
 pub export fn up_browser_protocol_init() i32 {
+    if (initialized) {
+        protocol.deinit(&context) catch return @intFromEnum(contract.Status.rejected);
+        initialized = false;
+    }
     input = .{};
     context = .init(&input);
+    context.allocator = std.heap.page_allocator;
     game = .{};
     protocol = .bind(&game);
     protocol.init(&context) catch |err| {

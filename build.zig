@@ -125,6 +125,12 @@ pub fn build(b: *std.Build) void {
         .optimize = browser_optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
     });
+    const browser_dogfood_game = b.createModule(.{
+        .root_source_file = b.path("dogfood/neon-siege/src/game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
         .root_module = b.createModule(.{
@@ -157,6 +163,22 @@ pub fn build(b: *std.Build) void {
     browser_starter_runtime.entry = .disabled;
     browser_starter_runtime.rdynamic = true;
     browser_starter_runtime.import_memory = true;
+    const browser_dogfood_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-neon-siege",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "protocol-game", .module = browser_dogfood_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+            },
+        }),
+    });
+    browser_dogfood_runtime.entry = .disabled;
+    browser_dogfood_runtime.rdynamic = true;
+    browser_dogfood_runtime.import_memory = true;
     const browser_audio_smoke = b.addObject(.{
         .name = "unpolished-peas-browser-audio-smoke",
         .root_module = b.createModule(.{
@@ -321,6 +343,12 @@ pub fn build(b: *std.Build) void {
     });
     const browser_starter_step = b.step("browser-starter", "Build the Seed Sprint browser runtime in zig-out/web");
     browser_starter_step.dependOn(&install_browser_starter_runtime.step);
+    const install_browser_dogfood_runtime = b.addInstallArtifact(browser_dogfood_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "neon-siege.wasm",
+    });
+    const browser_dogfood_step = b.step("browser-dogfood", "Build the Neon Siege dogfood browser runtime in zig-out/web");
+    browser_dogfood_step.dependOn(&install_browser_dogfood_runtime.step);
     const install_browser_topdown_runtime = b.addInstallArtifact(browser_topdown_runtime, .{
         .dest_dir = .{ .override = .{ .custom = "web" } },
         .dest_sub_path = "unpolished-peas.wasm",
@@ -500,6 +528,15 @@ pub fn build(b: *std.Build) void {
     const package_starter = b.step("package-starter", "Install the Seed Sprint starter and its assets");
     package_starter.dependOn(&b.addInstallArtifact(starter_demo, .{}).step);
     package_starter.dependOn(&install_starter_assets.step);
+    const dogfood_demo = addExample(b, "unpolished-peas-neon-siege", "dogfood/neon-siege/src/main.zig", target, optimize, peas, sdl);
+    const install_dogfood_assets = b.addInstallDirectory(.{
+        .source_dir = b.path("dogfood/neon-siege/assets"),
+        .install_dir = .prefix,
+        .install_subdir = "assets",
+    });
+    const package_dogfood = b.step("package-dogfood", "Install the Neon Siege dogfood game and its assets");
+    package_dogfood.dependOn(&b.addInstallArtifact(dogfood_demo, .{}).step);
+    package_dogfood.dependOn(&install_dogfood_assets.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, null);
@@ -644,6 +681,22 @@ pub fn build(b: *std.Build) void {
     starter_external_web.setCwd(b.path("."));
     const starter_external_web_step = b.step("test-starter-external-web", "Build the generated starter browser package outside the Peas checkout");
     starter_external_web_step.dependOn(&starter_external_web.step);
+    const dogfood_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("dogfood/neon-siege/src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-sdl3", .module = sdl },
+        },
+    }) });
+    const run_dogfood_tests = b.addRunArtifact(dogfood_tests);
+    const dogfood_test_step = b.step("test-dogfood", "Run the Neon Siege public-API dogfood tests");
+    dogfood_test_step.dependOn(&run_dogfood_tests.step);
+    const dogfood_external = b.addSystemCommand(&.{"script/test_dogfood_external.sh"});
+    dogfood_external.setCwd(b.path("."));
+    const dogfood_external_step = b.step("test-dogfood-external", "Build and package Neon Siege as a clean archive-style package consumer");
+    dogfood_external_step.dependOn(&dogfood_external.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
@@ -652,6 +705,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_starter_demo.addArgs(args);
     const run_starter_step = b.step("run-starter", "Run the Seed Sprint starter from this checkout");
     run_starter_step.dependOn(&run_starter_demo.step);
+    const run_dogfood_demo = b.addRunArtifact(dogfood_demo);
+    if (b.args) |args| run_dogfood_demo.addArgs(args);
+    const run_dogfood_step = b.step("run-dogfood", "Run the Neon Siege dogfood game from this checkout");
+    run_dogfood_step.dependOn(&run_dogfood_demo.step);
     addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
     addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
     addRunStep(b, "run-explicit-loop", "Run the advanced core explicit-loop example", explicit_loop_demo);
