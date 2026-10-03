@@ -77,6 +77,7 @@
     {"path": "fixtures/topdown-project/build.zig", "imports": []},
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["input"]}]},
     {"path": "templates/bounce/build.zig", "imports": []},
-    {"path": "templates/bounce/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]}
+    {"path": "templates/bounce/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "input", "preview", "testSupport"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config"]}]},
+    {"path": "templates/bounce/src/main.zig", "imports": [{"module": "unpolished-peas-sdl3", "path": "", "symbols": ["playGame"]}]}
   ]
 }
