@@ -41,7 +41,12 @@ import mod01Cursor from './assets/mod01-cursor.svg?inline';
 import mod01Logo from './assets/mod01-logo.png?inline';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { enhancePixelSelects } from './pixel-select';
-import { openCreationTool, type CreationTool } from './tools';
+import {
+  openAssetWorkbench,
+  openCreationTool,
+  type CreationTool,
+  type WorkbenchRecipe,
+} from './tools';
 
 interface WorkingProject {
   id: string;
@@ -316,6 +321,10 @@ export class StudioApp {
         case 'project':
           await this.openTool(command as CreationTool);
           return;
+        case 'assets':
+        case 'workbench':
+          await this.openWorkbench();
+          return;
         case 'manual':
         case 'man':
           this.openManual(arguments_.join(' ') || 'START');
@@ -399,7 +408,7 @@ export class StudioApp {
             'EDIT RUN [ID] DEBUG [ID] PACK [ID] OUT [ID] CART [ID] EXPORT SHARE',
             'INSPECT [ID] SOURCE [ID] INFO',
             'COPY <ID> NAME <ID> [TITLE] STAR <ID> SAVE <ID> REMOVE <ID> SHELL',
-            'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
+            'ASSETS WORKBENCH / PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL MAN HELP CLEAR CLS REBOOT SETTINGS CONTROLS FOLDER',
             'NEW <ID> [TITLE] / LOAD <ID> / RUN <ID>',
           ]);
@@ -1015,6 +1024,40 @@ export class StudioApp {
         await this.saveProject();
       },
       parseManifest: async () => this.compiler.parseManifest(project.manifest),
+    });
+  }
+
+  private async openWorkbench(): Promise<void> {
+    const project = this.requireProject();
+    await openAssetWorkbench(this.root, project, {
+      back: () => {
+        this.renderShell();
+      },
+      save: async () => {
+        const stored = await this.repository.loadProject(project.id);
+        if (stored !== undefined && stored.revision !== project.revision)
+          throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / REOPEN ASSETS`);
+        await this.saveProject();
+      },
+      parseManifest: async () => this.compiler.parseManifest(project.manifest),
+      capacity: async () => (await this.packAuthoredProject(project)).byteLength,
+      recipes: async () => {
+        if (project.workcart === undefined) return [];
+        return workcartRecipes((await this.compiler.parseWorkcart(project.workcart)).recipes);
+      },
+      generateRecipe: async (recipeId) => {
+        if (project.workcart === undefined) throw new Error('GENERATORS REQUIRE AN M01W PROJECT');
+        project.workcart = await this.compiler.materializeWorkcartRecipe(
+          project.workcart,
+          recipeId,
+        );
+        const view = await this.compiler.workcartProjectView(project.workcart);
+        project.manifest = view.manifest;
+        project.files = Object.fromEntries(
+          Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        );
+        await this.saveProject();
+      },
     });
   }
 
@@ -1718,9 +1761,7 @@ export class StudioApp {
 
   private async openInspector(): Promise<void> {
     const project = this.requireProject();
-    const cartridge = await this.compiler.decodeCartridge(
-      await this.packAuthoredProject(project),
-    );
+    const cartridge = await this.compiler.decodeCartridge(await this.packAuthoredProject(project));
     const sources = Object.entries(cartridge.entries)
       .filter(([path]) => path.startsWith('source/'))
       .sort(([left], [right]) => left.localeCompare(right));
@@ -1975,6 +2016,20 @@ function manifestEntry(manifest: string): string {
 
 function manifestUpdateRate(manifest: string): 30 | 60 {
   return /^update_rate\s*=\s*30\s*$/m.test(manifest) ? 30 : 60;
+}
+
+function workcartRecipes(values: readonly unknown[]): WorkbenchRecipe[] {
+  return values.flatMap((value) => {
+    if (typeof value !== 'object' || value === null) return [];
+    const recipe = value as Record<string, unknown>;
+    if (
+      typeof recipe.id !== 'string' ||
+      typeof recipe.algorithm !== 'string' ||
+      typeof recipe.output !== 'string'
+    )
+      return [];
+    return [{ id: recipe.id, algorithm: recipe.algorithm, output: recipe.output }];
+  });
 }
 
 function splitCommand(source: string): string[] {
