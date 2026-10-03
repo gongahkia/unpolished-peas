@@ -200,7 +200,7 @@ pub fn parse_workcart(source: &str) -> Result<WorkcartProject, CartridgeError> {
 
 /// Canonically encodes a compiler-facing project as an `M01W/2` work-cart.
 ///
-/// Only declared assets, non-test MODL modules, and declared presentation files are emitted.
+/// Declared assets, non-test MODL modules, and every other UTF-8 auxiliary file are emitted.
 /// Tests and author-time recipes are supplied explicitly so they remain first-class work-cart
 /// data rather than hidden editor state.
 ///
@@ -215,17 +215,20 @@ pub fn encode_workcart(
     tests: &[WorkcartTest],
 ) -> Result<String, CartridgeError> {
     let mut modules = Vec::new();
+    let mut module_paths = BTreeSet::new();
     for (path, bytes) in files {
         if path.starts_with("tests/") || !has_extension(path, "modl") {
             continue;
         }
         require_path(path, "module")?;
+        module_paths.insert(path.clone());
         modules.push(WorkcartModule {
             path: path.clone(),
             source: utf8_payload(bytes, path, "module")?,
         });
     }
     let mut assets = Vec::new();
+    let mut asset_paths = BTreeSet::new();
     for (name, asset) in &manifest.assets {
         let bytes = files.get(&asset.path).ok_or_else(|| {
             workcart_error(
@@ -240,6 +243,7 @@ pub fn encode_workcart(
                 format!("asset '{name}' payload is not valid JSON: {error}"),
             )
         })?;
+        asset_paths.insert(asset.path.clone());
         assets.push(WorkcartAsset {
             name: name.clone(),
             kind: asset.kind,
@@ -248,20 +252,14 @@ pub fn encode_workcart(
         });
     }
     let mut files_to_embed = Vec::new();
-    let mut presentation_paths = BTreeSet::new();
-    for path in [&manifest.label, &manifest.thumbnail, &manifest.display]
-        .into_iter()
-        .flatten()
-    {
-        presentation_paths.insert(path.clone());
-    }
-    for path in presentation_paths {
-        let bytes = files.get(&path).ok_or_else(|| {
-            workcart_error("M014024", format!("presentation file '{path}' is missing"))
-        })?;
+    for (path, bytes) in files {
+        if path.starts_with("tests/") || module_paths.contains(path) || asset_paths.contains(path) {
+            continue;
+        }
+        require_path(path, "file")?;
         files_to_embed.push(WorkcartFile {
-            payload: utf8_payload(bytes, &path, "presentation")?,
-            path,
+            payload: utf8_payload(bytes, path, "file")?,
+            path: path.clone(),
         });
     }
     let document = WorkcartDocument {
@@ -767,6 +765,28 @@ payload = "on start:\n  assert true\n"
         assert_eq!(reparsed.files, original.files);
         assert_eq!(reparsed.recipes, original.recipes);
         assert_eq!(reparsed.tests, original.tests);
+    }
+
+    #[test]
+    fn canonical_writer_preserves_auxiliary_utf8_files() {
+        let original = parse_workcart(CART).expect("original work-cart parses");
+        let mut files = original.files.clone();
+        files.insert(
+            "presentation/cartridge.json".to_owned(),
+            br#"{"year":1999,"players":1}"#.to_vec(),
+        );
+        let encoded = encode_workcart(
+            &original.manifest,
+            &files,
+            &original.recipes,
+            &original.tests,
+        )
+        .expect("work-cart writes");
+        let reparsed = parse_workcart(&encoded).expect("encoded work-cart parses");
+        assert_eq!(
+            reparsed.files["presentation/cartridge.json"],
+            br#"{"year":1999,"players":1}"#
+        );
     }
 
     #[test]
