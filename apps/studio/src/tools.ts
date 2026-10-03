@@ -40,6 +40,7 @@ export interface ToolCallbacks {
   readonly capacity?: () => Promise<number>;
   readonly recipes?: () => Promise<readonly WorkbenchRecipe[]>;
   readonly generateRecipe?: (recipeId: string) => Promise<void>;
+  readonly deleteAsset?: (assetName: string) => Promise<void>;
 }
 
 export interface WorkbenchRecipe {
@@ -116,6 +117,7 @@ export async function openAssetWorkbench(
             <button type="button" data-workbench="open">OPEN</button>
             <button type="button" data-workbench="undo">UNDO</button>
             <button type="button" data-workbench="redo">REDO</button>
+            <button type="button" data-workbench="delete">DEL</button>
             <button type="button" data-workbench="export">OUT</button>
             <label class="file-button">IN<input data-workbench-import type="file" accept="application/json,.m01g,.m01m,.m01f,.m01s,.m01t"></label>
           </div>
@@ -213,7 +215,7 @@ function setWorkbenchButtons(
   disabled: boolean,
   history: AssetHistory | undefined,
 ): void {
-  for (const action of ['open', 'export'] as const) {
+  for (const action of ['open', 'delete', 'export'] as const) {
     const button = root.querySelector<HTMLButtonElement>(`[data-workbench="${action}"]`);
     if (button !== null) button.disabled = disabled;
   }
@@ -271,6 +273,25 @@ function bindWorkbenchActions(
       .then(render)
       .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
   });
+  root
+    .querySelector<HTMLButtonElement>('[data-workbench="delete"]')
+    ?.addEventListener('click', (event) => {
+      if (selectedName === undefined || callbacks.deleteAsset === undefined) return;
+      const button = event.currentTarget as HTMLButtonElement;
+      if (button.dataset.confirm !== 'true') {
+        button.dataset.confirm = 'true';
+        button.textContent = 'CONFIRM DEL';
+        setToolStatus(root, `CONFIRM DELETE ${selectedName.toUpperCase()}`, true);
+        return;
+      }
+      void callbacks
+        .deleteAsset(selectedName)
+        .then(() => {
+          if (selected !== undefined) histories.delete(selected.path);
+          return render();
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    });
   root.querySelector('[data-workbench="export"]')?.addEventListener('click', () => {
     if (selected === undefined) return;
     const bytes = project.files[selected.path];

@@ -1094,6 +1094,19 @@ export class StudioApp {
         );
         await this.saveProject();
       },
+      deleteAsset: async (assetName) => {
+        if (project.workcart === undefined) throw new Error('DELETE REQUIRES AN M01W PROJECT');
+        const stored = await this.repository.loadProject(project.id);
+        if (stored !== undefined && stored.revision !== project.revision)
+          throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / REOPEN ASSETS`);
+        project.workcart = await this.compiler.deleteWorkcartAsset(project.workcart, assetName);
+        const view = await this.compiler.workcartProjectView(project.workcart);
+        project.manifest = view.manifest;
+        project.files = Object.fromEntries(
+          Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        );
+        await this.saveProject();
+      },
     });
   }
 

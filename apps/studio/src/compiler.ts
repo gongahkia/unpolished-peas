@@ -3,6 +3,7 @@ import initWasm, {
   compileProject as wasmCompileProject,
   compiler_version as wasmCompilerVersion,
   decodeCartridge as wasmDecodeCartridge,
+  deleteWorkcartAsset as wasmDeleteWorkcartAsset,
   exportHtml as wasmExportHtml,
   exportHtmlWorkcart as wasmExportHtmlWorkcart,
   format as wasmFormat,
@@ -169,6 +170,11 @@ export class BrowserCompiler {
   public async materializeWorkcartRecipe(source: string, recipeId: string): Promise<string> {
     await this.initialized;
     return wasmMaterializeWorkcartRecipe(source, recipeId);
+  }
+
+  public async deleteWorkcartAsset(source: string, assetName: string): Promise<string> {
+    await this.initialized;
+    return wasmDeleteWorkcartAsset(source, assetName);
   }
 
   public async format(fileName: string, source: string): Promise<string> {
