@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     AssetKind, CARTRIDGE_FORMAT_REVISION, CartridgeError, ProjectAsset, ProjectManifest,
-    parse_project_manifest,
+    UnpackedProject, parse_project_manifest,
 };
 
 /// The authored work-cart revision supported by this compiler.
@@ -289,6 +289,44 @@ pub fn encode_workcart(
         .map_err(|error| workcart_error("M014020", error.to_string()))?;
     parse_workcart(&encoded)?;
     Ok(encoded)
+}
+
+/// Returns the legacy compiler project view materialized from an authored `M01W/2` work-cart.
+///
+/// This is a migration boundary for tools that still operate on manifest and file views. New
+/// authoring should retain the original work-cart source and rewrite it with
+/// [`rewrite_workcart`] after an edit.
+///
+/// # Errors
+///
+/// Returns work-cart validation or manifest serialization errors.
+pub fn workcart_project_view(source: &str) -> Result<UnpackedProject, CartridgeError> {
+    let project = parse_workcart(source)?;
+    let manifest = toml::to_string(&project.manifest)
+        .map_err(|error| workcart_error("M014020", error.to_string()))?;
+    Ok(UnpackedProject {
+        manifest,
+        files: project.files,
+    })
+}
+
+/// Canonically applies a compiler-facing project edit to an existing `M01W/2` work-cart.
+///
+/// Recipes and tests remain unchanged; only the passed manifest and files are rewritten. This
+/// makes editor views disposable while the work-cart remains the source of truth.
+///
+/// # Errors
+///
+/// Returns work-cart or manifest validation errors, including missing files introduced by an
+/// editor update.
+pub fn rewrite_workcart(
+    source: &str,
+    manifest_source: &str,
+    files: &BTreeMap<String, Vec<u8>>,
+) -> Result<String, CartridgeError> {
+    let original = parse_workcart(source)?;
+    let manifest = parse_project_manifest(manifest_source)?;
+    encode_workcart(&manifest, files, &original.recipes, &original.tests)
 }
 
 fn materialize_files(document: &WorkcartDocument) -> Result<MaterializedFiles, CartridgeError> {
@@ -602,7 +640,7 @@ fn utf8_payload(bytes: &[u8], path: &str, role: &str) -> Result<String, Cartridg
 mod tests {
     use crate::{
         decode_cartridge, encode_workcart, export_standalone_workcart, pack_workcart,
-        unpack_cartridge_project, unpack_workcart,
+        rewrite_workcart, unpack_cartridge_project, unpack_workcart, workcart_project_view,
     };
 
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
@@ -729,5 +767,16 @@ payload = "on start:\n  assert true\n"
         assert_eq!(reparsed.files, original.files);
         assert_eq!(reparsed.recipes, original.recipes);
         assert_eq!(reparsed.tests, original.tests);
+    }
+
+    #[test]
+    fn compiler_views_can_be_rewritten_without_losing_workcart_metadata() {
+        let view = workcart_project_view(CART).expect("work-cart view materializes");
+        let rewritten =
+            rewrite_workcart(CART, &view.manifest, &view.files).expect("work-cart view rewrites");
+        let project = parse_workcart(&rewritten).expect("rewritten work-cart parses");
+        assert_eq!(project.recipes.len(), 1);
+        assert_eq!(project.tests.len(), 1);
+        assert_eq!(project.files, view.files);
     }
 }
