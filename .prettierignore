@@ -1,0 +1,9 @@
+target
+node_modules
+dist
+coverage
+crates/modl-wasm/pkg
+pnpm-lock.yaml
+MOD01_BASELINE_BRIEF.md
+.playwright-cli
+output

@@ -1,168 +1,112 @@
-# Unpolished Bees
+<p align="center">
+  <a href="#mod-01-color-development-unit"><img src="apps/studio/public/mod01-logo.png" width="220" alt="MOD-01 M01 logo" /></a>
+</p>
 
-Unpolished Bees is a small, data-driven 2D game authoring application for
-Lua/LÖVE projects. It keeps authored state as versioned JSON, so scenes,
-tilemaps, tilesets, UI layouts, flow graphs, room templates, and generator
-settings can be read, validated, edited, reviewed, and serialized again
-without a hidden editor database.
+<p align="center">
+  <a href="https://github.com/gongahkia/MOD-01/actions/workflows/ci.yml"><img src="https://github.com/gongahkia/MOD-01/actions/workflows/ci.yml/badge.svg" alt="MOD-01 CI" /></a>
+</p>
 
-It is also the JSON-only content workbench for the sibling ROAG project. It
-may edit ROAG presentation and room-template JSON, but it never writes ROAG
-Lua, saves, profiles, archive data, routes, or simulation state.
+# MOD-01 Color Development Unit
 
-## Run
+<p align="center"><strong>A local-first colour fantasy console from an alternate 1999.</strong></p>
 
-```console
-love . --roag ../roag --project .
+MOD-01 is a complete local-first fantasy console presented as a technically unusual, commercially
+unsuccessful colour handheld from 1999. Its V1 release candidate includes the statically typed MODL/1 language,
+Rust/Wasm compiler, deterministic worker runtime, 240x144 integrated Studio, source debugger and
+rewind, native CLI/LSP, reproducible cartridges, shared headless/offline standalone execution, three
+original pack-in games, three size-class showcases, a service cartridge, and a source-visible tutorial.
+
+Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository is private and
+proprietary; cartridge authors retain ownership of their source and assets.
+
+## Contents
+
+- [V1 release-candidate status](#v1-release-candidate-status)
+- [Quick start](#quick-start)
+- [Boundaries](#boundaries)
+
+![Fresh MOD-01 Studio boot monitor with all eight bundled cartridges](docs/images/studio-shell.png)
+
+## V1 release-candidate status
+
+The cohesive V1 workflow is implemented: create/import a cartridge, edit code and source-visible
+assets, compile, run, debug, rewind, save/recover, pack, inspect, and export without an account or
+backend. The production app is a relative-path static PWA and works offline after its first
+successful load. The V1 contract is recorded in [product principles](docs/PRODUCT.md),
+[limits](docs/LIMITS.md), and [release evidence](docs/V1_RELEASE_EVIDENCE.md); implementation detail
+and history remain in [`docs/`](docs/PROGRESS.md).
+
+The monitor preinstalls eight source-visible first-party cartridges. The three preserved original
+games are ordinary public-facility MODL projects:
+
+| Game                                        | Focus                                                                               |
+| ------------------------------------------- | ----------------------------------------------------------------------------------- |
+| [Cinder Circuit](cartridges/cinder-circuit) | Responsive tile platforming, animation, tasks, camera, and SFX                      |
+| [Ashvault](cartridges/ashvault)             | Procedural fog-of-war roguelike, records/lists, enemies, and isolated save progress |
+| [Raster Rush 99](cartridges/raster-rush)    | Scanline pseudo-3D racing, synth music, and simultaneous 2-4 player split screen    |
+
+![Cinder Circuit gameplay](docs/images/cinder-circuit.png)
+![Ashvault gameplay](docs/images/ashvault.png)
+![Raster Rush 99 standalone player](docs/images/raster-rush.png)
+
+The [full bundled-cartridge catalog](cartridges/README.md) also covers the Hardware Revision 1
+service cart, three size-class showcases, and the FIRST SIGNAL tutorial.
+
+## Quick start
+
+Requirements are Node.js 22.22 or newer and Rust 1.98. `corepack enable` supplies the pinned pnpm
+10.32.1; the repository's `rust-toolchain.toml` selects Rust, Clippy, rustfmt, and
+`wasm32-unknown-unknown`. The one setup command installs locked dependencies, installs the pinned
+`wasm-bindgen-cli` 0.2.128 when absent, installs the pinned Playwright Firefox and Chromium test
+browsers, and builds the complete project:
+
+```sh
+corepack enable
+make setup
+pnpm dev
 ```
 
-- `--roag` chooses the ROAG source checkout to open; it defaults to `../roag`.
-- `--project` chooses a native Unpolished Bees project; it defaults to the
-  current directory. A small runnable fixture lives in `examples/starter`.
+Open the printed local URL. The monitor shell starts with all built-in cartridges installed. Use `dir`,
+`load raster-rush`, `run`, or `run ashvault` to launch a cartridge directly; Shift+Escape stops a game. `help` lists integrated commands. Keyboard
+port one uses arrows plus Z/X/A/S, while standard gamepads populate all four ports.
 
-The editor opens on **Project Launcher**. Choose **New Project** to enter a
-display name and final empty project folder; the Studio creates its minimal
-valid JSON scaffold and opens it immediately. Choose **Open Project**, a
-manifest, or paste a path to reopen an existing project. Recently opened
-projects are stored in the editor's own LÖVE settings directory—not in any
-selected project. A manifest can also be dropped onto the editor window to
-switch projects. The active project must validate before the current project is
-replaced.
+Run every repository gate with:
 
-**Preview Project** opens a dedicated visual Preview Mode rather than running
-inside the authoring canvas. It snapshots the active runtime-relevant native
-document in memory without saving it, renders the configured main Scene (and
-`flow.main`, when present), and can be restarted or stopped without changing
-authored JSON. Preview currently renders Panels, Labels, and visual-only
-Buttons; runtime input is not simulated yet.
-
-To run the headless suite:
-
-```console
-luajit tests/run.lua
+```sh
+make check
 ```
 
-The normal suite uses the small checked-in ROAG fixture under
-`tests/fixtures/roag`; it never requires a sibling `../roag` checkout. To
-perform an explicit read-only compatibility smoke check against a real ROAG
-checkout, run:
+This includes the production build and the pinned Firefox and Chromium end-to-end workflows.
 
-```console
-luajit tests/test_live_roag.lua ../roag
+For the native external-editor workflow:
+
+```sh
+cargo run -p mod01-cli -- new my-game --title "MY GAME"
+cargo run -p mod01-cli -- check my-game
+cargo run -p mod01-cli -- test my-game
+cargo run -p mod01-cli -- run my-game
+cargo run -p mod01-cli -- run my-game --headless --frames 120 --input path/to/replay.json
+cargo run -p mod01-cli -- export html my-game
 ```
 
-ROAG title actions whose identity/target pair is known to this Studio version
-remain editable. Structurally valid newer actions load as preserved read-only
-data, so publishing an unrelated presentation edit does not remove them.
+See the [interactive/from-scratch tutorial](docs/TUTORIAL.md), [runnable examples](examples/README.md),
+[starter cartridges](templates/README.md), [tool guide](docs/TOOLS.md),
+[MODL language contract](docs/MODL.md), and [cartridge format](docs/CARTRIDGE_FORMAT.md).
 
-## Current workspaces
+## Boundaries
 
-- **Native Project** creates scenes, tilesets, maps, flow graphs, room
-  primitives, and generators without asking authors to start from raw JSON.
-  Its inspector edits serializable properties; its tree and graph controls add,
-  delete, reparent, and connect primitives; tilemaps have selectable layers,
-  sparse painting, pan/zoom, and image-backed tile selection. Native changes
-  have per-asset bounded undo/redo, validation on save, dirty-change warnings,
-  and reference-aware recoverable deletion (removal only unindexes the JSON
-  file). Drop a PNG to copy it into `assets/` and make a managed tileset; drop
-  Tiled JSON (`.json`/`.tmj`) to import an orthogonal sparse map.
-- **Project Launcher** keeps project selection separate from game data. It
-  uses a native folder chooser or JSON-manifest chooser when the host platform
-  provides one, accepts a pasted path as a fallback, and protects unsaved
-  Studio documents before changing projects.
-- **ROAG Rooms** reads the dungeon and reactor JSON manifests, creates or
-  recoverably removes manifest entries, paints a room template directly in
-  memory, structurally validates it, and atomically writes only that selected
-  `.room.json` file. It has per-room undo/redo, deterministic assembly preview,
-  and corpus diagnostics explaining invalid rooms, duplicate identities, or
-  missing connector patterns.
-- **Art & Sprites**, **Scenes**, and **Title Flow** retain the existing ROAG
-  presentation workflow: editable display copy, declared title transitions,
-  art-pack selection, and sprite-role mapping. Every supported art pack now
-  exposes its declared PNG source sheets in the Studio. ROAG 1-bit keeps live
-  role-tile editing; other packs retain their deliberate fixed ROAG mappings,
-  while any displayed source sheet can be copied into the open native project
-  as an editable image-backed tileset.
+This V1 candidate has no cloud account, synchronization, hosted backend, gallery, network/multiplayer API,
+desktop GUI, third-party cartridge compatibility, raw JavaScript escape, true-colour path, samples,
+physics engine, ECS, scene graph, or real 3D renderer. Worker containment is a practical browser
+boundary, not process-level isolation; [SECURITY.md](docs/SECURITY.md) states the exact limits.
 
-## Native JSON contract
+To refresh the Studio boot capture, run the production preview in one terminal:
 
-`core/project.lua` owns the canonical formats. The project manifest is
-`unpolished_bees.project.json` (v2), with an explicit asset index. Native v1
-assets are JSON objects with `format`, `version`, `type`, and semantic `id`:
-
-```text
-unpolished_bees.scene
-unpolished_bees.tileset
-unpolished_bees.tilemap
-unpolished_bees.flow
-unpolished_bees.room_template
-unpolished_bees.generator
+```sh
+pnpm build
+pnpm --dir apps/studio exec vite preview --host 127.0.0.1 --port 4173 --strictPort
 ```
 
-Tilemaps use sparse chunks, allowing fixed-size maps and infinite/chunked maps
-to share one representation. Tilesets can reference linked assets or managed
-imported copies by a safe relative path. The Tiled JSON importer intentionally
-supports orthogonal tile layers first and reports unsupported layers or tile
-transform flags instead of silently changing their meaning.
-
-The runtime supports scene loading, basic retained UI drawing, event-driven
-transitions, variables, arithmetic, and named Lua hooks. Schema-valid Scene or
-Flow primitives outside that runtime subset are warned about in Preview rather
-than being presented as implemented behavior. Lua hooks are
-references such as `game.open_shop`; source code is never embedded in JSON.
-
-## ROAG boundary
-
-The ROAG mode reads/writes only these declared JSON areas:
-
-```text
-content/screens/legacy.json
-content/presentation/flow.json
-content/presentation/art_pack.json
-sprite_editor/mappings.json
-content/rooms/dungeon/*.room.json
-content/rooms/reactor/*.room.json
-```
-
-Presentation publication retains the existing allow-list. Room publication is
-one validated room file at a time. The application never opens a write handle
-for `src/`, active saves, meta profiles, fallen archives, or other ROAG state.
-
-## Editing safeguards
-
-All authoring operations stay inside a project or ROAG JSON boundary. The
-Studio uses native undo/redo snapshots for each edited document and asks before
-discarding unsaved native, room, or presentation changes. Asset and room
-deletion is intentionally manifest-only: the source JSON remains on disk for
-recovery. Native asset removal also refuses to break declared scene instances,
-flow scene targets, or tilemap tileset references.
-
-The Studio can load an image once for a tileset preview and reuse it while
-painting rather than decoding it every frame. PNG drop import copies bytes
-atomically into the project before indexing the resulting tileset. This keeps
-the project portable without treating external art paths as hidden state.
-
-## Editor architecture
-
-`ui/studio.lua` is the state and action façade: it coordinates LÖVE callbacks,
-project/ROAG boundaries, undo state, and action dispatch. Reusable drawing
-primitives live in `ui/theme.lua` and `ui/widgets.lua`; global menus and
-navigation live in `ui/chrome.lua`; focused surfaces live under `ui/views/`.
-Art-pack source metadata lives in `core/art_sources.lua`, separate from both
-the editor and ROAG runtime code. New tools should add a focused view and
-action family rather than grow the controller with another mixed-purpose
-screen.
-
-## Delivery direction
-
-The foundational contracts, runtime preview, editable scene composition,
-image-backed tileset rendering, visual flow authoring, Tiled import,
-room-graph assembly, sparse tile painting, and deterministic noise/WFC preview
-generation are implemented. Future work can grow the same formats with richer
-node-specific inspectors, viewport tooling, and runtime graph diagnostics;
-nothing in the current contract requires a ROAG Lua migration.
-
-## Assets
-
-`roag_assets/` contains source staging assets handed off from ROAG. The editor
-UI uses the CC0 Kenney assets under `assets/kenney/`. See [LICENSES.md](LICENSES.md).
+Then, in another terminal, run `node scripts/capture-v1-visuals.mjs` and copy its 1280x720 Firefox
+shell capture from `output/playwright/v1-firefox-shell.png` to `docs/images/studio-shell.png`. The
+checked images use exact integer scale Playwright captures; no mockups are used.

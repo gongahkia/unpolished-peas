@@ -1,0 +1,49 @@
+// system reads encode the same scheduler, RNG and work ledger used by execution.
+const SYSTEM: Int = 328192
+state frames: Int = 0
+state updates: Int = 0
+
+fn word32(address: Int) -> Int:
+  return mem_read16(address) + mem_read16(address + 2) * 65536
+
+on start:
+  assert word32(SYSTEM) == 0, "frame reset"
+  assert word32(SYSTEM + 8) == 0, "update reset"
+  assert mem_read(SYSTEM + 29) == 1, "start phase"
+  assert mem_read16(SYSTEM + 30) == 65535, "no active scanline"
+  assert mem_read(SYSTEM + 48) == 2, "starting status"
+  assert mem_read16(SYSTEM + 40) == 50000, "fixed work ceiling"
+  for offset in 49..64:
+    assert mem_read(SYSTEM + offset) == 0, "healthy fault and reserved registers"
+  mem_copy(64, SYSTEM, 64)
+
+on update:
+  assert word32(SYSTEM) == frames, "update frame"
+  assert word32(SYSTEM + 8) == updates, "completed updates before callback"
+  assert mem_read(SYSTEM + 29) == 2, "update phase"
+  updates += 1
+
+on draw:
+  assert word32(SYSTEM) == frames, "draw frame"
+  assert word32(SYSTEM + 8) == updates, "completed updates after callback"
+  assert mem_read(SYSTEM + 29) == 3, "draw phase"
+  assert mem_read16(SYSTEM + 30) == 65535, "draw has no scanline"
+  assert mem_read(SYSTEM + 48) == 3, "booted and active"
+  let rate = mem_read(SYSTEM + 28)
+  assert rate == 30 or rate == 60, "update rate"
+  let before = word32(SYSTEM + 24)
+  let random = rng_int(0, 10)
+  assert random >= 0 and random < 10, "RNG result"
+  assert word32(SYSTEM + 24) != before, "RNG register alias"
+  let first = mem_read16(SYSTEM + 32)
+  let second = mem_read16(SYSTEM + 32)
+  assert second > first, "charged work reads"
+  mem_copy(0, SYSTEM, 64)
+  clear(0)
+  print("SYSTEM BUS PASS", 4, 24, 11)
+
+on raster(line: Int):
+  assert mem_read(SYSTEM + 29) == 4, "raster phase"
+  assert mem_read16(SYSTEM + 30) == line, "active scanline"
+  if line == 143:
+    frames += 1

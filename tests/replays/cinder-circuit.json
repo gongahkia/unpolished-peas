@@ -1,0 +1,11 @@
+{
+  "revision": 1,
+  "frames": [
+    { "frame": 0, "controllers": [{ "port": 1, "buttons": ["a"] }] },
+    { "frame": 2, "duration": 20, "controllers": [{ "port": 1, "buttons": ["right"] }] },
+    { "frame": 22, "controllers": [{ "port": 1, "buttons": ["right", "a"] }] },
+    { "frame": 23, "duration": 40, "controllers": [{ "port": 1, "buttons": ["right"] }] },
+    { "frame": 63, "controllers": [{ "port": 1, "buttons": ["right", "a"] }] },
+    { "frame": 64, "duration": 56, "controllers": [{ "port": 1, "buttons": ["right"] }] }
+  ]
+}
