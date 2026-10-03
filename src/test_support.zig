@@ -5,6 +5,7 @@ const diagnostics = @import("diagnostics.zig");
 const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
+const DeterministicRng = @import("rng.zig").DeterministicRng;
 const render = @import("render.zig");
 const renderer_contract_fixture = @import("renderer_contract_fixture.zig");
 const app = @import("app.zig");
@@ -75,6 +76,17 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         commands: render.CommandBuffer,
 
         pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !*Self {
+            return initWithSeed(allocator, width, height, null);
+        }
+
+        /// Initializes a headless protocol game with the explicit seed that a
+        /// seed-bearing input replay requires. The seed is available during
+        /// `Game.init` through `GameContext.simulation_seed`.
+        pub fn initSeeded(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: u64) !*Self {
+            return initWithSeed(allocator, width, height, simulation_seed);
+        }
+
+        fn initWithSeed(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: ?u64) !*Self {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
             self.* = .{
@@ -85,6 +97,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             errdefer self.canvas.deinit();
             errdefer self.commands.deinit();
             self.context = .withRuntime(&self.input, &self.canvas);
+            self.context.simulation_seed = simulation_seed;
             self.protocol = app.GameProtocol(Game).bind(&self.game);
             self.renderer = render.HeadlessRenderer.init(allocator, &self.canvas);
             errdefer self.renderer.deinit();
@@ -106,6 +119,24 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
                 try self.protocol.update(&self.context, frame.elapsed_seconds);
                 try self.protocol.draw(&self.context, frame.interpolation_alpha);
                 self.input.beginFrame();
+            }
+        }
+
+        /// Drives the callback protocol with recorded normalized fixed-tick
+        /// input. The replay is independent of any native window or renderer.
+        pub fn runReplay(self: *Self, replay: input_replay.Replay) !void {
+            if (replay.fixed_hz == 0) return error.InvalidReplay;
+            if (replay.simulation_seed) |seed| {
+                const algorithm = replay.rng_algorithm orelse return error.InvalidReplay;
+                if (algorithm != DeterministicRng.algorithm) return error.UnsupportedReplayRng;
+                if (self.context.simulation_seed == null or self.context.simulation_seed.? != seed) return error.ReplaySeedMismatch;
+            } else if (replay.rng_algorithm != null) {
+                return error.InvalidReplay;
+            }
+            for (replay.frames, 0..) |_, index| {
+                try replay.applyFrame(index, &self.input);
+                try self.protocol.update(&self.context, frameSeconds(replay.fixed_hz));
+                try self.protocol.draw(&self.context, 0);
             }
         }
 
@@ -417,6 +448,112 @@ test "headless runner executes scripted protocol frames and captures commands" {
     try std.testing.expect(capture.image_hash != 0);
     try std.testing.expectEqual(@as(usize, 1), capture.commands.len);
     try std.testing.expectEqual(render.Command{ .rect = commands[0].rect }, capture.commands[0]);
+}
+
+test "headless runner replays normalized input with identical state and canvas output" {
+    const Game = struct {
+        x: i32 = 1,
+
+        pub fn init(_: *@This(), _: *app.GameContext) !void {}
+
+        pub fn update(self: *@This(), context: *app.GameContext, _: f32) !void {
+            if (context.input.isDown(.right)) self.x += 1;
+            if (context.input.isDown(.left)) self.x -= 1;
+            if (context.input.wasPressed(.action)) self.x += 2;
+        }
+
+        pub fn draw(self: *@This(), context: *app.GameContext) !void {
+            const canvas = try context.requireCanvas();
+            canvas.clear(Color.black);
+            canvas.fillRect(self.x, 1, 1, 1, Color.white);
+        }
+    };
+    var recorder = try input_replay.Recorder.init(std.testing.allocator, 60);
+    defer recorder.deinit();
+    var live_input = Input{};
+    for (0..4) |tick| {
+        live_input.beginFrame();
+        if (tick == 0) live_input.set(.right, true);
+        if (tick == 2) live_input.set(.action, true);
+        if (tick == 3) {
+            live_input.set(.right, false);
+            live_input.set(.action, false);
+        }
+        try recorder.record(live_input);
+    }
+    var replay = try recorder.finish();
+    defer replay.deinit(std.testing.allocator);
+
+    var first = try HeadlessGameRunner(Game).init(std.testing.allocator, 8, 3);
+    defer first.deinit();
+    try first.runReplay(replay);
+    const first_capture = first.capture();
+
+    var second = try HeadlessGameRunner(Game).init(std.testing.allocator, 8, 3);
+    defer second.deinit();
+    try second.runReplay(replay);
+    const second_capture = second.capture();
+    try std.testing.expectEqualDeep(first.game, second.game);
+    try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
+}
+
+test "seeded headless replay reproduces RNG initialization and simulation" {
+    const Game = struct {
+        rng: DeterministicRng = undefined,
+        target: u32 = 0,
+        player_x: i32 = 1,
+
+        pub fn init(self: *@This(), context: *app.GameContext) !void {
+            const seed = context.simulation_seed orelse return error.MissingSimulationSeed;
+            self.rng = DeterministicRng.init(seed);
+            self.target = self.rng.nextU32();
+        }
+
+        pub fn update(self: *@This(), context: *app.GameContext, _: f32) !void {
+            if (context.input.isDown(.right)) self.player_x += 1;
+            if (context.input.wasPressed(.action)) self.player_x += 2;
+        }
+
+        pub fn draw(self: *@This(), context: *app.GameContext) !void {
+            const canvas = try context.requireCanvas();
+            canvas.clear(Color.black);
+            canvas.fillRect(self.player_x, 1, 1, 1, Color.white);
+            canvas.fillRect(@intCast(self.target % 7), 2, 1, 1, Color.rgb(255, 198, 74));
+        }
+    };
+
+    var recorder = try input_replay.Recorder.initSeeded(std.testing.allocator, 60, 42);
+    defer recorder.deinit();
+    var input = Input{};
+    for (0..3) |tick| {
+        input.beginFrame();
+        if (tick == 0) input.set(.right, true);
+        if (tick == 1) input.set(.action, true);
+        if (tick == 2) {
+            input.set(.right, false);
+            input.set(.action, false);
+        }
+        try recorder.record(input);
+    }
+    var replay = try recorder.finish();
+    defer replay.deinit(std.testing.allocator);
+
+    var first = try HeadlessGameRunner(Game).initSeeded(std.testing.allocator, 8, 3, 42);
+    defer first.deinit();
+    try first.runReplay(replay);
+    const first_capture = first.capture();
+
+    var second = try HeadlessGameRunner(Game).initSeeded(std.testing.allocator, 8, 3, 42);
+    defer second.deinit();
+    try second.runReplay(replay);
+    const second_capture = second.capture();
+    try std.testing.expectEqualDeep(first.game, second.game);
+    try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
+
+    var different_seed = try HeadlessGameRunner(Game).initSeeded(std.testing.allocator, 8, 3, 43);
+    defer different_seed.deinit();
+    try std.testing.expect(first.game.target != different_seed.game.target);
+    try std.testing.expectError(error.ReplaySeedMismatch, different_seed.runReplay(replay));
 }
 
 test "test support hashes canvases and asserts failures" {

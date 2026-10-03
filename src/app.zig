@@ -14,6 +14,12 @@ pub const GameContext = struct {
     input: *const Input,
     canvas: ?*Canvas = null,
     renderer: ?*Renderer2D = null,
+    /// The explicit seed selected by the host for this simulation run.
+    ///
+    /// It is optional because existing games may not need deterministic random
+    /// initialization. A game that does should read it during `init` and own a
+    /// `DeterministicRng` in its own state.
+    simulation_seed: ?u64 = null,
     elapsed_seconds: f32 = 0,
     interpolation_alpha: f32 = 0,
 
@@ -254,4 +260,12 @@ test "runtime context exposes a canvas capability" {
     const bare = GameContext.init(&input);
     try std.testing.expectError(error.CanvasUnavailable, bare.requireCanvas());
     try std.testing.expectError(error.Renderer2DUnavailable, bare.requireRenderer2D());
+}
+
+test "game context retains an explicit simulation seed" {
+    var input = Input{};
+    var context = GameContext.init(&input);
+    try std.testing.expectEqual(@as(?u64, null), context.simulation_seed);
+    context.simulation_seed = 42;
+    try std.testing.expectEqual(@as(?u64, 42), context.simulation_seed);
 }

@@ -3,14 +3,15 @@ const contract = @import("contract.zig");
 const up = @import("unpolished-peas");
 const game_mod = @import("platformer-game");
 const frame_timing = @import("frame-timing");
-
-const input_abi_version: u32 = 1;
-const input_abi_bytes = 376;
+const browser_input = @import("input_snapshot.zig");
+const TickBuffer = browser_input.TickBuffer(up.input.Input);
 
 var frame_token: u32 = 0;
 var game: game_mod.Game = .{};
 var input: up.input.Input = .{};
-var input_bytes: [input_abi_bytes]u8 align(4) = undefined;
+var platform_input: up.input.Input = .{};
+var tick_input = TickBuffer{};
+var input_bytes: [browser_input.abi_bytes]u8 align(4) = undefined;
 var scheduler = frame_timing.Scheduler.init(frame_timing.default_fixed_hz);
 var last_timestamp_ms: ?f64 = null;
 var paused = false;
@@ -23,6 +24,8 @@ pub export fn up_browser_abi_version() u32 {
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
     input = .{};
+    platform_input = .{};
+    tick_input.reset();
     game = .{};
     scheduler = .init(frame_timing.default_fixed_hz);
     last_timestamp_ms = null;
@@ -36,7 +39,10 @@ pub export fn up_browser_frame(timestamp_ms: f64) void {
     syncInput();
     const timing = scheduler.frame(elapsedSeconds(timestamp_ms), paused);
     var step: u32 = 0;
-    while (step < timing.update_steps) : (step += 1) _ = game.step(input, scheduler.clock.step_seconds);
+    while (step < timing.update_steps) : (step += 1) {
+        tick_input.next().apply(&input);
+        _ = game.step(input, scheduler.clock.step_seconds);
+    }
     render();
     frame_token = contract.scheduleFrame();
 }
@@ -207,19 +213,15 @@ fn elapsedSeconds(timestamp_ms: f64) f32 {
 }
 
 fn syncInput() void {
-    input.beginFrame();
-    if (contract.pollInput() < input_abi_bytes) return;
-    const written = contract.readInput(@intCast(@intFromPtr(&input_bytes)), input_abi_bytes);
-    if (written != input_abi_bytes or readU32(0) != input_abi_version) return;
-    const down = readU32(20);
-    inline for (std.meta.fields(up.input.Key)) |field| {
-        const key: up.input.Key = @enumFromInt(field.value);
-        input.set(key, (down & (@as(u32, 1) << @intCast(field.value))) != 0);
+    platform_input.beginFrame();
+    if (contract.pollInput() >= browser_input.abi_bytes) {
+        const written = contract.readInput(@intCast(@intFromPtr(&input_bytes)), browser_input.abi_bytes);
+        if (written == browser_input.abi_bytes) {
+            const snapshot = browser_input.decode(&input_bytes) catch null;
+            if (snapshot) |value| value.apply(&platform_input);
+        }
     }
-}
-
-fn readU32(offset: usize) u32 {
-    return std.mem.readInt(u32, input_bytes[offset..][0..4], .little);
+    tick_input.submit(platform_input);
 }
 
 fn render() void {

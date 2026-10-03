@@ -4,12 +4,17 @@ const contract = @import("contract.zig");
 const up = @import("unpolished-peas");
 const protocol_game = @import("protocol-game");
 const frame_timing = @import("frame-timing");
+const browser_input = @import("input_snapshot.zig");
+const TickBuffer = browser_input.TickBuffer(up.input.Input);
 
 pub const target_triple = "wasm32-freestanding";
 
 var frame_token: u32 = 0;
 var game: protocol_game.Game = .{};
 var input: up.input.Input = .{};
+var platform_input: up.input.Input = .{};
+var tick_input = TickBuffer{};
+var input_bytes: [browser_input.abi_bytes]u8 align(4) = undefined;
 var game_context: up.core.GameContext = undefined;
 var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
 var protocol_failure: ?up.core.GameFailure = null;
@@ -60,6 +65,8 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     renderer = up.graphics.Renderer2D.init(runtime_allocator);
     renderer_ready = true;
     input = .{};
+    platform_input = .{};
+    tick_input.reset();
     game = .{};
     game_context = .withRenderer(&input, &game_canvas, &renderer);
     protocol = .bind(&game);
@@ -76,9 +83,11 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
 }
 
 pub export fn up_browser_frame(timestamp_ms: f64) void {
+    syncInput();
     const timing = scheduler.frame(elapsedSeconds(timestamp_ms), paused);
     var step: u32 = 0;
     while (step < timing.update_steps) : (step += 1) {
+        tick_input.next().apply(&input);
         protocol.update(&game_context, timing.update_seconds) catch {
             protocol_failure = protocol.lastFailure();
             return;
@@ -102,7 +111,9 @@ pub export fn up_browser_canvas_render_status() i32 {
 fn submitCanvas() i32 {
     if (!game_canvas_ready) return @intFromEnum(contract.Status.unavailable);
     const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(game_canvas.pixels).len) orelse return @intFromEnum(contract.Status.rejected);
-    return contract.uploadCanvas(game_canvas.width, game_canvas.height, @intCast(@intFromPtr(game_canvas.pixels.ptr)), byte_len);
+    const pixels = std.mem.sliceAsBytes(game_canvas.pixels);
+    const source: u32 = if (builtin.target.cpu.arch == .wasm32) @intCast(@intFromPtr(pixels.ptr)) else 0;
+    return contract.uploadCanvas(game_canvas.width, game_canvas.height, source, byte_len);
 }
 
 fn submitRenderer() i32 {
@@ -165,7 +176,7 @@ fn bindMaterialImage(name: []const u8, image: *const up.assets.Image) i32 {
 }
 
 fn pointer(bytes: []const u8) u32 {
-    return @intCast(@intFromPtr(bytes.ptr));
+    return if (builtin.target.cpu.arch == .wasm32) @intCast(@intFromPtr(bytes.ptr)) else 0;
 }
 
 fn length(bytes: []const u8) u32 {
@@ -190,6 +201,18 @@ fn elapsedSeconds(timestamp_ms: f64) f32 {
     if (previous == null) return scheduler.clock.step_seconds;
     if (timestamp_ms < previous.?) return 0;
     return @floatCast((timestamp_ms - previous.?) / 1000);
+}
+
+fn syncInput() void {
+    platform_input.beginFrame();
+    if (contract.pollInput() >= browser_input.abi_bytes) {
+        const written = contract.readInput(@intCast(@intFromPtr(&input_bytes)), browser_input.abi_bytes);
+        if (written == browser_input.abi_bytes) {
+            const snapshot = browser_input.decode(&input_bytes) catch null;
+            if (snapshot) |value| value.apply(&platform_input);
+        }
+    }
+    tick_input.submit(platform_input);
 }
 
 pub export fn up_browser_protocol_failure_phase() i32 {
@@ -358,7 +381,7 @@ test "browser runtime uses shared fixed-step timing and pause semantics" {
     try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.invalid_argument)), up_browser_set_paused(2));
     try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_set_paused(0));
     try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_init(64, 48));
-    input.set(.right, true);
+    platform_input.set(.right, true);
     up_browser_frame(0);
     up_browser_frame(250);
     try std.testing.expectEqual(@as(u32, 2), game.draw_calls);

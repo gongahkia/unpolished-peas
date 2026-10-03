@@ -32,6 +32,7 @@ test {
     _ = @import("presentation.zig");
     _ = @import("primitive_batch.zig");
     _ = @import("render.zig");
+    _ = @import("rng.zig");
     _ = @import("sprite_batch.zig");
     _ = @import("text_layout.zig");
     _ = @import("test_support.zig");

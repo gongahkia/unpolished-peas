@@ -57,9 +57,9 @@ test "stored top-down replay has a stable state hash" {
     var replay = try up.preview.developer.parseInputReplay(std.testing.allocator, @embedFile("replays/topdown.upr"));
     defer replay.deinit(std.testing.allocator);
     var game = Game{};
-    for (replay.frames) |frame| {
-        var input = up.input.Input{};
-        up.testSupport.applyTopDownButtons(&input, frame.buttons);
+    var input = up.input.Input{};
+    for (replay.frames, 0..) |_, index| {
+        try replay.applyFrame(index, &input);
         _ = game.step(input, up.testSupport.frameSeconds(replay.fixed_hz));
     }
     const hash = replayHash(game);

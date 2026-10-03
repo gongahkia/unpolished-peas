@@ -135,8 +135,10 @@ test "stored Breakout replay has a stable state hash" {
     var replay = try up.preview.developer.parseInputReplay(std.testing.allocator, @embedFile("replays/breakout.upr"));
     defer replay.deinit(std.testing.allocator);
     var game = Game{};
-    for (replay.frames) |frame| {
-        const axis: f32 = if ((frame.buttons & 1) != 0) -1 else if ((frame.buttons & 2) != 0) 1 else 0;
+    var input = up.input.Input{};
+    for (replay.frames, 0..) |_, index| {
+        try replay.applyFrame(index, &input);
+        const axis: f32 = if (input.isDown(.left)) -1 else if (input.isDown(.right)) 1 else 0;
         _ = game.step(up.testSupport.frameSeconds(replay.fixed_hz), axis);
     }
     const hash = replayHash(game);
