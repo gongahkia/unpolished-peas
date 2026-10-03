@@ -51,11 +51,12 @@ function Chrome.draw_header(studio, view)
   for _, item in ipairs(menus) do menu_label(studio, { x = item[3], y = 1, width = item[4], height = 25 }, item[1], item[2]) end
   local unsaved = studio.dirty or studio.room_dirty or studio.native_dirty
   studio:line(unsaved and "UNSAVED" or "SAVED", view.width - 116, 7, .62, unsaved and COLORS.gold or COLORS.mint, 108, "right")
-  local save_width = 86
+  local previewing = studio.native_preview ~= nil
+  local save_width = previewing and 112 or 86
   local breadcrumb = { x = 8, y = 27, width = view.width - save_width - 24, height = 30 }
   studio:panel(breadcrumb, COLORS.surface, COLORS.border)
   studio:line(studio:workspace_breadcrumb(), breadcrumb.x + 10, breadcrumb.y + 8, .70, COLORS.text, breadcrumb.width - 20)
-  studio:button({ x = view.width - save_width - 8, y = 29, width = save_width, height = 26 }, "SAVE", { type = "save_current" }, { selected = unsaved, enabled = studio.tab ~= "projects" })
+  studio:button({ x = view.width - save_width - 8, y = 29, width = save_width, height = 26 }, previewing and "STOP PREVIEW" or "SAVE", { type = previewing and "stop_native_preview" or "save_current" }, { selected = previewing or unsaved, enabled = studio.tab ~= "projects" })
 end
 
 function Chrome.draw_nav(studio, view)
@@ -99,7 +100,8 @@ function Chrome.draw_menu(studio)
     project = { x = 167, width = 192, items = {
       { "PROJECT LAUNCHER", { type = "tab", tab = "projects" } }, { "OPEN PROJECT FOLDER…", { type = "choose_project", kind = "folder" } },
       { "NATIVE ASSETS", { type = "tab", tab = "native" }, enabled = studio:has_project() }, { "RELOAD ROAG", { type = "reload" } },
-      { "PREVIEW PROJECT", { type = "run_project" }, enabled = studio:has_project() },
+      { studio.native_preview and "STOP PREVIEW" or "PREVIEW PROJECT", { type = studio.native_preview and "stop_native_preview" or "run_project" }, enabled = studio:has_project() },
+      { "PREVIEW MAIN SCENE", { type = "run_scene" }, enabled = studio:has_project() and not studio.native_preview },
     } },
     help = { x = 252, width = 208, items = {
       { "KEYBOARD SHORTCUTS", { type = "show_help", topic = "shortcuts" } }, { "ABOUT UNPOLISHED BEES", { type = "show_help", topic = "about" } },

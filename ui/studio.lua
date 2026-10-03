@@ -1,5 +1,6 @@
 local Bridge = require("core.roag_bridge")
 local Fs = require("core.fs")
+local Json = require("core.json")
 local Flow = require("core.flow")
 local Project = require("core.project")
 local History = require("core.history")
@@ -22,6 +23,7 @@ local Launcher = require("ui.views.launcher")
 local Presentation = require("ui.views.presentation")
 local ArtView = require("ui.views.art")
 local NativeSceneView = require("ui.views.native_scene")
+local NativePreviewView = require("ui.views.native_preview")
 
 local Studio = {}
 Studio.__index = Studio
@@ -69,7 +71,7 @@ local image_from_path = ImageLoader.load
 function Studio.new(arguments)
   local target = path_arg(arguments, "--roag") or Bridge.DEFAULT_TARGET
   local project_root = normalize_project_root(path_arg(arguments, "--project") or ".") or "."
-  local self = setmetatable({ bridge = Bridge.new(target), project_root = project_root, tab = "projects", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, room_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, art_sheet_selection = {}, art_source_scroll = 0, art_sheet_zoom = 1, art_sheet_pan_x = 0, art_sheet_pan_y = 0, art_sheet_panning = false, art_images = {}, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {}, recent_projects = {} }, Studio)
+  local self = setmetatable({ bridge = Bridge.new(target), project_root = project_root, tab = "projects", selected_screen = 1, selected_action = 1, selected_role = 1, selected_corpus = "dungeon", selected_room = 1, selected_asset = 1, selected_map_layer = 1, native_asset_scroll = 0, room_scroll = 0, role_filter = "", role_filtering = false, scroll = 0, sheet_zoom = 1, sheet_pan_x = 0, sheet_pan_y = 0, sheet_panning = false, art_sheet_selection = {}, art_source_scroll = 0, art_sheet_zoom = 1, art_sheet_pan_x = 0, art_sheet_pan_y = 0, art_sheet_panning = false, art_images = {}, map_zoom = 1, map_pan_x = 0, map_pan_y = 0, map_panning = false, dirty = false, room_dirty = false, native_dirty = false, native_preview = nil, undo_stack = {}, redo_stack = {}, room_histories = {}, active = nil, draft = "", controls = {}, status = "Loading data-driven workspace…", fonts = {}, images = {}, native_images = {}, native_quads = {}, cursors = {}, sounds = {}, recent_projects = {} }, Studio)
   self:load_assets()
   self:load_recent_projects()
   self:reload()
@@ -117,6 +119,7 @@ function Studio:reload()
 end
 
 function Studio:load_native_project()
+  self.native_preview = nil
   self.project = Project.new(self.project_root)
   local manifest, failure = self.project:load()
   if not manifest then
@@ -148,6 +151,7 @@ function Studio:workspace_breadcrumb()
     home = "Overview", projects = "Projects", native = "Native Assets", rooms = "Rooms", art = "Art & Sprites", scenes = "Scenes", flow = "Title Flow", publish = "Publish",
   }
   local label = labels[self.tab] or "Workspace"
+  if self.tab == "native" and self.native_preview then return project_name .. "  /  Native Assets  /  Preview" end
   if self.tab == "rooms" or self.tab == "art" or self.tab == "scenes" or self.tab == "flow" or self.tab == "publish" then
     return project_name .. "  /  ROAG  /  " .. label
   end
@@ -191,6 +195,9 @@ function Studio:open_project(path)
     self.tab, self.status = "projects", "Could not open project: " .. failure.reason
     return nil, failure
   end
+  -- A successful project switch is the last possible point to release the
+  -- old runtime. Failed opens leave a useful Preview session intact.
+  self:stop_native_preview("Stopped Preview before switching projects.")
   self.project_root, self.project, self.project_manifest, self.project_error = root, candidate, manifest, nil
   self.native_images, self.native_quads = {}, {}
   self:load_native_project()
@@ -219,6 +226,7 @@ end
 
 function Studio:begin_new_project()
   self:commit_field()
+  self:stop_native_preview("Stopped Preview before creating a project.")
   self.new_project = { name = "", folder = "", error = nil, collision_path = nil }
   self.tab, self.status = "projects", "Choose a project name and an empty folder."
 end
@@ -587,6 +595,7 @@ function Studio:layout()
 end
 
 function Studio:can_undo_current()
+  if self.native_preview then return false end
   if self.tab == "native" then return self.native_history and self.native_history:can_undo() end
   if self.tab == "rooms" then
     local history = self.room_histories and self.room_histories[self:room_history_key()]
@@ -596,6 +605,7 @@ function Studio:can_undo_current()
 end
 
 function Studio:can_redo_current()
+  if self.native_preview then return false end
   if self.tab == "native" then return self.native_history and self.native_history:can_redo() end
   if self.tab == "rooms" then
     local history = self.room_histories and self.room_histories[self:room_history_key()]
@@ -605,6 +615,7 @@ function Studio:can_redo_current()
 end
 
 function Studio:save_current()
+  if self.native_preview then self.status = "Stop Preview before saving authored data."; return nil, { reason = "Preview is active" } end
   if self.tab == "native" then return self:save_native() end
   if self.tab == "rooms" then return self:save_room() end
   if self.tab == "projects" then self.status = "Choose a project, then edit an asset before saving."; return end
@@ -612,6 +623,7 @@ function Studio:save_current()
 end
 
 function Studio:undo_current()
+  if self.native_preview then self.status = "Stop Preview before editing authored history."; return end
   self:commit_field()
   if self.tab == "native" then return self:undo_native() end
   if self.tab == "rooms" then return self:undo_room() end
@@ -619,6 +631,7 @@ function Studio:undo_current()
 end
 
 function Studio:redo_current()
+  if self.native_preview then self.status = "Stop Preview before editing authored history."; return end
   self:commit_field()
   if self.tab == "native" then return self:redo_native() end
   if self.tab == "rooms" then return self:redo_room() end
@@ -629,7 +642,7 @@ function Studio:show_help(topic)
   local title, message
   if topic == "shortcuts" then
     title = "Unpolished Bees shortcuts"
-    message = "Cmd/Ctrl+O  Open a project\nCmd/Ctrl+S  Save the current workspace\nCmd/Ctrl+Z  Undo\nCmd/Ctrl+Y or Cmd/Ctrl+R  Redo\nF (Art & Sprites)  Filter ROAG 1-bit roles\nWheel over a sheet  Zoom\nRight-drag a sheet  Pan"
+    message = "Cmd/Ctrl+O  Open a project\nCmd/Ctrl+S  Save the current workspace\nCmd/Ctrl+Z  Undo\nCmd/Ctrl+Y or Cmd/Ctrl+R  Redo\nEsc (Preview)  Stop Preview\nF (Art & Sprites)  Filter ROAG 1-bit roles\nWheel over a sheet  Zoom\nRight-drag a sheet  Pan"
   else
     title = "About Unpolished Bees"
     message = "A small Lua/LÖVE authoring studio for serializable 2D project data and the safe ROAG presentation boundary.\n\nProject and asset data are JSON; ROAG Lua, saves, routes, and profiles are never edited."
@@ -642,6 +655,124 @@ end
 
 function Studio:current_native_asset()
   return self.native_assets and self.native_assets[self.selected_asset]
+end
+
+local function snapshot(value)
+  local encoded, encode_reason = Json.encode(value)
+  if not encoded then return nil, { code = "preview_snapshot_failed", reason = tostring(encode_reason) } end
+  local decoded, decode_reason = Json.decode(encoded)
+  if not decoded then return nil, { code = "preview_snapshot_failed", reason = tostring(decode_reason) } end
+  return decoded
+end
+
+function Studio:preview_flow_id()
+  if not self.project_manifest then return nil end
+  local main = self.project_manifest.assets["flow.main"]
+  if main and main.type == "flow" then return "flow.main" end
+  local candidates = {}
+  for asset_id, entry in pairs(self.project_manifest.assets) do
+    if entry.type == "flow" then candidates[#candidates + 1] = asset_id end
+  end
+  table.sort(candidates)
+  return candidates[1]
+end
+
+function Studio:preview_source(scene_only)
+  if not (self.project and self.project_manifest) then return nil, { code = "project_required", reason = "Open a native project before previewing" } end
+  local flow_id = scene_only and nil or self:preview_flow_id()
+  local main_scene_id = self.project_manifest.main_scene_id
+  local overrides, included_asset = {}, nil
+  local selected = self:current_native_asset()
+  -- Native editing has a single active document.  Include it only when it is
+  -- a runtime prerequisite, so Preview cannot be blocked by an unrelated
+  -- unsaved map/generator and never has a silent partial dirty overlay.
+  if self.native_dirty and selected and self.native_asset_data and (selected.id == main_scene_id or selected.id == flow_id) then
+    local valid, validation = Project.validate_asset(self.native_asset_data, selected.entry.type)
+    if not valid then return nil, validation end
+    local document, snapshot_failure = snapshot(self.native_asset_data)
+    if not document then return nil, snapshot_failure end
+    overrides[selected.id], included_asset = document, selected.id
+  end
+  return {
+    main_scene_id = main_scene_id,
+    flow_id = flow_id,
+    asset_overrides = overrides,
+    included_asset = included_asset,
+    scene_only = scene_only == true,
+  }
+end
+
+function Studio:build_native_preview_runtime(source)
+  local runtime = Runtime.new(self.project, nil, { asset_overrides = source.asset_overrides })
+  local loaded, failure
+  if source.flow_id then loaded, failure = runtime:start(source.flow_id)
+  else loaded, failure = runtime:load_scene(source.main_scene_id) end
+  if not loaded then return nil, failure end
+  return runtime
+end
+
+function Studio:start_native_preview(scene_only)
+  self:commit_field()
+  if self.native_preview then return self:restart_native_preview() end
+  local source, source_failure = self:preview_source(scene_only)
+  if not source then
+    self.status = "Cannot preview project: " .. tostring(source_failure.reason)
+    return nil, source_failure
+  end
+  local runtime, runtime_failure = self:build_native_preview_runtime(source)
+  if not runtime then
+    self.status = "Cannot preview project: " .. tostring(runtime_failure.reason)
+    return nil, runtime_failure
+  end
+  local selected_node = self.native_selected_node and self.native_selected_node.id or nil
+  self.native_preview = {
+    runtime = runtime,
+    source = source,
+    flow_id = source.flow_id,
+    warnings = runtime:capability_warnings(),
+    context = {
+      tab = self.tab,
+      selected_asset = self.selected_asset,
+      selected_node_id = selected_node,
+      scene_zoom = self.scene_zoom,
+      scene_pan_x = self.scene_pan_x,
+      scene_pan_y = self.scene_pan_y,
+    },
+  }
+  self.native_drag, self.native_reparent_source, self.active = nil, nil, nil
+  local source_note = source.included_asset and (" using current unsaved " .. source.included_asset) or " using saved project data"
+  self.status = "Preview started" .. source_note .. "."
+  return true
+end
+
+function Studio:restart_native_preview()
+  local preview = self.native_preview
+  if not preview then return self:start_native_preview(false) end
+  local runtime, failure = self:build_native_preview_runtime(preview.source)
+  if not runtime then
+    preview.error = failure
+    self.status = "Could not restart preview: " .. tostring(failure.reason)
+    return nil, failure
+  end
+  preview.runtime, preview.warnings, preview.error = runtime, runtime:capability_warnings(), nil
+  self.status = "Preview restarted without saving authored data."
+  return true
+end
+
+function Studio:stop_native_preview(reason)
+  local preview = self.native_preview
+  if not preview then return false end
+  self.native_preview, self.native_drag, self.native_reparent_source = nil, nil, nil
+  local context = preview.context or {}
+  if self.tab == "native" and context.selected_asset and context.selected_asset ~= self.selected_asset then self:select_native_asset(context.selected_asset) end
+  if self.tab == "native" and context.selected_node_id then self:select_scene_node(context.selected_node_id) end
+  if self.tab == "native" then
+    self.scene_zoom = context.scene_zoom or self.scene_zoom
+    self.scene_pan_x = context.scene_pan_x or self.scene_pan_x
+    self.scene_pan_y = context.scene_pan_y or self.scene_pan_y
+  end
+  self.status = reason or "Stopped Preview and returned to the editor."
+  return true
 end
 
 function Studio:draw_native_flow(flow, canvas)
@@ -899,6 +1030,10 @@ function Studio:draw_native_room_template_workspace(workspace)
 end
 
 function Studio:draw_native(view)
+  if self.native_preview then
+    NativePreviewView.draw(self, view)
+    return
+  end
   local list = { x = view.body.x, y = view.body.y, width = dock_width(view.body.width, .24, 258, 332), height = view.body.height }
   local editor = { x = list.x + list.width + 16, y = view.body.y, width = view.body.width - list.width - 16, height = view.body.height }
   self:panel(list); self:canvas_surface(editor); self:dock_title(list, "ASSETS", "JSON")
@@ -930,8 +1065,8 @@ function Studio:draw_native(view)
   end
   self.native_asset_list_rect = { x = list.x + 6, y = asset_top, width = list.width - 12, height = math.max(0, asset_bottom - asset_top) }
   self:line("PROJECT PREVIEW", list.x + 14, preview_y, .56, COLORS.muted, list.width - 28)
-  self:button({ x = list.x + 10, y = preview_y + 18, width = list.width - 20, height = 28 }, "PREVIEW PROJECT", { type = "run_project" }, { selected = self.runtime and self.runtime.scene ~= nil })
-  self:button({ x = list.x + 10, y = preview_y + 50, width = list.width - 20, height = 28 }, "PREVIEW MAIN", { type = "run_scene" })
+  self:button({ x = list.x + 10, y = preview_y + 18, width = list.width - 20, height = 28 }, "PREVIEW PROJECT", { type = "run_project" })
+  self:button({ x = list.x + 10, y = preview_y + 50, width = list.width - 20, height = 28 }, "PREVIEW MAIN SCENE", { type = "run_scene" })
 
   local workspace, selected = NativeWorkspace.layout(editor), self:current_native_asset()
   self:draw_native_document_header(workspace, selected)
@@ -1176,6 +1311,7 @@ function Studio:filedropped(file)
     self:request_project_open(path)
     return
   end
+  if self.native_preview then self.status = "Stop Preview before importing an asset."; return end
   if not self.project_manifest then self.status = "Open a project before importing assets."; return end
   if not self:resolve_native_before_change() then return end
   local extension = (path:match("%.([^.]+)$") or ""):lower()
@@ -1227,7 +1363,9 @@ function Studio:activate(action)
   else
     self.header_menu = nil
   end
-  if kind == "tab" then self:commit_field(); self.tab = action.tab
+  if kind == "tab" then
+    if self.native_preview and action.tab ~= "native" then self:stop_native_preview("Stopped Preview before leaving Native Assets.") end
+    self:commit_field(); self.tab = action.tab
   elseif kind == "save_current" then self:save_current()
   elseif kind == "undo_current" then self:undo_current()
   elseif kind == "redo_current" then self:redo_current()
@@ -1244,9 +1382,12 @@ function Studio:activate(action)
   elseif kind == "open_recent_project" then self:request_project_open(action.path)
   elseif kind == "project_path" then self:begin_project_path()
   elseif kind == "native_asset" then
-    if action.index ~= self.selected_asset and self:resolve_native_before_change() then self:select_native_asset(action.index) end
-  elseif kind == "create_native_asset" then self:create_native_asset(action.asset_type)
-  elseif kind == "remove_native_asset" then self:remove_native_asset()
+    if self.native_preview then self.status = "Stop Preview before selecting another asset."
+    elseif action.index ~= self.selected_asset and self:resolve_native_before_change() then self:select_native_asset(action.index) end
+  elseif kind == "create_native_asset" then
+    if self.native_preview then self.status = "Stop Preview before creating an asset." else self:create_native_asset(action.asset_type) end
+  elseif kind == "remove_native_asset" then
+    if self.native_preview then self.status = "Stop Preview before removing an asset." else self:remove_native_asset() end
   elseif kind == "native_node" then
     local node = self:select_scene_node(action.node)
     self.native_drag = (action.movable == false or not NativeSceneView.is_movable(node)) and nil or { scene_node = node }
@@ -1331,15 +1472,12 @@ function Studio:activate(action)
     local result, failure = Generator.generate(self.native_asset_data)
     self.generated_preview = result
     self.status = result and "Generated deterministic native preview." or ("Could not generate preview: " .. failure.reason)
-  elseif kind == "save_native" then self:save_native()
-  elseif kind == "run_project" then
-    local flow_id
-    for asset_id, entry in pairs(self.project_manifest.assets) do if entry.type == "flow" then flow_id = asset_id break end end
-    local ok, failure = flow_id and self.runtime:start(flow_id) or self.runtime:load_scene(self.project_manifest.main_scene_id)
-    self.status = ok and "Running native JSON project preview." or ("Could not run native project: " .. failure.reason)
-  elseif kind == "run_scene" then
-    local ok, failure = self.runtime:load_scene(self.project_manifest.main_scene_id)
-    self.status = ok and "Running configured main scene preview." or ("Could not run main scene: " .. failure.reason)
+  elseif kind == "save_native" then
+    if self.native_preview then self.status = "Stop Preview before saving authored data." else self:save_native() end
+  elseif kind == "run_project" then self:start_native_preview(false)
+  elseif kind == "run_scene" then self:start_native_preview(true)
+  elseif kind == "restart_native_preview" then self:restart_native_preview()
+  elseif kind == "stop_native_preview" then self:stop_native_preview()
   elseif kind == "corpus" then
     if self:resolve_room_before_change() then self.selected_corpus, self.selected_room, self.room_graph, self.room_brush, self.room_diagnostics, self.room_scroll = action.id, 1, nil, nil, nil, 0 end
   elseif kind == "room" then if action.index ~= self.selected_room and self:resolve_room_before_change() then self.selected_room, self.room_graph, self.room_diagnostics = action.index, nil, nil end
@@ -1378,7 +1516,7 @@ function Studio:activate(action)
     local report = self.room_diagnostics
     self.status = report.valid and "Corpus covers every cardinal connector pattern." or ("Corpus needs " .. #report.missing_patterns .. " connector patterns; see diagnostics.")
   elseif kind == "save" then self:save()
-  elseif kind == "reload" then if self:confirm_discard("Reload Studio", "Discard unsaved Studio changes and reload from disk?") then self:reload() end
+  elseif kind == "reload" then if self:confirm_discard("Reload Studio", "Discard unsaved Studio changes and reload from disk?") then self:stop_native_preview("Stopped Preview before reloading ROAG."); self:reload() end
   elseif kind == "undo" then self:commit_field(); self:undo()
   elseif kind == "undo_native" then self:undo_native()
   elseif kind == "redo_native" then self:redo_native()
@@ -1413,6 +1551,13 @@ function Studio:activate(action)
 end
 
 function Studio:update()
+  if self.native_preview and self.native_preview.runtime and not self.native_preview.error then
+    local advanced, failure = self.native_preview.runtime:update()
+    if not advanced then
+      self.native_preview.error = failure or { reason = "Runtime execution failed" }
+      self.status = "Preview stopped after a runtime error: " .. tostring(self.native_preview.error.reason)
+    end
+  end
   local x, y = love.mouse.getPosition(); local cursor = "default"
   if self.sheet_panning or self.art_sheet_panning or self.map_panning or self.scene_panning then cursor = "pan" else
     for _, control in ipairs(self.controls) do if control.enabled ~= false and inside(x, y, control.rect) then cursor = control.cursor or "action" end end
@@ -1423,8 +1568,8 @@ end
 function Studio:mousepressed(x, y, button)
   if button == 2 and self.tab == "art" and self.pack_sheet_rect and inside(x, y, self.pack_sheet_rect) then self.art_sheet_panning = true; return end
   if button == 2 and self.tab == "art" and self.sheet_hover then self.sheet_panning = true; return end
-  if button == 2 and self.tab == "native" and self.map_viewport and inside(x, y, self.map_viewport) then self.map_panning = true; return end
-  if button == 2 and self.tab == "native" and self.scene_viewport and inside(x, y, self.scene_viewport) then self.scene_panning = true; return end
+  if button == 2 and self.tab == "native" and not self.native_preview and self.map_viewport and inside(x, y, self.map_viewport) then self.map_panning = true; return end
+  if button == 2 and self.tab == "native" and not self.native_preview and self.scene_viewport and inside(x, y, self.scene_viewport) then self.scene_panning = true; return end
   if button ~= 1 then return end
   for index = #self.controls, 1, -1 do local control = self.controls[index]; if control.enabled ~= false and inside(x, y, control.rect) then self:activate(control.action); return end end
   self.header_menu = nil
@@ -1441,7 +1586,7 @@ function Studio:mousemoved(_, _, dx, dy)
   if self.art_sheet_panning then self.art_sheet_pan_x, self.art_sheet_pan_y = self.art_sheet_pan_x + dx, self.art_sheet_pan_y + dy end
   if self.map_panning then self.map_pan_x, self.map_pan_y = self.map_pan_x + dx, self.map_pan_y + dy end
   if self.scene_panning then self.scene_pan_x, self.scene_pan_y = (self.scene_pan_x or 0) + dx, (self.scene_pan_y or 0) + dy end
-  if self.native_drag and self.tab == "native" then
+  if self.native_drag and self.tab == "native" and not self.native_preview then
     if not self.native_drag.recorded then self:record_native(); self.native_drag.recorded = true end
     if self.native_drag.flow_node then
       local point = self.native_drag.flow_node.editor or { x = 0, y = 0 }
@@ -1477,7 +1622,9 @@ function Studio:wheelmoved(_, dy)
     end
     return
   end
-  if self.tab == "native" and self.native_asset_data and self.native_asset_data.type == "scene" then
+  if self.tab == "native" and self.native_preview then
+    return
+  elseif self.tab == "native" and self.native_asset_data and self.native_asset_data.type == "scene" then
     local x, y = love.mouse.getPosition()
     if self.native_asset_list_rect and inside(x, y, self.native_asset_list_rect) then
       local rows = math.max(1, math.floor(self.native_asset_list_rect.height / 34))
@@ -1514,6 +1661,10 @@ function Studio:textinput(value)
 end
 
 function Studio:keypressed(key)
+  if self.native_preview and key == "escape" then
+    self:stop_native_preview()
+    return
+  end
   local modifier = love.keyboard.isDown("lctrl") or love.keyboard.isDown("rctrl") or love.keyboard.isDown("lgui") or love.keyboard.isDown("rgui")
   if modifier and key == "o" then
     self:choose_project("folder")

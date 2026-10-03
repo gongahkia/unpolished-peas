@@ -68,6 +68,108 @@ test("runtime executes declarative scene transitions", function()
   assert(runtime.variables.credits == 0)
 end)
 
+test("runtime preview snapshots authored data, handles scene-only projects, and contains unsupported flow semantics", function()
+  local starter = Project.new("examples/starter")
+  local draft_scene = assert(starter:load_asset("scene.main"))
+  draft_scene.root.children[2].properties.text = "DRAFT PREVIEW"
+  local runtime = Runtime.new(starter, nil, { asset_overrides = { ["scene.main"] = draft_scene } })
+  assert(runtime:start("flow.main"))
+  assert(runtime.scene.root.children[2].properties.text == "DRAFT PREVIEW")
+  runtime.scene.root.children[2].properties.text = "RUNTIME ONLY"
+  assert(starter:load_asset("scene.main").root.children[2].properties.text == "UNPOLISHED BEES")
+  runtime:emit("open_shop")
+  assert(runtime:update())
+  assert(runtime.scene_id == "scene.shop")
+  runtime.variables.credits = 9
+  local restarted = Runtime.new(starter)
+  assert(restarted:start("flow.main") and restarted.variables.credits == 0)
+
+  local unsupported_scene = assert(starter:load_asset("scene.main"))
+  unsupported_scene.root.children[#unsupported_scene.root.children + 1] = { id = "node.sprite_preview", type = "sprite", properties = {}, children = {} }
+  local warned_scene = Runtime.new(starter, nil, { asset_overrides = { ["scene.main"] = unsupported_scene } })
+  assert(warned_scene:start("flow.main"))
+  assert(warned_scene:scene_capability_warnings(warned_scene.scene)[1].node_type == "sprite")
+
+  local flow = assert(starter:load_asset("flow.main"))
+  flow.nodes = {
+    { id = "graph.open", type = "event", event = "open_shop" },
+    { id = "graph.condition", type = "condition" },
+    { id = "graph.transition", type = "transition", scene_id = "scene.shop" },
+  }
+  flow.edges = { { from = "graph.open", to = "graph.condition" }, { from = "graph.condition", to = "graph.transition" } }
+  local guarded = Runtime.new(starter, nil, { asset_overrides = { ["flow.main"] = flow } })
+  assert(guarded:start("flow.main"))
+  assert(#guarded:flow_capability_warnings(guarded.flow) == 1)
+  guarded:emit("open_shop")
+  assert(guarded:update())
+  assert(guarded.scene_id == "scene.main")
+  assert(guarded.diagnostics[1].code == "unsupported_flow_node")
+
+  flow.nodes = { { id = "graph.open", type = "event", event = "open_shop" }, { id = "graph.broken", type = "transition", scene_id = "scene.missing" } }
+  flow.edges = { { from = "graph.open", to = "graph.broken" } }
+  local broken = Runtime.new(starter, nil, { asset_overrides = { ["flow.main"] = flow } })
+  assert(broken:start("flow.main"))
+  broken:emit("open_shop")
+  local advanced, runtime_failure = broken:update()
+  assert(not advanced and runtime_failure.code == "unknown_asset" and broken.last_error == runtime_failure)
+
+  local root = temporary_root()
+  local project = assert(Project.create(root, "Scene Only Preview"))
+  local scene_only = Runtime.new(project)
+  assert(scene_only:load_scene("scene.main"))
+  assert(scene_only.scene_id == "scene.main" and scene_only:visual_bounds() == nil)
+  remove_new_project(root)
+end)
+
+test("Studio Preview Mode restores context without saving or rewriting authoring history", function()
+  local root = temporary_root()
+  assert(Project.create(root, "Preview Studio Fixture"))
+  local studio = setmetatable({
+    project_root = root, tab = "native", selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+  }, Studio)
+  studio:load_native_project()
+  studio:activate({ type = "add_native_node", node_type = "panel" })
+  local selected_id = studio.native_selected_node.id
+  local history_count = #studio.native_history.undo_stack
+  local original_bytes = assert(Fs.read(root .. "/assets/main.scene.json"))
+  studio:activate({ type = "run_project" })
+  assert(studio.native_preview and studio.native_preview.runtime.scene_id == "scene.main")
+  assert(#studio.native_preview.runtime.scene.root.children == 1)
+  local initial_runtime = studio.native_preview.runtime
+  studio:activate({ type = "restart_native_preview" })
+  assert(studio.native_preview.runtime ~= initial_runtime and studio.native_preview.runtime.scene_id == "scene.main")
+  studio:activate({ type = "stop_native_preview" })
+  assert(not studio.native_preview and studio.native_dirty)
+  assert(studio.native_selected_node.id == selected_id and #studio.native_history.undo_stack == history_count)
+  assert(Fs.read(root .. "/assets/main.scene.json") == original_bytes)
+  studio:activate({ type = "undo_native" })
+  assert(#studio.native_asset_data.root.children == 0)
+  remove_new_project(root)
+end)
+
+test("Studio Preview Mode rejects missing prerequisites and is released on project switching", function()
+  local first_root, second_root = temporary_root(), temporary_root()
+  assert(Project.create(first_root, "Preview First"))
+  assert(Project.create(second_root, "Preview Second"))
+  local studio = setmetatable({
+    project_root = first_root, tab = "native", selected_asset = 1, selected_map_layer = 1,
+    native_images = {}, native_quads = {}, sounds = {}, status = "", recent_projects = {},
+  }, Studio)
+  studio:load_native_project()
+  local original_main = studio.project_manifest.main_scene_id
+  studio.project_manifest.main_scene_id = "scene.missing"
+  studio:activate({ type = "run_project" })
+  assert(not studio.native_preview and studio.status:match("Cannot preview project"))
+  studio.project_manifest.main_scene_id = original_main
+  studio:activate({ type = "run_project" })
+  assert(studio.native_preview)
+  assert(studio:open_project(second_root))
+  assert(not studio.native_preview and studio.project_root == second_root)
+  remove_new_project(first_root)
+  remove_new_project(second_root)
+end)
+
 test("schema rejects unsafe asset references and embedded lua", function()
   local project = Project.empty("Unsafe")
   project.assets["scene.main"] = { type = "scene", path = "../escape.json" }
