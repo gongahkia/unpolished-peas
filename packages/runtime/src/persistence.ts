@@ -11,6 +11,8 @@ export interface ProjectDocument {
   readonly title: string;
   readonly manifest: string;
   readonly files: Readonly<Record<string, Uint8Array>>;
+  /** Exact optional M01W authoring source; manifest and files are its editor-facing view. */
+  readonly workcart?: string;
 }
 
 export interface StoredProject extends ProjectDocument {
@@ -383,6 +385,12 @@ function validateProject(project: ProjectDocument): void {
   validateId(project.id);
   if (project.title.length === 0 || project.title.length > 64 || project.manifest.length === 0) {
     throw new TypeError('invalid MOD-01 project title or manifest');
+  }
+  if (
+    project.workcart !== undefined &&
+    (project.workcart.length === 0 || project.workcart.length > 2 * 1024 * 1024)
+  ) {
+    throw new RangeError('project work-cart source is outside studio limits');
   }
   const entries = Object.entries(project.files);
   if (entries.length === 0 || entries.length > 4096) {
