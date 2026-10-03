@@ -45,6 +45,7 @@ struct LoadedProject {
     manifest_source: String,
     manifest: ProjectManifest,
     files: BTreeMap<String, Vec<u8>>,
+    workcart_tests: Vec<WorkcartTest>,
 }
 
 #[derive(Debug)]
@@ -581,6 +582,9 @@ fn test_directory(path: &Path) -> ExitCode {
     let Ok(project) = load_project(path) else {
         return ExitCode::FAILURE;
     };
+    if matches!(&project.input, ProjectInput::Workcart(_)) {
+        return test_workcart(&project);
+    }
     let tests_root = path.join("tests");
     let mut test_paths = Vec::new();
     if tests_root.is_dir()
@@ -634,6 +638,40 @@ fn test_directory(path: &Path) -> ExitCode {
     status(failed > 0)
 }
 
+fn test_workcart(project: &LoadedProject) -> ExitCode {
+    let main_cartridge = project
+        .workcart_tests
+        .iter()
+        .any(|test| test.kind == WorkcartTestKind::Replay)
+        .then(|| project.pack());
+    let mut passed = 0_usize;
+    let mut failed = 0_usize;
+    for test in &project.workcart_tests {
+        let result = match test.kind {
+            WorkcartTestKind::Modl => run_modl_test_payload(project, &test.path, &test.payload),
+            WorkcartTestKind::Replay => match &main_cartridge {
+                Some(Ok(cartridge)) => {
+                    run_scripted_test_payload(None, cartridge, test.payload.as_bytes())
+                }
+                Some(Err(error)) => Err(error.to_string()),
+                None => Err("internal test runner error".to_owned()),
+            },
+        };
+        match result {
+            Ok(()) => {
+                passed += 1;
+                println!("PASS {}", test.name);
+            }
+            Err(error) => {
+                failed += 1;
+                eprintln!("FAIL {}: {error}", test.name);
+            }
+        }
+    }
+    println!("test result: {passed} passed; {failed} failed");
+    status(failed > 0)
+}
+
 fn collect_test_paths(directory: &Path, paths: &mut Vec<PathBuf>) -> Result<(), std::io::Error> {
     for entry in fs::read_dir(directory)? {
         let entry = entry?;
@@ -657,10 +695,15 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
         .to_str()
         .ok_or_else(|| "test path is not valid UTF-8".to_owned())?;
     let source = fs::read_to_string(test_path).map_err(|error| error.to_string())?;
-    let compile_fail = test_path
-        .file_name()
-        .and_then(|name| name.to_str())
-        .is_some_and(|name| name.ends_with(".fail.modl"));
+    run_modl_test_payload(project, relative, &source)
+}
+
+fn run_modl_test_payload(
+    project: &LoadedProject,
+    relative: &str,
+    source: &str,
+) -> Result<(), String> {
+    let compile_fail = relative.ends_with(".fail.modl");
     let expected_code = source.lines().find_map(|line| {
         line.trim()
             .strip_prefix("// expect ")
@@ -674,7 +717,9 @@ fn run_modl_test(root: &Path, project: &LoadedProject, test_path: &Path) -> Resu
     manifest.thumbnail = None;
     manifest.display = None;
     let manifest_source = toml::to_string(&manifest).map_err(|error| error.to_string())?;
-    let compilation = compile_project(&manifest_source, &project.files, CompileMode::Debug);
+    let mut files = project.files.clone();
+    files.insert(relative.to_owned(), source.as_bytes().to_vec());
+    let compilation = compile_project(&manifest_source, &files, CompileMode::Debug);
     if compile_fail {
         let code = match compilation {
             Err(error) => Some(error.code.to_owned()),
@@ -735,11 +780,19 @@ fn run_scripted_test(
     test_path: &Path,
 ) -> Result<(), String> {
     let source = fs::read(test_path).map_err(|error| error.to_string())?;
+    run_scripted_test_payload(Some(root), packed, &source)
+}
+
+fn run_scripted_test_payload(
+    root: Option<&Path>,
+    packed: &modl_core::PackedCartridge,
+    source: &[u8],
+) -> Result<(), String> {
     if source.len() > usize::try_from(MAX_TRACE_BYTES).unwrap_or(usize::MAX) {
         return Err("scripted test exceeds 8 MiB".to_owned());
     }
     let spec: serde_json::Value =
-        serde_json::from_slice(&source).map_err(|error| error.to_string())?;
+        serde_json::from_slice(source).map_err(|error| error.to_string())?;
     if spec.get("revision").and_then(serde_json::Value::as_u64) != Some(1) {
         return Err("scripted test revision must be 1".to_owned());
     }
@@ -758,8 +811,13 @@ fn run_scripted_test(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({ "revision": 1, "frames": [] }));
     let save = match spec.get("save").and_then(serde_json::Value::as_str) {
-        Some(relative) => read_save_image(Some(&root.join(relative)))
-            .map_err(|()| "could not load scripted save fixture".to_owned())?,
+        Some(relative) => {
+            let root = root.ok_or_else(|| {
+                "work-cart replay tests cannot reference external save fixtures".to_owned()
+            })?;
+            read_save_image(Some(&root.join(relative)))
+                .map_err(|()| "could not load scripted save fixture".to_owned())?
+        }
         None => Vec::new(),
     };
     let (cartridge, program) =
@@ -1395,6 +1453,7 @@ fn load_project(path: &Path) -> Result<LoadedProject, ()> {
         manifest_source,
         manifest,
         files,
+        workcart_tests: Vec::new(),
     })
 }
 
@@ -1416,6 +1475,7 @@ fn load_workcart(path: &Path) -> Result<LoadedProject, ()> {
         manifest_source,
         manifest: project.manifest,
         files: project.files,
+        workcart_tests: project.tests,
     })
 }
 

@@ -298,6 +298,7 @@ fn migrate_turns_a_v1_project_and_its_tests_into_one_workcart() {
     let packed = workcart.with_extension("m01c");
     for arguments in [
         vec!["check".to_owned(), workcart.display().to_string()],
+        vec!["test".to_owned(), workcart.display().to_string()],
         vec![
             "pack".to_owned(),
             workcart.display().to_string(),
