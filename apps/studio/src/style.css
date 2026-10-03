@@ -58,8 +58,7 @@ body,
 }
 
 /* The cursor is intentionally scoped to the console, never the surrounding page. */
-#studio,
-#studio * {
+:where(#studio, #studio *) {
   cursor: var(--mod01-cursor-default), default;
 }
 
