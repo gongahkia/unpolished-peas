@@ -177,6 +177,85 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
 }
 
 #[test]
+fn workcart_commands_pack_export_check_and_run_through_the_same_cartridge() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-workcart-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    fs::write(
+        &cart,
+        r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "cli-workcart"
+title = "CLI WORKCART"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = '''
+on draw:
+  clear(25)
+'''
+"#,
+    )
+    .expect("work-cart writes");
+    let packed = cart.with_extension("m01c");
+    let html = cart.with_extension("html");
+    let trace = cart.with_extension("trace.json");
+    for arguments in [
+        vec!["check".to_owned(), cart.display().to_string()],
+        vec![
+            "pack".to_owned(),
+            cart.display().to_string(),
+            "--output".to_owned(),
+            packed.display().to_string(),
+        ],
+        vec![
+            "export".to_owned(),
+            "html".to_owned(),
+            cart.display().to_string(),
+            "--output".to_owned(),
+            html.display().to_string(),
+        ],
+        vec![
+            "run".to_owned(),
+            cart.display().to_string(),
+            "--headless".to_owned(),
+            "--frames".to_owned(),
+            "2".to_owned(),
+            "--output".to_owned(),
+            trace.display().to_string(),
+        ],
+    ] {
+        let output = binary().args(arguments).output().expect("CLI starts");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(
+        fs::read_to_string(&html)
+            .expect("work-cart HTML reads")
+            .contains("CARTRIDGE FORMAT/2")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(&trace).expect("trace reads"))
+            .expect("trace is JSON")["summary"]["completedFrames"],
+        2
+    );
+    for path in [cart, packed, html, trace] {
+        fs::remove_file(path).expect("temporary work-cart artifact removes");
+    }
+}
+
+#[test]
 fn headless_run_emits_deterministic_machine_readable_traces_for_projects_and_cartridges() {
     let project =
         std::env::temp_dir().join(format!("mod01-headless-{}-{}", std::process::id(), line!()));
