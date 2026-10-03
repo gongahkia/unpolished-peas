@@ -79,7 +79,11 @@ pub const SaveStore = struct {
     }
 
     pub fn validateKey(key: []const u8) Error!void {
-        if (!isValidIdentifier(key, max_key_bytes)) return error.InvalidKey;
+        // `.` is useful for game-controlled versions (for example,
+        // `settings.v2`), but two consecutive dots have no portable
+        // key/value meaning and resemble parent-directory traversal on a
+        // filesystem. Reject them rather than normalizing a game key.
+        if (!isValidIdentifier(key, max_key_bytes) or std.mem.indexOf(u8, key, "..") != null) return error.InvalidKey;
     }
 
     /// Browser callback games declare `pub const storage_id = "...";` so the
@@ -104,7 +108,7 @@ test "save keys are small portable identifiers" {
     try SaveStore.validateKey("slot-1");
     try SaveStore.validateKey("progress.v2");
     try std.testing.expect(SaveStore.isValidApplicationId("example-game"));
-    for ([_][]const u8{ "", "../save", "a/b", "a\\b", "a:b", "a\x00b" }) |key| {
+    for ([_][]const u8{ "", "..", "progress..v2", "../save", "a/b", "a\\b", "a:b", "a\x00b" }) |key| {
         try std.testing.expectError(error.InvalidKey, SaveStore.validateKey(key));
     }
 }

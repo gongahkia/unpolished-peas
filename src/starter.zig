@@ -78,6 +78,8 @@ test "starter creates a structured project and rejects invalid destinations" {
     defer std.testing.allocator.free(game);
     try std.testing.expect(std.mem.indexOf(u8, game, "up.core.DeterministicRng") != null);
     try std.testing.expect(std.mem.indexOf(u8, game, "*up.core.GameContext") != null);
+    try std.testing.expect(std.mem.indexOf(u8, game, "ctx.save_data") != null);
+    try std.testing.expect(std.mem.indexOf(u8, game, "pub const storage_id") != null);
     try std.testing.expect(std.mem.indexOf(u8, game, "unpolished-peas-sdl3") == null);
     try std.testing.expect(std.mem.indexOf(u8, source, "sdl.playGame(Game)") != null);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);

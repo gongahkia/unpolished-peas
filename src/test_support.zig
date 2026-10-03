@@ -57,7 +57,7 @@ pub const Clock = struct {
 /// hosts. It never touches a developer's real application-data directory.
 pub const InMemorySaveStore = struct {
     allocator: std.mem.Allocator,
-    values: std.StringHashMap([]u8) = .empty,
+    values: std.StringHashMap([]u8) = undefined,
     store: SaveStore = undefined,
 
     const operations = SaveStore.VTable{
@@ -69,7 +69,7 @@ pub const InMemorySaveStore = struct {
     };
 
     pub fn init(self: *InMemorySaveStore, allocator: std.mem.Allocator) void {
-        self.* = .{ .allocator = allocator };
+        self.* = .{ .allocator = allocator, .values = std.StringHashMap([]u8).init(allocator) };
         self.store = SaveStore.init(self, &operations);
     }
 
@@ -79,7 +79,7 @@ pub const InMemorySaveStore = struct {
             self.allocator.free(entry.key_ptr.*);
             self.allocator.free(entry.value_ptr.*);
         }
-        self.values.deinit(self.allocator);
+        self.values.deinit();
         self.* = undefined;
     }
 
@@ -111,7 +111,7 @@ pub const InMemorySaveStore = struct {
         }
         const key_copy = self.allocator.dupe(u8, key) catch return error.OutOfMemory;
         errdefer self.allocator.free(key_copy);
-        self.values.put(self.allocator, key_copy, copy) catch return error.OutOfMemory;
+        self.values.put(key_copy, copy) catch return error.OutOfMemory;
     }
 
     fn delete(context: *anyopaque, key: []const u8) SaveStore.Error!void {
@@ -132,6 +132,22 @@ pub const HeadlessFrame = struct {
     elapsed_seconds: f32 = 1.0 / 60.0,
     interpolation_alpha: f32 = 0,
 };
+
+test "in-memory save store isolates deterministic tests from native storage" {
+    var saves: InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    const store = saves.capability();
+    try std.testing.expect(!(try store.exists("settings")));
+    try std.testing.expectError(error.NotFound, store.readAlloc(std.testing.allocator, "settings", 32));
+    try store.write("settings", &.{ 0, 1, 2, 255 });
+    var bytes: [4]u8 = undefined;
+    try std.testing.expectEqualSlices(u8, &.{ 0, 1, 2, 255 }, try store.read("settings", &bytes));
+    try store.write("settings", "new");
+    try std.testing.expectError(error.TooLarge, store.read("settings", bytes[0..2]));
+    try store.delete("settings");
+    try std.testing.expectError(error.NotFound, store.delete("settings"));
+}
 
 pub const HeadlessCapture = struct { // borrows the runner's command and trace storage.
     image_hash: u64,

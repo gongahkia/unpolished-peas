@@ -35,11 +35,13 @@ pub const Game = struct {
     player: up.core.Vec2 = player_start,
     pickup: up.core.Vec2 = .{},
     score: u32 = 0,
+    best_score: u32 = 0,
 
     /// Initialization receives the seed selected by the host. A replay test
     /// supplies the same value through `HeadlessGameRunner.initSeeded`.
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
         try self.reset(ctx.simulation_seed orelse default_seed);
+        self.loadBestScore(ctx);
     }
 
     /// `update` runs at the host's fixed timestep. It never reads wall-clock
@@ -61,6 +63,10 @@ pub const Game = struct {
 
         if (self.collectsPickup()) {
             self.score += 1;
+            if (self.score > self.best_score) {
+                self.best_score = self.score;
+                self.saveBestScore(ctx);
+            }
             try self.spawnPickup();
         }
     }
@@ -76,7 +82,7 @@ pub const Game = struct {
         canvas.fillRect(@intFromFloat(self.player.x), @intFromFloat(self.player.y), player_size, player_size, up.core.Color.rgb(92, 196, 255));
 
         var label_buffer: [24]u8 = undefined;
-        const label = try std.fmt.bufPrint(&label_buffer, "SEEDS {d}", .{self.score});
+        const label = try std.fmt.bufPrint(&label_buffer, "SEEDS {d}  BEST {d}", .{ self.score, self.best_score });
         canvas.drawText(label, 4, 2, up.core.Color.rgb(232, 240, 248));
         canvas.drawText("ARROWS MOVE  SPACE DASH  ENTER RESTART", 4, 78, up.core.Color.rgb(159, 180, 201));
     }
@@ -99,6 +105,23 @@ pub const Game = struct {
         const dx = self.player.x - self.pickup.x;
         const dy = self.player.y - self.pickup.y;
         return dx * dx + dy * dy <= 100;
+    }
+
+    fn loadBestScore(self: *Game, ctx: *up.core.GameContext) void {
+        const saves = ctx.save_data orelse return;
+        var bytes: [4]u8 = undefined;
+        const stored = saves.read("best-score", &bytes) catch return;
+        if (stored.len != bytes.len) return;
+        self.best_score = std.mem.readInt(u32, &bytes, .little);
+    }
+
+    fn saveBestScore(self: *const Game, ctx: *up.core.GameContext) void {
+        const saves = ctx.save_data orelse return;
+        var bytes: [4]u8 = undefined;
+        std.mem.writeInt(u32, &bytes, self.best_score, .little);
+        // Save availability is an environmental concern. A failed write keeps
+        // the current run playable and leaves the in-memory best score intact.
+        saves.write("best-score", &bytes) catch {};
     }
 };
 
@@ -129,6 +152,7 @@ test "Seed Sprint replays seeded movement into a pickup and one Canvas trace" {
     const second_capture = second.capture();
 
     try std.testing.expectEqual(@as(u32, 1), first.game.score);
+    try std.testing.expectEqual(@as(u32, 1), first.game.best_score);
     try std.testing.expectEqual(@as(f32, 96), first.game.player.x);
     try std.testing.expectEqual(@as(f32, 61), first.game.player.y);
     try std.testing.expectEqualDeep(first.game, second.game);
@@ -138,6 +162,19 @@ test "Seed Sprint replays seeded movement into a pickup and one Canvas trace" {
     // comparison above keeps a future mismatch diagnosable at field level.
     try std.testing.expectEqual(@as(u64, 12_736_125_027_304_076_616), first_trace_hash);
     try std.testing.expectEqual(first_trace_hash, try second_capture.canvas_trace.hash());
+}
+
+test "Seed Sprint loads an explicitly injected in-memory best score" {
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    var bytes: [4]u8 = undefined;
+    std.mem.writeInt(u32, &bytes, 7, .little);
+    try saves.capability().write("best-score", &bytes);
+
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, saves.capability());
+    defer runner.deinit();
+    try std.testing.expectEqual(@as(u32, 7), runner.game.best_score);
 }
 
 test "Seed Sprint initialization changes with its explicit seed" {
