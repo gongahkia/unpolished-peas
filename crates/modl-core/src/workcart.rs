@@ -495,6 +495,8 @@ fn has_extension(path: &str, extension: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use crate::{decode_cartridge, pack_workcart, unpack_workcart};
+
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
 
     const CART: &str = r#"format = 2
@@ -579,6 +581,18 @@ payload = "on start:\n  assert true\n"
                 .unwrap_err()
                 .code,
             "M014021"
+        );
+    }
+
+    #[test]
+    fn packs_and_restores_exact_workcart_source() {
+        let packed = pack_workcart(CART).expect("work-cart packs");
+        let decoded = decode_cartridge(&packed.bytes).expect("packed cartridge decodes");
+        assert_eq!(decoded.manifest.format_revision, WORKCART_FORMAT_REVISION);
+        assert_eq!(decoded.entries["source/workcart.m01w"], CART.as_bytes());
+        assert_eq!(
+            unpack_workcart(&packed.bytes).expect("work-cart unpacks"),
+            CART
         );
     }
 }
