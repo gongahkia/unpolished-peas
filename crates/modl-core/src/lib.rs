@@ -26,7 +26,9 @@ pub use cartridge_png::{
 };
 pub use codegen::{CompilationOutput, CompileMode, GeneratedProgram, compile};
 pub use diagnostic::{Diagnostic, Severity};
-pub use exporter::{export_itch_zip, export_standalone_html};
+pub use exporter::{
+    export_itch_workcart, export_itch_zip, export_standalone_html, export_standalone_workcart,
+};
 pub use formatter::{FormatError, format_source};
 pub use lexer::lex;
 pub use parser::{ParseOutput, parse};

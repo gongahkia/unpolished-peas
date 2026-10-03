@@ -495,7 +495,7 @@ fn has_extension(path: &str, extension: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{decode_cartridge, pack_workcart, unpack_workcart};
+    use crate::{decode_cartridge, export_standalone_workcart, pack_workcart, unpack_workcart};
 
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
 
@@ -594,5 +594,12 @@ payload = "on start:\n  assert true\n"
             unpack_workcart(&packed.bytes).expect("work-cart unpacks"),
             CART
         );
+    }
+
+    #[test]
+    fn standalone_workcart_export_reports_the_packed_revision() {
+        let html = export_standalone_workcart(CART).expect("work-cart standalone exports");
+        assert!(html.contains("name=\"mod01-format\" content=\"2\""));
+        assert!(html.contains("CARTRIDGE FORMAT/2"));
     }
 }
