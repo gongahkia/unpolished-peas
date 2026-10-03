@@ -3526,7 +3526,12 @@ fn createMaterialShader(device: *c.SDL_GPUDevice, material: *const up.Material, 
         .vertex => stages.vertex,
         .fragment => stages.fragment,
     };
-    const artifact = switch (format) {
+    const Artifact = struct {
+        code: []const u8,
+        entrypoint: [:0]const u8,
+        format: @TypeOf(c.SDL_GPU_SHADERFORMAT_METALLIB),
+    };
+    const artifact: Artifact = switch (format) {
         .metallib => .{ .code = stage.native.metallib, .entrypoint = stage.native.metallib_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_METALLIB },
         .spirv => .{ .code = stage.native.spirv, .entrypoint = stage.native.spirv_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_SPIRV },
         .dxbc => .{ .code = stage.native.dxbc, .entrypoint = stage.native.dxbc_entrypoint, .format = c.SDL_GPU_SHADERFORMAT_DXBC },
