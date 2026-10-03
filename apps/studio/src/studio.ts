@@ -68,6 +68,7 @@ interface ActivePlayer {
 interface FolderBinding {
   readonly handle: FileSystemDirectoryHandle;
   modified: Map<string, number>;
+  workcartPath?: string;
 }
 
 const encoder = new TextEncoder();
@@ -625,7 +626,11 @@ export class StudioApp {
     const loaded = await this.readProjectFolder(handle);
     const stored = await this.repository.saveProject(loaded.project);
     this.activeProject = fromStored(stored);
-    this.folderBindings.set(stored.id, { handle, modified: loaded.modified });
+    this.folderBindings.set(stored.id, {
+      handle,
+      modified: loaded.modified,
+      ...(loaded.workcartPath === undefined ? {} : { workcartPath: loaded.workcartPath }),
+    });
     await this.repository.setShelfOrigin(stored.id, 'imported');
     this.appendLines([
       `FOLDER OPEN ${stored.id} / R${String(stored.revision)}`,
@@ -633,12 +638,35 @@ export class StudioApp {
     ]);
   }
 
-  private async readProjectFolder(
-    handle: FileSystemDirectoryHandle,
-  ): Promise<{ project: WorkingProject; modified: Map<string, number> }> {
+  private async readProjectFolder(handle: FileSystemDirectoryHandle): Promise<{
+    project: WorkingProject;
+    modified: Map<string, number>;
+    workcartPath?: string;
+  }> {
     const modified = new Map<string, number>();
-    const manifestFile = await readFolderFile(handle, 'cart.toml');
-    if (manifestFile === undefined) throw new Error('FOLDER HAS NO CART.TOML');
+    const manifestFile = await readFolderFile(handle, 'cart.toml', true);
+    if (manifestFile === undefined) {
+      const workcart = await readFolderWorkcart(handle);
+      if (workcart === undefined) throw new Error('FOLDER HAS NO CART.TOML OR .M01W');
+      const source = decoder.decode(workcart.file.bytes);
+      const view = await this.compiler.workcartProjectView(source);
+      const parsed = await this.compiler.parseManifest(view.manifest);
+      modified.set(workcart.path, workcart.file.lastModified);
+      return {
+        project: {
+          id: parsed.id,
+          title: parsed.title,
+          manifest: view.manifest,
+          revision: (await this.repository.loadProject(parsed.id))?.revision ?? 0,
+          files: Object.fromEntries(
+            Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+          ),
+          workcart: source,
+        },
+        modified,
+        workcartPath: workcart.path,
+      };
+    }
     modified.set('cart.toml', manifestFile.lastModified);
     const manifest = decoder.decode(manifestFile.bytes);
     const parsed = await this.compiler.parseManifest(manifest);
@@ -681,10 +709,14 @@ export class StudioApp {
   private async syncProjectFolder(project: WorkingProject, overwrite: boolean): Promise<void> {
     const binding = this.folderBindings.get(project.id);
     if (binding === undefined) return;
-    const outputs = new Map<string, Uint8Array>([
-      ['cart.toml', encoder.encode(project.manifest)],
-      ...Object.entries(project.files),
-    ]);
+    const outputs = new Map<string, Uint8Array>();
+    if (binding.workcartPath === undefined) {
+      outputs.set('cart.toml', encoder.encode(project.manifest));
+      for (const [path, bytes] of Object.entries(project.files)) outputs.set(path, bytes);
+    } else {
+      if (project.workcart === undefined) throw new Error('M01W FOLDER PROJECT LOST ITS SOURCE');
+      outputs.set(binding.workcartPath, encoder.encode(project.workcart));
+    }
     if (!overwrite) {
       for (const path of outputs.keys()) {
         const current = await readFolderFile(binding.handle, path, true);
@@ -990,8 +1022,11 @@ export class StudioApp {
     const binding = this.folderBindings.get(project.id);
     if (binding !== undefined) {
       const external = await this.readProjectFolder(binding.handle);
-      Object.assign(project, external);
+      Object.assign(project, external.project);
       this.activeProject = project;
+      binding.modified = external.modified;
+      if (external.workcartPath === undefined) delete binding.workcartPath;
+      else binding.workcartPath = external.workcartPath;
       const source = project.files[path];
       if (source === undefined) throw new Error('SOURCE REMOVED FROM FOLDER');
       textarea.value = decoder.decode(source);
@@ -1941,6 +1976,26 @@ async function readFolderFile(
       return undefined;
     throw error;
   }
+}
+
+async function readFolderWorkcart(root: FileSystemDirectoryHandle): Promise<
+  | {
+      readonly path: string;
+      readonly file: { readonly bytes: Uint8Array; readonly lastModified: number };
+    }
+  | undefined
+> {
+  const names: string[] = [];
+  for await (const entry of root.values()) {
+    if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.m01w')) names.push(entry.name);
+  }
+  names.sort();
+  if (names.length > 1) throw new Error('FOLDER HAS MULTIPLE .M01W WORK-CARTS');
+  const path = names[0];
+  if (path === undefined) return undefined;
+  const file = await readFolderFile(root, path);
+  if (file === undefined) throw new Error(`WORK-CART ${path} DISAPPEARED`);
+  return { path, file };
 }
 
 async function writeFolderFile(
