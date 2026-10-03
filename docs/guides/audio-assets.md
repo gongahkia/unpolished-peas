@@ -1,4 +1,41 @@
-# Stable audio assets
+# Audio
+
+## GameProtocol sound effects
+
+`GameContext.audio` is Peas's small, backend-neutral sound-effect capability.
+Load a short WAV once during `Game.init`, retain its handle in game state, and
+reuse it from gameplay code:
+
+```zig
+if (ctx.audio) |audio| {
+    self.pickup = try audio.loadWav(@embedFile("pickup.wav"));
+}
+
+// Later, for a gameplay event:
+if (ctx.audio) |audio| {
+    _ = audio.play(self.pickup, .{ .volume = 0.5 }) catch {};
+}
+```
+
+`Audio` owns decoded sounds and releases them when its host shuts down; games
+own only `Audio.SoundHandle` values. `play` creates independent instances, so
+the same effect may overlap. Volume is `0.0...1.0`; `.loop = true` repeats an
+effect until `audio.stop(handle)`. Decoding happens on `loadWav`, never in the
+normal play path.
+
+Audio is optional output, not deterministic simulation state. A headless run
+has a device-free logical host. Desktop systems without an output device, and
+browsers before their first user gesture, report a recoverable
+`error.AudioUnavailable` from `play`; the game should remain playable. Replays
+reproduce the gameplay event that requested a sound, not sample-exact speaker
+timing.
+
+The portable high-level path is embedded WAV bytes because browser fetch is
+asynchronous while `Game.init` is not. Use the lower-level asset/mixer APIs
+below for existing native asset workflows; asynchronous browser asset loading,
+music streaming, and codec expansion are intentionally outside this API.
+
+## Existing stable asset and mixer APIs
 
 The v0.1 audio subset loads RIFF/WAVE and OGG/Vorbis sounds on native targets. WAV supports mono or stereo PCM 8-, 16-, 24-, or 32-bit, or 32-bit IEEE float. A source is at most 32 MiB and decodes to at most 4,194,304 stereo frames. `AssetStore.loadSound` accepts `.wav` and `.ogg`; malformed, unsupported, empty, or over-limit sources fail before playback. The browser reports `asset_load_failed:audio_v1` for any asset-load failure.
 

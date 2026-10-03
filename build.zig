@@ -791,6 +791,16 @@ pub fn build(b: *std.Build) void {
     const render_surface_test_step = b.step("test-render-surfaces", "Run public offscreen render-surface tests");
     render_surface_test_step.dependOn(&run_render_surface_tests.step);
     test_step.dependOn(&run_render_surface_tests.step);
+    const audio_game_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/audio_game_test.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_audio_game_tests = b.addRunArtifact(audio_game_tests);
+    const audio_game_test_step = b.step("test-audio", "Run public GameProtocol audio capability tests");
+    audio_game_test_step.dependOn(&run_audio_game_tests.step);
+    test_step.dependOn(&run_audio_game_tests.step);
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);

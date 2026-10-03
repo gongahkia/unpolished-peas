@@ -21,6 +21,9 @@ var tick_input = TickBuffer{};
 var input_bytes: [browser_input.abi_bytes]u8 align(4) = undefined;
 var game_context: up.core.GameContext = undefined;
 var save_data: BrowserSaveStore = undefined;
+var game_audio: up.core.Audio = undefined;
+var game_audio_samples: []up.assets.AudioSample = &.{};
+var game_audio_ready = false;
 var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
 var protocol_failure: ?up.core.GameFailure = null;
 var scheduler = frame_timing.Scheduler.init(frame_timing.default_fixed_hz);
@@ -65,16 +68,29 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
     if (game_canvas_ready) game_canvas.deinit();
     if (renderer_ready) renderer.deinit();
+    if (game_audio_ready) {
+        game_audio.deinit();
+        runtime_allocator.free(game_audio_samples);
+        game_audio_samples = &.{};
+        game_audio_ready = false;
+    }
     game_canvas = up.graphics.Canvas.init(runtime_allocator, width, height) catch return @intFromEnum(contract.Status.rejected);
     game_canvas_ready = true;
     renderer = up.graphics.Renderer2D.init(runtime_allocator);
     renderer_ready = true;
+    game_audio = up.core.Audio.init(runtime_allocator, .{ .availability = hostAudioAvailability() }) catch return @intFromEnum(contract.Status.rejected);
+    game_audio_samples = runtime_allocator.alloc(up.assets.AudioSample, 800) catch {
+        game_audio.deinit();
+        return @intFromEnum(contract.Status.rejected);
+    };
+    game_audio_ready = true;
     input = .{};
     platform_input = .{};
     tick_input.reset();
     game = .{};
     save_data.init();
     game_context = .withRenderer(&input, &game_canvas, &renderer);
+    game_context.audio = &game_audio;
     if (browser_save_data_enabled) game_context.save_data = save_data.capability();
     protocol = .bind(&game);
     protocol.init(&game_context) catch {
@@ -91,6 +107,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
 
 pub export fn up_browser_frame(timestamp_ms: f64) void {
     syncInput();
+    if (game_audio_ready) game_audio.setAvailability(hostAudioAvailability());
     const timing = scheduler.frame(elapsedSeconds(timestamp_ms), paused);
     var step: u32 = 0;
     while (step < timing.update_steps) : (step += 1) {
@@ -107,8 +124,26 @@ pub export fn up_browser_frame(timestamp_ms: f64) void {
     };
     render_status = submitCanvas();
     if (render_status == @intFromEnum(contract.Status.ok)) render_status = submitRenderer();
+    submitAudio();
     protocol_failure = null;
     frame_token = contract.scheduleFrame();
+}
+
+fn hostAudioAvailability() up.core.Audio.Availability {
+    return switch (contract.audioState()) {
+        @intFromEnum(contract.Status.ok) => .ready,
+        @intFromEnum(contract.Status.rejected) => .blocked,
+        else => .unavailable,
+    };
+}
+
+fn submitAudio() void {
+    if (!game_audio_ready or game_audio.availability() != .ready or !game_audio.hasActivePlayback()) return;
+    game_audio.mix(game_audio_samples) catch return;
+    const bytes = std.mem.sliceAsBytes(game_audio_samples);
+    const source: u32 = if (builtin.target.cpu.arch == .wasm32) @intCast(@intFromPtr(bytes.ptr)) else 0;
+    const status = contract.submitAudio(source, @intCast(bytes.len));
+    if (status != @intFromEnum(contract.Status.ok)) game_audio.setAvailability(hostAudioAvailability());
 }
 
 pub export fn up_browser_canvas_render_status() i32 {
@@ -353,6 +388,12 @@ pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
 pub export fn up_browser_shutdown() void {
     if (frame_token != 0) contract.cancelFrame(frame_token);
     frame_token = 0;
+    if (game_audio_ready) {
+        game_audio.deinit();
+        runtime_allocator.free(game_audio_samples);
+        game_audio_samples = &.{};
+        game_audio_ready = false;
+    }
     if (game_canvas_ready) {
         game_canvas.deinit();
         game_canvas_ready = false;

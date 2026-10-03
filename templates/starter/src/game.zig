@@ -1,6 +1,7 @@
 // This file contains the platform-independent Seed Sprint game protocol.
 const std = @import("std");
 const up = @import("unpolished-peas");
+const pickup_sound = @import("pickup_sound.zig");
 
 pub const width: u32 = 160;
 pub const height: u32 = 90;
@@ -36,12 +37,14 @@ pub const Game = struct {
     pickup: up.core.Vec2 = .{},
     score: u32 = 0,
     best_score: u32 = 0,
+    pickup_effect: ?up.core.Audio.SoundHandle = null,
 
     /// Initialization receives the seed selected by the host. A replay test
     /// supplies the same value through `HeadlessGameRunner.initSeeded`.
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
         try self.reset(ctx.simulation_seed orelse default_seed);
         self.loadBestScore(ctx);
+        if (ctx.audio) |audio| self.pickup_effect = audio.loadWav(&pickup_sound.wav) catch null;
     }
 
     /// `update` runs at the host's fixed timestep. It never reads wall-clock
@@ -63,6 +66,14 @@ pub const Game = struct {
 
         if (self.collectsPickup()) {
             self.score += 1;
+            if (self.pickup_effect) |effect| {
+                if (ctx.audio) |audio| {
+                    // Audio is an output side effect: a muted desktop or a
+                    // browser awaiting its first gesture keeps gameplay
+                    // fully playable.
+                    _ = audio.play(effect, .{ .volume = 0.25 }) catch {};
+                }
+            }
             if (self.score > self.best_score) {
                 self.best_score = self.score;
                 self.saveBestScore(ctx);
