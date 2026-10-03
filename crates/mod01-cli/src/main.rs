@@ -13,11 +13,12 @@ use std::{
 use clap::{Parser, Subcommand};
 use modl_core::{
     AssetCatalog, AssetKind, CartridgePngMetadata, CompileMode, DecodedCartridge, Diagnostic,
-    FileId, GeneratedProgram, ProjectManifest, SourceFile, analyze_module, compile,
-    compile_project, decode_cartridge, decode_cartridge_png, encode_cartridge_png,
-    export_itch_workcart, export_itch_zip, export_standalone_html, export_standalone_workcart,
-    format_source, load_cartridge_program, pack_project, pack_workcart, parse_project_manifest,
-    parse_workcart, unpack_cartridge_project, unpack_workcart,
+    FileId, GeneratedProgram, ProjectManifest, SourceFile, WorkcartTest, WorkcartTestKind,
+    analyze_module, compile, compile_project, decode_cartridge, decode_cartridge_png,
+    encode_cartridge_png, encode_workcart, export_itch_workcart, export_itch_zip,
+    export_standalone_html, export_standalone_workcart, format_source, load_cartridge_program,
+    pack_project, pack_workcart, parse_project_manifest, parse_workcart, unpack_cartridge_project,
+    unpack_workcart,
 };
 
 const HEADLESS_HOST: &str = include_str!("../../../packages/runtime/standalone/headless-host.mjs");
@@ -84,6 +85,12 @@ enum Command {
         title: Option<String>,
         #[arg(long, default_value = "@gongahkia")]
         author: String,
+    },
+    /// Convert one V1 project directory into a source-visible M01W/2 work-cart.
+    Migrate {
+        path: PathBuf,
+        #[arg(short, long)]
+        output: Option<PathBuf>,
     },
     /// Compile one MODL/1 source module to JavaScript and a source map.
     Build {
@@ -197,6 +204,7 @@ fn main() -> ExitCode {
             title,
             author,
         } => new_project(&path, title.as_deref(), &author),
+        Command::Migrate { path, output } => migrate_project(&path, output.as_deref()),
         Command::Build {
             path,
             debug,
@@ -828,6 +836,92 @@ fn new_project(path: &Path, title: Option<&str>, author: &str) -> ExitCode {
         }
     }
     println!("created {}", path.display());
+    ExitCode::SUCCESS
+}
+
+fn migrate_project(path: &Path, output: Option<&Path>) -> ExitCode {
+    if is_workcart_path(path) || !path.is_dir() {
+        eprintln!(
+            "{}: migrate expects a V1 cartridge project directory",
+            path.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    let Ok(project) = load_project(path) else {
+        return ExitCode::FAILURE;
+    };
+    let mut test_paths = Vec::new();
+    let tests_root = path.join("tests");
+    if tests_root.is_dir()
+        && let Err(error) = collect_test_paths(&tests_root, &mut test_paths)
+    {
+        eprintln!("{}: {error}", tests_root.display());
+        return ExitCode::FAILURE;
+    }
+    test_paths.sort();
+    let mut tests = Vec::new();
+    for test_path in test_paths {
+        let kind = if test_path
+            .extension()
+            .is_some_and(|extension| extension == "modl")
+        {
+            WorkcartTestKind::Modl
+        } else if test_path
+            .file_name()
+            .and_then(|name| name.to_str())
+            .is_some_and(|name| name.ends_with(".m01run.json"))
+        {
+            WorkcartTestKind::Replay
+        } else {
+            continue;
+        };
+        let relative =
+            if let Some(relative) = test_path.strip_prefix(path).ok().and_then(Path::to_str) {
+                relative.to_owned()
+            } else {
+                eprintln!("{}: test path is not valid UTF-8", test_path.display());
+                return ExitCode::FAILURE;
+            };
+        let payload = match fs::read_to_string(&test_path) {
+            Ok(payload) => payload,
+            Err(error) => {
+                eprintln!("{}: {error}", test_path.display());
+                return ExitCode::FAILURE;
+            }
+        };
+        tests.push(WorkcartTest {
+            name: relative.clone(),
+            path: relative,
+            kind,
+            payload,
+        });
+    }
+    let source = match encode_workcart(&project.manifest, &project.files, &[], &tests) {
+        Ok(source) => source,
+        Err(error) => {
+            eprintln!("{}: {error}", path.display());
+            return ExitCode::FAILURE;
+        }
+    };
+    let output = output.map_or_else(|| path.with_extension("m01w"), Path::to_path_buf);
+    if output.exists() {
+        eprintln!(
+            "{}: refusing to overwrite an existing path",
+            output.display()
+        );
+        return ExitCode::FAILURE;
+    }
+    if let Some(parent) = output.parent()
+        && let Err(error) = fs::create_dir_all(parent)
+    {
+        eprintln!("{}: {error}", parent.display());
+        return ExitCode::FAILURE;
+    }
+    if let Err(error) = fs::write(&output, source) {
+        eprintln!("{}: {error}", output.display());
+        return ExitCode::FAILURE;
+    }
+    println!("migrated {} -> {}", path.display(), output.display());
     ExitCode::SUCCESS
 }
 

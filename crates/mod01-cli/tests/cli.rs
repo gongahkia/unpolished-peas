@@ -256,6 +256,68 @@ on draw:
 }
 
 #[test]
+fn migrate_turns_a_v1_project_and_its_tests_into_one_workcart() {
+    let project =
+        std::env::temp_dir().join(format!("mod01-migrate-{}-{}", std::process::id(), line!()));
+    let created = binary()
+        .args(["new", project.to_str().expect("UTF-8 project path")])
+        .output()
+        .expect("CLI starts");
+    assert!(created.status.success());
+    fs::create_dir(project.join("tests")).expect("test directory creates");
+    fs::write(
+        project.join("tests/smoke.modl"),
+        "on start:\n  assert 1 == 1, \"migrated test\"\n",
+    )
+    .expect("MODL test writes");
+    fs::write(
+        project.join("tests/boot.m01run.json"),
+        r#"{"revision":1,"frames":1,"expect":{"completedFrames":1}}"#,
+    )
+    .expect("replay test writes");
+    let workcart = project.with_extension("m01w");
+    let migrate = binary()
+        .args([
+            "migrate",
+            project.to_str().expect("UTF-8 project path"),
+            "--output",
+            workcart.to_str().expect("UTF-8 work-cart path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        migrate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&migrate.stderr)
+    );
+    let source = fs::read_to_string(&workcart).expect("work-cart reads");
+    let parsed = modl_core::parse_workcart(&source).expect("work-cart parses");
+    assert_eq!(parsed.tests.len(), 2);
+    assert!(parsed.files.contains_key("src/main.modl"));
+    fs::remove_dir_all(&project).expect("V1 project removes");
+    let packed = workcart.with_extension("m01c");
+    for arguments in [
+        vec!["check".to_owned(), workcart.display().to_string()],
+        vec![
+            "pack".to_owned(),
+            workcart.display().to_string(),
+            "--output".to_owned(),
+            packed.display().to_string(),
+        ],
+    ] {
+        let output = binary().args(arguments).output().expect("CLI starts");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    for path in [workcart, packed] {
+        fs::remove_file(path).expect("temporary migration artifact removes");
+    }
+}
+
+#[test]
 fn headless_run_emits_deterministic_machine_readable_traces_for_projects_and_cartridges() {
     let project =
         std::env::temp_dir().join(format!("mod01-headless-{}-{}", std::process::id(), line!()));
