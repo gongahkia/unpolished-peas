@@ -38,7 +38,7 @@ pub use token::{Token, TokenKind};
 pub use types::{AssetCatalog, AssetKind, Type};
 pub use workcart::{
     WORKCART_FORMAT_REVISION, WorkcartProject, WorkcartRecipe, WorkcartTest, WorkcartTestKind,
-    parse_workcart,
+    encode_workcart, parse_workcart,
 };
 
 /// The source-language revision understood by this compiler.
