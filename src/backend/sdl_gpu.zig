@@ -6,6 +6,7 @@ const primitive_commands = @import("primitive_commands.zig");
 const sdl_gl = @import("sdl_gl.zig");
 const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
+const NativeSaveStore = @import("../native_save_data.zig").NativeSaveStore;
 
 /// Private presentation-frame to fixed-tick input buffering for this backend.
 const TickBuffer = struct {
@@ -757,6 +758,7 @@ pub const Context = struct {
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
     app_data_path: []const u8,
+    save_data: *up.SaveStore,
     presentation: *const up.Presentation,
     sprite_batch: *up.SpriteBatch,
     commands: *up.RenderCommandBuffer,
@@ -1339,6 +1341,7 @@ fn ProtocolAdapter(comptime Game: type) type {
         fn init(self: *Self, ctx: *Context) !void {
             self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
             self.context.simulation_seed = ctx.simulation_seed;
+            self.context.save_data = ctx.save_data;
             self.protocol = up.GameProtocol(Game).bind(&self.game);
             try self.protocol.init(&self.context);
         }
@@ -1360,6 +1363,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer c.SDL_Quit();
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
+    var save_data: NativeSaveStore = undefined;
+    try save_data.init(allocator, data_path);
+    defer save_data.deinit();
     var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
     defer dev.deinit();
     var profiler = up.FrameProfiler.init(config.cpu_profiler);
@@ -1433,7 +1439,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
+    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .save_data = save_data.capability(), .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;

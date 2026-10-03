@@ -7,6 +7,7 @@ const Image = @import("image.zig").Image;
 const Input = @import("input.zig").Input;
 const input_replay = @import("input_replay.zig");
 const DeterministicRng = @import("rng.zig").DeterministicRng;
+const SaveStore = @import("save_data.zig").SaveStore;
 const render = @import("render.zig");
 const renderer_contract_fixture = @import("renderer_contract_fixture.zig");
 const app = @import("app.zig");
@@ -52,6 +53,80 @@ pub const Clock = struct {
     }
 };
 
+/// Test-owned persistence with the same byte-store semantics as runtime
+/// hosts. It never touches a developer's real application-data directory.
+pub const InMemorySaveStore = struct {
+    allocator: std.mem.Allocator,
+    values: std.StringHashMap([]u8) = .empty,
+    store: SaveStore = undefined,
+
+    const operations = SaveStore.VTable{
+        .read_size = readSize,
+        .read = read,
+        .write = write,
+        .delete = delete,
+        .exists = exists,
+    };
+
+    pub fn init(self: *InMemorySaveStore, allocator: std.mem.Allocator) void {
+        self.* = .{ .allocator = allocator };
+        self.store = SaveStore.init(self, &operations);
+    }
+
+    pub fn deinit(self: *InMemorySaveStore) void {
+        var iterator = self.values.iterator();
+        while (iterator.next()) |entry| {
+            self.allocator.free(entry.key_ptr.*);
+            self.allocator.free(entry.value_ptr.*);
+        }
+        self.values.deinit(self.allocator);
+        self.* = undefined;
+    }
+
+    pub fn capability(self: *InMemorySaveStore) *SaveStore {
+        return &self.store;
+    }
+
+    fn readSize(context: *anyopaque, key: []const u8) SaveStore.Error!usize {
+        const self: *InMemorySaveStore = @ptrCast(@alignCast(context));
+        return (self.values.get(key) orelse return error.NotFound).len;
+    }
+
+    fn read(context: *anyopaque, key: []const u8, destination: []u8) SaveStore.Error!usize {
+        const self: *InMemorySaveStore = @ptrCast(@alignCast(context));
+        const bytes = self.values.get(key) orelse return error.NotFound;
+        if (bytes.len > destination.len) return error.TooLarge;
+        @memcpy(destination[0..bytes.len], bytes);
+        return bytes.len;
+    }
+
+    fn write(context: *anyopaque, key: []const u8, bytes: []const u8) SaveStore.Error!void {
+        const self: *InMemorySaveStore = @ptrCast(@alignCast(context));
+        const copy = self.allocator.dupe(u8, bytes) catch return error.OutOfMemory;
+        errdefer self.allocator.free(copy);
+        if (self.values.getPtr(key)) |previous| {
+            self.allocator.free(previous.*);
+            previous.* = copy;
+            return;
+        }
+        const key_copy = self.allocator.dupe(u8, key) catch return error.OutOfMemory;
+        errdefer self.allocator.free(key_copy);
+        self.values.put(self.allocator, key_copy, copy) catch return error.OutOfMemory;
+    }
+
+    fn delete(context: *anyopaque, key: []const u8) SaveStore.Error!void {
+        const self: *InMemorySaveStore = @ptrCast(@alignCast(context));
+        const entry = self.values.fetchRemove(key) orelse return error.NotFound;
+        self.allocator.free(entry.key);
+        self.allocator.free(entry.value);
+    }
+
+    fn exists(context: *anyopaque, key: []const u8) SaveStore.Error!bool {
+        const self: *InMemorySaveStore = @ptrCast(@alignCast(context));
+        return self.values.contains(key);
+    }
+};
+
 pub const HeadlessFrame = struct {
     buttons: u8 = 0,
     elapsed_seconds: f32 = 1.0 / 60.0,
@@ -84,22 +159,34 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         context: app.GameContext = undefined,
         game: Game = .{},
         protocol: app.GameProtocol(Game) = undefined,
+        owned_save_data: InMemorySaveStore = undefined,
+        save_data: *SaveStore = undefined,
         renderer: render.HeadlessRenderer = undefined,
         commands: render.CommandBuffer,
         trace: CanvasTrace,
 
         pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !*Self {
-            return initWithSeed(allocator, width, height, null);
+            return initWithSeedAndSaveData(allocator, width, height, null, null);
+        }
+
+        /// Uses a caller-owned store instead of the runner's known-empty
+        /// in-memory store. The caller must keep it alive through `deinit`.
+        pub fn initWithSaveData(allocator: std.mem.Allocator, width: u32, height: u32, save_data: *SaveStore) !*Self {
+            return initWithSeedAndSaveData(allocator, width, height, null, save_data);
         }
 
         /// Initializes a headless protocol game with the explicit seed that a
         /// seed-bearing input replay requires. The seed is available during
         /// `Game.init` through `GameContext.simulation_seed`.
         pub fn initSeeded(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: u64) !*Self {
-            return initWithSeed(allocator, width, height, simulation_seed);
+            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, null);
         }
 
-        fn initWithSeed(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: ?u64) !*Self {
+        pub fn initSeededWithSaveData(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: u64, save_data: *SaveStore) !*Self {
+            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, save_data);
+        }
+
+        fn initWithSeedAndSaveData(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: ?u64, supplied_save_data: ?*SaveStore) !*Self {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
             self.* = .{
@@ -111,9 +198,13 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             errdefer self.canvas.deinit();
             errdefer self.commands.deinit();
             errdefer self.trace.deinit();
+            self.owned_save_data.init(allocator);
+            errdefer self.owned_save_data.deinit();
+            self.save_data = supplied_save_data orelse self.owned_save_data.capability();
             self.canvas.attachTrace(&self.trace);
             self.context = .withRuntime(&self.input, &self.canvas);
             self.context.simulation_seed = simulation_seed;
+            self.context.save_data = self.save_data;
             self.protocol = app.GameProtocol(Game).bind(&self.game);
             self.renderer = render.HeadlessRenderer.init(allocator, &self.canvas);
             errdefer self.renderer.deinit();
@@ -127,6 +218,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             self.commands.deinit();
             self.trace.deinit();
             self.canvas.deinit();
+            self.owned_save_data.deinit();
             allocator.destroy(self);
         }
 

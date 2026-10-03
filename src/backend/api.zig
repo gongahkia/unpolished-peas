@@ -7,6 +7,7 @@ pub const GameContext = root.core.GameContext;
 pub const GameProtocol = root.core.GameProtocol;
 pub const GamePhase = root.core.GamePhase;
 pub const GameFailure = root.core.GameFailure;
+pub const SaveStore = root.core.SaveStore;
 pub const Color = root.core.Color;
 pub const Vec2 = root.core.Vec2;
 pub const Rect = root.core.Rect;

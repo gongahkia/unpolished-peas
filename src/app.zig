@@ -2,6 +2,7 @@ const std = @import("std");
 const Canvas = @import("canvas.zig").Canvas;
 const Input = @import("input.zig").Input;
 const Renderer2D = @import("advanced_2d.zig").Renderer2D;
+const SaveStore = @import("save_data.zig").SaveStore;
 
 pub const GamePhase = enum { init, update, draw };
 
@@ -14,6 +15,9 @@ pub const GameContext = struct {
     input: *const Input,
     canvas: ?*Canvas = null,
     renderer: ?*Renderer2D = null,
+    /// Host-provided persistence for small game-owned blobs. It is absent from
+    /// bare core contexts and must be explicitly checked by games that use it.
+    save_data: ?*SaveStore = null,
     /// The explicit seed selected by the host for this simulation run.
     ///
     /// It is optional because existing games may not need deterministic random
@@ -41,6 +45,10 @@ pub const GameContext = struct {
 
     pub fn requireRenderer2D(self: GameContext) !*Renderer2D {
         return self.renderer orelse error.Renderer2DUnavailable;
+    }
+
+    pub fn requireSaveData(self: GameContext) !*SaveStore {
+        return self.save_data orelse error.SaveDataUnavailable;
     }
 };
 
@@ -260,6 +268,7 @@ test "runtime context exposes a canvas capability" {
     const bare = GameContext.init(&input);
     try std.testing.expectError(error.CanvasUnavailable, bare.requireCanvas());
     try std.testing.expectError(error.Renderer2DUnavailable, bare.requireRenderer2D());
+    try std.testing.expectError(error.SaveDataUnavailable, bare.requireSaveData());
 }
 
 test "game context retains an explicit simulation seed" {

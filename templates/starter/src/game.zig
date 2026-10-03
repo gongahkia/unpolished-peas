@@ -5,6 +5,9 @@ const up = @import("unpolished-peas");
 pub const width: u32 = 160;
 pub const height: u32 = 90;
 pub const default_seed: u64 = 42;
+/// The browser host uses this stable ID to namespace small save blobs. Keep it
+/// aligned with the desktop `organization` and `application` in `main.zig`.
+pub const storage_id = "your-name.seed-sprint";
 
 const player_start = up.core.Vec2{ .x = 80, .y = 45 };
 const player_size: i32 = 8;
