@@ -10,11 +10,18 @@ const Game = struct {
 };
 ```
 
-`GameContext` exposes read-only normalized `input`. Runtime hosts populate a canvas capability; games obtain it with `requireCanvas`, which fails outside a runtime host. The host owns asset, audio, and presentation handling. This keeps callback signatures backend-neutral while allowing core drawing. During `update`, `elapsed_seconds` and `ctx.elapsed_seconds` are the same non-negative finite fixed simulation step; `ctx.interpolation_alpha` is zero. During `draw`, `ctx.interpolation_alpha` is the remaining fixed-step fraction in `[0, 1]`.
+`GameContext` exposes read-only normalized `input`. Runtime hosts populate a canvas capability; games obtain it with `requireCanvas`, which fails outside a runtime host. They may also provide `save_data`, a backend-neutral `SaveStore` for small game-owned byte blobs; `requireSaveData` makes absence explicit. The host owns asset, audio, presentation, and save-location handling. This keeps callback signatures backend-neutral while allowing core drawing and persistence. During `update`, `elapsed_seconds` and `ctx.elapsed_seconds` are the same non-negative finite fixed simulation step; `ctx.interpolation_alpha` is zero. During `draw`, `ctx.interpolation_alpha` is the remaining fixed-step fraction in `[0, 1]`.
 
 Hosts may set `ctx.simulation_seed` before `init`. A game that needs repeatable random initialization should require that value and store its own `up.core.DeterministicRng`, for example `self.rng = up.core.DeterministicRng.init(ctx.simulation_seed orelse return error.MissingSimulationSeed)`. Peas does not provide a global RNG: the game owns consumption order and therefore its deterministic state.
 
 `DeterministicRng` takes one stable `u64` seed and pins PCG XSH-RR 64/32 v1: it advances zero state, adds the seed, and advances once using the fixed PCG stream increment `1442695040888963407`. The exact `nextU32` sequence is covered by fixed compatibility vectors. `nextU64` joins two consecutive 32-bit values (first high), `uintBelow(upper)` is uniformly distributed in `[0, upper)` and rejects zero, and `float01` produces one of `2^24` `f32` values in `[0, 1)`. This makes integer random values portable across Peas targets; it does not make arbitrary game floating-point computation bit-identical across hardware.
+
+Persistent bytes are environmental input, not replay metadata. A reproducible
+test therefore needs the same initial save-store contents as well as the same
+seed and normalized fixed-tick replay. `HeadlessGameRunner` defaults to an
+empty in-memory store and can receive an explicitly preloaded one. See the
+[save-data guide](save-data.md) for key rules, native locations, browser
+`localStorage`, and error handling.
 
 Desktop and browser hosts use an accumulator with a five-step catch-up cap. A non-paused frame clamps elapsed wall time to five fixed steps, runs zero to five `update` calls at the fixed step in seconds, then runs exactly one `draw` with the remaining interpolation fraction. Desktop selects the fixed rate through `sdl.Config.fixed_hz` and may supply `sdl.Config.simulation_seed`; the browser rate is 60 Hz. A paused frame runs no updates and draws with zero alpha; its accumulated remainder is retained. Browser visibility changes enter that pause state and reset the timestamp, so time while hidden is discarded rather than replayed on resume.
 

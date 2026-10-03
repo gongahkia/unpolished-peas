@@ -4,6 +4,7 @@
 - [Seed Sprint starter](../templates/starter/README.md)
 - [Installation from a release](guides/installation.md)
 - [Game protocol](guides/game-protocol.md)
+- [Save data](guides/save-data.md)
 - [v0.1 core contract](guides/core-contract.md)
 - [Stable 2D render contract](guides/rendering.md)
 - [Advanced 2D](guides/advanced-2d.md)

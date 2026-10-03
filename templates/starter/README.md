@@ -26,7 +26,8 @@ zig build test
 
 The test records normalized fixed-tick input, initializes two headless games
 with seed `42`, and checks both gameplay state and the final logical Canvas
-trace. No window, SDL video device, or GPU is needed.
+trace. It uses a known-empty in-memory save store, so no window, SDL video
+device, GPU, or user save directory is needed.
 
 ## Package
 
@@ -65,6 +66,18 @@ are shipped by the Peas package, so copied projects use the same workflow.
 - `build.zig` imports only the public `unpolished-peas` and
   `unpolished-peas-sdl3` package modules.
 
+## Save data
+
+The game keeps its best score as a four-byte little-endian value through
+`ctx.save_data`. That is deliberately game-owned serialization: Peas stores
+opaque bytes but does not know the score's format. Desktop persistence uses
+the stable `organization` and `application` in `src/main.zig`; browser builds
+use `storage_id` in `src/game.zig`. Change all three to stable game-specific
+values before shipping. A failed save leaves the current session playable.
+
+See Peas's [save-data guide](../../docs/guides/save-data.md) for key rules,
+limits, and browser behavior.
+
 ## Determinism
 
 `Game.init` receives `GameContext.simulation_seed`, initializes its own
@@ -74,7 +87,8 @@ normalized input snapshots, and deterministic game code reproduce state and
 logical drawing.
 
 Before shipping, replace `organization`, `application`, and `title` in
-`src/game.zig` with stable game-specific values.
+`src/main.zig`, plus `storage_id` in `src/game.zig`, with stable game-specific
+values.
 
 The checked-in manifest is an explicitly unreleased release template. The
 release preparation step writes the immutable tag URL and matching Zig package

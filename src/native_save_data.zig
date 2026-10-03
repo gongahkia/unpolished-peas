@@ -1,5 +1,5 @@
 const std = @import("std");
-const SaveStore = @import("save_data.zig").SaveStore;
+const SaveStore = @import("unpolished-peas").core.SaveStore;
 
 /// Private filesystem implementation used by the desktop host. It receives an
 /// already resolved per-application data root from SDL, then owns only the

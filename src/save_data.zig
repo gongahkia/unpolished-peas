@@ -90,7 +90,7 @@ pub const SaveStore = struct {
     /// browser host can keep their localStorage keys separate. Desktop games
     /// use `sdl.Config.organization` plus `sdl.Config.application` instead.
     pub fn isValidApplicationId(application_id: []const u8) bool {
-        return isValidIdentifier(application_id, max_application_id_bytes);
+        return isValidIdentifier(application_id, max_application_id_bytes) and std.mem.indexOf(u8, application_id, "..") == null;
     }
 };
 
@@ -108,6 +108,7 @@ test "save keys are small portable identifiers" {
     try SaveStore.validateKey("slot-1");
     try SaveStore.validateKey("progress.v2");
     try std.testing.expect(SaveStore.isValidApplicationId("example-game"));
+    try std.testing.expect(!SaveStore.isValidApplicationId(".."));
     for ([_][]const u8{ "", "..", "progress..v2", "../save", "a/b", "a\\b", "a:b", "a\x00b" }) |key| {
         try std.testing.expectError(error.InvalidKey, SaveStore.validateKey(key));
     }
