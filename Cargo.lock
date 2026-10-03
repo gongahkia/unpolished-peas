@@ -181,6 +181,7 @@ version = "0.1.0-alpha.1"
 dependencies = [
  "modl-core",
  "serde_json",
+ "toml",
  "wasm-bindgen",
 ]
 
