@@ -37,6 +37,15 @@ export interface ToolCallbacks {
   readonly back: () => void;
   readonly save: () => Promise<void>;
   readonly parseManifest: () => Promise<ProjectManifest>;
+  readonly capacity?: () => Promise<number>;
+  readonly recipes?: () => Promise<readonly WorkbenchRecipe[]>;
+  readonly generateRecipe?: (recipeId: string) => Promise<void>;
+}
+
+export interface WorkbenchRecipe {
+  readonly id: string;
+  readonly algorithm: string;
+  readonly output: string;
 }
 
 const textDecoder = new TextDecoder();
@@ -69,6 +78,398 @@ export async function openCreationTool(
     case 'project':
       await openProjectSettings(root, project, callbacks);
       break;
+  }
+}
+
+interface AssetHistory {
+  readonly past: Uint8Array[];
+  readonly future: Uint8Array[];
+}
+
+type AssetTool = Exclude<CreationTool, 'project'>;
+
+/** Opens the console-native asset tree, preview, history, and capacity workbench. */
+export async function openAssetWorkbench(
+  root: HTMLElement,
+  project: ToolProject,
+  callbacks: ToolCallbacks,
+  histories = new Map<string, AssetHistory>(),
+): Promise<void> {
+  let selectedAsset: string | undefined;
+  const render = async (): Promise<void> => {
+    const manifest = await callbacks.parseManifest();
+    const assets = Object.entries(manifest.assets).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    selectedAsset ??= assets[0]?.[0];
+    if (selectedAsset !== undefined && manifest.assets[selectedAsset] === undefined)
+      selectedAsset = assets[0]?.[0];
+    root.innerHTML = toolFrame(
+      'ASSET WORKBENCH',
+      `<div class="asset-workbench">
+        <nav class="workbench-tree" aria-label="Asset tree"></nav>
+        <section class="workbench-preview">
+          <p class="workbench-selection">SELECT AN ASSET</p>
+          <canvas class="workbench-atlas" width="152" height="48" aria-label="Tile atlas preview"></canvas>
+          <canvas class="workbench-map" width="152" height="40" aria-label="Map preview"></canvas>
+          <div class="workbench-actions">
+            <button type="button" data-workbench="open">OPEN</button>
+            <button type="button" data-workbench="undo">UNDO</button>
+            <button type="button" data-workbench="redo">REDO</button>
+            <button type="button" data-workbench="export">OUT</button>
+            <label class="file-button">IN<input data-workbench-import type="file" accept="application/json,.m01g,.m01m,.m01f,.m01s,.m01t"></label>
+          </div>
+          <div class="workbench-recipes"></div>
+          <p class="workbench-capacity">PACK CHECKING...</p>
+        </section>
+      </div>`,
+    );
+    bindCommon(root, callbacks);
+    const tree = requireElement(root, '.workbench-tree');
+    appendWorkbenchTree(tree, project, assets, selectedAsset, (name) => {
+      selectedAsset = name;
+      void render().catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    });
+    const selection = requireElement(root, '.workbench-selection');
+    const selected = selectedAsset === undefined ? undefined : manifest.assets[selectedAsset];
+    selection.textContent =
+      selectedAsset === undefined || selected === undefined
+        ? 'NO DECLARED ASSETS'
+        : `${selectedAsset.toUpperCase()} / ${selected.kind.toUpperCase()} / ${selected.path}`;
+    drawWorkbenchAtlas(
+      requireElement(root, '.workbench-atlas') as HTMLCanvasElement,
+      firstTileSetPayload(manifest, project.files),
+    );
+    drawWorkbenchMap(
+      requireElement(root, '.workbench-map') as HTMLCanvasElement,
+      firstMapPayload(manifest, project.files),
+      firstTileSetPayload(manifest, project.files),
+    );
+    const history = selected === undefined ? undefined : histories.get(selected.path);
+    setWorkbenchButtons(root, selected === undefined, history);
+    bindWorkbenchActions(root, project, callbacks, manifest, selectedAsset, histories, render);
+    const recipes = await callbacks.recipes?.();
+    renderWorkbenchRecipes(root, recipes ?? [], async (recipe) => {
+      if (callbacks.generateRecipe === undefined) return;
+      const before = assetSnapshots(manifest, project.files);
+      await callbacks.generateRecipe(recipe.id);
+      recordAssetHistory(before, manifest, project.files, histories);
+      await render();
+    });
+    const capacity = requireElement(root, '.workbench-capacity');
+    if (callbacks.capacity === undefined) {
+      capacity.textContent = 'PACK METER UNAVAILABLE';
+    } else {
+      void callbacks
+        .capacity()
+        .then((bytes) => {
+          if (root.contains(capacity)) {
+            capacity.textContent = `PACK ${String(bytes)}/${String(HARDWARE.cartridgeCapacityBytes)}B ${String(Math.round((bytes / HARDWARE.cartridgeCapacityBytes) * 100))}%`;
+          }
+        })
+        .catch((error: unknown) => {
+          if (root.contains(capacity)) capacity.textContent = `PACK ${errorMessage(error)}`;
+        });
+    }
+  };
+  await render();
+}
+
+function appendWorkbenchTree(
+  tree: Element,
+  project: ToolProject,
+  assets: readonly [string, ProjectManifest['assets'][string]][],
+  selected: string | undefined,
+  select: (name: string) => void,
+): void {
+  const modules = Object.keys(project.files)
+    .filter((path) => path.endsWith('.modl'))
+    .sort();
+  const moduleHeading = document.createElement('p');
+  moduleHeading.textContent = 'MODULES';
+  tree.append(moduleHeading);
+  for (const path of modules) {
+    const row = document.createElement('p');
+    row.className = 'workbench-module';
+    row.textContent = path;
+    tree.append(row);
+  }
+  const assetHeading = document.createElement('p');
+  assetHeading.textContent = 'ASSETS';
+  tree.append(assetHeading);
+  for (const [name, asset] of assets) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.className = name === selected ? 'selected' : '';
+    button.textContent = `${name} [${asset.kind}]`;
+    button.title = asset.path;
+    button.addEventListener('click', () => select(name));
+    tree.append(button);
+  }
+}
+
+function setWorkbenchButtons(
+  root: HTMLElement,
+  disabled: boolean,
+  history: AssetHistory | undefined,
+): void {
+  for (const action of ['open', 'export'] as const) {
+    const button = root.querySelector<HTMLButtonElement>(`[data-workbench="${action}"]`);
+    if (button !== null) button.disabled = disabled;
+  }
+  const undo = root.querySelector<HTMLButtonElement>('[data-workbench="undo"]');
+  if (undo !== null) undo.disabled = history === undefined || history.past.length === 0;
+  const redo = root.querySelector<HTMLButtonElement>('[data-workbench="redo"]');
+  if (redo !== null) redo.disabled = history === undefined || history.future.length === 0;
+  const input = root.querySelector<HTMLInputElement>('[data-workbench-import]');
+  if (input !== null) input.disabled = disabled;
+}
+
+function bindWorkbenchActions(
+  root: HTMLElement,
+  project: ToolProject,
+  callbacks: ToolCallbacks,
+  manifest: ProjectManifest,
+  selectedName: string | undefined,
+  histories: Map<string, AssetHistory>,
+  render: () => Promise<void>,
+): void {
+  const selected = selectedName === undefined ? undefined : manifest.assets[selectedName];
+  const recordAndSave = async (before: Map<string, Uint8Array>): Promise<void> => {
+    recordAssetHistory(before, manifest, project.files, histories);
+    await callbacks.save();
+  };
+  root.querySelector('[data-workbench="open"]')?.addEventListener('click', () => {
+    if (selected === undefined) return;
+    const tool = workbenchTool(selected.kind);
+    if (tool === undefined) {
+      setToolStatus(root, `${selected.kind.toUpperCase()} HAS NO EDITOR`, true);
+      return;
+    }
+    let previous = assetSnapshots(manifest, project.files);
+    void openCreationTool(root, tool, project, {
+      ...callbacks,
+      back: () => {
+        void openAssetWorkbench(root, project, callbacks, histories);
+      },
+      save: async () => {
+        recordAssetHistory(previous, manifest, project.files, histories);
+        previous = assetSnapshots(manifest, project.files);
+        await callbacks.save();
+      },
+    }).catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+  });
+  root.querySelector('[data-workbench="undo"]')?.addEventListener('click', () => {
+    if (selected === undefined) return;
+    void applyAssetHistory(selected.path, project, callbacks, histories, 'undo')
+      .then(render)
+      .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+  });
+  root.querySelector('[data-workbench="redo"]')?.addEventListener('click', () => {
+    if (selected === undefined) return;
+    void applyAssetHistory(selected.path, project, callbacks, histories, 'redo')
+      .then(render)
+      .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+  });
+  root.querySelector('[data-workbench="export"]')?.addEventListener('click', () => {
+    if (selected === undefined) return;
+    const bytes = project.files[selected.path];
+    if (bytes === undefined) return;
+    downloadToolBytes(selected.path.split('/').at(-1) ?? selected.path, bytes, 'application/json');
+  });
+  root
+    .querySelector<HTMLInputElement>('[data-workbench-import]')
+    ?.addEventListener('change', (event) => {
+      const file = (event.currentTarget as HTMLInputElement).files?.[0];
+      if (file === undefined || selected === undefined) return;
+      void file
+        .arrayBuffer()
+        .then(async (buffer) => {
+          if (buffer.byteLength > HARDWARE.visualCapacityBytes) {
+            throw new RangeError('ASSET IMPORT EXCEEDS VISUAL CAPACITY');
+          }
+          const bytes = new Uint8Array(buffer);
+          const value = JSON.parse(textDecoder.decode(bytes)) as { kind?: unknown };
+          if (value.kind !== selected.kind) throw new TypeError('ASSET KIND DOES NOT MATCH TARGET');
+          const before = assetSnapshots(manifest, project.files);
+          project.files[selected.path] = bytes;
+          await recordAndSave(before);
+          await render();
+        })
+        .catch((error: unknown) => setToolStatus(root, errorMessage(error), true));
+    });
+}
+
+function workbenchTool(kind: ProjectManifest['assets'][string]['kind']): AssetTool | undefined {
+  switch (kind) {
+    case 'sprite':
+    case 'animation':
+    case 'tile_set':
+      return 'sprite';
+    case 'map':
+      return 'map';
+    case 'font':
+      return 'font';
+    case 'sound':
+      return 'sfx';
+    case 'music':
+      return 'music';
+  }
+}
+
+function assetSnapshots(
+  manifest: ProjectManifest,
+  files: Readonly<Record<string, Uint8Array>>,
+): Map<string, Uint8Array> {
+  return new Map(
+    Object.values(manifest.assets).flatMap((asset) => {
+      const bytes = files[asset.path];
+      return bytes === undefined ? [] : [[asset.path, bytes.slice()] as const];
+    }),
+  );
+}
+
+function recordAssetHistory(
+  before: ReadonlyMap<string, Uint8Array>,
+  manifest: ProjectManifest,
+  files: Readonly<Record<string, Uint8Array>>,
+  histories: Map<string, AssetHistory>,
+): void {
+  for (const asset of Object.values(manifest.assets)) {
+    const previous = before.get(asset.path);
+    const current = files[asset.path];
+    if (previous === undefined || current === undefined || equalBytes(previous, current)) continue;
+    const history = histories.get(asset.path) ?? { past: [], future: [] };
+    history.past.push(previous.slice());
+    if (history.past.length > 64) history.past.shift();
+    history.future.length = 0;
+    histories.set(asset.path, history);
+  }
+}
+
+async function applyAssetHistory(
+  path: string,
+  project: ToolProject,
+  callbacks: ToolCallbacks,
+  histories: Map<string, AssetHistory>,
+  action: 'undo' | 'redo',
+): Promise<void> {
+  const history = histories.get(path);
+  const current = project.files[path];
+  if (history === undefined || current === undefined) return;
+  const source = action === 'undo' ? history.past : history.future;
+  const target = source.pop();
+  if (target === undefined) return;
+  const destination = action === 'undo' ? history.future : history.past;
+  destination.push(current.slice());
+  project.files[path] = target;
+  await callbacks.save();
+}
+
+function equalBytes(left: Uint8Array, right: Uint8Array): boolean {
+  return left.byteLength === right.byteLength && left.every((byte, index) => byte === right[index]);
+}
+
+function firstTileSetPayload(
+  manifest: ProjectManifest,
+  files: Readonly<Record<string, Uint8Array>>,
+): readonly (readonly number[])[] | undefined {
+  const asset = Object.values(manifest.assets).find((candidate) => candidate.kind === 'tile_set');
+  if (asset === undefined) return undefined;
+  const parsed = readJson<{ tiles?: unknown } | undefined>(files[asset.path], undefined);
+  return Array.isArray(parsed?.tiles)
+    ? (parsed.tiles as readonly (readonly number[])[])
+    : undefined;
+}
+
+function firstMapPayload(
+  manifest: ProjectManifest,
+  files: Readonly<Record<string, Uint8Array>>,
+):
+  | { readonly width: number; readonly height: number; readonly cells: readonly number[] }
+  | undefined {
+  const asset = Object.values(manifest.assets).find((candidate) => candidate.kind === 'map');
+  if (asset === undefined) return undefined;
+  const parsed = readJson<{ layers?: unknown } | undefined>(files[asset.path], undefined);
+  const layer = Array.isArray(parsed?.layers) ? parsed.layers[0] : undefined;
+  if (
+    typeof layer !== 'object' ||
+    layer === null ||
+    !Number.isInteger((layer as { width?: unknown }).width) ||
+    !Number.isInteger((layer as { height?: unknown }).height) ||
+    !Array.isArray((layer as { cells?: unknown }).cells)
+  )
+    return undefined;
+  const map = layer as { width: number; height: number; cells: readonly number[] };
+  return map.cells.length === map.width * map.height ? map : undefined;
+}
+
+function drawWorkbenchAtlas(
+  canvas: HTMLCanvasElement,
+  tiles: readonly (readonly number[])[] | undefined,
+): void {
+  const context = canvas.getContext('2d');
+  if (context === null) return;
+  context.fillStyle = '#0b1120';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  for (const [index, tile] of (tiles ?? []).slice(0, 19).entries()) {
+    if (tile.length !== 64) continue;
+    const left = (index % 19) * 8;
+    for (let pixel = 0; pixel < tile.length; pixel += 1) {
+      context.fillStyle = paletteCss(tile[pixel] ?? 0);
+      context.fillRect(left + (pixel % 8), Math.floor(pixel / 8), 1, 1);
+    }
+  }
+}
+
+function drawWorkbenchMap(
+  canvas: HTMLCanvasElement,
+  map:
+    | { readonly width: number; readonly height: number; readonly cells: readonly number[] }
+    | undefined,
+  tiles: readonly (readonly number[])[] | undefined,
+): void {
+  const context = canvas.getContext('2d');
+  if (context === null) return;
+  context.fillStyle = '#0b1120';
+  context.fillRect(0, 0, canvas.width, canvas.height);
+  if (map === undefined) return;
+  const scale = Math.max(
+    1,
+    Math.floor(Math.min(canvas.width / map.width, canvas.height / map.height)),
+  );
+  for (let y = 0; y < map.height; y += 1) {
+    for (let x = 0; x < map.width; x += 1) {
+      const tile = tiles?.[map.cells[y * map.width + x] ?? 0] ?? [];
+      const color = tile.find((value) => value !== 0) ?? 0;
+      context.fillStyle = paletteCss(color);
+      context.fillRect(x * scale, y * scale, scale, scale);
+    }
+  }
+}
+
+function renderWorkbenchRecipes(
+  root: HTMLElement,
+  recipes: readonly WorkbenchRecipe[],
+  generate: (recipe: WorkbenchRecipe) => Promise<void>,
+): void {
+  const target = requireElement(root, '.workbench-recipes');
+  target.replaceChildren();
+  if (recipes.length === 0) {
+    target.textContent = 'NO STORED RECIPES';
+    return;
+  }
+  for (const recipe of recipes) {
+    const button = document.createElement('button');
+    button.type = 'button';
+    button.textContent = `GEN ${recipe.id}`;
+    button.title = `${recipe.algorithm} -> ${recipe.output}`;
+    button.addEventListener('click', () => {
+      void generate(recipe).catch((error: unknown) =>
+        setToolStatus(root, errorMessage(error), true),
+      );
+    });
+    target.append(button);
   }
 }
 

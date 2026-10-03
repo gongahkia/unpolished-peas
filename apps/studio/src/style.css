@@ -815,6 +815,97 @@ body,
   color: var(--coral);
 }
 
+.asset-workbench {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 3px;
+  height: 100%;
+}
+
+.workbench-tree {
+  overflow: auto;
+  border: 1px solid #315066;
+  background: #09111b;
+}
+
+.workbench-tree p {
+  margin: 1px 2px;
+  color: var(--cyan);
+  font-size: 4px;
+  line-height: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-tree .workbench-module {
+  color: #8ca0ab;
+}
+
+.workbench-tree button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--cream);
+  background: transparent;
+  border: 0;
+  font:
+    4px/6px 'MOD-01 Bitmap',
+    monospace;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-tree button.selected,
+.workbench-tree button:hover,
+.workbench-tree button:focus-visible {
+  color: var(--deep);
+  background: var(--amber);
+  outline: 0;
+}
+
+.workbench-preview {
+  display: grid;
+  grid-template-rows: 8px 48px 40px auto auto 8px;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workbench-selection,
+.workbench-capacity {
+  overflow: hidden;
+  color: var(--cream);
+  font-size: 4px;
+  line-height: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-capacity {
+  color: var(--amber);
+}
+
+.workbench-atlas,
+.workbench-map {
+  width: 100%;
+  background: var(--deep);
+  image-rendering: pixelated;
+}
+
+.workbench-actions,
+.workbench-recipes {
+  display: flex;
+  min-height: 6px;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.workbench-actions button:disabled {
+  color: #697078;
+  border-color: #45515a;
+}
+
 .sprite-layout {
   display: grid;
   grid-template: 92px 19px / 96px 1fr;
