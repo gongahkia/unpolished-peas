@@ -1805,7 +1805,13 @@ fn check_files(paths: &[PathBuf]) -> ExitCode {
                 &project.files,
                 CompileMode::Release,
             ) {
-                Ok(output) if output.analysis.diagnostics.is_empty() => {}
+                Ok(output) if output.analysis.diagnostics.is_empty() => match project.pack() {
+                    Ok(_) => {}
+                    Err(error) => {
+                        eprintln!("{}: {error}", path.display());
+                        failed = true;
+                    }
+                },
                 Ok(output) => {
                     emit_project_diagnostics(path, &output.analysis.diagnostics);
                     failed = true;
