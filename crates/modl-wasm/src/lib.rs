@@ -5,8 +5,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use modl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
     compile_project, decode_cartridge, export_standalone_html, export_standalone_workcart,
-    format_source, pack_project, pack_workcart, parse_project_manifest, parse_workcart,
-    unpack_cartridge_project, unpack_workcart,
+    format_source, materialize_workcart_recipe, pack_project, pack_workcart,
+    parse_project_manifest, parse_workcart, unpack_cartridge_project, unpack_workcart,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -145,6 +145,19 @@ pub fn compile_workcart_for_browser(source: &str, debug: bool) -> Result<String,
     )
     .map_err(|error| error.to_string())?;
     serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
+/// Materializes one stored Noise or WFC recipe using the same deterministic core as `mod01`.
+///
+/// # Errors
+///
+/// Returns work-cart, generator corpus, or generated map validation errors.
+#[wasm_bindgen(js_name = materializeWorkcartRecipe)]
+pub fn materialize_workcart_recipe_for_browser(
+    source: &str,
+    recipe_id: &str,
+) -> Result<String, String> {
+    materialize_workcart_recipe(source, recipe_id).map_err(|error| error.to_string())
 }
 
 /// Formats a syntactically valid MODL/1 module.
