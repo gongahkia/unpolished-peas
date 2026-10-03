@@ -14,6 +14,7 @@ pub mod sema;
 pub mod span;
 pub mod token;
 pub mod types;
+pub mod workcart;
 
 pub use cartridge::{
     CartridgeError, DecodedCartridge, PackedCartridge, PackedManifest, ProjectAsset,
@@ -33,6 +34,10 @@ pub use sema::{AnalysisOutput, analyze_module};
 pub use span::{FileId, LineColumn, SourceFile, Span, Spanned};
 pub use token::{Token, TokenKind};
 pub use types::{AssetCatalog, AssetKind, Type};
+pub use workcart::{
+    WORKCART_FORMAT_REVISION, WorkcartProject, WorkcartRecipe, WorkcartTest, WorkcartTestKind,
+    parse_workcart,
+};
 
 /// The source-language revision understood by this compiler.
 pub const LANGUAGE_REVISION: &str = "MODL/1";
