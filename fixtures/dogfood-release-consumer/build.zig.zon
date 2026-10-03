@@ -1,0 +1,10 @@
+.{
+    .name = .neon_siege,
+    .version = "0.1.0",
+    .fingerprint = 0xb4eee4393c1ed152,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{ .path = "../release" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "README.md", "FRICTION.md" },
+}

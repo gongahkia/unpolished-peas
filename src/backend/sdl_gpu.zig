@@ -1328,6 +1328,7 @@ fn playProtocolWithAllocator(allocator: std.mem.Allocator, config: Config, compt
     var state = ProtocolAdapter(Game){};
     try runWithAllocator(allocator, config, &state, .{
         .init = ProtocolAdapter(Game).init,
+        .deinit = ProtocolAdapter(Game).deinit,
         .update = ProtocolAdapter(Game).update,
         .draw = ProtocolAdapter(Game).draw,
     });
@@ -1343,6 +1344,7 @@ fn ProtocolAdapter(comptime Game: type) type {
 
         fn init(self: *Self, ctx: *Context) !void {
             self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
+            self.context.allocator = ctx.allocator;
             self.context.simulation_seed = ctx.simulation_seed;
             self.context.save_data = ctx.save_data;
             self.context.audio = ctx.audio;
@@ -1356,6 +1358,10 @@ fn ProtocolAdapter(comptime Game: type) type {
 
         fn draw(self: *Self, ctx: *Context) !void {
             try self.protocol.draw(&self.context, ctx.alpha);
+        }
+
+        fn deinit(self: *Self, _: *Context) !void {
+            try self.protocol.deinit(&self.context);
         }
     };
 }
@@ -1652,6 +1658,7 @@ fn protocolGameContractDiagnostic(comptime Game: type) ?[]const u8 {
     if (callbackDiagnostic(Game, "init", &.{ *Game, *up.GameContext }, void, true)) |_| return "protocol Game.init must be fn (*Game, *up.GameContext) void or !void";
     if (callbackDiagnostic(Game, "update", &.{ *Game, *up.GameContext, f32 }, void, true)) |_| return "protocol Game.update must be fn (*Game, *up.GameContext, f32) void or !void";
     if (callbackDiagnostic(Game, "draw", &.{ *Game, *up.GameContext }, void, true)) |_| return "protocol Game.draw must be fn (*Game, *up.GameContext) void or !void";
+    if (callbackDiagnostic(Game, "deinit", &.{ *Game, *up.GameContext }, void, true)) |_| return "protocol Game.deinit, when present, must be fn (*Game, *up.GameContext) void or !void";
     return null;
 }
 

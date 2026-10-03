@@ -61,6 +61,7 @@ Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/gui
 
 - [SDL bouncing square](examples/bounce_sdl.zig)
 - [Seed Sprint starter](templates/starter/README.md)
+- [Neon Siege public-API dogfood game](dogfood/neon-siege/README.md)
 - [Explicit core loop](examples/explicit_loop.zig)
 - [Offscreen render surface](examples/render_surface.zig)
 - [Top-down proof game](docs/proof-games/topdown.md)

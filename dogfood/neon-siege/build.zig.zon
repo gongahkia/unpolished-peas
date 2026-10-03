@@ -1,0 +1,13 @@
+.{
+    .name = .neon_siege,
+    .version = "0.1.0",
+    .fingerprint = 0xb4eee439f887f088,
+    .minimum_zig_version = "0.15.2",
+    // This local development coordinate points at Peas as a package root,
+    // never at its internal src/ tree. The external archive test replaces it
+    // with an adjacent immutable-release fixture.
+    .dependencies = .{
+        .unpolished_peas = .{ .path = "../.." },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "README.md" },
+}

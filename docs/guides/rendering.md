@@ -8,7 +8,7 @@ Commands execute in submission order. `clear` replaces the logical canvas. Recta
 
 [`debug-5x7-v1.json`](../../src/fixtures/text/debug-5x7-v1.json) is the bundled text fixture for native, WebGL 2, and WebGPU. It defines 5×7 glyphs with a six-pixel advance and eight-pixel line height. The subset is ASCII letters (case-folded), digits, space, `-`, `_`, `.`, `:`, and `/`; other code points render the bundled `?` fallback. Newline starts a new eight-pixel line. Browser hosts decode malformed UTF-8 with the same replacement progression as native before fallback selection.
 
-The browser uploads this fixture once as a nearest-sampled internal glyph atlas. Glyphs preserve active clip/blend/camera state and batch through the normal sprite path on WebGL 2 and WebGPU. A missing or malformed packaged fixture prevents startup with `asset_load_failed:debug_font_v1`; no game-facing font API is added.
+The browser uploads this fixture once as a nearest-sampled internal glyph atlas. Glyphs preserve active clip/blend/camera state and batch through the normal sprite path on WebGL 2 and WebGPU. A missing or malformed packaged fixture prevents startup with `asset_load_failed:debug_font_v1`. Peas also exposes a native `assets.Font` API, but its current stb-backed decoding path is not a portable browser font-asset workflow; use built-in text for browser-safe small HUDs until that workflow is implemented.
 
 `push_clip` intersects with the active logical-pixel clip; `pop_clip` restores the previous value. `push_blend(.alpha)` uses source-over alpha, while `.additive` adds alpha-scaled source channels with saturation. A pop without a matching push, or present with unbalanced clip/blend state, is rejected (`UnbalancedRenderState` natively and rejected browser ABI status).
 

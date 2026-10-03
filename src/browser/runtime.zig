@@ -25,6 +25,7 @@ var game_audio: up.core.Audio = undefined;
 var game_audio_samples: []up.assets.AudioSample = &.{};
 var game_audio_ready = false;
 var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
+var protocol_initialized = false;
 var protocol_failure: ?up.core.GameFailure = null;
 var scheduler = frame_timing.Scheduler.init(frame_timing.default_fixed_hz);
 var last_timestamp_ms: ?f64 = null;
@@ -66,6 +67,10 @@ pub export fn up_browser_abi_version() u32 {
 
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
+    if (protocol_initialized) {
+        protocol.deinit(&game_context) catch return @intFromEnum(contract.Status.rejected);
+        protocol_initialized = false;
+    }
     if (game_canvas_ready) game_canvas.deinit();
     if (renderer_ready) renderer.deinit();
     if (game_audio_ready) {
@@ -90,6 +95,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     game = .{};
     save_data.init();
     game_context = .withRenderer(&input, &game_canvas, &renderer);
+    game_context.allocator = runtime_allocator;
     game_context.audio = &game_audio;
     if (browser_save_data_enabled) game_context.save_data = save_data.capability();
     protocol = .bind(&game);
@@ -97,6 +103,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
         protocol_failure = protocol.lastFailure();
         return @intFromEnum(contract.Status.rejected);
     };
+    protocol_initialized = true;
     scheduler = .init(frame_timing.default_fixed_hz);
     last_timestamp_ms = null;
     protocol_failure = null;

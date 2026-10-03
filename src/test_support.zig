@@ -225,6 +225,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             self.save_data = supplied_save_data orelse self.owned_save_data.capability();
             self.canvas.attachTrace(&self.trace);
             self.context = .withRuntime(&self.input, &self.canvas);
+            self.context.allocator = allocator;
             self.context.simulation_seed = simulation_seed;
             self.context.save_data = self.save_data;
             self.context.audio = &self.audio;
@@ -237,6 +238,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
 
         pub fn deinit(self: *Self) void {
             const allocator = self.allocator;
+            self.protocol.deinit(&self.context) catch {};
             self.renderer.deinit();
             self.commands.deinit();
             self.trace.deinit();

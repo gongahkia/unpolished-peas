@@ -5,7 +5,7 @@ const Renderer2D = @import("advanced_2d.zig").Renderer2D;
 const SaveStore = @import("save_data.zig").SaveStore;
 const Audio = @import("audio.zig").Audio;
 
-pub const GamePhase = enum { init, update, draw };
+pub const GamePhase = enum { init, update, draw, deinit };
 
 pub const GameFailure = struct {
     phase: GamePhase,
@@ -14,6 +14,10 @@ pub const GameFailure = struct {
 
 pub const GameContext = struct {
     input: *const Input,
+    /// Host-owned allocator for game-owned resources such as RenderSurface,
+    /// Image, Atlas, and Font. It remains absent from deliberately bare core
+    /// contexts, so a game must request it explicitly before allocating.
+    allocator: ?std.mem.Allocator = null,
     canvas: ?*Canvas = null,
     renderer: ?*Renderer2D = null,
     /// Host-provided persistence for small game-owned blobs. It is absent from
@@ -48,6 +52,10 @@ pub const GameContext = struct {
         return self.canvas orelse error.CanvasUnavailable;
     }
 
+    pub fn requireAllocator(self: GameContext) !std.mem.Allocator {
+        return self.allocator orelse error.AllocatorUnavailable;
+    }
+
     pub fn requireRenderer2D(self: GameContext) !*Renderer2D {
         return self.renderer orelse error.Renderer2DUnavailable;
     }
@@ -67,6 +75,7 @@ pub fn GameProtocol(comptime Game: type) type {
         const InitCallback = *const fn (*Game, *GameContext) anyerror!void;
         const UpdateCallback = *const fn (*Game, *GameContext, f32) anyerror!void;
         const DrawCallback = *const fn (*Game, *GameContext) anyerror!void;
+        const DeinitCallback = *const fn (*Game, *GameContext) anyerror!void;
 
         comptime {
             const init_callback: InitCallback = Game.init;
@@ -75,6 +84,10 @@ pub fn GameProtocol(comptime Game: type) type {
             _ = init_callback;
             _ = update_callback;
             _ = draw_callback;
+            if (@hasDecl(Game, "deinit")) {
+                const deinit_callback: DeinitCallback = Game.deinit;
+                _ = deinit_callback;
+            }
         }
 
         game: *Game,
@@ -118,6 +131,19 @@ pub fn GameProtocol(comptime Game: type) type {
                 self.last_failure = .{ .phase = .draw, .cause = err };
                 return err;
             };
+        }
+
+        /// Calls an optional game-owned cleanup callback once. Hosts invoke
+        /// this before they release context capabilities, so a protocol game
+        /// can safely deinitialize resources created through `ctx.allocator`.
+        pub fn deinit(self: *Self, context: *GameContext) !void {
+            if (!self.initialized) return;
+            self.last_failure = null;
+            if (@hasDecl(Game, "deinit")) Game.deinit(self.game, context) catch |err| {
+                self.last_failure = .{ .phase = .deinit, .cause = err };
+                return err;
+            };
+            self.initialized = false;
         }
 
         pub fn lastFailure(self: Self) ?GameFailure {
@@ -268,16 +294,44 @@ test "game protocol retains callback phase and original failure" {
     try std.testing.expectEqual(GamePhase.draw, draw_failure_protocol.lastFailure().?.phase);
 }
 
-test "runtime context exposes a canvas capability" {
+test "runtime context exposes canvas and allocator capabilities" {
     var canvas = try Canvas.init(std.testing.allocator, 1, 1);
     defer canvas.deinit();
     var input = Input{};
-    const context = GameContext.withRuntime(&input, &canvas);
+    var context = GameContext.withRuntime(&input, &canvas);
+    context.allocator = std.testing.allocator;
     try std.testing.expect((try context.requireCanvas()) == &canvas);
+    _ = try context.requireAllocator();
     const bare = GameContext.init(&input);
     try std.testing.expectError(error.CanvasUnavailable, bare.requireCanvas());
+    try std.testing.expectError(error.AllocatorUnavailable, bare.requireAllocator());
     try std.testing.expectError(error.Renderer2DUnavailable, bare.requireRenderer2D());
     try std.testing.expectError(error.SaveDataUnavailable, bare.requireSaveData());
+}
+
+test "game protocol calls optional deinit once after initialization" {
+    const Game = struct {
+        calls: u8 = 0,
+
+        pub fn init(self: *@This(), _: *GameContext) !void {
+            self.calls += 1;
+        }
+
+        pub fn update(_: *@This(), _: *GameContext, _: f32) !void {}
+        pub fn draw(_: *@This(), _: *GameContext) !void {}
+
+        pub fn deinit(self: *@This(), _: *GameContext) !void {
+            self.calls += 1;
+        }
+    };
+    var input = Input{};
+    var context = GameContext.init(&input);
+    var game = Game{};
+    var protocol = GameProtocol(Game).bind(&game);
+    try protocol.init(&context);
+    try protocol.deinit(&context);
+    try protocol.deinit(&context);
+    try std.testing.expectEqual(@as(u8, 2), game.calls);
 }
 
 test "game context retains an explicit simulation seed" {
