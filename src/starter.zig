@@ -58,7 +58,7 @@ test "starter creates a structured project and rejects invalid destinations" {
     defer std.testing.allocator.free(root);
     const destination = try std.fs.path.join(std.testing.allocator, &.{ root, "game" });
     defer std.testing.allocator.free(destination);
-    const template_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "templates/bounce");
+    const template_root = try std.fs.cwd().realpathAlloc(std.testing.allocator, "templates/starter");
     defer std.testing.allocator.free(template_root);
 
     try createProject(std.testing.allocator, template_root, destination);
@@ -72,16 +72,17 @@ test "starter creates a structured project and rejects invalid destinations" {
     try project.access("assets/README.md", .{});
     const source = try project.readFileAlloc(std.testing.allocator, "src/main.zig", 8192);
     defer std.testing.allocator.free(source);
-    try std.testing.expect(std.mem.indexOf(u8, source, "pub const Game = @import(\"game.zig\").Game") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "const game = @import(\"game.zig\")") != null);
+    try std.testing.expect(std.mem.indexOf(u8, source, "state: game.Game") != null);
     const game = try project.readFileAlloc(std.testing.allocator, "src/game.zig", 16 * 1024);
     defer std.testing.allocator.free(game);
     try std.testing.expect(std.mem.indexOf(u8, game, "up.core.DeterministicRng") != null);
     try std.testing.expect(std.mem.indexOf(u8, game, "*up.core.GameContext") != null);
-    try std.testing.expect(std.mem.indexOf(u8, game, "*sdl.Context") == null);
+    try std.testing.expect(std.mem.indexOf(u8, game, "unpolished-peas-sdl3") == null);
     try std.testing.expect(std.mem.indexOf(u8, source, "sdl.playGame(Game)") != null);
     const manifest = try project.readFileAlloc(std.testing.allocator, "build.zig.zon", 4096);
     defer std.testing.allocator.free(manifest);
-    const template_manifest = try std.fs.cwd().readFileAlloc(std.testing.allocator, "templates/bounce/build.zig.zon", 4096);
+    const template_manifest = try std.fs.cwd().readFileAlloc(std.testing.allocator, "templates/starter/build.zig.zon", 4096);
     defer std.testing.allocator.free(template_manifest);
     try std.testing.expectEqualStrings(template_manifest, manifest);
     try std.testing.expect(std.mem.indexOf(u8, manifest, "\"assets\"") != null);

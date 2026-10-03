@@ -8,7 +8,8 @@ A small Zig 2D engine with a callback-game starter and explicit core APIs.
 
 ## Start in 60 seconds
 
-Requires Zig `0.15.2`. There is currently no published tag for this v0.1 development contract: `v0.0.4` is not a repository tag. Do not use the stale consumer command below from older revisions, and do not treat `main` as an installation target.
+Requires Zig `0.15.2`. The intended first public release is `v0.1.0`, but no
+tag has been published yet. Do not use `main` as an installation target.
 
 ```sh
 export ZIG_GLOBAL_CACHE_DIR="$(mktemp -d)"
@@ -19,12 +20,14 @@ zig build browser -Dwith_sdl=false
 
 This verifies the source checkout's headless and browser contracts.
 
-**New to Peas?** Start with [Seed Sprint](templates/bounce/README.md): a
-copyable one-screen game whose `src/game.zig` shows `Game.config`, `init`,
-fixed-step `update`, Canvas `draw`, deterministic RNG, replay testing, and a
-Canvas-command regression. A release preparation step must replace its
+**New to Peas?** Start with [Seed Sprint](templates/starter/README.md): a
+copyable one-screen game whose tiny `src/main.zig` configures the desktop host
+and whose `src/game.zig` shows `init`, fixed-step `update`, Canvas `draw`,
+deterministic RNG, replay testing, and a Canvas-command regression. A release
+preparation step must replace its
 generated dependency coordinate with a real immutable tag URL and matching
-hash before it is usable as an independent project.
+hash before it is usable as an independent project. The checked-in source
+template deliberately contains no misleading release URL or package hash.
 
 Peas fits small authored 2D games, deterministic simulations, strong
 headless testing, macOS/Linux native games, and browser-capable Zig projects.
@@ -55,7 +58,7 @@ Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/gui
 ## Copyable examples
 
 - [SDL bouncing square](examples/bounce_sdl.zig)
-- [Seed Sprint starter](templates/bounce/README.md)
+- [Seed Sprint starter](templates/starter/README.md)
 - [Explicit core loop](examples/explicit_loop.zig)
 - [Top-down proof game](docs/proof-games/topdown.md)
 - [Puzzle proof game](docs/proof-games/puzzle.md)
@@ -63,6 +66,8 @@ Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/gui
 
 ## Release and local docs
 
-Published generated projects pin one public archive URL and matching hash. No current tag provides that coordinate; see [release policy](docs/guides/releases.md).
+Published generated projects pin one public archive URL and matching hash. No
+current tag provides that coordinate; see the [installation guide](docs/guides/installation.md)
+and [release policy](docs/guides/releases.md).
 
 Run `zig build docs` for offline documentation, or `zig build peas -- docs quickstart` to locate its local path. The [docs index](docs/index.md) links testing, platform, API, and migration details.

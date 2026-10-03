@@ -40,51 +40,20 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = workspace.moduleImports(b, .protocol, &workspace_modules),
     });
-    workspace_modules[workspace.moduleSlot(.protocol)] = protocol;
-    const transport = b.createModule(.{
-        .root_source_file = b.path(transport_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .transport, &workspace_modules),
+    // This module is the supported browser build boundary. A consuming build
+    // supplies its game as the `protocol-game` import; it never needs a Peas
+    // checkout or a private browser runtime path.
+    _ = b.addModule("unpolished-peas-browser-runtime", .{
+        .root_source_file = b.path("src/browser/runtime.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "frame-timing", .module = browser_frame_timing },
+        },
     });
-    workspace_modules[workspace.moduleSlot(.transport)] = transport;
-    const topology = b.createModule(.{
-        .root_source_file = b.path(topology_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .topology, &workspace_modules),
-    });
-    workspace_modules[workspace.moduleSlot(.topology)] = topology;
-    const state = b.createModule(.{
-        .root_source_file = b.path(state_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .state, &workspace_modules),
-    });
-    workspace_modules[workspace.moduleSlot(.state)] = state;
-    const runtime = b.createModule(.{
-        .root_source_file = b.path(runtime_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .runtime, &workspace_modules),
-    });
-    workspace_modules[workspace.moduleSlot(.runtime)] = runtime;
-    const c_abi = b.createModule(.{
-        .root_source_file = b.path(c_abi_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .c_abi, &workspace_modules),
-    });
-    workspace_modules[workspace.moduleSlot(.c_abi)] = c_abi;
-    const optional_reference = b.createModule(.{
-        .root_source_file = b.path(optional_reference_spec.root_source_path),
-        .target = target,
-        .optimize = optimize,
-        .imports = workspace.moduleImports(b, .optional_reference, &workspace_modules),
-    });
-    workspace_modules[workspace.moduleSlot(.optional_reference)] = optional_reference;
-    const public_api = b.createModule(.{
-        .root_source_file = b.path("contracts/v1_public_api.zig"),
+    const workload_catalog = b.createModule(.{
+        .root_source_file = b.path("src/workload_catalog.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -378,24 +347,11 @@ pub fn build(b: *std.Build) void {
         .optimize = browser_optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
     });
-    // The starter's game module uses the public desktop Config declaration,
-    // while the browser protocol host needs only the GameProtocol callbacks.
-    // This tiny shim keeps the browser build an external-style public-API
-    // consumer rather than importing the desktop backend.
-    const browser_starter_sdl_shim = b.createModule(.{
-        .root_source_file = b.path("fixtures/starter-browser-sdl-shim.zig"),
+    const browser_starter_game = b.createModule(.{
+        .root_source_file = b.path("templates/starter/src/game.zig"),
         .target = browser_target,
         .optimize = browser_optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
-    });
-    const browser_starter_game = b.createModule(.{
-        .root_source_file = b.path("templates/bounce/src/main.zig"),
-        .target = browser_target,
-        .optimize = browser_optimize,
-        .imports = &.{
-            .{ .name = "unpolished-peas", .module = browser_peas },
-            .{ .name = "unpolished-peas-sdl3", .module = browser_starter_sdl_shim },
-        },
     });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
@@ -740,9 +696,9 @@ pub fn build(b: *std.Build) void {
     const package_bounce_sdl = b.step("package-bounce-sdl", "Install the bounce SDL sample and assets");
     package_bounce_sdl.dependOn(&b.addInstallArtifact(sdl_demo, .{}).step);
     package_bounce_sdl.dependOn(&install_assets.step);
-    const starter_demo = addExample(b, "unpolished-peas-starter", "templates/bounce/src/main.zig", target, optimize, peas, sdl);
+    const starter_demo = addExample(b, "unpolished-peas-starter", "templates/starter/src/main.zig", target, optimize, peas, sdl);
     const install_starter_assets = b.addInstallDirectory(.{
-        .source_dir = b.path("templates/bounce/assets"),
+        .source_dir = b.path("templates/starter/assets"),
         .install_dir = .prefix,
         .install_subdir = "assets",
     });
@@ -803,7 +759,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_peas = b.addRunArtifact(peas_cli);
-    run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/bounce"));
+    run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/starter"));
     run_peas.setEnvironmentVariable("UP_SCRIPT_ROOT", b.pathFromRoot("script"));
     run_peas.setEnvironmentVariable("UP_REPOSITORY_ROOT", b.pathFromRoot("."));
     if (b.args) |args| run_peas.addArgs(args);
@@ -844,7 +800,7 @@ pub fn build(b: *std.Build) void {
         }),
     });
     const run_starter = b.addRunArtifact(starter);
-    run_starter.addArg(b.pathFromRoot("templates/bounce"));
+    run_starter.addArg(b.pathFromRoot("templates/starter"));
     if (b.args) |args| run_starter.addArgs(args);
     const new_step = b.step("new", "Create an unpolished-peas Seed Sprint project");
     new_step.dependOn(&run_starter.step);
@@ -853,7 +809,7 @@ pub fn build(b: *std.Build) void {
     const starter_test_step = b.step("test-starter", "Run generated project tests");
     starter_test_step.dependOn(&run_starter_tests.step);
     const starter_template_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("templates/bounce/src/main.zig"),
+        .root_source_file = b.path("templates/starter/src/main.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -868,13 +824,10 @@ pub fn build(b: *std.Build) void {
     const starter_template_browser = b.addExecutable(.{
         .name = "starter-template-browser",
         .root_module = b.createModule(.{
-            .root_source_file = b.path("templates/bounce/src/main.zig"),
+            .root_source_file = b.path("templates/starter/src/game.zig"),
             .target = browser_target,
             .optimize = browser_optimize,
-            .imports = &.{
-                .{ .name = "unpolished-peas", .module = browser_peas },
-                .{ .name = "unpolished-peas-sdl3", .module = browser_starter_sdl_shim },
-            },
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
         }),
     });
     starter_template_browser.entry = .disabled;
@@ -891,11 +844,15 @@ pub fn build(b: *std.Build) void {
     starter_external.setCwd(b.path("."));
     const starter_external_step = b.step("test-starter-external", "Build the generated starter as a clean external package consumer");
     starter_external_step.dependOn(&starter_external.step);
+    const starter_external_web = b.addSystemCommand(&.{"script/test_downstream_browser_fixture.sh"});
+    starter_external_web.setCwd(b.path("."));
+    const starter_external_web_step = b.step("test-starter-external-web", "Build the generated starter browser package outside the Peas checkout");
+    starter_external_web_step.dependOn(&starter_external_web.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
     const run_starter_demo = b.addRunArtifact(starter_demo);
-    run_starter_demo.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("templates/bounce/assets"));
+    run_starter_demo.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("templates/starter/assets"));
     if (b.args) |args| run_starter_demo.addArgs(args);
     const run_starter_step = b.step("run-starter", "Run the Seed Sprint starter from this checkout");
     run_starter_step.dependOn(&run_starter_demo.step);
@@ -1019,71 +976,113 @@ pub fn build(b: *std.Build) void {
     const tools_tests = b.addTest(.{ .root_module = tools });
     const run_tools_tests = b.addRunArtifact(tools_tests);
     const test_support_tests = b.addTest(.{ .root_module = test_support });
-    const test_harness_tests = b.addTest(.{ .root_module = test_harness });
-    const fixture_networking_tests = b.addTest(.{ .root_module = fixture_networking });
-    const fixture_services_tests = b.addTest(.{ .root_module = fixture_services });
-    const virtual_network_provider_tests = b.addTest(.{ .root_module = virtual_network_provider });
-    const platform_composition_smoke_executable = b.addExecutable(.{ .name = "platform-composition-smoke", .root_module = platform_composition_smoke });
-    const udp_cross_process_server_executable = b.addExecutable(.{ .name = "udp-cross-process-server", .root_module = udp_cross_process_server });
-    const udp_cross_process_client_executable = b.addExecutable(.{ .name = "udp-cross-process-client", .root_module = udp_cross_process_client });
-    const udp_cross_process_test_executable = b.addExecutable(.{ .name = "udp-cross-process-test", .root_module = udp_cross_process_test });
-    const p2p_cross_process_server_executable = b.addExecutable(.{ .name = "p2p-cross-process-server", .root_module = p2p_cross_process_server });
-    p2p_cross_process_server_executable.linkLibC();
-    const p2p_cross_process_client_executable = b.addExecutable(.{ .name = "p2p-cross-process-client", .root_module = p2p_cross_process_client });
-    p2p_cross_process_client_executable.linkLibC();
-    const p2p_cross_process_test_executable = b.addExecutable(.{ .name = "p2p-cross-process-test", .root_module = p2p_cross_process_test });
-    p2p_cross_process_test_executable.linkLibC();
-    const p2p_route_matrix_relay_executable = b.addExecutable(.{ .name = "p2p-route-matrix-relay", .root_module = p2p_route_matrix_relay });
-    p2p_route_matrix_relay_executable.linkLibC();
-    const p2p_route_matrix_relay_server_executable = b.addExecutable(.{ .name = "p2p-route-matrix-relay-server", .root_module = p2p_route_matrix_relay_server });
-    p2p_route_matrix_relay_server_executable.linkLibC();
-    const p2p_route_matrix_relay_client_executable = b.addExecutable(.{ .name = "p2p-route-matrix-relay-client", .root_module = p2p_route_matrix_relay_client });
-    p2p_route_matrix_relay_client_executable.linkLibC();
-    const p2p_route_matrix_tcp_server_executable = b.addExecutable(.{ .name = "p2p-route-matrix-tcp-server", .root_module = p2p_route_matrix_tcp_server });
-    p2p_route_matrix_tcp_server_executable.linkLibC();
-    const p2p_route_matrix_tcp_client_executable = b.addExecutable(.{ .name = "p2p-route-matrix-tcp-client", .root_module = p2p_route_matrix_tcp_client });
-    p2p_route_matrix_tcp_client_executable.linkLibC();
-    const p2p_route_matrix_test_executable = b.addExecutable(.{ .name = "p2p-route-matrix-test", .root_module = p2p_route_matrix_test });
-    p2p_route_matrix_test_executable.linkLibC();
-    const stun_turn_interop_tests = b.addTest(.{ .root_module = stun_turn_interop });
-    const benchmark_harness_tests = b.addTest(.{ .root_module = benchmark_harness });
-    const benchmark_harness_executable = b.addExecutable(.{ .name = "benchmark-harness", .root_module = benchmark_harness });
-    const benchmark_authoritative_tests = b.addTest(.{ .root_module = benchmark_authoritative });
-    const benchmark_authoritative_executable = b.addExecutable(.{ .name = "benchmark-authoritative", .root_module = benchmark_authoritative });
-    const benchmark_sharded_p2p_tests = b.addTest(.{ .root_module = benchmark_sharded_p2p });
-    const benchmark_sharded_p2p_executable = b.addExecutable(.{ .name = "benchmark-sharded-p2p", .root_module = benchmark_sharded_p2p });
-    const benchmark_topology_faults_tests = b.addTest(.{ .root_module = benchmark_topology_faults });
-    const benchmark_topology_faults_executable = b.addExecutable(.{ .name = "benchmark-topology-faults", .root_module = benchmark_topology_faults });
-    const benchmark_throughput_tests = b.addTest(.{ .root_module = benchmark_throughput });
-    const benchmark_throughput_executable = b.addExecutable(.{ .name = "benchmark-throughput", .root_module = benchmark_throughput });
-    const benchmark_memory_tests = b.addTest(.{ .root_module = benchmark_memory });
-    const benchmark_memory_executable = b.addExecutable(.{ .name = "benchmark-memory", .root_module = benchmark_memory });
-    const state_tests = b.addTest(.{ .root_module = state });
-    const topology_tests = b.addTest(.{ .root_module = topology });
-    const transport_tests = b.addTest(.{ .root_module = transport });
-    const runtime_tests = b.addTest(.{ .root_module = runtime });
-    const c_abi_tests = b.addTest(.{ .root_module = c_abi });
-    const c_abi_library = b.addLibrary(.{
-        .linkage = .static,
-        .name = "minna-san-c-abi-conformance",
-        .root_module = c_abi,
-    });
-    const c_sdk_static = b.addLibrary(.{
-        .linkage = .static,
-        .name = "minna-san",
-        .root_module = c_abi,
-    });
-    c_sdk_static.linkLibC();
-    const c_sdk_shared = b.addLibrary(.{
-        .linkage = .dynamic,
-        .name = "minna-san",
-        .root_module = c_abi,
-    });
-    c_sdk_shared.linkLibC();
-    const install_c_sdk_static = b.addInstallArtifact(c_sdk_static, .{});
-    const install_c_sdk_shared = b.addInstallArtifact(c_sdk_shared, .{});
-    const c_abi_consumer = b.addExecutable(.{
-        .name = "c-abi-conformance",
+    const run_test_support_tests = b.addRunArtifact(test_support_tests);
+    const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
+    test_support_step.dependOn(&run_test_support_tests.step);
+    const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
+    module_test_step.dependOn(&run_tests.step);
+    module_test_step.dependOn(&run_tools_tests.step);
+    module_test_step.dependOn(&run_test_support_tests.step);
+    const release_gate = b.addSystemCommand(&.{"script/release_gate.sh"});
+    release_gate.setCwd(b.path("."));
+    const release_gate_step = b.step("release-gate", "Run the v1 release validation gate");
+    release_gate_step.dependOn(&release_gate.step);
+    const release_check = b.addSystemCommand(&.{"script/test_release_validation.sh"});
+    release_check.setCwd(b.path("."));
+    const version_consistency = b.addSystemCommand(&.{"script/test_version_consistency.sh"});
+    version_consistency.setCwd(b.path("."));
+    const release_check_step = b.step("release-check", "Validate release metadata, source-archive, and published-consumer wiring");
+    release_check_step.dependOn(&release_check.step);
+    release_check_step.dependOn(&version_consistency.step);
+    const release_candidate_clean_consumer = b.addSystemCommand(&.{"script/test_release_candidate_clean_consumer.sh"});
+    release_candidate_clean_consumer.setCwd(b.path("."));
+    const release_candidate_clean_consumer_step = b.step("test-release-candidate-clean-consumer", "Validate a clean released dependency consumer");
+    release_candidate_clean_consumer_step.dependOn(&release_candidate_clean_consumer.step);
+
+    const breakout_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/breakout_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_breakout_tests = b.addRunArtifact(breakout_tests);
+    const breakout_test_step = b.step("test-breakout", "Run deterministic Breakout tests");
+    breakout_test_step.dependOn(&run_breakout_tests.step);
+    const topdown_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/topdown_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_topdown_tests = b.addRunArtifact(topdown_tests);
+    const topdown_test_step = b.step("test-topdown", "Run deterministic top-down tests");
+    topdown_test_step.dependOn(&run_topdown_tests.step);
+    const puzzle_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/puzzle_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_puzzle_tests = b.addRunArtifact(puzzle_tests);
+    const puzzle_test_step = b.step("test-puzzle", "Run deterministic puzzle tests");
+    puzzle_test_step.dependOn(&run_puzzle_tests.step);
+    const platformer_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/platformer_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_platformer_tests = b.addRunArtifact(platformer_tests);
+    const platformer_test_step = b.step("test-platformer", "Run deterministic platformer tests");
+    platformer_test_step.dependOn(&run_platformer_tests.step);
+    const replay_test_step = b.step("test-replays", "Run stored fixed-step input replays");
+    replay_test_step.dependOn(&run_breakout_tests.step);
+    replay_test_step.dependOn(&run_topdown_tests.step);
+
+    const sdl_tests = b.addTest(.{ .root_module = sdl });
+    const run_sdl_tests = b.addRunArtifact(sdl_tests);
+    const sdl_test_step = b.step("test-sdl", "Compile the SDL3 runtime against its configured dependency");
+    sdl_test_step.dependOn(&run_sdl_tests.step);
+    const renderer_conformance = b.addRunArtifact(sdl_tests);
+    renderer_conformance.setEnvironmentVariable("UP_RENDERER_CONFORMANCE", "1");
+    const renderer_conformance_step = b.step("test-renderer-conformance", "Run shared desktop renderer smoke and GPU golden fixtures");
+    renderer_conformance_step.dependOn(&renderer_conformance.step);
+    const opengl_conformance = b.addRunArtifact(sdl_tests);
+    opengl_conformance.setEnvironmentVariable("UP_OPENGL_CONFORMANCE", "1");
+    const opengl_conformance_step = b.step("test-opengl", "Run the OpenGL 3.3 desktop presenter conformance fixture");
+    opengl_conformance_step.dependOn(&opengl_conformance.step);
+    const cross_backend_conformance = b.addRunArtifact(sdl_tests);
+    cross_backend_conformance.setEnvironmentVariable("UP_CROSS_BACKEND_CONFORMANCE", "1");
+    const cross_backend_conformance_step = b.step("test-renderer-cross-backend", "Compare SDL GPU and OpenGL renderer captures");
+    cross_backend_conformance_step.dependOn(&cross_backend_conformance.step);
+    const browser_renderer_parity = b.addSystemCommand(&.{"script/test_browser_renderer_corpus.sh"});
+    browser_renderer_parity.setCwd(b.path("."));
+    const browser_renderer_parity_step = b.step("test-browser-renderer-parity", "Compare forced WebGL 2 and WebGPU browser captures");
+    browser_renderer_parity_step.dependOn(&browser_renderer_parity.step);
+    const three_backend_renderer = b.addSystemCommand(&.{"script/test_renderer_three_backend.sh"});
+    three_backend_renderer.setCwd(b.path("."));
+    const three_backend_renderer_step = b.step("test-renderer-three-backend", "Compare SDL GPU, WebGL 2, and WebGPU stable-core captures");
+    three_backend_renderer_step.dependOn(&three_backend_renderer.step);
+    const desktop_backend_comparison = b.addSystemCommand(&.{"script/check_desktop_backend_comparison.sh"});
+    desktop_backend_comparison.setCwd(b.path("."));
+    const desktop_backend_comparison_step = b.step("test-desktop-backends", "Compare desktop renderer replays and captures");
+    desktop_backend_comparison_step.dependOn(&desktop_backend_comparison.step);
+}
+
+fn addExample(
+    b: *std.Build,
+    name: []const u8,
+    path: []const u8,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    peas: *std.Build.Module,
+    sdl: ?*std.Build.Module,
+) *std.Build.Step.Compile {
+    var imports = std.ArrayList(std.Build.Module.Import).empty;
+    imports.append(b.allocator, .{ .name = "unpolished-peas", .module = peas }) catch @panic("OOM");
+    if (sdl) |module| imports.append(b.allocator, .{ .name = "unpolished-peas-sdl3", .module = module }) catch @panic("OOM");
+    const exe = b.addExecutable(.{
+        .name = name,
         .root_module = b.createModule(.{
             .root_source_file = b.path("contracts/c_abi_consumer.zig"),
             .target = target,

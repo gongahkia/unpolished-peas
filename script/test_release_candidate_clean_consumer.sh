@@ -12,9 +12,12 @@ web="$tmp/web"
 epoch=$(git -C "$repo" log -1 --format=%ct)
 
 mkdir "$release"
-git -C "$repo" archive --format=tar HEAD | tar -x -C "$release"
+tree="$($repo/script/worktree_treeish.sh)"
+git -C "$repo" archive --format=tar "$tree" | tar -x -C "$release"
 test ! -e "$release/.git"
-(cd "$release" && SOURCE_DATE_EPOCH="$epoch" UP_STARTER_DEPENDENCY_HASH="unpolished_peas-0.0.4-test" zig build peas -- new "$generated")
+mkdir -p "$release/templates/starter"
+cp "$repo/templates/starter/build.zig.zon" "$release/templates/starter/build.zig.zon"
+(cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$generated")
 test -f "$generated/build.zig.zon"
 if rg -Fq "$repo" "$generated"; then exit 1; fi
 # The unreleased archive cannot depend on itself by URL. Keep the generated

@@ -47,17 +47,15 @@ or installer; signing and platform-store distribution remain a release concern.
 
 ## Browser
 
-From an unpolished-peas source checkout, build a static browser package of
-this same starter with:
+Build a self-contained browser directory with:
 
 ```sh
-zig build peas -- package web dist --game starter
-zig build peas -- serve dist/unpolished-peas-starter-web
+zig build web
+python3 -m http.server --directory zig-out/web 8000
 ```
 
-Open the local URL reported by `serve`. A copied project currently has a
-native `build.zig` only; the generic standalone browser build adapter is not
-yet published as part of the dependency API.
+Open `http://localhost:8000`. The standalone browser adapter and host files
+are shipped by the Peas package, so copied projects use the same workflow.
 
 ## Structure
 
@@ -78,8 +76,6 @@ logical drawing.
 Before shipping, replace `organization`, `application`, and `title` in
 `src/game.zig` with stable game-specific values.
 
-`v0.0.3` is withdrawn and `v0.0.4` was never published. This source-checkout
-template contains a release-time dependency coordinate and cannot be used
-independently until release preparation replaces it with a public immutable tag
-URL and matching Zig package hash. A published starter copies that reviewed
-manifest; update both coordinates together for every release.
+The checked-in manifest is an explicitly unreleased release template. The
+release preparation step writes the immutable tag URL and matching Zig package
+hash before a maintainer tags a release. Do not use `main` as a dependency.

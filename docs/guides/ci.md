@@ -11,7 +11,7 @@ Nightly and tag-release capability rows run `script/check_workload_performance.s
 | Job | Rows | Checks | Execution budget |
 | --- | --- | --- | --- |
 | `capability-matrix` | all selected rows | validates and emits the matrix | 1 minute |
-| `stable-core-capability` | macOS, Linux, Windows SDL GPU | formatting; frozen core API; deterministic unit, headless, and test-support checks; starter generation; clean external-starter build; starter browser package; documentation links; macOS/Linux generated-project host smoke | 15 minutes per row |
+| `stable-core-capability` | macOS, Linux, Windows SDL GPU | formatting; frozen core API; deterministic unit, headless, and test-support checks; starter generation; clean external native and browser builds; starter browser package; documentation links; macOS/Linux generated-project host smoke | 15 minutes per row |
 
 The budget is an operational target, not a wall-clock guarantee. Graphics failures retain `zig-out` diagnostics in the retained non-PR renderer-conformance jobs.
 
