@@ -15,6 +15,9 @@ import initWasm, {
   unpackCartridge as wasmUnpackCartridge,
   unpackWorkcart as wasmUnpackWorkcart,
   compileWorkcart as wasmCompileWorkcart,
+  encodeWorkcart as wasmEncodeWorkcart,
+  rewriteWorkcart as wasmRewriteWorkcart,
+  workcartProjectView as wasmWorkcartProjectView,
 } from '../../../crates/modl-wasm/pkg/modl_wasm';
 
 export interface SourceSpan {
@@ -134,6 +137,28 @@ export class BrowserCompiler {
   public async parseWorkcart(source: string): Promise<WorkcartProject> {
     await this.initialized;
     return JSON.parse(wasmParseWorkcart(source)) as WorkcartProject;
+  }
+
+  public async workcartProjectView(source: string): Promise<UnpackedProject> {
+    await this.initialized;
+    return JSON.parse(wasmWorkcartProjectView(source)) as UnpackedProject;
+  }
+
+  public async encodeWorkcart(
+    manifest: string,
+    files: Readonly<Record<string, Uint8Array>>,
+  ): Promise<string> {
+    await this.initialized;
+    return wasmEncodeWorkcart(manifest, encodeProjectFiles(files));
+  }
+
+  public async rewriteWorkcart(
+    source: string,
+    manifest: string,
+    files: Readonly<Record<string, Uint8Array>>,
+  ): Promise<string> {
+    await this.initialized;
+    return wasmRewriteWorkcart(source, manifest, encodeProjectFiles(files));
   }
 
   public async compileWorkcart(source: string, debug: boolean): Promise<CompilationResult> {
