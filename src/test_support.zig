@@ -1,5 +1,6 @@
 const std = @import("std");
 const Canvas = @import("canvas.zig").Canvas;
+const canvas_trace = @import("canvas_trace.zig");
 const Color = @import("color.zig").Color;
 const diagnostics = @import("diagnostics.zig");
 const Image = @import("image.zig").Image;
@@ -57,10 +58,21 @@ pub const HeadlessFrame = struct {
     interpolation_alpha: f32 = 0,
 };
 
-pub const HeadlessCapture = struct {
+pub const HeadlessCapture = struct { // borrows the runner's command and trace storage.
     image_hash: u64,
     commands: []const render.Command,
+    /// The logical Canvas requests from the most recent `Game.draw` call.
+    canvas_trace: *const CanvasTrace,
 };
+
+/// Test-only structural capture of one `Canvas` draw frame.
+pub const CanvasTrace = canvas_trace.Trace;
+
+/// Fails when two logical Canvas frames differ. For a field-level diagnostic,
+/// use `CanvasTrace.firstDifference` and `CanvasTrace.formatDifference`.
+pub fn expectCanvasTraceEqual(expected: *const CanvasTrace, actual: *const CanvasTrace) !void {
+    if (try expected.firstDifference(actual) != null) return error.CanvasTraceMismatch;
+}
 
 pub fn HeadlessGameRunner(comptime Game: type) type {
     return struct {
@@ -74,6 +86,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         protocol: app.GameProtocol(Game) = undefined,
         renderer: render.HeadlessRenderer = undefined,
         commands: render.CommandBuffer,
+        trace: CanvasTrace,
 
         pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !*Self {
             return initWithSeed(allocator, width, height, null);
@@ -93,9 +106,12 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
                 .allocator = allocator,
                 .canvas = try Canvas.init(allocator, width, height),
                 .commands = render.CommandBuffer.init(allocator),
+                .trace = CanvasTrace.init(allocator),
             };
             errdefer self.canvas.deinit();
             errdefer self.commands.deinit();
+            errdefer self.trace.deinit();
+            self.canvas.attachTrace(&self.trace);
             self.context = .withRuntime(&self.input, &self.canvas);
             self.context.simulation_seed = simulation_seed;
             self.protocol = app.GameProtocol(Game).bind(&self.game);
@@ -109,6 +125,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             const allocator = self.allocator;
             self.renderer.deinit();
             self.commands.deinit();
+            self.trace.deinit();
             self.canvas.deinit();
             allocator.destroy(self);
         }
@@ -117,6 +134,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             for (frames) |frame| {
                 applyTopDownButtons(&self.input, frame.buttons);
                 try self.protocol.update(&self.context, frame.elapsed_seconds);
+                self.trace.reset();
                 try self.protocol.draw(&self.context, frame.interpolation_alpha);
                 self.input.beginFrame();
             }
@@ -136,17 +154,22 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             for (replay.frames, 0..) |_, index| {
                 try replay.applyFrame(index, &self.input);
                 try self.protocol.update(&self.context, frameSeconds(replay.fixed_hz));
+                self.trace.reset();
                 try self.protocol.draw(&self.context, 0);
             }
         }
 
         pub fn submit(self: *Self, commands: []const render.Command) !void {
             for (commands) |command| try self.commands.append(command);
+            // Explicit render commands are a separate test path. Do not let
+            // their software execution masquerade as Game.draw Canvas calls.
+            self.canvas.detachTrace();
+            defer self.canvas.attachTrace(&self.trace);
             try self.renderer.submit(commands);
         }
 
         pub fn capture(self: *const Self) HeadlessCapture {
-            return .{ .image_hash = canvasHash(self.canvas), .commands = self.commands.commands.items };
+            return .{ .image_hash = canvasHash(self.canvas), .commands = self.commands.commands.items, .canvas_trace = &self.trace };
         }
     };
 }
@@ -448,6 +471,7 @@ test "headless runner executes scripted protocol frames and captures commands" {
     try std.testing.expect(capture.image_hash != 0);
     try std.testing.expectEqual(@as(usize, 1), capture.commands.len);
     try std.testing.expectEqual(render.Command{ .rect = commands[0].rect }, capture.commands[0]);
+    try std.testing.expectEqual(@as(usize, 2), capture.canvas_trace.commandSlice().len);
 }
 
 test "headless runner replays normalized input with identical state and canvas output" {
@@ -542,6 +566,7 @@ test "seeded headless replay reproduces RNG initialization and simulation" {
     defer first.deinit();
     try first.runReplay(replay);
     const first_capture = first.capture();
+    const first_trace_hash = try first_capture.canvas_trace.hash();
 
     var second = try HeadlessGameRunner(Game).initSeeded(std.testing.allocator, 8, 3, 42);
     defer second.deinit();
@@ -549,6 +574,9 @@ test "seeded headless replay reproduces RNG initialization and simulation" {
     const second_capture = second.capture();
     try std.testing.expectEqualDeep(first.game, second.game);
     try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
+    try expectCanvasTraceEqual(first_capture.canvas_trace, second_capture.canvas_trace);
+    try std.testing.expectEqual(first_trace_hash, try second_capture.canvas_trace.hash());
+    try std.testing.expectEqual(@as(usize, 3), first_capture.canvas_trace.commandSlice().len);
 
     var different_seed = try HeadlessGameRunner(Game).initSeeded(std.testing.allocator, 8, 3, 43);
     defer different_seed.deinit();

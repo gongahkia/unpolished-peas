@@ -1,17 +1,22 @@
 const std = @import("std");
 const atlas = @import("atlas.zig");
 const Color = @import("color.zig").Color;
-const ClipRect = @import("canvas.zig").ClipRect;
-const BlendMode = @import("canvas.zig").BlendMode;
 const Vec2 = @import("math.zig").Vec2;
 
-/// Test-only capture of one logical Canvas draw frame.
+/// Test-only capture of one logical Canvas draw frame. Owns its copied text
+/// and command storage; call `deinit` once.
 ///
 /// A trace records public Canvas requests, not rasterized pixels or backend
 /// work. It has no allocation or hashing cost until a Canvas explicitly
 /// attaches one.
 pub const Trace = struct {
     const Self = @This();
+
+    // These are deliberately value-only trace forms rather than imports from
+    // Canvas. Keeping the trace independent avoids a Canvas <-> trace import
+    // cycle; Canvas converts its corresponding logical values at capture.
+    pub const ClipRect = struct { x: i32, y: i32, w: i32, h: i32 };
+    pub const BlendMode = enum { alpha, additive };
 
     pub const Kind = enum(u8) {
         clear = 1,
@@ -71,7 +76,6 @@ pub const Trace = struct {
         flip_y: bool,
         tint: Color,
         rotation: f32,
-        sampling: atlas.Sampling,
     };
 
     pub const Command = union(Kind) {
@@ -128,7 +132,7 @@ pub const Trace = struct {
     pub fn hash(self: *const Self) !u64 {
         try self.ensureAvailable();
         var encoder = Encoder.init("UPCT1");
-        encoder.usize(self.commands.items.len);
+        encoder.writeUsize(self.commands.items.len);
         for (self.commands.items) |command| encoder.command(command);
         return encoder.finish();
     }
@@ -239,7 +243,6 @@ pub const Trace = struct {
             .flip_y = options.flip_y,
             .tint = options.tint,
             .rotation = options.rotation,
-            .sampling = options.sampling,
         } });
     }
 
@@ -257,7 +260,9 @@ pub const Trace = struct {
 
     fn append(self: *Self, command: Command) void {
         if (self.failure != null) return;
-        self.commands.append(self.allocator, command) catch self.failure = .out_of_memory;
+        self.commands.append(self.allocator, command) catch {
+            self.failure = .out_of_memory;
+        };
     }
 
     fn clearRetainingCapacity(self: *Self) void {
@@ -291,36 +296,36 @@ const Encoder = struct {
         self.value.update(&.{value});
     }
 
-    fn bool(self: *Encoder, value: bool) void {
+    fn writeBool(self: *Encoder, value: bool) void {
         self.byte(@intFromBool(value));
     }
 
-    fn u32(self: *Encoder, value: u32) void {
+    fn writeU32(self: *Encoder, value: u32) void {
         self.byte(@truncate(value));
         self.byte(@truncate(value >> 8));
         self.byte(@truncate(value >> 16));
         self.byte(@truncate(value >> 24));
     }
 
-    fn u64(self: *Encoder, value: u64) void {
-        self.u32(@truncate(value));
-        self.u32(@truncate(value >> 32));
+    fn writeU64(self: *Encoder, value: u64) void {
+        self.writeU32(@truncate(value));
+        self.writeU32(@truncate(value >> 32));
     }
 
-    fn usize(self: *Encoder, value: usize) void {
-        self.u64(@intCast(value));
+    fn writeUsize(self: *Encoder, value: usize) void {
+        self.writeU64(@intCast(value));
     }
 
-    fn i32(self: *Encoder, value: i32) void {
-        self.u32(@bitCast(value));
+    fn writeI32(self: *Encoder, value: i32) void {
+        self.writeU32(@bitCast(value));
     }
 
-    fn f32(self: *Encoder, value: f32) void {
-        self.u32(@bitCast(value));
+    fn writeF32(self: *Encoder, value: f32) void {
+        self.writeU32(@bitCast(value));
     }
 
     fn bytes(self: *Encoder, value: []const u8) void {
-        self.usize(value.len);
+        self.writeUsize(value.len);
         self.value.update(value);
     }
 
@@ -332,51 +337,51 @@ const Encoder = struct {
     }
 
     fn vec2(self: *Encoder, value: Vec2) void {
-        self.f32(value.x);
-        self.f32(value.y);
+        self.writeF32(value.x);
+        self.writeF32(value.y);
     }
 
-    fn clip(self: *Encoder, value: ClipRect) void {
-        self.i32(value.x);
-        self.i32(value.y);
-        self.i32(value.w);
-        self.i32(value.h);
+    fn writeClip(self: *Encoder, value: Trace.ClipRect) void {
+        self.writeI32(value.x);
+        self.writeI32(value.y);
+        self.writeI32(value.w);
+        self.writeI32(value.h);
     }
 
-    fn optionalClip(self: *Encoder, value: ?ClipRect) void {
-        self.bool(value != null);
-        if (value) |clip| self.clip(clip);
+    fn optionalClip(self: *Encoder, value: ?Trace.ClipRect) void {
+        self.writeBool(value != null);
+        if (value) |clip_value| self.writeClip(clip_value);
     }
 
     fn resource(self: *Encoder, value: Trace.Resource) void {
-        self.u32(value.width);
-        self.u32(value.height);
-        self.u64(value.content_hash);
+        self.writeU32(value.width);
+        self.writeU32(value.height);
+        self.writeU64(value.content_hash);
     }
 
     fn command(self: *Encoder, value: Trace.Command) void {
         self.byte(@intFromEnum(std.meta.activeTag(value)));
         switch (value) {
-            .clear => |color| self.color(color),
-            .push_clip => |clip| self.clip(clip),
+            .clear => |clear_color| self.color(clear_color),
+            .push_clip => |clip_value| self.writeClip(clip_value),
             .restore_clip => |clip| self.optionalClip(clip),
             .set_blend => |blend| self.byte(@intFromEnum(blend)),
             .pixel => |pixel| {
-                self.i32(pixel.x);
-                self.i32(pixel.y);
+                self.writeI32(pixel.x);
+                self.writeI32(pixel.y);
                 self.color(pixel.color);
             },
             .fill_rect, .stroke_rect => |rect| {
-                self.i32(rect.x);
-                self.i32(rect.y);
-                self.i32(rect.w);
-                self.i32(rect.h);
+                self.writeI32(rect.x);
+                self.writeI32(rect.y);
+                self.writeI32(rect.w);
+                self.writeI32(rect.h);
                 self.color(rect.color);
             },
             .fill_circle => |circle| {
-                self.i32(circle.x);
-                self.i32(circle.y);
-                self.i32(circle.radius);
+                self.writeI32(circle.x);
+                self.writeI32(circle.y);
+                self.writeI32(circle.radius);
                 self.color(circle.color);
             },
             .fill_triangle => |triangle| {
@@ -393,42 +398,41 @@ const Encoder = struct {
                 self.color(quad.color);
             },
             .line => |line| {
-                self.i32(line.x0);
-                self.i32(line.y0);
-                self.i32(line.x1);
-                self.i32(line.y1);
+                self.writeI32(line.x0);
+                self.writeI32(line.y0);
+                self.writeI32(line.x1);
+                self.writeI32(line.y1);
                 self.color(line.color);
             },
             .sprite, .image => |draw| {
                 self.resource(draw.resource);
-                self.i32(draw.x);
-                self.i32(draw.y);
+                self.writeI32(draw.x);
+                self.writeI32(draw.y);
             },
             .atlas_frame => |draw| {
                 self.resource(draw.resource);
-                self.i32(draw.frame.x);
-                self.i32(draw.frame.y);
-                self.i32(draw.frame.w);
-                self.i32(draw.frame.h);
-                self.i32(draw.frame.source_w);
-                self.i32(draw.frame.source_h);
-                self.i32(draw.frame.offset_x);
-                self.i32(draw.frame.offset_y);
-                self.bool(draw.frame.rotated);
-                self.i32(draw.x);
-                self.i32(draw.y);
+                self.writeI32(draw.frame.x);
+                self.writeI32(draw.frame.y);
+                self.writeI32(draw.frame.w);
+                self.writeI32(draw.frame.h);
+                self.writeI32(draw.frame.source_w);
+                self.writeI32(draw.frame.source_h);
+                self.writeI32(draw.frame.offset_x);
+                self.writeI32(draw.frame.offset_y);
+                self.writeBool(draw.frame.rotated);
+                self.writeI32(draw.x);
+                self.writeI32(draw.y);
                 self.byte(@intFromEnum(draw.origin));
-                self.u32(draw.scale);
-                self.bool(draw.flip_x);
-                self.bool(draw.flip_y);
+                self.writeU32(draw.scale);
+                self.writeBool(draw.flip_x);
+                self.writeBool(draw.flip_y);
                 self.color(draw.tint);
-                self.f32(draw.rotation);
-                self.byte(@intFromEnum(draw.sampling));
+                self.writeF32(draw.rotation);
             },
             .text => |text| {
                 self.bytes(text.value);
-                self.i32(text.x);
-                self.i32(text.y);
+                self.writeI32(text.x);
+                self.writeI32(text.y);
                 self.color(text.color);
             },
         }
@@ -437,9 +441,9 @@ const Encoder = struct {
 
 fn resource(width: u32, height: u32, pixels: []const Color) Trace.Resource {
     var encoder = Encoder.init("UPCT-resource-v1");
-    encoder.u32(width);
-    encoder.u32(height);
-    encoder.usize(pixels.len);
+    encoder.writeU32(width);
+    encoder.writeU32(height);
+    encoder.writeUsize(pixels.len);
     for (pixels) |pixel| encoder.color(pixel);
     return .{ .width = width, .height = height, .content_hash = encoder.finish() };
 }
@@ -524,7 +528,7 @@ fn differenceSprite(expected: Trace.SpriteDraw, actual: Trace.SpriteDraw) ?[]con
 
 fn differenceAtlas(expected: Trace.AtlasFrameDraw, actual: Trace.AtlasFrameDraw) ?[]const u8 {
     if (!sameResource(expected.resource, actual.resource)) return "resource";
-    if (!sameAtlasFrame(expected.frame, actual.frame)) return "frame";
+    if (differenceAtlasFrame(expected.frame, actual.frame)) |field| return field;
     if (expected.x != actual.x) return "x";
     if (expected.y != actual.y) return "y";
     if (expected.origin != actual.origin) return "origin";
@@ -533,7 +537,19 @@ fn differenceAtlas(expected: Trace.AtlasFrameDraw, actual: Trace.AtlasFrameDraw)
     if (expected.flip_y != actual.flip_y) return "flip_y";
     if (!sameColor(expected.tint, actual.tint)) return "tint";
     if (!sameF32(expected.rotation, actual.rotation)) return "rotation";
-    if (expected.sampling != actual.sampling) return "sampling";
+    return null;
+}
+
+fn differenceAtlasFrame(expected: Trace.AtlasFrame, actual: Trace.AtlasFrame) ?[]const u8 {
+    if (expected.x != actual.x) return "frame.x";
+    if (expected.y != actual.y) return "frame.y";
+    if (expected.w != actual.w) return "frame.width";
+    if (expected.h != actual.h) return "frame.height";
+    if (expected.source_w != actual.source_w) return "frame.source_width";
+    if (expected.source_h != actual.source_h) return "frame.source_height";
+    if (expected.offset_x != actual.offset_x) return "frame.offset_x";
+    if (expected.offset_y != actual.offset_y) return "frame.offset_y";
+    if (expected.rotated != actual.rotated) return "frame.rotated";
     return null;
 }
 
@@ -557,11 +573,11 @@ fn sameVec2(a: Vec2, b: Vec2) bool {
     return sameF32(a.x, b.x) and sameF32(a.y, b.y);
 }
 
-fn sameClip(a: ClipRect, b: ClipRect) bool {
+fn sameClip(a: Trace.ClipRect, b: Trace.ClipRect) bool {
     return a.x == b.x and a.y == b.y and a.w == b.w and a.h == b.h;
 }
 
-fn sameOptionalClip(a: ?ClipRect, b: ?ClipRect) bool {
+fn sameOptionalClip(a: ?Trace.ClipRect, b: ?Trace.ClipRect) bool {
     if (a == null or b == null) return a == null and b == null;
     return sameClip(a.?, b.?);
 }
@@ -570,16 +586,12 @@ fn sameResource(a: Trace.Resource, b: Trace.Resource) bool {
     return a.width == b.width and a.height == b.height and a.content_hash == b.content_hash;
 }
 
-fn sameAtlasFrame(a: Trace.AtlasFrame, b: Trace.AtlasFrame) bool {
-    return a.x == b.x and a.y == b.y and a.w == b.w and a.h == b.h and a.source_w == b.source_w and a.source_h == b.source_h and a.offset_x == b.offset_x and a.offset_y == b.offset_y and a.rotated == b.rotated;
-}
-
 fn formatOptionalCommand(command: ?Trace.Command, buffer: []u8) ![]const u8 {
     const value = command orelse return std.fmt.bufPrint(buffer, "<none>", .{});
     return switch (value) {
         .clear => |color| std.fmt.bufPrint(buffer, "clear rgba({d},{d},{d},{d})", .{ color.r, color.g, color.b, color.a }),
         .push_clip => |clip| std.fmt.bufPrint(buffer, "push_clip x={d} y={d} w={d} h={d}", .{ clip.x, clip.y, clip.w, clip.h }),
-        .restore_clip => |clip| if (clip) |value| std.fmt.bufPrint(buffer, "restore_clip x={d} y={d} w={d} h={d}", .{ value.x, value.y, value.w, value.h }) else std.fmt.bufPrint(buffer, "restore_clip null", .{}),
+        .restore_clip => |clip| if (clip) |restored| std.fmt.bufPrint(buffer, "restore_clip x={d} y={d} w={d} h={d}", .{ restored.x, restored.y, restored.w, restored.h }) else std.fmt.bufPrint(buffer, "restore_clip null", .{}),
         .set_blend => |blend| std.fmt.bufPrint(buffer, "set_blend {s}", .{@tagName(blend)}),
         .pixel => |pixel| std.fmt.bufPrint(buffer, "pixel x={d} y={d} rgba({d},{d},{d},{d})", .{ pixel.x, pixel.y, pixel.color.r, pixel.color.g, pixel.color.b, pixel.color.a }),
         .fill_rect, .stroke_rect => |rect| std.fmt.bufPrint(buffer, "{s} x={d} y={d} w={d} h={d} rgba({d},{d},{d},{d})", .{ @tagName(std.meta.activeTag(value)), rect.x, rect.y, rect.w, rect.h, rect.color.r, rect.color.g, rect.color.b, rect.color.a }),
@@ -588,7 +600,7 @@ fn formatOptionalCommand(command: ?Trace.Command, buffer: []u8) ![]const u8 {
         .fill_quad => |quad| std.fmt.bufPrint(buffer, "fill_quad a=({d},{d}) b=({d},{d}) c=({d},{d}) d=({d},{d})", .{ quad.a.x, quad.a.y, quad.b.x, quad.b.y, quad.c.x, quad.c.y, quad.d.x, quad.d.y }),
         .line => |line| std.fmt.bufPrint(buffer, "line ({d},{d})->({d},{d}) rgba({d},{d},{d},{d})", .{ line.x0, line.y0, line.x1, line.y1, line.color.r, line.color.g, line.color.b, line.color.a }),
         .sprite, .image => |draw| std.fmt.bufPrint(buffer, "{s} resource={d}x{d}#{x} x={d} y={d}", .{ @tagName(std.meta.activeTag(value)), draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.x, draw.y }),
-        .atlas_frame => |draw| std.fmt.bufPrint(buffer, "atlas_frame resource={d}x{d}#{x} frame=({d},{d},{d},{d}) x={d} y={d} rotation={d}", .{ draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.frame.x, draw.frame.y, draw.frame.w, draw.frame.h, draw.x, draw.y, draw.rotation }),
+        .atlas_frame => |draw| std.fmt.bufPrint(buffer, "atlas_frame resource={d}x{d}#{x} frame=({d},{d},{d},{d}) source=({d},{d}) offset=({d},{d}) rotated={} x={d} y={d} origin={s} scale={d} flip=({},{}) tint=rgba({d},{d},{d},{d}) rotation={d}", .{ draw.resource.width, draw.resource.height, draw.resource.content_hash, draw.frame.x, draw.frame.y, draw.frame.w, draw.frame.h, draw.frame.source_w, draw.frame.source_h, draw.frame.offset_x, draw.frame.offset_y, draw.frame.rotated, draw.x, draw.y, @tagName(draw.origin), draw.scale, draw.flip_x, draw.flip_y, draw.tint.r, draw.tint.g, draw.tint.b, draw.tint.a, draw.rotation }),
         .text => |text| std.fmt.bufPrint(buffer, "text value={s} x={d} y={d} rgba({d},{d},{d},{d})", .{ text.value, text.x, text.y, text.color.r, text.color.g, text.color.b, text.color.a }),
     };
 }
@@ -600,6 +612,30 @@ test "empty traces have equal deterministic hashes" {
     defer second.deinit();
     try std.testing.expect((try first.firstDifference(&second)) == null);
     try std.testing.expectEqual(try first.hash(), try second.hash());
+    try std.testing.expectEqual(@as(u64, 0xa48090f4f017e871), try first.hash());
+}
+
+test "independent equal traces compare and hash equally" {
+    var first = Trace.init(std.testing.allocator);
+    defer first.deinit();
+    var second = Trace.init(std.testing.allocator);
+    defer second.deinit();
+    const first_pixels = [_]Color{ Color.white, Color.black };
+    const second_pixels = [_]Color{ Color.white, Color.black };
+
+    first.recordClear(Color.black);
+    first.recordFillRect(20, 3, 4, 5, Color.rgb(1, 2, 3));
+    first.recordSprite(2, 1, &first_pixels, 4, 5);
+    first.recordText("peas", 1, 2, Color.white);
+
+    second.recordClear(Color.black);
+    second.recordFillRect(20, 3, 4, 5, Color.rgb(1, 2, 3));
+    second.recordSprite(2, 1, &second_pixels, 4, 5);
+    second.recordText("peas", 1, 2, Color.white);
+
+    try std.testing.expect((try first.firstDifference(&second)) == null);
+    try std.testing.expectEqual(try first.hash(), try second.hash());
+    try std.testing.expectEqual(@as(u64, 0xc74207c303d005ef), try first.hash());
 }
 
 test "trace detects ordering fields text resources and float bits" {
@@ -651,11 +687,56 @@ test "trace detects ordering fields text resources and float bits" {
     try std.testing.expectEqualStrings("resource", (try first.firstDifference(&second)).?.field);
 
     second.reset();
+    second.recordFillRect(20, 3, 4, 5, Color.rgb(2, 2, 3));
+    second.recordText("peas", 1, 2, Color.rgb(1, 2, 3));
+    second.recordSprite(2, 1, &pixels, 4, 5);
+    second.recordFillTriangle(.{ .x = -0.0, .y = 1 }, .{ .x = 2, .y = 3 }, .{ .x = 4, .y = 5 }, Color.white);
+    try std.testing.expectEqualStrings("color", (try first.firstDifference(&second)).?.field);
+
+    second.reset();
     second.recordFillRect(20, 3, 4, 5, Color.white);
     second.recordText("peas", 1, 2, Color.rgb(1, 2, 3));
     second.recordSprite(2, 1, &pixels, 4, 5);
     second.recordFillTriangle(.{ .x = 0.0, .y = 1 }, .{ .x = 2, .y = 3 }, .{ .x = 4, .y = 5 }, Color.white);
     try std.testing.expectEqualStrings("a", (try first.firstDifference(&second)).?.field);
+}
+
+test "atlas traces include visible frame tint and rotation" {
+    var first = Trace.init(std.testing.allocator);
+    defer first.deinit();
+    var second = Trace.init(std.testing.allocator);
+    defer second.deinit();
+    const pixels = [_]Color{ Color.white, Color.black, Color.black, Color.white };
+    var name = [_]u8{'f'};
+    const frame = atlas.AtlasFrame{
+        .name = &name,
+        .x = 0,
+        .y = 0,
+        .w = 2,
+        .h = 2,
+        .source_w = 3,
+        .source_h = 3,
+        .offset_x = 1,
+        .offset_y = 1,
+    };
+
+    first.recordAtlasFrame(2, 2, &pixels, frame, 10, 11, .{ .tint = Color.white, .rotation = 0.25 });
+    second.recordAtlasFrame(2, 2, &pixels, frame, 10, 11, .{ .tint = Color.white, .rotation = 0.25 });
+    try std.testing.expect((try first.firstDifference(&second)) == null);
+
+    var changed_frame = frame;
+    changed_frame.x = 1;
+    second.reset();
+    second.recordAtlasFrame(2, 2, &pixels, changed_frame, 10, 11, .{ .tint = Color.white, .rotation = 0.25 });
+    try std.testing.expectEqualStrings("frame.x", (try first.firstDifference(&second)).?.field);
+
+    second.reset();
+    second.recordAtlasFrame(2, 2, &pixels, frame, 10, 11, .{ .tint = Color.rgb(1, 2, 3), .rotation = 0.25 });
+    try std.testing.expectEqualStrings("tint", (try first.firstDifference(&second)).?.field);
+
+    second.reset();
+    second.recordAtlasFrame(2, 2, &pixels, frame, 10, 11, .{ .tint = Color.white, .rotation = 0.5 });
+    try std.testing.expectEqualStrings("rotation", (try first.firstDifference(&second)).?.field);
 }
 
 test "trace reports command-count mismatch" {

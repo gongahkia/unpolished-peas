@@ -1,5 +1,6 @@
 const std = @import("std");
 const atlas_mod = @import("atlas.zig");
+const canvas_trace = @import("canvas_trace.zig");
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const font = @import("font.zig");
@@ -38,6 +39,9 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     pixels: []Color,
     clip: ?ClipRect = null,
     blend: BlendMode = .alpha,
+    // A test-only observer of public logical Canvas operations. Normal
+    // rendering leaves this null and does not allocate or hash commands.
+    trace: ?*canvas_trace.Trace = null,
 
     pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !Canvas {
         if (width == 0 or height == 0) return error.InvalidCanvasSize;
@@ -52,27 +56,49 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         self.* = undefined;
     }
 
+    /// Attaches a test-owned logical command trace. The Canvas does not own
+    /// the trace, which must outlive the attachment.
+    pub fn attachTrace(self: *Canvas, trace: *canvas_trace.Trace) void {
+        self.trace = trace;
+    }
+
+    pub fn detachTrace(self: *Canvas) void {
+        self.trace = null;
+    }
+
     pub fn clear(self: *Canvas, color: Color) void {
+        if (self.trace) |trace| trace.recordClear(color);
         @memset(self.pixels, color);
     }
 
     pub fn pushClip(self: *Canvas, next: ClipRect) ?ClipRect {
         const previous = self.clip;
+        if (self.trace) |trace| trace.recordPushClip(.{ .x = next.x, .y = next.y, .w = next.w, .h = next.h });
         self.clip = if (previous) |current| intersectClip(current, next) else next;
         return previous;
     }
 
     pub fn restoreClip(self: *Canvas, previous: ?ClipRect) void {
+        if (self.trace) |trace| trace.recordRestoreClip(if (previous) |clip| .{ .x = clip.x, .y = clip.y, .w = clip.w, .h = clip.h } else null);
         self.clip = previous;
     }
 
     pub fn setBlend(self: *Canvas, blend: BlendMode) BlendMode {
         const previous = self.blend;
+        if (self.trace) |trace| trace.recordSetBlend(switch (blend) {
+            .alpha => .alpha,
+            .additive => .additive,
+        });
         self.blend = blend;
         return previous;
     }
 
     pub fn pixel(self: *Canvas, x: i32, y: i32, color: Color) void {
+        if (self.trace) |trace| trace.recordPixel(x, y, color);
+        self.blendPixel(x, y, color);
+    }
+
+    fn blendPixel(self: *Canvas, x: i32, y: i32, color: Color) void {
         if (self.index(x, y)) |i| {
             self.pixels[i] = switch (self.blend) {
                 .alpha => color.over(self.pixels[i]),
@@ -87,6 +113,11 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 
     pub fn fillRect(self: *Canvas, x: i32, y: i32, w: i32, h: i32, color: Color) void {
+        if (self.trace) |trace| trace.recordFillRect(x, y, w, h, color);
+        self.fillRectImpl(x, y, w, h, color);
+    }
+
+    fn fillRectImpl(self: *Canvas, x: i32, y: i32, w: i32, h: i32, color: Color) void {
         if (w <= 0 or h <= 0) return;
         const width_i: i32 = @intCast(self.width);
         const height_i: i32 = @intCast(self.height);
@@ -99,34 +130,42 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         var py = y0;
         while (py < y1) : (py += 1) {
             var px = x0;
-            while (px < x1) : (px += 1) self.pixel(px, py, color);
+            while (px < x1) : (px += 1) self.blendPixel(px, py, color);
         }
     }
 
     pub fn strokeRect(self: *Canvas, x: i32, y: i32, w: i32, h: i32, color: Color) void {
-        self.fillRect(x, y, w, 1, color);
-        self.fillRect(x, y + h - 1, w, 1, color);
-        self.fillRect(x, y, 1, h, color);
-        self.fillRect(x + w - 1, y, 1, h, color);
+        if (self.trace) |trace| trace.recordStrokeRect(x, y, w, h, color);
+        self.fillRectImpl(x, y, w, 1, color);
+        self.fillRectImpl(x, y + h - 1, w, 1, color);
+        self.fillRectImpl(x, y, 1, h, color);
+        self.fillRectImpl(x + w - 1, y, 1, h, color);
     }
 
     pub fn fillCircle(self: *Canvas, cx: i32, cy: i32, radius: i32, color: Color) void {
+        if (self.trace) |trace| trace.recordFillCircle(cx, cy, radius, color);
         if (radius <= 0) return;
         const r2 = radius * radius;
         var y = -radius;
         while (y <= radius) : (y += 1) {
             var x = -radius;
             while (x <= radius) : (x += 1) {
-                if (x * x + y * y <= r2) self.pixel(cx + x, cy + y, color);
+                if (x * x + y * y <= r2) self.blendPixel(cx + x, cy + y, color);
             }
         }
     }
 
     pub fn fillTriangle(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, color: Color) void {
+        if (self.trace) |trace| trace.recordFillTriangle(a, b, c, color);
         self.fillTriangleImpl(a, b, c, color, false);
     }
 
     pub fn fillQuad(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) void {
+        if (self.trace) |trace| trace.recordFillQuad(a, b, c, d, color);
+        self.fillQuadImpl(a, b, c, d, color);
+    }
+
+    fn fillQuadImpl(self: *Canvas, a: Vec2, b: Vec2, c: Vec2, d: Vec2, color: Color) void {
         self.fillTriangleImpl(a, b, c, color, false);
         self.fillTriangleImpl(a, c, d, color, true);
     }
@@ -152,13 +191,18 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
                 const ca = edge(c, a, point);
                 const first_edge = if (exclude_first_edge) if (area > 0) ab > 0 else ab < 0 else if (area > 0) ab >= 0 else ab <= 0;
                 if (first_edge and ((area > 0 and bc >= 0 and ca >= 0) or (area < 0 and bc <= 0 and ca <= 0))) {
-                    self.pixel(x, y, color);
+                    self.blendPixel(x, y, color);
                 }
             }
         }
     }
 
     pub fn line(self: *Canvas, x0_in: i32, y0_in: i32, x1_in: i32, y1_in: i32, color: Color) void {
+        if (self.trace) |trace| trace.recordLine(x0_in, y0_in, x1_in, y1_in, color);
+        self.lineImpl(x0_in, y0_in, x1_in, y1_in, color);
+    }
+
+    fn lineImpl(self: *Canvas, x0_in: i32, y0_in: i32, x1_in: i32, y1_in: i32, color: Color) void {
         var x0 = x0_in;
         var y0 = y0_in;
         const x1 = x1_in;
@@ -170,7 +214,7 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         var err = dx + dy;
 
         while (true) {
-            self.pixel(x0, y0, color);
+            self.blendPixel(x0, y0, color);
             if (x0 == x1 and y0 == y1) break;
             const e2 = 2 * err;
             if (e2 >= dy) {
@@ -185,22 +229,29 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 
     pub fn drawSprite(self: *Canvas, sprite: Sprite, dst_x: i32, dst_y: i32) void {
+        if (self.trace) |trace| trace.recordSprite(sprite.width, sprite.height, sprite.pixels, dst_x, dst_y);
+        self.drawSpriteImpl(sprite, dst_x, dst_y);
+    }
+
+    fn drawSpriteImpl(self: *Canvas, sprite: Sprite, dst_x: i32, dst_y: i32) void {
         var y: u32 = 0;
         while (y < sprite.height) : (y += 1) {
             var x: u32 = 0;
             while (x < sprite.width) : (x += 1) {
-                self.pixel(dst_x + @as(i32, @intCast(x)), dst_y + @as(i32, @intCast(y)), sprite.get(x, y));
+                self.blendPixel(dst_x + @as(i32, @intCast(x)), dst_y + @as(i32, @intCast(y)), sprite.get(x, y));
             }
         }
     }
 
     pub fn drawImage(self: *Canvas, image: Image, dst_x: i32, dst_y: i32) void {
-        self.drawSprite(image.sprite(), dst_x, dst_y);
+        if (self.trace) |trace| trace.recordImage(image.width, image.height, image.pixels, dst_x, dst_y);
+        self.drawSpriteImpl(image.sprite(), dst_x, dst_y);
     }
 
     pub fn drawAtlasFrame(self: *Canvas, atlas: atlas_mod.Atlas, handle: atlas_mod.AtlasFrameHandle, dst_x: i32, dst_y: i32, options: atlas_mod.DrawSpriteOptions) void {
         if (options.scale == 0) return;
         const frame = atlas.frame(handle);
+        if (self.trace) |trace| trace.recordAtlasFrame(atlas.image.width, atlas.image.height, atlas.image.pixels, frame, dst_x, dst_y, options);
         const scale: i32 = @intCast(options.scale);
         const origin_x = switch (options.origin) {
             .top_left => dst_x,
@@ -230,16 +281,17 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
                 const x = origin_x + logical_x * scale;
                 const y = origin_y + logical_y * scale;
                 if (options.rotation == 0) {
-                    self.fillRect(x, y, scale, scale, pixel_color);
+                    self.fillRectImpl(x, y, scale, scale, pixel_color);
                 } else {
                     const center = Vec2.init(@as(f32, @floatFromInt(origin_x)) + @as(f32, @floatFromInt(frame.source_w * scale)) / 2, @as(f32, @floatFromInt(origin_y)) + @as(f32, @floatFromInt(frame.source_h * scale)) / 2);
-                    self.fillQuad(rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y + scale) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y + scale) }, center, options.rotation), pixel_color);
+                    self.fillQuadImpl(rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x + scale), .y = @floatFromInt(y + scale) }, center, options.rotation), rotatePoint(.{ .x = @floatFromInt(x), .y = @floatFromInt(y + scale) }, center, options.rotation), pixel_color);
                 }
             }
         }
     }
 
     pub fn drawText(self: *Canvas, text: []const u8, x: i32, y: i32, color: Color) void {
+        if (self.trace) |trace| trace.recordText(text, x, y, color);
         var laid_out = text_layout.layout(self.allocator, text, .{}) catch return;
         defer laid_out.deinit();
         for (laid_out.glyphs) |glyph| {
@@ -257,7 +309,7 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
             while (col < font.width) : (col += 1) {
                 const shift: u3 = @intCast(font.width - 1 - col);
                 if (((glyph[row] >> shift) & 1) != 0) {
-                    self.pixel(x + @as(i32, @intCast(col)), y + @as(i32, @intCast(row)), color);
+                    self.blendPixel(x + @as(i32, @intCast(col)), y + @as(i32, @intCast(row)), color);
                 }
             }
         }
@@ -451,9 +503,32 @@ test "sprite draw honors alpha" {
     try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
 }
 
+test "canvas trace records public operations without rasterization details" {
+    var canvas = try Canvas.init(std.testing.allocator, 4, 4);
+    defer canvas.deinit();
+    var trace = canvas_trace.Trace.init(std.testing.allocator);
+    defer trace.deinit();
+    canvas.attachTrace(&trace);
+
+    canvas.clear(Color.black);
+    canvas.fillRect(1, 1, 2, 2, Color.white);
+    canvas.strokeRect(0, 0, 4, 4, Color.rgb(1, 2, 3));
+    canvas.line(0, 0, 3, 3, Color.rgb(4, 5, 6));
+
+    const commands = trace.commandSlice();
+    try std.testing.expectEqual(@as(usize, 4), commands.len);
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.clear, std.meta.activeTag(commands[0]));
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.fill_rect, std.meta.activeTag(commands[1]));
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.stroke_rect, std.meta.activeTag(commands[2]));
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.line, std.meta.activeTag(commands[3]));
+}
+
 test "image draw uses sprite path" {
     var canvas = try Canvas.init(std.testing.allocator, 2, 1);
     defer canvas.deinit();
+    var trace = canvas_trace.Trace.init(std.testing.allocator);
+    defer trace.deinit();
+    canvas.attachTrace(&trace);
 
     const pixels = try std.testing.allocator.dupe(Color, &.{ Color.white, Color.transparent });
     var image = Image{ .allocator = std.testing.allocator, .width = 2, .height = 1, .pixels = pixels };
@@ -463,6 +538,8 @@ test "image draw uses sprite path" {
     canvas.drawImage(image, 0, 0);
     try std.testing.expectEqual(Color.white, canvas.get(0, 0).?);
     try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
+    try std.testing.expectEqual(@as(usize, 2), trace.commandSlice().len);
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.image, std.meta.activeTag(trace.commandSlice()[1]));
 }
 
 test "text draws visible pixels" {
@@ -478,6 +555,9 @@ test "text draws visible pixels" {
 test "atlas frame draw handles trim rotation flip and tint" {
     var canvas = try Canvas.init(std.testing.allocator, 4, 4);
     defer canvas.deinit();
+    var trace = canvas_trace.Trace.init(std.testing.allocator);
+    defer trace.deinit();
+    canvas.attachTrace(&trace);
     const pixels = try std.testing.allocator.dupe(Color, &.{
         Color.rgb(255, 0, 0), Color.rgb(0, 255, 0),
         Color.rgb(0, 0, 255), Color.rgb(255, 255, 255),
@@ -506,4 +586,6 @@ test "atlas frame draw handles trim rotation flip and tint" {
     try std.testing.expectEqual(Color.rgb(0, 128, 0), canvas.get(2, 2).?);
     try std.testing.expectEqual(Color.rgb(255, 0, 0), canvas.get(2, 1).?);
     try std.testing.expectEqual(Color.black, canvas.get(0, 0).?);
+    try std.testing.expectEqual(@as(usize, 2), trace.commandSlice().len);
+    try std.testing.expectEqual(canvas_trace.Trace.Kind.atlas_frame, std.meta.activeTag(trace.commandSlice()[1]));
 }

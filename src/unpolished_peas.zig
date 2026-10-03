@@ -20,6 +20,7 @@ test {
     _ = @import("camera_canvas.zig");
     _ = @import("assets.zig");
     _ = @import("canvas.zig");
+    _ = @import("canvas_trace.zig");
     _ = @import("color.zig");
     _ = @import("diagnostics.zig");
     _ = @import("font_asset.zig");
