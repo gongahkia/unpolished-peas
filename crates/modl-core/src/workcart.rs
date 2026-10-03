@@ -411,7 +411,7 @@ fn workcart_asset_references(project: &WorkcartProject, name: &str) -> Vec<Strin
         }
     }
     for recipe in &project.recipes {
-        let referenced = match recipe {
+        let is_referenced = match recipe {
             WorkcartRecipe::Noise {
                 output, tile_set, ..
             } => output == name || tile_set == name,
@@ -422,7 +422,7 @@ fn workcart_asset_references(project: &WorkcartProject, name: &str) -> Vec<Strin
                 ..
             } => output == name || tile_set == name || source_map == name,
         };
-        if referenced {
+        if is_referenced {
             references.push(format!("recipe '{}'", recipe.id()));
         }
     }
