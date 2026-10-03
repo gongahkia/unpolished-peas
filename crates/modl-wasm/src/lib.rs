@@ -4,9 +4,9 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use modl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    compile_project, decode_cartridge, export_standalone_html, format_source, pack_project,
-    pack_workcart, parse_project_manifest, parse_workcart, unpack_cartridge_project,
-    unpack_workcart,
+    compile_project, decode_cartridge, export_standalone_html, export_standalone_workcart,
+    format_source, pack_project, pack_workcart, parse_project_manifest, parse_workcart,
+    unpack_cartridge_project, unpack_workcart,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -228,4 +228,14 @@ pub fn unpack_workcart_for_browser(bytes: &[u8]) -> Result<String, String> {
 pub fn export_html_for_browser(manifest: &str, files_json: &str) -> Result<String, String> {
     let files = serde_json::from_str(files_json).map_err(|error| error.to_string())?;
     export_standalone_html(manifest, &files).map_err(|error| error.to_string())
+}
+
+/// Exports a work-cart as one validated, offline standalone player.
+///
+/// # Errors
+///
+/// Returns the same work-cart, compilation, and capacity errors as the native exporter.
+#[wasm_bindgen(js_name = exportHtmlWorkcart)]
+pub fn export_html_workcart_for_browser(source: &str) -> Result<String, String> {
+    export_standalone_workcart(source).map_err(|error| error.to_string())
 }
