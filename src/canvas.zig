@@ -275,19 +275,33 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
             .linear => .linear,
         });
 
-        var destination_y: u32 = 0;
-        while (destination_y < options.height) : (destination_y += 1) {
-            const y_offset: i32 = @intCast(destination_y);
-            const y = std.math.add(i32, options.y, y_offset) catch continue;
-            var destination_x: u32 = 0;
-            while (destination_x < options.width) : (destination_x += 1) {
-                const x_offset: i32 = @intCast(destination_x);
-                const x = std.math.add(i32, options.x, x_offset) catch continue;
+        const destination_right = @as(i64, options.x) + @as(i64, options.width);
+        const destination_bottom = @as(i64, options.y) + @as(i64, options.height);
+        const canvas_right = @min(@as(i64, self.width), @as(i64, std.math.maxInt(i32)) + 1);
+        const canvas_bottom = @min(@as(i64, self.height), @as(i64, std.math.maxInt(i32)) + 1);
+        var left = @max(@as(i64, 0), @as(i64, options.x));
+        var top = @max(@as(i64, 0), @as(i64, options.y));
+        var right = @min(canvas_right, destination_right);
+        var bottom = @min(canvas_bottom, destination_bottom);
+        if (self.clip) |clip| {
+            left = @max(left, @as(i64, clip.x));
+            top = @max(top, @as(i64, clip.y));
+            right = @min(right, @as(i64, clip.x) + @as(i64, clip.w));
+            bottom = @min(bottom, @as(i64, clip.y) + @as(i64, clip.h));
+        }
+        if (left >= right or top >= bottom) return;
+
+        var y = top;
+        while (y < bottom) : (y += 1) {
+            const destination_y: u32 = @intCast(y - @as(i64, options.y));
+            var x = left;
+            while (x < right) : (x += 1) {
+                const destination_x: u32 = @intCast(x - @as(i64, options.x));
                 const source_color = switch (options.filter) {
                     .nearest => sampleSurfaceNearest(&surface.target, destination_x, destination_y, options.width, options.height),
                     .linear => sampleSurfaceLinear(&surface.target, destination_x, destination_y, options.width, options.height),
                 };
-                self.blendPixel(x, y, tint(source_color, options.tint));
+                self.blendPixel(@intCast(x), @intCast(y), tint(source_color, options.tint));
             }
         }
     }
@@ -625,6 +639,7 @@ test "render surfaces start transparent and validate their dimensions" {
     try std.testing.expectEqual(Color.transparent, surface.canvas().get(0, 0).?);
     try std.testing.expectError(error.InvalidRenderSurfaceSize, RenderSurface.init(std.testing.allocator, 0, 1));
     try std.testing.expectError(error.InvalidRenderSurfaceSize, RenderSurface.init(std.testing.allocator, 1, 0));
+    try std.testing.expectError(error.InvalidRenderSurfaceSize, RenderSurface.init(std.testing.allocator, @as(u32, std.math.maxInt(i32)) + 1, 1));
 }
 
 test "render surfaces compose, scale, tint, and respect Canvas clipping" {
@@ -676,6 +691,26 @@ test "render surfaces remain mutable and reject self sampling" {
     try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(0, 0).?);
     try std.testing.expectError(error.SurfaceSelfSampling, first.canvas().drawSurface(&first, .{ .x = 0, .y = 0, .width = 1, .height = 1 }));
     try std.testing.expectError(error.InvalidSurfaceDrawSize, canvas.drawSurface(&second, .{ .x = 0, .y = 0, .width = 0, .height = 1 }));
+    try std.testing.expectError(error.InvalidSurfaceDrawSize, canvas.drawSurface(&second, .{ .x = 0, .y = 0, .width = @as(u32, std.math.maxInt(i32)) + 1, .height = 1 }));
+    try canvas.drawSurface(&second, .{ .x = std.math.maxInt(i32), .y = std.math.maxInt(i32), .width = std.math.maxInt(i32), .height = std.math.maxInt(i32) });
+}
+
+test "render surfaces accept ordinary image and text draws" {
+    const pixels = try std.testing.allocator.dupe(Color, &.{Color.rgb(12, 34, 56)});
+    var image = Image{ .allocator = std.testing.allocator, .width = 1, .height = 1, .pixels = pixels };
+    defer image.deinit();
+    var surface = try RenderSurface.init(std.testing.allocator, 8, 8);
+    defer surface.deinit();
+    surface.canvas().clear(Color.transparent);
+    surface.canvas().drawImage(image, 0, 0);
+    surface.canvas().drawText("A", 1, 0, Color.white);
+
+    var screen = try Canvas.init(std.testing.allocator, 8, 8);
+    defer screen.deinit();
+    screen.clear(Color.black);
+    try screen.drawSurface(&surface, .{ .x = 0, .y = 0, .width = 8, .height = 8 });
+    try std.testing.expectEqual(Color.rgb(12, 34, 56), screen.get(0, 0).?);
+    try std.testing.expectEqual(Color.white, screen.get(2, 0).?);
 }
 
 test "render surface traces identify content rather than allocation" {
