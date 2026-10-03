@@ -6,6 +6,7 @@ tmp="$(mktemp -d)"
 trap 'rm -rf "$tmp"' EXIT HUP INT TERM
 release="$tmp/release"
 project="$tmp/neon-siege"
+global_cache="${ZIG_GLOBAL_CACHE_DIR:-$tmp/global-cache}"
 
 mkdir "$release"
 tree="$($repo/script/worktree_treeish.sh)"
@@ -18,9 +19,9 @@ cp "$release/fixtures/dogfood-release-consumer/build.zig.zon" "$project/build.zi
 
 (
     cd "$project"
-    ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build test
-    ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build package
-    ZIG_GLOBAL_CACHE_DIR="$tmp/global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build web
+    ZIG_GLOBAL_CACHE_DIR="$global_cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build test
+    ZIG_GLOBAL_CACHE_DIR="$global_cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build package
+    ZIG_GLOBAL_CACHE_DIR="$global_cache" ZIG_LOCAL_CACHE_DIR="$tmp/local-cache" zig build web
 )
 for path in \
     zig-out/bin/neon-siege \

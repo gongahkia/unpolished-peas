@@ -334,13 +334,23 @@ test "Neon Siege replays combat with seeded state, save data, Canvas trace, and 
     var replay = try scriptedAttackReplay(std.testing.allocator);
     defer replay.deinit(std.testing.allocator);
 
-    var first = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    var first_saves: up.testSupport.InMemorySaveStore = undefined;
+    first_saves.init(std.testing.allocator);
+    defer first_saves.deinit();
+    var second_saves: up.testSupport.InMemorySaveStore = undefined;
+    second_saves.init(std.testing.allocator);
+    defer second_saves.deinit();
+    const initial_settings = [_]u8{ 1, 1, 4, 0, 0, 0 };
+    try first_saves.capability().write("settings.v1", &initial_settings);
+    try second_saves.capability().write("settings.v1", &initial_settings);
+
+    var first = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, first_saves.capability());
     defer first.deinit();
     configureCombatScenario(&first.game);
     try first.runReplay(replay);
     const first_capture = first.capture();
 
-    var second = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    var second = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, second_saves.capability());
     defer second.deinit();
     configureCombatScenario(&second.game);
     try second.runReplay(replay);
@@ -353,7 +363,10 @@ test "Neon Siege replays combat with seeded state, save data, Canvas trace, and 
     try std.testing.expectEqual(first.game.wave, second.game.wave);
     try std.testing.expectEqual(first.game.player.position, second.game.player.position);
     try up.testSupport.expectCanvasTraceEqual(first_capture.canvas_trace, second_capture.canvas_trace);
-    try std.testing.expectEqual(try first_capture.canvas_trace.hash(), try second_capture.canvas_trace.hash());
+    const trace_hash = try first_capture.canvas_trace.hash();
+    try std.testing.expectEqual(@as(u64, 7_064_560_318_589_015_269), trace_hash);
+    try std.testing.expectEqual(@as(u64, 10_160_251_712_926_268_076), first_capture.image_hash);
+    try std.testing.expectEqual(trace_hash, try second_capture.canvas_trace.hash());
     try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
 }
 
@@ -369,6 +382,23 @@ test "Neon Siege uses gamepad actions for movement and shooting" {
     runner.input.setGamepadButton(7, .south, true);
     try runner.run(&.{.{}});
     try std.testing.expect(runner.audio.hasActivePlayback());
+}
+
+test "Neon Siege handles a breach and action-based restart" {
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    defer runner.deinit();
+    configureCombatScenario(&runner.game);
+    runner.game.player.health = 1;
+    runner.game.enemies[0].position = runner.game.player.position;
+    try runner.run(&.{.{}});
+    try std.testing.expect(runner.game.game_over);
+    try std.testing.expectEqual(@as(u8, 0), runner.game.player.health);
+
+    runner.input.set(.start, true);
+    try runner.run(&.{.{}});
+    try std.testing.expect(!runner.game.game_over);
+    try std.testing.expectEqual(@as(u8, 3), runner.game.player.health);
+    try std.testing.expectEqual(@as(u32, 0), runner.game.score);
 }
 
 test "Neon Siege reads and writes its game-owned settings bytes" {

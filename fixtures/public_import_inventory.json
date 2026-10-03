@@ -1,6 +1,11 @@
 {
   "version": 1,
   "sources": [
+    {"path": "dogfood/neon-siege/build.zig", "imports": []},
+    {"path": "dogfood/neon-siege/src/art.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core"]}]},
+    {"path": "dogfood/neon-siege/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "input", "preview", "testSupport"]}]},
+    {"path": "dogfood/neon-siege/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]},
+    {"path": "dogfood/neon-siege/src/sounds.zig", "imports": []},
     {"path": "examples/atlas.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/audio.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "playGame"]}]},
     {"path": "examples/bounce.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics"]}]},

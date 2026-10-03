@@ -1,7 +1,7 @@
 const std = @import("std");
 
 const max_source_bytes = 8 * 1024 * 1024;
-const roots = [_][]const u8{ "examples", "fixtures", "templates" };
+const roots = [_][]const u8{ "dogfood", "examples", "fixtures", "templates" };
 
 const Import = struct {
     module: []u8,
