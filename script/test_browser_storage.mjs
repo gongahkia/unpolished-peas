@@ -25,9 +25,14 @@ assert.equal(storage.read(memory, 0, key.length, 128, 2), value.length);
 assert.equal(storage.read(memory, 0, key.length, 128, value.length), value.length);
 assert.deepEqual([...bytes.subarray(128, 128 + value.length)], [...value]);
 assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
-assert.equal(storage.read(memory, 0, key.length, 128, value.length), 0);
+assert.equal(storage.read(memory, 0, key.length, 128, value.length), StorageStatus.notFound);
+assert.equal(storage.write(memory, 0, key.length, 64, 0), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, 0), 0);
+assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
 bytes[16] = 0xff;
 assert.equal(storage.write(memory, 16, 1, 64, value.length), StorageStatus.invalidArgument);
+bytes.set(encoder.encode("a/b"), 16);
+assert.equal(storage.write(memory, 16, 3, 64, value.length), StorageStatus.invalidArgument);
 assert.equal(createBrowserStorage({storage: null}).read(memory, 0, key.length, 128, value.length), StorageStatus.unavailable);
 
 const failing = new MemoryStorage();
@@ -35,3 +40,9 @@ failing.setItem = () => { throw new Error("quota"); };
 const failed = createBrowserStorage({storage: failing});
 assert.equal(failed.write(memory, 0, key.length, 64, value.length), StorageStatus.rejected);
 assert.deepEqual(failed.diagnostic(), {phase: "failed", namespace: "unpolished-peas:v1", maxValueBytes: 1024 * 1024, lastError: "write_failed"});
+
+const other = createBrowserStorage({storage: backend, namespace: "peas:other"});
+assert.equal(other.write(memory, 0, key.length, 64, value.length), StorageStatus.ok);
+assert.notEqual(backend.getItem("peas:test/bindings.up"), backend.getItem("peas:other/bindings.up"));
+backend.setItem("peas:test/bindings.up", "not-a-save");
+assert.equal(storage.read(memory, 0, key.length, 128, value.length), StorageStatus.corrupt);

@@ -751,6 +751,15 @@ pub fn build(b: *std.Build) void {
     const run_test_support_tests = b.addRunArtifact(test_support_tests);
     const test_support_step = b.step("test-support", "Run deterministic test fixture support tests");
     test_support_step.dependOn(&run_test_support_tests.step);
+    const storage_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/native_save_data.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_storage_tests = b.addRunArtifact(storage_tests);
+    const storage_test_step = b.step("test-storage", "Run native opaque save-data storage tests");
+    storage_test_step.dependOn(&run_storage_tests.step);
+    test_step.dependOn(&run_storage_tests.step);
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);
     module_test_step.dependOn(&run_tools_tests.step);

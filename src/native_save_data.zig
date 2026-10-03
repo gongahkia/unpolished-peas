@@ -148,7 +148,7 @@ test "native save store rejects path-like keys" {
     var store: NativeSaveStore = undefined;
     try store.init(std.testing.allocator, root);
     defer store.deinit();
-    for ([_][]const u8{ "../outside", "a/b", "a\\b" }) |key| {
+    for ([_][]const u8{ "..", "../outside", "a/b", "a\\b" }) |key| {
         try std.testing.expectError(error.InvalidKey, store.capability().write(key, "no"));
     }
 }
