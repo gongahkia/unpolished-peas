@@ -79,6 +79,7 @@
     {"path": "fixtures/topdown-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["input"]}]},
     {"path": "templates/starter/build.zig", "imports": []},
     {"path": "templates/starter/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics", "input", "preview", "testSupport"]}]},
-    {"path": "templates/starter/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]}
+    {"path": "templates/starter/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]},
+    {"path": "templates/starter/src/pickup_sound.zig", "imports": []}
   ]
 }

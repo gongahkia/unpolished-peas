@@ -10,7 +10,7 @@
 - [Render surfaces](guides/render-surfaces.md)
 - [Advanced 2D](guides/advanced-2d.md)
 - [Stable image assets](guides/image-assets.md)
-- [Stable audio assets](guides/audio-assets.md)
+- [Audio](guides/audio-assets.md)
 - [Testing](guides/testing.md)
 - [Top-down proof game](proof-games/topdown.md)
 - [Puzzle proof game](proof-games/puzzle.md)
