@@ -49,7 +49,7 @@ test('complete local Studio and distribution workflow', async ({
     .toBe(true);
   await expect
     .poll(() => page.locator('#studio').evaluate((element) => getComputedStyle(element).cursor))
-    .toContain('data:image/svg+xml');
+    .toContain('data:image/png');
   await expect(page.locator('html')).toHaveAttribute('data-studio-ready', 'true');
   await expect(page.locator('[data-view="shell"]')).toContainText('MODL/1 READY');
   await expect(page.locator('.terminal')).toContainText('CATALOG // RUN <ID> TO PLAY');
@@ -423,6 +423,11 @@ on draw:
 
   await shellCommand(page, 'run');
   await expect(page.locator('[data-view="player"]')).toBeVisible();
+  await expect
+    .poll(() =>
+      page.locator('.player-screen').evaluate((element) => getComputedStyle(element).cursor),
+    )
+    .toContain('data:image/png');
   await expect(page.locator('.player-status')).toHaveText(/^F\d{5} W\d{5}$/);
   await expect(page.locator('.capture-player select')).toHaveCount(0);
   await expect
