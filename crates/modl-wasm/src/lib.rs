@@ -4,9 +4,9 @@ use wasm_bindgen::prelude::wasm_bindgen;
 
 use modl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
-    compile_project, decode_cartridge, encode_workcart, export_standalone_html,
-    export_standalone_workcart, format_source, materialize_workcart_recipe, pack_project,
-    pack_workcart, parse_project_manifest, parse_workcart, rewrite_workcart,
+    compile_project, decode_cartridge, delete_workcart_asset, encode_workcart,
+    export_standalone_html, export_standalone_workcart, format_source, materialize_workcart_recipe,
+    pack_project, pack_workcart, parse_project_manifest, parse_workcart, rewrite_workcart,
     unpack_cartridge_project, unpack_workcart, workcart_project_view,
 };
 
@@ -197,6 +197,16 @@ pub fn materialize_workcart_recipe_for_browser(
     recipe_id: &str,
 ) -> Result<String, String> {
     materialize_workcart_recipe(source, recipe_id).map_err(|error| error.to_string())
+}
+
+/// Deletes an unreferenced work-cart asset using the shared compiler reference scan.
+///
+/// # Errors
+///
+/// Returns the exact reference-safe deletion error emitted by the native CLI/core.
+#[wasm_bindgen(js_name = deleteWorkcartAsset)]
+pub fn delete_workcart_asset_for_browser(source: &str, asset_name: &str) -> Result<String, String> {
+    delete_workcart_asset(source, asset_name).map_err(|error| error.to_string())
 }
 
 /// Formats a syntactically valid MODL/1 module.
