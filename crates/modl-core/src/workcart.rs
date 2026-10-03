@@ -495,7 +495,10 @@ fn has_extension(path: &str, extension: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use crate::{decode_cartridge, export_standalone_workcart, pack_workcart, unpack_workcart};
+    use crate::{
+        decode_cartridge, export_standalone_workcart, pack_workcart, unpack_cartridge_project,
+        unpack_workcart,
+    };
 
     use super::{WORKCART_FORMAT_REVISION, WorkcartRecipe, parse_workcart};
 
@@ -594,6 +597,9 @@ payload = "on start:\n  assert true\n"
             unpack_workcart(&packed.bytes).expect("work-cart unpacks"),
             CART
         );
+        let project = unpack_cartridge_project(&packed.bytes).expect("project view unpacks");
+        assert!(project.manifest.contains("format = 1"));
+        assert_eq!(project.files["src/main.modl"], b"on draw:\n  clear(25)\n");
     }
 
     #[test]

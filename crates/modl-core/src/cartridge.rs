@@ -1103,6 +1103,20 @@ pub fn decode_cartridge(bytes: &[u8]) -> Result<DecodedCartridge, CartridgeError
 /// Returns a stable cartridge error when archive paths cannot be mapped back to project paths.
 pub fn unpack_cartridge_project(bytes: &[u8]) -> Result<UnpackedProject, CartridgeError> {
     let cartridge = decode_cartridge(bytes)?;
+    if cartridge.manifest.format_revision == WORKCART_FORMAT_REVISION {
+        let source = unpack_workcart(bytes)?;
+        let project = crate::parse_workcart(&source)?;
+        let manifest = toml::to_string(&project.manifest).map_err(|error| {
+            cartridge_error(
+                "M014012",
+                format!("could not materialize revision-2 work-cart project: {error}"),
+            )
+        })?;
+        return Ok(UnpackedProject {
+            manifest,
+            files: project.files,
+        });
+    }
     let packed = &cartridge.manifest;
     let entry = strip_archive_prefix(&packed.entry, "source/", "entry")?;
     let mut files = BTreeMap::new();
