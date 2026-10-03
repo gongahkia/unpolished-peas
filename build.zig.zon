@@ -1,6 +1,6 @@
 .{
     .name = .unpolished_peas,
-    .version = "0.0.4",
+    .version = "0.1.0",
     .fingerprint = 0x9801f8ecd9290536, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.1",
     .dependencies = .{
@@ -20,14 +20,15 @@
         "build.zig.zon",
         "src",
         "shaders",
-        "templates/bounce/.gitignore",
-        "templates/bounce/README.md",
-        "templates/bounce/assets",
-        "templates/bounce/build.zig",
-        "templates/bounce/src",
+        "templates/starter/.gitignore",
+        "templates/starter/README.md",
+        "templates/starter/assets",
+        "templates/starter/build.zig",
+        "templates/starter/src",
         "vendor",
         "examples",
         "fixtures",
+        "benchmarks/workloads/v1.json",
         "README.md",
         "LICENSE",
         "packages",

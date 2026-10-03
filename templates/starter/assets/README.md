@@ -5,3 +5,4 @@ built-in debug text path, so this directory has no runtime art or audio files.
 
 Put game-owned images, fonts, and sounds here when extending the starter.
 Only add assets that you created or that have a license you can redistribute.
+Do not make the game depend on files outside this project directory.

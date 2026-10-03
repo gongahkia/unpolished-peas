@@ -21,17 +21,18 @@ if ! grep -F -x -q -- "    .version = \"$version\"," build.zig.zon; then
     printf 'starter release preparation requires build.zig.zon version %s\n' "$version" >&2
     exit 65
 fi
-if grep -F -q -- '"templates/bounce/build.zig.zon"' build.zig.zon; then
+if grep -F -q -- '"templates/starter/build.zig.zon"' build.zig.zon; then
     printf '%s\n' 'starter release preparation requires the generated manifest excluded from package paths' >&2
     exit 65
 fi
-if ! grep -F -x -q -- 'templates/bounce/build.zig.zon export-ignore' .gitattributes; then
+if ! grep -F -x -q -- 'templates/starter/build.zig.zon export-ignore' .gitattributes; then
     printf '%s\n' 'starter release preparation requires the generated manifest excluded from release archives' >&2
     exit 65
 fi
 
 tmp="$(mktemp -d)"
-archive="$tmp/unpolished-peas-$version.tar.gz"
+archive_dir="$tmp/archive"
+archive="$archive_dir/unpolished-peas-${tag}-source.tar.gz"
 port_file="$tmp/port"
 server_pid=''
 cleanup() {
@@ -42,7 +43,7 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-git archive --format=tar.gz --prefix="unpolished-peas-$version/" HEAD > "$archive"
+"$repo/script/create_source_archive.sh" "$tag" "$archive_dir" HEAD >/dev/null
 python3 - "$tmp" "$port_file" <<'PY' &
 import functools
 import http.server
@@ -70,15 +71,15 @@ case "$hash" in
     unpolished_peas-*) ;;
     *) printf 'starter release preparation produced invalid hash for %s\n' "$tag" >&2; exit 1 ;;
 esac
-url="https://github.com/gongahkia/unpolished-peas/archive/refs/tags/$tag.tar.gz"
-python3 - "templates/bounce/build.zig.zon" "$url" "$hash" <<'PY'
+url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-${tag}-source.tar.gz"
+python3 - "templates/starter/build.zig.zon" "$url" "$hash" <<'PY'
 import pathlib
 import sys
 
 path, url, package_hash = sys.argv[1:]
 pathlib.Path(path).write_text(f''' .{{
     .name = .unpolished_peas_game,
-    .version = "0.0.1",
+    .version = "0.1.0",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
     .dependencies = .{{

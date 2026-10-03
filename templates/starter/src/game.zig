@@ -1,6 +1,6 @@
+// This file contains the platform-independent Seed Sprint game protocol.
 const std = @import("std");
 const up = @import("unpolished-peas");
-const sdl = @import("unpolished-peas-sdl3");
 
 pub const width: u32 = 160;
 pub const height: u32 = 90;
@@ -28,18 +28,6 @@ const actions = [_]up.input.Action{
 };
 
 pub const Game = struct {
-    pub const config: sdl.Config = .{
-        .title = "Seed Sprint",
-        .organization = "your-name",
-        .application = "seed-sprint",
-        .width = width,
-        .height = height,
-        .scale = 5,
-        .pause_policy = .unfocused,
-        .clear_color = up.core.Color.rgb(12, 18, 28),
-        .simulation_seed = default_seed,
-    };
-
     rng: up.core.DeterministicRng = up.core.DeterministicRng.init(default_seed),
     player: up.core.Vec2 = player_start,
     pickup: up.core.Vec2 = .{},

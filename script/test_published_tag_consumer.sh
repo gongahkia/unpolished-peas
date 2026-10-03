@@ -8,7 +8,7 @@ case "$tag" in
     *) printf 'published consumer: expected a semver tag, found %s\n' "$tag" >&2; exit 64 ;;
 esac
 
-expected_url="https://github.com/gongahkia/unpolished-peas/archive/refs/tags/${tag}.tar.gz"
+expected_url="https://github.com/gongahkia/unpolished-peas/releases/download/${tag}/unpolished-peas-${tag}-source.tar.gz"
 repo_url="https://github.com/gongahkia/unpolished-peas.git"
 tmp="$(mktemp -d)"
 release_archive="$tmp/release.tar.gz"
@@ -35,7 +35,7 @@ if [ ! -d "$release_root" ]; then
     printf 'published consumer: release archive did not extract expected root for tag=%s\n' "$tag" >&2
     exit 1
 fi
-if [ -e "$release_root/templates/bounce/build.zig.zon" ]; then
+if [ -e "$release_root/templates/starter/build.zig.zon" ]; then
     printf 'published consumer: release archive retained generated manifest for tag=%s\n' "$tag" >&2
     exit 1
 fi
@@ -43,7 +43,7 @@ fi
     cd "$tmp"
     git clone --depth 1 --branch "$tag" "$repo_url"
 )
-if [ ! -f "$quickstart_checkout/templates/bounce/build.zig.zon" ]; then
+if [ ! -f "$quickstart_checkout/templates/starter/build.zig.zon" ]; then
     printf 'published consumer: released checkout missing generated manifest for tag=%s\n' "$tag" >&2
     exit 1
 fi

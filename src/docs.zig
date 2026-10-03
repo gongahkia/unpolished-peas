@@ -4,6 +4,7 @@ const max_document_bytes = 1024 * 1024;
 const source_documents = [_][]const u8{
     "index.md",
     "guides/quickstart.md",
+    "guides/installation.md",
     "guides/game-protocol.md",
     "guides/core-contract.md",
     "guides/rendering.md",
@@ -140,16 +141,16 @@ test "broken runnable example links fail validation" {
     try std.testing.expectError(error.BrokenExampleLink, validateExampleLinks(std.testing.allocator, root, docs_root));
 }
 
-test "quickstart rejects the stale unpublished consumer sequence" {
+test "quickstart states that the first release remains unpublished" {
     const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
     defer std.testing.allocator.free(quickstart);
     const claims = [_][]const u8{
-        "`v0.0.4` does not exist as a repository tag",
+        "The intended first public release is `v0.1.0`, but no",
         "export ZIG_GLOBAL_CACHE_DIR=\"$(mktemp -d)\"",
         "export ZIG_LOCAL_CACHE_DIR=\"$(mktemp -d)\"",
         "zig build test -Dwith_sdl=false",
         "zig build browser -Dwith_sdl=false",
     };
     for (claims) |claim| try std.testing.expect(std.mem.indexOf(u8, quickstart, claim) != null);
-    try std.testing.expect(std.mem.indexOf(u8, quickstart, "git clone --depth 1 --branch v0.0.4") == null);
+    try std.testing.expect(std.mem.indexOf(u8, quickstart, "archive/refs/tags/v0.1.0") == null);
 }

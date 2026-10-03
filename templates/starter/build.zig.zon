@@ -1,14 +1,12 @@
 .{
     .name = .unpolished_peas_game,
-    .version = "0.0.1",
+    .version = "0.1.0",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
-    .dependencies = .{
-        .unpolished_peas = .{
-            .url = "https://github.com/gongahkia/unpolished-peas/archive/refs/tags/v0.0.4.tar.gz",
-            .hash = "unpolished_peas-0.0.4-NgUp2diTJQB-__7b7PFKjQdbzttHB-akR_mDDjwzELrN",
-        },
-    },
+    // This source-checkout template intentionally has no dependency
+    // coordinate. `script/prepare_starter_release.sh v0.1.0` writes the
+    // immutable tag URL and Zig package hash that a released checkout copies.
+    .dependencies = .{},
     .paths = .{
         "build.zig",
         "build.zig.zon",

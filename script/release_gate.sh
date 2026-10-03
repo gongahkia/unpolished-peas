@@ -42,7 +42,10 @@ run api-snapshot zig build test-core-api
 run api-modules zig build test-modules
 run cli zig build test-peas
 run cli-starter zig build test-starter
+run version-consistency script/test_version_consistency.sh
+run release-wiring zig build release-check
 run clean-consumer zig build test-release-candidate-clean-consumer
+run external-browser zig build test-starter-external-web
 run proof-consumers script/test_independent_proof_games.sh
 run proof-topdown runtime script/test_proof_game_matrix.sh topdown
 run proof-puzzle runtime script/test_proof_game_matrix.sh puzzle
