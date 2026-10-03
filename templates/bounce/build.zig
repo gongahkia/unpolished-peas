@@ -10,7 +10,7 @@ pub fn build(b: *std.Build) void {
         .install_subdir = "assets",
     });
     const exe = b.addExecutable(.{
-        .name = "bouncing-square",
+        .name = "seed-sprint",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/main.zig"),
             .target = target,
@@ -27,11 +27,16 @@ pub fn build(b: *std.Build) void {
     const run = b.addRunArtifact(exe);
     run.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("assets"));
     if (b.args) |args| run.addArgs(args);
-    const run_step = b.step("run", "Run the bouncing-square game");
+    const run_step = b.step("run", "Run Seed Sprint");
     run_step.dependOn(&run.step);
 
     const tests = b.addTest(.{ .root_module = exe.root_module });
     const run_tests = b.addRunArtifact(tests);
-    const test_step = b.step("test", "Run bouncing-square unit tests");
+    const test_step = b.step("test", "Run Seed Sprint's deterministic tests");
     test_step.dependOn(&run_tests.step);
+
+    // `zig build` already installs this layout. The named step makes the
+    // distributable desktop output discoverable: zig-out/bin + zig-out/assets.
+    const package_step = b.step("package", "Build the portable Seed Sprint desktop layout");
+    package_step.dependOn(b.getInstallStep());
 }

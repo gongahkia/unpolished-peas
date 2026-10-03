@@ -107,6 +107,25 @@ pub fn build(b: *std.Build) void {
         .optimize = browser_optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
     });
+    // The starter's game module uses the public desktop Config declaration,
+    // while the browser protocol host needs only the GameProtocol callbacks.
+    // This tiny shim keeps the browser build an external-style public-API
+    // consumer rather than importing the desktop backend.
+    const browser_starter_sdl_shim = b.createModule(.{
+        .root_source_file = b.path("fixtures/starter-browser-sdl-shim.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const browser_starter_game = b.createModule(.{
+        .root_source_file = b.path("templates/bounce/src/main.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "unpolished-peas-sdl3", .module = browser_starter_sdl_shim },
+        },
+    });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
         .root_module = b.createModule(.{
@@ -123,6 +142,22 @@ pub fn build(b: *std.Build) void {
     browser_runtime.entry = .disabled;
     browser_runtime.rdynamic = true;
     browser_runtime.import_memory = true;
+    const browser_starter_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-starter",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "protocol-game", .module = browser_starter_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+            },
+        }),
+    });
+    browser_starter_runtime.entry = .disabled;
+    browser_starter_runtime.rdynamic = true;
+    browser_starter_runtime.import_memory = true;
     const browser_audio_smoke = b.addObject(.{
         .name = "unpolished-peas-browser-audio-smoke",
         .root_module = b.createModule(.{
@@ -265,6 +300,12 @@ pub fn build(b: *std.Build) void {
     });
     const browser_step = b.step("browser", "Build the wasm32-freestanding browser runtime in zig-out/web");
     browser_step.dependOn(&install_browser_runtime.step);
+    const install_browser_starter_runtime = b.addInstallArtifact(browser_starter_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "unpolished-peas.wasm",
+    });
+    const browser_starter_step = b.step("browser-starter", "Build the Seed Sprint browser runtime in zig-out/web");
+    browser_starter_step.dependOn(&install_browser_starter_runtime.step);
     const install_browser_topdown_runtime = b.addInstallArtifact(browser_topdown_runtime, .{
         .dest_dir = .{ .override = .{ .custom = "web" } },
         .dest_sub_path = "unpolished-peas.wasm",
@@ -354,6 +395,10 @@ pub fn build(b: *std.Build) void {
     web_package_test.setCwd(b.path("."));
     const web_package_test_step = b.step("test-web-package", "Validate deterministic browser package layout");
     web_package_test_step.dependOn(&web_package_test.step);
+    const starter_web_package_test = b.addSystemCommand(&.{ "script/test_web_package.sh", "starter" });
+    starter_web_package_test.setCwd(b.path("."));
+    const starter_web_package_test_step = b.step("test-starter-web-package", "Validate the Seed Sprint browser package");
+    starter_web_package_test_step.dependOn(&starter_web_package_test.step);
     const browser_chromium_test = b.addSystemCommand(&.{"script/test_browser_chromium.sh"});
     browser_chromium_test.setCwd(b.path("."));
     const browser_chromium_test_step = b.step("test-browser-chromium", "Run Chromium against the browser bundle");
@@ -424,6 +469,15 @@ pub fn build(b: *std.Build) void {
     const package_bounce_sdl = b.step("package-bounce-sdl", "Install the bounce SDL sample and assets");
     package_bounce_sdl.dependOn(&b.addInstallArtifact(sdl_demo, .{}).step);
     package_bounce_sdl.dependOn(&install_assets.step);
+    const starter_demo = addExample(b, "unpolished-peas-starter", "templates/bounce/src/main.zig", target, optimize, peas, sdl);
+    const install_starter_assets = b.addInstallDirectory(.{
+        .source_dir = b.path("templates/bounce/assets"),
+        .install_dir = .prefix,
+        .install_subdir = "assets",
+    });
+    const package_starter = b.step("package-starter", "Install the Seed Sprint starter and its assets");
+    package_starter.dependOn(&b.addInstallArtifact(starter_demo, .{}).step);
+    package_starter.dependOn(&install_starter_assets.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, null);
@@ -521,7 +575,7 @@ pub fn build(b: *std.Build) void {
     const run_starter = b.addRunArtifact(starter);
     run_starter.addArg(b.pathFromRoot("templates/bounce"));
     if (b.args) |args| run_starter.addArgs(args);
-    const new_step = b.step("new", "Create an unpolished-peas bouncing-square project");
+    const new_step = b.step("new", "Create an unpolished-peas Seed Sprint project");
     new_step.dependOn(&run_starter.step);
     const starter_tests = b.addTest(.{ .root_module = starter.root_module });
     const run_starter_tests = b.addRunArtifact(starter_tests);
@@ -548,12 +602,7 @@ pub fn build(b: *std.Build) void {
             .optimize = browser_optimize,
             .imports = &.{
                 .{ .name = "unpolished-peas", .module = browser_peas },
-                .{ .name = "unpolished-peas-sdl3", .module = b.createModule(.{
-                    .root_source_file = b.path("fixtures/starter-browser-sdl-shim.zig"),
-                    .target = browser_target,
-                    .optimize = browser_optimize,
-                    .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
-                }) },
+                .{ .name = "unpolished-peas-sdl3", .module = browser_starter_sdl_shim },
             },
         }),
     });
@@ -562,13 +611,23 @@ pub fn build(b: *std.Build) void {
     starter_template_browser.import_memory = true;
     const starter_template_browser_step = b.step("test-starter-template-browser", "Compile the starter source for the browser protocol target");
     starter_template_browser_step.dependOn(&starter_template_browser.step);
+    starter_test_step.dependOn(&starter_template_browser.step);
     const starter_bundled_sdl = b.addSystemCommand(&.{"script/test_starter_bundled_sdl.sh"});
     starter_bundled_sdl.setCwd(b.path("."));
     const starter_bundled_sdl_step = b.step("test-starter-bundled-sdl", "Smoke the generated starter without pkg-config");
     starter_bundled_sdl_step.dependOn(&starter_bundled_sdl.step);
+    const starter_external = b.addSystemCommand(&.{"script/test_downstream_fixture.sh"});
+    starter_external.setCwd(b.path("."));
+    const starter_external_step = b.step("test-starter-external", "Build the generated starter as a clean external package consumer");
+    starter_external_step.dependOn(&starter_external.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);
+    const run_starter_demo = b.addRunArtifact(starter_demo);
+    run_starter_demo.setEnvironmentVariable("UP_ASSET_ROOT", b.pathFromRoot("templates/bounce/assets"));
+    if (b.args) |args| run_starter_demo.addArgs(args);
+    const run_starter_step = b.step("run-starter", "Run the Seed Sprint starter from this checkout");
+    run_starter_step.dependOn(&run_starter_demo.step);
     addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
     addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
     addRunStep(b, "run-explicit-loop", "Run the advanced core explicit-loop example", explicit_loop_demo);
@@ -623,7 +682,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-workloads", "Record versioned native workload metrics", workload_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");

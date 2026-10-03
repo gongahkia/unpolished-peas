@@ -5,6 +5,9 @@ import tempfile
 
 
 EXPECTED = {
+    ("linux", "starter"): ("linux-x86_64", "unpolished-peas-starter-linux-x86_64.tar.gz"),
+    ("macos", "starter"): ("macos-universal", "unpolished-peas-starter-macos-universal.zip"),
+    ("windows", "starter"): ("windows-x86_64", "unpolished-peas-starter-windows-x86_64.zip"),
     ("linux", "bounce"): ("linux-x86_64", "unpolished-peas-bounce-linux-x86_64.tar.gz"),
     ("macos", "bounce"): ("macos-universal", "unpolished-peas-bounce-macos-universal.zip"),
     ("windows", "bounce"): ("windows-x86_64", "unpolished-peas-bounce-windows-x86_64.zip"),

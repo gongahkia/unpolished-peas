@@ -1,53 +1,13 @@
-const up = @import("unpolished-peas");
 const sdl = @import("unpolished-peas-sdl3");
-const std = @import("std");
 
-const width = 160;
-const height = 90;
-
-const Game = struct {
-    pub const config: sdl.Config = .{
-        .title = "bouncing-square",
-        .organization = "your-name",
-        .application = "bouncing-square",
-        .width = width,
-        .height = height,
-        .scale = 5,
-        .pause_policy = .unfocused,
-        .clear_color = up.core.Color.rgb(14, 18, 24),
-    };
-
-    pos: up.core.Vec2 = .{ .x = 76, .y = 41 },
-    vel: up.core.Vec2 = .{ .x = 50, .y = 36 },
-
-    pub fn init(_: *Game, _: *up.core.GameContext) !void {}
-
-    pub fn update(self: *Game, ctx: *up.core.GameContext, elapsed_seconds: f32) !void {
-        var accel = up.core.Vec2{};
-        if (ctx.input.isDown(.left)) accel.x -= 120;
-        if (ctx.input.isDown(.right)) accel.x += 120;
-        if (ctx.input.isDown(.up)) accel.y -= 120;
-        if (ctx.input.isDown(.down)) accel.y += 120;
-
-        self.vel = self.vel.add(accel.scale(elapsed_seconds));
-        self.pos = self.pos.add(self.vel.scale(elapsed_seconds));
-        if (self.pos.x < 4 or self.pos.x > width - 12) self.vel.x = -self.vel.x;
-        if (self.pos.y < 4 or self.pos.y > height - 12) self.vel.y = -self.vel.y;
-    }
-
-    pub fn draw(self: *Game, ctx: *up.core.GameContext) !void {
-        const canvas = try ctx.requireCanvas();
-        canvas.fillRect(@intFromFloat(self.pos.x), @intFromFloat(self.pos.y), 8, 8, up.core.Color.rgb(255, 198, 74));
-        canvas.drawText("BOUNCING SQUARE", 4, 4, up.core.Color.rgb(225, 232, 240));
-    }
-};
+/// The desktop entry point deliberately stays tiny. All game state and the
+/// fixed-step `GameProtocol` callbacks live in `game.zig`.
+pub const Game = @import("game.zig").Game;
 
 pub fn main() !void {
     try sdl.playGame(Game);
 }
 
-test "bouncing-square starts within the canvas" {
-    const game = Game{};
-    try std.testing.expect(game.pos.x >= 0 and game.pos.x < width);
-    try std.testing.expect(game.pos.y >= 0 and game.pos.y < height);
+test {
+    _ = @import("game.zig");
 }

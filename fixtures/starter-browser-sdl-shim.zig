@@ -11,6 +11,7 @@ pub const Config = struct {
     scale: u32 = 3,
     pause_policy: PausePolicy = .never,
     clear_color: up.core.Color = up.core.Color.black,
+    simulation_seed: ?u64 = null,
 };
 
 pub fn playGame(comptime Game: type) !void {
