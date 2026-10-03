@@ -29,6 +29,13 @@ selected project. A manifest can also be dropped onto the editor window to
 switch projects. The active project must validate before the current project is
 replaced.
 
+**Preview Project** opens a dedicated visual Preview Mode rather than running
+inside the authoring canvas. It snapshots the active runtime-relevant native
+document in memory without saving it, renders the configured main Scene (and
+`flow.main`, when present), and can be restarted or stopped without changing
+authored JSON. Preview currently renders Panels, Labels, and visual-only
+Buttons; runtime input is not simulated yet.
+
 To run the headless suite:
 
 ```console
@@ -99,7 +106,9 @@ supports orthogonal tile layers first and reports unsupported layers or tile
 transform flags instead of silently changing their meaning.
 
 The runtime supports scene loading, basic retained UI drawing, event-driven
-transitions, variables, arithmetic, and named Lua hooks. Lua hooks are
+transitions, variables, arithmetic, and named Lua hooks. Schema-valid Scene or
+Flow primitives outside that runtime subset are warned about in Preview rather
+than being presented as implemented behavior. Lua hooks are
 references such as `game.open_shop`; source code is never embedded in JSON.
 
 ## ROAG boundary
