@@ -168,7 +168,7 @@ pub fn build(b: *std.Build) void {
     });
     const browser_audio_smoke_step = b.step("test-browser-audio-stream", "Compile the public browser PCM audio stream API");
     browser_audio_smoke_step.dependOn(&browser_audio_smoke.step);
-    const browser_render_surface_smoke = b.addObject(.{
+    const browser_render_surface_smoke = b.addExecutable(.{
         .name = "unpolished-peas-browser-render-surface-smoke",
         .root_module = b.createModule(.{
             .root_source_file = b.path("src/render_surface_wasm_smoke.zig"),
@@ -177,8 +177,13 @@ pub fn build(b: *std.Build) void {
             .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
         }),
     });
-    const browser_render_surface_test_step = b.step("test-browser-render-surfaces", "Compile the public render-surface API for the browser target");
-    browser_render_surface_test_step.dependOn(&browser_render_surface_smoke.step);
+    browser_render_surface_smoke.entry = .disabled;
+    browser_render_surface_smoke.rdynamic = true;
+    browser_render_surface_smoke.import_memory = true;
+    const browser_render_surface_test = b.addSystemCommand(&.{ "node", "script/test_browser_render_surface.mjs" });
+    browser_render_surface_test.addFileArg(browser_render_surface_smoke.getEmittedBin());
+    const browser_render_surface_test_step = b.step("test-browser-render-surfaces", "Run the public render-surface API through a browser-style Wasm host");
+    browser_render_surface_test_step.dependOn(&browser_render_surface_test.step);
     const browser_ogg_decode_smoke = b.addExecutable(.{
         .name = "unpolished-peas-browser-ogg-decode-smoke",
         .root_module = b.createModule(.{
