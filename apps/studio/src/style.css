@@ -1345,6 +1345,64 @@ body,
   scrollbar-width: none;
 }
 
+.compiler-graph-summary,
+.compiler-graph-empty,
+.compiler-graph-legend {
+  margin: 0 0 2px;
+  color: var(--amber);
+  font-size: 4px;
+  line-height: 6px;
+}
+
+.compiler-graph-empty {
+  color: var(--cream);
+}
+
+.compiler-graph-legend {
+  color: var(--cyan);
+}
+
+.compiler-graph-svg {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  overflow: visible;
+  background: #0b1120;
+}
+
+.compiler-edge {
+  stroke: #6b8fa5;
+  stroke-width: 1;
+}
+
+.compiler-edge.writes {
+  stroke: var(--coral);
+}
+
+.compiler-edge.calls {
+  stroke: var(--amber);
+  stroke-dasharray: 2 1;
+}
+
+.compiler-node rect {
+  fill: #143449;
+  stroke: var(--cyan);
+  stroke-width: 0.7;
+}
+
+.compiler-node.function rect,
+.compiler-node.task rect {
+  fill: #5b3d22;
+  stroke: var(--amber);
+}
+
+.compiler-node text {
+  fill: var(--cream);
+  font:
+    4px 'MOD-01 Bitmap',
+    monospace;
+}
+
 .debug-stage {
   position: absolute;
   inset: 12px 2px 45px;

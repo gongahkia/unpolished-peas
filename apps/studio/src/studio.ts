@@ -39,6 +39,7 @@ import {
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
 import mod01Cursor from './assets/mod01-cursor.svg?inline';
 import mod01Logo from './assets/mod01-logo.png?inline';
+import { deriveCodeStateGraph, renderCodeStateGraph } from './compiler-graph';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { enhancePixelSelects } from './pixel-select';
 import {
@@ -1129,7 +1130,9 @@ export class StudioApp {
     ]);
     const cartridge = await this.compiler.decodeCartridge(packed);
     const report = projectSizeReport(packed, cartridge.entries, manifest, compilation);
+    const graph = deriveCodeStateGraph(compilation);
     const panes: Readonly<Record<string, unknown>> = {
+      GRAPH: graph,
       TOKENS: compilation.analysis.tokens,
       AST: compilation.analysis.module,
       TYPED: compilation.analysis.symbols,
@@ -1155,6 +1158,10 @@ export class StudioApp {
     const output = requireElement(this.root, '.explorer-output') as HTMLElement;
     const show = (name: string): void => {
       const value = panes[name];
+      if (name === 'GRAPH') {
+        renderCodeStateGraph(output, graph);
+        return;
+      }
       const source = typeof value === 'string' ? value : JSON.stringify(value, undefined, 2);
       if (name === 'JS') renderHighlight(output, source);
       else renderJsonHighlight(output, source);
