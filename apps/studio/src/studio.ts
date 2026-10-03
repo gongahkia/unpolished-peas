@@ -49,6 +49,8 @@ interface WorkingProject {
   manifest: string;
   revision: number;
   files: Record<string, Uint8Array>;
+  /** Canonical authored source for V2 projects; manifest/files are editor-facing views. */
+  workcart?: string;
 }
 
 interface ActivePlayer {
@@ -444,15 +446,17 @@ export class StudioApp {
     }
     const title = (titleParts.join(' ') || id.replaceAll(/[.-]+/g, ' ')).toUpperCase().slice(0, 64);
     const manifest = `format = 1\nlanguage = "MODL/1"\nid = "${id}"\ntitle = ${JSON.stringify(title)}\nauthor = "@gongahkia"\nversion = "0.1.0"\nentry = "src/main.modl"\nupdate_rate = 60\n\n[assets]\n`;
+    const files = {
+      'src/main.modl': encoder.encode(
+        '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("MODL/1", 98, 88, 7)\n',
+      ),
+    };
     const project = await this.repository.saveProject({
       id,
       title,
       manifest,
-      files: {
-        'src/main.modl': encoder.encode(
-          '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("MODL/1", 98, 88, 7)\n',
-        ),
-      },
+      files,
+      workcart: await this.compiler.encodeWorkcart(manifest, files),
     });
     this.activeProject = fromStored(project);
     await this.repository.setShelfOrigin(id, 'created');
@@ -560,6 +564,7 @@ export class StudioApp {
     const cartridge = isPng ? decodeCartridgePng(imported).cartridge : imported;
     const unpacked = await this.compiler.unpackCartridge(cartridge);
     const manifest = await this.compiler.parseManifest(unpacked.manifest);
+    const workcart = await this.compiler.unpackWorkcart(cartridge).catch(() => undefined);
     const project = await this.repository.saveProject({
       id: manifest.id,
       title: manifest.title,
@@ -567,6 +572,7 @@ export class StudioApp {
       files: Object.fromEntries(
         Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
       ),
+      ...(workcart === undefined ? {} : { workcart }),
     });
     this.activeProject = fromStored(project);
     await this.repository.setShelfOrigin(manifest.id, 'imported');
@@ -583,6 +589,7 @@ export class StudioApp {
       if (cartridge === undefined) return;
       const unpacked = await this.compiler.unpackCartridge(cartridge);
       const manifest = await this.compiler.parseManifest(unpacked.manifest);
+      const workcart = await this.compiler.unpackWorkcart(cartridge).catch(() => undefined);
       const project = await this.repository.saveProject({
         id: manifest.id,
         title: manifest.title,
@@ -590,6 +597,7 @@ export class StudioApp {
         files: Object.fromEntries(
           Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
         ),
+        ...(workcart === undefined ? {} : { workcart }),
       });
       this.activeProject = fromStored(project);
       await this.repository.setShelfOrigin(manifest.id, 'fragment');
@@ -686,8 +694,42 @@ export class StudioApp {
     binding.modified = modified;
   }
 
+  private async synchronizeWorkcart(project: WorkingProject): Promise<void> {
+    if (project.workcart === undefined) return;
+    project.workcart = await this.compiler.rewriteWorkcart(
+      project.workcart,
+      project.manifest,
+      project.files,
+    );
+  }
+
+  private async compileAuthoredProject(
+    project: WorkingProject,
+    debug: boolean,
+  ): Promise<CompilationResult> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.compileProject(project.manifest, project.files, debug)
+      : this.compiler.compileWorkcart(project.workcart, debug);
+  }
+
+  private async packAuthoredProject(project: WorkingProject): Promise<Uint8Array> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.packProject(project.manifest, project.files)
+      : this.compiler.packWorkcart(project.workcart);
+  }
+
+  private async exportAuthoredProject(project: WorkingProject): Promise<string> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.exportHtml(project.manifest, project.files)
+      : this.compiler.exportHtmlWorkcart(project.workcart);
+  }
+
   private async saveProject(): Promise<void> {
     const project = this.requireProject();
+    await this.synchronizeWorkcart(project);
     await this.syncProjectFolder(project, false);
     const stored = await this.repository.saveProject(project);
     Object.assign(project, fromStored(stored));
@@ -764,6 +806,7 @@ export class StudioApp {
       saveQueue = saveQueue
         .catch(() => undefined)
         .then(async () => {
+          await this.synchronizeWorkcart(project);
           await this.syncProjectFolder(project, false);
           const stored = await this.repository.loadProject(project.id);
           if (stored !== undefined && stored.revision !== project.revision) {
@@ -876,7 +919,8 @@ export class StudioApp {
           this.openManual(manualTitleForSymbol(symbolAtCursor(textarea)));
         } else if (action === 'overwrite') {
           updateWorkingCopy();
-          void this.syncProjectFolder(project, true)
+          void this.synchronizeWorkcart(project)
+            .then(() => this.syncProjectFolder(project, true))
             .then(() => this.repository.saveProject(project))
             .then((stored) => {
               Object.assign(project, fromStored(stored));
@@ -1036,9 +1080,9 @@ export class StudioApp {
   private async openExplorer(): Promise<void> {
     const project = this.requireProject();
     const [compilation, manifest, packed] = await Promise.all([
-      this.compiler.compileProject(project.manifest, project.files, false),
+      this.compileAuthoredProject(project, false),
       this.compiler.parseManifest(project.manifest),
-      this.compiler.packProject(project.manifest, project.files),
+      this.packAuthoredProject(project),
     ]);
     const cartridge = await this.compiler.decodeCartridge(packed);
     const report = projectSizeReport(packed, cartridge.entries, manifest, compilation);
@@ -1116,14 +1160,14 @@ export class StudioApp {
   private async runProject(replay?: ReplayTrace): Promise<void> {
     this.stopDebugger();
     const project = this.requireProject();
-    const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
+    const compilation = await this.compileAuthoredProject(project, false);
     const diagnostic = compilation.analysis.diagnostics[0];
     if (diagnostic !== undefined || compilation.generated === undefined) {
       this.reportCompilerDiagnostic(diagnostic);
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
-    const rom = await this.compiler.packProject(project.manifest, project.files);
+    const rom = await this.packAuthoredProject(project);
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
     const settings = await this.repository.settings();
@@ -1305,6 +1349,7 @@ export class StudioApp {
   private async debugProject(): Promise<void> {
     this.stopPlayer();
     const project = this.requireProject();
+    await this.synchronizeWorkcart(project);
     const save = await this.repository.cartridgeSave(project.id).read();
     const settings = await this.repository.settings();
     try {
@@ -1333,7 +1378,7 @@ export class StudioApp {
 
   private async packProject(): Promise<void> {
     const project = this.requireProject();
-    const bytes = await this.compiler.packProject(project.manifest, project.files);
+    const bytes = await this.packAuthoredProject(project);
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     const url = URL.createObjectURL(new Blob([buffer], { type: 'application/x-mod01-cartridge' }));
@@ -1348,7 +1393,7 @@ export class StudioApp {
   private async exportCartridgePng(): Promise<void> {
     const project = this.requireProject();
     const manifest = await this.compiler.parseManifest(project.manifest);
-    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const cartridge = await this.packAuthoredProject(project);
     const identity = decodeIdentity(project.files['presentation/cartridge.json']);
     const frame = this.capturedFrames.get(project.id);
     const png = encodeCartridgePng(
@@ -1373,7 +1418,7 @@ export class StudioApp {
 
   private async exportHtml(): Promise<void> {
     const project = this.requireProject();
-    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const html = await this.exportAuthoredProject(project);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1387,7 +1432,7 @@ export class StudioApp {
 
   private async exportZip(): Promise<void> {
     const project = this.requireProject();
-    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const html = await this.exportAuthoredProject(project);
     const zip = encodeSingleFileZip('index.html', encoder.encode(html));
     downloadBytes(`${project.id}-itch.zip`, zip, 'application/zip');
     this.appendLines([
@@ -1467,7 +1512,17 @@ export class StudioApp {
     }
     const title = `${project.title} COPY`.slice(0, 64);
     const manifest = replaceManifestIdentity(project.manifest, id, title);
-    const stored = await this.repository.saveProject({ id, title, manifest, files: project.files });
+    const workcart =
+      project.workcart === undefined
+        ? undefined
+        : await this.compiler.rewriteWorkcart(project.workcart, manifest, project.files);
+    const stored = await this.repository.saveProject({
+      id,
+      title,
+      manifest,
+      files: project.files,
+      ...(workcart === undefined ? {} : { workcart }),
+    });
     await this.repository.setShelfOrigin(id, 'duplicate');
     return fromStored(stored);
   }
@@ -1477,14 +1532,23 @@ export class StudioApp {
     if (title.length === 0 || !/^[\x20-\x7e]+$/.test(title))
       throw new TypeError('TITLE MUST BE 1-64 ASCII CHARACTERS');
     const manifest = replaceManifestIdentity(project.manifest, project.id, title);
-    const stored = await this.repository.saveProject({ ...project, title, manifest });
+    const workcart =
+      project.workcart === undefined
+        ? undefined
+        : await this.compiler.rewriteWorkcart(project.workcart, manifest, project.files);
+    const stored = await this.repository.saveProject({
+      ...project,
+      title,
+      manifest,
+      ...(workcart === undefined ? {} : { workcart }),
+    });
     this.activeProject = fromStored(stored);
     this.appendLines([`RENAMED ${project.id} / SAVE ID UNCHANGED`]);
   }
 
   private async openShare(): Promise<void> {
     const project = this.requireProject();
-    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const cartridge = await this.packAuthoredProject(project);
     const fragment = encodeCartridgeFragment(cartridge);
     const url = new URL(location.href);
     url.hash = fragment;
@@ -1526,11 +1590,11 @@ export class StudioApp {
     const detail =
       project === undefined
         ? undefined
-        : await this.compiler.packProject(project.manifest, project.files).then(async (packed) => {
+        : await this.packAuthoredProject(project).then(async (packed) => {
             const [manifest, decoded, compilation] = await Promise.all([
               this.compiler.parseManifest(project.manifest),
               this.compiler.decodeCartridge(packed),
-              this.compiler.compileProject(project.manifest, project.files, false),
+              this.compileAuthoredProject(project, false),
             ]);
             return projectSizeReport(packed, decoded.entries, manifest, compilation);
           });
@@ -1655,7 +1719,7 @@ export class StudioApp {
   private async openInspector(): Promise<void> {
     const project = this.requireProject();
     const cartridge = await this.compiler.decodeCartridge(
-      await this.compiler.packProject(project.manifest, project.files),
+      await this.packAuthoredProject(project),
     );
     const sources = Object.entries(cartridge.entries)
       .filter(([path]) => path.startsWith('source/'))
@@ -1901,6 +1965,7 @@ function fromStored(project: StoredProject): WorkingProject {
     files: Object.fromEntries(
       Object.entries(project.files).map(([path, bytes]) => [path, bytes.slice()]),
     ),
+    ...(project.workcart === undefined ? {} : { workcart: project.workcart }),
   };
 }
 

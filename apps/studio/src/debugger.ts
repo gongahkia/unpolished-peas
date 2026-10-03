@@ -28,6 +28,7 @@ export interface DebugProject {
   readonly title: string;
   readonly manifest: string;
   readonly files: Readonly<Record<string, Uint8Array>>;
+  readonly workcart?: string;
 }
 
 export interface ActiveDebugger {
@@ -139,7 +140,10 @@ class DebuggerController {
     controllerProfile: ControllerProfile,
     audioVolume: number,
   ): Promise<DebuggerController> {
-    const compilation = await compiler.compileProject(project.manifest, project.files, true);
+    const compilation =
+      project.workcart === undefined
+        ? await compiler.compileProject(project.manifest, project.files, true)
+        : await compiler.compileWorkcart(project.workcart, true);
     const diagnostic = compilation.analysis.diagnostics[0];
     const generated = compilation.generated;
     if (diagnostic !== undefined || generated === undefined) {
@@ -151,7 +155,10 @@ class DebuggerController {
     }
     const manifest = await compiler.parseManifest(project.manifest);
     const assets = decodeRuntimeAssets(manifest.assets, project.files, manifest.display);
-    const rom = await compiler.packProject(project.manifest, project.files);
+    const rom =
+      project.workcart === undefined
+        ? await compiler.packProject(project.manifest, project.files)
+        : await compiler.packWorkcart(project.workcart);
     const debugSource = debugSources(compilation, project);
     return new DebuggerController(
       root,
