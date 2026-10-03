@@ -16,7 +16,7 @@ pub const WORKCART_FORMAT_REVISION: u16 = 2;
 type MaterializedFiles = (BTreeMap<String, ProjectAsset>, BTreeMap<String, Vec<u8>>);
 
 /// A parsed source-visible work-cart and its compiler-facing project view.
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Clone, Debug, Eq, PartialEq, Serialize)]
 pub struct WorkcartProject {
     /// Exact UTF-8 authoring source, retained when the cartridge is packed.
     pub source: String,

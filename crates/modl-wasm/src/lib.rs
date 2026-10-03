@@ -5,7 +5,8 @@ use wasm_bindgen::prelude::wasm_bindgen;
 use modl_core::{
     AssetCatalog, CompileMode, FileId, SourceFile, analyze_module, compile as compile_source,
     compile_project, decode_cartridge, export_standalone_html, format_source, pack_project,
-    parse_project_manifest, unpack_cartridge_project,
+    pack_workcart, parse_project_manifest, parse_workcart, unpack_cartridge_project,
+    unpack_workcart,
 };
 
 /// Returns the compiler version used by the browser studio.
@@ -114,6 +115,38 @@ pub fn compile_project_for_browser(
     serde_json::to_string(&output).map_err(|error| error.to_string())
 }
 
+/// Parses an authored `M01W/2` work-cart through the same validation boundary as the CLI.
+///
+/// # Errors
+///
+/// Returns stable work-cart validation errors.
+#[wasm_bindgen(js_name = parseWorkcart)]
+pub fn parse_workcart_for_browser(source: &str) -> Result<String, String> {
+    let project = parse_workcart(source).map_err(|error| error.to_string())?;
+    serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+/// Links and compiles a work-cart using the shared Rust compiler.
+///
+/// # Errors
+///
+/// Returns work-cart, linking, compilation, or serialization errors.
+#[wasm_bindgen(js_name = compileWorkcart)]
+pub fn compile_workcart_for_browser(source: &str, debug: bool) -> Result<String, String> {
+    let project = parse_workcart(source).map_err(|error| error.to_string())?;
+    let output = compile_project(
+        &toml::to_string(&project.manifest).map_err(|error| error.to_string())?,
+        &project.files,
+        if debug {
+            CompileMode::Debug
+        } else {
+            CompileMode::Release
+        },
+    )
+    .map_err(|error| error.to_string())?;
+    serde_json::to_string(&output).map_err(|error| error.to_string())
+}
+
 /// Formats a syntactically valid MODL/1 module.
 ///
 /// # Errors
@@ -142,6 +175,18 @@ pub fn pack_project_for_browser(manifest: &str, files_json: &str) -> Result<Vec<
         .map_err(|error| error.to_string())
 }
 
+/// Packs a work-cart into a deterministic source-visible revision-2 cartridge.
+///
+/// # Errors
+///
+/// Returns the same validation, compilation, and capacity errors as the native packer.
+#[wasm_bindgen(js_name = packWorkcart)]
+pub fn pack_workcart_for_browser(source: &str) -> Result<Vec<u8>, String> {
+    pack_workcart(source)
+        .map(|packed| packed.bytes)
+        .map_err(|error| error.to_string())
+}
+
 /// Validates and decodes an untrusted cartridge for browser import and inspection.
 ///
 /// # Errors
@@ -162,6 +207,16 @@ pub fn decode_cartridge_for_browser(bytes: &[u8]) -> Result<String, String> {
 pub fn unpack_cartridge_for_browser(bytes: &[u8]) -> Result<String, String> {
     let project = unpack_cartridge_project(bytes).map_err(|error| error.to_string())?;
     serde_json::to_string(&project).map_err(|error| error.to_string())
+}
+
+/// Restores the exact source work-cart from a revision-2 cartridge.
+///
+/// # Errors
+///
+/// Returns a revision, archive, or work-cart validation error.
+#[wasm_bindgen(js_name = unpackWorkcart)]
+pub fn unpack_workcart_for_browser(bytes: &[u8]) -> Result<String, String> {
+    unpack_workcart(bytes).map_err(|error| error.to_string())
 }
 
 /// Exports browser-owned project files as a validated, offline standalone player.
