@@ -58,9 +58,8 @@ body,
 }
 
 /* The cursor is intentionally scoped to the console, never the surrounding page. */
-#studio,
-#studio * {
-  cursor: var(--mod01-cursor), default;
+:where(#studio, #studio *) {
+  cursor: var(--mod01-cursor-default), default;
 }
 
 .display {
@@ -103,7 +102,28 @@ body,
 }
 
 .display button {
-  cursor: pointer;
+  cursor: var(--mod01-cursor-action), pointer;
+}
+
+.display input:not([type='range']):not([type='checkbox']):not([type='file']),
+.display textarea {
+  cursor: var(--mod01-cursor-text), text;
+}
+
+.display button:disabled,
+.display input:disabled,
+.display select:disabled,
+.display textarea:disabled,
+.display [aria-busy='true'] {
+  cursor: var(--mod01-cursor-wait), wait;
+}
+
+.file-button,
+.pixel-select-option,
+.workbench-tree button,
+.manual-topics button,
+.explorer-tabs button {
+  cursor: var(--mod01-cursor-action), pointer;
 }
 
 .display select {
@@ -276,6 +296,16 @@ body,
   width: 240px;
   height: 144px;
   image-rendering: pixelated;
+}
+
+.player-screen,
+.pixel-canvas,
+.font-canvas,
+.map-canvas,
+.workbench-atlas,
+.workbench-map,
+.debug-screen {
+  cursor: var(--mod01-cursor-canvas), crosshair;
 }
 
 #screen {
@@ -815,6 +845,97 @@ body,
   color: var(--coral);
 }
 
+.asset-workbench {
+  display: grid;
+  grid-template-columns: 78px 1fr;
+  gap: 3px;
+  height: 100%;
+}
+
+.workbench-tree {
+  overflow: auto;
+  border: 1px solid #315066;
+  background: #09111b;
+}
+
+.workbench-tree p {
+  margin: 1px 2px;
+  color: var(--cyan);
+  font-size: 4px;
+  line-height: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-tree .workbench-module {
+  color: #8ca0ab;
+}
+
+.workbench-tree button {
+  display: block;
+  width: 100%;
+  overflow: hidden;
+  color: var(--cream);
+  background: transparent;
+  border: 0;
+  font:
+    4px/6px 'MOD-01 Bitmap',
+    monospace;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-tree button.selected,
+.workbench-tree button:hover,
+.workbench-tree button:focus-visible {
+  color: var(--deep);
+  background: var(--amber);
+  outline: 0;
+}
+
+.workbench-preview {
+  display: grid;
+  grid-template-rows: 8px 48px 40px auto auto 8px;
+  gap: 2px;
+  min-width: 0;
+}
+
+.workbench-selection,
+.workbench-capacity {
+  overflow: hidden;
+  color: var(--cream);
+  font-size: 4px;
+  line-height: 7px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.workbench-capacity {
+  color: var(--amber);
+}
+
+.workbench-atlas,
+.workbench-map {
+  width: 100%;
+  background: var(--deep);
+  image-rendering: pixelated;
+}
+
+.workbench-actions,
+.workbench-recipes {
+  display: flex;
+  min-height: 6px;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.workbench-actions button:disabled {
+  color: #697078;
+  border-color: #45515a;
+}
+
 .sprite-layout {
   display: grid;
   grid-template: 92px 19px / 96px 1fr;
@@ -881,7 +1002,7 @@ body,
   border: 1px solid var(--cyan);
   font-size: 4px;
   line-height: 6px;
-  cursor: pointer;
+  cursor: var(--mod01-cursor-action), pointer;
 }
 
 .file-button input {
@@ -1252,6 +1373,64 @@ body,
     monospace;
   white-space: pre-wrap;
   scrollbar-width: none;
+}
+
+.compiler-graph-summary,
+.compiler-graph-empty,
+.compiler-graph-legend {
+  margin: 0 0 2px;
+  color: var(--amber);
+  font-size: 4px;
+  line-height: 6px;
+}
+
+.compiler-graph-empty {
+  color: var(--cream);
+}
+
+.compiler-graph-legend {
+  color: var(--cyan);
+}
+
+.compiler-graph-svg {
+  display: block;
+  width: 100%;
+  min-height: 72px;
+  overflow: visible;
+  background: #0b1120;
+}
+
+.compiler-edge {
+  stroke: #6b8fa5;
+  stroke-width: 1;
+}
+
+.compiler-edge.writes {
+  stroke: var(--coral);
+}
+
+.compiler-edge.calls {
+  stroke: var(--amber);
+  stroke-dasharray: 2 1;
+}
+
+.compiler-node rect {
+  fill: #143449;
+  stroke: var(--cyan);
+  stroke-width: 0.7;
+}
+
+.compiler-node.function rect,
+.compiler-node.task rect {
+  fill: #5b3d22;
+  stroke: var(--amber);
+}
+
+.compiler-node text {
+  fill: var(--cream);
+  font:
+    4px 'MOD-01 Bitmap',
+    monospace;
 }
 
 .debug-stage {

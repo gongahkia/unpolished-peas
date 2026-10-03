@@ -37,11 +37,21 @@ import {
   type ProjectManifest,
 } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
-import mod01Cursor from './assets/mod01-cursor.svg?inline';
+import kenneyActionCursor from './assets/kenney-cursor-pixel-pack/tile_0134.png?inline';
+import kenneyCanvasCursor from './assets/kenney-cursor-pixel-pack/tile_0048.png?inline';
+import kenneyDefaultCursor from './assets/kenney-cursor-pixel-pack/tile_0028.png?inline';
+import kenneyTextCursor from './assets/kenney-cursor-pixel-pack/tile_0120.png?inline';
+import kenneyWaitCursor from './assets/kenney-cursor-pixel-pack/tile_0012.png?inline';
 import mod01Logo from './assets/mod01-logo.png?inline';
+import { deriveCodeStateGraph, renderCodeStateGraph } from './compiler-graph';
 import { openDebugger, type ActiveDebugger } from './debugger';
 import { enhancePixelSelects } from './pixel-select';
-import { openCreationTool, type CreationTool } from './tools';
+import {
+  openAssetWorkbench,
+  openCreationTool,
+  type CreationTool,
+  type WorkbenchRecipe,
+} from './tools';
 
 interface WorkingProject {
   id: string;
@@ -49,6 +59,8 @@ interface WorkingProject {
   manifest: string;
   revision: number;
   files: Record<string, Uint8Array>;
+  /** Canonical authored source for V2 projects; manifest/files are editor-facing views. */
+  workcart?: string;
 }
 
 interface ActivePlayer {
@@ -60,6 +72,7 @@ interface ActivePlayer {
 interface FolderBinding {
   readonly handle: FileSystemDirectoryHandle;
   modified: Map<string, number>;
+  workcartPath?: string;
 }
 
 const encoder = new TextEncoder();
@@ -113,7 +126,26 @@ export class StudioApp {
 
   public async boot(): Promise<void> {
     delete document.documentElement.dataset.studioReady;
-    document.documentElement.style.setProperty('--mod01-cursor', `url("${mod01Cursor}") 2 2`);
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-default',
+      `url("${kenneyDefaultCursor}") 0 0`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-action',
+      `url("${kenneyActionCursor}") 1 1`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-text',
+      `url("${kenneyTextCursor}") 8 8`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-wait',
+      `url("${kenneyWaitCursor}") 8 8`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-canvas',
+      `url("${kenneyCanvasCursor}") 1 1`,
+    );
     const startup = this.playStartupSequence();
     this.stopPlayer();
     this.stopDebugger();
@@ -314,6 +346,10 @@ export class StudioApp {
         case 'project':
           await this.openTool(command as CreationTool);
           return;
+        case 'assets':
+        case 'workbench':
+          await this.openWorkbench();
+          return;
         case 'manual':
         case 'man':
           this.openManual(arguments_.join(' ') || 'START');
@@ -397,7 +433,7 @@ export class StudioApp {
             'EDIT RUN [ID] DEBUG [ID] PACK [ID] OUT [ID] CART [ID] EXPORT SHARE',
             'INSPECT [ID] SOURCE [ID] INFO',
             'COPY <ID> NAME <ID> [TITLE] STAR <ID> SAVE <ID> REMOVE <ID> SHELL',
-            'PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
+            'ASSETS WORKBENCH / PROJECT SPRITE MAP PALETTE FONT SFX MUSIC',
             'MANUAL MAN HELP CLEAR CLS REBOOT SETTINGS CONTROLS FOLDER',
             'NEW <ID> [TITLE] / LOAD <ID> / RUN <ID>',
           ]);
@@ -444,15 +480,17 @@ export class StudioApp {
     }
     const title = (titleParts.join(' ') || id.replaceAll(/[.-]+/g, ' ')).toUpperCase().slice(0, 64);
     const manifest = `format = 1\nlanguage = "MODL/1"\nid = "${id}"\ntitle = ${JSON.stringify(title)}\nauthor = "@gongahkia"\nversion = "0.1.0"\nentry = "src/main.modl"\nupdate_rate = 60\n\n[assets]\n`;
+    const files = {
+      'src/main.modl': encoder.encode(
+        '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("MODL/1", 98, 88, 7)\n',
+      ),
+    };
     const project = await this.repository.saveProject({
       id,
       title,
       manifest,
-      files: {
-        'src/main.modl': encoder.encode(
-          '// Made by @gongahkia\n\nstate player_x: Int = 112\n\non update:\n  if btn(pad1, left):\n    player_x -= 1\n  if btn(pad1, right):\n    player_x += 1\n\non draw:\n  clear(1)\n  rect_fill(player_x, 64, 16, 16, 23)\n  print("MODL/1", 98, 88, 7)\n',
-        ),
-      },
+      files,
+      workcart: await this.compiler.encodeWorkcart(manifest, files),
     });
     this.activeProject = fromStored(project);
     await this.repository.setShelfOrigin(id, 'created');
@@ -560,6 +598,7 @@ export class StudioApp {
     const cartridge = isPng ? decodeCartridgePng(imported).cartridge : imported;
     const unpacked = await this.compiler.unpackCartridge(cartridge);
     const manifest = await this.compiler.parseManifest(unpacked.manifest);
+    const workcart = await this.compiler.unpackWorkcart(cartridge).catch(() => undefined);
     const project = await this.repository.saveProject({
       id: manifest.id,
       title: manifest.title,
@@ -567,6 +606,7 @@ export class StudioApp {
       files: Object.fromEntries(
         Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
       ),
+      ...(workcart === undefined ? {} : { workcart }),
     });
     this.activeProject = fromStored(project);
     await this.repository.setShelfOrigin(manifest.id, 'imported');
@@ -583,6 +623,7 @@ export class StudioApp {
       if (cartridge === undefined) return;
       const unpacked = await this.compiler.unpackCartridge(cartridge);
       const manifest = await this.compiler.parseManifest(unpacked.manifest);
+      const workcart = await this.compiler.unpackWorkcart(cartridge).catch(() => undefined);
       const project = await this.repository.saveProject({
         id: manifest.id,
         title: manifest.title,
@@ -590,6 +631,7 @@ export class StudioApp {
         files: Object.fromEntries(
           Object.entries(unpacked.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
         ),
+        ...(workcart === undefined ? {} : { workcart }),
       });
       this.activeProject = fromStored(project);
       await this.repository.setShelfOrigin(manifest.id, 'fragment');
@@ -607,7 +649,11 @@ export class StudioApp {
     const loaded = await this.readProjectFolder(handle);
     const stored = await this.repository.saveProject(loaded.project);
     this.activeProject = fromStored(stored);
-    this.folderBindings.set(stored.id, { handle, modified: loaded.modified });
+    this.folderBindings.set(stored.id, {
+      handle,
+      modified: loaded.modified,
+      ...(loaded.workcartPath === undefined ? {} : { workcartPath: loaded.workcartPath }),
+    });
     await this.repository.setShelfOrigin(stored.id, 'imported');
     this.appendLines([
       `FOLDER OPEN ${stored.id} / R${String(stored.revision)}`,
@@ -615,12 +661,35 @@ export class StudioApp {
     ]);
   }
 
-  private async readProjectFolder(
-    handle: FileSystemDirectoryHandle,
-  ): Promise<{ project: WorkingProject; modified: Map<string, number> }> {
+  private async readProjectFolder(handle: FileSystemDirectoryHandle): Promise<{
+    project: WorkingProject;
+    modified: Map<string, number>;
+    workcartPath?: string;
+  }> {
     const modified = new Map<string, number>();
-    const manifestFile = await readFolderFile(handle, 'cart.toml');
-    if (manifestFile === undefined) throw new Error('FOLDER HAS NO CART.TOML');
+    const manifestFile = await readFolderFile(handle, 'cart.toml', true);
+    if (manifestFile === undefined) {
+      const workcart = await readFolderWorkcart(handle);
+      if (workcart === undefined) throw new Error('FOLDER HAS NO CART.TOML OR .M01W');
+      const source = decoder.decode(workcart.file.bytes);
+      const view = await this.compiler.workcartProjectView(source);
+      const parsed = await this.compiler.parseManifest(view.manifest);
+      modified.set(workcart.path, workcart.file.lastModified);
+      return {
+        project: {
+          id: parsed.id,
+          title: parsed.title,
+          manifest: view.manifest,
+          revision: (await this.repository.loadProject(parsed.id))?.revision ?? 0,
+          files: Object.fromEntries(
+            Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+          ),
+          workcart: source,
+        },
+        modified,
+        workcartPath: workcart.path,
+      };
+    }
     modified.set('cart.toml', manifestFile.lastModified);
     const manifest = decoder.decode(manifestFile.bytes);
     const parsed = await this.compiler.parseManifest(manifest);
@@ -663,10 +732,14 @@ export class StudioApp {
   private async syncProjectFolder(project: WorkingProject, overwrite: boolean): Promise<void> {
     const binding = this.folderBindings.get(project.id);
     if (binding === undefined) return;
-    const outputs = new Map<string, Uint8Array>([
-      ['cart.toml', encoder.encode(project.manifest)],
-      ...Object.entries(project.files),
-    ]);
+    const outputs = new Map<string, Uint8Array>();
+    if (binding.workcartPath === undefined) {
+      outputs.set('cart.toml', encoder.encode(project.manifest));
+      for (const [path, bytes] of Object.entries(project.files)) outputs.set(path, bytes);
+    } else {
+      if (project.workcart === undefined) throw new Error('M01W FOLDER PROJECT LOST ITS SOURCE');
+      outputs.set(binding.workcartPath, encoder.encode(project.workcart));
+    }
     if (!overwrite) {
       for (const path of outputs.keys()) {
         const current = await readFolderFile(binding.handle, path, true);
@@ -686,8 +759,42 @@ export class StudioApp {
     binding.modified = modified;
   }
 
+  private async synchronizeWorkcart(project: WorkingProject): Promise<void> {
+    if (project.workcart === undefined) return;
+    project.workcart = await this.compiler.rewriteWorkcart(
+      project.workcart,
+      project.manifest,
+      project.files,
+    );
+  }
+
+  private async compileAuthoredProject(
+    project: WorkingProject,
+    debug: boolean,
+  ): Promise<CompilationResult> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.compileProject(project.manifest, project.files, debug)
+      : this.compiler.compileWorkcart(project.workcart, debug);
+  }
+
+  private async packAuthoredProject(project: WorkingProject): Promise<Uint8Array> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.packProject(project.manifest, project.files)
+      : this.compiler.packWorkcart(project.workcart);
+  }
+
+  private async exportAuthoredProject(project: WorkingProject): Promise<string> {
+    await this.synchronizeWorkcart(project);
+    return project.workcart === undefined
+      ? this.compiler.exportHtml(project.manifest, project.files)
+      : this.compiler.exportHtmlWorkcart(project.workcart);
+  }
+
   private async saveProject(): Promise<void> {
     const project = this.requireProject();
+    await this.synchronizeWorkcart(project);
     await this.syncProjectFolder(project, false);
     const stored = await this.repository.saveProject(project);
     Object.assign(project, fromStored(stored));
@@ -764,6 +871,7 @@ export class StudioApp {
       saveQueue = saveQueue
         .catch(() => undefined)
         .then(async () => {
+          await this.synchronizeWorkcart(project);
           await this.syncProjectFolder(project, false);
           const stored = await this.repository.loadProject(project.id);
           if (stored !== undefined && stored.revision !== project.revision) {
@@ -876,7 +984,8 @@ export class StudioApp {
           this.openManual(manualTitleForSymbol(symbolAtCursor(textarea)));
         } else if (action === 'overwrite') {
           updateWorkingCopy();
-          void this.syncProjectFolder(project, true)
+          void this.synchronizeWorkcart(project)
+            .then(() => this.syncProjectFolder(project, true))
             .then(() => this.repository.saveProject(project))
             .then((stored) => {
               Object.assign(project, fromStored(stored));
@@ -936,8 +1045,11 @@ export class StudioApp {
     const binding = this.folderBindings.get(project.id);
     if (binding !== undefined) {
       const external = await this.readProjectFolder(binding.handle);
-      Object.assign(project, external);
+      Object.assign(project, external.project);
       this.activeProject = project;
+      binding.modified = external.modified;
+      if (external.workcartPath === undefined) delete binding.workcartPath;
+      else binding.workcartPath = external.workcartPath;
       const source = project.files[path];
       if (source === undefined) throw new Error('SOURCE REMOVED FROM FOLDER');
       textarea.value = decoder.decode(source);
@@ -971,6 +1083,53 @@ export class StudioApp {
         await this.saveProject();
       },
       parseManifest: async () => this.compiler.parseManifest(project.manifest),
+    });
+  }
+
+  private async openWorkbench(): Promise<void> {
+    const project = this.requireProject();
+    await openAssetWorkbench(this.root, project, {
+      back: () => {
+        this.renderShell();
+      },
+      save: async () => {
+        const stored = await this.repository.loadProject(project.id);
+        if (stored !== undefined && stored.revision !== project.revision)
+          throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / REOPEN ASSETS`);
+        await this.saveProject();
+      },
+      parseManifest: async () => this.compiler.parseManifest(project.manifest),
+      capacity: async () => (await this.packAuthoredProject(project)).byteLength,
+      recipes: async () => {
+        if (project.workcart === undefined) return [];
+        return workcartRecipes((await this.compiler.parseWorkcart(project.workcart)).recipes);
+      },
+      generateRecipe: async (recipeId) => {
+        if (project.workcart === undefined) throw new Error('GENERATORS REQUIRE AN M01W PROJECT');
+        project.workcart = await this.compiler.materializeWorkcartRecipe(
+          project.workcart,
+          recipeId,
+        );
+        const view = await this.compiler.workcartProjectView(project.workcart);
+        project.manifest = view.manifest;
+        project.files = Object.fromEntries(
+          Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        );
+        await this.saveProject();
+      },
+      deleteAsset: async (assetName) => {
+        if (project.workcart === undefined) throw new Error('DELETE REQUIRES AN M01W PROJECT');
+        const stored = await this.repository.loadProject(project.id);
+        if (stored !== undefined && stored.revision !== project.revision)
+          throw new Error(`R${String(stored.revision)} CHANGED EXTERNALLY / REOPEN ASSETS`);
+        project.workcart = await this.compiler.deleteWorkcartAsset(project.workcart, assetName);
+        const view = await this.compiler.workcartProjectView(project.workcart);
+        project.manifest = view.manifest;
+        project.files = Object.fromEntries(
+          Object.entries(view.files).map(([path, bytes]) => [path, Uint8Array.from(bytes)]),
+        );
+        await this.saveProject();
+      },
     });
   }
 
@@ -1036,13 +1195,15 @@ export class StudioApp {
   private async openExplorer(): Promise<void> {
     const project = this.requireProject();
     const [compilation, manifest, packed] = await Promise.all([
-      this.compiler.compileProject(project.manifest, project.files, false),
+      this.compileAuthoredProject(project, false),
       this.compiler.parseManifest(project.manifest),
-      this.compiler.packProject(project.manifest, project.files),
+      this.packAuthoredProject(project),
     ]);
     const cartridge = await this.compiler.decodeCartridge(packed);
     const report = projectSizeReport(packed, cartridge.entries, manifest, compilation);
+    const graph = deriveCodeStateGraph(compilation);
     const panes: Readonly<Record<string, unknown>> = {
+      GRAPH: graph,
       TOKENS: compilation.analysis.tokens,
       AST: compilation.analysis.module,
       TYPED: compilation.analysis.symbols,
@@ -1068,6 +1229,10 @@ export class StudioApp {
     const output = requireElement(this.root, '.explorer-output') as HTMLElement;
     const show = (name: string): void => {
       const value = panes[name];
+      if (name === 'GRAPH') {
+        renderCodeStateGraph(output, graph);
+        return;
+      }
       const source = typeof value === 'string' ? value : JSON.stringify(value, undefined, 2);
       if (name === 'JS') renderHighlight(output, source);
       else renderJsonHighlight(output, source);
@@ -1116,14 +1281,14 @@ export class StudioApp {
   private async runProject(replay?: ReplayTrace): Promise<void> {
     this.stopDebugger();
     const project = this.requireProject();
-    const compilation = await this.compiler.compileProject(project.manifest, project.files, false);
+    const compilation = await this.compileAuthoredProject(project, false);
     const diagnostic = compilation.analysis.diagnostics[0];
     if (diagnostic !== undefined || compilation.generated === undefined) {
       this.reportCompilerDiagnostic(diagnostic);
       return;
     }
     const parsedManifest = await this.compiler.parseManifest(project.manifest);
-    const rom = await this.compiler.packProject(project.manifest, project.files);
+    const rom = await this.packAuthoredProject(project);
     const saveAccess = this.repository.cartridgeSave(project.id);
     const save = await saveAccess.read();
     const settings = await this.repository.settings();
@@ -1305,6 +1470,7 @@ export class StudioApp {
   private async debugProject(): Promise<void> {
     this.stopPlayer();
     const project = this.requireProject();
+    await this.synchronizeWorkcart(project);
     const save = await this.repository.cartridgeSave(project.id).read();
     const settings = await this.repository.settings();
     try {
@@ -1333,7 +1499,7 @@ export class StudioApp {
 
   private async packProject(): Promise<void> {
     const project = this.requireProject();
-    const bytes = await this.compiler.packProject(project.manifest, project.files);
+    const bytes = await this.packAuthoredProject(project);
     const buffer = new ArrayBuffer(bytes.byteLength);
     new Uint8Array(buffer).set(bytes);
     const url = URL.createObjectURL(new Blob([buffer], { type: 'application/x-mod01-cartridge' }));
@@ -1348,7 +1514,7 @@ export class StudioApp {
   private async exportCartridgePng(): Promise<void> {
     const project = this.requireProject();
     const manifest = await this.compiler.parseManifest(project.manifest);
-    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const cartridge = await this.packAuthoredProject(project);
     const identity = decodeIdentity(project.files['presentation/cartridge.json']);
     const frame = this.capturedFrames.get(project.id);
     const png = encodeCartridgePng(
@@ -1373,7 +1539,7 @@ export class StudioApp {
 
   private async exportHtml(): Promise<void> {
     const project = this.requireProject();
-    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const html = await this.exportAuthoredProject(project);
     const url = URL.createObjectURL(new Blob([html], { type: 'text/html;charset=utf-8' }));
     const link = document.createElement('a');
     link.href = url;
@@ -1387,7 +1553,7 @@ export class StudioApp {
 
   private async exportZip(): Promise<void> {
     const project = this.requireProject();
-    const html = await this.compiler.exportHtml(project.manifest, project.files);
+    const html = await this.exportAuthoredProject(project);
     const zip = encodeSingleFileZip('index.html', encoder.encode(html));
     downloadBytes(`${project.id}-itch.zip`, zip, 'application/zip');
     this.appendLines([
@@ -1467,7 +1633,17 @@ export class StudioApp {
     }
     const title = `${project.title} COPY`.slice(0, 64);
     const manifest = replaceManifestIdentity(project.manifest, id, title);
-    const stored = await this.repository.saveProject({ id, title, manifest, files: project.files });
+    const workcart =
+      project.workcart === undefined
+        ? undefined
+        : await this.compiler.rewriteWorkcart(project.workcart, manifest, project.files);
+    const stored = await this.repository.saveProject({
+      id,
+      title,
+      manifest,
+      files: project.files,
+      ...(workcart === undefined ? {} : { workcart }),
+    });
     await this.repository.setShelfOrigin(id, 'duplicate');
     return fromStored(stored);
   }
@@ -1477,14 +1653,23 @@ export class StudioApp {
     if (title.length === 0 || !/^[\x20-\x7e]+$/.test(title))
       throw new TypeError('TITLE MUST BE 1-64 ASCII CHARACTERS');
     const manifest = replaceManifestIdentity(project.manifest, project.id, title);
-    const stored = await this.repository.saveProject({ ...project, title, manifest });
+    const workcart =
+      project.workcart === undefined
+        ? undefined
+        : await this.compiler.rewriteWorkcart(project.workcart, manifest, project.files);
+    const stored = await this.repository.saveProject({
+      ...project,
+      title,
+      manifest,
+      ...(workcart === undefined ? {} : { workcart }),
+    });
     this.activeProject = fromStored(stored);
     this.appendLines([`RENAMED ${project.id} / SAVE ID UNCHANGED`]);
   }
 
   private async openShare(): Promise<void> {
     const project = this.requireProject();
-    const cartridge = await this.compiler.packProject(project.manifest, project.files);
+    const cartridge = await this.packAuthoredProject(project);
     const fragment = encodeCartridgeFragment(cartridge);
     const url = new URL(location.href);
     url.hash = fragment;
@@ -1526,11 +1711,11 @@ export class StudioApp {
     const detail =
       project === undefined
         ? undefined
-        : await this.compiler.packProject(project.manifest, project.files).then(async (packed) => {
+        : await this.packAuthoredProject(project).then(async (packed) => {
             const [manifest, decoded, compilation] = await Promise.all([
               this.compiler.parseManifest(project.manifest),
               this.compiler.decodeCartridge(packed),
-              this.compiler.compileProject(project.manifest, project.files, false),
+              this.compileAuthoredProject(project, false),
             ]);
             return projectSizeReport(packed, decoded.entries, manifest, compilation);
           });
@@ -1654,9 +1839,7 @@ export class StudioApp {
 
   private async openInspector(): Promise<void> {
     const project = this.requireProject();
-    const cartridge = await this.compiler.decodeCartridge(
-      await this.compiler.packProject(project.manifest, project.files),
-    );
+    const cartridge = await this.compiler.decodeCartridge(await this.packAuthoredProject(project));
     const sources = Object.entries(cartridge.entries)
       .filter(([path]) => path.startsWith('source/'))
       .sort(([left], [right]) => left.localeCompare(right));
@@ -1831,6 +2014,26 @@ async function readFolderFile(
   }
 }
 
+async function readFolderWorkcart(root: FileSystemDirectoryHandle): Promise<
+  | {
+      readonly path: string;
+      readonly file: { readonly bytes: Uint8Array; readonly lastModified: number };
+    }
+  | undefined
+> {
+  const names: string[] = [];
+  for await (const entry of root.values()) {
+    if (entry.kind === 'file' && entry.name.toLowerCase().endsWith('.m01w')) names.push(entry.name);
+  }
+  names.sort();
+  if (names.length > 1) throw new Error('FOLDER HAS MULTIPLE .M01W WORK-CARTS');
+  const path = names[0];
+  if (path === undefined) return undefined;
+  const file = await readFolderFile(root, path);
+  if (file === undefined) throw new Error(`WORK-CART ${path} DISAPPEARED`);
+  return { path, file };
+}
+
 async function writeFolderFile(
   root: FileSystemDirectoryHandle,
   path: string,
@@ -1901,6 +2104,7 @@ function fromStored(project: StoredProject): WorkingProject {
     files: Object.fromEntries(
       Object.entries(project.files).map(([path, bytes]) => [path, bytes.slice()]),
     ),
+    ...(project.workcart === undefined ? {} : { workcart: project.workcart }),
   };
 }
 
@@ -1910,6 +2114,20 @@ function manifestEntry(manifest: string): string {
 
 function manifestUpdateRate(manifest: string): 30 | 60 {
   return /^update_rate\s*=\s*30\s*$/m.test(manifest) ? 30 : 60;
+}
+
+function workcartRecipes(values: readonly unknown[]): WorkbenchRecipe[] {
+  return values.flatMap((value) => {
+    if (typeof value !== 'object' || value === null) return [];
+    const recipe = value as Record<string, unknown>;
+    if (
+      typeof recipe.id !== 'string' ||
+      typeof recipe.algorithm !== 'string' ||
+      typeof recipe.output !== 'string'
+    )
+      return [];
+    return [{ id: recipe.id, algorithm: recipe.algorithm, output: recipe.output }];
+  });
 }
 
 function splitCommand(source: string): string[] {

@@ -2,7 +2,10 @@ use std::collections::BTreeMap;
 
 use serde::Serialize;
 
-use crate::{CartridgeError, PackedManifest, load_cartridge_program, pack_project};
+use crate::{
+    CartridgeError, PackedCartridge, PackedManifest, load_cartridge_program, pack_project,
+    pack_workcart,
+};
 
 const STANDALONE_PLAYER: &str = include_str!("../../../packages/runtime/standalone/player.js");
 
@@ -36,9 +39,24 @@ pub fn export_standalone_html(
     project_files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<String, CartridgeError> {
     let packed = pack_project(manifest_source, project_files)?;
+    export_packed_standalone_html(&packed)
+}
+
+/// Exports a work-cart as one offline, source-inspectable standalone player.
+///
+/// # Errors
+///
+/// Returns the same work-cart, compilation, and capacity errors as packing.
+pub fn export_standalone_workcart(source: &str) -> Result<String, CartridgeError> {
+    let packed = pack_workcart(source)?;
+    export_packed_standalone_html(&packed)
+}
+
+fn export_packed_standalone_html(packed: &PackedCartridge) -> Result<String, CartridgeError> {
     let (cartridge, program) = load_cartridge_program(&packed.bytes)?;
     let title = escape_html(&cartridge.manifest.title);
     let author = escape_html(&cartridge.manifest.author);
+    let format_revision = cartridge.manifest.format_revision;
     let presentation = standalone_presentation(&cartridge.entries);
     let year = presentation.year;
     let players = presentation.players;
@@ -68,7 +86,7 @@ pub fn export_standalone_html(
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#17141f">
-<meta name="mod01-format" content="1">
+<meta name="mod01-format" content="{format_revision}">
 <meta name="mod01-embed" content="true">
 <meta name="mod01-players" content="{players}">
 <meta name="mod01-controls" content="{controls}">
@@ -96,7 +114,7 @@ html[data-embed="true"] body{{background:#17141f}}html[data-embed="true"] .unit{
 </section>
 </section>
 <section class="controls"><strong id="title">{title}</strong><span><button id="sound" type="button">SOUND</button> <button id="pause" type="button">PAUSE</button> <button id="reset" type="button">RESET</button> <button id="fullscreen" type="button">FULL</button> <button id="source" type="button">SOURCE</button></span><output id="status">BOOT</output></section>
-<footer><span id="author">AUTHOR: {author} / {year} / {players}P / {controls}</span><span>MODL/1 · CARTRIDGE FORMAT/1</span></footer>
+<footer><span id="author">AUTHOR: {author} / {year} / {players}P / {controls}</span><span>MODL/1 · CARTRIDGE FORMAT/{format_revision}</span></footer>
 </main>
 <script>globalThis.__MOD01_CARTRIDGE__={payload};</script>
 <script>{STANDALONE_PLAYER}</script>
@@ -116,6 +134,16 @@ pub fn export_itch_zip(
     project_files: &BTreeMap<String, Vec<u8>>,
 ) -> Result<Vec<u8>, CartridgeError> {
     let html = export_standalone_html(manifest_source, project_files)?;
+    zip_stored_file("index.html", html.as_bytes())
+}
+
+/// Exports a work-cart as a deterministic, timestamp-free itch.io ZIP.
+///
+/// # Errors
+///
+/// Returns the same work-cart, packing, or ZIP size errors as the HTML export.
+pub fn export_itch_workcart(source: &str) -> Result<Vec<u8>, CartridgeError> {
+    let html = export_standalone_workcart(source)?;
     zip_stored_file("index.html", html.as_bytes())
 }
 

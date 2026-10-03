@@ -177,6 +177,301 @@ fn export_html_and_headless_run_write_the_same_offline_player() {
 }
 
 #[test]
+fn workcart_commands_pack_export_check_and_run_through_the_same_cartridge() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-workcart-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    fs::write(
+        &cart,
+        r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "cli-workcart"
+title = "CLI WORKCART"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = '''
+on draw:
+  clear(25)
+'''
+"#,
+    )
+    .expect("work-cart writes");
+    let packed = cart.with_extension("m01c");
+    let html = cart.with_extension("html");
+    let trace = cart.with_extension("trace.json");
+    for arguments in [
+        vec!["check".to_owned(), cart.display().to_string()],
+        vec![
+            "pack".to_owned(),
+            cart.display().to_string(),
+            "--output".to_owned(),
+            packed.display().to_string(),
+        ],
+        vec![
+            "export".to_owned(),
+            "html".to_owned(),
+            cart.display().to_string(),
+            "--output".to_owned(),
+            html.display().to_string(),
+        ],
+        vec![
+            "run".to_owned(),
+            cart.display().to_string(),
+            "--headless".to_owned(),
+            "--frames".to_owned(),
+            "2".to_owned(),
+            "--output".to_owned(),
+            trace.display().to_string(),
+        ],
+    ] {
+        let output = binary().args(arguments).output().expect("CLI starts");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    assert!(
+        fs::read_to_string(&html)
+            .expect("work-cart HTML reads")
+            .contains("CARTRIDGE FORMAT/2")
+    );
+    assert_eq!(
+        serde_json::from_slice::<Value>(&fs::read(&trace).expect("trace reads"))
+            .expect("trace is JSON")["summary"]["completedFrames"],
+        2
+    );
+    for path in [cart, packed, html, trace] {
+        fs::remove_file(path).expect("temporary work-cart artifact removes");
+    }
+}
+
+#[test]
+fn generate_map_materializes_a_stored_workcart_recipe_atomically() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-generate-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    let pixels = vec!["0"; 64].join(",");
+    fs::write(
+        &cart,
+        format!(
+            r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "generated-map"
+title = "GENERATED MAP"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = "on draw:\n  clear(0)\n"
+
+[[asset]]
+name = "tiles"
+kind = "tile_set"
+path = "assets/tiles.m01g"
+payload = '''{{"revision":1,"kind":"tile_set","tiles":[[{pixels}]],"flags":[0]}}'''
+
+[[asset]]
+name = "world"
+kind = "map"
+path = "assets/world.m01m"
+payload = '''{{"revision":1,"kind":"map","layers":[]}}'''
+
+[[recipe]]
+algorithm = "noise"
+id = "world-noise"
+output = "world"
+seed = 7
+width = 4
+height = 3
+tile_set = "tiles"
+tiles = [0]
+"#
+        ),
+    )
+    .expect("work-cart writes");
+    let generate = binary()
+        .args([
+            "generate",
+            "map",
+            cart.to_str().expect("UTF-8 work-cart path"),
+            "world-noise",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        generate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&generate.stderr)
+    );
+    let generated = fs::read_to_string(&cart).expect("generated work-cart reads");
+    let project = modl_core::parse_workcart(&generated).expect("generated work-cart parses");
+    let map: Value =
+        serde_json::from_slice(&project.files["assets/world.m01m"]).expect("generated map is JSON");
+    assert_eq!(map["layers"][0]["width"], 4);
+    assert_eq!(map["layers"][0]["height"], 3);
+    assert_eq!(map["layers"][0]["cells"].as_array().map(Vec::len), Some(12));
+    let repeat = binary()
+        .args([
+            "generate",
+            "map",
+            cart.to_str().expect("UTF-8 work-cart path"),
+            "world-noise",
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(repeat.status.success());
+    assert_eq!(
+        generated,
+        fs::read_to_string(&cart).expect("regenerated work-cart reads")
+    );
+    fs::remove_file(cart).expect("temporary generated work-cart removes");
+}
+
+#[test]
+fn check_reports_packed_capacity_failures_for_workcarts() {
+    let cart = std::env::temp_dir().join(format!(
+        "mod01-check-capacity-{}-{}.m01w",
+        std::process::id(),
+        line!()
+    ));
+    let padding = "0123456789abcdef".repeat(17_000);
+    fs::write(
+        &cart,
+        format!(
+            r#"format = 2
+
+[cartridge]
+language = "MODL/1"
+id = "capacity-check"
+title = "CAPACITY CHECK"
+author = "@gongahkia"
+version = "0.1.0"
+entry = "src/main.modl"
+update_rate = 60
+
+[[module]]
+path = "src/main.modl"
+source = "on draw:\n  clear(0)\n"
+
+[[asset]]
+name = "oversized"
+kind = "sprite"
+path = "assets/oversized.m01g"
+payload = '''{{"padding":"{padding}"}}'''
+"#
+        ),
+    )
+    .expect("oversized work-cart writes");
+    let output = binary()
+        .args(["check", cart.to_str().expect("UTF-8 work-cart path")])
+        .output()
+        .expect("CLI starts");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(String::from_utf8_lossy(&output.stderr).contains("M014005"));
+    fs::remove_file(cart).expect("temporary capacity work-cart removes");
+}
+
+#[test]
+fn migrate_explicitly_rejects_tiled_files() {
+    let tiled = std::env::temp_dir().join(format!(
+        "mod01-tiled-{}-{}.tmx",
+        std::process::id(),
+        line!()
+    ));
+    fs::write(&tiled, "<map version=\"1.10\"/>").expect("Tiled fixture writes");
+    let output = binary()
+        .args(["migrate", tiled.to_str().expect("UTF-8 tiled path")])
+        .output()
+        .expect("CLI starts");
+    assert_eq!(output.status.code(), Some(1));
+    assert!(
+        String::from_utf8_lossy(&output.stderr)
+            .contains("migrate expects a V1 cartridge project directory")
+    );
+    fs::remove_file(tiled).expect("temporary Tiled fixture removes");
+}
+
+#[test]
+fn migrate_turns_a_v1_project_and_its_tests_into_one_workcart() {
+    let project =
+        std::env::temp_dir().join(format!("mod01-migrate-{}-{}", std::process::id(), line!()));
+    let created = binary()
+        .args(["new", project.to_str().expect("UTF-8 project path")])
+        .output()
+        .expect("CLI starts");
+    assert!(created.status.success());
+    fs::create_dir(project.join("tests")).expect("test directory creates");
+    fs::write(
+        project.join("tests/smoke.modl"),
+        "on start:\n  assert 1 == 1, \"migrated test\"\n",
+    )
+    .expect("MODL test writes");
+    fs::write(
+        project.join("tests/boot.m01run.json"),
+        r#"{"revision":1,"frames":1,"expect":{"completedFrames":1}}"#,
+    )
+    .expect("replay test writes");
+    let workcart = project.with_extension("m01w");
+    let migrate = binary()
+        .args([
+            "migrate",
+            project.to_str().expect("UTF-8 project path"),
+            "--output",
+            workcart.to_str().expect("UTF-8 work-cart path"),
+        ])
+        .output()
+        .expect("CLI starts");
+    assert!(
+        migrate.status.success(),
+        "{}",
+        String::from_utf8_lossy(&migrate.stderr)
+    );
+    let source = fs::read_to_string(&workcart).expect("work-cart reads");
+    let parsed = modl_core::parse_workcart(&source).expect("work-cart parses");
+    assert_eq!(parsed.tests.len(), 2);
+    assert!(parsed.files.contains_key("src/main.modl"));
+    fs::remove_dir_all(&project).expect("V1 project removes");
+    let packed = workcart.with_extension("m01c");
+    for arguments in [
+        vec!["check".to_owned(), workcart.display().to_string()],
+        vec!["test".to_owned(), workcart.display().to_string()],
+        vec![
+            "pack".to_owned(),
+            workcart.display().to_string(),
+            "--output".to_owned(),
+            packed.display().to_string(),
+        ],
+    ] {
+        let output = binary().args(arguments).output().expect("CLI starts");
+        assert!(
+            output.status.success(),
+            "{}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+    for path in [workcart, packed] {
+        fs::remove_file(path).expect("temporary migration artifact removes");
+    }
+}
+
+#[test]
 fn headless_run_emits_deterministic_machine_readable_traces_for_projects_and_cartridges() {
     let project =
         std::env::temp_dir().join(format!("mod01-headless-{}-{}", std::process::id(), line!()));
