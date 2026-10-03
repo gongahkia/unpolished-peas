@@ -90,6 +90,20 @@ function Widgets.install(Studio)
     self.controls[#self.controls + 1] = { rect = rect, action = { type = "project_path" }, cursor = "text" }
   end
 
+  function Studio:new_project_field(rect, label, field, placeholder)
+    local focused = self.active and self.active.kind == "new_project" and self.active.field == field
+    local creation = self.new_project or {}
+    self:panel(rect, focused and COLORS.selected or COLORS.surface2, focused and COLORS.selected_border or COLORS.border)
+    self:line(label, rect.x + 10, rect.y + 5, .58, COLORS.muted, rect.width - 20)
+    local value = focused and self.draft or tostring(creation[field] or "")
+    local display = value == "" and (placeholder or "") or value
+    local tint = focused and COLORS.gold or (value == "" and COLORS.muted or COLORS.text)
+    local font, visible = self:font(.76), Theme.ellipsize(self:font(.76), display, rect.width - 20)
+    self:line(visible, rect.x + 10, rect.y + 23, .76, tint, rect.width - 20)
+    if focused then self:text("|", rect.x + 11 + math.min(font:getWidth(value), rect.width - 26), rect.y + 23, .76, COLORS.blue) end
+    self.controls[#self.controls + 1] = { rect = rect, action = { type = "new_project_field", field = field }, cursor = "text" }
+  end
+
   function Studio:dock_title(rect, title, detail)
     self:line(title, rect.x + 12, rect.y + 10, .64, COLORS.muted, rect.width - 24)
     if detail then self:line(detail, rect.x + 12, rect.y + 10, .56, COLORS.muted, rect.width - 24, "right") end

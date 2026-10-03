@@ -61,17 +61,44 @@ function Scene.remove(scene, node_id)
   return removed
 end
 
-function Scene.reparent(scene, node_id, parent_id)
+function Scene.can_reparent(scene, node_id, parent_id)
   if node_id == scene.root.id then return nil, "The root node cannot be reparented" end
   local parent, next_parent = Scene.parent_of(scene, node_id), Scene.find(scene, parent_id)
   if not parent or not next_parent then return nil, "Node or destination parent does not exist" end
+  if parent.node == next_parent then return nil, "Node already has that parent" end
   local descendant = false
   walk(parent.node.children[parent.index], function(node) if node.id == parent_id then descendant = true; return false end end)
   if descendant then return nil, "A node cannot become a child of itself" end
+  return true
+end
+
+function Scene.reparent(scene, node_id, parent_id)
+  local allowed, reason = Scene.can_reparent(scene, node_id, parent_id)
+  if not allowed then return nil, reason end
+  local parent, next_parent = Scene.parent_of(scene, node_id), Scene.find(scene, parent_id)
   local node = parent.node.children[parent.index]
   table.remove(parent.node.children, parent.index)
   next_parent.children = next_parent.children or {}; next_parent.children[#next_parent.children + 1] = node
   return true
+end
+
+-- Child order is both hierarchy order and paint order. Keep that mutation in
+-- the Scene domain layer so editor views never splice serializable trees.
+function Scene.move_sibling(scene, node_id, direction)
+  if node_id == scene.root.id then return nil, "The root node cannot be reordered" end
+  if direction ~= -1 and direction ~= 1 then return nil, "Sibling movement must be earlier or later" end
+  local parent = Scene.parent_of(scene, node_id)
+  if not parent then return nil, "Node does not exist" end
+  local destination = parent.index + direction
+  if destination < 1 or destination > #parent.node.children then return nil, "Node is already at that edge" end
+  local children = parent.node.children
+  children[parent.index], children[destination] = children[destination], children[parent.index]
+  return true, destination
+end
+
+function Scene.sibling_position(scene, node_id)
+  if node_id == scene.root.id then return nil end
+  return Scene.parent_of(scene, node_id)
 end
 
 function Scene.each(scene, visit)

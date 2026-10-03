@@ -283,14 +283,77 @@ function Project.new(root)
   return setmetatable({ root = root, manifest = nil }, Project)
 end
 
+local function trimmed(value)
+  return type(value) == "string" and value:gsub("^%s+", ""):gsub("%s+$", "") or nil
+end
+
+-- Inspect a proposed project root without writing anything.  This is used by
+-- the Studio before it asks an author to resolve unsaved work, and is checked
+-- again by create() immediately before any durable write.
+function Project.validate_creation(root, name)
+  local clean_name = trimmed(name)
+  if not clean_name or clean_name == "" then return failure("project_name_required", "Project name cannot be empty") end
+  if type(root) ~= "string" or root:gsub("%s", "") == "" then return failure("project_folder_required", "Project folder is required") end
+  root = root:gsub("^%s+", ""):gsub("%s+$", "")
+  local without_trailing = root:gsub("[/\\]+$", "")
+  if without_trailing ~= "" then root = without_trailing end
+  if root == "" then return failure("project_folder_required", "Project folder is required") end
+
+  local state, inspection_reason = Fs.directory_state(root)
+  if not state then return failure("project_folder_unavailable", inspection_reason or "Could not inspect project folder") end
+  if state == "file" then return failure("project_folder_invalid", "Project folder points to a file, not a folder") end
+  if state == "missing" then
+    local parent = Fs.parent(root) or "."
+    local parent_state, parent_reason = Fs.directory_state(parent)
+    if parent_state ~= "directory" then
+      return failure("project_parent_missing", parent_reason or "The parent folder does not exist")
+    end
+    return { root = root, name = clean_name, create_root = true }
+  end
+
+  if Fs.exists(Fs.join(root, Project.MANIFEST)) then
+    return failure("project_exists", "An Unpolished Bees project already exists in this folder", { root = root })
+  end
+  local entries, entries_reason = Fs.directory_entries(root)
+  if not entries then return failure("project_folder_unavailable", entries_reason or "Could not inspect project folder") end
+  if #entries > 0 then
+    -- Earlier Project.create callers prepared an empty assets directory before
+    -- creating the manifest.  It is still safe to accept that exact bootstrap
+    -- shape, but no other pre-existing user files are adopted.
+    local assets_root = Fs.join(root, "assets")
+    local assets_empty = #entries == 1 and entries[1] == "assets" and Fs.directory_empty(assets_root)
+    if not assets_empty then return failure("project_folder_not_empty", "This folder is not empty. Choose an empty folder for a new project") end
+  end
+  return { root = root, name = clean_name, create_root = false }
+end
+
 function Project.create(root, name)
-  local self = Project.new(root)
-  local manifest = Project.empty(name)
+  local plan, plan_failure = Project.validate_creation(root, name)
+  if not plan then return nil, plan_failure end
+  if plan.create_root then
+    local made, make_reason = Fs.create_directory(plan.root)
+    if not made then return failure("project_folder_create_failed", tostring(make_reason)) end
+  end
+  local assets_root = Fs.join(plan.root, "assets")
+  local assets_created, assets_reason = Fs.create_directory(assets_root)
+  if not assets_created then return failure("project_assets_folder_create_failed", tostring(assets_reason)) end
+
+  local self = Project.new(plan.root)
+  local manifest = Project.empty(plan.name)
   manifest.assets["scene.main"] = { type = "scene", path = "assets/main.scene.json" }
-  local scene = assert(Project.asset_template("scene", "scene.main"))
+  local scene, template_failure = Project.asset_template("scene", "scene.main")
+  if not scene then return nil, template_failure end
+  local valid_scene, scene_failure = Project.validate_asset(scene, "scene")
+  if not valid_scene then return nil, scene_failure end
+  local valid_manifest, manifest_failure = Project.validate_manifest(manifest)
+  if not valid_manifest then return nil, manifest_failure end
   local payload, encode_reason = Json.encode(scene)
   if not payload then return failure("project_encode_failed", tostring(encode_reason)) end
-  local written, write_reason = Fs.write_atomic(Fs.join(root, "assets/main.scene.json"), payload .. "\n")
+  local scene_path = Fs.join(plan.root, "assets/main.scene.json")
+  if Fs.exists(scene_path) then return failure("project_asset_exists", "A native scene already exists at assets/main.scene.json") end
+  -- The manifest is written last so a root becomes a discoverable project only
+  -- after its required main scene has been validated and durably written.
+  local written, write_reason = Fs.write_atomic(scene_path, payload .. "\n")
   if not written then return failure("project_create_failed", tostring(write_reason)) end
   local saved, failure_data = self:save_manifest(manifest)
   if not saved then return nil, failure_data end
