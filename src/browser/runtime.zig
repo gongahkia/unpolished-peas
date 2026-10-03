@@ -5,7 +5,11 @@ const up = @import("unpolished-peas");
 const protocol_game = @import("protocol-game");
 const frame_timing = @import("frame-timing");
 const browser_input = @import("input_snapshot.zig");
+const browser_save_data = @import("save_data.zig");
 const TickBuffer = browser_input.TickBuffer(up.input.Input);
+const browser_save_data_enabled = @hasDecl(protocol_game.Game, "storage_id");
+const browser_application_id = if (browser_save_data_enabled) protocol_game.Game.storage_id else "unconfigured";
+const BrowserSaveStore = browser_save_data.Store(browser_application_id);
 
 pub const target_triple = "wasm32-freestanding";
 
@@ -16,6 +20,7 @@ var platform_input: up.input.Input = .{};
 var tick_input = TickBuffer{};
 var input_bytes: [browser_input.abi_bytes]u8 align(4) = undefined;
 var game_context: up.core.GameContext = undefined;
+var save_data: BrowserSaveStore = undefined;
 var protocol: up.core.GameProtocol(protocol_game.Game) = undefined;
 var protocol_failure: ?up.core.GameFailure = null;
 var scheduler = frame_timing.Scheduler.init(frame_timing.default_fixed_hz);
@@ -68,7 +73,9 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     platform_input = .{};
     tick_input.reset();
     game = .{};
+    save_data.init();
     game_context = .withRenderer(&input, &game_canvas, &renderer);
+    if (browser_save_data_enabled) game_context.save_data = save_data.capability();
     protocol = .bind(&game);
     protocol.init(&game_context) catch {
         protocol_failure = protocol.lastFailure();

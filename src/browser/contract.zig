@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const abi_version: u32 = 5;
+pub const abi_version: u32 = 6;
 
 pub const Binding = struct {
     name: []const u8,
@@ -97,6 +97,8 @@ pub const Status = enum(i32) {
     invalid_argument = -1,
     unavailable = -2,
     rejected = -3,
+    not_found = -4,
+    corrupt = -5,
 };
 
 const WasmHost = struct {
@@ -426,7 +428,7 @@ pub fn teardown() void {
 }
 
 test "browser host contract keeps versioned category coverage" {
-    try std.testing.expectEqual(@as(u32, 5), abi_version);
+    try std.testing.expectEqual(@as(u32, 6), abi_version);
     try std.testing.expectEqual(@as(usize, 37), imports.len);
     try std.testing.expectEqual(@as(usize, 35), exports.len);
     try std.testing.expectEqualStrings("up_host_gl_resource_create", imports[4].name);
