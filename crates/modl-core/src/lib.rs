@@ -7,6 +7,7 @@ pub mod codegen;
 pub mod diagnostic;
 pub mod exporter;
 pub mod formatter;
+pub mod generator;
 pub mod ir;
 pub mod lexer;
 pub mod parser;
@@ -30,6 +31,7 @@ pub use exporter::{
     export_itch_workcart, export_itch_zip, export_standalone_html, export_standalone_workcart,
 };
 pub use formatter::{FormatError, format_source};
+pub use generator::materialize_workcart_recipe;
 pub use lexer::lex;
 pub use parser::{ParseOutput, parse};
 pub use sema::{AnalysisOutput, analyze_module};
