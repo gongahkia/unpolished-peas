@@ -37,7 +37,11 @@ import {
   type ProjectManifest,
 } from './compiler';
 import InlineSandboxWorker from '../../../packages/runtime/src/sandbox-worker?worker&inline';
-import mod01Cursor from './assets/mod01-cursor.svg?inline';
+import kenneyActionCursor from './assets/kenney-cursor-pixel-pack/tile_0134.png?inline';
+import kenneyCanvasCursor from './assets/kenney-cursor-pixel-pack/tile_0048.png?inline';
+import kenneyDefaultCursor from './assets/kenney-cursor-pixel-pack/tile_0028.png?inline';
+import kenneyTextCursor from './assets/kenney-cursor-pixel-pack/tile_0120.png?inline';
+import kenneyWaitCursor from './assets/kenney-cursor-pixel-pack/tile_0012.png?inline';
 import mod01Logo from './assets/mod01-logo.png?inline';
 import { deriveCodeStateGraph, renderCodeStateGraph } from './compiler-graph';
 import { openDebugger, type ActiveDebugger } from './debugger';
@@ -122,7 +126,26 @@ export class StudioApp {
 
   public async boot(): Promise<void> {
     delete document.documentElement.dataset.studioReady;
-    document.documentElement.style.setProperty('--mod01-cursor', `url("${mod01Cursor}") 2 2`);
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-default',
+      `url("${kenneyDefaultCursor}") 0 0`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-action',
+      `url("${kenneyActionCursor}") 1 1`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-text',
+      `url("${kenneyTextCursor}") 8 8`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-wait',
+      `url("${kenneyWaitCursor}") 8 8`,
+    );
+    document.documentElement.style.setProperty(
+      '--mod01-cursor-canvas',
+      `url("${kenneyCanvasCursor}") 1 1`,
+    );
     const startup = this.playStartupSequence();
     this.stopPlayer();
     this.stopDebugger();
