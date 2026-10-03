@@ -60,7 +60,7 @@ body,
 /* The cursor is intentionally scoped to the console, never the surrounding page. */
 #studio,
 #studio * {
-  cursor: var(--mod01-cursor), default;
+  cursor: var(--mod01-cursor-default), default;
 }
 
 .display {
@@ -103,7 +103,28 @@ body,
 }
 
 .display button {
-  cursor: pointer;
+  cursor: var(--mod01-cursor-action), pointer;
+}
+
+.display input:not([type='range']):not([type='checkbox']):not([type='file']),
+.display textarea {
+  cursor: var(--mod01-cursor-text), text;
+}
+
+.display button:disabled,
+.display input:disabled,
+.display select:disabled,
+.display textarea:disabled,
+.display [aria-busy='true'] {
+  cursor: var(--mod01-cursor-wait), wait;
+}
+
+.file-button,
+.pixel-select-option,
+.workbench-tree button,
+.manual-topics button,
+.explorer-tabs button {
+  cursor: var(--mod01-cursor-action), pointer;
 }
 
 .display select {
@@ -276,6 +297,16 @@ body,
   width: 240px;
   height: 144px;
   image-rendering: pixelated;
+}
+
+.player-screen,
+.pixel-canvas,
+.font-canvas,
+.map-canvas,
+.workbench-atlas,
+.workbench-map,
+.debug-screen {
+  cursor: var(--mod01-cursor-canvas), crosshair;
 }
 
 #screen {
@@ -972,7 +1003,7 @@ body,
   border: 1px solid var(--cyan);
   font-size: 4px;
   line-height: 6px;
-  cursor: pointer;
+  cursor: var(--mod01-cursor-action), pointer;
 }
 
 .file-button input {
