@@ -61,6 +61,7 @@ const Gl = struct {
     const TexParameteri = *const fn (u32, u32, i32) callconv(.c) void;
     const PixelStorei = *const fn (u32, i32) callconv(.c) void;
     const TexImage2D = *const fn (u32, i32, i32, i32, i32, i32, u32, u32, ?*const anyopaque) callconv(.c) void;
+    const TexSubImage2D = *const fn (u32, i32, i32, i32, i32, i32, u32, u32, ?*const anyopaque) callconv(.c) void;
     const DeleteTextures = *const fn (i32, *const u32) callconv(.c) void;
     const ActiveTexture = *const fn (u32) callconv(.c) void;
     const DrawArrays = *const fn (u32, i32, i32) callconv(.c) void;
@@ -103,6 +104,7 @@ const Gl = struct {
     tex_parameter_i: TexParameteri,
     pixel_store_i: PixelStorei,
     tex_image_2d: TexImage2D,
+    tex_sub_image_2d: TexSubImage2D,
     delete_textures: DeleteTextures,
     active_texture: ActiveTexture,
     draw_arrays: DrawArrays,
@@ -147,6 +149,7 @@ const Gl = struct {
             .tex_parameter_i = try loadProc(TexParameteri, "glTexParameteri"),
             .pixel_store_i = try loadProc(PixelStorei, "glPixelStorei"),
             .tex_image_2d = try loadProc(TexImage2D, "glTexImage2D"),
+            .tex_sub_image_2d = try loadProc(TexSubImage2D, "glTexSubImage2D"),
             .delete_textures = try loadProc(DeleteTextures, "glDeleteTextures"),
             .active_texture = try loadProc(ActiveTexture, "glActiveTexture"),
             .draw_arrays = try loadProc(DrawArrays, "glDrawArrays"),
@@ -175,6 +178,7 @@ pub const Presenter = struct {
     primitive_vao: u32 = 0,
     primitive_vbo: u32 = 0,
     canvas_texture: u32 = 0,
+    canvas_texture_initialized: bool = false,
     primitive_batch: up.PrimitiveBatch,
     command_sprites: up.SpriteBatch,
     command_operations: std.ArrayList(primitive_commands.Operation) = .empty,
@@ -330,6 +334,7 @@ pub const Presenter = struct {
         if (self.sprite_program != 0) self.gl.delete_program(self.sprite_program);
         if (self.primitive_program != 0) self.gl.delete_program(self.primitive_program);
         self.canvas_texture = 0;
+        self.canvas_texture_initialized = false;
         self.sprite_vbo = 0;
         self.primitive_vbo = 0;
         self.sprite_vao = 0;
@@ -380,7 +385,7 @@ pub const Presenter = struct {
             .{ .x = 1, .y = -1, .u = 1, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 },
             .{ .x = -1, .y = -1, .u = 0, .v = 1, .r = 1, .g = 1, .b = 1, .a = 1 },
         };
-        try self.uploadTexture(self.canvas_texture, canvas.width, canvas.height, std.mem.sliceAsBytes(canvas.pixels), gl_nearest);
+        try self.uploadCanvasTexture(canvas);
         try self.uploadSpriteVertices(&vertices);
         self.gl.use_program(self.sprite_program);
         self.gl.active_texture(gl_texture0);
@@ -495,6 +500,25 @@ pub const Presenter = struct {
         self.gl.tex_parameter_i(gl_texture_2d, gl_texture_wrap_t, @intCast(gl_clamp_to_edge));
         self.gl.pixel_store_i(gl_unpack_alignment, 1);
         self.gl.tex_image_2d(gl_texture_2d, 0, @intCast(gl_rgba), try glI32(width), try glI32(height), 0, gl_rgba, gl_unsigned_byte, @ptrCast(bytes.ptr));
+    }
+
+    // The main Canvas always retains this presenter's fixed logical size.
+    // Allocate the GL texture once, then replace only its pixels per frame.
+    fn uploadCanvasTexture(self: *Presenter, canvas: up.Canvas) !void {
+        const bytes = std.mem.sliceAsBytes(canvas.pixels);
+        if (bytes.len != try byteLen(canvas.width, canvas.height)) return error.InvalidTexturePixels;
+        self.gl.bind_texture(gl_texture_2d, self.canvas_texture);
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_min_filter, @intCast(gl_nearest));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_mag_filter, @intCast(gl_nearest));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_wrap_s, @intCast(gl_clamp_to_edge));
+        self.gl.tex_parameter_i(gl_texture_2d, gl_texture_wrap_t, @intCast(gl_clamp_to_edge));
+        self.gl.pixel_store_i(gl_unpack_alignment, 1);
+        if (self.canvas_texture_initialized) {
+            self.gl.tex_sub_image_2d(gl_texture_2d, 0, 0, 0, try glI32(canvas.width), try glI32(canvas.height), gl_rgba, gl_unsigned_byte, @ptrCast(bytes.ptr));
+        } else {
+            self.gl.tex_image_2d(gl_texture_2d, 0, @intCast(gl_rgba), try glI32(canvas.width), try glI32(canvas.height), 0, gl_rgba, gl_unsigned_byte, @ptrCast(bytes.ptr));
+            self.canvas_texture_initialized = true;
+        }
     }
 
     fn makeProgram(self: *Presenter, program_source: BuiltinShaderSource, vertex_source_name: BuiltinShaderSource, vertex_source: []const u8, fragment_source_name: BuiltinShaderSource, fragment_source: []const u8) !u32 {
