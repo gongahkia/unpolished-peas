@@ -19,7 +19,10 @@ New to Peas?
 2. Read and run [Seed Sprint](templates/starter/README.md), the canonical
    beginner project.
 3. Use [Neon Siege](dogfood/neon-siege/README.md) later as a larger
-   public-API reference.
+   public-API reference. Then read
+   [Lantern Leap](dogfood/lantern-leap/README.md) for a mechanically different
+   scrolling-platformer reference that keeps collision and level rules in
+   ordinary game code.
 
 From this repository checkout, verify the starter's real game/test paths:
 
@@ -69,6 +72,7 @@ core contract or advanced renderer reference unless you need their details.
 | First Peas game | [Seed Sprint](templates/starter/README.md) |
 | Minimal lifecycle | [tutorial GameProtocol example](examples/tutorial_game_protocol.zig) |
 | Complete reference game | [Neon Siege](dogfood/neon-siege/README.md) |
+| Scrolling platformer reference | [Lantern Leap](dogfood/lantern-leap/README.md) |
 | Replay/state/Canvas regression | [testing guide](docs/guides/testing.md) |
 | Advanced materials or particles | [advanced 2D guide](docs/guides/advanced-2d.md) |
 

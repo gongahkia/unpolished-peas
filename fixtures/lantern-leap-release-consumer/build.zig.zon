@@ -1,0 +1,10 @@
+.{
+    .name = .lantern_leap,
+    .version = "0.1.0",
+    .fingerprint = 0xa95ec7e4c46a1ba2,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{ .path = "../release" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "embedded_assets.zig", "src", "assets", "README.md", "FRICTION.md" },
+}

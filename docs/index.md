@@ -38,6 +38,10 @@ with the smallest complete project, then add only the concepts your game needs.
 - [Neon Siege](../dogfood/neon-siege/README.md) is the public-API reference
   game for owned resources, sprites, camera, audio/music, save data,
   RenderSurface, deterministic tests, diagnostics, and hot reload.
+- [Lantern Leap](../dogfood/lantern-leap/README.md) is the second reference
+  game: a scrolling platformer that keeps gravity, AABB collision, handcrafted
+  level data, checkpoints, and animation-state selection in ordinary game
+  code while using the same public Peas package boundary.
 - [Advanced 2D](guides/advanced-2d.md) covers `Renderer2D`, materials,
   particles, and post passes. Ordinary Canvas games do not need this layer.
 - [Developer diagnostics](guides/developer-diagnostics.md) and
@@ -54,6 +58,7 @@ with the smallest complete project, then add only the concepts your game needs.
 | Learn Peas from scratch | [Seed Sprint](../templates/starter/README.md) |
 | See a compact `init` / `update` / `draw` program | [compiled tutorial source](../examples/tutorial_game_protocol.zig) |
 | See a complete small game | [Neon Siege](../dogfood/neon-siege/README.md) |
+| See a second genre with scrolling/platform collision | [Lantern Leap](../dogfood/lantern-leap/README.md) |
 | Learn deterministic replay and rendering regression | [Testing](guides/testing.md) and Seed Sprint's `src/game.zig` |
 | Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
 | Find exact API/CI contract details | [Core contract](guides/core-contract.md), [capability matrix](guides/capabilities.md), and [Core API](api/core.md) |

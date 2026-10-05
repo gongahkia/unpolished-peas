@@ -17,6 +17,9 @@ mkdir -p "$release/src/browser"
 cp "$repo/src/browser/dev_server.py" "$release/src/browser/dev_server.py"
 cp "$repo/templates/starter/build.zig" "$release/templates/starter/build.zig"
 cp "$repo/dogfood/neon-siege/build.zig" "$release/dogfood/neon-siege/build.zig"
+mkdir -p "$release/dogfood/lantern-leap" "$release/fixtures/lantern-leap-release-consumer"
+cp -R "$repo/dogfood/lantern-leap/." "$release/dogfood/lantern-leap"
+cp "$repo/fixtures/lantern-leap-release-consumer/build.zig.zon" "$release/fixtures/lantern-leap-release-consumer/build.zig.zon"
 
 run_project() {
     local source="$1"
@@ -80,7 +83,9 @@ exercise_live_project() {
 
 run_project "templates/starter" "fixtures/release-candidate-consumer/build.zig.zon"
 run_project "dogfood/neon-siege" "fixtures/dogfood-release-consumer/build.zig.zon"
+run_project "dogfood/lantern-leap" "fixtures/lantern-leap-release-consumer/build.zig.zon"
 exercise_live_project starter
 exercise_live_project neon-siege
+exercise_live_project lantern-leap
 
-printf '%s\n' 'browser development external consumers passed: starter-live,dogfood-live,web,dev-web,no-checkout'
+printf '%s\n' 'browser development external consumers passed: starter-live,dogfood-live,platformer-live,web,dev-web,no-checkout'
