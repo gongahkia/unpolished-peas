@@ -71,6 +71,7 @@ pub const Game = struct {
     hurt_cooldown: f32 = 0,
     shot_sound: ?up.core.Audio.SoundHandle = null,
     pickup_sound: ?up.core.Audio.SoundHandle = null,
+    background_music: ?up.core.Audio.MusicHandle = null,
 
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
         self.allocator = try ctx.requireAllocator();
@@ -98,6 +99,8 @@ pub const Game = struct {
         if (ctx.audio) |audio| {
             self.shot_sound = audio.loadWav(&sounds.shot_wav) catch null;
             self.pickup_sound = audio.loadWav(&sounds.pickup_wav) catch null;
+            self.background_music = audio.loadMusic(art.background_music_ogg, .{}) catch null;
+            self.syncMusic(audio);
         }
     }
 
@@ -129,6 +132,7 @@ pub const Game = struct {
         if (actions.wasPressed("game", "toggle-audio")) {
             self.audio_enabled = !self.audio_enabled;
             self.saveSettings(ctx);
+            if (ctx.audio) |audio| self.syncMusic(audio);
         }
         if (actions.wasPressed("game", "restart")) {
             try self.reset(ctx.simulation_seed orelse default_seed);
@@ -298,6 +302,16 @@ pub const Game = struct {
         if (sound) |handle| if (ctx.audio) |audio| {
             _ = audio.play(handle, .{ .volume = volume }) catch {};
         };
+    }
+
+    fn syncMusic(self: *Game, audio: *up.core.Audio) void {
+        if (!self.audio_enabled) {
+            _ = audio.stopMusic();
+            return;
+        }
+        if (self.background_music) |music| {
+            _ = audio.playMusic(music, .{ .loop = true, .volume = 0.12 }) catch {};
+        }
     }
 };
 

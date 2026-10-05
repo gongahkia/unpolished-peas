@@ -243,6 +243,8 @@ pub fn build(b: *std.Build) void {
     browser_ogg_decode_test.addFileArg(browser_ogg_decode_smoke.getEmittedBin());
     const browser_ogg_decode_test_step = b.step("test-browser-ogg-decode", "Decode Ogg/Vorbis through the freestanding browser mixer dependency path");
     browser_ogg_decode_test_step.dependOn(&browser_ogg_decode_test.step);
+    const browser_music_test_step = b.step("test-browser-music", "Run high-level incremental music playback through browser-style Wasm");
+    browser_music_test_step.dependOn(&browser_ogg_decode_test.step);
     const browser_topdown_game = b.createModule(.{
         .root_source_file = b.path("examples/topdown_game.zig"),
         .target = browser_target,
@@ -857,6 +859,17 @@ pub fn build(b: *std.Build) void {
     });
     const macos_hot_reload_compile_step = b.step("test-hot-reload-macos-compile", "Compile native developer asset reload helpers for macOS arm64");
     macos_hot_reload_compile_step.dependOn(&macos_hot_reload_compile.step);
+    const macos_music_compile = b.addObject(.{
+        .name = "macos-music-compile",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("music_macos_compile.zig"),
+            .target = macos_hot_reload_target,
+            .optimize = .Debug,
+            .imports = &.{.{ .name = "unpolished-peas", .module = macos_hot_reload_core }},
+        }),
+    });
+    const macos_music_compile_step = b.step("test-music-macos-compile", "Compile high-level incremental music for macOS arm64");
+    macos_music_compile_step.dependOn(&macos_music_compile.step);
     const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
     const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");
@@ -941,6 +954,8 @@ pub fn build(b: *std.Build) void {
     const run_audio_game_tests = b.addRunArtifact(audio_game_tests);
     const audio_game_test_step = b.step("test-audio", "Run public GameProtocol audio capability tests");
     audio_game_test_step.dependOn(&run_audio_game_tests.step);
+    const music_test_step = b.step("test-music", "Run high-level incremental music lifecycle and bounded-buffer tests");
+    music_test_step.dependOn(&run_audio_game_tests.step);
     test_step.dependOn(&run_audio_game_tests.step);
     const module_test_step = b.step("test-modules", "Compile and test independent core, tools, and test-fixture modules");
     module_test_step.dependOn(&run_tests.step);

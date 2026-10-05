@@ -7,6 +7,7 @@ const embedded_assets = @import("neon-siege-assets");
 /// browser fetch is required.
 pub const sprite_sheet_png = embedded_assets.sprite_sheet_png;
 pub const ui_font_ttf = embedded_assets.ui_font_ttf;
+pub const background_music_ogg = embedded_assets.background_music_ogg;
 
 pub const frames = [_]up.assets.AtlasFrameSpec{
     .{ .name = "player", .x = 0, .y = 0, .w = 8, .h = 8 },
@@ -38,4 +39,19 @@ test "the authored embedded TrueType font rasterizes basic HUD glyphs" {
     canvas.clear(up.core.Color.rgb(2, 3, 5));
     font.drawText(&canvas, "S7", 1, 1, up.core.Color.white);
     try std.testing.expectEqual(@as(u64, 9_566_740_615_137_773_452), up.testSupport.canvasHash(canvas));
+}
+
+test "the authored embedded Vorbis loop is a compact incremental music source" {
+    var music = try up.assets.Music.decodeOgg(std.testing.allocator, background_music_ogg);
+    defer music.deinit();
+    var mixer = try up.assets.AudioMixer.init(std.testing.allocator, .{});
+    defer mixer.deinit();
+    _ = try mixer.playMusic(&music, .{ .loop = true });
+    var output: [256]up.assets.AudioSample = undefined;
+    try mixer.mix(&output);
+    var nonzero = false;
+    for (output) |sample| {
+        if (sample.left != 0 or sample.right != 0) nonzero = true;
+    }
+    try std.testing.expect(nonzero);
 }

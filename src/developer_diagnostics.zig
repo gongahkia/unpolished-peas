@@ -94,6 +94,18 @@ pub const AssetReload = struct {
     last_result: []const u8 = "none",
 };
 
+/// Developer-only music stream state. It intentionally describes the
+/// high-level stream, not the SDL/WebAudio device's private queue.
+pub const Music = struct {
+    state: []const u8 = "stopped",
+    encoded_bytes: u32 = 0,
+    source_frames: u32 = 0,
+    decoder_position_frames: u32 = 0,
+    buffered_frames: u32 = 0,
+    buffer_capacity_frames: u32 = 0,
+    underruns: u32 = 0,
+};
+
 /// A completed presentation-frame snapshot. The native overlay intentionally
 /// shows the last completed snapshot so host presentation timing is complete
 /// before it is displayed on the next frame.
@@ -110,6 +122,7 @@ pub const Snapshot = struct {
     work: RenderWork = .{},
     capabilities: Capabilities = .{},
     asset_reload: AssetReload = .{},
+    music: Music = .{},
 };
 
 pub const FrameInfo = struct {
@@ -123,6 +136,7 @@ pub const FrameInfo = struct {
     work: RenderWork,
     capabilities: Capabilities,
     asset_reload: AssetReload = .{},
+    music: Music = .{},
 };
 
 /// Fixed-size, opt-in collector. When disabled all methods avoid clocks and
@@ -195,6 +209,7 @@ pub const Collector = struct {
             .work = info.work,
             .capabilities = info.capabilities,
             .asset_reload = info.asset_reload,
+            .music = info.music,
         };
         return self.snapshot;
     }
@@ -301,6 +316,20 @@ pub fn writeJson(writer: *std.Io.Writer, snapshot: Snapshot) !void {
     try std.json.Stringify.value(snapshot.asset_reload.last_asset, .{}, writer);
     try writer.writeAll(",\"last_result\":");
     try std.json.Stringify.value(snapshot.asset_reload.last_result, .{}, writer);
+    try writer.writeAll("},\"music\":{\"state\":");
+    try std.json.Stringify.value(snapshot.music.state, .{}, writer);
+    try writer.writeAll(",\"encoded_bytes\":");
+    try writer.print("{d}", .{snapshot.music.encoded_bytes});
+    try writer.writeAll(",\"source_frames\":");
+    try writer.print("{d}", .{snapshot.music.source_frames});
+    try writer.writeAll(",\"decoder_position_frames\":");
+    try writer.print("{d}", .{snapshot.music.decoder_position_frames});
+    try writer.writeAll(",\"buffered_frames\":");
+    try writer.print("{d}", .{snapshot.music.buffered_frames});
+    try writer.writeAll(",\"buffer_capacity_frames\":");
+    try writer.print("{d}", .{snapshot.music.buffer_capacity_frames});
+    try writer.writeAll(",\"underruns\":");
+    try writer.print("{d}", .{snapshot.music.underruns});
     try writer.writeAll("}}");
 }
 
@@ -364,13 +393,14 @@ test "disabled collector does not create timing samples" {
 test "diagnostic JSON is local structured data with host present terminology" {
     var bytes: [2048]u8 = undefined;
     var stream = std.Io.Writer.fixed(&bytes);
-    try writeJson(&stream, .{ .simulation_seed = 42, .renderer = .{ .selected = "sdl_gpu", .fallback = "not_needed", .recovery = "none" }, .asset_reload = .{ .enabled = true, .registered = 2, .reloads_total = 4, .last_asset = "sprite.png", .last_result = "changed" } });
+    try writeJson(&stream, .{ .simulation_seed = 42, .renderer = .{ .selected = "sdl_gpu", .fallback = "not_needed", .recovery = "none" }, .asset_reload = .{ .enabled = true, .registered = 2, .reloads_total = 4, .last_asset = "sprite.png", .last_result = "changed" }, .music = .{ .state = "playing", .buffered_frames = 512, .buffer_capacity_frames = 16_384 } });
     const output = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, output, "host_present_mean") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "gpu_time") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\"simulation_seed\":42") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\"fallback\":\"not_needed\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\"asset_reload\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\"music\"") != null);
     var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, output, .{});
     defer parsed.deinit();
     try std.testing.expect(parsed.value.object.get("renderer") != null);

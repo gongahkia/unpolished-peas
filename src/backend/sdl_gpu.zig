@@ -1749,6 +1749,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             .work = developerRenderWork(&commands, &sprite_batch, &advanced_renderer, &runtime_metrics),
             .capabilities = .{ .audio = if (audio_output != null) .ready else .unavailable, .save = .ready },
             .asset_reload = developerAssetReload(&developer_asset_registry),
+            .music = developerMusic(&audio),
         });
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -2679,6 +2680,19 @@ fn developerAssetReload(registry: *const developer_assets.Registry) developer_di
         .reload_failures = stats.reload_failures,
         .last_asset = stats.last_asset,
         .last_result = @tagName(stats.last_result),
+    };
+}
+
+fn developerMusic(audio: *up.AudioMixer) developer_diagnostics.Music {
+    const music = audio.musicDiagnostics();
+    return .{
+        .state = @tagName(music.state),
+        .encoded_bytes = boundedDiagnosticCount(music.encoded_bytes),
+        .source_frames = boundedDiagnosticCount(music.source_frames),
+        .decoder_position_frames = boundedDiagnosticCount(music.decoder_position_frames),
+        .buffered_frames = boundedDiagnosticCount(music.buffered_frames),
+        .buffer_capacity_frames = boundedDiagnosticCount(music.buffer_capacity_frames),
+        .underruns = music.underruns,
     };
 }
 

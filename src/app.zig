@@ -23,9 +23,10 @@ pub const GameContext = struct {
     /// Host-provided persistence for small game-owned blobs. It is absent from
     /// bare core contexts and must be explicitly checked by games that use it.
     save_data: ?*SaveStore = null,
-    /// Host-provided sound-effect service. It is present in normal native,
-    /// browser, and headless protocol runs, but playback can still be blocked
-    /// or unavailable; inspect `Audio.availability` or handle `play` errors.
+    /// Host-provided audio service for short WAV effects and one incrementally
+    /// decoded music stream. It is present in normal native, browser, and
+    /// headless protocol runs, but playback can still be blocked or
+    /// unavailable; inspect `Audio.availability` or handle play errors.
     audio: ?*Audio = null,
     /// The explicit seed selected by the host for this simulation run.
     ///

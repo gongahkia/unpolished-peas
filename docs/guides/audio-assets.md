@@ -1,8 +1,11 @@
 # Audio
 
-## GameProtocol sound effects
+`GameContext.audio` is Peas's small, backend-neutral audio capability. It
+keeps short decoded sound effects and long incrementally decoded music as
+deliberately separate resource types.
 
-`GameContext.audio` is Peas's small, backend-neutral sound-effect capability.
+## Sound effects
+
 Load a short WAV once during `Game.init`, retain its handle in game state, and
 reuse it from gameplay code:
 
@@ -33,16 +36,54 @@ timing.
 The portable high-level path is embedded WAV bytes because browser fetch is
 asynchronous while `Game.init` is not. `AssetStore` uses explicit native
 runtime roots and never treats the current working directory as an implicit
-asset root. The simple `GameContext.audio` capability is deliberately
-short-SFX oriented. The separately frozen `assets.Sound`, `Music`,
-`AudioMixer`, and `AudioStream` declarations are advanced asset/mixer APIs,
-not required starter-game plumbing.
+asset root.
+
+## Music
+
+For long-form background music, embed an OGG/Vorbis source and load it once:
+
+```zig
+if (ctx.audio) |audio| {
+    self.music = try audio.loadMusic(@embedFile("background.ogg"), .{});
+    _ = try audio.playMusic(self.music, .{ .loop = true, .volume = 0.5 });
+}
+```
+
+`loadMusic` defaults to OGG/Vorbis. The service retains encoded source bytes,
+then creates a bounded incremental decoder when playback starts; it never
+allocates an entire decoded PCM track. WAV is available only by explicitly
+selecting `.format = .wav` and is normally less compact. Both forms retain at
+most a 32 MiB encoded source; WAV music is sampled incrementally from that
+source rather than promoted to a full PCM `Sound`.
+
+One high-level music stream is active per `Audio` host. Starting another
+successfully replaces the prior stream; short sound effects still overlap and
+mix over the music. The ordinary controls are:
+
+```zig
+_ = audio.pauseMusic();
+_ = audio.resumeMusic();
+_ = audio.stopMusic(); // a later playMusic starts from the beginning
+```
+
+`musicState()` reports `.stopped`, `.playing`, or `.paused`. `MusicHandle`
+ownership matches `SoundHandle`: the host owns the source until host teardown,
+and games keep only the handle. There is no individual unload in v1.
+
+On browser hosts, a pre-gesture `playMusic` returns the same recoverable
+`error.AudioUnavailable` as a sound effect. Peas does not silently queue a
+music request; game code may retry after an interaction makes audio ready.
+
+Music is output-side behavior, not replay input. Equal deterministic gameplay
+events can produce equal logical play requests, but Peas does not promise
+sample-exact device scheduling across hosts.
 
 ## Existing stable asset and mixer APIs
 
 The native asset/mixer path loads RIFF/WAVE and OGG/Vorbis sounds. WAV
 supports mono or stereo PCM 8-, 16-, 24-, or 32-bit, or 32-bit IEEE float. A
-source is at most 32 MiB and decodes to at most 4,194,304 stereo frames.
+fully decoded `Sound` source is at most 32 MiB and decodes to at most
+4,194,304 stereo frames.
 `AssetStore.loadSound` accepts `.wav` and `.ogg`; malformed, unsupported,
 empty, or over-limit sources fail before playback. The browser reports
 `asset_load_failed:audio_v1` for any asset-load failure.
@@ -57,4 +98,18 @@ the browser core; the Vorbis decoder uses a bounded 1 MiB caller workspace.
 That is embedded-data decoding, not asynchronous browser asset loading or a
 browser-codec fallback.
 
-Run `zig build test` and `zig build test-browser-audio` to validate the fixture and browser lifecycle.
+The lower-level `assets.Sound`, `Music`, `AudioMixer`, and `AudioStream`
+declarations remain available for advanced mixer work, but normal
+`GameProtocol` games should prefer `GameContext.audio`.
+
+## Limits
+
+There are no playlists, crossfades, buses in the high-level API, DSP, pan,
+pitch, positional audio, asynchronous file streaming, or music hot reload.
+The decoder/refill work happens before native/browser PCM submission, not in a
+realtime device callback. A malformed source, unavailable output device, or
+browser autoplay block is recoverable.
+
+Run `zig build test-audio`, `zig build test-browser-audio`, and `zig build
+test-browser-music` to validate the high-level lifecycle and browser-style
+Wasm path.

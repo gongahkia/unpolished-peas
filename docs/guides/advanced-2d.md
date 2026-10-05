@@ -70,7 +70,12 @@ The system reserves its configured capacity during initialisation, and post-proc
 
 ## Audio and music
 
-`assets.Sound` accepts WAV and OGG on native targets. `assets.Music` exposes streamed WAV and OGG music, and `assets.AudioMixer` exposes master, SFX, music, and custom buses with volume, pan, pause/resume, fade, and stale-handle checks. `SoundOptions` now accepts an optional bus and pan.
+`GameContext.audio` is the ordinary high-level path for short WAV effects and
+one incrementally decoded OGG/WAV music stream; see the [audio guide](audio-assets.md).
+`assets.Sound` accepts WAV and OGG on native targets. `assets.Music` exposes
+streamed WAV and OGG music, and `assets.AudioMixer` exposes master, SFX, music,
+and custom buses with volume, pan, pause/resume, fade, and stale-handle checks.
+`SoundOptions` now accepts an optional bus and pan.
 
 Browser builds can decode WAV and OGG/Vorbis with the same Zig mixer used by native builds, then submit one bounded PCM buffer through `assets.AudioStream`. `Music.decodeOgg` accepts owned asset bytes for freestanding hosts and preserves its source for streamed mixer playback. Browser audio must first be activated by a user gesture; `AudioStream.submit` returns `false` while the browser host is suspended or its queue is full. The browser decoder uses a fixed 1 MiB caller-owned Vorbis workspace; unusually complex streams that exhaust it fail with `OggDecoderStorageExhausted` rather than allocating through an unavailable C runtime.
 
