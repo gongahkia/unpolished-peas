@@ -338,10 +338,12 @@ test "disabled collector does not create timing samples" {
 test "diagnostic JSON is local structured data with host present terminology" {
     var bytes: [2048]u8 = undefined;
     var stream = std.Io.Writer.fixed(&bytes);
-    try writeJson(&stream, .{ .renderer = .{ .selected = "sdl_gpu" } });
+    try writeJson(&stream, .{ .simulation_seed = 42, .renderer = .{ .selected = "sdl_gpu", .fallback = "not_needed", .recovery = "none" } });
     const output = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, output, "host_present_mean") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "gpu_time") == null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\"simulation_seed\":42") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\"fallback\":\"not_needed\"") != null);
     var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, output, .{});
     defer parsed.deinit();
     try std.testing.expect(parsed.value.object.get("renderer") != null);

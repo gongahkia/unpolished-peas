@@ -2916,6 +2916,20 @@ test "developer overlay leaves a game canvas trace unchanged" {
     try std.testing.expectEqual(before + 1, trace.commandSlice().len);
 }
 
+test "disabled developer tools leave Canvas pixels unchanged" {
+    var tools = try DeveloperTools.init(std.testing.allocator, false, "");
+    defer tools.deinit();
+    var inspector = up.Inspector.init(std.testing.allocator, false);
+    defer inspector.deinit();
+    var canvas = try up.Canvas.init(std.testing.allocator, 32, 18);
+    defer canvas.deinit();
+    canvas.clear(up.Color.rgb(12, 23, 34));
+    const before = std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(canvas.pixels));
+    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{});
+    const after = std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(canvas.pixels));
+    try std.testing.expectEqual(before, after);
+}
+
 test "runtime failures capture bounded artifacts" {
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
