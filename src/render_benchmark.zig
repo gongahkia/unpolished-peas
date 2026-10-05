@@ -98,7 +98,7 @@ pub fn main() !void {
         output[count] = try measureCanvasCopy(allocator, size);
         count += 1;
     }
-    for ([_]Size{ sizes[1], sizes[3] }) |size| {
+    for (sizes) |size| {
         output[count] = try measureRects(allocator, size, 100, false);
         count += 1;
         output[count] = try measureRects(allocator, size, 1_000, false);
