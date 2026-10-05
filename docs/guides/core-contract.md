@@ -8,14 +8,23 @@ The root package exposes only the six named capability namespaces below. Direct 
 
 | Namespace | Frozen declarations | Contract |
 | --- | --- | --- |
-| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, small opaque save blobs, errors, and basic 2D values |
+| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Audio`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, optional short-SFX output, small opaque save blobs, errors, and basic 2D values |
 | `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized keyboard, pointer, gamepad, and action state |
 | `graphics` | drawing (`Canvas`, `RenderSurface`, `SurfaceDrawOptions`, `SurfaceFilter`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, offscreen Canvas composition, text, post effects, particles, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, mixer/music/PCM-stream declarations, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, audio loading, and playback/mixing |
 | `preview.developer` | `InputReplay`, `InputReplayButton`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
 | `testSupport` | `TempProject`, `Clock`, `InMemorySaveStore`, `HeadlessFrame`, `HeadlessCapture`, `CanvasTrace`, `expectCanvasTraceEqual`, `HeadlessGameRunner`, `Buttons`, `applyTopDownButtons`, `frameSeconds`, `StateHash`, `GoldenOptions`, `RendererCaptureTolerance`, `cross_backend_renderer_tolerance`, `expectRendererCapturesMatch`, `RendererConformance`, `canvasHash`, `assertGolden`, `assertReplayHash`, `expectError` | deterministic headless, replay, save-store, and golden-test hooks |
 
-`unpolished-peas-sdl3` is the desktop adapter, not a core-game import. `unpolished-peas-wasm-core` is the Wasm build of the core namespace. `unpolished-peas-tools` and `zig build peas -- package <target>` provide packaging hooks; `--package web` emits the static browser bundle. Browser renderer availability is governed by the [capability matrix](capabilities.md), not by a game-side browser API.
+`unpolished-peas-sdl3` is the supported desktop-host import: a native entry
+point uses its documented `Config` and `playGame` surface, while portable game
+logic imports only `unpolished-peas`. It is not part of the core namespace and
+games must not reach into its backend implementation. `unpolished-peas-wasm-core`
+is the Wasm build of the core namespace. `unpolished-peas-browser-runtime` is a
+build/runtime helper used by the browser build graph, not a normal game-source
+import. `unpolished-peas-tools` and `zig build peas -- package <target>` provide
+packaging hooks; `--package web` emits the static browser bundle. Browser
+renderer availability is governed by the [capability matrix](capabilities.md),
+not by a game-side browser API.
 
 Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetStore`, `up.preview.developer.InputReplay`, and `up.testSupport.TempProject`; these are the only root namespaces.
 
@@ -30,6 +39,10 @@ Owned values such as `Canvas`, `RenderSurface`, `Image`, `Atlas`, `Font`, `Sound
 ## Rendering, input, assets, and determinism
 
 `Canvas` provides deterministic 2D primitives, sprites, atlas frames, and built-in text. `RenderSurface` is a persistent owned offscreen Canvas that composes through `Canvas.drawSurface`; it has no public GPU texture/framebuffer identity and works headlessly. Advanced materials, final post effects, and GPU particles use their separate renderer path and do not currently consume or target a render surface. `Camera2D` is a position, zoom, and rotation transform; games own follow, shake, cuts, and multi-camera behavior. The [stable 2D render contract](rendering.md), [render-surface guide](render-surfaces.md), and [Advanced 2D](advanced-2d.md) guides define ordering, clip/blend state, transform, effects, particles, tolerance, fixture, and diagnostics rules. [Authored image and font assets](image-assets.md) define portable embedded source formats, lifetimes, limits, and failures. [Save data](save-data.md) keeps small opaque game blobs out of the general filesystem API. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessGameRunner(Game)` runs scripted `HeadlessFrame` values against `GameProtocol`, captures the canvas hash, logical Canvas trace, and submitted shared render commands. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, Canvas-trace comparison, renderer-capture comparison, save-store injection, and golden diagnostics.
+
+`Canvas.attachTrace` and `Canvas.detachTrace` are retained testing hooks for a
+test-owned `testSupport.CanvasTrace`, not ordinary runtime instrumentation.
+They have no allocation or hashing cost while no trace is attached.
 
 [`Input`](input.md) reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. [Stable audio assets](audio-assets.md) define WAV sound loading, play/stop controls, browser activation, and recoverable failures. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 
