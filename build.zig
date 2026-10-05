@@ -136,6 +136,15 @@ pub fn build(b: *std.Build) void {
             .{ .name = "neon-siege-assets", .module = b.createModule(.{ .root_source_file = b.path("dogfood/neon-siege/embedded_assets.zig"), .target = browser_target, .optimize = browser_optimize }) },
         },
     });
+    const browser_lantern_leap_game = b.createModule(.{
+        .root_source_file = b.path("dogfood/lantern-leap/src/game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "lantern-leap-assets", .module = b.createModule(.{ .root_source_file = b.path("dogfood/lantern-leap/embedded_assets.zig"), .target = browser_target, .optimize = browser_optimize }) },
+        },
+    });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
         .root_module = b.createModule(.{
@@ -184,6 +193,22 @@ pub fn build(b: *std.Build) void {
     browser_dogfood_runtime.entry = .disabled;
     browser_dogfood_runtime.rdynamic = true;
     browser_dogfood_runtime.import_memory = true;
+    const browser_lantern_leap_runtime = b.addExecutable(.{
+        .name = "unpolished-peas-lantern-leap",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "protocol-game", .module = browser_lantern_leap_game },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+            },
+        }),
+    });
+    browser_lantern_leap_runtime.entry = .disabled;
+    browser_lantern_leap_runtime.rdynamic = true;
+    browser_lantern_leap_runtime.import_memory = true;
     const browser_audio_smoke = b.addObject(.{
         .name = "unpolished-peas-browser-audio-smoke",
         .root_module = b.createModule(.{
@@ -372,6 +397,12 @@ pub fn build(b: *std.Build) void {
     });
     const browser_dogfood_step = b.step("browser-dogfood", "Build the Neon Siege dogfood browser runtime in zig-out/web");
     browser_dogfood_step.dependOn(&install_browser_dogfood_runtime.step);
+    const install_browser_lantern_leap_runtime = b.addInstallArtifact(browser_lantern_leap_runtime, .{
+        .dest_dir = .{ .override = .{ .custom = "web" } },
+        .dest_sub_path = "lantern-leap.wasm",
+    });
+    const browser_lantern_leap_step = b.step("browser-lantern-leap", "Build the Lantern Leap platformer browser runtime in zig-out/web");
+    browser_lantern_leap_step.dependOn(&install_browser_lantern_leap_runtime.step);
     const install_browser_topdown_runtime = b.addInstallArtifact(browser_topdown_runtime, .{
         .dest_dir = .{ .override = .{ .custom = "web" } },
         .dest_sub_path = "unpolished-peas.wasm",
@@ -588,6 +619,13 @@ pub fn build(b: *std.Build) void {
     const package_dogfood = b.step("package-dogfood", "Install the embedded Neon Siege dogfood game");
     package_dogfood.dependOn(&b.addInstallArtifact(dogfood_demo, .{}).step);
     package_dogfood.dependOn(&install_dogfood_font_license.step);
+    const lantern_leap_demo = addExample(b, "unpolished-peas-lantern-leap", "dogfood/lantern-leap/src/main.zig", target, optimize, peas, sdl);
+    const lantern_leap_assets = b.createModule(.{ .root_source_file = b.path("dogfood/lantern-leap/embedded_assets.zig"), .target = target, .optimize = optimize });
+    lantern_leap_demo.root_module.addImport("lantern-leap-assets", lantern_leap_assets);
+    const install_lantern_leap_font_license = b.addInstallFileWithDir(b.path("dogfood/lantern-leap/assets/OFL.txt"), .prefix, "licenses/Basic-OFL.txt");
+    const package_lantern_leap = b.step("package-lantern-leap", "Install the embedded Lantern Leap platformer game");
+    package_lantern_leap.dependOn(&b.addInstallArtifact(lantern_leap_demo, .{}).step);
+    package_lantern_leap.dependOn(&install_lantern_leap_font_license.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const tutorial_game_protocol_demo = addExample(b, "unpolished-peas-tutorial-game-protocol", "examples/tutorial_game_protocol.zig", target, optimize, peas, sdl);
@@ -753,6 +791,23 @@ pub fn build(b: *std.Build) void {
     dogfood_external.setCwd(b.path("."));
     const dogfood_external_step = b.step("test-dogfood-external", "Build and package Neon Siege as a clean archive-style package consumer");
     dogfood_external_step.dependOn(&dogfood_external.step);
+    const lantern_leap_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("dogfood/lantern-leap/src/main.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "unpolished-peas-sdl3", .module = sdl },
+            .{ .name = "lantern-leap-assets", .module = lantern_leap_assets },
+        },
+    }) });
+    const run_lantern_leap_tests = b.addRunArtifact(lantern_leap_tests);
+    const lantern_leap_test_step = b.step("test-lantern-leap", "Run the Lantern Leap public-API platformer tests");
+    lantern_leap_test_step.dependOn(&run_lantern_leap_tests.step);
+    const lantern_leap_external = b.addSystemCommand(&.{"script/test_lantern_leap_external.sh"});
+    lantern_leap_external.setCwd(b.path("."));
+    const lantern_leap_external_step = b.step("test-lantern-leap-external", "Build and package Lantern Leap as a clean archive-style package consumer");
+    lantern_leap_external_step.dependOn(&lantern_leap_external.step);
     const browser_dev_external = b.addSystemCommand(&.{"script/test_browser_dev_external.sh"});
     browser_dev_external.setCwd(b.path("."));
     const browser_dev_external_step = b.step("test-browser-dev-external", "Build browser development snapshots through release-style external consumers");
@@ -769,6 +824,10 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_dogfood_demo.addArgs(args);
     const run_dogfood_step = b.step("run-dogfood", "Run the Neon Siege dogfood game from this checkout");
     run_dogfood_step.dependOn(&run_dogfood_demo.step);
+    const run_lantern_leap_demo = b.addRunArtifact(lantern_leap_demo);
+    if (b.args) |args| run_lantern_leap_demo.addArgs(args);
+    const run_lantern_leap_step = b.step("run-lantern-leap", "Run the Lantern Leap platformer dogfood game from this checkout");
+    run_lantern_leap_step.dependOn(&run_lantern_leap_demo.step);
     addRunStep(b, "dev-bounce", "Run the unpolished-peas live-reload demo", dev_demo);
     addRunStep(b, "run-minimal", "Run the unpolished-peas minimal SDL3 demo", minimal_demo);
     addRunStep(b, "run-tutorial-game-protocol", "Run the compiled GameProtocol tutorial example", tutorial_game_protocol_demo);
@@ -827,7 +886,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");

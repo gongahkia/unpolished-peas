@@ -33,6 +33,7 @@ const supplemental_documents = [_][]const u8{
     "README.md",
     "templates/starter/README.md",
     "dogfood/neon-siege/README.md",
+    "dogfood/lantern-leap/README.md",
 };
 
 pub fn main() !void {
