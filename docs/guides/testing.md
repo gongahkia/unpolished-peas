@@ -1,6 +1,28 @@
-# Testing
+# Deterministic testing
 
-Run deterministic engine targets through the project CLI:
+Start with the complete compiled test in
+[Seed Sprint](../../templates/starter/src/game.zig). It records normalized
+fixed-tick input, initializes fresh headless games with seed `42`, asserts
+game state, compares a Canvas trace, and hashes the representative final
+logical draw. That is the normal Peas testing story—not a requirement to
+build a custom test framework.
+
+## Test layers
+
+Use the smallest layer that catches the regression you care about:
+
+1. **Simulation state** — a seed, controlled initial save data, and fixed-tick
+   input produce the expected score, position, or game outcome.
+2. **Logical Canvas commands** — the game requested the expected rendering
+   operations, with useful field-level mismatch diagnostics.
+3. **Pixels** — the deterministic CPU Canvas output changed as expected or
+   unexpectedly.
+
+The layers complement one another. Equal state does not prove equal drawing;
+equal Canvas commands do not prove a renderer/pixel implementation stayed
+unchanged.
+
+Run repository deterministic engine targets through the project CLI:
 
 ```sh
 zig build peas -- test unit
@@ -15,15 +37,6 @@ Runnable references:
 - [Breakout simulation](../../examples/breakout_game.zig)
 
 For a callback game, `up.testSupport.HeadlessGameRunner(Game)` owns a core canvas and `GameProtocol`. Pass deterministic `HeadlessFrame` values, then inspect `runner.capture().image_hash` and `runner.capture().commands`; no native window or browser is required.
-
-## Three regression layers
-
-Peas deliberately keeps simulation, logical drawing, and renderer output as
-separate test layers:
-
-1. **Simulation state** catches changes such as a player ending at the wrong position after fixed-tick input replay.
-2. **Logical Canvas commands** catch a game requesting different drawing operations even when its final state is unchanged.
-3. **Renderer/pixel output** catches a backend or software-raster change when the logical Canvas commands are unchanged.
 
 `HeadlessGameRunner.capture().canvas_trace` is an opt-in structural trace of
 the most recent `Game.draw()` call. It captures the public Canvas requests,
@@ -67,7 +80,7 @@ detects a changed surface composition or changed surface contents while equal
 surfaces from separate allocations retain the same logical trace. See
 [Render surfaces](render-surfaces.md) for the target and lifetime rules.
 
-## Fixed-tick input replay
+## Seed + replay + headless runner
 
 `up.preview.developer.InputReplayRecorder` records the normalized `Input` a game observes during each fixed update. It is independent of SDL, browser DOM events, and rendering. Record from the update boundary, then drive a fresh headless game with the resulting replay:
 
@@ -85,7 +98,10 @@ defer replay.deinit(allocator);
 var runner = try up.testSupport.HeadlessGameRunner(Game).initSeeded(allocator, 320, 180, seed);
 defer runner.deinit();
 try runner.runReplay(replay);
+// Assert a game-owned state field here. Seed Sprint asserts `score == 1`.
 ```
+
+### Replay format reference
 
 `replay.encode` emits portable, little-endian fixed-width bytes with an explicit magic. Seedless replays emit UPR2. `InputReplayRecorder.initSeeded` emits UPR3, which additionally records the `u64` simulation seed and the pinned Peas RNG algorithm ID. Parsing validates the version, algorithm, frame count, bounds, and finite numeric values. Existing UPR1 action-key fixtures and UPR2 binary replays remain accepted, but have no seed metadata; UPR1 only contains held action keys, so Peas reconstructs its press and release edges from successive frames.
 

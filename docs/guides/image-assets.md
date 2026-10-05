@@ -38,7 +38,9 @@ const game_assets = b.createModule(.{
 .{ .name = "game-assets", .module = game_assets },
 ```
 
-Then use the same bytes on every target:
+## Decode once during init
+
+Decode the same embedded bytes on every target:
 
 ```zig
 const up = @import("unpolished-peas");
@@ -54,6 +56,19 @@ var font = try up.assets.Font.decodeTrueType(allocator, art.ui_ttf, .{
 });
 defer font.deinit();
 ```
+
+Draw the decoded image through the normal Canvas API. If a sprite sheet needs
+named frames, build an `Atlas` from that owned image and deinitialize the Atlas
+before the Image. [Neon Siege](../../dogfood/neon-siege/README.md) is the
+complete compiled Image/Atlas reference.
+
+## Fonts and text
+
+`Font.decodeTrueType` accepts one authored TTF/OTF face and rasterizes it into
+a CPU atlas. Store the resulting `Font` in game state and use `font.drawText`
+from `draw`. This is ordinary game text, unlike the built-in debug font used by
+small zero-asset examples. Current scope is intentionally simple: there is no
+text shaping, fallback stack, rich text, or dynamic glyph streaming.
 
 `Image.decode` accepts PNG, JPEG, and TGA and returns top-left-origin RGBA8
 pixels. TGA is limited to true-colour, uncompressed type-2 files with no

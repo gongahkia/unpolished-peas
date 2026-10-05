@@ -4,10 +4,38 @@ Seed Sprint is a one-screen collecting game. It is deliberately small, but it
 uses Peas's normal shape: `Game.init`, fixed-step `Game.update`, and
 Canvas-only `Game.draw`.
 
+It is the **canonical beginner starter**, not a feature tour. Start with the
+repository [Start Here guide](../../docs/guides/quickstart.md), then read:
+
+1. `src/main.zig` for the small desktop host wrapper and stable app identity.
+2. `src/game.zig` for game state, input, update/draw, seed, save, audio, and
+   deterministic tests.
+
+For a larger reference after this project feels familiar, read
+[Neon Siege](../../dogfood/neon-siege/README.md).
+
 ## Requirements
 
 Zig `0.15.2`. Peas fetches its pinned SDL3 source for the desktop runtime; no
 system SDL installation is required.
+
+## Current source checkout
+
+The checked-in starter is an explicitly unreleased release template: it has no
+public immutable Peas dependency URL or package hash yet. From a Peas checkout,
+use the repository-root commands instead:
+
+```sh
+zig build run-starter
+zig build test-starter -Dwith_sdl=false
+zig build browser-starter -Dwith_sdl=false
+zig build package-starter
+```
+
+The normal standalone commands below apply after a published release (or the
+repository's release-style external-consumer fixture) supplies the reviewed
+dependency declaration. See the [Start Here guide](../../docs/guides/quickstart.md)
+and [installation guide](../../docs/guides/installation.md) for that distinction.
 
 ## Run
 

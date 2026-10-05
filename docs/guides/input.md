@@ -1,4 +1,53 @@
-# Input contract
+# Input and actions
+
+Start with named game actions rather than scattering physical keyboard or
+controller checks through gameplay. An `ActionMap` lets one action have both a
+keyboard and gamepad binding; the game asks for `"left"` or `"dash"`, not a
+backend event.
+
+The compiled Seed Sprint source declares these keyboard and gamepad bindings:
+
+<!-- BEGIN seed-sprint-actions -->
+```zig
+const actions = [_]up.input.Action{
+    .{ .name = "left", .binding = .{ .key = .left } },
+    .{ .name = "left", .binding = .{ .gamepad_axis = .{ .axis = .left_x, .sign = -1 } } },
+    .{ .name = "right", .binding = .{ .key = .right } },
+    .{ .name = "right", .binding = .{ .gamepad_axis = .{ .axis = .left_x } } },
+    .{ .name = "up", .binding = .{ .key = .up } },
+    .{ .name = "up", .binding = .{ .gamepad_axis = .{ .axis = .left_y, .sign = -1 } } },
+    .{ .name = "down", .binding = .{ .key = .down } },
+    .{ .name = "down", .binding = .{ .gamepad_axis = .{ .axis = .left_y } } },
+    .{ .name = "dash", .binding = .{ .key = .action } },
+    .{ .name = "dash", .binding = .{ .gamepad_button = .south } },
+};
+```
+<!-- END seed-sprint-actions -->
+
+Inside fixed-step `update`, it reads those named actions instead of physical
+events:
+
+<!-- BEGIN seed-sprint-action-update -->
+```zig
+        const bindings = up.input.ActionMap{ .actions = &actions };
+        const input = ctx.input.*;
+        const dash_multiplier: f32 = if (bindings.value(input, "game", "dash") > 0) 1.8 else 1.0;
+        const speed = movement_speed * dash_multiplier;
+        const dx = bindings.value(input, "game", "right") - bindings.value(input, "game", "left");
+        const dy = bindings.value(input, "game", "down") - bindings.value(input, "game", "up");
+```
+<!-- END seed-sprint-action-update -->
+
+This is an excerpt from
+[`templates/starter/src/game.zig`](../../templates/starter/src/game.zig), which
+is compiled by the starter tests. Bindings are game-owned: Peas does not
+reserve ordinary gameplay keys for developer tools.
+
+Use `isDown`/`ActionMap.value` for held movement and `wasPressed` or
+`wasReleased` for one-time actions such as restart, menus, or a dash trigger.
+Read input in fixed-step `update`, not `draw`.
+
+## Normalized input contract
 
 v0.1 exposes normalized keyboard and pointer state through `up.input.Input`. The contract is identical for the native SDL host and browser hosts; renderer selection does not change input semantics.
 

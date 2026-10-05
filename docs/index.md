@@ -1,28 +1,65 @@
-# unpolished-peas Docs
+# Peas learning path
 
-- [Quickstart](guides/quickstart.md)
-- [Seed Sprint starter](../templates/starter/README.md)
-- [Neon Siege public-API dogfood game](../dogfood/neon-siege/README.md)
-- [Installation from a release](guides/installation.md)
-- [Game protocol](guides/game-protocol.md)
-- [Save data](guides/save-data.md)
+Peas is a small Zig framework for deterministic, testable 2D games. Start
+with the smallest complete project, then add only the concepts your game needs.
+
+## 1. First 10 minutes
+
+1. [Start here](guides/quickstart.md) — requirements, the current unreleased
+   checkout path, a compiled `GameProtocol` program, and fixed-step basics.
+2. [Seed Sprint](../templates/starter/README.md) — the canonical beginner
+   project: read `src/main.zig`, then `src/game.zig`.
+3. [Game protocol](guides/game-protocol.md) — lifecycle, ownership, and the
+   fixed-step contract in more detail.
+
+## 2. Build a small game
+
+- [Input and ActionMap](guides/input.md)
+- [Authored images and fonts](guides/image-assets.md)
+- [Sound effects and music](guides/audio-assets.md)
+- [Small save data](guides/save-data.md)
+- [Canvas, camera, and presentation](guides/rendering.md)
+- [CPU RenderSurface composition](guides/render-surfaces.md)
+
+## 3. Make it deterministic and testable
+
+- [Testing: seed, replay, headless state, Canvas trace, pixels](guides/testing.md)
 - [v0.1 core contract](guides/core-contract.md)
-- [Stable 2D render contract](guides/rendering.md)
-- [Render surfaces](guides/render-surfaces.md)
-- [Advanced 2D](guides/advanced-2d.md)
-- [Authored image and font assets](guides/image-assets.md)
-- [Audio](guides/audio-assets.md)
-- [Developer diagnostics](guides/developer-diagnostics.md)
-- [Development authored-asset reload](guides/developer-asset-reload.md)
-- [Testing](guides/testing.md)
-- [Top-down proof game](proof-games/topdown.md)
-- [Puzzle proof game](proof-games/puzzle.md)
-- [Platformer proof game](proof-games/platformer.md)
+
+## 4. Ship it
+
+- [Installation and external-project status](guides/installation.md)
+- [Platform status](guides/platforms.md)
+- [Releases and support](guides/releases.md)
+
+## 5. Read a larger reference only when ready
+
+- [Neon Siege](../dogfood/neon-siege/README.md) is the public-API reference
+  game for owned resources, sprites, camera, audio/music, save data,
+  RenderSurface, deterministic tests, diagnostics, and hot reload.
+- [Advanced 2D](guides/advanced-2d.md) covers `Renderer2D`, materials,
+  particles, and post passes. Ordinary Canvas games do not need this layer.
+- [Developer diagnostics](guides/developer-diagnostics.md) and
+  [developer asset reload](guides/developer-asset-reload.md) are opt-in native
+  development tools.
+
+## Which example should I read?
+
+| Goal | Read this |
+| --- | --- |
+| Learn Peas from scratch | [Seed Sprint](../templates/starter/README.md) |
+| See a compact `init` / `update` / `draw` program | [compiled tutorial source](../examples/tutorial_game_protocol.zig) |
+| See a complete small game | [Neon Siege](../dogfood/neon-siege/README.md) |
+| Learn deterministic replay and rendering regression | [Testing](guides/testing.md) and Seed Sprint's `src/game.zig` |
+| Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
+| Find exact API/CI contract details | [Core contract](guides/core-contract.md), [capability matrix](guides/capabilities.md), and [Core API](api/core.md) |
+
+## Reference and maintenance material
+
+- [Capability matrix](guides/capabilities.md)
 - [CI](guides/ci.md)
 - [Browser renderer diagnostics](guides/browser-diagnostics.md)
-- [v0.1 capability matrix](guides/capabilities.md)
 - [v0.1 migrations](guides/migrations.md)
-- [Releases and support](guides/releases.md)
-- [Core API](api/core.md)
 
-Generate this offline documentation with `zig build docs`, or locate a topic with `zig build peas -- docs api`.
+Run `zig build docs` to emit this Markdown set under `zig-out/docs/`, or use
+`zig build peas -- docs quickstart` to locate the generated start page.

@@ -8,7 +8,7 @@ The root package exposes only the six named capability namespaces below. Direct 
 
 | Namespace | Frozen declarations | Contract |
 | --- | --- | --- |
-| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Audio`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, optional short-SFX output, small opaque save blobs, errors, and basic 2D values |
+| `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Audio`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, optional SFX/music output, small opaque save blobs, errors, and basic 2D values |
 | `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized keyboard, pointer, gamepad, and action state |
 | `graphics` | drawing (`Canvas`, `RenderSurface`, `SurfaceDrawOptions`, `SurfaceFilter`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, offscreen Canvas composition, text, post effects, particles, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, mixer/music/PCM-stream declarations, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, audio loading, and playback/mixing |

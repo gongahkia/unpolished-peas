@@ -4,6 +4,11 @@ Neon Siege is a compact top-down arena game built as a real public-API
 exercise. Seed Sprint remains the beginner starter; this project intentionally
 uses more of Peas without importing backend or repository-internal code.
 
+Read Neon Siege **after** Seed Sprint when you want one larger reference for
+how ordinary Zig structs compose Peas features. It is not the first tutorial;
+the [learning path](../../docs/index.md) introduces each subsystem before this
+project combines them.
+
 ## Controls
 
 - Arrow keys, D-pad, or left stick: move and aim.
@@ -49,6 +54,7 @@ shape used by release validation. Game source itself imports only
   background track.
 - Game-owned save bytes for best score and audio preference.
 - Headless replay, Canvas-trace, and pixel-hash regression tests.
+- Opt-in developer diagnostics and native image/font hot reload.
 
 ## Authored assets
 
@@ -75,3 +81,16 @@ the SDL host initializes the game. Invalid edits retain the last valid live
 resource; browser builds and release packages continue using the embedded
 assets and require a rebuild. See the repository's [developer asset reload
 guide](../../docs/guides/developer-asset-reload.md).
+
+## Developer diagnostics
+
+For a compact native overlay and local diagnostics snapshot without changing
+game code:
+
+```sh
+UP_DEVELOPER_TOOLS=1 zig build run
+```
+
+The [developer diagnostics guide](../../docs/guides/developer-diagnostics.md)
+defines its frame, renderer, display, capability, and music fields. It is
+development-only instrumentation, not gameplay state or a profiler product.
