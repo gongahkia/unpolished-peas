@@ -75,14 +75,37 @@ or installers.
 
 ## Platform status
 
-| Platform | Intended support | Automated build/package validation | Runtime validation in this checkout |
+| Target | Intended support | Build/package evidence | Runtime evidence |
 | --- | --- | --- | --- |
-| Linux x86_64 | Tier 1 | CI package matrix | blocked locally without `xvfb-run` |
-| macOS arm64 / x86_64 | Tier 1 | CI universal package matrix | not run locally |
+| Linux x86_64 under WSL2 | development environment, not a deployment target | local package checks | WSLg SDL GPU and OpenGL bounded smoke only |
+| Native Linux x86_64 | Tier 1 | CI package matrix | not run in this checkout's WSL pass |
+| macOS arm64 / x86_64 | Tier 1 | CI universal package matrix | not run in this checkout's WSL pass |
 | Browser/WASM | supported | headless browser/runtime and bundle checks | browser not launched locally |
 | Windows x86_64 | secondary | CI package matrix | not run locally |
 
 See the [capability matrix](capabilities.md) for renderer-specific detail.
+
+## Linux and WSLg troubleshooting
+
+Peas leaves SDL's normal video-driver selection untouched. Startup writes one
+compact native-renderer record containing the selected SDL video driver, the
+requested and selected renderer, fallback status, and any failed backend
+attempt with its SDL error text. That record is useful before changing an
+environment or filing a renderer issue.
+
+For diagnosis only, a desktop project may ask SDL to try one installed Linux
+driver for a single invocation:
+
+```sh
+SDL_VIDEODRIVER=wayland zig build run
+SDL_VIDEODRIVER=x11 zig build run
+```
+
+Do not bake either override into a game or package. WSLg can be useful for
+development, but its X11/Wayland bridge, D3D12-backed Vulkan path, PulseAudio
+bridge, and input stack are not evidence of bare-metal Linux behavior. A
+missing display fails before renderer fallback with a bounded diagnostic; it
+does not mean the game's renderer is broken.
 
 ## Current legal blocker
 

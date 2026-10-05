@@ -1,10 +1,13 @@
-# Neon Siege assets
+# Neon Siege authored assets
 
-The dogfood game's playable sprites and WAV effects are small source-authored
-byte arrays in `src/art.zig` and `src/sounds.zig`. That makes the reference
-project self-contained on desktop and browser while still exercising Peas's
-public `Image.decode`, `Atlas`, and `Audio.loadWav` APIs.
+`neon-siege.png` is the compact 16×16 sprite sheet used by the dogfood game.
+It is a repository-owned fixture copied from `examples/assets/ball.png` for
+this portable authored-image workflow.
 
-This directory remains part of the packaged project to demonstrate where a
-normal game would place copied runtime assets. It deliberately contains no
-third-party media.
+`neon-siege.ttf` is the Basic typeface from Sorkin Type Co. It is distributed
+under the SIL Open Font License 1.1; `OFL.txt` is its required notice. Native
+and browser packages embed the font bytes into the executable/Wasm and install
+the notice under `licenses/` rather than copying an `assets/` runtime tree.
+
+`embedded_assets.zig` embeds these source files at build time. The resulting
+game uses no asset-directory lookup at runtime.

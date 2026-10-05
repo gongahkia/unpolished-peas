@@ -18,6 +18,6 @@ Text input is not currently part of `Input`, so it is not represented in determi
 
 ## Focus and visibility
 
-Native focus loss, browser window blur, browser canvas blur, and browser visibility loss release every held key and pointer button. The resulting release edges are visible for that frame, so focus changes cannot leave input stuck. Regaining focus does not synthesize presses.
+Native focus loss releases every held key, pointer button, and gamepad button; native gamepad axes return to zero. Browser window blur, browser canvas blur, and browser visibility loss release every held key and pointer button. The resulting release edges are visible for that frame, so focus changes cannot leave input stuck. Regaining focus does not synthesize presses.
 
 `src/fixtures/input/keyboard-pointer-v1.json` is the shared keyboard/pointer fixture. Native input tests and browser-host tests consume it; forced WebGL 2 and WebGPU smoke tests additionally exercise focused keyboard, pointer, and focus-loss behavior on each renderer.

@@ -9,5 +9,5 @@
     .dependencies = .{
         .unpolished_peas = .{ .path = "../.." },
     },
-    .paths = .{ "build.zig", "build.zig.zon", "src", "assets", "README.md" },
+    .paths = .{ "build.zig", "build.zig.zon", "embedded_assets.zig", "src", "assets", "README.md", "FRICTION.md" },
 }

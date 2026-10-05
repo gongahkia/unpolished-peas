@@ -25,14 +25,16 @@ cp "$release/fixtures/dogfood-release-consumer/build.zig.zon" "$project/build.zi
 )
 for path in \
     zig-out/bin/neon-siege \
-    zig-out/assets/README.md \
+    zig-out/licenses/Basic-OFL.txt \
     zig-out/web/index.html \
     zig-out/web/neon-siege.wasm \
     zig-out/web/bootstrap.mjs \
     zig-out/web/host.mjs \
-    zig-out/web/assets/README.md; do
+    zig-out/web/licenses/Basic-OFL.txt; do
     test -f "$project/$path"
 done
+test ! -e "$project/zig-out/assets"
+test ! -e "$project/zig-out/web/assets"
 if rg -F -q -- "$repo" "$project"; then
     printf '%s\n' 'dogfood external consumer retained a source-checkout path' >&2
     exit 1

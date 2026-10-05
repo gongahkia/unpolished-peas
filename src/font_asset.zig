@@ -6,6 +6,7 @@ const Image = @import("image.zig").Image;
 
 const max_atlas_dimension = 4096;
 const max_glyph_count = 65_535;
+const max_font_input_bytes = 32 * 1024 * 1024;
 
 const PackedChar = extern struct {
     x0: u16,
@@ -77,6 +78,8 @@ pub const Font = struct { // owns atlas pixels and glyph storage allocated by de
     pub fn decodeTrueType(allocator: std.mem.Allocator, bytes: []const u8, options: LoadOptions) !Font {
         try validateOptions(options);
         if (bytes.len == 0) return error.InvalidFontData;
+        if (bytes.len > max_font_input_bytes) return error.FontInputTooLarge;
+        if (!hasSafeSfntDirectory(bytes)) return error.InvalidFontData;
         var ranges = std.ArrayListUnmanaged(GlyphRange){};
         defer ranges.deinit(allocator);
         if (options.ranges.len == 0) {
@@ -324,6 +327,53 @@ fn validateOptions(options: LoadOptions) !void {
     if (options.fallback_codepoint) |codepoint| if (!isUnicodeScalar(codepoint)) return error.InvalidFontOptions;
 }
 
+/// stb_truetype accepts a pointer but not a byte length. Reject malformed
+/// SFNT directories before handing bytes to it so truncated data cannot make
+/// the native or Wasm decoder follow a table-directory offset.
+fn hasSafeSfntDirectory(bytes: []const u8) bool {
+    if (bytes.len < 12) return false;
+    const scaler = readBeU32(bytes[0..4]);
+    if (scaler != 0x0001_0000 and scaler != 0x4f54_544f and scaler != 0x7472_7565 and scaler != 0x7479_7031) return false;
+    const table_count: usize = readBeU16(bytes[4..6]);
+    const directory_len = std.math.mul(usize, table_count, 16) catch return false;
+    const directory_end = std.math.add(usize, 12, directory_len) catch return false;
+    if (directory_end > bytes.len) return false;
+
+    var has_cmap = false;
+    var has_head = false;
+    var has_hhea = false;
+    var has_hmtx = false;
+    var has_maxp = false;
+    var has_outlines = false;
+    var table_index: usize = 0;
+    while (table_index < table_count) : (table_index += 1) {
+        const record_start = 12 + table_index * 16;
+        const tag = readBeU32(bytes[record_start .. record_start + 4]);
+        const offset: usize = readBeU32(bytes[record_start + 8 .. record_start + 12]);
+        const length: usize = readBeU32(bytes[record_start + 12 .. record_start + 16]);
+        const end = std.math.add(usize, offset, length) catch return false;
+        if (end > bytes.len) return false;
+        switch (tag) {
+            0x636d_6170 => has_cmap = length >= 4, // cmap
+            0x6865_6164 => has_head = length >= 54, // head
+            0x6868_6561 => has_hhea = length >= 36, // hhea
+            0x686d_7478 => has_hmtx = length > 0, // hmtx
+            0x6d61_7870 => has_maxp = length >= 6, // maxp
+            0x676c_7966, 0x4346_4620, 0x4346_4632 => has_outlines = length > 0, // glyf, CFF , CFF2
+            else => {},
+        }
+    }
+    return has_cmap and has_head and has_hhea and has_hmtx and has_maxp and has_outlines;
+}
+
+fn readBeU16(bytes: []const u8) u16 {
+    return (@as(u16, bytes[0]) << 8) | bytes[1];
+}
+
+fn readBeU32(bytes: []const u8) u32 {
+    return (@as(u32, bytes[0]) << 24) | (@as(u32, bytes[1]) << 16) | (@as(u32, bytes[2]) << 8) | bytes[3];
+}
+
 fn totalGlyphCount(ranges: []const GlyphRange) !usize {
     var total: usize = 0;
     for (ranges) |range| {
@@ -472,6 +522,10 @@ test "font atlases pack Unicode ranges and report fallback diagnostics" {
             .{ .first_codepoint = 0x0041, .codepoint_count = 1 },
         },
     }));
+    try std.testing.expectError(error.InvalidFontData, Font.decodeTrueType(std.testing.allocator, "not a font", .{}));
+    const too_large = try std.testing.allocator.alloc(u8, max_font_input_bytes + 1);
+    defer std.testing.allocator.free(too_large);
+    try std.testing.expectError(error.FontInputTooLarge, Font.decodeTrueType(std.testing.allocator, too_large, .{}));
 }
 
 test "font UTF-8 decoding replaces malformed sequences" {

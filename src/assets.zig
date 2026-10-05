@@ -186,6 +186,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     dir: std.fs.Dir,
     owned_dir: ?std.fs.Dir = null,
     root_path: ?[]u8 = null,
+    runtime_files_available: bool = true,
     texts: std.ArrayListUnmanaged(TextAsset) = .{},
     images: std.ArrayListUnmanaged(ImageAsset) = .{},
     sounds: std.ArrayListUnmanaged(SoundAsset) = .{},
@@ -195,6 +196,12 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
     pub fn init(allocator: std.mem.Allocator, dir: std.fs.Dir) AssetStore {
         return .{ .allocator = allocator, .dir = dir };
+    }
+
+    /// Creates a store for an embedding-only host. Runtime asset loads return
+    /// `error.AssetStoreUnavailable`; no working-directory fallback is used.
+    fn initEmpty(allocator: std.mem.Allocator) AssetStore {
+        return .{ .allocator = allocator, .dir = std.fs.cwd(), .runtime_files_available = false };
     }
 
     pub fn stats(self: AssetStore) AssetStats {
@@ -226,6 +233,29 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
             return initAbsolute(allocator, root_path);
         }
 
+        return initBesideExecutable(allocator);
+    }
+
+    /// Uses an explicitly configured `UP_ASSET_ROOT` when present. When no
+    /// runtime asset location is configured or installed beside the executable,
+    /// returns an embedding-only store instead of making host startup fail.
+    pub fn initExecutableOptional(allocator: std.mem.Allocator) !AssetStore {
+        const environment_root = std.process.getEnvVarOwned(allocator, "UP_ASSET_ROOT") catch |err| switch (err) {
+            error.EnvironmentVariableNotFound => null,
+            else => return err,
+        };
+        if (environment_root) |root_path| {
+            defer allocator.free(root_path);
+            return initAbsolute(allocator, root_path);
+        }
+
+        return initBesideExecutable(allocator) catch |err| switch (err) {
+            error.FileNotFound, error.NotDir => initEmpty(allocator),
+            else => return err,
+        };
+    }
+
+    fn initBesideExecutable(allocator: std.mem.Allocator) !AssetStore {
         const executable_path = try std.fs.selfExePathAlloc(allocator);
         defer allocator.free(executable_path);
         const executable_dir = std.fs.path.dirname(executable_path) orelse return error.InvalidExecutablePath;
@@ -265,6 +295,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn loadText(self: *AssetStore, path: []const u8) !TextHandle {
+        try self.requireRuntimeFiles();
         const file = try AssetFile.load(self.allocator, self.dir, path, 1024 * 1024);
         errdefer {
             var cleanup = file;
@@ -277,6 +308,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn loadImage(self: *AssetStore, path: []const u8) !ImageHandle {
+        try self.requireRuntimeFiles();
         const file = try AssetFile.load(self.allocator, self.dir, path, 32 * 1024 * 1024);
         errdefer {
             var cleanup = file;
@@ -295,6 +327,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn loadSound(self: *AssetStore, path: []const u8) !AudioHandle {
+        try self.requireRuntimeFiles();
         const asset = try self.loadSoundAsset(path);
         errdefer {
             var cleanup = asset;
@@ -306,6 +339,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     }
 
     pub fn loadFont(self: *AssetStore, path: []const u8, options: FontLoadOptions) !FontHandle {
+        try self.requireRuntimeFiles();
         const asset = if (std.mem.endsWith(u8, path, ".fnt")) try self.loadBitmapFontAsset(path) else try self.loadFontAsset(path, options);
         errdefer {
             var cleanup = asset;
@@ -319,6 +353,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
     /// Loads a generated `.upmat` manifest and all ten target-specific stage
     /// artifacts. The material remains valid until this store is deinitialized.
     pub fn loadMaterial(self: *AssetStore, path: []const u8) !MaterialHandle {
+        try self.requireRuntimeFiles();
         const asset = try self.loadMaterialAsset(path);
         errdefer {
             var cleanup = asset;
@@ -474,6 +509,10 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
     fn appendReloadFailure(self: *AssetStore, path: []const u8, err: anyerror, failure_class: ReloadFailureClass) !void {
         try self.appendReloadFailureWithLocation(path, err, failure_class, 1, 1, @errorName(err));
+    }
+
+    fn requireRuntimeFiles(self: AssetStore) !void {
+        if (!self.runtime_files_available) return error.AssetStoreUnavailable;
     }
 
     fn appendReloadFailureWithLocation(self: *AssetStore, path: []const u8, err: anyerror, failure_class: ReloadFailureClass, line: usize, column: usize, message: []const u8) !void {
@@ -713,6 +752,15 @@ test "asset store exposes canonical loaders only" {
     try std.testing.expect(!@hasDecl(AssetStore, "loadPng"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadBitmapFont"));
     try std.testing.expect(!@hasDecl(AssetStore, "loadFontWithOptions"));
+}
+
+test "an embedding-only asset store never falls back to the working directory" {
+    var store = AssetStore.initEmpty(std.testing.allocator);
+    defer store.deinit();
+    try std.testing.expectError(error.AssetStoreUnavailable, store.loadText("examples/assets/message.txt"));
+    try std.testing.expectError(error.AssetStoreUnavailable, store.loadImage("examples/assets/ball.png"));
+    try std.testing.expectError(error.AssetRootUnavailable, store.assetPath(std.testing.allocator, "ball.png"));
+    try std.testing.expectEqual(@as(usize, 0), (try store.reloadChanged()).len);
 }
 
 test "material manifests create staged assets with reserved source binding" {
