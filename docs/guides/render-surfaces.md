@@ -70,11 +70,11 @@ or public surface readback API in this initial surface contract.
 For low-resolution pixel art, use nearest filtering and prefer exact integer
 upscales. The CPU implementation has dedicated 1:1 and integer-nearest paths
 while preserving the same tint, clip, and blend result as ordinary sampling.
-On the locally tested Intel macOS host, 320×180 to 1280×720 nearest composition
-measured about 1.9 ms in a ReleaseFast internal benchmark; linear composition
-of that same destination measured about 23 ms. These are local observations,
-not a cross-machine budget. Keep linear full-HD surface work bounded until a
-real workload demonstrates a reason to evolve the design.
+On the locally tested Intel macOS host, two ReleaseFast runs measured 320×180
+to 1280×720 nearest composition at 1.9–2.7 ms and linear composition at
+23–29 ms. These are local observations, not a cross-machine budget. Keep
+linear full-HD surface work bounded until a real workload demonstrates a
+reason to evolve the design.
 
 ## Advanced renderer boundary
 
