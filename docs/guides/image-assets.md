@@ -60,7 +60,10 @@ defer font.deinit();
 Draw the decoded image through the normal Canvas API. If a sprite sheet needs
 named frames, build an `Atlas` from that owned image and deinitialize the Atlas
 before the Image. [Neon Siege](../../dogfood/neon-siege/README.md) is the
-complete compiled Image/Atlas reference.
+complete compiled Image/Atlas reference. For fixed-step sprite-sheet playback,
+keep an `AtlasFrameHandle` clip and game-owned player state as described in
+[deterministic sprite-frame animation](sprite-animation.md); Canvas remains
+responsible for drawing the selected frame.
 
 ## Fonts and text
 

@@ -16,6 +16,7 @@ with the smallest complete project, then add only the concepts your game needs.
 
 - [Input and ActionMap](guides/input.md)
 - [Authored images and fonts](guides/image-assets.md)
+- [Deterministic sprite-frame animation](guides/sprite-animation.md)
 - [Sound effects and music](guides/audio-assets.md)
 - [Small save data](guides/save-data.md)
 - [Canvas, camera, and presentation](guides/rendering.md)

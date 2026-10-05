@@ -13,6 +13,7 @@ import argparse
 import http.server
 import mimetypes
 import os
+import signal
 import shutil
 import subprocess
 import sys
@@ -221,7 +222,13 @@ class BuildRunner:
         self.count += 1
         started = time.monotonic()
         try:
-            self.child = subprocess.Popen([self.zig, "build", "web"], cwd=self.project_root)
+            self.child = subprocess.Popen(
+                [self.zig, "build", "web"],
+                cwd=self.project_root,
+                # Let shutdown terminate Zig and any compiler descendants as
+                # one unit. Windows falls back to the normal child handle.
+                start_new_session=os.name == "posix",
+            )
             result = self.child.wait()
         except OSError as error:
             elapsed_ms = round((time.monotonic() - started) * 1000)
@@ -245,11 +252,18 @@ class BuildRunner:
 
     def stop(self) -> None:
         if self.child is not None and self.child.poll() is None:
-            self.child.terminate()
+            if os.name == "posix":
+                os.killpg(self.child.pid, signal.SIGTERM)
+            else:
+                self.child.terminate()
             try:
                 self.child.wait(timeout=2)
             except subprocess.TimeoutExpired:
-                self.child.kill()
+                if os.name == "posix":
+                    os.killpg(self.child.pid, signal.SIGKILL)
+                else:
+                    self.child.kill()
+                self.child.wait()
 
 
 class SnapshotPublisher:
@@ -274,6 +288,11 @@ class SnapshotPublisher:
             return False
         self.published.append(target)
         self.state.publish(target)
+        # The active root remains stable for in-flight requests while a newer
+        # snapshot is copied. Keep a tiny tail for those requests, without
+        # letting a long development session accumulate every old web build.
+        while len(self.published) > 3:
+            shutil.rmtree(self.published.pop(0), ignore_errors=True)
         print("[peas] browser refreshed", flush=True)
         return True
 
@@ -293,7 +312,12 @@ def run_static_server(web_directory: Path, host: str, port: int) -> int:
 
 
 def serve(state: ServerState, host: str, port: int) -> int:
-    with LocalHTTPServer((host, port), make_handler(state)) as server:
+    try:
+        server = LocalHTTPServer((host, port), make_handler(state))
+    except OSError as error:
+        print(f"[peas] could not bind browser server at {host}:{port}: {error}", file=sys.stderr, flush=True)
+        return 1
+    with server:
         actual_host, actual_port = server.server_address[:2]
         print(f"[peas] browser server: http://{actual_host}:{actual_port}/", flush=True)
         try:
@@ -331,7 +355,14 @@ def run_dev(arguments: argparse.Namespace) -> int:
     if arguments.once:
         return 1
 
-    with LocalHTTPServer((arguments.host, arguments.port), make_handler(state)) as server:
+    try:
+        server = LocalHTTPServer((arguments.host, arguments.port), make_handler(state))
+    except OSError as error:
+        runner.stop()
+        publisher.cleanup()
+        print(f"[peas] could not bind browser development server at {arguments.host}:{arguments.port}: {error}", file=sys.stderr, flush=True)
+        return 1
+    with server:
         actual_host, actual_port = server.server_address[:2]
         print(f"[peas] browser development server: http://{actual_host}:{actual_port}/", flush=True)
         print(f"[peas] watching {project_root} every {arguments.poll_ms} ms", flush=True)

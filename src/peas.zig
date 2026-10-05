@@ -613,7 +613,7 @@ fn recoveryCode(err: anyerror) []const u8 {
         error.WebBundleMissing => "web_bundle_missing",
         error.ReplayDiverged => "replay_diverged",
         error.NonInteractiveCommand => "interactive_command",
-        error.TemplateUnavailable, error.PackageUnavailable, error.DocsUnavailable => "environment_unavailable",
+        error.TemplateUnavailable, error.PackageUnavailable, error.DocsUnavailable, error.BrowserServerUnavailable => "environment_unavailable",
         error.DiagnosticsBundleExists, error.DiagnosticsBundleTooLarge, error.InvalidDiagnosticsLimits => "diagnostics_limited",
         else => "operation_failed",
     };
@@ -784,6 +784,7 @@ test "JSON recovery labels are stable" {
     try std.testing.expectEqualStrings("invalid_arguments", recoveryCode(error.InvalidArguments));
     try std.testing.expectEqualStrings("project_not_found", recoveryCode(error.ProjectNotFound));
     try std.testing.expectEqualStrings("interactive_command", recoveryCode(error.NonInteractiveCommand));
+    try std.testing.expectEqualStrings("environment_unavailable", recoveryCode(error.BrowserServerUnavailable));
     try std.testing.expectEqual(@as(u8, 64), recoveryExitCode(error.InvalidArguments));
     try std.testing.expectEqual(@as(u8, 65), recoveryExitCode(error.NonInteractiveCommand));
 }
