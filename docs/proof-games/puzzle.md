@@ -24,7 +24,7 @@ Desktop packages use `zig build peas -- package <linux|macos|windows> OUT --game
 
 ## Performance result
 
-`zig build -Doptimize=ReleaseFast benchmark-proofs` records a `puzzle` workload beside `bounce`: Canvas allocation at startup plus a fixed 240-frame loop that executes input, rule update, nine filled/stroked cells, and text. The macOS arm64 ReleaseFast run for this change reported startup `16726 ns`, `2` allocations / `61560 B`, and `9727 ns` per frame with `240` allocations / `28800 B` across the loop. The one allocation / `120 B` per rendered frame is the shared text path, matching the existing bounce workload. Existing reviewed baseline limits remain bounce-only until puzzle results are reviewed on every required native target. Values are target-specific and are not portable frame-rate claims.
+`zig build -Doptimize=ReleaseFast benchmark-proofs` records a `puzzle` workload beside `bounce`: Canvas allocation at startup plus a fixed 240-frame loop that executes input, rule update, nine filled/stroked cells, and text. The current local hardening run was on Intel macOS, not Apple Silicon; it observed no steady-frame allocation in the proof workload after the built-in Canvas text path became allocation-free. Do not treat that local result as an arm64 measurement or a portable frame-rate claim. Existing reviewed baseline limits remain bounce-only until results are reviewed on every required native target.
 
 ## Limitations
 
