@@ -11,3 +11,8 @@ the notice under `licenses/` rather than copying an `assets/` runtime tree.
 
 `embedded_assets.zig` embeds these source files at build time. The resulting
 game uses no asset-directory lookup at runtime.
+
+`neon-loop.ogg` is a repository-authored two-second three-sine chord produced
+by `script/generate_neon_siege_music.sh`. It contains no sampled or
+third-party music. The game embeds the encoded Vorbis bytes and decodes only a
+bounded PCM window while it plays.

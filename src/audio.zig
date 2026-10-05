@@ -83,7 +83,7 @@ pub const Music = struct { // owns source bytes allocated by openWav/openOgg; mo
     pub fn openWav(allocator: std.mem.Allocator, path: []const u8) !Music {
         const bytes = try std.fs.cwd().readFileAlloc(allocator, path, max_audio_bytes);
         errdefer allocator.free(bytes);
-        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .wav = try parseWav(bytes) } };
+        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .wav = try parseMusicWav(bytes) } };
     }
 
     pub fn openOgg(allocator: std.mem.Allocator, path: []const u8) !Music {
@@ -96,7 +96,7 @@ pub const Music = struct { // owns source bytes allocated by openWav/openOgg; mo
         if (source.len > stable_max_input_bytes) return error.AudioTooLarge;
         const bytes = try allocator.dupe(u8, source);
         errdefer allocator.free(bytes);
-        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .wav = try parseWav(bytes) } };
+        return .{ .allocator = allocator, .bytes = bytes, .kind = .{ .wav = try parseMusicWav(bytes) } };
     }
 
     pub fn decodeOgg(allocator: std.mem.Allocator, source: []const u8) !Music {
@@ -397,6 +397,55 @@ pub const Audio = struct {
         generation: u32,
     };
 
+    /// Stable only for the lifetime of its owning `Audio` service. Music is
+    /// deliberately distinct from `SoundHandle`: its encoded source remains
+    /// owned by the host while an active playback incrementally decodes it.
+    pub const MusicHandle = struct {
+        index: usize,
+        generation: u32,
+    };
+
+    /// OGG/Vorbis is the default because it is the compact, incrementally
+    /// decoded long-form path on every supported host. WAV is accepted for
+    /// small authored tracks, but is normally less space-efficient.
+    pub const MusicFormat = enum {
+        ogg,
+        wav,
+    };
+
+    pub const MusicLoadOptions = struct {
+        format: MusicFormat = .ogg,
+    };
+
+    /// Per-request music controls. The high-level service keeps one active
+    /// music stream; starting another replaces the prior music playback while
+    /// preserving independently playing sound effects.
+    pub const MusicPlayOptions = struct {
+        volume: f32 = 1,
+        loop: bool = true,
+    };
+
+    pub const MusicState = enum {
+        stopped,
+        playing,
+        paused,
+    };
+
+    /// A small observation surface shared by native developer diagnostics.
+    /// `underruns` is currently always zero: music decode/refill happens
+    /// synchronously before host PCM submission rather than in an audio
+    /// callback. It is retained as an explicit statement of that behavior,
+    /// not a device-underrun measurement.
+    pub const MusicDiagnostics = struct {
+        state: MusicState = .stopped,
+        encoded_bytes: usize = 0,
+        source_frames: usize = 0,
+        decoder_position_frames: usize = 0,
+        buffered_frames: usize = 0,
+        buffer_capacity_frames: usize = 0,
+        underruns: u32 = 0,
+    };
+
     /// Per-request controls. Volume is finite and in the inclusive range
     /// `0.0...1.0`; looping repeats the decoded effect until stopped.
     pub const PlayOptions = struct {
@@ -409,11 +458,19 @@ pub const Audio = struct {
         generation: u32,
     };
 
+    const OwnedMusic = struct {
+        music: Music,
+        generation: u32,
+    };
+
     allocator: std.mem.Allocator,
     mixer: AudioMixer,
     sounds: std.ArrayListUnmanaged(*OwnedSound) = .{},
+    music_sources: std.ArrayListUnmanaged(*OwnedMusic) = .{},
+    active_music: ?PlaybackHandle = null,
     availability_state: Availability,
     next_generation: u32 = 1,
+    next_music_generation: u32 = 1,
 
     pub fn init(allocator: std.mem.Allocator, config: Config) !Audio {
         return .{
@@ -429,7 +486,12 @@ pub const Audio = struct {
             owned.sound.deinit();
             self.allocator.destroy(owned);
         }
+        for (self.music_sources.items) |owned| {
+            owned.music.deinit();
+            self.allocator.destroy(owned);
+        }
         self.sounds.deinit(self.allocator);
+        self.music_sources.deinit(self.allocator);
         self.* = undefined;
     }
 
@@ -458,6 +520,24 @@ pub const Audio = struct {
         return .{ .index = self.sounds.items.len - 1, .generation = owned.generation };
     }
 
+    /// Retains encoded game-owned bytes and creates a source suitable for
+    /// bounded, incremental playback. No full-track PCM allocation occurs.
+    /// OGG/Vorbis is the default; select `.wav` explicitly for WAV source.
+    pub fn loadMusic(self: *Audio, bytes: []const u8, options: MusicLoadOptions) !MusicHandle {
+        const owned = try self.allocator.create(OwnedMusic);
+        errdefer self.allocator.destroy(owned);
+        owned.* = .{
+            .music = switch (options.format) {
+                .ogg => try Music.decodeOgg(self.allocator, bytes),
+                .wav => try Music.decodeWav(self.allocator, bytes),
+            },
+            .generation = self.takeMusicGeneration(),
+        };
+        errdefer owned.music.deinit();
+        try self.music_sources.append(self.allocator, owned);
+        return .{ .index = self.music_sources.items.len - 1, .generation = owned.generation };
+    }
+
     /// Starts an independent playback instance. It is safe to play the same
     /// loaded effect concurrently. A blocked or unavailable host returns a
     /// recoverable error and does not create a hidden queued playback.
@@ -468,8 +548,90 @@ pub const Audio = struct {
         return self.mixer.playSound(&owned.sound, .{ .volume = options.volume, .loop = options.loop });
     }
 
-    pub fn stop(self: *Audio, playback: PlaybackHandle) bool {
+    /// Starts the selected music source. At most one high-level music stream
+    /// is active; a successful new request stops the previous music stream.
+    /// Sound effects continue to mix independently on the SFX bus.
+    pub fn playMusic(self: *Audio, music: MusicHandle, options: MusicPlayOptions) !PlaybackHandle {
+        if (self.availability_state != .ready) return error.AudioUnavailable;
+        if (!validVolume(options.volume)) return error.InvalidVolume;
+        const owned = try self.resolveMusic(music);
+        // Build the next decoder/playback before stopping the old stream. A
+        // failed allocation or invalid source must not silence valid music.
+        const playback = try self.mixer.playMusic(&owned.music, .{ .volume = options.volume, .loop = options.loop });
+        if (self.active_music) |previous| _ = self.mixer.stop(previous);
+        self.active_music = playback;
+        return playback;
+    }
+
+    pub fn pauseMusic(self: *Audio) bool {
+        const playback = self.active_music orelse return false;
+        const paused = self.mixer.pause(playback);
+        if (!paused) self.active_music = null;
+        return paused;
+    }
+
+    pub fn resumeMusic(self: *Audio) bool {
+        const playback = self.active_music orelse return false;
+        const resumed = self.mixer.resumePlayback(playback);
+        if (!resumed) self.active_music = null;
+        return resumed;
+    }
+
+    /// Stops the active high-level music stream. The next `playMusic` starts
+    /// a fresh decoder at the beginning of its source.
+    pub fn stopMusic(self: *Audio) bool {
+        const playback = self.active_music orelse return false;
+        self.active_music = null;
         return self.mixer.stop(playback);
+    }
+
+    pub fn setMusicVolume(self: *Audio, volume: f32) !bool {
+        if (!validVolume(volume)) return error.InvalidVolume;
+        const playback = self.active_music orelse return false;
+        const changed = try self.mixer.setPlaybackVolume(playback, volume);
+        if (!changed) self.active_music = null;
+        return changed;
+    }
+
+    /// Returns the logical state of the single high-level music stream.
+    /// A non-looping stream that ended during mixing is reported as stopped.
+    pub fn musicState(self: *Audio) MusicState {
+        const playback = self.active_music orelse return .stopped;
+        const current = self.mixer.getPlayback(playback) orelse {
+            self.active_music = null;
+            return .stopped;
+        };
+        return if (current.paused) .paused else .playing;
+    }
+
+    pub fn musicDiagnostics(self: *Audio) MusicDiagnostics {
+        var diagnostics = MusicDiagnostics{ .state = self.musicState() };
+        const playback = self.active_music orelse return diagnostics;
+        const current = self.mixer.getPlayback(playback) orelse return diagnostics;
+        switch (current.kind) {
+            .wav_music => |wav| {
+                diagnostics.encoded_bytes = wav.bytes.len;
+                diagnostics.source_frames = wav.info.frames;
+                diagnostics.decoder_position_frames = @intFromFloat(wav.pos);
+            },
+            .ogg_music => |ogg| {
+                diagnostics.encoded_bytes = ogg.bytes.len;
+                diagnostics.source_frames = ogg.info.frames;
+                diagnostics.decoder_position_frames = @intFromFloat(ogg.pos);
+                diagnostics.buffered_frames = ogg.buffer.items.len;
+                diagnostics.buffer_capacity_frames = ogg.buffer.capacity;
+            },
+            .sound => {},
+        }
+        return diagnostics;
+    }
+
+    pub fn stop(self: *Audio, playback: PlaybackHandle) bool {
+        const stopped = self.mixer.stop(playback);
+        if (self.active_music) |music| {
+            if (music.index == playback.index and music.id == playback.id) self.active_music = null;
+        }
+        return stopped;
     }
 
     /// Compatibility for the existing SDL callback context. Unlike the
@@ -497,10 +659,24 @@ pub const Audio = struct {
         return owned;
     }
 
+    fn resolveMusic(self: *Audio, handle: MusicHandle) !*OwnedMusic {
+        if (handle.index >= self.music_sources.items.len) return error.InvalidMusic;
+        const owned = self.music_sources.items[handle.index];
+        if (owned.generation != handle.generation) return error.InvalidMusic;
+        return owned;
+    }
+
     fn takeGeneration(self: *Audio) u32 {
         const generation = self.next_generation;
         self.next_generation +%= 1;
         if (self.next_generation == 0) self.next_generation = 1;
+        return generation;
+    }
+
+    fn takeMusicGeneration(self: *Audio) u32 {
+        const generation = self.next_music_generation;
+        self.next_music_generation +%= 1;
+        if (self.next_music_generation == 0) self.next_music_generation = 1;
         return generation;
     }
 };
@@ -751,6 +927,10 @@ fn requireVolume(volume: f32) !void {
     if (std.math.isNan(volume) or volume < 0) return error.InvalidVolume;
 }
 
+fn validVolume(volume: f32) bool {
+    return std.math.isFinite(volume) and volume >= 0 and volume <= 1;
+}
+
 fn requirePan(pan: f32) !void {
     if (std.math.isNan(pan) or pan < -1 or pan > 1) return error.InvalidPan;
 }
@@ -832,6 +1012,17 @@ fn decodeWavSound(allocator: std.mem.Allocator, bytes: []const u8) !Sound {
 }
 
 fn parseWav(bytes: []const u8) !WavInfo {
+    return parseWavWithFrameLimit(bytes, stable_max_decoded_frames);
+}
+
+// A Music source retains encoded bytes and converts only bounded chunks to
+// PCM while it is playing, so it must not inherit Sound's full-decode frame
+// limit. The encoded-byte limit is still enforced by Music.decodeWav/openWav.
+fn parseMusicWav(bytes: []const u8) !WavInfo {
+    return parseWavWithFrameLimit(bytes, null);
+}
+
+fn parseWavWithFrameLimit(bytes: []const u8, frame_limit: ?usize) !WavInfo {
     if (bytes.len < 44) return error.InvalidWav;
     if (!std.mem.eql(u8, bytes[0..4], "RIFF") or !std.mem.eql(u8, bytes[8..12], "WAVE")) return error.InvalidWav;
     var offset: usize = 12;
@@ -871,7 +1062,9 @@ fn parseWav(bytes: []const u8) !WavInfo {
     if (block_align != channels * (bits_per_sample / 8) or data_len % block_align != 0) return error.InvalidWav;
     const frames = data_len / block_align;
     if (frames == 0) return error.EmptyWav;
-    if (frames > stable_max_decoded_frames) return error.AudioTooLarge;
+    if (frame_limit) |limit| {
+        if (frames > limit) return error.AudioTooLarge;
+    }
     return .{
         .sample_rate = sample_rate,
         .channels = channels,
@@ -1155,6 +1348,88 @@ test "music decodes owned Ogg bytes for freestanding hosts" {
         if (sample.left != 0 or sample.right != 0) nonzero = true;
     }
     try std.testing.expect(nonzero);
+}
+
+test "high-level music keeps encoded Ogg data bounded and supports lifecycle controls" {
+    const bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/tone.ogg", stable_max_input_bytes);
+    defer std.testing.allocator.free(bytes);
+
+    var audio = try Audio.init(std.testing.allocator, .{});
+    defer audio.deinit();
+    const music = try audio.loadMusic(bytes, .{});
+    const effect = try audio.loadWav(&wav_mono_16);
+    const first_music = try audio.playMusic(music, .{ .volume = 0.25, .loop = true });
+    const replacement_music = try audio.playMusic(music, .{ .volume = 0.25, .loop = true });
+    try std.testing.expect(first_music.id != replacement_music.id);
+    try std.testing.expect(!audio.stop(first_music));
+    _ = try audio.play(effect, .{ .volume = 0.1 });
+    try std.testing.expectEqual(Audio.MusicState.playing, audio.musicState());
+
+    const initial = audio.musicDiagnostics();
+    try std.testing.expectEqual(bytes.len, initial.encoded_bytes);
+    // ArrayList is allowed to round a requested capacity upward. The stream
+    // must reserve at least this bounded working set, then retain that
+    // capacity during playback rather than growing with track duration.
+    try std.testing.expect(initial.buffer_capacity_frames >= stream_buffer_frames);
+    try std.testing.expect(initial.source_frames > initial.buffer_capacity_frames);
+
+    var output: [1024]AudioSample = undefined;
+    try audio.mix(&output);
+    var nonzero = false;
+    for (output) |sample| {
+        if (sample.left != 0 or sample.right != 0) nonzero = true;
+    }
+    try std.testing.expect(nonzero);
+
+    try std.testing.expect(audio.pauseMusic());
+    try std.testing.expectEqual(Audio.MusicState.paused, audio.musicState());
+    try audio.mix(&output);
+    for (output) |sample| {
+        try std.testing.expectEqual(@as(f32, 0), sample.left);
+        try std.testing.expectEqual(@as(f32, 0), sample.right);
+    }
+    try std.testing.expect(audio.resumeMusic());
+    try std.testing.expectEqual(Audio.MusicState.playing, audio.musicState());
+    try std.testing.expect(try audio.setMusicVolume(0.5));
+    try std.testing.expectError(error.InvalidVolume, audio.setMusicVolume(std.math.inf(f32)));
+    try std.testing.expect(audio.stopMusic());
+    try std.testing.expectEqual(Audio.MusicState.stopped, audio.musicState());
+    try std.testing.expect(!audio.stopMusic());
+
+    _ = try audio.playMusic(music, .{ .loop = false });
+    try std.testing.expectEqual(Audio.MusicState.playing, audio.musicState());
+}
+
+test "high-level music retains bounded Ogg buffer across simulated long playback" {
+    const bytes = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/assets/tone.ogg", stable_max_input_bytes);
+    defer std.testing.allocator.free(bytes);
+    var audio = try Audio.init(std.testing.allocator, .{});
+    defer audio.deinit();
+    const music = try audio.loadMusic(bytes, .{});
+    _ = try audio.playMusic(music, .{ .loop = true });
+    const expected_capacity = audio.musicDiagnostics().buffer_capacity_frames;
+    var output: [1024]AudioSample = undefined;
+    var block: usize = 0;
+    // 8,500 × 1,024 frames is a little over three minutes at 48 kHz. This
+    // advances faster than realtime in the headless mixer while exercising
+    // hundreds of loop boundaries from the half-second fixture.
+    while (block < 8_500) : (block += 1) try audio.mix(&output);
+    const diagnostics = audio.musicDiagnostics();
+    try std.testing.expectEqual(Audio.MusicState.playing, diagnostics.state);
+    try std.testing.expectEqual(expected_capacity, diagnostics.buffer_capacity_frames);
+    try std.testing.expect(diagnostics.decoder_position_frames < diagnostics.source_frames);
+    try std.testing.expectEqual(@as(u32, 0), diagnostics.underruns);
+}
+
+test "high-level music rejects unavailable output and invalid encoded source" {
+    var audio = try Audio.init(std.testing.allocator, .{ .availability = .blocked });
+    defer audio.deinit();
+    try std.testing.expectError(error.InvalidOgg, audio.loadMusic("not an ogg", .{}));
+    const music = try audio.loadMusic(&wav_mono_16, .{ .format = .wav });
+    try std.testing.expectError(error.AudioUnavailable, audio.playMusic(music, .{}));
+    audio.setAvailability(.ready);
+    try std.testing.expectError(error.InvalidVolume, audio.playMusic(music, .{ .volume = -0.01 }));
+    try std.testing.expectError(error.InvalidMusic, audio.playMusic(.{ .index = 99, .generation = 1 }, .{}));
 }
 
 test "ogg playback retains source data when its Music container moves" {

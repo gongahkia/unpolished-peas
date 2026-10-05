@@ -54,6 +54,13 @@ The compact view displays the last completed presentation frame. It contains:
   material sprites, particle instances/batches, and post passes;
 - audio and save-capability availability.
 
+When a high-level music stream is active, the optional local JSON snapshot
+also records its state, encoded-byte count, source/decoder frame positions,
+bounded PCM-buffer occupancy, and decoder underrun count (currently zero in
+the synchronous refill model). These are local
+developer observations; host presentation timing and device queue depth are
+not completed-GPU or speaker-clock measurements.
+
 `CMD` is the native `RenderCommandBuffer` queue length, not a Canvas command
 trace. The overlay does **not** attach a `CanvasTrace`, hash resources, or
 record every Canvas operation.

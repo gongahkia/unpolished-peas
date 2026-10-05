@@ -25,7 +25,8 @@ python3 -m http.server --directory zig-out/web 8000
 ```
 
 `zig build package` produces `zig-out/bin/neon-siege` and the embedded font's
-`zig-out/licenses/Basic-OFL.txt` notice. It has no runtime asset directory.
+`zig-out/licenses/Basic-OFL.txt` notice. Its PNG, font, WAV effects, and OGG
+music are embedded; it has no runtime asset directory.
 `zig build web` produces a static `zig-out/web` directory and the matching
 font notice under `zig-out/web/licenses`; serve it over HTTP instead of
 opening `index.html` directly.
@@ -44,18 +45,19 @@ shape used by release validation. Game source itself imports only
 - An authored embedded PNG decoded into a public `Image` and Atlas frames.
 - Camera world rendering into a 80x45 nearest-scaled `RenderSurface`.
 - An authored embedded TrueType font for the HUD and prompts.
-- Two reusable high-level WAV sound effects.
+- Two reusable high-level WAV sound effects plus one looping incremental OGG
+  background track.
 - Game-owned save bytes for best score and audio preference.
 - Headless replay, Canvas-trace, and pixel-hash regression tests.
 
 ## Authored assets
 
 `embedded_assets.zig` is a small project-root wrapper around normal
-`assets/neon-siege.png` and `assets/neon-siege.ttf` files. The same public
-`Image.decode` and `Font.decodeTrueType` calls run in native, headless, and
-browser/Wasm builds. Decoded resources are owned by `Game` and released from
-its protocol `deinit`; the compiled game does not fetch or load those files at
-runtime.
+`assets/neon-siege.png`, `assets/neon-siege.ttf`, and `assets/neon-loop.ogg`
+files. The same public image/font/music paths run in native, headless, and
+browser/Wasm builds. The compiled game does not fetch or load those files at
+runtime. The music source is a repository-authored synthesized chord; its
+reproducible generator is `script/generate_neon_siege_music.sh`.
 
 ## Native developer asset reload
 
