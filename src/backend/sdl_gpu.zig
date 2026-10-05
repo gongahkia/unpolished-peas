@@ -3,6 +3,7 @@ const builtin = @import("builtin");
 const up = @import("api.zig");
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
+const developer_diagnostics = @import("developer-diagnostics");
 const sdl_gl = @import("sdl_gl.zig");
 const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
@@ -1470,9 +1471,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var save_data: NativeSaveStore = undefined;
     try save_data.init(allocator, data_path);
     defer save_data.deinit();
-    var dev = try DeveloperTools.init(allocator, config.developer_tools, data_path);
+    const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
+    var dev = try DeveloperTools.init(allocator, developer_tools_enabled, data_path);
     defer dev.deinit();
-    var profiler = up.FrameProfiler.init(config.cpu_profiler);
+    var profiler = up.FrameProfiler.init(developer_tools_enabled or config.cpu_profiler);
     profiler.beginFrame(0);
     var native_timing = NativeTimingReport.init();
     defer native_timing.write();
@@ -1501,7 +1503,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer commands.deinit();
     var advanced_renderer = up.Renderer2D.init(allocator);
     defer advanced_renderer.deinit();
-    var inspector = up.Inspector.init(allocator, config.developer_tools);
+    var inspector = up.Inspector.init(allocator, developer_tools_enabled);
     defer inspector.deinit();
     var runtime_metrics = up.RuntimeMetrics{};
     var frame_metrics = up.RuntimeMetrics{};
@@ -1536,6 +1538,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     }, config.presentation_mode);
     dev.platformDiagnostics(renderer.window(), &presentation);
     var clock = frame_timing.Scheduler.init(config.fixed_hz);
+    var simulation_tick: u64 = 0;
     var actions = try up.ActionMap.init(allocator, config.actions);
     defer actions.deinit();
     actions.attachAppData(data_path);
@@ -1548,6 +1551,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
+    // The compact overlay is the default developer view. The existing richer
+    // inspector remains available through the opted-in developer controls.
+    inspector.setVisible(false);
     var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .save_data = save_data.capability(), .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
@@ -1569,6 +1575,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
 
     while (running) {
         profiler.beginFrame(ctx.frame);
+        dev.beginDiagnosticsFrame();
         frame_metrics.beginFrame(ctx.frame);
         platform_input.beginFrame();
         ctx.input = &platform_input;
@@ -1621,8 +1628,13 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             if (audio_output != null) audio.setAvailability(.ready);
             dev.audioDiagnostics(audio_output != null);
         }
-        if (platform_input.wasPressed(.debug)) dev.toggleOverlay();
-        if (inspector.visibility == .visible and platform_input.wasPressed(.select)) inspector.next();
+        if (platform_input.wasPressed(.debug)) {
+            dev.toggleOverlay();
+            inspector.setVisible(false);
+        }
+        if (developer_tools_enabled and platform_input.wasPressed(.select)) {
+            if (inspector.visibility == .visible) inspector.next() else inspector.setVisible(true);
+        }
 
         const asset_timer = profiler.scope(.asset);
         const reload_events = assets.reloadChanged() catch |err| {
@@ -1651,6 +1663,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             ctx.alpha = 0;
             const update_timer = profiler.scope(.update);
             const update_started = native_timing.start();
+            const diagnostics_update_started = dev.diagnosticsStart();
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
                 update_timer.end();
                 const current = lifecycleCallbackFailure(.update, err);
@@ -1661,6 +1674,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             };
             update_timer.end();
             native_timing.end(&native_timing.update, update_started);
+            dev.recordDiagnosticsUpdate(diagnostics_update_started);
+            simulation_tick +%= 1;
         }
         if (failure != null) continue;
 
@@ -1670,6 +1685,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
         const draw_started = native_timing.start();
+        const diagnostics_draw_started = dev.diagnosticsStart();
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             draw_timer.end();
             const current = lifecycleCallbackFailure(.draw, err);
@@ -1680,10 +1696,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         };
         draw_timer.end();
         native_timing.end(&native_timing.draw, draw_started);
+        dev.recordDiagnosticsDraw(diagnostics_draw_started);
         updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
-        inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
-        drawReloadOverlay(&canvas, reload_events);
-        dev.drawOverlay(&canvas, timing.draw_seconds, ctx.frame);
+        if (dev.enabled or inspector.visibility == .visible or reload_events.len != 0) {
+            drawDeveloperOverlays(&canvas, &inspector, &dev, reload_events);
+        }
         var screenshot_path: ?[]u8 = null;
         if ((platform_input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
@@ -1698,9 +1715,22 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
         const present_started = native_timing.start();
+        const diagnostics_present_started = dev.diagnosticsStart();
         try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, &advanced_renderer, screenshot_path, &presentation, &frame_metrics);
         native_timing.end(&native_timing.present, present_started);
+        dev.recordDiagnosticsPresent(diagnostics_present_started);
         runtime_metrics = frame_metrics;
+        if (dev.enabled) dev.finishDiagnostics(.{
+            .presentation_frame = ctx.frame,
+            .simulation_tick = simulation_tick,
+            .fixed_hz = config.fixed_hz,
+            .updates_this_frame = timing.update_steps,
+            .simulation_seed = config.simulation_seed,
+            .display = developerDisplay(renderer.window(), &presentation, canvas.width, canvas.height),
+            .renderer = developerRenderer(&renderer_diagnostics),
+            .work = developerRenderWork(&commands, &sprite_batch, &advanced_renderer, &runtime_metrics),
+            .capabilities = .{ .audio = if (audio_output != null) .ready else .unavailable, .save = .ready },
+        });
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
 
@@ -2553,11 +2583,85 @@ test "runtime failures retain category and render a safe report" {
     try std.testing.expectEqual(up.Color.rgb(88, 31, 40), canvas.get(2, 2).?);
 }
 
+/// Developer-only Canvas output must not be part of a game-owned logical
+/// Canvas trace. A trace remains attached for the next game frame exactly as
+/// it was before the diagnostic drawing pass.
+fn drawDeveloperOverlays(canvas: *up.Canvas, inspector: *up.Inspector, dev: *const DeveloperTools, reload_events: []const up.ReloadEvent) void {
+    const trace = canvas.trace;
+    canvas.detachTrace();
+    defer if (trace) |value| canvas.attachTrace(value);
+    inspector.draw(canvas, .{ .context = @constCast(dev), .failure = DeveloperTools.inspectorFailure });
+    drawReloadOverlay(canvas, reload_events);
+    dev.drawOverlay(canvas);
+}
+
+fn developerToolsEnabled(default_enabled: bool) bool {
+    return environmentBool("UP_DEVELOPER_TOOLS") orelse default_enabled;
+}
+
+fn environmentBool(name: []const u8) ?bool {
+    const value = std.posix.getenv(name) orelse return null;
+    if (std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true")) return true;
+    if (std.mem.eql(u8, value, "0") or std.ascii.eqlIgnoreCase(value, "false")) return false;
+    return null;
+}
+
+fn developerDisplay(window: *c.SDL_Window, presentation: *const up.Presentation, canvas_width: u32, canvas_height: u32) developer_diagnostics.Display {
+    var logical_width: c_int = 0;
+    var logical_height: c_int = 0;
+    _ = c.SDL_GetWindowSize(window, &logical_width, &logical_height);
+    const framebuffer_width: u32 = @intFromFloat(@max(@as(f32, 0), presentation.framebuffer_size.x));
+    const framebuffer_height: u32 = @intFromFloat(@max(@as(f32, 0), presentation.framebuffer_size.y));
+    const logical_width_u32: u32 = if (logical_width > 0) @intCast(logical_width) else 0;
+    const logical_height_u32: u32 = if (logical_height > 0) @intCast(logical_height) else 0;
+    return .{
+        .logical_width = logical_width_u32,
+        .logical_height = logical_height_u32,
+        .framebuffer_width = framebuffer_width,
+        .framebuffer_height = framebuffer_height,
+        .canvas_width = canvas_width,
+        .canvas_height = canvas_height,
+        .scale_x = if (logical_width_u32 == 0) 0 else @as(f32, @floatFromInt(framebuffer_width)) / @as(f32, @floatFromInt(logical_width_u32)),
+        .scale_y = if (logical_height_u32 == 0) 0 else @as(f32, @floatFromInt(framebuffer_height)) / @as(f32, @floatFromInt(logical_height_u32)),
+    };
+}
+
+fn developerRenderer(diagnostics: *const RendererDiagnostics) developer_diagnostics.Renderer {
+    return .{
+        .requested = @tagName(diagnostics.requested),
+        .selected = if (diagnostics.selected) |value| @tagName(value) else "none",
+        .video_driver = diagnostics.video_driver,
+        .shader_path = if (diagnostics.gpu_shader_format) |value| @tagName(value) else "none",
+        .fallback = rendererFallbackStatus(diagnostics),
+        .recovery = @tagName(diagnostics.recovery_action),
+    };
+}
+
+fn developerRenderWork(commands: *const up.RenderCommandBuffer, sprites: *const up.SpriteBatch, renderer: *const up.Renderer2D, metrics: *const up.RuntimeMetrics) developer_diagnostics.RenderWork {
+    return .{
+        .commands = boundedDiagnosticCount(commands.commands.items.len),
+        .sprite_draws = boundedDiagnosticCount(sprites.draws.items.len),
+        // This is the actual native sprite-batch submission count recorded by
+        // the presenter, rather than a misleading per-sprite draw-call label.
+        .sprite_batches = metrics.batches,
+        .material_sprites = boundedDiagnosticCount(renderer.material_sprites.items.len),
+        .particle_instances = boundedDiagnosticCount(renderer.particle_instances.items.len),
+        .particle_batches = boundedDiagnosticCount(renderer.particle_batches.items.len),
+        .post_passes = boundedDiagnosticCount(renderer.post_passes.items.len),
+    };
+}
+
+fn boundedDiagnosticCount(value: usize) u32 {
+    return if (value > std.math.maxInt(u32)) std.math.maxInt(u32) else @intCast(value);
+}
+
 const DeveloperTools = struct {
     allocator: std.mem.Allocator,
     app_data_path: []const u8,
     enabled: bool,
     overlay: bool,
+    diagnostics: developer_diagnostics.Collector,
+    dump_snapshot: bool,
     log_file: ?std.fs.File = null,
 
     fn init(allocator: std.mem.Allocator, enabled: bool, app_data_path: []const u8) !DeveloperTools {
@@ -2565,7 +2669,9 @@ const DeveloperTools = struct {
             .allocator = allocator,
             .app_data_path = app_data_path,
             .enabled = enabled,
-            .overlay = enabled,
+            .overlay = if (enabled) environmentBool("UP_DEVELOPER_OVERLAY") orelse true else false,
+            .diagnostics = developer_diagnostics.Collector.init(enabled),
+            .dump_snapshot = enabled and (environmentBool("UP_DEVELOPER_DIAGNOSTICS_DUMP") orelse false),
         };
         if (!enabled) return tools;
 
@@ -2582,12 +2688,37 @@ const DeveloperTools = struct {
     }
 
     fn deinit(self: *DeveloperTools) void {
+        self.dumpDiagnostics();
         if (self.log_file) |file| file.close();
         self.* = undefined;
     }
 
     fn toggleOverlay(self: *DeveloperTools) void {
         if (self.enabled) self.overlay = !self.overlay;
+    }
+
+    fn beginDiagnosticsFrame(self: *DeveloperTools) void {
+        self.diagnostics.beginFrame();
+    }
+
+    fn diagnosticsStart(self: *const DeveloperTools) u64 {
+        return self.diagnostics.start();
+    }
+
+    fn recordDiagnosticsUpdate(self: *DeveloperTools, started_ns: u64) void {
+        self.diagnostics.recordUpdate(started_ns);
+    }
+
+    fn recordDiagnosticsDraw(self: *DeveloperTools, started_ns: u64) void {
+        self.diagnostics.recordDraw(started_ns);
+    }
+
+    fn recordDiagnosticsPresent(self: *DeveloperTools, started_ns: u64) void {
+        self.diagnostics.recordPresent(started_ns);
+    }
+
+    fn finishDiagnostics(self: *DeveloperTools, info: developer_diagnostics.FrameInfo) void {
+        _ = self.diagnostics.finish(info);
     }
 
     fn failure(self: *DeveloperTools, phase: FailurePhase, err: anyerror) void {
@@ -2684,13 +2815,42 @@ const DeveloperTools = struct {
         self.note(line);
     }
 
-    fn drawOverlay(self: DeveloperTools, canvas: *up.Canvas, dt: f32, frame: u64) void {
+    fn drawOverlay(self: *const DeveloperTools, canvas: *up.Canvas) void {
         if (!self.enabled or !self.overlay) return;
-        const fps = if (dt > 0) 1.0 / dt else 0;
-        var buffer: [96]u8 = undefined;
-        const text = std.fmt.bufPrint(&buffer, "fps {d:.1} ms {d:.2} f{d}", .{ fps, dt * 1000, frame }) catch return;
-        canvas.fillRect(0, 0, @intCast(canvas.width), 10, up.Color.rgba(0, 0, 0, 192));
-        canvas.drawText(text, 2, 2, up.Color.rgb(225, 232, 240));
+        const line_height: i32 = 8;
+        const overlay_height: i32 = 6 * line_height + 6;
+        const overlay_width: i32 = @min(@as(i32, @intCast(canvas.width)), 158);
+        canvas.fillRect(0, 0, overlay_width, overlay_height, up.Color.rgba(0, 0, 0, 208));
+        canvas.strokeRect(0, 0, overlay_width, overlay_height, up.Color.rgba(92, 140, 181, 224));
+        for ([_]developer_diagnostics.OverlayLine{ .header, .timing, .display, .renderer, .work, .capabilities }, 0..) |line, index| {
+            var buffer: [192]u8 = undefined;
+            const text = developer_diagnostics.formatOverlayLine(&buffer, self.diagnostics.snapshot, line) catch continue;
+            canvas.drawText(text, 2, 2 + @as(i32, @intCast(index)) * line_height, up.Color.rgb(225, 232, 240));
+        }
+    }
+
+    fn dumpDiagnostics(self: *DeveloperTools) void {
+        if (!self.dump_snapshot) return;
+        var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
+        const path = std.fmt.bufPrint(&path_buffer, "{s}developer-diagnostics.json", .{self.app_data_path}) catch return;
+        var file = std.fs.cwd().createFile(path, .{}) catch |err| {
+            var message: [160]u8 = undefined;
+            const line = std.fmt.bufPrint(&message, "unpolished-peas developer diagnostics dump failed: {s}\n", .{@errorName(err)}) catch return;
+            self.note(line);
+            return;
+        };
+        defer file.close();
+        var buffer: [4096]u8 = undefined;
+        var writer = file.writer(&buffer);
+        developer_diagnostics.writeJson(&writer.interface, self.diagnostics.snapshot) catch |err| {
+            var message: [160]u8 = undefined;
+            const line = std.fmt.bufPrint(&message, "unpolished-peas developer diagnostics dump failed: {s}\n", .{@errorName(err)}) catch return;
+            self.note(line);
+            return;
+        };
+        writer.interface.writeByte('\n') catch {};
+        writer.interface.flush() catch {};
+        self.note("unpolished-peas developer diagnostics: developer-diagnostics.json\n");
     }
 
     fn note(self: *DeveloperTools, line: []const u8) void {
@@ -2729,6 +2889,31 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "native renderer: video_driver=unavailable requested=auto selected=opengl") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "renderer attempt: backend=sdl_gpu result=device_creation_failed sdl_error=none") != null);
+}
+
+test "developer overlay leaves a game canvas trace unchanged" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    var tools = try DeveloperTools.init(std.testing.allocator, true, data_path);
+    defer tools.deinit();
+    tools.diagnostics.snapshot = .{ .fixed_hz = 60, .capabilities = .{ .audio = .ready, .save = .ready } };
+    var inspector = up.Inspector.init(std.testing.allocator, false);
+    defer inspector.deinit();
+    var canvas = try up.Canvas.init(std.testing.allocator, 160, 90);
+    defer canvas.deinit();
+    var trace = up.testSupport.CanvasTrace.init(std.testing.allocator);
+    defer trace.deinit();
+    canvas.attachTrace(&trace);
+    canvas.clear(up.Color.black);
+    const before = trace.commandSlice().len;
+    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{});
+    try std.testing.expectEqual(before, trace.commandSlice().len);
+    canvas.fillRect(2, 2, 1, 1, up.Color.white);
+    try std.testing.expectEqual(before + 1, trace.commandSlice().len);
 }
 
 test "runtime failures capture bounded artifacts" {
