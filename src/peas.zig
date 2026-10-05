@@ -360,8 +360,13 @@ fn serveBundle(allocator: std.mem.Allocator, args: *std.process.ArgIterator, mod
     const index = try std.fs.path.join(allocator, &.{ root, "index.html" });
     defer allocator.free(index);
     std.fs.cwd().access(index, .{}) catch return error.WebBundleMissing;
+    const server_script = std.process.getEnvVarOwned(allocator, "UP_BROWSER_DEV_SERVER") catch return error.BrowserServerUnavailable;
+    defer allocator.free(server_script);
     std.debug.print("peas serve: http://127.0.0.1:{s}/\n", .{port});
-    var child = std.process.Child.init(&.{ "python3", "-m", "http.server", port, "--bind", "127.0.0.1", "--directory", root }, allocator);
+    // The development rebuild loop and static `peas serve` share one small
+    // Python standard-library server, keeping MIME and path-safety behavior
+    // consistent without making production bundles depend on it.
+    var child = std.process.Child.init(&.{ "python3", server_script, "serve", "--web-dir", root, "--host", "127.0.0.1", "--port", port }, allocator);
     child.stdin_behavior = if (mode.non_interactive) .Ignore else .Inherit;
     child.stdout_behavior = if (mode.json) .Ignore else .Inherit;
     child.stderr_behavior = .Inherit;

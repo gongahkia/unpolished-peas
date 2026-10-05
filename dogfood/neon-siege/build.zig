@@ -67,4 +67,26 @@ pub fn build(b: *std.Build) void {
     web_step.dependOn(&install_font_license_web.step);
     web_step.dependOn(&install_font.step);
     web_step.dependOn(&install_index.step);
+
+    // `web` stays a static production bundle.  `dev-web` calls that same
+    // build path on edits, then serves a completed local snapshot with reload.
+    const dev_web_port = b.option(u16, "dev-web-port", "Local port for `zig build dev-web`") orelse 8000;
+    const dev_web_poll_ms = b.option(u32, "dev-web-poll-ms", "Polling interval for `zig build dev-web`") orelse 200;
+    const dev_web_once = b.option(bool, "dev-web-once", "Build one browser development snapshot and exit") orelse false;
+    const dev_web = b.addSystemCommand(&.{"python3"});
+    dev_web.addFileArg(browser_peas.path("src/browser/dev_server.py"));
+    dev_web.addArgs(&.{
+        "dev",
+        "--project-root",
+        b.pathFromRoot("."),
+        "--web-dir",
+        b.pathFromRoot("zig-out/web"),
+        "--port",
+        b.fmt("{d}", .{dev_web_port}),
+        "--poll-ms",
+        b.fmt("{d}", .{dev_web_poll_ms}),
+    });
+    if (dev_web_once) dev_web.addArg("--once");
+    const dev_web_step = b.step("dev-web", "Watch, build, serve, and refresh Neon Siege's browser game");
+    dev_web_step.dependOn(&dev_web.step);
 }

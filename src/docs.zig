@@ -18,6 +18,7 @@ const source_documents = [_][]const u8{
     "guides/testing.md",
     "guides/developer-diagnostics.md",
     "guides/developer-asset-reload.md",
+    "guides/browser-development.md",
     "proof-games/topdown.md",
     "proof-games/puzzle.md",
     "proof-games/platformer.md",
