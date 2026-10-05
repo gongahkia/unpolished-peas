@@ -515,6 +515,22 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
     });
+    const developer_diagnostics = b.createModule(.{
+        .root_source_file = b.path("src/developer_diagnostics.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const browser_developer_diagnostics = b.createModule(.{
+        .root_source_file = b.path("src/developer_diagnostics.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+    });
+    const browser_developer_diagnostics_object = b.addObject(.{
+        .name = "browser-developer-diagnostics",
+        .root_module = browser_developer_diagnostics,
+    });
+    const browser_developer_diagnostics_test_step = b.step("test-browser-developer-diagnostics", "Compile the developer diagnostics data model for browser Wasm");
+    browser_developer_diagnostics_test_step.dependOn(&browser_developer_diagnostics_object.step);
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
         .target = target,
@@ -523,6 +539,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "unpolished-peas", .module = peas },
             .{ .name = "native-save-data", .module = native_save_data },
             .{ .name = "frame-timing", .module = frame_timing },
+            .{ .name = "developer-diagnostics", .module = developer_diagnostics },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
@@ -803,6 +820,11 @@ pub fn build(b: *std.Build) void {
     const render_benchmark_test_step = b.step("test-render-benchmark", "Test internal rendering benchmark bounds");
     render_benchmark_test_step.dependOn(&run_render_benchmark_tests.step);
     test_step.dependOn(&run_render_benchmark_tests.step);
+    const developer_diagnostics_tests = b.addTest(.{ .root_module = developer_diagnostics });
+    const run_developer_diagnostics_tests = b.addRunArtifact(developer_diagnostics_tests);
+    const developer_diagnostics_test_step = b.step("test-developer-diagnostics", "Test opt-in developer diagnostics aggregation and formatting");
+    developer_diagnostics_test_step.dependOn(&run_developer_diagnostics_tests.step);
+    test_step.dependOn(&run_developer_diagnostics_tests.step);
     const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
     const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");
