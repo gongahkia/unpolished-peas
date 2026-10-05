@@ -30,8 +30,6 @@
         "fixtures",
         "benchmarks/workloads/v1.json",
         "README.md",
-        "LICENSE",
-        "packages",
         "THIRD_PARTY_NOTICES.json",
     },
 }

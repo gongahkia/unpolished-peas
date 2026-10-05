@@ -4,7 +4,8 @@
     <img src="./asset/logo/peas-color-logo.png" width="30%">
 </div>
 
-A small Zig 2D engine with a callback-game starter and explicit core APIs.
+A small Zig framework for deterministic, testable 2D games, with a callback-game
+starter and explicit core APIs.
 
 ## Start in 60 seconds
 
@@ -36,14 +37,17 @@ editor, networking stack, or general scene hierarchy.
 
 ## Supported platforms
 
-| Platform | Desktop runtime | Status |
+| Platform | Desktop runtime | v0.1 contract status |
 | --- | --- | --- |
 | macOS | SDL GPU | supported |
 | Linux | SDL GPU | supported |
 | Windows | SDL GPU | supported |
 | Chromium, Firefox, Safari | WebGL 2 / WebGPU | preview |
 
-The [capability matrix](docs/guides/capabilities.md) defines exact renderer, browser, and CI coverage.
+The [capability matrix](docs/guides/capabilities.md) defines exact renderer,
+browser, and CI coverage. The [installation guide](docs/guides/installation.md)
+separately records which runtime paths have been exercised on real hardware;
+contract or CI support is not a substitute for that evidence.
 
 ## Compact API guide
 
