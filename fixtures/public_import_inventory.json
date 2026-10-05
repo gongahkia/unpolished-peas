@@ -35,6 +35,7 @@
     {"path": "examples/topdown_game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "input", "preview", "testSupport"]}]},
     {"path": "examples/topdown_scene.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "input", "testSupport"]}]},
     {"path": "examples/topdown_sdl.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "Context", "GpuCameraCanvas", "playGame"]}]},
+    {"path": "examples/tutorial_game_protocol.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "playGame"]}]},
     {"path": "fixtures/bounce-project/build.zig", "imports": []},
     {"path": "fixtures/bounce-project/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core", "graphics"]}]},
     {"path": "fixtures/browser-audio-smoke.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets"]}]},

@@ -4,6 +4,10 @@
 keeps short decoded sound effects and long incrementally decoded music as
 deliberately separate resource types.
 
+Read Seed Sprint for the smallest compiled WAV effect example, then Neon Siege
+for the one-time OGG music setup. Game code uses `GameContext.audio`; it does
+not import SDL, WebAudio, mixer, or decoder types.
+
 ## Sound effects
 
 Load a short WAV once during `Game.init`, retain its handle in game state, and

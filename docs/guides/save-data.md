@@ -5,6 +5,12 @@ settings, progression, unlocks, and high scores. It is not an arbitrary
 filesystem API, database, cloud service, serializer, or a home for large
 replay archives.
 
+Start with Seed Sprint's compiled `best-score` example in
+[`src/game.zig`](../../templates/starter/src/game.zig). It stores exactly four
+little-endian bytes and keeps playing if read or write fails. That is the
+intended division of responsibility: Peas owns the safe per-application store;
+your game owns the byte format and its versioning.
+
 The game owns the bytes and their versioning; Peas only chooses a safe
 per-application location and transports those bytes. A game can use JSON or a
 small explicit binary format, but it must not persist raw Zig struct memory.
@@ -14,25 +20,28 @@ small explicit binary format, but it must not persist raw Zig struct memory.
 Runtime hosts provide a store through `GameContext.save_data`. A game that
 requires persistence can use `requireSaveData`; a game for which saving is
 optional can check the nullable field and continue after a recoverable error.
+Seed Sprint uses this exact optional-store pattern:
 
+<!-- BEGIN seed-sprint-save -->
 ```zig
-pub fn load(self: *Game, ctx: *up.core.GameContext) !void {
-    const saves = try ctx.requireSaveData();
-    var bytes: [4]u8 = undefined;
-    const stored = saves.read("best-score", &bytes) catch |err| switch (err) {
-        error.NotFound => return,
-        else => return err,
-    };
-    if (stored.len == bytes.len) self.best_score = std.mem.readInt(u32, &bytes, .little);
-}
+    fn loadBestScore(self: *Game, ctx: *up.core.GameContext) void {
+        const saves = ctx.save_data orelse return;
+        var bytes: [4]u8 = undefined;
+        const stored = saves.read("best-score", &bytes) catch return;
+        if (stored.len != bytes.len) return;
+        self.best_score = std.mem.readInt(u32, &bytes, .little);
+    }
 
-pub fn save(self: Game, ctx: *up.core.GameContext) !void {
-    const saves = try ctx.requireSaveData();
-    var bytes: [4]u8 = undefined;
-    std.mem.writeInt(u32, &bytes, self.best_score, .little);
-    try saves.write("best-score", &bytes);
-}
+    fn saveBestScore(self: *const Game, ctx: *up.core.GameContext) void {
+        const saves = ctx.save_data orelse return;
+        var bytes: [4]u8 = undefined;
+        std.mem.writeInt(u32, &bytes, self.best_score, .little);
+        // Save availability is an environmental concern. A failed write keeps
+        // the current run playable and leaves the in-memory best score intact.
+        saves.write("best-score", &bytes) catch {};
+    }
 ```
+<!-- END seed-sprint-save -->
 
 `read` fills caller-owned storage. For a variable-size blob, use
 `readAlloc(allocator, key, max_bytes)` and free the returned slice with that

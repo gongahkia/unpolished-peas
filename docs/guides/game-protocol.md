@@ -13,7 +13,53 @@ const Game = struct {
 
 `GameContext` exposes read-only normalized `input`. Runtime hosts populate a canvas capability; games obtain it with `requireCanvas`, which fails outside a runtime host. Normal native, browser, and headless protocol hosts also provide a host-owned allocator through `requireAllocator`. A game uses that allocator for values it owns, such as `RenderSurface`, `Image`, `Atlas`, and `Font`, and releases those values from its optional `deinit` callback. They may also provide `save_data`, a backend-neutral `SaveStore` for small game-owned byte blobs; `requireSaveData` makes absence explicit. Normal native, browser, and headless protocol hosts also provide `audio`, a small service for reusable decoded WAV effects plus one incrementally decoded OGG/WAV music stream; loading is available during `init`, while playback can still be blocked or unavailable and must be handled as a recoverable output failure. The host owns the allocator, audio, presentation, and save location; game code owns resources it creates through those capabilities. This keeps callback signatures backend-neutral while allowing core drawing and persistence. During `update`, `elapsed_seconds` and `ctx.elapsed_seconds` are the same non-negative finite fixed simulation step; `ctx.interpolation_alpha` is zero. During `draw`, `ctx.interpolation_alpha` is the remaining fixed-step fraction in `[0, 1]`.
 
-Hosts may set `ctx.simulation_seed` before `init`. A game that needs repeatable random initialization should require that value and store its own `up.core.DeterministicRng`, for example `self.rng = up.core.DeterministicRng.init(ctx.simulation_seed orelse return error.MissingSimulationSeed)`. Peas does not provide a global RNG: the game owns consumption order and therefore its deterministic state.
+## Everyday shape
+
+For a first program, read the compiled
+[tutorial GameProtocol source](../../examples/tutorial_game_protocol.zig), then
+read [Seed Sprint](../../templates/starter/src/game.zig). The practical rule is
+simple:
+
+- `init` chooses initial state and loads long-lived resources once;
+- `update` consumes one normalized fixed-tick input snapshot and changes only
+  game state;
+- `draw` reads game state and issues Canvas requests;
+- `deinit` releases allocator-backed values the game owns.
+
+One presentation frame may execute zero or several fixed `update` calls before
+exactly one `draw`. Put movement, collision, score changes, timers, and random
+decisions in `update`; do not use presentation frame rate or wall-clock reads
+to decide gameplay. `draw` may use `ctx.interpolation_alpha` for visual
+interpolation, but it must not advance simulation.
+
+## Ownership and cleanup
+
+The host owns `GameContext` capabilities. A game owns values it creates through
+them. The usual Zig pattern is:
+
+```text
+init:    allocator = try ctx.requireAllocator(); create/decode once; store values in Game
+update:  reuse those values; do not decode or allocate per tick
+draw:    borrow them to draw
+deinit:  release them in reverse dependency order
+```
+
+For example, deinitialize an `Atlas` before its `Image`, and release a `Font`
+or `RenderSurface` when the game exits. A game with no owned allocation, such
+as the first tutorial source, does not need `deinit`. The authored
+[image/font guide](image-assets.md) and [RenderSurface guide](render-surfaces.md)
+show concrete owned values; Neon Siege is the larger reference.
+
+## Deterministic simulation
+
+Hosts may set `ctx.simulation_seed` before `init`. Store a game-owned
+`DeterministicRng` when spawn positions or other initialization need variation.
+The useful promise is not that arbitrary code is deterministic; it is that the
+same seed, controlled initial save data, fixed-tick replay/input, and
+deterministic game code can reproduce a run. Follow the
+[testing guide](testing.md) for the end-to-end pattern.
+
+### Reference detail
 
 `DeterministicRng` takes one stable `u64` seed and pins PCG XSH-RR 64/32 v1: it advances zero state, adds the seed, and advances once using the fixed PCG stream increment `1442695040888963407`. The exact `nextU32` sequence is covered by fixed compatibility vectors. `nextU64` joins two consecutive 32-bit values (first high), `uintBelow(upper)` is uniformly distributed in `[0, upper)` and rejects zero, and `float01` produces one of `2^24` `f32` values in `[0, 1)`. This makes integer random values portable across Peas targets; it does not make arbitrary game floating-point computation bit-identical across hardware.
 

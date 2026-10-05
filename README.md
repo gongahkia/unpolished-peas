@@ -4,78 +4,79 @@
     <img src="./asset/logo/peas-color-logo.png" width="30%">
 </div>
 
-A small Zig framework for deterministic, testable 2D games, with a callback-game
-starter and explicit core APIs.
+A small Zig framework for deterministic, testable 2D games. Peas is for
+small authored games that benefit from a fixed update loop, headless tests,
+replayable input, and one Zig-first native/browser codebase.
 
-## Start in 60 seconds
+## Start here
 
 Requires Zig `0.15.2`. The intended first public release is `v0.1.0`, but no
-tag has been published yet. Do not use `main` as an installation target.
+immutable package has been published. Do not use `main` as a dependency.
+
+New to Peas?
+
+1. Follow the [5–10 minute Start Here guide](docs/guides/quickstart.md).
+2. Read and run [Seed Sprint](templates/starter/README.md), the canonical
+   beginner project.
+3. Use [Neon Siege](dogfood/neon-siege/README.md) later as a larger
+   public-API reference.
+
+From this repository checkout, verify the starter's real game/test paths:
 
 ```sh
-export ZIG_GLOBAL_CACHE_DIR="$(mktemp -d)"
-export ZIG_LOCAL_CACHE_DIR="$(mktemp -d)"
-zig build test -Dwith_sdl=false
-zig build browser -Dwith_sdl=false
+zig build test-starter -Dwith_sdl=false
+zig build run-starter
 ```
 
-This verifies the source checkout's headless and browser contracts.
+The checked-in template intentionally has no fake release URL/hash. See
+[installation](docs/guides/installation.md) for the explicit unreleased status
+and the eventual immutable-package workflow.
 
-**New to Peas?** Start with [Seed Sprint](templates/starter/README.md): a
-copyable one-screen game whose tiny `src/main.zig` configures the desktop host
-and whose `src/game.zig` shows `init`, fixed-step `update`, Canvas `draw`,
-deterministic RNG, replay testing, and a Canvas-command regression. A release
-preparation step must replace its
-generated dependency coordinate with a real immutable tag URL and matching
-hash before it is usable as an independent project. The checked-in source
-template deliberately contains no misleading release URL or package hash.
+## When Peas fits
 
-Peas fits small authored 2D games, deterministic simulations, strong
-headless testing, macOS/Linux native games, and browser-capable Zig projects.
-It intentionally does not provide an engine-owned ECS, physics, 3D renderer,
-editor, networking stack, or general scene hierarchy.
+Use Peas for small authored 2D games, deterministic simulations, strong
+headless testing, simple Canvas rendering, and native/browser deployment.
+It deliberately does not provide an engine-owned ECS, physics, 3D renderer,
+editor, networking stack, large UI framework, or general scene hierarchy.
 
-## Supported platforms
+## Platform evidence
 
-| Platform | Desktop runtime | v0.1 contract status |
-| --- | --- | --- |
-| macOS | SDL GPU | supported |
-| Linux | SDL GPU | supported |
-| Windows | SDL GPU | supported |
-| Chromium, Firefox, Safari | WebGL 2 / WebGPU | preview |
+The [platform status](docs/guides/platforms.md) page is the single canonical
+record of build/package and runtime evidence. The
+[capability matrix](docs/guides/capabilities.md) separately defines
+renderer/browser contract and CI coverage; neither table substitutes for the
+other.
 
-The [capability matrix](docs/guides/capabilities.md) defines exact renderer,
-browser, and CI coverage. The [installation guide](docs/guides/installation.md)
-separately records which runtime paths have been exercised on real hardware;
-contract or CI support is not a substitute for that evidence.
+## What you will use most
 
-## Compact API guide
-
-- `sdl.playGame(Game)` runs the callback starter.
-- `GameContext` provides input, canvas, and optional small save-data storage.
+- `sdl.playGame(Game)` runs a `GameProtocol` game.
+- `GameContext` provides input, Canvas, allocator, and optional save/audio
+  capabilities.
 - `ctx.requireCanvas()` returns the logical-pixel 2D canvas.
 - `ctx.requireSaveData()` returns a host-owned opaque-byte save store.
 - `Canvas` draws rectangles, sprites, text, clips, and blends.
 - `RenderSurface` owns an offscreen Canvas for deterministic 2D composition.
-- `Config` controls window, fixed timestep, presentation, renderer, and optional runtime assets.
+- `Config` controls window, fixed timestep, presentation, renderer, and
+  optional runtime assets.
 
-Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [authored-assets guide](docs/guides/image-assets.md), [rendering contract](docs/guides/rendering.md), [render-surface guide](docs/guides/render-surfaces.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
+The [learning path](docs/index.md) orders the guides; do not start with the
+core contract or advanced renderer reference unless you need their details.
 
-## Copyable examples
+## Which example should I read?
 
-- [SDL bouncing square](examples/bounce_sdl.zig)
-- [Seed Sprint starter](templates/starter/README.md)
-- [Neon Siege public-API dogfood game](dogfood/neon-siege/README.md)
-- [Explicit core loop](examples/explicit_loop.zig)
-- [Offscreen render surface](examples/render_surface.zig)
-- [Top-down proof game](docs/proof-games/topdown.md)
-- [Puzzle proof game](docs/proof-games/puzzle.md)
-- [Platformer proof game](docs/proof-games/platformer.md)
+| Need | Read |
+| --- | --- |
+| First Peas game | [Seed Sprint](templates/starter/README.md) |
+| Minimal lifecycle | [tutorial GameProtocol example](examples/tutorial_game_protocol.zig) |
+| Complete reference game | [Neon Siege](dogfood/neon-siege/README.md) |
+| Replay/state/Canvas regression | [testing guide](docs/guides/testing.md) |
+| Advanced materials or particles | [advanced 2D guide](docs/guides/advanced-2d.md) |
 
 ## Release and local docs
 
-Published generated projects pin one public archive URL and matching hash. No
-current tag provides that coordinate; see the [installation guide](docs/guides/installation.md)
-and [release policy](docs/guides/releases.md).
+Published generated projects will pin one immutable archive URL and matching
+hash. No current tag provides that coordinate; see the
+[installation guide](docs/guides/installation.md) and
+[release policy](docs/guides/releases.md).
 
 Run `zig build docs` for offline documentation, or `zig build peas -- docs quickstart` to locate its local path. The [docs index](docs/index.md) links testing, platform, API, and migration details.
