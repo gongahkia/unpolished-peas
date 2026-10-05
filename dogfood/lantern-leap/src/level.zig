@@ -6,15 +6,12 @@ pub const world_width: f32 = 384;
 pub const world_height: f32 = 90;
 
 pub const platforms = [_]up.core.Rect{
-    .init(0, 82, 70, 8),
-    .init(88, 82, 70, 8),
-    .init(158, 82, 100, 8),
-    .init(280, 82, 104, 8),
+    .init(0, 82, 384, 8),
     .init(40, 66, 28, 6),
     .init(98, 61, 28, 6),
-    .init(148, 70, 26, 6),
+    .init(148, 66, 26, 6),
     .init(204, 58, 32, 6),
-    .init(256, 68, 30, 6),
+    .init(256, 66, 30, 6),
     .init(314, 57, 44, 6),
 };
 
