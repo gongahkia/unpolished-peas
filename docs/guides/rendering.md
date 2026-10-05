@@ -28,3 +28,27 @@ state, and presentation-independent color semantics as a normal Canvas, then
 composes onto another Canvas with nearest or linear sampling. It is a
 CPU-backed, backend-neutral surface—not a public GPU render target—and is
 available in headless tests as well as native and browser builds.
+
+## Performance guidance
+
+`Canvas` remains the default renderer for small, logical-pixel 2D games. Its
+CPU raster result is deterministic, testable headlessly, and uploaded as one
+RGBA frame by native and browser presenters. `Renderer2D` is a separate
+GPU-oriented queue for staged materials, post passes, and particle batches;
+it is not a transparent replacement for the Canvas contract.
+
+The internal `zig build -Doptimize=ReleaseFast benchmark-rendering` utility
+uses four warm-up iterations and at least 48 Mi logical pixels per workload.
+On the locally tested Intel macOS 15.7.7 host, a representative run cleared a
+320×180 Canvas in 3.1 µs, drew 5,000 visible 16×16 opaque Canvas sprites in
+2.5 ms, and nearest-composed a 320×180 surface to 1280×720 in 1.9 ms. Those
+figures are host-specific observations, not frame-rate guarantees. They show
+that low-resolution CPU Canvas work is appropriate for the reference games;
+they do not establish an Apple Silicon performance result.
+
+Prefer a low-resolution `RenderSurface` with nearest/integer scaling for
+pixel-art presentation. Full-HD linear CPU surface scaling is deliberately a
+practical limit: the same local run took about 23 ms for 320×180 to 1280×720
+linear composition. Use `Renderer2D` when its distinct GPU features are
+needed, especially large contiguous particle batches, rather than moving
+ordinary Canvas games to a GPU API prematurely.

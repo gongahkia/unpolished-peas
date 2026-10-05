@@ -24,7 +24,7 @@ Desktop packages use `zig build peas -- package <linux|macos|windows> OUT --game
 
 ## Performance result
 
-`zig build -Doptimize=ReleaseFast benchmark-proofs` records a `platformer` workload beside `bounce` and `puzzle`: Canvas allocation at startup plus a fixed 240-frame loop that executes input, movement/collision, four platforms, flag, player, and text. The macOS arm64 ReleaseFast run for this change reported startup `17393 ns`, `2` allocations / `61560 B`, and `13202 ns` per frame with `240` allocations / `28800 B` across the loop. The one allocation / `120 B` per rendered frame is the shared text path. Reviewed baseline limits remain bounce-only until platformer results are reviewed on every required native target. Values are target-specific and are not portable frame-rate claims.
+`zig build -Doptimize=ReleaseFast benchmark-proofs` records a `platformer` workload beside `bounce` and `puzzle`: Canvas allocation at startup plus a fixed 240-frame loop that executes input, movement/collision, four platforms, flag, player, and text. The current local hardening run was on Intel macOS, not Apple Silicon; it observed no steady-frame allocation in the proof workload after the built-in Canvas text path became allocation-free. Do not treat that local result as an arm64 measurement or a portable frame-rate claim. Reviewed baseline limits remain bounce-only until platformer results are reviewed on every required native target.
 
 ## Limitations
 

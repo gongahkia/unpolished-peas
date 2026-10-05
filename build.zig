@@ -601,6 +601,7 @@ pub fn build(b: *std.Build) void {
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
     const workload_benchmark = b.addExecutable(.{ .name = "unpolished-peas-workload-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/workload_benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "workload-catalog", .module = workload_catalog }} }) });
     const render_benchmark = b.addExecutable(.{ .name = "unpolished-peas-render-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/render_benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
+    const advanced_particles_benchmark = addExample(b, "unpolished-peas-advanced-particle-proof", "src/advanced_particles_benchmark.zig", target, optimize, peas, sdl);
 
     const peas_cli = b.addExecutable(.{
         .name = "peas",
@@ -784,9 +785,10 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-proofs", "Record deterministic proof-game performance metrics", proof_benchmark);
     addRunStep(b, "benchmark-workloads", "Record versioned native workload metrics", workload_benchmark);
     addRunStep(b, "benchmark-rendering", "Record internal Canvas and RenderSurface performance measurements", render_benchmark);
+    addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dev_demo, minimal_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");

@@ -66,7 +66,7 @@ const renderer = try context.requireRenderer2D();
 try particles.submit(renderer);
 ```
 
-The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. The unit suite verifies retained capacity, blend-batch construction, and Canvas reference output. `Renderer2D` is available through `GameContext` in the SDL GPU and browser runtimes; the OpenGL preview presenter explicitly rejects queued advanced draws rather than silently falling back to CPU rendering.
+The system reserves its configured capacity during initialisation, and post-process blur reuses its scratch buffer. The unit suite verifies retained capacity, blend-batch construction, and Canvas reference output. A local Intel macOS SDL GPU proof submitted 5,000 additive particles as one contiguous batch for 600 bounded frames; it is evidence of the instanced particle path, not a feature-equivalent generic Canvas-sprite throughput comparison. `Renderer2D` is available through `GameContext` in the SDL GPU and browser runtimes; the OpenGL preview presenter explicitly rejects queued advanced draws rather than silently falling back to CPU rendering.
 
 ## Audio and music
 
