@@ -3,7 +3,7 @@
   "sources": [
     {"path": "dogfood/lantern-leap/build.zig", "imports": []},
     {"path": "dogfood/lantern-leap/embedded_assets.zig", "imports": []},
-    {"path": "dogfood/lantern-leap/src/art.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "testSupport"]}]},
+    {"path": "dogfood/lantern-leap/src/art.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "graphics"]}]},
     {"path": "dogfood/lantern-leap/src/game.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["assets", "core", "graphics", "input", "preview", "testSupport"]}]},
     {"path": "dogfood/lantern-leap/src/level.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}]},
     {"path": "dogfood/lantern-leap/src/main.zig", "imports": [{"module": "unpolished-peas", "path": "", "symbols": ["core"]}, {"module": "unpolished-peas-sdl3", "path": "", "symbols": ["Config", "developer", "playGame"]}]},

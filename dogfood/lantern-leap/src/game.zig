@@ -379,7 +379,6 @@ test "Lantern Leap deterministically replays movement, jump, checkpoint, animati
     try second.runReplay(replay);
     const second_capture = second.capture();
 
-    std.debug.print("lantern replay: ticks={d} position=({d:.2},{d:.2}) checkpoint={d} dead={} collected={d}\n", .{ first.game.run_ticks, first.game.player.position.x, first.game.player.position.y, first.game.checkpoint, first.game.dead, first.game.collectedCount() });
     try std.testing.expectEqual(@as(u32, 180), first.game.run_ticks);
     try std.testing.expect(first.game.collectedCount() >= 1);
     try std.testing.expect(first.game.checkpoint == 1);
@@ -412,7 +411,9 @@ test "Lantern Leap collision, death, checkpoint respawn, and gamepad jump stay g
     try std.testing.expect(runner.game.player.position.x > before_x);
 
     runner.game.checkpoint = 1;
-    runner.game.player.position = .{ .x = level.hazards[0].x, .y = level.hazards[0].y };
+    runner.game.player.position = .{ .x = level.hazards[0].x, .y = 74 };
+    runner.game.player.velocity = .{};
+    runner.game.player.grounded = true;
     try runner.run(&.{.{}});
     try std.testing.expect(runner.game.dead);
     for (0..@as(usize, respawn_delay_ticks)) |_| try runner.run(&.{.{}});

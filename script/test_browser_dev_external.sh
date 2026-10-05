@@ -88,4 +88,4 @@ exercise_live_project starter
 exercise_live_project neon-siege
 exercise_live_project lantern-leap
 
-printf '%s\n' 'browser development external consumers passed: starter-live,dogfood-live,platformer-live,web,dev-web,no-checkout'
+printf '%s\n' 'browser development external consumers passed: starter-live,dogfood-live,lantern-live,web,dev-web,no-checkout'
