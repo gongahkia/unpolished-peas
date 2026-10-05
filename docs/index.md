@@ -13,6 +13,7 @@
 - [Authored image and font assets](guides/image-assets.md)
 - [Audio](guides/audio-assets.md)
 - [Developer diagnostics](guides/developer-diagnostics.md)
+- [Development authored-asset reload](guides/developer-asset-reload.md)
 - [Testing](guides/testing.md)
 - [Top-down proof game](proof-games/topdown.md)
 - [Puzzle proof game](proof-games/puzzle.md)

@@ -468,3 +468,36 @@ test "disabled developer registry does not retain source entries" {
     try std.testing.expectEqual(@as(usize, 0), (try registry.pollForTesting()).len);
     try std.testing.expectError(error.InvalidDeveloperAssetPath, validateSourcePath("../sprite.png"));
 }
+
+test "developer reload waits for one stable metadata poll" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    try writeTga(temp.dir, "sprite.tga", .{ 255, 0, 0 });
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const initial_bytes = try temp.dir.readFileAlloc(std.testing.allocator, "sprite.tga", 1024);
+    defer std.testing.allocator.free(initial_bytes);
+    const initial_image = try up.assets.Image.decode(std.testing.allocator, initial_bytes, .{});
+    var atlas = try up.assets.Atlas.init(std.testing.allocator, initial_image, "sprite.tga", &.{.{ .name = "sprite", .x = 0, .y = 0, .w = 1, .h = 1 }}, &.{});
+    defer atlas.deinit();
+    var registry = try Registry.initForTesting(std.testing.allocator, root, true);
+    defer registry.deinit();
+    _ = try registry.registerAtlasImage(&atlas, "sprite.tga", .{});
+
+    var first_edit = [_]u8{0} ** 22;
+    @memcpy(first_edit[0..21], &tga(1, 1, 0, 255, 0));
+    first_edit[21] = 1;
+    try temp.dir.writeFile(.{ .sub_path = "sprite.tga", .data = &first_edit });
+    try std.testing.expectEqual(@as(usize, 0), (try registry.pollForTesting()).len);
+
+    var final_edit = [_]u8{0} ** 23;
+    @memcpy(final_edit[0..21], &tga(1, 1, 255, 0, 0));
+    final_edit[21] = 1;
+    final_edit[22] = 2;
+    try temp.dir.writeFile(.{ .sub_path = "sprite.tga", .data = &final_edit });
+    try std.testing.expectEqual(@as(usize, 0), (try registry.pollForTesting()).len);
+    const changed = try registry.pollForTesting();
+    try std.testing.expectEqual(@as(usize, 1), changed.len);
+    try std.testing.expectEqual(@as(u32, 1), registry.stats().reloads_total);
+    try std.testing.expectEqual(up.core.Color.rgb(0, 0, 255), atlas.image.pixels[0]);
+}

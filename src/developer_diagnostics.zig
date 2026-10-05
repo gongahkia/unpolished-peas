@@ -83,6 +83,17 @@ pub const Capabilities = struct {
     save: Capability = .unavailable,
 };
 
+/// Bounded developer-only authored-asset reload state. This is local
+/// diagnostic metadata, not game state or a stable serialization contract.
+pub const AssetReload = struct {
+    enabled: bool = false,
+    registered: u32 = 0,
+    reloads_total: u32 = 0,
+    reload_failures: u32 = 0,
+    last_asset: []const u8 = "",
+    last_result: []const u8 = "none",
+};
+
 /// A completed presentation-frame snapshot. The native overlay intentionally
 /// shows the last completed snapshot so host presentation timing is complete
 /// before it is displayed on the next frame.
@@ -98,6 +109,7 @@ pub const Snapshot = struct {
     renderer: Renderer = .{},
     work: RenderWork = .{},
     capabilities: Capabilities = .{},
+    asset_reload: AssetReload = .{},
 };
 
 pub const FrameInfo = struct {
@@ -110,6 +122,7 @@ pub const FrameInfo = struct {
     renderer: Renderer,
     work: RenderWork,
     capabilities: Capabilities,
+    asset_reload: AssetReload = .{},
 };
 
 /// Fixed-size, opt-in collector. When disabled all methods avoid clocks and
@@ -181,6 +194,7 @@ pub const Collector = struct {
             .renderer = info.renderer,
             .work = info.work,
             .capabilities = info.capabilities,
+            .asset_reload = info.asset_reload,
         };
         return self.snapshot;
     }
@@ -275,6 +289,18 @@ pub fn writeJson(writer: *std.Io.Writer, snapshot: Snapshot) !void {
     try std.json.Stringify.value(@tagName(snapshot.capabilities.audio), .{}, writer);
     try writer.writeAll(",\"save\":");
     try std.json.Stringify.value(@tagName(snapshot.capabilities.save), .{}, writer);
+    try writer.writeAll("},\"asset_reload\":{\"enabled\":");
+    try writer.print("{}", .{snapshot.asset_reload.enabled});
+    try writer.writeAll(",\"registered\":");
+    try writer.print("{d}", .{snapshot.asset_reload.registered});
+    try writer.writeAll(",\"reloads_total\":");
+    try writer.print("{d}", .{snapshot.asset_reload.reloads_total});
+    try writer.writeAll(",\"reload_failures\":");
+    try writer.print("{d}", .{snapshot.asset_reload.reload_failures});
+    try writer.writeAll(",\"last_asset\":");
+    try std.json.Stringify.value(snapshot.asset_reload.last_asset, .{}, writer);
+    try writer.writeAll(",\"last_result\":");
+    try std.json.Stringify.value(snapshot.asset_reload.last_result, .{}, writer);
     try writer.writeAll("}}");
 }
 
@@ -338,12 +364,13 @@ test "disabled collector does not create timing samples" {
 test "diagnostic JSON is local structured data with host present terminology" {
     var bytes: [2048]u8 = undefined;
     var stream = std.Io.Writer.fixed(&bytes);
-    try writeJson(&stream, .{ .simulation_seed = 42, .renderer = .{ .selected = "sdl_gpu", .fallback = "not_needed", .recovery = "none" } });
+    try writeJson(&stream, .{ .simulation_seed = 42, .renderer = .{ .selected = "sdl_gpu", .fallback = "not_needed", .recovery = "none" }, .asset_reload = .{ .enabled = true, .registered = 2, .reloads_total = 4, .last_asset = "sprite.png", .last_result = "changed" } });
     const output = stream.buffered();
     try std.testing.expect(std.mem.indexOf(u8, output, "host_present_mean") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "gpu_time") == null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\"simulation_seed\":42") != null);
     try std.testing.expect(std.mem.indexOf(u8, output, "\"fallback\":\"not_needed\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output, "\"asset_reload\"") != null);
     var parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, output, .{});
     defer parsed.deinit();
     try std.testing.expect(parsed.value.object.get("renderer") != null);

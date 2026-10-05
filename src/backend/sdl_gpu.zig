@@ -1748,6 +1748,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             .renderer = developerRenderer(&renderer_diagnostics),
             .work = developerRenderWork(&commands, &sprite_batch, &advanced_renderer, &runtime_metrics),
             .capabilities = .{ .audio = if (audio_output != null) .ready else .unavailable, .save = .ready },
+            .asset_reload = developerAssetReload(&developer_asset_registry),
         });
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -2669,6 +2670,18 @@ fn developerRenderWork(commands: *const up.RenderCommandBuffer, sprites: *const 
     };
 }
 
+fn developerAssetReload(registry: *const developer_assets.Registry) developer_diagnostics.AssetReload {
+    const stats = registry.stats();
+    return .{
+        .enabled = stats.enabled,
+        .registered = boundedDiagnosticCount(stats.registered),
+        .reloads_total = stats.reloads_total,
+        .reload_failures = stats.reload_failures,
+        .last_asset = stats.last_asset,
+        .last_result = @tagName(stats.last_result),
+    };
+}
+
 fn boundedDiagnosticCount(value: usize) u32 {
     return if (value > std.math.maxInt(u32)) std.math.maxInt(u32) else @intCast(value);
 }
@@ -2953,6 +2966,20 @@ test "disabled developer tools leave Canvas pixels unchanged" {
     drawDeveloperOverlays(&canvas, &inspector, &tools, &.{}, &.{});
     const after = std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(canvas.pixels));
     try std.testing.expectEqual(before, after);
+}
+
+test "developer tools do not consume a game Tab action" {
+    var input = up.Input{};
+    input.set(.select, true); // SDL maps physical Tab to the normalized select key.
+    const definitions = [_]up.Action{.{ .name = "toggle-audio", .binding = .{ .key = .select } }};
+    var actions = try up.ActionMap.init(std.testing.allocator, &definitions);
+    defer actions.deinit();
+
+    // Developer controls are configured at launch, not dispatched from input.
+    // The same input snapshot reaches a game-owned action map unchanged.
+    actions.update(input);
+    try std.testing.expect(actions.wasPressed("game", "toggle-audio"));
+    try std.testing.expect(input.wasPressed(.select));
 }
 
 test "runtime failures capture bounded artifacts" {
