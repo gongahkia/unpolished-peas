@@ -39,16 +39,16 @@ it is not a transparent replacement for the Canvas contract.
 
 The internal `zig build -Doptimize=ReleaseFast benchmark-rendering` utility
 uses four warm-up iterations and at least 48 Mi logical pixels per workload.
-On the locally tested Intel macOS 15.7.7 host, a representative run cleared a
-320×180 Canvas in 3.1 µs, drew 5,000 visible 16×16 opaque Canvas sprites in
-2.5 ms, and nearest-composed a 320×180 surface to 1280×720 in 1.9 ms. Those
-figures are host-specific observations, not frame-rate guarantees. They show
-that low-resolution CPU Canvas work is appropriate for the reference games;
-they do not establish an Apple Silicon performance result.
+On the locally tested Intel macOS 15.7.7 host, two ReleaseFast runs cleared a
+320×180 Canvas in 3–8 µs, drew 5,000 visible 16×16 opaque Canvas sprites in
+2.5–4.3 ms, and nearest-composed a 320×180 surface to 1280×720 in 1.9–2.7 ms.
+Those figures are host-specific observations, not frame-rate guarantees. They
+show that low-resolution CPU Canvas work is appropriate for the reference
+games; they do not establish an Apple Silicon performance result.
 
 Prefer a low-resolution `RenderSurface` with nearest/integer scaling for
 pixel-art presentation. Full-HD linear CPU surface scaling is deliberately a
-practical limit: the same local run took about 23 ms for 320×180 to 1280×720
+practical limit: the same two runs took 23–29 ms for 320×180 to 1280×720
 linear composition. Use `Renderer2D` when its distinct GPU features are
 needed, especially large contiguous particle batches, rather than moving
 ordinary Canvas games to a GPU API prematurely.
