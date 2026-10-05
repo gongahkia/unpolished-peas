@@ -24,9 +24,11 @@ zig build web
 python3 -m http.server --directory zig-out/web 8000
 ```
 
-`zig build package` produces `zig-out/bin/neon-siege` plus `zig-out/assets`.
-`zig build web` produces a static `zig-out/web` directory; serve it over HTTP
-instead of opening `index.html` directly.
+`zig build package` produces `zig-out/bin/neon-siege` and the embedded font's
+`zig-out/licenses/Basic-OFL.txt` notice. It has no runtime asset directory.
+`zig build web` produces a static `zig-out/web` directory and the matching
+font notice under `zig-out/web/licenses`; serve it over HTTP instead of
+opening `index.html` directly.
 
 The checked-in manifest uses a local package-root dependency for dogfooding.
 The repository's external-consumer test copies this project beside a
@@ -39,17 +41,18 @@ shape used by release validation. Game source itself imports only
 - `GameProtocol` init/update/draw plus optional cleanup.
 - Fixed-step actions for keyboard and gamepad.
 - Seeded game-owned `DeterministicRng` waves.
-- Generated public Image and Atlas frames (with a native TGA decode proof).
+- An authored embedded PNG decoded into a public `Image` and Atlas frames.
 - Camera world rendering into a 80x45 nearest-scaled `RenderSurface`.
-- Built-in Canvas text HUD.
+- An authored embedded TrueType font for the HUD and prompts.
 - Two reusable high-level WAV sound effects.
 - Game-owned save bytes for best score and audio preference.
 - Headless replay, Canvas-trace, and pixel-hash regression tests.
 
-## Deliberate limitations
+## Authored assets
 
-The tiny authored assets are source byte arrays so the reference remains
-self-contained. The game builds an `Image` from generated pixels on both
-targets because Peas's stb-backed `Image.decode` path is currently native-only.
-That is a useful portability proof, not a replacement for a polished external
-image/font asset workflow; the dogfood friction log records that distinction.
+`embedded_assets.zig` is a small project-root wrapper around normal
+`assets/neon-siege.png` and `assets/neon-siege.ttf` files. The same public
+`Image.decode` and `Font.decodeTrueType` calls run in native, headless, and
+browser/Wasm builds. Decoded resources are owned by `Game` and released from
+its protocol `deinit`; the compiled game does not fetch or load those files at
+runtime.

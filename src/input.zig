@@ -238,6 +238,13 @@ pub const Input = struct {
     pub fn releaseAll(self: *Input) void {
         for (self.down, 0..) |is_down, index| if (is_down) self.set(@enumFromInt(@as(u8, @intCast(index))), false);
         for (self.pointer_down, 0..) |is_down, index| if (is_down) self.setPointerButton(@enumFromInt(@as(u8, @intCast(index))), false);
+        for (&self.gamepads) |*slot| if (slot.*) |*pad| {
+            for (&pad.buttons, 0..) |*is_down, index| if (is_down.*) {
+                is_down.* = false;
+                pad.released[index] = true;
+            };
+            @memset(pad.axes[0..], 0);
+        };
     }
 
     pub fn pointerIsDown(self: Input, button: PointerButton) bool {
@@ -340,13 +347,21 @@ test "shared keyboard pointer fixture releases held input on focus loss" {
     input.set(key, true);
     input.setPointerPosition(.{ .x = fixture.window[0], .y = fixture.window[1] }, .{ .x = fixture.framebuffer[0], .y = fixture.framebuffer[1] }, .{ .x = fixture.canvas[0], .y = fixture.canvas[1] });
     input.setPointerButton(button, true);
+    try std.testing.expect(input.addGamepad(7));
+    input.setGamepadButton(7, .south, true);
+    input.setGamepadAxis(7, .left_x, -0.75, 0);
     try std.testing.expect(input.isDown(key));
     try std.testing.expect(input.pointerIsDown(button));
+    try std.testing.expect((input.gamepad(7).?).button(.south));
     try std.testing.expectEqual(Vec2.init(fixture.canvas[0], fixture.canvas[1]), input.pointer.canvas.?);
     input.beginFrame();
     input.releaseAll();
     try std.testing.expect(!input.isDown(key));
     try std.testing.expect(!input.pointerIsDown(button));
+    try std.testing.expect(!(input.gamepad(7).?).button(.south));
+    try std.testing.expect((input.gamepad(7).?).wasReleased(.south));
+    try std.testing.expectEqual(@as(f32, 0), (input.gamepad(7).?).axis(.left_x));
+    try std.testing.expectEqual(@as(f32, -0.75), (input.gamepad(7).?).previousAxis(.left_x));
     try std.testing.expect(input.wasReleased(key));
     try std.testing.expect(input.pointerWasReleased(button));
 }

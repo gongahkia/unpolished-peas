@@ -39,12 +39,14 @@ pub fn build(b: *std.Build) void {
         .target = wasi_target,
         .optimize = browser_optimize,
     });
+    addBrowserStb(wasm_peas);
     addBrowserVorbis(wasm_peas);
     const browser_peas = b.addModule("unpolished-peas-browser-core", .{
         .root_source_file = b.path("src/unpolished_peas.zig"),
         .target = browser_target,
         .optimize = browser_optimize,
     });
+    addBrowserStb(browser_peas);
     addBrowserVorbis(browser_peas);
     const frame_timing = b.createModule(.{
         .root_source_file = b.path("src/frame_timing.zig"),
@@ -129,7 +131,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("dogfood/neon-siege/src/game.zig"),
         .target = browser_target,
         .optimize = browser_optimize,
-        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "neon-siege-assets", .module = b.createModule(.{ .root_source_file = b.path("dogfood/neon-siege/embedded_assets.zig"), .target = browser_target, .optimize = browser_optimize }) },
+        },
     });
     const browser_runtime = b.addExecutable(.{
         .name = "unpolished-peas",
@@ -206,6 +211,22 @@ pub fn build(b: *std.Build) void {
     browser_render_surface_test.addFileArg(browser_render_surface_smoke.getEmittedBin());
     const browser_render_surface_test_step = b.step("test-browser-render-surfaces", "Run the public render-surface API through a browser-style Wasm host");
     browser_render_surface_test_step.dependOn(&browser_render_surface_test.step);
+    const browser_authored_assets_smoke = b.addExecutable(.{
+        .name = "unpolished-peas-browser-authored-assets-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("authored_assets_wasm_smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        }),
+    });
+    browser_authored_assets_smoke.entry = .disabled;
+    browser_authored_assets_smoke.rdynamic = true;
+    browser_authored_assets_smoke.import_memory = true;
+    const browser_authored_assets_test = b.addSystemCommand(&.{ "node", "script/test_browser_authored_assets.mjs" });
+    browser_authored_assets_test.addFileArg(browser_authored_assets_smoke.getEmittedBin());
+    const browser_authored_assets_test_step = b.step("test-browser-authored-assets", "Decode embedded image and TrueType font assets through browser-style Wasm");
+    browser_authored_assets_test_step.dependOn(&browser_authored_assets_test.step);
     const browser_ogg_decode_smoke = b.addExecutable(.{
         .name = "unpolished-peas-browser-ogg-decode-smoke",
         .root_module = b.createModule(.{
@@ -529,14 +550,12 @@ pub fn build(b: *std.Build) void {
     package_starter.dependOn(&b.addInstallArtifact(starter_demo, .{}).step);
     package_starter.dependOn(&install_starter_assets.step);
     const dogfood_demo = addExample(b, "unpolished-peas-neon-siege", "dogfood/neon-siege/src/main.zig", target, optimize, peas, sdl);
-    const install_dogfood_assets = b.addInstallDirectory(.{
-        .source_dir = b.path("dogfood/neon-siege/assets"),
-        .install_dir = .prefix,
-        .install_subdir = "assets",
-    });
-    const package_dogfood = b.step("package-dogfood", "Install the Neon Siege dogfood game and its assets");
+    const dogfood_assets = b.createModule(.{ .root_source_file = b.path("dogfood/neon-siege/embedded_assets.zig"), .target = target, .optimize = optimize });
+    dogfood_demo.root_module.addImport("neon-siege-assets", dogfood_assets);
+    const install_dogfood_font_license = b.addInstallFileWithDir(b.path("dogfood/neon-siege/assets/OFL.txt"), .prefix, "licenses/Basic-OFL.txt");
+    const package_dogfood = b.step("package-dogfood", "Install the embedded Neon Siege dogfood game");
     package_dogfood.dependOn(&b.addInstallArtifact(dogfood_demo, .{}).step);
-    package_dogfood.dependOn(&install_dogfood_assets.step);
+    package_dogfood.dependOn(&install_dogfood_font_license.step);
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, null);
@@ -688,6 +707,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "unpolished-peas", .module = peas },
             .{ .name = "unpolished-peas-sdl3", .module = sdl },
+            .{ .name = "neon-siege-assets", .module = dogfood_assets },
         },
     }) });
     const run_dogfood_tests = b.addRunArtifact(dogfood_tests);
@@ -1003,6 +1023,22 @@ fn addBrowserVorbis(mod: *std.Build.Module) void {
     mod.addIncludePath(mod.owner.path("vendor/stb"));
     mod.addCSourceFile(.{
         .file = mod.owner.path("src/vendor/stb_vorbis_wasm.c"),
+        .flags = &.{ "-std=c99", "-ffreestanding", "-Wno-tautological-pointer-compare" },
+    });
+}
+
+/// Browser builds use the same stb image and TrueType decoders as native
+/// builds. The C sources are freestanding and receive allocation through the
+/// small Zig-owned bridge imported by `image.zig`.
+fn addBrowserStb(mod: *std.Build.Module) void {
+    mod.addIncludePath(mod.owner.path("vendor/stb"));
+    mod.addIncludePath(mod.owner.path("src/vendor"));
+    mod.addCSourceFile(.{
+        .file = mod.owner.path("src/vendor/stb_image_wasm.c"),
+        .flags = &.{ "-std=c99", "-ffreestanding", "-Wno-tautological-pointer-compare" },
+    });
+    mod.addCSourceFile(.{
+        .file = mod.owner.path("src/vendor/stb_truetype_wasm.c"),
         .flags = &.{ "-std=c99", "-ffreestanding", "-Wno-tautological-pointer-compare" },
     });
 }

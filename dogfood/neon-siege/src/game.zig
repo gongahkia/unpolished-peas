@@ -51,6 +51,7 @@ pub const Game = struct {
     actions: ?up.input.ActionMap = null,
     surface: ?up.graphics.RenderSurface = null,
     atlas: ?*up.assets.Atlas = null,
+    font: ?*up.assets.Font = null,
     player_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
     enemy_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
     projectile_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
@@ -77,15 +78,20 @@ pub const Game = struct {
         self.actions = try up.input.ActionMap.init(self.allocator.?, &controls);
         self.surface = try up.graphics.RenderSurface.init(self.allocator.?, world_width, world_height);
 
-        const image = try art.makeImage(self.allocator.?);
+        const image = try up.assets.Image.decode(self.allocator.?, art.sprite_sheet_png, .{});
         const atlas = try self.allocator.?.create(up.assets.Atlas);
         errdefer self.allocator.?.destroy(atlas);
-        atlas.* = try up.assets.Atlas.init(self.allocator.?, image, "neon-siege.tga", &art.frames, &.{});
+        atlas.* = try up.assets.Atlas.init(self.allocator.?, image, "neon-siege.png", &art.frames, &.{});
         self.atlas = atlas;
         self.player_frame = atlas.findFrame("player") orelse return error.MissingPlayerFrame;
         self.enemy_frame = atlas.findFrame("enemy") orelse return error.MissingEnemyFrame;
         self.projectile_frame = atlas.findFrame("projectile") orelse return error.MissingProjectileFrame;
         self.pickup_frame = atlas.findFrame("pickup") orelse return error.MissingPickupFrame;
+
+        const font = try self.allocator.?.create(up.assets.Font);
+        errdefer self.allocator.?.destroy(font);
+        font.* = try up.assets.Font.decodeTrueType(self.allocator.?, art.ui_font_ttf, .{ .pixel_height = 8, .atlas_width = 128, .atlas_height = 128 });
+        self.font = font;
 
         self.loadSettings(ctx);
         try self.reset(ctx.simulation_seed orelse default_seed);
@@ -104,6 +110,11 @@ pub const Game = struct {
             atlas.deinit();
             if (self.allocator) |allocator| allocator.destroy(atlas);
             self.atlas = null;
+        }
+        if (self.font) |font| {
+            font.deinit();
+            if (self.allocator) |allocator| allocator.destroy(font);
+            self.font = null;
         }
         if (self.surface) |*surface| {
             surface.deinit();
@@ -178,6 +189,7 @@ pub const Game = struct {
         const canvas = try ctx.requireCanvas();
         const surface = if (self.surface) |*value| value else return error.GameNotInitialized;
         const atlas = self.atlas orelse return error.GameNotInitialized;
+        const font = self.font orelse return error.GameNotInitialized;
         const world = surface.canvas();
         world.clear(up.core.Color.rgb(8, 12, 24));
 
@@ -198,13 +210,13 @@ pub const Game = struct {
         canvas.fillRect(0, 0, @intCast(width), 12, up.core.Color.rgba(3, 5, 13, 220));
         var status: [64]u8 = undefined;
         const text = try std.fmt.bufPrint(&status, "SCORE {d}  BEST {d}  HP {d}  WAVE {d}", .{ self.score, self.best_score, self.player.health, self.wave });
-        canvas.drawText(text, 3, 3, up.core.Color.rgb(231, 242, 255));
-        canvas.drawText("ARROWS/STICK MOVE  SPACE/A SHOOT  X/B DASH", 3, 78, up.core.Color.rgb(173, 197, 222));
-        canvas.drawText("ENTER/START RESTART  TAB/BACK TOGGLE AUDIO", 3, 84, up.core.Color.rgb(173, 197, 222));
+        font.drawText(canvas, text, 3, 2, up.core.Color.rgb(231, 242, 255));
+        font.drawText(canvas, "ARROWS/STICK MOVE  SPACE/A SHOOT  X/B DASH", 3, 77, up.core.Color.rgb(173, 197, 222));
+        font.drawText(canvas, "ENTER/START RESTART  TAB/BACK TOGGLE AUDIO", 3, 84, up.core.Color.rgb(173, 197, 222));
         if (self.game_over) {
             canvas.fillRect(25, 31, 110, 26, up.core.Color.rgba(7, 9, 19, 230));
-            canvas.drawText("SYSTEM BREACH", 48, 36, up.core.Color.rgb(255, 120, 151));
-            canvas.drawText("PRESS ENTER TO RESTART", 31, 46, up.core.Color.rgb(235, 241, 250));
+            font.drawText(canvas, "SYSTEM BREACH", 48, 36, up.core.Color.rgb(255, 120, 151));
+            font.drawText(canvas, "PRESS ENTER TO RESTART", 31, 46, up.core.Color.rgb(235, 241, 250));
         }
     }
 
@@ -364,8 +376,8 @@ test "Neon Siege replays combat with seeded state, save data, Canvas trace, and 
     try std.testing.expectEqual(first.game.player.position, second.game.player.position);
     try up.testSupport.expectCanvasTraceEqual(first_capture.canvas_trace, second_capture.canvas_trace);
     const trace_hash = try first_capture.canvas_trace.hash();
-    try std.testing.expectEqual(@as(u64, 7_064_560_318_589_015_269), trace_hash);
-    try std.testing.expectEqual(@as(u64, 10_160_251_712_926_268_076), first_capture.image_hash);
+    try std.testing.expectEqual(@as(u64, 6_877_916_436_497_965_585), trace_hash);
+    try std.testing.expectEqual(@as(u64, 2_571_281_868_352_411_261), first_capture.image_hash);
     try std.testing.expectEqual(trace_hash, try second_capture.canvas_trace.hash());
     try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
 }

@@ -53,9 +53,9 @@ The [capability matrix](docs/guides/capabilities.md) defines exact renderer, bro
 - `ctx.requireSaveData()` returns a host-owned opaque-byte save store.
 - `Canvas` draws rectangles, sprites, text, clips, and blends.
 - `RenderSurface` owns an offscreen Canvas for deterministic 2D composition.
-- `Config` controls window, fixed timestep, presentation, renderer, and assets.
+- `Config` controls window, fixed timestep, presentation, renderer, and optional runtime assets.
 
-Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [rendering contract](docs/guides/rendering.md), [render-surface guide](docs/guides/render-surfaces.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
+Read the [core contract](docs/guides/core-contract.md), [game protocol](docs/guides/game-protocol.md), [save-data guide](docs/guides/save-data.md), [authored-assets guide](docs/guides/image-assets.md), [rendering contract](docs/guides/rendering.md), [render-surface guide](docs/guides/render-surfaces.md), and generated [core API](docs/api/core.md) before relying on behavior beyond the starter.
 
 ## Copyable examples
 

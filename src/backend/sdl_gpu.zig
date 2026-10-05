@@ -134,6 +134,13 @@ pub const RendererRejectionReason = enum {
 pub const RendererRejection = struct {
     renderer: RendererKind,
     reason: RendererRejectionReason,
+    sdl_error: [160]u8 = [_]u8{0} ** 160,
+    sdl_error_len: u8 = 0,
+
+    fn errorMessage(self: *const RendererRejection) []const u8 {
+        if (self.sdl_error_len == 0) return "none";
+        return self.sdl_error[0..self.sdl_error_len];
+    }
 };
 
 pub const RendererRecoveryAction = enum {
@@ -144,6 +151,9 @@ pub const RendererRecoveryAction = enum {
 
 pub const RendererDiagnostics = struct {
     requested: RendererPreference,
+    /// SDL's selected video driver, captured after successful video startup.
+    /// This is diagnostic information only; it does not influence selection.
+    video_driver: []const u8 = "unavailable",
     selected: ?RendererKind = null,
     gpu: RendererCapability = .unknown,
     opengl_33: RendererCapability = .unknown,
@@ -156,10 +166,25 @@ pub const RendererDiagnostics = struct {
         return .{ .requested = requested };
     }
 
+    fn captureVideoDriver(self: *RendererDiagnostics) void {
+        self.video_driver = currentVideoDriver();
+    }
+
     pub fn reject(self: *RendererDiagnostics, renderer: RendererKind, reason: RendererRejectionReason) void {
+        self.rejectWithSdlError(renderer, reason, "");
+    }
+
+    fn rejectSdl(self: *RendererDiagnostics, renderer: RendererKind, reason: RendererRejectionReason) void {
+        self.rejectWithSdlError(renderer, reason, std.mem.span(c.SDL_GetError()));
+    }
+
+    fn rejectWithSdlError(self: *RendererDiagnostics, renderer: RendererKind, reason: RendererRejectionReason, sdl_error: []const u8) void {
         for (&self.rejected) |*entry| {
             if (entry.* == null) {
                 entry.* = .{ .renderer = renderer, .reason = reason };
+                const error_len = @min(sdl_error.len, entry.*.?.sdl_error.len);
+                std.mem.copyForwards(u8, entry.*.?.sdl_error[0..error_len], sdl_error[0..error_len]);
+                entry.*.?.sdl_error_len = @intCast(error_len);
                 break;
             }
         }
@@ -1122,6 +1147,7 @@ const RuntimeRenderer = union(RendererKind) {
     }
 
     fn initWithWindowFlags(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
+        diagnostics.captureVideoDriver();
         var renderer = switch (config.renderer) {
             .sdl_gpu => initGpu(config, diagnostics, additional_window_flags),
             .opengl => initOpenGl(config, diagnostics, additional_window_flags),
@@ -1134,12 +1160,12 @@ const RuntimeRenderer = union(RendererKind) {
 
     fn initGpu(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
         const native_window = c.SDL_CreateWindow(config.title.ptr, try scaledInt(config.width, config.scale), try scaledInt(config.height, config.scale), windowFlags(config, additional_window_flags)) orelse {
-            diagnostics.reject(.sdl_gpu, .window_creation_failed);
+            diagnostics.rejectSdl(.sdl_gpu, .window_creation_failed);
             return sdlRendererFail("SDL_CreateWindow");
         };
         errdefer c.SDL_DestroyWindow(native_window);
         const device = createGpuDevice(true) orelse {
-            diagnostics.reject(.sdl_gpu, .device_creation_failed);
+            diagnostics.rejectSdl(.sdl_gpu, .device_creation_failed);
             return sdlRendererFail("SDL_CreateGPUDevice");
         };
         errdefer c.SDL_DestroyGPUDevice(device);
@@ -1150,16 +1176,16 @@ const RuntimeRenderer = union(RendererKind) {
         diagnostics.gpu = .available;
         diagnostics.gpu_shader_format = shader_format;
         if (!c.SDL_ClaimWindowForGPUDevice(device, native_window)) {
-            diagnostics.reject(.sdl_gpu, .window_claim_failed);
+            diagnostics.rejectSdl(.sdl_gpu, .window_claim_failed);
             return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
         }
         errdefer c.SDL_ReleaseWindowFromGPUDevice(device, native_window);
         if (!c.SDL_SetGPUSwapchainParameters(device, native_window, c.SDL_GPU_SWAPCHAINCOMPOSITION_SDR, c.SDL_GPU_PRESENTMODE_VSYNC)) {
-            diagnostics.reject(.sdl_gpu, .swapchain_configuration_failed);
+            diagnostics.rejectSdl(.sdl_gpu, .swapchain_configuration_failed);
             return sdlGpuFail(device, "SDL_SetGPUSwapchainParameters");
         }
         const presenter = Presenter.init(device, config.width, config.height) catch |err| {
-            diagnostics.reject(.sdl_gpu, .presenter_creation_failed);
+            diagnostics.rejectSdl(.sdl_gpu, .presenter_creation_failed);
             return err;
         };
         diagnostics.select(.sdl_gpu);
@@ -1168,16 +1194,16 @@ const RuntimeRenderer = union(RendererKind) {
 
     fn initOpenGl(config: Config, diagnostics: *RendererDiagnostics, additional_window_flags: c.SDL_WindowFlags) !RuntimeRenderer {
         sdl_gl.configureContext() catch |err| {
-            diagnostics.reject(.opengl, .context_configuration_failed);
+            diagnostics.rejectSdl(.opengl, .context_configuration_failed);
             return err;
         };
         const native_window = c.SDL_CreateWindow(config.title.ptr, try scaledInt(config.width, config.scale), try scaledInt(config.height, config.scale), windowFlags(config, additional_window_flags | c.SDL_WINDOW_OPENGL)) orelse {
-            diagnostics.reject(.opengl, .window_creation_failed);
+            diagnostics.rejectSdl(.opengl, .window_creation_failed);
             return error.OpenGlWindowCreationFailed;
         };
         errdefer c.SDL_DestroyWindow(native_window);
         const presenter = OpenGlPresenter.init(native_window, config.width, config.height) catch |err| {
-            diagnostics.reject(.opengl, openGlRejectionReason(err));
+            diagnostics.rejectSdl(.opengl, openGlRejectionReason(err));
             return err;
         };
         diagnostics.select(.opengl);
@@ -1369,7 +1395,7 @@ fn ProtocolAdapter(comptime Game: type) type {
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
     try config.validate();
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlRendererFail("SDL_Init");
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlVideoInitFail(config.renderer);
     defer c.SDL_Quit();
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
@@ -1397,7 +1423,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var assets = if (config.asset_root) |root_path|
         try up.AssetStore.initAbsolute(allocator, root_path)
     else
-        try up.AssetStore.initExecutable(allocator);
+        try up.AssetStore.initExecutableOptional(allocator);
     defer assets.deinit();
     var sprite_batch = up.SpriteBatch.init(allocator);
     defer sprite_batch.deinit();
@@ -2026,7 +2052,8 @@ test "runtime Config validates dynamic settings centrally" {
 
 test "renderer diagnostics retain fallback capabilities and recovery action" {
     var diagnostics = RendererDiagnostics.init(.auto);
-    diagnostics.reject(.sdl_gpu, .unsupported_shader_format);
+    diagnostics.video_driver = "wayland";
+    diagnostics.rejectWithSdlError(.sdl_gpu, .unsupported_shader_format, "shader format unavailable");
     diagnostics.select(.opengl);
     diagnostics.recovery_action = .opengl_context_recreated;
     try std.testing.expectEqual(RendererPreference.auto, diagnostics.requested);
@@ -2034,9 +2061,26 @@ test "renderer diagnostics retain fallback capabilities and recovery action" {
     try std.testing.expectEqual(RendererCapability.unavailable, diagnostics.gpu);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.opengl_33);
     try std.testing.expectEqual(RendererRejectionReason.unsupported_shader_format, diagnostics.rejected[0].?.reason);
+    try std.testing.expectEqualStrings("shader format unavailable", diagnostics.rejected[0].?.errorMessage());
     try std.testing.expectEqual(RendererRecoveryAction.opengl_context_recreated, diagnostics.recovery_action);
     try std.testing.expectEqual(RendererCapability.available, diagnostics.features().context_recovery);
+    try std.testing.expectEqualStrings("opengl_succeeded", rendererFallbackStatus(&diagnostics));
     try diagnostics.requireFeatures(&.{ .sprites, .screenshots });
+}
+
+test "renderer diagnostics include video driver fallback and SDL rejection detail" {
+    var diagnostics = RendererDiagnostics.init(.auto);
+    diagnostics.video_driver = "wayland";
+    diagnostics.rejectWithSdlError(.sdl_gpu, .device_creation_failed, "No supported SDL_GPU backend found!");
+    diagnostics.rejectWithSdlError(.opengl, .window_creation_failed, "No available video device");
+    var buffer: [512]u8 = undefined;
+    const summary = try formatRendererDiagnostics(&buffer, &diagnostics);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "video_driver=wayland") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "requested=auto") != null);
+    try std.testing.expect(std.mem.indexOf(u8, summary, "fallback=opengl_failed") != null);
+    const first = try formatRendererRejection(&buffer, &diagnostics.rejected[0].?);
+    try std.testing.expect(std.mem.indexOf(u8, first, "backend=sdl_gpu") != null);
+    try std.testing.expect(std.mem.indexOf(u8, first, "No supported SDL_GPU backend found!") != null);
 }
 
 test "OpenGL shader failures retain validation diagnostics" {
@@ -2478,16 +2522,14 @@ const DeveloperTools = struct {
 
     fn rendererDiagnostics(self: *DeveloperTools, diagnostics: *const RendererDiagnostics) void {
         var buffer: [512]u8 = undefined;
-        const selected = if (diagnostics.selected) |renderer| @tagName(renderer) else "none";
-        const shader_format = if (diagnostics.gpu_shader_format) |format| @tagName(format) else "none";
-        const first_renderer = if (diagnostics.rejected[0]) |rejection| @tagName(rejection.renderer) else "none";
-        const first_reason = if (diagnostics.rejected[0]) |rejection| @tagName(rejection.reason) else "none";
-        const second_renderer = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.renderer) else "none";
-        const second_reason = if (diagnostics.rejected[1]) |rejection| @tagName(rejection.reason) else "none";
-        const preflight = if (diagnostics.preflight_failure) |feature| @tagName(feature) else "none";
-        const line = std.fmt.bufPrint(&buffer, "unpolished-peas renderer requested={s} selected={s} gpu={s} opengl_33={s} shader={s} recovery={s} preflight={s} rejected0={s}:{s} rejected1={s}:{s}\n", .{ @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), shader_format, @tagName(diagnostics.recovery_action), preflight, first_renderer, first_reason, second_renderer, second_reason }) catch return;
+        const line = formatRendererDiagnostics(&buffer, diagnostics) catch return;
         std.debug.print("{s}", .{line});
         self.note(line);
+        for (diagnostics.rejected) |maybe_rejection| if (maybe_rejection) |rejection| {
+            const attempt = formatRendererRejection(&buffer, &rejection) catch continue;
+            std.debug.print("{s}", .{attempt});
+            self.note(attempt);
+        };
     }
 
     fn callbackFailure(self: *DeveloperTools, failure_value: Failure) void {
@@ -2585,8 +2627,8 @@ test "developer tools log runtime failure categories" {
     try std.testing.expect(std.mem.indexOf(u8, log, "asset reload failed: ReloadFailed") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "event callback failed: EventFailed event=focus_lost") != null);
     try std.testing.expect(std.mem.indexOf(u8, log, "inspector panel scene failed: PanelFailed") != null);
-    try std.testing.expect(std.mem.indexOf(u8, log, "renderer requested=auto selected=opengl") != null);
-    try std.testing.expect(std.mem.indexOf(u8, log, "rejected0=sdl_gpu:device_creation_failed") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "native renderer: video_driver=unavailable requested=auto selected=opengl") != null);
+    try std.testing.expect(std.mem.indexOf(u8, log, "renderer attempt: backend=sdl_gpu result=device_creation_failed sdl_error=none") != null);
 }
 
 test "runtime failures capture bounded artifacts" {
@@ -4309,6 +4351,30 @@ fn gpuDriverName(device: *c.SDL_GPUDevice) []const u8 {
     return std.mem.span(raw);
 }
 
+fn currentVideoDriver() []const u8 {
+    const raw = c.SDL_GetCurrentVideoDriver() orelse return "unavailable";
+    return std.mem.span(raw);
+}
+
+fn rendererFallbackStatus(diagnostics: *const RendererDiagnostics) []const u8 {
+    if (diagnostics.requested != .auto) return "not_requested";
+    if (diagnostics.rejected[0] == null) return "not_needed";
+    if (diagnostics.selected == .opengl) return "opengl_succeeded";
+    if (diagnostics.rejected[1] != null) return "opengl_failed";
+    return "not_available";
+}
+
+fn formatRendererDiagnostics(buffer: []u8, diagnostics: *const RendererDiagnostics) ![]const u8 {
+    const selected = if (diagnostics.selected) |renderer| @tagName(renderer) else "none";
+    const shader_format = if (diagnostics.gpu_shader_format) |format| @tagName(format) else "none";
+    const preflight = if (diagnostics.preflight_failure) |feature| @tagName(feature) else "none";
+    return std.fmt.bufPrint(buffer, "unpolished-peas native renderer: video_driver={s} requested={s} selected={s} sdl_gpu={s} opengl_33={s} shader={s} fallback={s} recovery={s} preflight={s}\n", .{ diagnostics.video_driver, @tagName(diagnostics.requested), selected, @tagName(diagnostics.gpu), @tagName(diagnostics.opengl_33), shader_format, rendererFallbackStatus(diagnostics), @tagName(diagnostics.recovery_action), preflight });
+}
+
+fn formatRendererRejection(buffer: []u8, rejection: *const RendererRejection) ![]const u8 {
+    return std.fmt.bufPrint(buffer, "unpolished-peas renderer attempt: backend={s} result={s} sdl_error={s}\n", .{ @tagName(rejection.renderer), @tagName(rejection.reason), rejection.errorMessage() });
+}
+
 fn printGpuDrivers() void {
     const count = c.SDL_GetNumGPUDrivers();
     var index: c_int = 0;
@@ -4364,6 +4430,18 @@ fn sdlRendererFail(comptime label: []const u8) error{SdlError} {
     std.debug.print("SDL renderer failure: operation={s} platform={s} required_shader_formats=0x{x} drivers=[", .{ label, @tagName(builtin.os.tag), GpuCapabilities.required_shader_formats });
     printGpuDrivers();
     std.debug.print("] sdl_error={s}\n", .{c.SDL_GetError()});
+    return error.SdlError;
+}
+
+fn sdlVideoInitFail(requested: RendererPreference) error{SdlError} {
+    var error_buffer: [256]u8 = undefined;
+    const raw_error = std.mem.span(c.SDL_GetError());
+    const error_len = @min(raw_error.len, error_buffer.len);
+    std.mem.copyForwards(u8, error_buffer[0..error_len], raw_error[0..error_len]);
+    std.debug.print(
+        "Peas native renderer initialization failed\nvideo driver: {s}\nrequested renderer: {s}\nattempted backend: SDL video initialization\nSDL error: {s}\nfallback: not attempted (SDL video initialization failed)\n",
+        .{ currentVideoDriver(), @tagName(requested), error_buffer[0..error_len] },
+    );
     return error.SdlError;
 }
 

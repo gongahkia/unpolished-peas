@@ -10,7 +10,7 @@
 - [Stable 2D render contract](guides/rendering.md)
 - [Render surfaces](guides/render-surfaces.md)
 - [Advanced 2D](guides/advanced-2d.md)
-- [Stable image assets](guides/image-assets.md)
+- [Authored image and font assets](guides/image-assets.md)
 - [Audio](guides/audio-assets.md)
 - [Testing](guides/testing.md)
 - [Top-down proof game](proof-games/topdown.md)

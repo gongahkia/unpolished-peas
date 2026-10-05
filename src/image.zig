@@ -1,8 +1,16 @@
 const std = @import("std");
+const builtin = @import("builtin");
 const Color = @import("color.zig").Color;
 const Sprite = @import("canvas.zig").Sprite;
 
+comptime {
+    // Native builds link stb against libc. Freestanding Wasm uses the same
+    // decoder sources with the Zig-owned C allocation bridge instead.
+    if (builtin.target.cpu.arch.isWasm()) _ = @import("stb_wasm_allocator.zig");
+}
+
 const c = @cImport({
+    @cDefine("STBI_NO_STDIO", "1");
     @cInclude("stb_image.h");
 });
 
