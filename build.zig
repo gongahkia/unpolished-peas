@@ -796,6 +796,11 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    const render_benchmark_tests = b.addTest(.{ .root_module = render_benchmark.root_module });
+    const run_render_benchmark_tests = b.addRunArtifact(render_benchmark_tests);
+    const render_benchmark_test_step = b.step("test-render-benchmark", "Test internal rendering benchmark bounds");
+    render_benchmark_test_step.dependOn(&run_render_benchmark_tests.step);
+    test_step.dependOn(&run_render_benchmark_tests.step);
     const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
     const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");

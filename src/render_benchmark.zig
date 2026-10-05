@@ -325,7 +325,10 @@ fn measureSurface(allocator: std.mem.Allocator, name: []const u8, source_size: S
     first.canvas().clear(up.core.Color.rgb(40, 80, 120));
     second.canvas().clear(up.core.Color.rgb(120, 80, 40));
     third.canvas().clear(up.core.Color.rgb(80, 120, 40));
-    const pixels_per_iteration = pixels(destination_size) * surface_count;
+    const pixels_per_iteration = if (surface_count == 3)
+        pixels(destination_size) + @as(u64, destination_size.width / 5) * (destination_size.height / 5) + pixels(source_size)
+    else
+        pixels(destination_size) * surface_count;
     const iterations = iterationsFor(pixels_per_iteration);
     for (0..warmup_iterations) |_| try drawSurfaces(&canvas, &first, &second, &third, filter, surface_count);
     counter.reset();
@@ -381,8 +384,8 @@ fn drawAuthoredText(canvas: *up.graphics.Canvas, font: *const up.assets.Font, co
 
 fn drawSurfaces(canvas: *up.graphics.Canvas, first: *const up.graphics.RenderSurface, second: *const up.graphics.RenderSurface, third: *const up.graphics.RenderSurface, filter: up.graphics.SurfaceFilter, count: u32) !void {
     try canvas.drawSurface(first, .{ .x = 0, .y = 0, .width = canvas.width, .height = canvas.height, .filter = filter });
-    if (count > 1) try canvas.drawSurface(second, .{ .x = 0, .y = 0, .width = canvas.width, .height = canvas.height, .filter = filter });
-    if (count > 2) try canvas.drawSurface(third, .{ .x = 0, .y = 0, .width = canvas.width, .height = canvas.height, .filter = filter });
+    if (count > 1) try canvas.drawSurface(second, .{ .x = 8, .y = 8, .width = canvas.width / 5, .height = canvas.height / 5, .filter = filter });
+    if (count > 2) try canvas.drawSurface(third, .{ .x = 16, .y = @intCast(canvas.height - third.height() - 8), .width = third.width(), .height = third.height(), .filter = filter });
 }
 
 fn populateSprite(values: []up.core.Color, alpha: SpriteAlpha) void {

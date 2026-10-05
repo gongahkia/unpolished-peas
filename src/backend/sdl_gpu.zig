@@ -782,6 +782,55 @@ pub const PausePolicy = enum {
     minimized,
 };
 
+// Opt-in developer evidence for bounded native profiling. It deliberately
+// remains private to the SDL host and is enabled only by an environment
+// variable, so games do not acquire a platform-specific timing API.
+const NativeTimingReport = struct {
+    enabled: bool,
+    update: Aggregate = .{},
+    draw: Aggregate = .{},
+    present: Aggregate = .{},
+
+    const Aggregate = struct {
+        calls: u64 = 0,
+        total_ns: u64 = 0,
+        min_ns: u64 = std.math.maxInt(u64),
+        max_ns: u64 = 0,
+
+        fn add(self: *Aggregate, elapsed_ns: u64) void {
+            self.calls +|= 1;
+            self.total_ns +|= elapsed_ns;
+            self.min_ns = @min(self.min_ns, elapsed_ns);
+            self.max_ns = @max(self.max_ns, elapsed_ns);
+        }
+
+        fn mean(self: Aggregate) u64 {
+            return if (self.calls == 0) 0 else self.total_ns / self.calls;
+        }
+    };
+
+    fn init() NativeTimingReport {
+        const value = std.posix.getenv("UP_NATIVE_TIMING_REPORT") orelse return .{ .enabled = false };
+        return .{ .enabled = std.mem.eql(u8, value, "1") };
+    }
+
+    fn start(self: NativeTimingReport) u64 {
+        return if (self.enabled) nowNs() else 0;
+    }
+
+    fn end(self: *NativeTimingReport, aggregate: *Aggregate, started_ns: u64) void {
+        if (self.enabled) aggregate.add(nowNs() -| started_ns);
+    }
+
+    fn write(self: NativeTimingReport) void {
+        if (!self.enabled or self.present.calls == 0) return;
+        std.debug.print(
+            "unpolished-peas native timing: present_frames={d} update_calls={d} update_mean_ns={d} update_min_ns={d} update_max_ns={d} draw_calls={d} draw_mean_ns={d} draw_min_ns={d} draw_max_ns={d} present_mean_ns={d} present_min_ns={d} present_max_ns={d}\n",
+            .{ self.present.calls, self.update.calls, self.update.mean(), if (self.update.calls == 0) 0 else self.update.min_ns, self.update.max_ns, self.draw.calls, self.draw.mean(), if (self.draw.calls == 0) 0 else self.draw.min_ns, self.draw.max_ns, self.present.mean(), self.present.min_ns, self.present.max_ns },
+        );
+    }
+};
+
 pub const Event = union(enum) {
     close_requested,
     focus_gained,
@@ -1425,6 +1474,8 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer dev.deinit();
     var profiler = up.FrameProfiler.init(config.cpu_profiler);
     profiler.beginFrame(0);
+    var native_timing = NativeTimingReport.init();
+    defer native_timing.write();
 
     var renderer_diagnostics = RendererDiagnostics.init(config.renderer);
     var renderer = RuntimeRenderer.init(config, &renderer_diagnostics) catch |err| {
@@ -1599,6 +1650,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             ctx.dt = timing.update_seconds;
             ctx.alpha = 0;
             const update_timer = profiler.scope(.update);
+            const update_started = native_timing.start();
             callLoopUpdate(state, callbacks, &ctx) catch |err| {
                 update_timer.end();
                 const current = lifecycleCallbackFailure(.update, err);
@@ -1608,6 +1660,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
                 break;
             };
             update_timer.end();
+            native_timing.end(&native_timing.update, update_started);
         }
         if (failure != null) continue;
 
@@ -1616,6 +1669,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         ctx.dt = timing.draw_seconds;
         ctx.alpha = timing.alpha;
         const draw_timer = profiler.scope(.draw);
+        const draw_started = native_timing.start();
         callLoopDraw(state, callbacks, &ctx) catch |err| {
             draw_timer.end();
             const current = lifecycleCallbackFailure(.draw, err);
@@ -1625,6 +1679,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             continue;
         };
         draw_timer.end();
+        native_timing.end(&native_timing.draw, draw_started);
         updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
         inspector.draw(&canvas, .{ .context = &dev, .failure = DeveloperTools.inspectorFailure });
         drawReloadOverlay(&canvas, reload_events);
@@ -1642,7 +1697,9 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             try output.queue(&audio);
             frame_metrics.recordAudio(output.bufferBytes(), output.queuedBytes());
         }
+        const present_started = native_timing.start();
         try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, &advanced_renderer, screenshot_path, &presentation, &frame_metrics);
+        native_timing.end(&native_timing.present, present_started);
         runtime_metrics = frame_metrics;
         if (screenshot_path) |path| dev.noteScreenshot(path);
         capture_requested = false;
@@ -4372,6 +4429,10 @@ fn parseRendererPreference(value: []const u8) ?RendererPreference {
 
 fn ticksToSeconds(ns: u64) f32 {
     return @as(f32, @floatFromInt(ns)) / 1_000_000_000.0;
+}
+
+fn nowNs() u64 {
+    return @intCast(@max(@as(i128, 0), std.time.nanoTimestamp()));
 }
 
 fn createGpuDevice(debug_mode: bool) ?*c.SDL_GPUDevice {
