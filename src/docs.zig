@@ -18,7 +18,9 @@ const source_documents = [_][]const u8{
     "guides/testing.md",
     "guides/developer-diagnostics.md",
     "guides/developer-asset-reload.md",
+    "guides/developer-tools.md",
     "guides/browser-development.md",
+    "guides/authoring-experience-freeze.md",
     "proof-games/topdown.md",
     "proof-games/puzzle.md",
     "proof-games/platformer.md",
@@ -207,6 +209,32 @@ test "quickstart states that the first release remains unpublished" {
     };
     for (claims) |claim| try std.testing.expect(std.mem.indexOf(u8, quickstart, claim) != null);
     try std.testing.expect(std.mem.indexOf(u8, quickstart, "archive/refs/tags/v0.1.0") == null);
+}
+
+test "authoring freeze distinguishes game API from developer tooling" {
+    const document = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/authoring-experience-freeze.md", max_document_bytes);
+    defer std.testing.allocator.free(document);
+    inline for ([_][]const u8{
+        "SpriteAnimationPlayer",
+        "MusicHandle",
+        "EXPERIMENTAL DEVELOPER TOOLING",
+        "Seed Sprint",
+        "Neon Siege",
+        "Lantern Leap",
+        "not a published `v0.2.0` release",
+    }) |claim| try std.testing.expect(std.mem.indexOf(u8, document, claim) != null);
+}
+
+test "developer tools reference keeps source and runtime asset roots distinct" {
+    const document = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/developer-tools.md", max_document_bytes);
+    defer std.testing.allocator.free(document);
+    inline for ([_][]const u8{
+        "UP_DEVELOPER_TOOLS",
+        "UP_DEVELOPER_ASSET_ROOT",
+        "UP_ASSET_ROOT",
+        "UP_DEVELOPER_DIAGNOSTICS_DUMP",
+        "python3",
+    }) |claim| try std.testing.expect(std.mem.indexOf(u8, document, claim) != null);
 }
 
 test "quickstart tutorial program is the checked example source" {

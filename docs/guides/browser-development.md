@@ -9,6 +9,11 @@ development step from a standalone Peas project instead:
 zig build dev-web
 ```
 
+`dev-web` requires `python3` with its standard library on the development
+machine. It is the only extra requirement for this local server; production
+browser builds and packaged browser output do not run Python or include its
+server. If `python3` is unavailable, install Python 3 and rerun the command.
+
 It performs an initial `zig build web`, starts a loopback-only server, and
 prints a URL such as `http://127.0.0.1:8000/`. Open that URL once. The process
 then watches the project's authored inputs, rebuilds through the same `web`

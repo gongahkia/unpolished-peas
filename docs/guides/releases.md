@@ -5,6 +5,13 @@ intended first public release, but it does not exist until a maintainer creates
 and publishes the tag. The source-checkout starter deliberately has no fake
 consumer coordinates.
 
+The completed post-v0.1 authoring work is an architecture milestone, not a
+published version bump. Keep the package version at `0.1.0` until the first
+public release decision is made; do not manufacture a `v0.2.0` tag merely
+because the authoring contract has been audited. See the
+[authoring-experience freeze](authoring-experience-freeze.md) for the next
+candidate compatibility baseline.
+
 ## v0.1 support
 
 The engine source supports Zig `0.15.1` and `0.15.2`. The generated starter requires the Zig version named in its copied template; the current v0.1-draft template requires `0.15.2`.

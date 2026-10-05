@@ -46,7 +46,8 @@ with the smallest complete project, then add only the concepts your game needs.
   particles, and post passes. Ordinary Canvas games do not need this layer.
 - [Developer diagnostics](guides/developer-diagnostics.md) and
   [developer asset reload](guides/developer-asset-reload.md) are opt-in native
-  development tools.
+  development tools. [Developer-tools environment reference](guides/developer-tools.md)
+  lists their explicit controls.
 - [Browser development](guides/browser-development.md) adds an opt-in local
   watch, rebuild, serve, and full-page-refresh loop after the normal browser
   build workflow is already familiar.
@@ -62,6 +63,14 @@ with the smallest complete project, then add only the concepts your game needs.
 | Learn deterministic replay and rendering regression | [Testing](guides/testing.md) and Seed Sprint's `src/game.zig` |
 | Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
 | Find exact API/CI contract details | [Core contract](guides/core-contract.md), [capability matrix](guides/capabilities.md), and [Core API](api/core.md) |
+
+## Post-v0.1 authoring contract
+
+[Authoring-experience freeze](guides/authoring-experience-freeze.md) records
+which post-v0.1 additions are recommended game APIs, which remain experimental
+developer tooling, and why Seed Sprint, Neon Siege, and Lantern Leap are the
+three canonical projects. It is an architecture-milestone record, not a
+published `v0.2.0` release.
 
 ## Reference and maintenance material
 
