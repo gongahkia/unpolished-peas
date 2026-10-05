@@ -79,7 +79,8 @@ or installers.
 | --- | --- | --- | --- |
 | Linux x86_64 under WSL2 | development environment, not a deployment target | local package checks | WSLg SDL GPU and OpenGL bounded smoke only |
 | Native Linux x86_64 | Tier 1 | CI package matrix | not run in this checkout's WSL pass |
-| macOS arm64 / x86_64 | Tier 1 | CI universal package matrix | not run in this checkout's WSL pass |
+| macOS x86_64 | Tier 1 | Seed Sprint macOS universal ZIP built, checksummed, layout-checked, and run outside the checkout on macOS 15.7.7 | local Intel runtime: Cocoa → SDL GPU → Metal; Retina 2× framebuffer; native audio device initialized; embedded Neon Siege executable ran from `/tmp` |
+| macOS arm64 | Tier 1 | universal arm64 slice cross-built on the Intel Mac | not run on Apple Silicon; the cross-build is not native arm64 runtime evidence |
 | Browser/WASM | supported | headless browser/runtime and bundle checks | browser not launched locally |
 | Windows x86_64 | secondary | CI package matrix | not run locally |
 
