@@ -94,7 +94,10 @@ installed `assets/` directory is present.
 larger content. Configure an asset root before calling its loading methods;
 an embedding-only store rejects runtime loads with
 `error.AssetStoreUnavailable` rather than reading an accidental working
-directory. It is not a browser asset fetch API.
+directory. Asset paths must be relative and may not lexically escape that
+configured root: `fonts/../ball.png` is valid, while absolute paths and a
+leading `../` escape are rejected with `error.InvalidAssetPath`. It is not a
+browser asset fetch API.
 
 This guide deliberately does not add an asset database, manifest, packer,
 atlas generator, hot reload system, or general filesystem interface.

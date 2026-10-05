@@ -6,6 +6,23 @@ const FontLoadOptions = @import("font_asset.zig").LoadOptions;
 const Image = @import("image.zig").Image;
 const advanced = @import("advanced_2d.zig");
 
+fn validateAssetPath(path: []const u8) !void {
+    if (path.len == 0 or std.fs.path.isAbsolute(path)) return error.InvalidAssetPath;
+
+    var depth: usize = 0;
+    var components = std.mem.tokenizeAny(u8, path, "/\\");
+    while (components.next()) |component| {
+        if (std.mem.eql(u8, component, ".")) continue;
+        if (std.mem.eql(u8, component, "..")) {
+            if (depth == 0) return error.InvalidAssetPath;
+            depth -= 1;
+        } else {
+            depth += 1;
+        }
+    }
+    if (depth == 0) return error.InvalidAssetPath;
+}
+
 pub const AssetFile = struct { // owns path and bytes allocated by load; call deinit once.
     allocator: std.mem.Allocator,
     dir: std.fs.Dir,
@@ -15,6 +32,7 @@ pub const AssetFile = struct { // owns path and bytes allocated by load; call de
     mtime: i128,
 
     pub fn load(allocator: std.mem.Allocator, dir: std.fs.Dir, path: []const u8, max_bytes: usize) !AssetFile {
+        try validateAssetPath(path);
         const owned_path = try allocator.dupe(u8, path);
         errdefer allocator.free(owned_path);
 
@@ -291,6 +309,7 @@ pub const AssetStore = struct { // owns loaded assets and any directory opened b
 
     pub fn assetPath(self: AssetStore, allocator: std.mem.Allocator, path: []const u8) ![]u8 {
         const root_path = self.root_path orelse return error.AssetRootUnavailable;
+        try validateAssetPath(path);
         return std.fs.path.join(allocator, &.{ root_path, path });
     }
 
@@ -717,6 +736,21 @@ test "asset reload detects content changes" {
 
     try std.testing.expect(try asset.reloadIfChanged());
     try std.testing.expectEqualStrings("two", asset.text());
+}
+
+test "runtime asset paths remain lexically inside their configured root" {
+    var tmp = std.testing.tmpDir(.{});
+    defer tmp.cleanup();
+    try tmp.dir.makePath("nested");
+    try tmp.dir.writeFile(.{ .sub_path = "inside.txt", .data = "inside" });
+
+    var inside = try AssetFile.load(std.testing.allocator, tmp.dir, "nested/../inside.txt", 64);
+    defer inside.deinit();
+    try std.testing.expectEqualStrings("inside", inside.text());
+
+    for ([_][]const u8{ "", "/outside", "../outside", "nested/../../outside" }) |path| {
+        try std.testing.expectError(error.InvalidAssetPath, AssetFile.load(std.testing.allocator, tmp.dir, path, 64));
+    }
 }
 
 test "asset handles reject stale generations" {
