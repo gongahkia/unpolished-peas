@@ -520,6 +520,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    // Experimental native-only helper for explicitly registered authored
+    // assets. It is intentionally separate from the frozen root API.
+    const developer_assets = b.createModule(.{
+        .root_source_file = b.path("src/developer_assets.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
     const browser_developer_diagnostics = b.createModule(.{
         .root_source_file = b.path("src/developer_diagnostics.zig"),
         .target = browser_target,
@@ -540,6 +548,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "native-save-data", .module = native_save_data },
             .{ .name = "frame-timing", .module = frame_timing },
             .{ .name = "developer-diagnostics", .module = developer_diagnostics },
+            .{ .name = "developer-assets", .module = developer_assets },
             .{ .name = "sprite-shaders", .module = b.createModule(.{ .root_source_file = b.path("shaders/embedded.zig") }) },
         },
     });
@@ -825,6 +834,29 @@ pub fn build(b: *std.Build) void {
     const developer_diagnostics_test_step = b.step("test-developer-diagnostics", "Test opt-in developer diagnostics aggregation and formatting");
     developer_diagnostics_test_step.dependOn(&run_developer_diagnostics_tests.step);
     test_step.dependOn(&run_developer_diagnostics_tests.step);
+    const developer_assets_tests = b.addTest(.{ .root_module = developer_assets });
+    const run_developer_assets_tests = b.addRunArtifact(developer_assets_tests);
+    const developer_assets_test_step = b.step("test-hot-reload", "Test native developer authored-asset hot reload");
+    developer_assets_test_step.dependOn(&run_developer_assets_tests.step);
+    test_step.dependOn(&run_developer_assets_tests.step);
+    const macos_hot_reload_target = b.resolveTargetQuery(.{ .cpu_arch = .aarch64, .os_tag = .macos });
+    const macos_hot_reload_core = b.createModule(.{
+        .root_source_file = b.path("src/unpolished_peas.zig"),
+        .target = macos_hot_reload_target,
+        .optimize = .Debug,
+    });
+    addStb(macos_hot_reload_core);
+    const macos_hot_reload_compile = b.addObject(.{
+        .name = "macos-hot-reload-compile",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/developer_assets.zig"),
+            .target = macos_hot_reload_target,
+            .optimize = .Debug,
+            .imports = &.{.{ .name = "unpolished-peas", .module = macos_hot_reload_core }},
+        }),
+    });
+    const macos_hot_reload_compile_step = b.step("test-hot-reload-macos-compile", "Compile native developer asset reload helpers for macOS arm64");
+    macos_hot_reload_compile_step.dependOn(&macos_hot_reload_compile.step);
     const frame_timing_tests = b.addTest(.{ .root_module = frame_timing });
     const run_frame_timing_tests = b.addRunArtifact(frame_timing_tests);
     const frame_timing_test_step = b.step("test-frame-timing", "Test shared fixed-step host timing");

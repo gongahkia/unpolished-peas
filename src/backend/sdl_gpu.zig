@@ -4,6 +4,7 @@ const up = @import("api.zig");
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
 const developer_diagnostics = @import("developer-diagnostics");
+const developer_assets = @import("developer-assets");
 const sdl_gl = @import("sdl_gl.zig");
 const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
@@ -31,6 +32,11 @@ const c = @cImport({
 
 pub const OpenGlPresenter = sdl_gl.Presenter;
 pub const OpenGlBackend = sdl_gl.Backend;
+
+/// Experimental native developer helpers. They are intentionally outside the
+/// frozen `unpolished-peas` root module and have no effect unless explicitly
+/// enabled by the SDL host and a developer asset root.
+pub const developer = developer_assets;
 
 const sprite_vert_spirv = sprite_shaders.vert_spirv;
 const sprite_frag_spirv = sprite_shaders.frag_spirv;
@@ -1474,6 +1480,13 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
     var dev = try DeveloperTools.init(allocator, developer_tools_enabled, data_path);
     defer dev.deinit();
+    var developer_asset_registry = developer_assets.Registry.init(allocator, developer_tools_enabled) catch |err| blk: {
+        // A bad explicit developer root must not turn a release-style game
+        // launch into a failure. The embedded resource remains authoritative.
+        dev.failure(.asset_reload, err);
+        break :blk developer_assets.Registry{ .allocator = allocator, .enabled = false };
+    };
+    defer developer_asset_registry.deinit();
     var profiler = up.FrameProfiler.init(developer_tools_enabled or config.cpu_profiler);
     profiler.beginFrame(0);
     var native_timing = NativeTimingReport.init();
@@ -1551,20 +1564,25 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
     var runtime_inspector_panels = RuntimeInspectorPanels.init(&assets, &input, &actions, &runtime_metrics, &inspector_renderer_state, &profiler, &inspector_subsystem_state);
     try runtime_inspector_panels.register(&inspector);
-    // The compact overlay is the default developer view. The existing richer
-    // inspector remains available through the opted-in developer controls.
-    inspector.setVisible(false);
+    // Developer UI has no implicit gameplay key bindings. The compact overlay
+    // and inspector are selected explicitly at launch, leaving Tab/F-keys for
+    // game-owned input even when developer tools are enabled.
+    inspector.setVisible(developer_tools_enabled and (environmentBool("UP_DEVELOPER_INSPECTOR") orelse false));
     var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .save_data = save_data.capability(), .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
     profiler.beginFrame(ctx.frame);
     const init_timer = profiler.scope(.callback);
-    callLoopInit(state, callbacks, &ctx) catch |err| {
-        const current = lifecycleCallbackFailure(.init, err);
-        dev.callbackFailure(current);
-        failure = current;
-    };
+    {
+        developer_assets.activateForGameInit(&developer_asset_registry);
+        defer developer_assets.activateForGameInit(null);
+        callLoopInit(state, callbacks, &ctx) catch |err| {
+            const current = lifecycleCallbackFailure(.init, err);
+            dev.callbackFailure(current);
+            failure = current;
+        };
+    }
     init_timer.end();
     if (failure) |current| dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
     initialized = failure == null;
@@ -1628,14 +1646,6 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             if (audio_output != null) audio.setAvailability(.ready);
             dev.audioDiagnostics(audio_output != null);
         }
-        if (platform_input.wasPressed(.debug)) {
-            dev.toggleOverlay();
-            inspector.setVisible(false);
-        }
-        if (developer_tools_enabled and platform_input.wasPressed(.select)) {
-            if (inspector.visibility == .visible) inspector.next() else inspector.setVisible(true);
-        }
-
         const asset_timer = profiler.scope(.asset);
         const reload_events = assets.reloadChanged() catch |err| {
             asset_timer.end();
@@ -1644,8 +1654,16 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
             failure = .{ .phase = .asset_reload, .err = err };
             continue;
         };
+        const developer_asset_events = developer_asset_registry.poll() catch |err| {
+            asset_timer.end();
+            dev.failure(.asset_reload, err);
+            dev.captureFailure(.{ .phase = .asset_reload, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
+            failure = .{ .phase = .asset_reload, .err = err };
+            continue;
+        };
         asset_timer.end();
-        frame_metrics.recordAssetReloads(reload_events.len);
+        for (developer_asset_events) |event| dev.assetReloadEvent(event);
+        frame_metrics.recordAssetReloads(reload_events.len + developer_asset_events.len);
 
         const now = c.SDL_GetTicksNS();
         const dt = ticksToSeconds(now - last_ticks);
@@ -1698,11 +1716,11 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         native_timing.end(&native_timing.draw, draw_started);
         dev.recordDiagnosticsDraw(diagnostics_draw_started);
         updateInspectorStates(&inspector_renderer_state, &inspector_subsystem_state, &renderer_diagnostics, data_path, if (audio_output) |*output| output else null);
-        if (dev.enabled or inspector.visibility == .visible or reload_events.len != 0) {
-            drawDeveloperOverlays(&canvas, &inspector, &dev, reload_events);
+        if (dev.enabled or inspector.visibility == .visible or reload_events.len != 0 or developer_asset_events.len != 0) {
+            drawDeveloperOverlays(&canvas, &inspector, &dev, reload_events, developer_asset_events);
         }
         var screenshot_path: ?[]u8 = null;
-        if ((platform_input.wasPressed(.screenshot) and dev.enabled) or capture_requested) {
+        if (capture_requested) {
             screenshot_path = dev.screenshotPath(ctx.frame) catch |err| blk: {
                 dev.failure(.screenshot_path, err);
                 dev.captureFailure(.{ .phase = .screenshot_path, .err = err }, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -2443,10 +2461,8 @@ test "event callback failures retain the event context" {
     try std.testing.expectEqualStrings("event=focus_lost", current.context);
 }
 
-fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
-    if (events.len == 0) return;
-
-    var y: i32 = 4;
+fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent, initial_y: i32) i32 {
+    var y = initial_y;
     for (events[0..@min(events.len, 4)]) |event| {
         var label_buffer: [64]u8 = undefined;
         var source_buffer: [std.fs.max_path_bytes + 128]u8 = undefined;
@@ -2465,6 +2481,7 @@ fn drawReloadOverlay(canvas: *up.Canvas, events: []const up.ReloadEvent) void {
         canvas.drawText(source, 4, y + 8, color);
         y += 17;
     }
+    return y;
 }
 
 test "reload overlay bounds retained reload diagnostics" {
@@ -2479,8 +2496,8 @@ test "reload overlay bounds retained reload diagnostics" {
     defer capped.deinit();
     var extra = try up.Canvas.init(std.testing.allocator, 320, 96);
     defer extra.deinit();
-    drawReloadOverlay(&capped, events[0..4]);
-    drawReloadOverlay(&extra, &events);
+    _ = drawReloadOverlay(&capped, events[0..4], 4);
+    _ = drawReloadOverlay(&extra, &events, 4);
     try std.testing.expectEqual(std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(capped.pixels)), std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(extra.pixels)));
 }
 
@@ -2586,12 +2603,13 @@ test "runtime failures retain category and render a safe report" {
 /// Developer-only Canvas output must not be part of a game-owned logical
 /// Canvas trace. A trace remains attached for the next game frame exactly as
 /// it was before the diagnostic drawing pass.
-fn drawDeveloperOverlays(canvas: *up.Canvas, inspector: *up.Inspector, dev: *const DeveloperTools, reload_events: []const up.ReloadEvent) void {
+fn drawDeveloperOverlays(canvas: *up.Canvas, inspector: *up.Inspector, dev: *const DeveloperTools, runtime_reload_events: []const up.ReloadEvent, developer_asset_events: []const up.ReloadEvent) void {
     const trace = canvas.trace;
     canvas.detachTrace();
     defer if (trace) |value| canvas.attachTrace(value);
     inspector.draw(canvas, .{ .context = @constCast(dev), .failure = DeveloperTools.inspectorFailure });
-    drawReloadOverlay(canvas, reload_events);
+    const next_y = drawReloadOverlay(canvas, developer_asset_events, 4);
+    _ = drawReloadOverlay(canvas, runtime_reload_events, next_y);
     dev.drawOverlay(canvas);
 }
 
@@ -2693,10 +2711,6 @@ const DeveloperTools = struct {
         self.* = undefined;
     }
 
-    fn toggleOverlay(self: *DeveloperTools) void {
-        if (self.enabled) self.overlay = !self.overlay;
-    }
-
     fn beginDiagnosticsFrame(self: *DeveloperTools) void {
         self.diagnostics.beginFrame();
     }
@@ -2727,6 +2741,17 @@ const DeveloperTools = struct {
         if (self.log_file != null) {
             std.debug.print("unpolished-peas {s} failed: {s}; log: {s}unpolished-peas.log\n", .{ phase.label(), @errorName(err), self.app_data_path });
         } else std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
+    fn assetReloadEvent(self: *DeveloperTools, event: up.ReloadEvent) void {
+        if (!self.enabled) return;
+        var buffer: [384]u8 = undefined;
+        const line = switch (event.status) {
+            .changed => std.fmt.bufPrint(&buffer, "unpolished-peas developer asset reload: {s} changed\n", .{event.path}),
+            .failed => std.fmt.bufPrint(&buffer, "unpolished-peas developer asset reload: {s} failed: {s}; retained previous resource\n", .{ event.path, event.message }),
+        } catch return;
+        std.debug.print("{s}", .{line});
         self.note(line);
     }
 
@@ -2910,7 +2935,7 @@ test "developer overlay leaves a game canvas trace unchanged" {
     canvas.attachTrace(&trace);
     canvas.clear(up.Color.black);
     const before = trace.commandSlice().len;
-    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{});
+    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{}, &.{});
     try std.testing.expectEqual(before, trace.commandSlice().len);
     canvas.fillRect(2, 2, 1, 1, up.Color.white);
     try std.testing.expectEqual(before + 1, trace.commandSlice().len);
@@ -2925,7 +2950,7 @@ test "disabled developer tools leave Canvas pixels unchanged" {
     defer canvas.deinit();
     canvas.clear(up.Color.rgb(12, 23, 34));
     const before = std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(canvas.pixels));
-    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{});
+    drawDeveloperOverlays(&canvas, &inspector, &tools, &.{}, &.{});
     const after = std.hash.Wyhash.hash(0, std.mem.sliceAsBytes(canvas.pixels));
     try std.testing.expectEqual(before, after);
 }

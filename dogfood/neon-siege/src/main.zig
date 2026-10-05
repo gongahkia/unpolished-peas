@@ -22,6 +22,12 @@ pub const Game = struct {
 
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
         try self.state.init(ctx);
+        // This experimental native-only registration is deliberately kept in
+        // the desktop wrapper. The shared game continues to use the same
+        // embedded assets in browser and release builds; without an explicit
+        // developer asset root these calls are no-ops.
+        if (self.state.atlas) |atlas| _ = try sdl.developer.registerAtlasImage(atlas, "neon-siege.png", .{});
+        if (self.state.font) |font| _ = try sdl.developer.registerFont(font, "neon-siege.ttf", .{ .pixel_height = 8, .atlas_width = 128, .atlas_height = 128 });
     }
 
     pub fn update(self: *Game, ctx: *up.core.GameContext, elapsed_seconds: f32) !void {
