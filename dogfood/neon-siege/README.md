@@ -56,3 +56,20 @@ shape used by release validation. Game source itself imports only
 browser/Wasm builds. Decoded resources are owned by `Game` and released from
 its protocol `deinit`; the compiled game does not fetch or load those files at
 runtime.
+
+## Native developer asset reload
+
+For a native development session, Neon Siege can replace its authored sprite
+sheet and HUD font without rebuilding:
+
+```sh
+UP_DEVELOPER_TOOLS=1 \
+UP_DEVELOPER_ASSET_ROOT="$PWD/assets" \
+zig build run
+```
+
+The desktop wrapper registers `neon-siege.png` and `neon-siege.ttf` only while
+the SDL host initializes the game. Invalid edits retain the last valid live
+resource; browser builds and release packages continue using the embedded
+assets and require a rebuild. See the repository's [developer asset reload
+guide](../../docs/guides/developer-asset-reload.md).

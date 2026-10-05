@@ -99,5 +99,9 @@ configured root: `fonts/../ball.png` is valid, while absolute paths and a
 leading `../` escape are rejected with `error.InvalidAssetPath`. It is not a
 browser asset fetch API.
 
-This guide deliberately does not add an asset database, manifest, packer,
-atlas generator, hot reload system, or general filesystem interface.
+For explicitly registered native developer sessions, embedded Atlas images and
+TrueType/OpenType fonts may be reloaded from an explicit source root without
+changing the release embedding path. See [development authored-asset
+reload](developer-asset-reload.md). This remains a small polling helper, not
+an asset database, manifest, packer, atlas generator, or general filesystem
+interface.

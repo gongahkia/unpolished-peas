@@ -18,10 +18,12 @@ Set `UP_DEVELOPER_TOOLS=0` to suppress the host developer tools for a session.
 The existing native `Config.developer_tools` setting remains the source-level
 alternative for hosts that configure it directly.
 
-The compact overlay starts enabled. Press `F3` to hide or restore it. While
-developer tools are enabled, `Tab` opens the existing detailed inspector and
-cycles its panels; pressing `F3` hides that panel again. These controls are not
-installed for normal release runs.
+The compact overlay starts enabled. Set `UP_DEVELOPER_OVERLAY=0` to start it
+hidden, and set `UP_DEVELOPER_INSPECTOR=1` to start the detailed inspector.
+There are deliberately **no default developer keyboard shortcuts**: a game
+keeps `Tab`, `F3`, `F12`, and every other normalized key binding even when
+developer tools are enabled. This prevents host tooling from changing a
+game's input semantics.
 
 For a one-shot local JSON snapshot written when the native host exits:
 
@@ -33,9 +35,8 @@ The file is named `developer-diagnostics.json` in the application-data
 directory that Peas prints when developer tools start. It is never uploaded or
 reported over the network.
 
-`UP_DEVELOPER_OVERLAY=0` keeps collection enabled while starting the compact
-overlay hidden. That is useful when comparing its visual cost with collection
-alone.
+Starting the overlay hidden keeps collection enabled and is useful when
+comparing its visual cost with collection alone.
 
 ## Snapshot and overlay
 
