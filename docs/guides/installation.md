@@ -76,6 +76,12 @@ Serve it over HTTP—for example,
 local URL. Opening the HTML file directly is not supported by browser module
 and Wasm loading rules.
 
+For local iteration, `zig build dev-web` watches the project, invokes this
+same `web` build, serves its last successful output on `127.0.0.1`, and fully
+refreshes the page after a successful rebuild. It is development-only; see
+the [browser development guide](browser-development.md) for failed-build,
+audio, persistence, and WSL behavior.
+
 `zig build package` creates the starter's local `zig-out/bin/seed-sprint` and
 `zig-out/assets/` layout. It is a portable executable-plus-assets directory,
 not a signed `.app`, DMG, AppImage, deb/rpm package, or installer.

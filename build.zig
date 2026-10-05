@@ -541,6 +541,10 @@ pub fn build(b: *std.Build) void {
     });
     const browser_developer_diagnostics_test_step = b.step("test-browser-developer-diagnostics", "Compile the developer diagnostics data model for browser Wasm");
     browser_developer_diagnostics_test_step.dependOn(&browser_developer_diagnostics_object.step);
+    const browser_dev_test = b.addSystemCommand(&.{ "python3", "script/test_browser_dev.py" });
+    browser_dev_test.setCwd(b.path("."));
+    const browser_dev_test_step = b.step("test-browser-dev", "Test the local browser rebuild, server, and reload workflow");
+    browser_dev_test_step.dependOn(&browser_dev_test.step);
     const sdl = b.addModule("unpolished-peas-sdl3", .{
         .root_source_file = b.path("src/backend/sdl_gpu.zig"),
         .target = target,
@@ -644,6 +648,7 @@ pub fn build(b: *std.Build) void {
     const run_peas = b.addRunArtifact(peas_cli);
     run_peas.setEnvironmentVariable("UP_TEMPLATE_ROOT", b.pathFromRoot("templates/starter"));
     run_peas.setEnvironmentVariable("UP_SCRIPT_ROOT", b.pathFromRoot("script"));
+    run_peas.setEnvironmentVariable("UP_BROWSER_DEV_SERVER", b.pathFromRoot("src/browser/dev_server.py"));
     run_peas.setEnvironmentVariable("UP_REPOSITORY_ROOT", b.pathFromRoot("."));
     if (b.args) |args| run_peas.addArgs(args);
     const peas_step = b.step("peas", "Run the unpolished-peas project CLI");
@@ -748,6 +753,10 @@ pub fn build(b: *std.Build) void {
     dogfood_external.setCwd(b.path("."));
     const dogfood_external_step = b.step("test-dogfood-external", "Build and package Neon Siege as a clean archive-style package consumer");
     dogfood_external_step.dependOn(&dogfood_external.step);
+    const browser_dev_external = b.addSystemCommand(&.{"script/test_browser_dev_external.sh"});
+    browser_dev_external.setCwd(b.path("."));
+    const browser_dev_external_step = b.step("test-browser-dev-external", "Build browser development snapshots through release-style external consumers");
+    browser_dev_external_step.dependOn(&browser_dev_external.step);
 
     addRunStep(b, "run-bounce", "Render the bounce demo to zig-out/bounce.ppm", demo);
     addRunStep(b, "run-bounce-sdl", "Run the unpolished-peas SDL3 bounce demo", sdl_demo);

@@ -86,6 +86,18 @@ python3 -m http.server --directory zig-out/web 8000
 Open `http://localhost:8000`. The standalone browser adapter and host files
 are shipped by the Peas package, so copied projects use the same workflow.
 
+For an edit → rebuild → refresh loop during browser work, use the separate
+development command instead:
+
+```sh
+zig build dev-web
+```
+
+It serves the last successful browser build locally and reloads the page after
+subsequent successful edits. `zig build web` stays the static production
+bundle; see the [browser development guide](../../docs/guides/browser-development.md)
+for port selection, failed builds, browser audio activation, and persistence.
+
 ## Structure
 
 - `src/main.zig` is the desktop entry point.

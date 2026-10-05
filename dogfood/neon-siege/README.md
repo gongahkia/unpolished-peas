@@ -36,6 +36,18 @@ music are embedded; it has no runtime asset directory.
 font notice under `zig-out/web/licenses`; serve it over HTTP instead of
 opening `index.html` directly.
 
+During browser iteration, replace the manual build/serve/refresh loop with:
+
+```sh
+zig build dev-web
+```
+
+It watches this project, runs the same static `web` build, serves the last
+successful snapshot locally, and refreshes the page after a successful edit.
+The full refresh restarts the run but retains browser save data; browser audio
+may need another user interaction. Release `zig build web` output contains no
+development reload client. See the [browser development guide](../../docs/guides/browser-development.md).
+
 The checked-in manifest uses a local package-root dependency for dogfooding.
 The repository's external-consumer test copies this project beside a
 release-style Peas archive and substitutes the same public package dependency

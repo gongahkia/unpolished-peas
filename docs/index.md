@@ -42,6 +42,9 @@ with the smallest complete project, then add only the concepts your game needs.
 - [Developer diagnostics](guides/developer-diagnostics.md) and
   [developer asset reload](guides/developer-asset-reload.md) are opt-in native
   development tools.
+- [Browser development](guides/browser-development.md) adds an opt-in local
+  watch, rebuild, serve, and full-page-refresh loop after the normal browser
+  build workflow is already familiar.
 
 ## Which example should I read?
 
