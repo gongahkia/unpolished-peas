@@ -12,7 +12,9 @@ repository [Start Here guide](../../docs/guides/quickstart.md), then read:
    deterministic tests.
 
 For a larger reference after this project feels familiar, read
-[Neon Siege](../../dogfood/neon-siege/README.md).
+[Neon Siege](../../dogfood/neon-siege/README.md) for arena/action gameplay or
+[Lantern Leap](../../dogfood/lantern-leap/README.md) for scrolling platforming,
+collision, checkpoints, and animation-state selection.
 
 ## Requirements
 

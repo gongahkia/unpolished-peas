@@ -101,6 +101,16 @@ See [Neon Siege](../../dogfood/neon-siege/src/art.zig) for static clips and its
 [game update/draw code](../../dogfood/neon-siege/src/game.zig) for the compiled
 idle/walk integration.
 
+## Legacy Atlas animation APIs
+
+`assets.Animation`, `assets.AnimationPlayer`, and
+`assets.AnimationStateMachine` remain public legacy APIs for compatibility with
+existing Atlas-authored content. Their float-duration/state-machine model is
+not the recommended path for a new deterministic game. New games should use
+`SpriteAnimationClip` and `SpriteAnimationPlayer` unless they specifically
+need to preserve an existing legacy Atlas animation definition. Peas does not
+translate between the two models automatically.
+
 ## Limits
 
 This facility intentionally has no ping-pong mode, reverse playback,
