@@ -367,6 +367,15 @@ test "renderer conformance diagnostics name the backend and formats" {
     try std.testing.expect(std.mem.indexOf(u8, diagnostic, "shader_formats=0x2") != null);
 }
 
+test "particle Metal shader uses one stage input for both vertex bindings" {
+    // Metal allows one `[[stage_in]]` parameter. The particle pipeline still
+    // supplies its corner and instance records through two SDL vertex-buffer
+    // bindings; their attributes are combined by the pipeline declaration.
+    try std.testing.expect(std.mem.indexOf(u8, particles_vert_msl, "struct ParticleInput") != null);
+    try std.testing.expect(std.mem.indexOf(u8, particles_vert_msl, "ParticleInput input [[stage_in]]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, particles_vert_msl, "ParticleVertex vertex, ParticleInstance instance") == null);
+}
+
 test "SDL adapter consumes render commands" {
     var canvas = try up.Canvas.init(std.testing.allocator, 2, 2);
     defer canvas.deinit();
@@ -544,6 +553,15 @@ test "high DPI letterboxing maps pointer through the GPU presentation" {
     try std.testing.expectEqual(up.Vec2.init(50, 50), presentation.framebufferToCanvas(center).?);
     const letterbox = pointerFramebufferPoint(.{ .x = 0, .y = 50 }, .{ .x = 200, .y = 100 }, &presentation);
     try std.testing.expect(presentation.framebufferToCanvas(letterbox) == null);
+}
+
+test "macOS native windows request a high density framebuffer" {
+    const flags = windowFlags(.{}, 0);
+    if (builtin.os.tag == .macos) {
+        try std.testing.expect((flags & c.SDL_WINDOW_HIGH_PIXEL_DENSITY) != 0);
+    } else {
+        try std.testing.expect((flags & c.SDL_WINDOW_HIGH_PIXEL_DENSITY) == 0);
+    }
 }
 
 test "sprite residency detects a reloaded image buffer" {
@@ -1288,7 +1306,8 @@ fn openGlRejectionReason(err: anyerror) RendererRejectionReason {
 }
 
 fn windowFlags(config: Config, additional: c.SDL_WindowFlags) c.SDL_WindowFlags {
-    return additional | if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
+    const high_density: c.SDL_WindowFlags = if (builtin.os.tag == .macos) c.SDL_WINDOW_HIGH_PIXEL_DENSITY else 0;
+    return additional | high_density | if (config.resizable) c.SDL_WINDOW_RESIZABLE else 0;
 }
 
 fn validateRendererPreflight(config: Config, diagnostics: *RendererDiagnostics) !void {
@@ -1450,6 +1469,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         dev.failure(.audio, error.SdlError);
         dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, 0, canvas, commands.commands.items, &profiler);
     }
+    dev.audioDiagnostics(audio_output != null);
     defer if (audio_output) |*output| output.deinit(allocator);
 
     // Platform input is sampled once per presentation frame. `input` is the
@@ -1463,6 +1483,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         dev.captureFailure(.{ .phase = .gpu, .err = err }, 0, canvas, commands.commands.items, &profiler);
         return err;
     }, config.presentation_mode);
+    dev.platformDiagnostics(renderer.window(), &presentation);
     var clock = frame_timing.Scheduler.init(config.fixed_hz);
     var actions = try up.ActionMap.init(allocator, config.actions);
     defer actions.deinit();
@@ -1508,7 +1529,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         var close_requested = false;
         var callback_failure: ?Failure = null;
         const callback_timer = profiler.scope(.callback);
-        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &platform_input, renderer.window(), &presentation, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
+        running = pollInput(state, callbacks, initialized and failure == null, &ctx, &platform_input, renderer.window(), &presentation, &dev, &audio_device_changed, &close_requested, &desktop_state, &gpu_recovery, &callback_failure) catch |err| blk: {
             const current = callback_failure orelse Failure{ .phase = .input, .err = err };
             if (callback_failure != null) dev.callbackFailure(current) else dev.failure(.input, err);
             dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
@@ -1547,6 +1568,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
                 dev.captureFailure(.{ .phase = .audio, .err = error.SdlError }, ctx.frame, canvas, commands.commands.items, &profiler);
             }
             if (audio_output != null) audio.setAvailability(.ready);
+            dev.audioDiagnostics(audio_output != null);
         }
         if (platform_input.wasPressed(.debug)) dev.toggleOverlay();
         if (inspector.visibility == .visible and platform_input.wasPressed(.select)) inspector.next();
@@ -2530,6 +2552,27 @@ const DeveloperTools = struct {
             std.debug.print("{s}", .{attempt});
             self.note(attempt);
         };
+    }
+
+    fn platformDiagnostics(self: *DeveloperTools, window: *c.SDL_Window, presentation: *const up.Presentation) void {
+        if (!self.enabled) return;
+        var logical_width: c_int = 0;
+        var logical_height: c_int = 0;
+        if (!c.SDL_GetWindowSize(window, &logical_width, &logical_height) or logical_width <= 0 or logical_height <= 0) return;
+        const framebuffer = framebufferSize(window) catch return;
+        const scale_x = framebuffer.x / @as(f32, @floatFromInt(logical_width));
+        const scale_y = framebuffer.y / @as(f32, @floatFromInt(logical_height));
+        var buffer: [256]u8 = undefined;
+        const line = std.fmt.bufPrint(&buffer, "unpolished-peas native platform: logical={d}x{d} framebuffer={d:.0}x{d:.0} scale={d:.2}x{d:.2} canvas={d:.0}x{d:.0}\n", .{ logical_width, logical_height, framebuffer.x, framebuffer.y, scale_x, scale_y, presentation.canvas_size.x, presentation.canvas_size.y }) catch return;
+        std.debug.print("{s}", .{line});
+        self.note(line);
+    }
+
+    fn audioDiagnostics(self: *DeveloperTools, available: bool) void {
+        if (!self.enabled) return;
+        const line = if (available) "unpolished-peas native audio: ready\n" else "unpolished-peas native audio: unavailable\n";
+        std.debug.print("{s}", .{line});
+        self.note(line);
     }
 
     fn callbackFailure(self: *DeveloperTools, failure_value: Failure) void {
@@ -4063,7 +4106,7 @@ test "desktop focus loss releases held keyboard and pointer input" {
     try std.testing.expect(input.pointerWasReleased(.left));
 }
 
-fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery, callback_failure: *?Failure) !bool {
+fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx: *Context, input: *up.Input, window: *c.SDL_Window, presentation: *up.Presentation, dev: *DeveloperTools, audio_device_changed: *bool, close_requested: *bool, desktop_state: *DesktopState, gpu_recovery: *GpuRecovery, callback_failure: *?Failure) !bool {
     var running = true;
     var event: c.SDL_Event = undefined;
     while (c.SDL_PollEvent(&event)) {
@@ -4108,6 +4151,7 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             },
             c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => {
                 refreshPresentation(window, presentation);
+                dev.platformDiagnostics(window, presentation);
                 if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .{ .resized = .{ .framebuffer_size = presentation.framebuffer_size } }, callback_failure);
             },
             else => {

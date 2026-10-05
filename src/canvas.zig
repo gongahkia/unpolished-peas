@@ -5,7 +5,6 @@ const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const font = @import("font.zig");
 const Vec2 = @import("math.zig").Vec2;
-const text_layout = @import("text_layout.zig");
 
 pub const ClipRect = struct {
     x: i32,
@@ -45,6 +44,13 @@ pub const Sprite = struct {
         std.debug.assert(y < self.height);
         return self.pixels[@as(usize, y) * self.width + x];
     }
+};
+
+const PixelBounds = struct {
+    left: usize,
+    top: usize,
+    right: usize,
+    bottom: usize,
 };
 
 pub const Canvas = struct { // owns its pixel buffer allocated by init; call deinit once.
@@ -115,11 +121,15 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
 
     fn blendPixel(self: *Canvas, x: i32, y: i32, color: Color) void {
         if (self.index(x, y)) |i| {
-            self.pixels[i] = switch (self.blend) {
-                .alpha => color.over(self.pixels[i]),
-                .additive => color.add(self.pixels[i]),
-            };
+            self.blendColor(&self.pixels[i], color);
         }
+    }
+
+    fn blendColor(self: *Canvas, destination: *Color, color: Color) void {
+        destination.* = switch (self.blend) {
+            .alpha => color.over(destination.*),
+            .additive => color.add(destination.*),
+        };
     }
 
     pub fn get(self: Canvas, x: i32, y: i32) ?Color {
@@ -133,19 +143,19 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 
     fn fillRectImpl(self: *Canvas, x: i32, y: i32, w: i32, h: i32, color: Color) void {
-        if (w <= 0 or h <= 0) return;
-        const width_i: i32 = @intCast(self.width);
-        const height_i: i32 = @intCast(self.height);
-        const x0 = @max(0, x);
-        const y0 = @max(0, y);
-        const x1 = @min(width_i, x + w);
-        const y1 = @min(height_i, y + h);
-        if (x0 >= x1 or y0 >= y1) return;
-
-        var py = y0;
-        while (py < y1) : (py += 1) {
-            var px = x0;
-            while (px < x1) : (px += 1) self.blendPixel(px, py, color);
+        const bounds = self.visibleBounds(x, y, w, h) orelse return;
+        const span = bounds.right - bounds.left;
+        const canvas_width: usize = self.width;
+        if (self.blend == .alpha and color.a == 255) {
+            for (bounds.top..bounds.bottom) |row| {
+                const start = row * canvas_width + bounds.left;
+                @memset(self.pixels[start .. start + span], color);
+            }
+            return;
+        }
+        for (bounds.top..bounds.bottom) |row| {
+            const start = row * canvas_width + bounds.left;
+            for (self.pixels[start .. start + span]) |*destination| self.blendColor(destination, color);
         }
     }
 
@@ -249,12 +259,16 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 
     fn drawSpriteImpl(self: *Canvas, sprite: Sprite, dst_x: i32, dst_y: i32) void {
-        var y: u32 = 0;
-        while (y < sprite.height) : (y += 1) {
-            var x: u32 = 0;
-            while (x < sprite.width) : (x += 1) {
-                self.blendPixel(dst_x + @as(i32, @intCast(x)), dst_y + @as(i32, @intCast(y)), sprite.get(x, y));
-            }
+        const bounds = self.visibleBounds(dst_x, dst_y, sprite.width, sprite.height) orelse return;
+        const source_x: usize = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, dst_x));
+        const source_y: usize = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, dst_y));
+        const span = bounds.right - bounds.left;
+        const source_width: usize = sprite.width;
+        const canvas_width: usize = self.width;
+        for (bounds.top..bounds.bottom, source_y..) |destination_y, sprite_y| {
+            const destination_start = destination_y * canvas_width + bounds.left;
+            const source_start = sprite_y * source_width + source_x;
+            for (self.pixels[destination_start .. destination_start + span], sprite.pixels[source_start .. source_start + span]) |*destination, source| self.blendColor(destination, source);
         }
     }
 
@@ -275,33 +289,97 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
             .linear => .linear,
         });
 
-        const destination_right = @as(i64, options.x) + @as(i64, options.width);
-        const destination_bottom = @as(i64, options.y) + @as(i64, options.height);
-        const canvas_right = @min(@as(i64, self.width), @as(i64, std.math.maxInt(i32)) + 1);
-        const canvas_bottom = @min(@as(i64, self.height), @as(i64, std.math.maxInt(i32)) + 1);
-        var left = @max(@as(i64, 0), @as(i64, options.x));
-        var top = @max(@as(i64, 0), @as(i64, options.y));
-        var right = @min(canvas_right, destination_right);
-        var bottom = @min(canvas_bottom, destination_bottom);
-        if (self.clip) |clip| {
-            left = @max(left, @as(i64, clip.x));
-            top = @max(top, @as(i64, clip.y));
-            right = @min(right, @as(i64, clip.x) + @as(i64, clip.w));
-            bottom = @min(bottom, @as(i64, clip.y) + @as(i64, clip.h));
+        const bounds = self.visibleBounds(options.x, options.y, options.width, options.height) orelse return;
+        const tinted = !isWhite(options.tint);
+        switch (options.filter) {
+            .nearest => {
+                if (surface.target.width == options.width and surface.target.height == options.height) {
+                    self.drawSurfaceOneToOne(&surface.target, options, bounds, tinted);
+                } else if (options.width % surface.target.width == 0 and options.height % surface.target.height == 0) {
+                    self.drawSurfaceIntegerNearest(&surface.target, options, bounds, tinted);
+                } else {
+                    self.drawSurfaceNearest(&surface.target, options, bounds, tinted);
+                }
+            },
+            .linear => self.drawSurfaceLinear(&surface.target, options, bounds, tinted),
         }
-        if (left >= right or top >= bottom) return;
+    }
 
-        var y = top;
-        while (y < bottom) : (y += 1) {
-            const destination_y: u32 = @intCast(y - @as(i64, options.y));
-            var x = left;
-            while (x < right) : (x += 1) {
-                const destination_x: u32 = @intCast(x - @as(i64, options.x));
-                const source_color = switch (options.filter) {
-                    .nearest => sampleSurfaceNearest(&surface.target, destination_x, destination_y, options.width, options.height),
-                    .linear => sampleSurfaceLinear(&surface.target, destination_x, destination_y, options.width, options.height),
-                };
-                self.blendPixel(@intCast(x), @intCast(y), tint(source_color, options.tint));
+    fn drawSurfaceOneToOne(self: *Canvas, source: *const Canvas, options: SurfaceDrawOptions, bounds: PixelBounds, tinted: bool) void {
+        const source_x: usize = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, options.x));
+        const source_y: usize = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, options.y));
+        const span = bounds.right - bounds.left;
+        const destination_width: usize = self.width;
+        const source_width: usize = source.width;
+        for (bounds.top..bounds.bottom, source_y..) |destination_y, sample_y| {
+            const destination_start = destination_y * destination_width + bounds.left;
+            const source_start = sample_y * source_width + source_x;
+            for (self.pixels[destination_start .. destination_start + span], source.pixels[source_start .. source_start + span]) |*destination, sample| self.blendColor(destination, if (tinted) tint(sample, options.tint) else sample);
+        }
+    }
+
+    fn drawSurfaceIntegerNearest(self: *Canvas, source: *const Canvas, options: SurfaceDrawOptions, bounds: PixelBounds, tinted: bool) void {
+        const scale_x = options.width / source.width;
+        const scale_y = options.height / source.height;
+        const destination_width: usize = self.width;
+        const source_width: usize = source.width;
+        const initial_y: u32 = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, options.y));
+        const initial_x: u32 = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, options.x));
+        for (bounds.top..bounds.bottom, initial_y..) |destination_y, relative_y| {
+            const sample_y: usize = relative_y / scale_y;
+            const destination_start = destination_y * destination_width + bounds.left;
+            var destination_x: usize = 0;
+            var relative_x = initial_x;
+            var sample_x: usize = relative_x / scale_x;
+            var remaining_in_sample = scale_x - relative_x % scale_x;
+            while (destination_x < bounds.right - bounds.left) {
+                const run: usize = @min(remaining_in_sample, @as(u32, @intCast(bounds.right - bounds.left - destination_x)));
+                const sample = source.pixels[sample_y * source_width + sample_x];
+                const color = if (tinted) tint(sample, options.tint) else sample;
+                for (self.pixels[destination_start + destination_x .. destination_start + destination_x + run]) |*destination| self.blendColor(destination, color);
+                destination_x += run;
+                relative_x += @intCast(run);
+                sample_x += 1;
+                remaining_in_sample = scale_x;
+            }
+        }
+    }
+
+    fn drawSurfaceNearest(self: *Canvas, source: *const Canvas, options: SurfaceDrawOptions, bounds: PixelBounds, tinted: bool) void {
+        const destination_width: usize = self.width;
+        const source_width: usize = source.width;
+        const initial_y: u32 = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, options.y));
+        const initial_x: u32 = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, options.x));
+        for (bounds.top..bounds.bottom, initial_y..) |destination_y, relative_y| {
+            const sample_y: usize = @intCast((@as(u64, relative_y) * source.height) / options.height);
+            const destination_start = destination_y * destination_width + bounds.left;
+            for (0..bounds.right - bounds.left, initial_x..) |destination_x, relative_x| {
+                const sample_x: usize = @intCast((@as(u64, relative_x) * source.width) / options.width);
+                const sample = source.pixels[sample_y * source_width + sample_x];
+                self.blendColor(&self.pixels[destination_start + destination_x], if (tinted) tint(sample, options.tint) else sample);
+            }
+        }
+    }
+
+    fn drawSurfaceLinear(self: *Canvas, source: *const Canvas, options: SurfaceDrawOptions, bounds: PixelBounds, tinted: bool) void {
+        const destination_width: usize = self.width;
+        const initial_y: u32 = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, options.y));
+        const initial_x: u32 = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, options.x));
+        for (bounds.top..bounds.bottom, initial_y..) |destination_y, relative_y| {
+            const source_y = ((@as(f32, @floatFromInt(relative_y)) + 0.5) * @as(f32, @floatFromInt(source.height)) / @as(f32, @floatFromInt(options.height))) - 0.5;
+            const top = std.math.clamp(@as(i32, @intFromFloat(@floor(source_y))), 0, @as(i32, @intCast(source.height - 1)));
+            const bottom = @min(top + 1, @as(i32, @intCast(source.height - 1)));
+            const vertical = std.math.clamp(source_y - @as(f32, @floatFromInt(top)), 0, 1);
+            const destination_start = destination_y * destination_width + bounds.left;
+            for (0..bounds.right - bounds.left, initial_x..) |destination_x, relative_x| {
+                const source_x = ((@as(f32, @floatFromInt(relative_x)) + 0.5) * @as(f32, @floatFromInt(source.width)) / @as(f32, @floatFromInt(options.width))) - 0.5;
+                const left = std.math.clamp(@as(i32, @intFromFloat(@floor(source_x))), 0, @as(i32, @intCast(source.width - 1)));
+                const right = @min(left + 1, @as(i32, @intCast(source.width - 1)));
+                const horizontal = std.math.clamp(source_x - @as(f32, @floatFromInt(left)), 0, 1);
+                const top_color = lerpColor(surfacePixel(source, left, top), surfacePixel(source, right, top), horizontal);
+                const bottom_color = lerpColor(surfacePixel(source, left, bottom), surfacePixel(source, right, bottom), horizontal);
+                const sample = lerpColor(top_color, bottom_color, vertical);
+                self.blendColor(&self.pixels[destination_start + destination_x], if (tinted) tint(sample, options.tint) else sample);
             }
         }
     }
@@ -350,12 +428,18 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
 
     pub fn drawText(self: *Canvas, text: []const u8, x: i32, y: i32, color: Color) void {
         if (self.trace) |trace| trace.recordText(text, x, y, color);
-        var laid_out = text_layout.layout(self.allocator, text, .{}) catch return;
-        defer laid_out.deinit();
-        for (laid_out.glyphs) |glyph| {
-            if (glyph.codepoint == ' ') continue;
-            const codepoint: u8 = if (glyph.codepoint <= 0x7f) @intCast(glyph.codepoint) else '?';
-            self.drawGlyph(codepoint, x + glyph.x, y + glyph.y, color);
+        var text_index: usize = 0;
+        var pen_x = x;
+        var pen_y = y;
+        while (nextBuiltinCodepoint(text, &text_index)) |codepoint| {
+            if (codepoint == '\n') {
+                pen_x = x;
+                pen_y = saturatingAdd(pen_y, @as(i32, @intCast(font.height + 1)));
+                continue;
+            }
+            const glyph: u8 = if (codepoint <= 0x7f) @intCast(codepoint) else '?';
+            if (glyph != ' ') self.drawGlyph(glyph, pen_x, pen_y, color);
+            pen_x = saturatingAdd(pen_x, @as(i32, @intCast(font.width + 1)));
         }
     }
 
@@ -435,6 +519,24 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         const uy: u32 = @intCast(y);
         if (ux >= self.width or uy >= self.height) return null;
         return @as(usize, uy) * self.width + ux;
+    }
+
+    fn visibleBounds(self: Canvas, x: i32, y: i32, width: anytype, height: anytype) ?PixelBounds {
+        const w: i64 = @intCast(width);
+        const h: i64 = @intCast(height);
+        if (w <= 0 or h <= 0) return null;
+        var left = @max(@as(i64, 0), @as(i64, x));
+        var top = @max(@as(i64, 0), @as(i64, y));
+        var right = @min(@as(i64, self.width), @as(i64, x) + w);
+        var bottom = @min(@as(i64, self.height), @as(i64, y) + h);
+        if (self.clip) |clip| {
+            left = @max(left, @as(i64, clip.x));
+            top = @max(top, @as(i64, clip.y));
+            right = @min(right, @as(i64, clip.x) + @as(i64, clip.w));
+            bottom = @min(bottom, @as(i64, clip.y) + @as(i64, clip.h));
+        }
+        if (left >= right or top >= bottom) return null;
+        return .{ .left = @intCast(left), .top = @intCast(top), .right = @intCast(right), .bottom = @intCast(bottom) };
     }
 };
 
@@ -578,6 +680,50 @@ fn tint(color: Color, value: Color) Color {
     };
 }
 
+fn isWhite(color: Color) bool {
+    return color.r == 255 and color.g == 255 and color.b == 255 and color.a == 255;
+}
+
+fn saturatingAdd(value: i32, amount: i32) i32 {
+    return std.math.add(i32, value, amount) catch if (amount >= 0) std.math.maxInt(i32) else std.math.minInt(i32);
+}
+
+// Canvas built-in text has fixed left alignment and no wrapping. Keeping its
+// compact UTF-8 walk here avoids allocating a transient layout for every HUD
+// draw while retaining the shared replacement-codepoint behaviour.
+fn nextBuiltinCodepoint(text: []const u8, index: *usize) ?u21 {
+    if (index.* >= text.len) return null;
+    const first = text[index.*];
+    if (first < 0x80) {
+        index.* += 1;
+        return first;
+    }
+    const length: usize = if ((first & 0xe0) == 0xc0) 2 else if ((first & 0xf0) == 0xe0) 3 else if ((first & 0xf8) == 0xf0) 4 else 1;
+    if (length == 1 or index.* + length > text.len) {
+        index.* += 1;
+        return 0xfffd;
+    }
+    const minimum: u21 = switch (length) {
+        2 => 0x80,
+        3 => 0x800,
+        4 => 0x10000,
+        else => unreachable,
+    };
+    var codepoint: u21 = first & (@as(u8, 0x7f) >> @intCast(length));
+    var offset: usize = 1;
+    while (offset < length) : (offset += 1) {
+        const byte = text[index.* + offset];
+        if ((byte & 0xc0) != 0x80) {
+            index.* += 1;
+            return 0xfffd;
+        }
+        codepoint = (codepoint << 6) | (byte & 0x3f);
+    }
+    index.* += length;
+    if (codepoint < minimum or codepoint > 0x10ffff or (codepoint >= 0xd800 and codepoint <= 0xdfff)) return 0xfffd;
+    return codepoint;
+}
+
 test "canvas clips draws" {
     var canvas = try Canvas.init(std.testing.allocator, 4, 4);
     defer canvas.deinit();
@@ -631,6 +777,34 @@ test "sprite draw honors alpha" {
     try std.testing.expectEqual(Color.black, canvas.get(1, 0).?);
 }
 
+test "sprite draw clips source iteration before compositing" {
+    var canvas = try Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    const pixels = [_]Color{ Color.rgb(255, 0, 0), Color.rgb(0, 255, 0), Color.rgb(0, 0, 255) };
+    const sprite = Sprite{ .width = 3, .height = 1, .pixels = &pixels };
+    canvas.clear(Color.black);
+    canvas.drawSprite(sprite, -1, 0);
+    try std.testing.expectEqual(Color.rgb(0, 255, 0), canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(1, 0).?);
+
+    canvas.clear(Color.black);
+    const previous = canvas.pushClip(.{ .x = 1, .y = 0, .w = 1, .h = 1 });
+    canvas.drawSprite(sprite, -1, 0);
+    canvas.restoreClip(previous);
+    try std.testing.expectEqual(Color.black, canvas.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), canvas.get(1, 0).?);
+}
+
+test "built in text needs no scratch allocation after Canvas initialization" {
+    var backing: [16 * 8 * @sizeOf(Color)]u8 = undefined;
+    var fixed = std.heap.FixedBufferAllocator.init(&backing);
+    var canvas = try Canvas.init(fixed.allocator(), 16, 8);
+    defer canvas.deinit();
+    canvas.clear(Color.black);
+    canvas.drawText("A", 0, 0, Color.white);
+    try std.testing.expectEqual(Color.white, canvas.get(1, 0).?);
+}
+
 test "render surfaces start transparent and validate their dimensions" {
     var surface = try RenderSurface.init(std.testing.allocator, 2, 3);
     defer surface.deinit();
@@ -667,6 +841,27 @@ test "render surfaces compose, scale, tint, and respect Canvas clipping" {
     canvas.restoreClip(previous);
     try std.testing.expectEqual(Color.rgb(128, 0, 0), canvas.get(0, 1).?);
     try std.testing.expectEqual(Color.black, canvas.get(1, 1).?);
+}
+
+test "render surface nearest fast paths preserve exact pixels and alpha" {
+    var surface = try RenderSurface.init(std.testing.allocator, 2, 1);
+    defer surface.deinit();
+    surface.canvas().pixels[0] = Color.rgba(255, 0, 0, 128);
+    surface.canvas().pixels[1] = Color.rgb(0, 0, 255);
+
+    var one_to_one = try Canvas.init(std.testing.allocator, 2, 1);
+    defer one_to_one.deinit();
+    one_to_one.clear(Color.rgb(0, 255, 0));
+    try one_to_one.drawSurface(&surface, .{ .x = 0, .y = 0, .width = 2, .height = 1 });
+    try std.testing.expectEqual(Color.rgb(128, 127, 0), one_to_one.get(0, 0).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), one_to_one.get(1, 0).?);
+
+    var scaled = try Canvas.init(std.testing.allocator, 8, 4);
+    defer scaled.deinit();
+    scaled.clear(Color.black);
+    try scaled.drawSurface(&surface, .{ .x = 0, .y = 0, .width = 8, .height = 4 });
+    try std.testing.expectEqual(Color.rgba(255, 0, 0, 128).over(Color.black), scaled.get(3, 3).?);
+    try std.testing.expectEqual(Color.rgb(0, 0, 255), scaled.get(4, 0).?);
 }
 
 test "render surfaces remain mutable and reject self sampling" {
