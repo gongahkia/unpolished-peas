@@ -40,10 +40,11 @@ run_project() {
     )
 }
 
-exercise_live_starter() {
-    local project="$tmp/starter"
-    local cache="$tmp/cache-starter-live"
-    local log="$tmp/starter-dev-web.log"
+exercise_live_project() {
+    local name="$1"
+    local project="$tmp/$name"
+    local cache="$tmp/cache-$name-live"
+    local log="$tmp/$name-dev-web.log"
     (
         cd "$project"
         setsid env ZIG_GLOBAL_CACHE_DIR="$global_cache" ZIG_LOCAL_CACHE_DIR="$cache" zig build dev-web -Ddev-web-port=0 >"$log" 2>&1 &
@@ -79,6 +80,7 @@ exercise_live_starter() {
 
 run_project "templates/starter" "fixtures/release-candidate-consumer/build.zig.zon"
 run_project "dogfood/neon-siege" "fixtures/dogfood-release-consumer/build.zig.zon"
-exercise_live_starter
+exercise_live_project starter
+exercise_live_project neon-siege
 
-printf '%s\n' 'browser development external consumers passed: starter-live,dogfood,web,dev-web,no-checkout'
+printf '%s\n' 'browser development external consumers passed: starter-live,dogfood-live,web,dev-web,no-checkout'

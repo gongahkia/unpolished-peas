@@ -956,6 +956,16 @@ pub fn build(b: *std.Build) void {
     const render_surface_test_step = b.step("test-render-surfaces", "Run public offscreen render-surface tests");
     render_surface_test_step.dependOn(&run_render_surface_tests.step);
     test_step.dependOn(&run_render_surface_tests.step);
+    const animation_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/sprite_animation.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    addStb(animation_tests.root_module);
+    const run_animation_tests = b.addRunArtifact(animation_tests);
+    const animation_test_step = b.step("test-animation", "Run deterministic sprite-frame animation tests");
+    animation_test_step.dependOn(&run_animation_tests.step);
+    test_step.dependOn(&run_animation_tests.step);
     const audio_game_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/audio_game_test.zig"),
         .target = target,

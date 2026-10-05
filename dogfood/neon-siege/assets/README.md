@@ -1,8 +1,11 @@
 # Neon Siege authored assets
 
-`neon-siege.png` is the compact 16×16 sprite sheet used by the dogfood game.
-It is a repository-owned fixture copied from `examples/assets/ball.png` for
-this portable authored-image workflow.
+`neon-siege.png` is the compact 32×16 sprite sheet used by the dogfood game.
+It contains two 8×8 player walk frames plus enemy, projectile, and pickup
+sprites. It is repository-authored pixel art; regenerate it deliberately with
+`zig run script/generate_neon_siege_sprite_sheet.zig` from the
+repository root. The generator is kept solely for provenance, not as a game
+asset pipeline.
 
 `neon-siege.ttf` is the Basic typeface from Sorkin Type Co. It is distributed
 under the SIL Open Font License 1.1; `OFL.txt` is its required notice. Native

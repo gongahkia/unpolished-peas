@@ -71,6 +71,9 @@ def main() -> int:
         source.parent.mkdir(parents=True)
         (project / "build.zig").write_text("// fake browser project\n")
         source.write_text("BROKEN\n")
+        static = temporary / "static"
+        static.mkdir()
+        (static / "index.html").write_text("static\n")
         fake_zig = temporary / "fake-zig.py"
         fake_zig.write_text(
             "#!/usr/bin/env python3\n"
@@ -90,6 +93,19 @@ def main() -> int:
             "out.joinpath('game.wasm').write_bytes(b'\\0asm')\n"
         )
         fake_zig.chmod(0o755)
+        occupied = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        occupied.bind(("127.0.0.1", 0))
+        occupied.listen()
+        occupied_port = occupied.getsockname()[1]
+        collision = subprocess.run(
+            [sys.executable, str(SERVER), "serve", "--web-dir", str(static), "--port", str(occupied_port)],
+            capture_output=True,
+            text=True,
+            timeout=5,
+        )
+        occupied.close()
+        assert collision.returncode == 1
+        assert "could not bind browser server" in collision.stderr
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -145,8 +161,9 @@ def main() -> int:
         events = connection.getresponse()
         assert events.status == 200
         read_until(events, b": connected")
+        builds_before_v2 = read_build_count(build_log)
         source.write_text("const version = 2;\n")
-        wait_for(lambda: read_build_count(build_log) == 2, "successful rebuild process")
+        wait_for(lambda: read_build_count(build_log) == builds_before_v2 + 1, "successful rebuild process")
         wait_for(lambda: b"game-const version = 2;" in fetch(port, "/")[1], "successful rebuild")
         read_until(events, b"event: reload")
         builds_after_success = read_build_count(build_log)

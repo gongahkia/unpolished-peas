@@ -52,7 +52,7 @@ pub const Game = struct {
     surface: ?up.graphics.RenderSurface = null,
     atlas: ?*up.assets.Atlas = null,
     font: ?*up.assets.Font = null,
-    player_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
+    player_animation: ?up.graphics.SpriteAnimationPlayer = null,
     enemy_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
     projectile_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
     pickup_frame: up.assets.AtlasFrameHandle = .{ .index = 0 },
@@ -84,10 +84,12 @@ pub const Game = struct {
         errdefer self.allocator.?.destroy(atlas);
         atlas.* = try up.assets.Atlas.init(self.allocator.?, image, "neon-siege.png", &art.frames, &.{});
         self.atlas = atlas;
-        self.player_frame = atlas.findFrame("player") orelse return error.MissingPlayerFrame;
         self.enemy_frame = atlas.findFrame("enemy") orelse return error.MissingEnemyFrame;
         self.projectile_frame = atlas.findFrame("projectile") orelse return error.MissingProjectileFrame;
         self.pickup_frame = atlas.findFrame("pickup") orelse return error.MissingPickupFrame;
+        try art.player_idle_clip.validateForAtlas(atlas);
+        try art.player_walk_clip.validateForAtlas(atlas);
+        self.player_animation = try up.graphics.SpriteAnimationPlayer.init(&art.player_idle_clip);
 
         const font = try self.allocator.?.create(up.assets.Font);
         errdefer self.allocator.?.destroy(font);
@@ -109,6 +111,7 @@ pub const Game = struct {
             actions.deinit();
             self.actions = null;
         }
+        self.player_animation = null;
         if (self.atlas) |atlas| {
             atlas.deinit();
             if (self.allocator) |allocator| allocator.destroy(atlas);
@@ -145,6 +148,13 @@ pub const Game = struct {
         var movement = up.core.Vec2{ .x = x, .y = y };
         if (movement.lenSq() > 1) movement = movement.normalized();
         if (movement.lenSq() > 0) self.last_direction = movement;
+        const player_animation = &(self.player_animation orelse return error.GameNotInitialized);
+        const wanted_clip = if (movement.lenSq() > 0) &art.player_walk_clip else &art.player_idle_clip;
+        if (!player_animation.isCurrentClip(wanted_clip)) try player_animation.play(wanted_clip);
+        // One exact animation tick per fixed simulation update. `draw` only
+        // observes the selected Atlas frame, so catch-up updates and replay
+        // advance animation exactly with game state.
+        player_animation.advance(1);
         const dash: f32 = if (actions.isDown("game", "dash")) 1.8 else 1;
         self.player.position.x = std.math.clamp(self.player.position.x + movement.x * player_speed * dash * elapsed_seconds, 4, 116);
         self.player.position.y = std.math.clamp(self.player.position.y + movement.y * player_speed * dash * elapsed_seconds, 4, 66);
@@ -207,7 +217,8 @@ pub const Game = struct {
         for (self.pickups) |pickup| if (pickup.active) world_canvas.drawAtlasFrame(atlas.*, self.pickup_frame, pickup.position, .{ .origin = .center });
         for (self.enemies) |enemy| if (enemy.active) world_canvas.drawAtlasFrame(atlas.*, self.enemy_frame, enemy.position, .{ .origin = .center });
         for (self.projectiles) |projectile| if (projectile.active) world_canvas.drawAtlasFrame(atlas.*, self.projectile_frame, projectile.position, .{ .origin = .center });
-        world_canvas.drawAtlasFrame(atlas.*, self.player_frame, self.player.position, .{ .origin = .center });
+        const player_animation = self.player_animation orelse return error.GameNotInitialized;
+        world_canvas.drawAtlasFrame(atlas.*, player_animation.currentFrame(), self.player.position, .{ .origin = .center });
 
         canvas.clear(up.core.Color.rgb(3, 5, 13));
         try canvas.drawSurface(surface, .{ .x = 0, .y = 0, .width = width, .height = height, .filter = .nearest });
@@ -233,6 +244,7 @@ pub const Game = struct {
         self.game_over = false;
         self.attack_cooldown = 0;
         self.hurt_cooldown = 0;
+        if (self.player_animation) |*animation| animation.restart();
         self.enemies = [_]Actor{Actor{}} ** max_enemies;
         self.projectiles = [_]Actor{Actor{}} ** max_projectiles;
         self.pickups = [_]Actor{Actor{}} ** max_pickups;
@@ -390,8 +402,8 @@ test "Neon Siege replays combat with seeded state, save data, Canvas trace, and 
     try std.testing.expectEqual(first.game.player.position, second.game.player.position);
     try up.testSupport.expectCanvasTraceEqual(first_capture.canvas_trace, second_capture.canvas_trace);
     const trace_hash = try first_capture.canvas_trace.hash();
-    try std.testing.expectEqual(@as(u64, 6_877_916_436_497_965_585), trace_hash);
-    try std.testing.expectEqual(@as(u64, 2_571_281_868_352_411_261), first_capture.image_hash);
+    try std.testing.expectEqual(@as(u64, 4_209_207_815_196_832_752), trace_hash);
+    try std.testing.expectEqual(@as(u64, 10_847_717_462_530_635_717), first_capture.image_hash);
     try std.testing.expectEqual(trace_hash, try second_capture.canvas_trace.hash());
     try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
 }
@@ -408,6 +420,30 @@ test "Neon Siege uses gamepad actions for movement and shooting" {
     runner.input.setGamepadButton(7, .south, true);
     try runner.run(&.{.{}});
     try std.testing.expect(runner.audio.hasActivePlayback());
+}
+
+test "Neon Siege advances its player animation in fixed update, not draw" {
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    defer runner.deinit();
+
+    try runner.run(&.{.{ .buttons = up.testSupport.Buttons.right }});
+    const animation = runner.game.player_animation orelse return error.MissingPlayerAnimation;
+    try std.testing.expect(animation.isCurrentClip(&art.player_walk_clip));
+    try std.testing.expectEqual(@as(usize, 0), animation.currentFrame().index);
+
+    // Extra presentation draws never advance the game-owned player.
+    try runner.protocol.draw(&runner.context, 0);
+    try runner.protocol.draw(&runner.context, 0);
+    try std.testing.expectEqual(@as(usize, 0), (runner.game.player_animation orelse return error.MissingPlayerAnimation).currentFrame().index);
+
+    try runner.run(&.{
+        .{ .buttons = up.testSupport.Buttons.right },
+        .{ .buttons = up.testSupport.Buttons.right },
+        .{ .buttons = up.testSupport.Buttons.right },
+        .{ .buttons = up.testSupport.Buttons.right },
+        .{ .buttons = up.testSupport.Buttons.right },
+    });
+    try std.testing.expectEqual(@as(usize, 1), (runner.game.player_animation orelse return error.MissingPlayerAnimation).currentFrame().index);
 }
 
 test "Neon Siege handles a breach and action-based restart" {

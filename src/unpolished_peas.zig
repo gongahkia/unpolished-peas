@@ -36,6 +36,7 @@ test {
     _ = @import("rng.zig");
     _ = @import("save_data.zig");
     _ = @import("sprite_batch.zig");
+    _ = @import("sprite_animation.zig");
     _ = @import("text_layout.zig");
     _ = @import("test_support.zig");
 }

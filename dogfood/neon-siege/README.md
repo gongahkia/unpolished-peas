@@ -59,7 +59,8 @@ shape used by release validation. Game source itself imports only
 - `GameProtocol` init/update/draw plus optional cleanup.
 - Fixed-step actions for keyboard and gamepad.
 - Seeded game-owned `DeterministicRng` waves.
-- An authored embedded PNG decoded into a public `Image` and Atlas frames.
+- An authored embedded PNG decoded into a public `Image`, Atlas frames, and a
+  deterministic tick-based player idle/walk animation.
 - Camera world rendering into a 80x45 nearest-scaled `RenderSurface`.
 - An authored embedded TrueType font for the HUD and prompts.
 - Two reusable high-level WAV sound effects plus one looping incremental OGG
@@ -76,6 +77,14 @@ files. The same public image/font/music paths run in native, headless, and
 browser/Wasm builds. The compiled game does not fetch or load those files at
 runtime. The music source is a repository-authored synthesized chord; its
 reproducible generator is `script/generate_neon_siege_music.sh`.
+
+The sprite sheet is repository-authored 8×8 pixel art with two player walk
+frames. Its deliberate reproducible generator is
+`script/generate_neon_siege_sprite_sheet.zig`; the checked-in PNG is the
+runtime asset. The game advances its `SpriteAnimationPlayer` once in each
+fixed update and draws the resulting ordinary Atlas frame. See the
+[sprite-animation guide](../../docs/guides/sprite-animation.md) for the small
+public API.
 
 ## Native developer asset reload
 

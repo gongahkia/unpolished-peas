@@ -30,6 +30,13 @@ pub const input = struct {
 };
 
 pub const graphics = struct {
+    /// Post-v0.1 deterministic sprite-frame animation. Clips and players are
+    /// game-owned fixed-update state; Canvas and Atlas remain responsible for
+    /// drawing the selected frame.
+    pub const SpriteAnimationStep = @import("sprite_animation.zig").SpriteAnimationStep;
+    pub const SpriteAnimationMode = @import("sprite_animation.zig").SpriteAnimationMode;
+    pub const SpriteAnimationClip = @import("sprite_animation.zig").SpriteAnimationClip;
+    pub const SpriteAnimationPlayer = @import("sprite_animation.zig").SpriteAnimationPlayer;
     pub const Canvas = @import("canvas.zig").Canvas;
     pub const RenderSurface = @import("canvas.zig").RenderSurface;
     pub const SurfaceDrawOptions = @import("canvas.zig").SurfaceDrawOptions;
