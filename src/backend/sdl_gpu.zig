@@ -1479,14 +1479,15 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer save_data.deinit();
     const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
     var dev = try DeveloperTools.init(allocator, developer_tools_enabled, data_path);
-    defer dev.deinit();
     var developer_asset_registry = developer_assets.Registry.init(allocator, developer_tools_enabled) catch |err| blk: {
         // A bad explicit developer root must not turn a release-style game
         // launch into a failure. The embedded resource remains authoritative.
         dev.failure(.asset_reload, err);
         break :blk developer_assets.Registry{ .allocator = allocator, .enabled = false };
     };
-    defer developer_asset_registry.deinit();
+    // The diagnostics snapshot borrows the registry's last asset path. Write
+    // the optional shutdown dump before reclaiming that registry storage.
+    defer deinitDeveloperServices(&dev, &developer_asset_registry);
     var profiler = up.FrameProfiler.init(developer_tools_enabled or config.cpu_profiler);
     profiler.beginFrame(0);
     var native_timing = NativeTimingReport.init();
@@ -2909,6 +2910,54 @@ const DeveloperTools = struct {
         if (self.log_file) |file| file.writeAll(line) catch {};
     }
 };
+
+/// Developer diagnostics borrow the reload registry's last path for the
+/// bounded local snapshot. Keep that owner alive while the optional dump is
+/// serialized at host shutdown.
+fn deinitDeveloperServices(dev: anytype, registry: anytype) void {
+    dev.deinit();
+    registry.deinit();
+}
+
+test "developer diagnostics dump precedes developer asset registry destruction" {
+    const TestRegistry = struct {
+        allocator: std.mem.Allocator,
+        last_asset: []u8,
+
+        fn deinit(self: *@This()) void {
+            self.allocator.free(self.last_asset);
+            self.* = undefined;
+        }
+    };
+
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    try temp.dir.makePath("data");
+    const data_root = try temp.dir.realpathAlloc(std.testing.allocator, "data");
+    defer std.testing.allocator.free(data_root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{data_root});
+    defer std.testing.allocator.free(data_path);
+
+    var registry = TestRegistry{
+        .allocator = std.testing.allocator,
+        .last_asset = try std.testing.allocator.dupe(u8, "sprite.png"),
+    };
+    var tools = DeveloperTools{
+        .allocator = std.testing.allocator,
+        .app_data_path = data_path,
+        .enabled = true,
+        .overlay = false,
+        .diagnostics = developer_diagnostics.Collector.init(true),
+        .dump_snapshot = true,
+    };
+    tools.diagnostics.snapshot.asset_reload.last_asset = registry.last_asset;
+
+    deinitDeveloperServices(&tools, &registry);
+
+    const dump = try temp.dir.readFileAlloc(std.testing.allocator, "data/developer-diagnostics.json", 4096);
+    defer std.testing.allocator.free(dump);
+    try std.testing.expect(std.mem.indexOf(u8, dump, "\"last_asset\":\"sprite.png\"") != null);
+}
 
 test "developer tools log runtime failure categories" {
     var temp = std.testing.tmpDir(.{});
