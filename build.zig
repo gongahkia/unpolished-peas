@@ -995,7 +995,8 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    addStb(core_api_snapshot_module);
+    core_api_snapshot_module.link_libc = true;
+    core_api_snapshot_module.addIncludePath(b.path("vendor/stb"));
     const core_api_snapshot = b.addObject(.{ .name = "core-api-snapshot", .root_module = core_api_snapshot_module });
     const core_api_snapshot_test_step = b.step("test-core-api", "Verify the frozen core API snapshot");
     core_api_snapshot_test_step.dependOn(&core_api_snapshot.step);
