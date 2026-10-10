@@ -1,4 +1,4 @@
-name: CI
+name: Unpolished Peas CI/CD on Push
 
 on:
   pull_request:
