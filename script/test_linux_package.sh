@@ -52,7 +52,7 @@ cd "$tmp/outside-repository"
 if opengl_output=$("$repo/script/run_linux_software_gl.sh" "$package/run.sh" --frames 2 --renderer opengl 2>&1); then
     opengl_result=passed
 else
-    if ! printf '%s\n' "$opengl_output" | grep -Eq 'renderer requested=opengl.*selected=none'; then
+    if ! printf '%s\n' "$opengl_output" | grep -Eq 'native renderer: .*requested=opengl selected=none.*opengl_33=unavailable'; then
         printf '%s\n' "unexpected OpenGL packaged smoke failure: $opengl_output" >&2
         exit 1
     fi

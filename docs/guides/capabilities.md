@@ -24,7 +24,7 @@ Browser baseline: current stable evergreen desktop releases of Chromium, Firefox
 | Assets | raw image, font, and audio asset loading |
 | Fixed timestep | documented fixed-step timing and interpolation |
 | Packaging | portable desktop package or static browser bundle |
-| Deterministic hooks | headless commands, fixed-tick replay input, explicit seed/RNG state, and local diagnostics |
+| Deterministic hooks | headless commands, replay input, and local diagnostics |
 
 ## Target and renderer status
 

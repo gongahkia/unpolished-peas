@@ -79,7 +79,7 @@ try {
         if ($opengl_status -eq 0) {
             $opengl_result = 'passed'
         } else {
-            if ($opengl_text -notmatch 'renderer requested=opengl.*selected=none') { throw "unexpected OpenGL packaged smoke failure: $opengl_text" }
+            if ($opengl_text -notmatch 'native renderer: .*requested=opengl selected=none.*opengl_33=unavailable') { throw "unexpected OpenGL packaged smoke failure: $opengl_text" }
             $opengl_result = 'capability-unavailable'
         }
     } finally {

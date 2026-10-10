@@ -36,7 +36,7 @@ pub export fn up_stb_realloc(pointer: ?*anyopaque, payload_len: usize) ?*anyopaq
 pub export fn up_stb_free(pointer: ?*anyopaque) void {
     const value = pointer orelse return;
     const header = headerFor(value);
-    const bytes: [*]align(@alignOf(u128)) u8 = @alignCast(@ptrCast(header));
+    const bytes: [*]align(@alignOf(u128)) u8 = @ptrCast(@alignCast(header));
     std.heap.wasm_allocator.free(bytes[0..header.total_len]);
 }
 
