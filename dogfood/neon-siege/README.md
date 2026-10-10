@@ -62,7 +62,8 @@ shape used by release validation. Game source itself imports only
 - An authored embedded PNG decoded into a public `Image`, Atlas frames, and a
   deterministic tick-based player idle/walk animation.
 - Camera world rendering into a 80x45 nearest-scaled `RenderSurface`.
-- An authored embedded TrueType font for the HUD and prompts.
+- Sharp built-in bitmap HUD text; an embedded TrueType font remains available
+  for asset loading and developer reload examples.
 - Two reusable high-level WAV sound effects plus one looping incremental OGG
   background track.
 - Game-owned save bytes for best score and audio preference.
@@ -89,7 +90,7 @@ public API.
 ## Native developer asset reload
 
 For a native development session, Neon Siege can replace its authored sprite
-sheet and HUD font without rebuilding:
+sheet and embedded font without rebuilding:
 
 ```sh
 UP_DEVELOPER_TOOLS=1 \

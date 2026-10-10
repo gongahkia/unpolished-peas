@@ -54,8 +54,8 @@ and OGG loop are embedded, so release packages have no runtime asset folder.
 - Embedded PNG → `Image` → `Atlas`, plus public deterministic
   `SpriteAnimationPlayer` idle/run/jump clips.
 - A 80×45 CPU `RenderSurface` nearest-scaled to the 160×90 Canvas.
-- Embedded TrueType HUD text, reusable WAV SFX, and incrementally decoded
-  looping OGG music.
+- Sharp built-in bitmap HUD text, an embedded TrueType font for asset loading,
+  reusable WAV SFX, and incrementally decoded looping OGG music.
 - Game-owned `SaveStore` progress bytes, checkpoints, headless replay,
   Canvas-trace, and pixel-hash comparison tests.
 - Opt-in native developer diagnostics and image/font hot reload registration.

@@ -168,7 +168,7 @@ pub const Game = struct {
         const canvas = try ctx.requireCanvas();
         const surface = if (self.surface) |*value| value else return error.GameNotInitialized;
         const atlas = self.atlas orelse return error.GameNotInitialized;
-        const font = self.font orelse return error.GameNotInitialized;
+        _ = self.font orelse return error.GameNotInitialized;
         const world = surface.canvas();
         world.clear(up.core.Color.rgb(12, 17, 37));
 
@@ -206,19 +206,21 @@ pub const Game = struct {
         canvas.clear(up.core.Color.rgb(4, 7, 18));
         try canvas.drawSurface(surface, .{ .x = 0, .y = 0, .width = width, .height = height, .filter = .nearest });
         canvas.fillRect(0, 0, @intCast(width), 11, up.core.Color.rgba(4, 7, 18, 225));
+        canvas.fillRect(0, 79, @intCast(width), 11, up.core.Color.rgba(4, 7, 18, 235));
+        // The 5x7 bitmap glyphs stay sharp when this small canvas is scaled up.
         var hud: [48]u8 = undefined;
         const text = try std.fmt.bufPrint(&hud, "GLOWS {d}/{d}  BEST {d}", .{ self.collectedCount(), level.collectible_positions.len, self.best_collectibles });
-        font.drawText(canvas, text, 3, 2, up.core.Color.rgb(235, 244, 255));
-        font.drawText(canvas, "ARROWS/STICK MOVE  SPACE/A JUMP  ENTER/START RESTART", 3, 80, up.core.Color.rgb(201, 214, 245));
+        canvas.drawText(text, 3, 2, up.core.Color.rgb(235, 244, 255));
+        canvas.drawText("ARROWS MOVE SPACE JUMP", 3, 81, up.core.Color.rgb(201, 214, 245));
         if (self.dead) {
-            canvas.fillRect(38, 35, 84, 18, up.core.Color.rgba(5, 8, 20, 230));
-            font.drawText(canvas, "LANTERN OUT", 56, 39, up.core.Color.rgb(255, 159, 174));
-            font.drawText(canvas, "RESPAWNING", 58, 46, up.core.Color.rgb(229, 237, 255));
+            canvas.fillRect(32, 33, 96, 24, up.core.Color.rgba(5, 8, 20, 230));
+            canvas.drawText("LANTERN OUT", 44, 37, up.core.Color.rgb(255, 159, 174));
+            canvas.drawText("RESPAWNING", 47, 46, up.core.Color.rgb(229, 237, 255));
         }
         if (self.completed) {
-            canvas.fillRect(28, 32, 104, 24, up.core.Color.rgba(5, 8, 20, 235));
-            font.drawText(canvas, "THE WAY IS LIT", 49, 37, up.core.Color.rgb(255, 235, 128));
-            font.drawText(canvas, "ENTER TO WALK AGAIN", 38, 46, up.core.Color.rgb(229, 237, 255));
+            canvas.fillRect(18, 32, 124, 26, up.core.Color.rgba(5, 8, 20, 235));
+            canvas.drawText("THE WAY IS LIT", 38, 37, up.core.Color.rgb(255, 235, 128));
+            canvas.drawText("ENTER TO WALK AGAIN", 23, 46, up.core.Color.rgb(229, 237, 255));
         }
     }
 
