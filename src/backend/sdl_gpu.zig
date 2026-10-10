@@ -817,8 +817,7 @@ const NativeTimingReport = struct {
     };
 
     fn init() NativeTimingReport {
-        const value = std.posix.getenv("UP_NATIVE_TIMING_REPORT") orelse return .{ .enabled = false };
-        return .{ .enabled = std.mem.eql(u8, value, "1") };
+        return .{ .enabled = environmentBool("UP_NATIVE_TIMING_REPORT") orelse false };
     }
 
     fn start(self: NativeTimingReport) u64 {
@@ -2621,7 +2620,8 @@ fn developerToolsEnabled(default_enabled: bool) bool {
 }
 
 fn environmentBool(name: []const u8) ?bool {
-    const value = std.posix.getenv(name) orelse return null;
+    const value = std.process.getEnvVarOwned(std.heap.page_allocator, name) catch return null;
+    defer std.heap.page_allocator.free(value);
     if (std.mem.eql(u8, value, "1") or std.ascii.eqlIgnoreCase(value, "true")) return true;
     if (std.mem.eql(u8, value, "0") or std.ascii.eqlIgnoreCase(value, "false")) return false;
     return null;

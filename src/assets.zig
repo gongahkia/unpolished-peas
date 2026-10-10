@@ -801,15 +801,14 @@ test "material manifests create staged assets with reserved source binding" {
     var tmp = std.testing.tmpDir(.{});
     defer tmp.cleanup();
     const entries = [_]struct { name: []const u8, bytes: []const u8 }{
-        .{ .name = "vertex.spv", .bytes = "x" }, .{ .name = "vertex.dxbc", .bytes = "x" }, .{ .name = "vertex.metallib", .bytes = "x" }, .{ .name = "vertex.glsl", .bytes = "void main(){}" }, .{ .name = "vertex.wgsl", .bytes = "fn main() {}" },
+        .{ .name = "vertex.spv", .bytes = "x" },   .{ .name = "vertex.dxbc", .bytes = "x" },   .{ .name = "vertex.metallib", .bytes = "x" },   .{ .name = "vertex.glsl", .bytes = "void main(){}" },   .{ .name = "vertex.wgsl", .bytes = "fn main() {}" },
         .{ .name = "fragment.spv", .bytes = "x" }, .{ .name = "fragment.dxbc", .bytes = "x" }, .{ .name = "fragment.metallib", .bytes = "x" }, .{ .name = "fragment.glsl", .bytes = "void main(){}" }, .{ .name = "fragment.wgsl", .bytes = "fn main() {}" },
     };
     for (entries) |entry| try tmp.dir.writeFile(.{ .sub_path = entry.name, .data = entry.bytes });
-    try tmp.dir.writeFile(.{ .sub_path = "wave.upmat", .data =
-        "name=wave\n" ++
-            "vertex.spirv=vertex.spv\nvertex.dxbc=vertex.dxbc\nvertex.metallib=vertex.metallib\nvertex.webgl2=vertex.glsl\nvertex.webgpu=vertex.wgsl\n" ++
-            "fragment.spirv=fragment.spv\nfragment.dxbc=fragment.dxbc\nfragment.metallib=fragment.metallib\nfragment.webgl2=fragment.glsl\nfragment.webgpu=fragment.wgsl\n" ++
-            "binding=texture:source\nbinding=uniform:settings\n" });
+    try tmp.dir.writeFile(.{ .sub_path = "wave.upmat", .data = "name=wave\n" ++
+        "vertex.spirv=vertex.spv\nvertex.dxbc=vertex.dxbc\nvertex.metallib=vertex.metallib\nvertex.webgl2=vertex.glsl\nvertex.webgpu=vertex.wgsl\n" ++
+        "fragment.spirv=fragment.spv\nfragment.dxbc=fragment.dxbc\nfragment.metallib=fragment.metallib\nfragment.webgl2=fragment.glsl\nfragment.webgpu=fragment.wgsl\n" ++
+        "binding=texture:source\nbinding=uniform:settings\n" });
     var store = AssetStore.init(std.testing.allocator, tmp.dir);
     defer store.deinit();
     const handle = try store.loadMaterial("wave.upmat");
