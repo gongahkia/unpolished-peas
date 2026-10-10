@@ -18,7 +18,7 @@ A small framework for building 2D games in [Zig](https://ziglang.org/) that comp
 ## Usage
 
 > [!NOTE]  
-> For a more detailed guide, refer to the [quickstart guide](docs/guides/quickstart.md) or check out `Unpolished Peas` in action within [Seed Sprint](templates/starter/README.md) or [Neon Siege](dogfood/neon-siege/README.md).
+> For a more detailed guide, refer to the [quickstart guide](docs/guides/quickstart.md) or check out `Unpolished Peas` in action within [Seed Sprint](templates/starter/README.md) & [Neon Siege](dogfood/neon-siege/README.md).
 
 It's pretty easy to get started with `Unpolished Peas`. Below are a couple of code snippets.
 
