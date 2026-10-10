@@ -394,7 +394,6 @@ jobs:
 
   advisory-next-zig:
     if: github.event_name != 'pull_request'
-    continue-on-error: true
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -402,4 +401,8 @@ jobs:
         with:
           version: master
       - run: zig version
-      - run: zig build test
+      - id: test
+        continue-on-error: true
+        run: zig build test
+      - if: steps.test.outcome == 'failure'
+        run: echo '::warning::Zig master is not supported yet; see the advisory test step for details.'
