@@ -1,86 +1,68 @@
-# unpolished-peas
+# `unpolished-peas` 🫛
 
 <div align="center">
-    <img src="./asset/logo/peas-color-logo.png" width="30%">
+    <img src="./asset/logo/peas-color-logo.png" width="30%" alt="Unpolished Peas logo">
 </div>
 
-A small Zig framework for deterministic, testable 2D games. Peas is for
-small authored games that benefit from a fixed update loop, headless tests,
-replayable input, and one Zig-first native/browser codebase.
+A small Zig framework for deterministic, testable 2D games. Build a small authored game with a fixed update loop, replayable input, headless tests, and one Zig-first codebase for native and browser builds.
 
-## Start here
+## Rationale
 
-Requires Zig `0.15.2`. The intended first public release is `v0.1.0`, but no
-immutable package has been published. Do not use `main` as a dependency.
+Peas is for games that need predictable simulation and straightforward testing without an engine owning the game's rules. Your Zig code owns its state, collision, and level behavior; Peas supplies the loop, input, drawing, assets, and platform hosts.
 
-New to Peas?
+It deliberately does not provide an engine-owned ECS, physics, 3D renderer, editor, networking stack, large UI framework, or general scene hierarchy.
+
+## Stack
+
+- **Language:** Zig `0.15.2`
+- **Desktop host:** SDL3
+- **Browser host:** WebAssembly with a JavaScript host
+- **Rendering:** logical-pixel `Canvas`, CPU `RenderSurface`, and a separate advanced `Renderer2D` path
+- **Testing:** headless game runs, seeded input replay, and Canvas regression checks
+
+## Features
+
+- `sdl.playGame(Game)` runs a `GameProtocol` game with fixed-step updates.
+- `GameContext` provides normalized input, an allocator, a Canvas, and optional save and audio capabilities.
+- `ctx.requireCanvas()` gives a game its logical-pixel 2D canvas for rectangles, sprites, text, clips, and blends.
+- `RenderSurface` owns an offscreen Canvas for deterministic 2D composition.
+- `ctx.requireSaveData()` gives a game a host-owned store for small opaque save blobs.
+- `Config` controls the window, fixed timestep, presentation, renderer, and optional runtime assets.
+
+## Usage
+
+> [!NOTE]
+> Peas is preparing its first public `v0.1.0` release. No immutable package has been published, so use this checkout for now rather than depending on `main`. The checked-in starter intentionally has no placeholder release URL or hash. See [installation](docs/guides/installation.md) for the eventual immutable-package workflow.
 
 1. Follow the [5–10 minute Start Here guide](docs/guides/quickstart.md).
-2. Read and run [Seed Sprint](templates/starter/README.md), the canonical
-   beginner project.
-3. Use [Neon Siege](dogfood/neon-siege/README.md) later as a larger
-   public-API reference. Then read
-   [Lantern Leap](dogfood/lantern-leap/README.md) for a mechanically different
-   scrolling-platformer reference that keeps collision and level rules in
-   ordinary game code.
+2. Read and run [Seed Sprint](templates/starter/README.md), the canonical beginner project.
+3. From this checkout, run the starter's game and tests:
 
-From this repository checkout, verify the starter's real game/test paths:
+   ```sh
+   zig build test-starter -Dwith_sdl=false
+   zig build run-starter
+   ```
 
-```sh
-zig build test-starter -Dwith_sdl=false
-zig build run-starter
-```
+4. Once familiar with the starter, read [Neon Siege](dogfood/neon-siege/README.md) for a larger public-API example and [Lantern Leap](dogfood/lantern-leap/README.md) for a scrolling platformer whose collision and level rules stay in game code.
 
-The checked-in template intentionally has no fake release URL/hash. See
-[installation](docs/guides/installation.md) for the explicit unreleased status
-and the eventual immutable-package workflow.
-
-## When Peas fits
-
-Use Peas for small authored 2D games, deterministic simulations, strong
-headless testing, simple Canvas rendering, and native/browser deployment.
-It deliberately does not provide an engine-owned ECS, physics, 3D renderer,
-editor, networking stack, large UI framework, or general scene hierarchy.
-
-## Platform evidence
-
-The [platform status](docs/guides/platforms.md) page is the single canonical
-record of build/package and runtime evidence. The
-[capability matrix](docs/guides/capabilities.md) separately defines
-renderer/browser contract and CI coverage; neither table substitutes for the
-other.
-
-## What you will use most
-
-- `sdl.playGame(Game)` runs a `GameProtocol` game.
-- `GameContext` provides input, Canvas, allocator, and optional save/audio
-  capabilities.
-- `ctx.requireCanvas()` returns the logical-pixel 2D canvas.
-- `ctx.requireSaveData()` returns a host-owned opaque-byte save store.
-- `Canvas` draws rectangles, sprites, text, clips, and blends.
-- `RenderSurface` owns an offscreen Canvas for deterministic 2D composition.
-- `Config` controls window, fixed timestep, presentation, renderer, and
-  optional runtime assets.
-
-The [learning path](docs/index.md) orders the guides; do not start with the
-core contract or advanced renderer reference unless you need their details.
-
-## Which example should I read?
+## Examples
 
 | Need | Read |
 | --- | --- |
 | First Peas game | [Seed Sprint](templates/starter/README.md) |
-| Minimal lifecycle | [tutorial GameProtocol example](examples/tutorial_game_protocol.zig) |
+| Minimal lifecycle | [Tutorial `GameProtocol` example](examples/tutorial_game_protocol.zig) |
 | Complete reference game | [Neon Siege](dogfood/neon-siege/README.md) |
 | Scrolling platformer reference | [Lantern Leap](dogfood/lantern-leap/README.md) |
-| Replay/state/Canvas regression | [testing guide](docs/guides/testing.md) |
-| Advanced materials or particles | [advanced 2D guide](docs/guides/advanced-2d.md) |
+| Replay, state, and Canvas regression | [Testing guide](docs/guides/testing.md) |
+| Advanced materials or particles | [Advanced 2D guide](docs/guides/advanced-2d.md) |
 
-## Release and local docs
+## Support
 
-Published generated projects will pin one immutable archive URL and matching
-hash. No current tag provides that coordinate; see the
-[installation guide](docs/guides/installation.md) and
-[release policy](docs/guides/releases.md).
+The [platform status](docs/guides/platforms.md) page records build/package evidence separately from actual runtime validation. The [capability matrix](docs/guides/capabilities.md) records renderer and browser contracts and CI coverage.
 
-Run `zig build docs` for offline documentation, or `zig build peas -- docs quickstart` to locate its local path. The [docs index](docs/index.md) links testing, platform, API, and migration details.
+## Other docs
+
+- [Learning path](docs/index.md) — the recommended order for guides, from the starter to advanced topics. Start with the beginner material before the core contract or advanced renderer reference unless you need those details.
+- [Game protocol](docs/guides/game-protocol.md) and [core contract](docs/guides/core-contract.md) — lifecycle and public API details.
+- [Installation](docs/guides/installation.md) and [release policy](docs/guides/releases.md) — the unpublished release status and future archive workflow. Published generated projects will pin one immutable archive URL and matching hash; no current tag provides that coordinate.
+- [Local documentation](docs/index.md) — run `zig build docs` to generate offline docs, or `zig build peas -- docs quickstart` to locate the local start page. The index also links testing, platform, API, and migration details.
