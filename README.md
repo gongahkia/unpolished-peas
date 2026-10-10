@@ -10,9 +10,10 @@ A small framework for building 2D games in [Zig](https://ziglang.org/) that comp
 
 ## Screenshots
 
-![Neon Siege gameplay](asset/reference/neon-siege.png)
-
-![Lantern Leap gameplay](asset/reference/lantern-leap.png)
+<div align="center">
+    <img src="asset/reference/neon-siege.png" width="45%">
+    <img src="asset/reference/lantern-leap.png" width="45%">
+</div>
 
 ## Usage
 
