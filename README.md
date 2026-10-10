@@ -1,10 +1,6 @@
-# `unpolished-peas` 🫛
+# `Unpolished Peas` 🫛
 
-<div align="center">
-    <img src="./asset/logo/peas-color-logo.png" width="30%" alt="Unpolished Peas logo">
-</div>
-
-A small Zig framework for deterministic, testable 2D games. Build a small authored game with a fixed update loop, replayable input, headless tests, and one Zig-first codebase for native and browser builds.
+A small framework for building 2D games in [Zig]() that compiles to [native]() and [browser]() builds.
 
 ## Rationale
 
@@ -14,11 +10,9 @@ It deliberately does not provide an engine-owned ECS, physics, 3D renderer, edit
 
 ## Stack
 
-- **Language:** Zig `0.15.2`
-- **Desktop host:** SDL3
-- **Browser host:** WebAssembly with a JavaScript host
-- **Rendering:** logical-pixel `Canvas`, CPU `RenderSurface`, and a separate advanced `Renderer2D` path
-- **Testing:** headless game runs, seeded input replay, and Canvas regression checks
+* [Zig 0.15.2]()
+* [SDL3]()
+* [WASM]()
 
 ## Features
 
