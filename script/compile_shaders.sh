@@ -16,6 +16,8 @@ spirv-cross "$OUT_DIR/sprite.vert.spv" --hlsl --shader-model 51 --output "$OUT_D
 spirv-cross "$OUT_DIR/sprite.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/sprite.frag.hlsl"
 spirv-cross "$OUT_DIR/primitive.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.vert.hlsl"
 spirv-cross "$OUT_DIR/primitive.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/primitive.frag.hlsl"
+spirv-cross "$OUT_DIR/particles.vert.spv" --hlsl --shader-model 51 --output "$OUT_DIR/particles.vert.hlsl"
+spirv-cross "$OUT_DIR/particles.frag.spv" --hlsl --shader-model 51 --output "$OUT_DIR/particles.frag.hlsl"
 
 if [[ "$(uname -s)" == "Darwin" ]]; then
   spirv-cross "$OUT_DIR/sprite.vert.spv" --msl --output "$OUT_DIR/sprite.vert.metal"

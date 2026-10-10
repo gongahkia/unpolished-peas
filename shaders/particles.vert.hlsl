@@ -1,18 +1,39 @@
-struct ParticleVertex {
-    float2 corner : TEXCOORD0;
-    float2 center : TEXCOORD1;
-    float2 extent : TEXCOORD2;
-    float4 color : TEXCOORD3;
+static float4 gl_Position;
+static float2 in_corner;
+static float2 in_center;
+static float2 in_extent;
+static float4 out_color;
+static float4 in_color;
+
+struct SPIRV_Cross_Input
+{
+    float2 in_corner : TEXCOORD0;
+    float2 in_center : TEXCOORD1;
+    float2 in_extent : TEXCOORD2;
+    float4 in_color : TEXCOORD3;
 };
 
-struct ParticleOutput {
-    float4 position : SV_Position;
-    float4 color : TEXCOORD0;
+struct SPIRV_Cross_Output
+{
+    float4 out_color : TEXCOORD0;
+    float4 gl_Position : SV_Position;
 };
 
-ParticleOutput main(ParticleVertex input) {
-    ParticleOutput output;
-    output.position = float4(input.center + input.corner * input.extent, 0.0f, 1.0f);
-    output.color = input.color;
-    return output;
+void vert_main()
+{
+    gl_Position = float4(in_center + in_corner * in_extent, 0.0f, 1.0f);
+    out_color = in_color;
+}
+
+SPIRV_Cross_Output main(SPIRV_Cross_Input stage_input)
+{
+    in_corner = stage_input.in_corner;
+    in_center = stage_input.in_center;
+    in_extent = stage_input.in_extent;
+    in_color = stage_input.in_color;
+    vert_main();
+    SPIRV_Cross_Output stage_output;
+    stage_output.gl_Position = gl_Position;
+    stage_output.out_color = out_color;
+    return stage_output;
 }
