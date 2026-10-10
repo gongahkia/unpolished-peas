@@ -1,3 +1,6 @@
+[![](https://img.shields.io/badge/unpolished_peas_v1.0.0-active-brightgreen)](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
+![](https://github.com/gongahkia/unpolished-peas/actions/workflows/toolchain.yml/badge.svg)
+
 # `Unpolished Peas` 🫛
 
 A small framework for building 2D games in [Zig](https://ziglang.org/) that compile to [native](https://ziglang.org/learn/build-system/) and [browser](https://github.com/zigtools/playground) builds.
