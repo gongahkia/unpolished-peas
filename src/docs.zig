@@ -160,6 +160,12 @@ fn markdownZigSnippet(document: []const u8, name: []const u8) ![]const u8 {
     return document[begin..end];
 }
 
+fn readLfFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
+    const contents = try std.fs.cwd().readFileAlloc(allocator, path, max_document_bytes);
+    defer allocator.free(contents);
+    return std.mem.replaceOwned(u8, allocator, contents, "\r\n", "\n");
+}
+
 fn usage() error{InvalidArguments} {
     std.debug.print("usage: unpolished-peas-docs <docs-root> <public-api-source> <output-root>\n", .{});
     return error.InvalidArguments;
@@ -237,9 +243,9 @@ test "developer tools reference keeps source and runtime asset roots distinct" {
 }
 
 test "quickstart tutorial program is the checked example source" {
-    const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
+    const quickstart = try readLfFileAlloc(std.testing.allocator, "docs/guides/quickstart.md");
     defer std.testing.allocator.free(quickstart);
-    const source = try std.fs.cwd().readFileAlloc(std.testing.allocator, "examples/tutorial_game_protocol.zig", max_document_bytes);
+    const source = try readLfFileAlloc(std.testing.allocator, "examples/tutorial_game_protocol.zig");
     defer std.testing.allocator.free(source);
     const begin_marker = "<!-- BEGIN tutorial-game-protocol -->\n```zig\n";
     const end_marker = "\n```\n<!-- END tutorial-game-protocol -->";
@@ -249,11 +255,11 @@ test "quickstart tutorial program is the checked example source" {
 }
 
 test "starter excerpts in beginner guides match compiled source" {
-    const input_guide = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/input.md", max_document_bytes);
+    const input_guide = try readLfFileAlloc(std.testing.allocator, "docs/guides/input.md");
     defer std.testing.allocator.free(input_guide);
-    const save_guide = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/save-data.md", max_document_bytes);
+    const save_guide = try readLfFileAlloc(std.testing.allocator, "docs/guides/save-data.md");
     defer std.testing.allocator.free(save_guide);
-    const starter = try std.fs.cwd().readFileAlloc(std.testing.allocator, "templates/starter/src/game.zig", max_document_bytes);
+    const starter = try readLfFileAlloc(std.testing.allocator, "templates/starter/src/game.zig");
     defer std.testing.allocator.free(starter);
     inline for ([_][]const u8{ "seed-sprint-actions", "seed-sprint-action-update" }) |name| {
         try std.testing.expect(std.mem.indexOf(u8, starter, try markdownZigSnippet(input_guide, name)) != null);
