@@ -203,7 +203,7 @@ pub const Game = struct {
         const canvas = try ctx.requireCanvas();
         const surface = if (self.surface) |*value| value else return error.GameNotInitialized;
         const atlas = self.atlas orelse return error.GameNotInitialized;
-        const font = self.font orelse return error.GameNotInitialized;
+        _ = self.font orelse return error.GameNotInitialized;
         const world = surface.canvas();
         world.clear(up.core.Color.rgb(8, 12, 24));
 
@@ -223,15 +223,17 @@ pub const Game = struct {
         canvas.clear(up.core.Color.rgb(3, 5, 13));
         try canvas.drawSurface(surface, .{ .x = 0, .y = 0, .width = width, .height = height, .filter = .nearest });
         canvas.fillRect(0, 0, @intCast(width), 12, up.core.Color.rgba(3, 5, 13, 220));
+        canvas.fillRect(0, 74, @intCast(width), 16, up.core.Color.rgba(3, 5, 13, 235));
+        // The 5x7 bitmap glyphs stay sharp when this small canvas is scaled up.
         var status: [64]u8 = undefined;
-        const text = try std.fmt.bufPrint(&status, "SCORE {d}  BEST {d}  HP {d}  WAVE {d}", .{ self.score, self.best_score, self.player.health, self.wave });
-        font.drawText(canvas, text, 3, 2, up.core.Color.rgb(231, 242, 255));
-        font.drawText(canvas, "ARROWS/STICK MOVE  SPACE/A SHOOT  X/B DASH", 3, 77, up.core.Color.rgb(173, 197, 222));
-        font.drawText(canvas, "ENTER/START RESTART  TAB/BACK TOGGLE AUDIO", 3, 84, up.core.Color.rgb(173, 197, 222));
+        const text = try std.fmt.bufPrint(&status, "SCORE {d} HP {d} WAVE {d}", .{ self.score, self.player.health, self.wave });
+        canvas.drawText(text, 3, 2, up.core.Color.rgb(231, 242, 255));
+        canvas.drawText("ARROWS MOVE SPACE FIRE", 3, 74, up.core.Color.rgb(173, 197, 222));
+        canvas.drawText("X DASH  ENTER RESTART", 3, 82, up.core.Color.rgb(173, 197, 222));
         if (self.game_over) {
-            canvas.fillRect(25, 31, 110, 26, up.core.Color.rgba(7, 9, 19, 230));
-            font.drawText(canvas, "SYSTEM BREACH", 48, 36, up.core.Color.rgb(255, 120, 151));
-            font.drawText(canvas, "PRESS ENTER TO RESTART", 31, 46, up.core.Color.rgb(235, 241, 250));
+            canvas.fillRect(10, 31, 140, 26, up.core.Color.rgba(7, 9, 19, 230));
+            canvas.drawText("SYSTEM BREACH", 41, 36, up.core.Color.rgb(255, 120, 151));
+            canvas.drawText("PRESS ENTER TO RESTART", 14, 46, up.core.Color.rgb(235, 241, 250));
         }
     }
 
@@ -402,8 +404,8 @@ test "Neon Siege replays combat with seeded state, save data, Canvas trace, and 
     try std.testing.expectEqual(first.game.player.position, second.game.player.position);
     try up.testSupport.expectCanvasTraceEqual(first_capture.canvas_trace, second_capture.canvas_trace);
     const trace_hash = try first_capture.canvas_trace.hash();
-    try std.testing.expectEqual(@as(u64, 4_209_207_815_196_832_752), trace_hash);
-    try std.testing.expectEqual(@as(u64, 10_847_717_462_530_635_717), first_capture.image_hash);
+    try std.testing.expectEqual(@as(u64, 778_143_845_482_832_817), trace_hash);
+    try std.testing.expectEqual(@as(u64, 16_686_544_247_991_043_000), first_capture.image_hash);
     try std.testing.expectEqual(trace_hash, try second_capture.canvas_trace.hash());
     try std.testing.expectEqual(first_capture.image_hash, second_capture.image_hash);
 }

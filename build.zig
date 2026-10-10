@@ -787,6 +787,41 @@ pub fn build(b: *std.Build) void {
     const run_dogfood_tests = b.addRunArtifact(dogfood_tests);
     const dogfood_test_step = b.step("test-dogfood", "Run the Neon Siege public-API dogfood tests");
     dogfood_test_step.dependOn(&run_dogfood_tests.step);
+    const neon_capture_game = b.createModule(.{
+        .root_source_file = b.path("dogfood/neon-siege/src/game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "neon-siege-assets", .module = dogfood_assets },
+        },
+    });
+    const lantern_capture_game = b.createModule(.{
+        .root_source_file = b.path("dogfood/lantern-leap/src/game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = peas },
+            .{ .name = "lantern-leap-assets", .module = lantern_leap_assets },
+        },
+    });
+    const capture_reference = b.addExecutable(.{
+        .name = "capture-reference-screenshots",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("script/capture_reference_screenshots.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = peas },
+                .{ .name = "neon-game", .module = neon_capture_game },
+                .{ .name = "lantern-game", .module = lantern_capture_game },
+            },
+        }),
+    });
+    const run_capture_reference = b.addRunArtifact(capture_reference);
+    run_capture_reference.setCwd(b.path("."));
+    const capture_reference_step = b.step("capture-reference-screenshots", "Render clean reference frames for Neon Siege and Lantern Leap");
+    capture_reference_step.dependOn(&run_capture_reference.step);
     const dogfood_external = b.addSystemCommand(&.{"script/test_dogfood_external.sh"});
     dogfood_external.setCwd(b.path("."));
     const dogfood_external_step = b.step("test-dogfood-external", "Build and package Neon Siege as a clean archive-style package consumer");
