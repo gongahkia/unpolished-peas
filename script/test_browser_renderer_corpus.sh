@@ -3,6 +3,9 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 diagnostics=${UP_DIAGNOSTICS_ROOT:-$repo/zig-out/diagnostics/browser-renderer-parity}
+# Captures run from a temporary directory that is removed on exit. Resolve
+# caller-supplied relative paths against the checkout before changing cwd.
+case "$diagnostics" in /*) ;; *) diagnostics="$repo/$diagnostics" ;; esac
 tmp=$(mktemp -d)
 trap 'if [ "${server:-}" ]; then kill "$server" 2>/dev/null || true; fi; rm -rf "$tmp"' EXIT HUP INT TERM
 session=unpolished-peas-renderer-corpus-$$

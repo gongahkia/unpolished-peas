@@ -201,6 +201,15 @@ assert.equal(env.up_host_gl_set_camera(0, 0, 0, 0, 0, 0, 0, 0, 0), Status.ok);
 assert.deepEqual(host.framebufferToCanvas(500, 400, 1000, 800, 2), {x: 160, y: 90});
 assert.equal(host.framebufferToCanvas(10, 10, 1000, 800, 2), null);
 assert.equal(env.up_host_gl_present(0), Status.ok);
+function assertFramebufferOrientation() {
+  const vertices = canvas.gl.calls.filter(([name]) => name === "bufferData").at(-1)[2];
+  for (let offset = 0; offset < vertices.length; offset += 8) {
+    const y = vertices[offset + 1];
+    const v = vertices[offset + 3];
+    assert.equal(v, (y + 1) / 2, "framebuffer top and bottom must stay upright");
+  }
+}
+assertFramebufferOrientation();
 assert.ok(canvas.gl.calls.some(([name]) => name === "flush"));
 
 const buffer = env.up_host_gl_resource_create(ResourceKind.buffer, 64);
@@ -259,6 +268,7 @@ assert.equal(env.up_host_gl_material_bind_texture(9000, sourceNameLength, 2, 2, 
 assert.equal(env.up_host_gl_material_draw(8, 8, 16, 16, 0xffffffff), Status.ok);
 assert.equal(env.up_host_gl_material_begin(92, 1, 1, 512, vertexLength, 2048, fragmentLength, 4096, wgslVertexLength, 4608, wgslFragmentLength), Status.ok);
 assert.equal(env.up_host_gl_material_draw(0, 0, 320, 180, 0xffffffff), Status.ok);
+assertFramebufferOrientation();
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeMaterials).map(([, , , count]) => count), [6, 6]);
 assert.ok(canvas.gl.calls.some(([name, , source]) => name === "shaderSource" && source === materialFragment));
 

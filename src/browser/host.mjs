@@ -776,8 +776,9 @@ export function createBrowserHost({
     gl.useProgram(pipeline.program);
     gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.buffer);
     const rgba = colorFloats(tint);
+    // Framebuffer textures use bottom-left UVs; uploaded images use top-left.
     const vertices = material.kind === 1
-      ? [-1, 1, 0, 0, ...rgba, 1, 1, 1, 0, ...rgba, 1, -1, 1, 1, ...rgba, -1, 1, 0, 0, ...rgba, 1, -1, 1, 1, ...rgba, -1, -1, 0, 1, ...rgba]
+      ? [-1, 1, 0, 1, ...rgba, 1, 1, 1, 1, ...rgba, 1, -1, 1, 0, ...rgba, -1, 1, 0, 1, ...rgba, 1, -1, 1, 0, ...rgba, -1, -1, 0, 0, ...rgba]
       : [...spriteVertex(x, y, 0, 0, rgba), ...spriteVertex(x + width, y, 1, 0, rgba), ...spriteVertex(x + width, y + height, 1, 1, rgba), ...spriteVertex(x, y, 0, 0, rgba), ...spriteVertex(x + width, y + height, 1, 1, rgba), ...spriteVertex(x, y + height, 0, 1, rgba)];
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array(vertices), gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0);
@@ -911,10 +912,11 @@ export function createBrowserHost({
     gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, source.texture);
     gl.bindBuffer(gl.ARRAY_BUFFER, pipeline.buffer);
+    // The final composed frame is a framebuffer texture, so its top row is v=1.
     gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([
-      -1, 1, 0, 0, 1, 1, 1, 1, 1, 1, 1, 0, 1, 1, 1, 1,
-      1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 1,
-      1, -1, 1, 1, 1, 1, 1, 1, -1, -1, 0, 1, 1, 1, 1, 1,
+      -1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+      1, -1, 1, 0, 1, 1, 1, 1, -1, 1, 0, 1, 1, 1, 1, 1,
+      1, -1, 1, 0, 1, 1, 1, 1, -1, -1, 0, 0, 1, 1, 1, 1,
     ]), gl.DYNAMIC_DRAW);
     gl.enableVertexAttribArray(0);
     gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 32, 0);
