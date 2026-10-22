@@ -6,11 +6,12 @@ then grow into the focused guides linked below.
 
 ## Requirements and release status
 
-Use Zig `0.15.2`. The first public release is prepared as `v0.1.0`, but has
-**not** been published. Do not put `main` into a game manifest or copy the
-future dependency URL from an old document. The [installation guide](installation.md)
-labels the future release declaration explicitly and explains the current
-external-project limitation.
+Use Zig `0.15.2`. The current release is `1.0.0`, published on October 10,
+2026. That GitHub release has no prepared source-package archive, starter
+coordinates, or desktop assets attached. Use the source-checkout workflow
+below; the [installation guide](installation.md) distinguishes the published
+source tag from a ready-to-install Zig package. `main` contains subsequent
+integration fixes and is not an immutable dependency URL.
 
 ## Five-minute source-checkout path
 

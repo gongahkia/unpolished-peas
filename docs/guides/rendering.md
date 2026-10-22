@@ -1,6 +1,6 @@
 # Stable 2D render contract
 
-The v0.1 renderer is ordered logical-pixel 2D: clear, filled rectangles, sprites, built-in text, camera-owned transforms, clip state, alpha/additive blending, and the CPU-reference effects described in [Advanced 2D](advanced-2d.md). It excludes depth, meshes, public GPU handles, compute, and every 3D capability.
+The v1.0 renderer is ordered logical-pixel 2D: clear, filled rectangles, sprites, built-in text, camera-owned transforms, clip state, alpha/additive blending, and the CPU-reference effects described in [Advanced 2D](advanced-2d.md). It excludes depth, meshes, public GPU handles, compute, and every 3D capability.
 
 Commands execute in submission order. `clear` replaces the logical canvas. Rectangle bounds are half-open (`x...x+w`, `y...y+h`); non-positive rectangle dimensions are no-ops. Sprite and text draws use the same ordering and active clip/blend state as rectangles.
 

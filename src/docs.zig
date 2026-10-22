@@ -200,17 +200,17 @@ test "repository documentation local links resolve" {
     try validateSupplementalLinks(std.testing.allocator, repository_root);
 }
 
-test "quickstart states that the first release remains unpublished" {
+test "quickstart distinguishes the published version from missing package assets" {
     const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
     defer std.testing.allocator.free(quickstart);
     const claims = [_][]const u8{
-        "The first public release is prepared as `v0.1.0`, but has",
+        "The current release is `1.0.0`",
         "zig build test-starter -Dwith_sdl=false",
         "zig build run-starter",
         "zig build browser-starter -Dwith_sdl=false",
         "zig build package-starter",
         "zig build run-tutorial-game-protocol",
-        "**not** been published",
+        "no prepared source-package archive",
     };
     for (claims) |claim| try std.testing.expect(std.mem.indexOf(u8, quickstart, claim) != null);
     try std.testing.expect(std.mem.indexOf(u8, quickstart, "archive/refs/tags/v0.1.0") == null);
@@ -226,7 +226,7 @@ test "authoring freeze distinguishes game API from developer tooling" {
         "Seed Sprint",
         "Neon Siege",
         "Lantern Leap",
-        "not a published `v0.2.0` release",
+        "does\nnot announce another release",
     }) |claim| try std.testing.expect(std.mem.indexOf(u8, document, claim) != null);
 }
 

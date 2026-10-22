@@ -6,7 +6,7 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[1]
-MATRIX_PATH = ROOT / "docs/capabilities/v0.1.json"
+MATRIX_PATH = ROOT / "docs/capabilities/v1.0.json"
 GUIDE_PATH = ROOT / "docs/guides/capabilities.md"
 STATUSES = {"supported", "preview", "unsupported", "removed"}
 TARGETS = {"macos", "linux", "windows", "chromium", "firefox", "safari"}
@@ -34,8 +34,8 @@ def load_matrix():
         fail(f"invalid JSON in {MATRIX_PATH}: {error}")
     if matrix.get("schema_version") != 1:
         fail("schema_version must be 1")
-    if matrix.get("contract_version") != "v0.1-draft":
-        fail("contract_version must be v0.1-draft")
+    if matrix.get("contract_version") != "v1.0":
+        fail("contract_version must be v1.0")
     if matrix.get("browser_baseline") != "current stable evergreen desktop releases of Chromium, Firefox, and Safari":
         fail("browser_baseline must name Chromium, Firefox, and Safari current stable evergreen desktop releases")
     if set(matrix.get("status_definitions", {})) != STATUSES:
@@ -101,9 +101,9 @@ def load_matrix():
 
 def render(matrix, rows):
     lines = [
-        "# v0.1 capability matrix",
+        "# v1.0 capability matrix",
         "",
-        "Generated from [`docs/capabilities/v0.1.json`](../capabilities/v0.1.json); do not edit manually.",
+        "Generated from [`docs/capabilities/v1.0.json`](../capabilities/v1.0.json); do not edit manually.",
         "",
         f"Contract: `{matrix['contract_version']}`.",
         "",
@@ -162,7 +162,7 @@ def main():
             sys.stdout.write(guide)
             return
         if GUIDE_PATH.read_text(encoding="utf-8") != guide:
-            fail("docs/guides/capabilities.md is not the current rendering of docs/capabilities/v0.1.json")
+            fail("docs/guides/capabilities.md is not the current rendering of docs/capabilities/v1.0.json")
         if args.check_row and args.check_row not in {row["id"] for row in rows["pull_request"]}:
             fail(f"unknown pull-request capability row: {args.check_row}")
         if args.check_nightly_row and args.check_nightly_row not in {row["id"] for row in rows["nightly"]}:

@@ -5,7 +5,7 @@ It is useful for low-resolution pixel-art composition, minimaps, temporary
 authored layers, and other ordinary 2D sub-composition. It is deliberately not
 a public framebuffer, texture, render pass, or GPU-resource API.
 
-The v0.1 implementation owns a CPU Canvas pixel buffer. This gives the same
+The v1.0 implementation owns a CPU Canvas pixel buffer. This gives the same
 observable drawing and composition semantics in headless tests, SDL GPU,
 WebGL 2, and WebGPU: the normal presentation path uploads the already
 composed main Canvas. It is therefore not yet a GPU intermediate target for
@@ -34,7 +34,7 @@ try screen.drawSurface(&world, .{
 ```
 
 New surfaces start as transparent black. They have fixed non-zero `u32`
-dimensions; v0.1 has no resize operation, so recreate a surface when its size
+dimensions; v1.0 has no resize operation, so recreate a surface when its size
 must change. The caller owns both the allocator choice and surface lifetime.
 There is no global surface registry, implicit per-frame allocation, or hidden
 garbage collection.
@@ -43,7 +43,7 @@ garbage collection.
 operations work on that target, including clear, primitives, sprites, atlas
 frames, built-in text, clips, and alpha/additive blend state. A draw becomes
 visible to a later `drawSurface` call as soon as the Canvas call returns.
-There is no `begin`/`end` target stack and no nested-target mode in v0.1.
+There is no `begin`/`end` target stack and no nested-target mode in v1.0.
 
 ## Composition and sampling
 

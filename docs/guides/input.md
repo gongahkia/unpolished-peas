@@ -49,7 +49,7 @@ Read input in fixed-step `update`, not `draw`.
 
 ## Normalized input contract
 
-v0.1 exposes normalized keyboard and pointer state through `up.input.Input`. The contract is identical for the native SDL host and browser hosts; renderer selection does not change input semantics.
+v1.0 exposes normalized keyboard and pointer state through `up.input.Input`. The contract is identical for the native SDL host and browser hosts; renderer selection does not change input semantics.
 
 ## Keyboard and pointer
 

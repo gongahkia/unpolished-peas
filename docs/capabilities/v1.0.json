@@ -1,12 +1,12 @@
 {
   "schema_version": 1,
-  "contract_version": "v0.1-draft",
+  "contract_version": "v1.0",
   "browser_baseline": "current stable evergreen desktop releases of Chromium, Firefox, and Safari",
   "status_definitions": {
-    "supported": "Part of the v0.1 release contract and exercised by the selected required CI lane.",
-    "preview": "Available for evaluation but excluded from the v0.1 release compatibility guarantee.",
-    "unsupported": "Not implemented or not offered by the v0.1 runtime contract.",
-    "removed": "Deliberately absent from the v0.1 runtime contract."
+    "supported": "Part of the v1.0 release contract and exercised by the selected required CI lane.",
+    "preview": "Available for evaluation but excluded from the v1.0 release compatibility guarantee.",
+    "unsupported": "Not implemented or not offered by the v1.0 runtime contract.",
+    "removed": "Deliberately absent from the v1.0 runtime contract."
   },
   "stable_core": [
     {

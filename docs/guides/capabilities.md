@@ -1,17 +1,17 @@
-# v0.1 capability matrix
+# v1.0 capability matrix
 
-Generated from [`docs/capabilities/v0.1.json`](../capabilities/v0.1.json); do not edit manually.
+Generated from [`docs/capabilities/v1.0.json`](../capabilities/v1.0.json); do not edit manually.
 
-Contract: `v0.1-draft`.
+Contract: `v1.0`.
 
 Browser baseline: current stable evergreen desktop releases of Chromium, Firefox, and Safari.
 
 ## Status
 
-- `supported`: Part of the v0.1 release contract and exercised by the selected required CI lane.
-- `preview`: Available for evaluation but excluded from the v0.1 release compatibility guarantee.
-- `unsupported`: Not implemented or not offered by the v0.1 runtime contract.
-- `removed`: Deliberately absent from the v0.1 runtime contract.
+- `supported`: Part of the v1.0 release contract and exercised by the selected required CI lane.
+- `preview`: Available for evaluation but excluded from the v1.0 release compatibility guarantee.
+- `unsupported`: Not implemented or not offered by the v1.0 runtime contract.
+- `removed`: Deliberately absent from the v1.0 runtime contract.
 
 ## Stable-core requirements
 
