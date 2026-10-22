@@ -80,7 +80,7 @@ content. See [sprite animation](sprite-animation.md).
 
 ## One-off public surface audit
 
-No authoring authoring declaration was found to be accidentally exposed without
+No authoring declaration was found to be accidentally exposed without
 a focused test, guide, or canonical-project use. Existing public declarations
 that are not used by all three projects fall into deliberate categories:
 
@@ -94,7 +94,7 @@ that are not used by all three projects fall into deliberate categories:
 - Inspector, profiler, and renderer-diagnostics declarations are existing
   diagnostics/advanced surface rather than new ordinary game requirements.
 
-The audit makes no removals: all of these predate the authoring authoring
+The audit makes no removals: all of these predate the authoring
 cycle or have an explicit advanced/compatibility purpose.
 
 ## Ownership and determinism
