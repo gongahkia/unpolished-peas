@@ -5,7 +5,15 @@ repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 tmp=$(mktemp -d)
 session=unpolished-peas-shell-$$
 pw=$repo/script/playwright_cli.sh
+diagnostics=${UP_DIAGNOSTICS_ROOT:-$repo/zig-out/diagnostics/browser-shell}
+case "$diagnostics" in /*) ;; *) diagnostics="$repo/$diagnostics" ;; esac
 cleanup() {
+    result=$?
+    if [ "$result" -ne 0 ]; then
+        mkdir -p "$diagnostics"
+        cp "$tmp"/*.log "$diagnostics/" 2>/dev/null || true
+        if [ -d "$tmp/.playwright-cli" ]; then cp -R "$tmp/.playwright-cli" "$diagnostics/"; fi
+    fi
     "$pw" -s="$session" close >/dev/null 2>&1 || true
     if [ "${server:-}" ]; then kill "$server" 2>/dev/null || true; fi
     rm -rf "$tmp"
@@ -19,9 +27,11 @@ server=$!
 sleep 1
 cd "$tmp"
 "$pw" -s="$session" open "http://127.0.0.1:$port/?renderer=webgl2"
-"$pw" -s="$session" run-code --filename "$repo/script/browser_shell_checks.mjs" >"$tmp/checks.log"
-cat "$tmp/checks.log"
-grep -F -x -q '"peas-shell-checks-passed"' "$tmp/checks.log"
-"$pw" -s="$session" run-code --filename "$repo/script/browser_material_checks.mjs" >"$tmp/materials.log"
-cat "$tmp/materials.log"
-grep -F -x -q '"peas-material-checks-passed"' "$tmp/materials.log"
+run_checks() {
+    log="$tmp/$1.log"
+    "$pw" -s="$session" run-code --filename "$repo/script/$2" >"$log" 2>&1 || { cat "$log"; return 1; }
+    cat "$log"
+    grep -F -x -q "\"$3\"" "$log"
+}
+run_checks checks browser_shell_checks.mjs peas-shell-checks-passed
+run_checks materials browser_material_checks.mjs peas-material-checks-passed
