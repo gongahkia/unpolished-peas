@@ -217,7 +217,7 @@ test "quickstart distinguishes the published version from missing package assets
 }
 
 test "authoring freeze distinguishes game API from developer tooling" {
-    const document = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/authoring-experience-freeze.md", max_document_bytes);
+    const document = try readLfFileAlloc(std.testing.allocator, "docs/guides/authoring-experience-freeze.md");
     defer std.testing.allocator.free(document);
     inline for ([_][]const u8{
         "SpriteAnimationPlayer",
