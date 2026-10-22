@@ -103,4 +103,5 @@ if grep -F -q -- 'check_workload_performance' "$pull_request"; then
     printf '%s\n' 'release validation found a workload performance gate in pull-request CI' >&2
     exit 1
 fi
+"$repo/script/test_prepare_starter_release.sh"
 printf '%s\n' 'release and performance validation coverage passed'

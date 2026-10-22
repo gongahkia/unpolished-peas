@@ -44,7 +44,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 "$repo/script/create_source_archive.sh" "$tag" "$archive_dir" HEAD >/dev/null
-python3 - "$tmp" "$port_file" <<'PY' &
+python3 - "$archive_dir" "$port_file" <<'PY' &
 import functools
 import http.server
 import pathlib
@@ -72,14 +72,14 @@ case "$hash" in
     *) printf 'starter release preparation produced invalid hash for %s\n' "$tag" >&2; exit 1 ;;
 esac
 url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-v${version}-source.tar.gz"
-python3 - "templates/starter/build.zig.zon" "$url" "$hash" <<'PY'
+python3 - "templates/starter/build.zig.zon" "$url" "$hash" "$version" <<'PY'
 import pathlib
 import sys
 
-path, url, package_hash = sys.argv[1:]
+path, url, package_hash, version = sys.argv[1:]
 pathlib.Path(path).write_text(f''' .{{
     .name = .unpolished_peas_game,
-    .version = "1.0.0",
+    .version = "{version}",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
     .dependencies = .{{
