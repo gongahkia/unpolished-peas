@@ -2,5 +2,6 @@
 .zig-global-cache/
 zig-out/
 .tools/
+.playwright-cli/
 .codex
 AGENTS.md

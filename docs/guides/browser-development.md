@@ -22,6 +22,19 @@ step, and fully reloads the page only after a successful rebuild.
 This is developer tooling, not a game API. `GameProtocol`, replays, fixed
 steps, and the browser runtime do not know that the watcher exists.
 
+## Generated game page
+
+Generated browser pages include a responsive game canvas, keyboard-focus
+instructions, loading status, and recovery buttons for startup failure or
+WebGPU device loss. Use **Focus game** or click the canvas, then use the
+game's controls. Tab leaves the canvas; sound requires a user interaction.
+CSS scaling preserves the canvas's authored logical dimensions.
+
+The shell is opt-in through the canvas's `data-peas-shell` attribute. Remove
+that attribute when embedding the game in a page with its own layout and
+status UI. Renderer diagnostics remain available through
+`window.unpolishedPeas` in either mode.
+
 ## What changes trigger a build
 
 The watcher polls a deliberately small project tree every 200 ms by default.

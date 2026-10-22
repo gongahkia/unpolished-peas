@@ -2,6 +2,7 @@ import {createBrowserHost, Status} from "./host.mjs";
 import {debugFontAssetDiagnostic} from "./debug_font.mjs";
 import {browserTarget, rendererDiagnostic, webGpuDeviceLostDiagnostic} from "./renderer_diagnostics.mjs";
 import {selectRenderer} from "./renderer_selection.mjs";
+import {createBrowserShell} from "./shell.mjs";
 
 async function instantiate(url, imports) {
   try {
@@ -13,6 +14,7 @@ async function instantiate(url, imports) {
 
 const canvas = document.querySelector("canvas[data-unpolished-peas]");
 if (!canvas) throw new Error("unpolished-peas browser: missing canvas");
+const shell = createBrowserShell(canvas);
 const requestedRenderer = new URLSearchParams(globalThis.location?.search ?? "").get("renderer") ?? "webgl2";
 const host = createBrowserHost({canvas});
 const target = browserTarget();
@@ -20,6 +22,8 @@ const target = browserTarget();
 function publish(diagnostic, runtime = null, selectedRenderer = null) {
   host.setRendererDiagnostic(diagnostic);
   window.unpolishedPeas = {host, runtime, renderer: selectedRenderer, rendererDiagnostic: diagnostic};
+  if (runtime && selectedRenderer && diagnostic.context_status === "ready") shell.ready();
+  else shell.failed(diagnostic);
 }
 
 host.onWebGpuDeviceLost(() => {
@@ -49,8 +53,9 @@ function unavailable(reason, instruction, contextStatus, webgl2Capability, webgp
 
 try {
   await host.loadDebugFontFixture("./debug-font-v1.json");
-  const width = Math.max(1, Math.floor(canvas.clientWidth || canvas.width || 320));
-  const height = Math.max(1, Math.floor(canvas.clientHeight || canvas.height || 180));
+  // CSS may scale the shell; simulation dimensions come from the authored canvas.
+  const width = Math.max(1, Math.floor(canvas.width || canvas.clientWidth || 320));
+  const height = Math.max(1, Math.floor(canvas.height || canvas.clientHeight || 180));
   const selection = await selectRenderer(requestedRenderer, host, width, height);
   if (!selection.selectedRenderer) {
     const instruction = selection.fallbackReason === "unknown_renderer_request" ? "Use ?renderer=auto, ?renderer=webgpu, or ?renderer=webgl2." : "Use ?renderer=webgl2 or enable WebGPU, then reload.";

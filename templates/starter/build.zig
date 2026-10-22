@@ -80,7 +80,7 @@ pub fn build(b: *std.Build) void {
     });
     const install_browser_font = b.addInstallFileWithDir(browser_peas.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "web" }, "debug-font-v1.json");
     const web_files = b.addWriteFiles();
-    const index_html = web_files.add("index.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Seed Sprint</title><canvas data-unpolished-peas data-game=\"seed-sprint\" width=\"160\" height=\"90\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    const index_html = web_files.add("index.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Seed Sprint</title><canvas data-unpolished-peas data-peas-shell data-game=\"seed-sprint\" width=\"160\" height=\"90\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
     const install_browser_index = b.addInstallFileWithDir(index_html, .{ .custom = "web" }, "index.html");
     const web_step = b.step("web", "Build a self-contained Seed Sprint browser directory in zig-out/web");
     web_step.dependOn(&install_browser.step);
