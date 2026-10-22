@@ -44,7 +44,11 @@ cp benchmarks/workloads/v1.json "$package/workloads-v1.json"
 cp src/fixtures/renderer/stable-core-v1.json "$package/renderer-contract-v1.json"
 cp src/fixtures/text/debug-5x7-v1.json "$package/debug-font-v1.json"
 cp -R examples/assets/. "$package/assets/"
-printf '%s\n' "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>unpolished-peas $game</title><canvas data-unpolished-peas data-game=\"$game\" width=\"320\" height=\"180\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>" > "$package/index.html"
+width=320
+height=180
+title="unpolished-peas $game"
+if [ "$game" = starter ]; then width=160; height=90; title='Seed Sprint'; fi
+printf '%s\n' "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>$title</title><canvas data-unpolished-peas data-peas-shell data-game=\"$game\" width=\"$width\" height=\"$height\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>" > "$package/index.html"
 printf '{"version":1,"platform":"web","game":"%s","entry":"index.html","runtime":"unpolished-peas.wasm","assets":"assets/","renderer_selection":"query:auto|webgpu|webgl2"}\n' "$game" > "$package/web-manifest.json"
 (cd "$package" && find . -type f ! -name SHA256SUMS -print | LC_ALL=C sort | while read -r path; do checksum "$path"; done) > "$package/SHA256SUMS"
 node script/validate_web_bundle.mjs "$package"

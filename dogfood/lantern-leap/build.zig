@@ -57,7 +57,7 @@ pub fn build(b: *std.Build) void {
     const install_font_license_web = b.addInstallFileWithDir(b.path("assets/OFL.txt"), .{ .custom = "web/licenses" }, "Basic-OFL.txt");
     const install_font = b.addInstallFileWithDir(browser_peas.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "web" }, "debug-font-v1.json");
     const web_files = b.addWriteFiles();
-    const index = web_files.add("index.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Lantern Leap</title><canvas data-unpolished-peas data-game=\"lantern-leap\" width=\"160\" height=\"90\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    const index = web_files.add("index.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Lantern Leap</title><canvas data-unpolished-peas data-peas-shell data-game=\"lantern-leap\" width=\"160\" height=\"90\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
     const install_index = b.addInstallFileWithDir(index, .{ .custom = "web" }, "index.html");
     const web_step = b.step("web", "Build Lantern Leap's self-contained browser directory");
     web_step.dependOn(&install_browser.step);
