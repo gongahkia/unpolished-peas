@@ -12,6 +12,7 @@ pub const storage_id = "your-name.seed-sprint";
 
 const player_start = up.core.Vec2{ .x = 80, .y = 45 };
 const player_size: i32 = 8;
+const playfield_bottom: i32 = 72;
 const pickup_radius: i32 = 4;
 const movement_speed: f32 = 60;
 
@@ -62,7 +63,7 @@ pub const Game = struct {
         const dx = bindings.value(input, "game", "right") - bindings.value(input, "game", "left");
         const dy = bindings.value(input, "game", "down") - bindings.value(input, "game", "up");
         self.player.x = std.math.clamp(self.player.x + dx * speed * elapsed_seconds, 4, @as(f32, @floatFromInt(width - player_size - 4)));
-        self.player.y = std.math.clamp(self.player.y + dy * speed * elapsed_seconds, 14, @as(f32, @floatFromInt(height - player_size - 4)));
+        self.player.y = std.math.clamp(self.player.y + dy * speed * elapsed_seconds, 14, @as(f32, @floatFromInt(playfield_bottom - player_size)));
 
         if (self.collectsPickup()) {
             self.score += 1;
@@ -88,14 +89,19 @@ pub const Game = struct {
         const canvas = try ctx.requireCanvas();
         canvas.clear(up.core.Color.rgb(12, 18, 28));
         canvas.fillRect(0, 10, @intCast(width), 1, up.core.Color.rgb(50, 70, 96));
+        canvas.fillRect(0, playfield_bottom, @intCast(width), 1, up.core.Color.rgb(50, 70, 96));
         canvas.fillRect(0, 89, @intCast(width), 1, up.core.Color.rgb(50, 70, 96));
         canvas.fillCircle(@intFromFloat(self.pickup.x), @intFromFloat(self.pickup.y), pickup_radius, up.core.Color.rgb(255, 203, 79));
         canvas.fillRect(@intFromFloat(self.player.x), @intFromFloat(self.player.y), player_size, player_size, up.core.Color.rgb(92, 196, 255));
 
-        var label_buffer: [24]u8 = undefined;
-        const label = try std.fmt.bufPrint(&label_buffer, "SEEDS {d}  BEST {d}", .{ self.score, self.best_score });
+        // Two full u32 values need 33 bytes. Shorten only the labels when
+        // necessary so even an imported maximum score stays fully readable.
+        var label_buffer: [33]u8 = undefined;
+        var label = try std.fmt.bufPrint(&label_buffer, "SEEDS {d}  BEST {d}", .{ self.score, self.best_score });
+        if (label.len > 26) label = try std.fmt.bufPrint(&label_buffer, "S {d} B {d}", .{ self.score, self.best_score });
         canvas.drawText(label, 4, 2, up.core.Color.rgb(232, 240, 248));
-        canvas.drawText("ARROWS MOVE  SPACE DASH  ENTER RESTART", 4, 78, up.core.Color.rgb(159, 180, 201));
+        canvas.drawText("ARROWS MOVE  SPACE DASH", 4, 73, up.core.Color.rgb(159, 180, 201));
+        canvas.drawText("ENTER RESTART", 4, 81, up.core.Color.rgb(159, 180, 201));
     }
 
     fn reset(self: *Game, seed: u64) !void {
@@ -171,7 +177,7 @@ test "Seed Sprint replays seeded movement into a pickup and one Canvas trace" {
     const first_trace_hash = try first_capture.canvas_trace.hash();
     // This is a compact golden for the final logical draw frame. Structural
     // comparison above keeps a future mismatch diagnosable at field level.
-    try std.testing.expectEqual(@as(u64, 3_849_701_052_811_511_551), first_trace_hash);
+    try std.testing.expectEqual(@as(u64, 16_361_603_363_129_095_331), first_trace_hash);
     try std.testing.expectEqual(first_trace_hash, try second_capture.canvas_trace.hash());
 }
 
@@ -186,6 +192,43 @@ test "Seed Sprint loads an explicitly injected in-memory best score" {
     var runner = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, saves.capability());
     defer runner.deinit();
     try std.testing.expectEqual(@as(u32, 7), runner.game.best_score);
+}
+
+test "Seed Sprint keeps maximum saved scores and controls inside the canvas" {
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(std.testing.allocator);
+    defer saves.deinit();
+    var bytes: [4]u8 = undefined;
+    std.mem.writeInt(u32, &bytes, std.math.maxInt(u32), .little);
+    try saves.capability().write("best-score", &bytes);
+
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeededWithSaveData(std.testing.allocator, width, height, default_seed, saves.capability());
+    defer runner.deinit();
+    try std.testing.expectEqual(std.math.maxInt(u32), runner.game.best_score);
+    for ([_]u32{ 10, std.math.maxInt(u32) }, [_][]const u8{ "SEEDS 10  BEST 4294967295", "S 4294967295 B 4294967295" }) |score, expected| {
+        runner.game.score = score;
+        try runner.run(&.{.{}});
+        var text_count: usize = 0;
+        for (runner.capture().canvas_trace.commandSlice()) |command| {
+            if (command == .text) {
+                const text = command.text;
+                if (text_count == 0) try std.testing.expectEqualStrings(expected, text.value);
+                // Canvas uses 5x7 glyphs with one pixel of horizontal spacing.
+                try std.testing.expect(text.x >= 0 and text.y >= 0);
+                try std.testing.expect(@as(usize, @intCast(text.x)) + text.value.len * 6 - 1 <= width);
+                try std.testing.expect(text.y + 7 <= height);
+                text_count += 1;
+            }
+        }
+        try std.testing.expectEqual(@as(usize, 3), text_count);
+    }
+}
+
+test "Seed Sprint keeps the player above its controls" {
+    var runner = try up.testSupport.HeadlessGameRunner(Game).initSeeded(std.testing.allocator, width, height, default_seed);
+    defer runner.deinit();
+    try runner.run(&.{.{ .buttons = up.testSupport.Buttons.down, .elapsed_seconds = 1 }});
+    try std.testing.expect(runner.game.player.y + @as(f32, @floatFromInt(player_size)) <= playfield_bottom);
 }
 
 test "Seed Sprint writes a new best score through its injected save store" {
