@@ -139,12 +139,14 @@ pub fn GameProtocol(comptime Game: type) type {
         /// can safely deinitialize resources created through `ctx.allocator`.
         pub fn deinit(self: *Self, context: *GameContext) !void {
             if (!self.initialized) return;
+            // Cleanup may release resources before returning an error. End
+            // this lifecycle even on failure so a retry cannot free them twice.
+            self.initialized = false;
             self.last_failure = null;
             if (@hasDecl(Game, "deinit")) Game.deinit(self.game, context) catch |err| {
                 self.last_failure = .{ .phase = .deinit, .cause = err };
                 return err;
             };
-            self.initialized = false;
         }
 
         pub fn lastFailure(self: Self) ?GameFailure {
@@ -341,4 +343,32 @@ test "game context retains an explicit simulation seed" {
     try std.testing.expectEqual(@as(?u64, null), context.simulation_seed);
     context.simulation_seed = 42;
     try std.testing.expectEqual(@as(?u64, 42), context.simulation_seed);
+}
+
+test "failed game teardown is terminal and cannot release resources twice" {
+    const Game = struct {
+        cleanup_calls: usize = 0,
+
+        pub fn init(_: *@This(), _: *GameContext) !void {}
+        pub fn update(_: *@This(), _: *GameContext, _: f32) !void {}
+        pub fn draw(_: *@This(), _: *GameContext) !void {}
+        pub fn deinit(self: *@This(), _: *GameContext) !void {
+            self.cleanup_calls += 1;
+            return error.SaveFailed;
+        }
+    };
+    var input = Input{};
+    var context = GameContext.init(&input);
+    var game = Game{};
+    var protocol = GameProtocol(Game).bind(&game);
+    try protocol.init(&context);
+    try std.testing.expectError(error.SaveFailed, protocol.deinit(&context));
+    try protocol.deinit(&context);
+    try std.testing.expectEqual(@as(usize, 1), game.cleanup_calls);
+    try std.testing.expectEqual(GamePhase.deinit, protocol.lastFailure().?.phase);
+    try std.testing.expectEqual(error.SaveFailed, protocol.lastFailure().?.cause);
+    try std.testing.expectError(error.NotInitialized, protocol.update(&context, 1.0 / 60.0));
+    try std.testing.expectError(error.NotInitialized, protocol.draw(&context, 0));
+    try protocol.init(&context);
+    try std.testing.expect(protocol.lastFailure() == null);
 }

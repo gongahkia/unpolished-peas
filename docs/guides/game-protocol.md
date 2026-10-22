@@ -1,6 +1,13 @@
 # Game protocol
 
-`up.core.GameProtocol(Game)` is the backend-neutral v0.1 lifecycle. It borrows a game value and never allocates, moves, or deinitializes that value. Hosts create `up.core.GameContext`, call `init` once, call `update` for each simulated step, and call `draw` once for each presented frame.
+`up.core.GameProtocol(Game)` is the backend-neutral lifecycle. It borrows a game
+value and never allocates or moves that value. Hosts create
+`up.core.GameContext`, call `init` once, call `update` for each simulated step,
+and call `draw` once for each presented frame. At teardown, the protocol calls
+an optional game-owned `deinit` callback once while host capabilities remain
+available. A cleanup error retains its original cause and `deinit` phase;
+the lifecycle still ends, preventing a second cleanup or further updates
+against released resources. A new lifecycle requires successful `init`.
 
 ```zig
 const Game = struct {
