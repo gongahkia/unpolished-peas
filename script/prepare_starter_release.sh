@@ -4,7 +4,7 @@ set -euo pipefail
 repo="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 tag="${1:-}"
 case "$tag" in
-    v[0-9]*.[0-9]*.[0-9]*) ;;
+    v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*) ;;
     *) printf '%s\n' 'usage: script/prepare_starter_release.sh vMAJOR.MINOR.PATCH' >&2; exit 64 ;;
 esac
 version="${tag#v}"
@@ -32,7 +32,7 @@ fi
 
 tmp="$(mktemp -d)"
 archive_dir="$tmp/archive"
-archive="$archive_dir/unpolished-peas-${tag}-source.tar.gz"
+archive="$archive_dir/unpolished-peas-v${version}-source.tar.gz"
 port_file="$tmp/port"
 server_pid=''
 cleanup() {
@@ -71,7 +71,7 @@ case "$hash" in
     unpolished_peas-*) ;;
     *) printf 'starter release preparation produced invalid hash for %s\n' "$tag" >&2; exit 1 ;;
 esac
-url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-${tag}-source.tar.gz"
+url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-v${version}-source.tar.gz"
 python3 - "templates/starter/build.zig.zon" "$url" "$hash" <<'PY'
 import pathlib
 import sys
@@ -79,7 +79,7 @@ import sys
 path, url, package_hash = sys.argv[1:]
 pathlib.Path(path).write_text(f''' .{{
     .name = .unpolished_peas_game,
-    .version = "0.1.0",
+    .version = "1.0.0",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
     .dependencies = .{{

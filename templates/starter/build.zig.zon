@@ -1,10 +1,10 @@
 .{
     .name = .unpolished_peas_game,
-    .version = "0.1.0",
+    .version = "1.0.0",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
     // This source-checkout template intentionally has no dependency
-    // coordinate. `script/prepare_starter_release.sh v0.1.0` writes the
+    // coordinate. For a new release, `script/prepare_starter_release.sh <tag>` writes the
     // immutable tag URL and Zig package hash that a released checkout copies.
     .dependencies = .{},
     .paths = .{

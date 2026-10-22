@@ -4,11 +4,11 @@ set -euo pipefail
 repo="$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)"
 tag="${UP_RELEASE_TAG:?UP_RELEASE_TAG is required}"
 case "$tag" in
-    v[0-9]*.[0-9]*.[0-9]*) ;;
+    v[0-9]*.[0-9]*.[0-9]*|[0-9]*.[0-9]*.[0-9]*) ;;
     *) printf 'published consumer: expected a semver tag, found %s\n' "$tag" >&2; exit 64 ;;
 esac
 
-expected_url="https://github.com/gongahkia/unpolished-peas/releases/download/${tag}/unpolished-peas-${tag}-source.tar.gz"
+expected_url="https://github.com/gongahkia/unpolished-peas/releases/download/${tag}/unpolished-peas-v${tag#v}-source.tar.gz"
 repo_url="https://github.com/gongahkia/unpolished-peas.git"
 tmp="$(mktemp -d)"
 release_archive="$tmp/release.tar.gz"

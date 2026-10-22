@@ -1,6 +1,6 @@
 # Advanced 2D
 
-The v0.1 advanced layer keeps the engine in 2D. It adds executable staged materials, GPU post passes, CPU-reference post effects, deterministic particles, and mixer-driven music. It does not expose meshes, compute pipelines, raw GPU objects, or a scene/ECS model.
+The v1.0 advanced layer keeps the engine in 2D. It adds executable staged materials, GPU post passes, CPU-reference post effects, deterministic particles, and mixer-driven music. It does not expose meshes, compute pipelines, raw GPU objects, or a scene/ECS model.
 
 ## Materials and post effects
 

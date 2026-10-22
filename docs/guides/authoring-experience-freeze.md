@@ -1,12 +1,11 @@
-# Post-v0.1 authoring-experience freeze
+# 1.0.0 authoring-experience freeze
 
-This is an architecture-milestone audit, **not a published `v0.2.0` release**.
-The first public release remains unpublished, the repository version remains
-`0.1.0`, and project licensing remains undecided. This record says which
-authoring additions are ready for the next compatibility baseline and which
-remain explicitly experimental tooling.
+This records the authoring architecture carried into `1.0.0`, published on
+October 10, 2026. The earlier `0.1.0` numbering was stale; this document does
+not announce another release. Project licensing remains undecided. The tables
+separate recommended game APIs from experimental developer tooling.
 
-## Stable v0.1 baseline
+## Stable v1.0 baseline
 
 The root package continues to expose only these stable namespaces:
 
@@ -14,21 +13,21 @@ The root package continues to expose only these stable namespaces:
 core  input  graphics  assets  preview  testSupport
 ```
 
-`test-core-api` guards the checked-in facade snapshot and the v0.1 core symbol
-budget. The v0.1 contract remains the fixed-step `GameProtocol`, deterministic
+`test-core-api` guards the checked-in facade snapshot and the v1.0 core symbol
+budget. The v1.0 contract remains the fixed-step `GameProtocol`, deterministic
 RNG/replay/headless tooling, Canvas and assets, input, save data, native/browser
 packaging, and documented supported targets. This audit does not rename or
-remove any v0.1 declaration.
+remove any v1.0 declaration.
 
-## Candidate next game-facing baseline
+## Game-facing authoring baseline
 
 The following additions have been exercised by both Neon Siege and Lantern
-Leap and are recommended for the next supported game-facing baseline:
+Leap and are part of the current game-facing baseline:
 
 | Surface | Classification | Contract decision |
 | --- | --- | --- |
-| `graphics.SpriteAnimationStep`, `SpriteAnimationMode`, `SpriteAnimationClip`, `SpriteAnimationPlayer` | SUPPORTED PUBLIC API | Freeze as deterministic, game-owned sprite-frame selection. Clips borrow static step data; players have value semantics and advance in fixed updates only. |
-| `core.Audio.MusicHandle`, `MusicFormat`, `MusicLoadOptions`, `MusicPlayOptions`, `MusicState`, `loadMusic`, `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic`, `setMusicVolume` | SUPPORTED PUBLIC API | Freeze as one high-level, bounded incremental music stream that coexists with SFX. OGG/Vorbis is the default; WAV is explicit. |
+| `graphics.SpriteAnimationStep`, `SpriteAnimationMode`, `SpriteAnimationClip`, `SpriteAnimationPlayer` | SUPPORTED PUBLIC API | Supported as deterministic, game-owned sprite-frame selection. Clips borrow static step data; players have value semantics and advance in fixed updates only. |
+| `core.Audio.MusicHandle`, `MusicFormat`, `MusicLoadOptions`, `MusicPlayOptions`, `MusicState`, `loadMusic`, `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic`, `setMusicVolume` | SUPPORTED PUBLIC API | Supported as one high-level, bounded incremental music stream that coexists with SFX. OGG/Vorbis is the default; WAV is explicit. |
 | `core.Audio.MusicDiagnostics` and `musicDiagnostics` | DEVELOPER OBSERVATION | Useful to diagnostics, but not gameplay control or a telemetry schema. Its fields remain non-versioned observation data until a future audit promotes them. |
 
 `MusicHandle` and `SoundHandle` remain host-owned handles. The source remains
@@ -73,7 +72,7 @@ is required.
 ## Legacy animation status
 
 The older `assets.Animation`, `assets.AnimationPlayer`, and
-`assets.AnimationStateMachine` declarations remain **legacy supported** v0.1
+`assets.AnimationStateMachine` declarations remain **legacy supported** v1.0
 APIs. They are not removed or silently changed in this audit. New deterministic
 games should prefer `SpriteAnimationClip` and `SpriteAnimationPlayer`; the
 legacy float-duration/state-machine model remains for existing authored Atlas
@@ -81,7 +80,7 @@ content. See [sprite animation](sprite-animation.md).
 
 ## One-off public surface audit
 
-No post-v0.1 authoring declaration was found to be accidentally exposed without
+No authoring authoring declaration was found to be accidentally exposed without
 a focused test, guide, or canonical-project use. Existing public declarations
 that are not used by all three projects fall into deliberate categories:
 
@@ -95,7 +94,7 @@ that are not used by all three projects fall into deliberate categories:
 - Inspector, profiler, and renderer-diagnostics declarations are existing
   diagnostics/advanced surface rather than new ordinary game requirements.
 
-The audit makes no removals: all of these predate the post-v0.1 authoring
+The audit makes no removals: all of these predate the authoring authoring
 cycle or have an explicit advanced/compatibility purpose.
 
 ## Ownership and determinism
@@ -118,13 +117,11 @@ dependency. `dev-web` is a local wrapper around that same production build.
 
 ## Snapshot and versioning strategy
 
-Keep the existing checked-in core snapshot as the guard for the current facade
-and retain the historical v0.1 capability/core-contract documents unchanged.
-This page is the small, reviewable post-v0.1 inventory: it records what the
-next snapshot should include without rewriting history or pretending there is
-already a public `v0.2.0` tag. At a real milestone decision, copy this approved
-inventory into the versioned snapshot/changelog review in one intentional
-change.
+Keep the checked-in core snapshot as the guard for the current facade. The
+capability catalog and contract describe `1.0.0`; the authoring inventory
+records the distinction between supported gameplay APIs and experimental
+host tools. Any future breaking API change requires a major-version decision,
+a snapshot review, and migration notes.
 
 ## Milestone notes draft
 
@@ -147,7 +144,7 @@ change.
 
 ### Compatibility
 
-- Keeps the v0.1 facade intact; no game-facing v0.1 API was removed or
+- Keeps the v1.0 facade intact; no game-facing v1.0 API was removed or
   renamed.
 - Does not constitute a release announcement, package-version bump, tag, or
   license decision.

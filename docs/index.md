@@ -5,7 +5,7 @@ with the smallest complete project, then add only the concepts your game needs.
 
 ## 1. First 10 minutes
 
-1. [Start here](guides/quickstart.md) — requirements, the current unreleased
+1. [Start here](guides/quickstart.md) — requirements, the current source-
    checkout path, a compiled `GameProtocol` program, and fixed-step basics.
 2. [Seed Sprint](../templates/starter/README.md) — the canonical beginner
    project: read `src/main.zig`, then `src/game.zig`.
@@ -25,7 +25,7 @@ with the smallest complete project, then add only the concepts your game needs.
 ## 3. Make it deterministic and testable
 
 - [Testing: seed, replay, headless state, Canvas trace, pixels](guides/testing.md)
-- [v0.1 core contract](guides/core-contract.md)
+- [v1.0 core contract](guides/core-contract.md)
 
 ## 4. Ship it
 
@@ -64,20 +64,19 @@ with the smallest complete project, then add only the concepts your game needs.
 | Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
 | Find exact API/CI contract details | [Core contract](guides/core-contract.md), [capability matrix](guides/capabilities.md), and [Core API](api/core.md) |
 
-## Post-v0.1 authoring contract
+## Authoring contract
 
 [Authoring-experience freeze](guides/authoring-experience-freeze.md) records
-which post-v0.1 additions are recommended game APIs, which remain experimental
+which additions are recommended game APIs, which remain experimental
 developer tooling, and why Seed Sprint, Neon Siege, and Lantern Leap are the
-three canonical projects. It is an architecture-milestone record, not a
-published `v0.2.0` release.
+three canonical projects. It records the `1.0.0` authoring baseline and keeps experimental tooling explicit.
 
 ## Reference and maintenance material
 
 - [Capability matrix](guides/capabilities.md)
 - [CI](guides/ci.md)
 - [Browser renderer diagnostics](guides/browser-diagnostics.md)
-- [v0.1 migrations](guides/migrations.md)
+- [v1.0 migrations](guides/migrations.md)
 
 Run `zig build docs` to emit this Markdown set under `zig-out/docs/`, or use
 `zig build peas -- docs quickstart` to locate the generated start page.

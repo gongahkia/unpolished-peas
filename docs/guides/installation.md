@@ -2,20 +2,20 @@
 
 Peas requires Zig `0.15.2`.
 
-> **UNRELEASED / prepared for v0.1.0:** no immutable Peas release archive or
-> Zig package hash is public yet. The declaration below documents the release
-> contract; it is not currently copy-and-run installation data. Until a tag is
-> published, use a source checkout to evaluate Seed Sprint as described in
-> [Start here](quickstart.md).
+The current version is **1.0.0**. Its [GitHub release](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
+is published, but has no prepared source-package archive, Zig package hash, or
+desktop downloads attached. The declaration below describes the packaging
+contract; it is not copy-and-run installation data. Use the source-checkout
+workflow in [Start here](quickstart.md) to evaluate Seed Sprint today.
 
 ## Add the dependency
 
-After `v0.1.0` is published, the canonical Seed Sprint checkout will contain
-the reviewed declaration. For a new project, fetch that immutable release
+Once a release includes the prepared package assets, its Seed Sprint checkout
+will contain the reviewed declaration. For a new project, fetch that immutable
 asset once to get the exact Zig package hash, then copy both values together:
 
 ```sh
-zig fetch <v0.1.0-source-archive-url>
+zig fetch <published-source-archive-url>
 ```
 
 The command prints a value beginning with `unpolished_peas-`. Use that exact
@@ -24,14 +24,15 @@ value in `build.zig.zon`; never substitute a hash from another version.
 ```zig
 .dependencies = .{
     .unpolished_peas = .{
-        .url = "<v0.1.0-source-archive-url>",
+        .url = "<published-source-archive-url>",
         .hash = "<exact output from zig fetch>",
     },
 },
 ```
 
-`script/prepare_starter_release.sh v0.1.0` writes those real coordinates into
-the starter before the release tag is made. The generated source archive omits
+`script/prepare_starter_release.sh <new-tag>` writes those real coordinates into
+the starter before a new release tag is made. Do not rewrite the existing
+`1.0.0` tag. The generated source archive omits
 that manifest to keep its bytes—and therefore its Zig hash—stable.
 
 ## Import and run

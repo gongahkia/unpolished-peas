@@ -18,21 +18,34 @@ require() {
     }
 }
 
-require '    tags: ["v*"]' "$workflow"
+require '    tags: ["v*", "[0-9]*"]' "$workflow"
 require '      - run: script/test_release_validation.sh' "$workflow"
-require '          script/create_source_archive.sh "${GITHUB_REF_NAME}" release-assets' "$workflow"
-require '          cp release/linux-release/starter/unpolished-peas-starter-linux-x86_64.tar.gz "release-assets/seed-sprint-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"' "$workflow"
+require '          script/create_source_archive.sh "$release_tag" release-assets HEAD' "$workflow"
+require '          cp release/linux-release/starter/unpolished-peas-starter-linux-x86_64.tar.gz "release-assets/seed-sprint-${release_tag}-linux-x86_64.tar.gz"' "$workflow"
 require '      - if: startsWith(github.ref, '\''refs/tags/'\'')' "$workflow"
 require '        run: script/test_published_tag_consumer.sh' "$workflow"
+require '    needs: publish' "$workflow"
+require "    if: startsWith(github.ref, 'refs/tags/') && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)" "$workflow"
+python3 - "$workflow" <<'PY'
+import pathlib
+import sys
+
+workflow = pathlib.Path(sys.argv[1]).read_text()
+before_publish, after_publish = workflow.split('\n  publish:', 1)
+if 'run: script/test_published_tag_consumer.sh' in before_publish:
+    raise SystemExit('public consumer validation must run after assets are published')
+if 'run: script/test_published_tag_consumer.sh' not in after_publish.split('\n  published-consumer:', 1)[1]:
+    raise SystemExit('public consumer validation requires its downstream job')
+PY
 require '      - run: zig build release-gate' "$workflow"
 require 'templates/starter/build.zig.zon export-ignore' "$repo/.gitattributes"
-require 'url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-${tag}-source.tar.gz"' "$repo/script/prepare_starter_release.sh"
+require 'url="https://github.com/gongahkia/unpolished-peas/releases/download/$tag/unpolished-peas-v${version}-source.tar.gz"' "$repo/script/prepare_starter_release.sh"
 require 'git -C "$repo" archive --format=tar --prefix="unpolished-peas-${version}/" "$ref" | python3 "$repo/script/normalize_source_archive.py" "$out/$name"' "$repo/script/create_source_archive.sh"
 grep -F -q -- 'member.mtime = 0' "$repo/script/normalize_source_archive.py" || {
     printf '%s\n' 'release validation missing normalized source-archive metadata' >&2
     exit 1
 }
-grep -F -q -- 'version consistency passed: v%s is the prepared first-release identity' "$version_consistency" || {
+grep -F -q -- 'version consistency passed: %s is the current release identity' "$version_consistency" || {
     printf '%s\n' 'release validation missing version consistency report' >&2
     exit 1
 }

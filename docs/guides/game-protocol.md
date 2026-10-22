@@ -81,7 +81,7 @@ Desktop and browser hosts use an accumulator with a five-step catch-up cap. A no
 
 `sdl.playGame(Game)` dispatches a game with `GameContext` callbacks through this protocol. Legacy `sdl.Context` callbacks remain available for existing games; `sdl.run` remains the explicit-loop escape hatch.
 
-The browser bundle runs the same callback fixture through its Wasm host. Select `?renderer=webgl2`, `?renderer=webgpu`, or `?renderer=auto`; auto prefers a ready WebGPU backend and records a deterministic WebGL 2 fallback when unavailable. Chromium WebGPU is [preview](capabilities.md), while Firefox and Safari WebGPU remain outside the v0.1 runtime contract.
+The browser bundle runs the same callback fixture through its Wasm host. Select `?renderer=webgl2`, `?renderer=webgpu`, or `?renderer=auto`; auto prefers a ready WebGPU backend and records a deterministic WebGL 2 fallback when unavailable. Chromium and Safari WebGPU are [preview](capabilities.md); Firefox WebGPU is unsupported.
 
 `GameProtocol.init` rejects a second initialization. `update` and `draw` reject calls before a successful initialization. If `Game` declares `deinit`, the host calls it once after a successful initialization and before releasing context capabilities. Callback failures preserve their original error and are available through `lastFailure()` with an `init`, `update`, `draw`, or `deinit` phase. Games without `deinit` retain the three-callback protocol.
 

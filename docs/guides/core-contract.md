@@ -1,6 +1,6 @@
-# v0.1 core contract
+# v1.0 core contract
 
-This is the pre-release v0.1 public contract. It is checked by `zig build test-core-api`; a declaration addition or removal in a listed module fails that snapshot until the change is reviewed here and in the release policy.
+This is the 1.0.0 public contract. It is checked by `zig build test-core-api`; a declaration addition or removal in a listed module fails that snapshot until the change is reviewed here and in the release policy.
 
 The root package exposes only the six named capability namespaces below. Direct root aliases are removed; import `unpolished-peas` and qualify every retained declaration through its namespace. `src/core_api_snapshot.zig` is the exact declaration-name snapshot enforced by `zig build test-core-api`.
 
@@ -48,9 +48,9 @@ They have no allocation or hashing cost while no trace is attached.
 
 ## Exclusions and compatibility
 
-The contract excludes extension ecosystems, ECS, immediate-mode UI, networking and hosted services, Box2D physics, lighting, public GPU-resource handles, meshes, compute, tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Staged 2D materials execute through SDL GPU, WebGL 2, and WebGPU; desktop releases consume AOT artifacts and browsers compile their target source. Canvas remains the deterministic headless reference rather than an arbitrary-shader fallback. See [Advanced 2D](advanced-2d.md) and [v0.1 migrations](migrations.md) for limits and migration guidance.
+The contract excludes extension ecosystems, ECS, immediate-mode UI, networking and hosted services, Box2D physics, lighting, public GPU-resource handles, meshes, compute, tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Staged 2D materials execute through SDL GPU, WebGL 2, and WebGPU; desktop releases consume AOT artifacts and browsers compile their target source. Canvas remains the deterministic headless reference rather than an arbitrary-shader fallback. See [Advanced 2D](advanced-2d.md) and [v1.0 migrations](migrations.md) for limits and migration guidance.
 
-For a published v0.1 release, removing or renaming a listed declaration, changing callback/error/timing behavior, or changing a supported target is a breaking change. The complete semver policy is in [releases and support](releases.md).
+For a published 1.x release, removing or renaming a listed declaration, changing callback/error/timing behavior, or changing a supported target is a breaking change. The complete semver policy is in [releases and support](releases.md).
 
 ## Runnable reference
 

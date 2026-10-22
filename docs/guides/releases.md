@@ -1,45 +1,49 @@
 # Releases and support
 
-`main` is an integration branch, not an installation target. `v0.1.0` is the
-intended first public release, but it does not exist until a maintainer creates
-and publishes the tag. The source-checkout starter deliberately has no fake
-consumer coordinates.
+The current release is **1.0.0**, published on October 10, 2026 as the
+[`1.0.0` tag](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0).
+Earlier `0.1.0` draft references were numbering errors. The existing release
+has no prepared source archive, desktop assets, or checksums attached; its
+publication does not establish the package-validation evidence described below.
+The source-checkout starter therefore has no invented dependency coordinates.
 
-The completed post-v0.1 authoring work is an architecture milestone, not a
-published version bump. Keep the package version at `0.1.0` until the first
-public release decision is made; do not manufacture a `v0.2.0` tag merely
-because the authoring contract has been audited. See the
-[authoring-experience freeze](authoring-experience-freeze.md) for the next
-candidate compatibility baseline.
+`main` contains integration fixes after that immutable tag. Use a source
+checkout for evaluation and a future prepared release for package installation.
+Do not move or recreate `1.0.0`. The [authoring-experience
+freeze](authoring-experience-freeze.md) records the current API/tooling boundary.
 
-## v0.1 support
+## v1.0 support
 
-The engine source supports Zig `0.15.1` and `0.15.2`. The generated starter requires the Zig version named in its copied template; the current v0.1-draft template requires `0.15.2`.
+The engine source supports Zig `0.15.1` and `0.15.2`. The generated starter requires the Zig version named in its copied template; the current template requires `0.15.2`.
 
-The [v0.1 capability matrix](capabilities.md) is the release platform contract. Its `supported` rows are macOS, Linux, and Windows with SDL GPU. `preview` rows are available for evaluation but have no v0.1 compatibility guarantee. `unsupported` rows are not offered by the v0.1 contract. `removed` means deliberately absent and has no upgrade path.
+The [v1.0 capability matrix](capabilities.md) is the release platform contract. Its `supported` rows are macOS, Linux, and Windows with SDL GPU. `preview` rows are available for evaluation but have no v1.0 compatibility guarantee. `unsupported` rows are not offered by the v1.0 contract. `removed` means deliberately absent and has no upgrade path.
 
-## v0.1 compatibility
+## v1.0 compatibility
 
-`v0.1.x` patch releases preserve every public v0.1 core module, type, callback signature, lifecycle rule, error behavior, deterministic hook, supported target, and starter manifest format. Compatible changes include documentation corrections, implementation fixes that restore documented behavior, and additive APIs outside the frozen core.
+`v1.0.x` patch releases preserve every public v1.0 core module, type, callback signature, lifecycle rule, error behavior, deterministic hook, supported target, and starter manifest format. Compatible changes include documentation corrections, implementation fixes that restore documented behavior, and additive APIs outside the frozen core.
 
-A release is breaking when it removes or renames a public core export, changes a callback or error contract, changes fixed-timestep semantics, makes a supported target preview or unsupported, or changes generated-project dependency or package behavior. Breaking core changes require the next minor release (`v0.2.0`), a revised capability matrix, an API snapshot review, and explicit migration notes.
+A release is breaking when it removes or renames a public core export, changes a callback or error contract, changes fixed-timestep semantics, makes a supported target preview or unsupported, or changes generated-project dependency or package behavior. Breaking core changes require the next major release (`2.0.0`), a revised capability matrix, an API snapshot review, and explicit migration notes. Compatible additions can use a minor release; fixes use a patch release.
 
 ## Starter upgrades
 
 Each generated project pins one public release archive URL and its matching hash in `build.zig.zon`. Upgrade both coordinates together from that release's starter template or release notes; never mix a URL from one tag with a hash from another, and never copy coordinates from `main`. Then run `zig build`, the generated project's test target, and its documented frame smoke before committing the upgrade.
 
-See [v0.1 migrations](migrations.md) before upgrading a pre-v0.1 project.
+See [v1.0 migrations](migrations.md) before upgrading a pre-v1.0 project.
 
 ## Release contract
 
 A maintainer must complete all of these steps for every new tag:
 
-1. With a clean tree, run `script/prepare_starter_release.sh vMAJOR.MINOR.PATCH`; review and commit the updated `templates/starter/build.zig.zon`. Its archive URL and hash are one release artifact and must change together.
+1. With a clean tree and the intended package version set, run `script/prepare_starter_release.sh MAJOR.MINOR.PATCH`; review and commit the updated `templates/starter/build.zig.zon`. Its archive URL and hash are one release artifact and must change together. Both plain tags (as used by `1.0.0`) and `v`-prefixed tags are accepted; use the same tag throughout.
 2. Run `zig build release-gate` with a clean tree, including the clean-archive consumer and external-browser checks, then record any platform smoke that the release's Tier-1 claim requires.
-3. Push an immutable `vMAJOR.MINOR.PATCH` tag only after CI is green.
+3. Push the new immutable version tag only after CI is green.
 4. Let the tag workflow create `unpolished-peas-vMAJOR.MINOR.PATCH-source.tar.gz` with `script/create_source_archive.sh` and upload those exact bytes as the release asset named in the starter manifest. Do not substitute GitHub's autogenerated tag archive.
-5. Let the tag workflow generate, build, and run a project from that exact public archive with empty Zig caches. The workflow rejects a local path dependency or a tag mismatch.
-6. Publish Seed Sprint's versioned desktop archives, the source archive, and checksums as a non-draft GitHub release.
+5. Publish Seed Sprint's versioned desktop archives, the source archive, and checksums as a non-draft GitHub release.
+6. The downstream `published-consumer` job then generates, builds, and runs a project from that exact public archive with empty Zig caches. It rejects a local path dependency or a tag mismatch. This check can only run after the assets exist; the clean local consumer remains a pre-publication gate.
+
+Manual dry runs create downloadable workflow artifacts without publishing a
+release. On a branch they use the package version to name the source archive;
+on a tag, `dry_run` also prevents publishing and public-consumer validation.
 
 A release is not validated merely because a checkout archive or a local path dependency builds. The public tag archive is the consumer contract.
 
