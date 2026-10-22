@@ -1,4 +1,4 @@
-export const StorageStatus = Object.freeze({ok: 0, invalidArgument: -1, unavailable: -2, rejected: -3});
+export const StorageStatus = Object.freeze({ok: 0, invalidArgument: -1, unavailable: -2, rejected: -3, notFound: -4, corrupt: -5});
 
 function decodeUtf8(bytes) {
   try {
@@ -6,6 +6,10 @@ function decodeUtf8(bytes) {
   } catch {
     return null;
   }
+}
+
+function isHostKey(key) {
+  return typeof key === "string" && key.length > 0 && key.length <= 256 && /^[A-Za-z0-9._:-]+$/.test(key);
 }
 
 function encodeBase64(bytes) {
@@ -54,7 +58,7 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
   function keyFromMemory(memory, source, byteLength) {
     if (!Number.isInteger(source) || !Number.isInteger(byteLength) || source < 0 || byteLength <= 0 || byteLength > 256 || source > memory.buffer.byteLength - byteLength) return null;
     const key = decodeUtf8(new Uint8Array(memory.buffer, source, byteLength));
-    if (!key || key.includes("\0")) return null;
+    if (!isHostKey(key)) return null;
     return `${namespace}/${key}`;
   }
 
@@ -89,10 +93,18 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
     if (!key || !Number.isInteger(destination) || !Number.isInteger(capacity) || destination < 0 || capacity < 0) return StorageStatus.invalidArgument;
     try {
       const record = storage.getItem(key);
-      if (record === null) return 0;
-      if (!record.startsWith("UPST1:")) return fail("invalid_record");
+      if (record === null) return StorageStatus.notFound;
+      if (!record.startsWith("UPST1:")) {
+        phase = "failed";
+        lastError = "invalid_record";
+        return StorageStatus.corrupt;
+      }
       const value = decodeBase64(record.slice(6));
-      if (!value || value.length > maxValueBytes) return fail("invalid_record");
+      if (!value || value.length > maxValueBytes) {
+        phase = "failed";
+        lastError = "invalid_record";
+        return StorageStatus.corrupt;
+      }
       if (capacity < value.length) return value.length;
       if (destination > memory.buffer.byteLength - value.length) return StorageStatus.invalidArgument;
       new Uint8Array(memory.buffer, destination, value.length).set(value);
