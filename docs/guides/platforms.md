@@ -11,7 +11,7 @@ tracked separately in the [capability matrix](capabilities.md).
 | macOS arm64 | Universal arm64 slice cross-built on Intel macOS | Not run on Apple Silicon | Tier 1 target; cross-build is not arm64 runtime validation |
 | Linux x86_64 under WSL2/WSLg | Local builds and package checks | Validated as **WSLg runtime only** with SDL GPU through the bridge | Useful development evidence, not bare-metal Linux proof |
 | Native Linux x86_64 | CI/package coverage | Not run from this WSL checkout on bare metal | Tier 1 target; Wayland/X11, GPU, audio, and controller behavior still need native-Linux evidence |
-| Browser/Wasm | Automated Wasm, host, bundle, and external-project package tests | No manual browser session in this checkout | Supported browser build path; browser audio still requires user activation |
+| Browser/Wasm | Automated Wasm, host, bundle, and external-project package tests | Chromium WebGL2/WebGPU pixel comparisons, material/post-pass captures, keyboard/recovery checks, and desktop/narrow-viewport visual inspection on Intel macOS (October 23, 2026) | Preview renderer targets; screen-reader, physical controller, and browser audio device behavior still need manual evidence |
 | Windows x86_64 | CI package matrix | Not run locally | Secondary target |
 
 ## WSLg note
