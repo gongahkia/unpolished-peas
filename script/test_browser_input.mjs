@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import {readFileSync} from "node:fs";
-import {createBrowserInput, InputAbi, InputKey} from "../src/browser/input.mjs";
+import {createBrowserInput, GamepadAxis, InputAbi, InputKey} from "../src/browser/input.mjs";
 
 const fixture = JSON.parse(readFileSync(new URL("../src/fixtures/input/keyboard-pointer-v1.json", import.meta.url)));
 assert.equal(fixture.schema_version, 1);
@@ -67,7 +67,7 @@ assert.deepEqual(input.actionValues(), [
 ]);
 const state = input.snapshot();
 assert.equal(state.down[InputKey[fixture.key]], true);
-assert.deepEqual(state.pointer, {windowX: fixture.window[0], windowY: fixture.window[1], framebufferX: fixture.framebuffer[0], framebufferY: fixture.framebuffer[1], canvasX: fixture.canvas[0], canvasY: fixture.canvas[1], deltaX: 0, deltaY: 0, wheelX: 2, wheelY: -3});
+assert.deepEqual(state.pointer, {windowX: fixture.window[0], windowY: fixture.window[1], framebufferX: fixture.framebuffer[0], framebufferY: fixture.framebuffer[1], canvasX: fixture.canvas[0], canvasY: fixture.canvas[1], deltaX: 160, deltaY: 90, wheelX: 2, wheelY: -3});
 assert.equal(state.gamepads[0].id, 7);
 assert.equal(state.gamepads[0].buttons[0], true);
 assert.equal(input.poll(), InputAbi.byteLength);
@@ -84,6 +84,42 @@ assert.equal(view.getUint32(84, true), 1);
 assert.equal(view.getInt32(88, true), 7);
 assert.equal(view.getUint32(96, true) & 1, 1);
 assert.equal(input.snapshot().pressed[InputKey.up], false);
+// All motion before one simulation read must survive clicks and wheel events.
+canvas.emit("pointermove", {clientX: 100, clientY: 70});
+canvas.emit("pointermove", {clientX: 110, clientY: 80});
+canvas.emit("wheel", {clientX: 110, clientY: 80, deltaY: 1});
+assert.equal(input.snapshot().pointer.deltaX, 40);
+assert.equal(input.snapshot().pointer.deltaY, 30);
+input.read(0, InputAbi.byteLength, memory);
+assert.equal(view.getFloat32(68, true), 40);
+assert.equal(input.snapshot().pointer.deltaX, 0);
+
+// Releasing W must not cancel a simultaneously held ArrowUp.
+windowRef.emit("keydown", {code: "ArrowUp"});
+windowRef.emit("keyup", {code: "KeyW"});
+assert.equal(input.snapshot().down[InputKey.up], true);
+assert.equal(input.snapshot().released[InputKey.up], false);
+windowRef.emit("keyup", {code: "ArrowUp"});
+assert.equal(input.snapshot().down[InputKey.up], false);
+assert.equal(input.snapshot().released[InputKey.up], true);
+windowRef.emit("keydown", {code: fixtureCode});
+
+// Tab remains a select binding but must allow keyboard users to leave the game.
+const tab = windowRef.emit("keydown", {code: "Tab", preventDefault() { this.prevented = true; }});
+assert.equal(input.snapshot().down[InputKey.select], true);
+assert.notEqual(tab.prevented, true);
+
+// Standard Gamepad triggers are analog buttons, not extra stick axes.
+navigatorRef.pads[0].mapping = "standard";
+navigatorRef.pads[0].axes = [-0.75, 0, 0, 0];
+navigatorRef.pads[0].buttons[6].value = 0.75;
+navigatorRef.pads[0].buttons[7].value = 0.25;
+assert.equal(input.snapshot().gamepads[0].axes[GamepadAxis.left_trigger], 0.75);
+assert.equal(input.snapshot().gamepads[0].axes[GamepadAxis.right_trigger], 0.25);
+input.read(0, InputAbi.byteLength, memory);
+assert.equal(view.getFloat32(88 + 20 + GamepadAxis.left_trigger * 4, true), 0.75);
+navigatorRef.pads[0].buttons[6].value = 0.5;
+assert.equal(input.snapshot().gamepads[0].previousAxes[GamepadAxis.left_trigger], 0.75);
 navigatorRef.pads[0].axes[0] = 0.25;
 assert.equal(input.poll(), InputAbi.byteLength);
 assert.equal(input.snapshot().gamepads[0].previousAxes[0], -0.75);
@@ -94,6 +130,10 @@ assert.equal(input.snapshot().down[InputKey[fixture.key]], false);
 assert.equal(input.snapshot().pointerDown[fixtureButton], false);
 assert.equal(input.snapshot().released[InputKey[fixture.key]], true);
 assert.equal(input.snapshot().pointerReleased[fixtureButton], true);
+canvas.emit("focus");
+windowRef.emit("keydown", {code: "ArrowUp"});
+windowRef.emit("keyup", {code: "ArrowUp"});
+assert.equal(input.snapshot().down[InputKey.up], false, "blur clears physical aliases too");
 documentRef.visibilityState = "hidden";
 documentRef.emit("visibilitychange");
 assert.equal(input.snapshot().visible, false);
