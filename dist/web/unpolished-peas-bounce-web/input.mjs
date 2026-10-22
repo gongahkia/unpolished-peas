@@ -63,6 +63,7 @@ export function createBrowserInput({
   mapCanvas = () => null,
 } = {}) {
   const down = new Array(10).fill(false);
+  const heldCodes = new Set();
   const pressed = new Array(10).fill(false);
   const released = new Array(10).fill(false);
   const pointerDown = new Array(5).fill(false);
@@ -97,6 +98,7 @@ export function createBrowserInput({
   }
 
   function releaseAll() {
+    heldCodes.clear();
     for (let index = 0; index < down.length; index += 1) setKey(index, false);
     for (let index = 0; index < pointerDown.length; index += 1) setPointerButton(index, false);
   }
@@ -109,8 +111,8 @@ export function createBrowserInput({
     const height = rect?.height ?? canvas?.height ?? 0;
     const framebufferX = width > 0 ? (windowX - finite(rect?.left)) * (canvas.width / width) : 0;
     const framebufferY = height > 0 ? (windowY - finite(rect?.top)) * (canvas.height / height) : 0;
-    pointer.deltaX = framebufferX - pointer.framebufferX;
-    pointer.deltaY = framebufferY - pointer.framebufferY;
+    pointer.deltaX += framebufferX - pointer.framebufferX;
+    pointer.deltaY += framebufferY - pointer.framebufferY;
     pointer.windowX = windowX;
     pointer.windowY = windowY;
     pointer.framebufferX = framebufferX;
@@ -141,7 +143,12 @@ export function createBrowserInput({
         if (isDown) state.pressed[index] = true;
         else state.released[index] = true;
       }
-      for (let index = 0; index < state.axes.length; index += 1) state.axes[index] = finite(pad.axes?.[index]);
+      for (let index = 0; index < state.axes.length; index += 1) {
+        const value = pad.mapping === "standard" && index >= GamepadAxis.left_trigger
+          ? pad.buttons?.[index + 2]?.value
+          : pad.axes?.[index];
+        state.axes[index] = Math.max(index >= GamepadAxis.left_trigger ? 0 : -1, Math.min(1, finite(value)));
+      }
     }
   }
 
@@ -262,14 +269,16 @@ export function createBrowserInput({
     if (!focused) return;
     const key = codeToKey.get(event.code);
     if (key === undefined) return;
+    heldCodes.add(event.code);
     setKey(key, true);
-    event.preventDefault?.();
+    if (event.code !== "Tab") event.preventDefault?.();
   });
   listen(windowRef, "keyup", (event) => {
     const key = codeToKey.get(event.code);
     if (key === undefined) return;
-    setKey(key, false);
-    if (focused) event.preventDefault?.();
+    heldCodes.delete(event.code);
+    setKey(key, [...heldCodes].some((code) => codeToKey.get(code) === key));
+    if (focused && event.code !== "Tab") event.preventDefault?.();
   });
   listen(windowRef, "blur", () => { focused = false; releaseAll(); });
   listen(windowRef, "resize", resize);
