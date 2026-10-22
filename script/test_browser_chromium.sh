@@ -16,6 +16,7 @@ case "$browser" in
 esac
 allow_webgpu_unavailable=${UP_ALLOW_WEBGPU_UNAVAILABLE:-0}
 diagnostics=${UP_DIAGNOSTICS_ROOT:-$repo/zig-out/diagnostics/browser-$browser}
+case "$diagnostics" in /*) ;; *) diagnostics="$repo/$diagnostics" ;; esac
 artifact_dir=$diagnostics/$game
 tmp=$(mktemp -d)
 port=$(python3 -c 'import socket; value = socket.socket(); value.bind(("127.0.0.1", 0)); print(value.getsockname()[1]); value.close()')

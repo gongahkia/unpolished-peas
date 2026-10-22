@@ -2,7 +2,14 @@
 
 ## Required pull-request suite
 
-`stable-core-capability` is the intended required pull-request matrix; `capability-matrix` is its generated-matrix dependency. The matrix is generated from `docs/capabilities/v0.1.json`; it selects only supported desktop SDL GPU rows.
+Pushes and pull requests also run `browser-host` for the DOM/renderer/audio/
+storage host contracts, browser development server, and version/release
+wiring, plus `browser-rendering` for real Chromium shell interactions and
+the WebGL 2/WebGPU/CPU-reference pixel comparison. These checks catch browser
+regressions before the nightly matrix. Renderer failure artifacts are retained
+under the checkout even when a test uses a temporary working directory.
+
+`stable-core-capability` is the intended required pull-request matrix; `capability-matrix` is its generated-matrix dependency. The matrix is generated from `docs/capabilities/v1.0.json`; it selects only supported desktop SDL GPU rows.
 
 `nightly.yml` consumes the nightly matrix from the same catalog. It runs the documented macOS, Linux, Windows, Chromium, Firefox, and separately forced Safari WebGL2/WebGPU rows, preserving renderer diagnostics and workload artifacts under the matrix identity. Unsupported Firefox WebGPU is absent.
 

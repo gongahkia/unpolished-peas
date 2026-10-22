@@ -5,6 +5,40 @@ on:
   push:
 
 jobs:
+  browser-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: zig build test-browser-host test-browser-webgpu test-browser-input test-browser-audio test-browser-storage test-browser-artifacts test-browser-renderer-selection test-browser-renderer-diagnostics test-browser-image-assets test-browser-workload-benchmark test-browser-dev
+      - run: script/test_version_consistency.sh
+      - run: script/test_release_validation.sh
+
+  browser-rendering:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: script/test_browser_shell.sh
+      - run: zig build test-browser-renderer-parity
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-rendering-diagnostics
+          path: zig-out/diagnostics/**
+          if-no-files-found: warn
+
   capability-matrix:
     runs-on: ubuntu-latest
     outputs:
