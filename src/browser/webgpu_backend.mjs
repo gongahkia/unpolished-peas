@@ -65,8 +65,6 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   if (!canvas?.getContext) throw new WebGpuBackendError("canvas_unavailable");
   const gpu = navigatorRef?.gpu;
   if (!gpu?.requestAdapter || !gpu?.getPreferredCanvasFormat) throw new WebGpuBackendError("webgpu_unavailable");
-  const context = canvas.getContext("webgpu");
-  if (!context?.configure || !context?.getCurrentTexture) throw new WebGpuBackendError("canvas_context_unavailable");
   let adapter;
   try {
     adapter = await gpu.requestAdapter();
@@ -83,6 +81,13 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   if (!device?.queue?.submit || !device.queue.writeBuffer || !device.queue.writeTexture || !device.createCommandEncoder || !device.createShaderModule || !device.createRenderPipeline || !device.createBuffer || !device.createTexture || !device.createSampler || !device.createBindGroup || !device.createBindGroupLayout || !device.createPipelineLayout) throw new WebGpuBackendError("device_unavailable");
   const format = gpu.getPreferredCanvasFormat();
   if (typeof format !== "string" || format.length === 0) throw new WebGpuBackendError("canvas_format_unavailable");
+  // Acquiring a context permanently chooses the canvas API. Keep it available
+  // for WebGL fallback when the adapter or device cannot be created.
+  const context = canvas.getContext("webgpu");
+  if (!context?.configure || !context?.getCurrentTexture) {
+    device.destroy?.();
+    throw new WebGpuBackendError("canvas_context_unavailable");
+  }
   const shader = device.createShaderModule({code: vertexShader});
   const pipelines = [alphaBlend, additiveBlend].map((blend) => device.createRenderPipeline({
     layout: "auto",
@@ -118,7 +123,8 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
   const spriteBuffer = device.createBuffer({size: maxSprites * verticesPerRectangle * spriteFloatsPerVertex * 4, usage});
   const particleBaseBuffer = device.createBuffer({size: verticesPerRectangle * 2 * 4, usage});
   const particleBuffer = device.createBuffer({size: maxParticles * particleFloatsPerInstance * 4, usage});
-  const materialBuffer = device.createBuffer({size: verticesPerRectangle * spriteFloatsPerVertex * 4, usage});
+  const materialVertexBytes = verticesPerRectangle * spriteFloatsPerVertex * 4;
+  const materialBuffer = device.createBuffer({size: (maxSprites + 1) * materialVertexBytes, usage});
   const blitPipeline = device.createRenderPipeline({
     layout: spritePipelineLayout,
     vertex: {module: spriteModule, buffers: [{arrayStride: spriteFloatsPerVertex * 4, attributes: [{shaderLocation: 0, offset: 0, format: "float32x2"}, {shaderLocation: 1, offset: 8, format: "float32x2"}, {shaderLocation: 2, offset: 16, format: "float32x4"}]}]},
@@ -326,6 +332,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
 
   function materialDraw(material, x, y, width, height, tint) {
     if (state.destroyed || state.deviceStatus !== "ready" || !material || ![x, y, width, height, tint].every(Number.isInteger) || width <= 0 || height <= 0 || !Array.isArray(material.bindings) || material.bindings.length === 0 || material.bindings[0].name !== "source" || material.bindings[0].kind !== "texture") return false;
+    if (state.materialDraws.length >= maxSprites) return false;
     state.materialDraws.push({material, vertices: materialVertices(material.kind, x, y, width, height, tint)});
     return true;
   }
@@ -404,7 +411,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
     }
   }
 
-  function materialBindGroup(pipeline, material, sourceTarget) {
+  function materialBindGroup(pipeline, material, sourceTarget, drawIndex) {
     const entries = [];
     let textureIndex = 0;
     let uniformIndex = 0;
@@ -417,7 +424,8 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
         textureIndex += 1;
         continue;
       }
-      let buffer = pipeline.uniformBuffers.get(binding.name);
+      const key = `${drawIndex}:${binding.name}`;
+      let buffer = pipeline.uniformBuffers.get(key);
       if (!buffer || buffer.size < binding.bytes.byteLength) {
         buffer?.buffer?.destroy?.();
         const usage = globalThis.GPUBufferUsage?.UNIFORM | globalThis.GPUBufferUsage?.COPY_DST || 0x48;
@@ -427,7 +435,7 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
         } catch {
           return null;
         }
-        pipeline.uniformBuffers.set(binding.name, buffer);
+        pipeline.uniformBuffers.set(key, buffer);
       }
       device.queue.writeBuffer(buffer.buffer, 0, binding.bytes);
       entries.push({binding: pipeline.textureCount * 2 + uniformIndex, resource: {buffer: buffer.buffer}});
@@ -514,17 +522,18 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
       }
       pass.end();
       let targetIndex = 0;
-      for (const draw of state.materialDraws) {
+      for (const [drawIndex, draw] of state.materialDraws.entries()) {
         const pipeline = materialPipeline(draw.material);
         if (!pipeline) return false;
         const destinationIndex = draw.material.kind === 1 ? 1 - targetIndex : targetIndex;
-        const bindGroup = materialBindGroup(pipeline, draw.material, state.targets[targetIndex]);
+        const bindGroup = materialBindGroup(pipeline, draw.material, state.targets[targetIndex], drawIndex);
         if (!bindGroup) return false;
-        device.queue.writeBuffer(materialBuffer, 0, draw.vertices);
+        const vertexOffset = drawIndex * materialVertexBytes;
+        device.queue.writeBuffer(materialBuffer, vertexOffset, draw.vertices);
         const materialPass = encoder.beginRenderPass({colorAttachments: [{view: state.targets[destinationIndex].view, clearValue: {r: 0, g: 0, b: 0, a: 0}, loadOp: draw.material.kind === 1 ? "clear" : "load", storeOp: "store"}]});
         materialPass.setPipeline(pipeline.pipeline);
         materialPass.setBindGroup(0, bindGroup);
-        materialPass.setVertexBuffer(0, materialBuffer);
+        materialPass.setVertexBuffer(0, materialBuffer, vertexOffset, materialVertexBytes);
         materialPass.draw(verticesPerRectangle);
         materialPass.end();
         targetIndex = destinationIndex;
@@ -535,11 +544,12 @@ export async function createWebGpuBackend({canvas, navigator: navigatorRef = glo
         1, -1, 1, 1, 1, 1, 1, 1, -1, 1, 0, 0, 1, 1, 1, 1,
         1, -1, 1, 1, 1, 1, 1, 1, -1, -1, 0, 1, 1, 1, 1, 1,
       ]);
-      device.queue.writeBuffer(materialBuffer, 0, finalVertices);
+      const finalOffset = state.materialDraws.length * materialVertexBytes;
+      device.queue.writeBuffer(materialBuffer, finalOffset, finalVertices);
       const finalPass = encoder.beginRenderPass({colorAttachments: [{view: context.getCurrentTexture().createView(), clearValue: {r: 0, g: 0, b: 0, a: 1}, loadOp: "clear", storeOp: "store"}]});
       finalPass.setPipeline(blitPipeline);
       finalPass.setBindGroup(0, finalBindGroup);
-      finalPass.setVertexBuffer(0, materialBuffer);
+      finalPass.setVertexBuffer(0, materialBuffer, finalOffset, materialVertexBytes);
       finalPass.draw(verticesPerRectangle);
       finalPass.end();
       device.queue.submit([encoder.finish()]);

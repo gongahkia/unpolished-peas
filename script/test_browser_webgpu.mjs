@@ -97,13 +97,27 @@ backend.destroy();
 assert.deepEqual(canvas.calls.at(-1), ["unconfigure"]);
 assert.equal(submissions.at(-1), "destroy");
 await assert.rejects(() => createWebGpuBackend({canvas}), (error) => error instanceof WebGpuBackendError && error.code === "webgpu_unavailable");
+await assert.rejects(() => createWebGpuBackend({
+  canvas: {getContext() { throw new Error("must not lock the canvas before an adapter exists"); }},
+  navigator: {gpu: {requestAdapter: async () => null, getPreferredCanvasFormat: () => "bgra8unorm"}},
+}), (error) => error instanceof WebGpuBackendError && error.code === "adapter_unavailable");
 
 const hostCanvas = new FakeCanvas();
 let resolveHostLost;
 const hostDraws = [];
+const pendingWrites = [];
 const hostDevice = {
   lost: new Promise((resolve) => { resolveHostLost = resolve; }),
-  queue: {submit() {}, writeBuffer() {}, writeTexture() {}},
+  queue: {
+    submit() { pendingWrites.length = 0; },
+    writeBuffer(buffer, offset, data, dataOffset = 0, size = data.byteLength) {
+      // Queue writes run before the encoded draws are submitted. Reusing a
+      // range here changes what an earlier draw sees when the GPU executes it.
+      assert.ok(!pendingWrites.some((write) => write.buffer === buffer && offset < write.offset + write.size && write.offset < offset + size), "queued draws must not overwrite each other's buffer data");
+      pendingWrites.push({buffer, offset, size});
+    },
+    writeTexture() {},
+  },
   createShaderModule: () => "shader",
   createRenderPipeline: () => ({blend: "one-minus-src-alpha"}),
   createBindGroupLayout: () => "sprite-layout",
@@ -140,13 +154,21 @@ new Uint8Array(host.memory.buffer, 256, vertexBytes.byteLength).set(vertexBytes)
 new Uint8Array(host.memory.buffer, 1024, fragmentBytes.byteLength).set(fragmentBytes);
 new Uint8Array(host.memory.buffer, 2048, 6).set(shaderText.encode("source"));
 new Uint8Array(host.memory.buffer, 4096, 16).fill(255);
+new Uint8Array(host.memory.buffer, 5000, 4).set(shaderText.encode("tint"));
+new Uint8Array(host.memory.buffer, 5100, 16).fill(1);
 assert.equal(host.imports.env.up_host_gl_material_begin(77, 1, 0, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
 assert.equal(host.imports.env.up_host_gl_material_bind_texture(2048, 6, 2, 2, 4096, 16), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_bind_uniform(5000, 4, 5100, 16), Status.ok);
 assert.equal(host.imports.env.up_host_gl_material_draw(4, 5, 8, 9, 0xffffffff), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_begin(77, 1, 0, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_bind_texture(2048, 6, 2, 2, 4096, 16), Status.ok);
+new Uint8Array(host.memory.buffer, 5100, 16).fill(2);
+assert.equal(host.imports.env.up_host_gl_material_bind_uniform(5000, 4, 5100, 16), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_draw(20, 25, 12, 13, 0xff112233), Status.ok);
 assert.equal(host.imports.env.up_host_gl_material_begin(78, 1, 1, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
 assert.equal(host.imports.env.up_host_gl_material_draw(0, 0, 128, 72, 0xffffffff), Status.ok);
 assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
-assert.deepEqual(hostDraws, [[6], [12], [6, 1], [6], [6], [6]]);
+assert.deepEqual(hostDraws, [[6], [12], [6, 1], [6], [6], [6], [6]]);
 assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
 resolveHostLost({reason: "destroyed"});
 await Promise.resolve();
