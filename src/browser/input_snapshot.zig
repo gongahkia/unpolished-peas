@@ -4,31 +4,6 @@ const up = @import("unpolished-peas");
 pub const abi_version: u32 = 1;
 pub const abi_bytes: usize = 376;
 
-/// Browser-runtime-only fixed-tick buffering. Browser module roots cannot
-/// import parent source files, so this mirrors the backend-private helper
-/// without exposing it through Peas's public `Input` API.
-pub fn TickBuffer(comptime Input: type) type {
-    return struct {
-        const Self = @This();
-
-        pending: Input.Snapshot = .{},
-
-        pub fn submit(self: *Self, state: Input) void {
-            self.pending.merge(state.snapshot());
-        }
-
-        pub fn next(self: *Self) Input.Snapshot {
-            const result = self.pending;
-            self.pending.clearTransient();
-            return result;
-        }
-
-        pub fn reset(self: *Self) void {
-            self.* = .{};
-        }
-    };
-}
-
 /// Decodes the browser host's fixed input ABI into the same normalized input
 /// snapshot used by native and headless simulation. The ABI itself contains no
 /// browser object identity or timestamp.

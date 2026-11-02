@@ -464,6 +464,22 @@ pub fn build(b: *std.Build) void {
     browser_render_surface_test.addFileArg(browser_render_surface_smoke.getEmittedBin());
     const browser_render_surface_test_step = b.step("test-browser-render-surfaces", "Run the public render-surface API through a browser-style Wasm host");
     browser_render_surface_test_step.dependOn(&browser_render_surface_test.step);
+    const browser_replay_session = b.addExecutable(.{
+        .name = "unpolished-peas-browser-replay-session",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/replay_session_wasm_smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+        }),
+    });
+    browser_replay_session.entry = .disabled;
+    browser_replay_session.rdynamic = true;
+    browser_replay_session.import_memory = true;
+    const browser_replay_session_test = b.addSystemCommand(&.{ "node", "script/test_browser_replay_session.mjs" });
+    browser_replay_session_test.addFileArg(browser_replay_session.getEmittedBin());
+    const browser_replay_session_step = b.step("test-browser-replay", "Round-trip session recordings and portable state hashes in browser Wasm");
+    browser_replay_session_step.dependOn(&browser_replay_session_test.step);
     const browser_authored_assets_smoke = b.addExecutable(.{
         .name = "unpolished-peas-browser-authored-assets-smoke",
         .root_module = b.createModule(.{
@@ -768,6 +784,7 @@ pub fn build(b: *std.Build) void {
     browser_wasm_host_test.setCwd(b.path("."));
     browser_wasm_host_test.step.dependOn(&install_browser_runtime.step);
     const browser_wasm_host_test_step = b.step("test-browser-wasm-host", "Instantiate the browser Wasm module against its host ABI");
+    browser_wasm_host_test_step.dependOn(&browser_replay_session_test.step);
     browser_wasm_host_test_step.dependOn(&browser_wasm_host_test.step);
 
     const native_save_data = b.createModule(.{

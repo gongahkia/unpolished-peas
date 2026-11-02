@@ -194,6 +194,58 @@ test "Seed Sprint loads an explicitly injected in-memory best score" {
     try std.testing.expectEqual(@as(u32, 7), runner.game.best_score);
 }
 
+test "Seed Sprint records a session then replays and reloads its earned score" {
+    const allocator = std.testing.allocator;
+    const Replay = up.preview.developer.InputReplay;
+    const Runner = up.testSupport.HeadlessGameRunner(Game);
+    // Games own these identifiers. Change them with simulation or asset edits.
+    const identity = Replay.Environment.Identity{ .game = "seed-sprint", .build = "1", .assets = "builtin-1" };
+    var saves: up.testSupport.InMemorySaveStore = undefined;
+    saves.init(allocator);
+    defer saves.deinit();
+    // Capture before init: best-score is missing at the beginning of this run.
+    var recorder = try up.preview.developer.InputReplayRecorder.initSession(allocator, 60, default_seed, .{
+        .identity = identity,
+        .save_data = saves.capability(),
+        .save_keys = &.{"best-score"},
+    });
+    defer recorder.deinit();
+    var live = try Runner.initSeededWithSaveData(allocator, width, height, default_seed, saves.capability());
+    defer live.deinit();
+    var input = up.input.Input{};
+    for (0..16) |_| {
+        input.beginFrame();
+        input.set(.right, true);
+        input.set(.down, true);
+        try recorder.record(input);
+        try live.step(input.snapshot(), 1.0 / 60.0);
+    }
+    // Drawing can run independently of fixed updates.
+    try live.draw(0);
+    try std.testing.expectEqual(@as(u32, 1), live.game.score);
+    try std.testing.expectEqual(@as(u64, 16), live.ticks);
+
+    var replay = try recorder.finish();
+    defer replay.deinit(allocator);
+    const encoded = try replay.encode(allocator);
+    defer allocator.free(encoded);
+    var loaded = try up.preview.developer.parseInputReplay(allocator, encoded);
+    defer loaded.deinit(allocator);
+    var reproduced = try Runner.initReplay(allocator, width, height, loaded, identity);
+    defer reproduced.deinit();
+    try std.testing.expectEqual(@as(u32, 0), reproduced.game.best_score);
+    try reproduced.runReplay(loaded);
+    try std.testing.expectEqualDeep(live.game, reproduced.game);
+    try up.testSupport.expectCanvasTraceEqual(live.capture().canvas_trace, reproduced.capture().canvas_trace);
+    try std.testing.expectEqual(live.capture().image_hash, reproduced.capture().image_hash);
+
+    // A fresh game loads the earned score from the original run's save store.
+    var restarted = try Runner.initSeededWithSaveData(allocator, width, height, default_seed, saves.capability());
+    defer restarted.deinit();
+    try std.testing.expectEqual(@as(u32, 0), restarted.game.score);
+    try std.testing.expectEqual(@as(u32, 1), restarted.game.best_score);
+}
+
 test "Seed Sprint keeps maximum saved scores and controls inside the canvas" {
     var saves: up.testSupport.InMemorySaveStore = undefined;
     saves.init(std.testing.allocator);

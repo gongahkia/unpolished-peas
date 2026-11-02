@@ -28,6 +28,14 @@ not by a game-side browser API.
 
 Use `up.core.Color`, `up.input.Input`, `up.graphics.Canvas`, `up.assets.AssetStore`, `up.preview.developer.InputReplay`, and `up.testSupport.TempProject`; these are the only root namespaces.
 
+The optional developer replay API also supports `InputReplayRecorder.initSession`
+and `InputReplay.Environment` for selected initial saves and game/build/asset
+identity. `HeadlessGameRunner.initReplay` restores those conditions before
+initialization; `step` and `draw` let tests control simulation and presentation
+separately. `StateHash.updatePortable` hashes logical fields without native
+padding. These additions keep the namespace surface unchanged; the
+[testing guide](testing.md) defines their ownership, bounds, and errors.
+
 ## Lifecycle and errors
 
 `GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes checked canvas plus optional `SaveStore` and `Audio` capabilities. It may also carry an explicit optional `simulation_seed` for initialization. `Audio` is a host-owned output service, so games retain sound handles while the host owns decoded data. The desktop adapter owns asset, audio, presentation, and native save location handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
@@ -44,7 +52,7 @@ Owned values such as `Canvas`, `RenderSurface`, `Image`, `Atlas`, `Font`, `Sound
 test-owned `testSupport.CanvasTrace`, not ordinary runtime instrumentation.
 They have no allocation or hashing cost while no trace is attached.
 
-[`Input`](input.md) reports held, pressed, and released keyboard and pointer state per frame. `ActionMap` layers named actions over those normalized values. [Stable audio assets](audio-assets.md) define WAV sound loading, play/stop controls, browser activation, and recoverable failures. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
+[`Input`](input.md) reports held, pressed, and released keyboard and pointer state per simulation tick. `ActionMap` layers named actions over those normalized values. [Stable audio assets](audio-assets.md) define WAV sound loading, play/stop controls, browser activation, and recoverable failures. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 
 ## Exclusions and compatibility
 

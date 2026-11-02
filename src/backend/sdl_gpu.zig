@@ -10,22 +10,7 @@ const frame_timing = @import("frame-timing");
 const sprite_shaders = @import("sprite-shaders");
 const NativeSaveStore = @import("native-save-data").NativeSaveStore;
 
-/// Private presentation-frame to fixed-tick input buffering for this backend.
-const TickBuffer = struct {
-    const Self = @This();
-
-    pending: up.Input.Snapshot = .{},
-
-    fn submit(self: *Self, state: up.Input) void {
-        self.pending.merge(state.snapshot());
-    }
-
-    fn next(self: *Self) up.Input.Snapshot {
-        const result = self.pending;
-        self.pending.clearTransient();
-        return result;
-    }
-};
+const TickBuffer = frame_timing.TickBuffer;
 const c = @cImport({
     @cInclude("SDL3/SDL.h");
 });

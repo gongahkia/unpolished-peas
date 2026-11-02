@@ -6,7 +6,7 @@ const protocol_game = @import("protocol-game");
 const frame_timing = @import("frame-timing");
 const browser_input = @import("input_snapshot.zig");
 const browser_save_data = @import("save_data.zig");
-const TickBuffer = browser_input.TickBuffer(up.input.Input);
+const TickBuffer = frame_timing.TickBuffer;
 const browser_save_data_enabled = @hasDecl(protocol_game.Game, "storage_id");
 const browser_application_id = if (browser_save_data_enabled) protocol_game.Game.storage_id else "unconfigured";
 const BrowserSaveStore = browser_save_data.Store(browser_application_id);
@@ -106,6 +106,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     protocol_initialized = true;
     scheduler = .init(frame_timing.default_fixed_hz);
     last_timestamp_ms = null;
+    paused = false;
     protocol_failure = null;
     render_status = @intFromEnum(contract.Status.ok);
     frame_token = contract.scheduleFrame();
@@ -449,4 +450,11 @@ test "browser runtime uses shared fixed-step timing and pause semantics" {
     up_browser_frame(2_000);
     try std.testing.expectEqual(@as(u32, 4), game.draw_calls);
     try std.testing.expect(std.math.approxEqAbs(f32, 28 + 40.0 / 60.0, game.position.x, 0.0001));
+    // A new lifecycle must not inherit the old lifecycle's pause state.
+    _ = up_browser_set_paused(1);
+    try std.testing.expectEqual(@as(i32, @intFromEnum(contract.Status.ok)), up_browser_init(64, 48));
+    const initial_x = game.position.x;
+    platform_input.set(.right, true);
+    up_browser_frame(0);
+    try std.testing.expect(std.math.approxEqAbs(f32, initial_x + 40.0 / 60.0, game.position.x, 0.0001));
 }

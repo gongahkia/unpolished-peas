@@ -143,11 +143,15 @@ pub const Input = struct {
             for (&self.released, newer.released) |*value, next| value.* = value.* or next;
             for (&self.pointer_pressed, newer.pointer_pressed) |*value, next| value.* = value.* or next;
             for (&self.pointer_released, newer.pointer_released) |*value, next| value.* = value.* or next;
-            for (&self.gamepads, previous_gamepads) |*slot, previous| if (slot.*) |*pad| {
-                if (previous) |previous_pad| if (previous_pad.id == pad.id) {
+            for (&self.gamepads) |*slot| if (slot.*) |*pad| {
+                // Browser snapshots compact slots after a disconnect. Match
+                // controller identity so an unconsumed tap follows its pad.
+                for (previous_gamepads) |previous| if (previous) |previous_pad| {
+                    if (previous_pad.id != pad.id) continue;
                     for (&pad.pressed, previous_pad.pressed) |*value, prior| value.* = value.* or prior;
                     for (&pad.released, previous_pad.released) |*value, prior| value.* = value.* or prior;
                     pad.previous_axes = previous_pad.previous_axes;
+                    break;
                 };
             };
         }
@@ -218,7 +222,7 @@ pub const Input = struct {
     }
 
     pub fn setPointerPosition(self: *Input, window: Vec2, framebuffer: Vec2, canvas: ?Vec2) void {
-        self.pointer.delta = framebuffer.sub(self.pointer.framebuffer);
+        self.pointer.delta = self.pointer.delta.add(framebuffer.sub(self.pointer.framebuffer));
         self.pointer.window = window;
         self.pointer.framebuffer = framebuffer;
         self.pointer.canvas = canvas;
@@ -429,6 +433,45 @@ test "snapshot merging preserves fixed-tick input semantics" {
     release_tick.apply(&simulation);
     try std.testing.expect(!simulation.isDown(.right));
     try std.testing.expect(simulation.wasReleased(.right));
+}
+
+test "pointer motion accumulates until a simulation tick consumes it" {
+    var platform = Input{};
+    platform.setPointerPosition(.{ .x = 10, .y = 5 }, .{ .x = 20, .y = 10 }, null);
+    platform.setPointerPosition(.{ .x = 12, .y = 9 }, .{ .x = 24, .y = 18 }, null);
+    // A click or wheel event at the same position must not erase motion.
+    platform.setPointerPosition(.{ .x = 12, .y = 9 }, .{ .x = 24, .y = 18 }, null);
+    var pending = platform.snapshot();
+    platform.beginFrame();
+    platform.setPointerPosition(.{ .x = 8, .y = 10 }, .{ .x = 16, .y = 20 }, null);
+    pending.merge(platform.snapshot());
+    try std.testing.expectEqual(Vec2.init(16, 20), pending.pointer.delta);
+    try std.testing.expectEqual(Vec2.init(16, 20), pending.pointer.framebuffer);
+    pending.clearTransient();
+    try std.testing.expectEqual(Vec2.zero, pending.pointer.delta);
+    try std.testing.expectEqual(Vec2.init(16, 20), pending.pointer.framebuffer);
+}
+
+test "unconsumed controller edges follow identity when snapshot slots move" {
+    var platform = Input{};
+    _ = platform.addGamepad(3);
+    _ = platform.addGamepad(7);
+    platform.setGamepadButton(7, .south, true);
+    platform.setGamepadAxis(7, .left_x, 0.75, 0);
+    var pending = platform.snapshot();
+    platform.beginFrame();
+    platform.setGamepadButton(7, .south, false);
+    var newer = platform.snapshot();
+    newer.gamepads[0] = newer.gamepads[1];
+    newer.gamepads[1] = null;
+    pending.merge(newer);
+    try std.testing.expect(pending.gamepads[0].?.wasPressed(.south));
+    try std.testing.expect(pending.gamepads[0].?.wasReleased(.south));
+    try std.testing.expectEqual(@as(f32, 0), pending.gamepads[0].?.previousAxis(.left_x));
+    pending.clearTransient();
+    try std.testing.expect(!pending.gamepads[0].?.wasPressed(.south));
+    try std.testing.expect(!pending.gamepads[0].?.wasReleased(.south));
+    try std.testing.expectEqual(@as(f32, 0.75), pending.gamepads[0].?.previousAxis(.left_x));
 }
 
 test "snapshot preserves normalized pointer and gamepad state" {
