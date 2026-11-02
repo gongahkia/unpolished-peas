@@ -27,6 +27,7 @@ let pngCaptureAvailable = true;
 let healthyHost = false;
 let badPixel = false;
 let renderChecks = 0;
+const navigations = [];
 let unexpected = null;
 const server = createServer(async (request, response) => {
   let body = "";
@@ -38,6 +39,7 @@ const server = createServer(async (request, response) => {
   else if (request.url === "/session/fixture" && request.method === "DELETE") deleted = true;
   else if (request.url.endsWith("/element")) result = {"element-6066-11e4-a52e-4f735466cecf": "canvas"};
   else if (request.url.endsWith("/screenshot")) result = Buffer.from("screenshot fixture").toString("base64");
+  else if (request.url.endsWith("/url")) navigations.push(value.url);
   else if (request.url.endsWith("/execute/sync")) {
     if (value.script.includes("probeWebGlCapture")) result = {context_lost: false, error: 0, pixel: [255, 0, 0, 255], png_capture_available: pngCaptureAvailable};
     else if (value.script.includes("webGlRenderContract")) {
@@ -75,8 +77,9 @@ try {
   assert.equal(await readFile(join(failedDirectory, artifact.screenshot), "utf8"), "screenshot fixture");
   assert.equal(deleted, true, "failed Safari sessions must be closed");
   assert.equal(framePolls, 2, "Safari must wait for canvas readback to become available");
+  assert.deepEqual(navigations, ["http://fixture.invalid/__peas-capture-probe__.html", "http://fixture.invalid?renderer=webgl2"], "probe canvas export on the package origin before loading Peas");
 
-  // An independently unavailable PNG encoder may use nullable capture, while
+  // Independently unavailable canvas PNG export may use nullable capture, while
   // real Peas rendering still has to produce the expected pixels.
   pngCaptureAvailable = false;
   healthyHost = true;

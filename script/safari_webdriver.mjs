@@ -154,8 +154,8 @@ async function capture(client, directory, game, renderer, driverStatus, captureP
   return artifact;
 }
 
-// Run on about:blank before loading Peas so a broken runner PNG encoder
-// cannot be mistaken for a framework rendering regression.
+// Probe a blank page at the package's origin before loading Peas so unavailable
+// runner canvas PNG export cannot be mistaken for a rendering regression.
 function probeWebGlCapture() {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 32;
@@ -275,7 +275,7 @@ async function main() {
       let captureProbe = null;
       try {
         if (renderer === "webgl2") {
-          await client.navigate("about:blank");
+          await client.navigate(`${baseUrl.replace(/\/$/, "")}/__peas-capture-probe__.html`);
           captureProbe = await client.execute(`return (${probeWebGlCapture.toString()})();`);
           await writeFile(join(artifactDirectory, "webgl2-capture-probe.json"), JSON.stringify(captureProbe, null, 2) + "\n");
           validateWebGlReadback(captureProbe, "Safari independent WebGL probe");

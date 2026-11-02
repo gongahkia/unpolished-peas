@@ -37,6 +37,8 @@ fi
 
 script/package_web.sh "$tmp/package" --game "$game"
 bundle="$tmp/package/unpolished-peas-$game-web"
+# Probe the runner on the package's origin without loading framework code.
+printf '%s\n' '<!doctype html><html><body></body></html>' >"$bundle/__peas-capture-probe__.html"
 python3 -m http.server 8125 --bind 127.0.0.1 --directory "$bundle" >"$tmp/server.log" 2>&1 &
 server=$!
 sleep 1
