@@ -111,7 +111,7 @@ export class WebDriver {
     return value;
   }
 
-  async wait(script, timeoutMs = 15000) {
+  async wait(script, timeoutMs = 15000, description = "page readiness") {
     const deadline = Date.now() + timeoutMs;
     let lastError = null;
     while (Date.now() < deadline) {
@@ -122,7 +122,7 @@ export class WebDriver {
       }
       await new Promise((resolve) => setTimeout(resolve, 100));
     }
-    fail(`timed out waiting for page readiness${lastError ? `: ${lastError.message}` : ""}`);
+    fail(`timed out waiting for ${description}${lastError ? `: ${lastError.message}` : ""}`);
   }
 }
 
@@ -130,7 +130,7 @@ function pageReady(renderer) {
   return `return Boolean(window.unpolishedPeas?.rendererDiagnostic) && window.unpolishedPeas.rendererDiagnostic.requested_renderer === ${JSON.stringify(renderer)};`;
 }
 
-async function capture(client, directory, game, renderer, driverStatus) {
+async function capture(client, directory, game, renderer, driverStatus, captureProbe = null) {
   const page = await client.execute("const api = window.unpolishedPeas; const canvas = document.querySelector('canvas[data-unpolished-peas]'); const gl = api?.host?.context?.(); return {user_agent: navigator.userAgent, platform: navigator.platform, renderer: api?.renderer ?? null, diagnostic: api?.rendererDiagnostic ?? null, artifacts: api?.host?.artifacts?.() ?? [], storage: api?.host?.storage(), audio: api?.host?.audio(), lifecycle: api?.host?.lifecycle(), canvas: {width: canvas?.width, height: canvas?.height, drawing_buffer_width: gl?.drawingBufferWidth, drawing_buffer_height: gl?.drawingBufferHeight}};");
   const artifact = {
     schema_version: 1,
@@ -145,12 +145,53 @@ async function capture(client, directory, game, renderer, driverStatus) {
     audio: page.audio,
     lifecycle: page.lifecycle,
     canvas: page.canvas,
+    capture_probe: captureProbe,
     screenshot: `screenshot-${renderer}.png`,
   };
   await writeFile(join(directory, `safari-${renderer}-artifacts.json`), JSON.stringify(artifact, null, 2) + "\n");
   const screenshot = await client.screenshot();
   await writeFile(join(directory, artifact.screenshot), Buffer.from(screenshot, "base64"));
   return artifact;
+}
+
+// Run on about:blank before loading Peas so a broken runner PNG encoder
+// cannot be mistaken for a framework rendering regression.
+function probeWebGlCapture() {
+  const canvas = document.createElement("canvas");
+  canvas.width = canvas.height = 32;
+  document.body.append(canvas);
+  const gl = canvas.getContext("webgl2", {alpha: false, antialias: false, preserveDrawingBuffer: true});
+  if (!gl) return {context_lost: true, error: null, pixel: [], png_capture_available: false};
+  gl.clearColor(1, 0, 0, 1);
+  gl.clear(gl.COLOR_BUFFER_BIT);
+  const pixel = new Uint8Array(4);
+  gl.readPixels(0, 0, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+  const error = gl.getError();
+  const capture = canvas.toDataURL("image/png");
+  return {context_lost: gl.isContextLost(), error, pixel: Array.from(pixel), png_capture_available: capture.startsWith("data:image/png"), png_capture_result: capture.slice(0, 40)};
+}
+
+function webGlRenderContract() {
+  const api = window.unpolishedPeas;
+  const gl = api.host.context();
+  const pack = (r, g, b) => (r | (g << 8) | (b << 16) | 0xff000000) >>> 0;
+  const statuses = [
+    api.runtime.up_browser_set_camera(0, 0, 0, 0, 0, 0, 0, 0, 0),
+    api.runtime.up_browser_clear(pack(19, 37, 61)),
+    api.runtime.up_browser_draw_rect(1, 1, 4, 3, pack(255, 0, 0)),
+    api.runtime.up_browser_present(0),
+  ];
+  const pixel = new Uint8Array(4);
+  gl.readPixels(2, gl.drawingBufferHeight - 3, 1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pixel);
+  return {statuses, pixel: Array.from(pixel), error: gl.getError(), context_lost: gl.isContextLost()};
+}
+
+function validateWebGlReadback(result, label) {
+  const detail = `${label}: ${JSON.stringify(result)}`;
+  assert.equal(result.context_lost, false, detail);
+  assert.equal(result.error, 0, detail);
+  if (result.statuses) assert.ok(result.statuses.every((status) => status === 0), detail);
+  assert.ok(Array.isArray(result.pixel) && result.pixel.length === 4 && result.pixel.every((value, index) => Math.abs(value - [255, 0, 0, 255][index]) <= 1), detail);
 }
 
 export function browserContract() {
@@ -160,33 +201,36 @@ export function browserContract() {
   new Uint8Array(api.host.memory.buffer, 0, text.length).set(text);
   api.runtime.up_browser_diagnostic_emit(0, text.length);
   const artifacts = api.host.artifacts();
+  const frame = api.host.captureFrame();
   return {
     storage: api.host.storage(),
     audio,
     runtime_audio_state: api.runtime.up_browser_audio_state(),
-    frame_capture: api.host.captureFrame()?.startsWith("data:image/png") ?? false,
+    frame_capture: frame?.startsWith("data:image/png") ?? false,
+    frame_capture_result: frame?.slice(0, 40) ?? null,
     diagnostic_emitted: artifacts.some((artifact) => artifact.name === "diagnostics.json" && artifact.data.includes("safari webdriver")),
     renderer_diagnostic_matches: artifacts.find((artifact) => artifact.name === "renderer-diagnostics.json")?.data === JSON.stringify(api.rendererDiagnostic),
     lifecycle: api.host.lifecycle(),
   };
 }
 
-export function validateBrowserContract(contract) {
+export function validateBrowserContract(contract, pngCaptureAvailable = true) {
   assert.equal(contract.storage?.phase, "ready", `Safari storage: ${JSON.stringify(contract.storage)}`);
   assert.equal(contract.runtime_audio_state, contract.audio?.state, `Safari audio: ${JSON.stringify(contract.audio)}`);
   assert.equal(typeof contract.audio?.phase, "string", "Safari audio phase is missing");
-  assert.equal(contract.frame_capture, true, "Safari frame capture did not return a PNG");
+  if (pngCaptureAvailable) assert.equal(contract.frame_capture, true, "Safari frame capture did not return a PNG");
+  else assert.ok(contract.frame_capture === true || contract.frame_capture_result === null, "unavailable Safari capture must return null rather than an invalid image");
   assert.equal(contract.diagnostic_emitted, true, "Safari diagnostic emission failed");
   assert.equal(contract.renderer_diagnostic_matches, true, "Safari renderer diagnostic artifact differs from the page diagnostic");
   assert.ok(contract.lifecycle?.scheduledFrames > 0, `Safari frame scheduling stopped: ${JSON.stringify(contract.lifecycle)}`);
 }
 
-async function smoke(client, game, renderer, directory, driverStatus) {
+async function smoke(client, game, renderer, directory, driverStatus, captureProbe) {
   await client.wait(pageReady(renderer));
   const diagnostic = await client.execute("return window.unpolishedPeas?.rendererDiagnostic ?? null;");
   const availability = validateRenderer(diagnostic, renderer);
   if (availability === "unavailable") {
-    const artifact = await capture(client, directory, game, renderer, driverStatus);
+    const artifact = await capture(client, directory, game, renderer, driverStatus, captureProbe);
     assert.equal(artifact.selected_renderer, null);
     return availability;
   }
@@ -202,9 +246,16 @@ async function smoke(client, game, renderer, directory, driverStatus) {
   const blur = await client.execute("window.dispatchEvent(new Event('blur')); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0];");
   assert.equal(blur, true);
   await client.releaseActions();
+  if (renderer === "webgl2") {
+    const rendered = await client.execute(`return (${webGlRenderContract.toString()})();`);
+    await writeFile(join(directory, "webgl2-readback.json"), JSON.stringify(rendered, null, 2) + "\n");
+    validateWebGlReadback(rendered, "Safari Peas WebGL pixel output");
+  }
+  const pngCaptureAvailable = captureProbe?.png_capture_available ?? true;
+  if (pngCaptureAvailable) await client.wait("return Boolean(window.unpolishedPeas?.host?.captureFrame()?.startsWith('data:image/png'));", 15000, "a readable PNG frame");
   const contract = await client.execute(`return (${browserContract.toString()})();`);
-  validateBrowserContract(contract);
-  const artifact = await capture(client, directory, game, renderer, driverStatus);
+  validateBrowserContract(contract, pngCaptureAvailable);
+  const artifact = await capture(client, directory, game, renderer, driverStatus, captureProbe);
   assert.equal(artifact.selected_renderer, renderer);
   return availability;
 }
@@ -221,12 +272,20 @@ async function main() {
     await client.createSession();
     const unavailable = [];
     for (const renderer of renderers) {
-      await client.navigate(`${baseUrl}?renderer=${renderer}`);
+      let captureProbe = null;
       try {
-        if (await smoke(client, game, renderer, artifactDirectory, driverStatus) === "unavailable") unavailable.push(renderer);
+        if (renderer === "webgl2") {
+          await client.navigate("about:blank");
+          captureProbe = await client.execute(`return (${probeWebGlCapture.toString()})();`);
+          await writeFile(join(artifactDirectory, "webgl2-capture-probe.json"), JSON.stringify(captureProbe, null, 2) + "\n");
+          validateWebGlReadback(captureProbe, "Safari independent WebGL probe");
+          if (!captureProbe.png_capture_available) console.log("::notice::Safari canvas PNG export is unavailable before Peas loads; requiring runtime pixel readback and retaining the WebDriver screenshot.");
+        }
+        await client.navigate(`${baseUrl}?renderer=${renderer}`);
+        if (await smoke(client, game, renderer, artifactDirectory, driverStatus, captureProbe) === "unavailable") unavailable.push(renderer);
       } catch (error) {
         try {
-          await capture(client, artifactDirectory, game, renderer, driverStatus);
+          await capture(client, artifactDirectory, game, renderer, driverStatus, captureProbe);
         } catch (captureError) {
           console.error(`Safari failure artifact capture: ${captureError.message}`);
         }
