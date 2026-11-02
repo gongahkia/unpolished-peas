@@ -33,7 +33,7 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.id == 'linux-sdl_gpu'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - run: ${{ matrix.command }}
         env:
           UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/release-capability-${{ matrix.id }}
@@ -60,7 +60,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes postgresql xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: sudo apt-get update && sudo apt-get install --yes postgresql xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
       - run: script/test_release_validation.sh
       - run: zig build release-gate
       - if: failure()
@@ -91,7 +91,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
       - run: script/test_linux_package.sh dist/linux/bounce
       - run: script/test_linux_package.sh dist/linux/starter starter
       - uses: actions/upload-artifact@v4
@@ -161,7 +161,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
       - if: startsWith(github.ref, 'refs/tags/')
         run: script/test_published_tag_consumer.sh
         env:
