@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Preserve native pointer motion across multiple events and buffered controller
+  taps when browser slots move; share tick buffering across desktop and web.
 - Keep native save staging separate from game keys and concurrent writers;
   allow browser saves to recover after rejected writes or corrupt values.
 - Correct WebGL framebuffer orientation and preserve WebGPU material geometry
@@ -24,12 +26,17 @@
 
 ### Added
 
+- Optional UPR4 session recordings with selected initial saves and checked
+  game/build/asset identity, plus isolated headless session initialization.
+- Independent headless update/draw controls, portable game-state hashing, and
+  a compiled Seed Sprint record/play/save/restart acceptance test.
 - Push/pull-request browser contract, interaction, and renderer pixel checks.
 - [Product/principles audit](docs/reviews/2026-10-23-product-engineering-audit.md)
   with evidence, remaining product decisions, and verification boundaries.
 
-Public API declaration names and renderer comparison tolerances are unchanged.
-These changes are integration fixes after the immutable release below.
+Public namespace declaration names and renderer comparison tolerances are
+unchanged. Developer/test methods are additive; older replay formats and
+legacy state hashes remain supported after the immutable release below.
 
 ## 1.0.0 — 2026-10-10
 

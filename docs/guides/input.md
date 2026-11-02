@@ -67,6 +67,11 @@ Hosts collect platform events during a presentation frame, then use an internal 
 
 When several physical events occur before a fixed update, held state and absolute pointer position use the newest observation, keyboard/pointer/gamepad edges are accumulated, and pointer movement and wheel motion are summed. Gamepad axes use the newest value and retain the axis value from before the accumulated interval as `previousAxis`. This is intentionally a fixed-tick contract: game simulation should consume input in `update`, not infer event timing from `draw`.
 
+Buffered controller edges follow the controller ID when a browser snapshot
+reorders its slots. Native and browser hosts share the same tick buffer;
+paused and zero-update frames retain pending edges until an update consumes
+them. Focus-loss releases therefore survive a pause without leaving keys held.
+
 Pointer `window` coordinates are the host event coordinates. `framebuffer` coordinates are scaled to the physical drawing surface. `canvas` is the logical-canvas point after presentation mapping; it is null on native and non-finite in the browser ABI outside a letterboxed canvas destination. Pointer delta and wheel delta are transient per simulation snapshot as described above.
 
 Text input is not currently part of `Input`, so it is not represented in deterministic input snapshots or replays.

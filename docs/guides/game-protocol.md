@@ -70,10 +70,13 @@ deterministic game code can reproduce a run. Follow the
 
 `DeterministicRng` takes one stable `u64` seed and pins PCG XSH-RR 64/32 v1: it advances zero state, adds the seed, and advances once using the fixed PCG stream increment `1442695040888963407`. The exact `nextU32` sequence is covered by fixed compatibility vectors. `nextU64` joins two consecutive 32-bit values (first high), `uintBelow(upper)` is uniformly distributed in `[0, upper)` and rejects zero, and `float01` produces one of `2^24` `f32` values in `[0, 1)`. This makes integer random values portable across Peas targets; it does not make arbitrary game floating-point computation bit-identical across hardware.
 
-Persistent bytes are environmental input, not replay metadata. A reproducible
-test therefore needs the same initial save-store contents as well as the same
-seed and normalized fixed-tick replay. `HeadlessGameRunner` defaults to an
-empty in-memory store and can receive an explicitly preloaded one. See the
+Persistent bytes are environmental input. A reproducible test needs the same
+initial save-store contents as well as the same seed and normalized fixed-tick
+replay. `HeadlessGameRunner` defaults to an empty in-memory store and can receive
+an explicitly preloaded one. Optional UPR4 session recordings capture selected
+save keys and restore them before initialization through `initReplay`; see the
+[testing guide](testing.md#reproduce-a-session-that-depends-on-saved-progress).
+See the
 [save-data guide](save-data.md) for key rules, native locations, browser
 `localStorage`, and error handling.
 

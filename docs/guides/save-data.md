@@ -109,7 +109,9 @@ of scope.
 
 Save data is environmental initial state. A reproducible run requires the
 same seed, replay, initial store contents, and deterministic game code. Save
-contents are not inserted into UPR replay files.
+contents are absent from UPR1–UPR3 input recordings. Optional UPR4 session
+recordings copy explicitly selected keys before game initialization and replay
+them in a private test store. See [session reproduction](testing.md#reproduce-a-session-that-depends-on-saved-progress).
 
 `HeadlessGameRunner` creates a known-empty `InMemorySaveStore` by default, so
 it never reads or writes a developer's desktop save directory. Tests that need

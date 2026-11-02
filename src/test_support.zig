@@ -150,6 +150,21 @@ test "in-memory save store isolates deterministic tests from native storage" {
     try std.testing.expectError(error.NotFound, store.delete("settings"));
 }
 
+test "failed in-memory checkpoint replacement retains the previous bytes" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{});
+    var saves: InMemorySaveStore = undefined;
+    saves.init(failing.allocator());
+    defer saves.deinit();
+    try saves.capability().write("checkpoint", "old");
+    failing.fail_index = failing.alloc_index;
+    try std.testing.expectError(error.OutOfMemory, saves.capability().write("checkpoint", "new progress"));
+    var bytes: [32]u8 = undefined;
+    try std.testing.expectEqualStrings("old", try saves.capability().read("checkpoint", &bytes));
+    failing.fail_index = std.math.maxInt(usize);
+    try saves.capability().write("checkpoint", "retry");
+    try std.testing.expectEqualStrings("retry", try saves.capability().read("checkpoint", &bytes));
+}
+
 pub const HeadlessCapture = struct { // borrows the runner's command and trace storage.
     image_hash: u64,
     commands: []const render.Command,
@@ -184,29 +199,42 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         renderer: render.HeadlessRenderer = undefined,
         commands: render.CommandBuffer,
         trace: CanvasTrace,
+        /// Successful fixed updates; drawing alone never advances this count.
+        ticks: u64 = 0,
+        replay_environment_hash: ?[32]u8 = null,
 
         pub fn init(allocator: std.mem.Allocator, width: u32, height: u32) !*Self {
-            return initWithSeedAndSaveData(allocator, width, height, null, null);
+            return initWithSeedAndSaveData(allocator, width, height, null, null, null);
         }
 
         /// Uses a caller-owned store instead of the runner's known-empty
         /// in-memory store. The caller must keep it alive through `deinit`.
         pub fn initWithSaveData(allocator: std.mem.Allocator, width: u32, height: u32, save_data: *SaveStore) !*Self {
-            return initWithSeedAndSaveData(allocator, width, height, null, save_data);
+            return initWithSeedAndSaveData(allocator, width, height, null, save_data, null);
         }
 
         /// Initializes a headless protocol game with the explicit seed that a
         /// seed-bearing input replay requires. The seed is available during
         /// `Game.init` through `GameContext.simulation_seed`.
         pub fn initSeeded(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: u64) !*Self {
-            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, null);
+            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, null, null);
         }
 
         pub fn initSeededWithSaveData(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: u64, save_data: *SaveStore) !*Self {
-            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, save_data);
+            return initWithSeedAndSaveData(allocator, width, height, simulation_seed, save_data, null);
         }
 
-        fn initWithSeedAndSaveData(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: ?u64, supplied_save_data: ?*SaveStore) !*Self {
+        /// Creates a fresh game using the recording's seed and selected saves.
+        /// Identity mismatches fail before Game.init. Saved bytes are copied
+        /// into the runner's private store; user persistence is never written.
+        /// Pass null identity only for an older replay without an environment.
+        pub fn initReplay(allocator: std.mem.Allocator, width: u32, height: u32, replay: input_replay.Replay, identity: ?input_replay.Replay.Environment.Identity) !*Self {
+            try replay.validate();
+            if (replay.environment) |environment| try environment.identity.check(identity orelse return error.ReplayIdentityRequired);
+            return initWithSeedAndSaveData(allocator, width, height, replay.simulation_seed, null, replay.environment);
+        }
+
+        fn initWithSeedAndSaveData(allocator: std.mem.Allocator, width: u32, height: u32, simulation_seed: ?u64, supplied_save_data: ?*SaveStore, environment: ?input_replay.Replay.Environment) !*Self {
             const self = try allocator.create(Self);
             errdefer allocator.destroy(self);
             self.* = .{
@@ -220,6 +248,10 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             errdefer self.trace.deinit();
             self.owned_save_data.init(allocator);
             errdefer self.owned_save_data.deinit();
+            if (environment) |value| {
+                self.replay_environment_hash = try environmentHash(allocator, value);
+                for (value.saves) |save| if (save.bytes) |bytes| try self.owned_save_data.capability().write(save.key, bytes);
+            }
             self.audio = try Audio.init(allocator, .{});
             errdefer self.audio.deinit();
             self.save_data = supplied_save_data orelse self.owned_save_data.capability();
@@ -251,17 +283,41 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         pub fn run(self: *Self, frames: []const HeadlessFrame) !void {
             for (frames) |frame| {
                 applyTopDownButtons(&self.input, frame.buttons);
-                try self.protocol.update(&self.context, frame.elapsed_seconds);
-                self.trace.reset();
-                try self.protocol.draw(&self.context, frame.interpolation_alpha);
+                try self.step(self.input.snapshot(), frame.elapsed_seconds);
+                try self.draw(frame.interpolation_alpha);
                 self.input.beginFrame();
             }
+        }
+
+        /// Advances exactly one simulation tick with complete normalized
+        /// input, including pointer/controller edges. Does not draw. Consume
+        /// transient edges once when supplying several catch-up ticks.
+        pub fn step(self: *Self, snapshot: Input.Snapshot, elapsed_seconds: f32) !void {
+            if (!snapshot.isFinite()) return error.InvalidReplayInput;
+            if (!std.math.isFinite(elapsed_seconds) or elapsed_seconds < 0) return error.InvalidElapsedSeconds;
+            snapshot.apply(&self.input);
+            try self.protocol.update(&self.context, elapsed_seconds);
+            self.ticks += 1;
+        }
+
+        /// Captures one presentation frame without advancing simulation.
+        /// The trace is replaced on each call; borrow it through capture().
+        pub fn draw(self: *Self, interpolation_alpha: f32) !void {
+            if (!std.math.isFinite(interpolation_alpha) or interpolation_alpha < 0 or interpolation_alpha > 1) return error.InvalidInterpolationAlpha;
+            self.trace.reset();
+            try self.protocol.draw(&self.context, interpolation_alpha);
         }
 
         /// Drives the callback protocol with recorded normalized fixed-tick
         /// input. The replay is independent of any native window or renderer.
         pub fn runReplay(self: *Self, replay: input_replay.Replay) !void {
-            if (replay.fixed_hz == 0) return error.InvalidReplay;
+            try replay.validate();
+            if (replay.environment) |environment| {
+                const expected = self.replay_environment_hash orelse return error.ReplayEnvironmentRequired;
+                if (self.ticks != 0) return error.ReplayAlreadyStarted;
+                const actual = try environmentHash(self.allocator, environment);
+                if (!std.mem.eql(u8, &expected, &actual)) return error.ReplayEnvironmentMismatch;
+            }
             if (replay.simulation_seed) |seed| {
                 const algorithm = replay.rng_algorithm orelse return error.InvalidReplay;
                 if (algorithm != DeterministicRng.algorithm) return error.UnsupportedReplayRng;
@@ -269,11 +325,9 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             } else if (replay.rng_algorithm != null) {
                 return error.InvalidReplay;
             }
-            for (replay.frames, 0..) |_, index| {
-                try replay.applyFrame(index, &self.input);
-                try self.protocol.update(&self.context, frameSeconds(replay.fixed_hz));
-                self.trace.reset();
-                try self.protocol.draw(&self.context, 0);
+            for (replay.frames) |snapshot| {
+                try self.step(snapshot, frameSeconds(replay.fixed_hz));
+                try self.draw(0);
             }
         }
 
@@ -290,6 +344,14 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             return .{ .image_hash = canvasHash(self.canvas), .commands = self.commands.commands.items, .canvas_trace = &self.trace };
         }
     };
+}
+
+fn environmentHash(allocator: std.mem.Allocator, environment: input_replay.Replay.Environment) ![32]u8 {
+    const bytes = try environment.encode(allocator);
+    defer allocator.free(bytes);
+    var digest: [32]u8 = undefined;
+    std.crypto.hash.sha2.Sha256.hash(bytes, &digest, .{});
+    return digest;
 }
 
 pub const Buttons = struct {
@@ -316,6 +378,8 @@ pub fn frameSeconds(fixed_hz: u32) f32 {
 pub const StateHash = struct {
     value: std.hash.Fnv1a_64 = std.hash.Fnv1a_64.init(),
 
+    /// Legacy native-memory hashing, retained for existing golden values.
+    /// Use updatePortable for new game-state digests shared across targets.
     pub fn updateValue(self: *StateHash, value: anytype) void {
         var copy = value;
         self.value.update(std.mem.asBytes(&copy));
@@ -323,6 +387,44 @@ pub const StateHash = struct {
 
     pub fn updateBool(self: *StateHash, value: bool) void {
         self.value.update(&.{@intFromBool(value)});
+    }
+
+    /// Hashes logical fields without Zig padding, pointers, or native byte
+    /// order. Use fixed-width game fields (u32 rather than usize), and keep
+    /// their order/types stable. Floats use exact IEEE bits, including -0.
+    /// Slices and pointers are deliberately excluded; use updateBytes for a
+    /// byte string or iterate the game-owned elements explicitly.
+    pub fn updatePortable(self: *StateHash, value: anytype) void {
+        const T = @TypeOf(value);
+        switch (@typeInfo(T)) {
+            .bool => self.updateBool(value),
+            .int => |info| {
+                const Bits = std.meta.Int(.unsigned, info.bits);
+                const Storage = std.meta.Int(.unsigned, ((info.bits + 7) / 8) * 8);
+                if (info.bits == 0) return;
+                var bytes: [(info.bits + 7) / 8]u8 = undefined;
+                std.mem.writeInt(Storage, &bytes, @as(Bits, @bitCast(value)), .little);
+                self.value.update(&bytes);
+            },
+            .float => |info| self.updatePortable(@as(std.meta.Int(.unsigned, info.bits), @bitCast(value))),
+            .@"enum" => self.updatePortable(@intFromEnum(value)),
+            .array => {
+                self.updatePortable(@as(u64, value.len));
+                for (value) |item| self.updatePortable(item);
+            },
+            .@"struct" => |info| inline for (info.fields) |field| self.updatePortable(@field(value, field.name)),
+            .optional => {
+                self.updateBool(value != null);
+                if (value) |item| self.updatePortable(item);
+            },
+            else => @compileError("StateHash.updatePortable needs value fields; hash owned bytes with updateBytes and select pointer-free game state"),
+        }
+    }
+
+    /// Length-prefixed bytes; addresses never participate in the digest.
+    pub fn updateBytes(self: *StateHash, bytes: []const u8) void {
+        self.updatePortable(@as(u64, bytes.len));
+        self.value.update(bytes);
     }
 
     pub fn finish(self: StateHash) u64 {
@@ -712,6 +814,148 @@ test "test support hashes canvases and asserts failures" {
     try std.testing.expect(hash.finish() != 0);
     try expectError(error.InvalidCanvasSize, Canvas.init(std.testing.allocator, 0, 1));
     try std.testing.expect(canvasHash(canvas) != 0);
+}
+
+test "portable state hashes encode fields without padding or native byte order" {
+    const State = extern struct { lives: u8, score: u32, x: f32 };
+    var a: State = undefined;
+    var b: State = undefined;
+    @memset(std.mem.asBytes(&a), 0x17);
+    @memset(std.mem.asBytes(&b), 0x83);
+    a.lives = 3;
+    a.score = 0x12345678;
+    a.x = 1;
+    b.lives = a.lives;
+    b.score = a.score;
+    b.x = a.x;
+    var first = StateHash{};
+    var second = StateHash{};
+    first.updatePortable(a);
+    second.updatePortable(b);
+    try std.testing.expectEqual(first.finish(), second.finish());
+    var expected = std.hash.Fnv1a_64.init();
+    expected.update(&.{ 3, 0x78, 0x56, 0x34, 0x12, 0, 0, 0x80, 0x3f });
+    try std.testing.expectEqual(expected.final(), first.finish());
+    var small = StateHash{};
+    small.updatePortable(@as(u24, 0x123456));
+    small.updatePortable(@as(i16, -2));
+    var small_expected = std.hash.Fnv1a_64.init();
+    small_expected.update(&.{ 0x56, 0x34, 0x12, 0xfe, 0xff });
+    try std.testing.expectEqual(small_expected.final(), small.finish());
+    var left = StateHash{};
+    var right = StateHash{};
+    left.updateBytes("ab");
+    left.updateBytes("c");
+    right.updateBytes("a");
+    right.updateBytes("bc");
+    try std.testing.expect(left.finish() != right.finish());
+}
+
+test "headless stepping keeps quick taps and catch-up ticks independent of drawing" {
+    const Game = struct {
+        updates: u32 = 0,
+        presses: u32 = 0,
+        releases: u32 = 0,
+        motion: f32 = 0,
+        draws: u32 = 0,
+
+        pub fn init(_: *@This(), _: *app.GameContext) !void {}
+        pub fn update(self: *@This(), ctx: *app.GameContext, _: f32) !void {
+            self.updates += 1;
+            if (ctx.input.wasPressed(.action)) self.presses += 1;
+            if (ctx.input.wasReleased(.action)) self.releases += 1;
+            self.motion += ctx.input.pointer.delta.x;
+        }
+        pub fn draw(self: *@This(), _: *app.GameContext) !void {
+            self.draws += 1;
+        }
+    };
+    var runner = try HeadlessGameRunner(Game).init(std.testing.allocator, 2, 2);
+    defer runner.deinit();
+    var input = Input{};
+    input.set(.action, true);
+    input.set(.action, false);
+    input.setPointerPosition(.{}, .{ .x = 7 }, null);
+    var pending = input.snapshot();
+    try runner.draw(0);
+    try runner.draw(0.5);
+    try std.testing.expectEqual(@as(u64, 0), runner.ticks);
+    try runner.step(pending, 1.0 / 60.0);
+    pending.clearTransient();
+    for (0..4) |_| try runner.step(pending, 1.0 / 60.0);
+    try std.testing.expectEqual(@as(u32, 1), runner.game.presses);
+    try std.testing.expectEqual(@as(u32, 1), runner.game.releases);
+    try std.testing.expectEqual(@as(f32, 7), runner.game.motion);
+    try std.testing.expectEqual(@as(u32, 2), runner.game.draws);
+    try std.testing.expectEqual(@as(u64, 5), runner.ticks);
+    const before = runner.game;
+    pending.pointer.wheel.x = std.math.nan(f32);
+    try std.testing.expectError(error.InvalidReplayInput, runner.step(pending, 1.0 / 60.0));
+    try std.testing.expectEqualDeep(before, runner.game);
+}
+
+test "session playback checks initial conditions before initializing or advancing a game" {
+    const allocator = std.testing.allocator;
+    const Game = struct {
+        var inits: u32 = 0;
+        score: u8 = 0,
+        pub fn init(self: *@This(), ctx: *app.GameContext) !void {
+            inits += 1;
+            var bytes: [1]u8 = undefined;
+            const saved = try (try ctx.requireSaveData()).read("score", &bytes);
+            self.score = saved[0];
+        }
+        pub fn update(self: *@This(), ctx: *app.GameContext, _: f32) !void {
+            if (ctx.input.wasPressed(.action)) self.score += 1;
+            try (try ctx.requireSaveData()).write("score", &.{self.score});
+        }
+        pub fn draw(_: *@This(), _: *app.GameContext) !void {}
+    };
+    Game.inits = 0;
+    var saves: InMemorySaveStore = undefined;
+    saves.init(allocator);
+    defer saves.deinit();
+    try saves.capability().write("score", &.{4});
+    const identity = input_replay.Replay.Environment.Identity{ .game = "g", .build = "b", .assets = "a" };
+    var recorder = try input_replay.Recorder.initSession(allocator, 60, 42, .{
+        .identity = identity,
+        .save_data = saves.capability(),
+        .save_keys = &.{"score"},
+    });
+    defer recorder.deinit();
+    var input = Input{};
+    input.set(.action, true);
+    try recorder.record(input);
+    input.beginFrame();
+    try recorder.record(input);
+    var replay = try recorder.finish();
+    defer replay.deinit(allocator);
+    const Runner = HeadlessGameRunner(Game);
+    try std.testing.expectError(error.ReplayIdentityRequired, Runner.initReplay(allocator, 2, 2, replay, null));
+    try std.testing.expectError(error.ReplayGameMismatch, Runner.initReplay(allocator, 2, 2, replay, .{ .game = "other", .build = "b", .assets = "a" }));
+    try std.testing.expectError(error.ReplayBuildMismatch, Runner.initReplay(allocator, 2, 2, replay, .{ .game = "g", .build = "other", .assets = "a" }));
+    try std.testing.expectError(error.ReplayAssetsMismatch, Runner.initReplay(allocator, 2, 2, replay, .{ .game = "g", .build = "b", .assets = "other" }));
+    try std.testing.expectEqual(@as(u32, 0), Game.inits);
+    var runner = try Runner.initReplay(allocator, 2, 2, replay, identity);
+    defer runner.deinit();
+    var changed = replay; // borrowed variant; the original owns all storage
+    changed.environment.?.identity.build = "different";
+    try std.testing.expectError(error.ReplayEnvironmentMismatch, runner.runReplay(changed));
+    var ordinary = try Runner.initSeededWithSaveData(allocator, 2, 2, 42, saves.capability());
+    defer ordinary.deinit();
+    try std.testing.expectError(error.ReplayEnvironmentRequired, ordinary.runReplay(replay));
+    // Validate *all* frames before playing: an invalid later tick must not
+    // partially advance the game or write saves from the first tick.
+    replay.frames[1].pointer.wheel.x = std.math.nan(f32);
+    try std.testing.expectError(error.InvalidReplay, runner.runReplay(replay));
+    try std.testing.expectEqual(@as(u64, 0), runner.ticks);
+    try std.testing.expectEqual(@as(u8, 4), runner.game.score);
+    replay.frames[1].pointer.wheel.x = 0;
+    try runner.runReplay(replay);
+    try std.testing.expectEqual(@as(u8, 5), runner.game.score);
+    var bytes: [1]u8 = undefined;
+    try std.testing.expectEqualSlices(u8, &.{4}, try saves.capability().read("score", &bytes));
+    try std.testing.expectError(error.ReplayAlreadyStarted, runner.runReplay(replay));
 }
 
 test "renderer conformance scenarios submit canonical command slices" {

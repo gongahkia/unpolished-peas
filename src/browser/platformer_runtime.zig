@@ -4,7 +4,7 @@ const up = @import("unpolished-peas");
 const game_mod = @import("platformer-game");
 const frame_timing = @import("frame-timing");
 const browser_input = @import("input_snapshot.zig");
-const TickBuffer = browser_input.TickBuffer(up.input.Input);
+const TickBuffer = frame_timing.TickBuffer;
 
 var frame_token: u32 = 0;
 var game: game_mod.Game = .{};
