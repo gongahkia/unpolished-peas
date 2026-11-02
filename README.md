@@ -1,101 +1,77 @@
-# MOD-01 Color Development Unit
+[![](https://img.shields.io/badge/unpolished_peas_v1.0.0-active-brightgreen)](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
+![](https://github.com/gongahkia/unpolished-peas/actions/workflows/toolchain.yml/badge.svg)
 
-A local-first colour fantasy console from an alternate 1999.
+# `Unpolished Peas` 🫛
 
-MOD-01 has a native Rust desktop Studio, a native CLI, a shared Rust MODL compiler,
-and one deterministic console runtime hosted in a restricted Node child process.
-There is no browser frontend, webview, PWA, web sharing or HTML/web-ZIP export.
-Standalone games ship with the native player and their own Node runtime.
+A small framework for building 2D games in [Zig](https://ziglang.org/) that compile to [native](https://ziglang.org/learn/build-system/) and [browser](https://github.com/zigtools/playground) builds.
 
-Made by @gongahkia. Copyright 2026 @gongahkia. All rights reserved. This repository
-is private and proprietary; cartridge authors retain ownership of their source
-and assets.
+## Stack
 
-## Run locally
+* [Zig 0.15.2](https://ziglang.org/)
+* [SDL3](https://wiki.libsdl.org/SDL3/FrontPage)
+* [WASM](https://webassembly.org/)
 
-Use Node.js 24, Rust 1.98 and the pinned pnpm:
+## Screenshots
 
-```sh
-corepack enable
-pnpm install --frozen-lockfile
-pnpm native
+<div align="center">
+    <img src="asset/reference/neon-siege.png" width="45%">
+    <img src="asset/reference/lantern-leap.png" width="45%">
+</div>
+
+## Usage
+
+> [!NOTE]  
+> For a more detailed guide, refer to the [quickstart guide](docs/guides/quickstart.md) or check out `Unpolished Peas` in action within [Seed Sprint](templates/starter/README.md) & [Neon Siege](dogfood/neon-siege/README.md).
+
+It's pretty easy to get started with `Unpolished Peas`. Below are a couple of code snippets.
+
+### Drawing text
+
+```zig
+pub fn draw(_: *Game, ctx: *sdl.Context) void {
+    ctx.text("Hello world!", 40, 30, up.core.Color.white);
+}
 ```
 
-On Linux, install development packages for ALSA, udev, X11/Wayland, xkbcommon (including its X11 bridge),
-OpenGL and GTK3 first. CI's exact Ubuntu package list is in
-[ci.yml](.github/workflows/ci.yml). Fedora uses the corresponding
-`alsa-lib-devel systemd-devel libX11-devel libXrandr-devel libXi-devel
-wayland-devel libxkbcommon-devel libxkbcommon-x11-devel mesa-libGL-devel gtk3-devel` packages.
-If pkg-config does not search system libraries, add the system pkgconfig directories
-to `PKG_CONFIG_PATH`.
+### Drawing an image
 
-Or build once and launch directly:
+```zig
+image: up.assets.ImageHandle,
 
-```sh
-pnpm build
-cargo build -p mod01-native -p mod01-cli
-target/debug/mod01-studio
-target/debug/mod01-studio --play cartridges/pocket-relay
+pub fn init(ctx: *sdl.Context) !Game {
+    return .{ .image = try ctx.loadImage("ball.png") };
+}
+
+pub fn draw(self: *Game, ctx: *sdl.Context) !void {
+    try ctx.image(self.image, 40, 30);
+}
 ```
 
-Use `target/debug/mod01-studio.exe` on Windows. Studio's sample picker opens the
-bundled cartridges for play or source inspection. Source, layered sprites, maps,
-fonts, audio, compiler inspection and debugger tools are native interfaces.
-The UI uses BigBlue Terminal Plus and Kenney pixel cursors.
-TOOLS → [MODL playground](docs/PLAYGROUND.md) evaluates expressions and drawing
-without modifying your cartridge or saves.
-For a playable textured first-person maze, open `cartridges/prism-corridor`;
-its [software 3D walkthrough](docs/SOFTWARE_3D.md) explains the ordinary MODL
-projection, map, controls and tested completion route.
-`target/debug/mod01-studio --play examples/menu-actions` demonstrates the common
-[system menu and typed cartridge actions](docs/MENU.md): Escape pauses the frame
-counter; actions toggle the grid, update their labels or remove themselves.
+### Playing a sound
 
-## CLI and game distribution
+```zig
+sound: up.assets.AudioHandle,
 
-```sh
-target/debug/mod01 new my-game --title "MY GAME"
-target/debug/mod01 check my-game
-target/debug/mod01 assets my-game
-target/debug/mod01 import png my-game hero art/hero.png
-target/debug/mod01 test my-game
-target/debug/mod01 run my-game
-target/debug/mod01 run my-game --headless --frames 120
-target/debug/mod01 pack my-game --output dist/my-game.m01c
-target/debug/mod01 export png my-game --output dist/my-game.m01c.png
-target/debug/mod01 export native my-game --output dist/my-game-native
+pub fn init(ctx: *sdl.Context) !Game {
+    return .{ .sound = try ctx.loadSound("blip.wav") };
+}
+
+pub fn update(self: *Game, ctx: *sdl.Context) !void {
+    if (ctx.input.wasPressed(.action)) {
+        _ = try ctx.audio.playSound(try ctx.assets.trySoundPtr(self.sound), .{});
+    }
+}
 ```
 
-Native export requires the built native player; the output directory must not
-already exist. It bundles the cartridge, runtime, target-platform Node and notices.
-See [native games](docs/NATIVE_GAMES.md) for packaging, source inspection, save
-behaviour, target binaries and display-free verification. `pnpm native:package`
-builds and packages Studio and the CLI for the current desktop OS.
+## Support
 
-## Quality and implementation status
+See [platform status](docs/guides/platforms.md) for the updated suport matrix.
 
-```sh
-make setup
-make check
-node scripts/verify-native-game.mjs
-```
+## Other docs
 
-The quality gate runs formatting, lint, types, runtime/compiler/native tests,
-builds and artifact verification. The native packaging workflow also runs on
-Windows and macOS; local Linux verification does not substitute for those jobs.
-
-The completed native-consolidation work is tracked in
-[the acceptance ledger](docs/NATIVE_IMPLEMENTATION.md).
-The [decision-by-decision audit](docs/NATIVE_ACCEPTANCE.md) links all 21 original
-review items to evidence, including actual Windows/macOS/Linux window checks
-and the explicit hardware/release qualification limits.
-[Standard-library semantics](docs/STANDARD_LIBRARY.md) include
-deterministic math, safe number conversion, bounded text and explicit bit ops.
-
-## Boundaries
-
-No cloud accounts, hosted catalog, public community backend or network/multiplayer
-API is part of the product. Software-rendered 3D examples use the public console
-facilities; there is no general-purpose 3D scene engine. Node permission flags and
-runtime budgets are defence in depth, not an OS sandbox for arbitrary JavaScript.
-See [security boundaries](docs/SECURITY.md).
+* [Learning path](docs/index.md) 
+* [Game protocol](docs/guides/game-protocol.md)
+* [Core contract](docs/guides/core-contract.md) 
+* [Installation](docs/guides/installation.md)
+* [Release policy](docs/guides/releases.md) 
+* [Local documentation](docs/index.md) 

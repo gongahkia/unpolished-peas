@@ -1,0 +1,10 @@
+.{
+    .name = .facade_desktop_consumer,
+    .version = "0.0.1",
+    .fingerprint = 0xdbeeb4f94742abe3,
+    .minimum_zig_version = "0.15.2",
+    .dependencies = .{
+        .unpolished_peas = .{ .path = "../.." },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

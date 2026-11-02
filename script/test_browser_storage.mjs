@@ -1,0 +1,72 @@
+import assert from "node:assert/strict";
+import {createBrowserStorage, StorageStatus} from "../src/browser/storage.mjs";
+
+class MemoryStorage {
+  values = new Map();
+  get length() { return this.values.size; }
+  getItem(key) { return this.values.get(key) ?? null; }
+  setItem(key, value) { this.values.set(key, value); }
+  removeItem(key) { this.values.delete(key); }
+}
+
+const memory = new WebAssembly.Memory({initial: 1});
+const bytes = new Uint8Array(memory.buffer);
+const encoder = new TextEncoder();
+const key = encoder.encode("bindings.up");
+const value = new Uint8Array([0, 1, 2, 250, 255]);
+bytes.set(key, 0);
+bytes.set(value, 64);
+const backend = new MemoryStorage();
+const storage = createBrowserStorage({storage: backend, namespace: "peas:test"});
+assert.deepEqual(storage.diagnostic(), {phase: "ready", namespace: "peas:test", maxValueBytes: 1024 * 1024, lastError: null});
+assert.equal(storage.write(memory, 0, key.length, 64, value.length), StorageStatus.ok);
+assert.ok(backend.getItem("peas:test/bindings.up").startsWith("UPST1:"));
+assert.equal(storage.read(memory, 0, key.length, 128, 2), value.length);
+assert.equal(storage.read(memory, 0, key.length, 128, value.length), value.length);
+assert.deepEqual([...bytes.subarray(128, 128 + value.length)], [...value]);
+const replacement = new Uint8Array([9, 8, 7]);
+bytes.set(replacement, 64);
+assert.equal(storage.write(memory, 0, key.length, 64, replacement.length), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, replacement.length), replacement.length);
+assert.deepEqual([...bytes.subarray(128, 128 + replacement.length)], [...replacement]);
+assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, value.length), StorageStatus.notFound);
+assert.equal(storage.write(memory, 0, key.length, 64, 0), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, 0), 0);
+assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
+bytes[16] = 0xff;
+assert.equal(storage.write(memory, 16, 1, 64, value.length), StorageStatus.invalidArgument);
+bytes.set(encoder.encode("a/b"), 16);
+assert.equal(storage.write(memory, 16, 3, 64, value.length), StorageStatus.invalidArgument);
+assert.equal(createBrowserStorage({storage: null}).read(memory, 0, key.length, 128, value.length), StorageStatus.unavailable);
+
+const failing = new MemoryStorage();
+failing.setItem = () => { throw new Error("quota"); };
+const failed = createBrowserStorage({storage: failing});
+assert.equal(failed.write(memory, 0, key.length, 64, value.length), StorageStatus.rejected);
+assert.deepEqual(failed.diagnostic(), {phase: "failed", namespace: "unpolished-peas:v1", maxValueBytes: 1024 * 1024, lastError: "write_failed"});
+
+const other = createBrowserStorage({storage: backend, namespace: "peas:other"});
+assert.equal(other.write(memory, 0, key.length, 64, value.length), StorageStatus.ok);
+assert.notEqual(backend.getItem("peas:test/bindings.up"), backend.getItem("peas:other/bindings.up"));
+backend.setItem("peas:test/bindings.up", "not-a-save");
+assert.equal(storage.read(memory, 0, key.length, 128, value.length), StorageStatus.corrupt);
+
+// Quota failure keeps the old checkpoint readable and can be retried without
+// recreating the host. A corrupt slot does not poison the rest of the store.
+const recoverableBackend = new MemoryStorage();
+const recoverable = createBrowserStorage({storage: recoverableBackend});
+bytes.set(value, 64);
+assert.equal(recoverable.write(memory, 0, key.length, 64, value.length), StorageStatus.ok);
+recoverableBackend.setItem = () => { throw new Error("quota"); };
+bytes.set(replacement, 64);
+assert.equal(recoverable.write(memory, 0, key.length, 64, replacement.length), StorageStatus.rejected);
+assert.equal(recoverable.read(memory, 0, key.length, 128, value.length), value.length);
+assert.deepEqual([...bytes.subarray(128, 128 + value.length)], [...value]);
+recoverableBackend.setItem = MemoryStorage.prototype.setItem;
+assert.equal(recoverable.write(memory, 0, key.length, 64, replacement.length), StorageStatus.ok);
+assert.equal(recoverable.diagnostic().phase, "ready");
+assert.equal(recoverable.diagnostic().lastError, null);
+assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
+assert.equal(storage.write(memory, 0, key.length, 64, replacement.length), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, replacement.length), replacement.length);

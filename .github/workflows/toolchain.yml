@@ -1,0 +1,442 @@
+name: Unpolished Peas CI/CD on Push
+
+on:
+  pull_request:
+  push:
+
+jobs:
+  browser-host:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: zig build test-browser-host test-browser-webgpu test-browser-input test-browser-audio test-browser-storage test-browser-artifacts test-browser-renderer-selection test-browser-renderer-diagnostics test-browser-image-assets test-browser-workload-benchmark test-browser-dev test-safari-webdriver-contract
+      - run: script/test_version_consistency.sh
+      - run: script/test_release_validation.sh
+
+  browser-rendering:
+    runs-on: macos-15
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: script/test_browser_shell.sh
+      - run: zig build test-browser-renderer-parity
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: browser-rendering-diagnostics
+          path: zig-out/diagnostics/**
+          if-no-files-found: warn
+
+  capability-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      pull_request: ${{ steps.select.outputs.pull_request }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        run: python3 script/capability_matrix.py --github-output "$GITHUB_OUTPUT"
+
+  stable-core-capability:
+    needs: capability-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.capability-matrix.outputs.pull_request) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.id == 'linux-sdl_gpu'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - run: ${{ matrix.command }}
+        timeout-minutes: 20
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: stable-core-diagnostics-${{ matrix.id }}
+          path: |
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/diagnostics/**/*
+          if-no-files-found: warn
+
+  downstream-package:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: script/test_downstream_fixture.sh
+      - run: script/test_core_downstream_fixture.sh
+
+  release-zig-compatibility:
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        zig: ["0.15.1", "0.15.2"]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: ${{ matrix.zig }}
+      - run: script/test_zig_compatibility.sh
+        env:
+          UP_EXPECTED_ZIG_VERSION: ${{ matrix.zig }}
+
+  extended-validation:
+    if: github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        os: [macos-15-intel, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+          use-cache: ${{ matrix.os != 'macos-15-intel' }}
+      - run: script/check_zig_version.sh
+      - run: script/check_third_party_notices.py
+      - run: script/test_core_without_sdl.sh
+      - run: script/test_module_fixture.sh
+      - run: script/test_independent_proof_games.sh
+      - run: script/check_no_legacy_lifecycle.sh
+      - run: script/check_no_removed_content_paths.sh
+      - run: zig build test-dependency-ceiling
+      - run: script/test_release_validation.sh
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/validate_wsl.sh
+      - run: zig fmt --check build.zig src examples templates
+      - run: zig build test
+      - run: zig build test-support
+      - run: zig build test-modules
+      - run: zig build test-peas
+      - run: zig build test-starter
+      - run: zig build test-starter-external
+      - run: zig build test-starter-external-web
+      - run: zig build test-starter-web-package
+      - run: zig build test-docs
+      - run: zig build docs
+      - run: zig build test-replays
+      - if: always()
+        continue-on-error: true
+        run: script/record_performance_artifacts.sh
+      - run: zig build check-examples
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/run_linux_software_gl.sh zig build test-sdl
+      - if: matrix.os == 'macos-15-intel'
+        run: zig build test-sdl
+      - run: zig build test-scenes
+      - run: script/test_packaged_assets.sh
+      - run: script/test_topdown_native_fixture.sh
+      - run: script/test_puzzle_native_fixture.sh
+      - run: script/test_platformer_native_fixture.sh
+      - run: script/test_protocol_desktop_fixture.sh
+      - run: script/test_external_game_fixture.sh
+      - run: script/test_external_animation_game_fixture.sh
+      - if: matrix.os == 'ubuntu-latest'
+        run: UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime script/run_linux_software_gl.sh zig build run-bounce-sdl -- --frames 2
+      - if: matrix.os == 'macos-15-intel'
+        run: env SDL_AUDIODRIVER=dummy UP_DIAGNOSTICS_ROOT=zig-out/diagnostics/runtime zig build run-bounce-sdl -- --frames 2
+      - if: matrix.os == 'ubuntu-latest'
+        run: RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
+      - if: matrix.os == 'macos-15-intel'
+        run: env RUN_GENERATED_PROJECT=1 script/test_downstream_fixture.sh
+      - if: matrix.os == 'macos-15-intel' || matrix.os == 'ubuntu-latest'
+        run: script/test_starter_bundled_sdl.sh
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-diagnostics-${{ matrix.os }}
+          path: |
+            zig-out/scenes/*.png
+            zig-out/*.ppm
+            zig-out/performance/*
+            zig-out/diagnostics/**/*
+          if-no-files-found: warn
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-artifacts-${{ matrix.os }}
+          path: zig-out/performance/*
+          if-no-files-found: warn
+
+  desktop-package-compatibility:
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: linux
+            game: starter
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: starter
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: starter
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: bounce
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: bounce
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: bounce
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: topdown
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: topdown
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: topdown
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: puzzle
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: puzzle
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: puzzle
+            package_script: script/test_windows_package.ps1
+          - os: ubuntu-latest
+            target: linux
+            game: platformer
+            package_script: script/test_linux_package.sh
+          - os: macos-15-intel
+            target: macos
+            game: platformer
+            package_script: script/test_macos_package.sh
+          - os: windows-2022
+            target: windows
+            game: platformer
+            package_script: script/test_windows_package.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.target == 'linux'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: ${{ matrix.package_script }} dist/${{ matrix.target }} ${{ matrix.game }}
+      - if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-smoke-${{ matrix.target }}-${{ matrix.game }}
+          path: dist/${{ matrix.target }}/SMOKE-REPORT.txt
+          if-no-files-found: error
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: package-compatibility-${{ matrix.target }}-${{ matrix.game }}
+          path: |
+            dist/**/*
+            zig-out/diagnostics/**/*
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/performance/**/*
+          if-no-files-found: warn
+
+  desktop-package-parity:
+    if: github.event_name != 'pull_request'
+    needs: desktop-package-compatibility
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: package-smoke-*
+          path: package-reports
+      - run: python3 script/test_package_parity.py package-reports
+
+  renderer-conformance:
+    if: github.event_name != 'pull_request'
+    strategy:
+      matrix:
+        os: [macos-15-intel, ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+          use-cache: ${{ matrix.os != 'windows-latest' }}
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - if: matrix.os == 'ubuntu-latest'
+        run: UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 script/run_linux_software_gl.sh zig build test-renderer-conformance
+      - if: matrix.os == 'macos-15-intel'
+        run: env UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 zig build test-renderer-conformance
+      - if: matrix.os == 'windows-latest'
+        run: zig build test-renderer-conformance
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: renderer-conformance-${{ matrix.os }}
+          path: |
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/diagnostics/**/*
+          if-no-files-found: warn
+
+  windows-runtime:
+    if: github.event_name != 'pull_request'
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: zig fmt --check build.zig src examples templates
+      - run: zig build test-peas
+      - run: zig build check-examples
+      - run: zig build test-sdl
+      - run: zig build peas -- check fixtures/peas-check/valid --target windows
+      - shell: pwsh
+        run: |
+          $env:SDL_AUDIODRIVER = 'dummy'
+          $env:UP_DIAGNOSTICS_ROOT = 'zig-out/diagnostics/windows-runtime'
+          zig build run-bounce-sdl -- --frames 2
+      - shell: pwsh
+        run: script/test_protocol_desktop_fixture.ps1
+      - if: always()
+        shell: pwsh
+        run: script/record_performance_artifacts.ps1
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-artifacts-windows-2022
+          path: zig-out/performance/*
+          if-no-files-found: warn
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-runtime-diagnostics
+          path: zig-out/diagnostics/**/*
+          if-no-files-found: warn
+
+  proof-game-regression:
+    if: github.event_name != 'pull_request'
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            game: topdown
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-15-intel
+            game: topdown
+            runner: script/test_proof_game_matrix.sh
+          - os: windows-2022
+            game: topdown
+            runner: script/test_proof_game_matrix.ps1
+          - os: ubuntu-latest
+            game: puzzle
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-15-intel
+            game: puzzle
+            runner: script/test_proof_game_matrix.sh
+          - os: windows-2022
+            game: puzzle
+            runner: script/test_proof_game_matrix.ps1
+          - os: ubuntu-latest
+            game: platformer
+            runner: script/test_proof_game_matrix.sh
+          - os: macos-15-intel
+            game: platformer
+            runner: script/test_proof_game_matrix.sh
+          - os: windows-2022
+            game: platformer
+            runner: script/test_proof_game_matrix.ps1
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.os == 'ubuntu-latest'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - if: matrix.os == 'ubuntu-latest'
+        run: script/run_linux_software_gl.sh ${{ matrix.runner }} ${{ matrix.game }}
+      - if: matrix.os == 'macos-15-intel'
+        run: ${{ matrix.runner }} ${{ matrix.game }}
+      - if: matrix.os == 'windows-2022'
+        shell: pwsh
+        run: ${{ matrix.runner }} ${{ matrix.game }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: proof-game-diagnostics-${{ matrix.os }}-${{ matrix.game }}
+          path: zig-out/diagnostics/proof-matrix/**
+          if-no-files-found: warn
+
+  sample-smoke:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [run-bounce, test-scenes, run-bounce-sdl, dev-bounce, run-minimal, run-audio, run-atlas, run-camera, run-primitives, stress-audio-sdl]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - run: script/run_linux_software_gl.sh script/run_sample_smoke.sh ${{ matrix.target }}
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: sample-diagnostics-${{ matrix.target }}
+          path: zig-out/diagnostics/**/*
+          if-no-files-found: warn
+
+  advisory-next-zig:
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: master
+      - run: zig version
+      - id: test
+        continue-on-error: true
+        run: zig build test
+      - if: steps.test.outcome == 'failure'
+        run: echo '::warning::Zig master is not supported yet; see the advisory test step for details.'

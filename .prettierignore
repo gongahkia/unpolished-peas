@@ -1,7 +1,0 @@
-target
-node_modules
-dist
-coverage
-pnpm-lock.yaml
-MOD01_BASELINE_BRIEF.md
-output
