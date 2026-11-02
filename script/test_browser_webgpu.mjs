@@ -1,0 +1,182 @@
+import assert from "node:assert/strict";
+import {readFileSync} from "node:fs";
+import {Status, createBrowserHost} from "../src/browser/host.mjs";
+import {WebGpuBackendError, createWebGpuBackend} from "../src/browser/webgpu_backend.mjs";
+
+const debugFontFixture = JSON.parse(readFileSync(new URL("../src/fixtures/text/debug-5x7-v1.json", import.meta.url), "utf8"));
+
+class FakeCanvas {
+  width = 0;
+  height = 0;
+  calls = [];
+  listeners = new Map();
+  context = {
+    configure: (value) => this.calls.push(["configure", value]),
+    getCurrentTexture: () => ({createView: () => "view"}),
+    unconfigure: () => this.calls.push(["unconfigure"]),
+  };
+
+  getContext(name) {
+    assert.equal(name, "webgpu");
+    return this.context;
+  }
+
+  addEventListener(name, callback) {
+    this.listeners.set(name, callback);
+  }
+
+  removeEventListener(name, callback) {
+    if (this.listeners.get(name) === callback) this.listeners.delete(name);
+  }
+}
+
+let resolveLost;
+const lost = new Promise((resolve) => { resolveLost = resolve; });
+const submissions = [];
+const passes = [];
+const writes = [];
+const textureWrites = [];
+const draws = [];
+const pipelines = [];
+const device = {
+  lost,
+  queue: {submit: (commands) => submissions.push(commands), writeBuffer: (...args) => writes.push(args), writeTexture: (...args) => textureWrites.push(args)},
+  createShaderModule: () => "shader",
+  createRenderPipeline: (descriptor) => ({blend: descriptor.fragment.targets[0].blend.color.dstFactor}),
+  createBindGroupLayout: () => "sprite-layout",
+  createPipelineLayout: () => "sprite-pipeline-layout",
+  createBuffer: () => ({destroy() { submissions.push("buffer-destroy"); }}),
+  createTexture: () => ({createView: () => "texture-view", destroy() { submissions.push("texture-destroy"); }}),
+  createSampler: () => "sampler",
+  createBindGroup: () => "bind-group",
+  createCommandEncoder: () => ({
+    beginRenderPass: (descriptor) => {
+      passes.push(descriptor);
+      return {setPipeline: (pipeline) => pipelines.push(pipeline.blend), setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw: (...args) => draws.push(args), end() {}};
+    },
+    finish: () => "command-buffer",
+  }),
+  destroy: () => submissions.push("destroy"),
+};
+const adapter = {requestDevice: async () => device};
+const navigatorRef = {gpu: {requestAdapter: async () => adapter, getPreferredCanvasFormat: () => "bgra8unorm"}};
+const canvas = new FakeCanvas();
+const losses = [];
+const backend = await createWebGpuBackend({canvas, navigator: navigatorRef, onDeviceLost: (loss) => losses.push(loss)});
+assert.equal(backend.format, "bgra8unorm");
+assert.equal(backend.resize(320, 180), true);
+assert.deepEqual([canvas.width, canvas.height], [320, 180]);
+assert.deepEqual(canvas.calls[0], ["configure", {device, format: "bgra8unorm", alphaMode: "premultiplied"}]);
+assert.equal(backend.resize(0, 180), false);
+assert.equal(backend.clear(0x80402010), true);
+assert.equal(backend.uploadTexture(1, 2, 2, new Uint8Array(16).fill(255), 0), true);
+assert.equal(backend.uploadTexture(2, 2, 2, new Uint8Array(15), 0), false);
+assert.equal(textureWrites.length, 1);
+assert.equal(backend.pushClip(4, 2, 8, 8), true);
+assert.equal(backend.drawRect(0, 0, 16, 16, 0xff0000ff), true);
+assert.equal(backend.popClip(), true);
+assert.equal(backend.pushBlend(1), true);
+assert.equal(backend.drawRect(16, 0, 16, 16, 0xff00ff00), true);
+assert.equal(backend.popBlend(), true);
+assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 8, 4, 16, 16, 0x80ffffff, 0), true);
+assert.equal(backend.drawSprite(1, 0, 0, 2, 2, 24, 4, 16, 16, 0xffffffff, 0), true);
+assert.equal(backend.drawParticles(new Float32Array([32, 16, 8, 1, .5, .25, 1, 48, 16, 4, .5, 1, .25, 1]), 1), true);
+assert.equal(backend.present(), true);
+assert.deepEqual(submissions, [["command-buffer"]]);
+assert.equal(writes.length, 5);
+assert.deepEqual(draws, [[6], [6], [12], [6, 2], [6]]);
+assert.deepEqual(pipelines, ["one-minus-src-alpha", "one", "one-minus-src-alpha", "one", "one-minus-src-alpha"]);
+assert.deepEqual(passes[0].colorAttachments[0].clearValue, {r: 16 / 255, g: 32 / 255, b: 64 / 255, a: 128 / 255});
+assert.deepEqual(backend.diagnostic(), {adapter_status: "ready", device_status: "ready", canvas_format: "bgra8unorm", logical_width: 320, logical_height: 180});
+resolveLost({reason: "destroyed"});
+await Promise.resolve();
+assert.equal(backend.isLost(), true);
+assert.deepEqual(losses, [{reason: "destroyed"}]);
+assert.equal(backend.present(), false);
+backend.destroy();
+assert.deepEqual(canvas.calls.at(-1), ["unconfigure"]);
+assert.equal(submissions.at(-1), "destroy");
+await assert.rejects(() => createWebGpuBackend({canvas}), (error) => error instanceof WebGpuBackendError && error.code === "webgpu_unavailable");
+await assert.rejects(() => createWebGpuBackend({
+  canvas: {getContext() { throw new Error("must not lock the canvas before an adapter exists"); }},
+  navigator: {gpu: {requestAdapter: async () => null, getPreferredCanvasFormat: () => "bgra8unorm"}},
+}), (error) => error instanceof WebGpuBackendError && error.code === "adapter_unavailable");
+
+const hostCanvas = new FakeCanvas();
+let resolveHostLost;
+const hostDraws = [];
+const pendingWrites = [];
+const hostDevice = {
+  lost: new Promise((resolve) => { resolveHostLost = resolve; }),
+  queue: {
+    submit() { pendingWrites.length = 0; },
+    writeBuffer(buffer, offset, data, dataOffset = 0, size = data.byteLength) {
+      // Queue writes run before the encoded draws are submitted. Reusing a
+      // range here changes what an earlier draw sees when the GPU executes it.
+      assert.ok(!pendingWrites.some((write) => write.buffer === buffer && offset < write.offset + write.size && write.offset < offset + size), "queued draws must not overwrite each other's buffer data");
+      pendingWrites.push({buffer, offset, size});
+    },
+    writeTexture() {},
+  },
+  createShaderModule: () => "shader",
+  createRenderPipeline: () => ({blend: "one-minus-src-alpha"}),
+  createBindGroupLayout: () => "sprite-layout",
+  createPipelineLayout: () => "sprite-pipeline-layout",
+  createBuffer: () => ({destroy() {}}),
+  createTexture: () => ({createView: () => "texture-view", destroy() {}}),
+  createSampler: () => "sampler",
+  createBindGroup: () => "bind-group",
+  createCommandEncoder: () => ({beginRenderPass: () => ({setPipeline() {}, setVertexBuffer() {}, setBindGroup() {}, setScissorRect() {}, draw(...args) { hostDraws.push(args); }, end() {}}), finish: () => "host-command"}),
+};
+const host = createBrowserHost({canvas: hostCanvas, fontFixture: debugFontFixture, navigator: {gpu: {requestAdapter: async () => ({requestDevice: async () => hostDevice}), getPreferredCanvasFormat: () => "rgba8unorm"}}});
+let hostLosses = 0;
+host.onWebGpuDeviceLost(() => { hostLosses += 1; });
+assert.deepEqual(await host.initializeWebGpu(64, 32), {adapter_status: "ready", device_status: "ready", canvas_format: "rgba8unorm", logical_width: 64, logical_height: 32});
+assert.equal(host.imports.env.up_host_gl_context_create(128, 72), Status.ok);
+assert.deepEqual(host.webgpu(), {adapter_status: "ready", device_status: "ready", canvas_format: "rgba8unorm", logical_width: 128, logical_height: 72});
+assert.equal(host.imports.env.up_host_gl_clear(0xff000000), Status.ok);
+const hostTexture = host.imports.env.up_host_gl_resource_create(1, 0);
+new Uint8Array(host.memory.buffer, 0, 16).fill(255);
+assert.equal(host.imports.env.up_host_gl_texture_upload(hostTexture, 2, 2, 0, 16, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_push_blend(1), Status.ok);
+assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4, 5, 8, 9, 0xffffffff, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_pop_blend(), Status.ok);
+new Uint8Array(host.memory.buffer, 32, 3).set([65, 10, 66]);
+assert.equal(host.imports.env.up_host_gl_draw_text(32, 3, 20, 8, 0xffffffff), Status.ok);
+new Float32Array(host.memory.buffer, 64, 7).set([24, 16, 8, 1, .5, .25, 1]);
+assert.equal(host.imports.env.up_host_gl_draw_particles(64, 1, 1), Status.ok);
+const shaderText = new TextEncoder();
+const materialVertex = "@vertex fn main(@location(0) position: vec2f, @location(1) uv: vec2f, @location(2) tint: vec4f) -> @builtin(position) vec4f { _ = uv; _ = tint; return vec4f(position, 0.0, 1.0); }";
+const materialFragment = "@group(0) @binding(0) var source: texture_2d<f32>; @group(0) @binding(1) var source_sampler: sampler; @fragment fn main() -> @location(0) vec4f { return textureSample(source, source_sampler, vec2f(0.5)); }";
+const vertexBytes = shaderText.encode(materialVertex);
+const fragmentBytes = shaderText.encode(materialFragment);
+new Uint8Array(host.memory.buffer, 256, vertexBytes.byteLength).set(vertexBytes);
+new Uint8Array(host.memory.buffer, 1024, fragmentBytes.byteLength).set(fragmentBytes);
+new Uint8Array(host.memory.buffer, 2048, 6).set(shaderText.encode("source"));
+new Uint8Array(host.memory.buffer, 4096, 16).fill(255);
+new Uint8Array(host.memory.buffer, 5000, 4).set(shaderText.encode("tint"));
+new Uint8Array(host.memory.buffer, 5100, 16).fill(1);
+assert.equal(host.imports.env.up_host_gl_material_begin(77, 1, 0, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_bind_texture(2048, 6, 2, 2, 4096, 16), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_bind_uniform(5000, 4, 5100, 16), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_draw(4, 5, 8, 9, 0xffffffff), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_begin(77, 1, 0, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_bind_texture(2048, 6, 2, 2, 4096, 16), Status.ok);
+new Uint8Array(host.memory.buffer, 5100, 16).fill(2);
+assert.equal(host.imports.env.up_host_gl_material_bind_uniform(5000, 4, 5100, 16), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_draw(20, 25, 12, 13, 0xff112233), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_begin(78, 1, 1, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength, 256, vertexBytes.byteLength, 1024, fragmentBytes.byteLength), Status.ok);
+assert.equal(host.imports.env.up_host_gl_material_draw(0, 0, 128, 72, 0xffffffff), Status.ok);
+assert.equal(host.imports.env.up_host_gl_present(0), Status.ok);
+assert.deepEqual(hostDraws, [[6], [12], [6, 1], [6], [6], [6], [6]]);
+assert.equal(host.imports.env.up_host_gl_present(1), Status.unavailable);
+resolveHostLost({reason: "destroyed"});
+await Promise.resolve();
+assert.equal(hostLosses, 1);
+assert.equal(host.lifecycle().phase, "device_lost");
+assert.equal(host.imports.env.up_host_gl_clear(0xff000000), Status.rejected);
+assert.equal(host.imports.env.up_host_gl_present(0), Status.rejected);
+host.imports.env.up_host_gl_resource_destroy(1, hostTexture);
+host.imports.env.up_host_gl_context_destroy();
+assert.equal(host.webgpu(), null);
+console.log("browser-webgpu passed");

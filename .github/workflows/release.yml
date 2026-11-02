@@ -1,0 +1,168 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*", "[0-9]*"]
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  capability-matrix:
+    runs-on: ubuntu-latest
+    outputs:
+      release: ${{ steps.select.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: select
+        run: python3 script/capability_matrix.py --github-output "$GITHUB_OUTPUT"
+  release-capability:
+    needs: capability-matrix
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.capability-matrix.outputs.release) }}
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - if: matrix.id == 'linux-sdl_gpu'
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
+      - run: ${{ matrix.command }}
+        env:
+          UP_DIAGNOSTICS_ROOT: zig-out/diagnostics/release-capability-${{ matrix.id }}
+      - if: matrix.id == 'macos-sdl_gpu' || matrix.id == 'linux-sdl_gpu'
+        run: script/check_workload_performance.sh
+      - if: matrix.id == 'windows-sdl_gpu'
+        shell: pwsh
+        run: script/check_workload_performance.ps1
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-capability-${{ matrix.id }}
+          path: |
+            zig-out/diagnostics/**
+            zig-out/**/*.png
+            zig-out/**/*.ppm
+            zig-out/performance/**
+          if-no-files-found: warn
+  release-gate:
+    needs: release-capability
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes postgresql xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: script/test_release_validation.sh
+      - run: zig build release-gate
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-gate-diagnostics
+          path: zig-out/diagnostics/release-gate/**
+          if-no-files-found: warn
+  macos:
+    needs: release-gate
+    runs-on: macos-15-intel
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: script/test_macos_package.sh dist/macos/bounce
+      - run: script/test_macos_package.sh dist/macos/starter starter
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-release
+          path: dist/macos
+  linux:
+    needs: release-gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - run: script/test_linux_package.sh dist/linux/bounce
+      - run: script/test_linux_package.sh dist/linux/starter starter
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux-release
+          path: dist/linux
+  windows:
+    needs: release-gate
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: script/test_windows_package.ps1 dist/windows/bounce
+      - run: script/test_windows_package.ps1 dist/windows/starter starter
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-release
+          path: dist/windows
+  publish:
+    needs: [macos, linux, windows]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+      - run: |
+          release_tag="${GITHUB_REF_NAME}"
+          if [ "${GITHUB_REF_TYPE}" != tag ]; then
+            release_tag="$(sed -n 's/^    \.version = "\([0-9][0-9.]*\)",$/\1/p' build.zig.zon | head -n 1)"
+          fi
+          mkdir release-assets
+          script/create_source_archive.sh "$release_tag" release-assets HEAD
+          cp release/macos-release/bounce/unpolished-peas-bounce-macos-universal.zip release-assets/
+          cp release/linux-release/bounce/unpolished-peas-bounce-linux-x86_64.tar.gz release-assets/
+          cp release/windows-release/bounce/unpolished-peas-bounce-windows-x86_64.zip release-assets/
+          cp release/macos-release/starter/unpolished-peas-starter-macos-universal.zip "release-assets/seed-sprint-${release_tag}-macos-universal.zip"
+          cp release/linux-release/starter/unpolished-peas-starter-linux-x86_64.tar.gz "release-assets/seed-sprint-${release_tag}-linux-x86_64.tar.gz"
+          cp release/windows-release/starter/unpolished-peas-starter-windows-x86_64.zip "release-assets/seed-sprint-${release_tag}-windows-x86_64.zip"
+          (cd release-assets && sha256sum ./*.tar.gz ./*.zip > SHA256SUMS)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-checksums
+          path: release-assets/
+      - if: startsWith(github.ref, 'refs/tags/') && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes
+          "release-assets/unpolished-peas-v${GITHUB_REF_NAME#v}-source.tar.gz"
+          release-assets/unpolished-peas-bounce-macos-universal.zip
+          release-assets/unpolished-peas-bounce-linux-x86_64.tar.gz
+          release-assets/unpolished-peas-bounce-windows-x86_64.zip
+          "release-assets/seed-sprint-${GITHUB_REF_NAME}-macos-universal.zip"
+          "release-assets/seed-sprint-${GITHUB_REF_NAME}-linux-x86_64.tar.gz"
+          "release-assets/seed-sprint-${GITHUB_REF_NAME}-windows-x86_64.zip"
+          release-assets/SHA256SUMS
+
+  published-consumer:
+    if: startsWith(github.ref, 'refs/tags/') && (github.event_name != 'workflow_dispatch' || !inputs.dry_run)
+    needs: publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+      - if: startsWith(github.ref, 'refs/tags/')
+        run: script/test_published_tag_consumer.sh
+        env:
+          UP_RELEASE_TAG: ${{ github.ref_name }}

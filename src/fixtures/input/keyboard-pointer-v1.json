@@ -1,0 +1,8 @@
+{
+  "schema_version": 1,
+  "key": "up",
+  "pointer_button": "left",
+  "window": [90, 65],
+  "framebuffer": [160, 90],
+  "canvas": [80, 45]
+}
