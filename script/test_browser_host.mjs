@@ -306,3 +306,26 @@ assert.ok(canvas.gl.calls.some(([name]) => name === "drawArrays"));
 env.up_host_teardown();
 assert.equal(canvas.listeners.size, 0);
 assert.equal(scheduledFrames.size, 0);
+
+// Browsers can lose a live WebGL context when its drawing buffer is reset.
+// Repeating initialization at the same size must leave that buffer intact.
+const stableCanvas = new FakeCanvas();
+let liveContext = false;
+let stableWidth = 320;
+let stableHeight = 180;
+Object.defineProperties(stableCanvas, {
+  width: {
+    get: () => stableWidth,
+    set(value) { if (liveContext && value === stableWidth) stableCanvas.gl.lost = true; stableWidth = value; },
+  },
+  height: {
+    get: () => stableHeight,
+    set(value) { if (liveContext && value === stableHeight) stableCanvas.gl.lost = true; stableHeight = value; },
+  },
+});
+stableCanvas.getContext = () => { liveContext = true; return stableCanvas.gl; };
+const stableHost = createBrowserHost({canvas: stableCanvas, fontFixture: debugFontFixture});
+assert.equal(stableHost.imports.env.up_host_gl_context_create(320, 180), Status.ok);
+assert.equal(stableHost.imports.env.up_host_gl_context_create(320, 180), Status.ok);
+assert.equal(stableHost.imports.env.up_host_gl_context_lost(), 0);
+stableHost.imports.env.up_host_teardown();
