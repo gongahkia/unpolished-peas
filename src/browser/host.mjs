@@ -1007,8 +1007,8 @@ export function createBrowserHost({
   function createContext(width, height) {
     if (!canvas || width === 0 || height === 0) return Status.invalidArgument;
     if (contextLost) return Status.rejected;
-    canvas.width = width;
-    canvas.height = height;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
     logicalWidth = width;
     logicalHeight = height;
     if (webgpu) {

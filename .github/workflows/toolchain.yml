@@ -60,7 +60,7 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.id == 'linux-sdl_gpu'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - run: ${{ matrix.command }}
         timeout-minutes: 20
       - if: failure()
@@ -122,7 +122,7 @@ jobs:
       - run: zig build test-dependency-ceiling
       - run: script/test_release_validation.sh
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+        run: sudo apt-get update && sudo apt-get install --yes glslang-tools spirv-cross xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'
         run: script/validate_wsl.sh
       - run: zig fmt --check build.zig src examples templates
@@ -253,7 +253,7 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.target == 'linux'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils libx11-6 libxcursor1 libxext6 libxfixes3 libxi6 libxrandr2 libxss1
       - run: ${{ matrix.package_script }} dist/${{ matrix.target }} ${{ matrix.game }}
       - if: success()
         uses: actions/upload-artifact@v4
@@ -298,7 +298,7 @@ jobs:
           version: 0.15.2
           use-cache: ${{ matrix.os != 'windows-latest' }}
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'
         run: UP_RENDERER_CONFORMANCE_REQUIRE_GPU=1 script/run_linux_software_gl.sh zig build test-renderer-conformance
       - if: matrix.os == 'macos-15-intel'
@@ -391,7 +391,7 @@ jobs:
         with:
           version: 0.15.2
       - if: matrix.os == 'ubuntu-latest'
-        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+        run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - if: matrix.os == 'ubuntu-latest'
         run: script/run_linux_software_gl.sh ${{ matrix.runner }} ${{ matrix.game }}
       - if: matrix.os == 'macos-15-intel'
@@ -417,7 +417,7 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.15.2
-      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 mesa-utils
+      - run: sudo apt-get update && sudo apt-get install --yes xvfb libvulkan1 mesa-vulkan-drivers libgl1-mesa-dri libglx-mesa0 libegl1 libegl-mesa0 mesa-utils
       - run: script/run_linux_software_gl.sh script/run_sample_smoke.sh ${{ matrix.target }}
       - if: failure()
         uses: actions/upload-artifact@v4

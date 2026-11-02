@@ -13,6 +13,13 @@ under the checkout even when a test uses a temporary working directory.
 
 `nightly.yml` consumes the nightly matrix from the same catalog. It runs the documented macOS, Linux, Windows, Chromium, Firefox, and separately forced Safari WebGL2/WebGPU rows, preserving renderer diagnostics and workload artifacts under the matrix identity. Unsupported Firefox WebGPU is absent.
 
+Safari WebGL checks independently probe rendering and canvas PNG export on a
+blank page before loading Peas. A runner whose PNG encoder returns an empty
+data URL still has to pass the Peas Wasm renderer's pixel readback and every
+input, audio, storage, diagnostic, and lifecycle check. Its nullable capture
+result, independent probe, runtime pixels, and WebDriver screenshot are retained;
+a working runner PNG encoder continues to require a valid Peas PNG capture.
+
 Nightly and tag-release capability rows run `script/check_workload_performance.sh` on macOS/Linux and `script/check_workload_performance.ps1` on Windows after their supported SDL GPU checks. Each records a `ReleaseFast` workload artifact, compares it to the exact reviewed target baseline, and fails with target, workload, metric, baseline, observed value, and tolerance. Performance checks are intentionally absent from pull-request CI; baseline changes require a reviewed artifact record.
 
 | Job | Rows | Checks | Execution budget |
