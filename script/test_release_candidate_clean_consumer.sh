@@ -19,7 +19,13 @@ mkdir -p "$release/templates/starter"
 cp "$repo/templates/starter/build.zig.zon" "$release/templates/starter/build.zig.zon"
 (cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- new "$generated")
 test -f "$generated/build.zig.zon"
-if rg -Fq "$repo" "$generated"; then exit 1; fi
+if grep -r -F -q -- "$repo" "$generated"; then
+    printf '%s\n' 'generated starter contains a source-checkout path' >&2
+    exit 1
+else
+    status=$?
+    [ "$status" -eq 1 ] || exit "$status"
+fi
 # The unreleased archive cannot depend on itself by URL. Keep the generated
 # build and source intact, but replace only its manifest with the adjacent
 # archive fixture so this is a real clean starter build.
@@ -48,7 +54,10 @@ case "$platform" in
     linux) tar -xzf "$desktop/$archive" -C "$tmp/unpacked" ;;
 esac
 mkdir "$tmp/outside"
-(cd "$tmp/outside" && SDL_AUDIODRIVER=dummy "$tmp/unpacked/$package/run.sh" --frames 2 --renderer opengl)
+case "$platform" in
+    linux) (cd "$tmp/outside" && "$repo/script/run_linux_software_gl.sh" "$tmp/unpacked/$package/run.sh" --frames 2 --renderer opengl) ;;
+    macos) (cd "$tmp/outside" && SDL_AUDIODRIVER=dummy "$tmp/unpacked/$package/run.sh" --frames 2 --renderer opengl) ;;
+esac
 (cd "$release" && SOURCE_DATE_EPOCH="$epoch" zig build peas -- package web "$web" --game bounce)
 node "$release/script/validate_web_bundle.mjs" "$web/unpolished-peas-bounce-web"
 printf '%s\n' 'release-candidate-clean-consumer passed: dependency,new,desktop,web,proof-smoke,no-checkout'

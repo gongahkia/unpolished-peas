@@ -1297,7 +1297,12 @@ export function createBrowserHost({
     audio: audio.diagnostic,
     storage: storage.diagnostic,
     storageKey: storage.key,
-    captureFrame: artifacts.captureFrame,
+    captureFrame: () => {
+      // WebGL's default drawing buffer may be discarded after compositing.
+      // Present the retained framebuffer and read it back in the same task.
+      if (gl && present(presentationMode) !== Status.ok) return null;
+      return artifacts.captureFrame();
+    },
     recordTrace: artifacts.recordTrace,
     recordCommand: artifacts.recordCommand,
     setRendererDiagnostic: artifacts.setRendererDiagnostic,

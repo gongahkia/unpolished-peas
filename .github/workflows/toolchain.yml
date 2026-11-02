@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 24
-      - run: zig build test-browser-host test-browser-webgpu test-browser-input test-browser-audio test-browser-storage test-browser-artifacts test-browser-renderer-selection test-browser-renderer-diagnostics test-browser-image-assets test-browser-workload-benchmark test-browser-dev
+      - run: zig build test-browser-host test-browser-webgpu test-browser-input test-browser-audio test-browser-storage test-browser-artifacts test-browser-renderer-selection test-browser-renderer-diagnostics test-browser-image-assets test-browser-workload-benchmark test-browser-dev test-safari-webdriver-contract
       - run: script/test_version_consistency.sh
       - run: script/test_release_validation.sh
 

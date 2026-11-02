@@ -25,7 +25,7 @@ run() {
 
 runtime() {
     case "$(uname -s)" in
-        Linux) xvfb-run -a env SDL_AUDIODRIVER=dummy "$@" ;;
+        Linux) "$repo/script/run_linux_software_gl.sh" "$@" ;;
         Darwin) env SDL_AUDIODRIVER=dummy "$@" ;;
         *) printf 'release_gate.sh: unsupported host %s\n' "$(uname -s)" >&2; return 69 ;;
     esac

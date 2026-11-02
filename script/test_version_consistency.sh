@@ -13,9 +13,12 @@ for path in README.md docs/guides/quickstart.md docs/guides/releases.md docs/gui
         exit 1
     }
 done
-if rg -n --glob '!zig-out/**' --glob '!.zig-cache/**' --glob '!.zig-global-cache/**' --glob '!script/test_version_consistency.sh' 'v0\.0\.4|templates/bounce' "$repo"; then
+if git -C "$repo" grep --no-index --exclude-standard -n -I -E 'v0\.0\.4|templates/bounce' -- . ':!script/test_version_consistency.sh'; then
     printf '%s\n' 'version consistency: stale release or starter path remains' >&2
     exit 1
+else
+    status=$?
+    [ "$status" -eq 1 ] || exit "$status"
 fi
 python3 - "$repo/templates/starter/build.zig.zon" "$version" <<'PY'
 import pathlib

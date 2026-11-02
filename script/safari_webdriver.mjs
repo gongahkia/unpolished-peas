@@ -131,8 +131,7 @@ function pageReady(renderer) {
 }
 
 async function capture(client, directory, game, renderer, driverStatus) {
-  const page = await client.execute("return {user_agent: navigator.userAgent, platform: navigator.platform, renderer: window.unpolishedPeas?.renderer ?? null, diagnostic: window.unpolishedPeas?.rendererDiagnostic ?? null, artifacts: window.unpolishedPeas?.host?.artifacts?.() ?? []};");
-  const screenshot = await client.screenshot();
+  const page = await client.execute("const api = window.unpolishedPeas; const canvas = document.querySelector('canvas[data-unpolished-peas]'); const gl = api?.host?.context?.(); return {user_agent: navigator.userAgent, platform: navigator.platform, renderer: api?.renderer ?? null, diagnostic: api?.rendererDiagnostic ?? null, artifacts: api?.host?.artifacts?.() ?? [], storage: api?.host?.storage(), audio: api?.host?.audio(), lifecycle: api?.host?.lifecycle(), canvas: {width: canvas?.width, height: canvas?.height, drawing_buffer_width: gl?.drawingBufferWidth, drawing_buffer_height: gl?.drawingBufferHeight}};");
   const artifact = {
     schema_version: 1,
     game,
@@ -142,11 +141,44 @@ async function capture(client, directory, game, renderer, driverStatus) {
     selected_renderer: page.renderer,
     diagnostic: page.diagnostic,
     artifacts: page.artifacts,
+    storage: page.storage,
+    audio: page.audio,
+    lifecycle: page.lifecycle,
+    canvas: page.canvas,
     screenshot: `screenshot-${renderer}.png`,
   };
   await writeFile(join(directory, `safari-${renderer}-artifacts.json`), JSON.stringify(artifact, null, 2) + "\n");
+  const screenshot = await client.screenshot();
   await writeFile(join(directory, artifact.screenshot), Buffer.from(screenshot, "base64"));
   return artifact;
+}
+
+export function browserContract() {
+  const api = window.unpolishedPeas;
+  const audio = api.host.audio();
+  const text = new TextEncoder().encode("safari webdriver");
+  new Uint8Array(api.host.memory.buffer, 0, text.length).set(text);
+  api.runtime.up_browser_diagnostic_emit(0, text.length);
+  const artifacts = api.host.artifacts();
+  return {
+    storage: api.host.storage(),
+    audio,
+    runtime_audio_state: api.runtime.up_browser_audio_state(),
+    frame_capture: api.host.captureFrame()?.startsWith("data:image/png") ?? false,
+    diagnostic_emitted: artifacts.some((artifact) => artifact.name === "diagnostics.json" && artifact.data.includes("safari webdriver")),
+    renderer_diagnostic_matches: artifacts.find((artifact) => artifact.name === "renderer-diagnostics.json")?.data === JSON.stringify(api.rendererDiagnostic),
+    lifecycle: api.host.lifecycle(),
+  };
+}
+
+export function validateBrowserContract(contract) {
+  assert.equal(contract.storage?.phase, "ready", `Safari storage: ${JSON.stringify(contract.storage)}`);
+  assert.equal(contract.runtime_audio_state, contract.audio?.state, `Safari audio: ${JSON.stringify(contract.audio)}`);
+  assert.equal(typeof contract.audio?.phase, "string", "Safari audio phase is missing");
+  assert.equal(contract.frame_capture, true, "Safari frame capture did not return a PNG");
+  assert.equal(contract.diagnostic_emitted, true, "Safari diagnostic emission failed");
+  assert.equal(contract.renderer_diagnostic_matches, true, "Safari renderer diagnostic artifact differs from the page diagnostic");
+  assert.ok(contract.lifecycle?.scheduledFrames > 0, `Safari frame scheduling stopped: ${JSON.stringify(contract.lifecycle)}`);
 }
 
 async function smoke(client, game, renderer, directory, driverStatus) {
@@ -170,8 +202,8 @@ async function smoke(client, game, renderer, directory, driverStatus) {
   const blur = await client.execute("window.dispatchEvent(new Event('blur')); const input = window.unpolishedPeas.host.input(); return !input.down[0] && !input.pointerDown[0] && input.released[0] && input.pointerReleased[0];");
   assert.equal(blur, true);
   await client.releaseActions();
-  const contract = await client.execute("const api = window.unpolishedPeas; const audio = api.host.audio(); const text = new TextEncoder().encode('safari webdriver'); new Uint8Array(api.host.memory.buffer, 0, text.length).set(text); api.runtime.up_browser_diagnostic_emit(0, text.length); const diagnosticArtifact = api.host.artifacts().find((artifact) => artifact.name === 'renderer-diagnostics.json'); return api.host.storage().phase === 'ready' && api.runtime.up_browser_audio_state() === audio.state && typeof audio.phase === 'string' && api.host.captureFrame().startsWith('data:image/png') && api.host.artifacts().some((artifact) => artifact.name === 'diagnostics.json' && artifact.data.includes('safari webdriver')) && diagnosticArtifact?.data === JSON.stringify(api.rendererDiagnostic) && api.host.lifecycle().scheduledFrames > 0;");
-  assert.equal(contract, true);
+  const contract = await client.execute(`return (${browserContract.toString()})();`);
+  validateBrowserContract(contract);
   const artifact = await capture(client, directory, game, renderer, driverStatus);
   assert.equal(artifact.selected_renderer, renderer);
   return availability;
@@ -190,7 +222,16 @@ async function main() {
     const unavailable = [];
     for (const renderer of renderers) {
       await client.navigate(`${baseUrl}?renderer=${renderer}`);
-      if (await smoke(client, game, renderer, artifactDirectory, driverStatus) === "unavailable") unavailable.push(renderer);
+      try {
+        if (await smoke(client, game, renderer, artifactDirectory, driverStatus) === "unavailable") unavailable.push(renderer);
+      } catch (error) {
+        try {
+          await capture(client, artifactDirectory, game, renderer, driverStatus);
+        } catch (captureError) {
+          console.error(`Safari failure artifact capture: ${captureError.message}`);
+        }
+        throw error;
+      }
     }
     console.log(`Safari WebDriver smoke passed: forced-${renderers.join(", forced-")}${unavailable.length ? ` unavailable=${unavailable.join(",")}` : ""}`);
   } finally {
