@@ -51,3 +51,22 @@ assert.equal(other.write(memory, 0, key.length, 64, value.length), StorageStatus
 assert.notEqual(backend.getItem("peas:test/bindings.up"), backend.getItem("peas:other/bindings.up"));
 backend.setItem("peas:test/bindings.up", "not-a-save");
 assert.equal(storage.read(memory, 0, key.length, 128, value.length), StorageStatus.corrupt);
+
+// Quota failure keeps the old checkpoint readable and can be retried without
+// recreating the host. A corrupt slot does not poison the rest of the store.
+const recoverableBackend = new MemoryStorage();
+const recoverable = createBrowserStorage({storage: recoverableBackend});
+bytes.set(value, 64);
+assert.equal(recoverable.write(memory, 0, key.length, 64, value.length), StorageStatus.ok);
+recoverableBackend.setItem = () => { throw new Error("quota"); };
+bytes.set(replacement, 64);
+assert.equal(recoverable.write(memory, 0, key.length, 64, replacement.length), StorageStatus.rejected);
+assert.equal(recoverable.read(memory, 0, key.length, 128, value.length), value.length);
+assert.deepEqual([...bytes.subarray(128, 128 + value.length)], [...value]);
+recoverableBackend.setItem = MemoryStorage.prototype.setItem;
+assert.equal(recoverable.write(memory, 0, key.length, 64, replacement.length), StorageStatus.ok);
+assert.equal(recoverable.diagnostic().phase, "ready");
+assert.equal(recoverable.diagnostic().lastError, null);
+assert.equal(storage.remove(memory, 0, key.length), StorageStatus.ok);
+assert.equal(storage.write(memory, 0, key.length, 64, replacement.length), StorageStatus.ok);
+assert.equal(storage.read(memory, 0, key.length, 128, replacement.length), replacement.length);

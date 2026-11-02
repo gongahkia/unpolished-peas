@@ -63,6 +63,10 @@ pub const SaveStore = struct {
         return bytes;
     }
 
+    /// Replaces one blob. Built-in stores publish the complete value only on
+    /// success; a failed write preserves the previous value and other keys.
+    /// This is per-key replacement, not a multi-key transaction or a promise
+    /// of durability after power loss. Custom hosts must uphold this contract.
     pub fn write(self: *const SaveStore, key: []const u8, bytes: []const u8) Error!void {
         try validateKey(key);
         return self.vtable.write(self.context, key, bytes);

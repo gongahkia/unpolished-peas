@@ -54,6 +54,7 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
     phase = "failed";
     lastError = "initialization_failed";
   }
+  const initialStatus = phase === "ready" ? StorageStatus.ok : phase === "unavailable" ? StorageStatus.unavailable : StorageStatus.rejected;
 
   function keyFromMemory(memory, source, byteLength) {
     if (!Number.isInteger(source) || !Number.isInteger(byteLength) || source < 0 || byteLength <= 0 || byteLength > 256 || source > memory.buffer.byteLength - byteLength) return null;
@@ -69,7 +70,14 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
   }
 
   function availability() {
-    return phase === "ready" ? StorageStatus.ok : phase === "unavailable" ? StorageStatus.unavailable : StorageStatus.rejected;
+    // A rejected write or one corrupt key must not disable reads, deletion,
+    // or a later retry. Diagnostics describe the last operation's failure.
+    return initialStatus;
+  }
+
+  function succeeded() {
+    phase = "ready";
+    lastError = null;
   }
 
   function write(memory, keySource, keyLength, source, byteLength) {
@@ -80,6 +88,7 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
     try {
       const value = encodeBase64(new Uint8Array(memory.buffer, source, byteLength));
       storage.setItem(key, `UPST1:${value}`);
+      succeeded();
       return StorageStatus.ok;
     } catch {
       return fail("write_failed");
@@ -93,7 +102,10 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
     if (!key || !Number.isInteger(destination) || !Number.isInteger(capacity) || destination < 0 || capacity < 0) return StorageStatus.invalidArgument;
     try {
       const record = storage.getItem(key);
-      if (record === null) return StorageStatus.notFound;
+      if (record === null) {
+        succeeded();
+        return StorageStatus.notFound;
+      }
       if (!record.startsWith("UPST1:")) {
         phase = "failed";
         lastError = "invalid_record";
@@ -105,9 +117,13 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
         lastError = "invalid_record";
         return StorageStatus.corrupt;
       }
-      if (capacity < value.length) return value.length;
+      if (capacity < value.length) {
+        succeeded();
+        return value.length;
+      }
       if (destination > memory.buffer.byteLength - value.length) return StorageStatus.invalidArgument;
       new Uint8Array(memory.buffer, destination, value.length).set(value);
+      succeeded();
       return value.length;
     } catch {
       return fail("read_failed");
@@ -121,6 +137,7 @@ export function createBrowserStorage({storage, namespace = "unpolished-peas:v1",
     if (!key) return StorageStatus.invalidArgument;
     try {
       storage.removeItem(key);
+      succeeded();
       return StorageStatus.ok;
     } catch {
       return fail("remove_failed");

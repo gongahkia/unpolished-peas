@@ -4,6 +4,8 @@
 
 ### Fixed
 
+- Keep native save staging separate from game keys and concurrent writers;
+  allow browser saves to recover after rejected writes or corrupt values.
 - Correct WebGL framebuffer orientation and preserve WebGPU material geometry
   and uniforms across queued draws and post passes.
 - Preserve accumulated browser pointer motion and held keyboard aliases;

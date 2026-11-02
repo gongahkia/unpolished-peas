@@ -48,6 +48,11 @@ Seed Sprint uses this exact optional-store pattern:
 same allocator. The maximum is a caller-selected corruption and allocation
 guard. `write`, `delete`, and `exists` complete the v1 API.
 
+A failed `write` leaves the previous value and other keys intact. Saving a new
+checkpoint can therefore fail while the last checkpoint remains loadable.
+This guarantee applies to each key individually, including the in-memory test
+store; several writes are not a transaction.
+
 Keys are names, not paths: they are 1–64 ASCII bytes from letters, digits,
 `.`, `_`, and `-`, but may not contain `..`, `/`, `\\`, `:`, or NUL. Invalid
 keys fail with `error.InvalidKey`; Peas never rewrites them. A game may express
@@ -67,9 +72,11 @@ child:
   and application components.
 
 The save directory is created only when the desktop host starts. Native writes
-write and `sync` a temporary file in that directory, then perform a
-same-directory replacement rename. This protects the previous file from a
-normal failed write, but it is not a journal and does not claim power-loss
+write and `sync` an exclusively created temporary file in that directory,
+close it, then perform a same-directory replacement rename. Temporary names
+cannot be game keys, and concurrent writers use separate staging files. This
+protects the previous file from a normal failed write, but it is not a journal
+and does not claim power-loss
 durability on every filesystem. Permission and I/O failures remain explicit
 errors; they are never reported as a missing value.
 
@@ -90,6 +97,9 @@ storage.
 
 Browser policy, private browsing, security settings, and quota can make
 `localStorage` unavailable or reject a write. Treat such errors as recoverable.
+A rejected operation does not disable the store: games can still read the old
+save, delete an unwanted slot, and retry. A malformed value affects only its
+own key and can be replaced or deleted.
 The current host limits one raw value to 1 MiB before Base64 expansion and is
 deliberately for small data. It is not a cross-platform replay archive store; large recordings,
 user-generated content, IndexedDB, OPFS, and cloud synchronization remain out
