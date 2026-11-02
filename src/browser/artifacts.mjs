@@ -16,7 +16,9 @@ export function createBrowserArtifacts({canvas} = {}) {
   function captureFrame() {
     if (!canvas?.toDataURL) return null;
     try {
-      screenshot = canvas.toDataURL("image/png");
+      const value = canvas.toDataURL("image/png");
+      if (typeof value !== "string" || !/^data:image\/png(?:;[^,]*)?,.+$/.test(value)) return null;
+      screenshot = value;
       return screenshot;
     } catch {
       return null;

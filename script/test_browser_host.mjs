@@ -39,6 +39,7 @@ class FakeWebGl2 {
   COLOR_ATTACHMENT0 = 28;
   FRAMEBUFFER_COMPLETE = 29;
   lost = false;
+  drawingBufferReady = false;
   calls = [];
   next = 1;
 
@@ -72,7 +73,7 @@ class FakeWebGl2 {
   drawArrays(...args) { this.calls.push(["drawArrays", ...args]); }
   clearColor(...args) { this.calls.push(["clearColor", ...args]); }
   clear(...args) { this.calls.push(["clear", ...args]); }
-  flush(...args) { this.calls.push(["flush", ...args]); }
+  flush(...args) { this.calls.push(["flush", ...args]); this.drawingBufferReady = true; }
   disable(...args) { this.calls.push(["disable", ...args]); }
   scissor(...args) { this.calls.push(["scissor", ...args]); }
   viewport(...args) { this.calls.push(["viewport", ...args]); }
@@ -100,6 +101,10 @@ class FakeCanvas {
   getContext(name) {
     assert.equal(name, "webgl2");
     return this.gl;
+  }
+
+  toDataURL() {
+    return this.gl.drawingBufferReady ? "data:image/png;base64,AA==" : "data:,";
   }
 
   addEventListener(name, callback) {
@@ -272,9 +277,17 @@ assertFramebufferOrientation();
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeMaterials).map(([, , , count]) => count), [6, 6]);
 assert.ok(canvas.gl.calls.some(([name, , source]) => name === "shaderSource" && source === materialFragment));
 
+// A compositor can discard the default WebGL buffer between presentation and
+// a screenshot request. Capture must restore the retained frame first.
+canvas.gl.drawingBufferReady = false;
+assert.equal(canvas.toDataURL(), "data:,");
+assert.equal(host.captureFrame(), "data:image/png;base64,AA==");
+assert.equal(host.artifacts().find(({name}) => name === "screenshot.png").data, "data:image/png;base64,AA==");
+
 const lost = canvas.dispatch("webglcontextlost");
 assert.equal(lost.prevented, true);
 assert.equal(env.up_host_gl_context_lost(), 1);
+assert.equal(host.captureFrame(), null);
 assert.equal(host.resourceCount(), 4);
 assert.equal(env.up_host_gl_resource_create(ResourceKind.buffer, 1), 0);
 canvas.dispatch("webglcontextrestored");

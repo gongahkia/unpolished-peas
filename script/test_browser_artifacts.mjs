@@ -17,3 +17,12 @@ assert.deepEqual(JSON.parse(values[1].data), {version: 1, requested_renderer: "w
 assert.deepEqual(JSON.parse(values[2].data), {version: 1, messages: ["shader compilation failed"]});
 assert.deepEqual(JSON.parse(values[3].data), {displayTimeUnit: "ms", traceEvents: [{name: "draw", ph: "X", ts: 1, dur: 2}]});
 assert.deepEqual(JSON.parse(values[4].data), {version: 1, commands: [{tag: "rect", x: 1, y: 2}]});
+
+// Failed canvas serialization must not become a PNG artifact or replace the
+// last successful capture with an empty data URL.
+canvas.toDataURL = () => "data:,";
+assert.equal(artifacts.captureFrame(), null);
+assert.deepEqual(artifacts.snapshot()[0], values[0]);
+const empty = createBrowserArtifacts({canvas});
+assert.equal(empty.captureFrame(), null);
+assert.equal(empty.snapshot().some(({name}) => name === "screenshot.png"), false);

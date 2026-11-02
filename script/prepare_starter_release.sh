@@ -44,7 +44,7 @@ cleanup() {
 trap cleanup EXIT HUP INT TERM
 
 "$repo/script/create_source_archive.sh" "$tag" "$archive_dir" HEAD >/dev/null
-python3 - "$archive_dir" "$port_file" <<'PY' &
+python3 - "$archive_dir" "$port_file" >"$tmp/server.log" 2>&1 <<'PY' &
 import functools
 import http.server
 import pathlib
@@ -57,12 +57,15 @@ pathlib.Path(port_file).write_text(str(server.server_port), encoding="utf-8")
 server.serve_forever()
 PY
 server_pid=$!
-for _ in $(seq 1 50); do
+# A cold Python startup on a hosted macOS runner can take more than five seconds.
+for _ in $(seq 1 300); do
     [ -s "$port_file" ] && break
+    kill -0 "$server_pid" 2>/dev/null || break
     sleep 0.1
 done
 if [ ! -s "$port_file" ]; then
     printf '%s\n' 'starter release preparation could not start the local archive server' >&2
+    cat "$tmp/server.log" >&2
     exit 1
 fi
 port="$(< "$port_file")"
