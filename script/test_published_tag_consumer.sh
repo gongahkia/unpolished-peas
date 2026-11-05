@@ -49,7 +49,7 @@ if [ ! -f "$quickstart_checkout/templates/starter/build.zig.zon" ]; then
 fi
 (
     cd "$quickstart_checkout"
-    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"
+    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer" --release
 )
 manifest="$consumer/build.zig.zon"
 grep -F -x -q -- "            .url = \"$expected_url\"," "$manifest"

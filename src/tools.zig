@@ -232,6 +232,7 @@ pub fn printHelp() void {
         \\usage: zig build peas -- <command> [args]
         \\global flags: --json --non-interactive
         \\commands: new run check test replay package serve support-bundle shader doctor docs
+        \\new: zig build peas -- new <directory> [--release]
         \\check: zig build peas -- check [project-directory] [--target <linux|macos|windows>]
         \\run: zig build peas -- run [project-directory] -- [game-args]
         \\test: zig build peas -- test <unit|replay|visual|integration> [project-directory]

@@ -117,13 +117,16 @@ fn dispatch(allocator: std.mem.Allocator, command: tools.Command, args: *std.pro
 
 fn createProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !void {
     const destination = args.next() orelse return newUsage();
+    const mode = starter.parseMode(args.next()) catch return newUsage();
     if (args.next() != null) return newUsage();
     const template_root = std.process.getEnvVarOwned(allocator, "UP_TEMPLATE_ROOT") catch return error.TemplateUnavailable;
     defer allocator.free(template_root);
-    starter.createProject(allocator, template_root, destination) catch |err| {
+    starter.createProjectWithMode(allocator, template_root, destination, mode) catch |err| {
         switch (err) {
             error.InvalidDestination => std.debug.print("peas new: destination must name a new project directory\n", .{}),
             error.DestinationExists => std.debug.print("peas new: destination already exists: {s}\n", .{destination}),
+            error.ReleaseCoordinatesUnavailable => std.debug.print("peas new: this template has no prepared release URL and hash; omit --release to use the local checkout\n", .{}),
+            error.ReleaseFetchFailed, error.ReleaseHashMismatch, error.InvalidReleaseCoordinates => std.debug.print("peas new: release archive verification failed ({s}); use the matching URL and hash from a prepared release\n", .{@errorName(err)}),
             else => std.debug.print("peas new: failed to create {s}: {s}\n", .{ destination, @errorName(err) }),
         }
         return err;
@@ -132,7 +135,7 @@ fn createProject(allocator: std.mem.Allocator, args: *std.process.ArgIterator) !
 }
 
 fn newUsage() error{InvalidArguments} {
-    std.debug.print("usage: zig build peas -- new <directory>\n", .{});
+    std.debug.print("usage: zig build peas -- new <directory> [--release]\n", .{});
     return error.InvalidArguments;
 }
 

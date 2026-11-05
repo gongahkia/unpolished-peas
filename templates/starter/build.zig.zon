@@ -3,9 +3,8 @@
     .version = "1.0.0",
     .fingerprint = 0x68a23f24006f3ea5, // Changing this has security and trust implications.
     .minimum_zig_version = "0.15.2",
-    // This source-checkout template intentionally has no dependency
-    // coordinate. For a new release, `script/prepare_starter_release.sh <tag>` writes the
-    // immutable tag URL and Zig package hash that a released checkout copies.
+    // The generator fills a local checkout path by default. Release preparation
+    // writes the archive URL and hash used by explicit `new <directory> --release`.
     .dependencies = .{},
     .paths = .{
         "build.zig",

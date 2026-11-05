@@ -1,29 +1,38 @@
 # Start here
 
 Peas is a small Zig framework for deterministic, testable 2D games. The
-fastest way to understand it is to run Seed Sprint, read its two source files,
-then grow into the focused guides linked below.
+fastest way to understand it is to generate Seed Sprint, read its two source
+files, then grow into the focused guides linked below.
 
 ## Requirements and release status
 
 Use Zig `0.15.2`. The current release is `1.0.0`, published on October 10,
 2026. That GitHub release has no prepared source-package archive, starter
-coordinates, or desktop assets attached. Use the source-checkout workflow
-below; the [installation guide](installation.md) distinguishes the published
-source tag from a ready-to-install Zig package. `main` contains subsequent
+coordinates, or desktop assets attached. The source-checkout generator below
+works today using a local dependency; the [installation guide](installation.md)
+distinguishes the published source tag from a ready-to-install Zig package.
+`main` contains subsequent
 integration fixes and is not an immutable dependency URL.
 
 ## Five-minute source-checkout path
 
-From a Peas checkout, run the canonical starter without needing a generated
-project or a package URL:
+From a Peas checkout, create your own game next to the engine repository:
 
 ```sh
-zig build test-starter -Dwith_sdl=false
-zig build run-starter
+zig build peas -- new ../my-game
+cd ../my-game
+zig build
+zig build test
+zig build run
 ```
 
-The test is headless; the run command opens Seed Sprint. Arrow keys or a
+The generator writes a relative `.path` dependency pointing to this Peas
+checkout. No manifest repair or published package is needed. Keep the checkout
+available at that relative location while developing; its changes are picked
+up by subsequent builds. SDL3 is fetched and built from the pinned dependency,
+so the first native build needs network access and can take longer.
+
+The test is headless; `run` opens Seed Sprint. Arrow keys or a
 gamepad move, Space/South dashes, and Enter/Start restarts. Read these files
 in order:
 
@@ -33,18 +42,22 @@ in order:
    persistent game state, `init`, fixed-step `update`, Canvas `draw`, seed,
    save data, audio, and the deterministic test.
 
-The source checkout can also compile the starter browser runtime and native
-package layout:
+Inside the generated game, build a complete browser directory or a portable
+desktop layout:
 
 ```sh
-zig build browser-starter -Dwith_sdl=false
-zig build package-starter
+zig build web
+zig build package
 ```
 
-The full self-contained `zig build web` browser directory is the command for a
-released or release-fixture standalone Seed Sprint project; see
-[browser and packaging](installation.md#browser-and-package) for that distinct
-workflow.
+Serve `zig-out/web` over HTTP as described in
+[browser and packaging](installation.md#browser-and-package). A prepared
+release checkout can instead generate a game pinned to its verified archive
+using `new ../my-game --release`; see [installation](installation.md).
+
+To evaluate the reference game without generating a project, the engine
+checkout still offers `zig build run-starter` and
+`zig build test-starter -Dwith_sdl=false`.
 
 ## A minimal game
 

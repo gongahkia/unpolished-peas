@@ -29,6 +29,17 @@ Nightly and tag-release capability rows run `script/check_workload_performance.s
 
 The budget is an operational target, not a wall-clock guarantee. Graphics failures retain `zig-out` diagnostics in the retained non-PR renderer-conformance jobs.
 
+`zig build test-starter-external` generates a game outside the checkout with
+the default local dependency. `zig build test-starter-external-web` generates
+from a clean archive checkout with a prepared template, fetching the actual
+archive over loopback HTTP and verifying its Zig package hash. Both execute
+`zig build`, `zig build test`, `zig build web`, and `zig build package` on the
+untouched generated game with separate generator/consumer caches, then verify
+that the authored files did not change. Release checks also reject missing
+coordinates and a URL paired with a real hash from different archive bytes;
+no public release is needed. The bundled-SDL check runs the local case with a
+failing `pkg-config` shim and a bounded native host smoke.
+
 ## Non-PR validation
 
 Package, proof-game, renderer, release-compatibility, and next-Zig jobs run outside pull requests until their owning removal or release issue changes that policy. They are not stable-core required checks.

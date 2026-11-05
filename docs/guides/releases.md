@@ -5,7 +5,9 @@ The current release is **1.0.0**, published on October 10, 2026 as the
 Earlier `0.1.0` draft references were numbering errors. The existing release
 has no prepared source archive, desktop assets, or checksums attached; its
 publication does not establish the package-validation evidence described below.
-The source-checkout starter therefore has no invented dependency coordinates.
+Source-checkout generation supplies a local path dependency without invented
+release coordinates. Explicit `new <directory> --release` requires the
+prepared URL/hash pair and verifies it with `zig fetch` before generation.
 
 `main` contains integration fixes after that immutable tag. Use a source
 checkout for evaluation and a future prepared release for package installation.
@@ -26,7 +28,13 @@ A release is breaking when it removes or renames a public core export, changes a
 
 ## Starter upgrades
 
-Each generated project pins one public release archive URL and its matching hash in `build.zig.zon`. Upgrade both coordinates together from that release's starter template or release notes; never mix a URL from one tag with a hash from another, and never copy coordinates from `main`. Then run `zig build`, the generated project's test target, and its documented frame smoke before committing the upgrade.
+Default generation writes a local checkout path in `build.zig.zon`; moving the
+engine or game requires keeping that relative path valid. Games generated with
+`--release` pin one verified release archive URL and its matching hash. Upgrade
+both coordinates together from that release's starter template or release
+notes; never mix a URL from one tag with a hash from another, and never copy
+release coordinates from `main`. Then run `zig build`, `zig build test`,
+`zig build web`, and the documented frame smoke before committing the upgrade.
 
 See [v1.0 migrations](migrations.md) before upgrading a pre-v1.0 project.
 
