@@ -14,6 +14,7 @@ pub const GameFailure = struct {
 
 pub const GameContext = struct {
     input: *const Input,
+    text_input: ?*Input.TextInput = null,
     /// Host-owned allocator for game-owned resources such as RenderSurface,
     /// Image, Atlas, and Font. It remains absent from deliberately bare core
     /// contexts, so a game must request it explicitly before allocating.
@@ -47,6 +48,11 @@ pub const GameContext = struct {
 
     pub fn withRenderer(input: *const Input, canvas: *Canvas, renderer: *Renderer2D) GameContext {
         return .{ .input = input, .canvas = canvas, .renderer = renderer };
+    }
+
+    pub fn setTextInput(self: *GameContext, enabled: bool) !void {
+        const control = self.text_input orelse return error.TextInputUnavailable;
+        control.enabled = enabled;
     }
 
     pub fn requireCanvas(self: GameContext) !*Canvas {

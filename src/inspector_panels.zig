@@ -325,6 +325,7 @@ fn resourceState(store: *const assets.AssetStore, handle: ResourceHandle) []cons
 fn bindingName(binding: actions.Binding) []const u8 {
     return switch (binding) {
         .key => |value| @tagName(value),
+        .physical_key => |value| @tagName(value),
         .pointer_button => |value| @tagName(value),
         .gamepad_button => |value| @tagName(value),
         .gamepad_axis => |value| @tagName(value.axis),

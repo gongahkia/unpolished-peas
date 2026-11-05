@@ -118,7 +118,6 @@ pub const Font = struct { // owns atlas pixels and glyph storage allocated by de
         if (up_pack_font_ranges(bytes.ptr, @intCast(options.pixel_height), alpha.ptr, @intCast(options.atlas_width), @intCast(options.atlas_height), packed_ranges.ptr, @intCast(packed_ranges.len)) == 0) return error.FontAtlasTooSmall;
 
         const pixels = try allocator.alloc(Color, pixel_count);
-        errdefer allocator.free(pixels);
         for (alpha, 0..) |value, index| pixels[index] = Color.rgba(255, 255, 255, value);
         var image = Image{ .allocator = allocator, .width = options.atlas_width, .height = options.atlas_height, .pixels = pixels };
         errdefer image.deinit();

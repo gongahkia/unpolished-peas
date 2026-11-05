@@ -61,6 +61,12 @@ checkout still offers `zig build run-starter` and
 
 ## A minimal game
 
+After the first game builds, follow the
+[compiled portable asset recipes](asset-recipes.md) for images, fonts,
+sprite animation, sound, and progress saves. A game-owned collection provides
+one cleanup boundary; embedded files under `src/assets/` need no extra build
+module. The generated native wrapper forwards an optional game `deinit`.
+
 This exact program is the compiled
 [`examples/tutorial_game_protocol.zig`](../../examples/tutorial_game_protocol.zig)
 source. `zig build check-examples` compiles it, and this checkout can run it

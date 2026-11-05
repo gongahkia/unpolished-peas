@@ -2,13 +2,17 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 
 pub const abi_version: u32 = 1;
-pub const abi_bytes: usize = 376;
+pub const legacy_bytes: usize = 376;
+pub const abi_bytes: usize = 1890;
+pub const request_marker: u32 = 0x32515055;
 
 /// Decodes the browser host's fixed input ABI into the same normalized input
 /// snapshot used by native and headless simulation. The ABI itself contains no
 /// browser object identity or timestamp.
 pub fn decode(bytes: []const u8) !up.input.Input.Snapshot {
-    if (bytes.len != abi_bytes or readU32(bytes, 0) != abi_version) return error.InvalidInputAbi;
+    if (bytes.len < legacy_bytes) return error.InvalidInputAbi;
+    const version = readU32(bytes, 0);
+    if (!((version == 1 and bytes.len == legacy_bytes) or (version == 2 and bytes.len == abi_bytes))) return error.InvalidInputAbi;
     var value = up.input.Input.Snapshot{};
     const flags = readU32(bytes, 4);
     try boolMaskInto(value.down[0..], readU32(bytes, 20));
@@ -40,6 +44,12 @@ pub fn decode(bytes: []const u8) !up.input.Input.Snapshot {
         for (&gamepad.previous_axes, 0..) |*axis, axis_index| axis.* = readF32(bytes, offset + 44 + axis_index * 4);
         value.gamepads[index] = gamepad;
     }
+    if (version == 2) {
+        const len = std.mem.readInt(u16, bytes[376..378], .little);
+        if (len > up.input.Input.Extended.max_wire_bytes) return error.InvalidInputAbi;
+        value.extended = up.input.Input.Extended.decode(bytes[378..][0..len]) catch return error.InvalidInputAbi;
+        for (bytes[378 + len ..]) |byte| if (byte != 0) return error.InvalidInputAbi;
+    }
     if (!value.isFinite()) return error.InvalidInputAbi;
     return value;
 }
@@ -63,7 +73,7 @@ fn boolMaskInto(values: []bool, mask: u32) !void {
 }
 
 test "browser input ABI decodes a complete normalized snapshot" {
-    var bytes: [abi_bytes]u8 = .{0} ** abi_bytes;
+    var bytes: [legacy_bytes]u8 = .{0} ** legacy_bytes;
     std.mem.writeInt(u32, bytes[0..4], abi_version, .little);
     std.mem.writeInt(u32, bytes[4..8], 4, .little);
     std.mem.writeInt(u32, bytes[20..24], 1 << @intFromEnum(up.input.Key.right), .little);

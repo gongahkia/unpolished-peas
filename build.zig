@@ -646,6 +646,134 @@ pub fn build(b: *std.Build) void {
     const dev_demo = addExample(b, "unpolished-peas-dev-bounce", "examples/dev_bounce.zig", target, optimize, peas, sdl);
     const minimal_demo = addExample(b, "unpolished-peas-minimal", "examples/minimal.zig", target, optimize, peas, sdl);
     const tutorial_game_protocol_demo = addExample(b, "unpolished-peas-tutorial-game-protocol", "examples/tutorial_game_protocol.zig", target, optimize, peas, sdl);
+    const input_workbench_demo = addExample(b, "unpolished-peas-input-workbench", "examples/input_workbench.zig", target, optimize, peas, sdl);
+    const asset_workbench_demo = addExample(b, "unpolished-peas-asset-workbench", "examples/asset_workbench.zig", target, optimize, peas, sdl);
+    addRunStep(b, "run-asset-workbench", "Run portable images, fonts, animation, sound and saves", asset_workbench_demo);
+    const asset_workbench_game = b.createModule(.{
+        .root_source_file = b.path("examples/asset_workbench_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    });
+    const asset_workbench_tests = b.addTest(.{ .root_module = asset_workbench_game });
+    const run_asset_workbench_tests = b.addRunArtifact(asset_workbench_tests);
+    b.step("test-asset-workbench", "Test portable asset recipes, replay and partial initialization cleanup").dependOn(&run_asset_workbench_tests.step);
+    const asset_probe = b.addExecutable(.{ .name = "asset-workbench-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/asset_workbench_probe.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const asset_probe_native = b.addRunArtifact(asset_probe);
+    const asset_probe_wasm = b.addExecutable(.{ .name = "asset-workbench-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/asset_workbench_probe.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    }) });
+    asset_probe_wasm.entry = .disabled;
+    asset_probe_wasm.rdynamic = true;
+    asset_probe_wasm.import_memory = true;
+    const asset_probe_compare = b.addSystemCommand(&.{ "node", "script/test_browser_asset_collection.mjs" });
+    asset_probe_compare.addFileArg(asset_probe_wasm.getEmittedBin());
+    asset_probe_compare.addFileArg(asset_probe_native.captureStdOut());
+    b.step("test-browser-asset-collection", "Compare the same asset game pixels and saves natively and in browser Wasm").dependOn(&asset_probe_compare.step);
+    const asset_consumer = b.addSystemCommand(&.{ "python3", "-B", "script/test_asset_collection_consumer.py" });
+    b.step("test-asset-collection-consumer", "Build the asset example outside the checkout against a verified archive").dependOn(&asset_consumer.step);
+    const asset_workbench_browser_game = b.createModule(.{
+        .root_source_file = b.path("examples/asset_workbench_game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const asset_workbench_browser = b.addExecutable(.{
+        .name = "asset-workbench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+                .{ .name = "protocol-game", .module = asset_workbench_browser_game },
+            },
+        }),
+    });
+    asset_workbench_browser.entry = .disabled;
+    asset_workbench_browser.rdynamic = true;
+    asset_workbench_browser.import_memory = true;
+    const asset_web = b.step("web-asset-workbench", "Package the portable asset example in zig-out/asset-workbench");
+    const asset_wasm = b.addInstallArtifact(asset_workbench_browser, .{ .dest_dir = .{ .override = .{ .custom = "asset-workbench" } }, .dest_sub_path = "unpolished-peas.wasm" });
+    const asset_runtime = b.addInstallDirectory(.{ .source_dir = b.path("src/browser"), .install_dir = .prefix, .install_subdir = "asset-workbench", .include_extensions = &.{".mjs"} });
+    const asset_debug_font = b.addInstallFileWithDir(b.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "asset-workbench" }, "debug-font-v1.json");
+    const asset_font_license = b.addInstallFileWithDir(b.path("examples/assets/fonts/OFL.txt"), .{ .custom = "asset-workbench" }, "OFL.txt");
+    const asset_files = b.addWriteFiles();
+    const asset_html = asset_files.add("asset-workbench.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Peas asset workbench</title><canvas data-unpolished-peas data-peas-shell width=\"240\" height=\"120\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    const asset_index = b.addInstallFileWithDir(asset_html, .{ .custom = "asset-workbench" }, "index.html");
+    for ([_]*std.Build.Step{ &asset_wasm.step, &asset_runtime.step, &asset_debug_font.step, &asset_font_license.step, &asset_index.step }) |step| asset_web.dependOn(step);
+    addRunStep(b, "run-input-workbench", "Run physical keys, rebinding and Unicode text entry", input_workbench_demo);
+    const input_workbench_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/input_workbench_game.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_input_workbench_tests = b.addRunArtifact(input_workbench_tests);
+    b.step("test-input-workbench", "Replay the portable keyboard/text example headlessly").dependOn(&run_input_workbench_tests.step);
+    const input_workbench_browser = b.addExecutable(.{
+        .name = "input-workbench",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/browser/runtime.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+                .{ .name = "protocol-game", .module = b.createModule(.{
+                    .root_source_file = b.path("examples/input_workbench_game.zig"),
+                    .target = browser_target,
+                    .optimize = browser_optimize,
+                    .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+                }) },
+            },
+        }),
+    });
+    input_workbench_browser.entry = .disabled;
+    input_workbench_browser.rdynamic = true;
+    input_workbench_browser.import_memory = true;
+    const workbench_web = b.step("web-input-workbench", "Package the same input example for a browser in zig-out/input-workbench");
+    const workbench_wasm = b.addInstallArtifact(input_workbench_browser, .{ .dest_dir = .{ .override = .{ .custom = "input-workbench" } }, .dest_sub_path = "unpolished-peas.wasm" });
+    const workbench_runtime_files = b.addInstallDirectory(.{ .source_dir = b.path("src/browser"), .install_dir = .prefix, .install_subdir = "input-workbench", .include_extensions = &.{".mjs"} });
+    const workbench_font = b.addInstallFileWithDir(b.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "input-workbench" }, "debug-font-v1.json");
+    const workbench_font_license = b.addInstallFileWithDir(b.path("examples/assets/fonts/SourceSansOFL.txt"), .{ .custom = "input-workbench" }, "SourceSansOFL.txt");
+    const workbench_files = b.addWriteFiles();
+    const workbench_html = workbench_files.add("input-workbench.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Peas input workbench</title><canvas data-unpolished-peas data-peas-shell width=\"320\" height=\"180\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    const workbench_index = b.addInstallFileWithDir(workbench_html, .{ .custom = "input-workbench" }, "index.html");
+    for ([_]*std.Build.Step{ &workbench_wasm.step, &workbench_runtime_files.step, &workbench_font.step, &workbench_font_license.step, &workbench_index.step }) |step| workbench_web.dependOn(step);
+    const input_v2_smoke = b.addExecutable(.{
+        .name = "input-v2-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/input_v2_wasm_smoke.zig"),
+            .target = browser_target,
+            .optimize = browser_optimize,
+            .imports = &.{
+                .{ .name = "unpolished-peas", .module = browser_peas },
+                .{ .name = "frame-timing", .module = browser_frame_timing },
+                .{ .name = "input-workbench-game", .module = b.createModule(.{
+                    .root_source_file = b.path("examples/input_workbench_game.zig"),
+                    .target = browser_target,
+                    .optimize = browser_optimize,
+                    .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+                }) },
+            },
+        }),
+    });
+    input_v2_smoke.entry = .disabled;
+    input_v2_smoke.rdynamic = true;
+    input_v2_smoke.import_memory = true;
+    const input_v2_smoke_run = b.addSystemCommand(&.{ "node", "script/test_input_workbench_wasm.mjs" });
+    input_v2_smoke_run.addFileArg(input_v2_smoke.getEmittedBin());
+    b.step("test-browser-input-v2", "Round trip browser keyboard/text through Wasm, the portable game, and replay").dependOn(&input_v2_smoke_run.step);
     const explicit_loop_demo = addExample(b, "unpolished-peas-explicit-loop", "examples/explicit_loop.zig", target, optimize, peas, null);
     const explicit_loop_wasm = b.addExecutable(.{ .name = "unpolished-peas-explicit-loop-wasm", .root_module = b.createModule(.{
         .root_source_file = b.path("examples/explicit_loop.zig"),
@@ -938,7 +1066,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -948,6 +1076,8 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_input_workbench_tests.step);
+    test_step.dependOn(&run_asset_workbench_tests.step);
     const render_benchmark_tests = b.addTest(.{ .root_module = render_benchmark.root_module });
     const run_render_benchmark_tests = b.addRunArtifact(render_benchmark_tests);
     const render_benchmark_test_step = b.step("test-render-benchmark", "Test internal rendering benchmark bounds");

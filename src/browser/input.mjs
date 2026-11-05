@@ -1,3 +1,6 @@
+import {createExtendedInput, InputAbiV2} from "./extended_input.mjs";
+import {PhysicalKey, codeToPhysicalKey} from "./physical_keys.mjs";
+export {PhysicalKey, InputAbiV2};
 export const InputAbi = Object.freeze({version: 1, byteLength: 376});
 
 export const InputKey = Object.freeze({up: 0, down: 1, left: 2, right: 3, action: 4, cancel: 5, start: 6, select: 7, debug: 8, screenshot: 9});
@@ -28,6 +31,7 @@ function finite(value) {
 
 function actionBindingValue(binding, state) {
   if (!binding || typeof binding !== "object") return 0;
+  if (typeof binding.physical_key === "string") return state.extended.down[PhysicalKey[binding.physical_key]] ? 1 : 0;
   if (typeof binding.key === "string") return state.down[InputKey[binding.key]] ? 1 : 0;
   if (typeof binding.pointer_button === "string") return state.pointerDown[PointerButton[binding.pointer_button]] ? 1 : 0;
   if (typeof binding.gamepad_button === "string") return state.gamepads.some((gamepad) => gamepad.buttons[GamepadButton[binding.gamepad_button]]) ? 1 : 0;
@@ -46,6 +50,7 @@ function actionBindingValue(binding, state) {
 
 function validActionBinding(binding) {
   if (!binding || typeof binding !== "object") return false;
+  if (typeof binding.physical_key === "string") return Number.isInteger(PhysicalKey[binding.physical_key]);
   if (typeof binding.key === "string") return InputKey[binding.key] !== undefined;
   if (typeof binding.pointer_button === "string") return PointerButton[binding.pointer_button] !== undefined;
   if (typeof binding.gamepad_button === "string") return GamepadButton[binding.gamepad_button] !== undefined;
@@ -62,6 +67,9 @@ export function createBrowserInput({
   ResizeObserver: ResizeObserverImpl = globalThis.ResizeObserver,
   mapCanvas = () => null,
 } = {}) {
+  const extended = createExtendedInput();
+  let textRequested = false;
+  let textElement = null;
   const down = new Array(10).fill(false);
   const heldCodes = new Set();
   const pressed = new Array(10).fill(false);
@@ -98,6 +106,8 @@ export function createBrowserInput({
   }
 
   function releaseAll() {
+    extended.releaseAll();
+    extended.setActive(false);
     heldCodes.clear();
     for (let index = 0; index < down.length; index += 1) setKey(index, false);
     for (let index = 0; index < pointerDown.length; index += 1) setPointerButton(index, false);
@@ -153,6 +163,7 @@ export function createBrowserInput({
   }
 
   function beginFrame() {
+    extended.clearTransient();
     pressed.fill(false);
     released.fill(false);
     pointerPressed.fill(false);
@@ -171,16 +182,23 @@ export function createBrowserInput({
   function snapshot() {
     updateGamepads();
     const pads = [...gamepads.values()].sort((a, b) => a.id - b.id);
-    return {down: [...down], pressed: [...pressed], released: [...released], pointerDown: [...pointerDown], pointerPressed: [...pointerPressed], pointerReleased: [...pointerReleased], pointer: {...pointer}, gamepads: pads.map((gamepad) => ({id: gamepad.id, buttons: [...gamepad.buttons], pressed: [...gamepad.pressed], released: [...gamepad.released], axes: [...gamepad.axes], previousAxes: [...gamepad.previousAxes]})), focused, visible, resizeEpoch, framebufferWidth: canvas?.width ?? 0, framebufferHeight: canvas?.height ?? 0};
+    return {extended: extended.snapshot(), down: [...down], pressed: [...pressed], released: [...released], pointerDown: [...pointerDown], pointerPressed: [...pointerPressed], pointerReleased: [...pointerReleased], pointer: {...pointer}, gamepads: pads.map((gamepad) => ({id: gamepad.id, buttons: [...gamepad.buttons], pressed: [...gamepad.pressed], released: [...gamepad.released], axes: [...gamepad.axes], previousAxes: [...gamepad.previousAxes]})), focused, visible, resizeEpoch, framebufferWidth: canvas?.width ?? 0, framebufferHeight: canvas?.height ?? 0};
   }
 
   function write(destination, capacity, memory) {
     if (!Number.isInteger(destination) || !Number.isInteger(capacity) || destination < 0 || capacity < InputAbi.byteLength || destination > memory.buffer.byteLength - InputAbi.byteLength) return capacity < InputAbi.byteLength ? InputAbi.byteLength : 0;
+    const request = new DataView(memory.buffer, destination, InputAbi.byteLength);
+    const v2 = capacity >= InputAbiV2.byteLength && request.getUint32(0, true) === InputAbiV2.request;
+    const byteLength = v2 ? InputAbiV2.byteLength : InputAbi.byteLength;
+    if (destination > memory.buffer.byteLength - byteLength) return 0;
+    const view = new DataView(memory.buffer, destination, byteLength);
+    if (v2) {
+      setTextInput((view.getUint32(4, true) & 1) !== 0);
+    }
     const state = snapshot();
-    const bytes = new Uint8Array(memory.buffer, destination, InputAbi.byteLength);
+    const bytes = new Uint8Array(memory.buffer, destination, byteLength);
     bytes.fill(0);
-    const view = new DataView(memory.buffer, destination, InputAbi.byteLength);
-    view.setUint32(0, InputAbi.version, true);
+    view.setUint32(0, byteLength === InputAbiV2.byteLength ? 2 : 1, true);
     view.setUint32(4, (state.focused ? 1 : 0) | (state.visible ? 2 : 0) | (Number.isFinite(state.pointer.canvasX) ? 4 : 0), true);
     view.setUint32(8, state.resizeEpoch, true);
     view.setUint32(12, state.framebufferWidth, true);
@@ -212,8 +230,9 @@ export function createBrowserInput({
       for (let axis = 0; axis < 6; axis += 1) view.setFloat32(offset + 20 + axis * 4, gamepad.axes[axis], true);
       for (let axis = 0; axis < 6; axis += 1) view.setFloat32(offset + 44 + axis * 4, gamepad.previousAxes[axis], true);
     }
+    if (byteLength === InputAbiV2.byteLength) view.setUint16(376, extended.encode(view, 378), true);
     beginFrame();
-    return InputAbi.byteLength;
+    return byteLength;
   }
 
   function actionValues() {
@@ -236,9 +255,64 @@ export function createBrowserInput({
     resizeEpoch += 1;
   }
 
+  function ensureTextElement() {
+    if (textElement || !documentRef?.createElement) return;
+    textElement = documentRef.createElement("textarea");
+    textElement.setAttribute("aria-label", "Game text input");
+    textElement.setAttribute("autocomplete", "off");
+    textElement.setAttribute("autocapitalize", "off");
+    textElement.spellcheck = false;
+    textElement.tabIndex = -1;
+    const rect = canvas?.getBoundingClientRect?.();
+    Object.assign(textElement.style, {position: "fixed", left: `${Math.max(0, rect?.left ?? 0)}px`, top: `${Math.max(0, rect?.top ?? 0)}px`, width: "1px", height: "1px", opacity: "0", padding: "0", border: "0"});
+    (canvas?.parentElement ?? documentRef.body).appendChild(textElement);
+    listen(textElement, "compositionstart", () => { if (extended.active) extended.start(); });
+    listen(textElement, "compositionupdate", (event) => { if (extended.active) extended.composition(event.data ?? ""); });
+    listen(textElement, "compositionend", (event) => {
+      if (!extended.active || !extended.composing) return;
+      if (event.data) {
+        extended.end();
+        extended.commit(textElement.value || event.data);
+      } else extended.cancel();
+      // Some browsers send the final input before compositionend, others
+      // after it. Consume DOM value once; a later notification with an empty
+      // edit buffer must not reinsert the composition's text.
+      textElement.value = "";
+    });
+    listen(textElement, "input", (event) => {
+      if (!extended.active || event.isComposing || event.inputType === "insertCompositionText") return;
+      if (event.inputType?.startsWith("delete")) { textElement.value = ""; return; }
+      extended.end();
+      const text = textElement.value;
+      if (text) extended.commit(text);
+      textElement.value = "";
+    });
+    listen(textElement, "blur", (event) => {
+      if (event.relatedTarget === canvas && !textRequested) return;
+      focused = false;
+      releaseAll();
+    });
+  }
+
+  function setTextInput(enabled) {
+    textRequested = Boolean(enabled);
+    const active = textRequested && focused && visible;
+    if (active === extended.active) return;
+    if (active) {
+      ensureTextElement();
+      if (!textElement) return;
+      extended.setActive(true);
+      textElement.value = "";
+      textElement.focus({preventScroll: true});
+    } else {
+      extended.setActive(false);
+      if (!textRequested && focused && visible && documentRef?.activeElement === textElement) canvas?.focus?.({preventScroll: true});
+    }
+  }
+
   if (canvas && canvas.tabIndex < 0) canvas.tabIndex = 0;
-  listen(canvas, "focus", () => { focused = true; });
-  listen(canvas, "blur", () => { focused = false; releaseAll(); });
+  listen(canvas, "focus", () => { focused = true; setTextInput(textRequested); });
+  listen(canvas, "blur", (event) => { if (event.relatedTarget === textElement) return; focused = false; releaseAll(); });
   listen(canvas, "pointerdown", (event) => {
     canvas.focus?.({preventScroll: true});
     focused = true;
@@ -267,26 +341,38 @@ export function createBrowserInput({
   });
   listen(windowRef, "keydown", (event) => {
     if (!focused) return;
+    extended.setKey(codeToPhysicalKey.get(event.code), true, event.repeat ?? false);
     const key = codeToKey.get(event.code);
-    if (key === undefined) return;
-    heldCodes.add(event.code);
-    setKey(key, true);
-    if (event.code !== "Tab") event.preventDefault?.();
+    if (key !== undefined) { heldCodes.add(event.code); setKey(key, true); }
+    if ((event.code === "Escape" || event.code === "Tab") && extended.active) { extended.cancel(); if (textElement) textElement.value = ""; }
+    if (!extended.active && event.code !== "Tab" && (key !== undefined || codeToPhysicalKey.has(event.code))) event.preventDefault?.();
   });
   listen(windowRef, "keyup", (event) => {
+    extended.setKey(codeToPhysicalKey.get(event.code), false);
     const key = codeToKey.get(event.code);
-    if (key === undefined) return;
-    heldCodes.delete(event.code);
-    setKey(key, [...heldCodes].some((code) => codeToKey.get(code) === key));
-    if (focused && event.code !== "Tab") event.preventDefault?.();
+    if (key !== undefined) {
+      heldCodes.delete(event.code);
+      setKey(key, [...heldCodes].some((code) => codeToKey.get(code) === key));
+    }
+    if (focused && !extended.active && event.code !== "Tab" && (key !== undefined || codeToPhysicalKey.has(event.code))) event.preventDefault?.();
   });
   listen(windowRef, "blur", () => { focused = false; releaseAll(); });
+  // Cancel before a user-initiated focus transfer; otherwise the browser may
+  // commit preedit as its default pointer action before textarea blur fires.
+  listen(documentRef, "pointerdown", (event) => {
+    if (extended.active && event.target !== textElement && event.target !== canvas) {
+      extended.cancel();
+      if (textElement) textElement.value = "";
+    }
+  }, true);
+  listen(windowRef, "focus", () => { focused = documentRef?.activeElement === canvas || documentRef?.activeElement === textElement; setTextInput(textRequested); });
   listen(windowRef, "resize", resize);
   listen(windowRef, "gamepadconnected", updateGamepads);
   listen(windowRef, "gamepaddisconnected", updateGamepads);
   listen(documentRef, "visibilitychange", () => {
     visible = documentRef.visibilityState !== "hidden";
     if (!visible) releaseAll();
+    else setTextInput(textRequested);
   });
   if (ResizeObserverImpl && canvas) {
     observer = new ResizeObserverImpl(resize);
@@ -301,10 +387,13 @@ export function createBrowserInput({
     read: write,
     snapshot,
     setActions,
+    setTextInput,
     actionValues,
     resize,
     teardown: () => {
       for (const [target, type, callback, options] of listeners) target?.removeEventListener?.(type, callback, options);
+      textElement?.remove?.();
+      textElement = null;
       observer?.disconnect?.();
       observer = null;
     },

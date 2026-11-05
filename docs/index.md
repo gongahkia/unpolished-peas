@@ -14,8 +14,9 @@ with the smallest complete project, then add only the concepts your game needs.
 
 ## 2. Build a small game
 
-- [Input and ActionMap](guides/input.md)
+- [Input and ActionMap](guides/input.md) — normalized/physical keys, rebinding, Unicode text and composition
 - [Authored images and fonts](guides/image-assets.md)
+- [Compiled portable asset recipes](guides/asset-recipes.md) — one owner for images, fonts and sheets, plus sound/save recipes
 - [Deterministic sprite-frame animation](guides/sprite-animation.md)
 - [Sound effects and music](guides/audio-assets.md)
 - [Small save data](guides/save-data.md)

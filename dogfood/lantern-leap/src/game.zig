@@ -45,7 +45,7 @@ const Player = struct {
 /// values. Peas supplies deterministic input, rendering, assets and hosts;
 /// gravity, collision, checkpoints, and level rules stay game owned.
 pub const Game = struct {
-    allocator: ?std.mem.Allocator = null,
+    assets: ?up.assets.AssetCollection = null,
     actions: ?up.input.ActionMap = null,
     surface: ?up.graphics.RenderSurface = null,
     atlas: ?*up.assets.Atlas = null,
@@ -66,25 +66,20 @@ pub const Game = struct {
     background_music: ?up.core.Audio.MusicHandle = null,
 
     pub fn init(self: *Game, ctx: *up.core.GameContext) !void {
-        self.allocator = try ctx.requireAllocator();
+        const allocator = try ctx.requireAllocator();
+        self.assets = up.assets.AssetCollection.init(allocator);
         errdefer self.deinit(ctx) catch {};
-        self.actions = try up.input.ActionMap.init(self.allocator.?, &controls);
-        self.surface = try up.graphics.RenderSurface.init(self.allocator.?, surface_width, surface_height);
+        self.actions = try up.input.ActionMap.init(allocator, &controls);
+        self.surface = try up.graphics.RenderSurface.init(allocator, surface_width, surface_height);
 
-        const image = try up.assets.Image.decode(self.allocator.?, art.sprite_sheet_png, .{});
-        const atlas = try self.allocator.?.create(up.assets.Atlas);
-        errdefer self.allocator.?.destroy(atlas);
-        atlas.* = try up.assets.Atlas.init(self.allocator.?, image, "lantern-leap.png", &art.frames, &.{});
+        const atlas = try self.assets.?.atlas(art.sprite_sheet_png, &art.frames, .{ .image_path = "lantern-leap.png" });
         self.atlas = atlas;
         try art.player_idle_clip.validateForAtlas(atlas);
         try art.player_run_clip.validateForAtlas(atlas);
         try art.player_jump_clip.validateForAtlas(atlas);
         self.player_animation = try up.graphics.SpriteAnimationPlayer.init(&art.player_idle_clip);
 
-        const font = try self.allocator.?.create(up.assets.Font);
-        errdefer self.allocator.?.destroy(font);
-        font.* = try up.assets.Font.decodeTrueType(self.allocator.?, art.ui_font_ttf, .{ .pixel_height = 8, .atlas_width = 128, .atlas_height = 128 });
-        self.font = font;
+        self.font = try self.assets.?.font(art.ui_font_ttf, .{ .pixel_height = 8, .atlas_width = 128, .atlas_height = 128 });
 
         self.loadProgress(ctx);
         self.resetRun();
@@ -103,21 +98,14 @@ pub const Game = struct {
             self.actions = null;
         }
         self.player_animation = null;
-        if (self.atlas) |atlas| {
-            atlas.deinit();
-            if (self.allocator) |allocator| allocator.destroy(atlas);
-            self.atlas = null;
-        }
-        if (self.font) |font| {
-            font.deinit();
-            if (self.allocator) |allocator| allocator.destroy(font);
-            self.font = null;
-        }
+        if (self.assets) |*assets| assets.deinit();
+        self.assets = null;
+        self.atlas = null;
+        self.font = null;
         if (self.surface) |*surface| {
             surface.deinit();
             self.surface = null;
         }
-        self.allocator = null;
     }
 
     pub fn update(self: *Game, ctx: *up.core.GameContext, elapsed_seconds: f32) !void {

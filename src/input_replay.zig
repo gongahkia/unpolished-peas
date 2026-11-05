@@ -20,6 +20,8 @@ pub const Reproduction = struct {
     hash: u64,
 };
 
+const magic_v5 = "UPR5";
+const header_bytes_v5: usize = 32;
 const magic_v2 = "UPR2";
 const magic_v3 = "UPR3";
 const magic_v4 = "UPR4";
@@ -39,7 +41,7 @@ pub const Replay = struct { // owns parsed frame storage returned by parse; call
     /// supports only `DeterministicRng.algorithm`.
     rng_algorithm: ?rng.Algorithm = null,
     /// Optional owned build identity and initial saves, captured before init.
-    /// Only session recordings carry this UPR4 metadata.
+    /// Only session recordings carry this UPR4/UPR5 metadata.
     environment: ?Environment = null,
 
     pub fn deinit(self: *Replay, allocator: std.mem.Allocator) void {
@@ -63,9 +65,12 @@ pub const Replay = struct { // owns parsed frame storage returned by parse; call
     /// Produces fixed-width, little-endian replay data. Seedless replays emit
     /// UPR2; seed-bearing replays emit UPR3 with an explicit algorithm ID and
     /// seed. Session recordings emit UPR4 with initial saves and identity.
-    /// All earlier formats remain readable through `parse`.
+    /// Physical/text extension data selects UPR5 with optional seed/session
+    /// metadata and length-delimited extensions. All earlier formats remain
+    /// readable through `parse`; normalized-only output is unchanged.
     pub fn encode(self: Replay, allocator: std.mem.Allocator) ![]u8 {
         try validateReplay(self);
+        if (hasExtended(self)) return encodeV5(self, allocator);
         const seeded = self.simulation_seed != null;
         const environment_bytes = if (self.environment) |environment| try environment.encode(allocator) else null;
         defer if (environment_bytes) |bytes| allocator.free(bytes);
@@ -108,7 +113,7 @@ pub const Recorder = struct { // owns recorded frames until finish transfers the
     }
 
     /// Records input for a run initialized with Peas's current deterministic
-    /// RNG contract. The resulting UPR3 replay carries this seed explicitly.
+    /// RNG contract. The resulting UPR3/UPR5 replay carries this seed explicitly.
     pub fn initSeeded(allocator: std.mem.Allocator, fixed_hz: u32, simulation_seed: u64) !Recorder {
         var result = try init(allocator, fixed_hz);
         result.simulation_seed = simulation_seed;
@@ -156,6 +161,7 @@ pub const Recorder = struct { // owns recorded frames until finish transfers the
 /// UPR1 run-length text fixtures. UPR1 carries only held action keys; its
 /// edges are reconstructed from successive held states.
 pub fn parse(allocator: std.mem.Allocator, source: []const u8) !Replay {
+    if (source.len >= 4 and std.mem.eql(u8, source[0..4], magic_v5)) return parseV5(allocator, source);
     if (source.len >= magic_v4.len and std.mem.eql(u8, source[0..magic_v4.len], magic_v4)) return parseSeeded(allocator, source, true);
     if (source.len >= magic_v3.len and std.mem.eql(u8, source[0..magic_v3.len], magic_v3)) return parseSeeded(allocator, source, false);
     if (source.len >= magic_v2.len and std.mem.eql(u8, source[0..magic_v2.len], magic_v2)) return parseV2(allocator, source);
@@ -168,6 +174,8 @@ pub fn reproduce(replay: Replay) !Reproduction {
     var updates: u64 = 0;
     var hash = std.hash.Fnv1a_64.init();
     hash.update(std.mem.asBytes(&replay.fixed_hz));
+    const extended = hasExtended(replay);
+    if (extended) hash.update("UPI2");
     for (replay.frames, 0..) |_, index| {
         try replay.applyFrame(index, &input);
         const steps = clock.push(clock.step_seconds);
@@ -176,10 +184,84 @@ pub fn reproduce(replay: Replay) !Reproduction {
                 const key: Key = @enumFromInt(field.value);
                 hash.update(&.{@intFromBool(input.isDown(key))});
             }
+            if (extended) {
+                var bytes: [Input.Extended.max_wire_bytes]u8 = undefined;
+                const len = try input.extended.encode(&bytes);
+                hash.update(bytes[0..len]);
+            }
             updates += 1;
         }
     }
     return .{ .frames = replay.frames.len, .fixed_hz = replay.fixed_hz, .updates = updates, .hash = hash.final() };
+}
+
+fn hasExtended(replay: Replay) bool {
+    for (replay.frames) |*frame| if (!frame.extended.isEmpty()) return true;
+    return false;
+}
+
+fn encodeV5(replay: Replay, allocator: std.mem.Allocator) ![]u8 {
+    const environment = if (replay.environment) |value| try value.encode(allocator) else null;
+    defer if (environment) |bytes| allocator.free(bytes);
+    const environment_len = if (environment) |bytes| bytes.len else 0;
+    var size: usize = header_bytes_v5 + environment_len;
+    for (replay.frames) |*frame| size += encoded_frame_bytes + 2 + frame.extended.encodedSize();
+    const output = try allocator.alloc(u8, size);
+    errdefer allocator.free(output);
+    @memcpy(output[0..4], magic_v5);
+    std.mem.writeInt(u32, output[4..8], replay.fixed_hz, .little);
+    std.mem.writeInt(u32, output[8..12], @as(u32, @intFromBool(replay.simulation_seed != null)) | (if (environment != null) @as(u32, 2) else 0), .little);
+    std.mem.writeInt(u32, output[12..16], if (replay.rng_algorithm) |algorithm| @intFromEnum(algorithm) else 0, .little);
+    std.mem.writeInt(u64, output[16..24], replay.simulation_seed orelse 0, .little);
+    std.mem.writeInt(u32, output[24..28], @intCast(replay.frames.len), .little);
+    std.mem.writeInt(u32, output[28..32], @intCast(environment_len), .little);
+    if (environment) |bytes| @memcpy(output[header_bytes_v5..][0..bytes.len], bytes);
+    var writer = ByteWriter{ .bytes = output[header_bytes_v5 + environment_len ..] };
+    for (replay.frames) |*frame| {
+        try writer.frame(frame.*);
+        const len = frame.extended.encodedSize();
+        try writer.writeU16(@intCast(len));
+        _ = try frame.extended.encode(writer.bytes[writer.index..][0..len]);
+        writer.index += len;
+    }
+    return output;
+}
+
+fn parseV5(allocator: std.mem.Allocator, source: []const u8) !Replay {
+    if (source.len < header_bytes_v5) return error.InvalidReplay;
+    const hz = std.mem.readInt(u32, source[4..8], .little);
+    const flags = std.mem.readInt(u32, source[8..12], .little);
+    const algorithm_id = std.mem.readInt(u32, source[12..16], .little);
+    const seed = std.mem.readInt(u64, source[16..24], .little);
+    const count = std.mem.readInt(u32, source[24..28], .little);
+    const environment_len = std.mem.readInt(u32, source[28..32], .little);
+    if (hz == 0 or flags > 3 or flags == 2 or count == 0 or count > max_frames) return error.InvalidReplay;
+    if ((flags & 1) == 0 and (algorithm_id != 0 or seed != 0)) return error.InvalidReplay;
+    if ((flags & 1) != 0 and algorithm_id != @intFromEnum(rng.DeterministicRng.algorithm)) return error.UnsupportedReplayRng;
+    if ((flags & 2) == 0 and environment_len != 0) return error.InvalidReplay;
+    if (environment_len > Replay.Environment.max_encoded_bytes) return error.ReplayEnvironmentTooLarge;
+    if (source.len < header_bytes_v5 + @as(usize, environment_len) + @as(usize, count) * (encoded_frame_bytes + 2 + Input.Extended.wire_header_bytes)) return error.InvalidReplay;
+    var environment = if ((flags & 2) != 0) try Replay.Environment.parse(allocator, source[header_bytes_v5..][0..environment_len]) else null;
+    errdefer if (environment) |*value| value.deinit(allocator);
+    const frames = try allocator.alloc(Frame, count);
+    errdefer allocator.free(frames);
+    var reader = ByteReader{ .bytes = source[header_bytes_v5 + environment_len ..] };
+    for (frames) |*frame| {
+        frame.* = try reader.frame();
+        const len = try reader.readU16();
+        if (len > reader.bytes.len - reader.index) return error.InvalidReplay;
+        frame.extended = Input.Extended.decode(reader.bytes[reader.index..][0..len]) catch return error.InvalidReplay;
+        reader.index += len;
+        if (!frame.isFinite()) return error.InvalidReplay;
+    }
+    if (reader.index != reader.bytes.len) return error.InvalidReplay;
+    return .{
+        .fixed_hz = hz,
+        .frames = frames,
+        .simulation_seed = if ((flags & 1) != 0) seed else null,
+        .rng_algorithm = if ((flags & 1) != 0) rng.DeterministicRng.algorithm else null,
+        .environment = environment,
+    };
 }
 
 fn parseV2(allocator: std.mem.Allocator, source: []const u8) !Replay {
@@ -468,6 +550,41 @@ fn allZero(values: []const f32) bool {
     return true;
 }
 
+test "UPR5 round trips physical text composition and optional seed metadata" {
+    inline for (.{ false, true }) |seeded| {
+        var recorder = if (seeded) try Recorder.initSeeded(std.testing.allocator, 60, 42) else try Recorder.init(std.testing.allocator, 60);
+        defer recorder.deinit();
+        var input = Input{};
+        input.setPhysical(.q, true, false);
+        input.setTextInputActive(true);
+        try input.updateComposition("你好", 1, 1);
+        try recorder.record(input);
+        input.beginFrame();
+        input.extended.endComposition();
+        try input.commitText("你好");
+        input.setPhysical(.q, false, false);
+        try recorder.record(input);
+        var replay = try recorder.finish();
+        defer replay.deinit(std.testing.allocator);
+        const encoded = try replay.encode(std.testing.allocator);
+        defer std.testing.allocator.free(encoded);
+        try std.testing.expectEqualStrings("UPR5", encoded[0..4]);
+        var decoded = try parse(std.testing.allocator, encoded);
+        defer decoded.deinit(std.testing.allocator);
+        try std.testing.expectEqualDeep(replay.frames, decoded.frames);
+        try std.testing.expectEqual(replay.simulation_seed, decoded.simulation_seed);
+        try std.testing.expectEqual((try reproduce(replay)).hash, (try reproduce(decoded)).hash);
+        try std.testing.expectError(error.InvalidReplay, parse(std.testing.allocator, encoded[0 .. encoded.len - 1]));
+        const extra = try std.mem.concat(std.testing.allocator, u8, &.{ encoded, "x" });
+        defer std.testing.allocator.free(extra);
+        try std.testing.expectError(error.InvalidReplay, parse(std.testing.allocator, extra));
+        // The encoded extension starts after the unchanged legacy frame.
+        const extension = header_bytes_v5 + encoded_frame_bytes + 2;
+        encoded[extension + 99] = 33;
+        try std.testing.expectError(error.InvalidReplay, parse(std.testing.allocator, encoded));
+    }
+}
+
 test "replay expands legacy deterministic run-length input" {
     var replay = try parse(std.testing.allocator, "UPR1 60\n2 1\n1 4\n");
     defer replay.deinit(std.testing.allocator);
@@ -672,6 +789,32 @@ fn sessionRoundTrip(allocator: std.mem.Allocator) !void {
 test "session replay round trips identity and selected initial saves without leaks" {
     try sessionRoundTrip(std.testing.allocator);
     try std.testing.checkAllAllocationFailures(std.testing.allocator, sessionRoundTrip, .{});
+}
+
+test "UPR5 retains session environment and validates its optional header fields" {
+    const allocator = std.testing.allocator;
+    var recorder = try Recorder.initSession(allocator, 60, 42, .{
+        .identity = .{ .game = "input-game", .build = "build", .assets = "font" },
+    });
+    defer recorder.deinit();
+    var input = Input{};
+    input.setTextInputActive(true);
+    try input.commitText("Zoë");
+    try recorder.record(input);
+    var replay = try recorder.finish();
+    defer replay.deinit(allocator);
+    const bytes = try replay.encode(allocator);
+    defer allocator.free(bytes);
+    try std.testing.expectEqualStrings("UPR5", bytes[0..4]);
+    try std.testing.expectEqual(@as(u32, 3), std.mem.readInt(u32, bytes[8..12], .little));
+    var decoded = try parse(allocator, bytes);
+    defer decoded.deinit(allocator);
+    try std.testing.expectEqualDeep(replay, decoded);
+    std.mem.writeInt(u32, bytes[8..12], 2, .little);
+    try std.testing.expectError(error.InvalidReplay, parse(allocator, bytes));
+    std.mem.writeInt(u32, bytes[8..12], 3, .little);
+    std.mem.writeInt(u32, bytes[12..16], 99, .little);
+    try std.testing.expectError(error.UnsupportedReplayRng, parse(allocator, bytes));
 }
 
 test "session replay rejects incomplete and unbounded environment data" {

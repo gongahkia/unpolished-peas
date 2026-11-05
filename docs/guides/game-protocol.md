@@ -51,8 +51,13 @@ draw:    borrow them to draw
 deinit:  release them in reverse dependency order
 ```
 
-For example, deinitialize an `Atlas` before its `Image`, and release a `Font`
-or `RenderSurface` when the game exits. A game with no owned allocation, such
+An `Atlas` owns its sheet Image and releases it itself. Release a separately
+owned `Font` or `RenderSurface` when the game exits. For related embedded
+images/fonts/sheets, an optional game-owned
+[`AssetCollection`](asset-recipes.md) provides stable borrowed resources and
+one cleanup call, including a single error cleanup for partial initialization.
+Native wrappers must forward an optional game `deinit`; the generated starter
+does so. A game with no owned allocation, such
 as the first tutorial source, does not need `deinit`. The authored
 [image/font guide](image-assets.md) and [RenderSurface guide](render-surfaces.md)
 show concrete owned values; Neon Siege is the larger reference.

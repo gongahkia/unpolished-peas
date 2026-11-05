@@ -188,6 +188,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
         allocator: std.mem.Allocator,
         canvas: Canvas,
         input: Input = .{},
+        text_input: Input.TextInput = .{},
         context: app.GameContext = undefined,
         game: Game = .{},
         protocol: app.GameProtocol(Game) = undefined,
@@ -258,6 +259,7 @@ pub fn HeadlessGameRunner(comptime Game: type) type {
             self.canvas.attachTrace(&self.trace);
             self.context = .withRuntime(&self.input, &self.canvas);
             self.context.allocator = allocator;
+            self.context.text_input = &self.text_input;
             self.context.simulation_seed = simulation_seed;
             self.context.save_data = self.save_data;
             self.context.audio = &self.audio;

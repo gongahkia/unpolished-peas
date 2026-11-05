@@ -17,6 +17,7 @@ var frame_token: u32 = 0;
 var game: protocol_game.Game = .{};
 var input: up.input.Input = .{};
 var platform_input: up.input.Input = .{};
+var text_input: up.input.Input.TextInput = .{};
 var tick_input = TickBuffer{};
 var input_bytes: [browser_input.abi_bytes]u8 align(4) = undefined;
 var game_context: up.core.GameContext = undefined;
@@ -91,11 +92,13 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     game_audio_ready = true;
     input = .{};
     platform_input = .{};
+    text_input = .{};
     tick_input.reset();
     game = .{};
     save_data.init();
     game_context = .withRenderer(&input, &game_canvas, &renderer);
     game_context.allocator = runtime_allocator;
+    game_context.text_input = &text_input;
     game_context.audio = &game_audio;
     if (browser_save_data_enabled) game_context.save_data = save_data.capability();
     protocol = .bind(&game);
@@ -255,10 +258,12 @@ fn elapsedSeconds(timestamp_ms: f64) f32 {
 
 fn syncInput() void {
     platform_input.beginFrame();
-    if (contract.pollInput() >= browser_input.abi_bytes) {
+    if (contract.pollInput() >= browser_input.legacy_bytes) {
+        std.mem.writeInt(u32, input_bytes[0..4], browser_input.request_marker, .little);
+        std.mem.writeInt(u32, input_bytes[4..8], @intFromBool(text_input.enabled), .little);
         const written = contract.readInput(@intCast(@intFromPtr(&input_bytes)), browser_input.abi_bytes);
-        if (written == browser_input.abi_bytes) {
-            const snapshot = browser_input.decode(&input_bytes) catch null;
+        if (written == browser_input.abi_bytes or written == browser_input.legacy_bytes) {
+            const snapshot = browser_input.decode(input_bytes[0..written]) catch null;
             if (snapshot) |value| value.apply(&platform_input);
         }
     }

@@ -26,6 +26,7 @@ Leap and are part of the current game-facing baseline:
 
 | Surface | Classification | Contract decision |
 | --- | --- | --- |
+| `assets.AssetCollection`, `assets.Atlas.decode` | SUPPORTED PUBLIC API ADDITION | Optional explicit ownership for embedded images, authored fonts and sheets. Both reference games use it; resource pointers remain stable and audio ownership stays with the host. See [asset recipes](asset-recipes.md). |
 | `graphics.SpriteAnimationStep`, `SpriteAnimationMode`, `SpriteAnimationClip`, `SpriteAnimationPlayer` | SUPPORTED PUBLIC API | Supported as deterministic, game-owned sprite-frame selection. Clips borrow static step data; players have value semantics and advance in fixed updates only. |
 | `core.Audio.MusicHandle`, `MusicFormat`, `MusicLoadOptions`, `MusicPlayOptions`, `MusicState`, `loadMusic`, `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic`, `setMusicVolume` | SUPPORTED PUBLIC API | Supported as one high-level, bounded incremental music stream that coexists with SFX. OGG/Vorbis is the default; WAV is explicit. |
 | `core.Audio.MusicDiagnostics` and `musicDiagnostics` | DEVELOPER OBSERVATION | Useful to diagnostics, but not gameplay control or a telemetry schema. Its fields remain non-versioned observation data until a future audit promotes them. |

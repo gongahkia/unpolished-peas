@@ -30,6 +30,10 @@ pub const Game = struct {
     pub fn draw(self: *Game, ctx: *up.core.GameContext) !void {
         try self.state.draw(ctx);
     }
+
+    pub fn deinit(self: *Game, ctx: *up.core.GameContext) !void {
+        if (@hasDecl(game.Game, "deinit")) try self.state.deinit(ctx);
+    }
 };
 
 pub fn main() !void {

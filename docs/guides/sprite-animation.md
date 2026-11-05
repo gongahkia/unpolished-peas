@@ -5,6 +5,18 @@ small, game-owned way to select Atlas frames. They are for ordinary sprite
 sheets, not animation graphs, tweening, skeletal animation, or gameplay state
 machines.
 
+Load an embedded sheet once through a game-owned
+[`AssetCollection`](asset-recipes.md):
+
+```zig
+const atlas = try assets.atlas(art.sheet_png, &frames, .{});
+```
+
+The collection owns sheet pixels and frame metadata. Animation clips, player
+state, and frame selection below keep their existing ownership and APIs.
+The [compiled animation recipe](../../examples/asset_recipes.zig) uses a plain
+Canvas; the later `world_canvas` example uses the camera wrapper's position form.
+
 Define immutable frame steps next to the game’s Atlas data. Each `ticks` value
 is a positive count of fixed simulation updates, not seconds or wall-clock
 time:

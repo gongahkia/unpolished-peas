@@ -1,5 +1,16 @@
 # Authored image and font assets
 
+For several related resources, start with the optional, game-owned
+[`AssetCollection` recipes](asset-recipes.md). One collection loads embedded
+images, fonts, and sheets, returns stable borrowed pointers, and releases them
+together. The same game code runs on native, browser, and headless hosts.
+Keeping embedded content under `src/assets/` lets `src/game.zig` use
+`@embedFile("assets/player.png")` with no extra asset module.
+
+The directly owned workflow below remains useful when resources need separate
+lifetimes. If you keep content at the project root instead, it also explains
+the explicit build import required by Zig's module-root boundary.
+
 For a small game that wants one synchronous native-and-browser asset path,
 embed ordinary authored files at compile time and decode them during
 `Game.init`. This avoids filesystem roots, browser fetches, and
@@ -57,10 +68,15 @@ var font = try up.assets.Font.decodeTrueType(allocator, art.ui_ttf, .{
 defer font.deinit();
 ```
 
-Draw the decoded image through the normal Canvas API. If a sprite sheet needs
-named frames, build an `Atlas` from that owned image and deinitialize the Atlas
-before the Image. [Neon Siege](../../dogfood/neon-siege/README.md) is the
-complete compiled Image/Atlas reference. For fixed-step sprite-sheet playback,
+Draw the decoded image through the normal Canvas API. For a separately owned
+sprite sheet with named frames, `Atlas.decode(allocator, bytes, frames, .{})`
+owns the image and metadata and releases all allocations on load failure;
+call only `atlas.deinit()` for that sheet. `Atlas.init` remains available for
+existing ownership-transfer code: it takes ownership of its supplied Image on
+success, so do not also deinitialize that Image. The collection uses the safer
+embedded-byte constructor and handles the lifetime for you.
+[Neon Siege](../../dogfood/neon-siege/src/game.zig) is a complete compiled
+collection/Atlas reference. For fixed-step sprite-sheet playback,
 keep an `AtlasFrameHandle` clip and game-owned player state as described in
 [deterministic sprite-frame animation](sprite-animation.md); Canvas remains
 responsible for drawing the selected frame.
@@ -81,7 +97,8 @@ single-face authored TrueType/OpenType face into a CPU atlas for
 
 Both values own allocator-backed decoded data. The embedded byte slices are
 static and borrowed; decoded `Image` and `Font` values must be deinitialized
-after any `Atlas` or draw use borrowing them has ended. Decode and font
+after any sprite or draw use borrowing them has ended. An Atlas owns its sheet
+Image rather than borrowing a separately owned image. Decode and font
 rasterization belong in initialization or an explicit loading phase, never in
 the update or draw hot path.
 

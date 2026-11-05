@@ -9,6 +9,19 @@ the WebGL 2/WebGPU/CPU-reference pixel comparison. These checks catch browser
 regressions before the nightly matrix. Renderer failure artifacts are retained
 under the checkout even when a test uses a temporary working directory.
 
+`browser-host` also runs `test-browser-input-v2`, passing real host-generated
+input packets through Wasm decoding, fixed-step buffering, the portable input
+workbench, and replay. `browser-rendering` runs
+`script/test_browser_input_workbench.sh` for real Chromium text/IME events,
+focus changes, Unicode commits, and textarea cleanup.
+
+The portable asset recipes and initialization-failure coverage run through
+`test-asset-workbench`. `test-browser-asset-collection` compares the same game's
+pixels and saved bytes natively and in Wasm. The real Chromium job also runs
+`script/test_browser_asset_workbench.sh`; the non-PR downstream job builds that
+game outside the checkout against a verified source archive through
+`test-asset-collection-consumer`.
+
 `stable-core-capability` is the intended required pull-request matrix; `capability-matrix` is its generated-matrix dependency. The matrix is generated from `docs/capabilities/v1.0.json`; it selects only supported desktop SDL GPU rows.
 
 `nightly.yml` consumes the nightly matrix from the same catalog. It runs the documented macOS, Linux, Windows, Chromium, Firefox, and separately forced Safari WebGL2/WebGPU rows, preserving renderer diagnostics and workload artifacts under the matrix identity. Unsupported Firefox WebGPU is absent.

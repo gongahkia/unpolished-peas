@@ -1,5 +1,6 @@
 const std = @import("std");
 const Vec2 = @import("math.zig").Vec2;
+const extended_input = @import("extended_input.zig");
 const keyboard_pointer_fixture = @embedFile("fixtures/input/keyboard-pointer-v1.json");
 
 pub const Key = enum(u8) {
@@ -71,12 +72,19 @@ pub const Pointer = struct {
 };
 
 pub const Input = struct {
+    pub const PhysicalKey = extended_input.PhysicalKey;
+    pub const Extended = extended_input.State;
+    pub const InputEvent = extended_input.Event;
+    pub const EventKind = extended_input.Kind;
+    pub const TextInput = extended_input.TextInput;
+
     /// A complete, normalized view of game-facing input for one simulation tick.
     ///
     /// Runtime hosts apply one snapshot before every fixed update. A snapshot
     /// preserves held state and latched edges independently, because a press
     /// and release may both occur between simulation ticks.
     pub const Snapshot = struct {
+        extended: Extended = .{},
         down: [key_count]bool = .{false} ** key_count,
         pressed: [key_count]bool = .{false} ** key_count,
         released: [key_count]bool = .{false} ** key_count,
@@ -88,6 +96,7 @@ pub const Input = struct {
 
         pub fn fromInput(state: Input) Snapshot {
             return .{
+                .extended = state.extended,
                 .down = state.down,
                 .pressed = state.pressed,
                 .released = state.released,
@@ -100,6 +109,7 @@ pub const Input = struct {
         }
 
         pub fn apply(self: Snapshot, state: *Input) void {
+            state.extended = self.extended;
             state.down = self.down;
             state.pressed = self.pressed;
             state.released = self.released;
@@ -113,6 +123,7 @@ pub const Input = struct {
         /// Clears values that describe a transition or relative motion while
         /// retaining the held state for a following fixed update.
         pub fn clearTransient(self: *Snapshot) void {
+            self.extended.clearTransient();
             @memset(self.pressed[0..], false);
             @memset(self.released[0..], false);
             @memset(self.pointer_pressed[0..], false);
@@ -130,6 +141,7 @@ pub const Input = struct {
         /// state and absolute pointer positions use the newest observation;
         /// edges, pointer movement, and wheel motion accumulate.
         pub fn merge(self: *Snapshot, newer: Snapshot) void {
+            self.extended.merge(newer.extended);
             const previous_pointer = self.pointer;
             const previous_gamepads = self.gamepads;
             self.down = newer.down;
@@ -157,6 +169,7 @@ pub const Input = struct {
         }
 
         pub fn isFinite(self: Snapshot) bool {
+            if (!self.extended.valid()) return false;
             if (!isFiniteVec2(self.pointer.window) or !isFiniteVec2(self.pointer.framebuffer) or !isFiniteVec2(self.pointer.delta) or !isFiniteVec2(self.pointer.wheel)) return false;
             if (self.pointer.canvas) |canvas| if (!isFiniteVec2(canvas)) return false;
             for (self.gamepads) |slot| if (slot) |pad| {
@@ -167,6 +180,7 @@ pub const Input = struct {
         }
     };
 
+    extended: Extended = .{},
     down: [key_count]bool = .{false} ** key_count,
     pressed: [key_count]bool = .{false} ** key_count,
     released: [key_count]bool = .{false} ** key_count,
@@ -185,6 +199,7 @@ pub const Input = struct {
     }
 
     pub fn beginFrame(self: *Input) void {
+        self.extended.clearTransient();
         @memset(self.pressed[0..], false);
         @memset(self.released[0..], false);
         @memset(self.pointer_pressed[0..], false);
@@ -196,6 +211,34 @@ pub const Input = struct {
             @memset(pad.released[0..], false);
             pad.previous_axes = pad.axes;
         };
+    }
+
+    pub fn setPhysical(self: *Input, key: PhysicalKey, down: bool, repeat: bool) void {
+        self.extended.setKey(key, down, repeat);
+    }
+
+    pub fn physicalIsDown(self: Input, key: PhysicalKey) bool {
+        return self.extended.down[@intFromEnum(key)];
+    }
+
+    pub fn physicalWasPressed(self: Input, key: PhysicalKey) bool {
+        return self.extended.pressed[@intFromEnum(key)];
+    }
+
+    pub fn physicalWasReleased(self: Input, key: PhysicalKey) bool {
+        return self.extended.released[@intFromEnum(key)];
+    }
+
+    pub fn setTextInputActive(self: *Input, active: bool) void {
+        self.extended.setActive(active);
+    }
+
+    pub fn commitText(self: *Input, text: []const u8) !void {
+        try self.extended.commit(text);
+    }
+
+    pub fn updateComposition(self: *Input, text: []const u8, start: i16, length: i16) !void {
+        try self.extended.composition(text, start, length);
     }
 
     pub fn set(self: *Input, key: Key, is_down: bool) void {
@@ -240,6 +283,7 @@ pub const Input = struct {
     }
 
     pub fn releaseAll(self: *Input) void {
+        self.extended.releaseAll();
         for (self.down, 0..) |is_down, index| if (is_down) self.set(@enumFromInt(@as(u8, @intCast(index))), false);
         for (self.pointer_down, 0..) |is_down, index| if (is_down) self.setPointerButton(@enumFromInt(@as(u8, @intCast(index))), false);
         for (&self.gamepads) |*slot| if (slot.*) |*pad| {
@@ -301,6 +345,55 @@ pub const Input = struct {
 
 fn isFiniteVec2(value: Vec2) bool {
     return std.math.isFinite(value.x) and std.math.isFinite(value.y);
+}
+
+test "physical keys preserve ordering repeats Unicode and catch-up semantics" {
+    var platform = Input{};
+    var pending = Input.Snapshot{};
+    platform.setPhysical(.q, true, false);
+    platform.setPhysical(.q, true, true);
+    platform.setTextInputActive(true);
+    try platform.updateComposition("你好", 1, 1);
+    pending.merge(platform.snapshot());
+    platform.beginFrame();
+    platform.extended.endComposition();
+    try platform.commitText("你好");
+    platform.setPhysical(.q, false, false);
+    platform.setPhysical(.digit_2, true, false);
+    pending.merge(platform.snapshot());
+    try std.testing.expect(pending.extended.valid());
+    const events = pending.extended.eventSlice();
+    try std.testing.expectEqual(Input.EventKind.key_down, events[0].kind);
+    try std.testing.expect(events[1].repeat);
+    try std.testing.expectEqual(Input.EventKind.composition_end, events[5].kind);
+    try std.testing.expectEqualStrings("你好", pending.extended.eventText(events[6]));
+    var simulation = Input{};
+    pending.apply(&simulation);
+    try std.testing.expect(simulation.physicalWasPressed(.q));
+    try std.testing.expect(simulation.physicalWasReleased(.q));
+    try std.testing.expect(simulation.physicalIsDown(.digit_2));
+    pending.clearTransient();
+    pending.apply(&simulation);
+    try std.testing.expectEqual(@as(usize, 0), simulation.extended.eventSlice().len);
+    try std.testing.expect(!simulation.physicalWasPressed(.q));
+    try std.testing.expect(simulation.physicalIsDown(.digit_2));
+    simulation.releaseAll();
+    try std.testing.expect(simulation.physicalWasReleased(.digit_2));
+}
+
+test "text deactivation and focus loss cancel preedit without committing it" {
+    var state = Input{};
+    state.setTextInputActive(true);
+    try state.updateComposition("é", 1, 0);
+    state.beginFrame();
+    state.releaseAll();
+    try std.testing.expectEqual(Input.EventKind.composition_cancel, state.extended.events[0].kind);
+    try std.testing.expect(!state.extended.composing);
+    try std.testing.expectEqual(@as(u16, 0), state.extended.text_len);
+    try state.updateComposition("a", -1, -1);
+    state.setTextInputActive(false);
+    try std.testing.expectEqual(Input.EventKind.text_stopped, state.extended.events[state.extended.event_count - 1].kind);
+    try std.testing.expectError(error.TextInputInactive, state.commitText("ignored"));
 }
 
 test "input edges" {
