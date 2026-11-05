@@ -680,6 +680,10 @@ pub fn build(b: *std.Build) void {
     b.step("test-browser-asset-collection", "Compare the same asset game pixels and saves natively and in browser Wasm").dependOn(&asset_probe_compare.step);
     const asset_consumer = b.addSystemCommand(&.{ "python3", "-B", "script/test_asset_collection_consumer.py" });
     b.step("test-asset-collection-consumer", "Build the asset example outside the checkout against a verified archive").dependOn(&asset_consumer.step);
+    const portable_conformance = b.addSystemCommand(&.{ "python3", "-B", "script/test_portable_conformance.py" });
+    b.step("test-portable-conformance", "Verify an archived downstream game across native browser and headless hosts").dependOn(&portable_conformance.step);
+    const starter_persistence = b.addSystemCommand(&.{"script/test_starter_persistence.sh"});
+    b.step("test-starter-persistence", "Earn and reload a best score in an untouched generated browser starter").dependOn(&starter_persistence.step);
     const asset_workbench_browser_game = b.createModule(.{
         .root_source_file = b.path("examples/asset_workbench_game.zig"),
         .target = browser_target,

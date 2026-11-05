@@ -85,6 +85,13 @@ Native focus loss releases every held key, pointer button, and gamepad button; n
 
 ## Physical keys and rebinding
 
+Owned ActionMaps retain digital press/release edges even when a complete tap
+arrives during zero-update or paused frames. A tap can report both
+`wasPressed` and `wasReleased` while `isDown` is false. Catch-up updates clear
+those edges; another alias does not retrigger an action already held. Axis
+actions keep their existing cached threshold transitions. See the
+[downstream regression](portable-conformance.md).
+
 `up.input.Input.PhysicalKey` identifies keyboard positions using stable USB
 keyboard-page values. It covers A–Z, `digit_0`–`digit_9`, punctuation, arrows,
 editing/navigation keys, F1–F24, numpad keys, and left/right modifiers. These

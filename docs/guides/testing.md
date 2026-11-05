@@ -233,3 +233,13 @@ freestanding Wasm target; it is also included in `test-browser-wasm-host`.
 ## Safari WebDriver
 
 `zig build test-browser-safari` packages the browser proof game and drives Safari through its native WebDriver endpoint with forced `webgl2` and `webgpu` requests. Before running locally, enable WebDriver once with `safaridriver --enable`; Safari’s automation sessions are isolated from normal browsing data. The test writes the Safari version, WebDriver status, forced-renderer diagnostic, host artifacts, and screenshots under `zig-out/diagnostics/browser-safari/`.
+
+## Integrated downstream workflow
+
+Run `zig build test-starter-persistence -Dwith_sdl=false` and
+`zig build test-portable-conformance -Dwith_sdl=false` for an integrated check.
+The [portable workflow guide](portable-conformance.md) describes the verified
+archive dependency, isolated native save/restart, real browser interactions,
+failed-init cleanup and session replay from captured initial saves. The fixture
+game uses public APIs throughout. These checks require a usable native display
+and the repository's Chromium/Playwright tooling.

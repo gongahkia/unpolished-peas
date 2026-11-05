@@ -7,9 +7,35 @@ const frame_timing = @import("frame-timing");
 const browser_input = @import("input_snapshot.zig");
 const browser_save_data = @import("save_data.zig");
 const TickBuffer = frame_timing.TickBuffer;
-const browser_save_data_enabled = @hasDecl(protocol_game.Game, "storage_id");
-const browser_application_id = if (browser_save_data_enabled) protocol_game.Game.storage_id else "unconfigured";
-const BrowserSaveStore = browser_save_data.Store(browser_application_id);
+const browser_application_id = storageId(protocol_game);
+const browser_save_data_enabled = browser_application_id != null;
+const BrowserSaveStore = browser_save_data.Store(browser_application_id orelse "unconfigured");
+
+fn storageId(comptime GameModule: type) ?[]const u8 {
+    // Existing Game-level IDs keep precedence. Generated starters and the
+    // reference games declare their portable identity on the game module.
+    if (@hasDecl(GameModule.Game, "storage_id")) return GameModule.Game.storage_id;
+    if (@hasDecl(GameModule, "storage_id")) return GameModule.storage_id;
+    return null;
+}
+
+test "browser storage accepts module IDs and preserves Game ID precedence" {
+    const Module = struct {
+        pub const storage_id = "module.game";
+        pub const Game = struct {};
+    };
+    const Both = struct {
+        pub const storage_id = "module.game";
+        pub const Game = struct {
+            pub const storage_id = "nested.game";
+        };
+    };
+    try std.testing.expectEqualStrings("module.game", storageId(Module).?);
+    try std.testing.expectEqualStrings("nested.game", storageId(Both).?);
+    try std.testing.expect(storageId(struct {
+        pub const Game = struct {};
+    }) == null);
+}
 
 pub const target_triple = "wasm32-freestanding";
 
@@ -68,26 +94,15 @@ pub export fn up_browser_abi_version() u32 {
 
 pub export fn up_browser_init(width: u32, height: u32) i32 {
     if (width == 0 or height == 0) return @intFromEnum(contract.Status.invalid_argument);
-    if (protocol_initialized) {
-        protocol.deinit(&game_context) catch return @intFromEnum(contract.Status.rejected);
-        protocol_initialized = false;
-    }
-    if (game_canvas_ready) game_canvas.deinit();
-    if (renderer_ready) renderer.deinit();
-    if (game_audio_ready) {
-        game_audio.deinit();
-        runtime_allocator.free(game_audio_samples);
-        game_audio_samples = &.{};
-        game_audio_ready = false;
-    }
-    game_canvas = up.graphics.Canvas.init(runtime_allocator, width, height) catch return @intFromEnum(contract.Status.rejected);
+    if (!releaseGame()) return @intFromEnum(contract.Status.rejected);
+    game_canvas = up.graphics.Canvas.init(runtime_allocator, width, height) catch return rejectInit();
     game_canvas_ready = true;
     renderer = up.graphics.Renderer2D.init(runtime_allocator);
     renderer_ready = true;
-    game_audio = up.core.Audio.init(runtime_allocator, .{ .availability = hostAudioAvailability() }) catch return @intFromEnum(contract.Status.rejected);
+    game_audio = up.core.Audio.init(runtime_allocator, .{ .availability = hostAudioAvailability() }) catch return rejectInit();
     game_audio_samples = runtime_allocator.alloc(up.assets.AudioSample, 800) catch {
         game_audio.deinit();
-        return @intFromEnum(contract.Status.rejected);
+        return rejectInit();
     };
     game_audio_ready = true;
     input = .{};
@@ -104,7 +119,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     protocol = .bind(&game);
     protocol.init(&game_context) catch {
         protocol_failure = protocol.lastFailure();
-        return @intFromEnum(contract.Status.rejected);
+        return rejectInit();
     };
     protocol_initialized = true;
     scheduler = .init(frame_timing.default_fixed_hz);
@@ -117,6 +132,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
 }
 
 pub export fn up_browser_frame(timestamp_ms: f64) void {
+    if (!protocol_initialized) return;
     syncInput();
     if (game_audio_ready) game_audio.setAvailability(hostAudioAvailability());
     const timing = scheduler.frame(elapsedSeconds(timestamp_ms), paused);
@@ -398,9 +414,22 @@ pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
     contract.emitDiagnostic(source, byte_len);
 }
 
-pub export fn up_browser_shutdown() void {
+fn releaseGame() bool {
     if (frame_token != 0) contract.cancelFrame(frame_token);
     frame_token = 0;
+    var okay = true;
+    if (protocol_initialized) {
+        protocol_initialized = false;
+        protocol.deinit(&game_context) catch {
+            protocol_failure = protocol.lastFailure();
+            okay = false;
+        };
+    }
+    // A failed init has no next frame to apply the text-input request. Poll
+    // once now so the existing ABI cancels an active host IME session too.
+    const had_text_session = text_input.enabled or platform_input.extended.active or platform_input.extended.composing;
+    text_input.enabled = false;
+    if (had_text_session) syncInput();
     if (game_audio_ready) {
         game_audio.deinit();
         runtime_allocator.free(game_audio_samples);
@@ -415,6 +444,16 @@ pub export fn up_browser_shutdown() void {
         renderer.deinit();
         renderer_ready = false;
     }
+    return okay;
+}
+
+fn rejectInit() i32 {
+    _ = releaseGame();
+    return @intFromEnum(contract.Status.rejected);
+}
+
+pub export fn up_browser_shutdown() void {
+    _ = releaseGame();
     contract.teardown();
 }
 

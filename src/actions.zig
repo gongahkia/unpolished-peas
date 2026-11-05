@@ -25,7 +25,10 @@ pub const Map = struct {
     allocator: ?std.mem.Allocator = null,
     values: ?[]f32 = null,
     previous_values: ?[]f32 = null,
+    edges: ?[]Edges = null,
     app_data_path: ?[]const u8 = null,
+
+    const Edges = struct { pressed: bool = false, released: bool = false };
 
     pub fn init(allocator: std.mem.Allocator, definitions: []const Action) !Map {
         try validateActions(definitions);
@@ -34,20 +37,25 @@ pub const Map = struct {
         const values = try allocator.alloc(f32, definitions.len);
         errdefer allocator.free(values);
         const previous_values = try allocator.alloc(f32, definitions.len);
+        errdefer allocator.free(previous_values);
+        const edges = try allocator.alloc(Edges, definitions.len);
         @memset(values, 0);
         @memset(previous_values, 0);
+        @memset(edges, .{});
         return .{
             .actions = owned_actions,
             .owned_actions = owned_actions,
             .allocator = allocator,
             .values = values,
             .previous_values = previous_values,
+            .edges = edges,
         };
     }
 
     pub fn deinit(self: *Map) void {
         const allocator = self.allocator orelse return;
         if (self.previous_values) |values| allocator.free(values);
+        if (self.edges) |edges| allocator.free(edges);
         if (self.values) |values| allocator.free(values);
         if (self.owned_actions) |actions| allocator.free(actions);
         self.* = undefined;
@@ -65,7 +73,10 @@ pub const Map = struct {
         const values = self.values orelse return;
         const previous_values = self.previous_values orelse return;
         std.mem.copyForwards(f32, previous_values, values);
-        for (self.actions, 0..) |action, index| values[index] = bindingValue(state, action.binding);
+        for (self.actions, 0..) |action, index| {
+            values[index] = bindingValue(state, action.binding);
+            if (self.edges) |edges| edges[index] = bindingEdges(state, action.binding);
+        }
     }
 
     pub fn value(self: Map, state: input.Input, context: []const u8, name: []const u8) f32 {
@@ -85,13 +96,21 @@ pub const Map = struct {
     pub fn wasPressed(self: Map, context: []const u8, name: []const u8) bool {
         const values = self.values orelse return false;
         const previous_values = self.previous_values orelse return false;
-        return actionValue(self.actions, values, context, name) > 0 and actionValue(self.actions, previous_values, context, name) == 0;
+        return actionValue(self.actions, previous_values, context, name) == 0 and
+            (actionValue(self.actions, values, context, name) > 0 or self.edgeValue(context, name, .pressed));
     }
 
     pub fn wasReleased(self: Map, context: []const u8, name: []const u8) bool {
         const values = self.values orelse return false;
         const previous_values = self.previous_values orelse return false;
-        return actionValue(self.actions, values, context, name) == 0 and actionValue(self.actions, previous_values, context, name) > 0;
+        return actionValue(self.actions, values, context, name) == 0 and
+            (actionValue(self.actions, previous_values, context, name) > 0 or self.edgeValue(context, name, .released));
+    }
+
+    fn edgeValue(self: Map, context: []const u8, name: []const u8, comptime field: std.meta.FieldEnum(Edges)) bool {
+        const edges = self.edges orelse return false;
+        for (self.actions, edges) |action, edge| if (matches(action, context, name) and @field(edge, @tagName(field))) return true;
+        return false;
     }
 
     pub fn rebind(self: *Map, context: []const u8, name: []const u8, binding: Binding) !void {
@@ -219,6 +238,23 @@ fn bindingValue(state: input.Input, binding: Binding) f32 {
             };
             break :blk 0;
         },
+    };
+}
+
+fn bindingEdges(state: input.Input, binding: Binding) Map.Edges {
+    return switch (binding) {
+        .key => |key| .{ .pressed = state.wasPressed(key), .released = state.wasReleased(key) },
+        .physical_key => |key| .{ .pressed = state.physicalWasPressed(key), .released = state.physicalWasReleased(key) },
+        .pointer_button => |button| .{ .pressed = state.pointerWasPressed(button), .released = state.pointerWasReleased(button) },
+        .gamepad_button => |button| blk: {
+            var edges = Map.Edges{};
+            for (state.gamepads) |maybe| if (maybe) |pad| {
+                edges.pressed = edges.pressed or pad.wasPressed(button);
+                edges.released = edges.released or pad.wasReleased(button);
+            };
+            break :blk edges;
+        },
+        .gamepad_axis => .{}, // Axis thresholds retain the cached-value transition contract.
     };
 }
 
@@ -429,4 +465,60 @@ test "physical actions rebind persist and remain distinct from normalized aliase
     try map.rebind("game", "q", .{ .physical_key = .t });
     try map.load(temp.dir, "bindings");
     try std.testing.expectEqual(input.Input.PhysicalKey.r, map.actions[0].binding.physical_key);
+}
+
+test "named digital actions retain completed taps across zero-update snapshots" {
+    var map = try Map.init(std.testing.allocator, &.{
+        .{ .name = "physical", .binding = .{ .physical_key = .q } },
+        .{ .name = "normalized", .binding = .{ .key = .action } },
+        .{ .name = "pointer", .binding = .{ .pointer_button = .left } },
+        .{ .name = "pad", .binding = .{ .gamepad_button = .south } },
+    });
+    defer map.deinit();
+    var state = input.Input{};
+    state.setPhysical(.q, true, false);
+    state.setPhysical(.q, false, false);
+    state.set(.action, true);
+    state.set(.action, false);
+    state.setPointerButton(.left, true);
+    state.setPointerButton(.left, false);
+    try std.testing.expect(state.addGamepad(1));
+    state.setGamepadButton(1, .south, true);
+    state.setGamepadButton(1, .south, false);
+    const snapshot = state.snapshot();
+    var fixed_tick = input.Input{};
+    snapshot.apply(&fixed_tick);
+    map.update(fixed_tick);
+    for ([_][]const u8{ "physical", "normalized", "pointer", "pad" }) |name| {
+        try std.testing.expect(map.wasPressed("game", name));
+        try std.testing.expect(map.wasReleased("game", name));
+        try std.testing.expect(!map.isDown("game", name));
+    }
+    fixed_tick.beginFrame();
+    map.update(fixed_tick);
+    try std.testing.expect(!map.wasPressed("game", "physical"));
+    try std.testing.expect(!map.wasReleased("game", "physical"));
+}
+
+test "digital aliases do not retrigger an action held by another binding" {
+    var map = try Map.init(std.testing.allocator, &.{
+        .{ .name = "fire", .binding = .{ .physical_key = .q } },
+        .{ .name = "fire", .binding = .{ .physical_key = .e } },
+    });
+    defer map.deinit();
+    var state = input.Input{};
+    state.setPhysical(.q, true, false);
+    map.update(state);
+    try std.testing.expect(map.wasPressed("game", "fire"));
+    state.beginFrame();
+    state.setPhysical(.e, true, false);
+    state.setPhysical(.e, false, false);
+    map.update(state);
+    try std.testing.expect(map.isDown("game", "fire"));
+    try std.testing.expect(!map.wasPressed("game", "fire"));
+    try std.testing.expect(!map.wasReleased("game", "fire"));
+    state.beginFrame();
+    state.setPhysical(.q, false, false);
+    map.update(state);
+    try std.testing.expect(map.wasReleased("game", "fire"));
 }

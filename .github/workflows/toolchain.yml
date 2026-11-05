@@ -34,6 +34,8 @@ jobs:
       - run: script/test_browser_shell.sh
       - run: script/test_browser_input_workbench.sh
       - run: script/test_browser_asset_workbench.sh
+      - run: zig build test-starter-persistence -Dwith_sdl=false --summary all
+      - run: zig build test-portable-conformance -Dwith_sdl=false --summary all
       - run: zig build test-browser-renderer-parity
       - if: failure()
         uses: actions/upload-artifact@v4
