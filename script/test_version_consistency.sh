@@ -28,8 +28,8 @@ import sys
 manifest = pathlib.Path(sys.argv[1]).read_text()
 version = sys.argv[2]
 if '.dependencies = .{}' in manifest:
-    if 'This source-checkout template intentionally has no dependency' not in manifest:
-        raise SystemExit('version consistency: explain missing starter coordinates')
+    if 'The generator fills a local checkout path by default' not in manifest:
+        raise SystemExit('version consistency: explain generated local dependencies')
 else:
     url = re.search(r'\.url = "([^"]+)"', manifest)
     package_hash = re.search(r'\.hash = "(unpolished_peas-[^"]+)"', manifest)

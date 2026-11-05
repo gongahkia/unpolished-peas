@@ -23,21 +23,19 @@ system SDL installation is required.
 
 ## Current source checkout
 
-The checked-in starter is an explicitly unreleased release template: it has no
-public immutable Peas dependency URL or package hash yet. From a Peas checkout,
-use the repository-root commands instead:
+From a Peas checkout, generate a standalone game with a local dependency:
 
 ```sh
-zig build run-starter
-zig build test-starter -Dwith_sdl=false
-zig build browser-starter -Dwith_sdl=false
-zig build package-starter
+zig build peas -- new ../my-game
+cd ../my-game
+zig build
+zig build test
+zig build web
 ```
 
-The normal standalone commands below apply after a published release (or the
-repository's release-style external-consumer fixture) supplies the reviewed
-dependency declaration. See the [Start Here guide](../../docs/guides/quickstart.md)
-and [installation guide](../../docs/guides/installation.md) for that distinction.
+The generator fills the dependency automatically. A prepared release checkout
+can use `new ../my-game --release` to verify and pin its archive instead. See the
+[installation guide](../../docs/guides/installation.md) for both modes.
 
 ## Run
 
@@ -142,6 +140,5 @@ Before shipping, replace `organization`, `application`, and `title` in
 `src/main.zig`, plus `storage_id` in `src/game.zig`, with stable game-specific
 values.
 
-The checked-in manifest is an explicitly unreleased release template. The
-release preparation step writes the immutable tag URL and matching Zig package
-hash before a maintainer tags a release. Do not use `main` as a dependency.
+Default generation uses a local checkout path. Explicit `--release` generation
+requires the prepared archive URL and matching package hash; see the installation guide.

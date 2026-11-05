@@ -205,10 +205,12 @@ test "quickstart distinguishes the published version from missing package assets
     defer std.testing.allocator.free(quickstart);
     const claims = [_][]const u8{
         "The current release is `1.0.0`",
+        "zig build peas -- new ../my-game",
+        "cd ../my-game",
+        "zig build web",
+        "local dependency",
         "zig build test-starter -Dwith_sdl=false",
         "zig build run-starter",
-        "zig build browser-starter -Dwith_sdl=false",
-        "zig build package-starter",
         "zig build run-tutorial-game-protocol",
         "no prepared source-package archive",
     };

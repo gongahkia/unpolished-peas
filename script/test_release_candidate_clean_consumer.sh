@@ -26,12 +26,12 @@ else
     status=$?
     [ "$status" -eq 1 ] || exit "$status"
 fi
-# The unreleased archive cannot depend on itself by URL. Keep the generated
-# build and source intact, but replace only its manifest with the adjacent
-# archive fixture so this is a real clean starter build.
-cp "$release/fixtures/release-candidate-consumer/build.zig.zon" "$generated/build.zig.zon"
+# Default generation depends on the adjacent clean archive checkout. Leave its
+# output untouched; the URL/hash path is covered by the release generation test.
 mv "$generated" "$consumer"
 (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build)
+(cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build test)
+(cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" zig build web)
 case "$(uname -s)" in
     Linux) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" "$repo/script/run_linux_software_gl.sh" zig build run -- --frames 2) ;;
     Darwin) (cd "$consumer" && ZIG_GLOBAL_CACHE_DIR="$tmp/consumer-global-cache" ZIG_LOCAL_CACHE_DIR="$tmp/consumer-local-cache" env SDL_AUDIODRIVER=dummy zig build run -- --frames 2) ;;

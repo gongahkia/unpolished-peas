@@ -1,14 +1,59 @@
-# Install Peas from a release
+# Create a Peas game
 
 Peas requires Zig `0.15.2`.
 
 The current version is **1.0.0**. Its [GitHub release](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
 is published, but has no prepared source-package archive, Zig package hash, or
-desktop downloads attached. The declaration below describes the packaging
-contract; it is not copy-and-run installation data. Use the source-checkout
-workflow in [Start here](quickstart.md) to evaluate Seed Sprint today.
+desktop downloads attached. You can generate and develop a standalone game
+from the source checkout today; a prepared archive is needed only for the
+explicit release mode.
 
-## Add the dependency
+## From a source checkout
+
+Run this from the Peas repository, choosing a new destination directory:
+
+```sh
+zig build peas -- new ../my-game
+cd ../my-game
+zig build
+zig build test
+zig build web
+```
+
+`zig build new -- ../my-game` is an equivalent generator entry point. Both
+write a `.dependencies.unpolished_peas.path` relative to the generated game
+and pointing to the checkout that ran the generator. Paths with spaces are
+supported. Keep the game and engine at the same relative locations, or update
+that dependency when moving them. This is a live development dependency:
+engine edits affect the next game build.
+
+The generated game already contains its complete dependency declaration,
+desktop/browser build steps, assets, and deterministic tests. Build it from
+its own directory; no copied fixture manifest, manual dependency editing, or
+engine-internal imports are required. The initial native build fetches the
+pinned SDL3 sources and builds them without a system SDL installation.
+
+## Pin a prepared release
+
+From a prepared release checkout whose starter template contains its reviewed
+archive URL and Zig package hash, run:
+
+```sh
+zig build peas -- new ../my-game --release
+```
+
+The generator runs `zig fetch` against that URL and requires the returned
+package hash to match the template before creating the game. The generated
+manifest retains the verified URL/hash pair and has no local engine path.
+Missing coordinates, a failed fetch, or a mismatched hash cause generation to
+fail without leaving a project directory. Omitting `--release` always selects
+the local-checkout dependency, even in a prepared release checkout.
+
+The current unprepared template cannot be used with `--release`; use the
+default checkout mode above. The existing `1.0.0` tag is not rewritten by this
+workflow.
+
+## Release dependency format
 
 Once a release includes the prepared package assets, its Seed Sprint checkout
 will contain the reviewed declaration. For a new project, fetch that immutable
@@ -18,8 +63,10 @@ asset once to get the exact Zig package hash, then copy both values together:
 zig fetch <published-source-archive-url>
 ```
 
-The command prints a value beginning with `unpolished_peas-`. Use that exact
-value in `build.zig.zon`; never substitute a hash from another version.
+The command prints a value beginning with `unpolished_peas-`. A prepared
+template contains that exact value in `build.zig.zon`; never substitute a hash
+from another version. This describes the generated format, not current
+copy-and-run package coordinates:
 
 ```zig
 .dependencies = .{
@@ -50,8 +97,8 @@ game source does not import Peas internals.
 
 ## Browser and package
 
-Inside a released standalone Seed Sprint project, these are the normal
-commands:
+Inside a generated Seed Sprint project using either dependency mode, these
+are the normal commands:
 
 ```sh
 zig build

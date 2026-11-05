@@ -785,11 +785,11 @@ pub fn build(b: *std.Build) void {
     starter_bundled_sdl_step.dependOn(&starter_bundled_sdl.step);
     const starter_external = b.addSystemCommand(&.{"script/test_downstream_fixture.sh"});
     starter_external.setCwd(b.path("."));
-    const starter_external_step = b.step("test-starter-external", "Build the generated starter as a clean external package consumer");
+    const starter_external_step = b.step("test-starter-external", "Build, test and package an untouched local-checkout starter outside the repository");
     starter_external_step.dependOn(&starter_external.step);
     const starter_external_web = b.addSystemCommand(&.{"script/test_downstream_browser_fixture.sh"});
     starter_external_web.setCwd(b.path("."));
-    const starter_external_web_step = b.step("test-starter-external-web", "Build the generated starter browser package outside the Peas checkout");
+    const starter_external_web_step = b.step("test-starter-external-web", "Verify release coordinates and build an untouched archive-backed desktop/browser starter");
     starter_external_web_step.dependOn(&starter_external_web.step);
     const dogfood_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("dogfood/neon-siege/src/main.zig"),

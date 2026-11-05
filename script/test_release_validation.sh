@@ -51,7 +51,7 @@ grep -F -q -- 'version consistency passed: %s is the current release identity' "
 }
 require 'curl --fail --location --silent --show-error "$expected_url" --output "$release_archive"' "$published_consumer"
 require '    git clone --depth 1 --branch "$tag" "$repo_url"' "$published_consumer"
-require '    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer"' "$published_consumer"
+require '    ZIG_GLOBAL_CACHE_DIR="$generation_cache/global" ZIG_LOCAL_CACHE_DIR="$generation_cache/local" zig build new -- "$consumer" --release' "$published_consumer"
 grep -F -q -- 'zig build run -- --frames 2' "$published_consumer" || {
     printf '%s\n' 'release validation missing published consumer frame smoke' >&2
     exit 1
