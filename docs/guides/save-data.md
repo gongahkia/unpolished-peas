@@ -3,7 +3,8 @@
 The [compiled progress recipe](../../examples/asset_recipes.zig) and
 [portable asset workbench](asset-recipes.md) provide a small additional example
 of four-byte progress saves and restart. For browser persistence, put
-`pub const storage_id = "your-name.your-game";` inside the `Game` struct;
+`pub const storage_id = "your-name.your-game";` on the game module or inside
+the `Game` struct (a Game-level declaration takes precedence);
 the native wrapper uses `sdl.Config.organization` and `application`.
 
 `up.core.SaveStore` persists small, game-owned byte blobs. It is intended for

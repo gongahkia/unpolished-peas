@@ -53,6 +53,13 @@ coordinates and a URL paired with a real hash from different archive bytes;
 no public release is needed. The bundled-SDL check runs the local case with a
 failing `pkg-config` shim and a bounded native host smoke.
 
+The real Chromium pull-request job also runs `test-starter-persistence` for an
+untouched generated game's earned-score reload, followed by
+`test-portable-conformance`. The latter uses a verified archive and isolated
+native namespace for downstream builds, native restart, browser interactions,
+failure recovery and UPR5 replay. Its logs, package hash, environment record
+and PNG are retained under `zig-out/diagnostics/portable-conformance/`.
+
 ## Non-PR validation
 
 Package, proof-game, renderer, release-compatibility, and next-Zig jobs run outside pull requests until their owning removal or release issue changes that policy. They are not stable-core required checks.

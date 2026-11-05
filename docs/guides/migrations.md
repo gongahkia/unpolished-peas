@@ -68,3 +68,17 @@ remain host-owned. See [compiled asset recipes](asset-recipes.md).
 The generated desktop wrapper now forwards an optional game `deinit`. Older
 projects adding owned assets must add that forwarding callback as shown in the
 [asset workbench entry point](../../examples/asset_workbench.zig).
+
+## Portable workflow integration fixes
+
+The browser runtime accepts module-level `storage_id` as used by generated
+starters and reference games. An existing `Game.storage_id` retains precedence;
+no saved-key prefix changes for games already using it. Browser init/shutdown
+now forward game cleanup before releasing host capabilities and cancel prior
+frame callbacks before retrying initialization.
+
+Owned ActionMaps now honor digital edges retained in a fixed-tick snapshot even
+when a complete tap leaves the final held value at zero. Replay formats are
+unchanged; previously ignored recorded taps can now trigger their intended
+action. Existing golden assertions are retained. See
+[portable workflow verification](portable-conformance.md).

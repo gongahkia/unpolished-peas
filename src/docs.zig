@@ -6,6 +6,7 @@ const source_documents = [_][]const u8{
     "guides/quickstart.md",
     "guides/installation.md",
     "guides/platforms.md",
+    "guides/portable-conformance.md",
     "guides/game-protocol.md",
     "guides/core-contract.md",
     "guides/rendering.md",
