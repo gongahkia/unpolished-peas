@@ -35,3 +35,36 @@ v1.0 includes staged executable 2D materials and final-composited GPU post passe
 ## Tile maps and collision systems removed
 
 v1.0 removes engine-owned tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Keep map formats, collision logic, and movement rules game-owned; `Rect` and `Vec2` remain available for 2D rendering.
+
+
+## Physical keyboard and text extension
+
+Existing normalized keys, `GameProtocol` callbacks, root namespaces and old
+replay formats are retained. New game code can opt into `Input.PhysicalKey`,
+`ActionBinding.physical_key`, `Input.extended`, and `ctx.setTextInput`.
+Exhaustive application switches over `ActionBinding` must add the new union
+case. Native filesystem persistence remains optional; browser rebinding works
+in memory without importing filesystem APIs. Do not serialize `Input` struct
+memory: use the versioned replay or browser input codec.
+
+UPR5 is selected only when extension data is present. UPR1–UPR4 input decodes
+with an empty extension, and normalized-only encoders preserve previous bytes
+and hashes. Browser input v2 is negotiated through buffer capacity while the
+376-byte v1 layout and host import names stay available. An older v1 browser
+host can still supply normalized input to the new runtime, but cannot supply
+physical/text capabilities; `extended.active` remains false for unsupported
+text requests. See [input compatibility](input-v2-compatibility.md).
+
+## Optional embedded asset collection
+
+`assets.AssetCollection` and `assets.Atlas.decode` are additive. Existing
+Image/Font/Atlas/AssetStore APIs remain available. To group related embedded
+assets, keep one collection in game state, load through its image/font/atlas
+methods, and replace individual resource cleanup with collection cleanup.
+Returned pointers borrow that collection and must not be freed separately.
+Drawing and deterministic sprite-animation APIs do not change. Audio handles
+remain host-owned. See [compiled asset recipes](asset-recipes.md).
+
+The generated desktop wrapper now forwards an optional game `deinit`. Older
+projects adding owned assets must add that forwarding callback as shown in the
+[asset workbench entry point](../../examples/asset_workbench.zig).

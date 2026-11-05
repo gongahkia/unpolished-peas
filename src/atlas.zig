@@ -99,10 +99,32 @@ pub const Atlas = struct { // owns its image, frame, and animation allocations; 
     frames: []AtlasFrame,
     animations: []Animation,
 
+    pub const DecodeOptions = struct {
+        image: @import("image.zig").DecodeOptions = .{},
+        image_path: []const u8 = "embedded",
+        animations: []const AnimationSpec = &.{},
+    };
+
+    /// Decodes and owns the image plus frame metadata. On any failure, all
+    /// allocations made by this call are released; source bytes are borrowed
+    /// only for the duration of this call.
+    pub fn decode(allocator: std.mem.Allocator, bytes: []const u8, frames: []const FrameSpec, options: DecodeOptions) !Atlas {
+        var image = try Image.decode(allocator, bytes, options.image);
+        errdefer image.deinit();
+        return initMetadata(allocator, image, options.image_path, frames, options.animations, false);
+    }
+
     pub fn init(allocator: std.mem.Allocator, image: Image, image_path: []const u8, frame_specs: []const FrameSpec, animation_specs: []const AnimationSpec) !Atlas {
+        return initMetadata(allocator, image, image_path, frame_specs, animation_specs, true);
+    }
+
+    fn initMetadata(allocator: std.mem.Allocator, image: Image, image_path: []const u8, frame_specs: []const FrameSpec, animation_specs: []const AnimationSpec, release_image_on_error: bool) !Atlas {
         if (frame_specs.len == 0) return error.InvalidAtlas;
         var atlas = Atlas{ .allocator = allocator, .image = image, .image_path = try allocator.dupe(u8, image_path), .frames = &.{}, .animations = &.{} };
-        errdefer atlas.deinit();
+        errdefer {
+            atlas.deinitMetadata();
+            if (release_image_on_error) atlas.image.deinit();
+        }
         atlas.frames = try allocator.alloc(AtlasFrame, frame_specs.len);
         for (atlas.frames) |*entry| entry.* = .{ .name = &.{}, .x = 0, .y = 0, .w = 0, .h = 0, .source_w = 0, .source_h = 0, .offset_x = 0, .offset_y = 0 };
         for (frame_specs, 0..) |spec, index| {
@@ -131,6 +153,12 @@ pub const Atlas = struct { // owns its image, frame, and animation allocations; 
     }
 
     pub fn deinit(self: *Atlas) void {
+        self.deinitMetadata();
+        self.image.deinit();
+        self.* = undefined;
+    }
+
+    fn deinitMetadata(self: *Atlas) void {
         for (self.frames) |*entry| if (entry.name.len != 0) self.allocator.free(entry.name);
         for (self.animations) |*entry| {
             if (entry.name.len != 0) self.allocator.free(entry.name);
@@ -139,8 +167,6 @@ pub const Atlas = struct { // owns its image, frame, and animation allocations; 
         self.allocator.free(self.frames);
         self.allocator.free(self.animations);
         self.allocator.free(self.image_path);
-        self.image.deinit();
-        self.* = undefined;
     }
 
     pub fn findFrame(self: Atlas, name: []const u8) ?AtlasFrameHandle {

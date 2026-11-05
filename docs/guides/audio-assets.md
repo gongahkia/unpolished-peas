@@ -1,5 +1,10 @@
 # Audio
 
+The [compiled sound recipe](../../examples/asset_recipes.zig) and
+[asset workbench](asset-recipes.md) demonstrate load-once/play-on-event through
+the portable context. Sounds remain Audio-host owned; an AssetCollection owns
+decoded images/fonts/sheets and does not unload sounds.
+
 `GameContext.audio` is Peas's small, backend-neutral audio capability. It
 keeps short decoded sound effects and long incrementally decoded music as
 deliberately separate resource types.

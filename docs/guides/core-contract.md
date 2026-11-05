@@ -9,7 +9,7 @@ The root package exposes only the six named capability namespaces below. Direct 
 | Namespace | Frozen declarations | Contract |
 | --- | --- | --- |
 | `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Audio`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, optional SFX/music output, small opaque save blobs, errors, and basic 2D values |
-| `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized keyboard, pointer, gamepad, and action state |
+| `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized/physical keyboard, Unicode text/composition, pointer, gamepad, and action state |
 | `graphics` | drawing (`Canvas`, `RenderSurface`, `SurfaceDrawOptions`, `SurfaceFilter`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, offscreen Canvas composition, text, post effects, particles, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, mixer/music/PCM-stream declarations, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, audio loading, and playback/mixing |
 | `preview.developer` | `InputReplay`, `InputReplayButton`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
@@ -44,6 +44,14 @@ Callback failures return their original error and are retained as `GameFailure` 
 
 Owned values such as `Canvas`, `RenderSurface`, `Image`, `Atlas`, `Font`, `Sound`, and `AssetStore` require their documented `deinit` call. Validation and loading failures return errors; the contract does not convert them to successful fallback assets.
 
+The additive `assets.AssetCollection` owns related embedded Image, Font and
+Atlas resources and releases them together. Its stable returned pointers borrow
+the collection lifetime; they must not be individually deinitialized. The
+lower-level ownership APIs remain available. `Atlas.decode` adds safe
+embedded-byte construction with complete cleanup on error. See the
+[compiled recipes and ownership reference](asset-recipes.md). High-level audio
+resources remain host-owned and are outside collection cleanup.
+
 ## Rendering, input, assets, and determinism
 
 `Canvas` provides deterministic 2D primitives, sprites, atlas frames, and built-in text. `RenderSurface` is a persistent owned offscreen Canvas that composes through `Canvas.drawSurface`; it has no public GPU texture/framebuffer identity and works headlessly. Advanced materials, final post effects, and GPU particles use their separate renderer path and do not currently consume or target a render surface. `Camera2D` is a position, zoom, and rotation transform; games own follow, shake, cuts, and multi-camera behavior. The [stable 2D render contract](rendering.md), [render-surface guide](render-surfaces.md), and [Advanced 2D](advanced-2d.md) guides define ordering, clip/blend state, transform, effects, particles, tolerance, fixture, and diagnostics rules. [Authored image and font assets](image-assets.md) define portable embedded source formats, lifetimes, limits, and failures. [Save data](save-data.md) keeps small opaque game blobs out of the general filesystem API. `Presentation` maps the logical canvas using `stretch`, `fit`, or `integer_fit`; pointer canvas coordinates are null outside a letterboxed destination. `HeadlessGameRunner(Game)` runs scripted `HeadlessFrame` values against `GameProtocol`, captures the canvas hash, logical Canvas trace, and submitted shared render commands. `HeadlessRenderer` consumes the same commands for deterministic captures, while `testSupport` provides replay hashing, Canvas-trace comparison, renderer-capture comparison, save-store injection, and golden diagnostics.
@@ -63,3 +71,14 @@ For a published 1.x release, removing or renaming a listed declaration, changing
 ## Runnable reference
 
 Run the [minimal callback example](../../examples/minimal.zig) with `zig build run-minimal`.
+
+
+### Physical input and text extension
+
+`Input.PhysicalKey` and `Input.extended` add distinct physical states and an
+ordered bounded event stream without changing `Key` IDs. `ActionBinding`
+accepts `physical_key`; `GameContext.setTextInput` requests the optional
+host-owned text-input capability. Existing callback signatures and root
+namespace declarations are unchanged. Snapshots/replays carry actual input,
+not platform object identity. The [input compatibility contract](input-v2-compatibility.md)
+defines storage bounds, event lifetimes, UPR5 and browser v1/v2 negotiation.

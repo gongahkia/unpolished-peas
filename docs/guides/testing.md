@@ -114,6 +114,17 @@ bytes. Lengths and counts are `u32` little-endian. Parsing rejects duplicate
 keys, invalid identifiers, unsupported RNGs, non-finite input, truncation,
 trailing data, and excessive sizes. UPR1–UPR3 encoding and decoding stay unchanged.
 
+Recordings with any physical-key, text, composition or activation extension
+emit **UPR5**, including optional seed and session metadata. Each frame keeps
+the legacy 290-byte payload, followed by a little-endian `u16` extension size
+and explicitly encoded extension bytes. Normalized-only recordings retain
+UPR2/UPR3/UPR4 byte-for-byte, and UPR1–UPR4 remain readable. UPR5 validates
+physical IDs, event/payload bounds, UTF-8, selection ranges and trailing bytes.
+Its reproduction hash includes the extension; legacy hashes are unchanged.
+See [input compatibility](input-v2-compatibility.md) for the complete layout.
+The input workbench tests compare original and decoded replay game state,
+logical traces and rendered pixels on native and browser-style Wasm hosts.
+
 A replay reproduces normalized fixed-tick input, not arbitrary game state. A seed-bearing replay can reject a headless runner initialized with a different seed. Equivalent results still require the same initialization path and deterministic game code. In particular, wall-clock reads, random sources other than the game-owned Peas RNG, unordered iteration, asynchronous asset completion, and platform-dependent floating-point computation remain the game's responsibility.
 
 Save data is also external initial state. A `HeadlessGameRunner` owns an empty

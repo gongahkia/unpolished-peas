@@ -3,6 +3,7 @@ const input = @import("input.zig");
 
 pub const Binding = union(enum) {
     key: input.Key,
+    physical_key: input.Input.PhysicalKey,
     pointer_button: input.PointerButton,
     gamepad_button: input.GamepadButton,
     gamepad_axis: struct {
@@ -164,6 +165,10 @@ pub const Map = struct {
     }
 
     fn persist(self: *Map) !void {
+        if (comptime @import("builtin").os.tag == .freestanding) {
+            if (self.app_data_path != null) return error.ActionPersistenceUnavailable;
+            return;
+        }
         const root = self.app_data_path orelse return;
         var dir = try std.fs.openDirAbsolute(root, .{});
         defer dir.close();
@@ -201,6 +206,7 @@ pub fn load(allocator: std.mem.Allocator, dir: std.fs.Dir, path: []const u8, act
 fn bindingValue(state: input.Input, binding: Binding) f32 {
     return switch (binding) {
         .key => |key| if (state.isDown(key)) 1 else 0,
+        .physical_key => |key| if (state.physicalIsDown(key)) 1 else 0,
         .pointer_button => |button| if (state.pointerIsDown(button)) 1 else 0,
         .gamepad_button => |button| blk: {
             for (state.gamepads) |maybe| if (maybe) |pad| if (pad.button(button)) break :blk 1;
@@ -267,6 +273,7 @@ fn bindingEql(a: Binding, b: Binding) bool {
     if (std.meta.activeTag(a) != std.meta.activeTag(b)) return false;
     return switch (a) {
         .key => |key| key == b.key,
+        .physical_key => |key| key == b.physical_key,
         .pointer_button => |button| button == b.pointer_button,
         .gamepad_button => |button| button == b.gamepad_button,
         .gamepad_axis => |axis| axis.axis == b.gamepad_axis.axis and axis.sign == b.gamepad_axis.sign and axis.threshold == b.gamepad_axis.threshold,
@@ -274,11 +281,12 @@ fn bindingEql(a: Binding, b: Binding) bool {
 }
 
 fn isBindingKind(value: []const u8) bool {
-    return std.mem.eql(u8, value, "key") or std.mem.eql(u8, value, "pointer") or std.mem.eql(u8, value, "button") or std.mem.eql(u8, value, "axis");
+    return std.mem.eql(u8, value, "physical") or std.mem.eql(u8, value, "key") or std.mem.eql(u8, value, "pointer") or std.mem.eql(u8, value, "button") or std.mem.eql(u8, value, "axis");
 }
 
 fn parseBinding(kind: []const u8, fields: *std.mem.SplitIterator(u8, .scalar)) !Binding {
     const value = fields.next() orelse return error.InvalidBindingFile;
+    if (std.mem.eql(u8, kind, "physical")) return .{ .physical_key = std.meta.stringToEnum(input.Input.PhysicalKey, value) orelse return error.InvalidBindingFile };
     if (std.mem.eql(u8, kind, "key")) return .{ .key = std.meta.stringToEnum(input.Key, value) orelse return error.InvalidBindingFile };
     if (std.mem.eql(u8, kind, "pointer")) return .{ .pointer_button = std.meta.stringToEnum(input.PointerButton, value) orelse return error.InvalidBindingFile };
     if (std.mem.eql(u8, kind, "button")) return .{ .gamepad_button = std.meta.stringToEnum(input.GamepadButton, value) orelse return error.InvalidBindingFile };
@@ -298,6 +306,7 @@ fn saveBindings(dir: std.fs.Dir, path: []const u8, actions: []const Action) !voi
     for (actions, 0..) |action, index| {
         const ordinal = bindingIndex(actions, index);
         const line = switch (action.binding) {
+            .physical_key => |key| try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{d}\tphysical\t{s}\n", .{ action.context, action.name, ordinal, @tagName(key) }),
             .key => |key| try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{d}\tkey\t{s}\n", .{ action.context, action.name, ordinal, @tagName(key) }),
             .pointer_button => |button| try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{d}\tpointer\t{s}\n", .{ action.context, action.name, ordinal, @tagName(button) }),
             .gamepad_button => |button| try std.fmt.bufPrint(&buffer, "{s}\t{s}\t{d}\tbutton\t{s}\n", .{ action.context, action.name, ordinal, @tagName(button) }),
@@ -389,4 +398,35 @@ test "device removal and reconnect produce deterministic action edges" {
     state.setGamepadButton(7, .south, true);
     actions.update(state);
     try std.testing.expect(actions.wasPressed("game", "fire"));
+}
+
+test "physical actions rebind persist and remain distinct from normalized aliases" {
+    var map = try Map.init(std.testing.allocator, &.{
+        .{ .name = "q", .binding = .{ .physical_key = .q } },
+        .{ .name = "e", .binding = .{ .physical_key = .e } },
+        .{ .name = "one", .binding = .{ .physical_key = .digit_1 } },
+        .{ .name = "two", .binding = .{ .physical_key = .digit_2 } },
+    });
+    defer map.deinit();
+    var state = input.Input{};
+    state.set(.action, true);
+    state.setPhysical(.q, true, false);
+    state.setPhysical(.digit_2, true, false);
+    map.update(state);
+    try std.testing.expect(map.isDown("game", "q"));
+    try std.testing.expect(!map.isDown("game", "e"));
+    try std.testing.expect(!map.isDown("game", "one"));
+    try std.testing.expect(map.isDown("game", "two"));
+    try map.rebind("game", "q", .{ .physical_key = .r });
+    map.update(state);
+    try std.testing.expect(map.wasReleased("game", "q"));
+    state.setPhysical(.r, true, false);
+    map.update(state);
+    try std.testing.expect(map.wasPressed("game", "q"));
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    try map.save(temp.dir, "bindings");
+    try map.rebind("game", "q", .{ .physical_key = .t });
+    try map.load(temp.dir, "bindings");
+    try std.testing.expectEqual(input.Input.PhysicalKey.r, map.actions[0].binding.physical_key);
 }

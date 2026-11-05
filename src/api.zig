@@ -130,6 +130,7 @@ pub const graphics = struct {
 };
 
 pub const assets = struct {
+    pub const AssetCollection = @import("asset_collection.zig").AssetCollection;
     pub const AssetStore = @import("assets.zig").AssetStore;
     pub const AssetFile = @import("assets.zig").AssetFile;
     pub const AudioHandle = @import("assets.zig").AudioHandle;

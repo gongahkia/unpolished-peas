@@ -840,6 +840,7 @@ pub const Context = struct {
     allocator: std.mem.Allocator,
     canvas: *up.Canvas,
     input: *up.Input,
+    text_input: ?*up.Input.TextInput = null,
     actions: *up.ActionMap,
     assets: *up.AssetStore,
     audio: *up.AudioMixer,
@@ -1430,6 +1431,7 @@ fn ProtocolAdapter(comptime Game: type) type {
         fn init(self: *Self, ctx: *Context) !void {
             self.context = up.GameContext.withRenderer(ctx.input, ctx.canvas, ctx.renderer);
             self.context.allocator = ctx.allocator;
+            self.context.text_input = ctx.text_input;
             self.context.simulation_seed = ctx.simulation_seed;
             self.context.save_data = ctx.save_data;
             self.context.audio = ctx.audio;
@@ -1527,6 +1529,10 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     // normalized state exposed to fixed simulation callbacks.
     var input = up.Input{};
     var platform_input = up.Input{};
+    defer if (platform_input.extended.active) {
+        _ = c.SDL_StopTextInput(renderer.window());
+    };
+    var text_input = up.Input.TextInput{};
     var tick_input = TickBuffer{};
     var desktop_state = DesktopState{};
     var presentation = up.Presentation.init(.{ .x = @floatFromInt(config.width), .y = @floatFromInt(config.height) }, framebufferSize(renderer.window()) catch |err| {
@@ -1553,7 +1559,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     // and inspector are selected explicitly at launch, leaving Tab/F-keys for
     // game-owned input even when developer tools are enabled.
     inspector.setVisible(developer_tools_enabled and (environmentBool("UP_DEVELOPER_INSPECTOR") orelse false));
-    var ctx = Context{ .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .save_data = save_data.capability(), .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
+    var ctx = Context{ .text_input = &text_input, .allocator = allocator, .canvas = &canvas, .input = &input, .actions = &actions, .assets = &assets, .audio = &audio, .app_data_path = data_path, .save_data = save_data.capability(), .presentation = &presentation, .sprite_batch = &sprite_batch, .commands = &commands, .renderer = &advanced_renderer, .inspector = &inspector, .profiler = &profiler, .runtime_metrics = &runtime_metrics, .renderer_diagnostics = &renderer_diagnostics, .capture_requested = &capture_requested, .dt = 0, .alpha = 0, .frame = 0, .simulation_seed = config.simulation_seed };
     var failure: ?Failure = null;
     var gpu_recovery = GpuRecovery.ready;
     var initialized = false;
@@ -1582,6 +1588,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         frame_metrics.beginFrame(ctx.frame);
         platform_input.beginFrame();
         ctx.input = &platform_input;
+        syncTextInput(renderer.window(), &platform_input, text_input.enabled and desktop_state.focused);
         sprite_batch.clear();
         commands.commands.clearRetainingCapacity();
         advanced_renderer.beginFrame();
@@ -4447,6 +4454,36 @@ const d3d_compiler = if (builtin.os.tag == .windows) struct {
     }
 };
 
+fn syncTextInput(window: *c.SDL_Window, input: *up.Input, enabled: bool) void {
+    if (enabled == input.extended.active) return;
+    if (enabled) {
+        if (c.SDL_StartTextInput(window)) input.setTextInputActive(true);
+    } else {
+        _ = c.SDL_StopTextInput(window);
+        input.setTextInputActive(false);
+    }
+}
+
+fn applyKeyboardEvent(input: *up.Input, event: c.SDL_KeyboardEvent) void {
+    const down = event.type == c.SDL_EVENT_KEY_DOWN;
+    if (event.scancode >= 0 and event.scancode <= 255) {
+        if (std.meta.intToEnum(up.Input.PhysicalKey, @as(u8, @intCast(event.scancode)))) |key| {
+            input.setPhysical(key, down, event.repeat);
+        } else |_| {}
+    }
+    if (!event.repeat) if (mapKey(event.key)) |key| input.set(key, down);
+}
+
+fn applyTextEditing(input: *up.Input, text: []const u8, start_value: i32, length_value: i32) void {
+    if (text.len == 0) {
+        input.extended.endComposition();
+    } else {
+        const start: i16 = if (start_value < 0 or start_value > 1024) -1 else @intCast(start_value);
+        const length: i16 = if (start < 0 or length_value < 0 or length_value > 1024) -1 else @intCast(length_value);
+        input.updateComposition(text, if (length < 0) -1 else start, length) catch {};
+    }
+}
+
 fn releaseInputOnFocusLoss(input: *up.Input) void {
     input.releaseAll();
 }
@@ -4474,11 +4511,13 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
             },
             c.SDL_EVENT_WINDOW_FOCUS_GAINED => {
                 desktop_state.focused = true;
+                syncTextInput(window, input, if (ctx.text_input) |control| control.enabled else false);
                 if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .focus_gained, callback_failure);
             },
             c.SDL_EVENT_WINDOW_FOCUS_LOST => {
                 desktop_state.focused = false;
                 releaseInputOnFocusLoss(input);
+                syncTextInput(window, input, false);
                 if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .focus_lost, callback_failure);
             },
             c.SDL_EVENT_WINDOW_MINIMIZED => {
@@ -4498,11 +4537,23 @@ fn pollInput(state: anytype, comptime callbacks: anytype, initialized: bool, ctx
                 if (initialized) try callLoopEventWithFailure(state, callbacks, ctx, .gpu_device_lost, callback_failure);
             },
             c.SDL_EVENT_KEY_DOWN, c.SDL_EVENT_KEY_UP => {
-                if (event.key.repeat) continue;
+                applyKeyboardEvent(input, event.key);
                 const is_down = event.type == c.SDL_EVENT_KEY_DOWN;
-                if (mapKey(event.key.key)) |key| {
-                    input.set(key, is_down);
-                    if (key == .cancel and is_down) running = false;
+                if (event.key.scancode == c.SDL_SCANCODE_ESCAPE and is_down and input.extended.active) {
+                    input.extended.cancelComposition();
+                    _ = c.SDL_ClearComposition(window);
+                }
+                if (!event.key.repeat and is_down and mapKey(event.key.key) == .cancel and !input.extended.active) running = false;
+            },
+            c.SDL_EVENT_TEXT_INPUT => {
+                if (event.text.text != null and input.extended.active) {
+                    input.extended.endComposition();
+                    input.commitText(std.mem.span(event.text.text)) catch {};
+                }
+            },
+            c.SDL_EVENT_TEXT_EDITING => {
+                if (event.edit.text != null and input.extended.active) {
+                    applyTextEditing(input, std.mem.span(event.edit.text), event.edit.start, event.edit.length);
                 }
             },
             c.SDL_EVENT_WINDOW_RESIZED, c.SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED => {
@@ -4868,4 +4919,68 @@ fn audioFail(strict: bool, comptime label: []const u8) error{SdlError}!?AudioOut
     std.debug.print("audio muted: {s}: {s}\n", .{ label, c.SDL_GetError() });
     if (strict) return error.SdlError;
     return null;
+}
+
+test "SDL physical events retain normalized controls and repeat semantics" {
+    var input = up.Input{};
+    var event = std.mem.zeroes(c.SDL_KeyboardEvent);
+    event.type = c.SDL_EVENT_KEY_DOWN;
+    event.scancode = c.SDL_SCANCODE_Q;
+    event.key = c.SDLK_Q;
+    applyKeyboardEvent(&input, event);
+    event.scancode = c.SDL_SCANCODE_E;
+    event.key = c.SDLK_E;
+    applyKeyboardEvent(&input, event);
+    try std.testing.expect(input.physicalIsDown(.q));
+    try std.testing.expect(input.physicalIsDown(.e));
+    try std.testing.expect(!input.physicalIsDown(.digit_1));
+    event.scancode = c.SDL_SCANCODE_UP;
+    event.key = c.SDLK_UP;
+    applyKeyboardEvent(&input, event);
+    try std.testing.expect(input.isDown(.up));
+    input.beginFrame();
+    event.repeat = true;
+    applyKeyboardEvent(&input, event);
+    try std.testing.expect(!input.wasPressed(.up));
+    try std.testing.expect(!input.physicalWasPressed(.arrow_up));
+    try std.testing.expect(input.extended.events[0].repeat);
+    input.setTextInputActive(true);
+    applyTextEditing(&input, "你好", 1, 1);
+    const preedit = input.extended.events[input.extended.event_count - 1];
+    try std.testing.expectEqual(@as(i16, 1), preedit.selection_start);
+    try std.testing.expectEqualStrings("你好", input.extended.eventText(preedit));
+    releaseInputOnFocusLoss(&input);
+    try std.testing.expect(input.physicalWasReleased(.q));
+    try std.testing.expect(!input.extended.composing);
+}
+
+test "SDL text request activates the window and focus loss stops composition" {
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlRendererFail("SDL_Init");
+    defer c.SDL_Quit();
+    const window = c.SDL_CreateWindow("Peas input lifecycle", 64, 64, c.SDL_WINDOW_HIDDEN) orelse return sdlFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(window);
+    var input = up.Input{};
+    syncTextInput(window, &input, true);
+    defer syncTextInput(window, &input, false);
+    try std.testing.expect(c.SDL_TextInputActive(window));
+    try std.testing.expect(input.extended.active);
+    try std.testing.expectEqual(up.Input.EventKind.text_started, input.extended.events[0].kind);
+    input.beginFrame();
+    applyTextEditing(&input, "你好", 0, 1);
+    input.setPhysical(.q, true, false);
+    releaseInputOnFocusLoss(&input);
+    syncTextInput(window, &input, false);
+    try std.testing.expect(!c.SDL_TextInputActive(window));
+    try std.testing.expect(!input.extended.active);
+    try std.testing.expect(!input.extended.composing);
+    try std.testing.expect(input.physicalWasReleased(.q));
+    const events = input.extended.eventSlice();
+    try std.testing.expectEqual(up.Input.EventKind.composition_cancel, events[events.len - 2].kind);
+    try std.testing.expectEqual(up.Input.EventKind.text_stopped, events[events.len - 1].kind);
+    input.beginFrame();
+    syncTextInput(window, &input, false);
+    try std.testing.expectEqual(@as(u8, 0), input.extended.event_count);
+    syncTextInput(window, &input, true);
+    try std.testing.expect(c.SDL_TextInputActive(window));
+    try std.testing.expect(input.extended.active);
 }

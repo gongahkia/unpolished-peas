@@ -144,3 +144,97 @@ assert.equal(canvas.listeners.size, 0);
 assert.equal(windowRef.listeners.size, 0);
 assert.equal(documentRef.listeners.size, 0);
 assert.equal(Observer.instances[0].disconnected, true);
+
+// Exercise actual v2 transport and the text-entry element lifecycle.
+const {PhysicalKey, InputAbiV2} = await import("../src/browser/input.mjs");
+const {EventKind} = await import("../src/browser/extended_input.mjs");
+const keySource = readFileSync(new URL("../src/physical_key.zig", import.meta.url), "utf8");
+for (const [, name, value] of keySource.matchAll(/^    (\w+) = (\d+),$/gm)) assert.equal(PhysicalKey[name], Number(value), name);
+class TextElement extends Events {
+  style = {};
+  value = "";
+  setAttribute() {}
+  focus() { doc.activeElement = this; }
+  remove() { this.removed = true; }
+}
+const doc = new Events(), win = new Events(), surface = new Canvas();
+const elements = [];
+doc.visibilityState = "visible";
+doc.createElement = (tag) => { assert.equal(tag, "textarea"); const element = new TextElement(); elements.push(element); return element; };
+doc.body = {appendChild() {}};
+const extendedInput = createBrowserInput({canvas: surface, document: doc, window: win, navigator: {getGamepads: () => []}, ResizeObserver: null});
+surface.emit("focus");
+for (const code of ["KeyQ", "KeyE", "Digit1", "Digit2", "ShiftLeft"]) win.emit("keydown", {code});
+win.emit("keydown", {code: "KeyQ", repeat: true});
+assert.equal(extendedInput.snapshot().extended.down[PhysicalKey.q], true);
+assert.equal(extendedInput.snapshot().extended.down[PhysicalKey.e], true);
+assert.equal(extendedInput.snapshot().extended.down[PhysicalKey.digit_1], true);
+assert.equal(extendedInput.snapshot().extended.down[PhysicalKey.digit_2], true);
+assert.equal(extendedInput.setActions([{name: "q", binding: {physical_key: "q"}}]), true);
+assert.equal(extendedInput.actionValues()[0].value, 1);
+assert.equal(extendedInput.setActions([{name: "q", binding: {physical_key: "r"}}]), true);
+assert.equal(extendedInput.actionValues()[0].value, 0);
+assert.equal(extendedInput.setActions([{name: "q", binding: {physical_key: "toString"}}]), false);
+assert.equal(extendedInput.actionValues()[0].value, 0);
+const v2memory = new WebAssembly.Memory({initial: 1}), v2view = new DataView(v2memory.buffer);
+function readV2() {
+  v2view.setUint32(0, InputAbiV2.request, true);
+  v2view.setUint32(4, 1, true);
+  return extendedInput.read(0, InputAbiV2.byteLength, v2memory);
+}
+// Legacy readers may offer a larger buffer; only an explicit marker opts in.
+assert.equal(extendedInput.read(0, InputAbiV2.byteLength, v2memory), InputAbi.byteLength);
+
+v2view.setUint32(0, InputAbiV2.request, true);
+v2view.setUint32(4, 1, true);
+assert.equal(readV2(), InputAbiV2.byteLength);
+assert.equal(v2view.getUint32(0, true), 2);
+assert.equal(v2view.getUint8(378 + 96), 1);
+const textElement = elements[0];
+assert.equal(doc.activeElement, textElement);
+textElement.emit("compositionstart");
+textElement.emit("compositionupdate", {data: "ni"});
+textElement.emit("input", {data: "你", inputType: "insertCompositionText", isComposing: true});
+textElement.emit("compositionupdate", {data: "你好"});
+textElement.emit("compositionend", {data: "你好"});
+textElement.emit("input", {data: "你好", inputType: "insertText", isComposing: false});
+let observed = extendedInput.snapshot().extended;
+assert.deepEqual(observed.events.map((event) => event.kind), [EventKind.composition_start, EventKind.composition_update, EventKind.composition_update, EventKind.composition_end, EventKind.text_commit]);
+assert.equal(observed.events.at(-1).text, "你好");
+assert.equal(observed.composing, false);
+assert.equal(readV2(), InputAbiV2.byteLength);
+assert.equal(extendedInput.snapshot().extended.events.length, 0);
+assert.equal(extendedInput.snapshot().extended.down[PhysicalKey.q], true);
+const commitRecord = 378 + 104 + 4 * 12;
+const payloadStart = 378 + 104 + 5 * 12;
+assert.equal(v2view.getUint8(commitRecord), EventKind.text_commit);
+const textOffset = v2view.getUint16(commitRecord + 4, true), textLength = v2view.getUint16(commitRecord + 6, true);
+assert.equal(new TextDecoder().decode(new Uint8Array(v2memory.buffer, payloadStart + textOffset, textLength)), "你好");
+// Some browsers deliver the committed input before compositionend.
+textElement.emit("compositionstart");
+textElement.value = "é";
+textElement.emit("input", {data: "é", inputType: "insertFromComposition", isComposing: false});
+textElement.emit("compositionend", {data: "é"});
+assert.equal(extendedInput.snapshot().extended.events.filter((event) => event.kind === EventKind.text_commit).length, 1);
+readV2();
+textElement.value = "a".repeat(1024);
+textElement.emit("input", {data: textElement.value, inputType: "insertText"});
+textElement.value = "é";
+textElement.emit("input", {data: textElement.value, inputType: "insertText"});
+assert.equal(extendedInput.snapshot().extended.overflow, true);
+assert.equal(extendedInput.snapshot().extended.events.length, 1);
+readV2();
+textElement.emit("compositionstart");
+textElement.emit("compositionupdate", {data: "未完成"});
+win.emit("blur");
+observed = extendedInput.snapshot().extended;
+assert.equal(observed.active, false);
+assert.equal(observed.down[PhysicalKey.q], false);
+assert(observed.events.some((event) => event.kind === EventKind.composition_cancel));
+assert(!observed.events.some((event) => event.kind === EventKind.text_commit));
+// A legacy caller still receives the original 376-byte version-1 packet.
+assert.equal(extendedInput.read(0, InputAbi.byteLength, v2memory), InputAbi.byteLength);
+assert.equal(v2view.getUint32(0, true), 1);
+extendedInput.teardown();
+assert.equal(textElement.removed, true);
+assert.equal(win.listeners.size, 0);
