@@ -371,8 +371,10 @@ pub const AudioMixer = struct { // owns buses, playbacks, and stream state alloc
 /// A small, host-owned sound-effect service for `GameProtocol` games.
 ///
 /// `loadWav` decodes bytes once and returns a reusable handle. The service owns
-/// every decoded sound and releases it in `deinit`, after stopping its mixer.
-/// A game therefore stores handles but never frees individual sound resources.
+/// every decoded sound until explicit `unloadSound` or host `deinit`. Music
+/// sources follow the same rule through `unloadMusic`. Unloading first stops
+/// dependent playbacks, then releases source data; empty registry slots are
+/// retained for reuse. Call on the host/game thread, never concurrently with mix.
 /// This intentionally covers short WAV effects; the lower-level `AudioMixer`
 /// and `AssetStore` APIs remain available for advanced/native use cases.
 pub const Audio = struct {
@@ -391,13 +393,13 @@ pub const Audio = struct {
         availability: Availability = .ready,
     };
 
-    /// Stable only for the lifetime of its owning `Audio` service.
+    /// Borrows its owning Audio until unloadSound or host teardown.
     pub const SoundHandle = struct {
         index: usize,
         generation: u32,
     };
 
-    /// Stable only for the lifetime of its owning `Audio` service. Music is
+    /// Borrows its owning Audio until unloadMusic or host teardown. Music is
     /// deliberately distinct from `SoundHandle`: its encoded source remains
     /// owned by the host while an active playback incrementally decodes it.
     pub const MusicHandle = struct {
@@ -455,11 +457,13 @@ pub const Audio = struct {
 
     const OwnedSound = struct {
         sound: Sound,
+        // Zero marks an unloaded slot: sound is undefined until reuse.
         generation: u32,
     };
 
     const OwnedMusic = struct {
         music: Music,
+        // Zero marks an unloaded slot: music is undefined until reuse.
         generation: u32,
     };
 
@@ -483,11 +487,11 @@ pub const Audio = struct {
     pub fn deinit(self: *Audio) void {
         self.mixer.deinit();
         for (self.sounds.items) |owned| {
-            owned.sound.deinit();
+            if (owned.generation != 0) owned.sound.deinit();
             self.allocator.destroy(owned);
         }
         for (self.music_sources.items) |owned| {
-            owned.music.deinit();
+            if (owned.generation != 0) owned.music.deinit();
             self.allocator.destroy(owned);
         }
         self.sounds.deinit(self.allocator);
@@ -509,13 +513,17 @@ pub const Audio = struct {
     /// `@embedFile` is the portable way to load a starter-sized effect during
     /// `Game.init` on both desktop and browser builds.
     pub fn loadWav(self: *Audio, bytes: []const u8) !SoundHandle {
+        var sound = try Sound.decodeWav(self.allocator, bytes);
+        errdefer sound.deinit();
+        const generation = try self.takeGeneration();
+        for (self.sounds.items, 0..) |slot, index| {
+            if (slot.generation != 0) continue;
+            slot.* = .{ .sound = sound, .generation = generation };
+            return .{ .index = index, .generation = generation };
+        }
         const owned = try self.allocator.create(OwnedSound);
         errdefer self.allocator.destroy(owned);
-        owned.* = .{
-            .sound = try Sound.decodeWav(self.allocator, bytes),
-            .generation = self.takeGeneration(),
-        };
-        errdefer owned.sound.deinit();
+        owned.* = .{ .sound = sound, .generation = generation };
         try self.sounds.append(self.allocator, owned);
         return .{ .index = self.sounds.items.len - 1, .generation = owned.generation };
     }
@@ -524,18 +532,63 @@ pub const Audio = struct {
     /// bounded, incremental playback. No full-track PCM allocation occurs.
     /// OGG/Vorbis is the default; select `.wav` explicitly for WAV source.
     pub fn loadMusic(self: *Audio, bytes: []const u8, options: MusicLoadOptions) !MusicHandle {
+        var music = switch (options.format) {
+            .ogg => try Music.decodeOgg(self.allocator, bytes),
+            .wav => try Music.decodeWav(self.allocator, bytes),
+        };
+        errdefer music.deinit();
+        const generation = try self.takeMusicGeneration();
+        for (self.music_sources.items, 0..) |slot, index| {
+            if (slot.generation != 0) continue;
+            slot.* = .{ .music = music, .generation = generation };
+            return .{ .index = index, .generation = generation };
+        }
         const owned = try self.allocator.create(OwnedMusic);
         errdefer self.allocator.destroy(owned);
-        owned.* = .{
-            .music = switch (options.format) {
-                .ogg => try Music.decodeOgg(self.allocator, bytes),
-                .wav => try Music.decodeWav(self.allocator, bytes),
-            },
-            .generation = self.takeMusicGeneration(),
-        };
-        errdefer owned.music.deinit();
+        owned.* = .{ .music = music, .generation = generation };
         try self.music_sources.append(self.allocator, owned);
         return .{ .index = self.music_sources.items.len - 1, .generation = owned.generation };
+    }
+
+    /// Stops every dependent instance (including paused/looping ones), then
+    /// frees decoded PCM. Returns false for invalid, stale or repeated handles.
+    /// No allocation or device access; works even while output is unavailable.
+    /// Already submitted PCM may still be audible in the host's bounded queue.
+    pub fn unloadSound(self: *Audio, handle: SoundHandle) bool {
+        const owned = self.resolve(handle) catch return false;
+        for (self.mixer.playbacks.items) |*playback| {
+            if (!playback.active) continue;
+            switch (playback.kind) {
+                .sound => |sound| if (sound.sound == &owned.sound) {
+                    playback.deinit(self.mixer.allocator);
+                },
+                else => {},
+            }
+        }
+        owned.sound.deinit();
+        owned.generation = 0;
+        return true;
+    }
+
+    /// Stops dependent WAV/Vorbis playbacks before freeing their encoded
+    /// source and decoder/buffers. Unrelated music/SFX keep playing. False
+    /// means invalid, stale or already unloaded; no allocation/device access.
+    pub fn unloadMusic(self: *Audio, handle: MusicHandle) bool {
+        const owned = self.resolveMusic(handle) catch return false;
+        for (self.mixer.playbacks.items, 0..) |*playback, index| {
+            if (!playback.active) continue;
+            const bytes: ?[]const u8 = switch (playback.kind) {
+                .wav_music => |wav| wav.bytes,
+                .ogg_music => |ogg| ogg.bytes,
+                else => null,
+            };
+            if (bytes) |source| {
+                if (source.ptr == owned.music.bytes.ptr) _ = self.stop(.{ .index = index, .id = playback.id });
+            }
+        }
+        owned.music.deinit();
+        owned.generation = 0;
+        return true;
     }
 
     /// Starts an independent playback instance. It is safe to play the same
@@ -655,28 +708,30 @@ pub const Audio = struct {
     fn resolve(self: *Audio, handle: SoundHandle) !*OwnedSound {
         if (handle.index >= self.sounds.items.len) return error.InvalidSound;
         const owned = self.sounds.items[handle.index];
-        if (owned.generation != handle.generation) return error.InvalidSound;
+        if (owned.generation == 0 or owned.generation != handle.generation) return error.InvalidSound;
         return owned;
     }
 
     fn resolveMusic(self: *Audio, handle: MusicHandle) !*OwnedMusic {
         if (handle.index >= self.music_sources.items.len) return error.InvalidMusic;
         const owned = self.music_sources.items[handle.index];
-        if (owned.generation != handle.generation) return error.InvalidMusic;
+        if (owned.generation == 0 or owned.generation != handle.generation) return error.InvalidMusic;
         return owned;
     }
 
-    fn takeGeneration(self: *Audio) u32 {
+    fn takeGeneration(self: *Audio) !u32 {
         const generation = self.next_generation;
+        // Do not wrap into a generation held by a stale handle. Preserve the
+        // public u32 representation; exhaustion is explicit and recoverable.
+        if (generation == 0) return error.AudioHandleExhausted;
         self.next_generation +%= 1;
-        if (self.next_generation == 0) self.next_generation = 1;
         return generation;
     }
 
-    fn takeMusicGeneration(self: *Audio) u32 {
+    fn takeMusicGeneration(self: *Audio) !u32 {
         const generation = self.next_music_generation;
+        if (generation == 0) return error.AudioHandleExhausted;
         self.next_music_generation +%= 1;
-        if (self.next_music_generation == 0) self.next_music_generation = 1;
         return generation;
     }
 };

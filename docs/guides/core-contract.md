@@ -64,6 +64,14 @@ They have no allocation or hashing cost while no trace is attached.
 
 ## Exclusions and compatibility
 
+High-level Audio adds optional `unloadSound` / `unloadMusic`. Existing load/play
+signatures, handle representations and lifetimes remain compatible unless a
+game explicitly unloads. Released handles become stale; generation exhaustion
+returns `AudioHandleExhausted` rather than wrapping. Registry metadata is reused
+and dependent playback stops before data is freed. See
+[audio lifetimes](audio-lifetimes.md). No facade aliases, snapshot changes or
+symbol-budget increases accompany these additive working-tree methods.
+
 Authored text adds `assets.Font.measureText`, `layoutText`, and nested
 `TextOptions`, `TextMetrics` and owned `TextLayout`. These use existing glyph
 metrics/fallback and keep direct Font.drawText and debug graphics.layoutText

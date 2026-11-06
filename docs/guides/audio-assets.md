@@ -32,8 +32,8 @@ if (ctx.audio) |audio| {
 }
 ```
 
-`Audio` owns decoded sounds and releases them when its host shuts down; games
-own only `Audio.SoundHandle` values. `play` creates independent instances, so
+`Audio` owns decoded sounds until `unloadSound(handle)` or host shutdown; games
+own only `Audio.SoundHandle` values. Explicit unload is optional. `play` creates independent instances, so
 the same effect may overlap. Volume is `0.0...1.0`; `.loop = true` repeats an
 effect until `audio.stop(handle)`. Decoding happens on `loadWav`, never in the
 normal play path.
@@ -79,8 +79,9 @@ _ = audio.stopMusic(); // a later playMusic starts from the beginning
 ```
 
 `musicState()` reports `.stopped`, `.playing`, or `.paused`. `MusicHandle`
-ownership matches `SoundHandle`: the host owns the source until host teardown,
-and games keep only the handle. There is no individual unload in v1.
+ownership matches `SoundHandle`: the host owns the source until explicit
+`unloadMusic(handle)` or host teardown, and games keep only the handle.
+Existing games that never unload keep their original lifetime behavior.
 
 On browser hosts, a pre-gesture `playMusic` returns the same recoverable
 `error.AudioUnavailable` as a sound effect. Peas does not silently queue a
@@ -89,6 +90,19 @@ music request; game code may retry after an interaction makes audio ready.
 Music is output-side behavior, not replay input. Equal deterministic gameplay
 events can produce equal logical play requests, but Peas does not promise
 sample-exact device scheduling across hosts.
+
+## Release between levels
+
+`unloadSound` and `unloadMusic` return true once, then false for repeated,
+stale or invalid handles. Release stops all dependent playback before freeing
+source data, including paused streams and overlapping/looping effects.
+Unrelated sources and playback remain usable. Registry metadata is retained
+and reused; decoded PCM, encoded music and active decoder/buffer storage are
+released. Call on the game/host thread, never concurrently with mixing.
+
+See [audio lifetimes](audio-lifetimes.md) for the compiled scene-transition
+example, memory measurements, generation limits, queued-PCM behavior and tests.
+These are additive working-tree methods, not a release announcement.
 
 ## Existing stable asset and mixer APIs
 

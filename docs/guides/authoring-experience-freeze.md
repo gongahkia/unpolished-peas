@@ -31,9 +31,18 @@ Leap and are part of the current game-facing baseline:
 | `core.Audio.MusicHandle`, `MusicFormat`, `MusicLoadOptions`, `MusicPlayOptions`, `MusicState`, `loadMusic`, `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic`, `setMusicVolume` | SUPPORTED PUBLIC API | Supported as one high-level, bounded incremental music stream that coexists with SFX. OGG/Vorbis is the default; WAV is explicit. |
 | `core.Audio.MusicDiagnostics` and `musicDiagnostics` | DEVELOPER OBSERVATION | Useful to diagnostics, but not gameplay control or a telemetry schema. Its fields remain non-versioned observation data until a future audit promotes them. |
 
-`MusicHandle` and `SoundHandle` remain host-owned handles. The source remains
-valid for the lifetime of `Audio`; games do not unload individual high-level
-audio resources.
+`MusicHandle` and `SoundHandle` remain host-owned handles. Without explicit
+unload, sources remain valid for the lifetime of `Audio` as before.
+
+### Explicit audio-lifetime addition
+
+`core.Audio.unloadSound` / `unloadMusic` are additive working-tree methods
+exercised by a portable scene-transition example and native/Wasm conformance.
+They stop dependent playback before releasing data, preserve unrelated audio
+and reuse registry slots with stale-handle rejection. They do not change the
+older reference games' host-lifetime policy or add a scene system. See
+[audio lifetimes](audio-lifetimes.md) for limits and ownership. No release is
+announced and the frozen facade snapshot/symbol budget remain unchanged.
 
 ### Authored text addition
 

@@ -3112,6 +3112,44 @@ fn advanceFrame(frame: *u64, max_frames: ?u32) bool {
     return true;
 }
 
+test "native audio output queues fresh PCM after resource release" {
+    var output = (try AudioOutput.init(std.testing.allocator, 48_000, 16, false)) orelse return error.SkipZigTest;
+    defer output.deinit(std.testing.allocator);
+    const wav = [_]u8{
+        'R',  'I',  'F', 'F', 40, 0,    0, 0, 'W', 'A', 'V',  'E',
+        'f',  'm',  't', ' ', 16, 0,    0, 0, 1,   0,   1,    0,
+        0x80, 0xbb, 0,   0,   0,  0x77, 1, 0, 2,   0,   16,   0,
+        'd',  'a',  't', 'a', 4,  0,    0, 0, 0,   0,   0xff, 0x7f,
+    };
+    var audio = try up.AudioMixer.init(std.testing.allocator, .{});
+    defer audio.deinit();
+    const persistent = try audio.loadWav(&wav);
+    const sound = try audio.loadWav(&wav);
+    const music = try audio.loadMusic(&wav, .{ .format = .wav });
+    _ = try audio.play(persistent, .{ .loop = true, .volume = 0.25 });
+    _ = try audio.play(sound, .{ .loop = true, .volume = 0.5 });
+    _ = try audio.playMusic(music, .{ .loop = true, .volume = 0.125 });
+    try output.queue(&audio);
+    try std.testing.expect(output.queuedBytes().? > 0);
+    try std.testing.expect(audio.unloadSound(sound));
+    try std.testing.expect(audio.pauseMusic());
+    try std.testing.expect(audio.unloadMusic(music));
+    try std.testing.expect(!audio.unloadSound(sound));
+    // The sink owns copies of previously submitted PCM. Clearing it here lets
+    // the test inspect fresh samples; unload itself never clears other audio.
+    try std.testing.expect(c.SDL_ClearAudioStream(output.stream));
+    try output.queue(&audio);
+    for (output.samples, 0..) |sample, i| {
+        const expected: f32 = if (i % 2 == 0) 0 else (32767.0 / 32768.0) * 0.25;
+        try std.testing.expectEqual(expected, sample.left);
+        try std.testing.expectEqual(expected, sample.right);
+    }
+    try std.testing.expect(audio.unloadSound(persistent));
+    try std.testing.expect(c.SDL_ClearAudioStream(output.stream));
+    try output.queue(&audio);
+    for (output.samples) |sample| try std.testing.expect(sample.left == 0 and sample.right == 0);
+}
+
 const AudioOutput = struct {
     stream: *c.SDL_AudioStream,
     samples: []up.AudioSample,

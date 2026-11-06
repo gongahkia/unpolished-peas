@@ -650,6 +650,13 @@ pub fn build(b: *std.Build) void {
     const asset_workbench_demo = addExample(b, "unpolished-peas-asset-workbench", "examples/asset_workbench.zig", target, optimize, peas, sdl);
     const font_layout_demo = addExample(b, "unpolished-peas-font-layout", "examples/font_layout.zig", target, optimize, peas, sdl);
     addRunStep(b, "run-font-layout", "Run the prepared proportional-font menu and dialogue example", font_layout_demo);
+    const audio_lifetime_demo = addExample(b, "unpolished-peas-audio-lifetime", "examples/audio_lifetime.zig", target, optimize, peas, sdl);
+    const audio_lifetime_options = b.addOptions();
+    audio_lifetime_options.addOption(bool, "smoke", b.option(bool, "audio-lifetime-smoke", "Validate eight audio scene changes and cleanup in the native host") orelse false);
+    const audio_lifetime_application = b.allocator.dupeZ(u8, b.option([]const u8, "audio-lifetime-test-id", "Isolated native audio example application ID") orelse "audio-lifetime") catch @panic("out of memory");
+    audio_lifetime_options.addOption([:0]const u8, "application", audio_lifetime_application);
+    audio_lifetime_demo.root_module.addOptions("audio-lifetime-options", audio_lifetime_options);
+    addRunStep(b, "run-audio-lifetime", "Run the portable audio scene-lifetime example", audio_lifetime_demo);
     addRunStep(b, "run-asset-workbench", "Run portable images, fonts, animation, sound and saves", asset_workbench_demo);
     const asset_workbench_game = b.createModule(.{
         .root_source_file = b.path("examples/asset_workbench_game.zig"),
@@ -910,6 +917,61 @@ pub fn build(b: *std.Build) void {
     run_docs.addArg(b.pathFromRoot("zig-out/docs"));
     const docs_step = b.step("docs", "Emit validated local Markdown documentation");
     docs_step.dependOn(&run_docs.step);
+    const audio_lifetime_probe = b.addExecutable(.{ .name = "audio-lifetime-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/audio_lifetime_probe.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    b.step("probe-audio-lifetime", "Measure retained audio resources through repeated scene changes").dependOn(&b.addRunArtifact(audio_lifetime_probe).step);
+    const audio_lifetime_tests = b.step("test-audio-lifetime", "Verify audio release, PCM, bounded memory, stale handles and failures");
+    for ([_]std.builtin.OptimizeMode{ .Debug, .ReleaseFast }) |mode| {
+        const checks = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/audio_lifetime_probe.zig"),
+            .target = target,
+            .optimize = mode,
+            .imports = &.{.{ .name = "unpolished-peas", .module = if (mode == .ReleaseFast) surface_fast_core else peas }},
+        }) });
+        audio_lifetime_tests.dependOn(&b.addRunArtifact(checks).step);
+    }
+    const audio_lifetime_wasm = b.addExecutable(.{ .name = "audio-lifetime-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/audio_lifetime_probe.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    }) });
+    audio_lifetime_wasm.entry = .disabled;
+    audio_lifetime_wasm.rdynamic = true;
+    audio_lifetime_wasm.import_memory = true;
+    const compare_audio_lifetime = b.addSystemCommand(&.{ "node", "script/test_audio_lifetime_wasm.mjs" });
+    compare_audio_lifetime.addFileArg(audio_lifetime_wasm.getEmittedBin());
+    compare_audio_lifetime.addFileArg(b.addRunArtifact(audio_lifetime_probe).captureStdOut());
+    b.step("test-browser-audio-lifetime", "Verify audio lifetime and mixer conformance natively and in Wasm").dependOn(&compare_audio_lifetime.step);
+    const audio_lifetime_game = b.createModule(.{
+        .root_source_file = b.path("examples/audio_lifetime_browser.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const audio_lifetime_browser = b.addExecutable(.{ .name = "audio-lifetime", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/browser/runtime.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "frame-timing", .module = browser_frame_timing },
+            .{ .name = "protocol-game", .module = audio_lifetime_game },
+        },
+    }) });
+    audio_lifetime_browser.entry = .disabled;
+    audio_lifetime_browser.rdynamic = true;
+    audio_lifetime_browser.import_memory = true;
+    const audio_lifetime_web = b.step("web-audio-lifetime", "Package the audio scene-lifetime example in zig-out/audio-lifetime");
+    audio_lifetime_web.dependOn(&b.addInstallArtifact(audio_lifetime_browser, .{ .dest_dir = .{ .override = .{ .custom = "audio-lifetime" } }, .dest_sub_path = "unpolished-peas.wasm" }).step);
+    audio_lifetime_web.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("src/browser"), .install_dir = .prefix, .install_subdir = "audio-lifetime", .include_extensions = &.{".mjs"} }).step);
+    audio_lifetime_web.dependOn(&b.addInstallFileWithDir(b.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "audio-lifetime" }, "debug-font-v1.json").step);
+    const audio_lifetime_html = b.addWriteFiles().add("audio-lifetime.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Peas audio scene lifetimes</title><canvas data-unpolished-peas data-peas-shell width=\"320\" height=\"120\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    audio_lifetime_web.dependOn(&b.addInstallFileWithDir(audio_lifetime_html, .{ .custom = "audio-lifetime" }, "index.html").step);
     const font_layout_probe = b.addExecutable(.{ .name = "font-layout-probe", .root_module = b.createModule(.{
         .root_source_file = b.path("examples/font_layout_probe.zig"),
         .target = target,
@@ -1010,6 +1072,8 @@ pub fn build(b: *std.Build) void {
     docs_recipes_step.dependOn(&input_v2_smoke_run.step);
     docs_recipes_step.dependOn(&browser_replay_session_test.step);
     docs_recipes_step.dependOn(font_layout_tests);
+    docs_recipes_step.dependOn(audio_lifetime_tests);
+    docs_recipes_step.dependOn(&compare_audio_lifetime.step);
     docs_recipes_step.dependOn(&compare_font_layout.step);
     docs_test_step.dependOn(docs_recipes_step);
 
@@ -1218,7 +1282,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, audio_lifetime_demo, audio_lifetime_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -1229,6 +1293,7 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(font_layout_tests);
+    test_step.dependOn(audio_lifetime_tests);
     test_step.dependOn(surface_conformance_step);
     test_step.dependOn(&run_input_workbench_tests.step);
     test_step.dependOn(&run_asset_workbench_tests.step);

@@ -13,7 +13,7 @@ pub const steps = [_]up.graphics.SpriteAnimationStep{
 };
 pub const clip = up.graphics.SpriteAnimationClip{ .steps = &steps, .mode = .loop };
 
-/// Load once in init. Audio retains its own sound until host teardown;
+/// Load once in init. Audio retains its sound until explicit unload or teardown;
 /// AssetCollection.deinit does not unload it.
 pub fn loadEffect(ctx: *up.core.GameContext) ?up.core.Audio.SoundHandle {
     const audio = ctx.audio orelse return null;

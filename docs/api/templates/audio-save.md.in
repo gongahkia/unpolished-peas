@@ -5,9 +5,9 @@
 ## Sound and music
 
 Check ctx.audio or use requireAudio. The host owns Audio, decoded WAV effects
-and encoded music sources until teardown; games retain SoundHandle/MusicHandle
-values only. Handles belong to that Audio service; there is no individual
-unload. AssetCollection.deinit does not release them.
+and encoded music sources until optional explicit unload or teardown; games
+retain SoundHandle/MusicHandle values only. Handles belong to that Audio
+service. AssetCollection.deinit does not release them.
 
 These actual portable helpers load once and play on an event. Optional
 audio is output: the game stays playable when a browser lacks a user gesture
@@ -38,6 +38,27 @@ whether a playback was controlled. Defaults and types are below; the
 [audio guide](../guides/audio-assets.md) and
 [Neon Siege](../../dogfood/neon-siege/src/game.zig) show full music setup.
 Logical requests, not device scheduling or speaker samples, are replayed.
+
+## Explicit scene-resource release
+
+`audio.unloadSound(handle)` and `audio.unloadMusic(handle)` return true on
+release, false for invalid/stale/repeated handles. They first stop dependent
+instances, including paused/looping playback, then free source data and decoder
+storage. Unrelated audio continues. Empty registry slots are reused with new
+generations; counters never wrap into stale generations. Load can return
+`AudioHandleExhausted` at the documented u32 generation limit.
+
+The [portable scene example](../../examples/audio_lifetime_game.zig) retains a
+UI sound across repeated transitions. It prepares incoming sources before
+releasing outgoing sources, and cleans up partial initialization:
+
+<!-- example: examples/audio_lifetime_game.zig | Game.changeScene -->
+<!-- example: examples/audio_lifetime_game.zig | Game.deinit -->
+
+Release is synchronous game/host-thread work; do not race it with mixing or
+invoke it in a realtime device callback. It does not retract already queued
+PCM or access the device. The [lifetime guide](../guides/audio-lifetimes.md)
+defines ownership, slot-memory bounds, failure semantics and executed checks.
 
 <!-- api: core.Audio -->
 <!-- api: assets.PlaybackHandle -->

@@ -20,6 +20,7 @@ const source_documents = [_][]const u8{
     "guides/asset-recipes.md",
     "guides/sprite-animation.md",
     "guides/audio-assets.md",
+    "guides/audio-lifetimes.md",
     "guides/save-data.md",
     "guides/input.md",
     "guides/input-v2-compatibility.md",

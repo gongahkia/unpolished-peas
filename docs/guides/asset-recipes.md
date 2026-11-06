@@ -91,7 +91,7 @@ All five recipes are compiled and exercised in
 | Image | `collection.image(bytes, ImageDecodeOptions)` → `!*Image`; `canvas.drawImage(image.*, x, y)` | Decode once; borrow until collection cleanup. |
 | Authored font | `collection.font(bytes, FontLoadOptions)` → `!*Font`; `font.drawText(canvas, text, x, y, color)` | Decode/rasterize once. Font glyph coverage and shaping limits still apply. |
 | Sprite animation | `collection.atlas(bytes, frames, Atlas.DecodeOptions)` → `!*Atlas`; `clip.validateForAtlas(atlas)`; `SpriteAnimationPlayer.init(&clip)` | Sheet pixels and metadata belong to the collection. Clips and player state remain game-owned. Advance only in fixed updates. |
-| Sound | `loadEffect(ctx)` and `playEffect(ctx, handle)` recipes use `ctx.audio.loadWav` / `play` | Audio host owns the loaded sound until host teardown. Collection cleanup does not unload it. Browser activation/device failures remain recoverable. |
+| Sound | `loadEffect(ctx)` and `playEffect(ctx, handle)` recipes use `ctx.audio.loadWav` / `play` | Audio host owns the sound until optional `unloadSound` or teardown. Collection cleanup does not unload it. Browser activation/device failures remain recoverable. See [audio lifetimes](audio-lifetimes.md) for scene cleanup. |
 | Progress | `loadProgress(ctx)` and `saveProgress(ctx, score)` recipes use `ctx.save_data.read` / `write` | Four explicit little-endian bytes, with missing/unavailable/corrupt data handled by the game. No raw struct serialization. |
 
 `Atlas.DecodeOptions` contains `image: ImageDecodeOptions = .{}`,

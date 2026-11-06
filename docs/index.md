@@ -22,6 +22,7 @@ with the smallest complete project, then add only the concepts your game needs.
 - [Compiled portable asset recipes](guides/asset-recipes.md) — one owner for images, fonts and sheets, plus sound/save recipes
 - [Deterministic sprite-frame animation](guides/sprite-animation.md)
 - [Sound effects and music](guides/audio-assets.md)
+- [Audio lifetimes across scene transitions](guides/audio-lifetimes.md)
 - [Small save data](guides/save-data.md)
 - [Canvas, camera, and presentation](guides/rendering.md)
 - [CPU RenderSurface composition](guides/render-surfaces.md)
