@@ -648,6 +648,8 @@ pub fn build(b: *std.Build) void {
     const tutorial_game_protocol_demo = addExample(b, "unpolished-peas-tutorial-game-protocol", "examples/tutorial_game_protocol.zig", target, optimize, peas, sdl);
     const input_workbench_demo = addExample(b, "unpolished-peas-input-workbench", "examples/input_workbench.zig", target, optimize, peas, sdl);
     const asset_workbench_demo = addExample(b, "unpolished-peas-asset-workbench", "examples/asset_workbench.zig", target, optimize, peas, sdl);
+    const font_layout_demo = addExample(b, "unpolished-peas-font-layout", "examples/font_layout.zig", target, optimize, peas, sdl);
+    addRunStep(b, "run-font-layout", "Run the prepared proportional-font menu and dialogue example", font_layout_demo);
     addRunStep(b, "run-asset-workbench", "Run portable images, fonts, animation, sound and saves", asset_workbench_demo);
     const asset_workbench_game = b.createModule(.{
         .root_source_file = b.path("examples/asset_workbench_game.zig"),
@@ -908,10 +910,108 @@ pub fn build(b: *std.Build) void {
     run_docs.addArg(b.pathFromRoot("zig-out/docs"));
     const docs_step = b.step("docs", "Emit validated local Markdown documentation");
     docs_step.dependOn(&run_docs.step);
+    const font_layout_probe = b.addExecutable(.{ .name = "font-layout-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/font_layout_probe.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    b.step("probe-font-layout", "Reproduce fixed-width versus authored-font metrics").dependOn(&b.addRunArtifact(font_layout_probe).step);
+    const font_layout_tests = b.step("test-font-layout", "Verify authored text metrics, pixels, bounds, limits and ownership");
+    for ([_]std.builtin.OptimizeMode{ .Debug, .ReleaseFast }) |mode| {
+        const checks = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/font_layout_probe.zig"),
+            .target = target,
+            .optimize = mode,
+            .imports = &.{.{ .name = "unpolished-peas", .module = if (mode == .ReleaseFast) surface_fast_core else peas }},
+        }) });
+        font_layout_tests.dependOn(&b.addRunArtifact(checks).step);
+    }
+    const font_layout_wasm = b.addExecutable(.{ .name = "font-layout-probe", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/font_layout_probe.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    }) });
+    font_layout_wasm.entry = .disabled;
+    font_layout_wasm.rdynamic = true;
+    font_layout_wasm.import_memory = true;
+    const compare_font_layout = b.addSystemCommand(&.{ "node", "script/test_font_layout_wasm.mjs" });
+    compare_font_layout.addFileArg(font_layout_wasm.getEmittedBin());
+    compare_font_layout.addFileArg(b.addRunArtifact(font_layout_probe).captureStdOut());
+    b.step("test-browser-font-layout", "Compare native/Wasm authored text pixels and explicit layout metrics").dependOn(&compare_font_layout.step);
+    const font_game = b.createModule(.{
+        .root_source_file = b.path("examples/font_layout_game.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    });
+    const font_browser = b.addExecutable(.{ .name = "font-layout", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/browser/runtime.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{
+            .{ .name = "unpolished-peas", .module = browser_peas },
+            .{ .name = "frame-timing", .module = browser_frame_timing },
+            .{ .name = "protocol-game", .module = font_game },
+        },
+    }) });
+    font_browser.entry = .disabled;
+    font_browser.rdynamic = true;
+    font_browser.import_memory = true;
+    const font_web = b.step("web-font-layout", "Package the authored-font menu/dialogue example in zig-out/font-layout");
+    font_web.dependOn(&b.addInstallArtifact(font_browser, .{ .dest_dir = .{ .override = .{ .custom = "font-layout" } }, .dest_sub_path = "unpolished-peas.wasm" }).step);
+    font_web.dependOn(&b.addInstallDirectory(.{ .source_dir = b.path("src/browser"), .install_dir = .prefix, .install_subdir = "font-layout", .include_extensions = &.{".mjs"} }).step);
+    font_web.dependOn(&b.addInstallFileWithDir(b.path("src/fixtures/text/debug-5x7-v1.json"), .{ .custom = "font-layout" }, "debug-font-v1.json").step);
+    font_web.dependOn(&b.addInstallFileWithDir(b.path("examples/assets/fonts/SourceSansOFL.txt"), .{ .custom = "font-layout" }, "SourceSansOFL.txt").step);
+    const font_html = b.addWriteFiles().add("font-layout.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Peas authored text layout</title><canvas data-unpolished-peas data-peas-shell width=\"320\" height=\"180\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
+    font_web.dependOn(&b.addInstallFileWithDir(font_html, .{ .custom = "font-layout" }, "index.html").step);
+    const update_api_docs = b.addRunArtifact(docs);
+    update_api_docs.addArgs(&.{
+        b.pathFromRoot("docs"),
+        b.pathFromRoot("src/unpolished_peas.zig"),
+        b.pathFromRoot("zig-out/docs"),
+        "--update-api",
+    });
+    b.step("docs-update-api", "Refresh source-derived API reference pages in docs/api").dependOn(&update_api_docs.step);
     const docs_tests = b.addTest(.{ .root_module = docs.root_module });
     const run_docs_tests = b.addRunArtifact(docs_tests);
+    // These tests inspect source/templates/snapshots at runtime. A cached test
+    // executable result would miss changes to files it does not import.
+    run_docs_tests.has_side_effects = true;
     const docs_test_step = b.step("test-docs", "Validate local documentation generation and links");
     docs_test_step.dependOn(&run_docs_tests.step);
+    const api_recipes = b.addExecutable(.{ .name = "api-reference-recipes", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/api_reference_recipes.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const api_recipe_tests = b.addTest(.{ .root_module = api_recipes.root_module });
+    const api_recipes_native = b.addRunArtifact(api_recipes);
+    const api_recipes_wasm = b.addExecutable(.{ .name = "api-reference-recipes", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/api_reference_recipes.zig"),
+        .target = browser_target,
+        .optimize = browser_optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    }) });
+    api_recipes_wasm.entry = .disabled;
+    api_recipes_wasm.rdynamic = true;
+    api_recipes_wasm.import_memory = true;
+    const compare_api_recipes = b.addSystemCommand(&.{ "node", "script/test_api_reference_recipes.mjs" });
+    compare_api_recipes.addFileArg(api_recipes_wasm.getEmittedBin());
+    compare_api_recipes.addFileArg(api_recipes_native.captureStdOut());
+    const docs_recipes_step = b.step("test-docs-recipes", "Execute API recipes natively and in Wasm, including existing asset/input/replay examples");
+    docs_recipes_step.dependOn(&b.addRunArtifact(api_recipe_tests).step);
+    docs_recipes_step.dependOn(&compare_api_recipes.step);
+    docs_recipes_step.dependOn(&run_asset_workbench_tests.step);
+    docs_recipes_step.dependOn(&run_input_workbench_tests.step);
+    docs_recipes_step.dependOn(&asset_probe_compare.step);
+    docs_recipes_step.dependOn(&input_v2_smoke_run.step);
+    docs_recipes_step.dependOn(&browser_replay_session_test.step);
+    docs_recipes_step.dependOn(font_layout_tests);
+    docs_recipes_step.dependOn(&compare_font_layout.step);
+    docs_test_step.dependOn(docs_recipes_step);
 
     const starter = b.addExecutable(.{
         .name = "unpolished-peas-new",
@@ -1118,7 +1218,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");
@@ -1128,6 +1228,7 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(font_layout_tests);
     test_step.dependOn(surface_conformance_step);
     test_step.dependOn(&run_input_workbench_tests.step);
     test_step.dependOn(&run_asset_workbench_tests.step);

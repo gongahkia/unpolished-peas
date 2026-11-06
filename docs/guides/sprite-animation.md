@@ -1,5 +1,9 @@
 # Deterministic sprite-frame animation
 
+Call reference: [SpriteAnimationClip](../api/assets.md#graphics-SpriteAnimationClip)
+and [SpriteAnimationPlayer](../api/assets.md#graphics-SpriteAnimationPlayer),
+including the explicit validation errors and fixed-tick recipe.
+
 `graphics.SpriteAnimationClip` and `graphics.SpriteAnimationPlayer` are a
 small, game-owned way to select Atlas frames. They are for ordinary sprite
 sheets, not animation graphs, tweening, skeletal animation, or gameplay state

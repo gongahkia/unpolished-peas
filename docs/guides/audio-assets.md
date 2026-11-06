@@ -1,5 +1,8 @@
 # Audio
 
+Call reference: [Audio](../api/audio-save.md#core-Audio), including sound/music
+handles, playback-option defaults and executed load/play recipes.
+
 The [compiled sound recipe](../../examples/asset_recipes.zig) and
 [asset workbench](asset-recipes.md) demonstrate load-once/play-on-event through
 the portable context. Sounds remain Audio-host owned; an AssetCollection owns

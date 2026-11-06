@@ -1,5 +1,8 @@
 # Save data
 
+Call reference: [SaveStore](../api/audio-save.md#core-SaveStore), including
+buffer ownership, the Error set and explicit byte-encoding recipes.
+
 The [compiled progress recipe](../../examples/asset_recipes.zig) and
 [portable asset workbench](asset-recipes.md) provide a small additional example
 of four-byte progress saves and restart. For browser persistence, put

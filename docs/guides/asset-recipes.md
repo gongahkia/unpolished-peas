@@ -1,5 +1,8 @@
 # Portable asset recipes
 
+Call reference: [collection, image/font/atlas and animation APIs](../api/assets.md)
+with source-derived options, lifetimes and the compiled recipe excerpts.
+
 Use embedded bytes and `assets.AssetCollection` for a small game that wants
 images, authored fonts, and sprite sheets with one game-owned cleanup boundary.
 The same code runs in native, browser, and headless `GameProtocol` hosts.

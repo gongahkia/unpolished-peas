@@ -64,6 +64,15 @@ They have no allocation or hashing cost while no trace is attached.
 
 ## Exclusions and compatibility
 
+Authored text adds `assets.Font.measureText`, `layoutText`, and nested
+`TextOptions`, `TextMetrics` and owned `TextLayout`. These use existing glyph
+metrics/fallback and keep direct Font.drawText and debug graphics.layoutText
+behavior intact. No root or capability-namespace aliases are added, and the
+frozen declaration snapshot/symbol budget remain unchanged. Prepared layout
+ownership, bounds and error limits are defined in
+[authored text layout](authored-text-layout.md); the generated reference checks
+its signatures/defaults. This is an additive working-tree change, not a release.
+
 The contract excludes extension ecosystems, ECS, immediate-mode UI, networking and hosted services, Box2D physics, lighting, public GPU-resource handles, meshes, compute, tile maps, tile colliders, character controllers, collision geometry, and broadphase APIs. Staged 2D materials execute through SDL GPU, WebGL 2, and WebGPU; desktop releases consume AOT artifacts and browsers compile their target source. Canvas remains the deterministic headless reference rather than an arbitrary-shader fallback. See [Advanced 2D](advanced-2d.md) and [v1.0 migrations](migrations.md) for limits and migration guidance.
 
 For a published 1.x release, removing or renaming a listed declaration, changing callback/error/timing behavior, or changing a supported target is a breaking change. The complete semver policy is in [releases and support](releases.md).

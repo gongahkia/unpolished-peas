@@ -2,6 +2,13 @@
 
 ## Required pull-request suite
 
+`zig build test-docs` checks source-derived API pages for stale signatures,
+defaults and recipe excerpts, validates member fragments, and executes the
+documented native/Wasm recipes using Node.js 24. `zig build docs` also checks
+the links in its emitted Markdown bundle, including linked source snapshots.
+After intentional API/example/template changes, refresh the checked pages
+with `zig build docs-update-api -Dwith_sdl=false` and review their diff.
+
 Pushes and pull requests also run `browser-host` for the DOM/renderer/audio/
 storage host contracts, browser development server, and version/release
 wiring, plus `browser-rendering` for real Chromium shell interactions and
@@ -68,6 +75,14 @@ Chromium. Logs and browser metadata are retained under
 `zig-out/diagnostics/surface-composition/`. The focused performance comparison
 is a separate manual experiment; no pull-request timing gate or performance
 budget is changed. See [surface measurements](surface-composition-performance.md).
+
+Authored text layout runs through `test-font-layout` in native Debug and
+ReleaseFast and `test-browser-font-layout` in Node-hosted Wasm. Both are
+included in `test-docs`; the native suite is also in `test`. The
+browser-rendering job runs `script/test_browser_font_layout.sh` for the
+compiled proportional-font menu/dialogue example. It checks visible text and
+real keyboard-driven selection/page changes and retains a screenshot and
+browser metadata under zig-out/diagnostics/font-layout.
 
 ## Non-PR validation
 

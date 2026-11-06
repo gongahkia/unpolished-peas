@@ -1,5 +1,9 @@
 # Render surfaces
 
+Call reference: [RenderSurface](../api/drawing.md#graphics-RenderSurface) and
+[SurfaceDrawOptions](../api/drawing.md#graphics-SurfaceDrawOptions), with an
+executed offscreen composition recipe.
+
 `up.graphics.RenderSurface` is a persistent, Peas-owned offscreen 2D Canvas.
 It is useful for low-resolution pixel-art composition, minimaps, temporary
 authored layers, and other ordinary 2D sub-composition. It is deliberately not

@@ -1,5 +1,8 @@
 # Game protocol
 
+Call reference: [GameContext and GameProtocol](../api/lifecycle.md), including
+capability defaults, cleanup, errors and a compiled portable game.
+
 `up.core.GameProtocol(Game)` is the backend-neutral lifecycle. It borrows a game
 value and never allocates or moves that value. Hosts create
 `up.core.GameContext`, call `init` once, call `update` for each simulated step,
