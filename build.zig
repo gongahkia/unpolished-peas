@@ -1028,6 +1028,15 @@ pub fn build(b: *std.Build) void {
     font_web.dependOn(&b.addInstallFileWithDir(b.path("examples/assets/fonts/SourceSansOFL.txt"), .{ .custom = "font-layout" }, "SourceSansOFL.txt").step);
     const font_html = b.addWriteFiles().add("font-layout.html", "<!doctype html><meta charset=\"utf-8\"><meta name=\"viewport\" content=\"width=device-width,initial-scale=1\"><link rel=\"icon\" href=\"data:,\"><title>Peas authored text layout</title><canvas data-unpolished-peas data-peas-shell width=\"320\" height=\"180\" tabindex=\"0\"></canvas><script type=\"module\" src=\"./bootstrap.mjs\"></script>\n");
     font_web.dependOn(&b.addInstallFileWithDir(font_html, .{ .custom = "font-layout" }, "index.html").step);
+    const authoring_reference = b.addExecutable(.{ .name = "browser-authoring-reference", .root_module = b.createModule(.{
+        .root_source_file = b.path("examples/authoring_browser_reference.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    const run_authoring_reference = b.addRunArtifact(authoring_reference);
+    run_authoring_reference.addArg(b.getInstallPath(.prefix, "browser-authoring-reference"));
+    b.step("browser-authoring-reference", "Record native authored-font pixels for real-browser comparisons").dependOn(&run_authoring_reference.step);
     const update_api_docs = b.addRunArtifact(docs);
     update_api_docs.addArgs(&.{
         b.pathFromRoot("docs"),

@@ -29,10 +29,11 @@ export function selectedRenderers(value = "webgl2 webgpu") {
 }
 
 export class WebDriver {
-  constructor(baseUrl) {
+  constructor(baseUrl, {requestTimeoutMs = 30000} = {}) {
     this.baseUrl = baseUrl.replace(/\/$/, "");
     this.sessionId = null;
     this.capabilities = null;
+    this.requestTimeoutMs = requestTimeoutMs;
   }
 
   async request(path, method = "GET", value) {
@@ -40,6 +41,7 @@ export class WebDriver {
       method,
       headers: value === undefined ? undefined : {"content-type": "application/json"},
       body: value === undefined ? undefined : JSON.stringify(value),
+      signal: AbortSignal.timeout(this.requestTimeoutMs),
     });
     const text = await response.text();
     let body = {value: null};
@@ -154,9 +156,9 @@ async function capture(client, directory, game, renderer, driverStatus, captureP
   return artifact;
 }
 
-// Run on about:blank before loading Peas so a broken runner PNG encoder
-// cannot be mistaken for a framework rendering regression.
-function probeWebGlCapture() {
+// Probe a blank page at the package's origin before loading Peas so unavailable
+// runner canvas PNG export cannot be mistaken for a rendering regression.
+export function probeWebGlCapture() {
   const canvas = document.createElement("canvas");
   canvas.width = canvas.height = 32;
   document.body.append(canvas);
@@ -171,7 +173,7 @@ function probeWebGlCapture() {
   return {context_lost: gl.isContextLost(), error, pixel: Array.from(pixel), png_capture_available: capture.startsWith("data:image/png"), png_capture_result: capture.slice(0, 40)};
 }
 
-function webGlRenderContract() {
+export function webGlRenderContract() {
   const api = window.unpolishedPeas;
   const gl = api.host.context();
   const pack = (r, g, b) => (r | (g << 8) | (b << 16) | 0xff000000) >>> 0;
@@ -186,7 +188,7 @@ function webGlRenderContract() {
   return {statuses, pixel: Array.from(pixel), error: gl.getError(), context_lost: gl.isContextLost()};
 }
 
-function validateWebGlReadback(result, label) {
+export function validateWebGlReadback(result, label) {
   const detail = `${label}: ${JSON.stringify(result)}`;
   assert.equal(result.context_lost, false, detail);
   assert.equal(result.error, 0, detail);

@@ -60,7 +60,7 @@ const Tracker = struct {
     }
 };
 
-const Sample = struct { cycles: u32, sound_slots: u32, music_slots: u32, live_bytes: u32 };
+const Sample = struct { cycles: u32, sound_slots: u32, music_slots: u32, live_bytes: u32, peak_bytes: u32 };
 const Report = struct { retained: [4]Sample, released: [4]Sample, pcm_hash: u64, allocation_failures: u32 };
 var report: Report = undefined;
 var stage: u32 = 0;
@@ -90,7 +90,7 @@ fn measureCycles(allocator: std.mem.Allocator, release: bool) ![4]Sample {
                 try check(!audio.unloadSound(sound) and !audio.unloadMusic(music));
             }
             if (i == 0 or i == 7 or i == 63 or i == 255) {
-                observations[sample] = .{ .cycles = @intCast(i + 1), .sound_slots = @intCast(audio.sounds.items.len), .music_slots = @intCast(audio.music_sources.items.len), .live_bytes = @intCast(tracked.live_bytes) };
+                observations[sample] = .{ .cycles = @intCast(i + 1), .sound_slots = @intCast(audio.sounds.items.len), .music_slots = @intCast(audio.music_sources.items.len), .live_bytes = @intCast(tracked.live_bytes), .peak_bytes = @intCast(tracked.peak_bytes) };
                 sample += 1;
             }
         }
@@ -148,6 +148,14 @@ fn soundCases(allocator: std.mem.Allocator, hash: *std.hash.Fnv1a_64) !void {
     try expectControl(&audio, 0.25, hash);
     try check(audio.stop(survivor));
     try check(audio.unloadSound(persistent));
+    try expectControl(&audio, 0, hash);
+    const music = try audio.loadMusic(&tiny_wav, .{ .format = .wav });
+    _ = try audio.playMusic(music, .{ .volume = 0.125 });
+    const extra = try audio.loadWav(&tiny_wav);
+    _ = try audio.play(extra, .{ .loop = true });
+    try check(audio.unloadSound(extra) and audio.musicState() == .playing);
+    try expectControl(&audio, 0.125, hash);
+    try check(audio.unloadMusic(music));
     try expectControl(&audio, 0, hash);
 }
 
@@ -316,7 +324,7 @@ fn verify(allocator: std.mem.Allocator) !Report {
     const retained = try measureCycles(allocator, false);
     const released = try measureCycles(allocator, true);
     for (retained) |value| try check(value.sound_slots == value.cycles and value.music_slots == value.cycles);
-    for (released) |value| try check(value.sound_slots == 1 and value.music_slots == 1 and value.live_bytes == released[0].live_bytes);
+    for (released) |value| try check(value.sound_slots == 1 and value.music_slots == 1 and value.live_bytes == released[0].live_bytes and value.peak_bytes == released[0].peak_bytes);
     return .{ .retained = retained, .released = released, .pcm_hash = hash.final(), .allocation_failures = failure_count };
 }
 
@@ -358,6 +366,7 @@ pub export fn audio_lifetime_sample(release: u32, index: u32, field: u32) u32 {
         1 => sample.sound_slots,
         2 => sample.music_slots,
         3 => sample.live_bytes,
+        4 => sample.peak_bytes,
         else => 0,
     };
 }

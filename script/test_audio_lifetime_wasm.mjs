@@ -12,15 +12,15 @@ for (let i = 0; i < 3; i += 1) {
   assert.ok(run.allocation_failures >= 20);
   for (let release = 0; release <= 1; release += 1) {
     for (let index = 0; index < 4; index += 1) {
-      const values = [0, 1, 2, 3].map((field) => instance.exports.audio_lifetime_sample(release, index, field));
-      const sample = Object.fromEntries(["cycles", "sound_slots", "music_slots", "live_bytes"].map((key, j) => [key, values[j]]));
+      const values = [0, 1, 2, 3, 4].map((field) => instance.exports.audio_lifetime_sample(release, index, field));
+      const sample = Object.fromEntries(["cycles", "sound_slots", "music_slots", "live_bytes", "peak_bytes"].map((key, j) => [key, values[j]]));
       assert.equal(sample.cycles, native.retained[index].cycles);
       assert.equal(sample.sound_slots, release ? 1 : sample.cycles);
       assert.equal(sample.music_slots, release ? 1 : sample.cycles);
       run[release ? "released" : "retained"].push(sample);
     }
   }
-  assert.ok(run.released.every((sample) => sample.live_bytes === run.released[0].live_bytes));
+  assert.ok(run.released.every((sample) => sample.live_bytes === run.released[0].live_bytes && sample.peak_bytes === run.released[0].peak_bytes));
   assert.ok(run.retained[3].live_bytes > run.retained[0].live_bytes * 200);
   run.memory_bytes = memory.buffer.byteLength;
   runs.push(run);

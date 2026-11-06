@@ -29,6 +29,17 @@ pixels and saved bytes natively and in Wasm. The real Chromium job also runs
 game outside the checkout against a verified source archive through
 `test-asset-collection-consumer`.
 
+`test-audio-lifetime` runs native Debug/ReleaseFast release, PCM, slot/memory
+reuse and failure checks, and is included in default tests.
+`test-browser-audio-lifetime` repeats them in Wasm, including allocator failures
+and linear-memory plateaus; `test-docs` and `browser-host` run this comparison.
+`browser-rendering` also runs `script/test_browser_audio_lifetime.sh` for real
+Chromium transitions, paused-source release, WebAudio submissions and cleanup.
+The explicit `script/test_native_audio_lifetime.sh` needs a display and audio
+device; its UUID namespace is removed after the run. The SDL suite's queue
+check skips when no output device is available. Neither check establishes
+physical speaker quality. See [audio lifetimes](audio-lifetimes.md).
+
 `stable-core-capability` is the intended required pull-request matrix; `capability-matrix` is its generated-matrix dependency. The matrix is generated from `docs/capabilities/v1.0.json`; it selects only supported desktop SDL GPU rows.
 
 `nightly.yml` consumes the nightly matrix from the same catalog. It runs the documented macOS, Linux, Windows, Chromium, Firefox, and separately forced Safari WebGL2/WebGPU rows, preserving renderer diagnostics and workload artifacts under the matrix identity. Unsupported Firefox WebGPU is absent.

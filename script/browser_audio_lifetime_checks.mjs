@@ -1,60 +1,39 @@
-async (page) => {
-  const check = (condition, message) => { if (!condition) throw new Error(message); };
-  const errors = [];
-  page.on("pageerror", (error) => errors.push(error.message));
-  await page.addInitScript(() => {
-    window.audioLifetimeSubmissions = 0;
-    window.audioLifetimeNonzero = 0;
-    const wrapped = new WeakSet();
-    const wrap = (imports) => {
-      if (wrapped.has(imports.env)) return;
-      wrapped.add(imports.env);
-      const original = imports.env.up_host_audio_submit;
-      imports.env.up_host_audio_submit = (pointer, length) => {
-        const samples = new Float32Array(imports.env.memory.buffer, pointer, length / 4);
-        if (!samples.every(Number.isFinite)) throw new Error("nonfinite host PCM");
-        const nonzero = samples.some((value) => value !== 0);
-        const status = original(pointer, length);
-        if (status === 0) {
-          window.audioLifetimeSubmissions += 1;
-          if (nonzero) window.audioLifetimeNonzero += 1;
-        }
-        return status;
-      };
-    };
-    for (const name of ["instantiate", "instantiateStreaming"]) {
-      const original = WebAssembly[name];
-      WebAssembly[name] = (...args) => { wrap(args[1]); return original.apply(WebAssembly, args); };
-    }
-  });
-  await page.reload();
-  await page.locator('[role="status"][data-state="ready"]').waitFor();
-  const metric = (field) => page.evaluate((field) => window.unpolishedPeas.runtime.audio_lifetime_metric(field), field);
-  check(await metric(0) === 1 && await metric(6) === 2 && await metric(7) === 1, "initial sources must be loaded once");
-  check(await metric(5) === 0, "blocked autoplay must leave sources available for retry");
-  await page.getByRole("button", {name: "Focus game", exact: true}).click();
+import {join} from "node:path";
+import {check, ready, frame} from "./browser-authoring/checks.mjs";
+import {sleep} from "./browser-authoring/adapters.mjs";
+
+export async function audioChecks(driver, {directory}) {
+  await ready(driver, false);
+  const metric = (field) => driver.evaluate((field) => window.unpolishedPeas.runtime.audio_lifetime_metric(field), field);
+  check(await metric(0) === 1 && await metric(6) === 2 && await metric(7) === 1, "initial sources loaded once");
+  check(await metric(5) === 0, "autoplay must initially be blocked; sources stay available for retry");
+  const initially = await driver.evaluate(() => window.unpolishedPeas.host.audio());
+  await driver.click(".peas-actions button:first-child");
+  await driver.click("canvas[data-unpolished-peas]");
+  await driver.wait(() => window.unpolishedPeas.host.audio().state === 0, null, "WebAudio gesture activation");
   for (let i = 0; i < 12; i += 1) {
     const before = await metric(0);
-    await page.keyboard.press("Space");
-    await page.waitForFunction((value) => window.unpolishedPeas.runtime.audio_lifetime_metric(0) > value, before);
-    check(await metric(2) === 3 && await metric(3) === 2, "scene changes must reuse source registry slots");
-    check(await metric(6) === 2 && await metric(7) === 1, "only persistent UI and current-scene sources may remain loaded");
-    check(await metric(5) === 1, "activated audio must start with retained/reused handles");
-    await page.keyboard.press("Escape");
-    await page.waitForFunction(() => window.unpolishedPeas.runtime.audio_lifetime_metric(4) === 2);
-    // The following transition releases this paused stream as well.
+    await driver.press("Space");
+    await driver.wait((value) => window.unpolishedPeas.runtime.audio_lifetime_metric(0) > value, before, "audio scene transition");
+    check(await metric(2) === 3 && await metric(3) === 2, "reuse sound/music registry slots");
+    check(await metric(6) === 2 && await metric(7) === 1, "retain only persistent UI and current scene sources");
+    check(await metric(5) === 1, "activated audio starts through retained handles");
+    await driver.press("Escape");
+    await driver.wait(() => window.unpolishedPeas.runtime.audio_lifetime_metric(4) === 2, null, "pause outgoing music");
   }
-  await page.waitForFunction(() => window.audioLifetimeNonzero > 0);
-  check(await page.evaluate(() => window.unpolishedPeas.runtime.up_browser_protocol_failure_phase()) === -1, "normal host must remain healthy");
-  const observations = await page.evaluate(() => ({transitions: window.unpolishedPeas.runtime.audio_lifetime_metric(0), submitted: window.audioLifetimeSubmissions, nonzero: window.audioLifetimeNonzero}));
-  await page.screenshot({path: "audio-lifetime.png"});
-  const atShutdown = await page.evaluate(() => {
+  await driver.wait(() => window.peasTest.nonzero > 0, null, "accepted nonzero WebAudio PCM");
+  check(await driver.evaluate(() => window.unpolishedPeas.runtime.up_browser_protocol_failure_phase()) === -1, "audio host remains healthy");
+  const observations = await driver.evaluate(() => ({transitions: window.unpolishedPeas.runtime.audio_lifetime_metric(0), submitted: window.peasTest.submissions, nonzero: window.peasTest.nonzero, invalidPcm: window.peasTest.invalidPcm, audio: window.unpolishedPeas.host.audio()}));
+  check(observations.invalidPcm === 0, "submitted PCM must be finite");
+  const rendered = await frame(driver, directory, "audio-lifetime", 320, 120);
+  check(rendered.rgba.some((value, index) => index % 4 !== 3 && value > 150), "audio example text must render");
+  await driver.screenshot(join(directory, "audio-lifetime.png"));
+  const atShutdown = await driver.evaluate(() => {
     window.unpolishedPeas.runtime.up_browser_shutdown();
-    return window.audioLifetimeSubmissions;
+    return window.peasTest.submissions;
   });
-  check(await metric(8) === 1, "game must release all playback before host teardown");
-  await page.waitForTimeout(100);
-  check(await page.evaluate(() => window.audioLifetimeSubmissions) === atShutdown, "shutdown must stop new PCM submissions");
-  check(errors.length === 0, `browser errors: ${errors.join(", ")}`);
-  return {status: "peas-audio-lifetime-passed", ...observations, userAgent: await page.evaluate(() => navigator.userAgent)};
+  check(await metric(8) === 1, "game releases playback before host teardown");
+  await sleep(100);
+  check(await driver.evaluate(() => window.peasTest.submissions) === atShutdown, "shutdown stops new PCM submissions");
+  return {status: "peas-audio-lifetime-passed", initially, ...observations};
 }

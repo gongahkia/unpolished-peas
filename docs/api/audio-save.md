@@ -14,9 +14,9 @@ API entries:
 ## Sound and music
 
 Check ctx.audio or use requireAudio. The host owns Audio, decoded WAV effects
-and encoded music sources until teardown; games retain SoundHandle/MusicHandle
-values only. Handles belong to that Audio service; there is no individual
-unload. AssetCollection.deinit does not release them.
+and encoded music sources until optional explicit unload or teardown; games
+retain SoundHandle/MusicHandle values only. Handles belong to that Audio
+service. AssetCollection.deinit does not release them.
 
 These actual portable helpers load once and play on an event. Optional
 audio is output: the game stays playable when a browser lacks a user gesture
@@ -80,20 +80,83 @@ whether a playback was controlled. Defaults and types are below; the
 [Neon Siege](../../dogfood/neon-siege/src/game.zig) show full music setup.
 Logical requests, not device scheduling or speaker samples, are replayed.
 
+## Explicit scene-resource release
+
+`audio.unloadSound(handle)` and `audio.unloadMusic(handle)` return true on
+release, false for invalid/stale/repeated handles. They first stop dependent
+instances, including paused/looping playback, then free source data and decoder
+storage. Unrelated audio continues. Empty registry slots are reused with new
+generations; counters never wrap into stale generations. Load can return
+`AudioHandleExhausted` at the documented u32 generation limit.
+
+The [portable scene example](../../examples/audio_lifetime_game.zig) retains a
+UI sound across repeated transitions. It prepares incoming sources before
+releasing outgoing sources, and cleans up partial initialization:
+
+[Compiled source](../../examples/audio_lifetime_game.zig#L25) (`Game.changeScene`):
+
+```zig
+pub fn changeScene(self: *Game, ctx: *up.core.GameContext) !void {
+    const audio = try ctx.requireAudio();
+    // Prepare the next scene before releasing the old one. Either load
+    // can fail without changing the current scene or persistent UI sound.
+    const sound = try audio.loadWav(wav);
+    const next: u8 = (self.scene + 1) % 2;
+    const music = audio.loadMusic(if (next == 0) wav else ogg, .{ .format = if (next == 0) .wav else .ogg }) catch |err| {
+        _ = audio.unloadSound(sound);
+        return err;
+    };
+    if (self.scene_sound) |old| _ = audio.unloadSound(old);
+    if (self.scene_music) |old| _ = audio.unloadMusic(old);
+    self.scene_sound = sound;
+    self.scene_music = music;
+    self.scene = next;
+    self.transitions += 1;
+    try self.playScene(audio);
+    _ = audio.play(self.ui_sound.?, .{ .volume = 0.15 }) catch |err| switch (err) {
+        error.AudioUnavailable => {},
+        else => return err,
+    };
+}
+```
+
+[Compiled source](../../examples/audio_lifetime_game.zig#L81) (`Game.deinit`):
+
+```zig
+pub fn deinit(self: *Game, ctx: *up.core.GameContext) !void {
+    if (ctx.audio) |audio| {
+        if (self.scene_sound) |sound| _ = audio.unloadSound(sound);
+        if (self.scene_music) |music| _ = audio.unloadMusic(music);
+        if (self.ui_sound) |sound| _ = audio.unloadSound(sound);
+    }
+    self.scene_sound = null;
+    self.scene_music = null;
+    self.ui_sound = null;
+}
+```
+
+
+Release is synchronous game/host-thread work; do not race it with mixing or
+invoke it in a realtime device callback. It does not retract already queued
+PCM or access the device. The [lifetime guide](../guides/audio-lifetimes.md)
+defines ownership, slot-memory bounds, failure semantics and executed checks.
+
 <a id="core-Audio"></a>
 ## `up.core.Audio`
 
-[Source declaration](../../src/audio.zig#L378).
+[Source declaration](../../src/audio.zig#L380).
 
 A small, host-owned sound-effect service for `GameProtocol` games.
 
 `loadWav` decodes bytes once and returns a reusable handle. The service owns
-every decoded sound and releases it in `deinit`, after stopping its mixer.
-A game therefore stores handles but never frees individual sound resources.
+every decoded sound until explicit `unloadSound` or host `deinit`. Music
+sources follow the same rule through `unloadMusic`. Unloading first stops
+dependent playbacks, then releases source data; empty registry slots are
+retained for reuse. Call on the host/game thread, never concurrently with mix.
 This intentionally covers short WAV effects; the lower-level `AudioMixer`
 and `AssetStore` APIs remain available for advanced/native use cases.
 
-[`Availability`](#core-Audio-Availability) · [`Config`](#core-Audio-Config) · [`SoundHandle`](#core-Audio-SoundHandle) · [`MusicHandle`](#core-Audio-MusicHandle) · [`MusicFormat`](#core-Audio-MusicFormat) · [`MusicLoadOptions`](#core-Audio-MusicLoadOptions) · [`MusicPlayOptions`](#core-Audio-MusicPlayOptions) · [`MusicState`](#core-Audio-MusicState) · [`MusicDiagnostics`](#core-Audio-MusicDiagnostics) · [`PlayOptions`](#core-Audio-PlayOptions) · [`init`](#core-Audio-init) · [`deinit`](#core-Audio-deinit) · [`availability`](#core-Audio-availability) · [`setAvailability`](#core-Audio-setAvailability) · [`loadWav`](#core-Audio-loadWav) · [`loadMusic`](#core-Audio-loadMusic) · [`play`](#core-Audio-play) · [`playMusic`](#core-Audio-playMusic) · [`pauseMusic`](#core-Audio-pauseMusic) · [`resumeMusic`](#core-Audio-resumeMusic) · [`stopMusic`](#core-Audio-stopMusic) · [`setMusicVolume`](#core-Audio-setMusicVolume) · [`musicState`](#core-Audio-musicState) · [`musicDiagnostics`](#core-Audio-musicDiagnostics) · [`stop`](#core-Audio-stop) · [`playSound`](#core-Audio-playSound) · [`mix`](#core-Audio-mix) · [`hasActivePlayback`](#core-Audio-hasActivePlayback)
+[`Availability`](#core-Audio-Availability) · [`Config`](#core-Audio-Config) · [`SoundHandle`](#core-Audio-SoundHandle) · [`MusicHandle`](#core-Audio-MusicHandle) · [`MusicFormat`](#core-Audio-MusicFormat) · [`MusicLoadOptions`](#core-Audio-MusicLoadOptions) · [`MusicPlayOptions`](#core-Audio-MusicPlayOptions) · [`MusicState`](#core-Audio-MusicState) · [`MusicDiagnostics`](#core-Audio-MusicDiagnostics) · [`PlayOptions`](#core-Audio-PlayOptions) · [`init`](#core-Audio-init) · [`deinit`](#core-Audio-deinit) · [`availability`](#core-Audio-availability) · [`setAvailability`](#core-Audio-setAvailability) · [`loadWav`](#core-Audio-loadWav) · [`loadMusic`](#core-Audio-loadMusic) · [`unloadSound`](#core-Audio-unloadSound) · [`unloadMusic`](#core-Audio-unloadMusic) · [`play`](#core-Audio-play) · [`playMusic`](#core-Audio-playMusic) · [`pauseMusic`](#core-Audio-pauseMusic) · [`resumeMusic`](#core-Audio-resumeMusic) · [`stopMusic`](#core-Audio-stopMusic) · [`setMusicVolume`](#core-Audio-setMusicVolume) · [`musicState`](#core-Audio-musicState) · [`musicDiagnostics`](#core-Audio-musicDiagnostics) · [`stop`](#core-Audio-stop) · [`playSound`](#core-Audio-playSound) · [`mix`](#core-Audio-mix) · [`hasActivePlayback`](#core-Audio-hasActivePlayback)
 
 Fields, variants and defaults (methods follow):
 
@@ -113,7 +176,7 @@ struct {
 <a id="core-Audio-Availability"></a>
 ### `up.core.Audio.Availability`
 
-[Source declaration](../../src/audio.zig#L379).
+[Source declaration](../../src/audio.zig#L381).
 
 Fields, variants and defaults (methods follow):
 
@@ -128,7 +191,7 @@ enum {
 <a id="core-Audio-Config"></a>
 ### `up.core.Audio.Config`
 
-[Source declaration](../../src/audio.zig#L389).
+[Source declaration](../../src/audio.zig#L391).
 
 Fields, variants and defaults (methods follow):
 
@@ -142,9 +205,9 @@ struct {
 <a id="core-Audio-SoundHandle"></a>
 ### `up.core.Audio.SoundHandle`
 
-[Source declaration](../../src/audio.zig#L395).
+[Source declaration](../../src/audio.zig#L397).
 
-Stable only for the lifetime of its owning `Audio` service.
+Borrows its owning Audio until unloadSound or host teardown.
 
 Fields, variants and defaults (methods follow):
 
@@ -158,9 +221,9 @@ struct {
 <a id="core-Audio-MusicHandle"></a>
 ### `up.core.Audio.MusicHandle`
 
-[Source declaration](../../src/audio.zig#L403).
+[Source declaration](../../src/audio.zig#L405).
 
-Stable only for the lifetime of its owning `Audio` service. Music is
+Borrows its owning Audio until unloadMusic or host teardown. Music is
 deliberately distinct from `SoundHandle`: its encoded source remains
 owned by the host while an active playback incrementally decodes it.
 
@@ -176,7 +239,7 @@ struct {
 <a id="core-Audio-MusicFormat"></a>
 ### `up.core.Audio.MusicFormat`
 
-[Source declaration](../../src/audio.zig#L411).
+[Source declaration](../../src/audio.zig#L413).
 
 OGG/Vorbis is the default because it is the compact, incrementally
 decoded long-form path on every supported host. WAV is accepted for
@@ -194,7 +257,7 @@ enum {
 <a id="core-Audio-MusicLoadOptions"></a>
 ### `up.core.Audio.MusicLoadOptions`
 
-[Source declaration](../../src/audio.zig#L416).
+[Source declaration](../../src/audio.zig#L418).
 
 Fields, variants and defaults (methods follow):
 
@@ -207,7 +270,7 @@ struct {
 <a id="core-Audio-MusicPlayOptions"></a>
 ### `up.core.Audio.MusicPlayOptions`
 
-[Source declaration](../../src/audio.zig#L423).
+[Source declaration](../../src/audio.zig#L425).
 
 Per-request music controls. The high-level service keeps one active
 music stream; starting another replaces the prior music playback while
@@ -225,7 +288,7 @@ struct {
 <a id="core-Audio-MusicState"></a>
 ### `up.core.Audio.MusicState`
 
-[Source declaration](../../src/audio.zig#L428).
+[Source declaration](../../src/audio.zig#L430).
 
 Fields, variants and defaults (methods follow):
 
@@ -240,7 +303,7 @@ enum {
 <a id="core-Audio-MusicDiagnostics"></a>
 ### `up.core.Audio.MusicDiagnostics`
 
-[Source declaration](../../src/audio.zig#L439).
+[Source declaration](../../src/audio.zig#L441).
 
 A small observation surface shared by native developer diagnostics.
 `underruns` is currently always zero: music decode/refill happens
@@ -265,7 +328,7 @@ struct {
 <a id="core-Audio-PlayOptions"></a>
 ### `up.core.Audio.PlayOptions`
 
-[Source declaration](../../src/audio.zig#L451).
+[Source declaration](../../src/audio.zig#L453).
 
 Per-request controls. Volume is finite and in the inclusive range
 `0.0...1.0`; looping repeats the decoded effect until stopped.
@@ -282,7 +345,7 @@ struct {
 <a id="core-Audio-init"></a>
 ### `up.core.Audio.init`
 
-[Source declaration](../../src/audio.zig#L475).
+[Source declaration](../../src/audio.zig#L479).
 
 ```zig
 pub fn init(allocator: std.mem.Allocator, config: Config) !Audio;
@@ -291,7 +354,7 @@ pub fn init(allocator: std.mem.Allocator, config: Config) !Audio;
 <a id="core-Audio-deinit"></a>
 ### `up.core.Audio.deinit`
 
-[Source declaration](../../src/audio.zig#L483).
+[Source declaration](../../src/audio.zig#L487).
 
 ```zig
 pub fn deinit(self: *Audio) void;
@@ -300,7 +363,7 @@ pub fn deinit(self: *Audio) void;
 <a id="core-Audio-availability"></a>
 ### `up.core.Audio.availability`
 
-[Source declaration](../../src/audio.zig#L498).
+[Source declaration](../../src/audio.zig#L502).
 
 ```zig
 pub fn availability(self: *const Audio) Availability;
@@ -309,7 +372,7 @@ pub fn availability(self: *const Audio) Availability;
 <a id="core-Audio-setAvailability"></a>
 ### `up.core.Audio.setAvailability`
 
-[Source declaration](../../src/audio.zig#L504).
+[Source declaration](../../src/audio.zig#L508).
 
 Host adapters update availability as devices or browser gesture state
 changes. Normal game code should only inspect `availability`.
@@ -321,7 +384,7 @@ pub fn setAvailability(self: *Audio, state: Availability) void;
 <a id="core-Audio-loadWav"></a>
 ### `up.core.Audio.loadWav`
 
-[Source declaration](../../src/audio.zig#L511).
+[Source declaration](../../src/audio.zig#L515).
 
 Decodes a small WAV effect from game-owned bytes. This performs no I/O;
 `@embedFile` is the portable way to load a starter-sized effect during
@@ -334,7 +397,7 @@ pub fn loadWav(self: *Audio, bytes: []const u8) !SoundHandle;
 <a id="core-Audio-loadMusic"></a>
 ### `up.core.Audio.loadMusic`
 
-[Source declaration](../../src/audio.zig#L526).
+[Source declaration](../../src/audio.zig#L534).
 
 Retains encoded game-owned bytes and creates a source suitable for
 bounded, incremental playback. No full-track PCM allocation occurs.
@@ -344,10 +407,37 @@ OGG/Vorbis is the default; select `.wav` explicitly for WAV source.
 pub fn loadMusic(self: *Audio, bytes: []const u8, options: MusicLoadOptions) !MusicHandle;
 ```
 
+<a id="core-Audio-unloadSound"></a>
+### `up.core.Audio.unloadSound`
+
+[Source declaration](../../src/audio.zig#L557).
+
+Stops every dependent instance (including paused/looping ones), then
+frees decoded PCM. Returns false for invalid, stale or repeated handles.
+No allocation or device access; works even while output is unavailable.
+Already submitted PCM may still be audible in the host's bounded queue.
+
+```zig
+pub fn unloadSound(self: *Audio, handle: SoundHandle) bool;
+```
+
+<a id="core-Audio-unloadMusic"></a>
+### `up.core.Audio.unloadMusic`
+
+[Source declaration](../../src/audio.zig#L576).
+
+Stops dependent WAV/Vorbis playbacks before freeing their encoded
+source and decoder/buffers. Unrelated music/SFX keep playing. False
+means invalid, stale or already unloaded; no allocation/device access.
+
+```zig
+pub fn unloadMusic(self: *Audio, handle: MusicHandle) bool;
+```
+
 <a id="core-Audio-play"></a>
 ### `up.core.Audio.play`
 
-[Source declaration](../../src/audio.zig#L544).
+[Source declaration](../../src/audio.zig#L597).
 
 Starts an independent playback instance. It is safe to play the same
 loaded effect concurrently. A blocked or unavailable host returns a
@@ -360,7 +450,7 @@ pub fn play(self: *Audio, sound: SoundHandle, options: PlayOptions) !PlaybackHan
 <a id="core-Audio-playMusic"></a>
 ### `up.core.Audio.playMusic`
 
-[Source declaration](../../src/audio.zig#L554).
+[Source declaration](../../src/audio.zig#L607).
 
 Starts the selected music source. At most one high-level music stream
 is active; a successful new request stops the previous music stream.
@@ -373,7 +463,7 @@ pub fn playMusic(self: *Audio, music: MusicHandle, options: MusicPlayOptions) !P
 <a id="core-Audio-pauseMusic"></a>
 ### `up.core.Audio.pauseMusic`
 
-[Source declaration](../../src/audio.zig#L566).
+[Source declaration](../../src/audio.zig#L619).
 
 ```zig
 pub fn pauseMusic(self: *Audio) bool;
@@ -382,7 +472,7 @@ pub fn pauseMusic(self: *Audio) bool;
 <a id="core-Audio-resumeMusic"></a>
 ### `up.core.Audio.resumeMusic`
 
-[Source declaration](../../src/audio.zig#L573).
+[Source declaration](../../src/audio.zig#L626).
 
 ```zig
 pub fn resumeMusic(self: *Audio) bool;
@@ -391,7 +481,7 @@ pub fn resumeMusic(self: *Audio) bool;
 <a id="core-Audio-stopMusic"></a>
 ### `up.core.Audio.stopMusic`
 
-[Source declaration](../../src/audio.zig#L582).
+[Source declaration](../../src/audio.zig#L635).
 
 Stops the active high-level music stream. The next `playMusic` starts
 a fresh decoder at the beginning of its source.
@@ -403,7 +493,7 @@ pub fn stopMusic(self: *Audio) bool;
 <a id="core-Audio-setMusicVolume"></a>
 ### `up.core.Audio.setMusicVolume`
 
-[Source declaration](../../src/audio.zig#L588).
+[Source declaration](../../src/audio.zig#L641).
 
 ```zig
 pub fn setMusicVolume(self: *Audio, volume: f32) !bool;
@@ -412,7 +502,7 @@ pub fn setMusicVolume(self: *Audio, volume: f32) !bool;
 <a id="core-Audio-musicState"></a>
 ### `up.core.Audio.musicState`
 
-[Source declaration](../../src/audio.zig#L598).
+[Source declaration](../../src/audio.zig#L651).
 
 Returns the logical state of the single high-level music stream.
 A non-looping stream that ended during mixing is reported as stopped.
@@ -424,7 +514,7 @@ pub fn musicState(self: *Audio) MusicState;
 <a id="core-Audio-musicDiagnostics"></a>
 ### `up.core.Audio.musicDiagnostics`
 
-[Source declaration](../../src/audio.zig#L607).
+[Source declaration](../../src/audio.zig#L660).
 
 ```zig
 pub fn musicDiagnostics(self: *Audio) MusicDiagnostics;
@@ -433,7 +523,7 @@ pub fn musicDiagnostics(self: *Audio) MusicDiagnostics;
 <a id="core-Audio-stop"></a>
 ### `up.core.Audio.stop`
 
-[Source declaration](../../src/audio.zig#L629).
+[Source declaration](../../src/audio.zig#L682).
 
 ```zig
 pub fn stop(self: *Audio, playback: PlaybackHandle) bool;
@@ -442,7 +532,7 @@ pub fn stop(self: *Audio, playback: PlaybackHandle) bool;
 <a id="core-Audio-playSound"></a>
 ### `up.core.Audio.playSound`
 
-[Source declaration](../../src/audio.zig#L640).
+[Source declaration](../../src/audio.zig#L693).
 
 Compatibility for the existing SDL callback context. Unlike the
 high-level `play`, this permits silent legacy playbacks while no device
@@ -455,7 +545,7 @@ pub fn playSound(self: *Audio, sound: *const Sound, options: SoundOptions) !Play
 <a id="core-Audio-mix"></a>
 ### `up.core.Audio.mix`
 
-[Source declaration](../../src/audio.zig#L644).
+[Source declaration](../../src/audio.zig#L697).
 
 ```zig
 pub fn mix(self: *Audio, out: []AudioSample) !void;
@@ -464,7 +554,7 @@ pub fn mix(self: *Audio, out: []AudioSample) !void;
 <a id="core-Audio-hasActivePlayback"></a>
 ### `up.core.Audio.hasActivePlayback`
 
-[Source declaration](../../src/audio.zig#L650).
+[Source declaration](../../src/audio.zig#L703).
 
 True when a host should continue requesting PCM. This is a host helper,
 not a game scheduling signal.
