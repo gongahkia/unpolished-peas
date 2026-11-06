@@ -36,6 +36,7 @@ jobs:
       - run: script/test_browser_input_workbench.sh
       - run: script/test_browser_asset_workbench.sh
       - run: script/test_browser_surface_composition.sh
+      - run: script/test_browser_font_layout.sh
       - run: zig build test-starter-persistence -Dwith_sdl=false --summary all
       - run: zig build test-portable-conformance -Dwith_sdl=false --summary all
       - run: zig build test-browser-renderer-parity

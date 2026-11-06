@@ -1,0 +1,72 @@
+# Host audio and small saves
+
+[Task index](core.md) · [GameContext](lifecycle.md) · [Session replay](testing.md)
+
+## Sound and music
+
+Check ctx.audio or use requireAudio. The host owns Audio, decoded WAV effects
+and encoded music sources until teardown; games retain SoundHandle/MusicHandle
+values only. Handles belong to that Audio service; there is no individual
+unload. AssetCollection.deinit does not release them.
+
+These actual portable helpers load once and play on an event. Optional
+audio is output: the game stays playable when a browser lacks a user gesture
+or the device is unavailable. Catch errors where that policy is appropriate;
+other games may report them to the player.
+
+<!-- example: examples/asset_recipes.zig | loadEffect -->
+<!-- example: examples/asset_recipes.zig | playEffect -->
+
+play can return `AudioUnavailable`; malformed WAV/music input and invalid
+handles/options remain errors. The presence of a host service does not imply
+ready output. Do not call Audio.deinit on a borrowed context service.
+
+For music, load once and retain the returned optional handle in Game, then
+play on an appropriate event. A blocked browser play can be retried with the
+same handle after a gesture; do not reload the track on every retry.
+
+<!-- example: examples/api_reference_recipes.zig | loadMusic -->
+<!-- example: examples/api_reference_recipes.zig | playMusic -->
+
+These helpers run against a logical Audio host natively and in Wasm, including
+incremental OGG decode to nonzero PCM and a blocked retry. This checks the
+recipe, not physical speaker output. Format defaults to OGG/Vorbis; WAV requires
+`.format = .wav`.
+One incremental music stream is active; starting another replaces it after
+successful start. SFX can overlap. pauseMusic/resumeMusic/stopMusic return
+whether a playback was controlled. Defaults and types are below; the
+[audio guide](../guides/audio-assets.md) and
+[Neon Siege](../../dogfood/neon-siege/src/game.zig) show full music setup.
+Logical requests, not device scheduling or speaker samples, are replayed.
+
+<!-- api: core.Audio -->
+<!-- api: assets.PlaybackHandle -->
+
+The Audio methods' source-local PlaybackHandle is `up.assets.PlaybackHandle`.
+It identifies a playback instance rather than its loaded sound/music source.
+Audio's nested options and handles use the `up.core.Audio.*` path.
+
+## Progress bytes
+
+SaveStore is a borrowed host capability. Keys are identifiers, not paths:
+1–64 ASCII letters/numbers/dot/underscore/hyphen, with no consecutive dots.
+The game chooses serialization, versioning and migration. Built-in hosts
+namespace saves; there is no portable general filesystem API.
+
+These functions encode four explicit little-endian bytes. Missing,
+unavailable, malformed or rejected storage falls back to score zero or a
+recoverable write failure; no raw struct memory is persisted.
+
+<!-- example: examples/asset_recipes.zig | loadProgress -->
+<!-- example: examples/asset_recipes.zig | saveProgress -->
+
+read returns a slice borrowing your destination. readAlloc returns an owned
+buffer which you must free with the supplied allocator; max_bytes bounds
+both allocation and accepted blob size. `NotFound` is different from an
+existing empty value; `TooLarge` can mean the destination is too small.
+Built-in writes replace a whole key on success and preserve its previous value
+on failure. This is not a multi-key transaction or a power-loss durability
+guarantee. Error is enumerated below. Native paths, browser localStorage and
+host limits are in [save data](../guides/save-data.md).
+
+<!-- api: core.SaveStore -->

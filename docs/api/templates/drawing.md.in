@@ -1,0 +1,51 @@
+# Canvas and RenderSurface
+
+[Task index](core.md) · [Assets](assets.md) · [Headless captures](testing.md)
+
+Get the host Canvas with `try ctx.requireCanvas()`, then clear/draw in call
+order. It is a borrowed CPU raster target; do not deinit it. Canvas.init is
+for a separately owned canvas, such as a test target. Drawing does not imply
+GPU rasterization. See the [render contract](../guides/rendering.md) for alpha,
+integer coordinates, camera, text glyphs and presenter behavior.
+
+| Source-local name in a signature | Public game import |
+| --- | --- |
+| Color / Vec2 | `up.core.Color` / `up.core.Vec2` |
+| Image / atlas_mod.Atlas | [`up.assets.Image` / `up.assets.Atlas`](assets.md) |
+| atlas_mod.AtlasFrameHandle / atlas_mod.DrawSpriteOptions | [`up.assets.AtlasFrameHandle` / `up.assets.DrawSpriteOptions`](assets.md) |
+| canvas_trace.Trace | `up.testSupport.CanvasTrace` ([capture lifetime](testing.md)) |
+
+## Offscreen recipe
+
+This complete function owns both targets and composes a nearest-scaled surface.
+The pixel check runs on native and Wasm; a RenderSurface's borrowed canvas must
+not outlive the surface. New surfaces start transparent.
+
+<!-- example: examples/api_reference_recipes.zig | offscreen -->
+
+Surface draws require nonzero destination sizes at most maxInt(i32), otherwise
+`InvalidSurfaceDrawSize`. Surface creation rejects invalid dimensions with
+`InvalidRenderSurfaceSize`. Sampling a surface onto itself returns
+`SurfaceSelfSampling`. Tint multiplies sampled RGBA before the current blend;
+clips bound destination writes. Linear filtering preserves staged byte rounding
+and uses bounded scratch without a per-draw heap allocation. It still costs CPU
+time; [measured workloads](../guides/surface-composition-performance.md) are
+not whole-game frame-rate guarantees.
+
+`pushClip` returns the previous clip; pair it with `restoreClip(previous)`.
+`setBlend` similarly returns the previous mode. These Canvas calls use saved
+values, not the separate command-buffer push/pop interface.
+
+`writePpmFile` and `writePngFile` are native filesystem helpers, not browser
+save APIs. `writePng` accepts a caller-provided Writer. `attachTrace` borrows
+a test-owned trace; detach it before destroying the trace. Trace capture may
+allocate, while ordinary drawing does not retain an operation log.
+
+<!-- api: graphics.Canvas -->
+<!-- api: graphics.RenderSurface -->
+<!-- api: graphics.SurfaceDrawOptions -->
+<!-- api: graphics.SurfaceFilter -->
+<!-- api: graphics.ClipRect -->
+<!-- api: graphics.BlendMode -->
+<!-- api: graphics.Sprite -->
+<!-- api: core.Color -->

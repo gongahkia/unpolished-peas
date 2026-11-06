@@ -11,11 +11,14 @@ with the smallest complete project, then add only the concepts your game needs.
    project: read `src/main.zig`, then `src/game.zig`.
 3. [Game protocol](guides/game-protocol.md) — lifecycle, ownership, and the
    fixed-step contract in more detail.
+4. [API task index](api/core.md) — source-derived signatures, options,
+   ownership, errors and executed examples for common game tasks.
 
 ## 2. Build a small game
 
 - [Input and ActionMap](guides/input.md) — normalized/physical keys, rebinding, Unicode text and composition
 - [Authored images and fonts](guides/image-assets.md)
+- [Authored-font measurement, wrapping and prepared text](guides/authored-text-layout.md)
 - [Compiled portable asset recipes](guides/asset-recipes.md) — one owner for images, fonts and sheets, plus sound/save recipes
 - [Deterministic sprite-frame animation](guides/sprite-animation.md)
 - [Sound effects and music](guides/audio-assets.md)
@@ -64,7 +67,8 @@ with the smallest complete project, then add only the concepts your game needs.
 | See a second genre with scrolling/platform collision | [Lantern Leap](../dogfood/lantern-leap/README.md) |
 | Learn deterministic replay and rendering regression | [Testing](guides/testing.md) and Seed Sprint's `src/game.zig` |
 | Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
-| Find exact API/CI contract details | [Core contract](guides/core-contract.md), [capability matrix](guides/capabilities.md), and [Core API](api/core.md) |
+| Find a method, options or cleanup rule | [API reference by task](api/core.md) |
+| Find exact API/CI contract details | [Core contract](guides/core-contract.md) and [capability matrix](guides/capabilities.md) |
 
 ## Authoring contract
 
@@ -85,3 +89,5 @@ three canonical projects. It records the `1.0.0` authoring baseline and keeps ex
 
 Run `zig build docs` to emit this Markdown set under `zig-out/docs/`, or use
 `zig build peas -- docs quickstart` to locate the generated start page.
+Use `zig build peas -- docs api` for the API task index. The checked-in
+reference is also readable directly in [docs/api](api/core.md).

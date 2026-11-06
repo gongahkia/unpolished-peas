@@ -1,5 +1,8 @@
 # Input and actions
 
+Call reference: [Input, ActionMap and text events](../api/input.md), with
+source-derived signatures/defaults and an executed rebinding recipe.
+
 Start with named game actions rather than scattering physical keyboard or
 controller checks through gameplay. An `ActionMap` lets one action have both a
 keyboard and gamepad binding; the game asks for `"left"` or `"dash"`, not a

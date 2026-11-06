@@ -35,6 +35,16 @@ Leap and are part of the current game-facing baseline:
 valid for the lifetime of `Audio`; games do not unload individual high-level
 audio resources.
 
+### Authored text addition
+
+`assets.Font.measureText` / `layoutText` and nested `TextLayout` are an
+additive working-tree API, exercised by the compiled menu/dialogue example
+and native/Wasm conformance suite. They provide authored advances,
+wrapping/alignment and owned placement arrays borrowing a stable Font.
+Prepared drawing allocates nothing; direct/debug text remains compatible.
+This does not claim adoption by both older reference games or announce a
+release. See [authored layout](authored-text-layout.md).
+
 ## Experimental developer tooling
 
 These are useful, shipped developer workflows, but do not receive the same

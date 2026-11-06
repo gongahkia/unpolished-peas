@@ -1,4 +1,6 @@
 const std = @import("std");
+const api_docs = @import("api_docs.zig");
+const doc_bundle = @import("doc_bundle.zig");
 
 const max_document_bytes = 1024 * 1024;
 const source_documents = [_][]const u8{
@@ -14,6 +16,7 @@ const source_documents = [_][]const u8{
     "guides/surface-composition-performance.md",
     "guides/advanced-2d.md",
     "guides/image-assets.md",
+    "guides/authored-text-layout.md",
     "guides/asset-recipes.md",
     "guides/sprite-animation.md",
     "guides/audio-assets.md",
@@ -49,43 +52,77 @@ pub fn main() !void {
     const docs_root = args.next() orelse return usage();
     const api_source = args.next() orelse return usage();
     const output_root = args.next() orelse return usage();
+    const mode = args.next();
     if (args.next() != null) return usage();
-    try emit(gpa.allocator(), docs_root, api_source, output_root);
+    if (mode) |value| {
+        if (!std.mem.eql(u8, value, "--update-api")) return usage();
+    }
+    try emitMode(gpa.allocator(), docs_root, api_source, output_root, mode != null);
 }
 
 pub fn emit(allocator: std.mem.Allocator, docs_root: []const u8, api_source: []const u8, output_root: []const u8) !void {
+    return emitMode(allocator, docs_root, api_source, output_root, false);
+}
+
+fn emitMode(allocator: std.mem.Allocator, docs_root: []const u8, api_source: []const u8, output_root: []const u8, update_api: bool) !void {
     const repository_root = std.fs.path.dirname(docs_root) orelse return error.InvalidDocsRoot;
-    try validateExampleLinks(allocator, repository_root, docs_root);
-    try validateSupplementalLinks(allocator, repository_root);
+    var generator = api_docs.Generator.init(allocator, repository_root, api_source);
+    defer generator.deinit();
+    const pages = try generator.generate();
+    try validateApiPages(allocator, repository_root, pages);
+    try validateExampleLinksWithPages(allocator, repository_root, docs_root, pages);
+    try validateSupplementalLinksWithPages(allocator, repository_root, pages);
+    if (update_api) {
+        for (pages) |page| try writeApiPage(allocator, docs_root, page);
+    }
     try std.fs.cwd().makePath(output_root);
-    for (source_documents) |relative_path| try copyDocument(allocator, docs_root, output_root, relative_path);
-    const source = try std.fs.cwd().readFileAlloc(allocator, api_source, max_document_bytes);
-    defer allocator.free(source);
-    const api_path = try std.fs.path.join(allocator, &.{ output_root, "api", "core.md" });
-    defer allocator.free(api_path);
-    const api_directory = std.fs.path.dirname(api_path) orelse return error.InvalidOutputPath;
-    try std.fs.cwd().makePath(api_directory);
-    const api_page = try publicApiMarkdown(allocator, source);
-    defer allocator.free(api_page);
-    try std.fs.cwd().writeFile(.{ .sub_path = api_path, .data = api_page });
+    var bundle = doc_bundle.Bundle.init(allocator, repository_root, output_root, pages);
+    defer bundle.deinit();
+    for (source_documents) |relative_path| {
+        const source = try std.fs.path.join(allocator, &.{ docs_root, relative_path });
+        defer allocator.free(source);
+        _ = try bundle.add(source);
+    }
+    for (pages) |page| {
+        const source = try std.fs.path.join(allocator, &.{ docs_root, page.path });
+        defer allocator.free(source);
+        _ = try bundle.add(source);
+    }
+    // Check actual emitted files, not just links in the source checkout.
+    var files = bundle.files.iterator();
+    while (files.next()) |entry| {
+        const path = entry.value_ptr.*;
+        if (!std.mem.endsWith(u8, path, ".md")) continue;
+        const document = try std.fs.cwd().readFileAlloc(allocator, path, max_document_bytes);
+        defer allocator.free(document);
+        try validateDocumentLinks(allocator, output_root, path, document);
+    }
+}
+
+fn writeApiPage(allocator: std.mem.Allocator, root: []const u8, page: api_docs.Page) !void {
+    const path = try std.fs.path.join(allocator, &.{ root, page.path });
+    defer allocator.free(path);
+    try std.fs.cwd().makePath(std.fs.path.dirname(path).?);
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = page.contents });
+}
+
+fn validateApiPages(allocator: std.mem.Allocator, root: []const u8, pages: []const api_docs.Page) !void {
+    for (pages) |page| {
+        const path = try std.fs.path.join(allocator, &.{ root, "docs", page.path });
+        defer allocator.free(path);
+        try validateDocumentLinksWithPages(allocator, root, path, page.contents, pages);
+    }
 }
 
 pub fn publicApiMarkdown(allocator: std.mem.Allocator, source: []const u8) ![]u8 {
-    var output = std.ArrayList(u8).empty;
-    errdefer output.deinit(allocator);
-    try output.appendSlice(allocator, "# Core API\n\nGenerated from `src/unpolished_peas.zig`.\n\n");
-    var lines = std.mem.splitScalar(u8, source, '\n');
-    while (lines.next()) |line| {
-        const declaration = std.mem.trimLeft(u8, line, " \t");
-        if (!std.mem.startsWith(u8, declaration, "pub const ")) continue;
-        const rest = declaration["pub const ".len..];
-        const end = std.mem.indexOfAny(u8, rest, " =\t;") orelse continue;
-        try output.writer(allocator).print("- `{s}`\n", .{rest[0..end]});
-    }
-    return output.toOwnedSlice(allocator);
+    return api_docs.namespaceMarkdown(allocator, source);
 }
 
 pub fn validateExampleLinks(allocator: std.mem.Allocator, repository_root: []const u8, docs_root: []const u8) !void {
+    return validateExampleLinksWithPages(allocator, repository_root, docs_root, &.{});
+}
+
+fn validateExampleLinksWithPages(allocator: std.mem.Allocator, repository_root: []const u8, docs_root: []const u8, pages: []const api_docs.Page) !void {
     var docs = try std.fs.openDirAbsolute(docs_root, .{ .iterate = true });
     defer docs.close();
     var walker = try docs.walk(allocator);
@@ -96,48 +133,55 @@ pub fn validateExampleLinks(allocator: std.mem.Allocator, repository_root: []con
         defer allocator.free(document_path);
         const document = try std.fs.cwd().readFileAlloc(allocator, document_path, max_document_bytes);
         defer allocator.free(document);
-        try validateDocumentLinks(allocator, repository_root, document_path, document);
+        try validateDocumentLinksWithPages(allocator, repository_root, document_path, document, pages);
     }
 }
 
 fn validateSupplementalLinks(allocator: std.mem.Allocator, repository_root: []const u8) !void {
+    return validateSupplementalLinksWithPages(allocator, repository_root, &.{});
+}
+
+fn validateSupplementalLinksWithPages(allocator: std.mem.Allocator, repository_root: []const u8, pages: []const api_docs.Page) !void {
     for (supplemental_documents) |relative_path| {
         const document_path = try std.fs.path.join(allocator, &.{ repository_root, relative_path });
         defer allocator.free(document_path);
         const document = try std.fs.cwd().readFileAlloc(allocator, document_path, max_document_bytes);
         defer allocator.free(document);
-        try validateDocumentLinks(allocator, repository_root, document_path, document);
+        try validateDocumentLinksWithPages(allocator, repository_root, document_path, document, pages);
     }
 }
 
-fn copyDocument(allocator: std.mem.Allocator, docs_root: []const u8, output_root: []const u8, relative_path: []const u8) !void {
-    const source_path = try std.fs.path.join(allocator, &.{ docs_root, relative_path });
-    defer allocator.free(source_path);
-    const output_path = try std.fs.path.join(allocator, &.{ output_root, relative_path });
-    defer allocator.free(output_path);
-    const output_directory = std.fs.path.dirname(output_path) orelse return error.InvalidOutputPath;
-    try std.fs.cwd().makePath(output_directory);
-    const document = try std.fs.cwd().readFileAlloc(allocator, source_path, max_document_bytes);
-    defer allocator.free(document);
-    try std.fs.cwd().writeFile(.{ .sub_path = output_path, .data = document });
+fn validateDocumentLinks(allocator: std.mem.Allocator, repository_root: []const u8, document_path: []const u8, document: []const u8) !void {
+    return validateDocumentLinksWithPages(allocator, repository_root, document_path, document, &.{});
 }
 
-fn validateDocumentLinks(allocator: std.mem.Allocator, repository_root: []const u8, document_path: []const u8, document: []const u8) !void {
+fn pageOverride(allocator: std.mem.Allocator, root: []const u8, path: []const u8, pages: []const api_docs.Page) !?[]const u8 {
+    for (pages) |page| {
+        const actual = try std.fs.path.resolve(allocator, &.{ root, "docs", page.path });
+        defer allocator.free(actual);
+        if (std.mem.eql(u8, path, actual)) return page.contents;
+    }
+    return null;
+}
+
+fn validateDocumentLinksWithPages(allocator: std.mem.Allocator, repository_root: []const u8, document_path: []const u8, original: []const u8, pages: []const api_docs.Page) !void {
+    const document = (try pageOverride(allocator, repository_root, document_path, pages)) orelse original;
     var cursor: usize = 0;
     while (std.mem.indexOfPos(u8, document, cursor, "](")) |link_start| {
         const target_start = link_start + 2;
         const link_end = std.mem.indexOfScalarPos(u8, document, target_start, ')') orelse return error.MalformedMarkdownLink;
         cursor = link_end + 1;
         const target = document[target_start..link_end];
-        if (isExternalLink(target) or std.mem.startsWith(u8, target, "#")) continue;
+        if (isExternalLink(target)) continue;
         const path_without_anchor = target[0..(std.mem.indexOfAny(u8, target, "#?") orelse target.len)];
-        if (path_without_anchor.len == 0) continue;
         const document_directory = std.fs.path.dirname(document_path) orelse return error.InvalidDocsRoot;
-        const linked_path = try std.fs.path.resolve(allocator, &.{ document_directory, path_without_anchor });
+        const linked_path = if (path_without_anchor.len == 0) try allocator.dupe(u8, document_path) else try std.fs.path.resolve(allocator, &.{ document_directory, path_without_anchor });
         defer allocator.free(linked_path);
-        const generated_api_path = try std.fs.path.join(allocator, &.{ repository_root, "docs", "api", "core.md" });
-        defer allocator.free(generated_api_path);
-        if (std.mem.eql(u8, linked_path, generated_api_path)) continue; // generated by `zig build docs`
+        const override = try pageOverride(allocator, repository_root, linked_path, pages);
+        if (override != null) {
+            if (std.mem.indexOfScalar(u8, target, '#')) |hash| try requireAnchor(allocator, linked_path, override.?, target[hash + 1 ..]);
+            continue;
+        }
         std.fs.cwd().access(linked_path, .{}) catch |err| switch (err) {
             error.FileNotFound => {
                 std.debug.print("broken documentation link: {s} -> {s}\n", .{ document_path, linked_path });
@@ -145,7 +189,41 @@ fn validateDocumentLinks(allocator: std.mem.Allocator, repository_root: []const 
             },
             else => return err,
         };
+        if (std.mem.endsWith(u8, linked_path, ".md")) {
+            if (std.mem.indexOfScalar(u8, target, '#')) |hash| {
+                const linked_document = try std.fs.cwd().readFileAlloc(allocator, linked_path, max_document_bytes);
+                defer allocator.free(linked_document);
+                try requireAnchor(allocator, linked_path, linked_document, target[hash + 1 ..]);
+            }
+        }
     }
+}
+
+fn requireAnchor(allocator: std.mem.Allocator, path: []const u8, document: []const u8, anchor: []const u8) !void {
+    if (anchor.len == 0) return;
+    const explicit = try std.fmt.allocPrint(allocator, "id=\"{s}\"", .{anchor});
+    defer allocator.free(explicit);
+    var lines = std.mem.splitScalar(u8, document, '\n');
+    var fenced = false;
+    while (lines.next()) |line| {
+        const trimmed = std.mem.trimStart(u8, line, " ");
+        if (std.mem.startsWith(u8, trimmed, "\x60\x60\x60") or std.mem.startsWith(u8, trimmed, "~~~")) {
+            fenced = !fenced;
+            continue;
+        }
+        if (fenced) continue;
+        if (std.mem.startsWith(u8, trimmed, "<a ") and std.mem.indexOf(u8, trimmed, explicit) != null) return;
+        if (!std.mem.startsWith(u8, trimmed, "#")) continue;
+        const heading = std.mem.trimStart(u8, trimmed, "# ");
+        var slug: std.ArrayList(u8) = .empty;
+        defer slug.deinit(allocator);
+        for (heading) |byte| {
+            if (std.ascii.isAlphanumeric(byte) or byte == '-' or byte == '_' or byte >= 128) try slug.append(allocator, std.ascii.toLower(byte)) else if (byte == ' ') try slug.append(allocator, '-');
+        }
+        if (std.mem.eql(u8, slug.items, anchor)) return;
+    }
+    std.debug.print("broken documentation anchor: {s}#{s}\n", .{ path, anchor });
+    return error.BrokenDocumentationAnchor;
 }
 
 fn isExternalLink(target: []const u8) bool {
@@ -172,7 +250,7 @@ fn readLfFileAlloc(allocator: std.mem.Allocator, path: []const u8) ![]u8 {
 }
 
 fn usage() error{InvalidArguments} {
-    std.debug.print("usage: unpolished-peas-docs <docs-root> <public-api-source> <output-root>\n", .{});
+    std.debug.print("usage: unpolished-peas-docs <docs-root> <public-api-source> <output-root> [--update-api]\n", .{});
     return error.InvalidArguments;
 }
 
@@ -182,6 +260,47 @@ test "public API Markdown derives exported declarations" {
     try std.testing.expect(std.mem.indexOf(u8, page, "- `Vec2`") != null);
     try std.testing.expect(std.mem.indexOf(u8, page, "- `Canvas`") != null);
     try std.testing.expect(std.mem.indexOf(u8, page, "Private") == null);
+}
+
+test {
+    _ = api_docs;
+    _ = doc_bundle;
+}
+
+test "checked API pages match current declarations defaults and executed examples" {
+    const allocator = std.testing.allocator;
+    const root = try std.fs.cwd().realpathAlloc(allocator, ".");
+    defer allocator.free(root);
+    var generator = api_docs.Generator.init(allocator, root, "src/unpolished_peas.zig");
+    defer generator.deinit();
+    const pages = try generator.generate();
+    try validateApiPages(allocator, root, pages);
+    for (pages) |page| {
+        const path = try std.fs.path.join(allocator, &.{ root, "docs", page.path });
+        defer allocator.free(path);
+        const current = try readLfFileAlloc(allocator, path);
+        defer allocator.free(current);
+        try expectCurrentApiPage(path, page.contents, current);
+    }
+}
+
+fn expectCurrentApiPage(path: []const u8, expected: []const u8, current: []const u8) !void {
+    if (std.mem.eql(u8, expected, current)) return;
+    std.debug.print("stale API reference: {s}; run zig build docs-update-api -Dwith_sdl=false\n", .{path});
+    return error.StaleApiReference;
+}
+
+test "stale signatures and defaults fail the checked reference gate" {
+    try std.testing.expectError(error.StaleApiReference, expectCurrentApiPage("fixture.md", "pub fn draw(width: u32) !void;", "pub fn draw(width: u16) !void;"));
+    try std.testing.expectError(error.StaleApiReference, expectCurrentApiPage("fixture.md", "volume: f32 = 1", "volume: f32 = 0"));
+}
+
+test "member fragments must exist including generated pages" {
+    const allocator = std.testing.allocator;
+    const pages = [_]api_docs.Page{.{ .path = "api/drawing.md", .contents = "<a id=\"graphics-canvas-drawsurface\"></a>\n## Canvas\n" }};
+    try validateDocumentLinksWithPages(allocator, "/repo", "/repo/docs/index.md", "[draw](api/drawing.md#graphics-canvas-drawsurface)", &pages);
+    try std.testing.expectError(error.BrokenDocumentationAnchor, validateDocumentLinksWithPages(allocator, "/repo", "/repo/docs/index.md", "[typo](api/drawing.md#graphics-canvas-drawsurfce)", &pages));
+    try std.testing.expectError(error.BrokenDocumentationAnchor, requireAnchor(allocator, "fixture.md", "\x60\x60\x60zig\n<a id=\"fake\"></a>\n\x60\x60\x60\n", "fake"));
 }
 
 test "broken runnable example links fail validation" {

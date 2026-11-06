@@ -1,0 +1,108 @@
+# Embedded assets and fixed-tick animation
+
+[Task index](core.md) · [Canvas](drawing.md) · [Audio and saves](audio-save.md)
+
+Start with AssetCollection for related embedded images, fonts and sheets.
+It owns decoded values and copied atlas metadata. Successful loads return
+stable borrowed pointers, even as later loads grow the collection. Encoded
+bytes are borrowed only for the synchronous load. Release the collection once;
+do not individually deinit returned resources or copy a live owner.
+
+| Source-local name in a signature | Public game import |
+| --- | --- |
+| image_module.Image / image_module.DecodeOptions | [`up.assets.Image`](#assets-Image) / [`up.assets.ImageDecodeOptions`](#assets-ImageDecodeOptions) |
+| font_module.Font / font_module.LoadOptions | [`up.assets.Font`](#assets-Font) / [`up.assets.FontLoadOptions`](#assets-FontLoadOptions) |
+| atlas_module.Atlas / atlas_module.FrameSpec | [`up.assets.Atlas`](#assets-Atlas) / [`up.assets.AtlasFrameSpec`](#assets-AtlasFrameSpec) |
+| Atlas.DecodeOptions | [`up.assets.Atlas.DecodeOptions`](#assets-Atlas-DecodeOptions) |
+| atlas.AtlasFrameHandle | [`up.assets.AtlasFrameHandle`](#assets-AtlasFrameHandle) |
+
+Options referring to source-local enums can use inferred literals:
+DrawSpriteOptions.origin accepts `.top_left` or `.center`; its sampling accepts
+`.nearest` or `.linear`. Defaults are shown with the declarations.
+
+Load during init, reuse during update/draw, and deinit during game cleanup.
+Use `errdefer self.deinit(ctx) catch {}` before fallible initialization so
+partial loads are cleaned up. A failed load leaves prior resources valid.
+The [complete workbench](../../examples/asset_workbench_game.zig) demonstrates
+that lifecycle; these smaller examples are actual tests from the
+[compiled recipe module](../../examples/asset_recipes.zig).
+
+## First image
+
+The module imports std and up and embeds its local examples/assets fixtures.
+When copying into an independent project, use your own asset paths within the
+module root as explained in [image setup](../guides/image-assets.md).
+
+<!-- example: examples/asset_recipes.zig | test: recipe: draw an embedded image -->
+
+## Authored font
+
+Font rasterizes the configured codepoint ranges at load time. Defaults are
+shown under FontLoadOptions below; range selection and atlas size affect
+memory and missing-glyph behavior. UTF-8 decoding does not provide shaping,
+bidirectional layout, font fallback chains or dynamic glyph loading.
+
+<!-- example: examples/asset_recipes.zig | test: recipe: draw an authored font -->
+
+### Proportional measurement and prepared paragraphs
+
+Use `font.measureText(text, .{})` to get authored advances, line boxes and
+glyph bounds without allocating. `font.layoutText(allocator, text, options)`
+creates an owned `Font.TextLayout`; draw it repeatedly through `layout.draw`.
+The layout borrows an unchanged, stable Font and must be released first.
+Input text is consumed during preparation and can then be freed.
+
+The [menu/dialogue example](../../examples/font_layout_game.zig) prepares
+labels and paragraphs in init. Its field definitions and source constants
+are in the complete compiled module:
+
+<!-- example: examples/font_layout_game.zig | Game.init -->
+
+See [authored text layout](../guides/authored-text-layout.md) for advance versus
+glyph bounds, exact space/newline/oversized-word behavior, limits, errors and
+native/Wasm commands. New nested Font.TextOptions/TextMetrics/TextLayout and
+measureText/layoutText methods are additive. Existing Font.drawText and the
+debug-font graphics.layoutText/TextLayout retain their behavior.
+
+## Atlas animation
+
+Frames and the clip below are static game-owned definitions. The atlas owns
+copied frame metadata and image data; player/clip reference handles, not owned
+pixels. SpriteAnimationPlayer borrows its clip and steps, so those must outlive
+the player. Call advance from fixed update, not draw.
+
+<!-- example: examples/asset_recipes.zig | frames -->
+<!-- example: examples/asset_recipes.zig | steps -->
+<!-- example: examples/asset_recipes.zig | clip -->
+<!-- example: examples/asset_recipes.zig | test: recipe: advance animation only in fixed update and draw an atlas frame -->
+
+Decode/collection operations can fail with allocation errors or invalid/
+unsupported content: representative errors include `InvalidImage`,
+`ImageTooLarge`, `InvalidFontData`, `InvalidAtlas`, `DuplicateAtlasFrame`
+and `UnknownAnimationFrame`. Animation's explicit Error set appears below;
+validate clips against their atlas before play. See the
+[image/font guide](../guides/image-assets.md) for full format/limit behavior.
+
+Direct Image/Font/Atlas values remain independently owned and require deinit.
+Image.sprite returns a borrowed view of image pixels; clones are separate
+owners. Frame handles only make sense with their matching atlas.
+Collection cleanup does not unload Audio-host resources.
+
+<!-- api: assets.AssetCollection -->
+<!-- api: assets.Image -->
+<!-- api: assets.ImageDecodeOptions -->
+<!-- api: assets.Font -->
+<!-- api: assets.FontLoadOptions -->
+<!-- api: graphics.FontGlyphRange -->
+<!-- api: assets.Atlas -->
+<!-- api: assets.AtlasFrameSpec -->
+<!-- api: assets.AtlasFrameHandle -->
+<!-- api: assets.DrawSpriteOptions -->
+<!-- api: graphics.SpriteAnimationStep -->
+<!-- api: graphics.SpriteAnimationMode -->
+<!-- api: graphics.SpriteAnimationClip -->
+<!-- api: graphics.SpriteAnimationPlayer -->
+
+The older `assets.AnimationPlayer` remains supported; use the tick-based
+SpriteAnimationPlayer above for new deterministic games. Neither API adds
+movement, collision or a scene graph.

@@ -67,6 +67,42 @@ pub const DecodedCodepoint = struct {
 };
 
 pub const Font = struct { // owns atlas pixels and glyph storage allocated by decode; call deinit once.
+    pub const TextOptions = @import("font_layout.zig").Options;
+    pub const TextMetrics = @import("font_layout.zig").Metrics;
+
+    /// Owns only placement/line arrays. Borrows an unchanged Font at a stable
+    /// address; release this layout before its Font/AssetCollection.
+    /// Input text is consumed during preparation and need not remain alive.
+    pub const TextLayout = struct {
+        pub const GlyphPlacement = @import("font_layout.zig").Placement;
+        pub const Line = @import("font_layout.zig").Line;
+        allocator: std.mem.Allocator,
+        font: *const Font,
+        glyphs: []const GlyphPlacement,
+        lines: []const Line,
+        metrics: TextMetrics,
+
+        pub fn deinit(self: *TextLayout) void {
+            self.allocator.free(self.glyphs);
+            self.allocator.free(self.lines);
+            self.* = undefined;
+        }
+
+        /// Reuses Font's existing glyph rasterization, tint, blend and clip.
+        /// No decoding, lookup or layout allocation occurs here. Optional
+        /// CanvasTrace capture retains its existing observer allocations.
+        pub fn draw(self: *const TextLayout, canvas: *Canvas, x: i32, y: i32, color: Color) void {
+            for (self.lines) |line| {
+                var pen_x = saturatingAdd(x, line.x);
+                const pen_y = saturatingAdd(y, line.y);
+                for (self.glyphs[line.glyph_start..][0..line.glyph_count]) |placed| {
+                    self.font.drawGlyph(canvas, placed.glyph, pen_x, pen_y, color);
+                    pen_x = saturatingAdd(pen_x, placed.glyph.advance);
+                }
+            }
+        }
+    };
+
     allocator: std.mem.Allocator,
     image: Image,
     glyphs: []Glyph,
@@ -218,6 +254,18 @@ pub const Font = struct { // owns atlas pixels and glyph storage allocated by de
         self.image.deinit();
         self.allocator.free(self.glyphs);
         self.* = undefined;
+    }
+
+    /// Allocation-free authored-font measurement. Width is pen advance;
+    /// bounds includes bearings/baseline and may extend beyond that width.
+    pub fn measureText(self: *const Font, text: []const u8, options: TextOptions) !TextMetrics {
+        return @import("font_layout.zig").measure(self, text, options);
+    }
+
+    /// Prepare once for repeated drawing. Rebuild when text/options/font
+    /// changes; Font.drawText and graphics.layoutText keep their old behavior.
+    pub fn layoutText(self: *const Font, allocator: std.mem.Allocator, text: []const u8, options: TextOptions) !TextLayout {
+        return @import("font_layout.zig").prepare(self, allocator, text, options);
     }
 
     pub fn glyphForCodepoint(self: *const Font, codepoint: u21) ?Glyph {

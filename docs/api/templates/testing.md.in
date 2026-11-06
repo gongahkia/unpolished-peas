@@ -1,0 +1,67 @@
+# Headless tests and replay
+
+[Task index](core.md) · [Lifecycle](lifecycle.md) · [Input](input.md)
+
+HeadlessGameRunner(Game) runs the same portable callbacks with a device-free
+Canvas, logical Audio, text control and an empty private save store. Its init
+returns an allocated pointer; call runner.deinit once, and do not separately
+destroy its Game, context capabilities or Canvas.
+
+In runner signatures, `Self` means `up.testSupport.HeadlessGameRunner(Game)`.
+`Input.Snapshot` is `up.input.Input.Snapshot`; `input_replay.Replay` is
+`up.preview.developer.InputReplay`; `render.Command` is
+`up.graphics.RenderCommand`. The recorder's source-local `Recorder` and
+`Replay` use the public preview aliases listed below.
+
+## Record and reproduce a small run
+
+This executed function uses the [portable Game](lifecycle.md), records a fixed
+tick with a committed Unicode string, encodes/parses UPR5, and asserts state
+after replay. Recorder owns its buffers; finish returns a separately owned
+Replay, encode returns owned bytes, and parsing returns another owned Replay.
+Each uses the same allocator for release.
+
+<!-- example: examples/api_reference_recipes.zig | replay -->
+
+The example returns a capture hash before destroying the runner. Captured
+commands and CanvasTrace borrow runner storage until its next draw or deinit.
+Do not store their pointers as a permanent snapshot.
+
+## Boundaries, errors and reproducibility
+
+step advances one update without drawing; draw does not advance simulation.
+runReplay validates input before execution. initSeeded supplies the selected
+seed during Game.init. Equal input alone is insufficient if initialization
+uses different saves, wall-clock time or uncontrolled randomness.
+
+For save-dependent bugs, use recorder.initSession **before Game.init**, select
+the required save keys and identity, then use runner.initReplay on a fresh
+runner. It restores those captured saves into private storage without writing
+user data. Identity/seed/environment errors include
+`ReplayIdentityRequired`, `ReplayGameMismatch`, `ReplayBuildMismatch`,
+`ReplayAssetsMismatch`, `ReplaySeedMismatch`, `ReplayEnvironmentRequired`
+and `ReplayAlreadyStarted`. Invalid snapshots/time/alpha are rejected.
+The [full testing guide](../guides/testing.md) explains formats, bounds, errors,
+logical trace comparisons and existing pixel/replay goldens.
+
+Replay record/parse lives under **preview.developer** and remains optional
+developer tooling. This reference does not promote its stability or browser
+renderer status. The headless APIs do not require SDL or a GPU.
+
+Use StateHash.updatePortable on chosen fixed-width game fields to avoid
+native struct padding and target-sized integers; use updateBytes for strings.
+The legacy updateValue uses native representation and retains its old hashes.
+InMemorySaveStore owns copied values and must stay at a stable address after
+init because its capability points back to it; a runner borrowing that store
+must be destroyed first.
+
+<!-- api: testSupport.HeadlessGameRunner -->
+<!-- api: testSupport.HeadlessFrame -->
+<!-- api: testSupport.HeadlessCapture -->
+<!-- api: testSupport.InMemorySaveStore -->
+<!-- api: testSupport.StateHash -->
+<!-- api: testSupport.canvasHash -->
+<!-- api: testSupport.expectCanvasTraceEqual -->
+<!-- api: preview.developer.InputReplayRecorder -->
+<!-- api: preview.developer.InputReplay -->
+<!-- api: preview.developer.parseInputReplay -->

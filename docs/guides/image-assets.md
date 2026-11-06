@@ -1,5 +1,8 @@
 # Authored image and font assets
 
+Call reference: [AssetCollection, Image, Font and Atlas](../api/assets.md),
+including decode-option defaults and borrowed/owned lifetimes.
+
 For several related resources, start with the optional, game-owned
 [`AssetCollection` recipes](asset-recipes.md). One collection loads embedded
 images, fonts, and sheets, returns stable borrowed pointers, and releases them
@@ -85,7 +88,8 @@ responsible for drawing the selected frame.
 
 `Font.decodeTrueType` accepts one authored TTF/OTF face and rasterizes it into
 a CPU atlas. Store the resulting `Font` in game state and use `font.drawText`
-from `draw`. This is ordinary game text, unlike the built-in debug font used by
+for direct unwrapped drawing, or prepare reusable text through
+[font-aware measurement and layout](authored-text-layout.md). This is ordinary game text, unlike the built-in debug font used by
 small zero-asset examples. Current scope is intentionally simple: there is no
 text shaping, fallback stack, rich text, or dynamic glyph streaming.
 

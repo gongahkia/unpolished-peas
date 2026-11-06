@@ -1,5 +1,8 @@
 # Deterministic testing
 
+Call reference: [HeadlessGameRunner and replay](../api/testing.md), including
+generic returned-type methods, capture lifetimes and an executed Unicode replay.
+
 Start with the complete compiled test in
 [Seed Sprint](../../templates/starter/src/game.zig). It records normalized
 fixed-tick input, initializes fresh headless games with seed `42`, asserts
