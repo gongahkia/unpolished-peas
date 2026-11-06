@@ -821,6 +821,54 @@ pub fn build(b: *std.Build) void {
     const benchmark = b.addExecutable(.{ .name = "unpolished-peas-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
     const workload_benchmark = b.addExecutable(.{ .name = "unpolished-peas-workload-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/workload_benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "workload-catalog", .module = workload_catalog }} }) });
     const render_benchmark = b.addExecutable(.{ .name = "unpolished-peas-render-benchmark", .root_module = b.createModule(.{ .root_source_file = b.path("src/render_benchmark.zig"), .target = target, .optimize = optimize, .imports = &.{.{ .name = "unpolished-peas", .module = peas }} }) });
+    const surface_composition_benchmark = b.addExecutable(.{ .name = "surface-composition-benchmark", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/surface_composition_benchmark.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
+    }) });
+    addRunStep(b, "benchmark-surface-composition", "Measure CPU-only surface composition with fixed workloads and allocation counts", surface_composition_benchmark);
+    const surface_conformance_step = b.step("test-surface-composition", "Compare surface pixels/traces with an independent scalar reference");
+    const surface_fast_core = b.createModule(.{ .root_source_file = b.path("src/unpolished_peas.zig"), .target = target, .optimize = .ReleaseFast });
+    addStb(surface_fast_core);
+    for ([_]std.builtin.OptimizeMode{ .Debug, .ReleaseFast }) |mode| {
+        const conformance_core = if (mode == .ReleaseFast) surface_fast_core else b.createModule(.{
+            .root_source_file = b.path("src/unpolished_peas.zig"),
+            .target = target,
+            .optimize = .Debug,
+        });
+        if (mode == .Debug) addStb(conformance_core);
+        const conformance = b.addTest(.{ .root_module = b.createModule(.{
+            .root_source_file = b.path("src/surface_composition_conformance.zig"),
+            .target = target,
+            .optimize = mode,
+            .imports = &.{.{ .name = "unpolished-peas", .module = conformance_core }},
+        }) });
+        surface_conformance_step.dependOn(&b.addRunArtifact(conformance).step);
+    }
+    const surface_native = b.addExecutable(.{ .name = "surface-composition-conformance", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/surface_composition_conformance.zig"),
+        .target = target,
+        .optimize = .ReleaseFast,
+        .imports = &.{.{ .name = "unpolished-peas", .module = surface_fast_core }},
+    }) });
+    const surface_native_run = b.addRunArtifact(surface_native);
+    const surface_wasm = b.addExecutable(.{ .name = "surface-composition-conformance", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/surface_composition_conformance.zig"),
+        .target = browser_target,
+        .optimize = .ReleaseFast,
+        .imports = &.{.{ .name = "unpolished-peas", .module = browser_peas }},
+    }) });
+    surface_wasm.entry = .disabled;
+    surface_wasm.rdynamic = true;
+    surface_wasm.import_memory = true;
+    const surface_wasm_run = b.addSystemCommand(&.{ "node", "script/test_surface_composition_wasm.mjs" });
+    surface_wasm_run.addFileArg(surface_wasm.getEmittedBin());
+    surface_wasm_run.addFileArg(surface_native_run.captureStdOut());
+    const surface_browser_step = b.step("test-browser-surface-composition", "Compare native/Wasm surface pixels and prepare the real-browser fixture");
+    surface_browser_step.dependOn(&surface_wasm_run.step);
+    surface_browser_step.dependOn(&b.addInstallFile(surface_wasm.getEmittedBin(), "surface-composition/suite.wasm").step);
+    surface_browser_step.dependOn(&b.addInstallFile(surface_native_run.captureStdOut(), "surface-composition/native.json").step);
     const advanced_particles_benchmark = addExample(b, "unpolished-peas-advanced-particle-proof", "src/advanced_particles_benchmark.zig", target, optimize, peas, sdl);
 
     const peas_cli = b.addExecutable(.{
@@ -1080,6 +1128,7 @@ pub fn build(b: *std.Build) void {
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(surface_conformance_step);
     test_step.dependOn(&run_input_workbench_tests.step);
     test_step.dependOn(&run_asset_workbench_tests.step);
     const render_benchmark_tests = b.addTest(.{ .root_module = render_benchmark.root_module });

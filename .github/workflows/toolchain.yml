@@ -19,6 +19,7 @@ jobs:
       - run: script/test_version_consistency.sh
       - run: script/test_release_validation.sh
       - run: zig build test-asset-workbench test-browser-asset-collection -Dwith_sdl=false
+      - run: zig build test-browser-surface-composition -Dwith_sdl=false
 
   browser-rendering:
     runs-on: macos-15
@@ -34,6 +35,7 @@ jobs:
       - run: script/test_browser_shell.sh
       - run: script/test_browser_input_workbench.sh
       - run: script/test_browser_asset_workbench.sh
+      - run: script/test_browser_surface_composition.sh
       - run: zig build test-starter-persistence -Dwith_sdl=false --summary all
       - run: zig build test-portable-conformance -Dwith_sdl=false --summary all
       - run: zig build test-browser-renderer-parity

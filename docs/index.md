@@ -22,6 +22,7 @@ with the smallest complete project, then add only the concepts your game needs.
 - [Small save data](guides/save-data.md)
 - [Canvas, camera, and presentation](guides/rendering.md)
 - [CPU RenderSurface composition](guides/render-surfaces.md)
+- [Surface composition measurements and regression checks](guides/surface-composition-performance.md)
 
 ## 3. Make it deterministic and testable
 

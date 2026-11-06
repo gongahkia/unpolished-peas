@@ -60,6 +60,15 @@ native namespace for downstream builds, native restart, browser interactions,
 failure recovery and UPR5 replay. Its logs, package hash, environment record
 and PNG are retained under `zig-out/diagnostics/portable-conformance/`.
 
+Surface composition differential tests run in Debug and ReleaseFast as part of
+`zig build test`. `browser-host` runs `test-browser-surface-composition` to
+compare exact native/Wasm pixels and trace hashes against a scalar reference;
+`browser-rendering` runs `script/test_browser_surface_composition.sh` in real
+Chromium. Logs and browser metadata are retained under
+`zig-out/diagnostics/surface-composition/`. The focused performance comparison
+is a separate manual experiment; no pull-request timing gate or performance
+budget is changed. See [surface measurements](surface-composition-performance.md).
+
 ## Non-PR validation
 
 Package, proof-game, renderer, release-compatibility, and next-Zig jobs run outside pull requests until their owning removal or release issue changes that policy. They are not stable-core required checks.

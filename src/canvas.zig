@@ -365,22 +365,66 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
         const destination_width: usize = self.width;
         const initial_y: u32 = @intCast(@as(i64, @intCast(bounds.top)) - @as(i64, options.y));
         const initial_x: u32 = @intCast(@as(i64, @intCast(bounds.left)) - @as(i64, options.x));
-        for (bounds.top..bounds.bottom, initial_y..) |destination_y, relative_y| {
-            const source_y = ((@as(f32, @floatFromInt(relative_y)) + 0.5) * @as(f32, @floatFromInt(source.height)) / @as(f32, @floatFromInt(options.height))) - 0.5;
-            const top = std.math.clamp(@as(i32, @intFromFloat(@floor(source_y))), 0, @as(i32, @intCast(source.height - 1)));
-            const bottom = @min(top + 1, @as(i32, @intCast(source.height - 1)));
-            const vertical = std.math.clamp(source_y - @as(f32, @floatFromInt(top)), 0, 1);
-            const destination_start = destination_y * destination_width + bounds.left;
-            for (0..bounds.right - bounds.left, initial_x..) |destination_x, relative_x| {
+        // 5 KiB of bounded scratch, independent of surface or destination size.
+        // Horizontal samples retain the old u8 rounding before vertical lerp.
+        const span_capacity = 256;
+        var columns: [span_capacity]LinearColumn = undefined;
+        var first: [span_capacity]Color = undefined;
+        var second: [span_capacity]Color = undefined;
+        var start = bounds.left;
+        while (start < bounds.right) {
+            const length = @min(span_capacity, bounds.right - start);
+            for (columns[0..length], 0..) |*column, offset| {
+                const relative_x = initial_x + @as(u32, @intCast(start - bounds.left + offset));
                 const source_x = ((@as(f32, @floatFromInt(relative_x)) + 0.5) * @as(f32, @floatFromInt(source.width)) / @as(f32, @floatFromInt(options.width))) - 0.5;
                 const left = std.math.clamp(@as(i32, @intFromFloat(@floor(source_x))), 0, @as(i32, @intCast(source.width - 1)));
                 const right = @min(left + 1, @as(i32, @intCast(source.width - 1)));
-                const horizontal = std.math.clamp(source_x - @as(f32, @floatFromInt(left)), 0, 1);
-                const top_color = lerpColor(surfacePixel(source, left, top), surfacePixel(source, right, top), horizontal);
-                const bottom_color = lerpColor(surfacePixel(source, left, bottom), surfacePixel(source, right, bottom), horizontal);
-                const sample = lerpColor(top_color, bottom_color, vertical);
-                self.blendColor(&self.pixels[destination_start + destination_x], if (tinted) tint(sample, options.tint) else sample);
+                column.* = .{ .left = @intCast(left), .right = @intCast(right), .amount = std.math.clamp(source_x - @as(f32, @floatFromInt(left)), 0, 1) };
             }
+            var top_colors = &first;
+            var bottom_colors = &second;
+            var cached_top: usize = std.math.maxInt(usize);
+            var cached_bottom: usize = std.math.maxInt(usize);
+            for (bounds.top..bounds.bottom, initial_y..) |destination_y, relative_y| {
+                const source_y = ((@as(f32, @floatFromInt(relative_y)) + 0.5) * @as(f32, @floatFromInt(source.height)) / @as(f32, @floatFromInt(options.height))) - 0.5;
+                const top = std.math.clamp(@as(i32, @intFromFloat(@floor(source_y))), 0, @as(i32, @intCast(source.height - 1)));
+                const bottom = @min(top + 1, @as(i32, @intCast(source.height - 1)));
+                const vertical = std.math.clamp(source_y - @as(f32, @floatFromInt(top)), 0, 1);
+                const top_index: usize = @intCast(top);
+                const bottom_index: usize = @intCast(bottom);
+                if (top_index != cached_top) {
+                    if (top_index == cached_bottom) {
+                        std.mem.swap(@TypeOf(top_colors), &top_colors, &bottom_colors);
+                        std.mem.swap(usize, &cached_top, &cached_bottom);
+                    } else {
+                        linearSurfaceRow(source, top_index, columns[0..length], top_colors[0..length]);
+                        cached_top = top_index;
+                    }
+                }
+                var below = top_colors;
+                if (bottom_index != top_index) {
+                    if (bottom_index != cached_bottom) {
+                        linearSurfaceRow(source, bottom_index, columns[0..length], bottom_colors[0..length]);
+                        cached_bottom = bottom_index;
+                    }
+                    below = bottom_colors;
+                }
+                const destination_start = destination_y * destination_width + start;
+                for (self.pixels[destination_start..][0..length], top_colors[0..length], below[0..length]) |*destination, a, b| {
+                    const sample = if (vertical == 0) a else if (vertical == 1) b else lerpColor(a, b, vertical);
+                    self.blendColor(destination, if (tinted) tint(sample, options.tint) else sample);
+                }
+            }
+            start += length;
+        }
+    }
+
+    const LinearColumn = struct { left: u32, right: u32, amount: f32 };
+
+    fn linearSurfaceRow(source: *const Canvas, row: usize, columns: []const LinearColumn, output: []Color) void {
+        const pixels = source.pixels[row * source.width ..][0..source.width];
+        for (columns, output) |column, *color| {
+            color.* = if (column.amount == 0 or column.left == column.right) pixels[column.left] else if (column.amount == 1) pixels[column.right] else lerpColor(pixels[column.left], pixels[column.right], column.amount);
         }
     }
 

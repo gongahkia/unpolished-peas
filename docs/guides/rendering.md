@@ -39,7 +39,7 @@ it is not a transparent replacement for the Canvas contract.
 
 The internal `zig build -Doptimize=ReleaseFast benchmark-rendering` utility
 uses four warm-up iterations and at least 48 Mi logical pixels per workload.
-On the locally tested Intel macOS 15.7.7 host, two ReleaseFast runs cleared a
+Earlier on the locally tested Intel macOS 15.7.7 host, two ReleaseFast runs cleared a
 320×180 Canvas in 3–8 µs, drew 5,000 visible 16×16 opaque Canvas sprites in
 2.5–4.3 ms, and nearest-composed a 320×180 surface to 1280×720 in 1.9–2.7 ms.
 Those figures are host-specific observations, not frame-rate guarantees. They
@@ -47,8 +47,19 @@ show that low-resolution CPU Canvas work is appropriate for the reference
 games; they do not establish an Apple Silicon performance result.
 
 Prefer a low-resolution `RenderSurface` with nearest/integer scaling for
-pixel-art presentation. Full-HD linear CPU surface scaling is deliberately a
-practical limit: the same two runs took 23–29 ms for 320×180 to 1280×720
-linear composition. Use `Renderer2D` when its distinct GPU features are
-needed, especially large contiguous particle batches, rather than moving
-ordinary Canvas games to a GPU API prematurely.
+pixel-art presentation. The earlier 23–29 ms observation for 320×180 to
+1280×720 linear composition predates the bounded row-cache optimization.
+On November 6, 2026, seven alternating before/after ReleaseFast pairs on an
+Intel i5-8279U Mac measured solid linear composition at 24.305 → 8.224 ms
+median and patterned alpha composition at 31.368 → 13.305 ms. Every linear
+case improved in all seven pairs; nearest/1:1 nearest showed no consistent
+slowdown. Normal drawing allocated zero bytes, with 5 KiB of fixed explicit
+scratch for linear filtering.
+
+These are CPU composition times, excluding frame upload, presentation and GPU
+work. Multiple large blended passes still add up; they do not establish a
+complete-game frame rate or other hardware's performance. See the
+[measurement and validation guide](surface-composition-performance.md) for
+all twelve workloads, distributions, exact commands, scalar differential
+tests and native/browser evidence. `Renderer2D` retains its separate GPU
+features and ordering contract.

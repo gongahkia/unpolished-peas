@@ -70,11 +70,18 @@ or public surface readback API in this initial surface contract.
 For low-resolution pixel art, use nearest filtering and prefer exact integer
 upscales. The CPU implementation has dedicated 1:1 and integer-nearest paths
 while preserving the same tint, clip, and blend result as ordinary sampling.
-On the locally tested Intel macOS host, two ReleaseFast runs measured 320×180
-to 1280×720 nearest composition at 1.9–2.7 ms and linear composition at
-23–29 ms. These are local observations, not a cross-machine budget. Keep
-linear full-HD surface work bounded until a real workload demonstrates a
-reason to evolve the design.
+Linear filtering caches column mappings and two horizontally interpolated
+rows in 5 KiB of fixed explicit stack scratch, with no per-draw heap allocation.
+Horizontal byte rounding still occurs before vertical interpolation.
+Seven alternating ReleaseFast before/after pairs on the Intel i5-8279U macOS
+host measured solid 320×180 to 1280×720 linear composition at
+24.305 → 8.224 ms median on November 6, 2026. The earlier 23–29 ms observation
+predates this optimization. Nearest 320×180 to 1280×720 remained about 2.1 ms;
+large alpha compositions remain more expensive. These are local CPU-only
+observations, not a cross-machine budget or a complete-frame guarantee.
+See [surface performance](surface-composition-performance.md) for workload
+parameters, distributions, memory bounds, and exact native/browser regression
+commands. Keep large linear passes bounded to the game's measured budget.
 
 ## Advanced renderer boundary
 

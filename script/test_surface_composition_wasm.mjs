@@ -1,0 +1,13 @@
+import assert from "node:assert/strict";
+import {readFile} from "node:fs/promises";
+const [wasmPath,nativePath] = process.argv.slice(2);
+const native = JSON.parse(await readFile(nativePath,"utf8"));
+const memory = new WebAssembly.Memory({initial: 128});
+const {instance} = await WebAssembly.instantiate(await readFile(wasmPath),{env:{memory}});
+const status = instance.exports.surface_conformance_run();
+assert.equal(status,0,`surface case=${instance.exports.surface_failure_case()} pixel=${instance.exports.surface_failure_pixel()}`);
+assert.equal(native.cases,554);
+assert.equal(native.hash,"716431564172485137", "frozen pre-optimization pixel/trace hash");
+assert.equal(instance.exports.surface_conformance_cases(),native.cases);
+assert.equal(BigInt.asUintN(64,instance.exports.surface_conformance_hash()),BigInt(native.hash));
+console.log(`surface composition native/Wasm passed: ${native.cases} scalar-reference pixel/trace cases, hash=${native.hash}, no draw allocations`);

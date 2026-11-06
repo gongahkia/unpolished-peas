@@ -28,7 +28,7 @@ const Measurement = struct {
     allocated_bytes: u64,
 };
 
-const CountingAllocator = struct {
+pub const CountingAllocator = struct {
     parent: std.mem.Allocator,
     allocation_events: u64 = 0,
     allocated_bytes: u64 = 0,
@@ -40,15 +40,15 @@ const CountingAllocator = struct {
         .free = free,
     };
 
-    fn init(parent: std.mem.Allocator) CountingAllocator {
+    pub fn init(parent: std.mem.Allocator) CountingAllocator {
         return .{ .parent = parent };
     }
 
-    fn allocator(self: *CountingAllocator) std.mem.Allocator {
+    pub fn allocator(self: *CountingAllocator) std.mem.Allocator {
         return .{ .ptr = self, .vtable = &vtable };
     }
 
-    fn reset(self: *CountingAllocator) void {
+    pub fn reset(self: *CountingAllocator) void {
         self.allocation_events = 0;
         self.allocated_bytes = 0;
     }
