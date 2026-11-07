@@ -782,14 +782,40 @@ const NativeTimingReport = struct {
     update: Aggregate = .{},
     draw: Aggregate = .{},
     present: Aggregate = .{},
+    // Bounded raw evidence, allocated before the loop and serialized after it.
+    // This private opt-in extends the existing reporter without tracing I/O in
+    // measured frames. Present includes driver/swapchain waits, not GPU time.
+    capture: ?*Capture = null,
+    const Frame = struct {
+        frame_ns: u64,
+        interval_ns: u64,
+        update_ns: u64,
+        update_calls: u64,
+        draw_ns: u64,
+        present_ns: u64,
+        pass_count: u32,
+    };
+    const Capture = struct {
+        frames: [4096]Frame = undefined,
+        count: usize = 0,
+        dropped: usize = 0,
+        started: u64 = 0,
+        previous: u64 = 0,
+        interval: u64 = 0,
+        update_before: u64 = 0,
+        calls_before: u64 = 0,
+        framebuffer: up.Vec2 = .{},
+    };
 
     const Aggregate = struct {
         calls: u64 = 0,
         total_ns: u64 = 0,
         min_ns: u64 = std.math.maxInt(u64),
         max_ns: u64 = 0,
+        last_ns: u64 = 0,
 
         fn add(self: *Aggregate, elapsed_ns: u64) void {
+            self.last_ns = elapsed_ns;
             self.calls +|= 1;
             self.total_ns +|= elapsed_ns;
             self.min_ns = @min(self.min_ns, elapsed_ns);
@@ -802,7 +828,41 @@ const NativeTimingReport = struct {
     };
 
     fn init() NativeTimingReport {
-        return .{ .enabled = environmentBool("UP_NATIVE_TIMING_REPORT") orelse false };
+        const samples = environmentBool("UP_NATIVE_TIMING_SAMPLES") orelse false;
+        var result = NativeTimingReport{ .enabled = samples or (environmentBool("UP_NATIVE_TIMING_REPORT") orelse false) };
+        if (samples) {
+            result.capture = std.heap.page_allocator.create(Capture) catch @panic("native timing capture allocation failed");
+            result.capture.?.* = .{};
+        }
+        return result;
+    }
+
+    fn beginFrame(self: *NativeTimingReport) void {
+        const capture = self.capture orelse return;
+        capture.started = nowNs();
+        capture.interval = if (capture.previous == 0) 0 else capture.started -| capture.previous;
+        capture.previous = capture.started;
+        capture.update_before = self.update.total_ns;
+        capture.calls_before = self.update.calls;
+    }
+
+    fn finishFrame(self: *NativeTimingReport, presentation: up.Presentation, metrics: up.RuntimeMetrics) void {
+        const capture = self.capture orelse return;
+        capture.framebuffer = presentation.framebuffer_size;
+        if (capture.count == capture.frames.len) {
+            capture.dropped += 1;
+            return;
+        }
+        capture.frames[capture.count] = .{
+            .frame_ns = nowNs() -| capture.started,
+            .interval_ns = capture.interval,
+            .update_ns = self.update.total_ns -| capture.update_before,
+            .update_calls = self.update.calls -| capture.calls_before,
+            .draw_ns = self.draw.last_ns,
+            .present_ns = self.present.last_ns,
+            .pass_count = metrics.pass_count,
+        };
+        capture.count += 1;
     }
 
     fn start(self: NativeTimingReport) u64 {
@@ -814,6 +874,12 @@ const NativeTimingReport = struct {
     }
 
     fn write(self: NativeTimingReport) void {
+        if (self.capture) |capture| {
+            defer std.heap.page_allocator.destroy(capture);
+            const json = std.json.Stringify.valueAlloc(std.heap.page_allocator, .{ .frames = capture.frames[0..capture.count], .dropped = capture.dropped, .framebuffer = capture.framebuffer }, .{}) catch @panic("native timing serialization failed");
+            defer std.heap.page_allocator.free(json);
+            std.debug.print("peas-host-samples {s}\n", .{json});
+        }
         if (!self.enabled or self.present.calls == 0) return;
         std.debug.print(
             "unpolished-peas native timing: present_frames={d} update_calls={d} update_mean_ns={d} update_min_ns={d} update_max_ns={d} draw_calls={d} draw_mean_ns={d} draw_min_ns={d} draw_max_ns={d} present_mean_ns={d} present_min_ns={d} present_max_ns={d}\n",
@@ -1583,6 +1649,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     var last_ticks = c.SDL_GetTicksNS();
 
     while (running) {
+        native_timing.beginFrame();
         profiler.beginFrame(ctx.frame);
         dev.beginDiagnosticsFrame();
         frame_metrics.beginFrame(ctx.frame);
@@ -1728,6 +1795,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
         const diagnostics_present_started = dev.diagnosticsStart();
         try renderer.present(allocator, canvas, &sprite_batch, commands.commands.items, &advanced_renderer, screenshot_path, &presentation, &frame_metrics);
         native_timing.end(&native_timing.present, present_started);
+        native_timing.finishFrame(presentation, frame_metrics);
         dev.recordDiagnosticsPresent(diagnostics_present_started);
         runtime_metrics = frame_metrics;
         if (dev.enabled) dev.finishDiagnostics(.{
@@ -4821,7 +4889,7 @@ fn ticksToSeconds(ns: u64) f32 {
 }
 
 fn nowNs() u64 {
-    return @intCast(@max(@as(i128, 0), std.time.nanoTimestamp()));
+    return c.SDL_GetTicksNS();
 }
 
 fn createGpuDevice(debug_mode: bool) ?*c.SDL_GPUDevice {

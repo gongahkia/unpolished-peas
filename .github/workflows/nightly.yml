@@ -8,7 +8,7 @@ on:
 jobs:
   portable-authoring:
     runs-on: macos-15-intel
-    timeout-minutes: 15
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -24,11 +24,15 @@ jobs:
       - run: sudo safaridriver --enable
       - run: zig build test-browser-authoring -Dwith_sdl=false -j2 --summary all
         timeout-minutes: 10
+      - run: zig build test-render-capacity -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
+        timeout-minutes: 10
       - if: always()
         uses: actions/upload-artifact@v4
         with:
           name: portable-authoring-browsers
-          path: zig-out/diagnostics/browser-authoring/**
+          path: |
+            zig-out/diagnostics/browser-authoring/**
+            zig-out/diagnostics/render-capacity/**
           if-no-files-found: warn
 
   capability-matrix:

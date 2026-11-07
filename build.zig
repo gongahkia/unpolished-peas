@@ -839,6 +839,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{.{ .name = "unpolished-peas", .module = peas }},
     }) });
     addRunStep(b, "benchmark-surface-composition", "Measure CPU-only surface composition with fixed workloads and allocation counts", surface_composition_benchmark);
+    @import("src/render_capacity_build.zig").add(b, target, optimize, peas, sdl, browser_target, browser_optimize, browser_peas, browser_frame_timing);
     const surface_conformance_step = b.step("test-surface-composition", "Compare surface pixels/traces with an independent scalar reference");
     const surface_fast_core = b.createModule(.{ .root_source_file = b.path("src/unpolished_peas.zig"), .target = target, .optimize = .ReleaseFast });
     addStb(surface_fast_core);

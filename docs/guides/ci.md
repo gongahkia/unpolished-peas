@@ -107,4 +107,13 @@ browser metadata under zig-out/diagnostics/font-layout.
 
 ## Non-PR validation
 
+The nightly macOS portable-authoring job also runs `test-render-capacity` with
+native/Wasm ReleaseFast. Its short mixed GameProtocol workloads verify exact
+native-reference/browser pixels and zero game-owned frame allocations at
+three resolutions with nearest/linear composition. The job retains
+`zig-out/diagnostics/render-capacity/` artifacts and has a 25-minute bound,
+with 10 minutes for this step. Timing distributions are diagnostic only;
+full three-round measurements remain manual experiments. See
+[GameProtocol capacity](game-rendering-capacity.md).
+
 Package, proof-game, renderer, release-compatibility, and next-Zig jobs run outside pull requests until their owning removal or release issue changes that policy. They are not stable-core required checks.

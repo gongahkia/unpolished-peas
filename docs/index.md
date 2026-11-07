@@ -27,6 +27,7 @@ with the smallest complete project, then add only the concepts your game needs.
 - [Canvas, camera, and presentation](guides/rendering.md)
 - [CPU RenderSurface composition](guides/render-surfaces.md)
 - [Surface composition measurements and regression checks](guides/surface-composition-performance.md)
+- [Complete GameProtocol rendering capacity](guides/game-rendering-capacity.md)
 
 ## 3. Make it deterministic and testable
 

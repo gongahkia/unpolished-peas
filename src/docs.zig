@@ -15,6 +15,7 @@ const source_documents = [_][]const u8{
     "guides/rendering.md",
     "guides/render-surfaces.md",
     "guides/surface-composition-performance.md",
+    "guides/game-rendering-capacity.md",
     "guides/advanced-2d.md",
     "guides/image-assets.md",
     "guides/authored-text-layout.md",

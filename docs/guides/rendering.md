@@ -35,6 +35,11 @@ available in headless tests as well as native and browser builds.
 
 ## Performance guidance
 
+For measured complete-frame behavior, including the normal Canvas upload and
+host presentation path, see [GameProtocol rendering capacity](game-rendering-capacity.md).
+It combines sprites, prepared authored text, alpha blending and offscreen
+composition in native ReleaseFast and real Chromium WebGL 2 on one machine.
+
 `Canvas` remains the default renderer for small, logical-pixel 2D games. Its
 CPU raster result is deterministic, testable headlessly, and uploaded as one
 RGBA frame by native and browser presenters. `Renderer2D` is a separate
