@@ -116,4 +116,9 @@ with 10 minutes for this step. Timing distributions are diagnostic only;
 full three-round measurements remain manual experiments. See
 [GameProtocol capacity](game-rendering-capacity.md).
 
+The same nightly job runs `test-browser-chess` with an eight-minute step bound
+and retains `zig-out/diagnostics/chess/`. Native chess rules and headless game
+checks are included in `zig build test`; browser checks use the shared adapter
+and exact native frame references, without adding a performance threshold.
+
 Package, proof-game, renderer, release-compatibility, and next-Zig jobs run outside pull requests until their owning removal or release issue changes that policy. They are not stable-core required checks.

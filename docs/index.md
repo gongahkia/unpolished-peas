@@ -28,6 +28,7 @@ with the smallest complete project, then add only the concepts your game needs.
 - [CPU RenderSurface composition](guides/render-surfaces.md)
 - [Surface composition measurements and regression checks](guides/surface-composition-performance.md)
 - [Complete GameProtocol rendering capacity](guides/game-rendering-capacity.md)
+- [Play local two-player chess](guides/chess.md)
 
 ## 3. Make it deterministic and testable
 

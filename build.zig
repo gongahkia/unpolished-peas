@@ -652,6 +652,9 @@ pub fn build(b: *std.Build) void {
     const asset_workbench_demo = addExample(b, "unpolished-peas-asset-workbench", "examples/asset_workbench.zig", target, optimize, peas, sdl);
     const font_layout_demo = addExample(b, "unpolished-peas-font-layout", "examples/font_layout.zig", target, optimize, peas, sdl);
     addRunStep(b, "run-font-layout", "Run the prepared proportional-font menu and dialogue example", font_layout_demo);
+    const chess_demo = addExample(b, "unpolished-peas-chess", "examples/chess.zig", target, optimize, peas, sdl);
+    addRunStep(b, "run-chess", "Play local two-player chess", chess_demo);
+    const chess_tests = @import("src/chess_build.zig").add(b, target, optimize, peas, browser_target, browser_optimize, browser_peas, browser_frame_timing);
     const audio_lifetime_demo = addExample(b, "unpolished-peas-audio-lifetime", "examples/audio_lifetime.zig", target, optimize, peas, sdl);
     const audio_lifetime_options = b.addOptions();
     audio_lifetime_options.addOption(bool, "smoke", b.option(bool, "audio-lifetime-smoke", "Validate eight audio scene changes and cleanup in the native host") orelse false);
@@ -1300,6 +1303,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
+    check_examples.dependOn(&chess_demo.step);
     for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, authoring_reference, audio_lifetime_demo, audio_lifetime_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
@@ -1309,6 +1313,7 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
+    test_step.dependOn(chess_tests);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(font_layout_tests);
     test_step.dependOn(audio_lifetime_tests);

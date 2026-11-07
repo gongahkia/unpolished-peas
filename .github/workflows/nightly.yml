@@ -26,6 +26,8 @@ jobs:
         timeout-minutes: 10
       - run: zig build test-render-capacity -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
         timeout-minutes: 10
+      - run: zig build test-browser-chess -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
+        timeout-minutes: 8
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -33,6 +35,7 @@ jobs:
           path: |
             zig-out/diagnostics/browser-authoring/**
             zig-out/diagnostics/render-capacity/**
+            zig-out/diagnostics/chess/**
           if-no-files-found: warn
 
   capability-matrix:
