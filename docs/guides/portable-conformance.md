@@ -11,6 +11,7 @@ the host boundary; fixture-owned browser exports expose test observations.
 ```sh
 zig build test-starter-persistence -Dwith_sdl=false --summary all
 zig build test-portable-conformance -Dwith_sdl=false --summary all
+zig build test-browser-authoring -Dwith_sdl=false -j2 --summary all
 ```
 
 The first command generates an untouched starter outside the checkout, builds
@@ -24,6 +25,14 @@ it over loopback HTTP. It copies the conformance project outside the checkout
 and replaces the fixture's dependency coordinates with that URL/hash pair.
 The consumer has a separate empty package cache and must fetch and validate the
 archive. No release is published and no public coordinates are invented.
+
+The third command reuses that verified archive-consumer setup for a WebGL 2
+matrix in Chromium, Firefox and real Safari. It builds the external web output
+and native/Wasm replay probe, then runs shared consumer, authored-font layout
+and audio-lifetime assertions across all three browsers. It preserves the
+original native/restart command above as a separate check. See
+[browser authoring verification](browser-authoring.md) for prerequisites,
+subset selection and observed evidence.
 
 ## Consumer commands and isolation
 
@@ -48,11 +57,14 @@ through the portable game. The next process loads score 4, counters 1/1,
 the R binding and exact name `Zoë你好`. This is automated native host evidence,
 not physical keyboard or native IME interaction evidence.
 
-The external web output runs through
-[`test_portable_browser.sh`](../../script/test_portable_browser.sh). Chromium
+The external web output runs through the
+[shared browser runner](../../script/browser-authoring/run.sh);
+[`test_portable_browser.sh`](../../script/test_portable_browser.sh) remains a
+standalone entry point for an existing bundle. Chromium
 checks authored image/font/Atlas pixels, Q/E movement, completed 1/2 taps during
-paused zero-update frames, and replacement of Q with R. A real textarea and CDP
-composition update/commit enter `Zoë你好`; preedit is excluded from the saved
+paused zero-update frames, and replacement of Q with R. A real textarea,
+injected DOM composition and trusted automation text input enter `Zoë你好`;
+preedit is excluded from the saved
 name. The test observes accepted audio PCM submissions after a user gesture,
 rejected storage writes preserving prior bytes, continued gameplay, a later
 successful write, and actual reload of score 7, counters 2/2, binding and name.
@@ -61,7 +73,7 @@ Accepted PCM submission does not measure physical speaker output quality.
 Lifecycle checks reject initialization after real asset allocations, verify
 exactly-once cleanup and cancellation of old frames, retry with exactly one
 scheduled frame, and repeat shutdown without a second game cleanup callback.
-Failure is exercised with an active IME preedit: cleanup cancels that session
+Failure is exercised with an active injected composition preedit: cleanup cancels that session
 through the existing input ABI even though no subsequent frame will poll it.
 The callback exercises Canvas/audio while those host capabilities must remain
 alive. Shutdown removes the text-input element and clears the live game.

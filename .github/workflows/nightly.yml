@@ -6,6 +6,31 @@ on:
   workflow_dispatch:
 
 jobs:
+  portable-authoring:
+    runs-on: macos-15-intel
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.15.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm --prefix script/browser-authoring ci --ignore-scripts --no-audit --no-fund
+      - run: node script/browser-authoring/node_modules/playwright/cli.js install firefox
+        env:
+          PLAYWRIGHT_SKIP_BROWSER_GC: 1
+      - run: sudo safaridriver --enable
+      - run: zig build test-browser-authoring -Dwith_sdl=false -j2 --summary all
+        timeout-minutes: 10
+      - if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: portable-authoring-browsers
+          path: zig-out/diagnostics/browser-authoring/**
+          if-no-files-found: warn
+
   capability-matrix:
     runs-on: ubuntu-latest
     outputs:

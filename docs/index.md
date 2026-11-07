@@ -32,6 +32,7 @@ with the smallest complete project, then add only the concepts your game needs.
 
 - [Testing: seed, replay, headless state, Canvas trace, pixels](guides/testing.md)
 - [v1.0 core contract](guides/core-contract.md)
+- [Real Chromium, Firefox and Safari authoring workflows](guides/browser-authoring.md)
 
 ## 4. Ship it
 

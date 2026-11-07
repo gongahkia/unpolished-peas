@@ -524,6 +524,8 @@ pub fn build(b: *std.Build) void {
     safari_webdriver_contract_test.setCwd(b.path("."));
     const safari_webdriver_contract_test_step = b.step("test-safari-webdriver-contract", "Test Safari WebDriver forced-renderer contract checks");
     safari_webdriver_contract_test_step.dependOn(&safari_webdriver_contract_test.step);
+    const authoring_contract_test = b.addSystemCommand(&.{ "sh", "script/browser-authoring/run.sh", "--contract-tests" });
+    b.step("test-browser-authoring-contract", "Reject invalid authoring captures and verify Safari transport/error cleanup").dependOn(&authoring_contract_test.step);
     const browser_safari_test = b.addSystemCommand(&.{"script/test_browser_safari.sh"});
     browser_safari_test.setCwd(b.path("."));
     const browser_safari_test_step = b.step("test-browser-safari", "Run Safari WebDriver against forced browser renderers");
@@ -1037,6 +1039,12 @@ pub fn build(b: *std.Build) void {
     const run_authoring_reference = b.addRunArtifact(authoring_reference);
     run_authoring_reference.addArg(b.getInstallPath(.prefix, "browser-authoring-reference"));
     b.step("browser-authoring-reference", "Record native authored-font pixels for real-browser comparisons").dependOn(&run_authoring_reference.step);
+    const authoring_browsers = b.option([]const u8, "authoring-browsers", "Comma-separated real authoring browsers: chromium,firefox,safari") orelse "chromium,firefox,safari";
+    const authoring_workflows = b.addSystemCommand(&.{ "python3", "-B", "script/test_portable_conformance.py", "--browser-workflows", "--browsers", authoring_browsers, "--font-bundle", b.getInstallPath(.prefix, "font-layout"), "--audio-bundle", b.getInstallPath(.prefix, "audio-lifetime"), "--references", b.getInstallPath(.prefix, "browser-authoring-reference") });
+    authoring_workflows.step.dependOn(&run_authoring_reference.step);
+    authoring_workflows.step.dependOn(font_web);
+    authoring_workflows.step.dependOn(audio_lifetime_web);
+    b.step("test-browser-authoring", "Verify real Chromium/Firefox/Safari authoring against an isolated verified archive consumer").dependOn(&authoring_workflows.step);
     const update_api_docs = b.addRunArtifact(docs);
     update_api_docs.addArgs(&.{
         b.pathFromRoot("docs"),
@@ -1291,7 +1299,7 @@ pub fn build(b: *std.Build) void {
     addRunStep(b, "benchmark-advanced-particles", "Run the internal Renderer2D particle batching proof", advanced_particles_benchmark);
 
     const check_examples = b.step("check-examples", "Compile every example without running it");
-    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, audio_lifetime_demo, audio_lifetime_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
+    for ([_]*std.Build.Step.Compile{ demo, sdl_demo, starter_demo, dogfood_demo, lantern_leap_demo, dev_demo, minimal_demo, tutorial_game_protocol_demo, input_workbench_demo, asset_workbench_demo, font_layout_demo, font_layout_probe, authoring_reference, audio_lifetime_demo, audio_lifetime_probe, explicit_loop_demo, explicit_loop_wasm, atlas_demo, audio_demo, camera_demo, primitives_demo, render_surface_demo, breakout, breakout_sdl, topdown_sdl, puzzle_sdl, platformer_sdl, audio_stress, packaged_assets, packaged_layout, scene_tests, topdown_scene, puzzle_scene, platformer_scene, proof_benchmark, api_recipes, benchmark, workload_benchmark, render_benchmark, advanced_particles_benchmark, peas_cli }) |example| {
         check_examples.dependOn(&example.step);
     }
     const explicit_loop_wasm_step = b.step("test-explicit-loop-wasm", "Compile the advanced explicit-loop example for Wasm");

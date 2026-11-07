@@ -1,7 +1,7 @@
 #!/bin/sh
 set -eu
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
-if [ "$#" -gt 0 ]; then web=$1; else
+if [ "$#" -gt 0 ]; then web=$(CDPATH='' cd -- "$1" && pwd); else
     (cd "$repo/fixtures/portable-conformance" && zig build web)
     web=$repo/fixtures/portable-conformance/zig-out/web
 fi

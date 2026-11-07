@@ -25,10 +25,12 @@ export async function portableChecks(driver, {directory}) {
   await driver.down("q");
   await driver.wait(() => window.unpolishedPeas.runtime.conformance_metric(0) < 120, null, "physical Q movement");
   await driver.up("q");
+  await driver.wait(() => !window.unpolishedPeas.host.input().extended.down[20], null, "physical Q release");
   const beforeE = await driver.evaluate(() => window.unpolishedPeas.runtime.conformance_metric(0));
   await driver.down("e");
   await driver.wait((x) => window.unpolishedPeas.runtime.conformance_metric(0) > x, beforeE, "physical E movement");
   await driver.up("e");
+  await driver.wait(() => !window.unpolishedPeas.host.input().extended.down[8], null, "physical E release");
   await driver.evaluate(() => window.unpolishedPeas.runtime.up_browser_set_paused(1));
   await driver.press("1"); await driver.press("2");
   await sleep(50);

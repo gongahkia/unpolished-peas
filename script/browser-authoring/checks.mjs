@@ -6,7 +6,13 @@ import {sleep} from "./adapters.mjs";
 export const check = (condition, message) => assert.ok(condition, message);
 export async function ready(driver, focus = true) {
   await driver.wait(() => document.querySelector('[role="status"]')?.dataset.state === "ready", null, "game readiness");
-  if (focus) await driver.click(".peas-actions button:first-child");
+  if (focus) {
+    await driver.click(".peas-actions button:first-child");
+    // Safari WebDriver may leave BODY active after the button's scripted
+    // focus transfer. A real canvas click establishes the keyboard target.
+    await driver.click("canvas[data-unpolished-peas]");
+    await driver.wait(() => document.activeElement === document.querySelector("canvas[data-unpolished-peas]") && window.unpolishedPeas.host.input().focused, null, "trusted canvas focus");
+  }
   await driver.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve(true)))));
 }
 
@@ -35,6 +41,11 @@ export async function frame(driver, directory, label, width, height) {
   check(value.error === 0 && !value.contextLost && value.protocolFailure === -1, `${label}: renderer/protocol must be healthy`);
   check(value.physicalWidth > 0 && value.physicalHeight > 0 && value.rgba.length === width * height * 4, `${label}: incomplete readback`);
   check(value.png?.startsWith("data:image/png") || (driver.name === "safari" && !driver.captureProbe.png_capture_available && value.png === null), `${label}: PNG capture failed despite independent probe`);
+  if (value.png) {
+    const bytes = Buffer.from(value.png.split(",")[1] ?? "", "base64");
+    check(bytes.length >= 24 && bytes.subarray(0, 8).equals(Buffer.from("89504e470d0a1a0a", "hex")), `${label}: invalid/empty PNG capture`);
+    check(bytes.readUInt32BE(16) === value.physicalWidth && bytes.readUInt32BE(20) === value.physicalHeight, `${label}: PNG/readback dimensions differ`);
+  }
   await writeFile(join(directory, `${label}.rgba`), Buffer.from(value.rgba));
   if (value.png) await writeFile(join(directory, `${label}-canvas.png`), Buffer.from(value.png.split(",")[1], "base64"));
   const {rgba, png, ...metadata} = value;
@@ -47,6 +58,7 @@ export const near = (actual, expected) => actual.length === expected.length && a
 
 export async function compareReference(actual, reference) {
   const expected = await readFile(reference);
+  check(expected.length > 0, "empty native pixel reference");
   check(actual.rgba.length === expected.length, "native/browser reference size differs");
   for (let index = 0; index < expected.length; index += 1) {
     if (Math.abs(actual.rgba[index] - expected[index]) > 1) throw new Error(`native/browser pixel mismatch: ${reference} byte=${index} expected=${expected[index]} actual=${actual.rgba[index]}`);

@@ -3,7 +3,12 @@ import {createServer} from "node:http";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {resolve, join, extname, sep} from "node:path";
 import {parseArgs} from "node:util";
-import {adapter, prerequisiteFailure} from "./adapters.mjs";
+import {spawn} from "node:child_process";
+import {createWriteStream} from "node:fs";
+import {createServer as createSocketServer} from "node:net";
+import {once} from "node:events";
+import {createHash} from "node:crypto";
+import {adapter, prerequisiteFailure, sleep} from "./adapters.mjs";
 import {instrumentation} from "./instrumentation.mjs";
 import {probeWebGlCapture, webGlRenderContract, validateWebGlReadback, validateRenderer} from "../safari_webdriver.mjs";
 import {portableChecks} from "../browser_portable_conformance_checks.mjs";
@@ -22,9 +27,26 @@ if (values.font) assert.ok(values.references, "--font requires native --referenc
 const directory = resolve(values.diagnostics);
 await mkdir(directory, {recursive: true});
 const report = {schema_version: 1, requested_browsers: browsers, platform: process.platform, architecture: process.arch, node: process.version, renderer: "webgl2", results: []};
+report.harness_sha256 = {};
+for (const file of ["run.mjs", "adapters.mjs", "checks.mjs", "instrumentation.mjs", "package.json", "package-lock.json", "../safari_webdriver.mjs", "../browser_portable_conformance_checks.mjs", "../browser_font_layout_checks.mjs", "../browser_audio_lifetime_checks.mjs"]) {
+  report.harness_sha256[file] = createHash("sha256").update(await readFile(new URL(file, import.meta.url))).digest("hex");
+}
+let references;
+if (values.font) {
+  references = join(directory, "native-reference");
+  await mkdir(references, {recursive: true});
+  report.reference_sha256 = {};
+  for (const file of ["font.json", "font-initial.rgba", "font-selected.rgba", "font-dialogue.rgba"]) {
+    const bytes = await readFile(join(resolve(values.references), file));
+    await writeFile(join(references, file), bytes);
+    report.reference_sha256[file] = createHash("sha256").update(bytes).digest("hex");
+  }
+}
 const persist = () => writeFile(join(directory, "result.json"), JSON.stringify(report, null, 2) + "\n");
 const mime = {".html": "text/html; charset=utf-8", ".mjs": "application/javascript", ".js": "application/javascript", ".wasm": "application/wasm", ".json": "application/json", ".png": "image/png"};
+const httpLog = createWriteStream(join(directory, "http.log"));
 const server = createServer(async (request, response) => {
+  response.on("finish", () => httpLog.write(JSON.stringify({path: request.url, status: response.statusCode}) + "\n"));
   try {
     const path = decodeURIComponent(new URL(request.url, "http://localhost").pathname);
     if (path === "/__peas-capture-probe__.html") {
@@ -45,6 +67,40 @@ const server = createServer(async (request, response) => {
 await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
 const base = "http://127.0.0.1:" + server.address().port;
 const json = (path, value) => writeFile(path, JSON.stringify(value, null, 2) + "\n");
+
+async function safariService() {
+  if (!browsers.includes("safari") || process.env.UP_SAFARI_WEBDRIVER_URL) return async () => {};
+  try {
+    const value = await fetch("http://127.0.0.1:4444/status", {signal: AbortSignal.timeout(1000)}).then((response) => response.json());
+    if (typeof value.value?.ready === "boolean") return async () => {};
+  } catch {}
+  const socket = createSocketServer();
+  await new Promise((resolve) => socket.listen(0, "127.0.0.1", resolve));
+  const port = socket.address().port;
+  await new Promise((resolve) => socket.close(resolve));
+  const url = "http://127.0.0.1:" + port;
+  process.env.UP_SAFARI_WEBDRIVER_URL = url;
+  const log = createWriteStream(join(directory, "safaridriver.log"));
+  const child = spawn("safaridriver", ["-p", String(port), "--diagnose"], {stdio: ["ignore", "pipe", "pipe"]});
+  child.stdout.pipe(log, {end: false}); child.stderr.pipe(log, {end: false});
+  let failed = false;
+  child.on("error", (error) => { failed = true; log.write(error.stack + "\n"); });
+  for (let i = 0; i < 30 && !failed; i += 1) {
+    try {
+      const response = await fetch(url + "/status", {signal: AbortSignal.timeout(1000)});
+      if (response.ok) break;
+    } catch {}
+    await sleep(100);
+  }
+  return async () => {
+    if (child.pid && child.exitCode === null && child.signalCode === null) {
+      const exited = once(child, "exit");
+      child.kill("SIGTERM");
+      await Promise.race([exited, sleep(5000)]);
+    }
+    log.end();
+  };
+}
 
 async function state(driver) {
   return driver.evaluate(() => {
@@ -85,7 +141,7 @@ async function runCase(browser, name, checks) {
     const readback = await driver.evaluate(webGlRenderContract);
     await json(join(output, "runtime-webgl-readback.json"), readback);
     validateWebGlReadback(readback, "Peas WebGL renderer");
-    result.observations = await checks(driver, {directory: output, references: values.references && resolve(values.references)});
+    result.observations = await checks(driver, {directory: output, references});
     const environment = await state(driver);
     await json(join(output, "environment.json"), environment);
     assert.deepEqual(environment.instrumentation.errors, [], "browser JavaScript errors");
@@ -108,6 +164,7 @@ async function runCase(browser, name, checks) {
   return result;
 }
 
+const closeSafariService = await safariService();
 try {
   await persist();
   for (const browser of browsers) {
@@ -127,5 +184,7 @@ try {
   process.exitCode = report.passed ? 0 : report.results.some((value) => value.status === "failed") ? 1 : 69;
   console.log("Authoring browser evidence: " + join(directory, "result.json"));
 } finally {
+  await closeSafariService();
   await new Promise((resolve) => server.close(resolve));
+  httpLog.end();
 }

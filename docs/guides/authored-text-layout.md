@@ -165,3 +165,9 @@ selection and changed dialogue through real keyboard events. Its screenshot
 and browser metadata are retained under zig-out/diagnostics/font-layout.
 That optional script requires the repository's Playwright/Chromium tooling.
 It is included in the browser-rendering CI job.
+
+The [browser authoring matrix](browser-authoring.md) also runs this compiled
+example in Chromium, Firefox and real Safari. Three complete frames compare
+against frozen native CPU pixels, checking prepared wrapping/alignment,
+selection and dialogue changes. PNG availability never replaces renderer
+readback checks. Browser renderer status remains preview.

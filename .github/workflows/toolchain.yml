@@ -21,6 +21,7 @@ jobs:
       - run: zig build test-asset-workbench test-browser-asset-collection -Dwith_sdl=false
       - run: zig build test-browser-surface-composition -Dwith_sdl=false
       - run: zig build test-audio-lifetime test-browser-audio-lifetime -Dwith_sdl=false
+      - run: zig build test-browser-authoring-contract -Dwith_sdl=false
 
   browser-rendering:
     runs-on: macos-15

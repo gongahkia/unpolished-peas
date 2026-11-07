@@ -173,3 +173,10 @@ submissions. Submission counts depend on frame scheduling, not a fixed golden.
 
 No asynchronous loading, crossfades, playlists, multiple high-level music
 streams or changes to replay/audio-device timing are added.
+
+The [browser authoring matrix](browser-authoring.md) repeats the scene example
+in Chromium, Firefox and real Safari. It waits for gesture-driven WebAudio
+activation before gameplay, verifies twelve paused-stream transitions and
+bounded loaded/registry counts, and observes finite nonzero accepted PCM.
+This extends automated browser evidence without claiming speaker-quality or
+physical IME validation.

@@ -50,7 +50,8 @@ export class SafariAdapter extends Adapter {
   name = "safari";
   constructor(url = process.env.UP_SAFARI_WEBDRIVER_URL ?? "http://127.0.0.1:4444") { super(); this.client = new WebDriver(url); }
   async open() {
-    await this.client.status();
+    const status = await this.client.status();
+    if (status.ready === false) throw new Error("Safari WebDriver already has an active session");
     await this.client.createSession();
     this.version = this.client.capabilities.browserVersion;
     await this.client.request(this.client.path("/timeouts"), "POST", {script: 15000, pageLoad: 20000, implicit: 0});
@@ -69,7 +70,10 @@ export class SafariAdapter extends Adapter {
     await this.client.actions([{type: "key", id: "keyboard", actions: [{type, value: keys[key] ?? key}]}]);
   }
   async down(key) { await this.key("keyDown", key); }
-  async up(key) { await this.key("keyUp", key); }
+  // Release the source through WebDriver's input-state cancellation endpoint.
+  // Safari can omit ordinary-character keyup for separate keyUp action calls.
+  // Shared workflows hold one key at a time; this sends genuine release events.
+  async up(_key) { this.assertOpen(); await this.client.releaseActions(); }
   async click(selector) { this.assertOpen(); await this.client.click(await this.client.find(selector)); }
   async text(value) {
     this.assertOpen();
@@ -92,5 +96,5 @@ export function adapter(name) {
 }
 
 export function prerequisiteFailure(error) {
-  return /Allow remote automation|enable.*automation|Executable doesn't exist|browser.*not found|ECONNREFUSED|fetch failed|Host system is missing dependencies/i.test(error.message);
+  return /Allow remote automation|enable.*automation|Executable doesn't exist|browser.*not found|ECONNREFUSED|fetch failed|Host system is missing dependencies|already.*active session/i.test(error.message);
 }

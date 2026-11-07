@@ -44,6 +44,16 @@ physical speaker quality. See [audio lifetimes](audio-lifetimes.md).
 
 `nightly.yml` consumes the nightly matrix from the same catalog. It runs the documented macOS, Linux, Windows, Chromium, Firefox, and separately forced Safari WebGL2/WebGPU rows, preserving renderer diagnostics and workload artifacts under the matrix identity. Unsupported Firefox WebGPU is absent.
 
+Its separate `portable-authoring` job runs `test-browser-authoring` on Intel
+macOS with Node 24 and locked Playwright test dependencies. It installs the
+matching Firefox, enables Safari WebDriver and runs the same archive-consumer,
+font and audio assertions in Chromium/Firefox/real Safari with WebGL 2.
+The job has a 15-minute limit; its matrix step has 10 minutes. It retains all
+authoring diagnostics even on failure and does not change capability statuses.
+`browser-host` also runs `test-browser-authoring-contract`, which rejects empty
+captures, bad pixels and unavailable prerequisites reported as success. See
+[browser authoring verification](browser-authoring.md).
+
 Safari WebGL checks independently probe rendering and canvas PNG export on a
 blank page before loading Peas. A runner whose PNG encoder returns an empty
 data URL still has to pass the Peas Wasm renderer's pixel readback and every
