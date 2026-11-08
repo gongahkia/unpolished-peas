@@ -138,6 +138,7 @@ assert.equal(host.imports.env.up_host_gl_clear(0xff000000), Status.ok);
 const hostTexture = host.imports.env.up_host_gl_resource_create(1, 0);
 new Uint8Array(host.memory.buffer, 0, 16).fill(255);
 assert.equal(host.imports.env.up_host_gl_texture_upload(hostTexture, 2, 2, 0, 16, 0), Status.ok);
+assert.equal(host.imports.env.up_host_gl_surface_draw(hostTexture, 0, 0, 8, 8, 0xffffffff, 0), Status.unavailable, "opt-in surface composition is explicitly unsupported on WebGPU");
 assert.equal(host.imports.env.up_host_gl_push_blend(1), Status.ok);
 assert.equal(host.imports.env.up_host_gl_draw_sprite(hostTexture, 0, 0, 2, 2, 4, 5, 8, 9, 0xffffffff, 0), Status.ok);
 assert.equal(host.imports.env.up_host_gl_pop_blend(), Status.ok);

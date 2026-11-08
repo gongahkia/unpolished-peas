@@ -1,0 +1,930 @@
+{
+  "schema": "surface-gpu-correctness-v1",
+  "date": "2026-11-08",
+  "implementation_commit": "d967c9f5",
+  "native": {
+    "cases": 24,
+    "maximum_channel_deltas": [
+      0,
+      3,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      2,
+      0,
+      3,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      2,
+      0,
+      2
+    ],
+    "driver": "metal",
+    "shader": "msl",
+    "creation_failure_points": 6,
+    "recreated_and_resized_presenter": true
+  },
+  "native_mixed": {
+    "cases": 4,
+    "maximum_channel_deltas": [
+      1,
+      1,
+      1,
+      3
+    ],
+    "original_cpu_maximum_channel_deltas": [
+      2,
+      2,
+      2,
+      3
+    ],
+    "driver": "metal"
+  },
+  "browsers": [
+    {
+      "browser": "chromium",
+      "version": "157.0.8103.38",
+      "status": "passed",
+      "renderer_diagnostic": {
+        "version": 1,
+        "requested_renderer": "webgl2",
+        "selected_renderer": "webgl2",
+        "fallback_reason": null,
+        "recovery_instruction": null,
+        "browser_target": "chromium",
+        "capabilities": {
+          "webgl2": "available",
+          "webgpu": "not_checked"
+        },
+        "context_status": "ready",
+        "adapter_status": "not_applicable",
+        "device_status": "not_applicable",
+        "recovery_state": {
+          "phase": "active",
+          "generation": 0,
+          "recoveries": 0
+        }
+      },
+      "observations": {
+        "reference": {
+          "width": 48,
+          "height": 32,
+          "cases": 12,
+          "exact_cases": [
+            0,
+            10
+          ],
+          "tolerance": 6
+        },
+        "cases": [
+          {
+            "index": 0,
+            "label": "surface-0",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 3
+          },
+          {
+            "index": 1,
+            "label": "surface-1",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2719,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 2,
+            "label": "surface-2",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2577,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 3,
+            "label": "surface-3",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2538,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 4,
+            "label": "surface-4",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2768,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 5,
+            "label": "surface-5",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2766,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 6,
+            "label": "surface-6",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2887,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 7,
+            "label": "surface-7",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2481,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 8,
+            "label": "surface-8",
+            "maximumChannelDelta": 2,
+            "differingChannels": 722,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 9,
+            "label": "surface-9",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2759,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 10,
+            "label": "surface-10",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 0
+          },
+          {
+            "index": 11,
+            "label": "surface-11",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2660,
+            "tolerance": 6,
+            "resources": 3
+          }
+        ],
+        "creationFailures": [
+          {
+            "failAt": 0,
+            "status": -2,
+            "resources": 0,
+            "calls": 1
+          },
+          {
+            "failAt": 1,
+            "status": -2,
+            "resources": 0,
+            "calls": 2
+          },
+          {
+            "failAt": 2,
+            "status": -2,
+            "resources": 0,
+            "calls": 3
+          }
+        ],
+        "renderer": {
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "recovered": {
+          "index": 1,
+          "label": "surface-restored",
+          "maximumChannelDelta": 3,
+          "differingChannels": 2719,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "resized": {
+          "index": 8,
+          "label": "surface-resized-fresh-source",
+          "maximumChannelDelta": 2,
+          "differingChannels": 722,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "shutdown": {
+          "resources": 0,
+          "lifecycle": {
+            "phase": "destroyed",
+            "generation": 1,
+            "recoveries": 1,
+            "scheduledFrames": 0
+          }
+        }
+      }
+    },
+    {
+      "browser": "firefox",
+      "version": "158.0",
+      "status": "passed",
+      "renderer_diagnostic": {
+        "version": 1,
+        "requested_renderer": "webgl2",
+        "selected_renderer": "webgl2",
+        "fallback_reason": null,
+        "recovery_instruction": null,
+        "browser_target": "firefox",
+        "capabilities": {
+          "webgl2": "available",
+          "webgpu": "not_checked"
+        },
+        "context_status": "ready",
+        "adapter_status": "not_applicable",
+        "device_status": "not_applicable",
+        "recovery_state": {
+          "phase": "active",
+          "generation": 0,
+          "recoveries": 0
+        }
+      },
+      "observations": {
+        "reference": {
+          "width": 48,
+          "height": 32,
+          "cases": 12,
+          "exact_cases": [
+            0,
+            10
+          ],
+          "tolerance": 6
+        },
+        "cases": [
+          {
+            "index": 0,
+            "label": "surface-0",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 3
+          },
+          {
+            "index": 1,
+            "label": "surface-1",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2719,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 2,
+            "label": "surface-2",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2577,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 3,
+            "label": "surface-3",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2538,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 4,
+            "label": "surface-4",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2768,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 5,
+            "label": "surface-5",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2766,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 6,
+            "label": "surface-6",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2887,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 7,
+            "label": "surface-7",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2481,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 8,
+            "label": "surface-8",
+            "maximumChannelDelta": 2,
+            "differingChannels": 722,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 9,
+            "label": "surface-9",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2759,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 10,
+            "label": "surface-10",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 0
+          },
+          {
+            "index": 11,
+            "label": "surface-11",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2660,
+            "tolerance": 6,
+            "resources": 3
+          }
+        ],
+        "creationFailures": [
+          {
+            "failAt": 0,
+            "status": -2,
+            "resources": 0,
+            "calls": 1
+          },
+          {
+            "failAt": 1,
+            "status": -2,
+            "resources": 0,
+            "calls": 2
+          },
+          {
+            "failAt": 2,
+            "status": -2,
+            "resources": 0,
+            "calls": 3
+          }
+        ],
+        "renderer": {
+          "version": "WebGL 2.0",
+          "vendor": "Intel Inc.",
+          "renderer": "Intel(R) HD Graphics 400, or similar"
+        },
+        "recovered": {
+          "index": 1,
+          "label": "surface-restored",
+          "maximumChannelDelta": 3,
+          "differingChannels": 2719,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "resized": {
+          "index": 8,
+          "label": "surface-resized-fresh-source",
+          "maximumChannelDelta": 2,
+          "differingChannels": 722,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "shutdown": {
+          "resources": 0,
+          "lifecycle": {
+            "phase": "destroyed",
+            "generation": 1,
+            "recoveries": 1,
+            "scheduledFrames": 0
+          }
+        }
+      }
+    },
+    {
+      "browser": "safari",
+      "version": "18.6",
+      "status": "passed",
+      "renderer_diagnostic": {
+        "capabilities": {
+          "webgl2": "available",
+          "webgpu": "not_checked"
+        },
+        "adapter_status": "not_applicable",
+        "requested_renderer": "webgl2",
+        "browser_target": "safari",
+        "fallback_reason": null,
+        "context_status": "ready",
+        "version": 1,
+        "selected_renderer": "webgl2",
+        "recovery_instruction": null,
+        "device_status": "not_applicable",
+        "recovery_state": {
+          "phase": "active",
+          "generation": 0,
+          "recoveries": 0
+        }
+      },
+      "observations": {
+        "reference": {
+          "width": 48,
+          "height": 32,
+          "cases": 12,
+          "exact_cases": [
+            0,
+            10
+          ],
+          "tolerance": 6
+        },
+        "cases": [
+          {
+            "index": 0,
+            "label": "surface-0",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 3
+          },
+          {
+            "index": 1,
+            "label": "surface-1",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2719,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 2,
+            "label": "surface-2",
+            "maximumChannelDelta": 3,
+            "differingChannels": 2577,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 3,
+            "label": "surface-3",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2538,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 4,
+            "label": "surface-4",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2768,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 5,
+            "label": "surface-5",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2766,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 6,
+            "label": "surface-6",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2887,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 7,
+            "label": "surface-7",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2481,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 8,
+            "label": "surface-8",
+            "maximumChannelDelta": 2,
+            "differingChannels": 722,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 9,
+            "label": "surface-9",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2759,
+            "tolerance": 6,
+            "resources": 3
+          },
+          {
+            "index": 10,
+            "label": "surface-10",
+            "maximumChannelDelta": 0,
+            "differingChannels": 0,
+            "tolerance": 0,
+            "resources": 0
+          },
+          {
+            "index": 11,
+            "label": "surface-11",
+            "maximumChannelDelta": 2,
+            "differingChannels": 2660,
+            "tolerance": 6,
+            "resources": 3
+          }
+        ],
+        "creationFailures": [
+          {
+            "failAt": 0,
+            "status": -2,
+            "resources": 0,
+            "calls": 1
+          },
+          {
+            "failAt": 1,
+            "status": -2,
+            "resources": 0,
+            "calls": 2
+          },
+          {
+            "failAt": 2,
+            "status": -2,
+            "resources": 0,
+            "calls": 3
+          }
+        ],
+        "renderer": {
+          "version": "WebGL 2.0",
+          "vendor": "Apple Inc.",
+          "renderer": "Apple GPU"
+        },
+        "recovered": {
+          "index": 1,
+          "label": "surface-restored",
+          "maximumChannelDelta": 3,
+          "differingChannels": 2719,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "resized": {
+          "index": 8,
+          "label": "surface-resized-fresh-source",
+          "maximumChannelDelta": 2,
+          "differingChannels": 722,
+          "tolerance": 6,
+          "resources": 3
+        },
+        "shutdown": {
+          "resources": 0,
+          "lifecycle": {
+            "phase": "destroyed",
+            "generation": 1,
+            "recoveries": 1,
+            "scheduledFrames": 0
+          }
+        }
+      }
+    }
+  ],
+  "mixed_chromium": [
+    {
+      "case": "cpu-320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "render_mode": "cpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 0,
+        "differing_channels": 0,
+        "tolerance": 0
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 230400,
+      "original_cpu_comparison": null
+    },
+    {
+      "case": "gpu-320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "render_mode": "gpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 1,
+        "differing_channels": 18899,
+        "tolerance": 6
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 518400,
+      "original_cpu_comparison": {
+        "maximum_channel_delta": 2,
+        "differing_channels": 19642,
+        "tolerance": 6
+      }
+    },
+    {
+      "case": "cpu-640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "render_mode": "cpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 0,
+        "differing_channels": 0,
+        "tolerance": 0
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 921600,
+      "original_cpu_comparison": null
+    },
+    {
+      "case": "gpu-640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "render_mode": "gpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 1,
+        "differing_channels": 20444,
+        "tolerance": 6
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 1209600,
+      "original_cpu_comparison": {
+        "maximum_channel_delta": 2,
+        "differing_channels": 20503,
+        "tolerance": 6
+      }
+    },
+    {
+      "case": "cpu-1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "render_mode": "cpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 0,
+        "differing_channels": 0,
+        "tolerance": 0
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 3686400,
+      "original_cpu_comparison": null
+    },
+    {
+      "case": "gpu-1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "render_mode": "gpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 1,
+        "differing_channels": 20354,
+        "tolerance": 6
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 3974400,
+      "original_cpu_comparison": {
+        "maximum_channel_delta": 2,
+        "differing_channels": 20415,
+        "tolerance": 6
+      }
+    },
+    {
+      "case": "cpu-1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "render_mode": "cpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 0,
+        "differing_channels": 0,
+        "tolerance": 0
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 3686400,
+      "original_cpu_comparison": null
+    },
+    {
+      "case": "gpu-1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "render_mode": "gpu",
+      "reference_comparison": {
+        "maximum_channel_delta": 3,
+        "differing_channels": 240134,
+        "tolerance": 6
+      },
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "expected_texture_upload_bytes_per_frame": 3974400,
+      "original_cpu_comparison": {
+        "maximum_channel_delta": 3,
+        "differing_channels": 240182,
+        "tolerance": 6
+      }
+    }
+  ],
+  "artifacts_root": "zig-out/diagnostics/surface-gpu",
+  "artifact_sha256": {
+    "native/0-0-cpu.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "native/0-0-gpu.png": "8c4eabe45fe40b1c344ed63db08279a0654f4d95d0d863bfa5b3b4f24a89913b",
+    "native/0-1-cpu.rgba": "2d4bb2458479354bfdabe72af488c0d7f0bff82bd011b7157bfcc6487e9d8496",
+    "native/0-1-gpu.png": "2f6d293cc32b625179ea467487ec16e0744b5ab5d58d4a6aadd7456797ac95ff",
+    "native/0-10-cpu.rgba": "2beaa45522a05634f2b9587fb6b4a7bf0e6c895045b61af43ac8fc7c367960af",
+    "native/0-10-gpu.png": "d3778ab32b0fb5a248876258e2b3d0de69e527902cc793cc4f4808d1c7ee619c",
+    "native/0-11-cpu.rgba": "0e76809ded308b1597e3cee4ab683374587117b756f776665b64c6179ae26f78",
+    "native/0-11-gpu.png": "88dedb7496417984e1c91a5b1696ff5ba9200e28ec0db460d5815e724c6bf89e",
+    "native/0-2-cpu.rgba": "321885270dd1bbca52cec3d86e10e9c104dff7983b27aeeef17f30a361162ffe",
+    "native/0-2-gpu.png": "a753b69f11a7441555a24d17cfd9b1fb4b7f2f86049d055d8ce2ca10f3cbbe37",
+    "native/0-3-cpu.rgba": "9a465fdef6fae9f8db2b53fbf320c2efd26c43d28e9b49c4ed59f58cbc8c083c",
+    "native/0-3-gpu.png": "ade7ea06f359b26f124dfb64843fda5f37ac9e3e3323369b8e95e7256006e378",
+    "native/0-4-cpu.rgba": "a9e74a790f1f280cf63aed38fda3a859002993fd0a973eaf47eaa11fef0bbedf",
+    "native/0-4-gpu.png": "860d6a3752b3a22a22b93904c4f73afc51c1cd156b74f35230c97e6f937c6388",
+    "native/0-5-cpu.rgba": "aa7c473704abaad252461583dc409809c307f914ddc68d91319c6385b47a53e3",
+    "native/0-5-gpu.png": "a1e56992ddb0c6ba63f7d954005a00c26f475b5db114b39308be0078726fe3b7",
+    "native/0-6-cpu.rgba": "10efda7720ec268c091abd1fb77a942f333c430efdce5139a3499a41d527928b",
+    "native/0-6-gpu.png": "141343bc3cdedd55dd205b4a8d2af2e3a532b70e2681607c58816de77dd5eccc",
+    "native/0-7-cpu.rgba": "4b7922bdc5f3daff4751eb4304cad6b68aa232385bf3fae58546b60300786abb",
+    "native/0-7-gpu.png": "a38c49279b1157b2c5f2fee8e9d7bc62fe26fd43d7101d4f8c05d3889ca85693",
+    "native/0-8-cpu.rgba": "9bb9b476a5534c957723d380a478d2e334cc1d8a5724ce5d6f7e7dd8c8348019",
+    "native/0-8-gpu.png": "be0757dc5774cbefbabe4fccc32fc8e14a3074003d7c19bba0b322576c372a91",
+    "native/0-9-cpu.rgba": "6ac26dc90c66cf33713bece14da12257ebe26aae0daef520873cf15c91abb9f7",
+    "native/0-9-gpu.png": "e4679ae5d4aa700cfd9eabc639c0d50badd8bdc32b769ea7664a0060fb59de3f",
+    "native/1-0-cpu.rgba": "78efd4acfaca91ef5f6b6d6cbfdb4188733f26c73eab265f0e7bb09632e2aa3e",
+    "native/1-0-gpu.png": "9502367b4e9d2dd12815ff5809b4dd5bc8679d90025fb917e44fb28ec20700dc",
+    "native/1-1-cpu.rgba": "5255536daec455b2a625bbd4638214d5f4d18941f5b74bdce386a22e077d233c",
+    "native/1-1-gpu.png": "fd7a099ea4e829ae7d863b5839d5f3d13b07e0ac2cc722110bb831950aee5160",
+    "native/1-10-cpu.rgba": "aa82070328ac477d5c518ee0c898452b72170c508a0f26d07e9336c2eeebfdf1",
+    "native/1-10-gpu.png": "f76c4b613cc5e9dc1f3ba40f8e0cc1a5a689fe6a21e729dc3c715b379f1b437d",
+    "native/1-11-cpu.rgba": "001c87e5c3b04807ddc5d4d4af082b3c098896e00b8dccfb9a46d48cdba4ada1",
+    "native/1-11-gpu.png": "d59214d88e3b21be5a874525a64ad1d5fdb613bf43e978d9a3144a753eadd919",
+    "native/1-2-cpu.rgba": "8c38a2b22923e2025d004a043190e11635f8400b0e69e5afa58e81036398cd99",
+    "native/1-2-gpu.png": "7727dae3c59080ba36b07fcd36aaed309463d711387a806da4360bcc0d0975b0",
+    "native/1-3-cpu.rgba": "f8f20ef66c74f42e0d0edfda5f47a69891b654d145c940bc22c4030dde97063f",
+    "native/1-3-gpu.png": "d3b6df2288c2c6ac014dfd76dc3f3550765ba2a5d55811083f6c5519219b5ebc",
+    "native/1-4-cpu.rgba": "6b89941213c2d5747a332b9874e603398dfe010e175e4cc98a3d1929bc54387c",
+    "native/1-4-gpu.png": "8db9c3f0e30c1899ed743180b9b7c8d13087577e47808b14c390f40846306b51",
+    "native/1-5-cpu.rgba": "36849b8b24b04d33f40498a18273ffe753b748c1968ac01319ba17434209463a",
+    "native/1-5-gpu.png": "17130ed026af431e9386ad88850b40252430b543663cd54ebd1dee3709bc3d74",
+    "native/1-6-cpu.rgba": "6c97d56d743befea7c9d2a1210a52940feeca7ddb98578c51a65a7ee37197e60",
+    "native/1-6-gpu.png": "ed135b725e16a7cc7bc676ac1461b4d2cac658d354e2482a581f582e99023cee",
+    "native/1-7-cpu.rgba": "19dae37e308508254cdf39dd998fcd36db66a2d5d4d0938ba61078830d2e88dd",
+    "native/1-7-gpu.png": "5d43a401b926e609c06cee3a0e220f6514e4dc45c2901f0c74e89b007603fc6e",
+    "native/1-8-cpu.rgba": "59deb6b926356cd404535386459d66e8f8caec9c21470a40731eb81d1022c9db",
+    "native/1-8-gpu.png": "5c32a1c1e12e750f2e914ed1c29e83c6ecf030ace18371ccf1129f25ce6a7b14",
+    "native/1-9-cpu.rgba": "98562c29459e1f9e8a654a6597ccd14b2f509a8b16c567e2a674c76f0f0560b1",
+    "native/1-9-gpu.png": "4980fbbc57151e25433baaa3a86d7e8465e39499c4fca0f5d76cb5ec8ca523d2",
+    "native/mixed-0-gpu.png": "a45f806e9667837537f57b78cc41077d70dfd3b2b11a81b645ddaf3274b9a2e7",
+    "native/mixed-1-gpu.png": "d28a1e958ccce60656c5c859b009262c3d7757cc5ce0f18d0aad30c92ea894dd",
+    "native/mixed-2-gpu.png": "9fec66b8e02a4aa60cf8e343358734579f24f7353c77582327edea8a0b536a49",
+    "native/mixed-3-gpu.png": "d9eb76ca61b2ea8a50e75f2d6a342d040be2d8f4787b7bb94175aff1496b194b",
+    "browsers/chromium/surface/surface-0-canvas.png": "380502ae0140e327ad66434fd40b076cb20d5d44fad179f60c3686f07256993f",
+    "browsers/chromium/surface/surface-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/chromium/surface/surface-1-canvas.png": "6c8c639c9b8be6334f0bec2d95525578a643e3c57a542dd6e720988c4a3a501a",
+    "browsers/chromium/surface/surface-1.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/chromium/surface/surface-10-canvas.png": "d6aa568750128321b266b7eb83db7e8ae878411425d3676bd1ba0ca71c69160e",
+    "browsers/chromium/surface/surface-10.rgba": "2beaa45522a05634f2b9587fb6b4a7bf0e6c895045b61af43ac8fc7c367960af",
+    "browsers/chromium/surface/surface-11-canvas.png": "b5f1938b160a499773538be0a69847c448afff016640d8a1917e636ae89466fd",
+    "browsers/chromium/surface/surface-11.rgba": "34e3e753422007c29a1b7fb97d7fb4cfc941b345fa68e8cc3041869d1cd4292c",
+    "browsers/chromium/surface/surface-2-canvas.png": "1adbb2292e4bf9b77b8e00fd33e8f0e6f58d70947fae6df4ce6fad3c42377d0e",
+    "browsers/chromium/surface/surface-2.rgba": "5420015472efb6c33b757d49b47180442cb346e3712cdacf35dfe407668db9de",
+    "browsers/chromium/surface/surface-3-canvas.png": "ccb534720dda269ef66293a22fc8a1ef0e86ad702deef2ca1cba4cab3284b20b",
+    "browsers/chromium/surface/surface-3.rgba": "a7c3f5803baf3bcb0c48d47518c627ce774794da9376ab2b11c2a13c9b0c08c6",
+    "browsers/chromium/surface/surface-4-canvas.png": "17517e225b42112a90c4c56bd58c94db9066741f77e2c65471a0614e5b22a1ce",
+    "browsers/chromium/surface/surface-4.rgba": "59b8ac99dd2e376ad895b1eab83b6448f67d081ad80903f1dc9975e00c817086",
+    "browsers/chromium/surface/surface-5-canvas.png": "ab01f2a89422e1bca30486b735bc1272a590558b7fa6088edb1905956499cd2b",
+    "browsers/chromium/surface/surface-5.rgba": "345dc808517ba089c0a6a41e95166c7390a72b7b2c5ad6751b5d81365b80e814",
+    "browsers/chromium/surface/surface-6-canvas.png": "06087b070819637069c845faff196b6f69361fcb0c51016edbe8643fa159e59d",
+    "browsers/chromium/surface/surface-6.rgba": "3b8db29aed6c5e93389dcdb416d34508ba6f786fdfcaf903a918ee3749b242ec",
+    "browsers/chromium/surface/surface-7-canvas.png": "dc228117f864c8019a4848aaf337612a0ac4c238a7f5ad987b00e5bc175e7cce",
+    "browsers/chromium/surface/surface-7.rgba": "d3e924a0294a5cd0de16bd862b628475f38a80f467d6e1b56604f388c4272c4c",
+    "browsers/chromium/surface/surface-8-canvas.png": "a773f58d50bc8b1095c6a46c57195a1120db8991ab285c599004cd4601e33f8e",
+    "browsers/chromium/surface/surface-8.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/chromium/surface/surface-9-canvas.png": "d93e275d2b165e0e75dcdadf71e5319e41db6a9804906ef9ec995c272c57ea66",
+    "browsers/chromium/surface/surface-9.rgba": "cafae453a264968cf518fee7a5c2ba84ac6870b7c68aec63d3fd968ac85dc2e6",
+    "browsers/chromium/surface/surface-composition.png": "6795ac5ec138c9a61262c2ce720661a886dba91576abce9dd501bcf537e32d7c",
+    "browsers/chromium/surface/surface-resized-fresh-source-canvas.png": "88714fd39a31cd97fa4605dab3daf2e8ef4731a14fb814dc669aa6be72c6716c",
+    "browsers/chromium/surface/surface-resized-fresh-source.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/chromium/surface/surface-restored-canvas.png": "6c8c639c9b8be6334f0bec2d95525578a643e3c57a542dd6e720988c4a3a501a",
+    "browsers/chromium/surface/surface-restored.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/chromium/surface/surface-retry-0-canvas.png": "380502ae0140e327ad66434fd40b076cb20d5d44fad179f60c3686f07256993f",
+    "browsers/chromium/surface/surface-retry-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/chromium/surface/surface-retry-1-canvas.png": "380502ae0140e327ad66434fd40b076cb20d5d44fad179f60c3686f07256993f",
+    "browsers/chromium/surface/surface-retry-1.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/chromium/surface/surface-retry-2-canvas.png": "380502ae0140e327ad66434fd40b076cb20d5d44fad179f60c3686f07256993f",
+    "browsers/chromium/surface/surface-retry-2.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/firefox/surface/surface-0-canvas.png": "a4e8baf5523b22c0d1e4d1c55e61e00dad7e4bbc3600960065c857bafdc4688f",
+    "browsers/firefox/surface/surface-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/firefox/surface/surface-1-canvas.png": "180d7e0688ddcd5e742414c6bbedbf9f1c4f62d6bc1dc5b6851034115c8871c8",
+    "browsers/firefox/surface/surface-1.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/firefox/surface/surface-10-canvas.png": "e6a38e00a42e94d0c5256222464538ffb0df48b5a708e3387458aabf105ead81",
+    "browsers/firefox/surface/surface-10.rgba": "2beaa45522a05634f2b9587fb6b4a7bf0e6c895045b61af43ac8fc7c367960af",
+    "browsers/firefox/surface/surface-11-canvas.png": "e927431457537f27594be1286c460f0787339dceb7cbe6b55c027a419259b5ad",
+    "browsers/firefox/surface/surface-11.rgba": "34e3e753422007c29a1b7fb97d7fb4cfc941b345fa68e8cc3041869d1cd4292c",
+    "browsers/firefox/surface/surface-2-canvas.png": "f3c52e687ebcde9b389cd446880eac82aa2597a471ed498b4caee55032839a4f",
+    "browsers/firefox/surface/surface-2.rgba": "5420015472efb6c33b757d49b47180442cb346e3712cdacf35dfe407668db9de",
+    "browsers/firefox/surface/surface-3-canvas.png": "3992dee2f91b295020b7b5233bfa8e81239c7f80ddbf0e12f96ccf32662b5e54",
+    "browsers/firefox/surface/surface-3.rgba": "a7c3f5803baf3bcb0c48d47518c627ce774794da9376ab2b11c2a13c9b0c08c6",
+    "browsers/firefox/surface/surface-4-canvas.png": "dd27e299a3568c21af80c74168ad40a2090ae08668509ba5eb8c6d7153bce46d",
+    "browsers/firefox/surface/surface-4.rgba": "59b8ac99dd2e376ad895b1eab83b6448f67d081ad80903f1dc9975e00c817086",
+    "browsers/firefox/surface/surface-5-canvas.png": "5df96ee501c005ad9e769d81a0b822c532463fc358a54e08b52f1eb8904afad3",
+    "browsers/firefox/surface/surface-5.rgba": "345dc808517ba089c0a6a41e95166c7390a72b7b2c5ad6751b5d81365b80e814",
+    "browsers/firefox/surface/surface-6-canvas.png": "e4ab65338f3ec68b0eb15d9bdf47ea5a038384fbdb21fe7d60292e79147eaccf",
+    "browsers/firefox/surface/surface-6.rgba": "3b8db29aed6c5e93389dcdb416d34508ba6f786fdfcaf903a918ee3749b242ec",
+    "browsers/firefox/surface/surface-7-canvas.png": "a54d2a221cf9450da1c720ff11cc60f199d69bc366f2eaf9ca2ed053d1d6626d",
+    "browsers/firefox/surface/surface-7.rgba": "d3e924a0294a5cd0de16bd862b628475f38a80f467d6e1b56604f388c4272c4c",
+    "browsers/firefox/surface/surface-8-canvas.png": "75ee8999315c2254f0735006b5434d0db2c4df05c67cb562e1aa2992cad7b127",
+    "browsers/firefox/surface/surface-8.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/firefox/surface/surface-9-canvas.png": "9825ef58d07c77aa48cbc3717cd802e3ef9671d13a465b5c735ec1b0fcdd3bb1",
+    "browsers/firefox/surface/surface-9.rgba": "cafae453a264968cf518fee7a5c2ba84ac6870b7c68aec63d3fd968ac85dc2e6",
+    "browsers/firefox/surface/surface-composition.png": "760dd99716b42644a7d33d9e2183912bc335c6b2d64eb34e504c371fe9d1bb54",
+    "browsers/firefox/surface/surface-resized-fresh-source-canvas.png": "c5c38052bc86d9545980b2662b4e112b99f9883ff7c7680a17b4d2b888a52ae6",
+    "browsers/firefox/surface/surface-resized-fresh-source.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/firefox/surface/surface-restored-canvas.png": "180d7e0688ddcd5e742414c6bbedbf9f1c4f62d6bc1dc5b6851034115c8871c8",
+    "browsers/firefox/surface/surface-restored.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/firefox/surface/surface-retry-0-canvas.png": "a4e8baf5523b22c0d1e4d1c55e61e00dad7e4bbc3600960065c857bafdc4688f",
+    "browsers/firefox/surface/surface-retry-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/firefox/surface/surface-retry-1-canvas.png": "a4e8baf5523b22c0d1e4d1c55e61e00dad7e4bbc3600960065c857bafdc4688f",
+    "browsers/firefox/surface/surface-retry-1.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/firefox/surface/surface-retry-2-canvas.png": "a4e8baf5523b22c0d1e4d1c55e61e00dad7e4bbc3600960065c857bafdc4688f",
+    "browsers/firefox/surface/surface-retry-2.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/safari/surface/surface-0-canvas.png": "18b46f9f0da357ff39eb2700964ab2ccf4644b20c380ea1faa28ee86fe09bf55",
+    "browsers/safari/surface/surface-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/safari/surface/surface-1-canvas.png": "d0ae2c9fa40b4acb9136abfb4049530e132eddb366877c65a120fc5d03be9e2b",
+    "browsers/safari/surface/surface-1.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/safari/surface/surface-10-canvas.png": "e6dfeae046adbe1d903a46f7b73b1c4c43d5b5b18681882118767f686050753f",
+    "browsers/safari/surface/surface-10.rgba": "2beaa45522a05634f2b9587fb6b4a7bf0e6c895045b61af43ac8fc7c367960af",
+    "browsers/safari/surface/surface-11-canvas.png": "96f7d4f603d39114993843fdcfe25abe1bd02bcafc286878a44a4c74c0689600",
+    "browsers/safari/surface/surface-11.rgba": "34e3e753422007c29a1b7fb97d7fb4cfc941b345fa68e8cc3041869d1cd4292c",
+    "browsers/safari/surface/surface-2-canvas.png": "0cd5ce7bd35a698432e2242c55f898611a19e92a96a4aec150b4ac5f07d1e1d4",
+    "browsers/safari/surface/surface-2.rgba": "5420015472efb6c33b757d49b47180442cb346e3712cdacf35dfe407668db9de",
+    "browsers/safari/surface/surface-3-canvas.png": "b8398d09a176c06f9383c6f6169ead36a00dc811cd46ecf5c2dffbb5d5df6b2f",
+    "browsers/safari/surface/surface-3.rgba": "a7c3f5803baf3bcb0c48d47518c627ce774794da9376ab2b11c2a13c9b0c08c6",
+    "browsers/safari/surface/surface-4-canvas.png": "cba030d9c0568b632fe507b2237cfd050e2b5919d6eee5c1ae7eaa1a5667543b",
+    "browsers/safari/surface/surface-4.rgba": "59b8ac99dd2e376ad895b1eab83b6448f67d081ad80903f1dc9975e00c817086",
+    "browsers/safari/surface/surface-5-canvas.png": "b07f073590425ad145523888789d7ba225f87deaf704b198d067197faf3920cc",
+    "browsers/safari/surface/surface-5.rgba": "345dc808517ba089c0a6a41e95166c7390a72b7b2c5ad6751b5d81365b80e814",
+    "browsers/safari/surface/surface-6-canvas.png": "2f3a3fc0476568136060d902415cff5c28ef8e5468ab6a39d4719c4ecccce9a8",
+    "browsers/safari/surface/surface-6.rgba": "3b8db29aed6c5e93389dcdb416d34508ba6f786fdfcaf903a918ee3749b242ec",
+    "browsers/safari/surface/surface-7-canvas.png": "df23ae531f6c9e0ecdc5b5a547cfbac6f412ff11d4f6a27acd3a92e342b75838",
+    "browsers/safari/surface/surface-7.rgba": "d3e924a0294a5cd0de16bd862b628475f38a80f467d6e1b56604f388c4272c4c",
+    "browsers/safari/surface/surface-8-canvas.png": "1404535b7ffb2968ce8077b8ac336174f656ee08c131a978632775efca68c531",
+    "browsers/safari/surface/surface-8.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/safari/surface/surface-9-canvas.png": "ac8ca1bf7e40c06dd42d7c8361e10aa549923530acbceb225c70b6b4d00b0245",
+    "browsers/safari/surface/surface-9.rgba": "cafae453a264968cf518fee7a5c2ba84ac6870b7c68aec63d3fd968ac85dc2e6",
+    "browsers/safari/surface/surface-composition.png": "3790a74405314eafbeedea49de23be9a2efe49ffe007f5eb5deb7d765815c4da",
+    "browsers/safari/surface/surface-resized-fresh-source-canvas.png": "5b63514008e9003db403869e9dff42e18c921a1a88d090654bc7a028964733bb",
+    "browsers/safari/surface/surface-resized-fresh-source.rgba": "c5d1c8f707cb9a63eccdfc0f4b86575ae284f32949bb16e866213e42179eac05",
+    "browsers/safari/surface/surface-restored-canvas.png": "d0ae2c9fa40b4acb9136abfb4049530e132eddb366877c65a120fc5d03be9e2b",
+    "browsers/safari/surface/surface-restored.rgba": "cbc1c28a851f7bf9d5d4b1650627ccb7d1d02ef9c37092abda452f40ddba687f",
+    "browsers/safari/surface/surface-retry-0-canvas.png": "18b46f9f0da357ff39eb2700964ab2ccf4644b20c380ea1faa28ee86fe09bf55",
+    "browsers/safari/surface/surface-retry-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/safari/surface/surface-retry-1-canvas.png": "18b46f9f0da357ff39eb2700964ab2ccf4644b20c380ea1faa28ee86fe09bf55",
+    "browsers/safari/surface/surface-retry-1.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/safari/surface/surface-retry-2-canvas.png": "18b46f9f0da357ff39eb2700964ab2ccf4644b20c380ea1faa28ee86fe09bf55",
+    "browsers/safari/surface/surface-retry-2.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/surface-reference/surface-0.rgba": "1bd061d1acb893cf107c89e52bdeaa7d607827ed02326356934b3059f3059a24",
+    "browsers/surface-reference/surface-1.rgba": "2d4bb2458479354bfdabe72af488c0d7f0bff82bd011b7157bfcc6487e9d8496",
+    "browsers/surface-reference/surface-10.rgba": "2beaa45522a05634f2b9587fb6b4a7bf0e6c895045b61af43ac8fc7c367960af",
+    "browsers/surface-reference/surface-11.rgba": "0e76809ded308b1597e3cee4ab683374587117b756f776665b64c6179ae26f78",
+    "browsers/surface-reference/surface-2.rgba": "321885270dd1bbca52cec3d86e10e9c104dff7983b27aeeef17f30a361162ffe",
+    "browsers/surface-reference/surface-3.rgba": "9a465fdef6fae9f8db2b53fbf320c2efd26c43d28e9b49c4ed59f58cbc8c083c",
+    "browsers/surface-reference/surface-4.rgba": "a9e74a790f1f280cf63aed38fda3a859002993fd0a973eaf47eaa11fef0bbedf",
+    "browsers/surface-reference/surface-5.rgba": "aa7c473704abaad252461583dc409809c307f914ddc68d91319c6385b47a53e3",
+    "browsers/surface-reference/surface-6.rgba": "10efda7720ec268c091abd1fb77a942f333c430efdce5139a3499a41d527928b",
+    "browsers/surface-reference/surface-7.rgba": "4b7922bdc5f3daff4751eb4304cad6b68aa232385bf3fae58546b60300786abb",
+    "browsers/surface-reference/surface-8.rgba": "9bb9b476a5534c957723d380a478d2e334cc1d8a5724ce5d6f7e7dd8c8348019",
+    "browsers/surface-reference/surface-9.rgba": "6ac26dc90c66cf33713bece14da12257ebe26aae0daef520873cf15c91abb9f7"
+  },
+  "timing_note": "Short correctness runs include native settling delays; their timing values are not performance evidence."
+}
