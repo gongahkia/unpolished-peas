@@ -86,6 +86,7 @@ three canonical projects. It records the `1.0.0` authoring baseline and keeps ex
 
 - [Portable downstream workflow verification](guides/portable-conformance.md)
 - [Framework value proposition and peer comparison, November 2026](reviews/2026-11-04-framework-value-proposition-audit.md)
+- [GPU surface-composition measurements and decision, November 8](reviews/2026-11-08-gpu-surface-composition.md)
 - [Product and engineering audit, October 2026](reviews/2026-10-23-product-engineering-audit.md)
 - [Capability matrix](guides/capabilities.md)
 - [CI](guides/ci.md)

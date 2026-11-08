@@ -8,6 +8,8 @@ It does not change drawing APIs or introduce performance pass/fail budgets.
 The opt-in [GPU surface-composition prototype](gpu-surface-composition.md)
 reuses this workload with paired `--modes cpu,gpu` runs. The original CPU-only
 experiment and its retained November 7 evidence remain available unchanged.
+The [November 8 follow-up](../reviews/2026-11-08-gpu-surface-composition.md)
+records the paired results, output/resource checks and opt-in recommendation.
 
 ## Reproduce
 

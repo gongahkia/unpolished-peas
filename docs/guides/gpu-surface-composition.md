@@ -56,8 +56,9 @@ three/four-layer stacks; this accounts for interpolation and repeated
 floor-versus-rounded source-over operations. This is a conformance bound for
 these fixtures, not a universal error bound for arbitrary 128-draw stacks.
 The old exact CPU goldens and existing one-channel renderer tolerances remain
-unchanged. Read back pixels explicitly when the game depends on GPU output;
-the host Canvas contains the CPU foreground, not the completed GPU frame.
+unchanged. For deterministic pixel queries, evaluate `drawCpu` into a separate
+Canvas. There is no public portable GPU readback API in this prototype; the
+host Canvas contains the CPU foreground, not the completed GPU frame.
 
 The final target must be opaque. Additive composition, feedback, zero-sized
 destinations, oversized rectangles and invalid clips fail explicitly.
@@ -156,5 +157,6 @@ Native upload and presentation remain combined with possible pacing waits.
 Neither submission time nor RAF/swapchain intervals measure GPU completion
 or physical display scanout. Captures and readbacks happen outside timing.
 
-The dated audit follow-up records observed results and the recommendation;
+The [dated audit follow-up](../reviews/2026-11-08-gpu-surface-composition.md)
+records observed results and the recommendation;
 this API does not promise a frame rate or superiority over another framework.
