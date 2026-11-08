@@ -79,6 +79,7 @@ class FakeWebGl2 {
   viewport(...args) { this.calls.push(["viewport", ...args]); }
   pixelStorei(...args) { this.calls.push(["pixelStorei", ...args]); }
   texImage2D(...args) { this.calls.push(["texImage2D", ...args]); }
+  texSubImage2D(...args) { this.calls.push(["texSubImage2D", ...args]); }
   bindFramebuffer(...args) { this.calls.push(["bindFramebuffer", ...args]); }
   framebufferTexture2D(...args) { this.calls.push(["framebufferTexture2D", ...args]); }
   checkFramebufferStatus(...args) { this.calls.push(["checkFramebufferStatus", ...args]); return this.FRAMEBUFFER_COMPLETE; }
@@ -87,6 +88,7 @@ class FakeWebGl2 {
   uniform1i(...args) { this.calls.push(["uniform1i", ...args]); }
   uniform1f(...args) { this.calls.push(["uniform1f", ...args]); }
   uniform2f(...args) { this.calls.push(["uniform2f", ...args]); }
+  uniform4i(...args) { this.calls.push(["uniform4i", ...args]); }
   vertexAttribDivisor(...args) { this.calls.push(["vertexAttribDivisor", ...args]); }
   drawArraysInstanced(...args) { this.calls.push(["drawArraysInstanced", ...args]); }
   isContextLost() { return this.lost; }
@@ -145,7 +147,7 @@ const host = createBrowserHost({
     scheduledFrames.delete(token);
   },
 });
-assert.equal(host.abiVersion, 5);
+assert.equal(host.abiVersion, 6);
 const frameTimes = [];
 const resizeCalls = [];
 const pauses = [];
@@ -165,7 +167,7 @@ assert.deepEqual(Object.keys(env).sort(), [
   "up_host_audio_state", "up_host_audio_submit", "up_host_cancel_frame", "up_host_diagnostic_emit",
   "up_host_gl_context_create", "up_host_gl_context_destroy", "up_host_gl_context_lost", "up_host_gl_resource_create", "up_host_gl_resource_destroy",
   "up_host_gl_clear", "up_host_gl_draw_rect", "up_host_gl_draw_line", "up_host_gl_draw_circle", "up_host_gl_draw_triangle", "up_host_gl_present",
-  "up_host_gl_texture_upload", "up_host_gl_canvas_upload", "up_host_gl_draw_particles", "up_host_gl_material_begin", "up_host_gl_material_bind_texture", "up_host_gl_material_bind_uniform", "up_host_gl_material_draw", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
+  "up_host_gl_surface_draw", "up_host_gl_texture_upload", "up_host_gl_canvas_upload", "up_host_gl_draw_particles", "up_host_gl_material_begin", "up_host_gl_material_bind_texture", "up_host_gl_material_bind_uniform", "up_host_gl_material_draw", "up_host_gl_draw_sprite", "up_host_gl_flush_sprites", "up_host_gl_draw_text",
   "up_host_gl_push_clip", "up_host_gl_pop_clip", "up_host_gl_push_blend", "up_host_gl_pop_blend", "up_host_gl_set_camera",
   "up_host_input_poll", "up_host_input_read", "up_host_schedule_frame",
   "up_host_storage_read", "up_host_storage_remove", "up_host_storage_write", "up_host_teardown", "memory",
@@ -226,6 +228,11 @@ assert.equal(host.resourceCount(), 4);
 assert.ok(canvas.gl.calls.some(([name, , bytes]) => name === "bufferData" && bytes === 64));
 new Uint8Array(host.memory.buffer, 32, 16).fill(255);
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 1), Status.ok);
+assert.equal(env.up_host_gl_surface_draw(texture, 3, 4, 7, 9, 0xff80ffff, 0), Status.ok);
+assert.ok(canvas.gl.calls.some(([name, , x, y, width, height]) => name === "uniform4i" && x === 3 && y === 4 && width === 7 && height === 9));
+assert.ok(canvas.gl.calls.some(([name, , source]) => name === "shaderSource" && source.includes("texelFetch")));
+assert.equal(env.up_host_gl_surface_draw(texture, 0, 0, 65536, 1, 0xffffffff, 0), Status.invalidArgument);
+assert.equal(env.up_host_gl_surface_draw(texture, 0, 0, 1, 1, 0xffffffff, 2), Status.invalidArgument);
 const beforeSprites = canvas.gl.calls.filter(([name]) => name === "drawArrays").length;
 assert.equal(env.up_host_gl_draw_sprite(texture, 0, 0, 1, 1, 4, 5, 8, 9, 0xffffffff, 1), Status.ok);
 assert.equal(env.up_host_gl_draw_sprite(texture, 1, 1, 1, 1, 12, 5, 8, 9, 0xffffffff, 1), Status.ok);
@@ -236,8 +243,12 @@ const beforeText = canvas.gl.calls.filter(([name]) => name === "drawArrays").len
 assert.equal(env.up_host_gl_draw_text(0, 5, 20, 20, 0xffffffff), Status.ok);
 assert.equal(env.up_host_gl_flush_sprites(), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArrays").slice(beforeText).map(([, , , count]) => count), [18]);
+new Uint8Array(host.memory.buffer, 32, 16)[0] = 37;
 assert.equal(env.up_host_gl_texture_upload(texture, 2, 2, 32, 16, 0), Status.ok);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 5);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 4);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texSubImage2D").length, 1);
+// Recovery owns a copy of the latest upload, independent of later Wasm writes.
+new Uint8Array(host.memory.buffer, 32, 16)[0] = 99;
 new Float32Array(host.memory.buffer, 96, 7).set([24, 16, 8, 1, .5, .25, 1]);
 assert.equal(env.up_host_gl_draw_particles(96, 1, 1), Status.ok);
 assert.deepEqual(canvas.gl.calls.filter(([name]) => name === "drawArraysInstanced").at(-1), ["drawArraysInstanced", canvas.gl.TRIANGLES, 0, 6, 1]);
@@ -294,7 +305,9 @@ canvas.dispatch("webglcontextrestored");
 assert.equal(env.up_host_gl_context_lost(), 0);
 assert.deepEqual(host.lifecycle(), {phase: "recovered", generation: 1, recoveries: 1, scheduledFrames: 1});
 assert.deepEqual(resizeCalls, [[320, 180]]);
-assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 10);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texImage2D").length, 9);
+assert.equal(canvas.gl.calls.filter(([name]) => name === "texSubImage2D").length, 1);
+assert.equal(canvas.gl.calls.filter(call => call[0] === "texImage2D" && call[4] === 2 && call[5] === 2).at(-1).at(-1)[0], 37);
 env.up_host_gl_resource_destroy(ResourceKind.texture, texture);
 assert.equal(host.resourceCount(), 3);
 assert.ok(canvas.gl.calls.some(([name]) => name === "deleteTexture"));

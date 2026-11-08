@@ -8,7 +8,7 @@ on:
 jobs:
   portable-authoring:
     runs-on: macos-15-intel
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
       - uses: mlugg/setup-zig@v2
@@ -24,8 +24,10 @@ jobs:
       - run: sudo safaridriver --enable
       - run: zig build test-browser-authoring -Dwith_sdl=false -j2 --summary all
         timeout-minutes: 10
-      - run: zig build test-render-capacity -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
+      - run: zig build test-render-capacity-gpu -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
         timeout-minutes: 10
+      - run: zig build test-surface-gpu-native test-surface-gpu-browser -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
+        timeout-minutes: 8
       - run: zig build test-browser-chess -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
         timeout-minutes: 8
       - if: always()
@@ -35,6 +37,7 @@ jobs:
           path: |
             zig-out/diagnostics/browser-authoring/**
             zig-out/diagnostics/render-capacity/**
+            zig-out/diagnostics/surface-gpu/**
             zig-out/diagnostics/chess/**
           if-no-files-found: warn
 

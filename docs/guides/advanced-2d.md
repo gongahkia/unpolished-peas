@@ -31,6 +31,12 @@ try renderer.addPostPass(.{ .material = material });
 
 The renderer executes Canvas commands and ordinary sprites, material sprites, particles, then post passes. Every post pass samples the final composed frame through `source` and writes to the alternate RGBA8 target; only the last target is presented or captured. The OpenGL preview presenter rejects this advanced queue. It does not silently emulate materials on the CPU.
 
+When explicitly submitted, [surface composition](gpu-surface-composition.md)
+establishes the base frame before the existing command/sprite/material/particle
+queues and post passes. `composeSurfaces` is one submission per frame; its
+layer order includes a single optional Canvas marker. It does not interleave
+individual Canvas calls with advanced queues.
+
 The portable reference effects execute on `Canvas`, so their behavior is shared by headless tests, the desktop Canvas presenter, and the browser Canvas upload path. A chain owns a reusable blur scratch surface and applies effects in declaration order.
 
 ```zig

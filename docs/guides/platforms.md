@@ -56,6 +56,28 @@ quality or other hardware results. All browser renderer statuses remain preview.
 See [browser authoring verification](browser-authoring.md) for commands,
 artifacts, automation fixes and unverified-prerequisite behavior.
 
+## November 8 surface-composition evidence
+
+The opt-in [surface compositor](gpu-surface-composition.md) passed actual
+SDL GPU/Metal readbacks on the same Intel Mac: 24 small fixtures across two
+logical sizes, plus all four compiled mixed-workload configurations. Opaque
+nearest and CPU fallback fixtures were exact. Observed maximum RGBA channel
+deltas were 3 for alpha/linear fixtures and 3 for the mixed workload against
+the original CPU rendering. Existing exact CPU goldens were retained.
+
+Real Chrome 157.0.8103.38, Firefox 158.0 and Safari 18.6 passed the same twelve
+WebGL 2 surface cases, each with observed maximum delta 3. All three also
+passed resource-creation rollback/retry, repeated release/generation churn,
+direct source mutation, actual WebGL context loss/restoration, backing resize
+and shutdown with zero live game resources/scheduled frames. Independent
+WebGL readback and PNG probes remain required, including Safari's existing
+capture rules. Renderer/version metadata and captures are retained under
+`zig-out/diagnostics/surface-gpu/`.
+
+These are local Intel macOS observations. Apple Silicon, Vulkan/D3D native
+hardware, other operating systems and other GPUs remain unverified for this
+new path. OpenGL/WebGPU explicitly reject it. Preview status is unchanged.
+
 ## WSLg runtime distinction
 
 WSL2/WSLg is useful for normal development and catches SDL, browser-adjacent,

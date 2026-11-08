@@ -39,6 +39,7 @@ pub const graphics = struct {
     pub const SpriteAnimationPlayer = @import("sprite_animation.zig").SpriteAnimationPlayer;
     pub const Canvas = @import("canvas.zig").Canvas;
     pub const RenderSurface = @import("canvas.zig").RenderSurface;
+    pub const SurfaceCompositor = @import("surface_compositor.zig").SurfaceCompositor;
     pub const SurfaceDrawOptions = @import("canvas.zig").SurfaceDrawOptions;
     pub const SurfaceFilter = @import("canvas.zig").SurfaceFilter;
     pub const Sprite = @import("canvas.zig").Sprite;

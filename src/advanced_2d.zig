@@ -4,6 +4,7 @@ const BlendMode = @import("canvas.zig").BlendMode;
 const Color = @import("color.zig").Color;
 const Image = @import("image.zig").Image;
 const Vec2 = @import("math.zig").Vec2;
+const SurfaceCompositor = @import("surface_compositor.zig").SurfaceCompositor;
 
 pub const max_shader_source_bytes = 256 * 1024;
 pub const max_shader_bindings = 16;
@@ -223,6 +224,7 @@ pub const Renderer2D = struct {
     particle_instances: std.ArrayListUnmanaged(GpuParticleInstance) = .{},
     particle_batches: std.ArrayListUnmanaged(ParticleBatch) = .{},
     post_passes: std.ArrayListUnmanaged(PostPass) = .{},
+    surface_compositor: ?*const SurfaceCompositor = null,
 
     pub fn init(allocator: std.mem.Allocator) Renderer2D {
         return .{ .allocator = allocator };
@@ -237,6 +239,7 @@ pub const Renderer2D = struct {
     }
 
     pub fn beginFrame(self: *Renderer2D) void {
+        self.surface_compositor = null;
         self.material_sprites.clearRetainingCapacity();
         self.particle_instances.clearRetainingCapacity();
         self.particle_batches.clearRetainingCapacity();
@@ -247,6 +250,14 @@ pub const Renderer2D = struct {
         if (draw.width <= 0 or draw.height <= 0) return error.InvalidMaterialDraw;
         try validateMaterialBindings(draw.material, draw.bindings, draw.uniforms);
         try self.material_sprites.append(self.allocator, draw);
+    }
+
+    /// Borrows an explicit surface composition until this frame is submitted.
+    /// Its queue replaces base Canvas upload ordering; existing advanced queues
+    /// retain their normal later stages. OpenGL fallback rejects this prototype.
+    pub fn composeSurfaces(self: *Renderer2D, compositor: *const SurfaceCompositor) !void {
+        if (self.surface_compositor != null) return error.SurfaceCompositionAlreadyQueued;
+        self.surface_compositor = compositor;
     }
 
     pub fn addPostPass(self: *Renderer2D, pass: PostPass) !void {

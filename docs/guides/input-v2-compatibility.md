@@ -73,7 +73,9 @@ Platform references: [SDL scancodes](https://wiki.libsdl.org/SDL3/SDL_Scancode),
 
 ## Implemented layouts
 
-The enclosing browser host ABI stays at version 6. Input v2 is 1890 bytes:
+The input-v2 change kept the enclosing browser contract at version 6. The
+later opt-in [surface compositor](gpu-surface-composition.md) advances that
+contract to 7 without changing the input layout. Input v2 is 1890 bytes:
 legacy offsets 0–375 (version word now 2), `u16` extension length at 376,
 extension bytes at 378, and zero padding. A capacity of 376–1889 always requests v1; a larger buffer without the
 request marker also receives v1.

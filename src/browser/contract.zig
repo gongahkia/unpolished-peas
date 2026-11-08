@@ -1,7 +1,7 @@
 const builtin = @import("builtin");
 const std = @import("std");
 
-pub const abi_version: u32 = 6;
+pub const abi_version: u32 = 7;
 
 pub const Binding = struct {
     name: []const u8,
@@ -45,6 +45,7 @@ pub const imports = [_]Binding{
     .{ .name = "up_host_storage_remove" },
     .{ .name = "up_host_diagnostic_emit" },
     .{ .name = "up_host_teardown" },
+    .{ .name = "up_host_gl_surface_draw" },
 };
 
 pub const exports = [_]Binding{
@@ -123,6 +124,7 @@ const WasmHost = struct {
     extern "env" fn up_host_gl_material_bind_uniform(name: u32, name_len: u32, source: u32, byte_len: u32) i32;
     extern "env" fn up_host_gl_material_draw(x: i32, y: i32, width: i32, height: i32, tint: u32) i32;
     extern "env" fn up_host_gl_draw_sprite(handle: u32, source_x: u32, source_y: u32, source_width: u32, source_height: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32;
+    extern "env" fn up_host_gl_surface_draw(handle: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32;
     extern "env" fn up_host_gl_flush_sprites() i32;
     extern "env" fn up_host_gl_draw_text(source: u32, byte_len: u32, x: i32, y: i32, color: u32) i32;
     extern "env" fn up_host_gl_push_clip(x: i32, y: i32, width: i32, height: i32) i32;
@@ -218,6 +220,9 @@ const NativeHost = struct {
     }
 
     fn up_host_gl_flush_sprites() i32 {
+        return @intFromEnum(Status.unavailable);
+    }
+    fn up_host_gl_surface_draw(_: u32, _: i32, _: i32, _: i32, _: i32, _: u32, _: u32) i32 {
         return @intFromEnum(Status.unavailable);
     }
 
@@ -366,6 +371,9 @@ pub fn drawSprite(handle: u32, source_x: u32, source_y: u32, source_width: u32, 
 pub fn flushSprites() i32 {
     return host.up_host_gl_flush_sprites();
 }
+pub fn drawSurface(handle: u32, x: i32, y: i32, width: i32, height: i32, color: u32, sampling: u32) i32 {
+    return host.up_host_gl_surface_draw(handle, x, y, width, height, color, sampling);
+}
 
 pub fn drawText(source: u32, byte_len: u32, x: i32, y: i32, color: u32) i32 {
     return host.up_host_gl_draw_text(source, byte_len, x, y, color);
@@ -428,8 +436,9 @@ pub fn teardown() void {
 }
 
 test "browser host contract keeps versioned category coverage" {
-    try std.testing.expectEqual(@as(u32, 6), abi_version);
-    try std.testing.expectEqual(@as(usize, 37), imports.len);
+    try std.testing.expectEqual(@as(u32, 7), abi_version);
+    try std.testing.expectEqual(@as(usize, 38), imports.len);
+    try std.testing.expectEqualStrings("up_host_gl_surface_draw", imports[37].name);
     try std.testing.expectEqual(@as(usize, 35), exports.len);
     try std.testing.expectEqualStrings("up_host_gl_resource_create", imports[4].name);
     try std.testing.expectEqualStrings("up_browser_set_paused", exports[3].name);

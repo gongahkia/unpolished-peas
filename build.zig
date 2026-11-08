@@ -1313,6 +1313,11 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = peas });
     const run_tests = b.addRunArtifact(tests);
     const test_step = b.step("test", "Run unpolished-peas tests");
+    const compositor_tests_module = b.createModule(.{ .root_source_file = b.path("src/surface_compositor.zig"), .target = target, .optimize = optimize });
+    addStb(compositor_tests_module);
+    const compositor_tests = b.addRunArtifact(b.addTest(.{ .root_module = compositor_tests_module }));
+    b.step("test-surface-compositor", "Test bounded surface composition, CPU reference, ownership and failures").dependOn(&compositor_tests.step);
+    test_step.dependOn(&compositor_tests.step);
     test_step.dependOn(chess_tests);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(font_layout_tests);
@@ -1522,11 +1527,20 @@ pub fn build(b: *std.Build) void {
     replay_test_step.dependOn(&run_breakout_tests.step);
     replay_test_step.dependOn(&run_topdown_tests.step);
 
-    const sdl_tests = b.addTest(.{ .root_module = sdl });
+    // Test-only workload imports must not enter consumer SDL module graphs.
+    const sdl_test_module = b.createModule(.{ .root_source_file = b.path("src/backend/sdl_gpu.zig"), .target = target, .optimize = optimize });
+    for (sdl.import_table.keys(), sdl.import_table.values()) |name, module| sdl_test_module.addImport(name, module);
+    if (with_sdl and (system_sdl or bundled_sdl != null)) addSdl3(sdl_test_module, bundled_sdl, framework_path);
+    const sdl_tests = b.addTest(.{ .root_module = sdl_test_module });
+    sdl_tests.root_module.addImport("render-capacity-game", b.createModule(.{ .root_source_file = b.path("examples/render_capacity_game.zig"), .target = target, .optimize = optimize, .imports = &.{ .{ .name = "unpolished-peas", .module = peas }, .{ .name = "render-counter", .module = render_benchmark.root_module } } }));
     const run_sdl_tests = b.addRunArtifact(sdl_tests);
     const sdl_test_step = b.step("test-sdl", "Compile the SDL3 runtime against its configured dependency");
     sdl_test_step.dependOn(&run_sdl_tests.step);
     const renderer_conformance = b.addRunArtifact(sdl_tests);
+    const surface_gpu_conformance = b.addRunArtifact(sdl_tests);
+    surface_gpu_conformance.setEnvironmentVariable("UP_SURFACE_COMPOSITION_GPU", "1");
+    surface_gpu_conformance.setEnvironmentVariable("UP_SURFACE_CAPTURE_DIR", b.getInstallPath(.prefix, "diagnostics/surface-gpu/native"));
+    b.step("test-surface-gpu-native", "Read back real SDL GPU surface composition, updates, release and recovery").dependOn(&surface_gpu_conformance.step);
     renderer_conformance.setEnvironmentVariable("UP_RENDERER_CONFORMANCE", "1");
     const renderer_conformance_step = b.step("test-renderer-conformance", "Run shared desktop renderer smoke and GPU golden fixtures");
     renderer_conformance_step.dependOn(&renderer_conformance.step);

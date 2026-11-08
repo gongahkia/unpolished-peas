@@ -50,7 +50,7 @@ For music, load once and retain the returned optional handle in Game, then
 play on an appropriate event. A blocked browser play can be retried with the
 same handle after a gesture; do not reload the track on every retry.
 
-[Compiled source](../../examples/api_reference_recipes.zig#L64) (`loadMusic`):
+[Compiled source](../../examples/api_reference_recipes.zig#L90) (`loadMusic`):
 
 ```zig
 pub fn loadMusic(ctx: *up.core.GameContext) !?up.core.Audio.MusicHandle {
@@ -59,7 +59,7 @@ pub fn loadMusic(ctx: *up.core.GameContext) !?up.core.Audio.MusicHandle {
 }
 ```
 
-[Compiled source](../../examples/api_reference_recipes.zig#L69) (`playMusic`):
+[Compiled source](../../examples/api_reference_recipes.zig#L95) (`playMusic`):
 
 ```zig
 pub fn playMusic(ctx: *up.core.GameContext, handle: ?up.core.Audio.MusicHandle) void {

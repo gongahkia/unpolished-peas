@@ -14,22 +14,36 @@ import {probeWebGlCapture, webGlRenderContract, validateWebGlReadback, validateR
 import {portableChecks} from "../browser_portable_conformance_checks.mjs";
 import {fontChecks} from "../browser_font_layout_checks.mjs";
 import {audioChecks} from "../browser_audio_lifetime_checks.mjs";
+import {surfaceChecks} from "../browser_surface_gpu_checks.mjs";
 
 const {values} = parseArgs({options: {
   consumer: {type: "string"}, font: {type: "string"}, audio: {type: "string"}, references: {type: "string"},
+  surface: {type: "string"}, "surface-references": {type: "string"},
   browsers: {type: "string", default: "chromium,firefox,safari"}, diagnostics: {type: "string", default: "zig-out/diagnostics/browser-authoring"},
 }});
 const browsers = values.browsers.split(",");
 assert.ok(browsers.length && new Set(browsers).size === browsers.length && browsers.every((name) => ["chromium", "firefox", "safari"].includes(name)), "select chromium,firefox,safari without duplicates");
-const cases = Object.entries({consumer: portableChecks, font: fontChecks, audio: audioChecks}).filter(([name]) => values[name]);
-assert.ok(cases.length, "supply at least one --consumer, --font or --audio bundle");
+const cases = Object.entries({consumer: portableChecks, font: fontChecks, audio: audioChecks, surface: surfaceChecks}).filter(([name]) => values[name]);
+assert.ok(cases.length, "supply at least one --consumer, --font, --audio or --surface bundle");
 if (values.font) assert.ok(values.references, "--font requires native --references");
+if (values.surface) assert.ok(values["surface-references"], "--surface requires CPU --surface-references");
 const directory = resolve(values.diagnostics);
 await mkdir(directory, {recursive: true});
 const report = {schema_version: 1, requested_browsers: browsers, platform: process.platform, architecture: process.arch, node: process.version, renderer: "webgl2", results: []};
 report.harness_sha256 = {};
-for (const file of ["run.mjs", "adapters.mjs", "checks.mjs", "instrumentation.mjs", "package.json", "package-lock.json", "../safari_webdriver.mjs", "../browser_portable_conformance_checks.mjs", "../browser_font_layout_checks.mjs", "../browser_audio_lifetime_checks.mjs"]) {
+for (const file of ["run.mjs", "adapters.mjs", "checks.mjs", "instrumentation.mjs", "package.json", "package-lock.json", "../safari_webdriver.mjs", "../browser_portable_conformance_checks.mjs", "../browser_font_layout_checks.mjs", "../browser_audio_lifetime_checks.mjs", "../browser_surface_gpu_checks.mjs"]) {
   report.harness_sha256[file] = createHash("sha256").update(await readFile(new URL(file, import.meta.url))).digest("hex");
+}
+let surfaceReferences;
+if (values.surface) {
+  surfaceReferences = join(directory, "surface-reference");
+  await mkdir(surfaceReferences, {recursive: true});
+  report.surface_reference_sha256 = {};
+  for (const file of ["surface.json", ...Array.from({length: 12}, (_, i) => `surface-${i}.rgba`)]) {
+    const bytes = await readFile(join(resolve(values["surface-references"]), file));
+    await writeFile(join(surfaceReferences, file), bytes);
+    report.surface_reference_sha256[file] = createHash("sha256").update(bytes).digest("hex");
+  }
 }
 let references;
 if (values.font) {
@@ -141,7 +155,7 @@ async function runCase(browser, name, checks) {
     const readback = await driver.evaluate(webGlRenderContract);
     await json(join(output, "runtime-webgl-readback.json"), readback);
     validateWebGlReadback(readback, "Peas WebGL renderer");
-    result.observations = await checks(driver, {directory: output, references});
+    result.observations = await checks(driver, {directory: output, references: name === "surface" ? surfaceReferences : references});
     const environment = await state(driver);
     await json(join(output, "environment.json"), environment);
     assert.deepEqual(environment.instrumentation.errors, [], "browser JavaScript errors");

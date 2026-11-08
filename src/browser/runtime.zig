@@ -6,6 +6,7 @@ const protocol_game = @import("protocol-game");
 const frame_timing = @import("frame-timing");
 const browser_input = @import("input_snapshot.zig");
 const browser_save_data = @import("save_data.zig");
+const SurfaceCache = @import("surface_cache.zig").Cache(contract);
 const TickBuffer = frame_timing.TickBuffer;
 const browser_application_id = storageId(protocol_game);
 const browser_save_data_enabled = browser_application_id != null;
@@ -61,6 +62,7 @@ var game_canvas: up.graphics.Canvas = undefined;
 var game_canvas_ready = false;
 var renderer: up.graphics.Renderer2D = undefined;
 var renderer_ready = false;
+var surface_cache = SurfaceCache{};
 var render_status: i32 = @intFromEnum(contract.Status.ok);
 
 const runtime_allocator = if (builtin.target.cpu.arch == .wasm32) std.heap.wasm_allocator else std.heap.page_allocator;
@@ -179,6 +181,8 @@ pub export fn up_browser_canvas_render_status() i32 {
 
 fn submitCanvas() i32 {
     if (!game_canvas_ready) return @intFromEnum(contract.Status.unavailable);
+    if (renderer.surface_compositor) |scene| return surface_cache.submit(scene, &game_canvas);
+    surface_cache.release();
     const byte_len = std.math.cast(u32, std.mem.sliceAsBytes(game_canvas.pixels).len) orelse return @intFromEnum(contract.Status.rejected);
     const pixels = std.mem.sliceAsBytes(game_canvas.pixels);
     const source: u32 = if (builtin.target.cpu.arch == .wasm32) @intCast(@intFromPtr(pixels.ptr)) else 0;
@@ -415,6 +419,7 @@ pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
 }
 
 fn releaseGame() bool {
+    surface_cache.release();
     if (frame_token != 0) contract.cancelFrame(frame_token);
     frame_token = 0;
     var okay = true;

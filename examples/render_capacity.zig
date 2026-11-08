@@ -18,6 +18,12 @@ const Desktop = struct {
     state: workload.Game = .{},
     pub fn init(self: *Desktop, ctx: *up.core.GameContext) !void {
         workload.linear = options.linear;
+        const mode = std.process.getEnvVarOwned(try ctx.requireAllocator(), "PEAS_RENDER_GPU") catch |err| switch (err) {
+            error.EnvironmentVariableNotFound => null,
+            else => return err,
+        };
+        defer if (mode) |bytes| (ctx.requireAllocator() catch unreachable).free(bytes);
+        workload.gpu = if (mode) |bytes| std.mem.eql(u8, bytes, "1") else false;
         try self.state.init(ctx);
     }
     pub fn update(self: *Desktop, ctx: *up.core.GameContext, dt: f32) !void {

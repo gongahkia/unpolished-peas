@@ -60,6 +60,9 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     pixels: []Color,
     clip: ?ClipRect = null,
     blend: BlendMode = .alpha,
+    /// Opt-in straight-alpha storage for transparent composition foregrounds.
+    /// Default false preserves the existing opaque-output blend behavior.
+    preserve_alpha: bool = false,
     // A test-only observer of public logical Canvas operations. Normal
     // rendering leaves this null and does not allocate or hash commands.
     trace: ?*canvas_trace.Trace = null,
@@ -127,7 +130,7 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
 
     fn blendColor(self: *Canvas, destination: *Color, color: Color) void {
         destination.* = switch (self.blend) {
-            .alpha => color.over(destination.*),
+            .alpha => if (self.preserve_alpha) preserveAlphaOver(color, destination.*) else color.over(destination.*),
             .additive => color.add(destination.*),
         };
     }
@@ -584,6 +587,22 @@ pub const Canvas = struct { // owns its pixel buffer allocated by init; call dei
     }
 };
 
+fn preserveAlphaOver(src: Color, dst: Color) Color {
+    if (src.a == 0) return dst;
+    if (src.a == 255 or dst.a == 0) return src;
+    if (dst.a == 255) return src.over(dst);
+    const source_alpha: u32 = src.a;
+    const destination_alpha: u32 = dst.a;
+    const inverse = 255 - source_alpha;
+    const combined = source_alpha * 255 + destination_alpha * inverse;
+    return .{
+        .r = @intCast((@as(u32, src.r) * source_alpha * 255 + @as(u32, dst.r) * destination_alpha * inverse + combined / 2) / combined),
+        .g = @intCast((@as(u32, src.g) * source_alpha * 255 + @as(u32, dst.g) * destination_alpha * inverse + combined / 2) / combined),
+        .b = @intCast((@as(u32, src.b) * source_alpha * 255 + @as(u32, dst.b) * destination_alpha * inverse + combined / 2) / combined),
+        .a = @intCast((combined + 127) / 255),
+    };
+}
+
 /// Persistent, Peas-owned offscreen 2D surface. It owns a Canvas-sized pixel
 /// buffer initialized to transparent black. Draw into `canvas()` with the
 /// ordinary Canvas API, then compose it onto another Canvas with
@@ -615,6 +634,19 @@ pub const RenderSurface = struct {
         return self.target.height;
     }
 };
+
+test "Canvas alpha preservation is explicit and legacy blending stays unchanged" {
+    var canvas = try Canvas.init(std.testing.allocator, 2, 1);
+    defer canvas.deinit();
+    const white = Color.rgba(255, 255, 255, 128);
+    canvas.pixel(0, 0, white);
+    try std.testing.expectEqual(Color.rgb(128, 128, 128), canvas.get(0, 0).?);
+    canvas.preserve_alpha = true;
+    canvas.pixel(1, 0, white);
+    try std.testing.expectEqual(white, canvas.get(1, 0).?);
+    canvas.pixel(1, 0, white);
+    try std.testing.expectEqual(Color.rgba(255, 255, 255, 192), canvas.get(1, 0).?);
+}
 
 fn sampleSurfaceNearest(source: *const Canvas, destination_x: u32, destination_y: u32, destination_width: u32, destination_height: u32) Color {
     const source_x: u32 = @intCast((@as(u64, destination_x) * source.width) / destination_width);

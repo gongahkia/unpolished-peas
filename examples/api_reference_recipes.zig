@@ -48,6 +48,32 @@ pub fn offscreen(allocator: std.mem.Allocator) !u64 {
     return up.testSupport.canvasHash(canvas);
 }
 
+pub fn composed(allocator: std.mem.Allocator) !u64 {
+    var surface = try up.graphics.RenderSurface.init(allocator, 4, 4);
+    defer surface.deinit();
+    surface.canvas().clear(up.core.Color.rgb(20, 180, 90));
+    var scene = try up.graphics.SurfaceCompositor.init(allocator, .{ .layers = 1, .draws = 2 });
+    defer scene.deinit();
+    const layer = try scene.retain(&surface);
+    var foreground = try up.graphics.Canvas.init(allocator, 16, 16);
+    defer foreground.deinit();
+    foreground.preserve_alpha = true;
+    foreground.clear(up.core.Color.transparent);
+    foreground.fillRect(1, 1, 2, 2, up.core.Color.white);
+    try scene.beginFrame(up.core.Color.black);
+    try scene.drawLayer(layer, .{ .surface = .{ .x = 0, .y = 0, .width = 16, .height = 16 } });
+    try scene.drawCanvas(); // Foreground above the retained layer.
+    // In a GameProtocol draw callback, submit with:
+    // try (try ctx.requireRenderer2D()).composeSurfaces(&scene);
+    // Keep scene and surface in stable game-owned storage through presentation.
+    var output = try up.graphics.Canvas.init(allocator, 16, 16);
+    defer output.deinit();
+    try scene.drawCpu(&output, &foreground); // Allocation-free headless oracle.
+    if (!std.meta.eql(output.get(1, 1).?, up.core.Color.white)) return error.UnexpectedCompositionOrder;
+    if (!std.meta.eql(output.get(8, 8).?, surface.canvas().get(0, 0).?)) return error.UnexpectedCompositionPixel;
+    return up.testSupport.canvasHash(output);
+}
+
 pub fn rebind(allocator: std.mem.Allocator) !void {
     const definitions = [_]up.input.Action{
         .{ .name = "interact", .binding = .{ .physical_key = .q } },
@@ -112,7 +138,7 @@ pub fn verify(allocator: std.mem.Allocator) !u64 {
     if (!nonzero) return error.MusicDidNotDecode;
     audio.setAvailability(.blocked);
     playMusic(&ctx, music); // A blocked retry is recoverable.
-    return try offscreen(allocator) ^ try replay(allocator);
+    return try offscreen(allocator) ^ try composed(allocator) ^ try replay(allocator);
 }
 
 test "API reference recipes run and release their owned resources" {

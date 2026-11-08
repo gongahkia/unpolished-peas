@@ -1,4 +1,4 @@
-# Canvas and RenderSurface
+# Canvas, RenderSurface and optional GPU composition
 
 [Task index](core.md) · [Assets](assets.md) · [Headless captures](testing.md)
 
@@ -41,8 +41,27 @@ save APIs. `writePng` accepts a caller-provided Writer. `attachTrace` borrows
 a test-owned trace; detach it before destroying the trace. Trace capture may
 allocate, while ordinary drawing does not retain an operation log.
 
+## Explicit composition recipe
+
+`SurfaceCompositor` borrows stable game-owned surfaces and queues their scaling
+and alpha composition for native SDL GPU or browser WebGL 2. Canvas drawing
+still happens immediately on the CPU. `drawCanvas` places its final contents
+once in the layer order; it is not a snapshot at the point of that call.
+`Canvas.preserve_alpha = true` opts into straight-alpha foreground storage;
+the default retains the existing Canvas blend behavior.
+
+<!-- example: examples/api_reference_recipes.zig | composed -->
+
+The recipe runs natively and in Wasm using the CPU oracle. Actual GPU pixels,
+source updates, resource failure and restoration are checked separately by
+the [GPU surface guide](../guides/gpu-surface-composition.md). That guide defines
+borrowing, memory bounds, sampling, tolerances, ordering and unsupported hosts.
+The compositor, sources and queued Canvas must remain alive through submission.
+
 <!-- api: graphics.Canvas -->
 <!-- api: graphics.RenderSurface -->
+<!-- api: graphics.SurfaceCompositor -->
+<!-- api: graphics.Renderer2D.composeSurfaces -->
 <!-- api: graphics.SurfaceDrawOptions -->
 <!-- api: graphics.SurfaceFilter -->
 <!-- api: graphics.ClipRect -->

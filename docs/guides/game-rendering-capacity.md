@@ -5,6 +5,10 @@ frame, and presents that texture. This experiment measures that complete path
 with a compiled portable game, alongside the existing operation benchmarks.
 It does not change drawing APIs or introduce performance pass/fail budgets.
 
+The opt-in [GPU surface-composition prototype](gpu-surface-composition.md)
+reuses this workload with paired `--modes cpu,gpu` runs. The original CPU-only
+experiment and its retained November 7 evidence remain available unchanged.
+
 ## Reproduce
 
 Use the supported Zig toolchain, native SDL/GPU prerequisites, installed Google

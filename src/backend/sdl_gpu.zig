@@ -397,6 +397,184 @@ test "GPU target readback preserves RGBA dimensions and pixels" {
     try std.testing.expectEqual(up.Color.rgba(5, 6, 7, 8), canvas.pixels[1]);
 }
 
+test "surface compositor real GPU pixels, bounded resources and recovery" {
+    if (!(environmentBool("UP_SURFACE_COMPOSITION_GPU") orelse false)) return;
+    const allocator = std.testing.allocator;
+    const Fixture = @import("surface_fixture.zig").Fixture;
+    const font_bytes = try std.fs.cwd().readFileAlloc(allocator, "examples/assets/fonts/SourceSans3-Regular.otf", 8 * 1024 * 1024);
+    defer allocator.free(font_bytes);
+    const fixture = try Fixture.init(allocator, font_bytes);
+    defer fixture.deinit();
+    const output = try std.process.getEnvVarOwned(allocator, "UP_SURFACE_CAPTURE_DIR");
+    defer allocator.free(output);
+    try std.fs.cwd().makePath(output);
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
+    defer c.SDL_Quit();
+    const device = createGpuDevice(false) orelse return error.SurfaceCompositionGpuUnavailable;
+    defer c.SDL_DestroyGPUDevice(device);
+    const window = c.SDL_CreateWindow("Peas surface composition probe", 48, 32, c.SDL_WINDOW_HIDDEN) orelse return sdlRendererFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(window);
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
+    var renderer = up.Renderer2D.init(allocator);
+    defer renderer.deinit();
+    var sprites = up.SpriteBatch.init(allocator);
+    defer sprites.deinit();
+    var report: [24]u16 = .{0} ** 24;
+    for ([_][2]u32{ .{ 48, 32 }, .{ 64, 40 } }, 0..) |size, phase| {
+        var presenter = try Presenter.init(device, size[0], size[1]);
+        defer presenter.deinit(device);
+        var canvas = try up.Canvas.init(allocator, size[0], size[1]);
+        defer canvas.deinit();
+        var expected = try up.Canvas.init(allocator, size[0], size[1]);
+        defer expected.deinit();
+        var presentation = up.Presentation.init(.{ .x = @floatFromInt(size[0]), .y = @floatFromInt(size[1]) }, .{ .x = 48, .y = 32 }, .integer_fit);
+        var metrics = up.RuntimeMetrics{};
+        try fixture.draw(&canvas, 0);
+        // Fail each actual texture/transfer/vertex creation boundary and then
+        // prove that a retry succeeds with no partially retained resources.
+        for (0..7) |point| {
+            var cache = @import("surface_gpu.zig").Cache(c){};
+            defer cache.releaseAll(device);
+            cache.fail_after = point;
+            if (point < 6) {
+                try std.testing.expectError(error.InjectedCompositionAllocationFailure, cache.prepare(device, &fixture.scene.?));
+                try std.testing.expectEqual(@as(u32, 0), cache.count());
+                try std.testing.expect(cache.vertices == null and cache.transfer == null);
+            }
+            cache.fail_after = null;
+            try cache.prepare(device, &fixture.scene.?);
+            try std.testing.expectEqual(@as(u32, 2), cache.count());
+        }
+        for (0..12) |index| {
+            renderer.beginFrame();
+            try fixture.draw(&canvas, @intCast(index));
+            try fixture.drawCpu(&expected, &canvas);
+            if (index != 10) try renderer.composeSurfaces(&fixture.scene.?);
+            const stem = try std.fmt.allocPrint(allocator, "{s}/{d}-{d}", .{ output, phase, index });
+            defer allocator.free(stem);
+            const png_path = try std.fmt.allocPrint(allocator, "{s}-gpu.png", .{stem});
+            defer allocator.free(png_path);
+            metrics.beginFrame(index);
+            try presenter.present(device, window, canvas, &sprites, &.{}, &renderer, png_path, &presentation, &metrics);
+            const png = try std.fs.cwd().readFileAlloc(allocator, png_path, 4 * 1024 * 1024);
+            defer allocator.free(png);
+            var image = try up.Image.decode(allocator, png, .{});
+            defer image.deinit();
+            const reference_path = try std.fmt.allocPrint(allocator, "{s}-cpu.rgba", .{stem});
+            defer allocator.free(reference_path);
+            try std.fs.cwd().writeFile(.{ .sub_path = reference_path, .data = std.mem.sliceAsBytes(expected.pixels) });
+            var maximum: u8 = 0;
+            for (expected.pixels, image.pixels, 0..) |want, actual, pixel_index| {
+                const wanted = [_]u8{ want.r, want.g, want.b, want.a };
+                const rendered = [_]u8{ actual.r, actual.g, actual.b, actual.a };
+                for (wanted, rendered) |a, b| maximum = @max(maximum, if (a > b) a - b else b - a);
+                if (maximum > (if (index == 0 or index == 10) @as(u8, 0) else 6)) {
+                    std.debug.print("surface GPU mismatch phase={d} case={d} pixel={d} max_delta={d}\n", .{ phase, index, pixel_index, maximum });
+                    return error.SurfaceCompositionPixelsDiffer;
+                }
+                try std.testing.expectEqual(@as(u8, 255), actual.a);
+            }
+            report[phase * 12 + index] = maximum;
+            try std.testing.expect(presenter.surface_gpu.count() <= 2);
+            try std.testing.expect(presenter.surface_gpu.bytes() <= fixture.scene.?.source_bytes);
+            if (index == 10) try std.testing.expectEqual(@as(u32, 0), presenter.surface_gpu.count());
+        }
+        if (!c.SDL_WaitForGPUIdle(device)) return sdlGpuFail(device, "SDL_WaitForGPUIdle");
+    }
+    const json_path = try std.fmt.allocPrint(allocator, "{s}/native.json", .{output});
+    defer allocator.free(json_path);
+    const json = try std.json.Stringify.valueAlloc(allocator, .{ .cases = 24, .maximum_channel_deltas = report, .driver = gpuDriverName(device), .shader = @tagName(try selectGpuShaderFormat(device)), .creation_failure_points = 6, .recreated_and_resized_presenter = true }, .{});
+    defer allocator.free(json);
+    try std.fs.cwd().writeFile(.{ .sub_path = json_path, .data = json });
+}
+
+test "surface compositor mixed GameProtocol workload actual GPU readback" {
+    if (!(environmentBool("UP_SURFACE_COMPOSITION_GPU") orelse false)) return;
+    const workload = @import("render-capacity-game");
+    const allocator = std.testing.allocator;
+    const output = try std.process.getEnvVarOwned(allocator, "UP_SURFACE_CAPTURE_DIR");
+    defer allocator.free(output);
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO)) return sdlRendererFail("SDL_Init");
+    defer c.SDL_Quit();
+    const device = createGpuDevice(false) orelse return error.SurfaceCompositionGpuUnavailable;
+    defer c.SDL_DestroyGPUDevice(device);
+    const window = c.SDL_CreateWindow("Peas mixed composition probe", 320, 180, c.SDL_WINDOW_HIDDEN) orelse return sdlRendererFail("SDL_CreateWindow");
+    defer c.SDL_DestroyWindow(window);
+    if (!c.SDL_ClaimWindowForGPUDevice(device, window)) return sdlGpuFail(device, "SDL_ClaimWindowForGPUDevice");
+    defer c.SDL_ReleaseWindowFromGPUDevice(device, window);
+    const Case = struct { width: u32, linear: bool };
+    var deltas: [4]u16 = .{0} ** 4;
+    var legacy_deltas: [4]u16 = .{0} ** 4;
+    for ([_]Case{ .{ .width = 320, .linear = false }, .{ .width = 640, .linear = false }, .{ .width = 1280, .linear = false }, .{ .width = 1280, .linear = true } }, 0..) |case, case_index| {
+        const height = case.width * 9 / 16;
+        workload.gpu = true;
+        workload.linear = case.linear;
+        var presenter = try Presenter.init(device, case.width, height);
+        defer presenter.deinit(device);
+        var renderer = up.Renderer2D.init(allocator);
+        defer renderer.deinit();
+        var sprites = up.SpriteBatch.init(allocator);
+        defer sprites.deinit();
+        var canvas = try up.Canvas.init(allocator, case.width, height);
+        defer canvas.deinit();
+        var expected = try up.Canvas.init(allocator, case.width, height);
+        defer expected.deinit();
+        var input = up.Input{};
+        var ctx = up.GameContext.withRenderer(&input, &canvas, &renderer);
+        ctx.allocator = allocator;
+        var game = workload.Game{};
+        try game.init(&ctx);
+        defer game.deinit(&ctx) catch unreachable;
+        game.tick = 37;
+        game.frozen = true;
+        game.placeSprites();
+        renderer.beginFrame();
+        try game.draw(&ctx);
+        try std.testing.expectEqual(@as(f64, 0), game.samples[0].allocation_events);
+        try game.compositor.?.drawCpu(&expected, &canvas);
+        const png_path = try std.fmt.allocPrint(allocator, "{s}/mixed-{d}-gpu.png", .{ output, case_index });
+        defer allocator.free(png_path);
+        var presentation = up.Presentation.init(.{ .x = @floatFromInt(case.width), .y = @floatFromInt(height) }, .{ .x = 320, .y = 180 }, .integer_fit);
+        var metrics = up.RuntimeMetrics{};
+        metrics.beginFrame(0);
+        try presenter.present(device, window, canvas, &sprites, &.{}, &renderer, png_path, &presentation, &metrics);
+        const png = try std.fs.cwd().readFileAlloc(allocator, png_path, 16 * 1024 * 1024);
+        defer allocator.free(png);
+        var image = try up.Image.decode(allocator, png, .{});
+        defer image.deinit();
+        // Also compare to the original immediate CPU workload, not just the
+        // new queue's CPU oracle. Both render the same deterministic tick.
+        workload.gpu = false;
+        var legacy = try up.testSupport.HeadlessGameRunner(workload.Game).init(allocator, case.width, height);
+        defer legacy.deinit();
+        legacy.canvas.detachTrace();
+        legacy.game.tick = 37;
+        legacy.game.frozen = true;
+        legacy.game.placeSprites();
+        try legacy.draw(0);
+        for (image.pixels, expected.pixels, legacy.canvas.pixels) |actual, want, original| {
+            const a = [_]u8{ actual.r, actual.g, actual.b, actual.a };
+            const e = [_]u8{ want.r, want.g, want.b, want.a };
+            const o = [_]u8{ original.r, original.g, original.b, original.a };
+            for (a, e, o) |channel, reference, old| {
+                deltas[case_index] = @max(deltas[case_index], if (channel > reference) channel - reference else reference - channel);
+                legacy_deltas[case_index] = @max(legacy_deltas[case_index], if (channel > old) channel - old else old - channel);
+            }
+            try std.testing.expectEqual(@as(u8, 255), actual.a);
+        }
+        if (deltas[case_index] > 6 or legacy_deltas[case_index] > 6) {
+            std.debug.print("mixed GPU case={d} oracle_delta={d} original_delta={d}\n", .{ case_index, deltas[case_index], legacy_deltas[case_index] });
+            return error.SurfaceCompositionPixelsDiffer;
+        }
+    }
+    const path = try std.fmt.allocPrint(allocator, "{s}/native-mixed.json", .{output});
+    defer allocator.free(path);
+    const json = try std.json.Stringify.valueAlloc(allocator, .{ .cases = 4, .maximum_channel_deltas = deltas, .original_cpu_maximum_channel_deltas = legacy_deltas, .driver = gpuDriverName(device) }, .{});
+    defer allocator.free(json);
+    try std.fs.cwd().writeFile(.{ .sub_path = path, .data = json });
+}
+
 test "desktop renderer conformance GPU golden capture" {
     if (!rendererConformanceEnabled()) return;
 
@@ -1365,6 +1543,7 @@ const RuntimeRenderer = union(RendererKind) {
                 try backend.backend().submit(commands);
             },
             .opengl => |*opengl| {
+                if (advanced_renderer) |value| if (value.surface_compositor != null) return error.SurfaceCompositionGpuUnavailable;
                 if (advanced_renderer) |value| if (value.material_sprites.items.len != 0 or value.particle_instances.items.len != 0 or value.post_passes.items.len != 0) return error.AdvancedRendererUnavailable;
                 metrics.gpu_frame_ns = null;
                 try opengl.presenter.presentWithPresentation(canvas, sprites, commands, presentation.*);
@@ -3312,6 +3491,7 @@ const GpuBackend = struct {
 };
 
 const Presenter = struct {
+    surface_gpu: @import("surface_gpu.zig").Cache(c) = .{},
     render_target: *c.SDL_GPUTexture,
     post_target: *c.SDL_GPUTexture,
     transfer: *c.SDL_GPUTransferBuffer,
@@ -3320,6 +3500,7 @@ const Presenter = struct {
     byte_len: u32,
     sprite_textures: std.ArrayList(SpriteTexture) = .empty,
     sprite_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
+    surface_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     sprite_additive_pipeline: ?*c.SDL_GPUGraphicsPipeline = null,
     nearest_sampler: ?*c.SDL_GPUSampler = null,
     linear_sampler: ?*c.SDL_GPUSampler = null,
@@ -3439,6 +3620,8 @@ const Presenter = struct {
     }
 
     fn deinit(self: *Presenter, device: *c.SDL_GPUDevice) void {
+        self.surface_gpu.releaseAll(device);
+        if (self.surface_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
         for (self.material_pipelines.items) |entry| c.SDL_ReleaseGPUGraphicsPipeline(device, entry.pipeline);
         self.material_pipelines.deinit(std.heap.page_allocator);
         if (self.sprite_pipeline) |pipeline| c.SDL_ReleaseGPUGraphicsPipeline(device, pipeline);
@@ -3483,6 +3666,12 @@ const Presenter = struct {
         const particle_batches: []const up.Renderer2D.ParticleBatch = if (advanced_renderer) |value| value.particle_batches.items else &.{};
         const material_sprites: []const up.Renderer2D.MaterialSprite = if (advanced_renderer) |value| value.material_sprites.items else &.{};
         const post_passes: []const up.Renderer2D.PostPass = if (advanced_renderer) |value| value.post_passes.items else &.{};
+        const composition = if (advanced_renderer) |value| value.surface_compositor else null;
+        if (composition) |scene| {
+            try scene.validate(&canvas);
+            if (self.surface_pipeline == null) self.surface_pipeline = try createSurfacePipeline(device);
+            try self.surface_gpu.prepare(device, scene);
+        } else self.surface_gpu.releaseAll(device);
         try sprites.sortByTexture();
         for (sprites.batches.items) |batch| _ = try self.spriteTexture(device, batch.image);
         self.primitive_batch.clear();
@@ -3500,14 +3689,17 @@ const Presenter = struct {
         }
 
         const copy_pass = c.SDL_BeginGPUCopyPass(command) orelse return sdlFail("SDL_BeginGPUCopyPass");
-        try self.copyCanvas(device, canvas);
+        self.copyCanvas(device, canvas) catch |err| {
+            c.SDL_EndGPUCopyPass(copy_pass);
+            return err;
+        };
         c.SDL_UploadToGPUTexture(copy_pass, &.{
             .transfer_buffer = self.transfer,
             .offset = 0,
             .pixels_per_row = self.width,
             .rows_per_layer = self.height,
         }, &.{
-            .texture = self.render_target,
+            .texture = if (composition != null) self.post_target else self.render_target,
             .mip_level = 0,
             .layer = 0,
             .x = 0,
@@ -3530,7 +3722,17 @@ const Presenter = struct {
             try self.uploadParticleCorners(device, copy_pass);
             try self.uploadParticleInstances(device, copy_pass, particle_instances);
         }
+        if (composition) |scene| self.surface_gpu.upload(device, copy_pass, scene, self.width, self.height) catch |err| {
+            c.SDL_EndGPUCopyPass(copy_pass);
+            return err;
+        };
         c.SDL_EndGPUCopyPass(copy_pass);
+
+        if (composition) |scene| {
+            const target = self.renderTarget(c.SDL_GPU_LOADOP_CLEAR, colorFloat(scene.clear_color));
+            try self.surface_gpu.render(command, scene, self.post_target, target, self.surface_pipeline.?, self.nearest_sampler.?, self.linear_sampler.?, self.width, self.height);
+            pass_count += 1;
+        }
 
         if (self.command_operations.items.len != 0) {
             try self.renderCommandOperations(command);
@@ -3621,7 +3823,7 @@ const Presenter = struct {
     }
 
     fn textureCount(self: *const Presenter) u32 {
-        var count: u32 = 2;
+        var count: u32 = 2 + self.surface_gpu.count();
         for (self.sprite_textures.items) |sprite| {
             count +%= 1;
             if (sprite.pending != null) count +%= 1;
@@ -3630,7 +3832,7 @@ const Presenter = struct {
     }
 
     fn textureBytes(self: *const Presenter) u64 {
-        var bytes = @as(u64, self.byte_len) * 2;
+        var bytes = @as(u64, self.byte_len) * 2 + self.surface_gpu.bytes();
         for (self.sprite_textures.items) |sprite| {
             bytes +|= imageBytes(sprite.width, sprite.height);
             if (sprite.pending) |pending| bytes +|= imageBytes(pending.width, pending.height);
@@ -3640,6 +3842,7 @@ const Presenter = struct {
 
     fn allocationBytes(self: *const Presenter, sprites: *const up.SpriteBatch) u64 {
         var bytes = @as(u64, self.vertex_capacity) + @as(u64, self.primitive_capacity) + @as(u64, self.particle_instance_capacity);
+        bytes += self.surface_gpu.bytes() + @as(u64, self.surface_gpu.vertex_capacity) * 2;
         bytes +|= @as(u64, @intCast(sprites.draws.capacity)) * @sizeOf(up.SpriteBatchDraw);
         bytes +|= @as(u64, @intCast(sprites.vertices.capacity)) * @sizeOf(up.SpriteBatchVertex);
         bytes +|= @as(u64, @intCast(sprites.sorted.capacity)) * @sizeOf(usize);
@@ -4261,9 +4464,17 @@ fn createSpriteSampler(device: *c.SDL_GPUDevice, sampling: up.SpriteSampling) !*
 }
 
 fn createSpritePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_GPUGraphicsPipeline {
+    return createTexturedPipeline(device, blend, false);
+}
+
+fn createSurfacePipeline(device: *c.SDL_GPUDevice) !*c.SDL_GPUGraphicsPipeline {
+    return createTexturedPipeline(device, .alpha, true);
+}
+
+fn createTexturedPipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode, surface: bool) !*c.SDL_GPUGraphicsPipeline {
     const vertex_shader = try createSpriteShader(device, .vertex);
     defer c.SDL_ReleaseGPUShader(device, vertex_shader);
-    const fragment_shader = try createSpriteShader(device, .fragment);
+    const fragment_shader = if (surface) try createSurfaceShader(device) else try createSpriteShader(device, .fragment);
     defer c.SDL_ReleaseGPUShader(device, fragment_shader);
     const destination_factor: c.SDL_GPUBlendFactor = switch (blend) {
         .alpha => c.SDL_GPU_BLENDFACTOR_ONE_MINUS_SRC_ALPHA,
@@ -4305,6 +4516,24 @@ fn createSpritePipeline(device: *c.SDL_GPUDevice, blend: up.BlendMode) !*c.SDL_G
 }
 
 const SpriteShaderStage = enum { vertex, fragment };
+
+fn createSurfaceShader(device: *c.SDL_GPUDevice) !*c.SDL_GPUShader {
+    const shader_format = try selectGpuShaderFormat(device);
+    if (shader_format == .dxbc) return createD3dShader(device, .fragment, sprite_shaders.surface_frag_hlsl, 1, 1);
+    const source = if (shader_format == .msl) sprite_shaders.surface_frag_msl else sprite_shaders.surface_frag_spirv;
+    return c.SDL_CreateGPUShader(device, &.{
+        .code_size = source.len,
+        .code = source.ptr,
+        .entrypoint = if (shader_format == .msl) "main0" else "main",
+        .format = if (shader_format == .msl) c.SDL_GPU_SHADERFORMAT_MSL else c.SDL_GPU_SHADERFORMAT_SPIRV,
+        .stage = c.SDL_GPU_SHADERSTAGE_FRAGMENT,
+        .num_samplers = 1,
+        .num_storage_textures = 0,
+        .num_storage_buffers = 0,
+        .num_uniform_buffers = 1,
+        .props = 0,
+    }) orelse return sdlFail("SDL_CreateGPUShader(surface)");
+}
 
 fn createSpriteShader(device: *c.SDL_GPUDevice, stage: SpriteShaderStage) !*c.SDL_GPUShader {
     const shader_format = try selectGpuShaderFormat(device);

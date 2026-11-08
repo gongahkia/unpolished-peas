@@ -33,6 +33,11 @@ composes onto another Canvas with nearest or linear sampling. It is a
 CPU-backed, backend-neutral surface—not a public GPU render target—and is
 available in headless tests as well as native and browser builds.
 
+[SurfaceCompositor](gpu-surface-composition.md) is an explicit opt-in queue
+for scaling and alpha-composing retained CPU surfaces on SDL GPU/WebGL 2.
+It has a separate CPU oracle, borrowed-source lifetime and ordering contract.
+It does not change the default Canvas renderer.
+
 ## Performance guidance
 
 For measured complete-frame behavior, including the normal Canvas upload and

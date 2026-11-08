@@ -37,7 +37,7 @@ after replay. Recorder owns its buffers; finish returns a separately owned
 Replay, encode returns owned bytes, and parsing returns another owned Replay.
 Each uses the same allocator for release.
 
-[Compiled source](../../examples/api_reference_recipes.zig#L74) (`replay`):
+[Compiled source](../../examples/api_reference_recipes.zig#L100) (`replay`):
 
 ```zig
 pub fn replay(allocator: std.mem.Allocator) !u64 {

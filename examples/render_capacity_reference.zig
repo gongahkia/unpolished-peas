@@ -6,7 +6,8 @@ pub fn main() !void {
     const allocator = std.heap.page_allocator;
     const args = try std.process.argsAlloc(allocator);
     defer std.process.argsFree(allocator, args);
-    if (args.len != 5) return error.ExpectedWidthHeightLinearOutput;
+    if (args.len != 5 and args.len != 6) return error.ExpectedWidthHeightLinearOutput;
+    workload.gpu = args.len == 6 and std.mem.eql(u8, args[5], "gpu");
     const width = try std.fmt.parseInt(u32, args[1], 10);
     const height = try std.fmt.parseInt(u32, args[2], 10);
     workload.linear = try std.fmt.parseInt(u32, args[3], 10) != 0;

@@ -15,7 +15,7 @@ function localStorageOrNull() {
   }
 }
 
-export const AbiVersion = 5;
+export const AbiVersion = 6;
 
 export const ResourceKind = Object.freeze({
   buffer: 0,
@@ -57,6 +57,7 @@ export function createBrowserHost({
   let logicalHeight = 0;
   let primitivePipeline = null;
   let spritePipeline = null;
+  let surfacePipeline = null;
   let particlePipeline = null;
   const materialPipelines = new Map();
   const materialTextures = new Map();
@@ -162,12 +163,12 @@ export function createBrowserHost({
   }
 
   function releaseSpritePipeline(release) {
-    if (!spritePipeline) return;
-    if (release && gl) {
-      gl.deleteBuffer(spritePipeline.buffer);
-      gl.deleteProgram(spritePipeline.program);
+    if (release && gl) for (const pipeline of [spritePipeline, surfacePipeline]) if (pipeline) {
+      gl.deleteBuffer(pipeline.buffer);
+      gl.deleteProgram(pipeline.program);
     }
     spritePipeline = null;
+    surfacePipeline = null;
   }
 
   function releaseParticlePipeline(release) {
@@ -305,9 +306,10 @@ export function createBrowserHost({
     return primitivePipeline;
   }
 
-  function ensureSpritePipeline() {
+  function ensureSpritePipeline(surfaceMode = false) {
     if (!gl || contextLost) return null;
-    if (spritePipeline) return spritePipeline;
+    const existing = surfaceMode ? surfacePipeline : spritePipeline;
+    if (existing) return existing;
     const vertex = compileShader(gl.VERTEX_SHADER, `#version 300 es
       layout(location = 0) in vec2 in_position;
       layout(location = 1) in vec2 in_uv;
@@ -316,7 +318,28 @@ export function createBrowserHost({
       out vec4 out_tint;
       void main() { gl_Position = vec4(in_position, 0.0, 1.0); out_uv = in_uv; out_tint = in_tint; }`);
     if (!vertex) return null;
-    const fragment = compileShader(gl.FRAGMENT_SHADER, `#version 300 es
+    const fragment = compileShader(gl.FRAGMENT_SHADER, surfaceMode ? `#version 300 es
+      precision highp float;
+      precision highp int;
+      uniform highp sampler2D sprite_texture;
+      uniform ivec4 surface_rectangle;
+      uniform int surface_sampling;
+      uniform int surface_height;
+      in vec2 out_uv;
+      in vec4 out_tint;
+      out vec4 fragment_color;
+      void main() {
+        vec4 value;
+        if (surface_sampling == 0) {
+          ivec2 position = ivec2(int(gl_FragCoord.x), surface_height - 1 - int(gl_FragCoord.y)) - surface_rectangle.xy;
+          ivec2 size = textureSize(sprite_texture, 0);
+          ivec2 coordinate = position * size / surface_rectangle.zw;
+          value = texelFetch(sprite_texture, clamp(coordinate, ivec2(0), size - 1), 0);
+        } else value = texture(sprite_texture, out_uv);
+        uvec4 source = uvec4(floor(clamp(value, 0.0, 1.0) * 255.0 + 0.5));
+        uvec4 tint = uvec4(floor(clamp(out_tint, 0.0, 1.0) * 255.0 + 0.5));
+        fragment_color = vec4(source * tint / 255u) / 255.0;
+      }` : `#version 300 es
       precision mediump float;
       uniform sampler2D sprite_texture;
       in vec2 out_uv;
@@ -350,8 +373,17 @@ export function createBrowserHost({
       gl.deleteProgram(program);
       return null;
     }
-    spritePipeline = {program, buffer, sampler};
-    return spritePipeline;
+    const pipeline = {program, buffer, sampler};
+    if (surfaceMode) {
+      pipeline.rectangle = gl.getUniformLocation(program, "surface_rectangle");
+      pipeline.sampling = gl.getUniformLocation(program, "surface_sampling");
+      pipeline.height = gl.getUniformLocation(program, "surface_height");
+      if (pipeline.rectangle === null || pipeline.sampling === null || pipeline.height === null) {
+        gl.deleteBuffer(buffer); gl.deleteProgram(program); return null;
+      }
+      surfacePipeline = pipeline;
+    } else spritePipeline = pipeline;
+    return pipeline;
   }
 
   function ensureParticlePipeline() {
@@ -496,7 +528,7 @@ export function createBrowserHost({
     if (!gl) return Status.unavailable;
     if (contextLost) return Status.rejected;
     if (!bindDrawTarget()) return Status.rejected;
-    const pipeline = ensureSpritePipeline();
+    const pipeline = ensureSpritePipeline(Boolean(spriteBatch.surface));
     if (!pipeline) return Status.rejected;
     gl.useProgram(pipeline.program);
     gl.activeTexture(gl.TEXTURE0);
@@ -513,6 +545,12 @@ export function createBrowserHost({
     gl.vertexAttribPointer(2, 4, gl.FLOAT, false, 32, 16);
     applyRenderState();
     gl.uniform1i(pipeline.sampler, 0);
+    if (spriteBatch.surface) {
+      const rect = spriteBatch.surface;
+      gl.uniform4i(pipeline.rectangle, rect.x, rect.y, rect.width, rect.height);
+      gl.uniform1i(pipeline.sampling, spriteBatch.sampling);
+      gl.uniform1i(pipeline.height, logicalHeight);
+    }
     gl.drawArrays(gl.TRIANGLES, 0, spriteBatch.vertices.length / 8);
     spriteBatch = null;
     return Status.ok;
@@ -539,11 +577,16 @@ export function createBrowserHost({
     gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, sampling === 0 ? gl.NEAREST : gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, sampling === 0 ? gl.NEAREST : gl.LINEAR);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+    if (texture.width === width && texture.height === height && texture.pixels?.byteLength === pixels.byteLength) {
+      gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      texture.pixels.set(pixels);
+    } else {
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, width, height, 0, gl.RGBA, gl.UNSIGNED_BYTE, pixels);
+      texture.pixels = pixels.slice();
+    }
     texture.width = width;
     texture.height = height;
     texture.sampling = sampling;
-    texture.pixels = pixels.slice();
     return Status.ok;
   }
 
@@ -818,6 +861,19 @@ export function createBrowserHost({
       ...spriteVertex(x, y, u0, v0, rgba), ...spriteVertex(x + width, y + height, u1, v1, rgba), ...spriteVertex(x, y + height, u0, v1, rgba),
     );
     return Status.ok;
+  }
+
+  function drawSurface(handle, x, y, width, height, color, sampling) {
+    if (webgpu) return Status.unavailable;
+    if (![x, y, width, height, sampling].every(Number.isInteger) || width <= 0 || height <= 0 || width > 65535 || height > 65535 || sampling < 0 || sampling > 1) return Status.invalidArgument;
+    const texture = resources.get(handle);
+    if (!texture?.width || !texture?.height || texture.width > 4096 || texture.height > 4096) return Status.invalidArgument;
+    const flushed = flushSprites();
+    if (flushed !== Status.ok) return flushed;
+    const status = drawSprite(handle, 0, 0, texture.width, texture.height, x, y, width, height, color, sampling);
+    if (status !== Status.ok) return status;
+    spriteBatch.surface = {x, y, width, height};
+    return flushSprites();
   }
 
   function ensureDebugFontTexture() {
@@ -1204,6 +1260,7 @@ export function createBrowserHost({
     up_host_gl_material_bind_uniform: materialBindUniform,
     up_host_gl_material_draw: materialDraw,
     up_host_gl_draw_sprite: drawSprite,
+    up_host_gl_surface_draw: drawSurface,
     up_host_gl_flush_sprites: flushSprites,
     up_host_gl_draw_text: drawText,
     up_host_gl_push_clip: pushClip,

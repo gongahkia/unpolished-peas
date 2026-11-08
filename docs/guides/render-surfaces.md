@@ -97,6 +97,11 @@ a Canvas and can be deliberately applied to `surface.canvas()` when its
 reference effects are desired, but this does not make the surface a GPU post
 input.
 
+For an explicit SDL GPU/WebGL 2 alternative to CPU scaling and composition,
+see [SurfaceCompositor](gpu-surface-composition.md). It borrows these CPU
+surfaces and uploads their current pixels at presentation. `drawSurface`
+continues to compose immediately on the CPU with its existing semantics.
+
 ## Headless and regression tests
 
 Because a surface is a Canvas-backed value, it works without SDL, a browser,

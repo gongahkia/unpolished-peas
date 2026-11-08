@@ -36,7 +36,7 @@ The borrowed `ActionMap{ .actions = &definitions }` form supports value
 queries but rejects mutation with `ImmutableActionMap`. Owned maps update
 their cached edges once each fixed tick, after rebinding.
 
-[Compiled source](../../examples/api_reference_recipes.zig#L51) (`rebind`):
+[Compiled source](../../examples/api_reference_recipes.zig#L77) (`rebind`):
 
 ```zig
 pub fn rebind(allocator: std.mem.Allocator) !void {

@@ -23,6 +23,7 @@ pub const ActionBinding = root.input.ActionBinding;
 pub const ActionMap = root.input.ActionMap;
 pub const InspectorInputPanel = root.input.InspectorInputPanel;
 pub const Canvas = root.graphics.Canvas;
+pub const SurfaceCompositor = root.graphics.SurfaceCompositor;
 pub const Sprite = root.graphics.Sprite;
 pub const ClipRect = root.graphics.ClipRect;
 pub const BlendMode = root.graphics.BlendMode;
