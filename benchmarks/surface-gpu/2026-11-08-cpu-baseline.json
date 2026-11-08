@@ -1,0 +1,2906 @@
+{
+  "schema": "game-render-capacity-v1",
+  "date": "2026-11-08T00:45:53.734Z",
+  "mode": "measurement",
+  "warmup_frames": 120,
+  "measured_frames": 240,
+  "rounds": 3,
+  "quantiles": "nearest rank",
+  "workload": {
+    "sprites": 1000,
+    "sprite_size": [
+      16,
+      16
+    ],
+    "opaque_fraction": 0.75,
+    "translucent_fraction": 0.25,
+    "labels": 12,
+    "text": "Willow iii WWW — Zoë\nFind the lantern by the bridge.",
+    "font": "Source Sans 3 Regular",
+    "font_height": 14,
+    "world": [
+      320,
+      180
+    ],
+    "overlay": [
+      160,
+      90
+    ],
+    "overlay_rectangles": 64,
+    "output_window": [
+      1280,
+      720
+    ],
+    "native_high_dpi": true,
+    "fixed_hz": 60
+  },
+  "machine": {
+    "platform": "darwin",
+    "release": "24.6.0",
+    "architecture": "x64",
+    "cpu": "Intel(R) Core(TM) i5-8279U CPU @ 2.40GHz",
+    "logical_cpus": 8,
+    "memory_bytes": 8589934592,
+    "node": "v24.19.0",
+    "zig": "0.15.2",
+    "graphics": "Graphics/Displays:\n\n    Intel Iris Plus Graphics 655:\n\n      Chipset Model: Intel Iris Plus Graphics 655\n      Type: GPU\n      Bus: Built-In\n      VRAM (Dynamic, Max): 1536 MB\n      Vendor: Intel\n      Device ID: 0x3ea5\n      Revision ID: 0x0001\n      Metal Support: Metal 3\n      Displays:\n        Color LCD:\n          Display Type: Built-In Retina LCD\n          Resolution: 2560 x 1600 Retina\n          Framebuffer Depth: 24-Bit Color (ARGB8888)\n          Main Display: Yes\n          Mirror: Off\n          Online: Yes\n          Automatically Adjust Brightness: Yes\n          Connection Type: Internal",
+    "power_before": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=6881379)\t100%; discharging; 2:36 remaining present: true",
+    "power_after": "Now drawing from 'Battery Power'\n -InternalBattery-0 (id=6881379)\t89%; discharging; 1:19 remaining present: true"
+  },
+  "checkout": {
+    "head": "7b21b95a0927704ad8d1efddb3ac301483e3742e",
+    "status": "",
+    "diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+  },
+  "source_sha256": {
+    "examples/render_capacity_game.zig": "1da9afb393c0064b5d4342386c2517d1dba2c1e72bdf348e820fdb956201047c",
+    "examples/render_capacity.zig": "84ea7cdb2a1218b73bafd6414bf7479d868c038c1c669542f1e5c832bd141127",
+    "examples/render_capacity_reference.zig": "5e390f04a163f8ac939933973e8439430e5a0106b40e6d4559b8006d82a1869b",
+    "src/render_capacity_build.zig": "3912664ea9017ea55c2bfb1329fc213af463377c4e9302fb3f82ff8864f0f35e",
+    "src/render_benchmark.zig": "4c99dc1199acb0d67f14178b252949521b3fd071fe16d49be6bdd54693598faf",
+    "src/canvas.zig": "b045ba3ff653df980893a50be824cd2b9f776941335fa6f6e61a82265cb7af1d",
+    "src/backend/sdl_gpu.zig": "0056ee6149801cf96a7e963204efd5297bb54fc9b6ca9b075eb8c6e8da7a4d82",
+    "src/browser/runtime.zig": "c9f2384f27df892d62699c48e17451b178c08b280dd27282ad493159b48b85e9",
+    "src/browser/host.mjs": "6b3f599d49bc9df4926b650955bd4694c706367c4d6b531b176da3b01015b072",
+    "script/benchmark_game_rendering.mjs": "c90fc5b59e039aeb88a466ccb841ef356a1374597f5e9d7046c010823880c090",
+    "script/browser-authoring/adapters.mjs": "526eed143dcfefa5848202f1c56653d1183726222a40aebb0b1d4073b6aa1caa",
+    "script/browser-authoring/checks.mjs": "bd9145606f50f4697eec03297c1b74d65c2ef2d824986cbeeebc6758ca43c9b3",
+    "script/browser-authoring/package-lock.json": "8629a5c689b3d53a01c2ff5c4b31ab5ae48821b2c60643f062bf8920f9d73c11"
+  },
+  "binaries_sha256": {
+    "reference": "ca5ae3966cabcfdf021d35c9759fa6408513ef3996971530a5795326680ed471",
+    "native-320-nearest": "93460113c3ee2f5701dee8fd196a8e64244da5c9705a2eefeca537dc871deb53",
+    "native-640-nearest": "7335bd3475683a450c19da2149b172af3779709d2524a4598e9d15642fb2368e",
+    "native-1280-nearest": "bd37115e187848cba2f2dc458b440024a072cec8a6c0efeb63e3f74ca9dbb8cd",
+    "native-1280-linear": "8a023d3f7e3f9f0d1984d570b2d1561ccc16fd514ffbd97e56275cd07feae183",
+    "web/unpolished-peas.wasm": "9d216663768f1b68c2fc61a3a8995915f31d39e9998ac0c4bc72d28e13fdf5eb"
+  },
+  "results": [
+    {
+      "platform": "native",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0021600000000034925,
+          "p95_ms": 0.00904400000035821,
+          "p99_ms": 0.01185299999997369,
+          "max_ms": 0.0173850000001039,
+          "mean_ms": 0.0029662791666813368
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.1974340000006123,
+          "median_ms": 2.7719399999996313,
+          "p95_ms": 4.930035000000316,
+          "p99_ms": 5.749789999999848,
+          "max_ms": 6.197286000000531,
+          "mean_ms": 2.9593033291666755
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.6943300000002637,
+          "median_ms": 1.8307819999999992,
+          "p95_ms": 3.728407999999945,
+          "p99_ms": 4.874870999999985,
+          "max_ms": 5.085160999999971,
+          "mean_ms": 2.0624808875000062
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.14771199999995588,
+          "median_ms": 0.26772799999980634,
+          "p95_ms": 0.3756730000004609,
+          "p99_ms": 0.46635299999979907,
+          "max_ms": 0.5827989999997953,
+          "mean_ms": 0.27291267500004135
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.30679199999940465,
+          "median_ms": 0.5890069999995831,
+          "p95_ms": 0.9082509999998365,
+          "p99_ms": 1.0734780000002502,
+          "max_ms": 1.609519999999975,
+          "mean_ms": 0.6239097666666282
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 1.379624,
+          "median_ms": 16.662851,
+          "p95_ms": 17.137162,
+          "p99_ms": 20.483762,
+          "max_ms": 48.642988,
+          "mean_ms": 16.643203020833337
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 1.379815,
+          "median_ms": 16.663175,
+          "p95_ms": 17.14216,
+          "p99_ms": 20.484148,
+          "max_ms": 48.643198,
+          "mean_ms": 16.657862654166664
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.003099,
+          "p95_ms": 0.012973,
+          "p99_ms": 0.016861,
+          "max_ms": 0.018424,
+          "mean_ms": 0.0040479625
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 1.198646,
+          "median_ms": 2.775652,
+          "p95_ms": 4.932178,
+          "p99_ms": 5.752436,
+          "max_ms": 6.200086,
+          "mean_ms": 2.961705658333334
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.117713,
+          "median_ms": 13.080594,
+          "p95_ms": 15.181476,
+          "p99_ms": 15.984903,
+          "max_ms": 16.894246,
+          "mean_ms": 12.81289151666667
+        }
+      },
+      "fixed_updates": 240,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0018650000001798617,
+          "p95_ms": 0.0032799999999042484,
+          "p99_ms": 0.02001399999971909,
+          "max_ms": 0.05700299999989511,
+          "mean_ms": 0.002609270833318078
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 2.566598999999769,
+          "median_ms": 4.408582999999453,
+          "p95_ms": 5.2871210000002975,
+          "p99_ms": 5.612239000000045,
+          "max_ms": 6.198280999999952,
+          "mean_ms": 4.347256166666655
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7782219999999143,
+          "median_ms": 1.7023929999995744,
+          "p95_ms": 2.1742539999995643,
+          "p99_ms": 2.377867000000151,
+          "max_ms": 3.1720109999996566,
+          "mean_ms": 1.680864795833323
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.16876700000011624,
+          "median_ms": 0.2586120000005394,
+          "p95_ms": 0.30244500000026164,
+          "p99_ms": 0.34005200000001423,
+          "max_ms": 0.41735700000026554,
+          "mean_ms": 0.2508740416666531
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 1.4191979999995965,
+          "median_ms": 2.436290999999983,
+          "p95_ms": 2.9509149999994406,
+          "p99_ms": 3.0862420000003112,
+          "max_ms": 3.655377000000044,
+          "mean_ms": 2.4155173291666796
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 3.526592,
+          "median_ms": 16.657446,
+          "p95_ms": 17.169235,
+          "p99_ms": 17.336802,
+          "max_ms": 17.660295,
+          "mean_ms": 16.54907849583334
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 3.526851,
+          "median_ms": 16.657972,
+          "p95_ms": 17.175223,
+          "p99_ms": 17.345107,
+          "max_ms": 21.425338,
+          "mean_ms": 16.56741432916666
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.002572,
+          "p95_ms": 0.004792,
+          "p99_ms": 0.020915,
+          "max_ms": 0.059539,
+          "mean_ms": 0.0034667916666666645
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 2.568256,
+          "median_ms": 4.410551,
+          "p95_ms": 5.289404,
+          "p99_ms": 5.614349,
+          "max_ms": 6.201076,
+          "mean_ms": 4.349597812499998
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.183201,
+          "median_ms": 12.05246,
+          "p95_ms": 13.556625,
+          "p99_ms": 13.923919,
+          "max_ms": 13.994323,
+          "mean_ms": 11.967837262500005
+        }
+      },
+      "fixed_updates": 239,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001419000000169035,
+          "p95_ms": 0.002486999999746331,
+          "p99_ms": 0.0032049999999799184,
+          "max_ms": 0.003416999999899417,
+          "mean_ms": 0.0015899041666709004
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 5.606871999999839,
+          "median_ms": 7.778897000000143,
+          "p95_ms": 9.434913000000051,
+          "p99_ms": 9.894694999999956,
+          "max_ms": 11.172696000000542,
+          "mean_ms": 7.7273262000000384
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.8424780000000283,
+          "median_ms": 1.7426270000005388,
+          "p95_ms": 2.204541999999492,
+          "p99_ms": 2.8311290000001463,
+          "max_ms": 4.260925000000498,
+          "mean_ms": 1.7383287000000223
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.1568120000001727,
+          "median_ms": 0.198671999999533,
+          "p95_ms": 0.2641779999994469,
+          "p99_ms": 0.31850000000031287,
+          "max_ms": 0.3902949999996963,
+          "mean_ms": 0.2096389125000068
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 4.2729660000004515,
+          "median_ms": 5.685332000000017,
+          "p95_ms": 7.028234999999768,
+          "p99_ms": 7.466891000000032,
+          "max_ms": 8.858373999999458,
+          "mean_ms": 5.77935858750001
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 6.8838,
+          "median_ms": 16.672115,
+          "p95_ms": 17.341831,
+          "p99_ms": 17.64444,
+          "max_ms": 17.743189,
+          "mean_ms": 16.601010337499996
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 6.884086,
+          "median_ms": 16.672643,
+          "p95_ms": 17.3604,
+          "p99_ms": 17.662672,
+          "max_ms": 23.812472,
+          "mean_ms": 16.630554354166662
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001878,
+          "p95_ms": 0.003401,
+          "p99_ms": 0.005126,
+          "max_ms": 0.02206,
+          "mean_ms": 0.0022796541666666656
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 5.608482,
+          "median_ms": 7.782093,
+          "p95_ms": 9.438833,
+          "p99_ms": 9.898044,
+          "max_ms": 11.178013,
+          "mean_ms": 7.729934729166663
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.374148,
+          "median_ms": 8.563359,
+          "p95_ms": 10.358616,
+          "p99_ms": 10.961362,
+          "max_ms": 11.442492,
+          "mean_ms": 8.409514262499995
+        }
+      },
+      "fixed_updates": 239,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0.0008719999987079063,
+          "median_ms": 0.0010939999992842786,
+          "p95_ms": 0.0026920000000245636,
+          "p99_ms": 0.0036259999997128034,
+          "max_ms": 0.00397999999950116,
+          "mean_ms": 0.0014283041666961556
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 17.49130999999943,
+          "median_ms": 20.081914000000324,
+          "p95_ms": 24.764580000000933,
+          "p99_ms": 27.69600100000025,
+          "max_ms": 30.086388999999144,
+          "mean_ms": 20.419359008333345
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.9000689999993483,
+          "median_ms": 1.097949000000881,
+          "p95_ms": 1.5487700000003315,
+          "p99_ms": 1.9389920000003258,
+          "max_ms": 2.1549519999998665,
+          "mean_ms": 1.1592758416667002
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.18911999999909312,
+          "median_ms": 0.20954499999970722,
+          "p95_ms": 0.2907709999999497,
+          "p99_ms": 0.31714499999998225,
+          "max_ms": 0.5015799999991941,
+          "mean_ms": 0.2194546208333539
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 16.40212100000099,
+          "median_ms": 18.70923700000094,
+          "p95_ms": 23.233150999999452,
+          "p99_ms": 25.423211999999694,
+          "max_ms": 28.453263999999763,
+          "mean_ms": 19.04062854583329
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 18.145745,
+          "median_ms": 20.857323,
+          "p95_ms": 25.551199,
+          "p99_ms": 28.632291,
+          "max_ms": 30.965245,
+          "mean_ms": 21.20163404583334
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 18.146117,
+          "median_ms": 20.870953,
+          "p95_ms": 25.5728,
+          "p99_ms": 28.663893,
+          "max_ms": 35.704986,
+          "mean_ms": 21.27390453333334
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0.001112,
+          "median_ms": 0.001474,
+          "p95_ms": 0.003317,
+          "p99_ms": 0.004193,
+          "max_ms": 0.004573,
+          "mean_ms": 0.0018068624999999995
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 17.493075,
+          "median_ms": 20.083939,
+          "p95_ms": 24.766737,
+          "p99_ms": 27.698574,
+          "max_ms": 30.088832,
+          "mean_ms": 20.421655375000004
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.371504,
+          "median_ms": 0.455707,
+          "p95_ms": 0.583671,
+          "p99_ms": 0.801665,
+          "max_ms": 0.951004,
+          "mean_ms": 0.4726109458333336
+        }
+      },
+      "fixed_updates": 307,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0012110000006941846,
+          "p95_ms": 0.0022240000007514027,
+          "p99_ms": 0.0035950000001321314,
+          "max_ms": 0.02496900000005553,
+          "mean_ms": 0.0014596333333353566
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.3376619999999093,
+          "median_ms": 1.7343300000002273,
+          "p95_ms": 2.6810989999999038,
+          "p99_ms": 3.3015600000007908,
+          "max_ms": 3.676900000000387,
+          "mean_ms": 1.8612881999999653
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.8050889999999526,
+          "median_ms": 1.0950500000003558,
+          "p95_ms": 1.7613000000001193,
+          "p99_ms": 2.13207999999986,
+          "max_ms": 2.3249769999997625,
+          "mean_ms": 1.1727476874999827
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.149902000000111,
+          "median_ms": 0.20056899999963207,
+          "p95_ms": 0.29865499999959866,
+          "p99_ms": 0.3673950000002151,
+          "max_ms": 0.3863089999999829,
+          "mean_ms": 0.21081572083334285
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.3091000000003987,
+          "median_ms": 0.45374599999922793,
+          "p95_ms": 0.7123849999998129,
+          "p99_ms": 0.823511999999937,
+          "max_ms": 1.1163010000000213,
+          "mean_ms": 0.4777247916666397
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 2.891969,
+          "median_ms": 16.660743,
+          "p95_ms": 17.032047,
+          "p99_ms": 17.415358,
+          "max_ms": 17.557154,
+          "mean_ms": 16.603185245833323
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 2.892202,
+          "median_ms": 16.661029,
+          "p95_ms": 17.040612,
+          "p99_ms": 17.429789,
+          "max_ms": 20.8294,
+          "mean_ms": 16.62062151250001
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001632,
+          "p95_ms": 0.002697,
+          "p99_ms": 0.005137,
+          "max_ms": 0.026192,
+          "mean_ms": 0.0019149374999999995
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 1.339048,
+          "median_ms": 1.736591,
+          "p95_ms": 2.683103,
+          "p99_ms": 3.30388,
+          "max_ms": 3.679507,
+          "mean_ms": 1.8630639708333334
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.206831,
+          "median_ms": 14.813911,
+          "p95_ms": 15.273015,
+          "p99_ms": 15.545426,
+          "max_ms": 15.914571,
+          "mean_ms": 14.626852295833327
+        }
+      },
+      "fixed_updates": 239,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.002373999999690568,
+          "p95_ms": 0.0034359999999651336,
+          "p99_ms": 0.017995999999584456,
+          "max_ms": 0.019897000000128173,
+          "mean_ms": 0.0025146458333760316
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 2.7504820000003747,
+          "median_ms": 4.69914400000016,
+          "p95_ms": 5.435332999999446,
+          "p99_ms": 5.599643999999898,
+          "max_ms": 5.919769999999517,
+          "mean_ms": 4.644320404166681
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.9581299999999828,
+          "median_ms": 1.84657100000004,
+          "p95_ms": 2.2130489999999554,
+          "p99_ms": 2.355669999999918,
+          "max_ms": 2.433635000000322,
+          "mean_ms": 1.829778662500009
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.18542299999990064,
+          "median_ms": 0.2689190000000963,
+          "p95_ms": 0.3020040000001245,
+          "p99_ms": 0.36507000000074186,
+          "max_ms": 0.3872270000001663,
+          "mean_ms": 0.26308707083334754
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 1.5905919999995604,
+          "median_ms": 2.562640999999985,
+          "p95_ms": 3.017808999999943,
+          "p99_ms": 3.141012000000046,
+          "max_ms": 3.4817409999996016,
+          "mean_ms": 2.5514546708333246
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 3.976229,
+          "median_ms": 16.654247,
+          "p95_ms": 17.19519,
+          "p99_ms": 17.517517,
+          "max_ms": 17.531436,
+          "mean_ms": 16.5652019375
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 3.976469,
+          "median_ms": 16.654758,
+          "p95_ms": 17.195874,
+          "p99_ms": 17.518042,
+          "max_ms": 21.873589,
+          "mean_ms": 16.583834374999988
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.003193,
+          "p95_ms": 0.004843,
+          "p99_ms": 0.019397,
+          "max_ms": 0.021185,
+          "mean_ms": 0.003533245833333335
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 2.752267,
+          "median_ms": 4.701281,
+          "p95_ms": 5.437945,
+          "p99_ms": 5.60195,
+          "max_ms": 5.922906,
+          "mean_ms": 4.646587604166666
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.274168,
+          "median_ms": 11.640145,
+          "p95_ms": 13.434249,
+          "p99_ms": 14.109529,
+          "max_ms": 14.648018,
+          "mean_ms": 11.656579066666662
+        }
+      },
+      "fixed_updates": 239,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0014229999997041887,
+          "p95_ms": 0.002704999999878055,
+          "p99_ms": 0.01625300000068819,
+          "max_ms": 0.018540000000029977,
+          "mean_ms": 0.0017787791666781536
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 5.670016999999461,
+          "median_ms": 7.715400000000045,
+          "p95_ms": 9.216449000000466,
+          "p99_ms": 9.826251000000411,
+          "max_ms": 9.925455000000511,
+          "mean_ms": 7.683859612499953
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.8940640000000712,
+          "median_ms": 1.684635999999955,
+          "p95_ms": 2.2303430000001754,
+          "p99_ms": 2.5228680000000168,
+          "max_ms": 2.5783480000000054,
+          "mean_ms": 1.699053958333305
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.15992300000016257,
+          "median_ms": 0.1991330000000744,
+          "p95_ms": 0.2565740000000005,
+          "p99_ms": 0.31260500000007596,
+          "max_ms": 0.33407100000022183,
+          "mean_ms": 0.20980042916661054
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 4.308597000000191,
+          "median_ms": 5.70380600000135,
+          "p95_ms": 6.900948999999855,
+          "p99_ms": 7.248990000000049,
+          "max_ms": 7.49474199999986,
+          "mean_ms": 5.775005225000037
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 7.477815,
+          "median_ms": 16.6575,
+          "p95_ms": 17.326374,
+          "p99_ms": 17.417329,
+          "max_ms": 21.675549,
+          "mean_ms": 16.647525358333336
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 7.478296,
+          "median_ms": 16.658589,
+          "p95_ms": 17.330498,
+          "p99_ms": 17.421536,
+          "max_ms": 27.660366,
+          "mean_ms": 16.695021812500002
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001883,
+          "p95_ms": 0.0043,
+          "p99_ms": 0.018268,
+          "max_ms": 0.019275,
+          "mean_ms": 0.002549129166666665
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 5.671834,
+          "median_ms": 7.718795,
+          "p95_ms": 9.219079,
+          "p99_ms": 9.830454,
+          "max_ms": 9.928916,
+          "mean_ms": 7.6864996875000005
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.74329,
+          "median_ms": 8.543221,
+          "p95_ms": 10.517379,
+          "p99_ms": 10.877261,
+          "max_ms": 15.60054,
+          "mean_ms": 8.500684483333332
+        }
+      },
+      "fixed_updates": 240,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0.0007599999999001739,
+          "median_ms": 0.0008920000000216532,
+          "p95_ms": 0.0023370000008071656,
+          "p99_ms": 0.003733000000465836,
+          "max_ms": 0.01780499999949825,
+          "mean_ms": 0.0011850999999940845
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 15.473309999999401,
+          "median_ms": 17.163312999999107,
+          "p95_ms": 21.40198599999985,
+          "p99_ms": 29.698441999999886,
+          "max_ms": 31.144639999999526,
+          "mean_ms": 17.914552695833287
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7879220000004352,
+          "median_ms": 0.9547199999997247,
+          "p95_ms": 1.394771000000219,
+          "p99_ms": 1.4918140000008862,
+          "max_ms": 1.7846419999996215,
+          "mean_ms": 1.0121715249999852
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.16128399999979592,
+          "median_ms": 0.17983400000048277,
+          "p95_ms": 0.2554309999995894,
+          "p99_ms": 0.31766199999947276,
+          "max_ms": 0.3616809999994075,
+          "mean_ms": 0.19035803333329493
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 14.490461000000323,
+          "median_ms": 15.938019999999597,
+          "p95_ms": 20.174754999999095,
+          "p99_ms": 28.020437999999558,
+          "max_ms": 29.878506000000016,
+          "mean_ms": 16.712023137500008
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 16.139728,
+          "median_ms": 17.874138,
+          "p95_ms": 22.369778,
+          "p99_ms": 30.595171,
+          "max_ms": 31.973168,
+          "mean_ms": 18.698122204166665
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 16.139922,
+          "median_ms": 17.874529,
+          "p95_ms": 22.651861,
+          "p99_ms": 31.508938,
+          "max_ms": 33.618972,
+          "mean_ms": 18.763902429166656
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0.000949,
+          "median_ms": 0.001214,
+          "p95_ms": 0.002819,
+          "p99_ms": 0.004279,
+          "max_ms": 0.01821,
+          "mean_ms": 0.0015065125000000008
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 15.474919,
+          "median_ms": 17.165285,
+          "p95_ms": 21.404043,
+          "p99_ms": 29.701642,
+          "max_ms": 31.146752,
+          "mean_ms": 17.91672577083334
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.313316,
+          "median_ms": 0.421986,
+          "p95_ms": 0.644033,
+          "p99_ms": 0.761039,
+          "max_ms": 4.817043,
+          "mean_ms": 0.46996437083333364
+        }
+      },
+      "fixed_updates": 270,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0024699999994481914,
+          "p95_ms": 0.003432999999859021,
+          "p99_ms": 0.020169000000350934,
+          "max_ms": 0.021757999999863387,
+          "mean_ms": 0.0025542333332983463
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.1914950000000317,
+          "median_ms": 2.9007220000003144,
+          "p95_ms": 3.4012080000002243,
+          "p99_ms": 3.580044000000271,
+          "max_ms": 3.894194000000425,
+          "mean_ms": 2.6085447541666724
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.6571349999999256,
+          "median_ms": 1.8496139999997467,
+          "p95_ms": 2.301553999999669,
+          "p99_ms": 2.3945349999994505,
+          "max_ms": 2.5349209999994855,
+          "mean_ms": 1.69001861666668
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.14391500000010637,
+          "median_ms": 0.34318700000039826,
+          "p95_ms": 0.37076799999977084,
+          "p99_ms": 0.4595369999997274,
+          "max_ms": 0.5026870000001509,
+          "mean_ms": 0.2952150916666331
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.3002220000003035,
+          "median_ms": 0.720683999999892,
+          "p95_ms": 0.7614250000005995,
+          "p99_ms": 0.9747289999995701,
+          "max_ms": 1.1575130000001081,
+          "mean_ms": 0.6233110458333594
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 1.598286,
+          "median_ms": 16.670801,
+          "p95_ms": 17.338223,
+          "p99_ms": 17.44703,
+          "max_ms": 17.545833,
+          "mean_ms": 16.568185683333333
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 1.598461,
+          "median_ms": 16.671413,
+          "p95_ms": 17.340671,
+          "p99_ms": 17.541344,
+          "max_ms": 18.618438,
+          "mean_ms": 16.579346125000004
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.003245,
+          "p95_ms": 0.004641,
+          "p99_ms": 0.0212,
+          "max_ms": 0.022572,
+          "mean_ms": 0.0033801749999999996
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 1.191778,
+          "median_ms": 2.902901,
+          "p95_ms": 3.403612,
+          "p99_ms": 3.599622,
+          "max_ms": 3.913479,
+          "mean_ms": 2.6108626958333323
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.314703,
+          "median_ms": 13.443389,
+          "p95_ms": 15.454544,
+          "p99_ms": 16.022193,
+          "max_ms": 16.103591,
+          "mean_ms": 13.77852010416666
+        }
+      },
+      "fixed_updates": 239,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001111000000491913,
+          "p95_ms": 0.002327000001059787,
+          "p99_ms": 0.010620999999446212,
+          "max_ms": 0.015315999999984342,
+          "mean_ms": 0.0013335041666929707
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 2.2699320000001535,
+          "median_ms": 2.878569999999854,
+          "p95_ms": 3.97697799999969,
+          "p99_ms": 4.588101000000279,
+          "max_ms": 5.902277999999569,
+          "mean_ms": 2.999734062499969
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7118900000004942,
+          "median_ms": 0.9619739999998274,
+          "p95_ms": 1.4411099999997532,
+          "p99_ms": 2.0567399999999907,
+          "max_ms": 2.975832000000082,
+          "mean_ms": 1.032389062499965
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.14883000000008906,
+          "median_ms": 0.18441799999982322,
+          "p95_ms": 0.30872899999940273,
+          "p99_ms": 0.3452930000003107,
+          "max_ms": 0.4035549999998693,
+          "mean_ms": 0.20537124583328628
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 1.3049580000006245,
+          "median_ms": 1.6917539999994915,
+          "p95_ms": 2.446512999999868,
+          "p99_ms": 2.7579329999998663,
+          "max_ms": 2.7636759999995775,
+          "mean_ms": 1.7619737541667178
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 3.310622,
+          "median_ms": 16.663181,
+          "p95_ms": 16.952708,
+          "p99_ms": 17.313261,
+          "max_ms": 33.357112,
+          "mean_ms": 16.73220257499999
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 3.310753,
+          "median_ms": 16.663774,
+          "p95_ms": 16.958858,
+          "p99_ms": 19.6996,
+          "max_ms": 33.357729,
+          "mean_ms": 16.745558316666664
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001487,
+          "p95_ms": 0.002922,
+          "p99_ms": 0.011213,
+          "max_ms": 0.015749,
+          "mean_ms": 0.001729887499999999
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 2.271429,
+          "median_ms": 2.879913,
+          "p95_ms": 3.979148,
+          "p99_ms": 4.58999,
+          "max_ms": 5.904453,
+          "mean_ms": 3.0015868291666647
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.193217,
+          "median_ms": 13.641912,
+          "p95_ms": 14.283578,
+          "p99_ms": 14.55658,
+          "max_ms": 29.98491,
+          "mean_ms": 13.569892291666667
+        }
+      },
+      "fixed_updates": 241,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.0009569999992891098,
+          "p99_ms": 0.0023190000001704902,
+          "max_ms": 0.021670000000085565,
+          "mean_ms": 0.00047885416666607246
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 4.964673999999832,
+          "median_ms": 5.3958999999995285,
+          "p95_ms": 6.857687000000624,
+          "p99_ms": 7.664082000000235,
+          "max_ms": 7.861332999999831,
+          "mean_ms": 5.64354879166666
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7748919999994541,
+          "median_ms": 0.8605749999996988,
+          "p95_ms": 2.4913409999999203,
+          "p99_ms": 2.813592000000426,
+          "max_ms": 3.2264810000006037,
+          "mean_ms": 1.1742204458333163
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.14976500000011583,
+          "median_ms": 0.16417699999965407,
+          "p95_ms": 0.22242999999980384,
+          "p99_ms": 0.2614999999996144,
+          "max_ms": 0.32907999999952153,
+          "mean_ms": 0.17164336249998843
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 3.9460690000005343,
+          "median_ms": 4.255152000000635,
+          "p95_ms": 4.6310050000001866,
+          "p99_ms": 5.078268000000207,
+          "max_ms": 5.321218000000044,
+          "mean_ms": 4.2976849833333555
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 5.412087,
+          "median_ms": 5.92574,
+          "p95_ms": 7.726682,
+          "p99_ms": 8.85934,
+          "max_ms": 9.161936,
+          "mean_ms": 6.2625318374999965
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 5.412286,
+          "median_ms": 5.929643,
+          "p95_ms": 7.728098,
+          "p99_ms": 9.108931,
+          "max_ms": 22.870516,
+          "mean_ms": 6.334069504166668
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.001335,
+          "p99_ms": 0.014685,
+          "max_ms": 0.021838,
+          "mean_ms": 0.0006330999999999998
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 4.965347,
+          "median_ms": 5.397085,
+          "p95_ms": 6.859894,
+          "p99_ms": 7.6663,
+          "max_ms": 7.864646,
+          "mean_ms": 5.645109954166668
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.249452,
+          "median_ms": 0.294793,
+          "p95_ms": 0.479191,
+          "p99_ms": 0.864369,
+          "max_ms": 2.982588,
+          "mean_ms": 0.3423177958333335
+        }
+      },
+      "fixed_updates": 92,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "native",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.0008479999996779952,
+          "p95_ms": 0.002419999999801803,
+          "p99_ms": 0.022723999999470834,
+          "max_ms": 0.03511799999978393,
+          "mean_ms": 0.0014161708333100857
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 14.982168999999885,
+          "median_ms": 16.206938999999693,
+          "p95_ms": 18.963517000000138,
+          "p99_ms": 23.67432800000006,
+          "max_ms": 24.929580999999416,
+          "mean_ms": 16.575137150000046
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7700359999998909,
+          "median_ms": 0.9235380000000077,
+          "p95_ms": 2.169761999999537,
+          "p99_ms": 3.0601690000003146,
+          "max_ms": 3.4343449999996665,
+          "mean_ms": 1.0825592291667059
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.14865700000154902,
+          "median_ms": 0.16707700000006298,
+          "p95_ms": 0.26949400000012247,
+          "p99_ms": 0.3358490000009624,
+          "max_ms": 0.6842249999999694,
+          "mean_ms": 0.18120017083338097
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 13.970667999999932,
+          "median_ms": 14.926467999999659,
+          "p95_ms": 17.179379000001063,
+          "p99_ms": 21.99195399999917,
+          "max_ms": 22.803900999999314,
+          "mean_ms": 15.31137774999996
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 15.542616,
+          "median_ms": 16.931479,
+          "p95_ms": 19.829463,
+          "p99_ms": 25.691173,
+          "max_ms": 29.41004,
+          "mean_ms": 17.36008732916666
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 15.54287,
+          "median_ms": 16.943937,
+          "p95_ms": 19.901543,
+          "p99_ms": 25.75263,
+          "max_ms": 40.672805,
+          "mean_ms": 17.46477702083333
+        },
+        "host_update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.001103,
+          "p95_ms": 0.002644,
+          "p99_ms": 0.023097,
+          "max_ms": 0.035776,
+          "mean_ms": 0.0017271875000000002
+        },
+        "host_draw_ms": {
+          "samples": 240,
+          "min_ms": 14.983146,
+          "median_ms": 16.208647,
+          "p95_ms": 18.965642,
+          "p99_ms": 23.676379,
+          "max_ms": 24.939958,
+          "mean_ms": 16.577137724999996
+        },
+        "upload_present_ms": {
+          "samples": 240,
+          "min_ms": 0.234549,
+          "median_ms": 0.356658,
+          "p95_ms": 0.72616,
+          "p99_ms": 1.637597,
+          "max_ms": 3.036434,
+          "mean_ms": 0.4195217333333334
+        }
+      },
+      "fixed_updates": 251,
+      "framebuffer": {
+        "x": 2560,
+        "y": 1440
+      },
+      "renderer": "unpolished-peas native renderer: video_driver=cocoa requested=sdl_gpu selected=sdl_gpu sdl_gpu=available opengl_33=unknown shader=msl fallback=not_requested recovery=none preflight=none",
+      "presented_frames_verified": true
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 1.2000000029802322,
+          "mean_ms": 0.013333333221574624
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.8999999910593033,
+          "median_ms": 3,
+          "p95_ms": 4.299999997019768,
+          "p99_ms": 4.5,
+          "max_ms": 4.700000002980232,
+          "mean_ms": 3.0808333332960802
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 2,
+          "p95_ms": 2.9000000059604645,
+          "p99_ms": 3.1000000089406967,
+          "max_ms": 3.2999999970197678,
+          "mean_ms": 1.983333333519598
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.19999998807907104,
+          "median_ms": 0.29999999701976776,
+          "p95_ms": 0.5,
+          "p99_ms": 0.5,
+          "max_ms": 0.5,
+          "mean_ms": 0.34083333301047486
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.3999999910593033,
+          "median_ms": 0.7000000029802322,
+          "p95_ms": 1,
+          "p99_ms": 1.0999999940395355,
+          "max_ms": 1.5,
+          "mean_ms": 0.7566666667660077
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 2.1000000089406967,
+          "median_ms": 3.4000000059604645,
+          "p95_ms": 4.700000002980232,
+          "p99_ms": 5,
+          "max_ms": 5.5,
+          "mean_ms": 3.493333333109816
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 15.399999991059303,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.599999994039536,
+          "p99_ms": 17.700000002980232,
+          "max_ms": 17.700000002980232,
+          "mean_ms": 16.663333333283664
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.19999998807907104,
+          "p95_ms": 0.30000001192092896,
+          "p99_ms": 0.5,
+          "max_ms": 0.5,
+          "mean_ms": 0.17791666649281979
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.20000000298023224,
+          "max_ms": 0.20000000298023224,
+          "mean_ms": 0.07666666731238365
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.5,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000728,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.666249999999998
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6029312,
+        "final_memory_bytes": 6029312,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "8c95c9fb7ff71d834152b7d2e7ba8104e9a6b5bad1663ca10fe4458cf89d0d81"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.006666666517655055
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 3,
+          "median_ms": 4.5999999940395355,
+          "p95_ms": 7.199999988079071,
+          "p99_ms": 7.9000000059604645,
+          "max_ms": 9.099999994039536,
+          "mean_ms": 4.763333333842456
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.9000000059604645,
+          "median_ms": 1.5999999940395355,
+          "p95_ms": 3,
+          "p99_ms": 4.0999999940395355,
+          "max_ms": 5.299999997019768,
+          "mean_ms": 1.7195833332836628
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.29999999701976776,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 0.699999988079071,
+          "max_ms": 1,
+          "mean_ms": 0.2945833330353101
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 1.699999988079071,
+          "median_ms": 2.699999988079071,
+          "p95_ms": 3.9000000059604645,
+          "p99_ms": 4.4000000059604645,
+          "max_ms": 5,
+          "mean_ms": 2.7491666675234834
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 3.4000000059604645,
+          "median_ms": 5.200000002980232,
+          "p95_ms": 8,
+          "p99_ms": 11.5,
+          "max_ms": 15.599999994039536,
+          "mean_ms": 5.5537499996523065
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 10.699999988079071,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.69999998807907,
+          "p99_ms": 18.700000002980232,
+          "max_ms": 22.5,
+          "mean_ms": 16.667500000012417
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.3999999910593033,
+          "p95_ms": 1.5999999940395355,
+          "p99_ms": 2.9000000059604645,
+          "max_ms": 3.1000000089406967,
+          "mean_ms": 0.513749999490877
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.5999999940395355,
+          "max_ms": 8.700000002980232,
+          "mean_ms": 0.13083333373069764
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.599999999999454,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000728,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.665833333333335
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6815744,
+        "final_memory_bytes": 6815744,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "20818642599959fde069b30268cc5a5b571007830cb0c8cc5404d304c5d48d56"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.005000000074505806
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 6.5999999940395355,
+          "median_ms": 7.5,
+          "p95_ms": 9.5,
+          "p99_ms": 10,
+          "max_ms": 10.5,
+          "mean_ms": 7.754583332811793
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 1.4000000059604645,
+          "p95_ms": 2,
+          "p99_ms": 2.2000000029802322,
+          "max_ms": 2.2999999970197678,
+          "mean_ms": 1.4612500004470348
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.30000001192092896,
+          "p99_ms": 0.30000001192092896,
+          "max_ms": 0.3999999910593033,
+          "mean_ms": 0.23333333258827527
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 5.200000002980232,
+          "median_ms": 5.9000000059604645,
+          "p95_ms": 7.200000002980232,
+          "p99_ms": 7.5999999940395355,
+          "max_ms": 7.9000000059604645,
+          "mean_ms": 6.059999999776482
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 9.099999994039536,
+          "median_ms": 10.400000005960464,
+          "p95_ms": 12.5,
+          "p99_ms": 15.299999997019768,
+          "max_ms": 21.400000005960464,
+          "mean_ms": 10.702083333643774
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 11.900000005960464,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.69999998807907,
+          "p99_ms": 17.900000005960464,
+          "max_ms": 21.700000002980232,
+          "mean_ms": 16.66333333334575
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.2000000029802322,
+          "median_ms": 2.6000000089406967,
+          "p95_ms": 3.1000000089406967,
+          "p99_ms": 4.899999991059303,
+          "max_ms": 5.799999997019768,
+          "mean_ms": 2.684583334128062
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 4.600000008940697,
+          "max_ms": 7.799999997019768,
+          "mean_ms": 0.16124999951571226
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.599999999999454,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000728,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.66583333333333
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "f0c98bad9a84eb02be2cd4227244a7bd6ff78fdb7c854a89e08bfe0e5f88175e"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 1,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.10000000894069672,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 1.7999999970197678,
+          "mean_ms": 0.02083333351959785
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 108.29999999701977,
+          "median_ms": 121.6000000089407,
+          "p95_ms": 153.80000001192093,
+          "p99_ms": 198.59999999403954,
+          "max_ms": 255.09999999403954,
+          "mean_ms": 126.25208333283663
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 1.4000000059604645,
+          "p95_ms": 1.7999999970197678,
+          "p99_ms": 2.1000000089406967,
+          "max_ms": 3.0999999940395355,
+          "mean_ms": 1.4662499991556008
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 0.4000000059604645,
+          "max_ms": 0.5,
+          "mean_ms": 0.2512499997392297
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 106.70000000298023,
+          "median_ms": 120,
+          "p95_ms": 151.70000000298023,
+          "p99_ms": 196.70000000298023,
+          "max_ms": 253.09999999403954,
+          "mean_ms": 124.5345833339418
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 111,
+          "median_ms": 124.6000000089407,
+          "p95_ms": 161.5,
+          "p99_ms": 202.70000000298023,
+          "max_ms": 259.5,
+          "mean_ms": 129.57375000044703
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 111.5,
+          "median_ms": 125.1000000089407,
+          "p95_ms": 162.5,
+          "p99_ms": 203.5,
+          "max_ms": 261.1000000089407,
+          "mean_ms": 130.22958333337058
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.2999999970197678,
+          "median_ms": 2.8999999910593033,
+          "p95_ms": 3.7000000029802322,
+          "p99_ms": 4.9000000059604645,
+          "max_ms": 5.5999999940395355,
+          "mean_ms": 2.9475000001490117
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.29999999701976776,
+          "p99_ms": 6.800000011920929,
+          "max_ms": 7.200000002980232,
+          "mean_ms": 0.19958333323399227
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 99.90000000000146,
+          "median_ms": 133.29999999999563,
+          "p95_ms": 150.10000000000582,
+          "p99_ms": 216.6999999999989,
+          "max_ms": 266.59999999999854,
+          "mean_ms": 130.27291666666665
+        }
+      },
+      "fixed_updates": 1200,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "0741cc30d226098e758e096a7c93236e34437159d42d7a2956e12f4a694e797b"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.005416666654249032
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.5999999940395355,
+          "median_ms": 3.199999988079071,
+          "p95_ms": 4.300000011920929,
+          "p99_ms": 4.4000000059604645,
+          "max_ms": 4.600000008940697,
+          "mean_ms": 3.1733333334326743
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1,
+          "median_ms": 2,
+          "p95_ms": 2.9000000059604645,
+          "p99_ms": 3.0999999940395355,
+          "max_ms": 3.2000000029802322,
+          "mean_ms": 2.030416667026778
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.3999999910593033,
+          "p95_ms": 0.5,
+          "p99_ms": 0.5,
+          "max_ms": 0.5,
+          "mean_ms": 0.3566666666418314
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.3999999910593033,
+          "median_ms": 0.7999999970197678,
+          "p95_ms": 1,
+          "p99_ms": 1.0999999940395355,
+          "max_ms": 1.1000000089406967,
+          "mean_ms": 0.786249999764065
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 1.7999999970197678,
+          "median_ms": 3.5999999940395355,
+          "p95_ms": 4.799999997019768,
+          "p99_ms": 4.9000000059604645,
+          "max_ms": 5.200000002980232,
+          "mean_ms": 3.56333333303531
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 15.5,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.5,
+          "p99_ms": 17.69999998807907,
+          "max_ms": 17.700000002980232,
+          "mean_ms": 16.665416666616995
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.29999999701976776,
+          "p99_ms": 0.3999999910593033,
+          "max_ms": 0.7999999970197678,
+          "mean_ms": 0.17833333338300386
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.20000000298023224,
+          "max_ms": 0.20000000298023224,
+          "mean_ms": 0.07416666684051355
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.5,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000728,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.665833333333335
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6029312,
+        "final_memory_bytes": 6029312,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "8c95c9fb7ff71d834152b7d2e7ba8104e9a6b5bad1663ca10fe4458cf89d0d81"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.006250000062088172
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 3.699999988079071,
+          "median_ms": 6,
+          "p95_ms": 7.4000000059604645,
+          "p99_ms": 8.299999997019768,
+          "max_ms": 9.200000002980232,
+          "mean_ms": 6.077083333830038
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.199999988079071,
+          "median_ms": 2.300000011920929,
+          "p95_ms": 3.5,
+          "p99_ms": 4.299999997019768,
+          "max_ms": 5,
+          "mean_ms": 2.4320833334699272
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.19999998807907104,
+          "median_ms": 0.29999999701976776,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 0.4000000059604645,
+          "max_ms": 0.5,
+          "mean_ms": 0.3066666670143604
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 2.2000000029802322,
+          "median_ms": 3.300000011920929,
+          "p95_ms": 3.9000000059604645,
+          "p99_ms": 4.100000008940697,
+          "max_ms": 4.200000002980232,
+          "mean_ms": 3.338333333345751
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 4.199999988079071,
+          "median_ms": 6.799999997019768,
+          "p95_ms": 8.400000005960464,
+          "p99_ms": 9.5,
+          "max_ms": 15,
+          "mean_ms": 6.8108333331222335
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 15.399999991059303,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.69999998807907,
+          "p99_ms": 17.80000001192093,
+          "max_ms": 17.900000005960464,
+          "mean_ms": 16.665833333320915
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0.20000000298023224,
+          "median_ms": 0.4000000059604645,
+          "p95_ms": 0.7999999970197678,
+          "p99_ms": 1.3999999910593033,
+          "max_ms": 1.5,
+          "mean_ms": 0.45291666612029075
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.20000000298023224,
+          "max_ms": 7,
+          "mean_ms": 0.11833333348234494
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.599999999999454,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.800000000000182,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.665833333333335
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6815744,
+        "final_memory_bytes": 6815744,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "20818642599959fde069b30268cc5a5b571007830cb0c8cc5404d304c5d48d56"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.003333333320915699
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 6.799999997019768,
+          "median_ms": 8.299999997019768,
+          "p95_ms": 10.5,
+          "p99_ms": 12,
+          "max_ms": 12.199999988079071,
+          "mean_ms": 8.464166667064031
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 1.6000000089406967,
+          "p95_ms": 3.2999999970197678,
+          "p99_ms": 4.299999997019768,
+          "max_ms": 4.5999999940395355,
+          "mean_ms": 1.8054166665300726
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.30000001192092896,
+          "p99_ms": 0.4000000059604645,
+          "max_ms": 0.5,
+          "mean_ms": 0.22916666679084302
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 5.200000002980232,
+          "median_ms": 6.300000011920929,
+          "p95_ms": 7.4000000059604645,
+          "p99_ms": 8,
+          "max_ms": 9,
+          "mean_ms": 6.429583333743115
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 9.399999991059303,
+          "median_ms": 11.099999994039536,
+          "p95_ms": 14.5,
+          "p99_ms": 16.5,
+          "max_ms": 17.200000002980232,
+          "mean_ms": 11.510833332811792
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 14.299999997019768,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.69999998807907,
+          "p99_ms": 17.799999997019768,
+          "max_ms": 18.900000005960464,
+          "mean_ms": 16.6608333333085
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.2999999970197678,
+          "median_ms": 2.699999988079071,
+          "p95_ms": 3.5,
+          "p99_ms": 4.200000002980232,
+          "max_ms": 6.899999991059303,
+          "mean_ms": 2.7729166661699614
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 5.0999999940395355,
+          "max_ms": 6.0999999940395355,
+          "mean_ms": 0.14541666638106107
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.5,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.799999999999727,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.66583333333333
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "f0c98bad9a84eb02be2cd4227244a7bd6ff78fdb7c854a89e08bfe0e5f88175e"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 2,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 1.1000000089406967,
+          "mean_ms": 0.02291666641831398
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 109,
+          "median_ms": 115,
+          "p95_ms": 152.19999998807907,
+          "p99_ms": 165.09999999403954,
+          "max_ms": 191.09999999403954,
+          "mean_ms": 121.4879166662693
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 1.3999999910593033,
+          "p95_ms": 1.9000000059604645,
+          "p99_ms": 2.2999999970197678,
+          "max_ms": 4.100000008940697,
+          "mean_ms": 1.4633333332836629
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.3999999910593033,
+          "p99_ms": 0.5999999940395355,
+          "max_ms": 1,
+          "mean_ms": 0.2524999995405475
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 107.70000000298023,
+          "median_ms": 113.3999999910593,
+          "p95_ms": 149.8999999910593,
+          "p99_ms": 162.8999999910593,
+          "max_ms": 189.5,
+          "mean_ms": 119.7720833334451
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 111.79999999701977,
+          "median_ms": 118.20000000298023,
+          "p95_ms": 156,
+          "p99_ms": 169,
+          "max_ms": 194,
+          "mean_ms": 124.73541666685293
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 112.09999999403954,
+          "median_ms": 118.59999999403954,
+          "p95_ms": 156.59999999403954,
+          "p99_ms": 169.59999999403954,
+          "max_ms": 194.5,
+          "mean_ms": 125.21916666664183
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.2000000029802322,
+          "median_ms": 2.7000000029802322,
+          "p95_ms": 4.200000002980232,
+          "p99_ms": 5.399999991059303,
+          "max_ms": 6.5,
+          "mean_ms": 2.919583333407839
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 4.700000002980232,
+          "max_ms": 6.800000011920929,
+          "mean_ms": 0.17250000045945246
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 99.89999999999418,
+          "median_ms": 116.70000000000073,
+          "p95_ms": 166.60000000000218,
+          "p99_ms": 166.79999999999927,
+          "max_ms": 200,
+          "mean_ms": 125.20374999999997
+        }
+      },
+      "fixed_updates": 1200,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "0741cc30d226098e758e096a7c93236e34437159d42d7a2956e12f4a694e797b"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "320-nearest",
+      "width": 320,
+      "height": 180,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.005000000012417635
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 1.5,
+          "median_ms": 2.5,
+          "p95_ms": 4.200000002980232,
+          "p99_ms": 4.5999999940395355,
+          "max_ms": 4.699999988079071,
+          "mean_ms": 2.622499999962747
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 0.7999999970197678,
+          "median_ms": 1.5999999940395355,
+          "p95_ms": 2.7999999970197678,
+          "p99_ms": 3.0999999940395355,
+          "max_ms": 3.2999999970197678,
+          "mean_ms": 1.6437499995653828
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.29999999701976776,
+          "p95_ms": 0.5,
+          "p99_ms": 0.5999999940395355,
+          "max_ms": 0.6000000089406967,
+          "mean_ms": 0.3033333335071802
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 0.29999999701976776,
+          "median_ms": 0.6000000089406967,
+          "p95_ms": 1,
+          "p99_ms": 1.199999988079071,
+          "max_ms": 1.4000000059604645,
+          "mean_ms": 0.6754166668901841
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 1.699999988079071,
+          "median_ms": 2.800000011920929,
+          "p95_ms": 4.700000002980232,
+          "p99_ms": 5,
+          "max_ms": 5.299999997019768,
+          "mean_ms": 2.9754166661451262
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 15.5,
+          "median_ms": 16.69999998807907,
+          "p95_ms": 17.600000008940697,
+          "p99_ms": 17.799999997019768,
+          "max_ms": 17.799999997019768,
+          "mean_ms": 16.665833333383002
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.19999998807907104,
+          "p95_ms": 0.29999999701976776,
+          "p99_ms": 0.4000000059604645,
+          "max_ms": 0.4000000059604645,
+          "mean_ms": 0.16041666654249032
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.20000000298023224,
+          "max_ms": 0.20000000298023224,
+          "mean_ms": 0.0683333333581686
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.5,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000273,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.66625
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6029312,
+        "final_memory_bytes": 6029312,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "8c95c9fb7ff71d834152b7d2e7ba8104e9a6b5bad1663ca10fe4458cf89d0d81"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "640-nearest",
+      "width": 640,
+      "height": 360,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.0049999999503294625
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 3.0999999940395355,
+          "median_ms": 3.5999999940395355,
+          "p95_ms": 5.5999999940395355,
+          "p99_ms": 10.099999994039536,
+          "max_ms": 20.799999997019768,
+          "mean_ms": 3.971250000533958
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1,
+          "median_ms": 1.2000000029802322,
+          "p95_ms": 2.2999999970197678,
+          "p99_ms": 5.100000008940697,
+          "max_ms": 6.700000002980232,
+          "mean_ms": 1.3895833337679506
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 1.0999999940395355,
+          "max_ms": 1.7000000029802322,
+          "mean_ms": 0.2670833336810271
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 1.7999999970197678,
+          "median_ms": 2.1000000089406967,
+          "p95_ms": 3,
+          "p99_ms": 6.100000008940697,
+          "max_ms": 12.700000002980232,
+          "mean_ms": 2.3145833330849808
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 3.6000000089406967,
+          "median_ms": 4.200000002980232,
+          "p95_ms": 6.5999999940395355,
+          "p99_ms": 11.299999997019768,
+          "max_ms": 22.900000005960464,
+          "mean_ms": 4.675833333469927
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 7.0999999940395355,
+          "median_ms": 16.700000002980232,
+          "p95_ms": 17.5,
+          "p99_ms": 17.799999997019768,
+          "max_ms": 26.5,
+          "mean_ms": 16.665416666679086
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 0.19999998807907104,
+          "median_ms": 0.3999999910593033,
+          "p95_ms": 0.7999999970197678,
+          "p99_ms": 1.5999999940395355,
+          "max_ms": 1.9000000059604645,
+          "mean_ms": 0.4370833329235514
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 0.7000000029802322,
+          "max_ms": 0.800000011920929,
+          "mean_ms": 0.09333333360652128
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.5,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.700000000000728,
+          "p99_ms": 16.800000000000182,
+          "max_ms": 16.800000000000182,
+          "mean_ms": 16.666249999999998
+        }
+      },
+      "fixed_updates": 240,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 6815744,
+        "final_memory_bytes": 6815744,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "20818642599959fde069b30268cc5a5b571007830cb0c8cc5404d304c5d48d56"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-nearest",
+      "width": 1280,
+      "height": 720,
+      "linear": false,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 0.10000000894069672,
+          "mean_ms": 0.00375000008692344
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 6.799999997019768,
+          "median_ms": 7.5,
+          "p95_ms": 10.900000005960464,
+          "p99_ms": 34,
+          "max_ms": 75.29999999701977,
+          "mean_ms": 8.522916666418315
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.0999999940395355,
+          "median_ms": 1.2999999970197678,
+          "p95_ms": 2.2000000029802322,
+          "p99_ms": 4.299999997019768,
+          "max_ms": 64.59999999403954,
+          "mean_ms": 1.7137500002359352
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.20000000298023224,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 0.5999999940395355,
+          "max_ms": 5.799999997019768,
+          "mean_ms": 0.27583333291113377
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 5.299999997019768,
+          "median_ms": 5.9000000059604645,
+          "p95_ms": 8.399999991059303,
+          "p99_ms": 17.299999997019768,
+          "max_ms": 39,
+          "mean_ms": 6.533333333271245
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 9.400000005960464,
+          "median_ms": 10.400000005960464,
+          "p95_ms": 16.299999997019768,
+          "p99_ms": 53,
+          "max_ms": 81.79999999701977,
+          "mean_ms": 12.115833334003886
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 12.200000002980232,
+          "median_ms": 16.69999998807907,
+          "p95_ms": 18.200000002980232,
+          "p99_ms": 56.099999994039536,
+          "max_ms": 83.79999999701977,
+          "mean_ms": 17.628749999962746
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.3999999910593033,
+          "median_ms": 2.7000000029802322,
+          "p95_ms": 5.0999999940395355,
+          "p99_ms": 15.799999997019768,
+          "max_ms": 18.200000002980232,
+          "mean_ms": 3.266250000273188
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.20000000298023224,
+          "p99_ms": 5.0999999940395355,
+          "max_ms": 8.799999997019768,
+          "mean_ms": 0.17458333379278582
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 16.599999999999454,
+          "median_ms": 16.699999999999818,
+          "p95_ms": 16.800000000000182,
+          "p99_ms": 50,
+          "max_ms": 83.30000000000018,
+          "mean_ms": 17.637916666666666
+        }
+      },
+      "fixed_updates": 254,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "f0c98bad9a84eb02be2cd4227244a7bd6ff78fdb7c854a89e08bfe0e5f88175e"
+    },
+    {
+      "platform": "chromium-webgl2",
+      "case": "1280-linear",
+      "width": 1280,
+      "height": 720,
+      "linear": true,
+      "round": 3,
+      "game_allocation_events": 0,
+      "game_allocated_bytes": 0,
+      "stages": {
+        "update_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0,
+          "p95_ms": 0.09999999403953552,
+          "p99_ms": 0.10000000894069672,
+          "max_ms": 1.2000000029802322,
+          "mean_ms": 0.016666666666666666
+        },
+        "draw_ms": {
+          "samples": 240,
+          "min_ms": 111.40000000596046,
+          "median_ms": 140.5,
+          "p95_ms": 195.5,
+          "p99_ms": 297.40000000596046,
+          "max_ms": 394.5,
+          "mean_ms": 142.38458333369346
+        },
+        "sprites_ms": {
+          "samples": 240,
+          "min_ms": 1.199999988079071,
+          "median_ms": 1.5999999940395355,
+          "p95_ms": 2.2999999970197678,
+          "p99_ms": 5.9000000059604645,
+          "max_ms": 7.9000000059604645,
+          "mean_ms": 1.6741666670888662
+        },
+        "text_ms": {
+          "samples": 240,
+          "min_ms": 0.09999999403953552,
+          "median_ms": 0.29999999701976776,
+          "p95_ms": 0.4000000059604645,
+          "p99_ms": 0.7000000029802322,
+          "max_ms": 0.7999999970197678,
+          "mean_ms": 0.27833333344509203
+        },
+        "composition_ms": {
+          "samples": 240,
+          "min_ms": 109.90000000596046,
+          "median_ms": 138.59999999403954,
+          "p95_ms": 193.20000000298023,
+          "p99_ms": 293,
+          "max_ms": 392.29999999701977,
+          "mean_ms": 140.43208333315948
+        },
+        "frame_ms": {
+          "samples": 240,
+          "min_ms": 114.59999999403954,
+          "median_ms": 144.20000000298023,
+          "p95_ms": 199.09999999403954,
+          "p99_ms": 309.19999998807907,
+          "max_ms": 401,
+          "mean_ms": 146.285000000149
+        },
+        "interval_ms": {
+          "samples": 240,
+          "min_ms": 115.09999999403954,
+          "median_ms": 146.59999999403954,
+          "p95_ms": 199.80000001192093,
+          "p99_ms": 310.29999999701977,
+          "max_ms": 402.6000000089407,
+          "mean_ms": 147.15833333333333
+        },
+        "upload_ms": {
+          "samples": 240,
+          "min_ms": 2.2999999970197678,
+          "median_ms": 3.2000000029802322,
+          "p95_ms": 5.299999997019768,
+          "p99_ms": 9.099999994039536,
+          "max_ms": 11.099999994039536,
+          "mean_ms": 3.4450000004842876
+        },
+        "present_ms": {
+          "samples": 240,
+          "min_ms": 0,
+          "median_ms": 0.09999999403953552,
+          "p95_ms": 0.29999999701976776,
+          "p99_ms": 6.799999997019768,
+          "max_ms": 8.800000011920929,
+          "mean_ms": 0.24291666628172
+        },
+        "raf_timestamp_interval_ms": {
+          "samples": 240,
+          "min_ms": 116.59999999999854,
+          "median_ms": 149.90000000000146,
+          "p95_ms": 200.10000000000582,
+          "p99_ms": 316.70000000000437,
+          "max_ms": 399.90000000000146,
+          "mean_ms": 147.14666666666668
+        }
+      },
+      "fixed_updates": 1200,
+      "metadata": {
+        "dropped": 0,
+        "warmup_memory_bytes": 9961472,
+        "final_memory_bytes": 9961472,
+        "framebuffer": {
+          "x": 2560,
+          "y": 1440
+        },
+        "renderer": {
+          "selected": "webgl2",
+          "version": "WebGL 2.0 (OpenGL ES 3.0 Chromium)",
+          "vendor": "Google Inc. (Intel)",
+          "renderer": "ANGLE (Intel, ANGLE Metal Renderer: Intel(R) Iris(TM) Plus Graphics 655, Unspecified Version)"
+        },
+        "user_agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) HeadlessChrome/157.0.0.0 Safari/537.36",
+        "visibility": "visible",
+        "protocol_failure": -1,
+        "render_status": 0,
+        "clock_min_tick_ms": 0.09999999403953552
+      },
+      "exact_native_webgl_pixels": true,
+      "pixel_sha256": "0741cc30d226098e758e096a7c93236e34437159d42d7a2956e12f4a694e797b"
+    }
+  ],
+  "status": "passed",
+  "build": {
+    "native_optimize": "ReleaseFast",
+    "wasm_optimize": "ReleaseFast",
+    "zig": "0.15.2"
+  },
+  "unavailable_metrics": [
+    "GPU completion time (no fences/timer queries in timed frames)",
+    "actual display scanout/pacing",
+    "SDL/driver and JavaScript allocation events",
+    "native upload separately from presentation/driver waits"
+  ],
+  "browser_version": "157.0.8103.38",
+  "raw_samples": {
+    "file": "2026-11-08-cpu-baseline.samples.json.gz",
+    "sha256": "4c4fd1f9e278a9faa73e992ae26e3c6911a5a79ef0bb139ff2f2023e192feba3",
+    "bytes": 365187
+  }
+}
