@@ -4,7 +4,7 @@ import {createServer} from "node:http";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {SafariAdapter, prerequisiteFailure} from "./adapters.mjs";
-import {frame, compareReference} from "./checks.mjs";
+import {frame, compareReference, readFrame} from "./checks.mjs";
 import {WebDriver} from "../safari_webdriver.mjs";
 import {execFile} from "node:child_process";
 import {fileURLToPath} from "node:url";
@@ -14,6 +14,25 @@ assert.equal(prerequisiteFailure(new Error("You must enable Allow remote automat
 assert.equal(prerequisiteFailure(new Error("Executable doesn't exist")), true);
 assert.equal(prerequisiteFailure(new Error("timed out waiting for physical movement")), false);
 assert.equal(prerequisiteFailure(new Error("native/browser pixel mismatch")), false);
+
+// A frame larger than the string-conversion chunk must survive JSON transport
+// byte-for-byte, while existing callers still receive the original RGBA array.
+const previousWindow = globalThis.window;
+try {
+  const gl = {drawingBufferWidth: 513, drawingBufferHeight: 17, RGBA: 0x1908, UNSIGNED_BYTE: 0x1401,
+    readPixels: (_x, _y, _w, _h, _format, _type, pixels) => { for (let i = 0; i < pixels.length; i += 1) pixels[i] = (i * 17 + 3) % 256; },
+    getError: () => 0, isContextLost: () => false};
+  globalThis.window = {unpolishedPeas: {host: {captureFrame: () => null, context: () => gl}, runtime: {up_browser_protocol_failure_phase: () => -1}}};
+  const array = readFrame({width: 513, height: 17});
+  const compact = JSON.parse(JSON.stringify(readFrame({width: 513, height: 17, encoding: "base64"})));
+  assert.deepEqual(Buffer.from(compact.rgba_base64, "base64"), Buffer.from(array.rgba));
+  assert.equal(compact.rgba, undefined);
+  assert.equal(array.rgba_base64, undefined);
+  assert.throws(() => readFrame({width: 1, height: 1, encoding: "invalid"}), /unsupported/);
+} finally {
+  if (previousWindow === undefined) delete globalThis.window;
+  else globalThis.window = previousWindow;
+}
 
 const directory = await mkdtemp(join(tmpdir(), "peas-authoring-contract-"));
 try {

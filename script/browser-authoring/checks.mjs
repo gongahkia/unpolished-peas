@@ -18,7 +18,8 @@ export async function ready(driver, focus = true) {
 
 // Both transports call exactly this function. No PNG decoding dependency:
 // present and read WebGL in one task, then sample logical pixel centres.
-export function readFrame({width, height}) {
+export function readFrame({width, height, encoding = "array"}) {
+  if (encoding !== "array" && encoding !== "base64") throw new Error("unsupported frame readback encoding");
   const api = window.unpolishedPeas;
   const png = api.host.captureFrame();
   const gl = api.host.context();
@@ -33,7 +34,16 @@ export function readFrame({width, height}) {
     rgba.set(physical.subarray((py * physicalWidth + px) * 4, (py * physicalWidth + px) * 4 + 4), (y * width + x) * 4);
   }
   const fixture = api.runtime.conformance_metric ? {x: api.runtime.conformance_metric(0), atlasFrame: api.runtime.conformance_metric(4)} : null;
-  return {width, height, physicalWidth, physicalHeight, error, contextLost, png, rgba: Array.from(rgba), fixture, protocolFailure: api.runtime.up_browser_protocol_failure_phase()};
+  // Large numeric arrays incur millions of automation protocol objects.
+  // Benchmark callers request compact transport after timed frames finish;
+  // ordinary shared checks retain their existing array representation.
+  let pixels;
+  if (encoding === "base64") {
+    let binary = "";
+    for (let i = 0; i < rgba.length; i += 32768) binary += String.fromCharCode(...rgba.subarray(i, i + 32768));
+    pixels = {rgba_base64: btoa(binary)};
+  } else pixels = {rgba: Array.from(rgba)};
+  return {width, height, physicalWidth, physicalHeight, error, contextLost, png, ...pixels, fixture, protocolFailure: api.runtime.up_browser_protocol_failure_phase()};
 }
 
 export async function frame(driver, directory, label, width, height) {

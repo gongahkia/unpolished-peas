@@ -191,9 +191,9 @@ try {
       runtime.peas_capacity_freeze(37);
       runtime.up_browser_frame(performance.now());
     });
-    const frame = await driver.evaluate(readFrame, {width: c.width, height: c.height});
+    const frame = await driver.evaluate(readFrame, {width: c.width, height: c.height, encoding: "base64"});
     assert.equal(frame.error, 0); assert.equal(frame.contextLost, false);
-    const pixels = Buffer.from(frame.rgba), reference = await readFile(c.reference);
+    const pixels = Buffer.from(frame.rgba_base64, "base64"), reference = await readFile(c.reference);
     await writeFile(join(output, `${c.id}-chromium-${round}.rgba`), pixels);
     if (frame.png) await writeFile(join(output, `${c.id}-chromium-${round}.png`), Buffer.from(frame.png.split(",")[1], "base64"));
     let maximum = 0, differences = 0;
