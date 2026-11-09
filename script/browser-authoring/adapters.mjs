@@ -18,6 +18,7 @@ class Adapter {
     throw new Error(`timed out waiting for ${label}`);
   }
   async press(key) { await this.down(key); await sleep(40); await this.up(key); }
+  async evaluateInput(fn, argument) { return this.evaluate(fn, argument); }
   async reload() { await this.navigate(this.url); }
 }
 
@@ -78,6 +79,12 @@ export class SafariAdapter extends Adapter {
     this.assertOpen();
     if (type === "keyDown") await this.ensureWindowFocus();
     await this.client.actions([{type: "key", id: "keyboard", actions: [{type, value: keys[key] ?? key}]}]);
+  }
+  async evaluateInput(fn, argument) {
+    // Injected composition is still an input action and needs the same real
+    // window focus as trusted keys/text; observations must not change focus.
+    await this.ensureWindowFocus();
+    return this.evaluate(fn, argument);
   }
   async down(key) { await this.key("keyDown", key); }
   // Release the source through WebDriver's input-state cancellation endpoint.

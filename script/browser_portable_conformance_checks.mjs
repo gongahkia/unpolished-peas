@@ -49,10 +49,10 @@ export async function portableChecks(driver, {directory}) {
   await driver.press("F4");
   await driver.wait(() => document.activeElement?.tagName === "TEXTAREA", null, "text-input focus");
   // These DOM events exercise host composition, not a physical OS IME.
-  await driver.evaluate(composition, {text: "Zo"});
+  await driver.evaluateInput(composition, {text: "Zo"});
   await driver.wait(() => window.unpolishedPeas.runtime.conformance_metric(1) === 2, null, "injected preedit");
   check(await driver.evaluate(() => window.progress().name === ""), "preedit must not commit/save");
-  await driver.evaluate(composition, {text: "Zoë", finish: true});
+  await driver.evaluateInput(composition, {text: "Zoë", finish: true});
   await driver.wait(() => window.progress().name === "Zoë" && window.unpolishedPeas.runtime.conformance_metric(1) === 0, null, "one composition commit");
   // Real automation text insertion reaches the browser's input machinery.
   await driver.text("你好");
@@ -78,7 +78,7 @@ export async function portableChecks(driver, {directory}) {
   }), "actual reload restores scores, binding and exact Unicode");
   await driver.press("F4");
   await driver.wait(() => document.activeElement?.tagName === "TEXTAREA", null, "failure-test text focus");
-  await driver.evaluate(composition, {text: "未"});
+  await driver.evaluateInput(composition, {text: "未"});
   await driver.wait(() => window.unpolishedPeas.runtime.conformance_metric(1) > 0, null, "failure-test preedit");
   const lifecycle = await driver.evaluate(() => {
     const {runtime, host} = window.unpolishedPeas;

@@ -140,3 +140,14 @@ await focusAdapter.ensureWindowFocus();
 assert.deepEqual(focusRequests, [{path: "/window", method: "GET", body: undefined}, {path: "/window", method: "POST", body: {handle: "window-7"}}]);
 await focusAdapter.ensureWindowFocus();
 assert.equal(focusRequests.length, 2, "a focused window needs no extra activation");
+windowFocused = false;
+const injectedInput = (value) => value;
+focusAdapter.evaluate = async (fn, argument) => {
+  if (fn === injectedInput) {
+    assert.equal(windowFocused, true, "injected input must follow real window activation");
+    return argument;
+  }
+  return windowFocused;
+};
+assert.equal(await focusAdapter.evaluateInput(injectedInput, "composition"), "composition");
+assert.equal(focusRequests.length, 4, "restore real focus before injected input without changing observations");
