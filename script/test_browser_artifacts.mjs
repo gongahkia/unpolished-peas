@@ -26,6 +26,11 @@ assert.deepEqual(artifacts.snapshot()[0], values[0]);
 const empty = createBrowserArtifacts({canvas});
 assert.equal(empty.captureFrame(), null);
 assert.equal(empty.snapshot().some(({name}) => name === "screenshot.png"), false);
+for (const invalid of ["data:image/png;base64,💥", "data:image/png,not-base64", "data:image/png;base64,"]) {
+  const rejected = createBrowserArtifacts({canvas: {toDataURL: () => invalid}});
+  assert.equal(rejected.captureFrame(), null, "PNG budget applies to encoded ASCII data URLs");
+  assert.equal(JSON.parse(rejected.snapshot().find(({name}) => name === "logging.json").data).retention.screenshot.rejected, 1);
+}
 
 // Bound long sessions, preserve newest records, and take ownership of objects.
 const bounded = createBrowserArtifacts({canvas, limits: {...artifactLimits, messages: 2, traces: 2, commands: 2, messageBytes: 32, recordBytes: 64, screenshotBytes: 64}});

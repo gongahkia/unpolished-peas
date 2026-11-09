@@ -78,18 +78,18 @@ export function createBrowserArtifacts({canvas, limits = artifactLimits, logging
   function failure(phase, error, operation = phase) {
     if (!eventLog) return null;
     try {
-    const details = {phase: boundedText(phase), error: boundedText(error), operation: boundedText(operation)};
-    log("err", "engine", "runtime failure", details);
-    const captured = captureFrame();
-    const incident = {
-      version: 1, session_id: eventLog.session, failure_id: ++eventLog.failure, frame_id: eventLog.frame,
-      ...details, renderer: rendererDiagnostic,
-      events_jsonl: eventLog.records.map(({line}) => line).join(""),
-      dropped_events: eventLog.dropped, trace: trace.slice(), commands: commands.slice(), screenshot: captured,
-    };
-    if (eventLog.incidents.length === 4) { eventLog.incidents.shift(); eventLog.droppedIncidents += 1; }
-    eventLog.incidents.push(incident);
-    return "incident-" + incident.session_id + "-" + incident.failure_id + ".json";
+      const details = {phase: boundedText(phase), error: boundedText(error), operation: boundedText(operation)};
+      log("err", "engine", "runtime failure", details);
+      const captured = captureFrame();
+      const incident = {
+        version: 1, session_id: eventLog.session, failure_id: ++eventLog.failure, frame_id: eventLog.frame,
+        ...details, renderer: rendererDiagnostic,
+        events_jsonl: eventLog.records.map(({line}) => line).join(""),
+        dropped_events: eventLog.dropped, trace: trace.slice(), commands: commands.slice(), screenshot: captured,
+      };
+      if (eventLog.incidents.length === 4) { eventLog.incidents.shift(); eventLog.droppedIncidents += 1; }
+      eventLog.incidents.push(incident);
+      return "incident-" + incident.session_id + "-" + incident.failure_id + ".json";
     } catch {
       eventLog.rejected += 1;
       return null;
@@ -123,7 +123,7 @@ export function createBrowserArtifacts({canvas, limits = artifactLimits, logging
     if (!canvas?.toDataURL) return null;
     try {
       const value = canvas.toDataURL("image/png");
-      if (typeof value !== "string" || !/^data:image\/png(?:;[^,]*)?,.+$/.test(value) || value.length > limits.screenshotBytes) {
+      if (typeof value !== "string" || !/^data:image\/png;base64,[A-Za-z0-9+/]+={0,2}$/.test(value) || value.length > limits.screenshotBytes) {
         counts.screenshot.rejected += 1;
         return null;
       }
