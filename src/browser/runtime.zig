@@ -121,6 +121,7 @@ pub export fn up_browser_init(width: u32, height: u32) i32 {
     protocol = .bind(&game);
     protocol.init(&game_context) catch {
         protocol_failure = protocol.lastFailure();
+        emitProtocolFailure();
         return rejectInit();
     };
     protocol_initialized = true;
@@ -143,12 +144,14 @@ pub export fn up_browser_frame(timestamp_ms: f64) void {
         tick_input.next().apply(&input);
         protocol.update(&game_context, timing.update_seconds) catch {
             protocol_failure = protocol.lastFailure();
+            emitProtocolFailure();
             return;
         };
     }
     renderer.beginFrame();
     protocol.draw(&game_context, timing.alpha) catch {
         protocol_failure = protocol.lastFailure();
+        emitProtocolFailure();
         return;
     };
     render_status = submitCanvas();
@@ -414,6 +417,31 @@ pub export fn up_browser_storage_remove(key: u32, key_len: u32) i32 {
     return contract.removeStorage(key, key_len);
 }
 
+// Reuse the existing optional diagnostic callback; no new Wasm import/export
+// or replay data. Failure formatting is bounded and cannot replace the cause.
+fn emitProtocolFailure() void {
+    // Native unit hosts do not have a Wasm linear-memory address space.
+    if (comptime @import("builtin").cpu.arch != .wasm32) return;
+    const failure = protocol_failure orelse return;
+    var bytes: [1024]u8 = undefined;
+    var writer = std.Io.Writer.fixed(&bytes);
+    writer.writeAll("{\"kind\":\"protocol_failure\",\"phase\":") catch return;
+    std.json.Stringify.value(@tagName(failure.phase), .{}, &writer) catch return;
+    writer.writeAll(",\"operation\":") catch return;
+    const operation = switch (failure.phase) {
+        .init => "game.init",
+        .update => "game.update",
+        .draw => "game.draw",
+        .deinit => "game.deinit",
+    };
+    std.json.Stringify.value(operation, .{}, &writer) catch return;
+    writer.writeAll(",\"error\":") catch return;
+    std.json.Stringify.value(@errorName(failure.cause), .{}, &writer) catch return;
+    writer.writeAll("}") catch return;
+    const message = writer.buffered();
+    contract.emitDiagnostic(@intCast(@intFromPtr(message.ptr)), @intCast(message.len));
+}
+
 pub export fn up_browser_diagnostic_emit(source: u32, byte_len: u32) void {
     contract.emitDiagnostic(source, byte_len);
 }
@@ -427,6 +455,7 @@ fn releaseGame() bool {
         protocol_initialized = false;
         protocol.deinit(&game_context) catch {
             protocol_failure = protocol.lastFailure();
+            emitProtocolFailure();
             okay = false;
         };
     }

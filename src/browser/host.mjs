@@ -48,6 +48,7 @@ export function createBrowserHost({
   fontFixture,
   storage: storageRef,
   storageNamespace = "unpolished-peas:v1",
+  logging = null,
 } = {}) {
   let gl = null;
   let webgpu = null;
@@ -92,7 +93,25 @@ export function createBrowserHost({
   });
   const audio = createBrowserAudio({canvas, window: windowRef, AudioContext: AudioContextImpl});
   const storage = createBrowserStorage({storage: storageRef === undefined ? localStorageOrNull() : storageRef, namespace: storageNamespace});
-  const artifacts = createBrowserArtifacts({canvas});
+  const onLogEvent = (event) => {
+    const sink = event.level === "err" || event.level === "fatal" ? "error" : event.level === "warn" ? "warn" : "info";
+    logger?.[sink]?.(`unpolished-peas session=${event.session_id} frame=${event.frame_id} ${event.level}/${event.category}: ${event.message} fields=${JSON.stringify(event.fields)}`);
+  };
+  let artifacts;
+  try { artifacts = createBrowserArtifacts({canvas, logging, onEvent: onLogEvent}); }
+  catch (error) {
+    try { logger?.warn?.("unpolished-peas logging disabled: " + error.message); } catch {}
+    artifacts = createBrowserArtifacts({canvas});
+  }
+  function note(level, category, message, fields) {
+    if (artifacts.logEnabled) return artifacts.log(level, category, message, fields);
+    return false;
+  }
+  function rendererError(message, operation) {
+    if (!note("err", "render", message, {operation})) logger?.error?.(message);
+    artifacts.failure("render", message, operation);
+  }
+  note("info", "engine", "browser host created");
 
   function removeResource(handle, release) {
     const resource = resources.get(handle);
@@ -126,7 +145,10 @@ export function createBrowserHost({
     let token = 0;
     token = requestFrame((timestamp) => {
       scheduledFrames.delete(token);
-      if (!contextLost) runtime?.up_browser_frame?.(timestamp);
+      if (!contextLost) {
+        if (artifacts.logEnabled) artifacts.beginFrame();
+        runtime?.up_browser_frame?.(timestamp);
+      }
     });
     if (!Number.isInteger(token) || token < 0) return 0;
     scheduledFrames.set(token, true);
@@ -258,7 +280,7 @@ export function createBrowserHost({
     gl.shaderSource(shader, source);
     gl.compileShader(shader);
     if (gl.getShaderParameter(shader, gl.COMPILE_STATUS)) return shader;
-    logger?.error?.(`unpolished-peas browser: WebGL shader compilation failed: ${gl.getShaderInfoLog(shader) ?? "unknown error"}`);
+    rendererError(`unpolished-peas browser: WebGL shader compilation failed: ${gl.getShaderInfoLog(shader) ?? "unknown error"}`, "compileShader");
     gl.deleteShader(shader);
     return null;
   }
@@ -293,7 +315,7 @@ export function createBrowserHost({
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      logger?.error?.(`unpolished-peas browser: WebGL program link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      rendererError(`unpolished-peas browser: WebGL program link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`, "linkProgram");
       gl.deleteProgram(program);
       return null;
     }
@@ -362,7 +384,7 @@ export function createBrowserHost({
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      logger?.error?.(`unpolished-peas browser: WebGL sprite link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      rendererError(`unpolished-peas browser: WebGL sprite link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`, "linkSpriteProgram");
       gl.deleteProgram(program);
       return null;
     }
@@ -424,7 +446,7 @@ export function createBrowserHost({
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      logger?.error?.(`unpolished-peas browser: WebGL particle link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      rendererError(`unpolished-peas browser: WebGL particle link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`, "linkParticleProgram");
       gl.deleteProgram(program);
       return null;
     }
@@ -747,7 +769,7 @@ export function createBrowserHost({
     gl.deleteShader(vertex);
     gl.deleteShader(fragment);
     if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      logger?.error?.(`unpolished-peas browser: material program link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`);
+      rendererError(`unpolished-peas browser: material program link failed: ${gl.getProgramInfoLog(program) ?? "unknown error"}`, "linkMaterialProgram");
       gl.deleteProgram(program);
       return null;
     }
@@ -1116,6 +1138,8 @@ export function createBrowserHost({
         contextLost = true;
         lifecycleGeneration += 1;
         lifecyclePhase = "device_lost";
+        note("err", "render", "WebGPU device lost");
+        artifacts.failure("render", "device_lost", "WebGPU device lifecycle");
         cancelScheduledFrames();
         webgpuDeviceLossHandler?.();
       },
@@ -1184,6 +1208,7 @@ export function createBrowserHost({
     needsResourceRecovery = true;
     lifecycleGeneration += 1;
     lifecyclePhase = "context_lost";
+    note("warn", "render", "WebGL context lost");
     cancelScheduledFrames();
     invalidateResourceValues();
     releasePrimitivePipeline(false);
@@ -1196,6 +1221,7 @@ export function createBrowserHost({
   }
 
   function onContextRestored() {
+    note("info", "render", "WebGL context restoration requested");
     contextLost = false;
     gl = null;
     lifecyclePhase = "restoring";
@@ -1231,6 +1257,7 @@ export function createBrowserHost({
       releaseFrameTargets(!contextLost);
       spriteBatch = null;
       lifecyclePhase = "destroyed";
+      note("info", "engine", "browser renderer shutdown");
       gl = null;
     },
     up_host_gl_resource_create: createResource,
@@ -1313,8 +1340,10 @@ export function createBrowserHost({
         const response = await fetchImpl?.(url);
         if (!response?.ok) throw new Error(debugFontAssetDiagnostic);
         debugFont = createDebugFont(await response.json());
+        note("info", "assets", "debug font loaded");
         return true;
       } catch {
+        artifacts.failure("assets", debugFontAssetDiagnostic, "loadDebugFontFixture");
         throw new Error(debugFontAssetDiagnostic);
       }
     },
@@ -1343,6 +1372,7 @@ export function createBrowserHost({
     attachRuntime: (exports) => {
       if (!exports || typeof exports.up_browser_frame !== "function") return false;
       runtime = exports;
+      note("info", "engine", "Wasm runtime attached");
       onVisibilityChange();
       return true;
     },
@@ -1362,9 +1392,16 @@ export function createBrowserHost({
     },
     recordTrace: artifacts.recordTrace,
     recordCommand: artifacts.recordCommand,
-    setRendererDiagnostic: artifacts.setRendererDiagnostic,
+    setRendererDiagnostic: (value) => {
+      const result = artifacts.setRendererDiagnostic(value);
+      note("info", "render", "renderer selection", {requested: value?.requested_renderer ?? "none", selected: value?.selected_renderer ?? "none", status: value?.context_status ?? "unknown"});
+      return result;
+    },
+    recordFailure: artifacts.failure,
     artifacts: artifacts.snapshot,
     framebufferToCanvas,
-    diagnostic: (message) => logger?.error?.(`unpolished-peas browser: ${message}`),
+    diagnostic: (message) => {
+      if (!note("err", "diagnostics", message)) logger?.error?.(`unpolished-peas browser: ${message}`);
+    },
   };
 }

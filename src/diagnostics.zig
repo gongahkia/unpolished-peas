@@ -26,6 +26,7 @@ pub const LogContext = struct {
     events: []const runtime_log.Event = &.{},
     dropped_events: u64 = 0,
     write_errors: u64 = 0,
+    truncated_values: u64 = 0,
     file_rotations: u64 = 0,
     discarded_file_bytes: u64 = 0,
 };
@@ -367,6 +368,7 @@ fn writeEvents(allocator: std.mem.Allocator, options: Options, context: LogConte
         .retained_bytes = retained.items.len,
         .dropped_events = dropped,
         .write_errors = context.write_errors,
+        .truncated_values = context.truncated_values,
         .file_rotations = context.file_rotations,
         .discarded_file_bytes = context.discarded_file_bytes,
         .max_events = options.max_log_events,

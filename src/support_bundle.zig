@@ -49,6 +49,7 @@ pub fn create(allocator: std.mem.Allocator, options: Options) !Report {
     var copied_artifacts = [_]bool{false} ** artifact_names.len;
     var copied: usize = 0;
     var redacted_occurrences: usize = 0;
+    var bundle_bytes: u64 = 0;
     for (artifact_names, 0..) |name, index| {
         if (!selected[index]) continue;
         const stat = source.statFile(name) catch |err| switch (err) {
@@ -56,31 +57,84 @@ pub fn create(allocator: std.mem.Allocator, options: Options) !Report {
             else => return err,
         };
         if (stat.kind != .file or stat.size > max_artifact_bytes) return error.InvalidDiagnosticsArtifact;
-        if (isTextArtifact(name)) {
-            const contents = try source.readFileAlloc(allocator, name, max_artifact_bytes);
-            defer allocator.free(contents);
-            const result = try redactText(allocator, contents, source_path, options.redact_paths, options.redact);
-            defer allocator.free(result.text);
-            try output.writeFile(.{ .sub_path = name, .data = result.text });
-            redacted_occurrences += result.occurrences;
-        } else try source.copyFile(name, output, name, .{});
+        redacted_occurrences += try copyArtifact(allocator, source, output, name, source_path, options);
+        bundle_bytes += (try output.statFile(name)).size;
+        if (bundle_bytes > max_artifact_bytes) return error.SupportBundleTooLarge;
         copied_artifacts[index] = true;
         copied += 1;
     }
+    var incidents: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (incidents.items) |name| allocator.free(name);
+        incidents.deinit(allocator);
+    }
+    var iterator = source.iterate();
+    while (try iterator.next()) |entry| {
+        if (!isIncidentArtifact(entry.name)) continue;
+        if (options.include.len != 0) {
+            var selected_incident = false;
+            for (options.include) |name| if (std.mem.eql(u8, name, entry.name)) {
+                selected_incident = true;
+                break;
+            };
+            if (!selected_incident) continue;
+        }
+        if (entry.kind != .file) return error.InvalidDiagnosticsArtifact;
+        if (incidents.items.len == 4) return error.SupportBundleTooLarge;
+        try incidents.ensureUnusedCapacity(allocator, 1);
+        const name = try allocator.dupe(u8, entry.name);
+        incidents.appendAssumeCapacity(name);
+        redacted_occurrences += try copyArtifact(allocator, source, output, name, source_path, options);
+        bundle_bytes += (try output.statFile(name)).size;
+        if (bundle_bytes > max_artifact_bytes) return error.SupportBundleTooLarge;
+        copied += 1;
+    }
+    for (options.include) |name| if (isIncidentArtifact(name)) {
+        var present = false;
+        for (incidents.items) |candidate| if (std.mem.eql(u8, name, candidate)) {
+            present = true;
+            break;
+        };
+        if (!present) return error.SelectedDiagnosticMissing;
+    };
     if (copied == 0) return error.NoDiagnosticsArtifacts;
-    try writeManifest(output, copied_artifacts, copied, redacted_occurrences);
+    try writeManifest(output, copied_artifacts, copied, redacted_occurrences, incidents.items);
+    bundle_bytes += (try output.statFile("support-bundle.json")).size;
+    if (bundle_bytes > max_artifact_bytes) return error.SupportBundleTooLarge;
     return .{ .files = copied, .redacted_occurrences = redacted_occurrences };
 }
 
 fn selection(include: []const []const u8) ![artifact_names.len]bool {
     var selected = [_]bool{false} ** artifact_names.len;
     if (include.len == 0) return [_]bool{true} ** artifact_names.len;
-    for (include) |value| {
-        const index = artifactIndex(value) orelse return error.InvalidDiagnosticsArtifact;
-        if (selected[index]) return error.DuplicateDiagnosticsArtifact;
-        selected[index] = true;
+    for (include, 0..) |value, position| {
+        for (include[0..position]) |prior| if (std.mem.eql(u8, value, prior)) return error.DuplicateDiagnosticsArtifact;
+        if (artifactIndex(value)) |index| selected[index] = true else if (!isIncidentArtifact(value)) return error.InvalidDiagnosticsArtifact;
     }
     return selected;
+}
+
+fn copyArtifact(allocator: std.mem.Allocator, source: std.fs.Dir, output: std.fs.Dir, name: []const u8, source_path: []const u8, options: Options) !usize {
+    const info = try source.statFile(name);
+    if (info.kind != .file or info.size > max_artifact_bytes) return error.InvalidDiagnosticsArtifact;
+    if (isTextArtifact(name)) {
+        const contents = try source.readFileAlloc(allocator, name, max_artifact_bytes);
+        defer allocator.free(contents);
+        const result = try redactText(allocator, contents, source_path, options.redact_paths, options.redact);
+        defer allocator.free(result.text);
+        try output.writeFile(.{ .sub_path = name, .data = result.text });
+        return result.occurrences;
+    }
+    try source.copyFile(name, output, name, .{});
+    return 0;
+}
+
+fn isIncidentArtifact(name: []const u8) bool {
+    if (!std.mem.startsWith(u8, name, "incident-") or !std.mem.endsWith(u8, name, ".json") or name.len > 64) return false;
+    var parts = std.mem.splitScalar(u8, name[9 .. name.len - 5], '-');
+    const session = std.fmt.parseInt(u64, parts.next() orelse return false, 10) catch return false;
+    const incident = std.fmt.parseInt(u64, parts.next() orelse return false, 10) catch return false;
+    return session > 0 and incident > 0 and parts.next() == null;
 }
 
 fn artifactIndex(name: []const u8) ?usize {
@@ -140,7 +194,7 @@ fn appendLimited(allocator: std.mem.Allocator, output: *std.ArrayList(u8), value
     try output.appendSlice(allocator, value);
 }
 
-fn writeManifest(output: std.fs.Dir, artifacts: [artifact_names.len]bool, files: usize, redacted_occurrences: usize) !void {
+fn writeManifest(output: std.fs.Dir, artifacts: [artifact_names.len]bool, files: usize, redacted_occurrences: usize, incidents: []const []const u8) !void {
     var file = try output.createFile("support-bundle.json", .{});
     defer file.close();
     var buffer: [1024]u8 = undefined;
@@ -150,6 +204,11 @@ fn writeManifest(output: std.fs.Dir, artifacts: [artifact_names.len]bool, files:
     var first = true;
     for (artifact_names, 0..) |name, index| {
         if (!artifacts[index]) continue;
+        if (!first) try out.writeByte(',');
+        first = false;
+        try std.json.Stringify.value(name, .{}, out);
+    }
+    for (incidents) |name| {
         if (!first) try out.writeByte(',');
         first = false;
         try std.json.Stringify.value(name, .{}, out);
@@ -222,7 +281,7 @@ test "support bundle rejects missing and duplicate selected diagnostics" {
 
 fn bundleAllocationFailures(allocator: std.mem.Allocator, source: []const u8, output: []const u8) !void {
     defer std.fs.cwd().deleteTree(output) catch {};
-    _ = create(allocator, .{ .source_path = source, .output_path = output, .include = &.{ "events.jsonl", "logging.json" }, .redact = &.{"private-value"} }) catch |err| {
+    _ = create(allocator, .{ .source_path = source, .output_path = output, .include = &.{ "events.jsonl", "logging.json", "incident-7-1.json" }, .redact = &.{"private-value"} }) catch |err| {
         try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(output, .{}));
         return err;
     };
@@ -240,6 +299,7 @@ test "support exports structured event context with allocation rollback and reda
     try temp.dir.makeDir("source");
     try temp.dir.writeFile(.{ .sub_path = "source/events.jsonl", .data = "{\"version\":1,\"message\":\"private-value\"}\n" });
     try temp.dir.writeFile(.{ .sub_path = "source/logging.json", .data = "{\"version\":1,\"dropped_events\":3}" });
+    try temp.dir.writeFile(.{ .sub_path = "source/incident-7-1.json", .data = "{\"version\":1,\"error\":\"private-value\"}" });
     try std.testing.checkAllAllocationFailures(std.testing.allocator, bundleAllocationFailures, .{ source, output });
     _ = try create(std.testing.allocator, .{ .source_path = source, .output_path = output, .redact = &.{"private-value"} });
     const event_bytes = try temp.dir.readFileAlloc(std.testing.allocator, "output/events.jsonl", 1024);
@@ -248,4 +308,5 @@ test "support exports structured event context with allocation rollback and reda
     defer event.deinit();
     try std.testing.expectEqualStrings("[REDACTED]", event.value.object.get("message").?.string);
     try temp.dir.access("output/logging.json", .{});
+    try temp.dir.access("output/incident-7-1.json", .{});
 }

@@ -22,7 +22,7 @@ jobs:
         env:
           PLAYWRIGHT_SKIP_BROWSER_GC: 1
       - run: sudo safaridriver --enable
-      - run: zig build test-browser-authoring -Dwith_sdl=false -j2 --summary all
+      - run: zig build test-browser-authoring -Dauthoring-logging=true -Dwith_sdl=false -j2 --summary all
         timeout-minutes: 10
       - run: zig build test-render-capacity-gpu -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
         timeout-minutes: 10

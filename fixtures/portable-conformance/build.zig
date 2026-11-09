@@ -3,7 +3,7 @@ const std = @import("std");
 pub fn build(b: *std.Build) void {
     const options = b.addOptions();
     options.addOption([:0]const u8, "organization", b.allocator.dupeZ(u8, b.option([]const u8, "test-organization", "Isolated native test namespace") orelse "unpolished-peas") catch @panic("OutOfMemory"));
-    options.addOption([]const u8, "native_phase", b.option([]const u8, "native-phase", "interactive, write or read") orelse "interactive");
+    options.addOption([]const u8, "native_phase", b.option([]const u8, "native-phase", "interactive, write, read, fail-update, fail-draw or fail-deinit") orelse "interactive");
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const peas = b.dependency("unpolished_peas", .{ .target = target, .optimize = optimize });

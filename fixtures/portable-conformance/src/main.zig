@@ -36,14 +36,19 @@ pub const Desktop = struct {
         }
     }
     pub fn update(self: *Desktop, ctx: *up.core.GameContext, dt: f32) !void {
+        if (std.mem.eql(u8, options.native_phase, "fail-update")) return error.ConformanceUpdateRejected;
         try self.state.update(ctx, dt);
     }
     pub fn draw(self: *Desktop, ctx: *up.core.GameContext) !void {
+        if (std.mem.eql(u8, options.native_phase, "fail-draw")) return error.ConformanceDrawRejected;
+        // Let an unpaced test presenter reach a fixed update deterministically.
+        if (std.mem.eql(u8, options.native_phase, "fail-update")) std.Thread.sleep(20 * std.time.ns_per_ms);
         try self.state.draw(ctx);
     }
     pub fn deinit(self: *Desktop, ctx: *up.core.GameContext) !void {
         try self.state.deinit(ctx);
         if (self.state.cleanup_calls != 1) return error.IncorrectNativeCleanupCount;
+        if (std.mem.eql(u8, options.native_phase, "fail-deinit")) return error.ConformanceDeinitRejected;
         std.debug.print("portable native cleanup passed: exactly once\n", .{});
     }
 };

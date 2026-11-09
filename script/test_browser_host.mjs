@@ -342,3 +342,19 @@ assert.equal(stableHost.imports.env.up_host_gl_context_create(320, 180), Status.
 assert.equal(stableHost.imports.env.up_host_gl_context_create(320, 180), Status.ok);
 assert.equal(stableHost.imports.env.up_host_gl_context_lost(), 0);
 stableHost.imports.env.up_host_teardown();
+
+// Console adapters commonly stringify arguments (including our real-browser
+// instrumentation). Structured fields must not make the default sink throw.
+const consoleLines = [];
+const stringifyingConsole = Object.fromEntries(["info", "warn", "error"].map((level) => [level, (...args) => consoleLines.push(args.map(String).join(" "))]));
+const failedCanvas = new FakeCanvas();
+failedCanvas.gl.getShaderParameter = () => false;
+failedCanvas.gl.getShaderInfoLog = () => "original shader failure";
+const loggedHost = createBrowserHost({canvas: failedCanvas, fontFixture: debugFontFixture, logging: {level: "debug", sessionId: 7}, console: stringifyingConsole});
+assert.equal(loggedHost.imports.env.up_host_gl_context_create(4, 4), Status.ok);
+assert.notEqual(loggedHost.imports.env.up_host_gl_draw_rect(0, 0, 2, 2, 0xffffffff), Status.ok);
+const loggedFiles = Object.fromEntries(loggedHost.artifacts().map(({name, data}) => [name, data]));
+assert.ok(consoleLines.some((line) => line.includes("original shader failure")));
+assert.equal(JSON.parse(loggedFiles["logging.json"]).events.sink_errors, 0);
+assert.ok(loggedFiles["events.jsonl"].includes("original shader failure"));
+loggedHost.imports.env.up_host_gl_context_destroy();

@@ -16,7 +16,13 @@ const canvas = document.querySelector("canvas[data-unpolished-peas]");
 if (!canvas) throw new Error("unpolished-peas browser: missing canvas");
 const shell = createBrowserShell(canvas);
 const requestedRenderer = new URLSearchParams(globalThis.location?.search ?? "").get("renderer") ?? "webgl2";
-const host = createBrowserHost({canvas});
+const parameters = new URLSearchParams(globalThis.location?.search ?? "");
+const loggingLevel = parameters.get("peas-log");
+const logging = loggingLevel !== null ? {
+  level: loggingLevel,
+  categories: parameters.has("peas-log-categories") && parameters.get("peas-log-categories") !== "all" ? parameters.get("peas-log-categories").split(",") : undefined,
+} : null;
+const host = createBrowserHost({canvas, logging});
 const target = browserTarget();
 
 function publish(diagnostic, runtime = null, selectedRenderer = null) {
@@ -48,6 +54,7 @@ function unavailable(reason, instruction, contextStatus, webgl2Capability, webgp
     recoveryState: host.lifecycle(),
   });
   publish(diagnostic);
+  host.recordFailure("startup", reason, instruction);
   throw new Error(`unpolished-peas browser: ${reason}; ${instruction}`);
 }
 

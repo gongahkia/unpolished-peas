@@ -1702,10 +1702,11 @@ fn ProtocolAdapter(comptime Game: type) type {
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
     try config.validate();
-    const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
+    const developer_override = environmentBool("UP_DEVELOPER_TOOLS");
+    const developer_tools_enabled = developer_override orelse config.developer_tools;
     if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) {
         const original = sdlVideoInitFail(config.renderer);
-        if (environmentBool("UP_DEVELOPER_TOOLS") orelse true) {
+        if (developer_override orelse true) {
             // Preserve SDL's original detail before filesystem/logging calls
             // can replace SDL_GetError. No window, Canvas or device exists.
             var detail: [512]u8 = undefined;
@@ -1729,6 +1730,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     defer save_data.deinit();
     var dev = try DeveloperTools.init(allocator, developer_tools_enabled, data_path);
     dev.asset_root = config.asset_root orelse "auto-or-embedded";
+    dev.capture_enabled = developer_override orelse true;
     var developer_asset_registry = developer_assets.Registry.init(allocator, developer_tools_enabled) catch |err| blk: {
         // A bad explicit developer root must not turn a release-style game
         // launch into a failure. The embedded resource remains authoritative.
@@ -2987,6 +2989,7 @@ const DeveloperTools = struct {
     frame_id: u64 = 0,
     failure_id: u64 = 0,
     write_errors: u64 = 0,
+    truncated_values: u64 = 0,
     selected_renderer: []const u8 = "not_initialized",
     selected_driver: []const u8 = "unavailable",
     asset_root: []const u8 = "auto-or-embedded",
@@ -2998,9 +3001,6 @@ const DeveloperTools = struct {
             .app_data_path = app_data_path,
             .enabled = enabled,
             .recent = runtime_log.Ring.init(allocator, if (enabled) 128 else 0, .{}),
-            // Optimized hosts retain their existing failure-only captures;
-            // explicit UP_DEVELOPER_TOOLS=0 disables all automatic capture.
-            .capture_enabled = environmentBool("UP_DEVELOPER_TOOLS") orelse true,
             .overlay = if (enabled) environmentBool("UP_DEVELOPER_OVERLAY") orelse true else false,
             .diagnostics = developer_diagnostics.Collector.init(enabled),
             .dump_snapshot = enabled and (environmentBool("UP_DEVELOPER_DIAGNOSTICS_DUMP") orelse false),
@@ -3042,7 +3042,9 @@ const DeveloperTools = struct {
             .{ .key = "optimize", .value = .{ .string = @tagName(builtin.mode) } },
             .{ .key = "target", .value = .{ .string = @tagName(builtin.os.tag) ++ "-" ++ @tagName(builtin.cpu.arch) } },
         });
-        std.debug.print("unpolished-peas app data: {s}\nunpolished-peas log: {s}unpolished-peas.log\nunpolished-peas events: {s}unpolished-peas.jsonl session={d}\n", .{ app_data_path, app_data_path, app_data_path, tools.session_id });
+        std.debug.print("unpolished-peas app data: {s}\n", .{app_data_path});
+        if (tools.log_file != null) std.debug.print("unpolished-peas log: {s}unpolished-peas.log\n", .{app_data_path});
+        if (tools.json_log != null) std.debug.print("unpolished-peas events: {s}unpolished-peas.jsonl session={d}\n", .{ app_data_path, tools.session_id }) else std.debug.print("unpolished-peas events: memory only session={d}\n", .{tools.session_id});
         return tools;
     }
 
@@ -3181,8 +3183,14 @@ const DeveloperTools = struct {
         const configured_path = std.process.getEnvVarOwned(self.allocator, "UP_DIAGNOSTICS_ROOT") catch null;
         defer if (configured_path) |value| self.allocator.free(value);
         const path = configured_path orelse std.fmt.bufPrint(&path_buffer, "{s}diagnostics", .{self.app_data_path}) catch return;
-        var message_buffer: [512]u8 = undefined;
-        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} context={s} session={d} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, self.session_id, frame }) catch return;
+        const omit_commands = failure_value.phase == .init or failure_value.phase == .deinit;
+        var message_buffer: [2048]u8 = undefined;
+        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} context={s} session={d} frame={d} commands_omitted={any}\n", .{
+            runtime_log.boundedText(operation, 128).value,                      failure_value.phase.label(),
+            runtime_log.boundedText(@errorName(failure_value.err), 1024).value, runtime_log.boundedText(failure_value.context, 512).value,
+            self.session_id,                                                    frame,
+            omit_commands,
+        }) catch return;
         self.record(.err, failureCategory(failure_value.phase), message, &.{
             .{ .key = "phase", .value = .{ .string = failure_value.phase.label() } },
             .{ .key = "error", .value = .{ .string = @errorName(failure_value.err) } },
@@ -3191,12 +3199,15 @@ const DeveloperTools = struct {
         });
         const incident = up.diagnostics.captureSession(self.allocator, path, self.session_id, self.failure_id, .{
             .canvas = canvas,
-            .commands = commands,
+            // Initialization/cleanup may have already released game resources
+            // borrowed by queued image/text commands. Never inspect them then.
+            .commands = if (omit_commands) &.{} else commands,
             .profiler = frame_profiler,
             .log = message,
             .event_log = .{
                 .events = self.recent.items(),
                 .dropped_events = self.recent.dropped_events,
+                .truncated_values = self.truncated_values,
                 .write_errors = self.write_errors,
                 .file_rotations = (if (self.log_file) |file| file.rotations else @as(u64, 0)) +| (if (self.json_log) |file| file.rotations else @as(u64, 0)),
                 .discarded_file_bytes = (if (self.log_file) |file| file.discarded_bytes else @as(u64, 0)) +| (if (self.json_log) |file| file.discarded_bytes else @as(u64, 0)),
@@ -3236,7 +3247,7 @@ const DeveloperTools = struct {
         const self: *DeveloperTools = @ptrCast(@alignCast(context));
         var buffer: [256]u8 = undefined;
         const line = std.fmt.bufPrint(&buffer, "unpolished-peas inspector panel {s} failed: {s}\n", .{ panel, @errorName(err) }) catch return;
-        self.note(line);
+        self.record(.err, .diagnostics, line, &.{});
     }
 
     fn drawOverlay(self: *const DeveloperTools, canvas: *up.Canvas) void {
@@ -3260,7 +3271,7 @@ const DeveloperTools = struct {
         var file = std.fs.cwd().createFile(path, .{}) catch |err| {
             var message: [160]u8 = undefined;
             const line = std.fmt.bufPrint(&message, "unpolished-peas developer diagnostics dump failed: {s}\n", .{@errorName(err)}) catch return;
-            self.note(line);
+            self.record(.err, .diagnostics, line, &.{});
             return;
         };
         defer file.close();
@@ -3269,7 +3280,7 @@ const DeveloperTools = struct {
         developer_diagnostics.writeJson(&writer.interface, self.diagnostics.snapshot) catch |err| {
             var message: [160]u8 = undefined;
             const line = std.fmt.bufPrint(&message, "unpolished-peas developer diagnostics dump failed: {s}\n", .{@errorName(err)}) catch return;
-            self.note(line);
+            self.record(.err, .diagnostics, line, &.{});
             return;
         };
         writer.interface.writeByte('\n') catch {};
@@ -3283,7 +3294,20 @@ const DeveloperTools = struct {
 
     fn record(self: *DeveloperTools, level: runtime_log.Level, category: runtime_log.Category, message: []const u8, fields: []const runtime_log.Field) void {
         if (!self.log_active) return;
-        var event: runtime_log.Event = .{ .timestamp_ns = 0, .session_id = self.session_id, .frame_id = self.frame_id, .level = level, .category = category, .message = std.mem.trimEnd(u8, message, "\r\n"), .fields = fields };
+        const bounded_message = runtime_log.boundedText(std.mem.trimEnd(u8, message, "\r\n"), runtime_log.max_text_bytes);
+        if (bounded_message.truncated) self.truncated_values +|= 1;
+        var owned_fields: [runtime_log.max_fields]runtime_log.Field = undefined;
+        const count = @min(fields.len, owned_fields.len);
+        self.truncated_values +|= fields.len - count;
+        for (fields[0..count], 0..) |field, index| {
+            owned_fields[index] = field;
+            if (field.value == .string) {
+                const text = runtime_log.boundedText(field.value.string, runtime_log.max_text_bytes);
+                owned_fields[index].value = .{ .string = text.value };
+                if (text.truncated) self.truncated_values +|= 1;
+            }
+        }
+        var event: runtime_log.Event = .{ .timestamp_ns = 0, .session_id = self.session_id, .frame_id = self.frame_id, .level = level, .category = category, .message = bounded_message.value, .fields = owned_fields[0..count] };
         if (!self.recent.filter.allows(event)) return;
         event.timestamp_ns = @min(c.SDL_GetTicksNS() -| self.started_ns, (@as(u64, 1) << 53) - 1);
         self.recent.append(event) catch {
@@ -3529,6 +3553,40 @@ test "log output failure and explicitly disabled capture preserve game error" {
     tools.captureStartupFailure(failure_value, &profiler, "disabled test");
     try std.testing.expectEqual(errors, tools.write_errors);
     try temp.dir.access("diagnostics", .{});
+}
+
+test "disabled native logging makes no allocator requests" {
+    var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = 0 });
+    var tools = try DeveloperTools.init(failing.allocator(), false, "");
+    tools.capture_enabled = false;
+    tools.record(.err, .engine, "ignored", &.{});
+    tools.beginDiagnosticsFrame(4);
+    tools.deinit();
+    try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
+    try std.testing.expect(!failing.has_induced_failure);
+}
+
+test "cleanup captures omit borrowed commands after game resources expire" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(path);
+    var tools = try DeveloperTools.init(std.testing.allocator, false, path);
+    defer tools.deinit();
+    var canvas = try up.Canvas.init(std.testing.allocator, 2, 2);
+    defer canvas.deinit();
+    const commands = [_]up.RenderCommand{.{ .image = .{ .image = @ptrFromInt(4096), .x = 0, .y = 0 } }};
+    var profile = up.FrameProfiler.init(false);
+    tools.captureFailure(.{ .phase = .deinit, .err = error.CleanupFailed }, 9, canvas, &commands, &profile);
+    var dir = try std.fs.cwd().openDir(tools.last_incident orelse return error.MissingIncident, .{});
+    defer dir.close();
+    const captured = try dir.readFileAlloc(std.testing.allocator, "commands.json", 1024);
+    defer std.testing.allocator.free(captured);
+    const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, captured, .{});
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(i64, 0), parsed.value.object.get("count").?.integer);
 }
 
 test "native event sinks release every partially allocated record" {

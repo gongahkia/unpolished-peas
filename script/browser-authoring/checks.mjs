@@ -102,3 +102,29 @@ export function composition({text, finish = false}) {
     element.dispatchEvent(new InputEvent("input", {bubbles: true, data: text, inputType: "insertText", isComposing: false}));
   }
 }
+
+// Shared by real browser adapters and contract tests; never infer a pass from
+// a missing stream or merely successful Wasm compilation.
+export function validateLoggingArtifacts(artifacts, expectedError = null) {
+  const files = new Map(artifacts.map((file) => [file.name, file]));
+  const metadata = JSON.parse(files.get("logging.json")?.data ?? "null");
+  check(metadata?.events?.enabled === true, "structured browser logging must be enabled");
+  check(metadata.events.sink_errors === 0, "default browser console output must not lose events");
+  const events = (files.get("events.jsonl")?.data ?? "").trim().split("\n").filter(Boolean).map(JSON.parse);
+  check(events.length > 0 && events.length <= 128, "bounded nonempty event stream required");
+  for (const event of events) {
+    check(event.version === 1 && Number.isSafeInteger(event.session_id) && event.session_id === metadata.events.session_id, "event schema and session correlation");
+    check(Number.isSafeInteger(event.timestamp_ns) && event.timestamp_ns >= 0 && Number.isSafeInteger(event.frame_id), "exact timestamp and frame integers");
+    check(["trace", "debug", "info", "warn", "err", "fatal"].includes(event.level), "valid severity");
+    check(["engine", "assets", "render", "input", "audio", "storage", "diagnostics", "platform"].includes(event.category), "valid category");
+    check(typeof event.message === "string" && Buffer.byteLength(event.message) <= 1024, "bounded UTF-8 message");
+  }
+  check(events.some((event) => event.category === "engine") && events.some((event) => event.category === "render"), "ordinary host lifecycle and renderer events");
+  const incidents = artifacts.filter(({name}) => /^incident-[0-9]+-[0-9]+\.json$/.test(name)).map(({data}) => JSON.parse(data));
+  check(incidents.length <= 4 && new Set(incidents.map((item) => item.failure_id)).size === incidents.length, "distinct bounded incidents");
+  if (expectedError) {
+    check(incidents.length === 4 && metadata.events.dropped_incidents > 0, "real repeated failures exercise incident retention");
+    check(incidents.every((item) => item.error === expectedError && item.phase === "init" && item.operation === "game.init"), "original Wasm error and phase survive cleanup");
+  }
+  return {events: events.length, incidents: incidents.length, session_id: metadata.events.session_id, retention: metadata};
+}

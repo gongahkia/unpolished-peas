@@ -226,6 +226,7 @@ pub fn parseCategories(value: []const u8) !u32 {
 /// are touched. Callers serialize access; this is not a concurrent log sink.
 pub const RotatingFile = struct {
     dir: std.fs.Dir,
+    lock_file: std.fs.File,
     name: []const u8,
     max_bytes: u64,
     archives: u8,
@@ -236,11 +237,25 @@ pub const RotatingFile = struct {
 
     pub fn init(path: []const u8, name: []const u8, max_bytes: u64, archives: u8) !RotatingFile {
         if (!validKey(name) or std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..") or max_bytes == 0 or archives == 0 or archives > 8) return error.InvalidLogLimits;
-        return .{ .dir = try std.fs.cwd().openDir(path, .{}), .name = name, .max_bytes = max_bytes, .archives = archives };
+        var dir = try std.fs.cwd().openDir(path, .{});
+        errdefer dir.close();
+        var buffer: [96]u8 = undefined;
+        const lock_name = try std.fmt.bufPrint(&buffer, "{s}.lock", .{name});
+        var target: [std.fs.max_path_bytes]u8 = undefined;
+        if (dir.readLink(lock_name, &target)) |_| return error.InvalidLogFile else |err| switch (err) {
+            error.FileNotFound, error.NotLink => {},
+            else => return err,
+        }
+        const lock_file = try dir.createFile(lock_name, .{ .truncate = false });
+        errdefer lock_file.close();
+        if (!try lock_file.tryLock(.exclusive)) return error.LogBusy;
+        return .{ .dir = dir, .lock_file = lock_file, .name = name, .max_bytes = max_bytes, .archives = archives };
     }
 
     pub fn deinit(self: *RotatingFile) void {
         if (self.file) |file| file.close();
+        self.lock_file.unlock();
+        self.lock_file.close();
         self.dir.close();
         self.* = undefined;
     }
@@ -431,4 +446,39 @@ test "rotation bounds existing oversized logs and refuses dangling symlinks" {
         try std.testing.expectError(error.InvalidLogFile, linked.append("x\n"));
         try std.testing.expectError(error.FileNotFound, temp.dir.access("absent-target", .{}));
     }
+}
+
+/// Borrow a valid UTF-8 prefix within a byte budget. Hosts use this before
+/// formatting bounded records; the generic Event validator stays compatible.
+pub fn boundedText(text: []const u8, limit: usize) struct { value: []const u8, truncated: bool } {
+    var end = @min(text.len, limit);
+    while (end > 0 and !std.unicode.utf8ValidateSlice(text[0..end])) : (end -= 1) {}
+    return .{ .value = text[0..end], .truncated = end != text.len };
+}
+
+test "bounded host text preserves UTF-8 and reports omitted bytes" {
+    const clipped = boundedText("a✓b", 3);
+    try std.testing.expectEqualStrings("a", clipped.value);
+    try std.testing.expect(clipped.truncated);
+    try std.testing.expectEqualStrings("a✓", boundedText("a✓b", 4).value);
+    try std.testing.expectEqualStrings("valid", boundedText("valid\xfftail", 64).value);
+}
+
+test "concurrent sessions cannot interleave or rotate the same log" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    {
+        var first = try RotatingFile.init(root, "shared.jsonl", 1024, 1);
+        defer first.deinit();
+        try std.testing.expectError(error.LogBusy, RotatingFile.init(root, "shared.jsonl", 1024, 1));
+        try first.append("first\n");
+    }
+    var next = try RotatingFile.init(root, "shared.jsonl", 1024, 1);
+    defer next.deinit();
+    try next.append("next\n");
+    const contents = try temp.dir.readFileAlloc(std.testing.allocator, "shared.jsonl", 1024);
+    defer std.testing.allocator.free(contents);
+    try std.testing.expectEqualStrings("first\nnext\n", contents);
 }

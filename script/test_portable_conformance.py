@@ -26,6 +26,7 @@ def main():
     parser.add_argument("--audio-bundle", type=Path, default=REPO / "zig-out/audio-lifetime")
     parser.add_argument("--references", type=Path, default=REPO / "zig-out/browser-authoring-reference")
     parser.add_argument("--diagnostics", type=Path)
+    parser.add_argument("--logging", action="store_true")
     args = parser.parse_args()
     browsers = args.browsers or os.environ.get("PEAS_AUTHORING_BROWSERS", "chromium,firefox,safari" if args.browser_workflows else "chromium")
     diagnostics = args.diagnostics or REPO / ("zig-out/diagnostics/browser-authoring/consumer" if args.browser_workflows else "zig-out/diagnostics/portable-conformance")
@@ -91,6 +92,8 @@ def main():
                 report["bundle_sha256"] = bundle_hashes
                 browser_directory = diagnostics / "browser"
                 command = [REPO / "script/browser-authoring/run.sh", "--consumer", bundle, "--browsers", browsers, "--diagnostics", browser_directory]
+                if args.logging:
+                    command += ["--logging"]
                 if args.browser_workflows:
                     command += ["--font", args.font_bundle, "--audio", args.audio_bundle, "--references", args.references]
                 browser = subprocess.run(command, cwd=REPO, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True, timeout=600)

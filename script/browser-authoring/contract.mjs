@@ -4,7 +4,7 @@ import {createServer} from "node:http";
 import {tmpdir} from "node:os";
 import {join} from "node:path";
 import {SafariAdapter, prerequisiteFailure} from "./adapters.mjs";
-import {frame, compareReference, readFrame} from "./checks.mjs";
+import {frame, compareReference, readFrame, validateLoggingArtifacts} from "./checks.mjs";
 import {WebDriver} from "../safari_webdriver.mjs";
 import {execFile} from "node:child_process";
 import {fileURLToPath} from "node:url";
@@ -110,3 +110,14 @@ try {
   await new Promise((resolve) => server.close(resolve));
 }
 console.log("authoring browser contracts passed: PNG/readback/reference failures, Safari keys/text/error cleanup and request deadlines");
+
+// A structurally valid file list is insufficient if events or terminal output
+// were lost; retain these checks independently of browser availability.
+const logArtifacts = [
+  {name: "logging.json", data: JSON.stringify({events: {enabled: true, session_id: 7, sink_errors: 0}})},
+  {name: "events.jsonl", data: ["engine", "render"].map((category) => JSON.stringify({version: 1, session_id: 7, frame_id: 0, timestamp_ns: 1, level: "info", category, message: "ok", fields: {}})).join("\n")},
+];
+assert.equal(validateLoggingArtifacts(logArtifacts).events, 2);
+assert.throws(() => validateLoggingArtifacts([]), /must be enabled/);
+assert.throws(() => validateLoggingArtifacts([{name: "logging.json", data: JSON.stringify({events: {enabled: true, session_id: 7, sink_errors: 1}})}, logArtifacts[1]]), /console output/);
+assert.throws(() => validateLoggingArtifacts([logArtifacts[0], {name: "events.jsonl", data: "{"}]), SyntaxError);

@@ -3,12 +3,15 @@ import {createServer} from "node:http";
 import {mkdir, readFile, writeFile} from "node:fs/promises";
 import {resolve, join, extname, sep} from "node:path";
 import {parseArgs} from "node:util";
-import {spawn} from "node:child_process";
+import {spawn, execFile} from "node:child_process";
+import {promisify} from "node:util";
+import {fileURLToPath} from "node:url";
 import {createWriteStream} from "node:fs";
 import {createServer as createSocketServer} from "node:net";
 import {once} from "node:events";
 import {createHash} from "node:crypto";
 import {adapter, prerequisiteFailure, sleep} from "./adapters.mjs";
+import {validateLoggingArtifacts} from "./checks.mjs";
 import {instrumentation} from "./instrumentation.mjs";
 import {probeWebGlCapture, webGlRenderContract, validateWebGlReadback, validateRenderer} from "../safari_webdriver.mjs";
 import {portableChecks} from "../browser_portable_conformance_checks.mjs";
@@ -18,7 +21,7 @@ import {surfaceChecks} from "../browser_surface_gpu_checks.mjs";
 
 const {values} = parseArgs({options: {
   consumer: {type: "string"}, font: {type: "string"}, audio: {type: "string"}, references: {type: "string"},
-  surface: {type: "string"}, "surface-references": {type: "string"},
+  surface: {type: "string"}, "surface-references": {type: "string"}, logging: {type: "boolean", default: false},
   browsers: {type: "string", default: "chromium,firefox,safari"}, diagnostics: {type: "string", default: "zig-out/diagnostics/browser-authoring"},
 }});
 const browsers = values.browsers.split(",");
@@ -141,7 +144,7 @@ async function runCase(browser, name, checks) {
     validateWebGlReadback(driver.captureProbe, "independent WebGL probe");
     assert.ok(driver.captureProbe.png_capture_available || browser === "safari", "only independently unavailable Safari PNG may use nullable capture");
     result.status = "failed"; // Once the prerequisites work, assertion failures are regressions.
-    await driver.navigate(base + "/" + name + "/?renderer=webgl2");
+    await driver.navigate(base + "/" + name + "/?renderer=webgl2" + (values.logging ? "&peas-log=debug" : ""));
     await driver.wait(() => Boolean(window.unpolishedPeas?.rendererDiagnostic), null, "renderer diagnostic");
     const diagnostic = await driver.evaluate(() => window.unpolishedPeas.rendererDiagnostic);
     result.renderer_diagnostic = diagnostic;
@@ -156,6 +159,32 @@ async function runCase(browser, name, checks) {
     await json(join(output, "runtime-webgl-readback.json"), readback);
     validateWebGlReadback(readback, "Peas WebGL renderer");
     result.observations = await checks(driver, {directory: output, references: name === "surface" ? surfaceReferences : references});
+    if (values.logging) {
+      if (name === "consumer") {
+        const failures = await driver.evaluate(() => {
+          const {runtime, host} = window.unpolishedPeas;
+          const statuses = [];
+          for (let i = 0; i < 6; i += 1) {
+            runtime.conformance_reject_next_init();
+            statuses.push(runtime.up_browser_init(320, 160));
+            if (host.lifecycle().scheduledFrames !== 0 || host.resourceCount() !== 0) throw new Error("failed init leaked resources or callbacks");
+          }
+          return statuses;
+        });
+        assert.deepEqual(failures, Array(6).fill(-3));
+      }
+      const artifacts = await driver.evaluate(() => window.unpolishedPeas.host.artifacts());
+      result.logging = validateLoggingArtifacts(artifacts, name === "consumer" ? "ConformanceInitRejected" : null);
+      const artifactsDirectory = join(output, "runtime-artifacts", String(result.logging.session_id));
+      result.logging.artifacts = artifactsDirectory;
+      await mkdir(artifactsDirectory, {recursive: true});
+      for (const artifact of artifacts) {
+        assert.ok(/^[a-zA-Z0-9_.-]+$/.test(artifact.name), "artifact filename cannot escape its directory");
+        const bytes = artifact.type === "image/png" ? Buffer.from(artifact.data.split(",")[1], "base64") : artifact.data;
+        if (artifact.type === "image/png") assert.ok(bytes.subarray(0, 8).equals(Buffer.from([137,80,78,71,13,10,26,10])), "exported PNG must have a real signature");
+        await writeFile(join(artifactsDirectory, artifact.name), bytes);
+      }
+    }
     const environment = await state(driver);
     await json(join(output, "environment.json"), environment);
     assert.deepEqual(environment.instrumentation.errors, [], "browser JavaScript errors");
@@ -173,6 +202,21 @@ async function runCase(browser, name, checks) {
     clearTimeout(timeout);
     if (driver.console) await json(join(output, "console.json"), driver.console);
     try { await driver.close(); } catch (error) { result.cleanup_error = error.message; if (result.status === "passed") result.status = "failed"; }
+    if (result.status === "passed" && result.logging?.artifacts) {
+      try {
+        const bundle = join(output, "support", String(result.logging.session_id));
+        const {stdout, stderr} = await promisify(execFile)("zig", ["build", "peas", "--", "--json", "--non-interactive", "support-bundle", result.logging.artifacts, bundle], {cwd: fileURLToPath(new URL("../../", import.meta.url)), timeout: 120000, maxBuffer: 8 * 1024 * 1024});
+        assert.equal(JSON.parse(stdout).status, "ok");
+        const manifest = JSON.parse(await readFile(join(bundle, "support-bundle.json"), "utf8"));
+        assert.ok(manifest.artifacts.includes("events.jsonl") && manifest.artifacts.includes("logging.json"));
+        if (name === "consumer") assert.equal(manifest.artifacts.filter((file) => file.startsWith("incident-")).length, 4);
+        result.logging.support_bundle = bundle;
+        await writeFile(join(output, "support-export.log"), stderr);
+      } catch (error) {
+        result.status = "failed";
+        result.support_export_error = error.stack ?? String(error);
+      }
+    }
   }
   await json(join(output, "result.json"), result);
   return result;

@@ -1045,6 +1045,7 @@ pub fn build(b: *std.Build) void {
     b.step("browser-authoring-reference", "Record native authored-font pixels for real-browser comparisons").dependOn(&run_authoring_reference.step);
     const authoring_browsers = b.option([]const u8, "authoring-browsers", "Comma-separated real authoring browsers: chromium,firefox,safari") orelse "chromium,firefox,safari";
     const authoring_workflows = b.addSystemCommand(&.{ "python3", "-B", "script/test_portable_conformance.py", "--browser-workflows", "--browsers", authoring_browsers, "--font-bundle", b.getInstallPath(.prefix, "font-layout"), "--audio-bundle", b.getInstallPath(.prefix, "audio-lifetime"), "--references", b.getInstallPath(.prefix, "browser-authoring-reference") });
+    if (b.option(bool, "authoring-logging", "Verify structured logs and repeated failure artifacts in real authoring browsers") orelse false) authoring_workflows.addArg("--logging");
     authoring_workflows.step.dependOn(&run_authoring_reference.step);
     authoring_workflows.step.dependOn(font_web);
     authoring_workflows.step.dependOn(audio_lifetime_web);
