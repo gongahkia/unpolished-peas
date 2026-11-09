@@ -108,7 +108,7 @@ export function createBrowserHost({
     return false;
   }
   function rendererError(message, operation) {
-    if (!note("err", "render", message, {operation})) logger?.error?.(message);
+    if (!artifacts.logEnabled || !note("err", "render", message, {operation})) logger?.error?.(message);
     artifacts.failure("render", message, operation);
   }
   note("info", "engine", "browser host created");
@@ -1394,7 +1394,7 @@ export function createBrowserHost({
     recordCommand: artifacts.recordCommand,
     setRendererDiagnostic: (value) => {
       const result = artifacts.setRendererDiagnostic(value);
-      note("info", "render", "renderer selection", {requested: value?.requested_renderer ?? "none", selected: value?.selected_renderer ?? "none", status: value?.context_status ?? "unknown"});
+      if (artifacts.logEnabled) note("info", "render", "renderer selection", {requested: value?.requested_renderer ?? "none", selected: value?.selected_renderer ?? "none", status: value?.context_status ?? "unknown"});
       return result;
     },
     recordFailure: artifacts.failure,

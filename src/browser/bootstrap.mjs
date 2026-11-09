@@ -15,8 +15,8 @@ async function instantiate(url, imports) {
 const canvas = document.querySelector("canvas[data-unpolished-peas]");
 if (!canvas) throw new Error("unpolished-peas browser: missing canvas");
 const shell = createBrowserShell(canvas);
-const requestedRenderer = new URLSearchParams(globalThis.location?.search ?? "").get("renderer") ?? "webgl2";
 const parameters = new URLSearchParams(globalThis.location?.search ?? "");
+const requestedRenderer = parameters.get("renderer") ?? "webgl2";
 const loggingLevel = parameters.get("peas-log");
 const logging = loggingLevel !== null ? {
   level: loggingLevel,
