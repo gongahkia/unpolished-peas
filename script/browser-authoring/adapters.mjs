@@ -65,8 +65,18 @@ export class SafariAdapter extends Adapter {
     if (!result?.ok) throw new Error(result?.message ?? "Safari returned no script result");
     return result.value;
   }
+  async ensureWindowFocus() {
+    if (!this.url) return;
+    if (await this.evaluate(() => document.hasFocus())) return;
+    // Safari can deliver trusted key events to a background automation window.
+    // Raise the actual WebDriver window; never inject DOM focus/key events.
+    const handle = await this.client.request(this.client.path("/window"));
+    await this.client.request(this.client.path("/window"), "POST", {handle});
+    await this.wait(() => document.hasFocus(), null, "Safari automation window focus");
+  }
   async key(type, key) {
     this.assertOpen();
+    if (type === "keyDown") await this.ensureWindowFocus();
     await this.client.actions([{type: "key", id: "keyboard", actions: [{type, value: keys[key] ?? key}]}]);
   }
   async down(key) { await this.key("keyDown", key); }
@@ -74,9 +84,10 @@ export class SafariAdapter extends Adapter {
   // Safari can omit ordinary-character keyup for separate keyUp action calls.
   // Shared workflows hold one key at a time; this sends genuine release events.
   async up(_key) { this.assertOpen(); await this.client.releaseActions(); }
-  async click(selector) { this.assertOpen(); await this.client.click(await this.client.find(selector)); }
+  async click(selector) { this.assertOpen(); await this.ensureWindowFocus(); await this.client.click(await this.client.find(selector)); }
   async text(value) {
     this.assertOpen();
+    await this.ensureWindowFocus();
     const id = await this.client.find("textarea[aria-label='Game text input']");
     await this.client.request(this.client.path(`/element/${id}/value`), "POST", {text: value, value: Array.from(value)});
   }

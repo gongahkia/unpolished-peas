@@ -121,3 +121,18 @@ assert.equal(validateLoggingArtifacts(logArtifacts).events, 2);
 assert.throws(() => validateLoggingArtifacts([]), /must be enabled/);
 assert.throws(() => validateLoggingArtifacts([{name: "logging.json", data: JSON.stringify({events: {enabled: true, session_id: 7, sink_errors: 1}})}, logArtifacts[1]]), /console output/);
 assert.throws(() => validateLoggingArtifacts([logArtifacts[0], {name: "events.jsonl", data: "{"}]), SyntaxError);
+
+const focusAdapter = new SafariAdapter("http://fixture");
+focusAdapter.url = "http://fixture/game";
+let windowFocused = false;
+const focusRequests = [];
+focusAdapter.evaluate = async () => windowFocused;
+focusAdapter.client = {sessionId: "focus", path: (suffix) => suffix, request: async (path, method = "GET", body) => {
+  focusRequests.push({path, method, body});
+  if (method === "GET") return "window-7";
+  windowFocused = true;
+}};
+await focusAdapter.ensureWindowFocus();
+assert.deepEqual(focusRequests, [{path: "/window", method: "GET", body: undefined}, {path: "/window", method: "POST", body: {handle: "window-7"}}]);
+await focusAdapter.ensureWindowFocus();
+assert.equal(focusRequests.length, 2, "a focused window needs no extra activation");

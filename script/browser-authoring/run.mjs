@@ -122,7 +122,7 @@ async function safariService() {
 async function state(driver) {
   return driver.evaluate(() => {
     const api = window.unpolishedPeas;
-    return {url: location.href, user_agent: navigator.userAgent, platform: navigator.platform, renderer: api?.renderer, diagnostic: api?.rendererDiagnostic, storage: api?.host?.storage(), audio: api?.host?.audio(), input: api?.host?.input(), lifecycle: api?.host?.lifecycle(), instrumentation: window.peasTest, artifacts: api?.host?.artifacts()};
+    return {focus: {document: document.hasFocus(), active: document.activeElement?.tagName, visibility: document.visibilityState}, url: location.href, user_agent: navigator.userAgent, platform: navigator.platform, renderer: api?.renderer, diagnostic: api?.rendererDiagnostic, storage: api?.host?.storage(), audio: api?.host?.audio(), input: api?.host?.input(), lifecycle: api?.host?.lifecycle(), instrumentation: window.peasTest, artifacts: api?.host?.artifacts()};
   });
 }
 
