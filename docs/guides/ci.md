@@ -48,11 +48,21 @@ Its separate `portable-authoring` job runs `test-browser-authoring` on Intel
 macOS with Node 24 and locked Playwright test dependencies. It installs the
 matching Firefox, enables Safari WebDriver and runs the same archive-consumer,
 font and audio assertions in Chromium/Firefox/real Safari with WebGL 2.
-The job has a 15-minute limit; its matrix step has 10 minutes. It retains all
+The job has a 35-minute limit; its matrix step has 10 minutes. It retains all
 authoring diagnostics even on failure and does not change capability statuses.
 `browser-host` also runs `test-browser-authoring-contract`, which rejects empty
 captures, bad pixels and unavailable prerequisites reported as success. See
 [browser authoring verification](browser-authoring.md).
+
+The matrix enables `-Dauthoring-logging=true`: each browser must retain valid
+session-correlated JSONL with no console-sink errors, bound repeated failure
+incidents and export them through the real JSON support-bundle CLI. The same
+job runs `test-runtime-logging` separately with a six-minute step limit, after
+the browsers so native windows cannot steal Safari focus. Its nine compiled
+native cases cover original init/update/draw/cleanup errors, repeat launches,
+filters, blocked output, explicitly disabled collection and early video failure.
+Evidence is uploaded from `zig-out/diagnostics/local-logging/**` alongside the
+browser artifacts. Limits bound each step; the job-wide deadline still applies.
 
 Safari WebGL checks independently probe rendering and canvas PNG export on a
 blank page before loading Peas. A runner whose PNG encoder returns an empty

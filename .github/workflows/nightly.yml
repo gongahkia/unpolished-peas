@@ -24,6 +24,8 @@ jobs:
       - run: sudo safaridriver --enable
       - run: zig build test-browser-authoring -Dauthoring-logging=true -Dwith_sdl=false -j2 --summary all
         timeout-minutes: 10
+      - run: zig build test-runtime-logging -j2 --summary all
+        timeout-minutes: 6
       - run: zig build test-render-capacity-gpu -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
         timeout-minutes: 10
       - run: zig build test-surface-gpu-native test-surface-gpu-browser -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast -j2 --summary all
@@ -36,6 +38,7 @@ jobs:
           name: portable-authoring-browsers
           path: |
             zig-out/diagnostics/browser-authoring/**
+            zig-out/diagnostics/local-logging/**
             zig-out/diagnostics/render-capacity/**
             zig-out/diagnostics/surface-gpu/**
             zig-out/diagnostics/chess/**

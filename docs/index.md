@@ -40,6 +40,7 @@ framework validation commands in example guides run from the Peas checkout.
 | Save progress | [Small save data](guides/save-data.md) | [Audio/save API](api/audio-save.md) |
 | Draw a world, camera or offscreen panel | [Choose a rendering path](guides/rendering.md) | [CPU surfaces](guides/render-surfaces.md), [drawing API](api/drawing.md) |
 | Reproduce a gameplay bug | [Testing your game](guides/testing.md) | [Headless/replay API](api/testing.md) |
+| Investigate a runtime failure | [Local debugging workflow](guides/developer-diagnostics.md) | [Log controls](guides/developer-tools.md), [browser evidence](guides/browser-diagnostics.md#local-logs-and-failure-evidence) |
 | Rebuild and refresh in a browser | [Browser development](guides/browser-development.md) | [Build and package output](guides/installation.md#browser-and-package) |
 
 ## Read a complete example

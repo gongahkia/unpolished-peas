@@ -108,8 +108,11 @@ def main():
                     failure = (incident / "failure.log").read_text()
                     assert "error=" + original in failure
                     assert "phase=" + ("init" if variant == "video-startup" else failure_phase) in failure
+                    operation = "SDL_Init" if variant == "video-startup" else "game." + failure_phase
+                    assert "operation=" + operation in failure
                     records = [json.loads(line) for line in (incident / "events.jsonl").read_text().splitlines()]
                     assert records and any(item["fields"].get("error") == original for item in records)
+                    assert any(item["fields"].get("error") == original and item["fields"].get("operation") == operation for item in records)
                     session = records[-1]["session_id"]
                     assert all(item["version"] == 1 and item["session_id"] == session for item in records)
                     assert all(isinstance(item["timestamp_ns"], int) and 0 <= item["timestamp_ns"] <= 2**53 - 1 for item in records)

@@ -30,6 +30,8 @@ port and stops that process afterwards. An existing service on port 4444, or
 an explicit UP_SAFARI_WEBDRIVER_URL, is reused without being stopped.
 A busy service is reported unverified rather than replacing its session.
 Run Safari checks serially: competing automation windows can steal focus.
+The Safari adapter activates its actual WebDriver window before trusted input
+when necessary; it does not inject focus/key events to bypass focus checks.
 
 For a selected subset:
 
@@ -46,6 +48,16 @@ Node dependencies if needed; installing Firefox remains an explicit setup
 step. Requested browser names and actual versions are retained in the report.
 
 ## External consumer and shared assertions
+
+Add `-Dauthoring-logging=true` to the build command to verify opt-in structured
+logs and failure evidence. Every case validates the v1 event schema, correlation,
+retention bounds and zero console-sink errors, persists session-specific runtime
+artifacts, then exports them through the real JSON/non-interactive support CLI.
+The consumer induces six additional compiled init failures and verifies that
+the latest four distinct incidents retain the original error with no leaked
+resources or scheduled callbacks. Reports include exact artifact/export paths.
+Nightly CI enables this option. [Local debugging](developer-diagnostics.md)
+explains user-facing activation, formats and bounds.
 
 The [existing consumer harness](../../script/test_portable_conformance.py)
 takes a source snapshot, creates a real archive, computes its Zig package hash,

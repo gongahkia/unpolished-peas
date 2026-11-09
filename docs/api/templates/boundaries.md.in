@@ -19,7 +19,7 @@ explains when a game needs an optional rendering path and how to select its host
 | Opt-in surface composition prototype | SurfaceCompositor borrows RenderSurface pixels; Renderer2D.composeSurfaces submits once per frame | SDL GPU/WebGL 2 only; explicitly select `?renderer=webgl2` in browsers. Opaque output and alpha blending; [ownership, bounds and CPU oracle](../guides/gpu-surface-composition.md) |
 | Developer replay | preview.developer InputReplay/Recorder | Preview developer tooling; explicit input/seed/selected saves, not arbitrary memory snapshots |
 | Testing | [testSupport](testing.md) | Headless helpers and borrowed captures, not gameplay services |
-| Debugging/tools | Inspector, profiler, diagnostics, native hot reload and packaging CLI | Opt-in tools; [developer guides](../guides/developer-tools.md), not required by a first game |
+| Debugging/tools | Inspector, profiler, bounded local event logs/incidents, native hot reload and packaging CLI | Host developer tooling; [debugging workflow and support export](../guides/developer-diagnostics.md), [activation controls](../guides/developer-tools.md); no gameplay/replay state |
 
 Browser WebGL2/WebGPU status and unsupported combinations are defined by the
 [capability matrix](../guides/capabilities.md) and

@@ -221,9 +221,10 @@ pub fn parseCategories(value: []const u8) !u32 {
     return mask;
 }
 
-/// Whole-record, append-only rotation. Owns its directory and current file;
-/// name is a borrowed basename. Only that exact name and numbered archives
-/// are touched. Callers serialize access; this is not a concurrent log sink.
+/// Whole-record, append-only rotation. Owns its directory, current file and
+/// lifetime lock; name is a borrowed basename. Only that exact name, numbered
+/// archives and its stable .lock file are touched. A second owner gets LogBusy;
+/// callers still serialize access within one instance.
 pub const RotatingFile = struct {
     dir: std.fs.Dir,
     lock_file: std.fs.File,

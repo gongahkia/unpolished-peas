@@ -3167,7 +3167,15 @@ const DeveloperTools = struct {
     }
 
     fn captureFailure(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler) void {
-        self.captureDiagnostic(failure_value, frame, canvas, commands, frame_profiler, "runtime");
+        const operation = switch (failure_value.phase) {
+            .init => "game.init",
+            .update => "game.update",
+            .draw => "game.draw",
+            .deinit => "game.deinit",
+            .event => "game.event",
+            else => failure_value.phase.label(),
+        };
+        self.captureDiagnostic(failure_value, frame, canvas, commands, frame_profiler, operation);
     }
 
     fn captureStartupFailure(self: *DeveloperTools, failure_value: Failure, frame_profiler: *const up.FrameProfiler, operation: []const u8) void {
@@ -3294,6 +3302,7 @@ const DeveloperTools = struct {
 
     fn record(self: *DeveloperTools, level: runtime_log.Level, category: runtime_log.Category, message: []const u8, fields: []const runtime_log.Field) void {
         if (!self.log_active) return;
+        if (!self.recent.filter.allows(.{ .timestamp_ns = 0, .session_id = self.session_id, .level = level, .category = category, .message = "" })) return;
         const bounded_message = runtime_log.boundedText(std.mem.trimEnd(u8, message, "\r\n"), runtime_log.max_text_bytes);
         if (bounded_message.truncated) self.truncated_values +|= 1;
         var owned_fields: [runtime_log.max_fields]runtime_log.Field = undefined;
@@ -3308,7 +3317,6 @@ const DeveloperTools = struct {
             }
         }
         var event: runtime_log.Event = .{ .timestamp_ns = 0, .session_id = self.session_id, .frame_id = self.frame_id, .level = level, .category = category, .message = bounded_message.value, .fields = owned_fields[0..count] };
-        if (!self.recent.filter.allows(event)) return;
         event.timestamp_ns = @min(c.SDL_GetTicksNS() -| self.started_ns, (@as(u64, 1) << 53) - 1);
         self.recent.append(event) catch {
             self.write_errors +|= 1;
@@ -3564,6 +3572,34 @@ test "disabled native logging makes no allocator requests" {
     tools.deinit();
     try std.testing.expectEqual(@as(usize, 0), failing.alloc_index);
     try std.testing.expect(!failing.has_induced_failure);
+}
+
+test "native logging truncates UTF-8 values only after filtering" {
+    var tools = DeveloperTools{
+        .allocator = std.testing.allocator,
+        .app_data_path = "",
+        .enabled = true,
+        .overlay = false,
+        .diagnostics = developer_diagnostics.Collector.init(false),
+        .dump_snapshot = false,
+        .log_active = true,
+        .session_id = 7,
+        .started_ns = c.SDL_GetTicksNS(),
+        .recent = runtime_log.Ring.init(std.testing.allocator, 8, .{ .min_level = .warn }),
+    };
+    defer tools.deinit();
+    const long_text = "é" ** 1024;
+    const fields = [_]runtime_log.Field{.{ .key = "context", .value = .{ .string = long_text } }};
+    tools.record(.info, .engine, long_text, &fields);
+    try std.testing.expectEqual(@as(u64, 0), tools.truncated_values);
+    try std.testing.expectEqual(@as(usize, 0), tools.recent.items().len);
+    tools.record(.warn, .engine, long_text, &fields);
+    try std.testing.expectEqual(@as(u64, 2), tools.truncated_values);
+    const event = tools.recent.items()[0];
+    try std.testing.expectEqual(@as(usize, 1024), event.message.len);
+    try std.testing.expectEqual(@as(usize, 1024), event.fields[0].value.string.len);
+    try std.testing.expect(std.unicode.utf8ValidateSlice(event.message));
+    try std.testing.expect(std.unicode.utf8ValidateSlice(event.fields[0].value.string));
 }
 
 test "cleanup captures omit borrowed commands after game resources expire" {

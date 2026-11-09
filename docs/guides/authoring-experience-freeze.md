@@ -71,6 +71,7 @@ game-facing compatibility commitment:
 | Area | Classification | Boundary |
 | --- | --- | --- |
 | Native overlay, inspector, local JSON diagnostics | EXPERIMENTAL DEVELOPER TOOLING | SDL-host only, opt-in, local, no telemetry, and disabled outside developer configuration. |
+| Bounded structured logs and retained incidents | DEVELOPER TOOLING | Native/browser host evidence, local support export, outside deterministic state; [workflow and limits](developer-diagnostics.md). Optimized native failure-only capture can run without continuous logs. |
 | `sdl.developer.registerAtlasImage` / `registerFont` | EXPERIMENTAL DEVELOPER API | Native wrapper helper for explicitly registered PNG/JPEG/TGA and TTF/OTF sources. Browser rebuilds instead. |
 | `zig build dev-web` | BUILD/TOOLING CONTRACT | Local polling, rebuild, snapshot serving, and full-page SSE refresh. It is not a `GameProtocol` feature or HMR. |
 

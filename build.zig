@@ -1050,6 +1050,8 @@ pub fn build(b: *std.Build) void {
     authoring_workflows.step.dependOn(font_web);
     authoring_workflows.step.dependOn(audio_lifetime_web);
     b.step("test-browser-authoring", "Verify real Chromium/Firefox/Safari authoring against an isolated verified archive consumer").dependOn(&authoring_workflows.step);
+    const runtime_logging = b.addSystemCommand(&.{ "python3", "-B", "script/test_runtime_logging.py" });
+    b.step("test-runtime-logging", "Verify compiled native failure evidence and JSON support exports").dependOn(&runtime_logging.step);
     const update_api_docs = b.addRunArtifact(docs);
     update_api_docs.addArgs(&.{
         b.pathFromRoot("docs"),
