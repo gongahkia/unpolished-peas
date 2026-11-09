@@ -92,7 +92,11 @@ try {
   assert.ok(deleted && released, "sessions release input actions and close after failures");
   await assert.rejects(adapter.evaluate(() => true), /closed/);
   const timeout = new WebDriver(url, {requestTimeoutMs: 20});
-  await assert.rejects(timeout.request("/slow"), /timeout|timed|aborted/i);
+  await assert.rejects(timeout.request("/slow"), (error) => {
+    assert.match(error.message, /WebDriver GET \/slow transport failed \(deadline 20 ms\)/);
+    assert.equal(error.cause?.name, "TimeoutError", "retain the original transport failure");
+    return true;
+  });
   busy = true;
   const artifacts = await mkdtemp(join(tmpdir(), "peas-authoring-unverified-"));
   const sessionsBefore = requests.filter((value) => value.path === "/session").length;

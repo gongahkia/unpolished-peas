@@ -37,13 +37,18 @@ export class WebDriver {
   }
 
   async request(path, method = "GET", value) {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method,
-      headers: value === undefined ? undefined : {"content-type": "application/json"},
-      body: value === undefined ? undefined : JSON.stringify(value),
-      signal: AbortSignal.timeout(this.requestTimeoutMs),
-    });
-    const text = await response.text();
+    let response, text;
+    try {
+      response = await fetch(`${this.baseUrl}${path}`, {
+        method,
+        headers: value === undefined ? undefined : {"content-type": "application/json"},
+        body: value === undefined ? undefined : JSON.stringify(value),
+        signal: AbortSignal.timeout(this.requestTimeoutMs),
+      });
+      text = await response.text();
+    } catch (cause) {
+      throw new Error(`WebDriver ${method} ${path} transport failed (deadline ${this.requestTimeoutMs} ms): ${cause.name}: ${cause.message}`, {cause});
+    }
     let body = {value: null};
     if (text) {
       try {
