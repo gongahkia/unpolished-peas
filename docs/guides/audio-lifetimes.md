@@ -16,6 +16,8 @@ across scene transitions, prepares incoming sound/music, then releases the
 outgoing sources. It alternates WAV and OGG music. Space changes scene;
 Escape pauses/resumes music. A transition also releases a paused old stream.
 
+Run the example from the Peas checkout:
+
 ```sh
 zig build run-audio-lifetime
 zig build web-audio-lifetime -Dwith_sdl=false

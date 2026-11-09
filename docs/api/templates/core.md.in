@@ -7,8 +7,9 @@ const std = @import("std");
 const up = @import("unpolished-peas");
 ```
 
-Start with [installation](../guides/installation.md) and the
-[compiled quickstart](../guides/quickstart.md) for an independent project.
+Start with the [compiled quickstart](../guides/quickstart.md) for an
+independent project; [installation](../guides/installation.md) explains
+prerequisites and dependency modes.
 Use this reference when you need a call, its options, or its cleanup rule.
 
 | I want to… | Reference | Complete recipe / guide |
@@ -17,8 +18,10 @@ Use this reference when you need a call, its options, or its cleanup rule.
 | Draw shapes, text or an offscreen surface | [Canvas and RenderSurface](drawing.md) | [Rendering](../guides/rendering.md), [surfaces](../guides/render-surfaces.md) |
 | Read keys, rebind controls or enter a Unicode name | [Input and text](input.md) | [Input workbench](../../examples/input_workbench_game.zig), [input guide](../guides/input.md) |
 | Load an image/font/sheet with one cleanup | [Assets and animation](assets.md) | [Compiled asset recipes](../guides/asset-recipes.md) |
+| Measure or wrap proportional text | [Font](assets.md#assets-Font) | [Prepared authored text](../guides/authored-text-layout.md) |
 | Play effects or music, save progress | [Audio and saves](audio-save.md) | [Sound](../guides/audio-assets.md), [save bytes](../guides/save-data.md) |
-| Reproduce a bug without a window | [Headless and replay](testing.md) | [Testing](../guides/testing.md), [downstream conformance](../guides/portable-conformance.md) |
+| Release scene audio | [Audio](audio-save.md#core-Audio) | [Audio lifetimes](../guides/audio-lifetimes.md) |
+| Reproduce a bug without a window | [Headless and replay](testing.md) | [Testing](../guides/testing.md) |
 | Use files, an SDL window, or GPU effects | [Host and advanced boundaries](boundaries.md) | [Core contract](../guides/core-contract.md), [advanced 2D](../guides/advanced-2d.md) |
 
 ## Reading the reference
@@ -52,6 +55,12 @@ filesystem helpers are native-only; replay recording under
 `preview.developer` is preview developer tooling; Renderer2D has a separate
 advanced contract. Browser renderer support remains subject to the
 [capability matrix](../guides/capabilities.md).
+
+[Rendering choices](../guides/rendering.md#choose-a-rendering-path) distinguishes
+ordinary Canvas, CPU offscreen surfaces, the SDL GPU/WebGL 2 compositor
+prototype and advanced shader queues. The [authoring inventory](../guides/authoring-experience-freeze.md)
+identifies later checkout additions; this reference does not imply that every
+listed method shipped in the published tag.
 
 These pages cover common game-authoring APIs, not every inspector, profiler,
 mixer, backend, or packaging helper. See [boundaries](boundaries.md) for those

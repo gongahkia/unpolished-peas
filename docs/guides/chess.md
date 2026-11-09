@@ -1,7 +1,8 @@
 # Local two-player chess
 
 This is a complete, untimed local chess example for two people sharing a
-device. The same `GameProtocol` game runs on desktop and in a browser:
+device. The same `GameProtocol` game runs on desktop and in a browser.
+Run these commands from the Peas checkout:
 
 ```sh
 zig build run-chess -Doptimize=ReleaseFast

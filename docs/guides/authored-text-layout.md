@@ -9,26 +9,14 @@ The original `graphics.layoutText` / `graphics.TextLayout` remain debug-font
 helpers with their existing metrics. `Font.drawText` keeps its direct,
 unwrapped rendering behavior. Neither old API is redirected to the new path.
 
-## Reproduced mismatch
-
-Before this change, Zig 0.15.2 on Intel macOS 15.7.7 measured:
-
-| Source Sans 3, default 20-pixel load | Existing debug layout width | Actual glyph advances |
-| --- | ---: | ---: |
-| WWW | 12 | 36 |
-| iii | 12 | 12 |
-
-The old layout also reported height 7 against the authored font's line height
-20. Equal-length debug-font measurements cannot position proportional text
-correctly. The new measurements are 36×20 and 12×20 respectively.
-These are logical advances/line boxes, not tight painted-pixel bounds.
-
 ## Small menu and dialogue
 
 The [portable game](../../examples/font_layout_game.zig) loads one embedded
 Source Sans face into an AssetCollection, prepares centered menu labels and
 wrapped dialogue during init, and draws only prepared layouts. Up/down changes
 the highlighted label; Space changes the prepared dialogue page.
+
+Run the example from the Peas checkout:
 
 ```sh
 zig build run-font-layout
@@ -131,6 +119,14 @@ allocate its own observer storage; no trace is attached by this API.
 | OutOfMemory | Preparation cannot allocate its retained arrays; partial allocations are released |
 
 ## Verification
+
+The original mismatch is retained as a regression: at Source Sans 3's
+20-pixel load, `WWW` and `iii` have advances 36 and 12 with line height 20.
+The debug helper measured both at width 12 and height 7. Equal-length debug
+measurements cannot position proportional text. These measurements describe
+logical advances/line boxes, not tight painted-pixel bounds.
+
+Run these checks from the Peas checkout:
 
 ```sh
 zig build probe-font-layout -Dwith_sdl=false

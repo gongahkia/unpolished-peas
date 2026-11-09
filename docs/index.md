@@ -1,99 +1,110 @@
-# Peas learning path
+# Make a game with Peas
 
-Peas is a small Zig framework for deterministic, testable 2D games. Start
-with the smallest complete project, then add only the concepts your game needs.
+Peas is a code-first Zig framework for small 2D games: write game callbacks,
+run them on desktop or in a browser, and reproduce gameplay and logical
+drawing in headless tests. It supplies the host, fixed-step loop, input,
+Canvas drawing, asset decoding, audio and small saves. You own the game rules,
+resource lifetimes and content.
 
-## 1. First 10 minutes
+Start with a small logical resolution and the ordinary Canvas path. Peas
+does not offer a mobile host, general text shaping or a transparent GPU
+replacement for Canvas. Browser renderers remain preview. These guides follow
+the **current source checkout**, including changes after the published tag;
+see [release and package availability](guides/releases.md#current-release)
+and [observed platform coverage](guides/platforms.md) before choosing a target.
 
-1. [Start here](guides/quickstart.md) — requirements, the current source-
-   checkout path, a compiled `GameProtocol` program, and fixed-step basics.
-2. [Seed Sprint](../templates/starter/README.md) — the canonical beginner
-   project: read `src/main.zig`, then `src/game.zig`.
-3. [Game protocol](guides/game-protocol.md) — lifecycle, ownership, and the
-   fixed-step contract in more detail.
-4. [API task index](api/core.md) — source-derived signatures, options,
-   ownership, errors and executed examples for common game tasks.
+## Start here
 
-## 2. Build a small game
+1. [Create and run your first game](guides/quickstart.md). Generate Seed
+   Sprint outside the engine checkout, then build, play, test and build for web.
+2. Edit the generated `src/game.zig`; keep native configuration in
+   `src/main.zig`. The [game protocol](guides/game-protocol.md) explains fixed
+   updates, drawing and cleanup. The quickstart also includes a smaller,
+   compiled example if you want to see just the callback structure.
+3. Add one feature at a time using the task table below. Use the
+   [API reference](api/core.md) for exact calls, options and cleanup rules.
 
-- [Input and ActionMap](guides/input.md) — normalized/physical keys, rebinding, Unicode text and composition
-- [Authored images and fonts](guides/image-assets.md)
-- [Authored-font measurement, wrapping and prepared text](guides/authored-text-layout.md)
-- [Compiled portable asset recipes](guides/asset-recipes.md) — one owner for images, fonts and sheets, plus sound/save recipes
-- [Deterministic sprite-frame animation](guides/sprite-animation.md)
-- [Sound effects and music](guides/audio-assets.md)
-- [Audio lifetimes across scene transitions](guides/audio-lifetimes.md)
-- [Small save data](guides/save-data.md)
-- [Canvas, camera, and presentation](guides/rendering.md)
-- [CPU RenderSurface composition](guides/render-surfaces.md)
-- [Opt-in GPU surface composition](guides/gpu-surface-composition.md)
-- [Surface composition measurements and regression checks](guides/surface-composition-performance.md)
-- [Complete GameProtocol rendering capacity](guides/game-rendering-capacity.md)
-- [Play local two-player chess](guides/chess.md)
+Need the toolchain or dependency details? See [installation](guides/installation.md).
+Project commands run from the generated game directory; `run-*`, `web-*` and
+framework validation commands in example guides run from the Peas checkout.
 
-## 3. Make it deterministic and testable
+## Add something to your game
 
-- [Testing: seed, replay, headless state, Canvas trace, pixels](guides/testing.md)
-- [v1.0 core contract](guides/core-contract.md)
-- [Real Chromium, Firefox and Safari authoring workflows](guides/browser-authoring.md)
+| Task | Start with | Details when needed |
+| --- | --- | --- |
+| Move, rebind controls or enter a name | [Input and ActionMap](guides/input.md) | [Input API](api/input.md) |
+| Draw an image or sprite sheet | [Portable asset recipes](guides/asset-recipes.md) | [Formats, bounds and independent ownership](guides/image-assets.md) |
+| Animate a sprite | [Sprite animation](guides/sprite-animation.md) | [Assets API](api/assets.md) |
+| Lay out a menu or dialogue | [Authored text](guides/authored-text-layout.md) | [Font API](api/assets.md#assets-Font) |
+| Play effects and music | [Audio](guides/audio-assets.md) | [Release audio between scenes](guides/audio-lifetimes.md) |
+| Save progress | [Small save data](guides/save-data.md) | [Audio/save API](api/audio-save.md) |
+| Draw a world, camera or offscreen panel | [Choose a rendering path](guides/rendering.md) | [CPU surfaces](guides/render-surfaces.md), [drawing API](api/drawing.md) |
+| Reproduce a gameplay bug | [Testing your game](guides/testing.md) | [Headless/replay API](api/testing.md) |
+| Rebuild and refresh in a browser | [Browser development](guides/browser-development.md) | [Build and package output](guides/installation.md#browser-and-package) |
 
-## 4. Ship it
+## Read a complete example
 
-- [Installation and external-project status](guides/installation.md)
-- [Platform status](guides/platforms.md)
-- [Releases and support](guides/releases.md)
-
-## 5. Read a larger reference only when ready
-
-- [Neon Siege](../dogfood/neon-siege/README.md) is the public-API reference
-  game for owned resources, sprites, camera, audio/music, save data,
-  RenderSurface, deterministic tests, diagnostics, and hot reload.
-- [Lantern Leap](../dogfood/lantern-leap/README.md) is the second reference
-  game: a scrolling platformer that keeps gravity, AABB collision, handcrafted
-  level data, checkpoints, and animation-state selection in ordinary game
-  code while using the same public Peas package boundary.
-- [Advanced 2D](guides/advanced-2d.md) covers `Renderer2D`, materials,
-  particles, and post passes. Ordinary Canvas games do not need this layer.
-- [Developer diagnostics](guides/developer-diagnostics.md) and
-  [developer asset reload](guides/developer-asset-reload.md) are opt-in native
-  development tools. [Developer-tools environment reference](guides/developer-tools.md)
-  lists their explicit controls.
-- [Browser development](guides/browser-development.md) adds an opt-in local
-  watch, rebuild, serve, and full-page-refresh loop after the normal browser
-  build workflow is already familiar.
-
-## Which example should I read?
-
-| Goal | Read this |
+| What you want to learn | Example |
 | --- | --- |
-| Learn Peas from scratch | [Seed Sprint](../templates/starter/README.md) |
-| See a compact `init` / `update` / `draw` program | [compiled tutorial source](../examples/tutorial_game_protocol.zig) |
-| See a complete small game | [Neon Siege](../dogfood/neon-siege/README.md) |
-| See a second genre with scrolling/platform collision | [Lantern Leap](../dogfood/lantern-leap/README.md) |
-| Learn deterministic replay and rendering regression | [Testing](guides/testing.md) and Seed Sprint's `src/game.zig` |
-| Learn materials, particles, or post passes | [Advanced 2D](guides/advanced-2d.md) |
-| Find a method, options or cleanup rule | [API reference by task](api/core.md) |
-| Find exact API/CI contract details | [Core contract](guides/core-contract.md) and [capability matrix](guides/capabilities.md) |
+| First playable project, controls, saves and tests | [Seed Sprint](../templates/starter/README.md), generated by the quickstart |
+| Smallest callback structure | [Compiled tutorial](../examples/tutorial_game_protocol.zig) |
+| Images, fonts, sheets and one cleanup boundary | [Asset workbench](guides/asset-recipes.md) |
+| Proportional menu labels and wrapped dialogue | [Font layout](guides/authored-text-layout.md) |
+| A complete local two-player board game | [Chess](guides/chess.md) |
+| Arena action, owned resources and camera | [Neon Siege](../dogfood/neon-siege/README.md) |
+| Scrolling, collision and animation selection in game code | [Lantern Leap](../dogfood/lantern-leap/README.md) |
 
-## Authoring contract
+Seed Sprint is the starting project; the workbenches teach individual APIs.
+Neon Siege and Lantern Leap show larger game structure. Chess demonstrates
+game-owned rules without adding an engine chess or scene subsystem.
 
-[Authoring-experience freeze](guides/authoring-experience-freeze.md) records
-which additions are recommended game APIs, which remain experimental
-developer tooling, and why Seed Sprint, Neon Siege, and Lantern Leap are the
-three canonical projects. It records the `1.0.0` authoring baseline and keeps experimental tooling explicit.
+## Package and choose targets
 
-## Reference and maintenance material
+- [Installation and packaging](guides/installation.md) owns dependency modes,
+  browser serving and desktop output layout.
+- [Platform evidence](guides/platforms.md) records what actually ran;
+  [capabilities](guides/capabilities.md) defines renderer support status.
+- [Releases and support](guides/releases.md) owns version, package availability,
+  licensing status and upgrade policy. Local packaging does not establish
+  release readiness or interactive coverage on another machine.
 
-- [Portable downstream workflow verification](guides/portable-conformance.md)
-- [Framework value proposition and peer comparison, November 2026](reviews/2026-11-04-framework-value-proposition-audit.md)
-- [GPU surface-composition measurements and decision, November 8](reviews/2026-11-08-gpu-surface-composition.md)
-- [Product and engineering audit, October 2026](reviews/2026-10-23-product-engineering-audit.md)
-- [Capability matrix](guides/capabilities.md)
-- [CI](guides/ci.md)
-- [Browser renderer diagnostics](guides/browser-diagnostics.md)
-- [v1.0 migrations](guides/migrations.md)
+## Optional techniques
 
-Run `zig build docs` to emit this Markdown set under `zig-out/docs/`, or use
-`zig build peas -- docs quickstart` to locate the generated start page.
-Use `zig build peas -- docs api` for the API task index. The checked-in
-reference is also readable directly in [docs/api](api/core.md).
+Use these when a game needs them; they are not steps in the first-game path.
+
+- [GPU surface composition](guides/gpu-surface-composition.md): opt-in
+  scaling/composition of CPU surfaces on SDL GPU and WebGL 2.
+- [Advanced 2D](guides/advanced-2d.md): materials, particles and post passes.
+- [Developer diagnostics](guides/developer-diagnostics.md),
+  [native asset reload](guides/developer-asset-reload.md) and
+  [tool controls](guides/developer-tools.md).
+- [Complete-game rendering measurements](guides/game-rendering-capacity.md)
+  and [CPU composition measurements](guides/surface-composition-performance.md).
+
+## Contracts and maintenance
+
+This material is for checking framework behavior and maintaining Peas.
+It is not required to build your first game.
+
+- [Current authoring API inventory](guides/authoring-experience-freeze.md),
+  [core compatibility contract](guides/core-contract.md),
+  [input wire compatibility](guides/input-v2-compatibility.md) and
+  [migration notes](guides/migrations.md).
+- [Downstream archive checks](guides/portable-conformance.md),
+  [three-browser authoring checks](guides/browser-authoring.md),
+  [browser diagnostics](guides/browser-diagnostics.md) and [CI](guides/ci.md).
+- [Framework value-proposition audit and November 9 follow-up](reviews/2026-11-04-framework-value-proposition-audit.md),
+  [rendering-capacity follow-up, November 7](reviews/2026-11-07-gameprotocol-rendering-capacity.md),
+  [GPU composition decision, November 8](reviews/2026-11-08-gpu-surface-composition.md)
+  and [earlier product audit](reviews/2026-10-23-product-engineering-audit.md).
+
+Each task guide owns its usage and lifetime rules; the API reference owns
+source-derived signatures and executable excerpts. Link to release/platform
+records for status rather than copying their claims. Dated reviews preserve
+what was known at the time; they are not the current setup instructions.
+
+From the engine checkout, `zig build docs` emits validated Markdown and linked
+source snapshots under `zig-out/docs/`. `zig build peas -- docs quickstart`
+locates the generated start page; `zig build peas -- docs api` locates the task
+reference. [API maintenance](api/core.md#maintenance) explains regeneration and
+the native/Wasm recipe checks.

@@ -1,114 +1,90 @@
-# Create a Peas game
+# Installation, dependencies and packaging
 
-Peas requires Zig `0.15.2`.
+For the complete create → play → test → web walkthrough, use the
+[quickstart](quickstart.md). This page owns prerequisites, dependency modes
+and output layout. [Releases and support](releases.md#current-release) records
+which version and package assets are actually published; these instructions
+follow the current source checkout.
 
-The current version is **1.0.0**. Its [GitHub release](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0)
-is published, but has no prepared source-package archive, Zig package hash, or
-desktop downloads attached. You can generate and develop a standalone game
-from the source checkout today; a prepared archive is needed only for the
-explicit release mode.
+## Requirements
+
+- Zig `0.15.2` on your PATH (`zig version` prints the installed version).
+  Choose that version from the [official downloads](https://ziglang.org/download/);
+  the latest compiler is not automatically compatible with this checkout.
+- A current Peas checkout for generation. Run engine commands from its root,
+  then game commands from the generated directory.
+- Network access for uncached pinned dependencies. The native build fetches
+  and compiles SDL3; no separately installed SDL or `pkg-config` is required.
+- A working desktop display/driver for native play. Build success alone does
+  not establish interactive support; see [platform evidence](platforms.md).
+- An HTTP server for browser play. The quickstart uses Python 3; the optional
+  `dev-web` watcher also requires `python3`. Static output has no Python
+  dependency. Node.js is used by engine verification, not by a generated game.
 
 ## From a source checkout
 
-Run this from the Peas repository, choosing a new destination directory:
+From the Peas root, choosing a new destination directory:
 
 ```sh
 zig build peas -- new ../my-game
-cd ../my-game
-zig build
-zig build test
-zig build web
 ```
 
+Continue in `../my-game` with the [quickstart](quickstart.md#create-and-play).
 `zig build new -- ../my-game` is an equivalent generator entry point. Both
 write a `.dependencies.unpolished_peas.path` relative to the generated game
-and pointing to the checkout that ran the generator. Paths with spaces are
-supported. Keep the game and engine at the same relative locations, or update
-that dependency when moving them. This is a live development dependency:
-engine edits affect the next game build.
+and pointing to the checkout that ran the generator. Paths with spaces work
+when quoted. Keep the game and engine at the same relative locations, or
+update that dependency when moving them. This is a live development dependency:
+engine edits affect the next game build. Record the engine commit alongside
+your game when you need to reproduce a particular checkout.
 
-The generated game already contains its complete dependency declaration,
-desktop/browser build steps, assets, and deterministic tests. Build it from
-its own directory; no copied fixture manifest, manual dependency editing, or
-engine-internal imports are required. The initial native build fetches the
-pinned SDL3 sources and builds them without a system SDL installation.
+The generator supplies the dependency declaration, native/browser build
+steps, assets and deterministic tests. No manifest repair or internal engine
+imports are needed. Portable game code imports `unpolished-peas`; only the
+native wrapper imports `unpolished-peas-sdl3`. Keep the generated build graph
+until your game needs a specific change.
 
 ## Pin a prepared release
 
-From a prepared release checkout whose starter template contains its reviewed
-archive URL and Zig package hash, run:
+This mode requires a prepared release checkout whose starter template contains
+its archive URL and Zig package hash. It is unavailable in an unprepared
+checkout. See [current package availability](releases.md#current-release)
+before using it. From that prepared checkout:
 
 ```sh
 zig build peas -- new ../my-game --release
 ```
 
-The generator runs `zig fetch` against that URL and requires the returned
-package hash to match the template before creating the game. The generated
-manifest retains the verified URL/hash pair and has no local engine path.
-Missing coordinates, a failed fetch, or a mismatched hash cause generation to
-fail without leaving a project directory. Omitting `--release` always selects
-the local-checkout dependency, even in a prepared release checkout.
+The generator runs `zig fetch` against the supplied URL and requires the
+returned package hash to match before creating the game. The manifest retains
+that verified pair and has no local engine path. Missing coordinates, a failed
+fetch or a mismatched hash fail generation without leaving a project directory.
+Omitting `--release` selects the local-checkout dependency even in a prepared
+release checkout.
 
-The current unprepared template cannot be used with `--release`; use the
-default checkout mode above. The existing `1.0.0` tag is not rewritten by this
-workflow.
+### Release dependency format
 
-## Release dependency format
-
-Once a release includes the prepared package assets, its Seed Sprint checkout
-will contain the reviewed declaration. For a new project, fetch that immutable
-asset once to get the exact Zig package hash, then copy both values together:
-
-```sh
-zig fetch <published-source-archive-url>
-```
-
-The command prints a value beginning with `unpolished_peas-`. A prepared
-template contains that exact value in `build.zig.zon`; never substitute a hash
-from another version. This describes the generated format, not current
-copy-and-run package coordinates:
-
-```zig
-.dependencies = .{
-    .unpolished_peas = .{
-        .url = "<published-source-archive-url>",
-        .hash = "<exact output from zig fetch>",
-    },
-},
-```
-
-`script/prepare_starter_release.sh <new-tag>` writes those real coordinates into
-the starter before a new release tag is made. Do not rewrite the existing
-`1.0.0` tag. The generated source archive omits
-that manifest to keep its bytes—and therefore its Zig hash—stable.
-
-## Import and run
-
-Normal game source imports only supported modules:
-
-```zig
-const up = @import("unpolished-peas");
-const sdl = @import("unpolished-peas-sdl3");
-```
-
-Start from [Seed Sprint](../../templates/starter/README.md). Its `build.zig`
-imports the desktop and browser modules through the supported package boundary;
-game source does not import Peas internals.
+Use the URL and hash together from the prepared template for that version;
+never guess either value or mix versions. Maintainers prepare the archive and
+its coordinates using the [release contract](releases.md#release-contract).
+Game authors do not need to run release-preparation scripts. The existing
+archive consumer checks exercise this mode with real locally served archives
+and computed hashes, without publishing a release.
 
 ## Browser and package
 
-Inside a generated Seed Sprint project using either dependency mode, these
-are the normal commands:
+These commands run **inside the generated game**, in either dependency mode:
 
-```sh
-zig build
-zig build run
-zig build test
-zig build web
-zig build package
-```
+| Command | Result |
+| --- | --- |
+| `zig build` | Native executable and runtime assets under `zig-out/` |
+| `zig build run` | Build and open the game; close its window to exit |
+| `zig build test` | Run the starter's headless deterministic tests |
+| `zig build web` | Static browser bundle under `zig-out/web/` |
+| `zig build dev-web` | Local watch/build/serve/full-page-refresh loop; Python 3 required |
+| `zig build package` | The same native executable-plus-assets layout as `zig build` |
 
-`zig build web` produces a self-contained browser directory:
+The browser bundle includes:
 
 ```text
 zig-out/web/
@@ -116,35 +92,35 @@ zig-out/web/
 ├── unpolished-peas.wasm
 ├── bootstrap.mjs
 ├── host.mjs
+├── debug-font-v1.json
 └── assets/
 ```
 
-Serve it over HTTP—for example,
-`python3 -m http.server --directory zig-out/web 8000`—then open the reported
-local URL. Opening the HTML file directly is not supported by browser module
-and Wasm loading rules.
+Additional runtime `.mjs` modules are part of this directory too. Copy the
+**whole directory**, preserving relative paths and matching Wasm/host versions.
+Serve it over HTTP as in the [quickstart](quickstart.md#test-and-run-in-a-browser);
+opening HTML directly does not support the module/Wasm loading workflow.
+See [browser development](browser-development.md) for reload, saves and audio
+activation, and [rendering choices](rendering.md#choose-a-rendering-path)
+before forcing a backend.
 
-For local iteration, `zig build dev-web` watches the project, invokes this
-same `web` build, serves its last successful output on `127.0.0.1`, and fully
-refreshes the page after a successful rebuild. It is development-only; see
-the [browser development guide](browser-development.md) for failed-build,
-audio, persistence, and WSL behavior.
+The desktop layout is `zig-out/bin/seed-sprint` (`seed-sprint.exe` on Windows)
+and `zig-out/assets/`. Distribute both with their relative layout intact and
+include the applicable asset/third-party notices. This is a local package,
+not a signed app bundle, installer or validated build for another OS.
 
-`zig build package` creates the starter's local `zig-out/bin/seed-sprint` and
-`zig-out/assets/` layout. It is a portable executable-plus-assets directory,
-not a signed `.app`, DMG, AppImage, deb/rpm package, or installer.
+### Release artifact scope
 
-## Release artifact scope
-
-The Peas release scripts additionally prepare versioned Linux tarballs, macOS
-universal ZIP layouts, and web directories. They do not create signed `.app`
-bundles, DMGs, AppImages, deb/rpm packages, or installers.
+Maintainer scripts can also produce versioned Linux tarballs, macOS universal
+ZIP layouts and web directories. They do not create signed `.app` bundles,
+DMGs, AppImages, deb/rpm packages or installers. Availability and unresolved
+release decisions live in [releases and support](releases.md).
 
 ## Platform status
 
-See the canonical [platform status](platforms.md) page for actual
-build/package and runtime evidence, and the [capability matrix](capabilities.md)
-for renderer-specific API/CI contract coverage.
+[Platform evidence](platforms.md) separates build/package and observed runtime
+coverage. The [capability matrix](capabilities.md) owns renderer support status.
+Neither source generation nor local packaging promotes a preview target.
 
 ## Linux and WSLg troubleshooting
 
@@ -167,9 +143,3 @@ development, but its X11/Wayland bridge, D3D12-backed Vulkan path, PulseAudio
 bridge, and input stack are not evidence of bare-metal Linux behavior. A
 missing display fails before renderer fallback with a bounded diagnostic; it
 does not mean the game's renderer is broken.
-
-## Current legal blocker
-
-This repository currently has no code license. The technical release workflow
-can be prepared, but publishing or adopting it remains legally blocked until
-the project owner selects and adds a license.

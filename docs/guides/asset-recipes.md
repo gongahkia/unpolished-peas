@@ -13,6 +13,8 @@ The [asset workbench game](../../examples/asset_workbench_game.zig) is the
 complete portable example. Its [desktop entry point](../../examples/asset_workbench.zig)
 only supplies window configuration and forwards the game callbacks.
 
+Run the example from the Peas checkout:
+
 ```sh
 zig build run-asset-workbench
 zig build web-asset-workbench -Dwith_sdl=false

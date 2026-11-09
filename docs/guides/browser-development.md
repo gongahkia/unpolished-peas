@@ -3,7 +3,7 @@
 `zig build web` remains the production browser build: it writes a normal
 static directory under `zig-out/web` with no file watcher, reload connection,
 or source-tree dependency. During browser game iteration, use the separate
-development step from a standalone Peas project instead:
+development step from your generated game directory:
 
 ```sh
 zig build dev-web
@@ -34,6 +34,12 @@ The shell is opt-in through the canvas's `data-peas-shell` attribute. Remove
 that attribute when embedding the game in a page with its own layout and
 status UI. Renderer diagnostics remain available through
 `window.unpolishedPeas` in either mode.
+
+Automatic renderer selection works for ordinary Canvas games. Games using the
+opt-in surface compositor must open the served URL with `?renderer=webgl2`;
+automatic selection may choose WebGPU, which rejects that queue. See
+[rendering choices](rendering.md#choose-a-rendering-path). Always distribute
+the complete `web` output so the Wasm and host modules match.
 
 ## What changes trigger a build
 

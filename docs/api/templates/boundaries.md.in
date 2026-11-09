@@ -4,6 +4,8 @@
 
 Namespace membership is not a promise that every operation works on every host.
 Use GameContext callbacks and embedded decoding as the ordinary portable path.
+The [rendering decision guide](../guides/rendering.md#choose-a-rendering-path)
+explains when a game needs an optional rendering path and how to select its host.
 
 | Area | Use / ownership | Boundary |
 | --- | --- | --- |
@@ -14,7 +16,7 @@ Use GameContext callbacks and embedded decoding as the ordinary portable path.
 | Portable asset decode | [Image/Font/Atlas/AssetCollection](assets.md) from embedded bytes | Synchronous; no implicit browser fetch, async loader or runtime-file search |
 | Advanced audio | Sound/Music, AudioMixer and AudioStream | Separate owned values, explicit stream/mixer lifetimes; file loaders native-only, byte decoders portable; [audio guide](../guides/audio-assets.md) |
 | Advanced graphics | Renderer2D, materials, post passes and particles | Separate staged GPU contract; no transparent replacement for Canvas or general RenderSurface GPU target; [advanced 2D](../guides/advanced-2d.md) |
-| Opt-in surface composition | SurfaceCompositor borrows RenderSurface pixels; Renderer2D.composeSurfaces submits once per frame | SDL GPU/WebGL 2 only, opaque output and alpha blending; [ownership, bounds and CPU oracle](../guides/gpu-surface-composition.md) |
+| Opt-in surface composition prototype | SurfaceCompositor borrows RenderSurface pixels; Renderer2D.composeSurfaces submits once per frame | SDL GPU/WebGL 2 only; explicitly select `?renderer=webgl2` in browsers. Opaque output and alpha blending; [ownership, bounds and CPU oracle](../guides/gpu-surface-composition.md) |
 | Developer replay | preview.developer InputReplay/Recorder | Preview developer tooling; explicit input/seed/selected saves, not arbitrary memory snapshots |
 | Testing | [testSupport](testing.md) | Headless helpers and borrowed captures, not gameplay services |
 | Debugging/tools | Inspector, profiler, diagnostics, native hot reload and packaging CLI | Opt-in tools; [developer guides](../guides/developer-tools.md), not required by a first game |

@@ -19,38 +19,18 @@ embed ordinary authored files at compile time and decode them during
 `Game.init`. This avoids filesystem roots, browser fetches, and
 platform-specific game code.
 
-Keep source assets in the ordinary project layout:
+## Keep portable assets with game code
 
-```text
-game/
-├── embedded_assets.zig
-├── src/game.zig
-└── assets/
-    ├── player.png
-    └── ui.ttf
-```
+For a new generated game, put files under `src/assets/` and use
+`@embedFile("assets/player.png")` from `src/game.zig`. The
+[collection recipes](asset-recipes.md) show initialization and cleanup.
+The starter's existing root `assets/` directory serves its runtime/package
+layout; embedded content does not have to use that directory.
 
-When the application's root source is under `src/`, put the small
-`@embedFile` wrapper at the package root so its asset paths are hermetic:
-
-```zig
-// embedded_assets.zig
-pub const player_png = @embedFile("assets/player.png");
-pub const ui_ttf = @embedFile("assets/ui.ttf");
-```
-
-Import that project-local module from `build.zig` as `game-assets` alongside
-the normal Peas package import:
-
-```zig
-const game_assets = b.createModule(.{
-    .root_source_file = b.path("embedded_assets.zig"),
-    .target = target,
-    .optimize = optimize,
-});
-// Add this entry to the root module's existing imports.
-.{ .name = "game-assets", .module = game_assets },
-```
+The directly owned decode excerpt below assumes an `art` module exposing
+embedded bytes. If you need that alternative layout, see
+[project-root assets](#project-root-assets) below. Its build changes are not
+required for `src/assets/`.
 
 ## Decode once during init
 
@@ -83,6 +63,46 @@ collection/Atlas reference. For fixed-step sprite-sheet playback,
 keep an `AtlasFrameHandle` clip and game-owned player state as described in
 [deterministic sprite-frame animation](sprite-animation.md); Canvas remains
 responsible for drawing the selected frame.
+
+## Project-root assets
+
+For content shared from a project-root `assets/` directory, use this layout:
+
+```text
+game/
+├── embedded_assets.zig
+├── src/game.zig
+└── assets/
+    ├── player.png
+    └── ui.ttf
+```
+
+When the application's root source is under `src/`, put the small
+`@embedFile` wrapper at the package root so its asset paths are hermetic:
+
+```zig
+// embedded_assets.zig
+pub const player_png = @embedFile("assets/player.png");
+pub const ui_ttf = @embedFile("assets/ui.ttf");
+```
+
+Import that project-local module from `build.zig` as `game-assets` alongside
+the normal Peas package import:
+
+```zig
+const game_assets = b.createModule(.{
+    .root_source_file = b.path("embedded_assets.zig"),
+    .target = target,
+    .optimize = optimize,
+});
+// Add this entry to the root module's existing imports.
+.{ .name = "game-assets", .module = game_assets },
+```
+
+For a browser build, create the same asset module with the browser target and
+optimization mode, then add it to the portable game's imports too. A native
+module instance must not be reused across targets. The complete
+[asset workbench build](../../build.zig) demonstrates this arrangement.
 
 ## Fonts and text
 

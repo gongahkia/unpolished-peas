@@ -6,6 +6,11 @@ primitives and authored text still rasterize into Canvas on the CPU. The
 default renderer and immediate `Canvas.drawSurface` behavior stay unchanged.
 Treat this as an opt-in prototype, with the existing platform preview status.
 
+Start with the [rendering decision guide](rendering.md#choose-a-rendering-path)
+if you have not established a composition bottleneck. In a browser, request
+`?renderer=webgl2` explicitly: automatic selection prefers WebGPU when ready
+and does not inspect the game's queue to choose a compatible backend.
+
 ## Use and order
 
 Create the compositor and surfaces in `Game.init`, using the game allocator.
@@ -104,6 +109,8 @@ swapchain storage and driver-internal cycling are outside the game allocator
 and source budget; they are not claimed to allocate zero bytes.
 
 ## Build and validation
+
+Run these framework checks from the Peas checkout, not a generated game:
 
 ```sh
 zig build web-surface-gpu -Doptimize=ReleaseFast -Dbrowser-optimize=ReleaseFast

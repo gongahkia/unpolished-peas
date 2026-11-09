@@ -328,11 +328,10 @@ test "repository documentation local links resolve" {
     try validateSupplementalLinks(std.testing.allocator, repository_root);
 }
 
-test "quickstart distinguishes the published version from missing package assets" {
+test "quickstart keeps checkout commands and links to canonical release status" {
     const quickstart = try std.fs.cwd().readFileAlloc(std.testing.allocator, "docs/guides/quickstart.md", max_document_bytes);
     defer std.testing.allocator.free(quickstart);
     const claims = [_][]const u8{
-        "The current release is `1.0.0`",
         "zig build peas -- new ../my-game",
         "cd ../my-game",
         "zig build web",
@@ -340,10 +339,17 @@ test "quickstart distinguishes the published version from missing package assets
         "zig build test-starter -Dwith_sdl=false",
         "zig build run-starter",
         "zig build run-tutorial-game-protocol",
-        "no prepared source-package archive",
+        "releases.md#current-release",
     };
     for (claims) |claim| try std.testing.expect(std.mem.indexOf(u8, quickstart, claim) != null);
     try std.testing.expect(std.mem.indexOf(u8, quickstart, "archive/refs/tags/v0.1.0") == null);
+    // Availability belongs to one maintained record, not a second copy in the
+    // beginner walkthrough. Untouched build/test/web/package behavior is
+    // exercised by test-starter-external and test-starter-external-web.
+    const releases = try readLfFileAlloc(std.testing.allocator, "docs/guides/releases.md");
+    defer std.testing.allocator.free(releases);
+    try std.testing.expect(std.mem.indexOf(u8, releases, "The current release is **1.0.0**") != null);
+    try std.testing.expect(std.mem.indexOf(u8, releases, "no prepared source archive") != null);
 }
 
 test "authoring freeze distinguishes game API from developer tooling" {

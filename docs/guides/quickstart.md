@@ -4,17 +4,15 @@ Peas is a small Zig framework for deterministic, testable 2D games. The
 fastest way to understand it is to generate Seed Sprint, read its two source
 files, then grow into the focused guides linked below.
 
-## Requirements and release status
+## Before you start
 
-Use Zig `0.15.2`. The current release is `1.0.0`, published on October 10,
-2026. That GitHub release has no prepared source-package archive, starter
-coordinates, or desktop assets attached. The source-checkout generator below
-works today using a local dependency; the [installation guide](installation.md)
-distinguishes the published source tag from a ready-to-install Zig package.
-`main` contains subsequent
-integration fixes and is not an immutable dependency URL.
+Use Zig `0.15.2` and a current Peas source checkout; see
+[installation](installation.md#requirements) for prerequisites.
+This guide uses a local dependency and includes changes after the published
+tag. [Release status](releases.md#current-release) records package availability;
+an older tagged checkout may not provide this workflow.
 
-## Five-minute source-checkout path
+## Create and play
 
 From a Peas checkout, create your own game next to the engine repository:
 
@@ -22,7 +20,6 @@ From a Peas checkout, create your own game next to the engine repository:
 zig build peas -- new ../my-game
 cd ../my-game
 zig build
-zig build test
 zig build run
 ```
 
@@ -32,9 +29,9 @@ available at that relative location while developing; its changes are picked
 up by subsequent builds. SDL3 is fetched and built from the pinned dependency,
 so the first native build needs network access and can take longer.
 
-The test is headless; `run` opens Seed Sprint. Arrow keys or a
-gamepad move, Space/South dashes, and Enter/Start restarts. Read these files
-in order:
+`run` opens Seed Sprint. Arrow keys or a gamepad move, Space/South dashes,
+and Enter/Start restarts. Close the window to return to the terminal. Read
+these generated files in order (links show the same source in this checkout):
 
 1. [`templates/starter/src/main.zig`](../../templates/starter/src/main.zig) —
    desktop configuration and the tiny host-facing wrapper.
@@ -42,30 +39,50 @@ in order:
    persistent game state, `init`, fixed-step `update`, Canvas `draw`, seed,
    save data, audio, and the deterministic test.
 
-Inside the generated game, build a complete browser directory or a portable
-desktop layout:
+Edit `src/game.zig` to change gameplay, then rerun `zig build run`. Keep
+portable game logic there; `src/main.zig` supplies native window configuration
+and forwards callbacks. Assets under `src/assets/` can be embedded from game
+code without another build module; see the [asset recipes](asset-recipes.md).
+
+## Test and run in a browser
+
+From the generated game directory:
 
 ```sh
+zig build test
 zig build web
-zig build package
+python3 -m http.server --bind 127.0.0.1 --directory zig-out/web 8000
 ```
 
-Serve `zig-out/web` over HTTP as described in
-[browser and packaging](installation.md#browser-and-package). A prepared
-release checkout can instead generate a game pinned to its verified archive
-using `new ../my-game --release`; see [installation](installation.md).
+`test` runs the starter's headless deterministic checks without opening a
+window. With Python 3 available, the last command serves the web output; open
+`http://127.0.0.1:8000/`, focus the game and use the same controls. Sound needs
+a user interaction. Press Ctrl-C in the terminal to stop serving. Another
+HTTP server works too; opening `index.html` directly is unsupported.
+
+For automatic rebuild and full-page refresh, use `zig build dev-web` instead
+of the manual server. See [browser development](browser-development.md).
+Browser renderers remain preview; [platform evidence](platforms.md) records
+which workflows were exercised. A Canvas game can use automatic renderer
+selection; games opting into GPU surface composition must choose WebGL 2 as
+described in the [rendering guide](rendering.md#choose-a-rendering-path).
+
+## Package your game
+
+From the generated game directory, `zig build package` produces the desktop
+executable-plus-assets layout. The browser directory from `zig build web`
+can be served by a static host. See
+[output layout and distribution limits](installation.md#browser-and-package).
+Release pinning is an optional dependency mode documented in
+[installation](installation.md#pin-a-prepared-release).
+
+## Try examples from the engine checkout
 
 To evaluate the reference game without generating a project, the engine
 checkout still offers `zig build run-starter` and
 `zig build test-starter -Dwith_sdl=false`.
 
 ## A minimal game
-
-After the first game builds, follow the
-[compiled portable asset recipes](asset-recipes.md) for images, fonts,
-sprite animation, sound, and progress saves. A game-owned collection provides
-one cleanup boundary; embedded files under `src/assets/` need no extra build
-module. The generated native wrapper forwards an optional game `deinit`.
 
 This exact program is the compiled
 [`examples/tutorial_game_protocol.zig`](../../examples/tutorial_game_protocol.zig)
@@ -124,7 +141,7 @@ or `RenderSurface`.
 1. [Seed Sprint](../../templates/starter/README.md) for the first complete
    small game.
 2. [Input and ActionMap](input.md) for keyboard/gamepad actions and edges.
-3. [Authored image and font assets](image-assets.md) for normal embedded art.
+3. [Portable asset recipes](asset-recipes.md) for embedded images, fonts and sheets.
 4. [Testing](testing.md) for seed, replay, headless state, Canvas trace, and
    pixel regression.
 5. [Neon Siege](../../dogfood/neon-siege/README.md) only when you want a

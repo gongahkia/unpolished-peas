@@ -1,5 +1,8 @@
 # Releases and support
 
+## Current release
+
+Checked November 9, 2026 against the [release API](https://api.github.com/repos/gongahkia/unpolished-peas/releases/latest).
 The current release is **1.0.0**, published on October 10, 2026 as the
 [`1.0.0` tag](https://github.com/gongahkia/unpolished-peas/releases/tag/1.0.0).
 Earlier `0.1.0` draft references were numbering errors. The existing release
@@ -11,8 +14,17 @@ prepared URL/hash pair and verifies it with `zig fetch` before generation.
 
 `main` contains integration fixes after that immutable tag. Use a source
 checkout for evaluation and a future prepared release for package installation.
-Do not move or recreate `1.0.0`. The [authoring-experience
-freeze](authoring-experience-freeze.md) records the current API/tooling boundary.
+Do not move or recreate `1.0.0`. The [authoring API
+inventory](authoring-experience-freeze.md) distinguishes the baseline, later
+checkout additions and opt-in prototypes. Package metadata still says `1.0.0`;
+that does not mean every current guide or API shipped in the October tag.
+
+### Licensing status
+
+The repository has no project code license; the owner has not selected one.
+Third-party asset notices do not license the engine code. Technical validation
+and local package creation do not resolve this adoption/release decision.
+This documentation does not select a license or authorize publication.
 
 ## v1.0 support
 
@@ -53,7 +65,10 @@ Manual dry runs create downloadable workflow artifacts without publishing a
 release. On a branch they use the package version to name the source archive;
 on a tag, `dry_run` also prevents publishing and public-consumer validation.
 
-A release is not validated merely because a checkout archive or a local path dependency builds. The public tag archive is the consumer contract.
+A release is not validated merely because a checkout archive or a local path
+dependency builds. The exact published source-package asset and its verified
+URL/hash pair are the consumer contract; GitHub's automatic tag archives are
+not interchangeable with that prepared asset.
 
 ## Installing a published release
 
