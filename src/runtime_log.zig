@@ -98,6 +98,7 @@ pub const Ring = struct {
     filter: Filter = .{},
     capacity: usize,
     events: std.ArrayListUnmanaged(Event) = .{},
+    dropped_events: u64 = 0,
 
     pub fn init(allocator: std.mem.Allocator, capacity: usize, filter: Filter) Ring {
         return .{ .allocator = allocator, .capacity = capacity, .filter = filter };
@@ -112,12 +113,16 @@ pub const Ring = struct {
     pub fn append(self: *Ring, event: Event) !void {
         if (!self.filter.allows(event) or self.capacity == 0) return;
         try event.validate();
+        // Complete both fallible allocations before evicting an existing event.
+        try self.events.ensureUnusedCapacity(self.allocator, 1);
+        const owned = try copyEvent(self.allocator, event);
         if (self.events.items.len == self.capacity) {
             freeEvent(self.allocator, self.events.items[0]);
             std.mem.copyForwards(Event, self.events.items[0 .. self.events.items.len - 1], self.events.items[1..]);
             self.events.items.len -= 1;
+            self.dropped_events +|= 1;
         }
-        try self.events.append(self.allocator, try copyEvent(self.allocator, event));
+        self.events.appendAssumeCapacity(owned);
     }
 
     pub fn items(self: *const Ring) []const Event {
@@ -126,29 +131,36 @@ pub const Ring = struct {
 };
 
 fn copyEvent(allocator: std.mem.Allocator, event: Event) !Event {
+    const message = try allocator.dupe(u8, event.message);
+    errdefer allocator.free(message);
     const fields = try allocator.alloc(Field, event.fields.len);
     errdefer allocator.free(fields);
+    var initialized: usize = 0;
+    errdefer for (fields[0..initialized]) |field| freeField(allocator, field);
     for (event.fields, 0..) |field, index| {
-        fields[index].key = try allocator.dupe(u8, field.key);
-        errdefer allocator.free(fields[index].key);
-        fields[index].value = switch (field.value) {
+        const key = try allocator.dupe(u8, field.key);
+        errdefer allocator.free(key);
+        fields[index] = .{ .key = key, .value = switch (field.value) {
             .string => |value| .{ .string = try allocator.dupe(u8, value) },
             .integer => |value| .{ .integer = value },
             .boolean => |value| .{ .boolean = value },
-        };
+        } };
+        initialized += 1;
     }
-    return .{ .timestamp_ns = event.timestamp_ns, .session_id = event.session_id, .frame_id = event.frame_id, .level = event.level, .category = event.category, .message = try allocator.dupe(u8, event.message), .fields = fields };
+    return .{ .timestamp_ns = event.timestamp_ns, .session_id = event.session_id, .frame_id = event.frame_id, .level = event.level, .category = event.category, .message = message, .fields = fields };
+}
+
+fn freeField(allocator: std.mem.Allocator, field: Field) void {
+    allocator.free(field.key);
+    switch (field.value) {
+        .string => |value| allocator.free(value),
+        else => {},
+    }
 }
 
 fn freeEvent(allocator: std.mem.Allocator, event: Event) void {
     allocator.free(event.message);
-    for (event.fields) |field| {
-        allocator.free(field.key);
-        switch (field.value) {
-            .string => |value| allocator.free(value),
-            else => {},
-        }
-    }
+    for (event.fields) |field| freeField(allocator, field);
     allocator.free(event.fields);
 }
 
@@ -189,4 +201,222 @@ test "runtime log sinks share filters and retain bounded owned events" {
     try ring.append(second);
     try std.testing.expectEqual(@as(usize, 1), ring.items().len);
     try std.testing.expectEqualStrings("second", ring.items()[0].message);
+}
+
+/// Parses explicit controls; unknown values are errors, never a silent filter.
+/// A null result means logging is disabled before clock reads or allocations.
+pub fn parseLevel(value: []const u8) !?Level {
+    if (std.mem.eql(u8, value, "off")) return null;
+    return std.meta.stringToEnum(Level, value) orelse error.InvalidLogLevel;
+}
+
+pub fn parseCategories(value: []const u8) !u32 {
+    if (std.mem.eql(u8, value, "all")) return std.math.maxInt(u32);
+    var mask: u32 = 0;
+    var parts = std.mem.splitScalar(u8, value, ',');
+    while (parts.next()) |part| {
+        const category = std.meta.stringToEnum(Category, part) orelse return error.InvalidLogCategory;
+        mask |= @as(u32, 1) << @intCast(@intFromEnum(category));
+    }
+    return mask;
+}
+
+/// Whole-record, append-only rotation. Owns its directory and current file;
+/// name is a borrowed basename. Only that exact name and numbered archives
+/// are touched. Callers serialize access; this is not a concurrent log sink.
+pub const RotatingFile = struct {
+    dir: std.fs.Dir,
+    name: []const u8,
+    max_bytes: u64,
+    archives: u8,
+    file: ?std.fs.File = null,
+    bytes: u64 = 0,
+    rotations: u64 = 0,
+    discarded_bytes: u64 = 0,
+
+    pub fn init(path: []const u8, name: []const u8, max_bytes: u64, archives: u8) !RotatingFile {
+        if (!validKey(name) or std.mem.eql(u8, name, ".") or std.mem.eql(u8, name, "..") or max_bytes == 0 or archives == 0 or archives > 8) return error.InvalidLogLimits;
+        return .{ .dir = try std.fs.cwd().openDir(path, .{}), .name = name, .max_bytes = max_bytes, .archives = archives };
+    }
+
+    pub fn deinit(self: *RotatingFile) void {
+        if (self.file) |file| file.close();
+        self.dir.close();
+        self.* = undefined;
+    }
+
+    pub fn append(self: *RotatingFile, record: []const u8) !void {
+        if (record.len > self.max_bytes) return error.LogRecordTooLarge;
+        if (self.file == null) {
+            try self.requireRegular(self.name);
+            const file = try self.dir.createFile(self.name, .{ .truncate = false, .read = true });
+            errdefer file.close();
+            self.discarded_bytes +|= try self.trimOversized(file);
+            // Apply the same limit to archives left by older versions.
+            var buffer: [96]u8 = undefined;
+            for (1..@as(usize, self.archives) + 1) |index| {
+                const name = try self.archiveName(&buffer, @intCast(index));
+                try self.requireRegular(name);
+                const archive = self.dir.openFile(name, .{ .mode = .read_write }) catch |err| switch (err) {
+                    error.FileNotFound => continue,
+                    else => return err,
+                };
+                defer archive.close();
+                self.discarded_bytes +|= try self.trimOversized(archive);
+            }
+            self.bytes = try file.getEndPos();
+            try file.seekFromEnd(0);
+            self.file = file;
+        }
+        if (self.bytes > self.max_bytes - record.len) try self.rotate();
+        try self.file.?.writeAll(record);
+        self.bytes += record.len;
+    }
+
+    fn trimOversized(self: *RotatingFile, file: std.fs.File) !u64 {
+        const end = try file.getEndPos();
+        if (end <= self.max_bytes) return 0;
+        var start = end - self.max_bytes;
+        var buffer: [4096]u8 = undefined;
+        // Retain only complete newline-delimited records from the tail.
+        _ = try file.preadAll(buffer[0..1], start - 1);
+        if (buffer[0] != '\n') {
+            while (start < end) {
+                const length = try file.preadAll(buffer[0..@intCast(@min(buffer.len, end - start))], start);
+                if (length == 0) return error.UnexpectedEndOfFile;
+                if (std.mem.indexOfScalar(u8, buffer[0..length], '\n')) |newline| {
+                    start += newline + 1;
+                    break;
+                }
+                start += length;
+            }
+        }
+        var source = start;
+        var destination: u64 = 0;
+        while (source < end) {
+            const length = try file.preadAll(buffer[0..@intCast(@min(buffer.len, end - source))], source);
+            if (length == 0) return error.UnexpectedEndOfFile;
+            try file.pwriteAll(buffer[0..length], destination);
+            source += length;
+            destination += length;
+        }
+        try file.setEndPos(destination);
+        return start;
+    }
+
+    fn requireRegular(self: *RotatingFile, name: []const u8) !void {
+        // lstat semantics: never follow a caller-created symlink when rotating.
+        var target: [std.fs.max_path_bytes]u8 = undefined;
+        if (self.dir.readLink(name, &target)) |_| return error.InvalidLogFile else |err| switch (err) {
+            error.NotLink => {},
+            error.FileNotFound => return,
+            else => return err,
+        }
+        const info = try self.dir.statFile(name);
+        if (info.kind != .file) return error.InvalidLogFile;
+    }
+
+    fn archiveName(self: *const RotatingFile, buffer: []u8, index: u8) ![]const u8 {
+        return std.fmt.bufPrint(buffer, "{s}.{d}", .{ self.name, index });
+    }
+
+    fn rotate(self: *RotatingFile) !void {
+        // Validate the entire set before changing any files.
+        var buffer: [96]u8 = undefined;
+        for (1..@as(usize, self.archives) + 1) |index| try self.requireRegular(try self.archiveName(&buffer, @intCast(index)));
+        if (self.file) |file| file.close();
+        self.file = null;
+        var index = self.archives;
+        while (index > 1) : (index -= 1) {
+            var source: [96]u8 = undefined;
+            const from = try self.archiveName(&source, index - 1);
+            const to = try self.archiveName(&buffer, index);
+            self.dir.rename(from, to) catch |err| switch (err) {
+                error.FileNotFound => {},
+                else => return err,
+            };
+        }
+        try self.dir.rename(self.name, try self.archiveName(&buffer, 1));
+        self.file = try self.dir.createFile(self.name, .{ .exclusive = true });
+        self.bytes = 0;
+        self.rotations +|= 1;
+    }
+};
+
+test "log filters reject typos and support explicit off" {
+    try std.testing.expectEqual(@as(?Level, null), try parseLevel("off"));
+    try std.testing.expectEqual(Level.debug, (try parseLevel("debug")).?);
+    try std.testing.expectError(error.InvalidLogLevel, parseLevel("verbose"));
+    try std.testing.expectError(error.InvalidLogCategory, parseCategories("render,"));
+    const mask = try parseCategories("render,assets");
+    try std.testing.expectEqual((@as(u32, 1) << @intFromEnum(Category.render)) | (@as(u32, 1) << @intFromEnum(Category.assets)), mask);
+}
+
+fn ringAllocationFailures(allocator: std.mem.Allocator) !void {
+    var ring = Ring.init(allocator, 1, .{});
+    defer ring.deinit();
+    const first: Event = .{ .timestamp_ns = 1, .session_id = 2, .level = .info, .category = .engine, .message = "first", .fields = &.{.{ .key = "name", .value = .{ .string = "owned" } }} };
+    try ring.append(first);
+    var second = first;
+    second.message = "second";
+    second.fields = &.{ .{ .key = "a", .value = .{ .string = "one" } }, .{ .key = "b", .value = .{ .string = "two" } } };
+    ring.append(second) catch |err| {
+        try std.testing.expectEqualStrings("first", ring.items()[0].message);
+        try std.testing.expectEqual(@as(u64, 0), ring.dropped_events);
+        return err;
+    };
+    try std.testing.expectEqualStrings("second", ring.items()[0].message);
+    try std.testing.expectEqual(@as(u64, 1), ring.dropped_events);
+}
+
+test "event ring owns strings and rolls back every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, ringAllocationFailures, .{});
+}
+
+test "log rotation bounds whole records and leaves unrelated files alone" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    try temp.dir.writeFile(.{ .sub_path = "unrelated", .data = "keep" });
+    var file = try RotatingFile.init(root, "events.jsonl", 8, 2);
+    defer file.deinit();
+    for ([_][]const u8{ "one\n", "two\n", "tri\n", "for\n", "fiv\n", "six\n", "sev\n" }) |line| try file.append(line);
+    try std.testing.expectEqual(@as(u64, 3), file.rotations);
+    inline for (.{ "events.jsonl", "events.jsonl.1", "events.jsonl.2" }) |name| {
+        const contents = try temp.dir.readFileAlloc(std.testing.allocator, name, 8);
+        defer std.testing.allocator.free(contents);
+        try std.testing.expect(contents.len <= 8 and std.mem.endsWith(u8, contents, "\n"));
+    }
+    try std.testing.expectError(error.FileNotFound, temp.dir.access("events.jsonl.3", .{}));
+    try std.testing.expectError(error.LogRecordTooLarge, file.append("too large"));
+    try temp.dir.access("unrelated", .{});
+    // A caller-owned directory with a log-like name is never deleted.
+    try temp.dir.makeDir("other.log.1");
+    var blocked = try RotatingFile.init(root, "other.log", 2, 1);
+    defer blocked.deinit();
+    try std.testing.expectError(error.InvalidLogFile, blocked.append("a\n"));
+    try temp.dir.access("other.log.1", .{});
+}
+
+test "rotation bounds existing oversized logs and refuses dangling symlinks" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    try temp.dir.writeFile(.{ .sub_path = "old.log", .data = "zero\none\ntwo\n" });
+    var file = try RotatingFile.init(root, "old.log", 8, 1);
+    defer file.deinit();
+    try file.append("new\n");
+    try std.testing.expectEqual(@as(u64, 5), file.discarded_bytes);
+    const previous = try temp.dir.readFileAlloc(std.testing.allocator, "old.log.1", 8);
+    defer std.testing.allocator.free(previous);
+    try std.testing.expectEqualStrings("one\ntwo\n", previous);
+    if (@import("builtin").os.tag != .windows) {
+        try temp.dir.symLink("absent-target", "link.log", .{});
+        var linked = try RotatingFile.init(root, "link.log", 8, 1);
+        defer linked.deinit();
+        try std.testing.expectError(error.InvalidLogFile, linked.append("x\n"));
+        try std.testing.expectError(error.FileNotFound, temp.dir.access("absent-target", .{}));
+    }
 }

@@ -4,6 +4,9 @@ const Color = @import("color.zig").Color;
 const profiler = @import("profiler.zig");
 const render = @import("render.zig");
 const replay = @import("input_replay.zig");
+const runtime_log = @import("runtime_log.zig");
+const incident_marker = ".peas-incident-v1";
+const incident_owner = "unpolished-peas diagnostics 1\n";
 
 pub const schema_version: u32 = 1;
 
@@ -15,6 +18,14 @@ pub const Options = struct {
     max_replay_frames: usize = 4096,
     max_bundle_bytes: usize = 64 * 1024 * 1024,
     max_session_bundles: usize = 32,
+    max_log_events: usize = 128,
+    max_event_bytes: usize = 256 * 1024,
+};
+
+pub const LogContext = struct {
+    events: []const runtime_log.Event = &.{},
+    dropped_events: u64 = 0,
+    write_errors: u64 = 0,
 };
 
 pub const Input = struct {
@@ -24,6 +35,7 @@ pub const Input = struct {
     log: []const u8 = "",
     replay: ?*const replay.Replay = null,
     environment: ?Environment = null,
+    event_log: ?LogContext = null,
 };
 
 pub const Environment = struct {
@@ -47,6 +59,7 @@ pub fn capture(allocator: std.mem.Allocator, options: Options, input: Input) !vo
     }
     try writeCommands(allocator, options, input.commands);
     try writeLog(allocator, options, input.log);
+    if (input.event_log) |events| try writeEvents(allocator, options, events);
     if (input.profiler) |value| {
         const path = try artifactPath(allocator, options.path, "trace.json");
         defer allocator.free(path);
@@ -69,17 +82,24 @@ pub fn captureSessionWithOptions(allocator: std.mem.Allocator, root: []const u8,
     defer allocator.free(name);
     const path = try std.fs.path.join(allocator, &.{ root, name });
     errdefer allocator.free(path);
-    if (std.fs.cwd().access(path, .{})) |_| {
-        return error.DiagnosticsBundleExists;
-    } else |err| {
-        if (err != error.FileNotFound) return err;
-    }
+    try std.fs.cwd().makePath(root);
+    std.fs.cwd().makeDir(path) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.DiagnosticsBundleExists,
+        else => return err,
+    };
+    // The exclusively created directory is ours. A failed capture must not
+    // leave a partial incident or remove a pre-existing caller directory.
+    errdefer std.fs.cwd().deleteTree(path) catch {};
     var session_options = options;
     session_options.path = path;
     capture(allocator, session_options, input) catch |err| {
         std.fs.cwd().deleteTree(path) catch {};
         return err;
     };
+    var directory = try std.fs.cwd().openDir(path, .{});
+    defer directory.close();
+    try directory.writeFile(.{ .sub_path = incident_marker, .data = incident_owner });
+    if (try bundleSize(allocator, path) > options.max_bundle_bytes) return error.DiagnosticsBundleTooLarge;
     try retainSessionBundles(allocator, root, options.max_session_bundles);
     return path;
 }
@@ -98,7 +118,10 @@ fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum:
     while (try iterator.next()) |entry| {
         if (entry.kind != .directory) continue;
         const parsed = parseBundleName(entry.name) orelse continue;
-        try bundles.append(allocator, .{ .name = try allocator.dupe(u8, entry.name), .session = parsed.session, .failure = parsed.failure });
+        if (!try ownedIncident(dir, entry.name)) continue;
+        const owned_name = try allocator.dupe(u8, entry.name);
+        errdefer allocator.free(owned_name);
+        try bundles.append(allocator, .{ .name = owned_name, .session = parsed.session, .failure = parsed.failure });
     }
     std.mem.sort(Bundle, bundles.items, {}, lessBundle);
     while (bundles.items.len > maximum) {
@@ -109,6 +132,31 @@ fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum:
         };
         allocator.free(bundle.name);
     }
+}
+
+fn ownedIncident(root: std.fs.Dir, name: []const u8) !bool {
+    var dir = try root.openDir(name, .{ .iterate = true, .no_follow = true });
+    defer dir.close();
+    var marker: [64]u8 = undefined;
+    var file = dir.openFile(incident_marker, .{}) catch return false;
+    defer file.close();
+    const length = try file.readAll(&marker);
+    if (!std.mem.eql(u8, marker[0..length], incident_owner)) return false;
+    var entries = dir.iterate();
+    while (try entries.next()) |entry| {
+        if (entry.kind != .file) return false;
+        if (!std.mem.eql(u8, entry.name, incident_marker) and
+            !std.mem.eql(u8, entry.name, "metadata.json") and
+            !std.mem.eql(u8, entry.name, "environment.json") and
+            !std.mem.eql(u8, entry.name, "failure.log") and
+            !std.mem.eql(u8, entry.name, "events.jsonl") and
+            !std.mem.eql(u8, entry.name, "logging.json") and
+            !std.mem.eql(u8, entry.name, "commands.json") and
+            !std.mem.eql(u8, entry.name, "trace.json") and
+            !std.mem.eql(u8, entry.name, "replay.json") and
+            !std.mem.eql(u8, entry.name, "screenshot.png")) return false;
+    }
+    return true;
 }
 
 fn parseBundleName(name: []const u8) ?struct { session: u64, failure: u64 } {
@@ -265,6 +313,56 @@ fn writeLog(allocator: std.mem.Allocator, options: Options, log: []const u8) !vo
     try std.fs.cwd().writeFile(.{ .sub_path = path, .data = log[start..] });
 }
 
+fn writeEvents(allocator: std.mem.Allocator, options: Options, context: LogContext) !void {
+    // Keep the newest complete JSONL records. Validation bounds each event;
+    // the record buffer never exceeds one event's bounded encoded size.
+    var record = std.Io.Writer.Allocating.init(allocator);
+    defer record.deinit();
+    var retained: std.ArrayList(u8) = .empty;
+    defer retained.deinit(allocator);
+    var kept: usize = 0;
+    var dropped = context.dropped_events;
+    const first = context.events.len - @min(context.events.len, options.max_log_events);
+    dropped +|= first;
+    for (context.events[first..]) |event| {
+        record.clearRetainingCapacity();
+        try runtime_log.writeJsonl(&record.writer, event);
+        const line = record.written();
+        if (line.len > options.max_event_bytes) {
+            dropped +|= 1;
+            continue;
+        }
+        while (retained.items.len > options.max_event_bytes - line.len) {
+            const end = (std.mem.indexOfScalar(u8, retained.items, '\n') orelse unreachable) + 1;
+            std.mem.copyForwards(u8, retained.items[0 .. retained.items.len - end], retained.items[end..]);
+            retained.items.len -= end;
+            kept -= 1;
+            dropped +|= 1;
+        }
+        try retained.appendSlice(allocator, line);
+        kept += 1;
+    }
+    const events_path = try artifactPath(allocator, options.path, "events.jsonl");
+    defer allocator.free(events_path);
+    try std.fs.cwd().writeFile(.{ .sub_path = events_path, .data = retained.items });
+    const summary_path = try artifactPath(allocator, options.path, "logging.json");
+    defer allocator.free(summary_path);
+    const summary = try std.json.Stringify.valueAlloc(allocator, .{
+        .version = 1,
+        .event_schema_version = runtime_log.schema_version,
+        .timestamp_unit = "nanoseconds",
+        .timestamp_origin = "session_start",
+        .retained_events = kept,
+        .retained_bytes = retained.items.len,
+        .dropped_events = dropped,
+        .write_errors = context.write_errors,
+        .max_events = options.max_log_events,
+        .max_bytes = options.max_event_bytes,
+    }, .{});
+    defer allocator.free(summary);
+    try std.fs.cwd().writeFile(.{ .sub_path = summary_path, .data = summary });
+}
+
 fn writeReplay(allocator: std.mem.Allocator, options: Options, value: *const replay.Replay) !void {
     const path = try artifactPath(allocator, options.path, "replay.json");
     defer allocator.free(path);
@@ -274,7 +372,7 @@ fn writeReplay(allocator: std.mem.Allocator, options: Options, value: *const rep
     var writer = file.writer(&buffer);
     const out = &writer.interface;
     const count = @min(value.frames.len, options.max_replay_frames);
-    try out.print("{{\"version\":3,\"fixed_hz\":{d},\"frame_count\":{d},\"truncated\":{s},\"simulation_seed\":", .{ value.fixed_hz, value.frames.len, if (count != value.frames.len) "true" else "false" });
+    try out.print("{{\"version\":3,\"kind\":\"diagnostic-summary\",\"complete_replay\":false,\"fixed_hz\":{d},\"frame_count\":{d},\"truncated\":{s},\"simulation_seed\":", .{ value.fixed_hz, value.frames.len, if (count != value.frames.len) "true" else "false" });
     if (value.simulation_seed) |seed| {
         // Keep the full `u64` exact in JavaScript JSON consumers.
         try out.print("\"{d}\"", .{seed});
@@ -426,4 +524,52 @@ test "session diagnostics retain newest bounded bundles" {
     const oversized = try std.fs.path.join(std.testing.allocator, &.{ diagnostics_root, "session-3-failure-1" });
     defer std.testing.allocator.free(oversized);
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(oversized, .{}));
+}
+
+test "incident retention only removes marked artifacts owned by Peas" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    try temp.dir.makePath("session-0-failure-1");
+    try temp.dir.writeFile(.{ .sub_path = "session-0-failure-1/notes.txt", .data = "caller-owned" });
+    const first = try captureSessionWithOptions(std.testing.allocator, root, 1, 1, .{}, .{ .path = "", .max_session_bundles = 1 });
+    defer std.testing.allocator.free(first);
+    // Even a marked directory becomes caller-owned when unknown files appear.
+    var dir = try std.fs.cwd().openDir(first, .{});
+    defer dir.close();
+    try dir.writeFile(.{ .sub_path = "notes.txt", .data = "keep" });
+    const second = try captureSessionWithOptions(std.testing.allocator, root, 2, 1, .{}, .{ .path = "", .max_session_bundles = 1 });
+    defer std.testing.allocator.free(second);
+    try temp.dir.access("session-0-failure-1/notes.txt", .{});
+    try dir.access("notes.txt", .{});
+    try std.fs.cwd().access(second, .{});
+}
+
+test "failure events retain newest complete parseable records and report drops" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const events = [_]runtime_log.Event{
+        .{ .timestamp_ns = 1, .session_id = 7, .level = .info, .category = .engine, .message = "first" },
+        .{ .timestamp_ns = 2, .session_id = 7, .frame_id = 42, .level = .err, .category = .engine, .message = "last", .fields = &.{.{ .key = "phase", .value = .{ .string = "draw" } }} },
+    };
+    try capture(std.testing.allocator, .{ .path = root, .max_log_events = 1, .max_event_bytes = 1024 }, .{ .event_log = .{ .events = &events, .dropped_events = 3, .write_errors = 2 } });
+    const bytes = try temp.dir.readFileAlloc(std.testing.allocator, "events.jsonl", 1024);
+    defer std.testing.allocator.free(bytes);
+    const event = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, bytes, .{});
+    defer event.deinit();
+    try std.testing.expectEqualStrings("last", event.value.object.get("message").?.string);
+    try std.testing.expectEqual(@as(i64, 42), event.value.object.get("frame_id").?.integer);
+    const summary_bytes = try temp.dir.readFileAlloc(std.testing.allocator, "logging.json", 1024);
+    defer std.testing.allocator.free(summary_bytes);
+    const summary = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, summary_bytes, .{});
+    defer summary.deinit();
+    try std.testing.expectEqual(@as(i64, 4), summary.value.object.get("dropped_events").?.integer);
+    try std.testing.expectEqual(@as(i64, 2), summary.value.object.get("write_errors").?.integer);
+    try capture(std.testing.allocator, .{ .path = root, .max_event_bytes = 1 }, .{ .event_log = .{ .events = &events } });
+    const empty = try temp.dir.readFileAlloc(std.testing.allocator, "events.jsonl", 1024);
+    defer std.testing.allocator.free(empty);
+    try std.testing.expectEqual(@as(usize, 0), empty.len);
 }

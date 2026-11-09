@@ -5,6 +5,10 @@ const artifact_names = [_][]const u8{
     "metadata.json",
     "environment.json",
     "failure.log",
+    "events.jsonl",
+    "logging.json",
+    "diagnostics.json",
+    "renderer-diagnostics.json",
     "commands.json",
     "trace.json",
     "replay.json",
@@ -34,9 +38,9 @@ pub fn create(allocator: std.mem.Allocator, options: Options) !Report {
     defer source.close();
     if (std.fs.cwd().access(options.output_path, .{})) |_| return error.SupportBundleExists else |err| if (err != error.FileNotFound) return err;
     try std.fs.cwd().makePath(options.output_path);
+    errdefer std.fs.cwd().deleteTree(options.output_path) catch {};
     const output_path = try std.fs.cwd().realpathAlloc(allocator, options.output_path);
     defer allocator.free(output_path);
-    errdefer std.fs.cwd().deleteTree(output_path) catch {};
     if (std.mem.eql(u8, source_path, output_path) or pathContains(source_path, output_path)) return error.SupportBundleInsideSource;
     var output = try std.fs.openDirAbsolute(output_path, .{});
     defer output.close();
@@ -105,6 +109,7 @@ const Redaction = struct {
 
 fn redactText(allocator: std.mem.Allocator, contents: []const u8, source_path: []const u8, paths: []const []const u8, secrets: []const []const u8) !Redaction {
     var text = try allocator.dupe(u8, contents);
+    errdefer allocator.free(text);
     var occurrences: usize = 0;
     text, occurrences = try replaceAll(allocator, text, source_path, "[REDACTED_PATH]", occurrences);
     for (paths) |path| text, occurrences = try replaceAll(allocator, text, path, "[REDACTED_PATH]", occurrences);
@@ -125,8 +130,9 @@ fn replaceAll(allocator: std.mem.Allocator, source: []u8, pattern: []const u8, r
     }
     if (count == occurrences) return .{ source, occurrences };
     try appendLimited(allocator, &output, source[cursor..]);
+    const result = try output.toOwnedSlice(allocator);
     allocator.free(source);
-    return .{ try output.toOwnedSlice(allocator), count };
+    return .{ result, count };
 }
 
 fn appendLimited(allocator: std.mem.Allocator, output: *std.ArrayList(u8), value: []const u8) !void {
@@ -212,4 +218,34 @@ test "support bundle rejects missing and duplicate selected diagnostics" {
     defer std.testing.allocator.free(missing_output);
     try std.testing.expectError(error.SelectedDiagnosticMissing, create(std.testing.allocator, .{ .source_path = source, .output_path = missing_output, .include = &.{"failure.log"} }));
     try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(missing_output, .{}));
+}
+
+fn bundleAllocationFailures(allocator: std.mem.Allocator, source: []const u8, output: []const u8) !void {
+    defer std.fs.cwd().deleteTree(output) catch {};
+    _ = create(allocator, .{ .source_path = source, .output_path = output, .include = &.{ "events.jsonl", "logging.json" }, .redact = &.{"private-value"} }) catch |err| {
+        try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(output, .{}));
+        return err;
+    };
+}
+
+test "support exports structured event context with allocation rollback and redaction" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const source = try std.fs.path.join(std.testing.allocator, &.{ root, "source" });
+    defer std.testing.allocator.free(source);
+    const output = try std.fs.path.join(std.testing.allocator, &.{ root, "output" });
+    defer std.testing.allocator.free(output);
+    try temp.dir.makeDir("source");
+    try temp.dir.writeFile(.{ .sub_path = "source/events.jsonl", .data = "{\"version\":1,\"message\":\"private-value\"}\n" });
+    try temp.dir.writeFile(.{ .sub_path = "source/logging.json", .data = "{\"version\":1,\"dropped_events\":3}" });
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, bundleAllocationFailures, .{ source, output });
+    _ = try create(std.testing.allocator, .{ .source_path = source, .output_path = output, .redact = &.{"private-value"} });
+    const event_bytes = try temp.dir.readFileAlloc(std.testing.allocator, "output/events.jsonl", 1024);
+    defer std.testing.allocator.free(event_bytes);
+    const event = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, event_bytes, .{});
+    defer event.deinit();
+    try std.testing.expectEqualStrings("[REDACTED]", event.value.object.get("message").?.string);
+    try temp.dir.access("output/logging.json", .{});
 }
