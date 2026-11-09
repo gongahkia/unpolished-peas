@@ -26,6 +26,8 @@ pub const LogContext = struct {
     events: []const runtime_log.Event = &.{},
     dropped_events: u64 = 0,
     write_errors: u64 = 0,
+    file_rotations: u64 = 0,
+    discarded_file_bytes: u64 = 0,
 };
 
 pub const Input = struct {
@@ -100,13 +102,13 @@ pub fn captureSessionWithOptions(allocator: std.mem.Allocator, root: []const u8,
     defer directory.close();
     try directory.writeFile(.{ .sub_path = incident_marker, .data = incident_owner });
     if (try bundleSize(allocator, path) > options.max_bundle_bytes) return error.DiagnosticsBundleTooLarge;
-    try retainSessionBundles(allocator, root, options.max_session_bundles);
+    try retainSessionBundles(allocator, root, options.max_session_bundles, name);
     return path;
 }
 
-const Bundle = struct { name: []u8, session: u64, failure: u64 };
+const Bundle = struct { name: []u8, session: u64, failure: u64, modified_ns: i128 };
 
-fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum: usize) !void {
+fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum: usize, current: []const u8) !void {
     var dir = try std.fs.cwd().openDir(root, .{ .iterate = true });
     defer dir.close();
     var bundles = std.ArrayListUnmanaged(Bundle){};
@@ -121,11 +123,15 @@ fn retainSessionBundles(allocator: std.mem.Allocator, root: []const u8, maximum:
         if (!try ownedIncident(dir, entry.name)) continue;
         const owned_name = try allocator.dupe(u8, entry.name);
         errdefer allocator.free(owned_name);
-        try bundles.append(allocator, .{ .name = owned_name, .session = parsed.session, .failure = parsed.failure });
+        const info = try dir.statFile(entry.name);
+        try bundles.append(allocator, .{ .name = owned_name, .session = parsed.session, .failure = parsed.failure, .modified_ns = info.mtime });
     }
     std.mem.sort(Bundle, bundles.items, {}, lessBundle);
     while (bundles.items.len > maximum) {
-        const bundle = bundles.orderedRemove(0);
+        // The just-created incident is always retained, including filesystems
+        // with coarse timestamp precision. Session IDs are identities, not time.
+        const index: usize = if (std.mem.eql(u8, bundles.items[0].name, current)) 1 else 0;
+        const bundle = bundles.orderedRemove(index);
         dir.deleteTree(bundle.name) catch |err| {
             allocator.free(bundle.name);
             return err;
@@ -170,6 +176,7 @@ fn parseBundleName(name: []const u8) ?struct { session: u64, failure: u64 } {
 }
 
 fn lessBundle(_: void, a: Bundle, b: Bundle) bool {
+    if (a.modified_ns != b.modified_ns) return a.modified_ns < b.modified_ns;
     if (a.session != b.session) return a.session < b.session;
     return a.failure < b.failure;
 }
@@ -326,7 +333,11 @@ fn writeEvents(allocator: std.mem.Allocator, options: Options, context: LogConte
     dropped +|= first;
     for (context.events[first..]) |event| {
         record.clearRetainingCapacity();
-        try runtime_log.writeJsonl(&record.writer, event);
+        runtime_log.writeJsonl(&record.writer, event) catch |err| switch (err) {
+            // This writer has no I/O sink: WriteFailed means allocation failed.
+            error.WriteFailed => return error.OutOfMemory,
+            else => return err,
+        };
         const line = record.written();
         if (line.len > options.max_event_bytes) {
             dropped +|= 1;
@@ -356,6 +367,8 @@ fn writeEvents(allocator: std.mem.Allocator, options: Options, context: LogConte
         .retained_bytes = retained.items.len,
         .dropped_events = dropped,
         .write_errors = context.write_errors,
+        .file_rotations = context.file_rotations,
+        .discarded_file_bytes = context.discarded_file_bytes,
         .max_events = options.max_log_events,
         .max_bytes = options.max_event_bytes,
     }, .{});
@@ -572,4 +585,35 @@ test "failure events retain newest complete parseable records and report drops" 
     const empty = try temp.dir.readFileAlloc(std.testing.allocator, "events.jsonl", 1024);
     defer std.testing.allocator.free(empty);
     try std.testing.expectEqual(@as(usize, 0), empty.len);
+}
+
+test "incident chronology does not depend on random session identity" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const old = try captureSessionWithOptions(std.testing.allocator, root, 999, 8, .{}, .{ .path = "", .max_session_bundles = 1 });
+    defer std.testing.allocator.free(old);
+    const current = try captureSessionWithOptions(std.testing.allocator, root, 1, 1, .{}, .{ .path = "", .max_session_bundles = 1 });
+    defer std.testing.allocator.free(current);
+    try std.testing.expectError(error.FileNotFound, std.fs.cwd().access(old, .{}));
+    try std.fs.cwd().access(current, .{});
+}
+
+fn incidentAllocationFailures(allocator: std.mem.Allocator, root: []const u8) !void {
+    const events = [_]runtime_log.Event{.{ .timestamp_ns = 1, .session_id = 7, .level = .err, .category = .engine, .message = "original failure" }};
+    const path = try captureSession(allocator, root, 7, 1, .{ .event_log = .{ .events = &events }, .log = "original failure" });
+    defer allocator.free(path);
+    defer std.fs.cwd().deleteTree(path) catch {};
+}
+
+test "incident allocation failure releases ownership and partial output" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    try temp.dir.writeFile(.{ .sub_path = "caller.txt", .data = "keep" });
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, incidentAllocationFailures, .{root});
+    try temp.dir.access("caller.txt", .{});
+    try std.testing.expectError(error.FileNotFound, temp.dir.access("session-7-failure-1", .{}));
 }

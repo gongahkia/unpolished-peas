@@ -1,5 +1,6 @@
 const std = @import("std");
 const builtin = @import("builtin");
+const runtime_log = @import("unpolished-peas").graphics.runtime_log;
 const up = @import("api.zig");
 const renderer_conformance = up.testSupport.RendererConformance;
 const primitive_commands = @import("primitive_commands.zig");
@@ -1701,15 +1702,33 @@ fn ProtocolAdapter(comptime Game: type) type {
 fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype, comptime callbacks: anytype) !void {
     comptime validateLoopCallbacks(callbacks);
     try config.validate();
-    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) return sdlVideoInitFail(config.renderer);
+    const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
+    if (!c.SDL_Init(c.SDL_INIT_VIDEO | c.SDL_INIT_EVENTS)) {
+        const original = sdlVideoInitFail(config.renderer);
+        if (environmentBool("UP_DEVELOPER_TOOLS") orelse true) {
+            // Preserve SDL's original detail before filesystem/logging calls
+            // can replace SDL_GetError. No window, Canvas or device exists.
+            var detail: [512]u8 = undefined;
+            const error_text = std.mem.span(c.SDL_GetError());
+            const length = @min(detail.len, error_text.len);
+            @memcpy(detail[0..length], error_text[0..length]);
+            const path = appDataPath(allocator, config.organization, config.application) catch return original;
+            defer allocator.free(path);
+            var startup = DeveloperTools.init(allocator, developer_tools_enabled, path) catch return original;
+            defer startup.deinit();
+            var profile = up.FrameProfiler.init(false);
+            startup.captureStartupFailure(.{ .phase = .init, .err = original, .context = detail[0..length] }, &profile, "SDL_Init");
+        }
+        return original;
+    }
     defer c.SDL_Quit();
     const data_path = try appDataPath(allocator, config.organization, config.application);
     defer allocator.free(data_path);
     var save_data: NativeSaveStore = undefined;
     try save_data.init(allocator, data_path);
     defer save_data.deinit();
-    const developer_tools_enabled = developerToolsEnabled(config.developer_tools);
     var dev = try DeveloperTools.init(allocator, developer_tools_enabled, data_path);
+    dev.asset_root = config.asset_root orelse "auto-or-embedded";
     var developer_asset_registry = developer_assets.Registry.init(allocator, developer_tools_enabled) catch |err| blk: {
         // A bad explicit developer root must not turn a release-style game
         // launch into a failure. The embedded resource remains authoritative.
@@ -1822,7 +1841,16 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     init_timer.end();
     if (failure) |current| dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
     initialized = failure == null;
-    defer if (initialized) callLoopDeinit(state, callbacks, &ctx);
+    defer if (initialized) {
+        if (@hasField(@TypeOf(callbacks), "deinit")) maybeError(callbacks.deinit(state, &ctx)) catch |err| {
+            const current: Failure = .{ .phase = .deinit, .err = err, .context = "callback=deinit" };
+            dev.callbackFailure(current);
+            dev.captureFailure(current, ctx.frame, canvas, commands.commands.items, &profiler);
+            // Preserve the existing native callback panic policy, with the
+            // original cleanup cause captured before host resources disappear.
+            @panic("SDL loop deinit failed");
+        };
+    };
 
     var running = true;
     var last_ticks = c.SDL_GetTicksNS();
@@ -1830,7 +1858,7 @@ fn runWithAllocator(allocator: std.mem.Allocator, config: Config, state: anytype
     while (running) {
         native_timing.beginFrame();
         profiler.beginFrame(ctx.frame);
-        dev.beginDiagnosticsFrame();
+        dev.beginDiagnosticsFrame(ctx.frame);
         frame_metrics.beginFrame(ctx.frame);
         platform_input.beginFrame();
         ctx.input = &platform_input;
@@ -2815,6 +2843,7 @@ const FailurePhase = enum {
     update,
     draw,
     screenshot_path,
+    deinit,
 
     fn label(self: FailurePhase) []const u8 {
         return switch (self) {
@@ -2828,6 +2857,7 @@ const FailurePhase = enum {
             .update => "update",
             .draw => "draw",
             .screenshot_path => "screenshot path",
+            .deinit => "deinit",
         };
     }
 };
@@ -2947,38 +2977,94 @@ const DeveloperTools = struct {
     overlay: bool,
     diagnostics: developer_diagnostics.Collector,
     dump_snapshot: bool,
-    log_file: ?std.fs.File = null,
+    log_file: ?runtime_log.RotatingFile = null,
+    json_log: ?runtime_log.RotatingFile = null,
+    recent: runtime_log.Ring,
+    log_active: bool = false,
+    capture_enabled: bool = true,
+    session_id: u64 = 0,
+    started_ns: u64 = 0,
+    frame_id: u64 = 0,
+    failure_id: u64 = 0,
+    write_errors: u64 = 0,
+    selected_renderer: []const u8 = "not_initialized",
+    selected_driver: []const u8 = "unavailable",
+    asset_root: []const u8 = "auto-or-embedded",
+    last_incident: ?[]u8 = null,
 
     fn init(allocator: std.mem.Allocator, enabled: bool, app_data_path: []const u8) !DeveloperTools {
         var tools = DeveloperTools{
             .allocator = allocator,
             .app_data_path = app_data_path,
             .enabled = enabled,
+            .recent = runtime_log.Ring.init(allocator, if (enabled) 128 else 0, .{}),
+            // Optimized hosts retain their existing failure-only captures;
+            // explicit UP_DEVELOPER_TOOLS=0 disables all automatic capture.
+            .capture_enabled = environmentBool("UP_DEVELOPER_TOOLS") orelse true,
             .overlay = if (enabled) environmentBool("UP_DEVELOPER_OVERLAY") orelse true else false,
             .diagnostics = developer_diagnostics.Collector.init(enabled),
             .dump_snapshot = enabled and (environmentBool("UP_DEVELOPER_DIAGNOSTICS_DUMP") orelse false),
         };
         if (!enabled) return tools;
 
-        const log_path = try std.fmt.allocPrint(allocator, "{s}unpolished-peas.log", .{app_data_path});
-        defer allocator.free(log_path);
-        tools.log_file = std.fs.cwd().createFile(log_path, .{ .truncate = false }) catch |err| {
-            std.debug.print("unpolished-peas log disabled: {s}\n", .{@errorName(err)});
-            return tools;
+        tools.log_active = true;
+        if (std.process.getEnvVarOwned(allocator, "UP_LOG_LEVEL")) |value| {
+            defer allocator.free(value);
+            const level = runtime_log.parseLevel(value) catch |err| {
+                std.debug.print("unpolished-peas invalid log level: {s}\n", .{@errorName(err)});
+                tools.log_active = false;
+                return tools;
+            };
+            if (level) |minimum| tools.recent.filter.min_level = minimum else tools.log_active = false;
+        } else |_| {}
+        if (std.process.getEnvVarOwned(allocator, "UP_LOG_CATEGORIES")) |value| {
+            defer allocator.free(value);
+            tools.recent.filter.category_mask = runtime_log.parseCategories(value) catch |err| {
+                std.debug.print("unpolished-peas invalid log categories: {s}\n", .{@errorName(err)});
+                tools.log_active = false;
+                return tools;
+            };
+        } else |_| {}
+        if (!tools.log_active) return tools;
+        tools.beginLogSession();
+        tools.log_file = runtime_log.RotatingFile.init(app_data_path, "unpolished-peas.log", 1024 * 1024, 3) catch |err| blk: {
+            tools.write_errors +|= 1;
+            std.debug.print("unpolished-peas text log unavailable: {s}\n", .{@errorName(err)});
+            break :blk null;
         };
-        if (tools.log_file) |file| file.seekFromEnd(0) catch {};
-        tools.note("unpolished-peas: started\n");
-        std.debug.print("unpolished-peas app data: {s}\nunpolished-peas log: {s}\n", .{ app_data_path, log_path });
+        tools.json_log = runtime_log.RotatingFile.init(app_data_path, "unpolished-peas.jsonl", 1024 * 1024, 3) catch |err| blk: {
+            tools.write_errors +|= 1;
+            std.debug.print("unpolished-peas JSONL log unavailable: {s}\n", .{@errorName(err)});
+            break :blk null;
+        };
+        tools.record(.info, .engine, "unpolished-peas: started", &.{
+            .{ .key = "zig", .value = .{ .string = builtin.zig_version_string } },
+            .{ .key = "optimize", .value = .{ .string = @tagName(builtin.mode) } },
+            .{ .key = "target", .value = .{ .string = @tagName(builtin.os.tag) ++ "-" ++ @tagName(builtin.cpu.arch) } },
+        });
+        std.debug.print("unpolished-peas app data: {s}\nunpolished-peas log: {s}unpolished-peas.log\nunpolished-peas events: {s}unpolished-peas.jsonl session={d}\n", .{ app_data_path, app_data_path, app_data_path, tools.session_id });
         return tools;
     }
 
+    fn beginLogSession(self: *DeveloperTools) void {
+        if (self.session_id != 0) return;
+        // Safe JSON integers on both native and JavaScript consumers.
+        self.session_id = (std.crypto.random.int(u64) & ((@as(u64, 1) << 53) - 1)) | 1;
+        self.started_ns = c.SDL_GetTicksNS();
+    }
+
     fn deinit(self: *DeveloperTools) void {
+        self.record(.info, .engine, "unpolished-peas: shutdown", &.{});
         self.dumpDiagnostics();
-        if (self.log_file) |file| file.close();
+        if (self.log_file) |*file| file.deinit();
+        if (self.json_log) |*file| file.deinit();
+        self.recent.deinit();
+        if (self.last_incident) |path| self.allocator.free(path);
         self.* = undefined;
     }
 
-    fn beginDiagnosticsFrame(self: *DeveloperTools) void {
+    fn beginDiagnosticsFrame(self: *DeveloperTools, frame: u64) void {
+        if (self.log_active) self.frame_id = frame;
         self.diagnostics.beginFrame();
     }
 
@@ -3008,7 +3094,10 @@ const DeveloperTools = struct {
         if (self.log_file != null) {
             std.debug.print("unpolished-peas {s} failed: {s}; log: {s}unpolished-peas.log\n", .{ phase.label(), @errorName(err), self.app_data_path });
         } else std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(.err, failureCategory(phase), line, &.{
+            .{ .key = "phase", .value = .{ .string = phase.label() } },
+            .{ .key = "error", .value = .{ .string = @errorName(err) } },
+        });
     }
 
     fn assetReloadEvent(self: *DeveloperTools, event: up.ReloadEvent) void {
@@ -3019,18 +3108,25 @@ const DeveloperTools = struct {
             .failed => std.fmt.bufPrint(&buffer, "unpolished-peas developer asset reload: {s} failed: {s}; retained previous resource\n", .{ event.path, event.message }),
         } catch return;
         std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(if (event.status == .failed) .warn else .info, .assets, line, &.{});
     }
 
     fn rendererDiagnostics(self: *DeveloperTools, diagnostics: *const RendererDiagnostics) void {
+        self.selected_renderer = if (diagnostics.selected) |value| @tagName(value) else "none";
+        self.selected_driver = diagnostics.video_driver;
         var buffer: [512]u8 = undefined;
         const line = formatRendererDiagnostics(&buffer, diagnostics) catch return;
         std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(.info, .render, line, &.{
+            .{ .key = "requested", .value = .{ .string = @tagName(diagnostics.requested) } },
+            .{ .key = "selected", .value = .{ .string = self.selected_renderer } },
+            .{ .key = "video_driver", .value = .{ .string = self.selected_driver } },
+            .{ .key = "shader", .value = .{ .string = if (diagnostics.gpu_shader_format) |value| @tagName(value) else "none" } },
+        });
         for (diagnostics.rejected) |maybe_rejection| if (maybe_rejection) |rejection| {
             const attempt = formatRendererRejection(&buffer, &rejection) catch continue;
             std.debug.print("{s}", .{attempt});
-            self.note(attempt);
+            self.record(.warn, .render, attempt, &.{});
         };
     }
 
@@ -3045,14 +3141,14 @@ const DeveloperTools = struct {
         var buffer: [256]u8 = undefined;
         const line = std.fmt.bufPrint(&buffer, "unpolished-peas native platform: logical={d}x{d} framebuffer={d:.0}x{d:.0} scale={d:.2}x{d:.2} canvas={d:.0}x{d:.0}\n", .{ logical_width, logical_height, framebuffer.x, framebuffer.y, scale_x, scale_y, presentation.canvas_size.x, presentation.canvas_size.y }) catch return;
         std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(.info, .platform, line, &.{});
     }
 
     fn audioDiagnostics(self: *DeveloperTools, available: bool) void {
         if (!self.enabled) return;
         const line = if (available) "unpolished-peas native audio: ready\n" else "unpolished-peas native audio: unavailable\n";
         std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(.info, .audio, line, &.{});
     }
 
     fn callbackFailure(self: *DeveloperTools, failure_value: Failure) void {
@@ -3061,7 +3157,11 @@ const DeveloperTools = struct {
         if (self.log_file != null) {
             std.debug.print("unpolished-peas {s} callback failed: {s} {s}; log: {s}unpolished-peas.log\n", .{ failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, self.app_data_path });
         } else std.debug.print("{s}", .{line});
-        self.note(line);
+        self.record(.err, failureCategory(failure_value.phase), line, &.{
+            .{ .key = "phase", .value = .{ .string = failure_value.phase.label() } },
+            .{ .key = "error", .value = .{ .string = @errorName(failure_value.err) } },
+            .{ .key = "operation", .value = .{ .string = failure_value.context } },
+        });
     }
 
     fn captureFailure(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler) void {
@@ -3073,20 +3173,52 @@ const DeveloperTools = struct {
     }
 
     fn captureDiagnostic(self: *DeveloperTools, failure_value: Failure, frame: u64, canvas: ?up.Canvas, commands: []const up.RenderCommand, frame_profiler: *const up.FrameProfiler, operation: []const u8) void {
+        if (!self.capture_enabled) return;
+        self.beginLogSession();
+        self.frame_id = frame;
+        self.failure_id +|= 1;
         var path_buffer: [std.fs.max_path_bytes]u8 = undefined;
-        const configured_path = std.process.getEnvVarOwned(self.allocator, "UP_DIAGNOSTICS_ROOT") catch |err| switch (err) {
-            error.EnvironmentVariableNotFound => null,
-            else => null,
-        };
+        const configured_path = std.process.getEnvVarOwned(self.allocator, "UP_DIAGNOSTICS_ROOT") catch null;
         defer if (configured_path) |value| self.allocator.free(value);
         const path = configured_path orelse std.fmt.bufPrint(&path_buffer, "{s}diagnostics", .{self.app_data_path}) catch return;
-        var message_buffer: [256]u8 = undefined;
-        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} context={s} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, frame }) catch return;
-        up.diagnostics.capture(self.allocator, .{ .path = path }, .{ .canvas = canvas, .commands = commands, .profiler = frame_profiler, .log = message }) catch |err| {
-            var buffer: [192]u8 = undefined;
-            const line = std.fmt.bufPrint(&buffer, "unpolished-peas diagnostics failed: {s}\n", .{@errorName(err)}) catch return;
-            self.note(line);
+        var message_buffer: [512]u8 = undefined;
+        const message = std.fmt.bufPrint(&message_buffer, "runtime failure operation={s} phase={s} error={s} context={s} session={d} frame={d}\n", .{ operation, failure_value.phase.label(), @errorName(failure_value.err), failure_value.context, self.session_id, frame }) catch return;
+        self.record(.err, failureCategory(failure_value.phase), message, &.{
+            .{ .key = "phase", .value = .{ .string = failure_value.phase.label() } },
+            .{ .key = "error", .value = .{ .string = @errorName(failure_value.err) } },
+            .{ .key = "operation", .value = .{ .string = operation } },
+            .{ .key = "context", .value = .{ .string = failure_value.context } },
+        });
+        const incident = up.diagnostics.captureSession(self.allocator, path, self.session_id, self.failure_id, .{
+            .canvas = canvas,
+            .commands = commands,
+            .profiler = frame_profiler,
+            .log = message,
+            .event_log = .{
+                .events = self.recent.items(),
+                .dropped_events = self.recent.dropped_events,
+                .write_errors = self.write_errors,
+                .file_rotations = (if (self.log_file) |file| file.rotations else @as(u64, 0)) +| (if (self.json_log) |file| file.rotations else @as(u64, 0)),
+                .discarded_file_bytes = (if (self.log_file) |file| file.discarded_bytes else @as(u64, 0)) +| (if (self.json_log) |file| file.discarded_bytes else @as(u64, 0)),
+            },
+            .environment = .{
+                .engine_version = "unreported",
+                .build_id = "unreported",
+                .target = @tagName(builtin.os.tag) ++ "-" ++ @tagName(builtin.cpu.arch),
+                .renderer = self.selected_renderer,
+                .driver = self.selected_driver,
+                .launch_config = "zig " ++ builtin.zig_version_string ++ " " ++ @tagName(builtin.mode),
+                .asset_root = self.asset_root,
+                .capabilities = "native-host",
+            },
+        }) catch |err| {
+            self.write_errors +|= 1;
+            std.debug.print("unpolished-peas diagnostics failed: {s}; original error={s}\n", .{ @errorName(err), @errorName(failure_value.err) });
+            return;
         };
+        if (self.last_incident) |previous| self.allocator.free(previous);
+        self.last_incident = incident;
+        std.debug.print("unpolished-peas incident: {s}\n", .{incident});
     }
 
     fn screenshotPath(self: *DeveloperTools, frame: u64) ![]u8 {
@@ -3146,7 +3278,54 @@ const DeveloperTools = struct {
     }
 
     fn note(self: *DeveloperTools, line: []const u8) void {
-        if (self.log_file) |file| file.writeAll(line) catch {};
+        self.record(.info, .engine, line, &.{});
+    }
+
+    fn record(self: *DeveloperTools, level: runtime_log.Level, category: runtime_log.Category, message: []const u8, fields: []const runtime_log.Field) void {
+        if (!self.log_active) return;
+        var event: runtime_log.Event = .{ .timestamp_ns = 0, .session_id = self.session_id, .frame_id = self.frame_id, .level = level, .category = category, .message = std.mem.trimEnd(u8, message, "\r\n"), .fields = fields };
+        if (!self.recent.filter.allows(event)) return;
+        event.timestamp_ns = @min(c.SDL_GetTicksNS() -| self.started_ns, (@as(u64, 1) << 53) - 1);
+        self.recent.append(event) catch {
+            self.write_errors +|= 1;
+        };
+        var output = std.Io.Writer.Allocating.init(self.allocator);
+        defer output.deinit();
+        if (self.log_file) |*file| {
+            runtime_log.writeTerminal(&output.writer, self.recent.filter, event) catch {
+                self.write_errors +|= 1;
+                return;
+            };
+            file.append(output.written()) catch |err| {
+                self.write_errors +|= 1;
+                std.debug.print("unpolished-peas text log write failed: {s}\n", .{@errorName(err)});
+                file.deinit();
+                self.log_file = null;
+            };
+            output.clearRetainingCapacity();
+        }
+        if (self.json_log) |*file| {
+            runtime_log.writeJsonl(&output.writer, event) catch {
+                self.write_errors +|= 1;
+                return;
+            };
+            file.append(output.written()) catch |err| {
+                self.write_errors +|= 1;
+                std.debug.print("unpolished-peas JSONL log write failed: {s}\n", .{@errorName(err)});
+                file.deinit();
+                self.json_log = null;
+            };
+        }
+    }
+
+    fn failureCategory(phase: FailurePhase) runtime_log.Category {
+        return switch (phase) {
+            .gpu, .gpu_recovery, .draw => .render,
+            .audio => .audio,
+            .input, .event => .input,
+            .asset_reload => .assets,
+            else => .engine,
+        };
     }
 };
 
@@ -3188,6 +3367,7 @@ test "developer diagnostics dump precedes developer asset registry destruction" 
         .overlay = false,
         .diagnostics = developer_diagnostics.Collector.init(true),
         .dump_snapshot = true,
+        .recent = runtime_log.Ring.init(std.testing.allocator, 0, .{}),
     };
     tools.diagnostics.snapshot.asset_reload.last_asset = registry.last_asset;
 
@@ -3284,6 +3464,89 @@ test "developer tools do not consume a game Tab action" {
     try std.testing.expect(input.wasPressed(.select));
 }
 
+test "native events filter consistently and incidents preserve recent context" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    var tools = try DeveloperTools.init(std.testing.allocator, true, data_path);
+    defer tools.deinit();
+    tools.recent.filter = .{ .min_level = .warn, .category_mask = @as(u32, 1) << @intFromEnum(runtime_log.Category.render) };
+    const before = tools.recent.items().len;
+    tools.record(.info, .render, "filtered-info", &.{});
+    tools.record(.err, .audio, "filtered-audio", &.{});
+    try std.testing.expectEqual(before, tools.recent.items().len);
+    tools.record(.warn, .render, "retained-render-context", &.{});
+    var profiler = up.FrameProfiler.init(false);
+    tools.captureStartupFailure(.{ .phase = .draw, .err = error.FirstFailure }, &profiler, "first operation");
+    const first = try std.testing.allocator.dupe(u8, tools.last_incident orelse return error.MissingIncident);
+    defer std.testing.allocator.free(first);
+    tools.captureStartupFailure(.{ .phase = .draw, .err = error.SecondFailure }, &profiler, "second operation");
+    try std.testing.expect(!std.mem.eql(u8, first, tools.last_incident.?));
+    var incident = try std.fs.cwd().openDir(first, .{});
+    defer incident.close();
+    const bytes = try incident.readFileAlloc(std.testing.allocator, "events.jsonl", 16384);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "retained-render-context") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "filtered-info") == null);
+    var lines = std.mem.tokenizeScalar(u8, bytes, '\n');
+    while (lines.next()) |line| {
+        const event = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, line, .{});
+        defer event.deinit();
+        try std.testing.expectEqual(@as(i64, @intCast(tools.session_id)), event.value.object.get("session_id").?.integer);
+    }
+    try incident.access("environment.json", .{});
+    try incident.access("logging.json", .{});
+    var next = try std.fs.cwd().openDir(tools.last_incident.?, .{});
+    defer next.close();
+    const next_bytes = try next.readFileAlloc(std.testing.allocator, "failure.log", 1024);
+    defer std.testing.allocator.free(next_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, next_bytes, "SecondFailure") != null);
+}
+
+test "log output failure and explicitly disabled capture preserve game error" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    try temp.dir.makeDir("unpolished-peas.jsonl");
+    var tools = try DeveloperTools.init(std.testing.allocator, true, data_path);
+    defer tools.deinit();
+    try std.testing.expect(tools.write_errors > 0);
+    try std.testing.expect(tools.json_log == null);
+    const failure_value = callbackFailure(.update, error.GameError, "update test");
+    var profiler = up.FrameProfiler.init(false);
+    try temp.dir.writeFile(.{ .sub_path = "diagnostics", .data = "caller-owned blocker" });
+    tools.captureStartupFailure(failure_value, &profiler, "write failure test");
+    try std.testing.expect(tools.last_incident == null);
+    try std.testing.expectEqual(error.GameError, failure_value.err);
+    tools.capture_enabled = false;
+    const errors = tools.write_errors;
+    tools.captureStartupFailure(failure_value, &profiler, "disabled test");
+    try std.testing.expectEqual(errors, tools.write_errors);
+    try temp.dir.access("diagnostics", .{});
+}
+
+test "native event sinks release every partially allocated record" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const data_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/", .{root});
+    defer std.testing.allocator.free(data_path);
+    for (0..32) |index| {
+        var failing = std.testing.FailingAllocator.init(std.testing.allocator, .{ .fail_index = index });
+        var tools = try DeveloperTools.init(failing.allocator(), true, data_path);
+        tools.record(.err, .engine, "original error", &.{ .{ .key = "one", .value = .{ .string = "owned" } }, .{ .key = "two", .value = .{ .string = "owned too" } } });
+        tools.deinit();
+        try std.testing.expectEqual(failing.allocated_bytes, failing.freed_bytes);
+    }
+}
+
 test "runtime failures capture bounded artifacts" {
     var temp = std.testing.tmpDir(.{});
     defer temp.cleanup();
@@ -3303,7 +3566,7 @@ test "runtime failures capture bounded artifacts" {
     profiler.beginFrame(2);
     profiler.scope(.draw).end();
     tools.captureFailure(callbackFailure(.event, error.EventFailed, "event=focus_lost"), 2, canvas, commands.commands.items, &profiler);
-    const diagnostics_path = try std.fs.path.join(std.testing.allocator, &.{ root, "diagnostics" });
+    const diagnostics_path = try std.testing.allocator.dupe(u8, tools.last_incident orelse return error.MissingIncident);
     defer std.testing.allocator.free(diagnostics_path);
     var directory = try std.fs.openDirAbsolute(diagnostics_path, .{});
     defer directory.close();
@@ -3330,7 +3593,7 @@ test "GPU audio and input startup failures capture diagnostics" {
         var profiler = up.FrameProfiler.init(true);
         profiler.beginFrame(0);
         tools.captureStartupFailure(.{ .phase = phase, .err = error.StartupFailed }, &profiler, "startup-test");
-        const diagnostics_path = try std.fs.path.join(std.testing.allocator, &.{ data_path, "diagnostics" });
+        const diagnostics_path = try std.testing.allocator.dupe(u8, tools.last_incident orelse return error.MissingIncident);
         defer std.testing.allocator.free(diagnostics_path);
         var directory = try std.fs.openDirAbsolute(diagnostics_path, .{});
         defer directory.close();

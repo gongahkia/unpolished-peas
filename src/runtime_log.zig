@@ -331,12 +331,23 @@ pub const RotatingFile = struct {
             var source: [96]u8 = undefined;
             const from = try self.archiveName(&source, index - 1);
             const to = try self.archiveName(&buffer, index);
+            const overwritten = if (index == self.archives) (self.dir.statFile(to) catch |err| switch (err) {
+                error.FileNotFound => null,
+                else => return err,
+            }) else null;
             self.dir.rename(from, to) catch |err| switch (err) {
-                error.FileNotFound => {},
+                error.FileNotFound => continue,
                 else => return err,
             };
+            if (overwritten) |info| self.discarded_bytes +|= info.size;
         }
-        try self.dir.rename(self.name, try self.archiveName(&buffer, 1));
+        const oldest = try self.archiveName(&buffer, 1);
+        const overwritten = if (self.archives == 1) (self.dir.statFile(oldest) catch |err| switch (err) {
+            error.FileNotFound => null,
+            else => return err,
+        }) else null;
+        try self.dir.rename(self.name, oldest);
+        if (overwritten) |info| self.discarded_bytes +|= info.size;
         self.file = try self.dir.createFile(self.name, .{ .exclusive = true });
         self.bytes = 0;
         self.rotations +|= 1;
@@ -383,6 +394,7 @@ test "log rotation bounds whole records and leaves unrelated files alone" {
     defer file.deinit();
     for ([_][]const u8{ "one\n", "two\n", "tri\n", "for\n", "fiv\n", "six\n", "sev\n" }) |line| try file.append(line);
     try std.testing.expectEqual(@as(u64, 3), file.rotations);
+    try std.testing.expectEqual(@as(u64, 8), file.discarded_bytes);
     inline for (.{ "events.jsonl", "events.jsonl.1", "events.jsonl.2" }) |name| {
         const contents = try temp.dir.readFileAlloc(std.testing.allocator, name, 8);
         defer std.testing.allocator.free(contents);
