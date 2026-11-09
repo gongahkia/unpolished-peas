@@ -93,4 +93,5 @@ host is released. Reload/new host creation resets it, so export before reload.
 Snapshots and PNG conversion allocate; serialized payload bounds are not a
 total JavaScript heap, browser console or GPU memory guarantee. External console
 retention is controlled by the browser. Collection off avoids structured event
-serialization and clock reads; explicitly requested legacy artifacts still work.
+serialization and clock reads; compiled protocol-failure messages and explicitly
+requested legacy artifacts remain bounded and available.

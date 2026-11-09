@@ -95,6 +95,7 @@ It is not required to build your first game.
   [three-browser authoring checks](guides/browser-authoring.md),
   [browser diagnostics](guides/browser-diagnostics.md) and [CI](guides/ci.md).
 - [Framework value-proposition audit and November 9 follow-up](reviews/2026-11-04-framework-value-proposition-audit.md),
+  [local diagnostics follow-up, November 10](reviews/2026-11-10-local-diagnostics.md),
   [rendering-capacity follow-up, November 7](reviews/2026-11-07-gameprotocol-rendering-capacity.md),
   [GPU composition decision, November 8](reviews/2026-11-08-gpu-surface-composition.md)
   and [earlier product audit](reviews/2026-10-23-product-engineering-audit.md).

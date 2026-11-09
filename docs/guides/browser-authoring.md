@@ -30,8 +30,10 @@ port and stops that process afterwards. An existing service on port 4444, or
 an explicit UP_SAFARI_WEBDRIVER_URL, is reused without being stopped.
 A busy service is reported unverified rather than replacing its session.
 Run Safari checks serially: competing automation windows can steal focus.
-The Safari adapter activates its actual WebDriver window before trusted input
-when necessary; it does not inject focus/key events to bypass focus checks.
+The Safari adapter activates its actual WebDriver window before trusted or
+injected input actions when necessary; observations do not activate the window.
+It does not inject focus/key events to bypass focus checks. Composition events
+remain explicitly injected test input, not physical IME validation.
 
 For a selected subset:
 

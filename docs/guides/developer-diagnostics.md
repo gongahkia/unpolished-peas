@@ -86,6 +86,9 @@ instead. Do not remove live lock files. Incident retention only removes marked
 Peas directories containing recognized regular artifacts; caller files and
 lookalike directories are left alone. Those protected directories are outside
 the retention budget.
+An active log file is created on its first accepted event; filters may leave it
+absent. Failure-only captures can have empty `events.jsonl` when continuous
+collection is off; the original failure remains in `failure.log`.
 
 An incident contains `failure.log`, `metadata.json`, `environment.json`,
 `events.jsonl`, `logging.json`, `commands.json`, and applicable `screenshot.png`
@@ -185,8 +188,9 @@ existing failure-only capture may still run unless explicitly suppressed.
 Browser logs own serialized records; traces/commands own bounded JSON snapshots.
 Retention budgets cover payloads, not total JS object, console or graphics-driver
 memory. Explicit snapshots, PNG capture and serialization can allocate temporary
-buffers. Browser logging off avoids event serialization/clock reads; explicitly
-requested legacy captures remain available. Enabled overlays/profiling have
+buffers. Browser logging off avoids structured-event serialization/clock reads;
+bounded protocol-failure messages and explicitly requested legacy captures
+remain available. Enabled overlays/profiling have
 their own costs, described below.
 
 ## Snapshot and overlay

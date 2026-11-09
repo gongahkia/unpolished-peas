@@ -5,6 +5,8 @@ not the current installation instructions. The
 [November 9 follow-up](#november-9-follow-up-authoring-consolidation) records
 resolved gaps and the remaining scope. Start new games with the
 [current quickstart](../guides/quickstart.md).
+The [November 10 diagnostics follow-up](2026-11-10-local-diagnostics.md) records
+the later local logging, retention and support-export work.
 
 Reviewed checkout: `0bc46bc7` (`1.0.0` package metadata), using Zig `0.15.2`.
 This is an assessment and proposed roadmap; it does not implement framework

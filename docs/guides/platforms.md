@@ -32,6 +32,25 @@ Silicon, bare-metal Linux and Windows evidence remain open. Newer automated
 Firefox/Safari workflow evidence is recorded below.
 Browser preview status is unchanged.
 
+## November 10 local diagnostics evidence
+
+On the same Intel macOS 15.7.7 host, Zig 0.15.2 and Node 24.19.0, the opt-in
+logging authoring matrix passed all nine WebGL 2 cases in Chromium
+157.0.8103.38, Firefox 158.0 and real Safari 18.6. Each case retained parseable
+session-correlated records, reported zero console-sink errors and passed a real
+JSON/non-interactive support export. The consumer's repeated compiled failures
+retained the latest four distinct incidents with visible drop counters and no
+resource/callback leaks. Existing font pixels, audio activation, saves/reload,
+input, renderer readback and independent PNG checks remained required.
+
+Nine compiled native cases verified init/update/draw/cleanup failures, repeat
+launches, filters, blocked output, explicit disable and early video failure
+through Cocoa → SDL GPU/Metal (dummy audio). Original errors/operations and
+applicable PNG/context artifacts survived support export. The
+[dated record](../reviews/2026-11-10-local-diagnostics.md) gives commands, limits
+and artifact locations. This is local automated evidence; browser preview and
+the outstanding physical/hardware checks above are unchanged.
+
 ## November 6 browser authoring evidence
 
 On Intel macOS 15.7.7, Zig 0.15.2 and Node 24.19.0, the external archive
