@@ -25,19 +25,16 @@ The layers complement one another. Equal state does not prove equal drawing;
 equal Canvas commands do not prove a renderer/pixel implementation stayed
 unchanged.
 
-Run repository deterministic engine targets through the project CLI:
+From your generated game directory, run its existing test target:
 
 ```sh
-zig build peas -- test unit
-zig build peas -- test replay
-zig build peas -- test visual
-zig build peas -- test integration
+zig build test
 ```
 
-Runnable references:
-
-- [Headless bounce](../../examples/bounce.zig)
-- [Breakout simulation](../../examples/breakout_game.zig)
+Add assertions to the game tests as you change behavior. Start with simulation
+state; add trace or pixel checks when drawing is part of the regression.
+[Framework verification](#framework-verification) below is for maintaining
+Peas itself.
 
 For a callback game, `up.testSupport.HeadlessGameRunner(Game)` owns a core canvas and `GameProtocol`. Pass deterministic `HeadlessFrame` values, then inspect `runner.capture().image_hash` and `runner.capture().commands`; no native window or browser is required.
 
@@ -108,7 +105,8 @@ try runner.runReplay(replay);
 
 `replay.encode` emits portable, little-endian fixed-width bytes with an explicit magic. Seedless replays emit UPR2. `InputReplayRecorder.initSeeded` emits UPR3, which additionally records the `u64` simulation seed and the pinned Peas RNG algorithm ID. Parsing validates the version, algorithm, frame count, bounds, and finite numeric values. Existing UPR1 action-key fixtures and UPR2 binary replays remain accepted, but have no seed metadata; UPR1 only contains held action keys, so Peas reconstructs its press and release edges from successive frames.
 
-`InputReplayRecorder.initSession` emits UPR4. It extends the UPR3 header with
+`InputReplayRecorder.initSession` emits UPR4 for normalized-only input. It
+extends the UPR3 header with
 a little-endian `u32` environment-byte count, followed by the environment and
 the same fixed-width input frames. The environment contains three
 length-prefixed identity strings, a save count, and entries containing a
@@ -232,6 +230,24 @@ The legacy `updateValue` remains available with its existing native-memory
 hashes so existing goldens retain their meaning. `zig build test-browser-replay`
 exercises recording, parsing, isolated playback, and the portable hash on the
 freestanding Wasm target; it is also included in `test-browser-wasm-host`.
+
+## Framework verification
+
+The commands in this section run from the Peas checkout, not a generated game.
+
+Run repository deterministic engine targets through the project CLI:
+
+```sh
+zig build peas -- test unit
+zig build peas -- test replay
+zig build peas -- test visual
+zig build peas -- test integration
+```
+
+Runnable references:
+
+- [Headless bounce](../../examples/bounce.zig)
+- [Breakout simulation](../../examples/breakout_game.zig)
 
 ## Safari WebDriver
 

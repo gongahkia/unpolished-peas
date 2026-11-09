@@ -119,7 +119,7 @@ of scope.
 
 Save data is environmental initial state. A reproducible run requires the
 same seed, replay, initial store contents, and deterministic game code. Save
-contents are absent from UPR1–UPR3 input recordings. Optional UPR4 session
+contents are absent from UPR1–UPR3 input recordings. Optional UPR4/UPR5 session
 recordings copy explicitly selected keys before game initialization and replay
 them in a private test store. See [session reproduction](testing.md#reproduce-a-session-that-depends-on-saved-progress).
 

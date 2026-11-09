@@ -1,16 +1,21 @@
 # v1.0 core contract
 
-This is the 1.0.0 public contract. It is checked by `zig build test-core-api`; a declaration addition or removal in a listed module fails that snapshot until the change is reviewed here and in the release policy.
+This records the v1.0 compatibility contract and explicitly identified later
+checkout additions. It is not a list of everything shipped in the October
+`1.0.0` tag; see [release status](releases.md#current-release) and the
+[authoring inventory](authoring-experience-freeze.md). `zig build test-core-api`
+checks the reviewed current snapshot; a declaration addition or removal in a
+listed module fails until intentionally reviewed here and in the release policy.
 
 The root package exposes only the six named capability namespaces below. Direct root aliases are removed; import `unpolished-peas` and qualify every retained declaration through its namespace. `src/core_api_snapshot.zig` is the exact declaration-name snapshot enforced by `zig build test-core-api`.
 
 ## Modules and types
 
-| Namespace | Frozen declarations | Contract |
+| Namespace | Reviewed declarations | Contract |
 | --- | --- | --- |
 | `core` | `App`, `StepClock`, `GameContext`, `GameProtocol`, `GamePhase`, `GameFailure`, `DeterministicRng`, `Audio`, `SaveStore`, `Color`, `Vec2`, `Rect` | callback lifecycle, timing, deterministic random state, optional SFX/music output, small opaque save blobs, errors, and basic 2D values |
 | `input` | `Input`, `Key`, `Pointer`, `PointerButton`, `Gamepad`, `GamepadButton`, `GamepadAxis`, `Action`, `ActionBinding`, `ActionMap`, `InspectorInputPanel` | normalized/physical keyboard, Unicode text/composition, pointer, gamepad, and action state |
-| `graphics` | drawing (`Canvas`, `RenderSurface`, `SurfaceDrawOptions`, `SurfaceFilter`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, offscreen Canvas composition, text, post effects, particles, presentation, camera, and inspection |
+| `graphics` | drawing (`Canvas`, `RenderSurface`, opt-in `SurfaceCompositor`, `SurfaceDrawOptions`, `SurfaceFilter`, `Sprite`, batches, render commands), materials, post effects, particles, presentation, camera, diagnostics, profiler, inspector, and text-layout declarations | deterministic 2D drawing, offscreen Canvas composition, text, post effects, particles, presentation, camera, and inspection |
 | `assets` | asset store, image/font/audio handles and options, mixer/music/PCM-stream declarations, atlas/animation, reload, and sprite-sampling declarations | raw image, font, atlas, audio loading, and playback/mixing |
 | `preview.developer` | `InputReplay`, `InputReplayButton`, `InputReplayRecorder`, `parseInputReplay` | replay hooks for local pre-release investigation |
 | `testSupport` | `TempProject`, `Clock`, `InMemorySaveStore`, `HeadlessFrame`, `HeadlessCapture`, `CanvasTrace`, `expectCanvasTraceEqual`, `HeadlessGameRunner`, `Buttons`, `applyTopDownButtons`, `frameSeconds`, `StateHash`, `GoldenOptions`, `RendererCaptureTolerance`, `cross_backend_renderer_tolerance`, `expectRendererCapturesMatch`, `RendererConformance`, `canvasHash`, `assertGolden`, `assertReplayHash`, `expectError` | deterministic headless, replay, save-store, and golden-test hooks |
@@ -21,8 +26,9 @@ logic imports only `unpolished-peas`. It is not part of the core namespace and
 games must not reach into its backend implementation. `unpolished-peas-wasm-core`
 is the Wasm build of the core namespace. `unpolished-peas-browser-runtime` is a
 build/runtime helper used by the browser build graph, not a normal game-source
-import. `unpolished-peas-tools` and `zig build peas -- package <target>` provide
-packaging hooks; `--package web` emits the static browser bundle. Browser
+import. `unpolished-peas-tools` and the engine CLI provide framework packaging hooks.
+Inside a generated game, use `zig build package` for desktop output and
+`zig build web` for its browser bundle; see [installation](installation.md#browser-and-package). Browser
 renderer availability is governed by the [capability matrix](capabilities.md),
 not by a game-side browser API.
 
@@ -38,9 +44,21 @@ padding. These additions keep the namespace surface unchanged; the
 
 ## Lifecycle and errors
 
-`GameProtocol(Game)` owns callback order and borrows the game value. A game supplies `init`, fixed-step `update`, and `draw`; `GameContext` borrows the current `Input` and, in a runtime host, exposes checked canvas plus optional `SaveStore` and `Audio` capabilities. It may also carry an explicit optional `simulation_seed` for initialization. `Audio` is a host-owned output service, so games retain sound handles while the host owns decoded data. The desktop adapter owns asset, audio, presentation, and native save location handling. `init` runs once, `update` rejects calls before initialization and non-finite or negative elapsed time, and `draw` rejects calls before initialization or interpolation outside `0...1`.
+`GameProtocol(Game)` owns callback order and borrows the game value. A game
+supplies `init`, fixed-step `update`, `draw`, and optional `deinit`;
+`GameContext` borrows the current input and host capabilities. The
+[protocol guide](game-protocol.md) owns the lifecycle, capability and cleanup
+rules. `init` runs once; `update` rejects calls before initialization and
+non-finite or negative elapsed time; `draw` rejects calls before initialization
+or interpolation outside `0...1`.
 
-Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, or `draw` phase. Hosts clamp elapsed wall time to five fixed steps, run fixed `update` calls before one `draw`, and expose the remaining interpolation fraction through `alpha`. Desktop reads its step rate from `sdl.Config.fixed_hz`; browser uses 60 Hz. Paused frames run no updates with zero alpha, retaining the accumulator remainder; browser visibility pauses discard hidden elapsed time on resume.
+After successful initialization, optional `deinit` runs once while host
+capabilities remain available. Failed `init` does not trigger `deinit`; the
+game must clean up partial initialization, normally with `errdefer`.
+Cleanup failure retains its cause and ends the lifecycle without a second
+cleanup call.
+
+Callback failures return their original error and are retained as `GameFailure` with the `init`, `update`, `draw`, or `deinit` phase. Hosts clamp elapsed wall time to five fixed steps, run fixed `update` calls before one `draw`, and expose the remaining interpolation fraction through `ctx.interpolation_alpha`. Desktop reads its step rate from `sdl.Config.fixed_hz`; browser uses 60 Hz. Paused frames run no updates with zero alpha, retaining the accumulator remainder; browser visibility pauses discard hidden elapsed time on resume.
 
 Owned values such as `Canvas`, `RenderSurface`, `Image`, `Atlas`, `Font`, `Sound`, and `AssetStore` require their documented `deinit` call. Validation and loading failures return errors; the contract does not convert them to successful fallback assets.
 
@@ -63,6 +81,14 @@ They have no allocation or hashing cost while no trace is attached.
 [`Input`](input.md) reports held, pressed, and released keyboard and pointer state per simulation tick. `ActionMap` layers named actions over those normalized values. [Stable audio assets](audio-assets.md) define WAV sound loading, play/stop controls, browser activation, and recoverable failures. Assets remain raw files: image, font, audio, and programmatic atlas declarations have no engine-owned content schema.
 
 ## Exclusions and compatibility
+
+The opt-in `graphics.SurfaceCompositor` is a reviewed addition to the graphics
+snapshot. It borrows CPU surfaces and requests GPU scaling/alpha composition
+through `Renderer2D.composeSurfaces`; it adds no GPU render target or general
+GPU Canvas. `Canvas.preserve_alpha` is an explicit opt-in with the old default
+preserved. See [rendering choices](rendering.md#choose-a-rendering-path) and
+the [prototype contract](gpu-surface-composition.md) for SDL GPU/WebGL 2
+requirements, CPU evaluation and browser runtime/host version changes.
 
 High-level Audio adds optional `unloadSound` / `unloadMusic`. Existing load/play
 signatures, handle representations and lifetimes remain compatible unless a
@@ -87,7 +113,11 @@ For a published 1.x release, removing or renaming a listed declaration, changing
 
 ## Runnable reference
 
-Run the [minimal callback example](../../examples/minimal.zig) with `zig build run-minimal`.
+Run the [compiled GameContext tutorial](../../examples/tutorial_game_protocol.zig)
+from the Peas checkout with `zig build run-tutorial-game-protocol`.
+The older [native-context example](../../examples/minimal.zig) remains available
+with `zig build run-minimal`; it is a compatibility example, not the portable
+starting point.
 
 
 ### Physical input and text extension

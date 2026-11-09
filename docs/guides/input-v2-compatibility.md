@@ -1,15 +1,17 @@
-# Physical keyboard and text input compatibility plan
+# Physical keyboard and text input compatibility
 
-This plan precedes implementation of the portable-input extension. Existing
+This records the implemented portable-input extension. For game usage, start
+with the [input guide](input.md); the wire details below are for compatibility
+and host maintenance. Existing
 normalized `Key` identities, their numeric values, and their snapshot masks
 remain unchanged. Physical keys are a separate `Input.PhysicalKey` enum using
 USB keyboard-page identities (also used by SDL scancodes). `ActionBinding`
-gains an additive `physical_key` case; existing rebind and persistence APIs
+includes an additive `physical_key` case; existing rebind and persistence APIs
 continue to work.
 
 ## Game and fixed-step contract
 
-`GameContext` gains an optional host-owned text-input control and a portable
+`GameContext` provides an optional host-owned text-input control and a portable
 `setTextInput(bool)` request. Normal native, browser, and headless hosts supply
 it. No SDL or DOM types enter game code. Text entry is opt-in. Physical held
 state and edges are separate from an ordered stream containing key transitions
@@ -48,22 +50,24 @@ enabled text-entry session.
   v1 even for a larger legacy buffer. A v2 reader writes a marker and text-enabled
   flag before `input_read`; a v1 host simply overwrites the legacy prefix.
   The new runtime accepts either response. No new mandatory Wasm import is
-  introduced, and the enclosing browser host ABI remains unchanged.
+  introduced by the input extension. Later composition-related host/runtime
+  version changes are recorded under [implemented layouts](#implemented-layouts).
 - The browser host uses a focused, visually hidden textarea near the canvas
   for real input/IME events,
   preserving Tab navigation and returning focus to the canvas on deactivation.
   It records composition separately and consumes committed DOM value once
   across final-input/compositionend ordering differences.
 
-## Validation required
+## Validation scope
 
-Retain all existing replay/Canvas goldens and API checks. Add physical binding
-and persistence tests; ordered buffering/repeat/focus/overflow/Unicode tests;
-UPR5 round trips and malformed-data tests; browser v1/v2 negotiation and real
-textarea event checks; native event mapping/lifecycle tests; and one portable
-example that demonstrates Q/E/1/2, rebinding, and Unicode name/preedit display.
-Record available platform and browser validation separately from physical IME
-hardware checks. README files are outside this implementation's scope.
+The existing checks retain replay/Canvas goldens and API compatibility while
+covering physical bindings and persistence; ordered events, repeats, focus,
+overflow and Unicode; UPR5 round trips and malformed data; browser v1/v2
+negotiation; native event mapping; and the portable Q/E/1/2 and name-entry
+workbench. The dated record below describes its initial validation. Newer
+[three-browser authoring checks](browser-authoring.md) exercise shared WebGL 2
+workflows. Injected composition events do not establish physical OS IME
+behavior; [platform evidence](platforms.md) retains that distinction.
 
 Platform references: [SDL scancodes](https://wiki.libsdl.org/SDL3/SDL_Scancode),
 [SDL text activation](https://wiki.libsdl.org/SDL3/SDL_StartTextInput),

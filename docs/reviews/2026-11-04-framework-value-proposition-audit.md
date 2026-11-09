@@ -1,5 +1,11 @@
 # Framework and value-proposition audit — November 4, 2026
 
+**Historical assessment.** The findings below describe the reviewed checkout,
+not the current installation instructions. The
+[November 9 follow-up](#november-9-follow-up-authoring-consolidation) records
+resolved gaps and the remaining scope. Start new games with the
+[current quickstart](../guides/quickstart.md).
+
 Reviewed checkout: `0bc46bc7` (`1.0.0` package metadata), using Zig `0.15.2`.
 This is an assessment and proposed roadmap; it does not implement framework
 changes or announce a release. Peer capabilities were checked against primary
@@ -495,3 +501,111 @@ interactive hardware matrix was run. The comparisons distinguish inspected
 capabilities, reproduced local behavior, earlier recorded measurements, and
 proposed acceptance goals. Changes for this audit are the document and its
 learning-path link.
+
+## November 9 follow-up: authoring consolidation
+
+The engineering work since this audit closes several specific authoring gaps.
+It does not establish overall parity with raylib, Ebitengine or LÖVE. The
+product promise remains a small Zig 2D game with portable callbacks and
+reproducible gameplay/logical-pixel tests. Explicit ownership and a CPU Canvas
+are still meaningful differences an author must understand.
+
+| Original concern | Current disposition | Authoritative guide / evidence |
+| --- | --- | --- |
+| Generated project fails outside the repository | Implemented: local-path generation and verified archive coordinates; regression checks build untouched projects | [Installation](../guides/installation.md), `test-starter-external`, `test-starter-external-web` |
+| General keys, rebinding and Unicode entry | Implemented: portable physical/text extension, including replay; physical OS IME validation remains open | [Input](../guides/input.md), [compatibility](../guides/input-v2-compatibility.md) |
+| Repeated asset setup and weak API discovery | Implemented: optional owned collection, compiled recipes, source-derived task reference | [Asset recipes](../guides/asset-recipes.md), [API](../api/core.md) |
+| Debug metrics used for authored proportional text | Implemented: measurement, wrapping/alignment and prepared drawing; shaping/bidi remain outside scope | [Authored text](../guides/authored-text-layout.md) |
+| Audio retained across repeated content transitions | Implemented: explicit unload, bounded slot reuse and lifetime checks; high-level music still has one active stream | [Audio lifetimes](../guides/audio-lifetimes.md) |
+| Browser workflows lack cross-browser evidence | Automated WebGL 2 workflows and compositor checks observed in real Chromium, Firefox and Safari on Intel macOS; preview unchanged | [Platform evidence](../guides/platforms.md), [browser checks](../guides/browser-authoring.md) |
+| Ordinary rendering capacity is unmeasured | Measured CPU and opt-in GPU composition on one machine; Canvas remains the default | [November 7 workload](2026-11-07-gameprotocol-rendering-capacity.md), [November 8 decision](2026-11-08-gpu-surface-composition.md) |
+| Published package and project license | Still open; generation fixtures do not create a published package or select a license | [Release status](../guides/releases.md#current-release) |
+| Hardware confidence | Apple Silicon, bare-metal Linux, Windows interaction, controllers, physical IME and speaker quality still need the recorded manual evidence | [Platform evidence](../guides/platforms.md) |
+
+### Documentation decisions
+
+The previous learning path already had useful guides. The legitimate criticism
+was their ordering and overlapping status claims, rather than a need for
+another tutorial system. The consolidated [index](../index.md) now puts a
+working independent project first, then task guides and complete examples.
+Optional rendering techniques, benchmark methods and framework CI are separate
+from the first-game route. Example commands identify whether they run in the
+engine checkout or a generated project.
+
+The quickstart owns the create/play/test/web walkthrough. Installation owns
+dependency and output details; releases owns published availability; platforms
+owns observed runtime evidence; capabilities owns support status. Task guides
+own resource/lifetime rules and link to generated signatures. Historical
+measurements stay dated rather than being copied into beginner instructions.
+
+Source review also corrected real inconsistencies: the core-contract prose
+omitted optional cleanup and its failure phase; the authoring inventory lacked
+the compositor; the input compatibility page still introduced implemented work
+as a future plan. Font and audio additions are now distinguished from the old
+tag. Rendering instructions explain that `auto` can choose WebGPU, which does
+not support the new surface queue; that path explicitly needs WebGL 2.
+
+The learning structure is informed by the
+[Ebitengine runnable introduction](https://ebitengine.org/en/tour/hello_world.html)
+and raylib's [examples/reference approach](https://www.raylib.com/), checked on
+November 9. It is an authoring goal, not evidence that Peas matches their
+ecosystems, breadth or productivity. No new peer implementation, performance
+comparison or unfamiliar-user evaluation was conducted.
+
+### Next engineering decision
+
+Hold off on another engine subsystem. Fix reproducible authoring failures and
+keep these commands/examples current. Shader convenience, asynchronous loading,
+shaping/localization and richer high-level audio should each start from a
+concrete game requirement; the earlier shader recommendation is a candidate,
+not a mandatory next milestone. Hardware validation and release decisions
+remain separate unfinished work. Documentation cannot close them.
+
+### Consolidation verification
+
+Verified November 9 on Intel macOS 15.7.7, Zig 0.15.2, Node 24.19.0 and
+Python 3.14.7:
+
+```sh
+zig build docs-update-api -Dwith_sdl=false -Doptimize=ReleaseFast -j1 --summary all
+zig build test docs test-docs test-core-api test-starter test-dogfood \
+  test-lantern-leap test-support test-replays \
+  -Dwith_sdl=false -Doptimize=ReleaseFast -j2 --summary all
+RUN_GENERATED_PROJECT=1 zig build test-starter-external -Doptimize=ReleaseFast -j1 --summary all
+RUN_GENERATED_PROJECT=1 zig build test-starter-external-web -Doptimize=ReleaseFast -j1 --summary all
+SDL_AUDIODRIVER=dummy zig build check-examples run-tutorial-game-protocol \
+  run-starter -Doptimize=ReleaseFast -j1 --summary all -- --frames 2
+zig build test-browser-dev -Dwith_sdl=false -Doptimize=ReleaseFast -j1 --summary all
+zig build peas -- docs quickstart
+zig build peas -- docs api
+zig fmt --check src/docs.zig
+git diff --check
+```
+
+The combined suite passed **105/105 steps and 469/469 tests**, including strict
+API snapshots, existing replay/golden checks, source-synchronized excerpts,
+local/member links, emitted documentation links, and native/Wasm recipes.
+Font layout retained 327 exact metric/pixel cases; asset, input, audio and API
+recipes retained their native/Wasm comparisons. The example/launch command
+passed **52/52 steps**, with tutorial and starter using Cocoa → SDL GPU/Metal.
+
+Both consumer checks generated projects in external directories with spaces
+and isolated caches. Their untouched `zig build`, `zig build test`,
+`zig build web`, `zig build package` and two-frame native launch passed.
+The archive check also rejects missing/mismatched coordinates before generation.
+These are fixture archives with computed hashes, not published release assets.
+
+A further freshly generated project ran
+`zig build dev-web -Ddev-web-once=true -Ddev-web-port=0` successfully. Its
+static output was served with `python3 -u -m http.server --bind 127.0.0.1
+--directory zig-out/web 0`; HTML, bootstrap, host, debug font and Wasm returned
+HTTP 200, the Wasm had its expected magic and MIME type, and authored files
+remained unchanged. Port 0 selected an available local port instead of the
+quickstart's fixed 8000. The existing browser-development harness separately
+passed its rebuild/server/reload checks.
+
+This pass validates documentation and local authoring commands. It does not
+rerun the real three-browser GPU matrix, physical input or speaker-quality
+checks; native smokes use dummy audio. Their earlier evidence remains dated
+in the platform record. No game API, golden, platform status, package version,
+README file or license was changed.

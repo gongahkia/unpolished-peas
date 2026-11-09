@@ -1,62 +1,71 @@
-# 1.0.0 authoring-experience freeze
+# Authoring APIs and compatibility
 
-This records the authoring architecture carried into `1.0.0`, published on
-October 10, 2026. The earlier `0.1.0` numbering was stale; this document does
-not announce another release. Project licensing remains undecided. The tables
-separate recommended game APIs from experimental developer tooling.
+This inventory describes the current checkout and its relationship to the
+`1.0.0` baseline. It records recommended APIs, later additions, compatibility
+paths and experimental tooling. Package metadata is not a feature manifest
+for the October tag; see [release availability](releases.md#current-release).
+This document does
+not announce another release.
 
 ## Stable v1.0 baseline
 
-The root package continues to expose only these stable namespaces:
+The root package exposes six namespaces:
 
 ```text
 core  input  graphics  assets  preview  testSupport
 ```
 
-`test-core-api` guards the checked-in facade snapshot and the v1.0 core symbol
-budget. The v1.0 contract remains the fixed-step `GameProtocol`, deterministic
-RNG/replay/headless tooling, Canvas and assets, input, save data, native/browser
-packaging, and documented supported targets. This audit does not rename or
-remove any v1.0 declaration.
+Namespace membership alone does not make every operation portable or stable.
+The [core contract](core-contract.md) defines the compatibility boundary;
+[API boundaries](../api/boundaries.md) distinguishes portable game services,
+native helpers, advanced rendering and preview developer tooling.
+`test-core-api` checks the reviewed declaration snapshot and core symbol budget.
+Existing callbacks, deterministic hooks and supported declarations remain
+available. No API changes are made by this documentation consolidation.
 
-## Game-facing authoring baseline
+## Recommended game-authoring path
 
-The following additions have been exercised by both Neon Siege and Lantern
-Leap and are part of the current game-facing baseline:
+Use `GameContext` callbacks, named input actions, CPU Canvas, embedded assets,
+optional host audio/saves and explicit cleanup. Put rules, collision, scene
+selection and animation state in ordinary game-owned Zig. Start with
+[Seed Sprint](../../templates/starter/README.md); use the
+[task index](../index.md#add-something-to-your-game) to add a feature.
 
-| Surface | Classification | Contract decision |
+These shared APIs are exercised by both Neon Siege and Lantern Leap. This
+is evidence of their use in those games, not a claim that every later API was
+used by both games or published in the October tag.
+
+| Surface | Classification | Authoritative usage guide |
 | --- | --- | --- |
-| `assets.AssetCollection`, `assets.Atlas.decode` | SUPPORTED PUBLIC API ADDITION | Optional explicit ownership for embedded images, authored fonts and sheets. Both reference games use it; resource pointers remain stable and audio ownership stays with the host. See [asset recipes](asset-recipes.md). |
-| `graphics.SpriteAnimationStep`, `SpriteAnimationMode`, `SpriteAnimationClip`, `SpriteAnimationPlayer` | SUPPORTED PUBLIC API | Supported as deterministic, game-owned sprite-frame selection. Clips borrow static step data; players have value semantics and advance in fixed updates only. |
-| `core.Audio.MusicHandle`, `MusicFormat`, `MusicLoadOptions`, `MusicPlayOptions`, `MusicState`, `loadMusic`, `playMusic`, `pauseMusic`, `resumeMusic`, `stopMusic`, `setMusicVolume` | SUPPORTED PUBLIC API | Supported as one high-level, bounded incremental music stream that coexists with SFX. OGG/Vorbis is the default; WAV is explicit. |
-| `core.Audio.MusicDiagnostics` and `musicDiagnostics` | DEVELOPER OBSERVATION | Useful to diagnostics, but not gameplay control or a telemetry schema. Its fields remain non-versioned observation data until a future audit promotes them. |
+| `assets.AssetCollection`, `assets.Atlas.decode` | SUPPORTED PUBLIC API ADDITION; optional game ownership of related embedded resources | [Asset recipes](asset-recipes.md) |
+| `graphics.SpriteAnimationStep`, `SpriteAnimationMode`, `SpriteAnimationClip`, `SpriteAnimationPlayer` | SUPPORTED PUBLIC API; game-owned clips/player state advanced in fixed updates | [Sprite animation](sprite-animation.md) |
+| `core.Audio.MusicHandle` and load/play/pause/resume/stop controls | SUPPORTED PUBLIC API; one high-level music stream alongside SFX | [Audio](audio-assets.md) |
+| `core.Audio.MusicDiagnostics` / `musicDiagnostics` | DEVELOPER OBSERVATION; non-versioned diagnostic fields, not gameplay state | [Developer diagnostics](developer-diagnostics.md) |
 
-`MusicHandle` and `SoundHandle` remain host-owned handles. Without explicit
-unload, sources remain valid for the lifetime of `Audio` as before.
+## Later checkout additions
 
-### Explicit audio-lifetime addition
+These have focused compiled examples and validation. They do not imply a
+release, broader platform support or use by every reference game.
 
-`core.Audio.unloadSound` / `unloadMusic` are additive working-tree methods
-exercised by a portable scene-transition example and native/Wasm conformance.
-They stop dependent playback before releasing data, preserve unrelated audio
-and reuse registry slots with stale-handle rejection. They do not change the
-older reference games' host-lifetime policy or add a scene system. See
-[audio lifetimes](audio-lifetimes.md) for limits and ownership. No release is
-announced and the frozen facade snapshot/symbol budget remain unchanged.
+| Addition | Status and boundary | Usage and evidence |
+| --- | --- | --- |
+| Physical keys, rebinding and Unicode text/composition | Portable input extension; old normalized key IDs retained. Exhaustive `ActionBinding` switches must handle the added `physical_key` case. Physical IME hardware validation remains separate. | [Input](input.md), [wire/source compatibility](input-v2-compatibility.md) |
+| Session replay with selected initial saves | Optional developer recording; controlled seed/input/environment, not arbitrary game-memory snapshots | [Testing](testing.md#reproduce-a-session-that-depends-on-saved-progress) |
+| `Font.measureText`, `Font.layoutText` and nested `TextLayout` | Authored-font measurement/wrapping/alignment; no shaping or fallback-font stack. Existing debug layout/direct font drawing retained. | [Authored text](authored-text-layout.md), compiled menu/dialogue example |
+| `Audio.unloadSound` / `unloadMusic` | Explicit release and slot reuse; games omitting unload keep host-lifetime behavior | [Audio lifetimes](audio-lifetimes.md), compiled scene-transition example |
+| `graphics.SurfaceCompositor`, `Renderer2D.composeSurfaces` and opt-in `Canvas.preserve_alpha` | OPT-IN PROTOTYPE; SDL GPU/WebGL 2 composition of CPU surfaces. Default Canvas behavior retained. | [GPU surface composition](gpu-surface-composition.md), [measured decision](../reviews/2026-11-08-gpu-surface-composition.md) |
 
-### Authored text addition
-
-`assets.Font.measureText` / `layoutText` and nested `TextLayout` are an
-additive working-tree API, exercised by the compiled menu/dialogue example
-and native/Wasm conformance suite. They provide authored advances,
-wrapping/alignment and owned placement arrays borrowing a stable Font.
-Prepared drawing allocates nothing; direct/debug text remains compatible.
-This does not claim adoption by both older reference games or announce a
-release. See [authored layout](authored-text-layout.md).
+Input, font and audio additions retain the six root namespaces and core symbol
+budget. The compositor intentionally adds one reviewed `graphics` declaration
+to the snapshot. Browser runtime contract 7 and JavaScript host ABI 6 append
+the surface callback; ship matching Wasm and host modules. This is distinct
+from the input ABI v1/v2 and UPR replay formats. The
+[compositor contract](gpu-surface-composition.md) records compatibility and
+unsupported backends. The snapshot matcher and existing goldens remain strict.
 
 ## Experimental developer tooling
 
-These are useful, shipped developer workflows, but do not receive the same
+These workflows are available in the current checkout, but do not receive the same
 game-facing compatibility commitment:
 
 | Area | Classification | Boundary |
@@ -89,6 +98,11 @@ checkpoints, and explicit animation switching. All three consume supported
 package modules; archive-style consumer tests prove no source-checkout import
 is required.
 
+The focused chess, asset, input, font-layout and audio-lifetime examples
+supplement these three projects. They demonstrate individual workflows without
+becoming competing starter architectures. The compositor fixture is a
+correctness probe, not a fourth canonical game.
+
 ## Legacy animation status
 
 The older `assets.Animation`, `assets.AnimationPlayer`, and
@@ -97,25 +111,6 @@ APIs. They are not removed or silently changed in this audit. New deterministic
 games should prefer `SpriteAnimationClip` and `SpriteAnimationPlayer`; the
 legacy float-duration/state-machine model remains for existing authored Atlas
 content. See [sprite animation](sprite-animation.md).
-
-## One-off public surface audit
-
-No authoring declaration was found to be accidentally exposed without
-a focused test, guide, or canonical-project use. Existing public declarations
-that are not used by all three projects fall into deliberate categories:
-
-- `graphics.Renderer2D`, materials, particles, and post passes are advanced
-  rendering APIs documented in [Advanced 2D](advanced-2d.md), not a required
-  Canvas path.
-- The low-level `assets.AudioMixer`, `Music`, and `AudioStream` types remain
-  advanced/legacy mixer surface; ordinary games use `GameContext.audio`.
-- Legacy Atlas animation/state-machine types remain compatibility APIs as
-  described above.
-- Inspector, profiler, and renderer-diagnostics declarations are existing
-  diagnostics/advanced surface rather than new ordinary game requirements.
-
-The audit makes no removals: all of these predate the authoring
-cycle or have an explicit advanced/compatibility purpose.
 
 ## Ownership and determinism
 
@@ -137,51 +132,27 @@ dependency. `dev-web` is a local wrapper around that same production build.
 
 ## Snapshot and versioning strategy
 
-Keep the checked-in core snapshot as the guard for the current facade. The
-capability catalog and contract describe `1.0.0`; the authoring inventory
-records the distinction between supported gameplay APIs and experimental
-host tools. Any future breaking API change requires a major-version decision,
-a snapshot review, and migration notes.
+Keep the checked-in snapshot strict and review intentional additions against
+[core compatibility](core-contract.md) and [release policy](releases.md).
+A snapshot update records a deliberate surface change; it does not promote
+experimental APIs or browser preview status. Breaking changes require the
+version and migration decisions specified by that policy.
 
-## Milestone notes draft
+## Known limits and next work
 
-### Game authoring
+- Game-specific rules such as collision, level layout and checkpoints remain
+  game code; there is no general engine physics, scene or tilemap subsystem.
+- `RenderSurface` owns CPU pixels. The opt-in compositor does not turn it into
+  a GPU render target or accelerate ordinary sprite/text rasterization.
+- Authored text has no shaping, bidi layout, fallback-font stack or dynamic
+  glyph streaming. Asset decoding is synchronous; there is no portable async
+  content loader.
+- High-level audio has one music stream. Crossfades, playlists and buses are
+  outside that high-level service.
+- Custom materials require platform-specific shader artifacts. Native reload
+  covers registered images/fonts; browser iteration rebuilds and refreshes.
+- [Platform evidence](platforms.md) retains the open hardware/manual checks;
+  [release status](releases.md) retains package and licensing decisions.
 
-- Adds deterministic, tick-based Atlas-frame animation for new games.
-- Confirms two distinct reference-game patterns: Neon Siege for arena action
-  and Lantern Leap for scrolling platforming and explicit collision rules.
-
-### Audio
-
-- Adds one high-level bounded incremental music stream alongside reusable WAV
-  sound effects, with the same optional-audio behavior on native, browser, and
-  headless hosts.
-
-### Developer workflow
-
-- Adds opt-in local diagnostics, native image/font reload, and a browser
-  watch/build/serve/full-reload loop without changing production bundles.
-
-### Compatibility
-
-- Keeps the v1.0 facade intact; no game-facing v1.0 API was removed or
-  renamed.
-- Does not constitute a release announcement, package-version bump, tag, or
-  license decision.
-
-## Known limits
-
-- No engine physics, tilemap/content system, checkpoint framework, or camera
-  controller; both dogfood games keep those rules in game-owned Zig.
-- `RenderSurface` is a CPU/software Canvas, not a GPU render target.
-- Text has no shaping or fallback stack.
-- High-level audio supports one music stream, not playlists, crossfades, buses,
-  or music hot reload.
-- Native reload covers registered images/fonts only; browser iteration is a
-  complete rebuild and page refresh.
-- Apple Silicon and bare-metal Linux runtime validation remain pending; WSLg
-  is development evidence only.
-
-No second dogfood game demonstrated a reusable missing subsystem. Future work
-should remain evidence-driven rather than treating this list as a feature
-checklist.
+New subsystems need a concrete game requirement or measured bottleneck. These
+limits are not a list of features that every small-game framework must add.

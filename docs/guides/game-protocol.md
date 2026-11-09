@@ -21,7 +21,22 @@ const Game = struct {
 };
 ```
 
-`GameContext` exposes read-only normalized `input`. Runtime hosts populate a canvas capability; games obtain it with `requireCanvas`, which fails outside a runtime host. Normal native, browser, and headless protocol hosts also provide a host-owned allocator through `requireAllocator`. A game uses that allocator for values it owns, such as `RenderSurface`, `Image`, `Atlas`, and `Font`, and releases those values from its optional `deinit` callback. They may also provide `save_data`, a backend-neutral `SaveStore` for small game-owned byte blobs; `requireSaveData` makes absence explicit. Normal native, browser, and headless protocol hosts also provide `audio`, a small service for reusable decoded WAV effects plus one incrementally decoded OGG/WAV music stream; loading is available during `init`, while playback can still be blocked or unavailable and must be handled as a recoverable output failure. The host owns the allocator, audio, presentation, and save location; game code owns resources it creates through those capabilities. This keeps callback signatures backend-neutral while allowing core drawing and persistence. During `update`, `elapsed_seconds` and `ctx.elapsed_seconds` are the same non-negative finite fixed simulation step; `ctx.interpolation_alpha` is zero. During `draw`, `ctx.interpolation_alpha` is the remaining fixed-step fraction in `[0, 1]`.
+`GameContext` borrows host capabilities. Normal native, browser and headless
+protocol hosts provide the services below; a custom context can omit them.
+Use the checked accessors when a capability is required.
+
+| Capability | Use | Ownership and failure |
+| --- | --- | --- |
+| `input` | Read the fixed-tick snapshot in `update` | Host-owned; normalized/physical keys, pointer, gamepad and text events |
+| `requireCanvas()` | Draw logical pixels | Host-owned Canvas; fails when absent |
+| `requireAllocator()` | Create game-owned images, fonts, surfaces and layouts | Host-owned allocator; the game releases values it allocates |
+| `audio` | Load/play WAV effects and one OGG/WAV music stream | Host-owned resources behind handles; playback can be blocked/unavailable. See [audio](audio-assets.md) and [explicit release](audio-lifetimes.md) |
+| `save_data` / `requireSaveData()` | Read/write small game-owned byte blobs | Host owns storage location; absent or failed storage is explicit. See [saves](save-data.md) |
+
+During `update`, the argument `elapsed_seconds` and `ctx.elapsed_seconds` are
+the same non-negative finite fixed step; `ctx.interpolation_alpha` is zero.
+During `draw`, that alpha is the remaining fixed-step fraction in `[0, 1]`.
+Advanced renderer capabilities have their own [backend boundaries](rendering.md#choose-a-rendering-path).
 
 ## Everyday shape
 
@@ -59,6 +74,8 @@ owned `Font` or `RenderSurface` when the game exits. For related embedded
 images/fonts/sheets, an optional game-owned
 [`AssetCollection`](asset-recipes.md) provides stable borrowed resources and
 one cleanup call, including a single error cleanup for partial initialization.
+If `init` fails, the host does not call game `deinit`; release partially
+created resources with `errdefer`, as the collection recipe demonstrates.
 Native wrappers must forward an optional game `deinit`; the generated starter
 does so. A game with no owned allocation, such
 as the first tutorial source, does not need `deinit`. The authored
@@ -81,8 +98,9 @@ deterministic game code can reproduce a run. Follow the
 Persistent bytes are environmental input. A reproducible test needs the same
 initial save-store contents as well as the same seed and normalized fixed-tick
 replay. `HeadlessGameRunner` defaults to an empty in-memory store and can receive
-an explicitly preloaded one. Optional UPR4 session recordings capture selected
-save keys and restore them before initialization through `initReplay`; see the
+an explicitly preloaded one. Optional session recordings capture selected save keys and restore them
+before initialization through `initReplay`. Normalized-only sessions encode
+UPR4; sessions containing extended input encode UPR5. See the
 [testing guide](testing.md#reproduce-a-session-that-depends-on-saved-progress).
 See the
 [save-data guide](save-data.md) for key rules, native locations, browser
@@ -92,7 +110,10 @@ Desktop and browser hosts use an accumulator with a five-step catch-up cap. A no
 
 `sdl.playGame(Game)` dispatches a game with `GameContext` callbacks through this protocol. Legacy `sdl.Context` callbacks remain available for existing games; `sdl.run` remains the explicit-loop escape hatch.
 
-The browser bundle runs the same callback fixture through its Wasm host. Select `?renderer=webgl2`, `?renderer=webgpu`, or `?renderer=auto`; auto prefers a ready WebGPU backend and records a deterministic WebGL 2 fallback when unavailable. Chromium and Safari WebGPU are [preview](capabilities.md); Firefox WebGPU is unsupported.
+The browser bundle runs the same portable game through its Wasm host.
+Renderer selection and the opt-in compositor's WebGL 2 requirement are
+explained in [rendering choices](rendering.md#choose-a-rendering-path).
+Browser status remains governed by [capabilities](capabilities.md).
 
 `GameProtocol.init` rejects a second initialization. `update` and `draw` reject calls before a successful initialization. If `Game` declares `deinit`, the host calls it once after a successful initialization and before releasing context capabilities. Callback failures preserve their original error and are available through `lastFailure()` with an `init`, `update`, `draw`, or `deinit` phase. Games without `deinit` retain the three-callback protocol.
 
