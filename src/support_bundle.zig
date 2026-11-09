@@ -36,8 +36,13 @@ pub fn create(allocator: std.mem.Allocator, options: Options) !Report {
     defer allocator.free(source_path);
     var source = try std.fs.openDirAbsolute(source_path, .{ .iterate = true });
     defer source.close();
-    if (std.fs.cwd().access(options.output_path, .{})) |_| return error.SupportBundleExists else |err| if (err != error.FileNotFound) return err;
-    try std.fs.cwd().makePath(options.output_path);
+    if (std.fs.path.dirname(options.output_path)) |parent| try std.fs.cwd().makePath(parent);
+    // Acquire the output directory exclusively before cleanup can own it.
+    // A pre-existing (or concurrently created) caller directory stays intact.
+    std.fs.cwd().makeDir(options.output_path) catch |err| switch (err) {
+        error.PathAlreadyExists => return error.SupportBundleExists,
+        else => return err,
+    };
     errdefer std.fs.cwd().deleteTree(options.output_path) catch {};
     const output_path = try std.fs.cwd().realpathAlloc(allocator, options.output_path);
     defer allocator.free(output_path);
@@ -309,4 +314,45 @@ test "support exports structured event context with allocation rollback and reda
     try std.testing.expectEqualStrings("[REDACTED]", event.value.object.get("message").?.string);
     try temp.dir.access("output/logging.json", .{});
     try temp.dir.access("output/incident-7-1.json", .{});
+}
+
+test "browser incident selection stays explicit and bounded" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    const source = try std.fs.path.join(std.testing.allocator, &.{ root, "source" });
+    defer std.testing.allocator.free(source);
+    const output = try std.fs.path.join(std.testing.allocator, &.{ root, "output" });
+    defer std.testing.allocator.free(output);
+    try temp.dir.makeDir("source");
+    for (1..6) |index| {
+        var buffer: [64]u8 = undefined;
+        const name = try std.fmt.bufPrint(&buffer, "source/incident-1-{d}.json", .{index});
+        try temp.dir.writeFile(.{ .sub_path = name, .data = "{\"version\":1}" });
+    }
+    try std.testing.expectError(error.SupportBundleTooLarge, create(std.testing.allocator, .{ .source_path = source, .output_path = output }));
+    try std.testing.expectError(error.FileNotFound, temp.dir.access("output", .{}));
+    try std.testing.expectError(error.SelectedDiagnosticMissing, create(std.testing.allocator, .{ .source_path = source, .output_path = output, .include = &.{"incident-1-9.json"} }));
+    try std.testing.expectError(error.InvalidDiagnosticsArtifact, create(std.testing.allocator, .{ .source_path = source, .output_path = output, .include = &.{"../incident-1-1.json"} }));
+    const selected = try create(std.testing.allocator, .{ .source_path = source, .output_path = output, .include = &.{"incident-1-3.json"} });
+    try std.testing.expectEqual(@as(usize, 1), selected.files);
+}
+
+test "support export never cleans a caller-owned output directory" {
+    var temp = std.testing.tmpDir(.{});
+    defer temp.cleanup();
+    const root = try temp.dir.realpathAlloc(std.testing.allocator, ".");
+    defer std.testing.allocator.free(root);
+    try temp.dir.makePath("source");
+    try temp.dir.makePath("caller/output");
+    try temp.dir.writeFile(.{ .sub_path = "caller/output/notes.txt", .data = "caller-owned" });
+    const source = try std.fs.path.join(std.testing.allocator, &.{ root, "source" });
+    defer std.testing.allocator.free(source);
+    const output = try std.fs.path.join(std.testing.allocator, &.{ root, "caller", "output" });
+    defer std.testing.allocator.free(output);
+    try std.testing.expectError(error.SupportBundleExists, create(std.testing.allocator, .{ .source_path = source, .output_path = output }));
+    const notes = try temp.dir.readFileAlloc(std.testing.allocator, "caller/output/notes.txt", 64);
+    defer std.testing.allocator.free(notes);
+    try std.testing.expectEqualStrings("caller-owned", notes);
 }
