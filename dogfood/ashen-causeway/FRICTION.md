@@ -242,3 +242,22 @@ Continue alongside the existing rejected-write/retry/audio checks. Reviewed
 chromium-corrupt-title/replaced-title PNGs. Logs: root
 `zig-out/diagnostics/ashen-persistence-polish.log`; PNGs/JSON in game
 `zig-out/evidence`. Status resolved; no workaround or framework proposal.
+
+## Rejected commands gave misleading or silent feedback (resolved game bug)
+
+Task: understand an unavailable interaction or a weapon change during commitment.
+Context: 248b0b49, Intel macOS/Zig 0.15.2, Debug/ReleaseSmall. Expected: success cues
+only after an interaction succeeds, and an explanation when a committed action
+prevents a command. Observed: Game.update played the bell for any E press, even
+without a nearby object; Fighter.equip's false result was ignored. Classification:
+low-severity game feedback/state-plumbing bug, no input/audio engine defect.
+
+World.interact now reports success, with a transient game-owned acceptance flag;
+empty/committed interactions and committed swaps set the existing rejected-action
+notice and give an actionable message. Only accepted interactions play the bell.
+The flag clears every world tick, including dead-player early returns, and is
+excluded from saves. No damage/window/movement/cancellation policy changed.
+Sources: World.tick/interact, Game.update, existing Fighter.equip and Sound.play.
+Reproduce/check: game `zig build test web -j2 --summary all`; the new test exercises
+empty/committed commands, unchanged weapon, lantern success and stale-flag clearing.
+Status resolved with 34 passing tests; no workaround or framework feature proposed.

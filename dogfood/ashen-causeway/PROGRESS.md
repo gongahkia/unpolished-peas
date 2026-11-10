@@ -552,3 +552,21 @@ the generated UUID save directory was confirmed removed by the guarded helper.
 That run precedes this title-copy-only fix. The root `zig build test-docs docs -Dwith_sdl=false -j2 --summary all`
 check passed 43 steps/36 tests, including API/asset/font/audio/replay recipe checks.
 Its printed invalid-link/stale-reference messages belong to negative fixtures.
+
+## 2026-11-10 — command acceptance feedback
+
+An E press with no object played the interaction bell, and a weapon swap during
+commitment failed silently. World.tick now reports successful interactions through
+a transient acceptance flag, gives reasons for unavailable E/swap commands and
+uses the existing rejected-action cue. The flag clears on every tick, including
+an early dead-player return; Game plays the bell only on success. No combat
+window, movement speed, damage, cancellation or save-byte policy changed.
+
+A focused rule regression covers empty/committed interactions, committed swap
+without changing weapon, valid lantern use and stale acceptance clearing. The
+first Debug/web run passed 34 tests/all 15 steps; the final acceptance-flag rerun
+also passes as recorded below. Complete keyboard/controller route tick counts
+remain 6,577/6,320. This closes the final command-feedback review finding before
+refreshing the complete host checks and measured resource observations.
+
+Final acceptance-flag rerun: 34/34 tests and 15/15 test/web steps passed.

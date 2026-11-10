@@ -117,7 +117,7 @@ pub const Game = struct {
         if (g.state.hurt_feedback == 12) g.soundscape.play(ctx, .hurt, g.settings.effects);
         if (g.state.player.hp > old_hp) g.soundscape.play(ctx, .heal, g.settings.effects);
         if (g.state.player.active() and g.state.player.age == combat.spec(g.state.player.weapon, g.state.player.action).startup) g.soundscape.play(ctx, .swing, g.settings.effects);
-        if (cmd.interact) g.soundscape.play(ctx, .bell, g.settings.effects);
+        if (g.state.interaction_accepted) g.soundscape.play(ctx, .bell, g.settings.effects);
         for (g.state.enemies) |e| if (e.hp > 0 and ((e.stage == .windup or e.stage == .transition) and e.age == 0)) {
             g.soundscape.play(ctx, .bell, g.settings.effects / 2);
         };

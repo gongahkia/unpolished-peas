@@ -166,6 +166,7 @@ pub const World = struct {
     rings: [4]Ring = [_]Ring{.{}} ** 4,
     hit_feedback: u8 = 0,
     hurt_feedback: u8 = 0,
+    interaction_accepted: bool = false,
     message: []const u8 = "Find the lantern. Carry the coal to the beacon.",
     pub fn init() World {
         var w = World{};
@@ -206,10 +207,11 @@ pub const World = struct {
         w.message = "Your embers wait where you fell. A second death replaces them.";
     }
     pub fn tick(w: *World, cmd: Command) void {
+        w.interaction_accepted = false;
         if (w.player.hp == 0) return;
         if (w.hit_feedback > 0) w.hit_feedback -= 1;
         if (w.hurt_feedback > 0) w.hurt_feedback -= 1;
-        if (cmd.swap) _ = w.player.equip(if (w.player.weapon == .sabre) .spear else .sabre);
+        const swap_rejected = cmd.swap and !w.player.equip(if (w.player.weapon == .sabre) .spear else .sabre);
         if (w.player.action == .idle) {
             if (cmd.aim) |a| {
                 if (a.length() > 0.1) w.facing = a.unit();
@@ -217,6 +219,10 @@ pub const World = struct {
         }
         if (cmd.action) |a| w.player.request(a);
         w.player.tick();
+        if (swap_rejected) {
+            w.player.rejected = true;
+            w.message = "Finish your action before changing weapon.";
+        }
         if (w.player.accepted and w.player.action == .dodge) w.dodge_dir = if (cmd.movement.length() > 0.1) cmd.movement.unit() else w.facing;
         if (w.player.action == .idle) w.pos = move(w.room, w.pos, cmd.movement.unit().scale(@min(1, cmd.movement.length()) * (if (w.charm) @as(f32, 1.5) else 1.7)), 7);
         if (w.player.action == .dodge) w.pos = move(w.room, w.pos, w.dodge_dir.scale(if (w.player.age < 15) @as(f32, 4) else 1), 7);
@@ -259,7 +265,15 @@ pub const World = struct {
             w.drop.amount = 0;
             w.message = "Lost embers recovered.";
         }
-        if (cmd.interact and w.player.action == .idle) w.interact();
+        if (cmd.interact) {
+            if (w.player.action != .idle) {
+                w.player.rejected = true;
+                w.message = "Finish your action before interacting.";
+            } else {
+                w.interaction_accepted = w.interact();
+                if (!w.interaction_accepted) w.player.rejected = true;
+            }
+        }
     }
     fn enemyTick(w: *World, e: *Enemy) void {
         const d = w.pos.sub(e.pos);
@@ -414,47 +428,50 @@ pub const World = struct {
         w.message = if (w.charm) "Reed charm: 25 more stamina, slower walking." else "Reed charm removed. Normal walking speed.";
         return true;
     }
-    fn interact(w: *World) void {
+    fn interact(w: *World) bool {
         if (w.room == 2 and w.boss_defeated and w.bells[2] and w.pos.sub(.{ .x = 870, .y = 450 }).length() < 30) {
             w.completed = true;
             w.message = "The beacon burns. The drowned can find their way home.";
-            return;
+            return true;
         }
         if (w.pos.sub(.{ .x = 70, .y = 270 }).length() < 30) {
             w.rest();
-            return;
+            return true;
         }
         if (w.pos.sub(.{ .x = 870, .y = 450 }).length() < 30) {
             w.bells[w.room] = true;
             w.message = "Mooring bell rung. The passage opens.";
             if (w.room == 1) w.shortcut = true;
-            return;
+            return true;
         }
         if (w.pos.x > 900 and w.room < 2 and w.bells[w.room]) {
             w.room += 1;
             w.pos = .{ .x = 70, .y = 270 };
             w.spawn();
-            return;
+            return true;
         }
         if (w.pos.x < 50 and w.room > 0) {
             w.room -= 1;
             w.pos = .{ .x = 890, .y = 270 };
             w.spawn();
-            return;
+            return true;
         }
         if (w.room == 1 and w.pos.sub(.{ .x = 480, .y = 100 }).length() < 30 and !w.reward) {
             w.reward = true;
             w.embers +|= 75;
             w.player.flasks = @min(4, w.player.flasks + 1);
             w.message = "Reliquary: extra flask, reed charm, 75 embers.";
-            return;
+            return true;
         }
         if (w.shortcut and w.pos.sub(.{ .x = 110, .y = 450 }).length() < 30 and w.room < 2) {
             w.room = 1 - w.room;
             w.pos = .{ .x = 110, .y = 450 };
             w.spawn();
             w.message = "The return lift bypasses the old quay.";
+            return true;
         }
+        w.message = "Nothing to use nearby. Look for an E marker.";
+        return false;
     }
 };
 
@@ -716,4 +733,29 @@ test "shock band damages once leaves the inner space safe and respects walls" {
     w.rings[0] = .{ .center = .{ .x = 210, .y = 200 }, .age = 13, .alive = true };
     w.hazardsTick();
     try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+}
+
+test "unavailable interaction and committed weapon swaps reject without success feedback" {
+    var w = World.init();
+    w.pos = .{ .x = 120, .y = 270 };
+    w.tick(.{ .interact = true });
+    try std.testing.expect(w.player.rejected);
+    try std.testing.expectEqualStrings("Nothing to use nearby. Look for an E marker.", w.message);
+    try std.testing.expect(!w.interaction_accepted);
+    w.tick(.{ .action = .light });
+    w.tick(.{ .swap = true });
+    try std.testing.expect(w.player.rejected);
+    try std.testing.expectEqual(combat.Weapon.sabre, w.player.weapon);
+    try std.testing.expectEqualStrings("Finish your action before changing weapon.", w.message);
+    w.tick(.{ .interact = true });
+    try std.testing.expect(w.player.rejected);
+    try std.testing.expectEqualStrings("Finish your action before interacting.", w.message);
+    w = World.init();
+    w.tick(.{ .interact = true });
+    try std.testing.expect(!w.player.rejected);
+    try std.testing.expectEqualStrings("Lantern kindled. Health and flasks restored.", w.message);
+    try std.testing.expect(w.interaction_accepted);
+    w.player.hp = 0;
+    w.tick(.{ .interact = true });
+    try std.testing.expect(!w.interaction_accepted);
 }
