@@ -3,6 +3,7 @@ const up = @import("unpolished-peas");
 const world = @import("world.zig");
 const combat = @import("combat.zig");
 const save = @import("save.zig");
+const sound = @import("sound.zig");
 pub const width: u32 = 480;
 pub const height: u32 = 270;
 pub const default_seed: u64 = 0x415348454e;
@@ -29,6 +30,10 @@ const bindings = [_]up.input.Action{
 const Screen = enum { title, play, pause, death, settings, victory, credits };
 pub const Game = struct {
     state: world.World = .{},
+    soundscape: sound.Sound = .{},
+    action_notice: u8 = 0,
+    tutorial_stage: u8 = 0,
+    movement_teach: u8 = 0,
     actions: ?up.input.ActionMap = null,
     screen: Screen = .title,
     camera: Vec = .{},
@@ -44,9 +49,11 @@ pub const Game = struct {
         g.actions = try up.input.ActionMap.init(try ctx.requireAllocator(), &bindings);
         g.state = world.World.init();
         g.load(ctx);
+        g.soundscape.init(ctx);
         g.follow();
     }
-    pub fn deinit(g: *Game, _: *up.core.GameContext) !void {
+    pub fn deinit(g: *Game, ctx: *up.core.GameContext) !void {
+        g.soundscape.deinit(ctx);
         if (g.actions) |*a| a.deinit();
         g.actions = null;
     }
@@ -58,9 +65,13 @@ pub const Game = struct {
     }
     fn follow(g: *Game) void {
         g.camera = .{ .x = std.math.clamp(g.state.pos.x - 240, 0, 480), .y = std.math.clamp(g.state.pos.y - 135, 0, 270) };
+        if (g.settings.shake and g.state.hurt_feedback > 0) g.camera.x += if (g.state.hurt_feedback % 2 == 0) @as(f32, 2) else -2;
     }
     pub fn update(g: *Game, ctx: *up.core.GameContext, _: f32) !void {
         g.actions.?.update(ctx.input.*);
+        g.soundscape.ensureMusic(ctx, g.settings.music);
+        if (g.action_notice > 0) g.action_notice -= 1;
+        if (g.screen != .play and (g.pressed("confirm") or g.pressed("interact") or g.pressed("up") or g.pressed("down"))) g.soundscape.play(ctx, .menu, g.settings.effects);
         if (g.screen != .play) {
             try g.menu(ctx);
             return;
@@ -87,7 +98,30 @@ pub const Game = struct {
         inline for (.{ combat.Action.light, combat.Action.heavy, combat.Action.dodge, combat.Action.heal }) |a| {
             if (g.pressed(@tagName(a))) cmd.action = a;
         }
+        const old_hp = g.state.player.hp;
         g.state.tick(cmd);
+        if (g.state.player.rejected) {
+            g.action_notice = 36;
+            g.soundscape.play(ctx, .reject, g.settings.effects);
+        }
+        if (g.state.hit_feedback == 8) g.soundscape.play(ctx, .hit, g.settings.effects);
+        if (g.state.hurt_feedback == 12) g.soundscape.play(ctx, .hurt, g.settings.effects);
+        if (g.state.player.hp > old_hp) g.soundscape.play(ctx, .heal, g.settings.effects);
+        if (g.state.player.active() and g.state.player.age == combat.spec(g.state.player.weapon, g.state.player.action).startup) g.soundscape.play(ctx, .swing, g.settings.effects);
+        if (cmd.interact) g.soundscape.play(ctx, .bell, g.settings.effects);
+        for (g.state.enemies) |e| if (e.hp > 0 and ((e.stage == .windup or e.stage == .transition) and e.age == 0)) {
+            g.soundscape.play(ctx, .bell, g.settings.effects / 2);
+        };
+        if (g.tutorial_stage == 0 and cmd.movement.length() > 0.1) {
+            g.movement_teach +|= 1;
+            if (g.movement_teach >= 30) g.tutorial_stage = 1;
+        }
+        if (g.state.player.accepted) {
+            if (g.tutorial_stage == 1 and (g.state.player.action == .light or g.state.player.action == .heavy)) g.tutorial_stage = 2;
+            if (g.tutorial_stage == 2 and g.state.player.action == .dodge) g.tutorial_stage = 3;
+            if (g.tutorial_stage == 3 and g.state.player.action == .heal) g.tutorial_stage = 4;
+        }
+        if (g.tutorial_stage == 4 and cmd.interact and g.state.nearLantern()) g.tutorial_stage = 5;
         g.follow();
         if (g.state.player.hp == 0) g.screen = .death;
         if (g.state.completed) g.screen = .victory;
@@ -113,6 +147,7 @@ pub const Game = struct {
         g.state = loaded.state;
         g.settings = loaded.settings;
         g.journey_started = true;
+        g.tutorial_stage = 5;
         g.load_note = "Journey found. Continue from your last lantern.";
     }
     fn persist(g: *Game, ctx: *up.core.GameContext) void {
@@ -198,6 +233,8 @@ pub const Game = struct {
                 },
                 1 => {
                     g.state = world.World.init();
+                    g.tutorial_stage = 0;
+                    g.movement_teach = 0;
                     g.journey_started = true;
                     g.persist(ctx);
                     g.screen = .play;
@@ -247,6 +284,55 @@ pub const Game = struct {
     fn circle(g: Game, c: *up.graphics.Canvas, p: Vec, r: i32, color: Color) void {
         c.fillCircle(@intFromFloat(p.x - g.camera.x), @intFromFloat(p.y - g.camera.y), r, color);
     }
+    fn line(g: Game, c: *up.graphics.Canvas, a: Vec, b: Vec, color: Color) void {
+        c.line(@intFromFloat(a.x - g.camera.x), @intFromFloat(a.y - g.camera.y), @intFromFloat(b.x - g.camera.x), @intFromFloat(b.y - g.camera.y), color);
+    }
+    fn ringOutline(g: Game, c: *up.graphics.Canvas, center: Vec, radius: f32, color: Color, dotted: bool) void {
+        var previous = center.add(.{ .x = radius });
+        for (1..81) |i| {
+            const a = @as(f32, @floatFromInt(i)) * std.math.tau / 80;
+            const p = center.add(.{ .x = @cos(a) * radius, .y = @sin(a) * radius });
+            if ((!dotted or i % 2 == 0) and world.visible(g.state.room, center, p)) g.line(c, previous, p, color);
+            previous = p;
+        }
+    }
+    fn telegraph(g: Game, c: *up.graphics.Canvas, e: world.Enemy, color: Color) void {
+        if (e.attack == .ring) {
+            g.ringOutline(c, e.pos, 200, color, true);
+            g.ringOutline(c, e.pos, 20, color, true);
+            return;
+        }
+        if (e.kind == .censer) {
+            var n: f32 = 12;
+            while (n < 200) : (n += 9) {
+                const p = e.pos.add(e.aim.scale(n));
+                if (!world.visible(g.state.room, e.pos, p)) break;
+                g.circle(c, p, 1, color);
+            }
+            return;
+        }
+        if (e.kind == .pike or e.kind == .hound) {
+            const side = Vec{ .x = -e.aim.y, .y = e.aim.x };
+            const half: f32 = if (e.kind == .pike) 10 else 14;
+            for ([_]f32{ -half, half }) |offset| {
+                const a = e.pos.add(side.scale(offset));
+                const extent = e.reach() + (if (e.kind == .hound) (if (e.stage == .windup) @as(f32, 27) else @as(f32, @floatFromInt(9 -| e.age)) * 3) else 0);
+                const b = a.add(e.aim.scale(extent));
+                if (world.visible(g.state.room, a, b)) g.line(c, a, b, color);
+            }
+            return;
+        }
+        const angle = std.math.atan2(e.aim.y, e.aim.x);
+        var last = e.pos.add(.{ .x = @cos(angle - 1.104) * e.reach(), .y = @sin(angle - 1.104) * e.reach() });
+        if (world.visible(g.state.room, e.pos, last)) g.line(c, e.pos, last, color);
+        for (1..17) |i| {
+            const a = angle - 1.104 + 2.208 * @as(f32, @floatFromInt(i)) / 16;
+            const p = e.pos.add(.{ .x = @cos(a) * e.reach(), .y = @sin(a) * e.reach() });
+            if (world.visible(g.state.room, e.pos, p)) g.line(c, last, p, color);
+            last = p;
+        }
+        if (world.visible(g.state.room, e.pos, last)) g.line(c, e.pos, last, color);
+    }
     pub fn draw(g: *Game, ctx: *up.core.GameContext) !void {
         const c = try ctx.requireCanvas();
         const ink = Color.rgb(15, 28, 38);
@@ -277,26 +363,58 @@ pub const Game = struct {
         for (g.state.enemies) |e| {
             if (e.hp == 0) continue;
             const color = if (e.stage == .windup) gold else if (e.stage == .active) Color.rgb(226, 113, 91) else Color.rgb(143, 123, 133);
-            if (e.stage == .windup or e.stage == .active) {
-                var n: f32 = 10;
-                while (n < e.reach()) : (n += 8) {
-                    g.circle(c, e.pos.add(e.aim.scale(n)), 2, color);
-                }
+            if (e.stage == .windup or e.stage == .active) g.telegraph(c, e, color);
+            g.circle(c, e.pos.add(.{ .y = 5 }), if (e.kind == .warden) 17 else 11, ink);
+            const lift: f32 = if (e.stage == .windup) -3 else if (e.stage == .recovery) 2 else 0;
+            switch (e.kind) {
+                .drifter => {
+                    g.rect(c, .{ .x = e.pos.x - 7, .y = e.pos.y - 5 + lift, .w = 14, .h = 14 }, color);
+                    g.circle(c, e.pos.add(.{ .y = -8 + lift }), 5, stone);
+                },
+                .pike => {
+                    g.rect(c, .{ .x = e.pos.x - 4, .y = e.pos.y - 10 + lift, .w = 8, .h = 20 }, color);
+                    g.circle(c, e.pos.add(.{ .y = -12 + lift }), 4, white);
+                    g.line(c, e.pos, e.pos.add(e.aim.scale(23)), white);
+                },
+                .hound => {
+                    g.rect(c, .{ .x = e.pos.x - 11, .y = e.pos.y - 4, .w = 20, .h = 8 }, color);
+                    g.circle(c, e.pos.add(e.aim.scale(9)), 5, color);
+                    g.line(c, e.pos.add(.{ .x = -7, .y = 2 }), e.pos.add(.{ .x = -10, .y = 8 }), stone);
+                    g.line(c, e.pos.add(.{ .x = 6, .y = 2 }), e.pos.add(.{ .x = 10, .y = 8 }), stone);
+                },
+                .censer => {
+                    g.rect(c, .{ .x = e.pos.x - 8, .y = e.pos.y - 2, .w = 16, .h = 5 }, stone);
+                    g.rect(c, .{ .x = e.pos.x - 2, .y = e.pos.y, .w = 4, .h = 10 }, stone);
+                    g.circle(c, e.pos.add(.{ .y = -6 + lift }), 5, color);
+                    g.circle(c, e.pos.add(.{ .y = -9 + lift }), 2, gold);
+                },
+                .warden => {
+                    g.rect(c, .{ .x = e.pos.x - 14, .y = e.pos.y - 9 + lift, .w = 28, .h = 21 }, color);
+                    g.circle(c, e.pos.add(.{ .y = -14 + lift }), 8, gold);
+                    g.line(c, e.pos, e.pos.add(e.aim.scale(if (e.stage == .windup) @as(f32, 24) else 17)), stone);
+                    g.circle(c, e.pos.add(e.aim.scale(23)), 6, white);
+                },
             }
-            g.circle(c, e.pos.add(.{ .y = 4 }), if (e.kind == .warden) 15 else 10, ink);
-            g.circle(c, e.pos, if (e.kind == .warden) 13 else 8, color);
             g.circle(c, e.pos.add(e.aim.scale(5)), 2, ink);
             const p = e.pos.sub(g.camera);
-            c.drawText(switch (e.kind) {
-                .drifter => "D",
-                .pike => "P",
-                .censer => "C",
-                .hound => "H",
-                .warden => "W",
-            }, @intFromFloat(p.x - 3), @intFromFloat(p.y - 18), white);
+            const hp_max: i32 = if (e.kind == .warden) 480 else if (e.kind == .hound) 60 else 85;
+            c.fillRect(@intFromFloat(p.x - 12), @intFromFloat(p.y - 24), 24, 2, ink);
+            c.fillRect(@intFromFloat(p.x - 12), @intFromFloat(p.y - 24), @divTrunc(@as(i32, e.hp) * 24, hp_max), 2, white);
+            if (e.stage == .transition) {
+                g.ringOutline(c, e.pos, 30 + @as(f32, @floatFromInt(e.age % 60)), gold, true);
+                c.drawText("SECOND TOLL", @intFromFloat(p.x - 33), @intFromFloat(p.y - 36), gold);
+            }
         }
+        for (g.state.shots) |shot| if (shot.life > 0) {
+            g.circle(c, shot.pos, 5, gold);
+            g.circle(c, shot.pos, 2, white);
+        };
+        for (g.state.rings) |ring| if (ring.alive) {
+            g.ringOutline(c, ring.center, ring.radius(), gold, false);
+            g.ringOutline(c, ring.center, ring.radius() - 6, white, false);
+        };
         g.circle(c, g.state.pos.add(.{ .y = 4 }), 9, ink);
-        g.circle(c, g.state.pos, 7, if (g.state.player.invulnerable()) gold else Color.rgb(159, 211, 208));
+        g.circle(c, g.state.pos, 7, if (g.settings.flash and g.state.hurt_feedback > 0) white else if (g.state.player.invulnerable()) gold else Color.rgb(159, 211, 208));
         const t = combat.spec(g.state.player.weapon, g.state.player.action);
         g.circle(c, g.state.pos.add(g.state.facing.scale(if (g.state.player.active()) @as(f32, @floatFromInt(t.reach)) else 13)), 3, white);
         c.fillRect(0, 0, 480, 34, ink);
@@ -308,9 +426,22 @@ pub const Game = struct {
         var buffer: [100]u8 = undefined;
         const text = try std.fmt.bufPrint(&buffer, "HP {d}  ST {d}  FLASKS {d}  EMBERS {d}\n{s}   Q SWITCH", .{ g.state.player.hp, g.state.player.stamina, g.state.player.flasks, g.state.embers, @tagName(g.state.player.weapon) });
         c.drawText(text, 130, 6, white);
+        for (g.state.enemies) |e| if (e.kind == .warden and e.hp > 0 and e.pos.sub(g.state.pos).length() < 240) {
+            c.fillRect(120, 219, 240, 5, ink);
+            c.fillRect(120, 219, @divTrunc(@as(i32, e.hp) * 240, 480), 5, gold);
+            c.drawText(if (e.phase == 2) "BELL WARDEN - SECOND TOLL" else "BELL WARDEN", 120, 208, white);
+            if (e.stage == .windup and e.attack == .ring) c.drawText("BELL SHOCK - DODGE THROUGH OR RETREAT", 120, 229, gold);
+        };
         c.fillRect(0, 242, 480, 28, ink);
         c.drawText(g.state.message, 8, 246, gold);
-        c.drawText("J LIGHT  K HEAVY  SPACE DODGE  H HEAL  E USE", 8, 258, white);
+        c.drawText(if (g.action_notice > 0) "ACTION EXPIRED OR UNAVAILABLE - WAIT / RESTORE STAMINA" else switch (g.tutorial_stage) {
+            0 => "WASD / ARROWS MOVE. E AT A LANTERN RESTORES YOU.",
+            1 => "J LIGHT / K HEAVY. ATTACKS COMMIT UNTIL RECOVERY.",
+            2 => "SPACE DODGES. STAMINA RETURNS WHILE YOU REST.",
+            3 => "H USES A FLASK. HEALING COMMITS YOU - FIND AN OPENING.",
+            4 => "E AT A LANTERN REFILLS FLASKS AND SETS YOUR CHECKPOINT.",
+            else => "J LIGHT  K HEAVY  SPACE DODGE  H HEAL  E USE",
+        }, 8, 258, white);
         if (g.save_failed) {
             c.fillRect(0, 34, 480, 12, ink);
             c.drawText("SAVE FAILED - LAST GOOD SAVE KEPT - PAUSE TO RETRY", 8, 36, gold);
@@ -453,5 +584,35 @@ test "corrupt save is retained until explicit new game and settings survive rese
         r.game.screen = screen;
         r.game.selected = 0;
         try r.draw(0);
+    }
+}
+
+test "audio assets decode volume zero is silent and release invalidates sources" {
+    const r = try up.testSupport.HeadlessGameRunner(Game).init(std.testing.allocator, width, height);
+    defer r.deinit();
+    var samples: [1024]up.assets.AudioSample = undefined;
+    for (0..3) |cycle| {
+        if (cycle > 0) r.game.soundscape.init(&r.context);
+        for (r.game.soundscape.effects) |h| try std.testing.expect(h != null);
+        try std.testing.expect(r.game.soundscape.music != null);
+        r.game.soundscape.ensureMusic(&r.context, 0);
+        r.game.soundscape.play(&r.context, .hit, 0);
+        try r.audio.mix(&samples);
+        for (samples) |sample| {
+            try std.testing.expectEqual(@as(f32, 0), sample.left);
+        }
+        r.game.soundscape.play(&r.context, .hit, 100);
+        try r.audio.mix(&samples);
+        var nonzero = false;
+        for (samples) |sample| {
+            try std.testing.expect(std.math.isFinite(sample.left));
+            if (sample.left != 0) nonzero = true;
+        }
+        try std.testing.expect(nonzero);
+        const old = r.game.soundscape.effects[0].?;
+        r.game.soundscape.deinit(&r.context);
+        try std.testing.expectError(error.InvalidSound, r.audio.play(old, .{}));
+        try r.audio.mix(&samples);
+        for (samples) |sample| try std.testing.expectEqual(@as(f32, 0), sample.left);
     }
 }

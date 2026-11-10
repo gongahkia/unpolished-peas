@@ -90,7 +90,10 @@ pub const Fighter = struct {
         }
         if (s.buffer_left > 0) {
             s.buffer_left -= 1;
-            if (s.buffer_left == 0) s.pending = null;
+            if (s.buffer_left == 0 and s.pending != null) {
+                s.pending = null;
+                s.rejected = true;
+            }
         }
     }
     pub fn damage(s: *Fighter, amount: u8) bool {
