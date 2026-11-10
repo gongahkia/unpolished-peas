@@ -9,6 +9,12 @@ They are 22050 Hz mono PCM16 WAV, with soft attack/release envelopes. The score
 is eight seconds and streams through the public Audio WAV music facility.
 No outside recording, melody or generative-image service was used.
 
-The current UI uses Peas's bundled debug font. Authored proportional text and
-its applicable retained font notices remain planned presentation work.
+The UI now uses the embedded Source Sans 3 face documented below.
 This provenance record does not choose or change the repository's license.
+
+UI update, 2026-11-10: src/assets/fonts/ui.otf is an unchanged copy of
+examples/assets/fonts/SourceSans3-Regular.otf (Source Sans 3 Regular, Adobe).
+Its original notice is retained verbatim as assets/SourceSansOFL.txt and is
+installed in both native and browser asset directories. The game credits name
+the typeface. Body and heading glyphs/layouts are prepared during initialization
+through public Peas Font/AssetCollection facilities.

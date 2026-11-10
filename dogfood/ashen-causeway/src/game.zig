@@ -4,6 +4,7 @@ const world = @import("world.zig");
 const combat = @import("combat.zig");
 const save = @import("save.zig");
 const sound = @import("sound.zig");
+const typography = @import("typography.zig");
 pub const width: u32 = 480;
 pub const height: u32 = 270;
 pub const default_seed: u64 = 0x415348454e;
@@ -31,9 +32,12 @@ const Screen = enum { title, play, pause, death, settings, victory, credits };
 pub const Game = struct {
     state: world.World = .{},
     soundscape: sound.Sound = .{},
+    typefaces: typography.Typography = .{},
     action_notice: u8 = 0,
     tutorial_stage: u8 = 0,
     movement_teach: u8 = 0,
+    stride: u32 = 0,
+    walking: bool = false,
     actions: ?up.input.ActionMap = null,
     screen: Screen = .title,
     camera: Vec = .{},
@@ -46,7 +50,9 @@ pub const Game = struct {
     load_problem: bool = false,
     load_note: []const u8 = "No saved journey. Begin when ready.",
     pub fn init(g: *Game, ctx: *up.core.GameContext) !void {
+        errdefer g.deinit(ctx) catch {};
         g.actions = try up.input.ActionMap.init(try ctx.requireAllocator(), &bindings);
+        try g.typefaces.init(try ctx.requireAllocator());
         g.state = world.World.init();
         g.load(ctx);
         g.soundscape.init(ctx);
@@ -54,6 +60,7 @@ pub const Game = struct {
     }
     pub fn deinit(g: *Game, ctx: *up.core.GameContext) !void {
         g.soundscape.deinit(ctx);
+        g.typefaces.deinit();
         if (g.actions) |*a| a.deinit();
         g.actions = null;
     }
@@ -98,6 +105,8 @@ pub const Game = struct {
         inline for (.{ combat.Action.light, combat.Action.heavy, combat.Action.dodge, combat.Action.heal }) |a| {
             if (g.pressed(@tagName(a))) cmd.action = a;
         }
+        g.walking = cmd.movement.length() > 0.1 and g.state.player.action == .idle;
+        if (g.walking) g.stride +%= 1;
         const old_hp = g.state.player.hp;
         g.state.tick(cmd);
         if (g.state.player.rejected) {
@@ -279,16 +288,19 @@ pub const Game = struct {
             }
         }
     }
-    fn rect(g: Game, c: *up.graphics.Canvas, r: world.Rect, color: Color) void {
+    fn text(g: *const Game, c: *up.graphics.Canvas, label: []const u8, x: i32, y: i32, color: Color) void {
+        g.typefaces.draw(c, label, x, y, color);
+    }
+    fn rect(g: *const Game, c: *up.graphics.Canvas, r: world.Rect, color: Color) void {
         c.fillRect(@intFromFloat(r.x - g.camera.x), @intFromFloat(r.y - g.camera.y), @intFromFloat(r.w), @intFromFloat(r.h), color);
     }
-    fn circle(g: Game, c: *up.graphics.Canvas, p: Vec, r: i32, color: Color) void {
+    fn circle(g: *const Game, c: *up.graphics.Canvas, p: Vec, r: i32, color: Color) void {
         c.fillCircle(@intFromFloat(p.x - g.camera.x), @intFromFloat(p.y - g.camera.y), r, color);
     }
-    fn line(g: Game, c: *up.graphics.Canvas, a: Vec, b: Vec, color: Color) void {
+    fn line(g: *const Game, c: *up.graphics.Canvas, a: Vec, b: Vec, color: Color) void {
         c.line(@intFromFloat(a.x - g.camera.x), @intFromFloat(a.y - g.camera.y), @intFromFloat(b.x - g.camera.x), @intFromFloat(b.y - g.camera.y), color);
     }
-    fn ringOutline(g: Game, c: *up.graphics.Canvas, center: Vec, radius: f32, color: Color, dotted: bool) void {
+    fn ringOutline(g: *const Game, c: *up.graphics.Canvas, center: Vec, radius: f32, color: Color, dotted: bool) void {
         var previous = center.add(.{ .x = radius });
         for (1..81) |i| {
             const a = @as(f32, @floatFromInt(i)) * std.math.tau / 80;
@@ -297,7 +309,7 @@ pub const Game = struct {
             previous = p;
         }
     }
-    fn telegraph(g: Game, c: *up.graphics.Canvas, e: world.Enemy, color: Color) void {
+    fn telegraph(g: *const Game, c: *up.graphics.Canvas, e: world.Enemy, color: Color) void {
         if (e.attack == .ring) {
             g.ringOutline(c, e.pos, 200, color, true);
             g.ringOutline(c, e.pos, 20, color, true);
@@ -334,6 +346,65 @@ pub const Game = struct {
         }
         if (world.visible(g.state.room, e.pos, last)) g.line(c, e.pos, last, color);
     }
+    fn scenery(g: *const Game, c: *up.graphics.Canvas) void {
+        const stone = Color.rgb(91, 111, 115);
+        const gold = Color.rgb(239, 185, 96);
+        const ink = Color.rgb(15, 28, 38);
+        // Quiet decorative detail stays outside the collision geometry.
+        for (0..28) |i| {
+            const y = 48 + @as(f32, @floatFromInt(i)) * 17;
+            g.line(c, .{ .x = 0, .y = y }, .{ .x = 12, .y = y - 2 }, Color.rgb(40, 64, 77));
+            g.line(c, .{ .x = 948, .y = y }, .{ .x = 960, .y = y + 2 }, Color.rgb(40, 64, 77));
+        }
+        // Lantern pedestal, frame and flame sit above the rest location.
+        g.rect(c, .{ .x = 58, .y = 268, .w = 24, .h = 5 }, stone);
+        g.rect(c, .{ .x = 68, .y = 247, .w = 4, .h = 23 }, stone);
+        g.rect(c, .{ .x = 63, .y = 240, .w = 14, .h = 15 }, gold);
+        g.rect(c, .{ .x = 65, .y = 242, .w = 10, .h = 11 }, ink);
+        g.circle(c, .{ .x = 70, .y = 247 }, 3, gold);
+        g.text(c, "E - REST", 46 - @as(i32, @intFromFloat(g.camera.x)), 290 - @as(i32, @intFromFloat(g.camera.y)), gold);
+        // The mooring bell is a landmark, with a clapper and stone arch.
+        g.rect(c, .{ .x = 850, .y = 422, .w = 4, .h = 34 }, stone);
+        g.rect(c, .{ .x = 886, .y = 422, .w = 4, .h = 34 }, stone);
+        g.rect(c, .{ .x = 850, .y = 420, .w = 40, .h = 4 }, stone);
+        g.rect(c, .{ .x = 868, .y = 424, .w = 4, .h = 8 }, gold);
+        g.rect(c, .{ .x = 860, .y = 432, .w = 20, .h = 16 }, gold);
+        g.rect(c, .{ .x = 857, .y = 447, .w = 26, .h = 4 }, gold);
+        g.circle(c, .{ .x = 870, .y = 452 }, 3, ink);
+        g.text(c, "E - RING", 846 - @as(i32, @intFromFloat(g.camera.x)), 467 - @as(i32, @intFromFloat(g.camera.y)), gold);
+        if (g.state.room < 2) {
+            g.rect(c, .{ .x = 922, .y = 245, .w = 5, .h = 50 }, stone);
+            g.text(c, if (g.state.bells[g.state.room]) "PASSAGE" else "BELL FIRST", 876 - @as(i32, @intFromFloat(g.camera.x)), 300 - @as(i32, @intFromFloat(g.camera.y)), gold);
+        }
+        if (g.state.shortcut and g.state.room < 2) {
+            g.rect(c, .{ .x = 96, .y = 436, .w = 28, .h = 28 }, stone);
+            for (0..4) |i| {
+                const x = 100 + @as(f32, @floatFromInt(i)) * 6;
+                g.line(c, .{ .x = x, .y = 438 }, .{ .x = x, .y = 462 }, ink);
+            }
+            g.text(c, "E - LIFT", 87 - @as(i32, @intFromFloat(g.camera.x)), 468 - @as(i32, @intFromFloat(g.camera.y)), gold);
+        }
+        if (g.state.room == 1 and !g.state.reward) {
+            g.rect(c, .{ .x = 468, .y = 92, .w = 24, .h = 16 }, stone);
+            g.rect(c, .{ .x = 468, .y = 91, .w = 24, .h = 4 }, gold);
+            g.rect(c, .{ .x = 478, .y = 94, .w = 4, .h = 10 }, gold);
+            g.text(c, "E - OPEN", 456 - @as(i32, @intFromFloat(g.camera.x)), 114 - @as(i32, @intFromFloat(g.camera.y)), gold);
+        }
+    }
+    fn compass(g: *const Game, c: *up.graphics.Canvas) void {
+        if (g.screen != .play or g.state.completed) return;
+        const target = if (g.state.room == 2 and !g.state.boss_defeated) g.state.enemies[4].pos else if (g.state.room < 2 and g.state.bells[g.state.room]) Vec{ .x = 915, .y = 270 } else Vec{ .x = 870, .y = 450 };
+        const p = target.sub(g.camera);
+        if (p.x >= 16 and p.x <= 464 and p.y >= 50 and p.y <= 225) return;
+        const x: i32 = @intFromFloat(std.math.clamp(p.x, 24, 445));
+        const y: i32 = @intFromFloat(std.math.clamp(p.y, 55, 228));
+        const gold = Color.rgb(239, 185, 96);
+        c.line(x, y - 4, x + 4, y, gold);
+        c.line(x + 4, y, x, y + 4, gold);
+        c.line(x, y + 4, x - 4, y, gold);
+        c.line(x - 4, y, x, y - 4, gold);
+        g.text(c, if (g.state.room == 2 and !g.state.boss_defeated) "WARDEN" else if (g.state.room < 2 and g.state.bells[g.state.room]) "PASSAGE" else "BELL", x - 15, y - 18, gold);
+    }
     pub fn draw(g: *Game, ctx: *up.core.GameContext) !void {
         const c = try ctx.requireCanvas();
         const ink = Color.rgb(15, 28, 38);
@@ -341,10 +412,18 @@ pub const Game = struct {
         const gold = Color.rgb(239, 185, 96);
         const white = Color.rgb(228, 233, 220);
         c.clear(ink);
-        g.rect(c, .{ .x = 16, .y = 40, .w = 928, .h = 484 }, Color.rgb(33, 51, 58));
+        g.rect(c, .{ .x = 16, .y = 40, .w = 928, .h = 484 }, switch (g.state.room) {
+            0 => Color.rgb(33, 51, 58),
+            1 => Color.rgb(42, 54, 48),
+            else => Color.rgb(42, 45, 59),
+        });
         for (0..24) |x| {
             for (0..13) |y| {
-                g.rect(c, .{ .x = 20 + @as(f32, @floatFromInt(x)) * 40, .y = 42 + @as(f32, @floatFromInt(y)) * 38, .w = 36, .h = 1 }, Color.rgb(45, 63, 68));
+                const px = 20 + @as(f32, @floatFromInt(x)) * 40;
+                const py = 42 + @as(f32, @floatFromInt(y)) * 38;
+                g.rect(c, .{ .x = px, .y = py, .w = 36, .h = 1 }, Color.rgb(59, 71, 72));
+                if (g.state.room == 1) g.rect(c, .{ .x = px, .y = py, .w = 1, .h = 34 }, Color.rgb(59, 71, 65));
+                if (g.state.room == 2 and (x + y) % 3 == 0) g.rect(c, .{ .x = px + 16, .y = py + 16, .w = 3, .h = 3 }, Color.rgb(70, 73, 84));
             }
         }
         for (world.walls(g.state.room)) |r| {
@@ -352,11 +431,7 @@ pub const Game = struct {
             g.rect(c, r, stone);
             g.rect(c, .{ .x = r.x, .y = r.y, .w = r.w, .h = 3 }, Color.rgb(141, 155, 150));
         }
-        g.circle(c, .{ .x = 70, .y = 270 }, 13, stone);
-        g.circle(c, .{ .x = 70, .y = 270 }, 5, gold);
-        g.circle(c, .{ .x = 870, .y = 450 }, 12, if (g.state.bells[g.state.room]) gold else stone);
-        if (g.state.shortcut and g.state.room < 2) g.rect(c, .{ .x = 100, .y = 440, .w = 20, .h = 20 }, gold);
-        if (g.state.room == 1 and !g.state.reward) g.circle(c, .{ .x = 480, .y = 100 }, 7, gold);
+        g.scenery(c);
         if (g.state.drop.amount > 0 and g.state.drop.room == g.state.room) {
             g.circle(c, g.state.drop.pos, 8, gold);
             g.circle(c, g.state.drop.pos, 4, ink);
@@ -403,7 +478,7 @@ pub const Game = struct {
             c.fillRect(@intFromFloat(p.x - 12), @intFromFloat(p.y - 24), @divTrunc(@as(i32, e.hp) * 24, hp_max), 2, white);
             if (e.stage == .transition) {
                 g.ringOutline(c, e.pos, 30 + @as(f32, @floatFromInt(e.age % 60)), gold, true);
-                c.drawText("SECOND TOLL", @intFromFloat(p.x - 33), @intFromFloat(p.y - 36), gold);
+                g.text(c, "SECOND TOLL", @intFromFloat(p.x - 33), @intFromFloat(p.y - 36), gold);
             }
         }
         for (g.state.shots) |shot| if (shot.life > 0) {
@@ -414,28 +489,49 @@ pub const Game = struct {
             g.ringOutline(c, ring.center, ring.radius(), gold, false);
             g.ringOutline(c, ring.center, ring.radius() - 6, white, false);
         };
-        g.circle(c, g.state.pos.add(.{ .y = 4 }), 9, ink);
-        g.circle(c, g.state.pos, 7, if (g.settings.flash and g.state.hurt_feedback > 0) white else if (g.state.player.invulnerable()) gold else Color.rgb(159, 211, 208));
+        const player_color = if (g.settings.flash and g.state.hurt_feedback > 0) white else if (g.state.player.invulnerable()) gold else Color.rgb(159, 211, 208);
+        const bob: f32 = if (g.walking and g.state.player.action == .idle and (g.stride / 8) % 2 == 0) 1 else 0;
+        const crouch: f32 = if (g.state.player.action == .dodge) 3 else 0;
+        g.circle(c, g.state.pos.add(.{ .y = 5 }), 10, ink);
+        g.rect(c, .{ .x = g.state.pos.x - 6, .y = g.state.pos.y - 3 + bob + crouch, .w = 12, .h = 11 - crouch }, player_color);
+        g.circle(c, g.state.pos.add(.{ .y = -6 + bob + crouch }), 4, white);
         const t = combat.spec(g.state.player.weapon, g.state.player.action);
-        g.circle(c, g.state.pos.add(g.state.facing.scale(if (g.state.player.active()) @as(f32, @floatFromInt(t.reach)) else 13)), 3, white);
+        const weapon_length: f32 = if (g.state.player.active()) @floatFromInt(t.reach) else if (g.state.player.weapon == .spear) 20 else 13;
+        const tip = g.state.pos.add(g.state.facing.scale(weapon_length));
+        g.line(c, g.state.pos, tip, if (g.state.player.active()) white else stone);
+        const side = Vec{ .x = -g.state.facing.y, .y = g.state.facing.x };
+        g.line(c, g.state.pos.add(g.state.facing.scale(8)).add(side.scale(-3)), g.state.pos.add(g.state.facing.scale(8)).add(side.scale(3)), gold);
+        if (g.state.player.active()) {
+            const angle = std.math.atan2(g.state.facing.y, g.state.facing.x);
+            var previous = g.state.pos.add(.{ .x = @cos(angle - 0.988) * weapon_length, .y = @sin(angle - 0.988) * weapon_length });
+            for (1..9) |i| {
+                const a = angle - 0.988 + 1.976 * @as(f32, @floatFromInt(i)) / 8;
+                const point = g.state.pos.add(.{ .x = @cos(a) * weapon_length, .y = @sin(a) * weapon_length });
+                if (world.visible(g.state.room, g.state.pos, point)) g.line(c, previous, point, white);
+                previous = point;
+            }
+        }
         c.fillRect(0, 0, 480, 34, ink);
-        c.drawText(world.names[g.state.room], 10, 5, gold);
+        g.text(c, world.names[g.state.room], 10, 5, gold);
         c.fillRect(10, 18, 100, 5, Color.rgb(66, 43, 47));
         c.fillRect(10, 18, @divTrunc(@as(i32, g.state.player.hp) * 100, g.state.player.max_hp), 5, Color.rgb(211, 121, 106));
         c.fillRect(10, 26, 100, 4, Color.rgb(40, 56, 55));
         c.fillRect(10, 26, @divTrunc(@as(i32, g.state.player.stamina) * 100, g.state.player.max_stamina), 4, Color.rgb(150, 189, 151));
         var buffer: [100]u8 = undefined;
-        const text = try std.fmt.bufPrint(&buffer, "HP {d}  ST {d}  FLASKS {d}  EMBERS {d}\n{s}   Q SWITCH", .{ g.state.player.hp, g.state.player.stamina, g.state.player.flasks, g.state.embers, @tagName(g.state.player.weapon) });
-        c.drawText(text, 130, 6, white);
+        g.text(c, try std.fmt.bufPrint(&buffer, "HP {d}/{d}", .{ g.state.player.hp, g.state.player.max_hp }), 130, 3, white);
+        g.text(c, try std.fmt.bufPrint(&buffer, "ST {d}/{d}", .{ g.state.player.stamina, g.state.player.max_stamina }), 218, 3, white);
+        g.text(c, try std.fmt.bufPrint(&buffer, "Flasks {d}", .{g.state.player.flasks}), 302, 3, white);
+        g.text(c, try std.fmt.bufPrint(&buffer, "Embers {d}", .{g.state.embers}), 382, 3, gold);
+        g.text(c, try std.fmt.bufPrint(&buffer, "{s}   Q switch", .{@tagName(g.state.player.weapon)}), 130, 18, white);
         for (g.state.enemies) |e| if (e.kind == .warden and e.hp > 0 and e.pos.sub(g.state.pos).length() < 240) {
             c.fillRect(120, 219, 240, 5, ink);
             c.fillRect(120, 219, @divTrunc(@as(i32, e.hp) * 240, 480), 5, gold);
-            c.drawText(if (e.phase == 2) "BELL WARDEN - SECOND TOLL" else "BELL WARDEN", 120, 208, white);
-            if (e.stage == .windup and e.attack == .ring) c.drawText("BELL SHOCK - DODGE THROUGH OR RETREAT", 120, 229, gold);
+            g.text(c, if (e.phase == 2) "BELL WARDEN - SECOND TOLL" else "BELL WARDEN", 120, 208, white);
+            if (e.stage == .windup and e.attack == .ring) g.text(c, "BELL SHOCK - DODGE THROUGH OR RETREAT", 120, 229, gold);
         };
         c.fillRect(0, 242, 480, 28, ink);
-        c.drawText(g.state.message, 8, 246, gold);
-        c.drawText(if (g.action_notice > 0) "ACTION EXPIRED OR UNAVAILABLE - WAIT / RESTORE STAMINA" else switch (g.tutorial_stage) {
+        g.text(c, g.state.message, 8, 246, gold);
+        g.text(c, if (g.action_notice > 0) "ACTION EXPIRED OR UNAVAILABLE - WAIT / RESTORE STAMINA" else switch (g.tutorial_stage) {
             0 => "WASD / ARROWS MOVE. E AT A LANTERN RESTORES YOU.",
             1 => "J LIGHT / K HEAVY. ATTACKS COMMIT UNTIL RECOVERY.",
             2 => "SPACE DODGES. STAMINA RETURNS WHILE YOU REST.",
@@ -443,14 +539,26 @@ pub const Game = struct {
             4 => "E AT A LANTERN REFILLS FLASKS AND SETS YOUR CHECKPOINT.",
             else => "J LIGHT  K HEAVY  SPACE DODGE  H HEAL  E USE",
         }, 8, 258, white);
+        g.compass(c);
+        if (g.screen != .play) {
+            c.fillRect(0, 242, 480, 28, ink);
+            g.text(c, switch (g.screen) {
+                .title => "A LIGHT FOR THOSE STILL FINDING THEIR WAY HOME.",
+                .settings => "LEFT / RIGHT CHANGE - ESCAPE / START BACK",
+                .credits => "ENTER / E RETURNS TO TITLE",
+                .victory => "ENTER / E CREDITS - ESCAPE / START RETRIES SAVE",
+                .death => "ENTER / E RETURNS TO YOUR CHECKPOINT",
+                else => "ARROWS CHOOSE - ENTER / E ACCEPT - ESCAPE RESUMES",
+            }, 8, 247, white);
+        }
         if (g.save_failed) {
             c.fillRect(0, 34, 480, 12, ink);
-            c.drawText("SAVE FAILED - LAST GOOD SAVE KEPT - PAUSE TO RETRY", 8, 36, gold);
+            g.text(c, "SAVE FAILED - LAST GOOD SAVE KEPT - PAUSE TO RETRY", 8, 36, gold);
         }
         if (g.screen != .play) {
             c.fillRect(25, 48, 430, 190, ink);
             c.fillRect(25, 48, 430, 2, gold);
-            c.drawText(switch (g.screen) {
+            g.typefaces.drawHeading(c, switch (g.screen) {
                 .title => "ASHEN CAUSEWAY",
                 .pause => "PAUSED - LANTERN UPGRADES",
                 .death => "THE COAL GROWS COLD",
@@ -458,41 +566,41 @@ pub const Game = struct {
                 .victory => "THE BEACON BURNS",
                 .credits => "ASHEN CAUSEWAY - CREDITS",
                 else => "",
-            }, 40, 60, gold);
+            }, 40, 54, gold);
             switch (g.screen) {
                 .title => {
-                    c.drawText("Carry the coal. Ring three bells. Defeat the Warden.", 40, 78, white);
-                    c.drawText(g.load_note, 40, 90, gold);
+                    g.text(c, "Carry the coal. Ring three bells. Defeat the Warden.", 40, 82, white);
+                    g.text(c, g.load_note, 40, 97, gold);
                     const labels = [_][]const u8{ if (g.journey_started) "CONTINUE" else if (g.load_problem) "CONTINUE UNAVAILABLE - SELECT NEW GAME" else "BEGIN JOURNEY", "NEW GAME - REPLACE PROGRESS", "SETTINGS", "CREDITS" };
                     for (labels, 0..) |label, i| {
                         const y: i32 = 112 + @as(i32, @intCast(i)) * 20;
-                        if (i == g.selected) c.fillRect(35, y - 3, 400, 15, stone);
-                        c.drawText(label, 44, y, white);
+                        if (i == g.selected) c.fillRect(35, y - 3, 400, 15, Color.rgb(52, 73, 82));
+                        g.text(c, label, 44, y, white);
                     }
-                    c.drawText("ARROWS CHOOSE - ENTER / E ACCEPT", 40, 214, gold);
+                    g.text(c, "ARROWS CHOOSE - ENTER / E ACCEPT", 40, 214, gold);
                 },
                 .pause => {
                     const labels = [_][]const u8{ "RESUME", "SAVE / RETRY", "WEAPON UPGRADE - 50 / 100 / 150 EMBERS", "VITALITY - 50 / 100 / 150 EMBERS", "REED CHARM - EQUIP / REMOVE", "SETTINGS", "CREDITS", "RETURN TO TITLE" };
                     for (labels, 0..) |label, i| {
                         const y: i32 = 80 + @as(i32, @intCast(i)) * 17;
-                        if (i == g.selected) c.fillRect(35, y - 3, 400, 15, stone);
-                        c.drawText(label, 44, y, white);
+                        if (i == g.selected) c.fillRect(35, y - 3, 400, 15, Color.rgb(52, 73, 82));
+                        g.text(c, label, 44, y, white);
                     }
                     var b: [80]u8 = undefined;
-                    c.drawText(try std.fmt.bufPrint(&b, "FORGE {d}/3  VITALITY {d}/3  CHARM {s}", .{ g.state.upgrade, g.state.vitality, if (g.state.charm) "ON" else "OFF" }), 40, 220, gold);
+                    g.text(c, try std.fmt.bufPrint(&b, "FORGE {d}/3  VITALITY {d}/3  CHARM {s}", .{ g.state.upgrade, g.state.vitality, if (g.state.charm) "ON" else "OFF" }), 40, 220, gold);
                 },
                 .settings => {
                     var b: [160]u8 = undefined;
-                    c.drawText(try std.fmt.bufPrint(&b, "MUSIC VOLUME {d}\n\nEFFECTS VOLUME {d}\n\nCAMERA SHAKE {s}\n\nFLASH EFFECTS {s}", .{ g.settings.music, g.settings.effects, if (g.settings.shake) "ON" else "OFF", if (g.settings.flash) "ON" else "OFF" }), 55, 94, white);
-                    c.fillRect(40, 94 + @as(i32, @intCast(g.selected)) * 16, 5, 7, gold);
-                    c.drawText("UP / DOWN SELECT - LEFT / RIGHT CHANGE\nESCAPE / START BACK", 40, 196, gold);
+                    g.text(c, try std.fmt.bufPrint(&b, "MUSIC VOLUME {d}\n\nEFFECTS VOLUME {d}\n\nCAMERA SHAKE {s}\n\nFLASH EFFECTS {s}", .{ g.settings.music, g.settings.effects, if (g.settings.shake) "ON" else "OFF", if (g.settings.flash) "ON" else "OFF" }), 55, 94, white);
+                    c.fillRect(40, 94 + @as(i32, @intCast(g.selected)) * 24, 5, 7, gold);
+                    g.text(c, "UP / DOWN SELECT - LEFT / RIGHT CHANGE\nESCAPE / START BACK", 40, 196, gold);
                 },
-                .death => c.drawText("Your embers remain where you fell.\nA second death replaces that drop, even with zero.\n\nENTER / E - RETURN TO THE LAST LANTERN", 40, 100, white),
+                .death => g.text(c, "Your embers remain where you fell.\nA second death replaces that drop, even with zero.\n\nENTER / E - RETURN TO THE LAST LANTERN", 40, 100, white),
                 .victory => {
-                    c.drawText("The living coal catches. Across the drowned quay,\nwindows answer with small and patient lights.\nThe ferryman has brought the lost a way home.\n\nENTER / E - CREDITS", 40, 100, white);
-                    c.drawText(if (g.save_failed) "SAVE FAILED - ESCAPE / START RETRIES" else "JOURNEY SAVED", 40, 166, gold);
+                    g.text(c, "The living coal catches. Across the drowned quay,\nwindows answer with small and patient lights.\nThe ferryman has brought the lost a way home.\n\nENTER / E - CREDITS", 40, 100, white);
+                    g.text(c, if (g.save_failed) "SAVE FAILED - ESCAPE / START RETRIES" else "JOURNEY SAVED", 40, 166, gold);
                 },
-                .credits => c.drawText("ASHEN CAUSEWAY\nGame design and implementation: Codex with Gabriel\nFramework: unpolished-peas\nCurrent art: original game-owned Canvas geometry\n\nBuilt as a public-API framework dogfood game.\nSee GUIDE.md and FRICTION.md for evidence.\n\nENTER / E - TITLE", 40, 90, white),
+                .credits => g.text(c, "ASHEN CAUSEWAY\nGame implementation: Codex\nPowered by unpolished-peas\nOriginal art and bell score made for this game.\nTypeface: Source Sans 3 - Adobe\n\nFor everyone who keeps a light in the window.\n\nENTER / E - TITLE", 40, 90, white),
                 else => {},
             }
         }
