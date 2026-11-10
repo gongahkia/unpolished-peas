@@ -1,0 +1,1 @@
+Current prototype uses game-owned Canvas primitives and the built-in Peas debug font. No new third-party bitmap or audio assets. Authored presentation remains pending.
