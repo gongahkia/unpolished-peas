@@ -35,6 +35,31 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run Ashen Causeway's deterministic tests");
     test_step.dependOn(&run_tests.step);
 
+    // Explicit verification-only host; excluded from normal run/package output.
+    const verification_options = b.addOptions();
+    verification_options.addOption([:0]const u8, "application", b.allocator.dupeZ(u8, b.option([]const u8, "verification-id", "Isolated native verification application ID") orelse "verification-only") catch @panic("out of memory"));
+    const verification_module = b.createModule(.{
+        .root_source_file = b.path("src/verify_native.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{ .{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }, .{ .name = "unpolished-peas-sdl3", .module = peas.module("unpolished-peas-sdl3") } },
+    });
+    verification_module.addOptions("verification-options", verification_options);
+    const verification = b.addExecutable(.{ .name = "ashen-native-verification", .root_module = verification_module });
+    const verify_run = b.addRunArtifact(verification);
+    if (b.args) |args| verify_run.addArgs(args);
+    b.step("verify-native", "Run isolated input-replay native verification").dependOn(&verify_run.step);
+
+    const replay_export = b.addExecutable(.{ .name = "ashen-export-browser-replay", .root_module = b.createModule(.{
+        .root_source_file = b.path("src/export_browser_replay.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "unpolished-peas", .module = peas.module("unpolished-peas") }},
+    }) });
+    const export_run = b.addRunArtifact(replay_export);
+    if (b.args) |args| export_run.addArgs(args);
+    b.step("export-browser-replay", "Export verified input and CPU references for browser route checks").dependOn(&export_run.step);
+
     // `zig build` already installs this layout. The named step makes the
     // distributable desktop output discoverable: zig-out/bin + zig-out/assets.
     const package_step = b.step("package", "Build the portable Ashen Causeway desktop layout");
