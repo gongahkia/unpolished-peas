@@ -164,7 +164,7 @@ system. Trusted input/audio smoke tests remain separate.
 
 Task: identify real RPG CPU/resource costs before selecting optional rendering.
 Context/reproduction/evidence: PROFILE.md and root
-`zig-out/diagnostics/ashen-profile`, game baseline 471a17dd, Intel macOS15.7.7,
+`zig-out/diagnostics/ashen-profile`, game baseline 471a17dd, Intel macOS 15.7.7,
 Zig 0.15.2/ReleaseFast. Public Canvas, HeadlessGameRunner, Audio.mix and ordinary
 SDL host were sufficient. Existing `examples/render_capacity_game.zig`,
 `src/render_benchmark.zig` and the native UP_NATIVE_TIMING_SAMPLES reporter
@@ -261,3 +261,31 @@ Sources: World.tick/interact, Game.update, existing Fighter.equip and Sound.play
 Reproduce/check: game `zig build test web -j2 --summary all`; the new test exercises
 empty/committed commands, unchanged weapon, lantern success and stale-flag clearing.
 Status resolved with 34 passing tests; no workaround or framework feature proposed.
+
+## Native save/update tail: attribution remains open
+
+Task: profile actual ordinary and shock combat without hiding rare stalls.
+Context: 50511dde production code plus final profiling helpers, Intel i5/Iris Plus,
+macOS 15.7.7, Zig 0.15.2/ReleaseFast, 480×270 Canvas/1920×1080 output. Reproduce:
+PROFILE.md's final build and one-round profiling commands. Evidence: root
+`zig-out/diagnostics/ashen-profile-polish/result.json`, compressed CPU samples and
+`native-ordinary-0.log`. Observed: input tick 555 has a 40.598 ms update/41.210 ms
+frame, coinciding with a 40-byte update allocation in the headless route; p95 frame
+time is 16.836 ms. There is no promise that sync writes meet a fixed frame budget.
+
+APIs/sources: Game.persist, SaveStore.write, src/native_save_data.zig:75 (temporary
+file write/sync/rename) and the existing SDL timing reporter. Classification:
+documented synchronous-service boundary plus an attribution gap; no reproduced
+engine correctness defect. Medium impact if this tail occurs during combat.
+No game policy or storage durability was weakened based on an unproven cause.
+The retained data does not separate sync latency from OS scheduling or other
+update work. Proposed next diagnostic: optional per-save duration observations;
+if storage is confirmed dominant, evaluate game-owned coalescing at safe points
+with explicit pending-save feedback. An asynchronous storage subsystem is not
+justified by this one sample. Status: observed limitation/investigation open.
+
+A profiling-observer issue was also corrected: the optional native wrapper's
+periodic progress line occurred once in its ordinary measurement window. Profile
+mode now suppresses it, and the runner rejects such logs and failed persistence.
+Final one-round results pass those checks. Earlier numbers retain their known
+observer-I/O limitation; ordinary game save work remains intentionally timed.

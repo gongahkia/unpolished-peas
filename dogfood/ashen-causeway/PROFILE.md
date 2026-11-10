@@ -61,8 +61,10 @@ same replay before the timed loop, including logical audio mixing. It then uses
 normal fixed updates and rendering. The existing UP_NATIVE_TIMING_SAMPLES reporter
 records 360 presented frames, discarding 120 and retaining 240, in three rounds
 with reversed case order on the second round. The phase-two window reaches the
-shock at tick 6,293. No screenshot/readback or file writing occurs in timed native
-frames. All retained frames contain both expected render passes; no samples drop.
+shock at tick 6,293. No screenshot/readback or capture file writing occurs in timed native
+frames. Ordinary game saves remain in update timing. The original ordinary runs
+also emitted one observer progress line at tick 600; the final profiling helper
+suppresses that line in profile mode, and the corrected rerun is recorded below. All retained frames contain both expected render passes; no samples drop.
 
 | SDL window | Draw median / p95 (ms) | Upload/present median (ms) | Frame median / p95 (ms) |
 | --- | --- | --- | --- |
@@ -87,3 +89,48 @@ medians were 0.287 ms ordinary and 0.365 ms phase two. This additional observati
 is kept separate from the three-round distributions above rather than silently
 replacing those retained measurements. Final Debug tests/web build passed all
 15 steps and 31 tests; optional profiling tools built all 10 steps.
+
+## Final presentation/resource rerun
+
+After the reviewed poses, pause feedback, accurate title state, accepted-command
+cues and test-copy catalog cleanup, rebuilt all profiling tools before measurement:
+
+```
+zig build build-profiling test package -Doptimize=ReleaseFast -Dverification-id=profile-e854d7cc-1e8f-4e73-a325-84f93f314c6b -j2 --summary all
+cd ../..
+python3 script/profile_ashen_causeway.py --identity profile-e854d7cc-1e8f-4e73-a325-84f93f314c6b --rounds 1 --output zig-out/diagnostics/ashen-profile-polish
+```
+
+The build passes 18 steps/34 tests. The one-round measurement passes a full CPU
+route and both SDL windows, with 120 warm-up/240 retained frames, zero dropped or
+unpresented samples, and no progress logging in profile mode. Its source/binary
+hashes and raw samples remain in the named report directory. This is a separate
+current-game observation, not a replacement for the historical three-round data.
+
+Current initialization makes 243 allocation requests totaling 2,031,076 requested
+bytes; peak live bytes are 1,879,998 and cleanup returns to zero. The smaller
+prepared-copy catalog removes test names. Updates still make 31 requests totaling
+2,530 bytes across the whole route; drawing/mixing still allocate zero times.
+The actual source/host scope of these counters remains the one described above.
+
+| Current case | Update median / p95 (ms) | Draw median / p95 (ms) |
+| --- | --- | --- |
+| CPU ordinary (4,590 samples) | 0.0063 / 0.0087 | 0.117 / 0.157 |
+| CPU active shock (60 samples) | 0.0065 / 0.0227 | 0.276 / 0.354 |
+| SDL ordinary (240 samples) | 0.0165 / 0.0272 | 0.166 / 0.228 |
+| SDL phase two/shock (240 samples) | 0.0254 / 0.0471 | 0.317 / 0.666 |
+
+SDL frame medians are 16.665/16.646 ms, with p95 of 16.836/17.179 ms. The ordinary
+window has one 40.598 ms update and 41.210 ms complete frame at replay input tick 555.
+The corresponding headless tick has one 40-byte update allocation. Game.persist
+uses synchronous SaveStore.write, including native temporary-file sync/rename,
+so storage work is a candidate; no per-write timer or OS scheduler attribution
+was collected. The outlier is retained and is **not** a demonstrated renderer
+bottleneck or proof of its cause. Ordinary game saves remain part of update cost.
+The other native window's largest frame is 17.921 ms. These tails rule out any
+hard frame-time guarantee from the medians.
+
+The profile wrapper now suppresses its periodic progress line (the earlier runs
+included that observer I/O), rejects failed game persistence, and the runner
+asserts no progress lines occurred. Only the corrected final run has that complete
+observation contract. The exact profile UUID directory was confirmed removed.

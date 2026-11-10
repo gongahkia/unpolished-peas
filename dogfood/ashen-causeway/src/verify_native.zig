@@ -86,8 +86,9 @@ const Desktop = struct {
         var borrowed = ctx.*;
         borrowed.input = &input;
         try d.state.update(&borrowed, dt);
+        if (d.profiling and d.state.save_failed) return error.ProfilePersistenceFailed;
         d.tick += 1;
-        if (d.tick % 600 == 0) std.debug.print("ashen native progress: ticks={d} room={d} hp={d}\n", .{ d.tick, d.state.state.room, d.state.state.player.hp });
+        if (!d.profiling and d.tick % 600 == 0) std.debug.print("ashen native progress: ticks={d} room={d} hp={d}\n", .{ d.tick, d.state.state.room, d.state.state.player.hp });
         if (!d.profiling and (d.continuing or d.tick == d.replay.?.frames.len)) {
             if (!d.state.state.completed or d.state.save_failed) return error.EndingNotSaved;
             var bytes: [save.size]u8 = undefined;

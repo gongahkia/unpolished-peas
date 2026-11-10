@@ -106,6 +106,11 @@ try{
       await driver.evaluate(()=>window.__ashenAdvance(0));
       const continued=await frame(driver,directory,'continued',meta.width,meta.height);
       await compareReference(continued,join(input,meta.continue_reference));result.completedSaveReload=true;
+      result.shutdown=await driver.evaluate(()=>{
+        const api=window.unpolishedPeas;api.runtime.up_browser_shutdown();
+        return {failure:api.runtime.up_browser_protocol_failure_phase(),resources:api.host.resourceCount(),scheduledFrames:api.host.lifecycle().scheduledFrames,phase:api.host.lifecycle().phase};
+      });
+      assert.deepEqual(result.shutdown,{failure:-1,resources:0,scheduledFrames:0,phase:'destroyed'});
       result.status='passed';console.log(browser+' full route and '+result.frames.length+' native pixel references passed');
     }catch(error){result.status='failed';result.error=String(error.stack);throw error;}
     finally{

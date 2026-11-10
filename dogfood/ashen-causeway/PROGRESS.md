@@ -570,3 +570,32 @@ remain 6,577/6,320. This closes the final command-feedback review finding before
 refreshing the complete host checks and measured resource observations.
 
 Final acceptance-flag rerun: 34/34 tests and 15/15 test/web steps passed.
+
+## 2026-11-10 — final host, shutdown and resource evidence
+
+Production source 50511dde's fresh external archive consumer passes all 34 tests,
+package/web and a 120-frame native launch, with authored sources unchanged and
+notices retained. Actual tree 51f7664c69812efd5bd7729fcb652ac1de655992 and Wasm
+SHA256 6bfa7dc86962f2dbe0b2026f0eddc6bd40c2170942cf69302f9978f105191790
+are recorded in root `zig-out/diagnostics/ashen-external/result.json`.
+
+`python3 script/test_ashen_causeway_native.py --output zig-out/diagnostics/ashen-native-final`
+passes the complete 6,577-update route and actual second-process Continue with
+ending/progression verified and audio cleanup. Its exact UUID directory is
+removed by the guarded helper. No native GPU-readback claim is made.
+
+`UP_SAFARI_WEBDRIVER_URL=http://127.0.0.1:41245 node dogfood/ashen-causeway/tools/browser-route.mjs --browsers chromium,firefox,safari`
+passes in Chrome 157.0.8103.39, Firefox 158.0 and real Safari 18.6. Each completes
+and reloads the ending, passes six strict full-frame comparisons at tolerance 1,
+then explicitly calls the real runtime shutdown. All three report protocol
+failure=-1, game GPU resources=0, scheduled frames=0 and host phase=destroyed;
+test-origin saves are restored. Root report: `zig-out/diagnostics/ashen-browser-route/result.json`.
+The owned Safari service was stopped after each pass.
+
+Final profiling tools/optimized tests/package pass18 steps and 34 tests. A separate
+one-round rerun passes full-route CPU and both SDL windows after disabling
+observer progress I/O in profile mode. Current peak tracked live bytes 1,879,998,
+cleanup 0, and unchanged 31 update requests/2,530 bytes, with zero draw/mix requests.
+PROFILE.md retains current distributions and the 41.210 ms frame tail at input 555;
+its cause remains unattributed. Game saves remain intentionally timed. No hard
+frame guarantee or unsupported renderer optimization follows.

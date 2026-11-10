@@ -112,6 +112,7 @@ def main():
                     retained = host['frames'][120:]
                     assert all(f['pass_count'] == 2 for f in retained), 'unpresented SDL frame'
                     assert 'ashen native cleanup verified' in text
+                    assert 'ashen native progress:' not in text, 'observer progress I/O inside profile window'
                     report['native'].append({'round': round_id, 'case': name, 'replay_start_tick': skip,
                         'framebuffer': host['framebuffer'], 'presented_frames_verified': True,
                         'stages': {key: distribution([s[key] for s in retained]) for key in ['update_ns', 'draw_ns', 'present_ns', 'frame_ns', 'interval_ns']}})
