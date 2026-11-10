@@ -28,6 +28,8 @@ pub const Fighter = struct {
     action: Action = .idle,
     age: u16 = 0,
     hp: u8 = 100,
+    max_hp: u8 = 100,
+    max_stamina: u8 = 100,
     stamina: u8 = 100,
     flasks: u8 = 3,
     regen_delay: u8 = 0,
@@ -65,7 +67,7 @@ pub const Fighter = struct {
         if (s.regen_delay > 0) s.regen_delay -= 1;
         if (s.action != .idle) {
             s.age += 1;
-            if (s.action == .heal and s.age == 36) s.hp = @min(100, @as(u16, s.hp) + 45);
+            if (s.action == .heal and s.age == 36) s.hp = @intCast(@min(s.max_hp, @as(u16, s.hp) + 45));
             if (s.age >= spec(s.weapon, s.action).duration()) {
                 s.action = .idle;
                 s.age = 0;
@@ -84,7 +86,7 @@ pub const Fighter = struct {
                     s.accepted = true;
                 } else s.rejected = true;
                 s.pending = null;
-            } else if (s.regen_delay == 0) s.stamina = @min(100, @as(u16, s.stamina) + 1);
+            } else if (s.regen_delay == 0) s.stamina = @intCast(@min(s.max_stamina, @as(u16, s.stamina) + 1));
         }
         if (s.buffer_left > 0) {
             s.buffer_left -= 1;

@@ -133,6 +133,9 @@ pub const World = struct {
     reward: bool = false,
     boss_defeated: bool = false,
     upgrade: u8 = 0,
+    vitality: u8 = 0,
+    charm: bool = false,
+    completed: bool = false,
     enemies: [32]Enemy = [_]Enemy{.{}} ** 32,
     message: []const u8 = "Find the lantern. Carry the coal to the beacon.",
     pub fn init() World {
@@ -154,6 +157,10 @@ pub const World = struct {
         w.checkpoint = w.room;
         const weapon = w.player.weapon;
         w.player = .{ .weapon = weapon };
+        w.applyEquipment();
+        w.player.hp = w.player.max_hp;
+        w.player.stamina = w.player.max_stamina;
+        w.player.flasks = if (w.reward) 4 else 3;
         w.spawn();
         w.message = "Lantern kindled. Health and flasks restored.";
     }
@@ -178,7 +185,7 @@ pub const World = struct {
         if (cmd.action) |a| w.player.request(a);
         w.player.tick();
         if (w.player.accepted and w.player.action == .dodge) w.dodge_dir = if (cmd.movement.length() > 0.1) cmd.movement.unit() else w.facing;
-        if (w.player.action == .idle) w.pos = move(w.room, w.pos, cmd.movement.unit().scale(@min(1, cmd.movement.length()) * 1.7), 7);
+        if (w.player.action == .idle) w.pos = move(w.room, w.pos, cmd.movement.unit().scale(@min(1, cmd.movement.length()) * (if (w.charm) @as(f32, 1.5) else 1.7)), 7);
         if (w.player.action == .dodge) w.pos = move(w.room, w.pos, w.dodge_dir.scale(if (w.player.age < 15) @as(f32, 4) else 1), 7);
         for (&w.enemies, 0..) |*e, i| {
             if (e.hp == 0) continue;
@@ -272,7 +279,42 @@ pub const World = struct {
             w.message = "The second bell tolls. The Warden quickens.";
         }
     }
+    pub fn nearLantern(w: World) bool {
+        return w.pos.sub(.{ .x = 70, .y = 270 }).length() < 30;
+    }
+    pub fn applyEquipment(w: *World) void {
+        w.player.max_hp = 100 + w.vitality * 15;
+        w.player.max_stamina = if (w.charm) 125 else 100;
+        w.player.hp = @min(w.player.hp, w.player.max_hp);
+        w.player.stamina = @min(w.player.stamina, w.player.max_stamina);
+    }
+    pub fn purchase(w: *World, health: bool) bool {
+        if (!w.nearLantern() or w.player.action != .idle or w.player.hp == 0) return false;
+        const level = if (health) &w.vitality else &w.upgrade;
+        const cost = (@as(u32, level.*) + 1) * 50;
+        if (level.* >= 3 or w.embers < cost) {
+            w.message = "Upgrade unavailable: need embers or already capped.";
+            return false;
+        }
+        w.embers -= cost;
+        level.* += 1;
+        w.applyEquipment();
+        w.message = "Upgrade forged. Rest to restore your new capacity.";
+        return true;
+    }
+    pub fn toggleCharm(w: *World) bool {
+        if (!w.reward or !w.nearLantern() or w.player.action != .idle or w.player.hp == 0) return false;
+        w.charm = !w.charm;
+        w.applyEquipment();
+        w.message = if (w.charm) "Reed charm: 25 more stamina, slower walking." else "Reed charm removed. Normal walking speed.";
+        return true;
+    }
     fn interact(w: *World) void {
+        if (w.room == 2 and w.boss_defeated and w.bells[2] and w.pos.sub(.{ .x = 870, .y = 450 }).length() < 30) {
+            w.completed = true;
+            w.message = "The beacon burns. The drowned can find their way home.";
+            return;
+        }
         if (w.pos.sub(.{ .x = 70, .y = 270 }).length() < 30) {
             w.rest();
             return;
@@ -298,7 +340,8 @@ pub const World = struct {
         if (w.room == 1 and w.pos.sub(.{ .x = 480, .y = 100 }).length() < 30 and !w.reward) {
             w.reward = true;
             w.embers +|= 75;
-            w.message = "Reliquary found. 75 embers for the journey.";
+            w.player.flasks = @min(4, w.player.flasks + 1);
+            w.message = "Reliquary: extra flask, reed charm, 75 embers.";
             return;
         }
         if (w.shortcut and w.pos.sub(.{ .x = 110, .y = 450 }).length() < 30 and w.room < 2) {
@@ -395,4 +438,42 @@ test "boss transition grants a safe interval and preserves the second phase" {
     for (0..119) |_| w.tick(.{});
     try std.testing.expectEqual(Stage.recovery, w.enemies[4].stage);
     try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+}
+
+test "lantern upgrades spend capped currency, alter capacity and charm trades speed" {
+    var w = World.init();
+    w.embers = 1000;
+    for (0..3) |_| try std.testing.expect(w.purchase(false));
+    try std.testing.expectEqual(@as(u32, 700), w.embers);
+    try std.testing.expect(!w.purchase(false));
+    w.pos.x = 140;
+    try std.testing.expect(!w.purchase(true));
+    w.pos.x = 70;
+    try std.testing.expect(w.purchase(true));
+    try std.testing.expectEqual(@as(u8, 115), w.player.max_hp);
+    try std.testing.expectEqual(@as(u8, 100), w.player.hp);
+    try std.testing.expect(!w.toggleCharm());
+    w.reward = true;
+    try std.testing.expect(w.toggleCharm());
+    w.rest();
+    try std.testing.expectEqual(@as(u8, 125), w.player.stamina);
+    try std.testing.expectEqual(@as(u8, 115), w.player.hp);
+    try std.testing.expectEqual(@as(u8, 4), w.player.flasks);
+    w.tick(.{ .movement = .{ .x = 1 } });
+    try std.testing.expectApproxEqAbs(@as(f32, 71.5), w.pos.x, 0.001);
+    try std.testing.expect(w.toggleCharm());
+    try std.testing.expectEqual(@as(u8, 100), w.player.stamina);
+}
+
+test "beacon victory requires boss defeat and its mooring bell" {
+    var w = World.init();
+    w.room = 2;
+    w.bells = .{ true, true, false };
+    w.pos = .{ .x = 870, .y = 450 };
+    for (&w.enemies) |*e| e.hp = 0;
+    w.tick(.{ .interact = true });
+    try std.testing.expect(!w.completed);
+    w.boss_defeated = true;
+    w.tick(.{ .interact = true });
+    try std.testing.expect(w.completed);
 }
