@@ -98,3 +98,25 @@ journey. Resolution: conditional status text and Escape/Start retry at victory.
 No engine workaround or framework improvement is needed. Status: resolved with
 regression coverage; real-browser final-write rejection is still a separate
 full-route verification item.
+
+## Authored text ownership and portable UI (working facility)
+
+Task: replace debug text with readable authored labels while bounding allocations
+and preserving cleanup. Context: base c46f228c, Intel macOS, Zig 0.15.2, native
+Debug/ReleaseFast and browser ReleaseSmall. Public APIs: AssetCollection.font,
+Font.layoutText, TextLayout.draw/deinit and Font.drawText; implementation in
+src/typography.zig and Game.init/deinit in src/game.zig. Expected/observed: fonts
+and static layouts prepare once, layouts release before their borrowed font,
+partial initialization releases prior allocations, and drawing needs no new
+allocation. Exhaustive allocation-failure walking and a drawing check with a
+failing allocator pass. Static copy is checked against logical width budgets.
+
+The game keeps a bounded static copy catalog and explicit heading/body styles;
+numeric HUD text uses direct allocation-free drawing. This is game-owned UI
+organization, not evidence for a new engine UI/caching subsystem. Browser
+readback/menu/reload checks pass in Chromium, Firefox and Safari 18.6. The Safari
+check uses independent and game renderer probes, preserving the existing one-
+channel-unit tolerance and exact red-pixel contract. Screenshots/JSON live in the
+game's zig-out/evidence directory. Classification: documented facilities working,
+severity none, no workaround or engine API change. Full-game profiling remains
+separate from this zero-allocation text-draw check.

@@ -1,8 +1,8 @@
 # Ashen Causeway development build
 
 This is an unfinished action RPG prototype. The complete scope and acceptance
-gates remain in [DESIGN.md](DESIGN.md). Authored typography, richer environment
-presentation, complete-route verification and final encounter tuning remain open.
+gates remain in [DESIGN.md](DESIGN.md). Complete real-host route verification, first-run pacing assessment and final
+encounter/presentation review remain open.
 
 From this directory, using Zig 0.15.2:
 
@@ -92,3 +92,24 @@ headless automation, not manual play or full native/browser route verification.
 The automated routes are much faster than a first human run and do not verify
 the 15–30 minute pacing target. At victory, Escape/Start retries a failed save;
 the status text reports whether the ending has actually been saved.
+
+The UI uses embedded Source Sans 3, with its notice packaged at
+`assets/SourceSansOFL.txt`. Static labels are prepared once at initialization;
+`python3 tools/prepare_labels.py` refreshes the finite label catalog after copy
+edits. Numeric HUD values use allocation-free direct text drawing. Lanterns,
+bells, the lift and reliquary have distinct shapes and interaction labels. An
+edge marker points toward the next bell/passage, or the Warden in the Crown.
+
+For real Safari smoke verification, serve the built web directory on port 8114,
+start a free WebDriver service, then run from the engine root:
+
+```
+safaridriver -p 41245
+node dogfood/ashen-causeway/tools/safari-smoke.mjs
+```
+
+Run the service in a separate terminal and stop it after the check. Safari remote
+automation must be enabled. The script reuses the repository's real-Safari adapter,
+requires strict renderer readback, checks settings/save/Continue after reload, and
+restores any pre-existing journey in that test origin. It does not stand in for
+a complete Safari winning route or physical IME/controller testing.

@@ -40,7 +40,7 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
     await press('Escape');await page.waitForTimeout(100);const pause=await capture('pause');assert.notEqual(action.sum,pause.sum);
     // Verify an actual page reload, then a rejected storage write and retry.
     const readSave=()=>page.evaluate(()=>{
-      const key=Object.keys(localStorage).find(k=>k.endsWith('journey-v1'));
+      const key=Object.keys(localStorage).find(k=>k.endsWith('unpolished-peas.ashen-causeway:journey-v1'));
       if(!key) throw new Error('journey save missing');
       const raw=localStorage.getItem(key);
       const bytes=Array.from(atob(raw.slice(6)),c=>c.charCodeAt(0));
@@ -59,7 +59,12 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
     await press('Escape');await press('ArrowDown');await press('Enter');await page.waitForTimeout(100);
     const retried=await readSave();assert.equal(retried.weapon,0);assert.notEqual(retried.raw,saved.raw);
     const retry=await capture('save-retried');
-    await press('Escape');
+    for(let i=0;i<4;i++) await press('ArrowDown');
+    await press('Enter');const settings=await capture('settings');
+    await press('ArrowRight');await press('Escape');
+    for(let i=0;i<6;i++) await press('ArrowDown');
+    await press('Enter');const credits=await capture('credits');
+    await press('Enter');await press('Enter');
     await page.keyboard.down('ArrowDown');await page.waitForTimeout(1100);await page.keyboard.up('ArrowDown');
     await page.keyboard.down('ArrowRight');await page.waitForTimeout(2900);await page.keyboard.up('ArrowRight');
     await page.keyboard.down('ArrowUp');await page.waitForTimeout(1200);await page.keyboard.up('ArrowUp');
@@ -71,7 +76,7 @@ for (const name of (process.env.PEAS_SMOKE_BROWSERS ?? 'chromium').split(',')) {
     const audio=await page.evaluate(()=>({phase:window.unpolishedPeas.host.audio().phase,submissions:window.peasTest.submissions,nonzero:window.peasTest.nonzero,invalidPcm:window.peasTest.invalidPcm}));
     assert.equal(audio.invalidPcm,0);assert.ok(audio.nonzero>0);assert.equal(audio.phase,'active');
     assert.deepEqual(errors,[]);
-    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,encounter,duel,dodge,audio,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
+    results.push({browser:name,version:browser.version(),title,play,action,pause,continued,rejected,retry,settings,credits,encounter,duel,dodge,audio,persistence:{reload:true,rejectedWritePreserved:true,retry:true},errors,coverage:'Trusted keyboard smoke and nonzero WebGL readback, not full route or parity validation'});
   } finally {await browser.close();}
 }
 await writeFile(new URL('browser-smoke.json',out),JSON.stringify(results,null,2));

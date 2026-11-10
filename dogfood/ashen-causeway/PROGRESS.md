@@ -244,3 +244,94 @@ external archive consumer builds/runs, representative performance/allocation
 measurement, remaining prerequisite/reference review, and the dated assessment
 plus final requirement-by-requirement completion audit. Passing these headless
 routes does not close those gates.
+
+## Authored UI and navigation presentation — 2026-11-10
+
+Replaced debug-font output with embedded Source Sans 3. Both faces and reusable
+body/heading layouts load through public AssetCollection/Font APIs during init;
+cleanup releases layouts before fonts, including partial-init failures. Numeric
+HUD values draw without allocation in fixed columns. All static catalog entries
+and headings fit their logical width budgets. The original Adobe font notice
+is copied unchanged and verified in native/web assets. No repository license or
+existing README was changed.
+
+Added lantern/bell/lift/reliquary silhouettes and interaction labels, an off-screen
+objective marker, distinct Quay/Cloister/Crown floor treatments, player walk/dodge
+poses, and a weapon swing outline tied to the active window. These additions do
+not introduce new solid walls or change combat timing. Helpers borrow Game by
+pointer so preparing text does not create large per-primitive Game copies.
+Menu spacing and settings selection account for authored line height. Captured
+reviews found and corrected a heading style accidentally applied to the Settings
+menu item, a rest label touching the player, and generic footer instructions on
+screens where they did not apply. Selection backgrounds were darkened for contrast.
+
+From the game directory:
+
+```
+ASHEN_ROUTE_EVIDENCE=zig-out/evidence/routes zig build test web -j2 --summary all
+zig build test package -Doptimize=ReleaseFast -j2 --summary all
+```
+
+The Debug/web command passes all 15 steps and 31 tests, including both complete
+input/replay routes, exhaustive text initialization failure handling, static copy
+width checks and allocation-free prepared/direct text drawing. Optimized testing
+and packaging are rerun after the final layout corrections before commit.
+
+From the engine root with the built web bundle on port 8114:
+
+```
+PEAS_SMOKE_BROWSERS=chromium,firefox node dogfood/ashen-causeway/tools/browser-smoke.mjs
+node dogfood/ashen-causeway/tools/safari-smoke.mjs
+```
+
+Chromium 157 and Firefox 158 pass the expanded title/settings/credits and encounter
+captures, save reload/rejected-write/retry and finite nonzero WebAudio checks.
+Real Safari 18.6 passes independent and game WebGL red-pixel probes, trusted menu
+input, weapon/settings persistence after actual reload, and audio activation.
+Safari PNG capture was independently available. Safari screenshots of the title,
+settings and continued game were inspected; strict readback checks were retained.
+The task-owned WebDriver service and session were stopped afterwards. The Safari
+harness preserves a prior journey at the loopback origin. Its menu commands are
+spaced over fixed updates; its initial rapid-key loop skipped a selection, so the
+harness now waits after each release. No engine defect is inferred from that.
+
+These are portable UI workflows, not complete native/browser winning routes or
+full pixel parity. Broader renderer requirements, tolerances and physical IME
+limitations are unchanged. The remaining goal gates still include pacing/content
+review, full real-host routes/reloads, archive consumers, performance/allocation
+profiles, prerequisite/reference review and the dated final assessment.
+
+Presentation review: full mode, scoped to the current 480×270 Canvas UI and visible
+Quay/Cloister/Crown route captures. Styling remains game-owned Zig primitives and
+prepared authored text; no second UI/rendering system was added.
+
+| Category | Evidence inspected | Result |
+| --- | --- | --- |
+| Typography | src/typography.zig; title, settings, credits, boss and ending captures | Authored sizes, fixed HUD columns, body/heading distinction and width checks implemented |
+| Surfaces | Menu panels, selected rows, wall/floor/shore primitives | Consistent palette and darker selection fill; no new collision implied |
+| Animation | Fixed-update player walk/dodge and attack poses; encounter phase captures | State cues reviewed; continuous motion at 10% speed remains unverified (Canvas has no CSS animation track) |
+| Icons | Lantern, bell, lift, chest, objective diamond and weapon geometry | Distinct shapes and textual cues added; none relies solely on color |
+| Performance | Allocation-failure and allocation-free text draw tests; helper signatures | Text ownership verified; whole-game frame time and allocation profile remain open |
+
+| Severity before change | Location | Before | After | Why |
+| --- | --- | --- | --- | --- |
+| Medium | src/typography.zig; Game.draw | Small debug glyphs throughout | Authored body/heading layouts prepared in init | Legibility and hierarchy |
+| Medium | src/game.zig HUD | Counters shared one shifting formatted row | Fixed counter columns and normalized bars | Stable numeric information |
+| Medium | Game.scenery / compass | Anonymous circles and off-screen objectives | Landmark silhouettes, interaction labels and edge marker | Discoverability and icon clarity |
+| Low | Game.draw menus | Heading style reused for a menu item; rest text touched player | Explicit heading context and adjusted rest label | Consistent scale and optical spacing |
+| Low | Game.draw world/player | Uniform floor and circular player | Area floor treatments, cloak/head, committed weapon pose | Cohesion and state readability |
+| Low | Game.draw menu footer | Gameplay/tutorial hints remained under every screen | Contextual menu/ending instructions | Relevant, understandable feedback |
+
+Considered and rejected: full-screen bitmap scenery would add a second asset
+workflow for detail already expressible with the existing Canvas palette; shader
+glow was unnecessary for the readable landmark silhouettes and would introduce
+an optional rendering dependency. Menu entrance staggering was also omitted to
+keep frequent pause interactions immediate.
+
+Verification is the exact commands and captures recorded above. Provisional
+verdict: needs further review. Full real-host route/motion review and whole-game
+profiling are unverified; this is not approval of the entire game's polish or
+pacing.
+
+Final optimized rerun after the heading/selection corrections: all 12 test/package
+steps and 31 tests passed. Final Debug/web rerun: all 15 steps and 31 tests passed.
